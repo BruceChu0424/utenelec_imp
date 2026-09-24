@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
@@ -12,6 +10,8 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -393,7 +393,9 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
       await submitPayrollBatch(ref, batch.id);
       if (!mounted) return;
       context.appSuccess('工资批次已提交审核');
-      context.go('/employee');
+      // 来源感知返回（2026-09-24）：pop 优先回到入口（HR 工作台等），深链无栈
+      // 才归位员工列表；原来硬编码 go 会整替栈、丢掉返回链。
+      backTo(context, defaultPath: RouteName.employee);
     } catch (error) {
       if (!mounted) return;
       setState(() => _operationError = '提交失败：$error');

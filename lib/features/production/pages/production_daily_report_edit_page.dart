@@ -42,6 +42,7 @@ import '../../../shared/attachments/pending_attachment_flow.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/idempotency_key.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
@@ -56,6 +57,8 @@ import '../repositories/production_material_repository.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_daily_grid_columns.dart';
 import '../widgets/production_report_surplus_return_dialog.dart';
+import '../repositories/production_actual_output_supplement_repository.dart';
+import '../repositories/production_overproduction_rate_repository.dart';
 import '../widgets/reportable_plan_line_picker.dart';
 import '../../../shared/badges/badge_registry.dart';
 
@@ -65,10 +68,18 @@ class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
     this.id,
     this.initialExecutionSegmentId,
     this.initialExecutionSegmentIds = const [],
+    this.initialSupplement,
+    this.returnToWorkshopTasks = false,
   });
   final String? id; // null=新建
   final String? initialExecutionSegmentId;
   final List<String> initialExecutionSegmentIds;
+  final ProductionOutputSupplementView? initialSupplement;
+
+  /// 从「我的车间任务」push 进来（2026-09-24 用户口径「点击报工后应该去到任务
+  /// 中心，通知数量自动刷新」）：保存成功后 pop 回任务页——它的 await push 收尾
+  /// 自带清勾选+整页重拉+徽章刷新；其余入口照旧 replace 成详情页。
+  final bool returnToWorkshopTasks;
 
   @override
   ConsumerState<ProductionDailyReportEditPage> createState() =>
@@ -136,9 +147,11 @@ class _ProductionDailyReportEditPageState
   bool _saving = false;
   bool _loading = false;
   bool _detailLoaded = false;
+  bool _restoredSupplementContext = false;
+  bool _resumeBlocked = false;
+  String? _resumeNotice;
   int _rowVersion = 0;
-  final String _createIdempotencyKey =
-      'daily-report-create-${const Uuid().v4()}';
+  String _createIdempotencyKey = 'daily-report-create-${const Uuid().v4()}';
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
   String? _createdAt;
@@ -215,21 +228,28 @@ class _ProductionDailyReportEditPageState
           _savedMaterialUsage[usage.demandId] = usage;
         }
         final rows = <DailyGridRow>[];
-        for (final it in d.items) {
+        for (final group in productionDailyReportInputGroups(d.items)) {
+          final it = group.source;
           final row = DailyGridRow()
-            ..planNo.text = it.planNo ?? ''
+            ..planNo.text = group.planNo ?? ''
             ..remark.text = it.remark ?? ''
-            ..planItemId = it.planItemId
-            ..planId = it.planId
+            ..planItemId = group.planItemId
+            ..planId = group.planId
             ..remainingPlanQty = it.remainingPlanQty
-            ..executionSegmentId = it.executionSegmentId
-            ..executionSegmentSalesAllocationId =
-                it.executionSegmentSalesAllocationId
+            ..allowActualOverproduction = it.allowActualOverproduction
+            ..executionSegmentId = group.executionSegmentId
+            ..executionSegmentSalesAllocationId = group.allocationId
+            ..supplementProofId = group.supplementBatch
+                ? it.supplementProofId
+                : null
+            ..supplementApprovedActualQty = group.supplementBatch
+                ? group.qty
+                : null
             ..fqcRecoveryAuthorizationId = it.fqcRecoveryAuthorizationId
             ..fqcRecoveryDispositionCode = it.fqcRecoveryAuthorizationId == null
                 ? null
                 : 'RECOVERY'
-            ..salesOrderItemId = it.salesOrderItemId
+            ..salesOrderItemId = group.salesOrderItemId
             ..salesOrderNo = it.salesOrderNo
             ..clientName = it.clientName
             ..unitRate = it.unitRate
@@ -244,8 +264,8 @@ class _ProductionDailyReportEditPageState
                     id: it.goodsId!,
                     name: ref.read(masterNameServiceProvider).goods(it.goodsId),
                   );
-          row.qty.text = it.qty?.toString() ?? '';
-          row.weight.text = it.weight?.toString() ?? '';
+          row.qty.text = group.qty?.toString() ?? '';
+          row.weight.text = group.weight?.toString() ?? '';
           row.isFinal = it.isFinal;
           // V584/V595：草稿里已选的去向与接收工单是用户的选择，候选加载后原样回填、
           // 不被上次报工记忆覆盖、不标黄。
@@ -264,8 +284,28 @@ class _ProductionDailyReportEditPageState
     }
     if (_grid.isEmpty) _grid.addRow(DailyGridRow());
     if (!mounted) return;
-    setState(() => _loading = false);
-    if (widget.id == null) {
+    final supplement = widget.initialSupplement;
+    if (supplement != null) {
+      final restored = await _restoreSupplementContext(supplement);
+      if (!mounted) return;
+      if (!restored && widget.id == null && !_resumeBlocked) {
+        final source = supplement.sourceLine;
+        if (source == null ||
+            supplement.proofId == null ||
+            supplement.status != 'APPROVED' ||
+            supplement.supplementSegmentStatus != 'IN_PROGRESS') {
+          context.appError('追加计划尚未完成审批与开工，请先核对追加计划状态');
+        } else {
+          final row = _grid.rows.first;
+          _applySource(row, source);
+          row.qty.text = _quantityText(supplement.actualQty);
+          row.supplementRequestId = supplement.id;
+          row.supplementProofId = supplement.proofId;
+          row.supplementApprovedActualQty = supplement.actualQty;
+          _resumeNotice = '仅恢复此追加批次。其余明细、人员、实耗和未提交附件未在本页恢复，请回原填写页面核对。';
+        }
+      }
+    } else if (widget.id == null) {
       final initialIds = <String>{
         if (widget.initialExecutionSegmentId?.trim().isNotEmpty == true)
           widget.initialExecutionSegmentId!.trim(),
@@ -283,6 +323,251 @@ class _ProductionDailyReportEditPageState
     }
     if (!mounted) return;
     await _reloadMaterialRows();
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<bool> _restoreSupplementContext(
+    ProductionOutputSupplementView supplement,
+  ) async {
+    try {
+      final snapshot = supplement.reportContext;
+      if (snapshot == null) return false;
+      final rawItems = snapshot['items'];
+      if (rawItems is! List || rawItems.isEmpty) {
+        throw const FormatException('申请明细为空');
+      }
+      if (widget.id != null &&
+          (snapshot['expectedVersion'] as num?)?.toInt() != _rowVersion) {
+        throw const FormatException('原草稿已被更新，未覆盖其最新内容；请先核对申请时内容与当前草稿');
+      }
+      final restored = <DailyGridRow>[];
+      for (final raw in rawItems) {
+        final item = Map<String, dynamic>.from(raw as Map);
+        final qty = productionRateNumber(item['qty']);
+        if (qty == null ||
+            !qty.isFinite ||
+            qty <= 0 ||
+            item['planItemId'] is! String ||
+            item['executionSegmentId'] is! String ||
+            item['goodsId'] is! String ||
+            item['unitId'] is! String ||
+            (productionRateNumber(item['unitRate']) ?? 0) <= 0) {
+          throw const FormatException('申请时来源或数量不完整，请回原表核对');
+        }
+        final row = DailyGridRow()
+          ..planItemId = item['planItemId'] as String
+          ..executionSegmentId = item['executionSegmentId'] as String
+          ..executionSegmentSalesAllocationId =
+              item['executionSegmentSalesAllocationId'] as String?
+          ..salesOrderItemId = item['salesOrderItemId'] as String?
+          ..salesOrderNo = item['salesOrderNo'] as String?
+          ..fqcRecoveryAuthorizationId =
+              item['fqcRecoveryAuthorizationId'] as String?
+          ..unitId = item['unitId'] as String
+          ..colorId = item['colorId'] as String?
+          ..unitRate = productionRateNumber(item['unitRate'])
+          ..goods = GoodsOption(id: item['goodsId'] as String)
+          ..qty.text = _quantityText(qty)
+          ..weight.text = item['weight']?.toString() ?? ''
+          ..planNo.text = item['planNo'] as String? ?? ''
+          ..remark.text = item['remark'] as String? ?? ''
+          ..destination = item['destination'] as String? ?? 'WAREHOUSE'
+          ..pendingDirectTransferDemandId =
+              item['directTransferDemandId'] as String?
+          ..destinationTouched = true
+          ..supplementProofId = item['supplementProofId'] as String?;
+        if (row.supplementProofId != null) {
+          row.supplementApprovedActualQty = qty;
+        }
+        restored.add(row);
+      }
+      final inputSources = supplement.inputSources;
+      if (inputSources != null) {
+        if (inputSources.length != restored.length) {
+          throw const FormatException('申请来源数量与明细不一致');
+        }
+        for (var i = 0; i < restored.length; i++) {
+          final source = inputSources[i];
+          if (source == null) throw const FormatException('申请来源行缺失');
+          _restoreSourceMetadata(restored[i], source);
+        }
+      }
+      final bindings =
+          supplement.relatedSupplements ??
+          [
+            {
+              'id': supplement.id,
+              'inputLineIndex': supplement.inputLineIndex,
+              'sourceSegmentId': supplement.sourceSegmentId,
+              'sourceSalesAllocationId':
+                  supplement.sourceLine?.executionSegmentSalesAllocationId,
+              'actualQty': supplement.actualQty,
+              'proofId': supplement.proofId,
+              'status': supplement.status,
+              'supplementSegmentStatus': supplement.supplementSegmentStatus,
+              'sourceLine': supplement.data['sourceLine'],
+            },
+          ];
+      final activeIndices = <int>{};
+      for (final binding in bindings) {
+        final index = (binding['inputLineIndex'] as num?)?.toInt();
+        if (index == null || index < 0 || index >= restored.length) {
+          throw const FormatException('追加行索引不完整');
+        }
+        // Cancelled history is not an active claim on this input row. A later
+        // request may legitimately have replaced it using the same draft key.
+        if (binding['status'] == 'CANCELLED') continue;
+        if (!activeIndices.add(index)) {
+          throw const FormatException('同一输入行存在多个有效追加申请，请先核对');
+        }
+        final row = restored[index];
+        final sourceId =
+            binding['sourceExecutionSegmentId'] ?? binding['sourceSegmentId'];
+        if (row.executionSegmentId != sourceId ||
+            row.executionSegmentSalesAllocationId !=
+                binding['sourceSalesAllocationId'] ||
+            double.tryParse(row.qty.text) !=
+                productionRateNumber(binding['actualQty'])) {
+          throw const FormatException('追加申请与原表来源或数量不一致');
+        }
+        row.supplementRequestId =
+            (binding['id'] ?? binding['requestId']) as String?;
+        if (binding['status'] == 'APPROVED') {
+          row.supplementApprovedActualQty = double.parse(row.qty.text);
+        }
+        if (binding['status'] == 'APPROVED' &&
+            (binding['supplementSegmentStatus'] ?? binding['segmentStatus']) ==
+                'IN_PROGRESS') {
+          row.supplementProofId = binding['proofId'] as String?;
+        }
+        if (inputSources != null) continue;
+        final sourceJson = binding['sourceLine'];
+        var source = sourceJson is Map<String, dynamic>
+            ? ReportablePlanLine.fromJson(sourceJson)
+            : binding['id'] == supplement.id
+            ? supplement.sourceLine
+            : null;
+        if (source == null && row.supplementRequestId != null) {
+          source =
+              (await ref
+                      .read(productionOutputSupplementRepositoryProvider)
+                      .detail(row.supplementRequestId!))
+                  .sourceLine;
+        }
+        if (source != null) {
+          _restoreSourceMetadata(row, source);
+        }
+      }
+      // Source plan IDs are read-only context, never inferred from goods names.
+      // The normal source endpoint can enrich still-open ordinary rows.
+      for (final row in restored.where((row) => row.planId == null)) {
+        final page = await ref
+            .read(productionDailyReportRepositoryProvider)
+            .reportablePlanLines(
+              size: 100,
+              executionSegmentId: row.executionSegmentId,
+            );
+        final matches = page.items
+            .where(
+              (source) =>
+                  source.planItemId == row.planItemId &&
+                  source.executionSegmentSalesAllocationId ==
+                      row.executionSegmentSalesAllocationId &&
+                  source.fqcRecoveryAuthorizationId ==
+                      row.fqcRecoveryAuthorizationId,
+            )
+            .toList();
+        if (matches.length != 1) {
+          throw const FormatException('原表有来源已变化，请回原表核对，未覆盖其他输入');
+        }
+        _restoreSourceMetadata(row, matches.single);
+      }
+      if (!mounted) return false;
+      final key = snapshot['idempotencyKey'];
+      if (widget.id == null && key is String && key.isNotEmpty) {
+        _createIdempotencyKey = key;
+      }
+      _billDate =
+          DateTime.tryParse(snapshot['billDate']?.toString() ?? '') ??
+          _billDate;
+      _departmentId = snapshot['departmentId'] as String?;
+      _workshopName = snapshot['workshopName'] as String?;
+      _remark.text = snapshot['remark'] as String? ?? '';
+      final workerIds = (snapshot['workerIds'] as List? ?? const [])
+          .whereType<String>()
+          .toList();
+      await _preloadEmployees(workerIds);
+      if (!mounted) return false;
+      _workers = [
+        for (final id in workerIds)
+          _empCache[id] ?? UtenEmployeePickerItem(id: id, name: '申请时已选人员'),
+      ];
+      for (final raw in snapshot['materialLines'] as List? ?? const []) {
+        final line = Map<String, dynamic>.from(raw as Map);
+        final qty = productionRateNumber(line['qtyBase']);
+        if (line['demandId'] is! String ||
+            qty == null ||
+            !qty.isFinite ||
+            qty < 0) {
+          throw const FormatException('申请时用料信息不完整');
+        }
+        _savedMaterialUsage[line['demandId']
+            as String] = ProductionDailyReportMaterialUsage(
+          demandId: line['demandId'] as String,
+          qtyBase: qty,
+        );
+      }
+      _surplusReturnRequested = snapshot['surplusReturnRequested'] == true;
+      _grid.replaceAll(restored);
+      if (_isCreate) _grid.setSelected(restored, true);
+      _restoredSupplementContext = true;
+      _resumeNotice = '已恢复申请时填写的整单内容（尚未保存日报），请核对其他明细、人员、实耗与未提交附件。';
+      return true;
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _resumeBlocked = true;
+          _resumeNotice = '恢复申请内容未完成：$error。原草稿未覆盖，请回追加详情核对。';
+        });
+      }
+      return false;
+    }
+  }
+
+  /// Enrich identity and limits only. Never replace the captured quantity,
+  /// destination, weight, remarks or explicit material consumption.
+  void _restoreSourceMetadata(DailyGridRow row, ReportablePlanLine source) {
+    if (source.planId == null ||
+        source.executionSegmentId != row.executionSegmentId ||
+        source.planItemId != row.planItemId ||
+        source.executionSegmentSalesAllocationId !=
+            row.executionSegmentSalesAllocationId ||
+        source.orderItemId != row.salesOrderItemId ||
+        source.fqcRecoveryAuthorizationId != row.fqcRecoveryAuthorizationId ||
+        source.goodsId != row.goods?.id ||
+        source.colorId != row.colorId ||
+        source.unitId != row.unitId ||
+        source.unitRate != row.unitRate) {
+      throw const FormatException('来源快照与申请明细不一致');
+    }
+    row
+      ..planId = source.planId
+      ..executionSegmentCode = source.executionSegmentCode
+      ..executionSegmentVersion = source.executionSegmentVersion
+      ..allowActualOverproduction = source.allowActualOverproduction
+      ..maxReportQty = source.fqcRecoveryRequiresMaterial
+          ? 0
+          : source.maxReportQty
+      ..remainingPlanQty = source.remainingCompletionQty
+      ..fqcRecoveryDispositionCode = source.fqcRecoveryDispositionCode
+      ..fqcSourceReportNo = source.fqcSourceReportNo
+      ..clientName = source.clientName
+      ..goods = GoodsOption(
+        id: source.goodsId,
+        name: source.goodsName,
+        code: source.goodsCode,
+      );
+    if (row.planNo.text.isEmpty) row.planNo.text = source.planNo;
   }
 
   String _fmt(DateTime d) =>
@@ -321,6 +606,10 @@ class _ProductionDailyReportEditPageState
     DailyGridRow row, {
     String? executionSegmentId,
   }) async {
+    if (row.hasFixedSupplement) {
+      context.appWarning('已批准追加批次的来源与总量固定；可修改备注、重量和实际用料');
+      return;
+    }
     final sources = await showReportablePlanLinePicker(
       context,
       ref,
@@ -476,6 +765,10 @@ class _ProductionDailyReportEditPageState
         ..unitRate = source.unitRate
         ..orderQty = source.orderQty
         ..maxReportQty = source.maxReportQty
+        ..allowActualOverproduction = source.allowActualOverproduction
+        ..supplementRequestId = null
+        ..supplementProofId = null
+        ..supplementApprovedActualQty = null
         ..remainingPlanQty = source.remainingCompletionQty
         ..legacyManual = false
         ..planNo.text = source.planNo
@@ -488,7 +781,9 @@ class _ProductionDailyReportEditPageState
         ..unitId = source.unitId
         ..destinationTouched = false
         ..pendingDirectTransferDemandId = null
-        ..qty.text = _quantityText(source.maxReportQty);
+        ..qty.text = source.maxReportQty > 0
+            ? _quantityText(source.maxReportQty)
+            : '';
       _watchProductQty(row);
       if (_departmentId == null && source.departmentId != null) {
         _departmentId = source.departmentId;
@@ -510,6 +805,10 @@ class _ProductionDailyReportEditPageState
   }
 
   void _clearSource(DailyGridRow row) {
+    if (row.hasFixedSupplement) {
+      context.appWarning('已批准追加批次不能清除来源；如需重开，请先删除整张日报草稿');
+      return;
+    }
     // 来源没了，挂在这行下面的物料子行也就没有归属：先摘掉再清字段，
     // 否则它们会变成指向已失效工单的孤儿行，提交时被服务端判 403。
     final orphans = [
@@ -534,6 +833,10 @@ class _ProductionDailyReportEditPageState
         ..unitRate = null
         ..orderQty = null
         ..maxReportQty = null
+        ..allowActualOverproduction = false
+        ..supplementRequestId = null
+        ..supplementProofId = null
+        ..supplementApprovedActualQty = null
         ..remainingPlanQty = null
         ..legacyManual = false
         ..planNo.clear()
@@ -566,7 +869,10 @@ class _ProductionDailyReportEditPageState
           (source) =>
               source.canOpen &&
               _clearanceCache.containsKey(
-                _materialKey(row.planId!, source.executionSegmentId),
+                _materialKey(
+                  source.sourcePlanId ?? row.planId!,
+                  source.executionSegmentId,
+                ),
               ),
         );
   });
@@ -653,8 +959,9 @@ class _ProductionDailyReportEditPageState
             const <ProductionMaterialUsageSource>[];
         for (final source in sources) {
           if (!source.canOpen) continue;
-          segments[_materialKey(row.planId!, source.executionSegmentId)] = (
-            planId: row.planId!,
+          final sourcePlanId = source.sourcePlanId ?? row.planId!;
+          segments[_materialKey(sourcePlanId, source.executionSegmentId)] = (
+            planId: sourcePlanId,
             segmentId: source.executionSegmentId,
           );
         }
@@ -715,7 +1022,10 @@ class _ProductionDailyReportEditPageState
       for (final source in sources) {
         if (!source.canOpen) continue;
         final rows =
-            _clearanceCache[_materialKey(planId, source.executionSegmentId)] ??
+            _clearanceCache[_materialKey(
+              source.sourcePlanId ?? planId,
+              source.executionSegmentId,
+            )] ??
             const <ProductionMaterialClearanceRow>[];
         for (final clearance in rows) {
           // 与材料台账同口径：没领过料、或已经没有可继续登记的量，就不占一行。
@@ -736,7 +1046,10 @@ class _ProductionDailyReportEditPageState
             _materialInputs.putIfAbsent(clearance.demandId, () {
               final input = DailyMaterialInput();
               final saved = _savedMaterialUsage[clearance.demandId];
-              if (saved != null) input.used.text = _quantityText(saved.qtyBase);
+              if (saved != null) {
+                input.used.text = _quantityText(saved.qtyBase);
+                input.manuallyEdited = true;
+              }
               return input;
             }),
           );
@@ -766,6 +1079,10 @@ class _ProductionDailyReportEditPageState
 
   /// 删成品行：连带删掉挂在它下面的物料子行，不留孤儿。
   void _deleteProductRow(DailyGridRow row, int index) {
+    if (row.hasFixedSupplement) {
+      context.appWarning('追加批次不能从草稿单独移除；如需重开，请删除整张日报草稿');
+      return;
+    }
     final victims = [
       row,
       for (final candidate in _grid.rows)
@@ -951,7 +1268,7 @@ class _ProductionDailyReportEditPageState
     product.qty.addListener(() => _recomputeMaterialUsage(product));
   }
 
-  /// 物料子行被用户改过：清黄标，记住其「用料 / 完工量」比例，后续完工量变化按它换算。
+  /// 手工实耗是本次事实；改产量、拆分产出去向或调整勾选均不得覆盖它。
   void _watchMaterialUsage(DailyGridRow row) {
     if (!row.isMaterialRow || !_usageWatched.add(row.materialInput)) return;
     final input = row.materialInput;
@@ -962,6 +1279,7 @@ class _ProductionDailyReportEditPageState
       }
       input.autofilled.value = false;
       input.autofillText = null;
+      input.manuallyEdited = true;
       final parentQty = materialReportedQuantity(
         demandId,
         _grid.rows,
@@ -990,10 +1308,14 @@ class _ProductionDailyReportEditPageState
     if (changed && mounted) setState(() {});
   }
 
-  /// 按「完工申报量 × 单耗」(用户改过则按其比例)填本次实际用料并标黄；返回是否写了值。
+  /// 只更新尚未手改的建议，已保存草稿和手工填写的实耗原样保留。
   bool _autofillMaterialUsage(DailyGridRow row) {
     final material = row.material;
-    if (material == null || row.materialShared) return false;
+    if (material == null ||
+        row.materialShared ||
+        row.materialInput.manuallyEdited) {
+      return false;
+    }
     final participants = _materialParticipants;
     if (_grid.rows.any(
       (candidate) =>
@@ -1066,6 +1388,16 @@ class _ProductionDailyReportEditPageState
         ownerIds: [createdId],
       );
       if (!mounted || !ok) return;
+      // 从车间任务进来时同样直接回任务页（见 _save 同名分支）。
+      if (widget.returnToWorkshopTasks) {
+        final navigator = Navigator.of(context);
+        if (navigator.canPop()) {
+          navigator.pop(true);
+        } else {
+          context.go(RouteName.productionWorkshopTasks);
+        }
+        return;
+      }
       context.replace('/production/daily-reports/$createdId');
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -1073,6 +1405,11 @@ class _ProductionDailyReportEditPageState
   }
 
   Future<void> _save() async {
+    if (_saving) return;
+    if (_resumeBlocked) {
+      context.appWarning(_resumeNotice ?? '请先核对申请时填写内容');
+      return;
+    }
     if (!_isCreate && !_detailLoaded) {
       context.appError('原草稿尚未成功读取，请重试后再保存');
       return;
@@ -1118,8 +1455,14 @@ class _ProductionDailyReportEditPageState
       final r = _productRows[i];
       if (r.goods == null || !submitted.contains(r)) continue;
       final qty = double.tryParse(r.qty.text);
-      if (qty == null || qty <= 0) {
+      if (qty == null || !qty.isFinite || qty <= 0) {
         context.appError('第 ${i + 1} 行完工申报量必须大于 0');
+        return;
+      }
+      if (r.hasFixedSupplement &&
+          (r.supplementApprovedActualQty == null ||
+              (qty - r.supplementApprovedActualQty!).abs() > 0.000001)) {
+        context.appError('第 ${i + 1} 行属于已批准的固定追加批次，总量不能修改；当前其他输入已保留');
         return;
       }
       final weightText = r.weight.text.trim();
@@ -1137,7 +1480,9 @@ class _ProductionDailyReportEditPageState
         context.appError('第 ${i + 1} 行来源任务缺少有效单位或换算率，请维护计划后重试');
         return;
       }
-      if (r.maxReportQty != null && qty > r.maxReportQty! + 0.000001) {
+      if (r.hasReportQuantityLimit &&
+          r.maxReportQty != null &&
+          qty > r.maxReportQty! + 0.000001) {
         context.appError(
           '第 ${i + 1} 行完工申报量超过当前可报数量 ${_quantityText(r.maxReportQty!)}',
         );
@@ -1150,7 +1495,9 @@ class _ProductionDailyReportEditPageState
     }
     final sourceTotals = <String, double>{};
     final sourceCaps = <String, double>{};
-    for (final r in rows.where((row) => row.hasLinkedSource)) {
+    for (final r in rows.where(
+      (row) => row.hasLinkedSource && row.hasReportQuantityLimit,
+    )) {
       final key =
           r.fqcRecoveryAuthorizationId ??
           r.executionSegmentSalesAllocationId ??
@@ -1212,7 +1559,8 @@ class _ProductionDailyReportEditPageState
       final qty = productionReportBaseQuantity(r);
       if (qty == null) {
         transferIssues.add('第 ${i + 1} 行数量或单位换算无效，请重新核对报工来源');
-      } else if (qty - picked.remainingQty > 0.000001) {
+      } else if (r.hasReportQuantityLimit &&
+          qty - picked.remainingQty > 0.000001) {
         transferIssues.add(
           '第 ${i + 1} 行本次基础数量 ${_quantityText(qty)} 超过本来源当前可直送的 '
           '${_quantityText(picked.remainingQty)}；超出的部分请另起一行送入仓库',
@@ -1269,6 +1617,8 @@ class _ProductionDailyReportEditPageState
               r.executionSegmentSalesAllocationId,
         if (r.fqcRecoveryAuthorizationId != null)
           'fqcRecoveryAuthorizationId': r.fqcRecoveryAuthorizationId,
+        if (r.supplementProofId != null)
+          'supplementProofId': r.supplementProofId,
         if (r.salesOrderItemId != null) 'salesOrderItemId': r.salesOrderItemId,
         if (r.salesOrderNo != null) 'salesOrderNo': r.salesOrderNo,
         if (r.clientName != null) 'clientName': r.clientName,
@@ -1320,6 +1670,13 @@ class _ProductionDailyReportEditPageState
     // 单据号后端自动生成（DocNumberService），不再随 body 提交。
     final body = <String, dynamic>{
       'billDate': _fmt(_billDate),
+      'idempotencyKey': widget.id == null
+          ? _createIdempotencyKey
+          : businessIdempotencyKey(
+              'daily-report-edit',
+              '${widget.id}|$_rowVersion',
+            ),
+      if (widget.id != null) 'expectedVersion': _rowVersion,
       if (_departmentId != null) 'departmentId': _departmentId,
       if (_workshopName != null && _workshopName!.trim().isNotEmpty)
         'workshopName': _workshopName,
@@ -1332,6 +1689,12 @@ class _ProductionDailyReportEditPageState
       if (materialBody.isNotEmpty) 'materialLines': materialBody,
       if (_surplusReturnRequested) 'surplusReturnRequested': true,
     };
+    if (!await _prepareActualOutputSupplements(
+      rows.where((row) => row.goods != null).toList(),
+      body,
+    )) {
+      return;
+    }
     setState(() => _saving = true);
     try {
       final repo = ref.read(productionDailyReportRepositoryProvider);
@@ -1345,6 +1708,17 @@ class _ProductionDailyReportEditPageState
       if (widget.id == null && _pendingFiles.isNotEmpty) {
         setState(() => _createdReportId = d.id);
         await _finishCreatedReport(d.id);
+        return;
+      }
+      // 从车间任务进来：保存成功直接回任务页（其 await push 收尾自带刷新与
+      // 徽章重拉）；其余入口照旧落详情页。
+      if (widget.returnToWorkshopTasks) {
+        final navigator = Navigator.of(context);
+        if (navigator.canPop()) {
+          navigator.pop(true);
+        } else {
+          context.go(RouteName.productionWorkshopTasks);
+        }
         return;
       }
       context.replace('/production/daily-reports/${d.id}');
@@ -1363,6 +1737,213 @@ class _ProductionDailyReportEditPageState
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// One authoritative preview covers the complete report, including shared
+  /// margins and actual material use. No row receives an independent allowance.
+  Future<bool> _prepareActualOutputSupplements(
+    List<DailyGridRow> rows,
+    Map<String, dynamic> body,
+  ) async {
+    if (!_restoredSupplementContext &&
+        !rows.any(
+          (row) =>
+              !row.isFqcRecovery &&
+              (row.allowActualOverproduction ||
+                  row.supplementProofId != null ||
+                  row.supplementRequestId != null),
+        )) {
+      return true;
+    }
+    final repository = ref.read(productionOutputSupplementRepositoryProvider);
+    final pending = <int, ProductionOutputSupplementView>{};
+    final items = body['items'] as List<Map<String, Object?>>;
+    ProductionOutputSupplementReportPreview preview;
+    setState(() => _saving = true);
+    try {
+      for (var index = 0; index < rows.length; index++) {
+        final row = rows[index];
+        final id = row.supplementRequestId;
+        if (id == null) continue;
+        final supplement = await repository.detail(id);
+        if (supplement.status == 'CANCELLED') {
+          row.supplementRequestId = null;
+          row.supplementProofId = null;
+          items[index].remove('supplementProofId');
+          continue;
+        }
+        final source = supplement.sourceLine;
+        if (supplement.actualQty != double.tryParse(row.qty.text) ||
+            source == null ||
+            source.executionSegmentId != row.executionSegmentId ||
+            source.executionSegmentSalesAllocationId !=
+                row.executionSegmentSalesAllocationId) {
+          throw ApiException(
+            'CONFLICT',
+            '第 ${index + 1} 行与已提交追加计划的数量或来源不一致，请先核对原追加计划；本次输入已保留',
+          );
+        }
+        if (supplement.status == 'APPROVED') {
+          row.supplementApprovedActualQty = supplement.actualQty;
+        }
+        if (supplement.status == 'APPROVED' &&
+            supplement.proofId != null &&
+            supplement.supplementSegmentStatus == 'IN_PROGRESS') {
+          row.supplementProofId = supplement.proofId;
+          row.supplementApprovedActualQty = supplement.actualQty;
+          items[index]['supplementProofId'] = supplement.proofId;
+        } else {
+          pending[index] = supplement;
+        }
+      }
+      preview = await repository.previewReport(
+        body,
+        excludedReportId: widget.id,
+      );
+    } on ApiException catch (error) {
+      if (mounted) context.appError(error.message);
+      return false;
+    } catch (_) {
+      if (mounted) context.appError('本次整单超产范围尚未核对成功，请重试；数量、其他明细和实际用料均保留');
+      return false;
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+    if (!mounted) return false;
+    final required = preview.lines
+        .where((line) => line.requiresSupplement)
+        .toList();
+    if (!preview.requiresSupplements && pending.isEmpty) return true;
+    for (final line in required) {
+      if (line.inputLineIndex < 0 ||
+          line.inputLineIndex >= rows.length ||
+          rows[line.inputLineIndex].executionSegmentId !=
+              line.sourceSegmentId ||
+          rows[line.inputLineIndex].executionSegmentSalesAllocationId !=
+              line.sourceSalesAllocationId ||
+          double.tryParse(rows[line.inputLineIndex].qty.text) !=
+              line.actualQty) {
+        context.appError('追加计划预览与当前明细不一致，请重新核对；当前输入保留');
+        return false;
+      }
+    }
+    if (required.isEmpty && pending.isEmpty) {
+      context.appError('追加计划预览不完整，请重试；当前输入保留');
+      return false;
+    }
+    final indices = {
+      ...required.map((line) => line.inputLineIndex),
+      ...pending.keys,
+    }.toList()..sort();
+    final uncreated = required
+        .where((line) => rows[line.inputLineIndex].supplementRequestId == null)
+        .toList();
+    final permissions = ref.read(currentPermissionsProvider);
+    final canCreate =
+        ref.read(isSuperAdminProvider) ||
+        (permissions.contains(Perm.productionExecutionView) &&
+            (permissions.contains(productionSupplementRequestPermission) ||
+                permissions.contains('production_plan:create')));
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('需要追加生产计划'),
+        content: SizedBox(
+          width: 680,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('超过已生效的允许范围时，超出原计划的部分整笔进入独立追加计划；不按容差上限截断本次实际产量。'),
+                const SizedBox(height: 12),
+                for (final index in indices) ...[
+                  Text(
+                    '第 ${index + 1} 行 · ${rows[index].goods?.name ?? '自制件'}',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  for (final line in required.where(
+                    (line) => line.inputLineIndex == index,
+                  ))
+                    Text(
+                      '本次实际 ${line.actualQty}；原工单 ${line.originalReportQty}；独立追加 ${line.supplementQty}',
+                    ),
+                  if (pending[index] case final supplement?) ...[
+                    Text(
+                      '追加计划 ${supplement.planNo ?? ''} · ${supplement.status == 'APPROVED' ? '已审批，待显式开工' : '待计划部审批'}',
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, 'view:$index'),
+                      child: const Text('查看追加计划'),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                ],
+                Text(
+                  '其余 ${rows.length - indices.length} 行与整单实际用料保持原输入；本次日报尚未保存。',
+                ),
+                if (!canCreate && uncreated.isNotEmpty)
+                  const Text('请有追加申请权限的人员或计划员提交追加计划审批。'),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('返回原报工表'),
+          ),
+          if (canCreate && uncreated.isNotEmpty)
+            FilledButton(
+              onPressed: () => Navigator.pop(context, 'create'),
+              child: Text('提交 ${uncreated.length} 份追加计划审批'),
+            ),
+        ],
+      ),
+    );
+    if (!mounted || action == null) return false;
+    if (action.startsWith('view:')) {
+      final index = int.parse(action.substring(5));
+      await context.push(
+        RoutePath.productionActualOutputSupplement(
+          rows[index].supplementRequestId!,
+        ),
+        extra: 'return-to-report',
+      );
+      return false;
+    }
+    var created = 0;
+    setState(() => _saving = true);
+    try {
+      for (final line in uncreated) {
+        final supplement = await repository.create(
+          ProductionOutputSupplementPreview({
+            ...line.data,
+            'sourceSegmentId': line.sourceSegmentId,
+          }),
+          billDate: body['billDate'] as String,
+          remark: body['remark'] as String?,
+          excludedReportId: widget.id,
+          reportContext: body,
+          inputLineIndex: line.inputLineIndex,
+        );
+        rows[line.inputLineIndex].supplementRequestId = supplement.id;
+        created++;
+      }
+      if (mounted) {
+        refreshBadges(ref);
+        context.appInfo('已提交 $created 份追加计划审批；整张日报的数量与用料保留，审批并开工后再完整保存');
+      }
+    } on ApiException catch (error) {
+      if (mounted) {
+        context.appError('已提交 $created 份追加计划；${error.message}。其余输入仍保留');
+      }
+    } catch (_) {
+      if (mounted) context.appWarning('已确认提交 $created 份，其他结果请核对后重试；原表全部输入保留');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+    return false;
   }
 
   /// 批量校验的问题清单：最多列前 6 条，其余折成「等 N 项」——顶部通知里十几条会刷屏，
@@ -1608,8 +2189,11 @@ class _ProductionDailyReportEditPageState
                                 const SizedBox(width: UtenSpacing.s8),
                                 Expanded(
                                   child: Text(
+                                    '${_resumeNotice == null ? '' : '$_resumeNotice\n'}'
                                     '计量口径：填写本次实际完工申报量。'
-                                    '审核后先由仓库登记成品仓和库位并送检；'
+                                    '按工单已生效的允许超产比例核对；超过允许范围时，先办理追加生产计划，原实际总量不改写。'
+                                    '转下工序只交需求内数量，超出部分送仓；'
+                                    '送仓部分先由仓库登记成品仓和库位并送检。'
                                     '只有品质通过且仓库最终点收的数量才会增加库存与完成率。'
                                     '疑似不良也应按实际完工事实申报，由品质登记通过、返工、报废或拒收。',
                                     style: theme.textTheme.bodyMedium?.copyWith(
@@ -1744,7 +2328,8 @@ class _ProductionDailyReportEditPageState
                             // 删成品行时由 _deleteProductRow 连带删掉它们。
                             canSelectRow: (r) => !r.isMaterialRow,
                             showRowSelection: (r) => !r.isMaterialRow,
-                            canDeleteRow: (r) => !r.isMaterialRow,
+                            canDeleteRow: (r) =>
+                                !r.isMaterialRow && !r.hasFixedSupplement,
                             onDeleteRow: _deleteProductRow,
                             rowColor: (r) => r.isMaterialRow
                                 ? theme.colorScheme.surfaceContainerLow

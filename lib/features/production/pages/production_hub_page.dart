@@ -25,6 +25,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/feedback/uten_draft_badge.dart';
 import '../../../components/feedback/uten_in_progress_badge.dart';
+import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -137,6 +138,32 @@ class ProductionHubPage extends ConsumerWidget {
                     // 同上：日报卡也只有草稿一种计数，直接占 badge 槽。
                     badge: const UtenDraftBadge(
                       kind: DraftDocKind.productionDailyReport,
+                    ),
+                  ),
+                  _Entry(
+                    icon: Icons.fact_check_outlined,
+                    label: '超产比例审批',
+                    description: '核对原比例与申请比例，批准后生效',
+                    location: RouteName.productionOverproductionRateRequests,
+                    badge: UtenNotificationBadge(
+                      count: ref.watch(
+                        badgeEntryTodoProvider(
+                          BadgeEntry.productionRateApprovals,
+                        ),
+                      ),
+                    ),
+                  ),
+                  _Entry(
+                    icon: Icons.add_box_outlined,
+                    label: '追加用料审批',
+                    description: '核对原定额与追加量，批准后安排领料',
+                    location: RouteName.productionMaterialIncrementRequests,
+                    badge: UtenNotificationBadge(
+                      count: ref.watch(
+                        badgeEntryTodoProvider(
+                          BadgeEntry.productionMaterialIncrementApprovals,
+                        ),
+                      ),
                     ),
                   ),
                 ],

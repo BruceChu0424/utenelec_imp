@@ -464,7 +464,8 @@ public class ProductionExecutionWorkbenchService {
             ORDER BY CASE
                          WHEN task.segment_status IN ('READY','DISPATCHED')
                               AND (task.zero_material OR task.issued
-                                   OR fn_split_batch_empty_issued(task.segment_id)) THEN 0
+                                   OR fn_split_batch_empty_issued(task.segment_id)
+                                   OR fn_actual_supplement_material_ready(task.segment_id)) THEN 0
                          WHEN task.segment_status IN ('READY','DISPATCHED')
                               AND NOT task.zero_material AND NOT task.issued
                               AND (%s) THEN 1
@@ -513,6 +514,13 @@ public class ProductionExecutionWorkbenchService {
         // 逐种物料事实(ADR-095)只在取页数据时按行 LATERAL 计算一次；计数查询不付这笔代价。
         String dataFrom = " FROM v_production_execution_workbench_segments task"
                 + " LEFT JOIN LATERAL fn_execution_segment_material_summary(task.segment_id) material ON TRUE"
+                + " JOIN production_execution_segments rate_segment ON rate_segment.id=task.segment_id"
+                + " LEFT JOIN production_overproduction_rate_requests rate_request ON rate_request.execution_segment_id=task.segment_id AND rate_request.status='PENDING'"
+                + " LEFT JOIN LATERAL (SELECT (fn_execution_overproduction_policy_applies(task.segment_id)"
+                + " OR EXISTS(SELECT 1 FROM v_production_fqc_recovery_balance recovery"
+                + " JOIN production_fqc_recovery_authorizations recovery_authority ON recovery_authority.id=recovery.authorization_id"
+                + " WHERE recovery.execution_segment_id=task.segment_id AND NOT recovery.cancelled AND recovery.available_qty>0"
+                + " AND (recovery_authority.disposition_code='REWORK' OR fn_fqc_replenishment_material_ready(recovery_authority.id)))) AS allowed) report_origin ON TRUE"
                 + " WHERE " + predicate;
         Query data = em.createNativeQuery(segmentSelect() + dataFrom + "\n" + orderBy
                 + "\n LIMIT :limit OFFSET :offset");
@@ -758,9 +766,9 @@ public class ProductionExecutionWorkbenchService {
                        task.fqc_failed_qty,
                        task.finished_inbound_pending_qty, task.inbound_qty,
                        task.segment_status,
-                       CASE WHEN fn_split_batch_empty_issued(task.segment_id) THEN 'KIT_READY' ELSE task.material_status END,
-                       CASE WHEN fn_split_batch_empty_issued(task.segment_id) THEN 'PREPARED' ELSE task.preparation_status END,
-                       (task.material_status = 'KIT_READY' OR fn_split_batch_empty_issued(task.segment_id)) AS material_ready,
+                       CASE WHEN fn_split_batch_empty_issued(task.segment_id) OR fn_actual_supplement_material_ready(task.segment_id) THEN 'KIT_READY' ELSE task.material_status END,
+                       CASE WHEN fn_split_batch_empty_issued(task.segment_id) OR fn_actual_supplement_material_ready(task.segment_id) THEN 'PREPARED' ELSE task.preparation_status END,
+                       (task.material_status = 'KIT_READY' OR fn_split_batch_empty_issued(task.segment_id) OR fn_actual_supplement_material_ready(task.segment_id)) AS material_ready,
                        task.warehouse_ready, %s,
                        FALSE,
                        (:allowRequestDraw AND task.segment_status IN ('READY','DISPATCHED')
@@ -773,10 +781,11 @@ public class ProductionExecutionWorkbenchService {
                              AND start_plan.status=1 AND NOT start_plan.is_closed
                              AND NOT start_plan.is_canceled AND NOT start_plan.is_stopped
                              AND fn_execution_start_material_ready(task.segment_id))),
-                       (:allowReport AND task.reportable AND task.segment_status = 'IN_PROGRESS'),
-                       (:allowReport AND task.reportable AND task.segment_status = 'IN_PROGRESS'
-                        AND task.report_source_count = 1),
+                       (:allowReport AND task.reportable AND report_origin.allowed AND task.segment_status = 'IN_PROGRESS'),
+                       (:allowReport AND task.reportable AND report_origin.allowed AND fn_execution_overproduction_policy_applies(task.segment_id) AND task.segment_status = 'IN_PROGRESS'
+                        AND task.report_source_count = 1 AND task.remaining_qty > 0),
                        CASE
+                           WHEN NOT report_origin.allowed THEN '固定追加工单请从追加计划回原批次续报'
                            WHEN :allowReport AND task.reportable
                                 AND task.segment_status = 'IN_PROGRESS' THEN NULL
                            WHEN task.reportable AND NOT :allowReport
@@ -837,7 +846,12 @@ public class ProductionExecutionWorkbenchService {
                        COALESCE(material.awaiting_warehouse_count, 0), COALESCE(material.drawable_count, 0),
                        COALESCE(material.line_side_pending_count, 0), COALESCE(material.preparing_count, 0),
                        COALESCE(material.short_count, 0), COALESCE(material.short_make_count, 0),
-                       COALESCE(material.supported_output_qty, 0), COALESCE(material.prepared_output_qty, 0)
+                       COALESCE(material.supported_output_qty, 0), COALESCE(material.prepared_output_qty, 0),
+                       task.actual_surplus_reported_qty, task.actual_surplus_inbound_qty,
+                       task.planned_inbound_qty,rate_segment.allowed_overproduction_rate,
+                       rate_segment.overproduction_rate_version,rate_request.id,rate_request.requested_rate,
+                       fn_execution_overproduction_policy_applies(rate_segment.id),
+                       (SELECT actual_output_supplement_request_id FROM production_plans WHERE id=task.plan_id)
                 """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), drawRequestedPredicate(), pendingDrawItemSql());
     }
 
@@ -890,7 +904,7 @@ public class ProductionExecutionWorkbenchService {
     }
 
     static String effectiveIssuedPredicate() {
-        return "(task.issued OR fn_split_batch_empty_issued(task.segment_id))";
+        return "(task.issued OR fn_split_batch_empty_issued(task.segment_id) OR fn_actual_supplement_material_ready(task.segment_id))";
     }
 
     private static String rootFilters(
@@ -1051,7 +1065,9 @@ public class ProductionExecutionWorkbenchService {
                 suggestedRoute, suggestedSource,
                 integer(row[49]), integer(row[50]), integer(row[51]), integer(row[52]), integer(row[53]),
                 integer(row[54]), integer(row[55]), integer(row[56]), integer(row[57]),
-                decimal(row[58]), decimal(row[59]));
+                decimal(row[58]), decimal(row[59]),
+                decimal(row[60]), decimal(row[61]), decimal(row[62]),decimal(row[63]),
+                ((Number)row[64]).longValue(),uuid(row[65]),row[66]==null?null:decimal(row[66]),bool(row[67]),uuid(row[68]));
     }
 
     private static int boundedSize(int requested) {

@@ -107,10 +107,28 @@ public class ProductionPlanMutationFootprintService {
                     WITH RECURSIVE family(id) AS (
                         SELECT id FROM production_plans WHERE id IN (:rootIds)
                         UNION
-                        SELECT link.subplan_id FROM family parent JOIN subplan_links link
-                          ON link.plan_id=parent.id AND link.is_deleted=FALSE
+                        SELECT edge.id FROM family parent CROSS JOIN LATERAL (
+                            SELECT link.subplan_id AS id FROM subplan_links link
+                            WHERE link.plan_id=parent.id AND link.is_deleted=FALSE
+                            UNION
+                            SELECT source.plan_id FROM production_actual_output_supplement_proofs proof
+                            JOIN production_execution_segments source ON source.id=proof.source_execution_segment_id
+                            WHERE proof.supplement_plan_id=parent.id
+                            UNION
+                            SELECT proof.supplement_plan_id FROM production_actual_output_supplement_proofs proof
+                            JOIN production_execution_segments source ON source.id=proof.source_execution_segment_id
+                            WHERE source.plan_id=parent.id
+                        ) edge
                     ) SELECT id FROM family ORDER BY id
                     """).setParameter("rootIds",ids),UUID.class);
+            for(var row:rows("""
+                    SELECT proof.id,proof.source_execution_segment_id,proof.supplement_execution_segment_id,
+                           proof.xmin::text,reversal.id,reversal.xmin::text
+                    FROM production_actual_output_supplement_proofs proof
+                    JOIN production_execution_segments source ON source.id=proof.source_execution_segment_id
+                    LEFT JOIN production_actual_output_supplement_reversals reversal ON reversal.proof_id=proof.id
+                    WHERE proof.supplement_plan_id IN (:ids) OR source.plan_id IN (:ids) ORDER BY proof.id
+                    """,planIds)) parts.add("actual-supplement:"+java.util.Arrays.toString(row));
             for(var row:rows("""
                     SELECT plan.id,plan.material_analysis_id,item.id,item.goods_id,item.color_id,item.sales_order_item_id,
                            plan.xmin::text,item.xmin::text

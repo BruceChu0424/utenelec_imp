@@ -30,6 +30,7 @@ import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
@@ -73,6 +74,9 @@ class _SubcontractReportTablePageState
 
   ReportData? _data;
   bool _loading = false;
+
+  /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
+  String? _myLocation;
 
   /// 用户是否已动手改过筛选（服务端偏好同步晚到时，已动手则不回灌，避免覆盖在输状态）。
   bool _dirty = false;
@@ -269,6 +273,9 @@ class _SubcontractReportTablePageState
         _load();
       }
     });
+    // 返回即刷新：行点击 push 的委外单据详情里审核/取消/改量后返回，重拉报表。
+    _myLocation ??= currentLocationOr(context, SubcontractRoute.hub);
+    ref.onPageResume(_myLocation!, () => _load());
     return Scaffold(
       appBar: UtenAppBar(
         title: _title,

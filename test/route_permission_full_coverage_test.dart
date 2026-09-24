@@ -80,11 +80,12 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 当前工作区逐条核对：198 条守卫 / 18 条豁免(2026-09-23，ADR-109 删除已退役的审核收件箱跳转)。
+/// 当前工作区逐条核对：204 条守卫 / 18 条豁免(2026-09-24，V694–V702 新增追加用料/超产比例/
+/// 追加生产计划审批六条路由，守卫见 permission_by_path 生产段)。
 /// 包含报销编辑路径，仍继承 expense:apply；生产路线重构不新增页面。
 /// 断言精确计数：新增路由必须同步改代码守卫 + 本处计数 + 文档数字，
 /// 防止「文档说 180、实际已 190」的静默漂移。
-const _expectedGuardedCount = 198;
+const _expectedGuardedCount = 204;
 const _expectedExemptCount = 18;
 
 void main() {

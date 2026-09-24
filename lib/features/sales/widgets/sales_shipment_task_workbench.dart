@@ -35,6 +35,7 @@ import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
 import 'shipment_finance_change_summary.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 
 enum SalesShipmentTaskWorkbenchMode { financeAudit, warehouseOutbound }
 
@@ -528,6 +529,12 @@ class _SalesShipmentTaskWorkbenchState
       context.appSuccess(okMsg);
       setState(_clearSelection);
       refreshBadges(ref);
+      // 整批放行/退回会改变出货单状态：bump 出货列表精准刷新（栈下的销售出货
+      // 列表立即换新，与单笔审核详情页的口径一致）。
+      bumpListRefresh(
+        ref,
+        SalesDocConfig.by(SalesDocType.shipment).refreshKey,
+      );
       await _load(1);
     } on ApiException catch (e) {
       if (mounted) context.appError('整批未提交：${e.message}');

@@ -27,6 +27,9 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/models/subcontract_short_delivery.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
+import '../config/subcontract_doc_config.dart';
+import '../models/subcontract_doc.dart';
 import '../repositories/subcontract_short_delivery_repository.dart';
 import '../widgets/subcontract_short_delivery_decision_dialogs.dart';
 import '../../../shared/badges/badge_registry.dart';
@@ -201,6 +204,12 @@ class _SubcontractShortDeliveryPageState
     // 判定会把订货单挪出/挪进任务中心的「进行中」(结案即离场), 红黄两数随徽章汇总
     // 一次重拉(ADR-108)。
     refreshBadges(ref);
+    // 接受损耗结清会让订货单整单结案：bump 委外订货列表精准刷新（栈下列表立即
+    // 换新，与详情页写动作口径一致）。
+    bumpListRefresh(
+      ref,
+      SubcontractDocConfig.by(SubcontractDocType.order).refreshKey,
+    );
     await _load();
   }
 

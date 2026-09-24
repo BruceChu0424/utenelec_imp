@@ -356,7 +356,9 @@ class _Content extends ConsumerWidget {
   /// 「查看详情」跳转：弹窗态走 onActionNavigate（由 dialog 在弹窗外捕获
   /// router 后关弹窗再跳，避免本页 import 路由配置形成循环依赖、也避开弹窗内
   /// GoRouterState.of 取不到的问题）；独立路由态用 GoRouter.of(context) 直接跳。
-  /// returnTo 统一回通知列表（/notice），目标页返回键回通知列表。
+  /// returnTo 统一回通知列表（/notice），目标页返回键回通知列表——2026-09-24
+  /// 补上实现：此前只写在注释里，go 不带 returnTo，目标页返回键落到各模块
+  /// defaultPath（hub/工作台）而不是通知列表。
   void _goAction(BuildContext context) {
     // 跳转目标与「通知到达横幅点击」共用 noticeActionTarget，逻辑一致。
     final target = noticeActionTarget(notice);
@@ -364,7 +366,16 @@ class _Content extends ConsumerWidget {
     if (onActionNavigate != null) {
       onActionNavigate!(target);
     } else {
-      GoRouter.of(context).go(target);
+      final uri = Uri.parse(target);
+      if (uri.path.startsWith('/notice')) {
+        GoRouter.of(context).go(target);
+        return;
+      }
+      final params = Map<String, String>.from(uri.queryParameters)
+        ..['returnTo'] = '/notice';
+      GoRouter.of(
+        context,
+      ).go(uri.replace(queryParameters: params).toString());
     }
   }
 

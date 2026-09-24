@@ -506,6 +506,23 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   }
 
   // ===== 生产管理（生产部）=====
+  if (location == RouteName.productionMaterialIncrementRequests) {
+    return const [Perm.productionPlanApprove];
+  }
+  if (location.startsWith('${RouteName.productionMaterialIncrementRequests}/')) {
+    return const [Perm.productionPlanApprove, Perm.productionExecutionView];
+  }
+  if (location.startsWith('/production/actual-output-supplements/')) {
+    return const [Perm.productionPlanApprove, Perm.productionExecutionView];
+  }
+  if (location == RouteName.productionOverproductionRateRequests) {
+    return const [Perm.productionPlanApprove];
+  }
+  if (location.startsWith(
+    '${RouteName.productionOverproductionRateRequests}/',
+  )) {
+    return const [Perm.productionPlanApprove, Perm.productionExecutionView];
+  }
   if (location.startsWith('/production/reports')) {
     return const [Perm.productionReportView];
   }

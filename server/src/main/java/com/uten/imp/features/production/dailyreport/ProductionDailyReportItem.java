@@ -23,6 +23,19 @@ import java.util.UUID;
 @Entity
 @Table(name = "production_daily_report_items")
 public class ProductionDailyReportItem extends BaseEntity {
+    @Column(name = "output_batch_id")
+    private UUID outputBatchId;
+
+    @Column(name = "output_batch_qty", precision = 18, scale = 4)
+    private BigDecimal outputBatchQty;
+
+    @Column(name = "is_public_output", nullable = false)
+    private boolean publicOutput;
+
+    @Column(name = "is_actual_surplus", nullable = false)
+    private boolean actualSurplus;
+    @Column(name = "supplement_proof_id")
+    private UUID supplementProofId;
 
     private Integer legacyId;
 

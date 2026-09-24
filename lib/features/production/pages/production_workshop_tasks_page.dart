@@ -50,6 +50,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../providers/production_execution_refresh.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -60,6 +61,9 @@ import '../providers/production_department_provider.dart';
 import '../providers/production_workshop_task_count_provider.dart';
 import '../repositories/production_execution_workbench_repository.dart';
 import '../repositories/production_repository.dart';
+import '../repositories/production_overproduction_rate_repository.dart';
+import '../repositories/production_material_increment_repository.dart';
+import '../widgets/production_overproduction_rate_request_dialog.dart';
 import '../repositories/production_material_repository.dart';
 import '../widgets/production_flow_stage_cell.dart';
 import '../widgets/production_material_settlement_sheet.dart';
@@ -130,6 +134,92 @@ class _ProductionWorkshopTasksPageState
   );
 
   bool _navigating = false;
+  String? _rateLoadingSegment;
+
+  bool get _canRequestMaterialIncrement =>
+      ref.read(isSuperAdminProvider) ||
+      ref
+          .read(currentPermissionsProvider)
+          .contains(productionMaterialIncrementPermission);
+
+  Future<void> _openMaterialIncrement(
+    ProductionExecutionWorkbenchSegment task,
+  ) async {
+    if (_navigating || !_canRequestMaterialIncrement) return;
+    setState(() => _navigating = true);
+    try {
+      await context.push(
+        RoutePath.productionMaterialIncrementForSegment(task.segmentId),
+      );
+      if (mounted) await _reloadAfterChange();
+    } finally {
+      if (mounted) setState(() => _navigating = false);
+    }
+  }
+
+  bool get _canOpenRateRequest =>
+      ref.read(isSuperAdminProvider) ||
+      ref
+          .read(currentPermissionsProvider)
+          .contains(productionOverproductionRateRequestPermission) ||
+      ref.read(currentPermissionsProvider).contains(Perm.productionPlanApprove);
+
+  Future<void> _openSupplementTask(
+    ProductionExecutionWorkbenchSegment task,
+  ) async {
+    final id = task.actualOutputSupplementRequestId;
+    if (id == null || _navigating) return;
+    setState(() => _navigating = true);
+    try {
+      await context.push(RoutePath.productionActualOutputSupplement(id));
+      if (mounted) await _reloadAfterChange();
+    } finally {
+      if (mounted) setState(() => _navigating = false);
+    }
+  }
+
+  Future<void> _openRateRequest(
+    ProductionExecutionWorkbenchSegment task,
+  ) async {
+    if (_rateLoadingSegment != null || !_canOpenRateRequest) return;
+    setState(() => _rateLoadingSegment = task.segmentId);
+    try {
+      final source = await ref
+          .read(productionOverproductionRateRepositoryProvider)
+          .context(task.segmentId);
+      if (!mounted) return;
+      if (source.pendingRequestId != null) {
+        await context.push(
+          RoutePath.productionOverproductionRateRequest(
+            source.pendingRequestId!,
+          ),
+        );
+      } else if (!source.canSubmit) {
+        context.appWarning('当前工单不能提交比例申请，请核对权限和任务状态');
+      } else {
+        final submitted = await showProductionRateRequestDialog(
+          context,
+          source,
+        );
+        if (!mounted) return;
+        if (submitted != null) {
+          bumpListRefresh(ref, productionOverproductionRateRefreshKey);
+          context.appSuccess(
+            '申请已提交计划部审批，当前仍按 ${productionRateText(submitted.beforeRate)} 执行',
+          );
+        }
+      }
+      if (mounted) await _load();
+    } catch (error) {
+      if (mounted) {
+        context.appError(
+          productionErrorMessage(error, fallback: '比例信息读取失败，请重试'),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _rateLoadingSegment = null);
+    }
+  }
 
   /// 批量报工去了日报新建页：回来时清空勾选(原设计在 push 返回后清；保存后
   /// 新建页 replace 成详情，push 的 Future 不再返回，改由「返回即刷新」兑现)。
@@ -209,8 +299,8 @@ class _ProductionWorkshopTasksPageState
   /// 恒可选；分批要拆出独立子任务，只在服务端判定「未动过」(canSplitBatch)时出现，
   /// 否则悬停说明见 [_routeChangeHint]。
   List<String> _routeOptions(ProductionExecutionWorkbenchSegment task) => [
-    'FULL_KIT',
     'CONTINUOUS',
+    'FULL_KIT',
     if (task.canSplitBatch) 'BATCH',
   ];
 
@@ -406,6 +496,22 @@ class _ProductionWorkshopTasksPageState
   ) {
     final busy = _navigating || _loading;
     return [
+      if (_canRequestMaterialIncrement &&
+          task.segmentStatus != 'COMPLETED' &&
+          task.segmentStatus != 'CANCELLED')
+        UtenMenuItem(
+          label: '申请追加用料',
+          icon: Icons.playlist_add_outlined,
+          enabled: !busy,
+          onTap: () => _openMaterialIncrement(task),
+        ),
+      if (task.actualOutputSupplementRequestId != null)
+        UtenMenuItem(
+          label: task.segmentStatus == 'IN_PROGRESS' ? '回原批次续报' : '查看追加计划',
+          icon: Icons.assignment_outlined,
+          enabled: !busy,
+          onTap: () => _openSupplementTask(task),
+        ),
       if (_isPreparing && _canStart && _canStartTask(task))
         UtenMenuItem(
           label: '开工',
@@ -1072,9 +1178,14 @@ class _ProductionWorkshopTasksPageState
       return;
     }
     final encoded = Uri.encodeQueryComponent(requested.join(','));
-    final path = requested.length == 1
-        ? '/production/daily-reports/new?executionSegmentId=$encoded'
-        : '/production/daily-reports/new?executionSegmentIds=$encoded';
+    final segmentParam = requested.length == 1
+        ? 'executionSegmentId=$encoded'
+        : 'executionSegmentIds=$encoded';
+    // from=workshop-tasks：日报新建页保存成功后直接 pop 回本页（2026-09-24
+    // 用户口径「点击报工后应该去到任务中心，通知数量自动刷新」），不再先落
+    // 日报详情再让用户手动返回。
+    final path =
+        '/production/daily-reports/new?$segmentParam&from=workshop-tasks';
     setState(() {
       _navigating = true;
       _clearSelectionOnResume = true;
@@ -1166,10 +1277,17 @@ class _ProductionWorkshopTasksPageState
                 Text(
                   '计划数量：${_taskQuantity(task.plannedQty)} ${task.productUnitName ?? ''}',
                 ),
-                Text('已报数量：${_taskQuantity(task.reportedQty)}'),
+                Text(
+                  '实际报工：${_taskQuantity(task.reportedQty)}；'
+                  '其中超产 ${_taskQuantity(task.actualSurplusReportedQty)}',
+                ),
+                Text(
+                  '计划合格实收：${_taskQuantity(task.plannedInboundQty)}；'
+                  '公共超产实收：${_taskQuantity(task.actualSurplusInboundQty)}',
+                ),
                 Text('待报数量（含品质恢复）：${_taskQuantity(task.remainingReportQty)}'),
                 if (task.startRoute == 'CONTINUOUS')
-                  const Text('本次可报数量须按实际投料核对，请以报工页面的来源上限为准。'),
+                  const Text('按实际完工量与实际用料报工，需求份和公共份由系统分别核定。'),
                 const SizedBox(height: UtenSpacing.s12),
                 Text(_flowStageOf(task).label),
                 const SizedBox(height: UtenSpacing.s8),
@@ -1286,6 +1404,7 @@ class _ProductionWorkshopTasksPageState
     setState(() => _navigating = true);
     try {
       var materialSegmentId = task.segmentId;
+      var materialPlanId = task.planId;
       var sourceCanSettle = true;
       if (task.hasSharedMaterialActivity) {
         final sources = await ref
@@ -1338,12 +1457,13 @@ class _ProductionWorkshopTasksPageState
         );
         if (!mounted || source == null) return;
         materialSegmentId = source.executionSegmentId;
+        materialPlanId = source.sourcePlanId ?? task.planId;
         sourceCanSettle = source.canSettle;
       }
       await showProductionMaterialSettlementSheet(
         context,
         ref,
-        planId: task.planId,
+        planId: materialPlanId,
         executionSegmentId: materialSegmentId,
         // V583：实耗登记搬到生产日报页(报工时物料子行一起填)，本页只读台账。
         // 只留查看与冲销/撤回，避免两处都能记账、数字互相打架。
@@ -1394,13 +1514,16 @@ class _ProductionWorkshopTasksPageState
         // 2026-09-20 用户口径「物料没有齐不能显示齐，车间内流转的要流转了才算」：
         // 未开工段的文案只按服务端逐种物料事实生成（ADR-095）。
         materials: _materialFactsOf(task),
-        reportedQty: task.reportedQty,
+        reportedQty: (task.reportedQty - task.actualSurplusReportedQty).clamp(
+          0.0,
+          double.infinity,
+        ),
         plannedQty: task.plannedQty,
         remainingReportQty: task.remainingReportQty,
         fqcPendingQty: task.fqcPendingQty,
         fqcFailedQty: task.fqcFailedQty,
         finishedInboundPendingQty: task.finishedInboundPendingQty,
-        inboundQty: task.inboundQty,
+        inboundQty: task.plannedInboundQty,
         hasUnregisteredMaterial: task.hasUnregisteredMaterial,
         hasPendingReturn: task.hasPendingReturn,
         hasAvailableMaterial: task.hasAvailableMaterial,
@@ -2048,6 +2171,46 @@ class _ProductionWorkshopTasksPageState
       value: (task) => '${task.plannedQty} ${task.productUnitName ?? ''}',
     ),
     MasterColumnDef(
+      key: 'allowedOverproductionRate',
+      label: '允许超产比例',
+      width: 175,
+      value: (task) => task.overproductionPolicyApplies
+          ? productionRateText(task.allowedOverproductionRate)
+          : '固定追加量',
+      cellBuilder: (_, task) {
+        if (!task.overproductionPolicyApplies) {
+          if (task.actualOutputSupplementRequestId != null) {
+            return TextButton(
+              onPressed: _navigating ? null : () => _openSupplementTask(task),
+              child: Text(
+                task.segmentStatus == 'IN_PROGRESS'
+                    ? '固定追加量 · 续报'
+                    : '固定追加量 · 查看',
+              ),
+            );
+          }
+          return const Tooltip(
+            message: '按已批准的固定追加量执行；从追加计划详情回原批次续报',
+            child: Text('固定追加量'),
+          );
+        }
+        final label =
+            '${productionRateText(task.allowedOverproductionRate)}'
+            '${task.pendingOverproductionRate != null ? '\n申请 ${productionRateText(task.pendingOverproductionRate)} · 待审批' : ''}';
+        if (!_canOpenRateRequest) return Text(label, maxLines: 2);
+        return TextButton(
+          key: ValueKey('production-rate-request-${task.segmentId}'),
+          onPressed: _rateLoadingSegment == null
+              ? () => _openRateRequest(task)
+              : null,
+          child: Text(
+            _rateLoadingSegment == task.segmentId ? '正在读取' : label,
+            maxLines: 2,
+          ),
+        );
+      },
+    ),
+    MasterColumnDef(
       key: 'order',
       label: '关联订单',
       width: 180,
@@ -2067,16 +2230,33 @@ class _ProductionWorkshopTasksPageState
     ),
     if (status == 'IN_PROGRESS')
       MasterColumnDef(
+        key: 'actualOutput',
+        label: '实际产出',
+        width: 200,
+        value: (task) =>
+            '实际报工 ${_taskQuantity(task.reportedQty)}；'
+            '其中超产 ${_taskQuantity(task.actualSurplusReportedQty)}；'
+            '公共超产实收 ${_taskQuantity(task.actualSurplusInboundQty)}',
+        cellBuilder: (_, task) => Text(
+          '报工 ${_taskQuantity(task.reportedQty)} · '
+          '超产 ${_taskQuantity(task.actualSurplusReportedQty)}\n'
+          '公共超产实收 ${_taskQuantity(task.actualSurplusInboundQty)}',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    if (status == 'IN_PROGRESS')
+      MasterColumnDef(
         key: 'progress',
-        label: '进度',
+        label: '计划实收进度',
         width: 220,
         value: (task) {
-          final ratio = task.reportProgressRatio;
-          return ratio == null ? '—' : '报工 ${(ratio * 100).round()}%';
+          final ratio = task.plannedInboundProgressRatio;
+          return ratio == null ? '—' : '计划实收 ${(ratio * 100).round()}%';
         },
         cellBuilder: (_, task) => ProductionFlowProgress(
-          ratio: task.reportProgressRatio,
-          semanticsLabel: '报工进度',
+          ratio: task.plannedInboundProgressRatio,
+          semanticsLabel: '计划实收进度',
         ),
       ),
   ];

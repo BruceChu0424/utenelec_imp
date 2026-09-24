@@ -179,9 +179,11 @@ class _ExpenseApprovalListPageState
                     _selectedIds = next;
                   }),
                   batchActionsBuilder: isPendingQueue ? _batchActions : null,
-                  // 双击行进入审批详情。
+                  // 双击行进入审批详情：push（2026-09-24 起），审批后详情 pop 回本页，
+                  // 列表实例与筛选/页码保留，数据由 provider 失效自动换新；
+                  // 原来 go 直达会把列表实例抹掉，详情返回只能落 default。
                   onRowTap: (claim) =>
-                      context.go('/expense/approval/${claim.id}'),
+                      context.push('/expense/approval/${claim.id}'),
                   emptyMessage: switch (queue) {
                     ApprovalQueue.pending => '暂无待审批报销',
                     ApprovalQueue.payable => '暂无待付款报销',

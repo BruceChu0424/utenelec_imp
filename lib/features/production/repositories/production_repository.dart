@@ -1589,6 +1589,8 @@ class PlanProgressRow {
     this.totalQty,
     this.reportedQty,
     this.inboundQty,
+    double? plannedInboundQty,
+    this.actualSurplusInboundQty = 0,
     this.materialState,
     this.materialSegmentCount = 0,
     this.materialReadySegmentCount = 0,
@@ -1606,7 +1608,7 @@ class PlanProgressRow {
     this.important = false,
     this.todayQty,
     this.subplans = const [],
-  });
+  }) : plannedInboundQty = plannedInboundQty ?? inboundQty;
   final String planId;
   final String? billNo;
   final String? billDate;
@@ -1617,6 +1619,8 @@ class PlanProgressRow {
   final double? totalQty;
   final double? reportedQty;
   final double? inboundQty;
+  final double? plannedInboundQty;
+  final double actualSurplusInboundQty;
   final String? materialState;
   final int materialSegmentCount;
   final int materialReadySegmentCount;
@@ -1646,6 +1650,9 @@ class PlanProgressRow {
     totalQty: (j['totalQty'] as num?)?.toDouble(),
     reportedQty: (j['reportedQty'] as num?)?.toDouble(),
     inboundQty: (j['inboundQty'] as num?)?.toDouble(),
+    plannedInboundQty: (j['plannedInboundQty'] as num?)?.toDouble(),
+    actualSurplusInboundQty:
+        (j['actualSurplusInboundQty'] as num?)?.toDouble() ?? 0,
     materialState: j['materialState'] as String?,
     materialSegmentCount: (j['materialSegmentCount'] as num?)?.toInt() ?? 0,
     materialReadySegmentCount:
@@ -1681,6 +1688,8 @@ class PlanProgressRow {
     totalQty: totalQty,
     reportedQty: reportedQty,
     inboundQty: inboundQty,
+    plannedInboundQty: plannedInboundQty,
+    actualSurplusInboundQty: actualSurplusInboundQty,
     materialState: materialState,
     materialSegmentCount: materialSegmentCount,
     materialReadySegmentCount: materialReadySegmentCount,
@@ -1712,6 +1721,8 @@ class SubPlanProgress {
     this.totalQty,
     this.reportedQty,
     this.inboundQty,
+    double? plannedInboundQty,
+    this.actualSurplusInboundQty = 0,
     this.materialState,
     this.materialSegmentCount = 0,
     this.materialReadySegmentCount = 0,
@@ -1720,7 +1731,7 @@ class SubPlanProgress {
     this.materialPercent,
     this.canStartNow = false,
     this.percent = 0,
-  });
+  }) : plannedInboundQty = plannedInboundQty ?? inboundQty;
   final String planId;
   final String? billNo;
   final String? workshopName;
@@ -1729,6 +1740,8 @@ class SubPlanProgress {
   final double? totalQty;
   final double? reportedQty;
   final double? inboundQty;
+  final double? plannedInboundQty;
+  final double actualSurplusInboundQty;
   final String? materialState;
   final int materialSegmentCount;
   final int materialReadySegmentCount;
@@ -1747,6 +1760,9 @@ class SubPlanProgress {
     totalQty: (j['totalQty'] as num?)?.toDouble(),
     reportedQty: (j['reportedQty'] as num?)?.toDouble(),
     inboundQty: (j['inboundQty'] as num?)?.toDouble(),
+    plannedInboundQty: (j['plannedInboundQty'] as num?)?.toDouble(),
+    actualSurplusInboundQty:
+        (j['actualSurplusInboundQty'] as num?)?.toDouble() ?? 0,
     materialState: j['materialState'] as String?,
     materialSegmentCount: (j['materialSegmentCount'] as num?)?.toInt() ?? 0,
     materialReadySegmentCount:
@@ -1927,8 +1943,10 @@ class MrpSubplanRef {
     this.deliveryDate,
     this.totalQty,
     this.inboundQty,
+    double? plannedInboundQty,
+    this.actualSurplusInboundQty = 0,
     this.percent = 0,
-  });
+  }) : plannedInboundQty = plannedInboundQty ?? inboundQty;
   final String planId;
   final String? billNo;
   final int? status; // 0草稿 1已审 -1红冲
@@ -1937,6 +1955,8 @@ class MrpSubplanRef {
   final String? deliveryDate;
   final double? totalQty;
   final double? inboundQty;
+  final double? plannedInboundQty;
+  final double actualSurplusInboundQty;
   final double percent;
 
   factory MrpSubplanRef.fromJson(Map<String, dynamic> j) => MrpSubplanRef(
@@ -1948,6 +1968,9 @@ class MrpSubplanRef {
     deliveryDate: j['deliveryDate'] as String?,
     totalQty: (j['totalQty'] as num?)?.toDouble(),
     inboundQty: (j['inboundQty'] as num?)?.toDouble(),
+    plannedInboundQty: (j['plannedInboundQty'] as num?)?.toDouble(),
+    actualSurplusInboundQty:
+        (j['actualSurplusInboundQty'] as num?)?.toDouble() ?? 0,
     percent: (j['percent'] as num?)?.toDouble() ?? 0,
   );
 }

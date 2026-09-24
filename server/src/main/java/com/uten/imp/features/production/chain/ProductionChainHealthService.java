@@ -390,22 +390,7 @@ public class ProductionChainHealthService {
     private ChainHealthCategory reportOrInboundOverflow(int limit) {
         var scope = productionAccess.nativeReadScope(
                 "plan.maker_id", "quantityOverflowOwners");
-        String from = """
-                FROM production_plan_items item
-                JOIN production_plans plan
-                  ON plan.id = item.plan_id
-                 AND plan.is_deleted = FALSE
-                LEFT JOIN goods goods
-                  ON goods.id = item.goods_id
-                WHERE item.is_deleted = FALSE
-                  AND %s
-                  AND (
-                      COALESCE(item.fqty, 0) > COALESCE(item.qty, 0)
-                      OR COALESCE(item.iqty, 0) >
-                         COALESCE(item.fqty, 0)
-                      OR COALESCE(item.iqty, 0) > COALESCE(item.qty, 0)
-                  )
-                """.formatted(scope.predicate());
+        String from = reportOrInboundOverflowFrom(scope.predicate());
         long count = count("SELECT COUNT(*) " + from, scope);
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 limitedQuery("""
@@ -413,7 +398,8 @@ public class ProductionChainHealthService {
                                item.product_no, goods.name,
                                COALESCE(item.qty, 0),
                                COALESCE(item.fqty, 0),
-                               COALESCE(item.iqty, 0)
+                               COALESCE(item.iqty, 0),
+                               fn_plan_actual_surplus_qty(item.id,FALSE)
                         """ + from + """
                         ORDER BY plan.bill_no, item.line_no, item.id
                         LIMIT :limit
@@ -424,6 +410,7 @@ public class ProductionChainHealthService {
                         str(row[3]),
                         (row[4] == null ? "" : row[4] + " · ")
                                 + "计划 " + qty(row[5])
+                                + " / 已审超产 " + qty(row[8])
                                 + " / 报工 " + qty(row[6])
                                 + " / 入库 " + qty(row[7]),
                         "PRODUCTION_PLAN"))
@@ -431,10 +418,31 @@ public class ProductionChainHealthService {
         return new ChainHealthCategory(
                 "REPORT_OR_INBOUND_OVERFLOW",
                 "报工或入库数量越界",
-                "必须满足 iqty ≤ fqty ≤ 计划量；命中表示完成率、库存或报工链"
-                        + "至少一处越界，应立即停止相关单据继续写入并对账。",
+                "实收入库量不得超过有效报工量；报工量不得超过原计划量与有精确来源的已审实际超产之和。"
+                        + "计划完成率仍单独按原需求计算。命中表示数量缺少有效事实，应核对相关单据。",
                 count,
                 issues);
+    }
+
+    static String reportOrInboundOverflowFrom(String scope) {
+        return """
+                FROM production_plan_items item
+                JOIN production_plans plan
+                  ON plan.id = item.plan_id
+                 AND plan.is_deleted = FALSE
+                LEFT JOIN goods goods
+                  ON goods.id = item.goods_id
+                WHERE item.is_deleted = FALSE
+                  AND %s
+                  AND (
+                      COALESCE(item.fqty, 0) > COALESCE(item.qty, 0)
+                          + fn_plan_actual_surplus_qty(item.id,FALSE)
+                      OR COALESCE(item.iqty, 0) >
+                         COALESCE(item.fqty, 0)
+                      OR COALESCE(item.iqty, 0) > COALESCE(item.qty, 0)
+                          + fn_plan_actual_surplus_qty(item.id,FALSE)
+                  )
+                """.formatted(scope);
     }
 
     // ===== 8. COMPLETED 执行段未足额入库或物料未结清 =====
@@ -464,6 +472,11 @@ public class ProductionChainHealthService {
                   AND (
                       COALESCE(inbound.qty, 0) <>
                           COALESCE(segment.planned_qty, 0)
+                              + fn_execution_actual_surplus_qty(segment.id,FALSE)
+                      OR EXISTS (SELECT 1 FROM production_daily_report_items pending
+                          JOIN production_daily_reports report ON report.id=pending.report_id
+                          WHERE pending.execution_segment_id=segment.id AND NOT pending.is_deleted
+                            AND report.status=0 AND NOT report.is_deleted)
                       OR EXISTS (
                           SELECT 1
                           FROM production_material_demands demand
@@ -484,7 +497,8 @@ public class ProductionChainHealthService {
                         SELECT segment.id, plan.id, plan.bill_no,
                                segment.segment_code,
                                segment.planned_qty,
-                               COALESCE(inbound.qty, 0)
+                               COALESCE(inbound.qty, 0),
+                               fn_execution_actual_surplus_qty(segment.id,FALSE)
                         """ + from + """
                         ORDER BY plan.bill_no, segment.segment_no,
                                  segment.id
@@ -495,6 +509,7 @@ public class ProductionChainHealthService {
                         str(row[0]), str(row[1]), str(row[2]),
                         str(row[3]),
                         "计划量 " + qty(row[4])
+                                + " · 已审超产 " + qty(row[6])
                                 + " · 有效入库 " + qty(row[5])
                                 + " · 同时检查物料结清",
                         "PRODUCTION_PLAN"))

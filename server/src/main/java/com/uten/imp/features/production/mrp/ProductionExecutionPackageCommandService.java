@@ -207,8 +207,7 @@ public class ProductionExecutionPackageCommandService {
         List<ProductionMaterialDemand> demands = demandDrafts.isEmpty()
                 ? List.of()
                 : ledger.createDemands(begin.planningPackage(), demandDrafts);
-        // Persist the frozen curve before reservations. New tasks retain an
-        // unconfirmed route; warehouse/source facts do not choose the workflow.
+        // Persist the frozen curve before applying the effective default route.
         freezeConsumptionRules(segmentDrafts, demands);
         Map<UUID, List<ProductionMaterialDemand>> demandsBySegment =
                 demands.stream().collect(Collectors.groupingBy(
@@ -391,16 +390,25 @@ public class ProductionExecutionPackageCommandService {
                 segmentDrafts.stream()
                         .map(SegmentDraft::segment).toList(),
                 currentUser.requireEmployeeId());
+        // V699 defaults the persisted route to CONTINUOUS in every creation
+        // path. Prepare against that actual route now, without issuing material
+        // or starting production on behalf of the workshop.
+        em.flush();
+        for (SegmentDraft draft : segmentDrafts) {
+            if (draft.segment().isAutoPromoteWhenReady()
+                    && ProductionExecutionSegment.STATUS_WAITING.equals(draft.segment().getStatus())) {
+                readiness.getObject().promoteAfterRouteConfirmation(draft.segment().getId(),
+                        begin.planningPackage().getWarehouseId(), true);
+            }
+            em.refresh(draft.segment());
+        }
+        PlanningPackageResult current = replay(begin.planningPackage());
         return new PlanningPackageResult(
-                begin.planningPackage().getId(),
-                begin.planningPackage().getStatus(),
+                current.packageId(),
+                current.status(),
                 false,
-                subplanResults,
-                purchaseResult,
-                subcontractResult,
-                drawResults.isEmpty() ? null : drawResults.getFirst(),
-                results,
-                drawResults);
+                current.subplans(), current.purchaseRequest(), current.subcontractApplication(),
+                current.drawDocument(), current.executionSegments(), current.drawDocuments());
     }
 
     /**

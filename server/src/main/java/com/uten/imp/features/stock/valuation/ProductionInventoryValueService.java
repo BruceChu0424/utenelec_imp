@@ -45,7 +45,7 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
                     JOIN production_execution_segments cost_root ON cost_root.id=fn_production_execution_cost_scope(segment.id)
                     LEFT JOIN stock_value_production_cost_revisions revision ON revision.id=object.current_revision_id
                     WHERE report.id=:report AND report.status IN(1,-1) AND NOT report.is_deleted
-                        AND item.is_final AND NOT item.is_deleted
+                        AND (item.is_final OR item.is_actual_surplus) AND NOT item.is_deleted
                         AND cost_root.id=object.execution_segment_id
                         AND (revision.id IS NULL OR revision.target_qty_base<>fn_production_execution_cost_target(cost_root.id)))
                 """,Map.of("report",reportId,"actor",actor));
@@ -233,8 +233,8 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
                 JOIN production_material_demands demand ON demand.id=p.demand_id
                 JOIN stock_value_events e ON e.source_event_id=p.id AND e.source_doc_type='PRODUCTION_CONSUMED_VALUE'
                 JOIN stock_value_nodes n ON n.id=e.result_node_id JOIN stock_value_pools pool ON pool.id=n.pool_id
-                WHERE demand.execution_segment_id IN (SELECT member.id FROM production_execution_segments member
-                    WHERE member.id=:id OR member.split_root_segment_id=:id) AND n.active AND NOT EXISTS(
+                WHERE demand.execution_segment_id IN (SELECT segment_id FROM fn_production_execution_cost_members(:id))
+                    AND n.active AND NOT EXISTS(
                     SELECT 1 FROM stock_value_production_cost_inputs i WHERE i.approved_posting_id=p.id)
                 ORDER BY p.id LIMIT 100
                 """,Map.of("id",segment));
@@ -248,19 +248,20 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
         boolean complete=Boolean.TRUE.equals(db.queryForObject("""
                 SELECT NOT EXISTS(SELECT 1 FROM v_production_material_clearance clearance
                     JOIN production_material_demands demand ON demand.id=clearance.demand_id
-                    WHERE demand.execution_segment_id IN (SELECT member.id FROM production_execution_segments member
-                        WHERE member.id=:id OR member.split_root_segment_id=:id)
+                    WHERE demand.execution_segment_id IN (SELECT segment_id FROM fn_production_execution_cost_members(:id))
                         AND (clearance.uncleared_qty<>0 OR clearance.legal_wip_qty<>0))
                 AND NOT EXISTS(SELECT 1 FROM production_daily_report_items item JOIN production_daily_reports report ON report.id=item.report_id
-                    WHERE item.execution_segment_id IN (SELECT member.id FROM production_execution_segments member
-                        WHERE member.id=:id OR member.split_root_segment_id=:id)
+                    WHERE item.execution_segment_id IN (SELECT segment_id FROM fn_production_execution_cost_members(:id))
                         AND report.status=1 AND NOT item.is_deleted AND NOT report.is_deleted
                         AND NOT EXISTS(SELECT 1 FROM production_fqc_legacy_exemptions exempt WHERE exempt.source_report_item_id=item.id)
                         AND (item.qty>coalesce((SELECT sum(inspection.passed_qty+inspection.failed_qty) FROM production_fqc_inspections inspection
                                 WHERE inspection.source_report_item_id=item.id AND inspection.status<>'CANCELLED'),0)
                             OR EXISTS(SELECT 1 FROM production_fqc_inspections inspection WHERE inspection.source_report_item_id=item.id
                                 AND inspection.status<>'CANCELLED' AND inspection.failed_qty>0)))
-                AND (NOT EXISTS(SELECT 1 FROM production_execution_segment_splits split WHERE split.source_segment_id=:id)
+                AND ((NOT EXISTS(SELECT 1 FROM production_execution_segment_splits split WHERE split.source_segment_id=:id)
+                      AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_proofs proof
+                          WHERE fn_production_execution_cost_scope(proof.source_execution_segment_id)=:id
+                            AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_reversals reversed WHERE reversed.proof_id=proof.id)))
                     OR (SELECT COALESCE(sum(output.qty_base),0) FROM stock_value_production_cost_outputs output
                         WHERE output.execution_segment_id=:id AND output.withdrawn_movement_id IS NULL)
                        =fn_production_execution_cost_target(:id))
@@ -274,6 +275,18 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
                     .getBytes(java.nio.charset.StandardCharsets.UTF_8));
             sourceContext=support.context("PRODUCTION_TARGET_REPORT",phase,segment,event,actor,time(report.get("updated_at")));
             approval=event;approvalHash=hash("PRODUCTION_REPORT_TARGET|"+event+"|"+report.get("status")+"|"+segment+"|"+object.get("target")+"|"+object.get("lock_version"));
+        } else {
+            var supplement=db.queryForList("""
+                    SELECT id,created_at,'APPROVED' AS phase FROM production_actual_output_supplement_proofs WHERE id=:event
+                    UNION ALL
+                    SELECT id,created_at,'REVERSED' AS phase FROM production_actual_output_supplement_reversals WHERE id=:event
+                    """,Map.of("event",event));
+            if(!supplement.isEmpty()) {
+                var evidence=supplement.getFirst();
+                sourceContext=support.context("PRODUCTION_TARGET_SUPPLEMENT",event,segment,event,actor,time(evidence.get("created_at")));
+                approval=event;
+                approvalHash=hash("PRODUCTION_SUPPLEMENT_TARGET|"+event+"|"+evidence.get("phase")+"|"+segment+"|"+object.get("target")+"|"+object.get("lock_version"));
+            }
         }
         production.revise(new InventoryProductionCostPort.Revision(sourceContext,
                 segment,product,((Number)object.get("version")).longValue(),(BigDecimal)object.get("target"),complete,
@@ -284,8 +297,8 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
                     JOIN production_material_demands demand ON demand.id=posting.demand_id
                     JOIN stock_value_events cost ON cost.source_event_id=posting.id AND cost.source_doc_type='PRODUCTION_CONSUMED_VALUE'
                     JOIN stock_value_nodes node ON node.id=cost.result_node_id
-                    WHERE demand.execution_segment_id IN (SELECT member.id FROM production_execution_segments member
-                        WHERE member.id=:segment OR member.split_root_segment_id=:segment) AND node.active AND NOT EXISTS(
+                    WHERE demand.execution_segment_id IN (SELECT segment_id FROM fn_production_execution_cost_members(:segment))
+                        AND node.active AND NOT EXISTS(
                         SELECT 1 FROM stock_value_production_cost_inputs input WHERE input.approved_posting_id=posting.id))
                 WHERE execution_segment_id=:segment AND business_refresh_event_id=:event
                 """,

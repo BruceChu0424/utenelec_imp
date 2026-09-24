@@ -10,6 +10,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
@@ -153,7 +154,12 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
     );
     if (!mounted) return;
     setState(() => _busy = false);
-    if (d != null) await _load();
+    if (d != null) {
+      // 让单改变订单行的预留事实：bump 订货单列表精准刷新 + 徽章（待发货口径）
+      // 即时重拉——对照单据详情页 _yieldLine 的既有口径。
+      bumpListRefresh(ref, SalesDocConfig.by(SalesDocType.order).refreshKey);
+      await _load();
+    }
   }
 
   @override

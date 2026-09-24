@@ -392,6 +392,19 @@ class _ProductionPlanListPageState
                           ),
                         ),
                         const Spacer(),
+                        if (ref
+                                .watch(currentPermissionsProvider)
+                                .contains(Perm.productionPlanApprove) ||
+                            ref.watch(isSuperAdminProvider))
+                          UtenButton(
+                            type: UtenButtonType.secondary,
+                            icon: Icons.fact_check_outlined,
+                            onPressed: () => context.push(
+                              RouteName.productionOverproductionRateRequests,
+                            ),
+                            child: const Text('超产比例审批'),
+                          ),
+                        const SizedBox(width: UtenSpacing.s8),
                         if (_canCreate)
                           UtenButton(
                             type: UtenButtonType.tonal,

@@ -55,6 +55,9 @@ enum WorkbenchBadgeCatalog {
     // —— 生产(计划员视角) ——
     /** 生产调度: 待排产行。 */
     productionSchedule(Module.production, facts("productionSchedule.count"), none()),
+    /** Pending workshop tolerance changes, resolved only by planning approval. */
+    productionRateApprovals(Module.production, facts("productionOverproductionRate.count"), none()),
+    productionMaterialIncrementApprovals(Module.production, facts("productionMaterialIncrement.count"), none()),
     /** 生产管理: 进行中的物料分析 / 根计划批次(黄)。 */
     productionBatches(Module.production, none(), facts("productionExecution.count")),
     /** 生产草稿: 生产计划 / 生产日报。 */

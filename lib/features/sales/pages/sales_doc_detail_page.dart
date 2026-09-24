@@ -811,6 +811,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       await ref.read(salesRepositoryProvider(widget.docType)).delete(widget.id);
       if (!mounted) return;
       context.appSuccess('已删除');
+      // 删除也 bump：来源列表立即去掉这行，草稿计数/徽章即时重拉。
+      bumpListRefresh(ref, _cfg.refreshKey);
       backTo(context, defaultPath: SalesRoutePath.list(_cfg.type.pathSegment));
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);

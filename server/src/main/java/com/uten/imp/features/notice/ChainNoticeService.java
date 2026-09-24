@@ -323,6 +323,15 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         OUTBOX_EVENT.set(eventType);
         try {
             switch (eventType) {
+                case "PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED",
+                     "PRODUCTION_OVERPRODUCTION_RATE_APPROVED",
+                     "PRODUCTION_OVERPRODUCTION_RATE_RETURNED" ->
+                        deliverProductionRateReview(eventType,aggregateId);
+                case "PRODUCTION_MATERIAL_INCREMENT_SUBMITTED",
+                     "PRODUCTION_MATERIAL_INCREMENT_APPROVED",
+                     "PRODUCTION_MATERIAL_INCREMENT_CANCELLED",
+                     "PRODUCTION_MATERIAL_INCREMENT_RETURNED" ->
+                        deliverProductionMaterialIncrementReview(eventType,aggregateId);
                 case EVENT_PLAN_SCHEDULED ->
                         notifyPlanScheduled(aggregateId, payload.path("shortage").asBoolean(false));
                 case EVENT_PRODUCTION_REPORTED ->
@@ -512,6 +521,83 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     }
 
     // ---------- 8 类通知入口（业务 Service 一行调用） ----------
+
+    private void deliverProductionRateReview(String event,UUID requestId) {
+        deliverAtomically(() -> {
+            Map<String,Object> request=one("""
+                    SELECT request.status,request.submitted_by,request.before_rate,request.requested_rate,
+                           request.before_snapshot->>'segmentCode' AS segment_code,decision.reason
+                    FROM production_overproduction_rate_requests request
+                    LEFT JOIN production_overproduction_rate_decisions decision ON decision.request_id=request.id
+                    WHERE request.id=?
+                    """,requestId);
+            if(request==null)return;
+            String route="/production/overproduction-rate-requests/"+requestId;
+            String code=str(request.get("segment_code"));
+            if("PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED".equals(event)) {
+                if(!"PENDING".equals(request.get("status")))return;
+                for(UUID user:departmentUserIdsWithSecondaryAuthorities("SUB_PLAN",NOTICE_READ_AUTHORITY,"production_plan:approve")) {
+                    sendToUser(user,TYPE_APPROVAL,"允许超产比例待审批："+code,
+                            "车间申请将允许超产比例从 "+qty(bd(request.get("before_rate")).multiply(new BigDecimal("100")))
+                            +"% 调整为 "+qty(bd(request.get("requested_rate")).multiply(new BigDecimal("100")))
+                            +"%。请在修改对照中核对红色旧行和绿色新行；审批通过前原比例继续生效。",route,event,"normal",requestId);
+                }
+            } else {
+                String expected="PRODUCTION_OVERPRODUCTION_RATE_APPROVED".equals(event)?"APPROVED":"RETURNED";
+                if(!expected.equals(request.get("status")))return;
+                boolean approved="APPROVED".equals(expected);
+                noticeService.resolveReviewNotices("PRODUCTION_OVERPRODUCTION_RATE_REQUEST",requestId,
+                        approved?"APPROVED":"RETURNED");
+                sendToUser((UUID)request.get("submitted_by"),TYPE_WORKFLOW,
+                        "允许超产比例"+(approved?"已批准：":"已退回：")+code,
+                        approved?"计划部已批准调整，请刷新任务查看当前有效比例。"
+                                :"计划部退回本次调整，原有效比例未改变。原因："+str(request.get("reason")),
+                        route,event,"normal",requestId);
+            }
+        });
+    }
+
+    private void deliverProductionMaterialIncrementReview(String event, UUID requestId) {
+        deliverAtomically(() -> {
+            Map<String, Object> request = one("""
+                    SELECT request.status, request.submitted_by, request.delta_qty,
+                           request.before_snapshot->>'segmentCode' AS segment_code,
+                           request.after_snapshot->'items'->0->>'goodsName' AS goods_name,
+                           decision.reason
+                    FROM production_material_increment_requests request
+                    LEFT JOIN production_material_increment_decisions decision ON decision.request_id=request.id
+                    WHERE request.id=?
+                    """, requestId);
+            if (request == null) return;
+            String route = "/production/material-increment-requests/" + requestId;
+            String code = str(request.get("segment_code"));
+            if ("PRODUCTION_MATERIAL_INCREMENT_SUBMITTED".equals(event)) {
+                if (!"PENDING".equals(request.get("status"))) return;
+                for (UUID user : departmentUserIdsWithSecondaryAuthorities("SUB_PLAN", NOTICE_READ_AUTHORITY, "production_plan:approve")) {
+                    sendToUser(user, TYPE_APPROVAL, "追加用料待审批：" + code,
+                            "车间申请追加 " + str(request.get("goods_name")) + " " + qty(bd(request.get("delta_qty")))
+                                    + "。请核对原定额、已批追加与本次追加量；批准后由仓库实际发料。",
+                            route, event, "normal", requestId);
+                }
+            } else {
+                String decision = switch (event) {
+                    case "PRODUCTION_MATERIAL_INCREMENT_APPROVED" -> "APPROVED";
+                    case "PRODUCTION_MATERIAL_INCREMENT_CANCELLED" -> "CANCELLED";
+                    default -> "RETURNED";
+                };
+                if (!decision.equals(request.get("status"))) return;
+                noticeService.resolveReviewNotices("PRODUCTION_MATERIAL_INCREMENT_REQUEST", requestId, decision);
+                boolean approved = "APPROVED".equals(decision);
+                boolean cancelled = "CANCELLED".equals(decision);
+                sendToUser((UUID) request.get("submitted_by"), TYPE_WORKFLOW,
+                        "追加用料" + (approved ? "已批准：" : cancelled ? "授权已撤销：" : "已退回：") + code,
+                        approved ? "计划部已批准追加用料，请到车间任务核对备料和领料进度。"
+                                : cancelled ? "本次追加用料授权已撤销，原定额与历史实发、退料记录保留。"
+                                : "计划部退回本次申请，原有用料额度未改变。原因：" + str(request.get("reason")),
+                        route, event, "normal", requestId);
+            }
+        });
+    }
 
     /** ① 排产通知销售：计划单审核后，按订单聚合本次排产量。shortage=true 时另发缺料通知（⑧）。 */
     public void notifyPlanScheduled(UUID planId, boolean shortage) {

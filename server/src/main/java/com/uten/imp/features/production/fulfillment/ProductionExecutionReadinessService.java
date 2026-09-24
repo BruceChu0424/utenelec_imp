@@ -246,6 +246,7 @@ public class ProductionExecutionReadinessService
                                       AND receipt_item.bill_type =
                                             'FINISHED_IN'
                                       AND receipt_item.is_deleted = FALSE
+                                      AND NOT fn_finished_in_is_public_output(receipt_item.id)
                                 ), dimensions AS (
                                     SELECT receipt_item.goods_id,
                                            receipt_item.color_id
@@ -313,6 +314,7 @@ public class ProductionExecutionReadinessService
                                 WHERE receipt_item.doc_id = :receiptId
                                   AND receipt_item.bill_type = 'FINISHED_IN'
                                   AND receipt_item.is_deleted = FALSE
+                                  AND NOT fn_finished_in_is_public_output(receipt_item.id)
                                 ORDER BY demand.execution_segment_id
                                 """, UUID.class)
                         .setParameter("receiptId", triggeringReceiptId)
@@ -850,6 +852,12 @@ public class ProductionExecutionReadinessService
         tryPromote(segmentId, segmentId, warehouseId, ReceiptKind.RECHECK,null,false,true);
     }
 
+    /** Planning authorizes only the delta; normal stock allocation creates its picking instruction. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void prepareApprovedMaterialIncrement(UUID segmentId, UUID warehouseId, UUID requestId) {
+        tryPromote(segmentId,requestId,warehouseId,ReceiptKind.PLAN_GROWTH,null,true);
+    }
+
     /** Quantity growth preserves the task's route and never submits or issues a DRAW. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void promoteAfterPlanGrowth(UUID segmentId, UUID warehouseId, UUID growthEventId) {
@@ -1142,6 +1150,17 @@ public class ProductionExecutionReadinessService
 
     private void tryPromote(UUID segmentId,UUID triggeringReceiptId,UUID expectedWarehouseId,ReceiptKind triggeringKind,
                             PromotionActor systemActor,boolean tolerateShortage,boolean reclaimReturnedCustody) {
+        tryPromote(segmentId,triggeringReceiptId,expectedWarehouseId,triggeringKind,systemActor,tolerateShortage,reclaimReturnedCustody,false);
+        if(Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM production_material_increment_requests increment
+                    WHERE increment.target_segment_id=:id AND increment.status='APPROVED')
+                """).setParameter("id",segmentId).getSingleResult())) {
+            tryPromote(segmentId,triggeringReceiptId,expectedWarehouseId,triggeringKind,systemActor,true,reclaimReturnedCustody,true);
+        }
+    }
+
+    private void tryPromote(UUID segmentId,UUID triggeringReceiptId,UUID expectedWarehouseId,ReceiptKind triggeringKind,
+                            PromotionActor systemActor,boolean tolerateShortage,boolean reclaimReturnedCustody,boolean incrementOnly) {
         lockExecutionSegmentMaterialDimensions(
                 segmentId, expectedWarehouseId);
         List<Object[]> segmentRows = NativeQueryResults.objectArrayRows(
@@ -1171,16 +1190,22 @@ public class ProductionExecutionReadinessService
                                  AND COALESCE(plan.is_stopped,FALSE) = FALSE
                                 WHERE segment.id = :segmentId
                                   AND segment.auto_promote_when_ready = TRUE
-                                  AND fn_execution_route_allows_auto_promote(segment.id)
+                                  AND (fn_execution_route_allows_auto_promote(segment.id)
+                                       OR :incrementOnly)
                                   AND segment.is_deleted = FALSE
                                 FOR UPDATE OF segment, package
                                 """)
-                        .setParameter("segmentId", segmentId));
+                        .setParameter("segmentId", segmentId).setParameter("incrementOnly",incrementOnly));
         if (segmentRows.isEmpty()) {
             return;
         }
         Object[] segmentRow = segmentRows.getFirst();
-        boolean continuous = Boolean.TRUE.equals(segmentRow[10]);
+        boolean supplement = Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM production_actual_output_supplement_proofs proof
+                    WHERE proof.supplement_execution_segment_id=:id)
+                """).setParameter("id",segmentId).getSingleResult());
+        if(incrementOnly && "WAITING".equals(segmentRow[4]) && !supplement)return;
+        boolean continuous = Boolean.TRUE.equals(segmentRow[10]) || incrementOnly;
         if (!"WAITING".equals(segmentRow[4])
                 && !(continuous && List.of("READY", "DISPATCHED", "IN_PROGRESS").contains(segmentRow[4]))) return;
         UUID packageId = uuid(segmentRow[0]);
@@ -1188,11 +1213,41 @@ public class ProductionExecutionReadinessService
         String planNo = (String) segmentRow[2];
         UUID analysisId = uuid(segmentRow[5]);
         UUID analysisItemId = uuid(segmentRow[6]);
+        // An increment has its own planning authority and may use public stock;
+        // never inherit the original sales/material-analysis reserved ownership.
+        if(incrementOnly) {analysisId=null;analysisItemId=null;}
         UUID warehouseId = uuid(segmentRow[3]);
         UUID workshopDepartmentId = uuid(segmentRow[7]);
         UUID responsibleEmployeeId = uuid(segmentRow[8]);
         if (!Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_warehouse_same_main(:logical,:actual)")
                 .setParameter("logical", warehouseId).setParameter("actual", expectedWarehouseId).getSingleResult())) {
+            return;
+        }
+
+        // An approved additional-output proof owns its original workshop's
+        // physical material chain. Never manufacture a second demand or DRAW.
+        if (!incrementOnly && Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM production_actual_output_supplement_proofs proof
+                    WHERE proof.supplement_execution_segment_id=:id
+                      AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_reversals reversed WHERE reversed.proof_id=proof.id))
+                """).setParameter("id",segmentId).getSingleResult())) {
+            if(Boolean.TRUE.equals(em.createNativeQuery("""
+                    SELECT EXISTS(SELECT 1 FROM production_material_demands
+                        WHERE execution_segment_id=:id AND material_increment_request_id IS NOT NULL AND NOT is_deleted)
+                    """).setParameter("id",segmentId).getSingleResult()))return;
+            if (!Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_actual_supplement_material_ready(:id)")
+                    .setParameter("id",segmentId).getSingleResult())) {
+                if (!tolerateShortage) throw conflict("追加产出尚无本批可用的原工单实际物料来源，不能重复引用已结耗材料");
+                return;
+            }
+            if ("WAITING".equals(segmentRow[4])) {
+                em.createNativeQuery("""
+                        UPDATE production_execution_segments SET status='READY',updated_at=now(),updated_by=:actor
+                        WHERE id=:id AND status='WAITING' AND NOT is_deleted
+                        """).setParameter("id",segmentId)
+                        .setParameter("actor",systemActor==null?currentUser.requireId():systemActor.userId()).executeUpdate();
+                chainNotice.notifyExecutionSegmentReady(segmentId,triggeringReceiptId,"ACTUAL_OUTPUT_SUPPLEMENT");
+            }
             return;
         }
 
@@ -1203,13 +1258,15 @@ public class ProductionExecutionReadinessService
                                         FROM production_material_demands
                                         WHERE execution_segment_id = :segmentId
                                           AND is_deleted = FALSE
+                                          AND ((:incrementOnly AND material_increment_request_id IS NOT NULL)
+                                               OR (:incrementOnly=FALSE AND material_increment_request_id IS NULL))
                                           AND status NOT IN (
                                               'RELEASED', 'REVERSED')
                                         ORDER BY goods_id,
                                                  color_id NULLS FIRST, id
                                         FOR UPDATE
                                         """)
-                                .setParameter("segmentId", segmentId))
+                                .setParameter("segmentId", segmentId).setParameter("incrementOnly",incrementOnly))
                 .stream()
                 .map(row -> new DemandRow(
                         uuid(row[0]), uuid(row[1]), uuid(row[2]),
@@ -1445,12 +1502,13 @@ public class ProductionExecutionReadinessService
                             updated_at = now(),
                             updated_by = :actorId
                         WHERE id = :segmentId
-                          AND (status = 'WAITING' OR (continuous_supply AND status IN ('READY','DISPATCHED','IN_PROGRESS')))
+                          AND (status = 'WAITING' OR ((continuous_supply OR :incrementOnly) AND status IN ('READY','DISPATCHED','IN_PROGRESS')))
                           AND auto_promote_when_ready = TRUE
                           AND is_deleted = FALSE
                         """)
                 .setParameter("actorId", actor.userId())
                 .setParameter("segmentId", segmentId)
+                .setParameter("incrementOnly",incrementOnly)
                 .executeUpdate();
         if (promoted != 1) {
             throw conflict(
@@ -2042,6 +2100,7 @@ public class ProductionExecutionReadinessService
                                      AND receipt_item.bill_type =
                                          'FINISHED_IN'
                                      AND receipt_item.is_deleted = FALSE
+                                     AND NOT fn_finished_in_is_public_output(receipt_item.id)
                                     JOIN stock_documents receipt
                                       ON receipt.id = receipt_item.doc_id
                                      AND receipt.doc_type = 'FINISHED_IN'

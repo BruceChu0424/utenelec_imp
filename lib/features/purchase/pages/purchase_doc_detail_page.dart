@@ -204,6 +204,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       _qtyControllers.clear();
       setState(() => _detail = updated);
       context.appSuccess('数量已修正');
+      // 申请行的计划下达/待分解徽章随修正变化，bump 来源列表精准刷新。
+      bumpListRefresh(ref, _cfg.refreshKey);
     } on ApiException catch (error) {
       if (!mounted) return;
       context.appError(error.message);
@@ -631,6 +633,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           .delete(widget.id);
       if (!mounted) return;
       context.appSuccess('已删除');
+      // 删除也 bump：来源列表就在栈顶可见时立即去掉这行，草稿计数/徽章即时
+      // 重拉（其余写动作都有 bump，唯独删除漏了）。
+      bumpListRefresh(ref, _cfg.refreshKey);
       // 返回键契约（路由设计 §十一）：pop 回来源，栈空回 hub/任务中心。
       popOrBackTo(context, defaultPath: _defaultBackPath);
     } on ApiException catch (e) {

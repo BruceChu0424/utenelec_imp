@@ -18,6 +18,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -53,6 +54,9 @@ class _FinanceArrivalExceptionTasksPageState
   bool _loading = false;
   String? _error;
   int _requestVersion = 0;
+
+  /// 「返回即刷新」登记用的本页路径（独立路由形态，build 首次捕获）。
+  String? _myLocation;
 
   @override
   void initState() {
@@ -100,6 +104,12 @@ class _FinanceArrivalExceptionTasksPageState
 
   @override
   Widget build(BuildContext context) {
+    // 独立路由形态注册「返回即刷新」：从本页 push 进详情审批（放行/退回）后
+    // 返回重拉当前页；嵌入形态由业务审核中心的 refreshTick 驱动，不重复注册。
+    if (!widget.embedded) {
+      _myLocation ??= currentLocationOr(context, RouteName.finance);
+      ref.onPageResume(_myLocation!, () => _load(_result?.page ?? 1));
+    }
     final result = _result;
     final body = SafeArea(
       child: _loading && result == null

@@ -116,7 +116,16 @@ class BusinessDataResetSqlContractTest {
             Map.entry("production_workshop_return_preplan_events", 619),
             // V680 服务端会话与再认证失败计数 (ADR-110)：清空业务数据本就全员下线, 会话随之清空。
             Map.entry("auth_sessions", 680),
-            Map.entry("auth_step_up_states", 680));
+            Map.entry("auth_step_up_states", 680),
+            Map.entry("production_overproduction_rate_requests", 698),
+            Map.entry("production_overproduction_rate_decisions", 698),
+            Map.entry("production_actual_output_supplement_requests", 700),
+            Map.entry("production_actual_output_supplement_proofs", 700),
+            Map.entry("production_actual_output_supplement_reversals", 700),
+            Map.entry("production_actual_output_supplement_claims", 700),
+            Map.entry("production_material_increment_requests", 702),
+            Map.entry("production_material_increment_decisions", 702),
+            Map.entry("production_material_increment_reversals", 702));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
@@ -267,7 +276,10 @@ class BusinessDataResetSqlContractTest {
                 "V647__material_analysis_execution_growth_in_place.sql",
                 "V680__auth_sessions_and_step_up.sql",
                 "V686__finance_report_line_bindings.sql",
-                "V693__warehouse_keepers_notice_routing.sql")) {
+                "V693__warehouse_keepers_notice_routing.sql",
+                "V698__production_overproduction_rate_review.sql",
+                "V700__actual_output_supplement_plans.sql",
+                "V702__production_material_increment_authorizations.sql")) {
             extensionSql += read(Path.of("src/main/resources/db/migration",migration),
                     Path.of("server/src/main/resources/db/migration",migration));
         }
@@ -483,9 +495,9 @@ class BusinessDataResetSqlContractTest {
                 .contains("(690, 619)")
                 .contains("(691, 620)")
                 .contains("(692, 621)")
-                .contains("(693, 622)")
-                // 迁移头 V693 / 622 张 (V648至V669 跳号)。
-                .contains("V507/469、V508/470及V511至V693完整目录");
+                .contains("(693, 622)").contains("(694, 623)").contains("(695, 624)").contains("(696, 625)").contains("(697, 626)").contains("(698, 627)").contains("(699, 628)").contains("(700, 629)").contains("(701, 630), (702, 631)")
+                // 迁移头 V702 / 631 张 (V648至V669 跳号)。
+                .contains("V507/469、V508/470及V511至V702完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

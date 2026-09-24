@@ -214,6 +214,9 @@ public class SubcontractOrderPreparationAdapter
                   ON finished_in.id = finished_link.draw_id
                  AND finished_in.doc_type = 'FINISHED_IN'
                 WHERE finished_in.id = :documentId
+                  AND EXISTS (SELECT 1 FROM stock_document_items output
+                      WHERE output.doc_id = finished_in.id AND NOT output.is_deleted
+                        AND NOT fn_finished_in_is_public_output(output.id))
                   AND source_item.source_type = 'SUBCONTRACT_PREPARATION'
                   AND source_item.source_ref LIKE 'SC-ORDER:%'
                   AND source_item.is_deleted = FALSE

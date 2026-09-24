@@ -15,6 +15,7 @@ import '../../../../components/layout/uten_list_two_pane.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/latest_request_guard.dart';
 import '../../../../core/router/nav_helpers.dart';
+import '../../../../core/router/page_resume_provider.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/responsive/breakpoint.dart';
 import '../../../../core/theme/uten_tokens.dart';
@@ -77,6 +78,10 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
   final Map<String, FinancePayableItem> _selectedItemsById = {};
   _PayablesWorkspaceView _workspace = _PayablesWorkspaceView.payables;
 
+  /// 「返回即刷新」登记用的本页路径 + 两个内嵌面板的重载信号。
+  String? _myLocation;
+  int _panelRefreshTick = 0;
+
   bool get _canCreatePayment =>
       ref.read(currentPermissionsProvider).contains(Perm.financePaymentCreate);
 
@@ -136,6 +141,15 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
     if (value == null) return null;
     return '${value.year}-${value.month.toString().padLeft(2, '0')}-'
         '${value.day.toString().padLeft(2, '0')}';
+  }
+
+  /// 「返回即刷新」回调：台账分段重拉当前页；超耗/月结面板靠 [_panelRefreshTick]
+  /// 驱动 didUpdateWidget 重拉（面板不可见时不发台账请求）。
+  void _refreshWorkspace() {
+    setState(() => _panelRefreshTick++);
+    if (_workspace == _PayablesWorkspaceView.payables) {
+      _load(_page);
+    }
   }
 
   Future<void> _load([int? requestedPage]) async {
@@ -703,6 +717,11 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 返回即刷新：从本页 push 付款单编辑页（保存后 replace 成付款详情）返回时，
+    // 已付/抵销/未付列与 KPI 此前停在旧数据，只能手动刷新；登记后期间写过
+    // 数据即静默重拉当前工作台数据。
+    _myLocation ??= currentLocationOr(context, RouteName.finance);
+    ref.onPageResume(_myLocation!, _refreshWorkspace);
     final theme = Theme.of(context);
     final names = ref.watch(financeNameServiceProvider);
     final settlementMethods =
@@ -815,11 +834,19 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                   )
                 else if (_workspace == _PayablesWorkspaceView.lossClaims &&
                     _canViewLossClaims)
-                  const Expanded(child: SubcontractLossClaimPanel())
+                  Expanded(
+                    child: SubcontractLossClaimPanel(
+                      refreshTick: _panelRefreshTick,
+                    ),
+                  )
                 else if (_workspace ==
                         _PayablesWorkspaceView.supplierSettlements &&
                     _canViewSupplierSettlements)
-                  const Expanded(child: SupplierSettlementPanel())
+                  Expanded(
+                    child: SupplierSettlementPanel(
+                      refreshTick: _panelRefreshTick,
+                    ),
+                  )
                 else
                   const Expanded(
                     child: Center(child: Text('缺少应付、委外超耗责任或月结批次查看权限')),

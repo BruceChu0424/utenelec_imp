@@ -23,6 +23,7 @@ import 'package:uten_imp/features/production/models/production_execution_workben
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_material_repository.dart';
+import 'package:uten_imp/features/production/repositories/production_material_increment_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
@@ -586,7 +587,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 生产中显示进度列与「生产中 · 可报工」口径。
-    expect(find.text('进度'), findsOneWidget);
+    expect(find.text('计划实收进度'), findsOneWidget);
     expect(find.text('生产中 · 可报工 20%'), findsNWidgets(2));
     expect(find.text('批量开工(0)'), findsNothing);
 
@@ -1310,7 +1311,7 @@ void routeConfirmationTests() {
       find.byKey(const ValueKey('workshop-next-step-segment-a')),
     );
     expect(field.value, isNull);
-    expect(field.items.map((item) => item.value), ['FULL_KIT', 'CONTINUOUS']);
+    expect(field.items.map((item) => item.value), ['CONTINUOUS', 'FULL_KIT']);
   });
 
   testWidgets(
@@ -1459,7 +1460,7 @@ void routeConfirmationTests() {
       expect(field.value, 'CONTINUOUS');
       expect(
         field.items.where((item) => item.visible).map((item) => item.value),
-        ['FULL_KIT', 'CONTINUOUS'],
+        ['CONTINUOUS', 'FULL_KIT'],
       );
       expect(
         find.byWidgetPredicate(
@@ -1704,6 +1705,48 @@ void routeConfirmationTests() {
 }
 
 void materialUsageEntryTests() {
+  for (final allowed in [false, true]) {
+    testWidgets('material increment entry honors permission: $allowed', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1700, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final router = _router();
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            isSuperAdminProvider.overrideWithValue(false),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.productionExecutionView,
+              if (allowed) productionMaterialIncrementPermission,
+            }),
+            productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+              _repository(),
+            ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('等待物料'));
+      await tester.pumpAndSettle();
+      await _rightClick(tester, find.text('产品 A'));
+      expect(_menuEntry('申请追加用料'), allowed ? findsOneWidget : findsNothing);
+      if (allowed) {
+        await tester.tap(_menuEntry('申请追加用料'));
+        await tester.pumpAndSettle();
+        expect(find.text('追加用料 segment-a'), findsOneWidget);
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   // 2026-09-12 用户口径：「登记实际用料」只在生产中分类出现；等待物料行一律
   // 只读「查看用料记录」（即便未登记+有权限）。
   for (final (activity, pending, issued, permission, label) in [
@@ -2020,6 +2063,12 @@ GoRouter _router() => GoRouter(
           body: Text(single != null ? '单项来源 $single' : '批量来源 ${batch ?? ''}'),
         );
       },
+    ),
+    GoRoute(
+      path: '/production/material-increment-requests/new',
+      builder: (_, state) => Scaffold(
+        body: Text('追加用料 ${state.uri.queryParameters['segmentId']}'),
+      ),
     ),
     GoRoute(
       path: '/production/plans/:id',

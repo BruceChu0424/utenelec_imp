@@ -270,21 +270,27 @@ class _FinanceSalesOrderReviewPageState
 
   Future<void> _leaveReview() async {
     await _reviewClaim?.releaseAll();
-    if (mounted) _closeAfterDecision();
+    if (!mounted) return;
+    // 纯查看返回：不 bump、不推进刷新（ADR-108「纯查看后返回不重拉」），
+    // 能 pop 就 pop 回打开方；深链无栈才归位到队列页。
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      context.go(_returnPath);
+    }
   }
 
   /// 决策（确认/驳回）完成后的落点：
-  /// - 从确认列表 push 进来 → 带 true 返回值 pop，列表刷新；
+  /// - 从确认列表/审核中心 push 进来 → 带 true 返回值 pop，打开方立即重拉
+  ///   （2026-09-24 用户反馈「审批通过后任务中心待审批还在，要手动刷新才消失」：
+  ///   此前 returnTo 非空一律 context.go，`push<bool>` 的 Future 恒返回 null，
+  ///   打开方的刷新分支成了死代码，go 重建队列页还丢掉筛选/页码）；
   /// - 从 V459 审核弹窗「去审核」router.go 直达 / 深链 → 路由栈空，
   ///   直接 pop 会抛 GoError 并被外层 catch 误报「确认失败」（v2026.09.03-1
   ///   实际已确认成功）——改跳回确认列表页。
   void _closeAfterDecision() {
     bumpListRefresh(ref, 'finance:sales-order:$_returnPath');
-    if (widget.returnTo != null ||
-        _returnPath == '/finance/sales-order-changes') {
-      context.go(_returnPath);
-      return;
-    }
     final navigator = Navigator.of(context);
     if (navigator.canPop()) {
       navigator.pop(true);

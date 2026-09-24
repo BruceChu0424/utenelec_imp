@@ -346,4 +346,51 @@ void main() {
     expect(selections, 0);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('紧凑回退：滚轮先收头部把表格送顶，交接后才滚表内（大字号桌面口径）', (tester) async {
+    // 2026-09-24 用户反馈「字体放大后表格不会滑到顶」：大字号把 1080p 桌面压进
+    // 紧凑回退分支后，滚轮被表内 Scrollable 直接吃掉，头部永不收起。滚轮交接门
+    // 已扩展到紧凑分支——本测试锁定「先页滚送顶→门→表内滚→反向先回表内」。
+    final outer = ScrollController();
+    addTearDown(outer.dispose);
+    await _pump(
+      tester,
+      zoom: 1.5,
+      child: UtenCollapsingHeaderScrollView(
+        controller: outer,
+        compactBreakpoint: 3000,
+        collapsingHeader: const SizedBox(height: 300),
+        body: _table(primary: true),
+      ),
+    );
+    expect(find.byType(NestedScrollView), findsNothing);
+    final inner = _tableVerticalPosition(tester);
+    expect(outer.offset, 0);
+    expect(inner.pixels, 0);
+
+    // 上滚一格：整页先滚（收头部），表内不动。
+    await _wheel(tester);
+    expect(outer.offset, greaterThan(0));
+    expect(inner.pixels, 0);
+
+    // 一直滚到页顶：表格送到视口顶，恰好置顶的那格余量丢弃并上门。
+    for (var i = 0; i < 30 && outer.offset < outer.position.maxScrollExtent - 0.5; i++) {
+      await _wheel(tester, distance: 500);
+    }
+    expect(outer.offset, closeTo(outer.position.maxScrollExtent, 0.01));
+    expect(inner.pixels, 0);
+
+    // 吃完交接门的空行程后，表内开始滚。
+    await _wheel(tester, distance: _gateDistance * 1.5 + _wheelDistance);
+    expect(inner.pixels, greaterThan(0));
+
+    // 反向：先把表内滚回顶，头部才放出来。
+    final pageTop = outer.offset;
+    await _wheel(tester, distance: -(inner.pixels + _gateDistance * 2 + 200));
+    expect(inner.pixels, closeTo(0, 0.01));
+    expect(outer.offset, closeTo(pageTop, 0.01));
+    await _wheel(tester, distance: -500);
+    expect(outer.offset, lessThan(pageTop));
+    expect(tester.takeException(), isNull);
+  });
 }

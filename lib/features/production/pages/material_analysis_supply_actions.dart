@@ -960,6 +960,10 @@ abstract class _MaterialAnalysisSupplyActionsState
               MaterialSupplyRoute.make => '自制备料任务已创建（${groups.length} 条）',
             };
       if (!silent) context.appSuccess(message);
+      // 下达产生了下游单据/任务（采购需求单/委外申请/自制任务）：徽章即时重拉
+      // （此前只有创建生产计划有 refreshAfterProductionPlanGenerated，采购/委外
+      // 方向漏了，相关入口的红黄数要等下一次任意 bump）。
+      refreshBadges(ref);
       return current;
     } catch (error) {
       if (!mounted) return null;

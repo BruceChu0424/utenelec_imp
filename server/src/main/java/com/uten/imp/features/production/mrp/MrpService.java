@@ -392,7 +392,9 @@ public class MrpService {
                        (SELECT COALESCE(SUM(i.qty), 0) FROM production_plan_items i
                         WHERE i.plan_id = p.id AND i.is_deleted = false) AS total_qty,
                        (SELECT COALESCE(SUM(i.iqty), 0) FROM production_plan_items i
-                        WHERE i.plan_id = p.id AND i.is_deleted = false) AS inbound_qty
+                        WHERE i.plan_id = p.id AND i.is_deleted = false) AS inbound_qty,
+                       (SELECT COALESCE(SUM(fn_plan_original_inbound_qty(i.id)), 0) FROM production_plan_items i
+                        WHERE i.plan_id = p.id AND i.is_deleted = false) AS planned_inbound_qty
                 FROM subplan_links l
                 JOIN production_plans p ON p.id = l.subplan_id
                 WHERE l.plan_id = :planId AND l.is_deleted = false AND p.is_deleted = false
@@ -402,15 +404,16 @@ public class MrpService {
         for (Object[] r : rs) {
             BigDecimal total = r[6] == null ? BigDecimal.ZERO : (BigDecimal) r[6];
             BigDecimal inbound = r[7] == null ? BigDecimal.ZERO : (BigDecimal) r[7];
+            BigDecimal plannedInbound = r[8] == null ? BigDecimal.ZERO : (BigDecimal) r[8];
             double pct = total.signum() > 0
-                    ? Math.min(inbound.divide(total, 4, java.math.RoundingMode.HALF_UP).doubleValue(), 1.0) : 0;
+                    ? Math.min(plannedInbound.divide(total, 4, java.math.RoundingMode.HALF_UP).doubleValue(), 1.0) : 0;
             out.add(new SubplanRef(
                     (UUID) r[0], (String) r[1],
                     r[2] == null ? null : ((Number) r[2]).shortValue(),
                     Boolean.TRUE.equals(r[3]),
                     localDate(r[4]),
                     localDate(r[5]),
-                    total, inbound, pct));
+                    total, inbound, pct, plannedInbound, inbound.subtract(plannedInbound)));
         }
         return out;
     }
@@ -418,7 +421,8 @@ public class MrpService {
     /** 子计划溯源行（含完工进度）。 */
     public record SubplanRef(UUID planId, String billNo, Short status, boolean closed,
                              LocalDate billDate, LocalDate deliveryDate, BigDecimal totalQty,
-                             BigDecimal inboundQty, double percent) {
+                             BigDecimal inboundQty, double percent,
+                             BigDecimal plannedInboundQty, BigDecimal actualSurplusInboundQty) {
     }
 
     public record DirectMakeRequirement(

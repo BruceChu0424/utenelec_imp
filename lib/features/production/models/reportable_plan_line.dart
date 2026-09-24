@@ -50,6 +50,7 @@ class ReportablePlanLine {
     this.fqcSourceReportItemId,
     this.fqcSourceReportNo,
     this.fqcRecoveryRequiresMaterial = false,
+    this.allowActualOverproduction = false,
   });
 
   final String planItemId;
@@ -93,6 +94,9 @@ class ReportablePlanLine {
   final String? fqcSourceReportNo;
   final bool fqcRecoveryRequiresMaterial;
 
+  /// 服务端明确允许实际超产；旧服务端和品质恢复默认继续遵守上限。
+  final bool allowActualOverproduction;
+
   bool get isFqcRecovery => fqcRecoveryAuthorizationId?.isNotEmpty == true;
 
   /// Drafts reserve reportable quota, but cannot make a task's last batch complete.
@@ -109,7 +113,10 @@ class ReportablePlanLine {
     return remaining > 0 ? remaining : 0;
   }
 
-  bool get canReport => maxReportQty > 0.000001 && !fqcRecoveryRequiresMaterial;
+  bool get canReport =>
+      !fqcRecoveryRequiresMaterial &&
+      (maxReportQty > 0.000001 ||
+          (allowActualOverproduction && !isFqcRecovery));
 
   String? get fqcRecoveryLabel {
     if (!isFqcRecovery) return null;
@@ -170,6 +177,7 @@ class ReportablePlanLine {
     fqcSourceReportItemId: json['fqcSourceReportItemId'] as String?,
     fqcSourceReportNo: json['fqcSourceReportNo'] as String?,
     fqcRecoveryRequiresMaterial: json['fqcRecoveryRequiresMaterial'] == true,
+    allowActualOverproduction: json['allowActualOverproduction'] == true,
   );
 }
 

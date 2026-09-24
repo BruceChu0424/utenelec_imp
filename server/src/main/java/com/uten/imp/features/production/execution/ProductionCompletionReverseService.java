@@ -245,7 +245,7 @@ public class ProductionCompletionReverseService
                                        segment.product_color_id,
                                        segment.product_unit_id,
                                        segment.product_unit_rate,
-                                       segment.planned_qty,
+                                       segment.planned_qty + fn_execution_actual_surplus_qty(segment.id, FALSE),
                                        segment.status,
                                        segment.lock_version,
                                        segment.completion_reopened,
@@ -293,7 +293,7 @@ public class ProductionCompletionReverseService
             BigDecimal approvedInbound = approvedInbound(segment.id());
             if (approvedInbound.compareTo(segment.plannedQty()) != 0) {
                 throw conflict(
-                        "已完成执行子计划的入库累计与计划数量不一致，禁止自动红冲");
+                        "已完成执行子计划的入库累计与计划及已审实际超产数量不一致，禁止自动红冲");
             }
         }
         return segment;

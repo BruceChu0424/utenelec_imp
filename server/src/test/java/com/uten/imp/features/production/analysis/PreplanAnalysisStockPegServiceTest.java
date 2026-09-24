@@ -191,7 +191,9 @@ class PreplanAnalysisStockPegServiceTest {
         EntityManager em = mock(EntityManager.class);
         Query context = mock(Query.class);
         Query formalCommitment = mock(Query.class);
-        for (Query query : List.of(context, formalCommitment)) {
+        Query publicOutputs = mock(Query.class);
+        when(publicOutputs.getResultList()).thenReturn(List.of());
+        for (Query query : List.of(context, formalCommitment, publicOutputs)) {
             when(query.setParameter(anyString(), any())).thenReturn(query);
         }
         UUID analysisId = UUID.randomUUID();
@@ -206,6 +208,7 @@ class PreplanAnalysisStockPegServiceTest {
         when(formalCommitment.getSingleResult()).thenReturn(BigDecimal.TEN);
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
+            if (sql.contains("fn_finished_in_is_public_output")) return publicOutputs;
             if (sql.contains("FROM production_plans plan")) return context;
             if (sql.contains("FROM production_material_supply_pegs peg")) {
                 return formalCommitment;
@@ -227,9 +230,34 @@ class PreplanAnalysisStockPegServiceTest {
                         BigDecimal.TEN)));
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em, org.mockito.Mockito.times(2)).createNativeQuery(sql.capture());
+        verify(em, org.mockito.Mockito.times(3)).createNativeQuery(sql.capture());
         assertThat(sql.getAllValues()).noneMatch(value ->
                 value.contains("INSERT INTO stock_reservations"));
+    }
+
+    @Test
+    void explicitlyPublicOutputCannotBeReservedByTheOriginalAnalysis() {
+        EntityManager em = mock(EntityManager.class);
+        Query publicOutputs = mock(Query.class);
+        UUID stockItem = UUID.randomUUID();
+        when(publicOutputs.setParameter(anyString(), any())).thenReturn(publicOutputs);
+        when(publicOutputs.getResultList()).thenReturn(List.of(stockItem));
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            assertThat((String) invocation.getArgument(0)).contains("fn_finished_in_is_public_output");
+            return publicOutputs;
+        });
+        InventoryMutationLock inventory = mock(InventoryMutationLock.class);
+        PreplanStockEntitlementService entitlement = mock(PreplanStockEntitlementService.class);
+        PreplanAnalysisStockPegService service = new PreplanAnalysisStockPegService(
+                em, mock(TxSessionVars.class), mock(SecurityContextCurrentUser.class),
+                inventory, entitlement, mock(OriginHooks.class));
+
+        service.pegFinishedInbound(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                List.of(new com.uten.imp.application.port.PreplanAnalysisPegPort.FinishedInboundSlice(
+                        stockItem, UUID.randomUUID(), UUID.randomUUID(), null, BigDecimal.TEN)));
+
+        verifyNoInteractions(inventory, entitlement);
+        verify(publicOutputs, never()).executeUpdate();
     }
 
     @Test

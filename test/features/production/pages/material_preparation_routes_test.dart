@@ -10,11 +10,194 @@ import 'package:uten_imp/features/production/models/production_material_analysis
 import 'package:uten_imp/features/production/pages/production_material_analysis_page.dart';
 import 'package:uten_imp/features/production/providers/material_analysis_warehouse_prefs_provider.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
+import 'package:uten_imp/features/production/widgets/material_preparation_route_card.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 
 void main() {
+  testWidgets(
+    'route cards show in-progress and pending counts and hide zero badges',
+    (tester) async {
+      final requests = await _pump(tester);
+      final expected = {
+        'buy': (inProgress: 1, pending: 1),
+        'subcontract': (inProgress: 0, pending: 1),
+        'workshop': (inProgress: 0, pending: 2),
+      };
+      for (final entry in expected.entries) {
+        final card = _routeCard(tester, entry.key);
+        expect(card.inProgressCount, entry.value.inProgress, reason: entry.key);
+        expect(card.pendingCount, entry.value.pending, reason: entry.key);
+        expect(
+          find.byKey(Key('material-analysis-entry-${entry.key}-in-progress')),
+          entry.value.inProgress == 0 ? findsNothing : findsOneWidget,
+        );
+        expect(
+          find.byKey(Key('material-analysis-entry-${entry.key}-pending')),
+          findsOneWidget,
+        );
+      }
+      expect(
+        find.byKey(const Key('material-analysis-task-state')),
+        findsNothing,
+      );
+      // 部分采购仍在进行中且有未下达余量，应同时进入两个数字。
+      expect(requests.where((request) => request.method != 'GET'), isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final route in ['buy', 'subcontract', 'workshop']) {
+    testWidgets('$route status counts open the matching list directly', (
+      tester,
+    ) async {
+      final analysis = _analysis();
+      if (route == 'workshop') {
+        final products = analysis['products'] as List;
+        final partial = products.first as Map<String, dynamic>;
+        partial['goodsName'] = '部分下达产品';
+        partial['remainingQty'] = 6;
+        partial['submittedQty'] = 4;
+        partial['planExecutionStatus'] = 'SUBMITTED';
+        partial['latestPlanId'] = 'plan-partial';
+      } else {
+        final supplyRoute = route == 'buy' ? 'BUY' : 'SUBCONTRACT';
+        analysis['flatMaterials'] = [
+          _material('partial', '部分下达物料', supplyRoute, 10, 4, 'IN_PROGRESS'),
+          _material('complete', '已完成物料', supplyRoute, 0, 10, 'DONE'),
+        ];
+      }
+      final requests = await _pump(tester, analysis: analysis);
+      final card = _routeCard(tester, route);
+      expect(card.inProgressCount, 1);
+      // 车间结构待修复仍属于未下达；需处理是未下达的子集。
+      expect(card.pendingCount, route == 'workshop' ? 2 : 1);
+
+      await _openStatus(tester, route, 'in-progress');
+      expect(find.text('进行中 (1)'), findsOneWidget);
+      expect(
+        find.text(route == 'workshop' ? '部分下达产品' : '部分下达物料'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(route == 'workshop' ? '历史完成产品' : '已完成物料'),
+        findsNothing,
+      );
+      if (route == 'workshop') {
+        expect(find.textContaining('结构待修复产品'), findsNothing);
+      }
+
+      // 完成任务从黄色进行中剔除，但仍能通过已下达页签回查历史。
+      await _filter(tester, '已下达 (2)');
+      expect(
+        find.textContaining(route == 'workshop' ? '历史完成产品' : '已完成物料'),
+        findsOneWidget,
+      );
+      expect(find.text('下达数量'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('返回').last);
+      await tester.pumpAndSettle();
+      await _openStatus(tester, route, 'pending');
+      expect(
+        find.text(route == 'workshop' ? '部分下达产品' : '部分下达物料'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(route == 'workshop' ? '历史完成产品' : '已完成物料'),
+        findsNothing,
+      );
+      if (route == 'workshop') {
+        expect(find.textContaining('结构待修复产品'), findsOneWidget);
+      }
+      expect(requests.where((request) => request.method != 'GET'), isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+      '$route history-only card hides both badges and opens issued history',
+      (tester) async {
+        final analysis = _analysis();
+        if (route == 'workshop') {
+          analysis['products'] = [
+            _product('complete', '历史完成产品', canSchedule: false)
+              ..['remainingQty'] = 0
+              ..['submittedQty'] = 10
+              ..['planExecutionStatus'] = 'COMPLETED'
+              ..['latestPlanId'] = 'plan-completed',
+          ];
+          analysis['flatMaterials'] = <Object>[];
+        } else {
+          analysis['flatMaterials'] = [
+            _material(
+              'complete',
+              '已完成物料',
+              route == 'buy' ? 'BUY' : 'SUBCONTRACT',
+              0,
+              10,
+              'DONE',
+            ),
+          ];
+        }
+        final requests = await _pump(tester, analysis: analysis);
+        final card = _routeCard(tester, route);
+        expect(card.inProgressCount, 0);
+        expect(card.pendingCount, 0);
+
+        expect(
+          find.byKey(Key('material-analysis-entry-$route-in-progress')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(Key('material-analysis-entry-$route-pending')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(Key('material-analysis-entry-$route')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('material-analysis-task-state')),
+          findsNothing,
+        );
+
+        // 没有未下达项时，卡片标题仍应让用户直接查看已下达历史。
+        await _open(tester, route);
+        expect(
+          find.textContaining(route == 'workshop' ? '历史完成产品' : '已完成物料'),
+          findsOneWidget,
+        );
+        expect(find.text('下达数量'), findsOneWidget);
+        expect(requests.where((request) => request.method != 'GET'), isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('cancelled supply is excluded from in-progress badge and list', (
+    tester,
+  ) async {
+    final analysis = _analysis();
+    analysis['flatMaterials'] = [
+      _material('partial', '进行中采购物料', 'BUY', 10, 4, 'IN_PROGRESS'),
+      _material('cancelled', '已取消采购物料', 'BUY', 10, 4, 'CANCELLED'),
+    ];
+    final requests = await _pump(tester, analysis: analysis);
+    final card = _routeCard(tester, 'buy');
+    expect(card.inProgressCount, 1);
+    expect(card.pendingCount, 2);
+
+    await _openStatus(tester, 'buy', 'in-progress');
+    expect(find.text('进行中 (1)'), findsOneWidget);
+    expect(find.text('进行中采购物料'), findsOneWidget);
+    expect(find.text('已取消采购物料'), findsNothing);
+
+    await _filter(tester, '已下达 (2)');
+    expect(find.text('已取消采购物料'), findsOneWidget);
+    expect(requests.where((request) => request.method != 'GET'), isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final route in ['BUY', 'SUBCONTRACT']) {
     testWidgets(
       '$route issued selection keeps normal cell colors on the light tint',
@@ -293,6 +476,26 @@ Future<void> _tapRowCheckbox(WidgetTester tester, String text) async {
 
 Future<void> _open(WidgetTester tester, String route) async {
   final entry = find.byKey(Key('material-analysis-entry-$route'));
+  await tester.ensureVisible(entry);
+  await tester.pumpAndSettle();
+  await tester.tap(entry);
+  await tester.pumpAndSettle();
+}
+
+MaterialPreparationRouteCard _routeCard(WidgetTester tester, String route) =>
+    tester.widget<MaterialPreparationRouteCard>(
+      find.ancestor(
+        of: find.byKey(Key('material-analysis-entry-$route')),
+        matching: find.byType(MaterialPreparationRouteCard),
+      ),
+    );
+
+Future<void> _openStatus(
+  WidgetTester tester,
+  String route,
+  String status,
+) async {
+  final entry = find.byKey(Key('material-analysis-entry-$route-$status'));
   await tester.ensureVisible(entry);
   await tester.pumpAndSettle();
   await tester.tap(entry);

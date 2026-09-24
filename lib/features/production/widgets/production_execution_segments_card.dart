@@ -1802,7 +1802,8 @@ String _segmentStatusText(ProductionExecutionSegmentView segment) =>
           ? '已报完·待品质'
           : segment.finishedInboundPendingQty > 0
           ? '品质通过·待点收'
-          : segment.plannedQty > 0 && segment.inboundQty >= segment.plannedQty
+          : segment.plannedQty > 0 &&
+                segment.plannedInboundQty >= segment.plannedQty
           ? '已入库·待用料结清'
           : segment.fqcFailedQty > 0
           ? '品质异常·待处理'
@@ -1811,7 +1812,8 @@ String _segmentStatusText(ProductionExecutionSegmentView segment) =>
 
 bool _canReportSegment(ProductionExecutionSegmentView segment) =>
     segment.status == 'IN_PROGRESS' &&
-    (segment.ordinaryRemainingQty > 0.000001 ||
+    (segment.allowActualOverproduction ||
+        segment.ordinaryRemainingQty > 0.000001 ||
         segment.fqcReworkAvailableQty > 0.000001 ||
         segment.fqcReplacementReadyQty > 0.000001);
 
@@ -1842,7 +1844,10 @@ String _finishedInboundProgressText(ProductionExecutionSegmentView segment) {
       '仓库拒收 ${_number(segment.finishedInboundRejectedQty)}',
     if (segment.finishedInboundPendingQty > 0)
       '待点收 ${_number(segment.finishedInboundPendingQty)}',
-    if (segment.inboundQty > 0) '已入库 ${_number(segment.inboundQty)}',
+    if (segment.inboundQty > 0) '实际入库 ${_number(segment.inboundQty)}',
+    if (segment.inboundQty > 0) '计划实收 ${_number(segment.plannedInboundQty)}',
+    if (segment.actualSurplusInboundQty > 0)
+      '公共超产实收 ${_number(segment.actualSurplusInboundQty)}',
   ];
   return parts.isEmpty ? '尚未形成合格入库' : parts.join(' · ');
 }
@@ -1854,7 +1859,10 @@ String _postReportNextStep(ProductionExecutionSegmentView segment) {
       '仓库拒收 ${_number(segment.finishedInboundRejectedQty)}，已保留同源重新交付任务',
     if (segment.finishedInboundPendingQty > 0)
       '待仓库点收 ${_number(segment.finishedInboundPendingQty)}',
-    if (segment.inboundQty > 0) '已入库 ${_number(segment.inboundQty)}',
+    if (segment.inboundQty > 0) '实际入库 ${_number(segment.inboundQty)}',
+    if (segment.inboundQty > 0) '计划实收 ${_number(segment.plannedInboundQty)}',
+    if (segment.actualSurplusInboundQty > 0)
+      '公共超产实收 ${_number(segment.actualSurplusInboundQty)}',
     if (segment.fqcFailedQty > 0)
       '品质不合格 ${_number(segment.fqcFailedQty)}，等待返工/补产处理',
     if (segment.fqcReplacementAvailableQty > 0)

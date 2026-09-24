@@ -45,6 +45,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_finished_inbound_task.dart';
+import '../widgets/production_pre_stock_count_dialog.dart';
 import '../providers/production_finished_arrival_fill_memory.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/production_finished_inbound_task_repository.dart';
@@ -101,6 +102,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
   String? _validationError;
   bool _loading = false;
   bool _saving = false;
+  bool _confirmingCount = false;
   bool _remembering = false;
   bool _rememberPlaces = true;
   bool _suggestionsLoading = false;
@@ -480,7 +482,13 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
 
   /// [preStock] 为真 = 「先入库后质检」按钮，否则 = 「登记并送检」按钮。
   Future<void> _save({required bool preStock}) async {
-    if (_saving || _remembering || !_canRegister || _submitted) return;
+    if (_saving ||
+        _confirmingCount ||
+        _remembering ||
+        !_canRegister ||
+        _submitted) {
+      return;
+    }
     final wantPreStock = preStock && _canStockInBeforeInspection;
     if (_stockInBeforeInspection != wantPreStock) {
       setState(() => _stockInBeforeInspection = wantPreStock);
@@ -566,6 +574,19 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       return;
     }
 
+    Map<String, double>? countedQuantities;
+    if (wantPreStock) {
+      setState(() => _confirmingCount = true);
+      try {
+        countedQuantities = await showProductionPreStockCountDialog(
+          context,
+          rows.map((row) => row.item).toList(growable: false),
+        );
+      } finally {
+        if (mounted) setState(() => _confirmingCount = false);
+      }
+      if (countedQuantities == null || !mounted) return;
+    }
     final reportIds = byReport.keys.toList()..sort();
     // 2026-09-12：原一整段连排确认文案把弹窗顶得巨长，改「一句结论 + 短要点」，
     // 高度与宽度由 UtenDialog 统一兜（限宽 460 / 限高 60% 屏高 / 超出自滚）。
@@ -583,7 +604,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
             ? const [
                 '同一事务逐单登记成品仓与库位，逐行送品质部检查。',
                 '品质部到库位检验；合格由系统按本次登记的成品仓与库位自动点收入库，仓库不再确认第二次。',
-                '自动点收按报工量全量入库：需要按实物短收改量的批次请改用「登记并送检」。',
+                '自动点收只适用于已逐行核对实点数的批次；数量有差异请用「登记并送检」并按实际点收。',
                 '不合格不动库存，照常走品质恢复与补产。',
                 '任一报工状态、权限、品质或并发校验失败，整批回滚。',
               ]
@@ -623,6 +644,9 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                       {
                         'reportItemId': row.item.reportItemId,
                         'place': row.place.text.trim(),
+                        if (wantPreStock)
+                          'countedQty':
+                              countedQuantities![row.item.reportItemId],
                       },
                   ],
                 },
@@ -982,7 +1006,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                       Tooltip(
                         message:
                             '登记的同时承诺：品质合格由系统按本次登记的成品仓与库位自动点收入库，'
-                            '仓库不再确认第二次(实收恒等于报工量，放弃短收改量)；不合格仍不动库存',
+                            '须逐行确认实点数与申报数一致；品质合格后自动点收，不合格仍不动库存；数量不符请用人工点收',
                         child: UtenButton(
                           key: const Key(
                             'production-finished-arrival-batch-stock-in-first',
@@ -1002,7 +1026,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                                   '请先勾选要登记送检的明细行（未勾选的行本次不登记）',
                                 )
                               : null,
-                          child: const Text('先入库后质检'),
+                          child: const Text('清点上架后送检'),
                         ),
                       ),
                     UtenButton(
@@ -1271,6 +1295,20 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       cellBuilder: (context, row) =>
           Text(_quantity(row.item.reportedQty), textAlign: TextAlign.right),
     ),
+    if (_grid.rows.any((row) => row.item.countedQty != null))
+      EditableGridColumn(
+        key: 'countedQty',
+        label: '仓库实点',
+        width: 110,
+        numeric: true,
+        textOf: (row) => row.item.countedQty == null
+            ? '未记录'
+            : _quantity(row.item.countedQty!),
+        cellBuilder: (context, row) => Text(
+          row.item.countedQty == null ? '未记录' : _quantity(row.item.countedQty!),
+          textAlign: TextAlign.right,
+        ),
+      ),
     EditableGridColumn(
       key: 'warehouse',
       label: '成品仓',

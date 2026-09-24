@@ -34,6 +34,7 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 import '../models/production_finished_inbound_task.dart';
+import '../widgets/production_pre_stock_count_dialog.dart';
 import '../providers/production_finished_arrival_fill_memory.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/production_finished_inbound_task_repository.dart';
@@ -102,6 +103,7 @@ class _ProductionFinishedArrivalRegistrationPageState
   String? _validationError;
   bool _loading = false;
   bool _saving = false;
+  bool _confirmingCount = false;
   bool _remembering = false;
   bool _reversing = false;
   bool _rememberPlaces = true;
@@ -432,7 +434,7 @@ class _ProductionFinishedArrivalRegistrationPageState
 
   /// [preStock] 为真 = 「先入库后质检」按钮，否则 = 「登记并送检」按钮。
   Future<void> _save({required bool preStock}) async {
-    if (_saving || _remembering || !_canRegister) return;
+    if (_saving || _confirmingCount || _remembering || !_canRegister) return;
     final wantPreStock = preStock && _canStockInBeforeInspection;
     if (_stockInBeforeInspection != wantPreStock) {
       setState(() => _stockInBeforeInspection = wantPreStock);
@@ -514,6 +516,20 @@ class _ProductionFinishedArrivalRegistrationPageState
       return;
     }
 
+    Map<String, double>? countedQuantities;
+    if (wantPreStock) {
+      setState(() => _confirmingCount = true);
+      try {
+        countedQuantities = await showProductionPreStockCountDialog(
+          context,
+          rows.map((row) => row.item).toList(growable: false),
+        );
+      } finally {
+        if (mounted) setState(() => _confirmingCount = false);
+      }
+      if (countedQuantities == null || !mounted) return;
+    }
+
     // 按行仓分组：一个仓一个登记批次 + 一张品质检查单（V469 一批一仓，V547 一仓一单）。
     final byWarehouse = <String, List<_FinishedArrivalRegistrationGridRow>>{};
     for (final row in rows) {
@@ -540,6 +556,8 @@ class _ProductionFinishedArrivalRegistrationPageState
             {
               'reportItemId': row.item.reportItemId,
               'place': row.place.text.trim(),
+              if (wantPreStock)
+                'countedQty': countedQuantities![row.item.reportItemId],
             },
         ],
       };
@@ -1015,7 +1033,7 @@ class _ProductionFinishedArrivalRegistrationPageState
             Tooltip(
               message:
                   '登记的同时承诺：品质合格由系统按本次登记的成品仓与库位自动点收入库，'
-                  '仓库不再确认第二次(实收恒等于报工量，放弃短收改量)；不合格仍不动库存',
+                  '须逐行确认实点数与申报数一致；品质合格后自动点收，不合格仍不动库存；数量不符请用人工点收',
               child: UtenButton(
                 key: const Key('production-finished-arrival-stock-in-first'),
                 size: UtenButtonSize.large,
@@ -1029,7 +1047,7 @@ class _ProductionFinishedArrivalRegistrationPageState
                     ? null
                     : () => _save(preStock: true),
                 onDisabledTap: onEmptySelection,
-                child: const Text('先入库后质检'),
+                child: const Text('清点上架后送检'),
               ),
             ),
           UtenButton(
@@ -1499,6 +1517,20 @@ class _ProductionFinishedArrivalRegistrationPageState
       cellBuilder: (context, row) =>
           Text(_quantity(row.item.reportedQty), textAlign: TextAlign.right),
     ),
+    if (_grid.rows.any((row) => row.item.countedQty != null))
+      EditableGridColumn(
+        key: 'countedQty',
+        label: '仓库实点',
+        width: 110,
+        numeric: true,
+        textOf: (row) => row.item.countedQty == null
+            ? '未记录'
+            : _quantity(row.item.countedQty!),
+        cellBuilder: (context, row) => Text(
+          row.item.countedQty == null ? '未记录' : _quantity(row.item.countedQty!),
+          textAlign: TextAlign.right,
+        ),
+      ),
     if (!(_detail?.registered ?? false))
       EditableGridColumn(
         key: 'warehouse',

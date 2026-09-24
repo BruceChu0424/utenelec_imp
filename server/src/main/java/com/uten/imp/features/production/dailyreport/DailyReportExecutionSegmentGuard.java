@@ -55,7 +55,7 @@ public class DailyReportExecutionSegmentGuard {
                         line.getColorId(),
                         line.getUnitId(),
                         line.getUnitRate(),
-                        line.getQty(),Boolean.TRUE.equals(line.getIsFinal())))
+                        line.getQty(),Boolean.TRUE.equals(line.getIsFinal()),line.isActualSurplus()))
                 .toList();
         validateAndLock(
                 reportId, reportDepartmentId, normalized, "DRAFT", true);
@@ -76,7 +76,7 @@ public class DailyReportExecutionSegmentGuard {
                         item.getColorId(),
                         item.getUnitId(),
                         item.getUnitRate(),
-                        item.getQty(),item.isFinal()))
+                        item.getQty(),item.isFinal(),item.isActualSurplus()))
                 .toList();
         validateAndLock(reportId, null, lines, "APPROVED", false);
     }
@@ -106,7 +106,7 @@ public class DailyReportExecutionSegmentGuard {
                         item.getColorId(),
                         item.getUnitId(),
                         item.getUnitRate(),
-                        item.getQty(),item.isFinal()))
+                        item.getQty(),item.isFinal(),item.isActualSurplus()))
                 .toList();
         Map<UUID, SegmentSnapshot> segments = lockAndValidateIdentity(null, lines, true);
         for (ReportLine line : lines) {
@@ -132,10 +132,10 @@ public class DailyReportExecutionSegmentGuard {
             if (line.qty() == null || line.qty().signum() <= 0) {
                 throw validation("执行段报工数量必须大于 0");
             }
-            if (line.recoveryAuthorizationId() == null) {
+            if (line.recoveryAuthorizationId() == null && !line.actualSurplus()) {
                 requested.merge(
                         line.executionSegmentId(), line.qty(), BigDecimal::add);
-            } else {
+            } else if (line.recoveryAuthorizationId()!=null) {
                 recoveryLines.add(line);
             }
         }
@@ -156,7 +156,7 @@ public class DailyReportExecutionSegmentGuard {
         for (ReportLine line : lines) {
             BigDecimal capacity = validateSalesAllocation(line, segments.get(line.executionSegmentId()));
             if (line.executionSegmentSalesAllocationId() != null
-                    && line.recoveryAuthorizationId() == null) {
+                    && line.recoveryAuthorizationId() == null && !line.actualSurplus()) {
                 salesRequested.merge(
                         line.executionSegmentSalesAllocationId(),
                         line.qty(),
@@ -165,7 +165,7 @@ public class DailyReportExecutionSegmentGuard {
                         line.executionSegmentSalesAllocationId(),
                         capacity);
             } else if (line.executionSegmentId() != null
-                    && line.recoveryAuthorizationId() == null) {
+                    && line.recoveryAuthorizationId() == null && !line.actualSurplus()) {
                 internalRequested.merge(line.executionSegmentId(), line.qty(), BigDecimal::add);
                 internalCapacities.put(line.executionSegmentId(), capacity);
             }
@@ -189,9 +189,8 @@ public class DailyReportExecutionSegmentGuard {
                 throw conflict("内部生产任务尚差 " + remaining.stripTrailingZeros().toPlainString()
                         + "，请在原任务继续分次报工，或先由计划处理剩余生产和父级供给责任；不能用提前完结生成无来源补产");
             }
-            if (!"ZERO_MATERIAL".equals(segment.materialRequirementMode())) {
-                requireMaterialCapacity(segment, existing, entry.getValue());
-            }
+            // Actual consumption is validated and settled against exact ISSUE sources.
+            // Frozen BOM output capacity remains a planning hint, not a physical output ceiling.
         }
         for (Map.Entry<UUID, BigDecimal> entry :
                 salesRequested.entrySet()) {
@@ -372,6 +371,8 @@ public class DailyReportExecutionSegmentGuard {
                 ORDER BY id FOR UPDATE
                 """).setParameter("segmentId",segment.id()).getResultList();
         if (demands.isEmpty()) {
+            if(Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_actual_supplement_material_ready(:id)")
+                    .setParameter("id",segment.id()).getSingleResult()))return;
             if (segment.sourceSegmentId()!=null && Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_split_batch_empty_issued(:id)")
                     .setParameter("id",segment.id()).getSingleResult())) return;
             throw conflict("执行工单缺少正式物料需求，不能按零物料任务报工");
@@ -379,25 +380,6 @@ public class DailyReportExecutionSegmentGuard {
         // FULL_KIT is a START condition. Once IN_PROGRESS, a genuine return may
         // restore unused reservation quantity and move a demand back to ALLOCATED.
         // Its still-supported output remains reportable under the shared net capacity.
-    }
-
-    /** Both warehouse issues and workshop transfers must support the reported output. */
-    private void requireMaterialCapacity(
-            SegmentSnapshot segment, BigDecimal existing, BigDecimal requested) {
-        Object cap = em.createNativeQuery("""
-                        SELECT fn_execution_material_output_capacity(:segmentId, TRUE)
-                        """)
-                .setParameter("segmentId", segment.id())
-                .getSingleResult();
-        BigDecimal limit = decimal(cap);
-        BigDecimal total = existing.add(requested);
-        if (total.compareTo(limit) > 0) {
-            throw conflict("生产工单 " + segment.segmentCode()
-                    + " 按实际已领料和直送投入量最多可报 "
-                    + limit.stripTrailingZeros().toPlainString()
-                    + "，本次累计 " + total.stripTrailingZeros().toPlainString()
-                    + " 超出；请继续领料或等待直送投入后再报");
-        }
     }
 
     private void validateLegacyPlanItemAccess(List<ReportLine> lines) {
@@ -431,6 +413,11 @@ public class DailyReportExecutionSegmentGuard {
     }
 
     private BigDecimal validateSalesAllocation(ReportLine line, SegmentSnapshot segment) {
+        if (line.actualSurplus()) {
+            if(line.executionSegmentId()==null || line.executionSegmentSalesAllocationId()!=null || line.salesOrderItemId()!=null)
+                throw validation("实际超产只能形成原工单的公共产出");
+            return BigDecimal.ZERO;
+        }
         if (line.executionSegmentId() == null) {
             if (line.executionSegmentSalesAllocationId() != null) {
                 throw conflict(
@@ -562,6 +549,7 @@ public class DailyReportExecutionSegmentGuard {
                           ON report.id = item.report_id
                         WHERE item.execution_segment_id = :segmentId
                           AND item.fqc_recovery_authorization_id IS NULL
+                          AND NOT item.is_actual_surplus
                           AND item.report_id <> :reportId
                           AND item.is_deleted = FALSE
                           AND report.is_deleted = FALSE
@@ -587,6 +575,7 @@ public class DailyReportExecutionSegmentGuard {
                         WHERE item.execution_segment_sales_allocation_id =
                               :allocationId
                           AND item.fqc_recovery_authorization_id IS NULL
+                          AND NOT item.is_actual_surplus
                           AND item.report_id <> :reportId
                           AND item.is_deleted = FALSE
                           AND report.is_deleted = FALSE
@@ -608,6 +597,7 @@ public class DailyReportExecutionSegmentGuard {
                   AND item.execution_segment_sales_allocation_id IS NULL
                   AND item.sales_order_item_id IS NULL
                   AND item.fqc_recovery_authorization_id IS NULL
+                          AND NOT item.is_actual_surplus
                   AND item.report_id <> :reportId
                   AND item.is_deleted = FALSE AND report.is_deleted = FALSE
                 """ + " AND " + statuses)
@@ -643,7 +633,8 @@ public class DailyReportExecutionSegmentGuard {
             UUID unitId,
             BigDecimal unitRate,
             BigDecimal qty,
-            boolean finalReport) {
+            boolean finalReport,
+            boolean actualSurplus) {
     }
 
     private record SegmentSnapshot(

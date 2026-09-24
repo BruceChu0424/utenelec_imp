@@ -38,6 +38,7 @@ import '../../../shared/auth/permissions.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../widgets/sales_progress_badge.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 class SalesHubPage extends ConsumerWidget {
@@ -49,6 +50,9 @@ class SalesHubPage extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final perms = ref.watch(currentPermissionsProvider);
     final superAdmin = ref.watch(isSuperAdminProvider);
+    // 返回 hub 即重拉徽章汇总（与采购/委外 hub 同款）：hub 是「办完事回来看
+    // 还剩什么」的落点，各卡片红/黄徽章要跟上刚才办完的操作。
+    ref.onPageResume(RouteName.sales, () => refreshBadges(ref));
     // 卡片显隐 = hub 目录登记的落点 + 路由守卫(与 /sales 入口守卫同源，ADR-109)。
     bool canOpen(String location) =>
         hubCardAllowed(RouteName.sales, location, perms, superAdmin);

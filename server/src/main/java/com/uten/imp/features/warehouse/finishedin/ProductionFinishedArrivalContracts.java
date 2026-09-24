@@ -34,7 +34,8 @@ public final class ProductionFinishedArrivalContracts {
             String remark,
             /**
              * 先入库后质检(V597)：TRUE = 品质合格时系统按本次登记的成品仓与库位自动点收入库，
-             * 仓库不再点第二次(实收恒等于报工量)。缺省/FALSE = 原「登记并送检」流程。
+             * 仓库必须先逐行填写实点数并与本批报工量核对一致；有差异则走人工点收。
+             * 缺省/FALSE = 原「登记并送检」流程。
              * 需要 production_finished_in:before_inspection，服务端另行兜底。
              */
             Boolean stockInBeforeInspection) {
@@ -53,7 +54,12 @@ public final class ProductionFinishedArrivalContracts {
 
     public record ArrivalRegistrationItemRequest(
             @NotNull UUID reportItemId,
-            @NotBlank @Size(max = 100) String place) {
+            @NotBlank @Size(max = 100) String place,
+            BigDecimal countedQty) {
+        /** Standard registration keeps its existing request shape. */
+        public ArrivalRegistrationItemRequest(UUID reportItemId, String place) {
+            this(reportItemId, place, null);
+        }
     }
 
     public record ArrivalRegistrationView(
@@ -250,6 +256,7 @@ public final class ProductionFinishedArrivalContracts {
             String place,
             String placeHint,
             UUID lastWarehouseId,
-            String lastWarehouseName) {
+            String lastWarehouseName,
+            BigDecimal countedQty) {
     }
 }

@@ -185,7 +185,15 @@ class _UtenCollapsingHeaderScrollViewState
 
   /// NestedScrollView 注入给 body 的 inner controller（body 里 primary 可滚动件
   /// 挂在它上面）。建 body 时记下，滚轮门要读表内位置。
+  ///
+  /// 紧凑回退分支同样上报：整页 CustomScrollView 的 inner 是 [_CompactPageScroll]
+  /// 自建的控制器（联动协调器不存在，滚轮门要把「页到顶后的余量」直接交给它）。
   ScrollController? _innerController;
+
+  /// 当前是否处于紧凑回退分支（整页滚 + body 定高内滚）。滚轮门的余量去向
+  /// 两分支不同：联动分支 outer.pointerScroll 会经协调器转投表内；紧凑分支的
+  /// outer 是普通页面滚动，到顶即钳住，余量必须显式交给 inner。
+  bool _compactMode = false;
 
   /// 滚轮门状态：方向（+1 收头部 / 表内下翻，-1 表内回顶 / 放头部；0 未上门）
   /// 与剩余空行程。
@@ -349,7 +357,21 @@ class _UtenCollapsingHeaderScrollViewState
       // 已经在表内滚了（触屏拖过 / 拖过滚动条），门失效。
       if (innerRoom > _epsilon) _disarm();
       final rest = _consumeGate(direction, delta);
-      if (rest > 0) outer.pointerScroll(rest);
+      if (rest > 0) {
+        if (_compactMode) {
+          // 紧凑回退：outer 是普通页面滚动、到顶即钳住；大字号把桌面端也压进
+          // 这个分支（2026-09-24 用户口径「字体放大后表格不会滑到顶」），余量
+          // 必须显式交给表内，否则滚轮在页到顶后全部变成无效滚动。
+          for (final position in _innerController?.positions ??
+              const <ScrollPosition>[]) {
+            if (position.hasPixels && position.hasContentDimensions) {
+              position.pointerScroll(rest);
+            }
+          }
+        } else {
+          outer.pointerScroll(rest);
+        }
+      }
       return;
     }
     if (innerRoom > _epsilon) {
@@ -361,7 +383,19 @@ class _UtenCollapsingHeaderScrollViewState
         _arm(direction);
         return;
       }
-      outer.pointerScroll(delta);
+      if (_compactMode) {
+        // 紧凑回退：先收表内（联动分支里 outer.pointerScroll 的负向余量经协调器
+        // 正是先回表内再放头部；紧凑分支的 outer 是普通页面滚动，必须显式先滚
+        // 表内，否则头部先回来、表内停在半途）。
+        for (final position in _innerController?.positions ??
+            const <ScrollPosition>[]) {
+          if (position.hasPixels && position.hasContentDimensions) {
+            position.pointerScroll(delta);
+          }
+        }
+      } else {
+        outer.pointerScroll(delta);
+      }
       return;
     }
     // 头部已经在放了（触屏拖过），门失效。
@@ -416,55 +450,65 @@ class _UtenCollapsingHeaderScrollViewState
           final smallViewport =
               constraints.maxWidth < widget.compactBreakpoint ||
               constraints.maxHeight < widget.compactHeightBreakpoint;
-          if (canFallBack && (smallViewport || _squeezedViewport == viewport)) {
-            return _CompactPageScroll(
+          // 滚轮交接门两分支都要在（2026-09-24）：紧凑分支此前没有这层 Listener，
+          // 滚轮直接被表内 Scrollable 吃掉——先滚表内、头部永不收起，大字号把
+          // 桌面端压进紧凑分支后用户口径「表格不会滑到顶」即此。
+          _compactMode = canFallBack &&
+              (smallViewport || _squeezedViewport == viewport);
+          final Widget content;
+          if (_compactMode) {
+            content = _CompactPageScroll(
               viewportHeight: constraints.maxHeight,
               collapsingHeader: widget.collapsingHeader,
               pinnedHeader: widget.pinnedHeader,
               pinnedHeaderExtent: widget.pinnedHeaderExtent,
               controller: _outer,
               bodyMinHeight: widget.compactBodyMinHeight,
+              onInnerController: (controller) =>
+                  _innerController = controller,
               body: widget.body,
             );
+          } else {
+            final body = canFallBack
+                ? _SqueezeGuard(
+                    viewport: viewport,
+                    minHeight: widget.compactBodyMinHeight,
+                    onSqueezed: _reportSqueezed,
+                    child: widget.body,
+                  )
+                : widget.body;
+            content = NestedScrollView(
+              controller: _outer,
+              headerSliverBuilder:
+                  (BuildContext context, bool innerBoxIsScrolled) {
+                    return <Widget>[
+                      if (widget.collapsingHeader != null)
+                        SliverToBoxAdapter(child: widget.collapsingHeader!),
+                      if (widget.pinnedHeader != null)
+                        SliverPersistentHeader(
+                          pinned: true,
+                          delegate: _PinnedHeaderDelegate(
+                            extent: widget.pinnedHeaderExtent!,
+                            child: widget.pinnedHeader!,
+                          ),
+                        ),
+                    ];
+                  },
+              body: Builder(
+                builder: (bodyContext) {
+                  // 记下 NestedScrollView 注入的 inner controller（滚轮门读表内位置）。
+                  _innerController = PrimaryScrollController.maybeOf(
+                    bodyContext,
+                  );
+                  return body;
+                },
+              ),
+            );
           }
-          final body = canFallBack
-              ? _SqueezeGuard(
-                  viewport: viewport,
-                  minHeight: widget.compactBodyMinHeight,
-                  onSqueezed: _reportSqueezed,
-                  child: widget.body,
-                )
-              : widget.body;
           return Stack(
             fit: StackFit.expand,
             children: [
-              NestedScrollView(
-                controller: _outer,
-                headerSliverBuilder:
-                    (BuildContext context, bool innerBoxIsScrolled) {
-                      return <Widget>[
-                        if (widget.collapsingHeader != null)
-                          SliverToBoxAdapter(child: widget.collapsingHeader!),
-                        if (widget.pinnedHeader != null)
-                          SliverPersistentHeader(
-                            pinned: true,
-                            delegate: _PinnedHeaderDelegate(
-                              extent: widget.pinnedHeaderExtent!,
-                              child: widget.pinnedHeader!,
-                            ),
-                          ),
-                      ];
-                    },
-                body: Builder(
-                  builder: (bodyContext) {
-                    // 记下 NestedScrollView 注入的 inner controller（滚轮门读表内位置）。
-                    _innerController = PrimaryScrollController.maybeOf(
-                      bodyContext,
-                    );
-                    return body;
-                  },
-                ),
-              ),
+              content,
               // 滚轮交接门（见文件头）：透明覆盖层在命中序上先于内外 Scrollable
               // 拿到滚轮；不吃点击 / 拖动 / 悬停，其余指针事件原样到达下层。
               Positioned.fill(
@@ -528,6 +572,7 @@ class _CompactPageScroll extends StatefulWidget {
     required this.viewportHeight,
     required this.body,
     required this.bodyMinHeight,
+    required this.onInnerController,
     this.collapsingHeader,
     this.pinnedHeader,
     this.pinnedHeaderExtent,
@@ -537,6 +582,10 @@ class _CompactPageScroll extends StatefulWidget {
   final double viewportHeight;
   final Widget body;
   final double bodyMinHeight;
+
+  /// 把自建的 inner controller（body 里 primary 可滚动件挂在它上面）上报给宿主
+  /// ——滚轮交接门在紧凑分支要把「页到顶后的余量」直接交给它。
+  final ValueChanged<ScrollController> onInnerController;
   final Widget? collapsingHeader;
   final Widget? pinnedHeader;
   final double? pinnedHeaderExtent;
@@ -557,6 +606,8 @@ class _CompactPageScrollState extends State<_CompactPageScroll> {
 
   @override
   Widget build(BuildContext context) {
+    // 上报 inner controller（幂等）：宿主的滚轮门要读表内位置/直接驱动表内。
+    widget.onInnerController(_inner);
     // 顶部滚走后 body 几乎占满视口；预留 48 给页面自身的边距/底栏呼吸空间。
     final bodyHeight = math.max(
       widget.bodyMinHeight,

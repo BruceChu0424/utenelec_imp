@@ -1,5 +1,5 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空(支持至 V693；保留主档、人事、权限与治理证据)
+-- 本地/测试库业务数据一键清空(支持至 V701；保留主档、人事、权限与治理证据)
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
@@ -539,9 +539,23 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('user_permission_overrides', 'PRESERVE'),
 ('user_preferences', 'PRESERVE'),
 ('users', 'PRESERVE'),
--- V693 仓库负责人(ADR-115)：仓库的附属设置，随仓库/员工主档保留。
-('warehouse_keepers', 'PRESERVE'),
 ('warehouses', 'PRESERVE');
+
+-- Versioned settings and approval/source ledgers, never guessed into an older schema.
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition FROM (VALUES
+('warehouse_keepers', 'PRESERVE'),
+('production_overproduction_rate_requests', 'CLEAR'),
+('production_overproduction_rate_decisions', 'CLEAR'),
+('production_actual_output_supplement_requests', 'CLEAR'),
+('production_actual_output_supplement_proofs', 'CLEAR'),
+('production_actual_output_supplement_reversals', 'CLEAR'),
+('production_actual_output_supplement_claims', 'CLEAR'),
+('production_material_increment_requests', 'CLEAR'),
+('production_material_increment_decisions', 'CLEAR'),
+('production_material_increment_reversals', 'CLEAR')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
 
 -- V436/V440 add six business tables. Support the current live V431 catalog and
 -- the forward V440+ catalog without inventing absent tables; the count gate
@@ -1224,10 +1238,19 @@ BEGIN
         -- V692 热表延迟约束触发器按相关列起跳(ADR-106 口径补齐 V646/V690 的四个触发器): 只重建触发器, 不加表; 本迁移 620→621。
         (692, 621),
         -- V693 仓库负责人与仓库类通知按仓分发 (ADR-115): 新增 warehouse_keepers 一张 PRESERVE 表 (PRESERVE 99→100); 本迁移 621→622。
-        (693, 622)
+        (693, 622),
+        -- V694-V697 实际产出分账、公共库存成本、进度与仓库实点证据：只加列/函数/守卫/视图，不加表。
+        (694, 623),
+        (695, 624),
+        (696, 625),
+        (697, 626),
+        (698, 627),
+        (699, 628),
+        (700, 629),
+        (701, 630), (702, 631)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V693完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669 跳号)，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V702完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669 跳号)，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -1397,7 +1420,17 @@ BEGIN
             ('production_workshop_return_preplan_events', 619),
             -- V680 服务端登录会话与再认证失败计数 (ADR-110): 清空业务数据即全员下线, 会话一并清空。
             ('auth_sessions', 680),
-            ('auth_step_up_states', 680)
+            ('auth_step_up_states', 680),
+            ('warehouse_keepers', 693),
+            ('production_overproduction_rate_requests', 698),
+            ('production_overproduction_rate_decisions', 698),
+            ('production_actual_output_supplement_requests', 700),
+            ('production_actual_output_supplement_proofs', 700),
+            ('production_actual_output_supplement_reversals', 700),
+            ('production_actual_output_supplement_claims', 700),
+            ('production_material_increment_requests', 702),
+            ('production_material_increment_decisions', 702),
+            ('production_material_increment_reversals', 702)
     ) AS required(table_name, introduced_version)
     WHERE (to_regclass(format('public.%I', required.table_name)) IS NOT NULL)
         IS DISTINCT FROM (applied_max_version >= required.introduced_version);
@@ -1406,7 +1439,7 @@ BEGIN
     END IF;
     SELECT count(*) INTO current_operational_table_count
     FROM reset_business_table_policy
-    WHERE table_name IN ('preplan_future_supply_transfers','preplan_future_supply_transfer_cancellations','preplan_reallocation_make_supplements','production_material_return_requests','production_material_return_request_items','production_material_return_request_cancellations','production_execution_segment_splits','production_execution_segment_growth_events','sales_shipment_submission_events','production_material_movement_links','stock_value_acquisition_sources','stock_value_position_transfers','stock_value_production_cost_dirty','stock_value_production_cost_inputs','stock_value_production_cost_objects','stock_value_production_cost_outputs','stock_value_production_cost_revisions','stock_value_production_cost_shares','stock_value_production_cost_tasks','procurement_iqc_consideration_reversals','procurement_iqc_consideration_review_approvals','procurement_iqc_credit_case_allocations','procurement_iqc_credit_documents','procurement_iqc_credit_slices','procurement_iqc_funding_settlements','procurement_iqc_funding_slices','procurement_iqc_quality_consideration_parts','procurement_iqc_stock_consideration_parts','procurement_receipt_consideration_parts','subcontract_receipt_material_consumptions','production_fqc_inspection_sheets','production_fqc_inspection_sheet_items','production_finished_arrival_registration_reversals','production_daily_report_material_usages','production_workshop_direct_transfers','production_workshop_direct_transfer_items','production_workshop_direct_transfer_reversals','expense_claim_invoices','expense_claim_events','production_daily_report_target_events','production_daily_report_material_release_events','production_workshop_direct_source_allocations','production_workshop_direct_source_events','production_workshop_direct_legacy_anomalies','production_material_return_receiving_confirmations','production_workshop_material_return_slices','production_workshop_material_custody_preparations','production_workshop_material_custody_moves','production_workshop_material_custody_reversals','production_workshop_material_custody_handoffs','production_workshop_custody_handoff_reversals','production_workshop_custody_reverse_preparations','production_workshop_return_preplan_events','subcontract_short_delivery_cases','subcontract_short_delivery_case_events','subcontract_component_stock_handoffs','auth_sessions','auth_step_up_states');
+    WHERE table_name IN ('preplan_future_supply_transfers','preplan_future_supply_transfer_cancellations','preplan_reallocation_make_supplements','production_material_return_requests','production_material_return_request_items','production_material_return_request_cancellations','production_execution_segment_splits','production_execution_segment_growth_events','sales_shipment_submission_events','production_material_movement_links','stock_value_acquisition_sources','stock_value_position_transfers','stock_value_production_cost_dirty','stock_value_production_cost_inputs','stock_value_production_cost_objects','stock_value_production_cost_outputs','stock_value_production_cost_revisions','stock_value_production_cost_shares','stock_value_production_cost_tasks','procurement_iqc_consideration_reversals','procurement_iqc_consideration_review_approvals','procurement_iqc_credit_case_allocations','procurement_iqc_credit_documents','procurement_iqc_credit_slices','procurement_iqc_funding_settlements','procurement_iqc_funding_slices','procurement_iqc_quality_consideration_parts','procurement_iqc_stock_consideration_parts','procurement_receipt_consideration_parts','subcontract_receipt_material_consumptions','production_fqc_inspection_sheets','production_fqc_inspection_sheet_items','production_finished_arrival_registration_reversals','production_daily_report_material_usages','production_workshop_direct_transfers','production_workshop_direct_transfer_items','production_workshop_direct_transfer_reversals','expense_claim_invoices','expense_claim_events','production_daily_report_target_events','production_daily_report_material_release_events','production_workshop_direct_source_allocations','production_workshop_direct_source_events','production_workshop_direct_legacy_anomalies','production_material_return_receiving_confirmations','production_workshop_material_return_slices','production_workshop_material_custody_preparations','production_workshop_material_custody_moves','production_workshop_material_custody_reversals','production_workshop_material_custody_handoffs','production_workshop_custody_handoff_reversals','production_workshop_custody_reverse_preparations','production_workshop_return_preplan_events','subcontract_short_delivery_cases','subcontract_short_delivery_case_events','subcontract_component_stock_handoffs','auth_sessions','auth_step_up_states','production_overproduction_rate_requests','production_overproduction_rate_decisions','production_actual_output_supplement_requests','production_actual_output_supplement_proofs','production_actual_output_supplement_reversals','production_actual_output_supplement_claims','production_material_increment_requests','production_material_increment_decisions','production_material_increment_reversals');
 
     -- V459 新增兼职部门表（PRESERVE 95→96，组织与权限治理数据）。
     -- V579 新增客户/供应商联系方式·地址·跟进记录三张子表(PRESERVE 96→99，
@@ -1424,7 +1457,6 @@ BEGIN
        -- V677 删角色体系四张 PRESERVE 表(102→98, ADR-109)；V686 新增总账附表行绑定(98→99, ADR-112)。
        OR (applied_max_version BETWEEN 677 AND 685 AND preserve_count <> 98)
        OR (applied_max_version BETWEEN 686 AND 692 AND preserve_count <> 99)
-       -- V693 仓库负责人 warehouse_keepers 为 PRESERVE(ADR-115): 99→100。
        OR (applied_max_version >= 693 AND preserve_count <> 100)
        OR NOT (
            (v446_business_table_count = 0

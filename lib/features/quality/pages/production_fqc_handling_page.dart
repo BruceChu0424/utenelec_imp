@@ -500,12 +500,17 @@ class _ProductionFqcSheetHandlingPageState
                           UtenMenuItem(
                             label: '查看详情与证据',
                             icon: Icons.visibility_outlined,
-                            onTap: () => context.push(
-                              RouteName.productionFqcInspectionHandling(
-                                row.inspection.id,
-                              ),
-                              extra: row.inspection,
-                            ),
+                            // 单任务办理页里登记了决定的话，返回时重拉本检查单
+                            // （fire-and-forget push 此前不重载，行状态停在旧值）。
+                            onTap: () async {
+                              await context.push(
+                                RouteName.productionFqcInspectionHandling(
+                                  row.inspection.id,
+                                ),
+                                extra: row.inspection,
+                              );
+                              if (mounted) _load();
+                            },
                           ),
                         ],
                         isLoading: _loading,

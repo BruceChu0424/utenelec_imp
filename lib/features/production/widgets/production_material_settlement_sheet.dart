@@ -451,6 +451,9 @@ class _MaterialSettlementSheetState
       if (!mounted) return;
       context.appSuccess('原用料登记已冲销');
       _closed = true;
+      // 冲销改变执行段用量事实：与 _submit 同口径补执行刷新信号（此前只有
+      // 登记有、冲销漏了，车间任务/调度台的进度与徽章不即时更新）。
+      refreshAfterProductionPlanGenerated(ref);
       await _load();
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);
@@ -492,6 +495,9 @@ class _MaterialSettlementSheetState
       if (!mounted) return;
       setState(() => _closed = true);
       context.appSuccess('生产任务已完成，材料与成品数量均已结清');
+      // 任务完结让工单离场：执行刷新信号让车间任务/调度台即时收口
+      // （与登记/冲销同口径，此前完成动作漏了）。
+      refreshAfterProductionPlanGenerated(ref);
       await _load();
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);

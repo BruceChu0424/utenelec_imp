@@ -322,6 +322,14 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 || warehouseId == null || stockDocumentId == null) {
             return;
         }
+        // Public output retains the originating plan for audit and costing,
+        // but cannot inherit that plan's original material/sales obligation.
+        List<UUID> publicItems = NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT id FROM stock_document_items
+                WHERE doc_id = :documentId AND fn_finished_in_is_public_output(id)
+                """).setParameter("documentId", stockDocumentId), UUID.class);
+        lines = lines.stream().filter(line -> !publicItems.contains(line.stockDocumentItemId())).toList();
+        if (lines.isEmpty()) return;
         List<Object[]> contexts = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                         SELECT plan.material_analysis_id,

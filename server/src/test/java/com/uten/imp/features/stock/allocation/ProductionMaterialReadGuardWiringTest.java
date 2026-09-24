@@ -123,7 +123,8 @@ class ProductionMaterialReadGuardWiringTest {
         ProductionMaterialSettlementService service =
                 new ProductionMaterialSettlementService(
                         em, mock(TxSessionVars.class), access,
-                        mock(com.uten.imp.features.stock.valuation.ProductionInventoryValueService.class));
+                        mock(com.uten.imp.features.stock.valuation.ProductionInventoryValueService.class),
+                        mock(com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService.class));
 
         assertThatThrownBy(() -> service.clearance(planId))
                 .isInstanceOf(ApiException.class);

@@ -64,6 +64,18 @@ public class ProductionQualityMutationFootprintService {
                 result.row("report",row); result.plan((UUID)row[2]); result.inventory((UUID)row[3],(UUID)row[4]);
                 result.authorization((UUID)row[5]);
             }
+            // Additional actual-output plans settle the original issue owner's
+            // material. Include that exact plan before taking any inventory lock.
+            for(var row:rows("""
+                    SELECT usage.id,demand.plan_id,demand.goods_id,demand.color_id,
+                           usage.xmin::text,demand.xmin::text
+                    FROM production_daily_report_material_usages usage
+                    JOIN production_material_demands demand ON demand.id=usage.demand_id
+                    WHERE usage.report_id IN (:ids) ORDER BY demand.plan_id,demand.id,usage.id
+                    """,ids)) {
+                result.row("report-material-source",row);
+                result.plan((UUID)row[1]);result.inventory((UUID)row[2],(UUID)row[3]);
+            }
             // A workshop handoff also mutates the receiving task and its material
             // ownership. Discover that plan before any report/stock lock, even
             // when it belongs to another analysis in the same workshop.

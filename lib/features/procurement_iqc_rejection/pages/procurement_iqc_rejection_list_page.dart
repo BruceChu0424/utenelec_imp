@@ -13,6 +13,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/paged_result.dart';
@@ -57,6 +58,9 @@ class _ProcurementIqcRejectionListPageState
   bool _loading = true;
   String? _error;
   int _requestId = 0;
+
+  /// 「返回即刷新」登记用的本页路径（独立路由形态，build 首次捕获）。
+  String? _myLocation;
 
   ProcurementIqcRejectionGateway get _repository =>
       widget.repository ?? ref.read(procurementIqcRejectionRepositoryProvider);
@@ -163,6 +167,13 @@ class _ProcurementIqcRejectionListPageState
 
   @override
   Widget build(BuildContext context) {
+    // 独立路由形态注册「返回即刷新」（2026-09-24）：从本页 push 进详情办结/反审/
+    // 登记退回后返回，重拉当前页——此前只靠嵌入宿主的 refreshTick，独立入口
+    // （通知深链/收藏直达）返回后行状态停留在旧值，要手动刷新。
+    if (!widget.embedded) {
+      _myLocation ??= currentLocationOr(context, _defaultBackPath);
+      ref.onPageResume(_myLocation!, () => _load(_result?.page ?? 1));
+    }
     final result = _result;
     final body = SafeArea(
       child: _loading && result == null

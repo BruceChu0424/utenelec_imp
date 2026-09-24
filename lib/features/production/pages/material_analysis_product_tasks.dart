@@ -559,107 +559,66 @@ abstract class _MaterialAnalysisProductTasksState
           _priorityEditor(theme, byId),
         ],
         const SizedBox(height: UtenSpacing.s8),
-        // Route entries retain issued history and show status inside each list.
-        // 2026-09-15 用户口径：恢复 2026-09-14 改版前的「图标卡」分桶入口
-        //（带边框卡 + 计数徽标 + chevron），分段栏形态撤下。
-        Wrap(
-          key: const Key('material-analysis-bucket-entries'),
-          spacing: UtenSpacing.s8,
-          runSpacing: UtenSpacing.s8,
-          children: [
-            for (final bucket in _AnalysisBucket.values)
-              _bucketEntryTile(theme, bucket),
-          ],
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+            final cardWidth = constraints.maxWidth.clamp(0.0, 244 * textScale);
+            return Wrap(
+              key: const Key('material-analysis-bucket-entries'),
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s12,
+              children: [
+                for (final bucket in _AnalysisBucket.values)
+                  SizedBox(width: cardWidth, child: _bucketEntryTile(bucket)),
+              ],
+            );
+          },
         ),
       ],
     );
   }
 
-  /// 分桶入口卡：图标 + 名称 + 计数徽标；计数 0 时灰显不可点。
-  Widget _bucketEntryTile(ThemeData theme, _AnalysisBucket bucket) {
-    final count = _bucketCount(bucket);
-    final enabled = count > 0 && !_busy;
-    final accent = _bucketAccent(theme, bucket);
-    return Semantics(
-      container: true,
-      button: true,
-      enabled: enabled,
-      label:
-          '${bucket.countLabel(_l10n)} $count 项。${bucket.semanticHint(_l10n)}',
-      child: InkWell(
-        key: Key('material-analysis-entry-${bucket.name}'),
-        onTap: enabled ? () => _openBucketDetail(bucket) : null,
-        borderRadius: UtenRadius.mdAll,
-        child: Container(
-          constraints: const BoxConstraints(minWidth: 168),
-          padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s12,
-            vertical: UtenSpacing.s12,
-          ),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: UtenRadius.mdAll,
-            border: Border.all(
-              color: enabled
-                  ? accent.withValues(alpha: 0.55)
-                  : theme.colorScheme.outlineVariant,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                _bucketIcon(bucket),
-                size: 20,
-                color: enabled ? accent : theme.colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Text(
-                bucket.countLabel(_l10n),
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: enabled
-                      ? theme.colorScheme.onSurface
-                      : theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s8,
-                  vertical: 2,
-                ),
-                decoration: BoxDecoration(
-                  color: enabled
-                      ? accent.withValues(alpha: 0.14)
-                      : theme.colorScheme.surfaceContainerLow,
-                  borderRadius: UtenRadius.smAll,
-                  border: Border.all(
-                    color: enabled
-                        ? accent.withValues(alpha: 0.5)
-                        : theme.colorScheme.outlineVariant,
-                  ),
-                ),
-                child: Text(
-                  '$count',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: enabled
-                        ? accent
-                        : theme.colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s4),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 18,
-                color: enabled ? accent : theme.colorScheme.onSurfaceVariant,
-              ),
-            ],
-          ),
-        ),
-      ),
+  /// 进行中与未下达分别计数；部分下达任务可同时出现在两侧。
+  Widget _bucketEntryTile(_AnalysisBucket bucket) {
+    final rows = _bucketRows(bucket);
+    final issued = rows.where((row) => _bucketRowHasIssued(row, bucket)).length;
+    final inProgress = rows
+        .where((row) => _bucketRowInProgress(row, bucket))
+        .length;
+    final pending = rows
+        .where((row) => _bucketRowHasPending(row, bucket))
+        .length;
+    return MaterialPreparationRouteCard(
+      routeId: bucket.name,
+      title: bucket == _AnalysisBucket.workshop
+          ? '下达自制'
+          : bucket.countLabel(_l10n),
+      compactTitle: switch (bucket) {
+        _AnalysisBucket.buy => '采购',
+        _AnalysisBucket.subcontract => '委外',
+        _AnalysisBucket.workshop => '自制',
+      },
+      hint: '${bucket.semanticHint(_l10n)} 黄色为进行中，红色为未下达；部分下达任务可同时计入。',
+      icon: _bucketIcon(bucket),
+      inProgressLabel: '进行中',
+      pendingLabel: '未下达',
+      inProgressCount: inProgress,
+      pendingCount: pending,
+      onOpen: rows.isNotEmpty && !_busy
+          ? () => _openBucketDetail(
+              bucket,
+              initialFilter: pending == 0 && issued > 0
+                  ? _PreparationTaskFilter.issued
+                  : _PreparationTaskFilter.pending,
+            )
+          : null,
+      onInProgress: inProgress > 0 && !_busy
+          ? () => _openBucketDetail(
+              bucket,
+              initialFilter: _PreparationTaskFilter.inProgress,
+            )
+          : null,
+      onPending: pending > 0 && !_busy ? () => _openBucketDetail(bucket) : null,
     );
   }
 
@@ -668,16 +627,6 @@ abstract class _MaterialAnalysisProductTasksState
     _AnalysisBucket.subcontract => Icons.precision_manufacturing_outlined,
     _AnalysisBucket.workshop => Icons.factory_outlined,
   };
-
-  Color _bucketAccent(ThemeData theme, _AnalysisBucket bucket) =>
-      switch (bucket) {
-        _AnalysisBucket.buy => theme.colorScheme.tertiary,
-        _AnalysisBucket.subcontract => theme.colorScheme.secondary,
-        _AnalysisBucket.workshop => theme.colorScheme.primary,
-      };
-
-  /// 各桶计数（入口徽标与详情页行数同一来源，不会漂移）。
-  int _bucketCount(_AnalysisBucket bucket) => _bucketRows(bucket).length;
 
   /// 分桶行投影缓存（按分析对象身份）：行投影含 `_pendingMakeCandidates`
   /// 的 O(物料²) 扫描，而路由转场动画期间入口/详情页每帧重建——不缓存时
@@ -745,6 +694,55 @@ abstract class _MaterialAnalysisProductTasksState
                   path.notifiedTargets.any((target) => target.target == route),
             ) ??
             false);
+  }
+
+  bool _bucketRowInProgress(_BucketRow row, _AnalysisBucket bucket) {
+    final product = row.product;
+    if (product != null) {
+      final status = product.planExecutionStatus?.trim().toUpperCase();
+      if (status != null && status.isNotEmpty) {
+        return const {
+          'SUBMITTED',
+          'APPROVED',
+          'WAITING',
+          'READY',
+          'DISPATCHED',
+          'IN_PROGRESS',
+        }.contains(status);
+      }
+      // Old snapshots must still have a real plan fact; fully transferred
+      // demand alone does not prove that a plan is running.
+      return product.approvedQty > 0 ||
+          product.submittedQty > 0 ||
+          product.latestPlanId?.isNotEmpty == true;
+    }
+    final route = bucket.supplyRoute;
+    if (route == null) return false;
+    return row.group?.paths.any(
+          (path) => path.notifiedTargets.any((target) {
+            if (target.target != route) return false;
+            final status = target.status?.trim().toUpperCase();
+            if (status != null && status.isNotEmpty) {
+              return const {'OPEN', 'CREATED', 'IN_PROGRESS'}.contains(status);
+            }
+            // Missing legacy action status may only use an explicit ongoing
+            // flow stage, never an already-stocked or unknown state.
+            return const {
+              'BUY_REQUESTED',
+              'BUY_PENDING_FINANCE',
+              'BUY_WAIT_RECEIPT',
+              'BUY_WAIT_IQC',
+              'BUY_WAIT_STOCK_IN',
+              'SC_REQUESTED',
+              'SC_PENDING_FINANCE',
+              'SC_WAIT_OUTBOUND',
+              'SC_WAIT_RETURN',
+              'SC_WAIT_IQC',
+              'SC_WAIT_STOCK_IN',
+            }.contains(path.flowStage?.trim().toUpperCase());
+          }),
+        ) ??
+        false;
   }
 
   bool _bucketRowHasPending(_BucketRow row, _AnalysisBucket bucket) {
@@ -849,11 +847,18 @@ abstract class _MaterialAnalysisProductTasksState
 
   /// 打开分桶详情页。详情页动作执行期间保持在前台（数量弹窗/计划向导经
   /// root Navigator 叠在详情页之上），不再先 pop 回宿主页弹窗。
-  Future<void> _openBucketDetail(_AnalysisBucket bucket) async {
+  Future<void> _openBucketDetail(
+    _AnalysisBucket bucket, {
+    _PreparationTaskFilter initialFilter = _PreparationTaskFilter.pending,
+  }) async {
     if (_busy) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => _MaterialAnalysisBucketPage(host: this, bucket: bucket),
+        builder: (_) => _MaterialAnalysisBucketPage(
+          host: this,
+          bucket: bucket,
+          initialFilter: initialFilter,
+        ),
       ),
     );
   }

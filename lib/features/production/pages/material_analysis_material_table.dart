@@ -5139,7 +5139,7 @@ abstract class _MaterialAnalysisMaterialTableState
     // 挂着不撤会盖住后面的冲突恢复弹窗。
     bucketActionBusyMessage.value = '正在取消物料分析';
     try {
-      final view = await ref
+      await ref
           .read(productionPlanRepositoryProvider)
           .cancelMaterialAnalysis(
             analysis: analysis,
@@ -5148,11 +5148,14 @@ abstract class _MaterialAnalysisMaterialTableState
           );
       bucketActionBusyMessage.value = null;
       if (!mounted) return;
-      setState(() {
-        _cancellingAnalysis = false;
-        _applyAnalysis(view);
-      });
+      setState(() => _cancellingAnalysis = false);
+      // 2026-09-24 用户口径「确认取消后应该返回任务中心并刷新，现在是还停留在
+      // 物料分析准备页面」：分析已取消，本页语义失效，不再就地应用已取消视图；
+      // 返回来源页（调度台/记录页/补产横幅都是 await push 打开的，返回即重拉），
+      // 深链无栈时归位调度台；徽章（待排产/准备中心计数）随取消立即重拉。
+      refreshBadges(ref);
       context.appSuccess('物料分析已取消');
+      popOrBackTo(context, defaultPath: RouteName.productionSchedule);
     } catch (error) {
       bucketActionBusyMessage.value = null;
       if (!mounted) return;

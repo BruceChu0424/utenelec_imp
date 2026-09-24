@@ -47,6 +47,7 @@ import '../models/production_execution_planning.dart';
 import '../models/production_execution_workbench.dart';
 import '../models/production_material_analysis.dart';
 import '../models/production_plan.dart';
+import '../providers/production_execution_refresh.dart';
 import '../repositories/production_execution_workbench_repository.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_execution_card_print_preview.dart';
@@ -359,6 +360,10 @@ class _ProductionPlanDetailPageState
       await fn(ref.read(productionPlanRepositoryProvider));
       if (!mounted) return;
       context.appSuccess(ok);
+      // 审核=下达执行段、红冲=收回执行段：车间任务页/调度台「进行中」的分类
+      // 徽章要即时跟上（此前只有日报详情 _signalExecutionChanged 有此信号，
+      // 计划侧漏了，审核完徽章要等下一次任意 bump）。
+      refreshAfterProductionPlanGenerated(ref);
       await _load();
       if (afterSuccess != null) {
         // 结果弹层前先撤遮罩（与下方 _openLatestPlanningResult 同口径）：遮罩是 root
@@ -938,7 +943,7 @@ class _ProductionPlanDetailPageState
   Widget _subplanProgressRow(ThemeData theme, MrpSubplanRef sp) {
     final pct = sp.percent.clamp(0.0, 1.0);
     final reversed = sp.status == -1;
-    final done = !reversed && (sp.closed || pct >= 1.0);
+    final done = !reversed && sp.closed;
     final statusText = reversed
         ? '红冲'
         : sp.status == 0
@@ -989,7 +994,8 @@ class _ProductionPlanDetailPageState
               ),
             ),
             Text(
-              '${fmt(sp.inboundQty)} / ${fmt(sp.totalQty)}',
+              '计划实收 ${fmt(sp.plannedInboundQty)} / ${fmt(sp.totalQty)}'
+              '${sp.actualSurplusInboundQty > 0 ? '\n公共超产实收 ${fmt(sp.actualSurplusInboundQty)}' : ''}',
               style: theme.textTheme.labelSmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -1069,6 +1075,9 @@ class _ProductionPlanDetailPageState
       await ref.read(productionPlanRepositoryProvider).delete(widget.id);
       if (!mounted) return;
       context.appSuccess('已删除');
+      // 删的是草稿：hub/列表的草稿徽章即时重拉（写修订号兜底返回刷新，但
+      // 栈顶可见的计划列表要立即少这行）。
+      refreshAfterProductionPlanGenerated(ref);
       // 返回键契约（路由设计 §十一）：pop 回来源（列表/任务中心/车间任务），
       // 栈空回 hub；不再硬编码列表路径（无列表权限的入口会落到 /access-denied）。
       popOrBackTo(context, defaultPath: RouteName.production);

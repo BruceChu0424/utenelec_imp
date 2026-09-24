@@ -878,7 +878,7 @@ class ProductionExecutionSegmentServiceTest {
                 // Continuous route state; START has one canonical capability.
                 false,
                 // V599 route plus V611 explicit-start capability.
-                null, false
+                null, false, false, BigDecimal.ZERO, BigDecimal.ZERO
         };
     }
     private void stubLockAndReplay(

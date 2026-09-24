@@ -787,6 +787,16 @@ public class ProductionExecutionSegmentService {
     private void requireMaterialsIssuedForStart(LockedSegment segment) {
         assignmentValidator.requireMaterialCustody(segment.id());
         if ("ZERO_MATERIAL".equals(segment.materialRequirementMode())) return;
+        if (Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM production_actual_output_supplement_proofs
+                    WHERE supplement_execution_segment_id=:id)
+                """).setParameter("id",segment.id()).getSingleResult())) {
+            if (!Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_actual_supplement_material_ready(:id)")
+                    .setParameter("id",segment.id()).getSingleResult())) {
+                throw conflict("追加产出缺少本批可用的原工单实际物料，不能借历史领料重复开工");
+            }
+            return;
+        }
         if (segment.sourceSegmentId()!=null && !Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_split_batch_prerequisites_issued(:id)")
                 .setParameter("id",segment.id()).getSingleResult()))
             throw conflict("前批共享的固定或整包物料尚未实际领齐，不能开工");
@@ -903,12 +913,13 @@ public class ProductionExecutionSegmentService {
                                s.plan_begin_date, s.plan_end_date,
                                s.material_kind_count,
                                s.shortage_kind_count,
-                               (s.material_ready OR fn_split_batch_empty_issued(s.id)),
+                               (s.material_ready OR fn_split_batch_empty_issued(s.id) OR fn_actual_supplement_material_ready(s.id)),
                                base.auto_promote_when_ready,
                                issue.demand_count,
                                issue.fulfilled_count,
                                CASE
                                  WHEN base.material_requirement_mode = 'ZERO_MATERIAL' OR fn_split_batch_empty_issued(s.id)
+                                      OR fn_actual_supplement_material_ready(s.id)
                                    THEN TRUE
                                  WHEN issue.demand_count > 0
                                   AND issue.fulfilled_count = issue.demand_count
@@ -950,7 +961,10 @@ public class ProductionExecutionSegmentService {
                                  AND plan.status=1 AND NOT plan.is_closed AND NOT plan.is_canceled AND NOT plan.is_stopped
                                  AND package.status='CONFIRMED' AND NOT package.is_deleted
                                  AND base.workshop_department_id IS NOT NULL AND base.responsible_employee_id IS NOT NULL
-                                 AND fn_execution_start_material_ready(base.id))
+                                 AND fn_execution_start_material_ready(base.id)),
+                               fn_production_actual_output_reportable(base.id),
+                               COALESCE(finished.inbound_qty, 0) - COALESCE(finished.actual_surplus_inbound_qty, 0),
+                               COALESCE(finished.actual_surplus_inbound_qty, 0)
                         FROM v_production_execution_segments s
                         JOIN production_execution_segments base
                           ON base.id = s.id
@@ -965,7 +979,8 @@ public class ProductionExecutionSegmentService {
                               AND NOT document.is_deleted AND document.status IN (0,1)
                         ) draw_request ON TRUE
                         LEFT JOIN LATERAL (
-                            SELECT SUM(item.qty) AS gross_reported_qty,
+                            SELECT SUM(item.qty) FILTER (WHERE NOT item.is_actual_surplus
+                                       AND item.fqc_recovery_authorization_id IS NULL) AS gross_reported_qty,
                                    SUM(item.qty)
                                    - COALESCE(SUM((
                                        SELECT SUM(adjustment.adjusted_qty)
@@ -1012,6 +1027,9 @@ public class ProductionExecutionSegmentService {
                                    COALESCE(SUM(item.qty) FILTER (
                                         WHERE document.status = 1), 0)
                                         AS inbound_qty,
+                                   COALESCE(SUM(item.qty) FILTER (
+                                        WHERE document.status = 1 AND source.is_actual_surplus), 0)
+                                        AS actual_surplus_inbound_qty,
                                    COALESCE(SUM(confirmation_item.residual_qty)
                                        FILTER (
                                            WHERE confirmation.decision =
@@ -1021,6 +1039,7 @@ public class ProductionExecutionSegmentService {
                                                  FALSE), 0)
                                        AS rejected_qty
                              FROM stock_document_items item
+                             LEFT JOIN production_daily_report_items source ON source.id = item.source_daily_report_item_id
                              JOIN stock_documents document
                               ON document.id = item.doc_id
                               AND document.doc_type = 'FINISHED_IN'
@@ -1318,7 +1337,9 @@ public class ProductionExecutionSegmentService {
                 Boolean.TRUE.equals(row[47]),
                 Boolean.TRUE.equals(row[49]),
                 (String) row[50],
-                canOperateDraw && Boolean.TRUE.equals(row[51]));
+                canOperateDraw && Boolean.TRUE.equals(row[51]),
+                Boolean.TRUE.equals(row[52]),
+                decimal(row[53]), decimal(row[54]));
     }
 
     private static BigDecimal decimal(Object value) {

@@ -58,7 +58,7 @@ import java.util.UUID;
  * <ul>
  *   <li>业务链排产联动：写 plan_order_item_links + 回写 sales_order_items.planned_qty
  *       + BOM/分配核验（未核验或真实短缺→3待物料 / 已分配且齐套→4已排产）+ 防超排硬校验</li>
- *   <li>重算主表 {@code is_closed}（CheckFulfill4 派生：所有明细 {@code qty - iqty ≤ 0}）</li>
+ *   <li>重算主表 {@code is_closed}（计划数量及已审实际超产均已实收入库）</li>
  *   <li>【本期后置】设 plan_items.step_legacy_id 首工序 / 填 F_ProductingItem（车间/排产模块）</li>
  * </ul>
  *
@@ -98,6 +98,8 @@ public class ProductionPlanService {
     private final ProductionDocumentAccessPolicy access;
     private final MaterialAnalysisService materialAnalysisService;
     private final ProductionPlanMutationFootprintService mutationFootprint;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.uten.imp.features.production.dailyreport.ActualOutputSupplementService> actualOutputSupplements;
 
     @Transactional(readOnly = true)
     public PageResponse<PlanListItem> list(PlanQueryFilter f, int page, int size, String sort, String order) {
@@ -155,6 +157,8 @@ public class ProductionPlanService {
         ProductionPlan p = requirePlanForUpdate(id, requestedFootprint(req));
         access.requireWritable(p.getMakerId(), "只能操作本人负责的生产计划");
         if (p.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
+        if(p.getActualOutputSupplementRequestId()!=null)throw new ApiException(ErrorCode.CONFLICT,
+                "实际超产追加计划已冻结原批次及数量，请在追加申请中取消后重新申请，不能改成另一批生产计划");
         if (isMaterialAnalysisPlan(id)) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "物料分析生成的计划不可直接编辑，请删除草稿后回到物料分析重新生成");
@@ -177,6 +181,9 @@ public class ProductionPlanService {
     private void deleteLocked(UUID id) {
         ProductionPlan p = requirePlanForUpdate(id);
         access.requireWritable(p.getMakerId(), "只能操作本人负责的生产计划");
+        if(p.getActualOutputSupplementRequestId()!=null&&!Objects.equals(p.getActualOutputSupplementRequestId().toString(),
+                em.createNativeQuery("SELECT current_setting('app.actual_output_supplement_request',true)").getSingleResult()))
+            throw new ApiException(ErrorCode.CONFLICT,"请在实际超产追加申请中取消，保留原批次、审批和数量责任");
         rejectDirectLifecycleOfExecutionV1Subplan(id, "删除");
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(p.getStatus());
         planningDraftService.supersedeActive(id, "生产计划已删除，原预排草案失效");
@@ -200,6 +207,26 @@ public class ProductionPlanService {
     }
 
     private void approveLocked(UUID id) {
+        ProductionPlan observed=requirePlan(id);
+        if(observed.getActualOutputSupplementRequestId()!=null) {
+            actualOutputSupplements.getObject().approve(observed.getActualOutputSupplementRequestId(),
+                    new com.uten.imp.features.production.dailyreport.ActualOutputSupplementContracts.ApproveRequest("PLAN-APPROVE-SUPPLEMENT-"+id));
+            return;
+        }
+        approveOrdinaryLocked(id);
+    }
+
+    @Transactional
+    public void approveForActualOutputSupplement(UUID planId,UUID requestId) {
+        tx.bind();
+        if(!Boolean.TRUE.equals(em.createNativeQuery("SELECT EXISTS(SELECT 1 FROM production_actual_output_supplement_requests WHERE id=:request AND supplement_plan_id=:plan AND status='DRAFT')")
+                .setParameter("request",requestId).setParameter("plan",planId).getSingleResult()))
+            throw new ApiException(ErrorCode.CONFLICT,"追加计划审批缺少精确的原申请");
+        em.createNativeQuery("SELECT set_config('app.actual_output_supplement_request',:id,true)").setParameter("id",requestId.toString()).getSingleResult();
+        approveOrdinaryLocked(planId);
+    }
+
+    private void approveOrdinaryLocked(UUID id) {
         ProductionPlan p = requirePlanForUpdate(id);
         access.requireWritable(
                 p.getMakerId(), "无权审核此生产计划", "production_plan:approve");
@@ -1128,7 +1155,7 @@ public class ProductionPlanService {
             "billDateDesc", "p.bill_date DESC NULLS LAST, p.bill_no",
             "deliveryDate", "p.delivery_date ASC NULLS LAST, p.bill_no",
             "progress", "CASE WHEN COALESCE(SUM(i.qty),0) > 0 "
-                    + "THEN COALESCE(SUM(i.iqty),0) / SUM(i.qty) ELSE 0 END DESC, "
+                    + "THEN COALESCE(SUM(fn_plan_original_inbound_qty(i.id)),0) / SUM(i.qty) ELSE 0 END DESC, "
                     + "p.bill_date ASC NULLS LAST, p.bill_no");
 
     /**
@@ -1206,7 +1233,8 @@ public class ProductionPlanService {
                        COUNT(i.id), COALESCE(SUM(i.qty),0), COALESCE(SUM(i.fqty),0),
                        COALESCE(SUM(i.iqty),0),
                        MIN(i.plan_begin_date), MAX(i.plan_end_date),
-                       p.is_pinned, p.is_important
+                       p.is_pinned, p.is_important,
+                       COALESCE(SUM(fn_plan_original_inbound_qty(i.id)),0)
                 """ + filters + " ORDER BY p.is_pinned DESC, " + orderBy + " LIMIT :lim OFFSET :off");
         bindProgressFilters(dataQ, closed, kw, ws, dateFrom, dateTo);
         ownerScope.bind(dataQ);
@@ -1223,7 +1251,8 @@ public class ProductionPlanService {
             List<Object[]> loadedSubRows = em.createNativeQuery("""
                     SELECT l.plan_id, sp.id, sp.bill_no, sp.workshop_name, sp.status, sp.is_closed,
                            COALESCE(SUM(i.qty),0), COALESCE(SUM(i.fqty),0),
-                           COALESCE(SUM(i.iqty),0)
+                           COALESCE(SUM(i.iqty),0),
+                           COALESCE(SUM(fn_plan_original_inbound_qty(i.id)),0)
                     FROM subplan_links l
                     JOIN production_plans sp ON sp.id = l.subplan_id AND sp.is_deleted = false
                     LEFT JOIN production_plan_items i ON i.plan_id = sp.id AND i.is_deleted = false
@@ -1248,8 +1277,9 @@ public class ProductionPlanService {
             BigDecimal t = bd(s[6]);
             BigDecimal reported = bd(s[7]);
             BigDecimal in = bd(s[8]);
+            BigDecimal plannedIn = bd(s[9]);
             double pct = t.signum() > 0
-                    ? Math.min(in.divide(t, 4, java.math.RoundingMode.HALF_UP).doubleValue(), 1.0) : 0;
+                    ? Math.min(plannedIn.divide(t, 4, java.math.RoundingMode.HALF_UP).doubleValue(), 1.0) : 0;
             MaterialProgress material = materialByPlan.getOrDefault(
                     (UUID) s[1], MaterialProgress.notPlanned());
             subsByPlan.computeIfAbsent((UUID) s[0], k -> new ArrayList<>())
@@ -1259,7 +1289,7 @@ public class ProductionPlanService {
                             Boolean.TRUE.equals(s[5]), t, reported, in,
                             material.state(), material.segmentCount(), material.readySegmentCount(),
                             material.totalQty(), material.readyQty(), material.percent(),
-                            material.canStartNow(), pct));
+                            material.canStartNow(), pct, plannedIn, in.subtract(plannedIn)));
         }
         // 今日成品入库量（按父计划批量取）：当日已审 FINISHED_IN 经 plan_draw_links 溯源，
         // Σ(数量 × 换算率) 基本单位，与 iqty 口径一致（卡片「今日 +N」标注）。
@@ -1290,8 +1320,9 @@ public class ProductionPlanService {
             BigDecimal totalQty = bd(r[7]);
             BigDecimal reported = bd(r[8]);
             BigDecimal inbound = bd(r[9]);
+            BigDecimal plannedInbound = bd(r[14]);
             double pct = totalQty.signum() > 0
-                    ? inbound.divide(totalQty, 4, java.math.RoundingMode.HALF_UP).doubleValue() : 0;
+                    ? plannedInbound.divide(totalQty, 4, java.math.RoundingMode.HALF_UP).doubleValue() : 0;
             java.time.LocalDate deliver = r[3] == null ? null : NativeValueConverters.toLocalDate(r[3]);
             MaterialProgress material = materialByPlan.getOrDefault(
                     (UUID) r[0], MaterialProgress.notPlanned());
@@ -1311,7 +1342,8 @@ public class ProductionPlanService {
                     Boolean.TRUE.equals(r[12]),
                     Boolean.TRUE.equals(r[13]),
                     todayByPlan.getOrDefault((UUID) r[0], BigDecimal.ZERO),
-                    subsByPlan.getOrDefault((UUID) r[0], List.of())));
+                    subsByPlan.getOrDefault((UUID) r[0], List.of()),
+                    plannedInbound, inbound.subtract(plannedInbound)));
         }
         return new PageResponse<>(out, p, sz, total, totalPages);
     }
@@ -1474,14 +1506,15 @@ public class ProductionPlanService {
     // ====================== is_closed 派生（CheckFulfill4 → Service） ======================
 
     /**
-     * 重算主表 is_closed（CheckFulfill4 派生）：所有非软删明细 {@code qty - iqty ≤ 0} 时为 true。
+     * 重算主表 is_closed：所有非软删明细的计划数量及已审实际超产均已实收入库。
      *
      * <p>同采购 {@code recalcRequestClosed} 范式（design §4.2 行）。
      */
     private void recomputeClosed(UUID planId) {
         em.createNativeQuery("""
                 UPDATE production_plans p SET is_closed = (
-                    SELECT COALESCE(bool_and(COALESCE(i.qty,0) - COALESCE(i.iqty,0) <= 0), true)
+                    SELECT COALESCE(bool_and(COALESCE(i.qty,0)
+                        + fn_plan_actual_surplus_qty(i.id,FALSE) - COALESCE(i.iqty,0) <= 0), true)
                     FROM production_plan_items i
                     WHERE i.plan_id = p.id AND COALESCE(i.is_deleted, false) = false
                 ) WHERE p.id = :pid

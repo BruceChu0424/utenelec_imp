@@ -51,5 +51,9 @@ public record ReportablePlanLine(
         UUID fqcSourceReportItemId,
         String fqcSourceReportNo,
         boolean fqcRecoveryRequiresMaterial,
-        UUID planId) {
+        UUID planId,
+        boolean allowActualOverproduction,
+        BigDecimal allowedOverproductionRate,
+        BigDecimal overproductionLimitQty,
+        BigDecimal remainingActualSurplusQty) {
 }

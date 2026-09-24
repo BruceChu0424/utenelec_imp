@@ -27,6 +27,7 @@ class DailyMaterialInput {
   final autofilled = ValueNotifier<bool>(false);
   String? autofillText;
   double? manualRatio;
+  bool manuallyEdited = false;
 
   void dispose() {
     used.dispose();
@@ -64,6 +65,17 @@ class DailyGridRow extends EditableGridRow {
   double? unitRate;
   double? orderQty;
   double? maxReportQty;
+  bool allowActualOverproduction = false;
+  String? supplementRequestId;
+  String? supplementProofId;
+  double? supplementApprovedActualQty;
+  bool get hasFixedSupplement =>
+      !isFqcRecovery &&
+      (supplementProofId != null ||
+          (supplementRequestId != null && supplementApprovedActualQty != null));
+  bool get hasReportQuantityLimit =>
+      isFqcRecovery ||
+      (!allowActualOverproduction && supplementProofId == null);
 
   /// Remaining output target, distinct from this delivery's material capacity.
   double? remainingPlanQty;
@@ -107,8 +119,7 @@ class DailyGridRow extends EditableGridRow {
   }
 
   // ===== V584/V585 产出去向：送仓库 还是 转下一道工序(同车间内部直送) =====
-  // 一行只有一个去向，要拆量就拆行——送检登记与检验都按报工行唯一，行内拆量
-  // 要同时改两处唯一性。
+  // 用户录一次实际产量和需求内去向；服务端将需求及公共产出拆成独立明细。
 
   /// 'WAREHOUSE' = 送入仓库(默认，走品质部)；'WORKSHOP' = 转下一道工序。
   final ValueNotifier<String> destinationNotifier = ValueNotifier<String>(
@@ -156,7 +167,7 @@ class DailyGridRow extends EditableGridRow {
   set materialAutofillText(String? value) =>
       _materialInput.autofillText = value;
 
-  /// 用户手改后的「用料 / 完工量」比例：完工量再变时按它等比换算并重新标黄。
+  /// 保留旧比例字段用于兼容；手工实际用料不随产量变化覆盖。
   double? get materialManualRatio => _materialInput.manualRatio;
   set materialManualRatio(double? value) => _materialInput.manualRatio = value;
 
@@ -227,6 +238,10 @@ class DailyGridRow extends EditableGridRow {
       ..unitRate = unitRate
       ..orderQty = orderQty
       ..maxReportQty = maxReportQty
+      ..allowActualOverproduction = allowActualOverproduction
+      ..supplementRequestId = null
+      ..supplementProofId = null
+      ..supplementApprovedActualQty = null
       ..remainingPlanQty = remainingPlanQty
       ..destination = destination
       ..destinationTouched = destinationTouched
@@ -238,10 +253,25 @@ class DailyGridRow extends EditableGridRow {
       ..colorId = colorId
       ..unitId = unitId
       ..isFinal = false;
-    c.qty.text = qty.text;
+    c.qty.text = hasFixedSupplement ? '' : qty.text;
     c.weight.text = weight.text;
     c.planNo.text = planNo.text;
     c.remark.text = remark.text;
+    if (hasFixedSupplement) {
+      c
+        ..planId = null
+        ..planItemId = null
+        ..executionSegmentId = null
+        ..executionSegmentSalesAllocationId = null
+        ..executionSegmentCode = null
+        ..executionSegmentVersion = null
+        ..salesOrderItemId = null
+        ..salesOrderNo = null
+        ..maxReportQty = null
+        ..remainingPlanQty = null
+        ..allowActualOverproduction = false
+        ..planNo.clear();
+    }
     return c;
   }
 
@@ -341,6 +371,24 @@ double? productionReportBaseQuantity(DailyGridRow row) {
   return rounded.isFinite ? rounded : null;
 }
 
+String productionReportRoutingHint(DailyGridRow row) {
+  if (row.isMaterialRow || !row.hasLinkedSource) return '';
+  if (row.supplementProofId != null) {
+    return '已关联批准的追加计划，原工单与追加工单分别记产出；本次实际总量保持不变';
+  }
+  if (row.supplementRequestId != null) {
+    return '追加计划审批与开工待核对；本次实际数量和用料保留';
+  }
+  if (row.hasReportQuantityLimit) {
+    return row.maxReportQty == null
+        ? '按原来源核对本次产量'
+        : '本次可报 ${_quantityText(row.maxReportQty!)}';
+  }
+  return row.isDirectTransfer
+      ? '按有效超产比例核对；需求内交下工序，容差内余量送仓，越限先办追加计划'
+      : '按有效超产比例核对；容差内公共量分开送仓，越限先办追加计划';
+}
+
 /// An explicit destination may become invalid, but must never change silently.
 bool restoreExplicitDirectTransferSelection(DailyGridRow row) {
   if (!row.destinationTouched) return false;
@@ -391,6 +439,7 @@ List<String> directTransferAggregateIssues(Iterable<DailyGridRow> rows) {
   final byDemand = <String, List<DailyGridRow>>{};
   for (final row in rows) {
     if (row.isMaterialRow ||
+        !row.hasReportQuantityLimit ||
         !row.isDirectTransfer ||
         row.directTransfer == null) {
       continue;
@@ -631,6 +680,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
               isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
               child: TextField(
                 controller: row.qty,
+                readOnly: row.hasFixedSupplement,
                 textAlign: TextAlign.right,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
@@ -642,6 +692,30 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
             ),
     ),
     // ===== V583 物料子行专用两列：成品行留空 =====
+    EditableGridColumn<DailyGridRow>(
+      key: 'outputRouting',
+      label: '产量分流',
+      width: 260,
+      headerInfo:
+          '实际产量只填写一次。需求份额与公共产出由系统保存时核定；'
+          '转下工序只交当前需求内数量，其余送仓，公共部分经质检合格并实收后可用。',
+      textOf: (row) => productionReportRoutingHint(row),
+      cellBuilder: (context, row) => row.isMaterialRow
+          ? const SizedBox.shrink()
+          : ListenableBuilder(
+              listenable: Listenable.merge([
+                row.qty,
+                row.destinationNotifier,
+                row.directTransferNotifier,
+              ]),
+              builder: (_, _) => Text(
+                productionReportRoutingHint(row),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+    ),
     EditableGridColumn<DailyGridRow>(
       key: 'issuedQty',
       label: '领料量',
@@ -709,7 +783,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                     helper: autofilled
                         ? const UtenFieldMessage.autofill(
                             '已按完工申报量 × 单耗自动算出，请核对本次实际用料；'
-                            '完工申报量改了会按比例重算',
+                            '未修改的建议随产量更新，手工填写后保持原值',
                           )
                         : null,
                   ),

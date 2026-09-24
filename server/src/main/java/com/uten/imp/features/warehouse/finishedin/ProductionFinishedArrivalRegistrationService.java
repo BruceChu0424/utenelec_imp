@@ -256,6 +256,18 @@ public class ProductionFinishedArrivalRegistrationService {
                 UUID.class);
         requireSelectedPending(
                 pendingReportItemIds, normalized.places().keySet());
+        if (normalized.stockInBeforeInspection()) {
+            Map<UUID, BigDecimal> reported = new LinkedHashMap<>();
+            for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT id, qty FROM production_daily_report_items
+                    WHERE report_id=:reportId AND id IN (:ids) AND NOT is_deleted
+                    ORDER BY id FOR UPDATE
+                    """).setParameter("reportId", reportId)
+                    .setParameter("ids", normalized.places().keySet()))) {
+                reported.put((UUID) row[0], (BigDecimal) row[1]);
+            }
+            requireCountedQuantities(reported, normalized.countedQuantities());
+        }
 
         WarehouseSnapshot warehouse = references.warehouses.computeIfAbsent(normalized.warehouseId(), this::validatedWarehouse);
         if (references.receiver == null) references.receiver = requireReceiver(receiverEmployeeId);
@@ -298,15 +310,16 @@ public class ProductionFinishedArrivalRegistrationService {
                 .forEach(entry -> em.createNativeQuery("""
                                 INSERT INTO production_finished_arrival_registration_items(
                                     id, registration_id, source_report_item_id,
-                                    place_snapshot, created_by)
+                                    place_snapshot, created_by, counted_qty)
                                 VALUES (
                                     gen_random_uuid(), :registrationId,
-                                    :reportItemId, :place, :actorId)
+                                    :reportItemId, :place, :actorId, :countedQty)
                                 """)
                         .setParameter("registrationId", registrationId)
                         .setParameter("reportItemId", entry.getKey())
                         .setParameter("place", entry.getValue())
                         .setParameter("actorId", actorId)
+                        .setParameter("countedQty", normalized.countedQuantities().get(entry.getKey()))
                         .executeUpdate());
 
         // This selected registration batch and its exact FQC PENDING facts
@@ -652,7 +665,8 @@ public class ProductionFinishedArrivalRegistrationService {
                                        registration_item.place_snapshot,
                                        goods.stock_place,
                                        NULL::uuid AS last_warehouse_id,
-                                       NULL::text AS last_warehouse_name
+                                       NULL::text AS last_warehouse_name,
+                                       registration_item.counted_qty
                                 FROM production_daily_report_items report_item
                                 JOIN production_plan_items plan_item
                                   ON plan_item.id = report_item.plan_item_id
@@ -796,7 +810,8 @@ public class ProductionFinishedArrivalRegistrationService {
                    NULL::text AS place_snapshot,
                    goods.stock_place,
                    last_warehouse.id,
-                   last_warehouse.name
+                   last_warehouse.name,
+                   NULL::numeric AS counted_qty
             """;
 
     /**
@@ -873,7 +888,7 @@ public class ProductionFinishedArrivalRegistrationService {
                         (UUID) row[6], text(row[7]), text(row[8]),
                         (UUID) row[9], text(row[10]), (UUID) row[11],
                         text(row[12]), decimal(row[13]), text(row[14]),
-                        text(row[15]), (UUID) row[16], text(row[17])))
+                        text(row[15]), (UUID) row[16], text(row[17]), (BigDecimal) row[18]))
                 .toList();
     }
 
@@ -1317,6 +1332,8 @@ public class ProductionFinishedArrivalRegistrationService {
             throw validation("备注不能超过 500 个字符");
         }
         Map<UUID, String> places = new LinkedHashMap<>();
+        Map<UUID, BigDecimal> counted = new LinkedHashMap<>();
+        boolean preStock = request.stockInBeforeInspectionRequested();
         if (request.items().stream().anyMatch(Objects::isNull)) {
             throw validation("送检登记行不能为空");
         }
@@ -1336,6 +1353,17 @@ public class ProductionFinishedArrivalRegistrationService {
                     if (places.putIfAbsent(item.reportItemId(), place) != null) {
                         throw validation("同一报工明细不能重复登记库位");
                     }
+                    if (preStock) {
+                        BigDecimal quantity = item.countedQty() == null ? null : item.countedQty().stripTrailingZeros();
+                        if (quantity == null) {
+                            throw validation("合格自动入库前必须逐行填写实际点数，请刷新后核对；数量有差异请使用人工点收");
+                        }
+                        if (quantity.signum() <= 0 || quantity.scale() > 4
+                                || quantity.precision() - quantity.scale() > 14) {
+                            throw validation("实际点数必须大于0且最多4位小数；数量有差异请使用人工点收");
+                        }
+                        counted.put(item.reportItemId(), quantity);
+                    }
                 });
         List<String> hashParts = new ArrayList<>();
         hashParts.add("PRODUCTION-FINISHED-ARRIVAL-REGISTRATION-V1");
@@ -1344,11 +1372,25 @@ public class ProductionFinishedArrivalRegistrationService {
         hashParts.add("remark=" + (remark == null ? "" : remark));
         // 先入库后质检改变的是「合格后要不要人工点收」这件事实，必须进哈希：
         // 同键不同选择要 409，而不是静默按第一次的选择重放。不勾时不写，老哈希逐字不变。
-        boolean preStock = request.stockInBeforeInspectionRequested();
-        if (preStock) hashParts.add("stockInBeforeInspection=1");
+        if (preStock) {
+            hashParts.add("stockInBeforeInspection=1");
+            counted.forEach((id, quantity) -> hashParts.add("counted=" + id + "|" + quantity.toPlainString()));
+        }
         return new NormalizedRequest(
-                key, request.warehouseId(), Map.copyOf(places), remark, preStock,
+                key, request.warehouseId(), Map.copyOf(places), Map.copyOf(counted), remark, preStock,
                 CanonicalFingerprint.sha256(hashParts));
+    }
+
+    static void requireCountedQuantities(Map<UUID, BigDecimal> reported, Map<UUID, BigDecimal> counted) {
+        if (!reported.keySet().equals(counted.keySet()) || reported.isEmpty()) {
+            throw conflict("实际点数必须逐行覆盖本次送检来源，请刷新后重新核对");
+        }
+        for (var row : reported.entrySet()) {
+            BigDecimal actual = counted.get(row.getKey());
+            if (actual == null || row.getValue() == null || actual.compareTo(row.getValue()) != 0) {
+                throw conflict("实际点数与本批报工量不一致，请使用人工点收登记差异及未收余量");
+            }
+        }
     }
 
     static NormalizedReversal normalizeReversal(
@@ -1473,6 +1515,7 @@ public class ProductionFinishedArrivalRegistrationService {
             String idempotencyKey,
             UUID warehouseId,
             Map<UUID, String> places,
+            Map<UUID, BigDecimal> countedQuantities,
             String remark,
             boolean stockInBeforeInspection,
             String requestHash) {

@@ -46,6 +46,7 @@ public class ReportablePlanLineQueryService {
                   ON report.id = item.report_id
                 WHERE item.execution_segment_id IS NOT NULL
                   AND item.fqc_recovery_authorization_id IS NULL
+                  AND NOT item.is_actual_surplus
                   AND item.is_deleted = FALSE
                   AND report.is_deleted = FALSE
                   AND report.status IN (0, 1)
@@ -61,6 +62,7 @@ public class ReportablePlanLineQueryService {
                   ON report.id = item.report_id
                 WHERE item.execution_segment_sales_allocation_id IS NOT NULL
                   AND item.fqc_recovery_authorization_id IS NULL
+                  AND NOT item.is_actual_surplus
                   AND item.is_deleted = FALSE
                   AND report.is_deleted = FALSE
                   AND report.status IN (0, 1)
@@ -75,6 +77,9 @@ public class ReportablePlanLineQueryService {
                     segment.segment_code AS execution_segment_code,
                     segment.status AS execution_segment_status,
                     segment.lock_version AS execution_segment_version,
+                    segment.allowed_overproduction_rate,
+                    trunc(segment.planned_qty*(1+segment.allowed_overproduction_rate),4) AS overproduction_limit_qty,
+                    fn_execution_actual_surplus_available(segment.id,NULL) AS remaining_actual_surplus_qty,
                     l.order_item_id,
                     p.bill_no AS plan_no,
                     i.product_no,
@@ -90,7 +95,7 @@ public class ReportablePlanLineQueryService {
                     COALESCE(segment.planned_qty, i.qty, 0) AS planned_qty,
                     CASE WHEN segment.id IS NULL
                          THEN COALESCE(i.fqty, 0)
-                         ELSE COALESCE(segment_done.reported_qty, 0)
+                         ELSE COALESCE(segment_done.reported_qty, 0) + fn_execution_actual_surplus_qty(segment.id,FALSE)
                     END AS produced_qty,
                     GREATEST(
                         COALESCE(segment.planned_qty, i.qty, 0)
@@ -140,9 +145,9 @@ public class ReportablePlanLineQueryService {
                         )
                     END,
                     -- Quality recovery owns a separate material authorization;
-                    -- normal cumulative production uses frozen material capacity.
+                    -- ordinary quantity is a planning suggestion; actual material use is recorded separately.
                     CASE WHEN recovery.authorization_id IS NOT NULL THEN recovery.available_qty
-                         ELSE COALESCE(material_cap.remaining_qty, segment.planned_qty)
+                         ELSE segment.planned_qty
                     END) AS max_report_qty,
                     so.bill_no AS order_no,
                     oi.qty AS order_qty,
@@ -158,6 +163,8 @@ public class ReportablePlanLineQueryService {
                     recovery.source_inspection_id AS fqc_source_inspection_id,
                     recovery.source_report_item_id AS fqc_source_report_item_id,
                     recovery.source_report_no AS fqc_source_report_no,
+                    (recovery.authorization_id IS NULL AND fn_execution_overproduction_policy_applies(segment.id)) AS allow_actual_overproduction,
+                    sales_allocation.actual_source,
                     COALESCE(recovery.requires_material, FALSE)
                         AS fqc_recovery_requires_material
                 FROM production_plan_items i
@@ -183,11 +190,6 @@ public class ReportablePlanLineQueryService {
                  )
                 LEFT JOIN segment_progress segment_done
                   ON segment_done.execution_segment_id = segment.id
-                LEFT JOIN LATERAL (
-                    SELECT GREATEST(COALESCE(fn_execution_material_output_capacity(segment.id, TRUE),0)
-                                   - COALESCE(segment_done.active_qty, 0), 0) AS remaining_qty
-                    WHERE segment.id IS NOT NULL
-                ) material_cap ON TRUE
                 LEFT JOIN departments segment_workshop
                   ON segment_workshop.id = segment.workshop_department_id
                  AND segment_workshop.is_deleted = FALSE
@@ -197,7 +199,7 @@ public class ReportablePlanLineQueryService {
                 LEFT JOIN units u ON u.id = i.unit_id
                 LEFT JOIN LATERAL (
                     SELECT allocation.id, allocation.plan_order_item_link_id,
-                           allocation.allocated_qty
+                           allocation.allocated_qty, FALSE AS actual_source
                     FROM execution_segment_sales_allocations allocation
                     WHERE allocation.execution_segment_id = segment.id
                     UNION ALL
@@ -205,10 +207,18 @@ public class ReportablePlanLineQueryService {
                     -- commitments. That surplus has its own internal quota;
                     -- completed orders never release their allocated quantity.
                     SELECT NULL::uuid, NULL::uuid,
-                           segment.planned_qty - COALESCE(SUM(allocation.allocated_qty), 0)
+                           segment.planned_qty - COALESCE(SUM(allocation.allocated_qty), 0), FALSE
                     FROM execution_segment_sales_allocations allocation
                     WHERE allocation.execution_segment_id = segment.id
                     HAVING segment.planned_qty > COALESCE(SUM(allocation.allocated_qty), 0)
+                        OR EXISTS(SELECT 1 FROM production_fqc_recovery_authorizations public_recovery
+                            JOIN v_production_fqc_recovery_balance public_balance ON public_balance.authorization_id=public_recovery.id
+                            WHERE public_recovery.execution_segment_id=segment.id
+                              AND public_recovery.execution_segment_sales_allocation_id IS NULL
+                              AND NOT public_balance.cancelled AND public_balance.available_qty>0)
+                    UNION ALL
+                    SELECT NULL::uuid,NULL::uuid,0::numeric,TRUE
+                    WHERE COALESCE(segment_done.reported_qty,0)>=segment.planned_qty
                 ) sales_allocation ON TRUE
                 LEFT JOIN allocation_progress allocation_done
                   ON allocation_done.execution_segment_sales_allocation_id =
@@ -232,13 +242,16 @@ public class ReportablePlanLineQueryService {
                      AND balance.cancelled = FALSE
                     JOIN production_fqc_inspections source_inspection
                       ON source_inspection.id = recovery_auth.source_inspection_id
+                    JOIN production_daily_report_items recovery_source_item
+                      ON recovery_source_item.id=recovery_auth.source_report_item_id
                     JOIN production_daily_reports source_report
                       ON source_report.id = source_inspection.source_report_id
                     WHERE recovery_auth.execution_segment_id = segment.id
+                      AND NOT sales_allocation.actual_source
                       AND recovery_auth.execution_segment_sales_allocation_id
                           IS NOT DISTINCT FROM sales_allocation.id
-                      AND COALESCE(segment_done.active_qty, 0)
-                          >= COALESCE(segment.planned_qty, 0)
+                      AND (COALESCE(segment_done.active_qty, 0)
+                          >= COALESCE(segment.planned_qty, 0) OR recovery_source_item.is_actual_surplus)
                     ORDER BY CASE
                                  WHEN recovery_auth.disposition_code = 'REWORK'
                                      THEN 0
@@ -274,10 +287,12 @@ public class ReportablePlanLineQueryService {
                   AND COALESCE(p.is_closed, false) = false
                   AND COALESCE(i.is_deleted, false) = false
                   AND segment.id IS NOT NULL
+                  AND (fn_execution_overproduction_policy_applies(segment.id) OR recovery.authorization_id IS NOT NULL)
                   AND (
                       COALESCE(segment.planned_qty, i.qty, 0) >
                           COALESCE(segment_done.active_qty, 0)
                       OR recovery.authorization_id IS NOT NULL
+                      OR sales_allocation.actual_source
                   )
                   AND (
                       segment.id IS NOT NULL
@@ -295,6 +310,8 @@ public class ReportablePlanLineQueryService {
                   )
                   AND (
                       l.id IS NOT NULL
+                      OR sales_allocation.actual_source
+                      OR recovery.authorization_id IS NOT NULL
                       OR (sales_allocation.id IS NULL
                           AND sales_allocation.allocated_qty > 0
                           AND EXISTS (
@@ -416,7 +433,7 @@ public class ReportablePlanLineQueryService {
                 : "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
         List<Object> args = new ArrayList<>(ownerArgs);
         StringBuilder filter = new StringBuilder(
-                " WHERE (max_report_qty > 0 OR fqc_recovery_requires_material)");
+                " WHERE (max_report_qty > 0 OR fqc_recovery_requires_material OR actual_source)");
         if (normalized != null) {
             filter.append("""
                      AND (
@@ -511,7 +528,11 @@ public class ReportablePlanLineQueryService {
                         rs.getObject("fqc_source_report_item_id", UUID.class),
                         rs.getString("fqc_source_report_no"),
                         rs.getBoolean("fqc_recovery_requires_material"),
-                        rs.getObject("plan_id", UUID.class)),
+                        rs.getObject("plan_id", UUID.class),
+                        rs.getBoolean("allow_actual_overproduction"),
+                        rs.getBigDecimal("allowed_overproduction_rate"),
+                        rs.getBigDecimal("overproduction_limit_qty"),
+                        rs.getBigDecimal("remaining_actual_surplus_qty")),
                 dataArgs.toArray());
 
         int totalPages = total == 0 ? 0 : (int) ((total + size - 1) / size);

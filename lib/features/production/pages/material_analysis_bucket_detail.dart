@@ -4,7 +4,7 @@ part of 'production_material_analysis_page.dart';
 /// Commands continue to use the host's permission, version and idempotency flow.
 enum _AnalysisBucket { buy, subcontract, workshop }
 
-enum _PreparationTaskFilter { pending, issued, blocked }
+enum _PreparationTaskFilter { pending, inProgress, issued, blocked }
 
 extension _AnalysisBucketX on _AnalysisBucket {
   String countLabel(AppLocalizations l10n) => switch (this) {
@@ -148,12 +148,17 @@ String _bucketQtyText(double value) {
 /// 分桶详情页：全屏表格 + 多选 + 批量动作。数据取宿主页当前快照（详情页
 /// 在前台时宿主页轮询暂停，快照稳定；动作执行回到宿主页后自然刷新）。
 class _MaterialAnalysisBucketPage extends StatefulWidget {
-  const _MaterialAnalysisBucketPage({required this.host, required this.bucket});
+  const _MaterialAnalysisBucketPage({
+    required this.host,
+    required this.bucket,
+    required this.initialFilter,
+  });
 
   /// 宿主页状态（分桶投影/权限/执行编排都在宿主页链上；运行时实例永远是
   /// 最终实现类 _ProductionMaterialAnalysisPageState）。
   final _MaterialAnalysisProductTasksState host;
   final _AnalysisBucket bucket;
+  final _PreparationTaskFilter initialFilter;
 
   @override
   State<_MaterialAnalysisBucketPage> createState() =>
@@ -163,14 +168,16 @@ class _MaterialAnalysisBucketPage extends StatefulWidget {
 class _MaterialAnalysisBucketPageState
     extends State<_MaterialAnalysisBucketPage> {
   final Set<String> _selectedIds = {};
-  _PreparationTaskFilter _taskFilter = _PreparationTaskFilter.pending;
+  late _PreparationTaskFilter _taskFilter;
   int _preparedChildCount = 0;
 
   /// 采购/委外桶的表头筛选（进度/缺口；视图级过滤，切段清空）。
   final Map<String, String?> _tableFilters = {};
 
   /// 已下达段的输入框是「追加量」：默认空，填了才追加。
-  bool get _appendMode => _taskFilter == _PreparationTaskFilter.issued;
+  bool get _appendMode =>
+      _taskFilter == _PreparationTaskFilter.issued ||
+      _taskFilter == _PreparationTaskFilter.inProgress;
 
   List<_BucketRow> _filterRows(List<_BucketRow> rows) => rows
       .where((row) {
@@ -180,6 +187,10 @@ class _MaterialAnalysisBucketPageState
             _bucket,
           ),
           _PreparationTaskFilter.issued => _host._bucketRowHasIssued(
+            row,
+            _bucket,
+          ),
+          _PreparationTaskFilter.inProgress => _host._bucketRowInProgress(
             row,
             _bucket,
           ),
@@ -194,7 +205,8 @@ class _MaterialAnalysisBucketPageState
   bool _canSelectTask(_BucketRow row) => switch (_taskFilter) {
     _PreparationTaskFilter.pending => _host._bucketRowCanAct(row, _bucket),
     // ADR-099：已下达段里仍可追加的行也能勾（填追加量，属公共备货）。
-    _PreparationTaskFilter.issued => _host._bucketRowCanAppend(row, _bucket),
+    _PreparationTaskFilter.issued || _PreparationTaskFilter.inProgress =>
+      _host._bucketRowCanAppend(row, _bucket),
     _PreparationTaskFilter.blocked => false,
   };
 
@@ -211,6 +223,7 @@ class _MaterialAnalysisBucketPageState
   @override
   void initState() {
     super.initState();
+    _taskFilter = widget.initialFilter;
     // 宿主页「创建子件任务」后自动选中的子件：进桶时先勾上(能办的才勾)。
     for (final row in _host._bucketRows(_bucket)) {
       if (_host._selectedPlanLineIds.contains(row.id) && _canSelectTask(row)) {
@@ -759,8 +772,7 @@ class _MaterialAnalysisBucketPageState
   bool get _actionsLocked => _host._busy || _running;
 
   bool get _canAct =>
-      (_taskFilter == _PreparationTaskFilter.pending ||
-          _taskFilter == _PreparationTaskFilter.issued) &&
+      (_taskFilter == _PreparationTaskFilter.pending || _appendMode) &&
       switch (_bucket) {
         _AnalysisBucket.workshop => _host._canGenerate || _host._canNotify,
         _AnalysisBucket.buy || _AnalysisBucket.subcontract => _host._canNotify,
@@ -1117,6 +1129,15 @@ class _MaterialAnalysisBucketPageState
                     count: allRows
                         .where(
                           (row) => _host._bucketRowHasPending(row, _bucket),
+                        )
+                        .length,
+                  ),
+                  UtenSegment(
+                    value: _PreparationTaskFilter.inProgress,
+                    label: '进行中',
+                    count: allRows
+                        .where(
+                          (row) => _host._bucketRowInProgress(row, _bucket),
                         )
                         .length,
                   ),

@@ -58,6 +58,27 @@ class StockDocPublicSurplusTest {
         verifyNoInteractions(fixture.reservations);
     }
 
+    @Test void actualSurplusOfInternalMakeTaskBecomesPublicWithoutInheritedAnalysisOwnership() {
+        Fixture fixture = new Fixture("1300", "1300", "300", "1000", false, true);
+        fixture.apply(1);
+        verifyNoInteractions(fixture.reservations, fixture.peg);
+        assertThat(fixture.sql).noneMatch(sql -> sql.contains("UPDATE sales_order_items")
+                || sql.contains("UPDATE plan_order_item_links"));
+    }
+
+    @Test void actualSurplusStillCannotExceedItsApprovedAndUnreceivedSource() {
+        Fixture fixture = new Fixture("1300", "1300", "301", "1000", false, true);
+        assertThrows(ApiException.class, () -> fixture.apply(1));
+        assertThat(fixture.sql).noneMatch(sql -> sql.startsWith("UPDATE"));
+        verifyNoInteractions(fixture.reservations, fixture.peg);
+    }
+
+    @Test void actualSurplusReversalDoesNotCreateAnOriginalAnalysisClaim() {
+        Fixture fixture = new Fixture("1300", "1300", "1000", "1000", false, true);
+        fixture.apply(-1);
+        verifyNoInteractions(fixture.reservations, fixture.peg);
+    }
+
     @Test void publicInboundCannotExceedPublicQuotaEvenAfterRecoveryReports() {
         Fixture fixture = new Fixture("1000", "2000", "600");
         assertThrows(ApiException.class, () -> fixture.apply(1));
@@ -99,6 +120,10 @@ class StockDocPublicSurplusTest {
             this(quota, reported, inbound, "2000", false);
         }
         Fixture(String quota, String reported, String inbound, String planned, boolean approvedSalesSurplus) {
+            this(quota, reported, inbound, planned, approvedSalesSurplus, false);
+        }
+        Fixture(String quota, String reported, String inbound, String planned, boolean approvedSalesSurplus,
+                boolean explicitPublicOutput) {
             ReflectionTestUtils.setField(service,"em",em);
             ReflectionTestUtils.setField(service,"reservationService",reservations);
             ReflectionTestUtils.setField(service,"preplanAnalysisPeg",peg);
@@ -117,7 +142,8 @@ class StockDocPublicSurplusTest {
                     return query;
                 } else if(querySql.contains("SELECT segment.planned_qty")) {
                     rows=java.util.Collections.singletonList(new Object[]{new BigDecimal(quota),
-                            new BigDecimal(reported),new BigDecimal(inbound),new BigDecimal(planned),approvedSalesSurplus});
+                            new BigDecimal(reported),new BigDecimal(inbound),new BigDecimal(planned),approvedSalesSurplus,
+                            explicitPublicOutput});
                 } else if(querySql.contains("SELECT i.goods_id")) {
                     rows=java.util.Collections.singletonList(new Object[]{goods,null,unit,BigDecimal.ONE});
                 } else if(querySql.contains("AS item_remain")) {

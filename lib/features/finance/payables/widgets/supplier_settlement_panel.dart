@@ -18,7 +18,10 @@ import '../repositories/supplier_settlement_repository.dart';
 import 'supplier_settlement_actions.dart';
 
 class SupplierSettlementPanel extends ConsumerStatefulWidget {
-  const SupplierSettlementPanel({super.key});
+  const SupplierSettlementPanel({super.key, this.refreshTick = 0});
+
+  /// 宿主（应付工作台）「返回即刷新」驱动的重载信号；数值变化时重拉当前页。
+  final int refreshTick;
 
   @override
   ConsumerState<SupplierSettlementPanel> createState() =>
@@ -44,6 +47,14 @@ class _SupplierSettlementPanelState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+  }
+
+  @override
+  void didUpdateWidget(SupplierSettlementPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshTick != oldWidget.refreshTick) {
+      _load(_page);
+    }
   }
 
   Future<void> _load([int? requestedPage]) async {
@@ -120,7 +131,7 @@ class _SupplierSettlementPanelState
         onChanged: () => _load(),
       ),
     );
-    if (mounted) await _load();
+    // 详情面板内每个写动作成功都经 onChanged 重拉过；纯查看关闭不再多拉一次。
   }
 
   List<MasterColumnDef<SupplierSettlementSummary>> get _columns => [

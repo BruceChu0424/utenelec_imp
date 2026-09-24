@@ -100,6 +100,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         ORIGINAL_ENDPOINTS.put("qualityResult", "/api/warehouse/quality-results/type-counts");
         ORIGINAL_ENDPOINTS.put("subcontractOutbound", "/api/warehouse/subcontract-outbound/tasks/count");
         ORIGINAL_ENDPOINTS.put("productionSchedule", "/api/production/schedule/pending-count");
+        ORIGINAL_ENDPOINTS.put("productionOverproductionRate", "/api/production/overproduction-rate/count");
+        ORIGINAL_ENDPOINTS.put("productionMaterialIncrement", "/api/production/material-increments/count");
         ORIGINAL_ENDPOINTS.put("workshopTask", "/api/production/workshop-tasks/count");
         ORIGINAL_ENDPOINTS.put("productionExecution", "/api/production/execution-workbench/count");
         ORIGINAL_ENDPOINTS.put("fqcPending", "/api/production/quality-inspections/count");
@@ -138,6 +140,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         legacy("financeDrafts", List.of("drafts.financeReceipt", "drafts.financePayment", "drafts.financeExpense",
                 "drafts.financeOtherIncome", "drafts.financeBankTransfer"), List.of());
         legacy("productionSchedule", List.of("productionSchedule.count"), List.of());
+        legacy("productionRateApprovals", List.of("productionOverproductionRate.count"), List.of());
+        legacy("productionMaterialIncrementApprovals", List.of("productionMaterialIncrement.count"), List.of());
         legacy("productionBatches", List.of(), List.of("productionExecution.count"));
         legacy("productionDrafts", List.of("drafts.productionPlan", "drafts.productionDailyReport"), List.of());
         legacy("productionWorkshop", List.of("workshopTask.preparing"), List.of("workshopTask.inProgress"));

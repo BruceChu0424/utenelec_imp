@@ -59,5 +59,9 @@ public record ExecutionSegmentView(
         /** 已确认的开工路线(V599)：FULL_KIT/BATCH/CONTINUOUS；NULL=待车间确认。 */
         String startRoute,
         /** Explicit start is authorized and all required material jointly supports output. */
-        boolean canStart) {
+        boolean canStart,
+        /** Open, started task accepts actual output above plan; action permissions still apply. */
+        boolean allowActualOverproduction,
+        BigDecimal plannedInboundQty,
+        BigDecimal actualSurplusInboundQty) {
 }

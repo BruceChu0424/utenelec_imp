@@ -43,6 +43,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/providers/editable_grid_column_prefs.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -76,6 +77,7 @@ import '../widgets/material_borrow_dialog.dart';
 import '../widgets/material_required_reason_dialog.dart';
 import '../widgets/material_supply_progress_dialog.dart';
 import '../widgets/material_supply_submit_confirm.dart';
+import '../widgets/material_preparation_route_card.dart';
 
 part 'material_analysis_bom_tree.dart';
 part 'material_analysis_borrow.dart';

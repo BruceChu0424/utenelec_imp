@@ -20,6 +20,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -339,7 +340,8 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
       await deleteExpense(ref, claim.id, expectedVersion: claim.version);
       if (mounted) {
         context.appSuccess('已删除');
-        context.go(RouteName.expense);
+        // 返回列表（pop 优先保住栈下来源；深链无栈才归位报销列表）。
+        backTo(context, defaultPath: RouteName.expense);
       }
     });
   }

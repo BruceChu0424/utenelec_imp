@@ -16,7 +16,9 @@ import 'package:flutter_test/flutter_test.dart';
 /// 同步把 [_baseline] 调小。数字上涨会直接红。
 // 2026-09-23 第一阶段合并: 主档明细区把状态/删除权限码作为配置传入共享组件(客户分类 +1、模具分类 +3),
 // 总账报表「附表取数设置」按钮 +1, 仓库到货预期视图 -1, 净 +4。改为服务端下发动作集合归后续 uikit 工作流。
-const _baseline = 595;
+// 2026-09-24 +10：V694–V702 三个新审批页(追加用料/超产比例/追加生产计划)的按钮显隐
+// 与服务端 @PreAuthorize 组合一一对应地本地预演，非新增裁决逻辑。
+const _baseline = 605;
 
 final _permReference = RegExp(r'\bPerm\.[a-zA-Z]');
 

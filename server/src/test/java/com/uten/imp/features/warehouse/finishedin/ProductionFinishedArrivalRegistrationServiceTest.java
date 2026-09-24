@@ -8,13 +8,65 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ProductionFinishedArrivalRegistrationServiceTest {
+
+    @Test
+    void automaticReceiptRequiresExplicitCountButStandardRegistrationKeepsItsOldShape() {
+        UUID warehouse=UUID.randomUUID(), item=UUID.randomUUID();
+        var oldRow=new ArrivalRegistrationItemRequest(item,"A01");
+        assertThatThrownBy(()->ProductionFinishedArrivalRegistrationService.normalize(
+                new ArrivalRegistrationRequest("count-check-old",warehouse,List.of(oldRow),null,true)))
+                .isInstanceOf(ApiException.class).hasMessageContaining("逐行填写实际点数");
+        var standard=ProductionFinishedArrivalRegistrationService.normalize(
+                new ArrivalRegistrationRequest("count-check-old",warehouse,List.of(oldRow),null,false));
+        var standardWithUnusedCount=ProductionFinishedArrivalRegistrationService.normalize(
+                new ArrivalRegistrationRequest("count-check-old",warehouse,
+                        List.of(new ArrivalRegistrationItemRequest(item,"A01",BigDecimal.TEN)),null,false));
+        assertThat(standard.requestHash()).isEqualTo(standardWithUnusedCount.requestHash());
+        assertThat(standard.countedQuantities()).isEmpty();
+    }
+
+    @Test
+    void physicalCountIsCanonicalAndCannotChangeUnderTheSameIdempotencyRequest() {
+        UUID warehouse=UUID.randomUUID(), first=UUID.randomUUID(), second=UUID.randomUUID();
+        var left=ProductionFinishedArrivalRegistrationService.normalize(new ArrivalRegistrationRequest(
+                "count-check-hash",warehouse,List.of(new ArrivalRegistrationItemRequest(first,"A01",new BigDecimal("300.00")),
+                new ArrivalRegistrationItemRequest(second,"B01",new BigDecimal("100"))),null,true));
+        var reordered=ProductionFinishedArrivalRegistrationService.normalize(new ArrivalRegistrationRequest(
+                "count-check-hash",warehouse,List.of(new ArrivalRegistrationItemRequest(second,"B01",new BigDecimal("100.0")),
+                new ArrivalRegistrationItemRequest(first,"A01",new BigDecimal("300"))),null,true));
+        var changed=ProductionFinishedArrivalRegistrationService.normalize(new ArrivalRegistrationRequest(
+                "count-check-hash",warehouse,List.of(new ArrivalRegistrationItemRequest(first,"A01",new BigDecimal("299")),
+                new ArrivalRegistrationItemRequest(second,"B01",new BigDecimal("101"))),null,true));
+        assertThat(left.requestHash()).isEqualTo(reordered.requestHash()).isNotEqualTo(changed.requestHash());
+        ProductionFinishedArrivalRegistrationService.requireCountedQuantities(
+                Map.of(first,new BigDecimal("300"),second,new BigDecimal("100")),left.countedQuantities());
+        assertThatThrownBy(()->ProductionFinishedArrivalRegistrationService.requireCountedQuantities(
+                Map.of(first,new BigDecimal("300"),second,new BigDecimal("100")),changed.countedQuantities()))
+                .isInstanceOf(ApiException.class).hasMessageContaining("人工点收");
+    }
+
+    @Test
+    void countingCannotOmitOrSubstituteAnotherReportLineOrUseInvalidPrecision() {
+        UUID item=UUID.randomUUID();
+        assertThatThrownBy(()->ProductionFinishedArrivalRegistrationService.requireCountedQuantities(
+                Map.of(item,BigDecimal.TEN),Map.of(UUID.randomUUID(),BigDecimal.TEN)))
+                .isInstanceOf(ApiException.class).hasMessageContaining("逐行覆盖");
+        for(String invalid:List.of("0","-1","1.00001","100000000000000")) {
+            assertThatThrownBy(()->ProductionFinishedArrivalRegistrationService.normalize(new ArrivalRegistrationRequest(
+                    "count-check-invalid",UUID.randomUUID(),List.of(new ArrivalRegistrationItemRequest(
+                            item,"A01",new BigDecimal(invalid))),null,true)))
+                    .isInstanceOf(ApiException.class);
+        }
+    }
 
     @Test
     void batchLocksEveryReportBeforeAnyWarehouseAndReplaysBeforeCurrentReferenceChecks() throws Exception {

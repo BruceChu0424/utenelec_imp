@@ -695,18 +695,20 @@ void main() {
     final router = GoRouter(
       initialLocation: push ? source : reviewRoute,
       routes: [
+        // 与生产路由同构（app_router.dart）：审核页是列表页的兄弟路由而非子路由
+        // ——深链直达时栈里只有审核页（canPop=false → go 兜底回 returnTo），
+        // push 进入时栈下是打开方（pop(true) 交回刷新）。若嵌成子路由，父页面
+        // 也会压栈，canPop 语义就与线上不一致了。
         GoRoute(
           path: '/finance/sales-order-confirmations',
           builder: (_, _) => const Text('确认列表页'),
-          routes: [
-            GoRoute(
-              path: ':id',
-              builder: (_, state) => FinanceSalesOrderReviewPage(
-                id: state.pathParameters['id']!,
-                returnTo: state.uri.queryParameters['returnTo'],
-              ),
-            ),
-          ],
+        ),
+        GoRoute(
+          path: '/finance/sales-order-confirmations/order-1',
+          builder: (_, state) => FinanceSalesOrderReviewPage(
+            id: state.pathParameters['id'] ?? 'order-1',
+            returnTo: state.uri.queryParameters['returnTo'],
+          ),
         ),
         GoRoute(
           path: '/finance/sales-order-changes',

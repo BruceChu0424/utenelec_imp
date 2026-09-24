@@ -13,6 +13,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/production_material_analysis.dart';
@@ -30,6 +31,9 @@ class _ProductionChainHealthPageState
   List<ChainHealthCategoryView>? _categories;
   bool _loading = false;
   String? _error;
+
+  /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
+  String? _myLocation;
 
   @override
   void initState() {
@@ -65,6 +69,9 @@ class _ProductionChainHealthPageState
 
   @override
   Widget build(BuildContext context) {
+    // 返回即刷新：行点击 push 的计划详情/库存流水里做过操作后返回，重拉健康度。
+    _myLocation ??= currentLocationOr(context, RouteName.production);
+    ref.onPageResume(_myLocation!, () => _load());
     return Scaffold(
       appBar: UtenAppBar(
         title: '链路健康初筛',

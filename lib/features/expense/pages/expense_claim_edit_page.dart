@@ -124,7 +124,10 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage> {
         );
         if (mounted) {
           context.appSuccess(l10n.expenseFlowSaved);
-          context.go(RoutePath.expenseDetail(widget.claimId!));
+          // replace 落详情（2026-09-24）：从「列表→详情→编辑」push 进来时，
+          // go 会整替导航栈，详情返回键落 default 而不是报销列表；replace 只换
+          // 栈顶编辑页，返回链保持「详情→列表」。
+          context.replace(RoutePath.expenseDetail(widget.claimId!));
         }
         return;
       }
@@ -136,7 +139,7 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage> {
       );
       if (mounted) {
         context.appSuccess(l10n.expenseFlowDraftSaved);
-        context.go(RoutePath.expenseDetail(claim.id));
+        context.replace(RoutePath.expenseDetail(claim.id));
       }
     } catch (error) {
       if (mounted) context.appApiError(error);

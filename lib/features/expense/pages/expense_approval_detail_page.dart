@@ -25,6 +25,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../models/expense_invoice.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -119,7 +120,7 @@ class _ExpenseApprovalDetailPageState
       await approveExpense(ref, widget.claimId);
       if (mounted) {
         context.appSuccess('审批已通过');
-        context.go('/expense/approval');
+        backTo(context, defaultPath: '/expense/approval');
       }
     } catch (error) {
       if (mounted) context.appApiError(error);
@@ -140,7 +141,7 @@ class _ExpenseApprovalDetailPageState
       await rejectExpense(ref, widget.claimId, reason);
       if (mounted) {
         context.appSuccess('报销单已驳回，等待申请人修订后重新提交');
-        context.go('/expense/approval');
+        backTo(context, defaultPath: '/expense/approval');
       }
     } catch (error) {
       if (mounted) context.appApiError(error);
@@ -174,7 +175,7 @@ class _ExpenseApprovalDetailPageState
       );
       if (mounted) {
         context.appSuccess(AppLocalizations.of(context).expenseFlowPaymentDone);
-        context.go('/expense/approval');
+        backTo(context, defaultPath: '/expense/approval');
       }
     } catch (error) {
       if (mounted) context.appApiError(error);
@@ -223,7 +224,7 @@ class _ExpenseApprovalDetailPageState
                       size: UtenButtonSize.large,
                       onPressed: _acting
                           ? null
-                          : () => context.go('/expense/approval'),
+                          : () => backTo(context, defaultPath: '/expense/approval'),
                       child: const Text('返回'),
                     ),
                     UtenButton(

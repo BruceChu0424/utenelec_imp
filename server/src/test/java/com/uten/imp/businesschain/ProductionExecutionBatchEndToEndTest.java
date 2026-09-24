@@ -411,10 +411,21 @@ class ProductionExecutionBatchEndToEndTest {
         var allocation=db.queryForList("SELECT id,sales_order_item_id FROM execution_segment_sales_allocations WHERE execution_segment_id=?",batch.batchSegmentId());
         if(!allocation.isEmpty()){item.setExecutionSegmentSalesAllocationId((UUID)allocation.getFirst().get("id"));item.setSalesOrderItemId((UUID)allocation.getFirst().get("sales_order_item_id"));}
         report.setItems(List.of(item));
+        var actualUses=db.queryForList("SELECT id,required_qty FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted AND status NOT IN('RELEASED','REVERSED')",batch.batchSegmentId()).stream().map(row->{
+            var use=new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();
+            use.setDemandId((UUID)row.get("id"));use.setQtyBase((BigDecimal)row.get("required_qty"));return use;
+        }).toList();
+        report.setMaterialLines(actualUses);
         item.setIsFinal(true);item.setQty(BigDecimal.ONE);
         ApiException earlyFinal=assertThrows(ApiException.class,()->reports.create(report));
         assertTrue(earlyFinal.getMessage().contains("分批报工不调整原批准总量"));
         item.setIsFinal(false);item.setQty(new BigDecimal(quantity));
+        if(actualUses.isEmpty()&&Boolean.TRUE.equals(db.queryForObject("SELECT fn_split_batch_empty_issued(?)",Boolean.class,batch.batchSegmentId()))) {
+            item.setQty(new BigDecimal(quantity).add(BigDecimal.ONE));
+            ApiException unprovenSurplus=assertThrows(ApiException.class,()->reports.create(report));
+            assertTrue(unprovenSurplus.getMessage().contains("新增超产"),"a fixed planned batch is not proof of additional unconsumed output");
+            item.setQty(new BigDecimal(quantity));
+        }
         assertNotNull(reports.create(report).getId());
     }
 

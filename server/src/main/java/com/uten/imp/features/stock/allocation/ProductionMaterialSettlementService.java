@@ -44,6 +44,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
     private final TxSessionVars tx;
     private final ProductionMaterialTaskAccessPolicy taskAccess;
     private final com.uten.imp.features.stock.valuation.ProductionInventoryValueService inventoryValue;
+    private final com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService planFootprints;
 
     @Override
     @Transactional(readOnly = true)
@@ -53,10 +54,16 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
             throw new IllegalArgumentException("Material usage requires a bounded page of exact segment IDs");
         }
         var query = em.createNativeQuery("""
+                WITH material_sources AS MATERIALIZED (
+                    SELECT target.id AS target_id,target.id AS source_id FROM production_execution_segments target WHERE target.id IN (:segments)
+                    UNION
+                    SELECT target.id,source.segment_id FROM production_execution_segments target
+                    CROSS JOIN LATERAL fn_production_material_usage_source_segments(target.id) source WHERE target.id IN (:segments)
+                )
                 SELECT segment.id,
                        (EXISTS (
                            SELECT 1 FROM production_material_demands demand
-                           WHERE demand.execution_segment_id=segment.id
+                           WHERE demand.execution_segment_id IN(SELECT source_id FROM material_sources WHERE target_id=segment.id)
                              AND (EXISTS (
                                  SELECT 1 FROM production_material_stock_postings posting
                                  WHERE posting.demand_id=demand.id
@@ -68,12 +75,14 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                                    AND event.event_type='POST' AND posting.qty_base>0)))
                         OR EXISTS(SELECT 1 FROM production_material_demands demand
                             JOIN v_workshop_direct_supply_lots lot ON lot.to_demand_id IN(demand.id,demand.split_root_demand_id)
-                            WHERE demand.execution_segment_id=segment.id AND NOT demand.is_deleted AND lot.received_qty>0)
-                        OR EXISTS(SELECT 1 FROM production_material_return_requests request WHERE request.execution_segment_id=segment.id)),
+                            WHERE demand.execution_segment_id IN(SELECT source_id FROM material_sources WHERE target_id=segment.id)
+                              AND NOT demand.is_deleted AND lot.received_qty>0)
+                        OR EXISTS(SELECT 1 FROM production_material_return_requests request
+                            WHERE request.execution_segment_id IN(SELECT source_id FROM material_sources WHERE target_id=segment.id))),
                        EXISTS (
                            SELECT 1 FROM v_production_material_clearance clearance
                            JOIN production_material_demands demand ON demand.id=clearance.demand_id
-                           WHERE demand.execution_segment_id=segment.id
+                           WHERE demand.execution_segment_id IN(SELECT source_id FROM material_sources WHERE target_id=segment.id)
                              AND clearance.issued_qty>0 AND clearance.uncleared_qty>
                                  COALESCE((SELECT SUM(fn_material_issue_pending_return(issue.id,NULL))
                                      FROM production_material_stock_postings issue
@@ -81,7 +90,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                        EXISTS (
                            SELECT 1 FROM production_material_return_requests request
                            JOIN stock_documents document ON document.id=request.id AND document.status=0 AND NOT document.is_deleted
-                           WHERE request.execution_segment_id=segment.id
+                           WHERE request.execution_segment_id IN(SELECT source_id FROM material_sources WHERE target_id=segment.id)
                              AND NOT EXISTS(SELECT 1 FROM production_material_return_request_cancellations cancellation WHERE cancellation.request_id=request.id)),
                        fn_execution_material_return_allowed(segment.id)
                 FROM production_execution_segments segment
@@ -101,21 +110,30 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
             UUID planId, UUID executionSegmentId) {
         if (executionSegmentId==null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择准确车间任务");
         taskAccess.readable(planId,executionSegmentId);
-        var scope=taskAccess.readable(planId,null);
+        Map<UUID,ProductionMaterialTaskAccessPolicy.ReadScope> scopes=new LinkedHashMap<>();
+        scopes.put(planId,taskAccess.readable(planId,null));
         List<Object[]> sources=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT segment.id,segment.segment_code
+                SELECT segment.id,segment.segment_code,segment.plan_id
                 FROM fn_production_material_usage_source_segments(:segmentId) source
                 JOIN production_execution_segments segment ON segment.id=source.segment_id
-                WHERE segment.plan_id=:planId AND NOT segment.is_deleted
+                WHERE NOT segment.is_deleted
                 ORDER BY (segment.id=:segmentId) DESC,segment.segment_no,segment.id
-                """).setParameter("segmentId",executionSegmentId).setParameter("planId",planId));
+                """).setParameter("segmentId",executionSegmentId));
         List<com.uten.imp.features.stock.allocation.dto.ProductionMaterialUsageSource> visible=new ArrayList<>();
         for(Object[] row:sources) {
             UUID sourceSegment=(UUID)row[0];
+            UUID sourcePlan=(UUID)row[2];
+            ProductionMaterialTaskAccessPolicy.ReadScope scope;
+            try {
+                scope=scopes.computeIfAbsent(sourcePlan,key->taskAccess.readable(key,null));
+            } catch(ApiException failure) {
+                if(failure.getCode()==ErrorCode.NOT_FOUND)continue;
+                throw failure;
+            }
             if(!scope.all()&&!scope.segmentIds().contains(sourceSegment))continue;
-            var capabilities=taskAccess.capabilities(planId,sourceSegment);
+            var capabilities=taskAccess.capabilities(sourcePlan,sourceSegment);
             visible.add(new com.uten.imp.features.stock.allocation.dto.ProductionMaterialUsageSource(
-                    sourceSegment,(String)row[1],!sourceSegment.equals(executionSegmentId),true,capabilities.canSettle()));
+                    sourceSegment,(String)row[1],!sourceSegment.equals(executionSegmentId),true,capabilities.canSettle(),sourcePlan));
         }
         return List.copyOf(visible);
     }
@@ -221,6 +239,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
     @Transactional
     public List<ProductionMaterialClearanceRow> close(UUID planId) {
         tx.bind();
+        var sourceGuard=planFootprints.beginPlan(planId,List.of());
         requirePlanExists(planId, true);
         taskAccess.requireClose(planId);
         Number packages = (Number) em.createNativeQuery("""
@@ -242,7 +261,12 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                         FROM production_plan_items
                         WHERE plan_id = :planId
                           AND is_deleted = FALSE
-                          AND COALESCE(iqty, 0) < COALESCE(qty, 0)
+                          AND (COALESCE(iqty, 0) < COALESCE(qty, 0)
+                              + fn_plan_actual_surplus_qty(id,FALSE)
+                            OR EXISTS (SELECT 1 FROM production_daily_report_items pending
+                                JOIN production_daily_reports report ON report.id=pending.report_id
+                                WHERE pending.plan_item_id=production_plan_items.id
+                                  AND NOT pending.is_deleted AND NOT report.is_deleted AND report.status=0))
                         """)
                 .setParameter("planId", planId)
                 .getSingleResult();
@@ -252,11 +276,18 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                     "成品尚未全部入库，不能完成生产任务");
         }
         List<ProductionMaterialClearanceRow> rows = readClearance(planId);
-        if (rows.isEmpty() || rows.stream().anyMatch(row -> !row.canClose())) {
+        boolean sharedClear = rows.isEmpty() && Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT COALESCE(bool_and(fn_actual_supplement_material_cleared(segment.id)),FALSE)
+                FROM production_execution_segments segment
+                JOIN production_actual_output_supplement_proofs proof ON proof.supplement_execution_segment_id=segment.id
+                WHERE segment.plan_id=:planId AND NOT segment.is_deleted
+                """).setParameter("planId",planId).getSingleResult());
+        if ((rows.isEmpty() && !sharedClear) || rows.stream().anyMatch(row -> !row.canClose())) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
                     "物料尚未清账：发出量必须等于耗用、良品退回、审批损耗和合法在制之和");
         }
+        sourceGuard.verifyUnchanged();
         em.createNativeQuery("""
                         UPDATE production_plans
                         SET is_closed = TRUE, updated_at = now()
@@ -273,6 +304,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
             UUID actorId,
             boolean reverse) {
         tx.bind();
+        var sourceGuard=planFootprints.beginPlan(planId,List.of());
         requirePlanExists(planId, true);
         List<Line> lines = normalize(request, reverse);
         List<UUID> demandIds = lines.stream().map(Line::demandId).distinct().toList();
@@ -321,6 +353,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                     "清账物料需求不属于当前有效计划");
         }
 
+        sourceGuard.verifyUnchanged();
         UUID eventId = UUID.randomUUID();
         em.createNativeQuery("""
                         INSERT INTO production_material_settlement_events(
@@ -396,7 +429,9 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
         List<Object[]> segments=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT segment.id,segment.lock_version FROM production_execution_segments segment
                 WHERE segment.status='COMPLETED' AND NOT segment.is_deleted AND EXISTS(
-                    SELECT 1 FROM production_material_demands demand WHERE demand.id IN(:ids) AND demand.execution_segment_id=segment.id)
+                    SELECT 1 FROM production_material_demands demand WHERE demand.id IN(:ids)
+                      AND (demand.execution_segment_id=segment.id OR demand.execution_segment_id IN(
+                          SELECT segment_id FROM fn_production_material_usage_source_segments(segment.id))))
                 ORDER BY segment.id FOR UPDATE OF segment
                 """).setParameter("ids",demandIds));
         if(segments.isEmpty())return;

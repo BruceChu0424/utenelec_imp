@@ -15,6 +15,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -49,6 +50,9 @@ class _ProcurementReturnTasksPageState
   int _requestVersion = 0;
   final Set<String> _selected = {};
   bool _batchSaving = false;
+
+  /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
+  String? _myLocation;
 
   @override
   void initState() {
@@ -202,6 +206,10 @@ class _ProcurementReturnTasksPageState
 
   @override
   Widget build(BuildContext context) {
+    // 返回即刷新：从本页 push 进详情办结退回后返回，重拉当前页（行内 onOpen
+    // 是无返回值 push，此前返回后行状态停在旧值，要手动刷新）。
+    _myLocation ??= currentLocationOr(context, _defaultBack);
+    ref.onPageResume(_myLocation!, () => _load(_result?.page ?? 1));
     final result = _result;
     return Scaffold(
       appBar: UtenAppBar(

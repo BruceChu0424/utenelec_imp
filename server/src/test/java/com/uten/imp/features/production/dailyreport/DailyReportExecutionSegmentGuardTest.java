@@ -244,20 +244,21 @@ class DailyReportExecutionSegmentGuardTest {
     }
 
     @Test
-    void continuousWarehouseSupplyCanReportOnlyItsActualCumulativeCapacity() {
+    void frozenBomCapacityIsNotAnActualProductionCeiling() {
         Fixture fixture = fixture("IN_PROGRESS", "1000", "40", "DEMANDED", "PARTIAL", true, true, "100");
         assertDoesNotThrow(() -> fixture.guard.validateDraft(UUID.randomUUID(), fixture.workshopId,
-                List.of(fixture.line("60"))));
-        ApiException error = assertThrows(ApiException.class, () -> fixture.guard.validateDraft(
-                UUID.randomUUID(), fixture.workshopId, List.of(fixture.line("60.0001"))));
-        assertTrue(error.getMessage().contains("最多可报 100"));
+                List.of(fixture.line("60.0001"))));
+        // Actual material declarations and exact ISSUE settlement are checked by
+        // the report command; this guard owns identity and planned allocation.
     }
 
     @Test
-    void continuousSupplyWithUnknownCapacityCannotReport() {
-        Fixture fixture = fixture("IN_PROGRESS", "1000", "0", "DEMANDED", "PARTIAL", true, true, null);
-        assertThrows(ApiException.class, () -> fixture.guard.validateDraft(UUID.randomUUID(),
-                fixture.workshopId,List.of(fixture.line("1"))));
+    void actualSurplusCannotBorrowAnySalesIdentity() {
+        Fixture fixture = fixture("IN_PROGRESS", "1000", "1000");
+        var line=fixture.line("120");line.setActualSurplus(true);
+        assertDoesNotThrow(()->fixture.guard.validateDraft(UUID.randomUUID(),fixture.workshopId,List.of(line)));
+        line.setSalesOrderItemId(UUID.randomUUID());
+        assertThrows(ApiException.class,()->fixture.guard.validateDraft(UUID.randomUUID(),fixture.workshopId,List.of(line)));
     }
 
     @Test

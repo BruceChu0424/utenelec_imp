@@ -75,7 +75,8 @@ class ResetBusinessDataScriptContractTest {
         // V680 +2 服务端会话/再认证失败计数(ADR-110, 清库后全员重新登录; CLEAR 300→302)。
         // V686 +1 总账附表行绑定(ADR-112, 报表配置随主档保留), V677 -4 角色体系四张表(ADR-109): 401 表, PRESERVE 99。
         // V693 +1 仓库负责人(ADR-115, 仓库附属设置随主档保留): 402 表, PRESERVE 100。
-        assertThat(policy).hasSize(402);
+        // V698 review history, V700 actual-output proof and V702 material increment: nine CLEAR tables.
+        assertThat(policy).hasSize(411);
         assertThat(policy).containsEntry("finance_report_line_bindings", "PRESERVE");
         assertThat(policy).containsEntry("warehouse_keepers", "PRESERVE");
         assertThat(policy).containsEntry("subcontract_component_stock_handoffs", "CLEAR");
@@ -88,7 +89,7 @@ class ResetBusinessDataScriptContractTest {
         assertThat(policy).containsEntry("legacy_procurement_receipt_import_sources", "PRESERVE");
         assertThat(policy).containsEntry("expense_claim_settings", "PRESERVE");
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(302);
+                .isEqualTo(311);
         assertThat(policy).containsEntry("production_material_return_requests", "CLEAR");
         assertThat(policy).containsEntry("production_material_return_request_items", "CLEAR");
         assertThat(policy).containsEntry("production_material_return_request_cancellations", "CLEAR");
@@ -424,9 +425,9 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(690, 619)")
                 .contains("(691, 620)")
                 .contains("(692, 621)")
-                .contains("(693, 622)")
-                // 迁移头 V693 / 622 张 (V648至V669 跳号)。
-                .contains("V507/469、V508/470及V511至V693完整目录")
+                .contains("(693, 622)").contains("(694, 623)").contains("(695, 624)").contains("(696, 625)").contains("(697, 626)").contains("(698, 627)").contains("(699, 628)").contains("(700, 629)").contains("(701, 630), (702, 631)")
+                // 迁移头 V702 / 631 张 (V648至V669 跳号)。
+                .contains("V507/469、V508/470及V511至V702完整目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

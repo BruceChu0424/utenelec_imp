@@ -21,6 +21,9 @@ import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
+import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
+import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/department/models/workforce_overview.dart';
@@ -131,6 +134,9 @@ void main() {
         size: const Size(1200, 900),
         seeded: false,
         analysisId: 'analysis-1',
+        // 2026-09-24 起取消成功后返回来源页/归位调度台，不再停留本页——
+        // 需要路由环境承接 popOrBackTo 的 defaultPath 落点。
+        withPlanRoute: true,
         permissions: const {Perm.productionMaterialAnalysisCancel},
         allowedActions: const ['CANCEL_ANALYSIS'],
         responseOverride: (request) async {
@@ -197,6 +203,8 @@ void main() {
       );
       expect((request.data as Map)['reason'], '');
       expect(find.byKey(const Key('material-analysis-cancel')), findsNothing);
+      // 取消成功后不再停留本页：归位调度台（无来源可 pop 时的 defaultPath）。
+      expect(find.text('调度台桩'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -209,6 +217,7 @@ void main() {
       size: const Size(1200, 900),
       seeded: false,
       analysisId: 'analysis-1',
+      withPlanRoute: true,
       permissions: const {Perm.productionMaterialAnalysisCancel},
       allowedActions: const ['CANCEL_ANALYSIS'],
       responseOverride: (request) => request.path.endsWith('/cancel')
@@ -226,6 +235,8 @@ void main() {
     );
     expect((request.data as Map)['reason'], '重新安排需求');
     expect(find.byKey(const Key('material-analysis-cancel')), findsNothing);
+    // 取消成功后不再停留本页：归位调度台（无来源可 pop 时的 defaultPath）。
+    expect(find.text('调度台桩'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -8057,14 +8068,25 @@ Future<void> _closeBucketDetail(WidgetTester tester) async {
 
 /// 断言主页面入口卡上的分桶计数（入口徽标与详情页行数同源）。
 /// 须在联动头区可见时调用（被滚动收起后入口卡不在树中；先 _resetPageScrolls）。
+///
+/// 2026-09-24 WIP 起入口卡是双计数（进行中黄 + 未下达红，部分下达任务两侧都算），
+/// 老断言找单个总数文本会漏——改为读两枚徽标的 count 字段、其和覆盖原总数口径。
 void _expectBucketCount(WidgetTester tester, String bucket, int count) {
-  expect(
-    find.descendant(
-      of: find.byKey(Key('material-analysis-entry-$bucket')),
-      matching: find.text('$count'),
-    ),
-    findsOneWidget,
-  );
+  int badgeCount(String status, Type badgeType) {
+    final matches = find.descendant(
+      of: find.byKey(Key('material-analysis-entry-$bucket-$status')),
+      matching: find.byType(badgeType),
+    );
+    final found = tester.widgetList(matches).toList();
+    if (found.isEmpty) return 0;
+    // ignore: avoid_dynamic_calls
+    return found.map((w) => (w as dynamic).count as int).reduce((a, b) => a + b);
+  }
+
+  final total =
+      badgeCount('in-progress', UtenInProgressBadge) +
+      badgeCount('pending', UtenNotificationBadge);
+  expect(total, count, reason: '入口卡 $bucket 的双计数之和应为 $count');
 }
 
 /// 分桶表格的表头三态全选框。MasterDataTableView 与 UtenEditableGrid 的
@@ -8197,6 +8219,13 @@ Future<_Harness> _pumpPage(
                 path: '/production/plans/:id',
                 builder: (_, state) =>
                     Scaffold(body: Text('已打开计划 ${state.pathParameters['id']}')),
+              ),
+            // 取消分析成功后归位调度台（2026-09-24：不再停留已取消的分析页），
+            // 深链无栈时 popOrBackTo 的 defaultPath 落到这里。
+            if (withPlanRoute)
+              GoRoute(
+                path: RouteName.productionSchedule,
+                builder: (_, _) => const Scaffold(body: Text('调度台桩')),
               ),
           ],
         )

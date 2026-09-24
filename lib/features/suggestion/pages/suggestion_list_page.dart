@@ -50,7 +50,9 @@ class SuggestionListPage extends ConsumerWidget {
       emptyActionLabel: '提交建议',
       fabLabel: '提建议',
       actionIcon: Icons.edit_rounded,
-      onPressed: () => context.go(RouteName.suggestionNew),
+      // push 进新建页（2026-09-24 起，原来 go 抹掉列表）：提交后新建页 replace 成
+      // 详情，返回链=「详情→列表」，列表 autoDispose 重建即最新数据。
+      onPressed: () => context.push(RouteName.suggestionNew),
     );
 
     Widget body = RefreshIndicator(

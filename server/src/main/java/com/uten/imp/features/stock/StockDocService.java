@@ -1493,6 +1493,7 @@ public class StockDocService {
                                             = item.source_daily_report_item_id
                                     AND registration_item.reversal_id IS NULL
                                     AND registration.stock_in_before_inspection
+                                    AND fn_finished_arrival_count_is_proven(registration_item.id)
                                     AND registration.warehouse_id = :warehouseId))
                         """)
                 .setParameter("documentId", document.getId())
@@ -3051,7 +3052,7 @@ public class StockDocService {
     /** Public output owns only the unallocated slice; closed sales never release their allocation. */
     private boolean validatePublicFinishedInCapacity(StockDocumentItem item, BigDecimal qty, int sign) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT segment.planned_qty - COALESCE((
+                SELECT segment.planned_qty + fn_execution_actual_surplus_qty(segment.id, FALSE) - COALESCE((
                            SELECT SUM(allocation.allocated_qty)
                            FROM execution_segment_sales_allocations allocation
                            WHERE allocation.execution_segment_id = segment.id), 0),
@@ -3082,13 +3083,15 @@ public class StockDocService {
                            WHERE plan.id = segment.plan_id
                              AND EXISTS (SELECT 1 FROM plan_order_item_links sales_origin
                                  WHERE sales_origin.plan_item_id = segment.source_plan_item_id
-                                   AND NOT sales_origin.is_deleted)) AS public_sales_surplus
+                                   AND NOT sales_origin.is_deleted)) AS public_sales_surplus,
+                       fn_finished_in_is_public_output(:stockItemId) AS explicit_public_output
                 FROM production_execution_segments segment
                 WHERE segment.id = :segmentId
                   AND segment.source_plan_item_id = :planItemId AND NOT segment.is_deleted
                 FOR UPDATE OF segment
                 """)
                 .setParameter("segmentId", item.getExecutionSegmentId())
+                .setParameter("stockItemId", item.getId())
                 .setParameter("planItemId", item.getUpstreamItemId()));
         if (rows.size() != 1) {
             throw new ApiException(ErrorCode.CONFLICT, "公共备货入库缺少精确执行子计划来源");
@@ -3104,7 +3107,8 @@ public class StockDocService {
         }
         // A later batch may consist entirely of the already approved public
         // surplus while sibling batches carry every sales allocation.
-        return quota.compareTo((BigDecimal) row[3]) < 0 || Boolean.TRUE.equals(row[4]);
+        return quota.compareTo((BigDecimal) row[3]) < 0 || Boolean.TRUE.equals(row[4])
+                || Boolean.TRUE.equals(row[5]);
     }
 
     /**
@@ -3476,7 +3480,8 @@ public class StockDocService {
     private void recomputePlanClosed(UUID planId) {
         em.createNativeQuery("""
                 UPDATE production_plans p SET is_closed = (
-                    SELECT COALESCE(bool_and(COALESCE(i.qty,0) - COALESCE(i.iqty,0) <= 0), true)
+                    SELECT COALESCE(bool_and(COALESCE(i.qty,0)
+                        + fn_plan_actual_surplus_qty(i.id, FALSE) - COALESCE(i.iqty,0) <= 0), true)
                     FROM production_plan_items i
                     WHERE i.plan_id = p.id AND COALESCE(i.is_deleted, false) = false
                 ) WHERE p.id = :pid

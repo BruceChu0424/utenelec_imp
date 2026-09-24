@@ -206,7 +206,9 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
       );
       if (mounted) {
         UtenToast.success(context, '提交成功，感谢您的建议！');
-        context.push(RoutePath.suggestionDetail(s.id));
+        // replace 成详情（2026-09-24 起，原来 push 把详情叠在空白新建表单上，
+        // 从详情返回会先落回一张已提交过的空表单）。
+        context.replace(RoutePath.suggestionDetail(s.id));
       }
     } catch (e) {
       if (mounted) UtenToast.error(context, '提交失败：$e');

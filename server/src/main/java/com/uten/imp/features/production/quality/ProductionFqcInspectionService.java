@@ -1555,7 +1555,8 @@ public class ProductionFqcInspectionService
                               ON registration.id = registration_item.registration_id
                             WHERE registration_item.source_report_item_id = :reportItemId
                               AND registration_item.reversal_id IS NULL
-                              AND registration.stock_in_before_inspection)
+                              AND registration.stock_in_before_inspection
+                              AND fn_finished_arrival_count_is_proven(registration_item.id))
                         """)
                 .setParameter("reportItemId", sourceReportItemId)
                 .getSingleResult());

@@ -183,6 +183,14 @@ class ProductionExecutionWorkbenchSegment {
     required this.canBatchReport,
     required this.lockVersion,
     required this.zeroMaterial,
+    this.actualSurplusReportedQty = 0,
+    this.actualSurplusInboundQty = 0,
+    this.allowedOverproductionRate,
+    this.pendingOverproductionRate,
+    this.pendingOverproductionRateRequestId,
+    this.overproductionPolicyApplies = true,
+    this.actualOutputSupplementRequestId,
+    double? plannedInboundQty,
     this.canRecheckMaterial = false,
     this.drawRequested = false,
     this.canRequestDraw = false,
@@ -222,7 +230,8 @@ class ProductionExecutionWorkbenchSegment {
     this.blockedReason,
     this.planBeginDate,
     this.planEndDate,
-  }) : hasAvailableMaterial = hasAvailableMaterial ?? hasUnregisteredMaterial;
+  }) : hasAvailableMaterial = hasAvailableMaterial ?? hasUnregisteredMaterial,
+       plannedInboundQty = plannedInboundQty ?? inboundQty;
 
   final String segmentId;
   final String planId;
@@ -244,6 +253,19 @@ class ProductionExecutionWorkbenchSegment {
   final double fqcFailedQty;
   final double finishedInboundPendingQty;
   final double inboundQty;
+  final double actualSurplusReportedQty;
+  final double actualSurplusInboundQty;
+  final double? allowedOverproductionRate;
+  final double? pendingOverproductionRate;
+  final String? pendingOverproductionRateRequestId;
+  final bool overproductionPolicyApplies;
+  final String? actualOutputSupplementRequestId;
+  final double plannedInboundQty;
+
+  double? get plannedInboundProgressRatio =>
+      plannedQty <= 0 || !plannedQty.isFinite || !plannedInboundQty.isFinite
+      ? null
+      : (plannedInboundQty / plannedQty).clamp(0.0, 1.0);
   final String segmentStatus;
   final String materialStatus;
   final String preparationStatus;
@@ -381,6 +403,20 @@ class ProductionExecutionWorkbenchSegment {
     finishedInboundPendingQty:
         (json['finishedInboundPendingQty'] as num?)?.toDouble() ?? 0,
     inboundQty: (json['inboundQty'] as num?)?.toDouble() ?? 0,
+    actualSurplusReportedQty:
+        (json['actualSurplusReportedQty'] as num?)?.toDouble() ?? 0,
+    actualSurplusInboundQty:
+        (json['actualSurplusInboundQty'] as num?)?.toDouble() ?? 0,
+    allowedOverproductionRate: (json['allowedOverproductionRate'] as num?)
+        ?.toDouble(),
+    pendingOverproductionRate: (json['pendingOverproductionRate'] as num?)
+        ?.toDouble(),
+    pendingOverproductionRateRequestId:
+        json['pendingOverproductionRateRequestId'] as String?,
+    overproductionPolicyApplies: json['overproductionPolicyApplies'] != false,
+    actualOutputSupplementRequestId:
+        json['actualOutputSupplementRequestId'] as String?,
+    plannedInboundQty: (json['plannedInboundQty'] as num?)?.toDouble(),
     segmentStatus: json['segmentStatus'] as String? ?? '',
     materialStatus: json['materialStatus'] as String? ?? '',
     preparationStatus: json['preparationStatus'] as String? ?? '',

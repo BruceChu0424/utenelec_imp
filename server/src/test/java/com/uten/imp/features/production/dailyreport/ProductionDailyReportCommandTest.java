@@ -58,6 +58,8 @@ class ProductionDailyReportCommandTest {
     @Mock private PlanOrderItemLinkRepository linkRepo;
     @Mock private StockDocumentRepository stockDocRepo;
     @Mock private DailyReportExecutionSegmentGuard executionSegments;
+    @Mock private DailyReportOutputAllocationService outputAllocation;
+    @Mock private ActualOutputSupplementService outputSupplements;
     @Mock private StockDocumentItemRepository stockDocItemRepo;
     @Mock private SecurityContextCurrentUser currentUser;
     @Mock private EmployeeNameResolver nameResolver;

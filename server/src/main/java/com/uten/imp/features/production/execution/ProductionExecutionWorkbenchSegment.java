@@ -98,5 +98,17 @@ public record ProductionExecutionWorkbenchSegment(
         /** 已实领物料共同支持的可产量(冻结耗用曲线，V609)。 */
         BigDecimal materialSupportedOutputQty,
         /** 已预留物料(含未领)共同支持的可产量。 */
-        BigDecimal materialPreparedOutputQty) {
+        BigDecimal materialPreparedOutputQty,
+        /** Effective output above the original plan; never changes its commitment. */
+        BigDecimal actualSurplusReportedQty,
+        /** Actual surplus physically received after quality release. */
+        BigDecimal actualSurplusInboundQty,
+        /** Qualified receipts belonging to the original plan, excluding actual surplus. */
+        BigDecimal plannedInboundQty,
+        BigDecimal allowedOverproductionRate,
+        long overproductionRateVersion,
+        UUID pendingOverproductionRateRequestId,
+        BigDecimal pendingOverproductionRate,
+        boolean overproductionPolicyApplies,
+        UUID actualOutputSupplementRequestId) {
 }

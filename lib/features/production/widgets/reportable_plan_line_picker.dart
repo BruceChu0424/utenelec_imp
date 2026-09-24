@@ -174,7 +174,8 @@ class _ReportablePlanLineSheetState
                   Expanded(
                     child: Text(
                       '选择后会锁定计划行、销售订单行、单位口径和 FQC 恢复授权。'
-                      '提交审核时后台再次校验剩余量，并发报工不会超报、串单或重复贡献。',
+                      '按实际产量报工；按已生效的允许超产比例核对，越限先办理追加计划。'
+                      '保存和审核均会核对来源、重复申报及接收需求。',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onPrimaryContainer,
                       ),
@@ -342,10 +343,19 @@ class _ReportablePlanLineSheetState
           ),
           MasterColumnDef(
             key: 'maxReport',
-            label: '当前可报',
+            label: '计划内/恢复量',
             width: 90,
             type: 'number',
             value: (item) => _fmt(item.maxReportQty),
+          ),
+          MasterColumnDef(
+            key: 'actualProduction',
+            label: '报工规则',
+            width: 150,
+            value: (item) =>
+                item.allowActualOverproduction && !item.isFqcRecovery
+                ? '按有效超产比例核对'
+                : '按当前可报量',
           ),
           MasterColumnDef(
             key: 'delivery',

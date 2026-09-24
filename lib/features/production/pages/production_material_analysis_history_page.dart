@@ -10,6 +10,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/display_datetime.dart';
@@ -57,6 +58,9 @@ class _ProductionMaterialAnalysisHistoryPageState
   String _sourceType = '';
   bool _loading = false;
   String? _error;
+
+  /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
+  String? _myLocation;
 
   @override
   void initState() {
@@ -119,6 +123,13 @@ class _ProductionMaterialAnalysisHistoryPageState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final compact = context.breakpoint.isCompact;
+    // 返回即刷新：从本页 push 的分析页里取消分析/下单后返回，重拉当前页
+    // （push 返回链已有；这里兜住子页经 go/popOrBackTo 栈空分支离开再回来的路径）。
+    _myLocation ??= currentLocationOr(
+      context,
+      RouteName.productionMaterialAnalysis,
+    );
+    ref.onPageResume(_myLocation!, () => _load(page: _page?.page ?? 1));
     return Scaffold(
       appBar: UtenAppBar(
         title: '物料分析记录',

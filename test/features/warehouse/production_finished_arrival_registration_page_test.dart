@@ -97,6 +97,33 @@ void main() {
         .call();
     await tester.pumpAndSettle();
 
+    expect(api.lastPostBody, isNull, reason: '自动模式必须先取得实物点数，不能直接复制申报数量');
+    await tester.enterText(
+      find.byKey(
+        const Key(
+          'production-prestock-count-30000000-0000-0000-0000-000000000001',
+        ),
+      ),
+      '9',
+    );
+    await tester.tap(
+      find.byKey(const Key('production-prestock-count-confirm')),
+    );
+    await tester.pumpAndSettle();
+    expect(api.lastPostBody, isNull);
+    expect(find.textContaining('实点数与申报数不同'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(
+        const Key(
+          'production-prestock-count-30000000-0000-0000-0000-000000000001',
+        ),
+      ),
+      '10',
+    );
+    await tester.tap(
+      find.byKey(const Key('production-prestock-count-confirm')),
+    );
+    await tester.pumpAndSettle();
     expect(api.lastPostBody?['stockInBeforeInspection'], isTrue);
     // 幂等键含选择：改用另一个按钮重提交是另一个请求，不是重放。
     expect(
@@ -105,6 +132,7 @@ void main() {
     );
     final items = (api.lastPostBody?['items'] as List)
         .cast<Map<String, dynamic>>();
+    expect(items.single['countedQty'], 10);
     expect(items.first['place'], 'CP-A-09');
   });
 

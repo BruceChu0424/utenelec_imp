@@ -274,6 +274,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
           .delete(widget.id);
       if (!mounted) return;
       context.appSuccess('已删除');
+      // 删除也 bump：来源列表立即去掉这行，草稿计数/徽章即时重拉
+      // （其余写动作都有 bump，唯独删除漏了）。
+      bumpListRefresh(ref, _cfg.refreshKey);
       // 返回键契约（路由设计 §十一）：pop 回来源，栈空回钱流 hub。
       popOrBackTo(context, defaultPath: RouteName.finance);
     } on ApiException catch (e) {

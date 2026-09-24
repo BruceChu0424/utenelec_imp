@@ -441,6 +441,7 @@ class ProductionFinishedArrivalRegistrationItem {
     this.placeHint,
     this.lastWarehouseId,
     this.lastWarehouseName,
+    this.countedQty,
   });
 
   final String reportItemId;
@@ -457,6 +458,9 @@ class ProductionFinishedArrivalRegistrationItem {
   final String? unitId;
   final String? unitName;
   final double reportedQty;
+
+  /// Explicit physical count; historical and manual-receipt registrations stay unknown.
+  final double? countedQty;
   final String? place;
   final String? placeHint;
 
@@ -488,5 +492,6 @@ class ProductionFinishedArrivalRegistrationItem {
     placeHint: json['placeHint'] as String?,
     lastWarehouseId: json['lastWarehouseId'] as String?,
     lastWarehouseName: json['lastWarehouseName'] as String?,
+    countedQty: (json['countedQty'] as num?)?.toDouble(),
   );
 }

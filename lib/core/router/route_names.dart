@@ -396,6 +396,10 @@ abstract final class RouteName {
   static const String productionSchedule = '/production/schedule';
   static const String productionProgress = '/production/progress';
   static const String productionWorkshopTasks = '/production/workshop-tasks';
+  static const String productionOverproductionRateRequests =
+      '/production/overproduction-rate-requests';
+  static const String productionMaterialIncrementRequests =
+      '/production/material-increment-requests';
   static const String productionDrawRequest =
       '/production/workshop-tasks/draw-request';
   static const String productionBatchDraw =
@@ -652,6 +656,14 @@ abstract final class RoutePath {
   ) => '/production/material-analyses/$analysisId/sales-orders/$orderId';
   static String productionPlanNew() => '/production/plans/new';
   static String productionPlanDetail(String id) => '/production/plans/$id';
+  static String productionOverproductionRateRequest(String id) =>
+      '/production/overproduction-rate-requests/$id';
+  static String productionMaterialIncrementRequest(String id) =>
+      '/production/material-increment-requests/$id';
+  static String productionMaterialIncrementForSegment(String id) =>
+      '/production/material-increment-requests/new?segmentId=$id';
+  static String productionActualOutputSupplement(String id) =>
+      '/production/actual-output-supplements/$id';
   static String productionPlanEdit(String id) => '/production/plans/$id/edit';
   static String productionDailyReportNew() => '/production/daily-reports/new';
   static String productionDailyReportDetail(String id) =>

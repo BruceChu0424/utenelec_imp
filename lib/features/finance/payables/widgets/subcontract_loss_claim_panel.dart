@@ -15,7 +15,10 @@ import '../repositories/subcontract_loss_claim_repository.dart';
 import 'subcontract_loss_claim_detail_panel.dart';
 
 class SubcontractLossClaimPanel extends ConsumerStatefulWidget {
-  const SubcontractLossClaimPanel({super.key});
+  const SubcontractLossClaimPanel({super.key, this.refreshTick = 0});
+
+  /// 宿主（应付工作台）「返回即刷新」驱动的重载信号；数值变化时重拉当前页。
+  final int refreshTick;
 
   @override
   ConsumerState<SubcontractLossClaimPanel> createState() =>
@@ -36,6 +39,14 @@ class _SubcontractLossClaimPanelState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+  }
+
+  @override
+  void didUpdateWidget(SubcontractLossClaimPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshTick != oldWidget.refreshTick) {
+      _load(_page);
+    }
   }
 
   Future<void> _load([int? requestedPage]) async {
@@ -87,7 +98,8 @@ class _SubcontractLossClaimPanelState
         onChanged: () => _load(),
       ),
     );
-    if (mounted) await _load();
+    // 详情面板内每个写动作成功都经 onChanged 重拉过；纯查看关闭不再多拉一次
+    // （原来这里无条件 _load，一次定责=两次列表请求，纯查看关闭也多一次）。
   }
 
   List<MasterColumnDef<SubcontractLossClaimSummary>> _columns({

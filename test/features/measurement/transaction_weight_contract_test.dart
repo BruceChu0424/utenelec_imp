@@ -51,9 +51,11 @@ void main() {
       expect(grid, isNot(contains("label: '实际重量'")));
     }
     expect(dailyGrid, contains('c.weight.text = weight.text;'));
+    // 2026-09-24 WIP：日报草稿回填按执行段分组取数（group.weight 汇集了组内
+    // 行的历史重量），「回填不清零」口径不变。
     expect(
       dailyEdit,
-      contains("row.weight.text = it.weight?.toString() ?? '';"),
+      contains("row.weight.text = group.weight?.toString() ?? '';"),
     );
     expect(dailyEdit, contains("'weight': ?weight"));
     for (final edit in [stockEdit, purchaseEdit, salesEdit, dailyEdit]) {

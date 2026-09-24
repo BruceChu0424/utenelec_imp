@@ -22,6 +22,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -58,6 +59,9 @@ class _ProductionDailyReportDetailPageState
   /// 审核/红冲/删除网络段的加载遮罩标题（null=无遮罩）。
   String? _busyTitle;
   String? _error;
+
+  /// 「返回即刷新」登记用的本页路径（build 首次捕获，不随后续导航现取）。
+  String? _myLocation;
 
   @override
   void initState() {
@@ -129,9 +133,10 @@ class _ProductionDailyReportDetailPageState
       bumpListRefresh(ref, productionExecutionRefreshKey);
 
   Future<void> _approve() => _doAction(
-    '审核后只累计完工申报量 fqty，并生成仓库到货登记任务；'
-        '此时不会增加库存或 iqty。仓库登记成品仓与库位并送品质部检查，'
-        '品质放行后再进入最终点收。确认继续？',
+    '请核对本次实际产量、需求份与公共备货份以及产出去向。'
+        '需求内直送部分交下工序；送仓部分生成仓库到货登记任务，'
+        '仓库登记成品仓与库位并送品质部检查。'
+        '只有品质合格且仓库实际接收的数量才增加可用库存。确认审核？',
     (repo) => repo.approve(
       widget.id,
       // 同一次点击重发必须是同一把键，换一次点击必须换键。
@@ -287,6 +292,14 @@ class _ProductionDailyReportDetailPageState
 
   @override
   Widget build(BuildContext context) {
+    // 返回即刷新（对齐计划详情页同款修复）：本页 push 编辑页，编辑保存后
+    // context.replace 成「新详情页」——旧的本页实例被压在栈下，replace 丢掉了
+    // push 的 Future，返回到它时停在保存前的旧状态。注册后：期间写过数据
+    // （保存/审核都在子页办完）就重拉本页详情。
+    _myLocation ??= currentLocationOr(context, RouteName.production);
+    ref.onPageResume(_myLocation!, () {
+      if (!_busy) _load();
+    });
     final scopeCapability = ref.watch(
       documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
     );
@@ -491,6 +504,12 @@ class _ProductionDailyReportDetailPageState
                 width: 112,
                 type: 'number',
                 value: (it) => it.qty?.toStringAsFixed(2),
+              ),
+              MasterColumnDef(
+                key: 'outputKind',
+                label: '产出归属',
+                width: 180,
+                value: (it) => it.outputKindLabel,
               ),
               MasterColumnDef(
                 key: 'weight',

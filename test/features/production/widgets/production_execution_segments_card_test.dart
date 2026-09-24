@@ -11,6 +11,31 @@ import 'package:uten_imp/features/production/widgets/production_execution_segmen
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
+  testWidgets('public receipts do not mark original plan as fully received', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _app(
+        repository: _repository(
+          status: 'IN_PROGRESS',
+          reportedQty: 14,
+          remainingQty: 0,
+          ordinaryRemainingQty: 0,
+          inboundQty: 11,
+          plannedInboundQty: 8,
+          actualSurplusInboundQty: 3,
+        ),
+        permissions: const {},
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('已入库·待用料结清'), findsNothing);
+    expect(find.textContaining('计划实收 8'), findsWidgets);
+    expect(find.textContaining('公共超产实收 3'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
   for (final split in [false, true]) {
     testWidgets(
       'plan detail opens ${split ? 'partial batch' : 'draw'} directly and refreshes after return',
@@ -809,6 +834,8 @@ ProductionPlanRepository _repository({
   double fqcFailedQty = 0,
   double finishedInboundPendingQty = 0,
   double inboundQty = 0,
+  double? plannedInboundQty,
+  double actualSurplusInboundQty = 0,
   double finishedInboundRejectedQty = 0,
   double fqcRecoveryAvailableQty = 0,
   double fqcReworkAvailableQty = 0,
@@ -851,6 +878,8 @@ ProductionPlanRepository _repository({
                             finishedInboundPendingQty:
                                 finishedInboundPendingQty,
                             inboundQty: inboundQty,
+                            plannedInboundQty: plannedInboundQty,
+                            actualSurplusInboundQty: actualSurplusInboundQty,
                             finishedInboundRejectedQty:
                                 finishedInboundRejectedQty,
                             fqcRecoveryAvailableQty: fqcRecoveryAvailableQty,
@@ -886,6 +915,8 @@ ProductionPlanRepository _repository({
                     fqcFailedQty: fqcFailedQty,
                     finishedInboundPendingQty: finishedInboundPendingQty,
                     inboundQty: inboundQty,
+                    plannedInboundQty: plannedInboundQty,
+                    actualSurplusInboundQty: actualSurplusInboundQty,
                     finishedInboundRejectedQty: finishedInboundRejectedQty,
                     fqcRecoveryAvailableQty: fqcRecoveryAvailableQty,
                     fqcReworkAvailableQty: fqcReworkAvailableQty,
@@ -916,6 +947,8 @@ Map<String, dynamic> _segmentJson({
   double fqcFailedQty = 0,
   double finishedInboundPendingQty = 0,
   double inboundQty = 0,
+  double? plannedInboundQty,
+  double actualSurplusInboundQty = 0,
   double finishedInboundRejectedQty = 0,
   double fqcRecoveryAvailableQty = 0,
   double fqcReworkAvailableQty = 0,
@@ -962,6 +995,8 @@ Map<String, dynamic> _segmentJson({
   'fqcFailedQty': fqcFailedQty,
   'finishedInboundPendingQty': finishedInboundPendingQty,
   'inboundQty': inboundQty,
+  'plannedInboundQty': plannedInboundQty,
+  'actualSurplusInboundQty': actualSurplusInboundQty,
   'finishedInboundRejectedQty': finishedInboundRejectedQty,
   'fqcRecoveryAvailableQty': fqcRecoveryAvailableQty,
   'fqcReworkAvailableQty': fqcReworkAvailableQty,

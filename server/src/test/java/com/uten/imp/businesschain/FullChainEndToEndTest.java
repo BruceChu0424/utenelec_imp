@@ -12859,6 +12859,24 @@ class FullChainEndToEndTest {
             line.setExecutionSegmentId(segment.segmentId()); line.setExecutionSegmentSalesAllocationId(segment.salesAllocationId()); lines.add(line);
         }
         request.setItems(lines);
+        BigDecimal actualOutput=lines.stream().map(DailyReportItemLine::getQty).reduce(BigDecimal.ZERO,BigDecimal::add);
+        var actualUses=new ArrayList<com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine>();
+        for(var demand:jdbc.queryForList("""
+                SELECT demand.id,demand.required_qty,segment.planned_qty,
+                       (SELECT COALESCE(SUM(fn_material_issue_available(issue.id,NULL)),0)
+                        FROM production_material_stock_postings issue WHERE issue.demand_id=demand.id AND issue.posting_type='ISSUE') available
+                FROM production_material_demands demand JOIN production_execution_segments segment ON segment.id=demand.execution_segment_id
+                WHERE demand.execution_segment_id=? AND NOT demand.is_deleted AND demand.status NOT IN('RELEASED','REVERSED')
+                """,segment.segmentId())) {
+            // This harness manufactures the declared quantity with its seeded
+            // linear recipe; only genuine issued material is consumed.
+            BigDecimal used=((BigDecimal)demand.get("required_qty")).multiply(actualOutput)
+                    .divide((BigDecimal)demand.get("planned_qty"),4,java.math.RoundingMode.HALF_UP);
+            assertTrue(used.compareTo((BigDecimal)demand.get("available"))<=0,"fixture consumption must have a real ISSUE source");
+            var usage=new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();
+            usage.setDemandId((UUID)demand.get("id"));usage.setQtyBase(used);actualUses.add(usage);
+        }
+        request.setMaterialLines(actualUses);
         loginAs(reporter);
         try {
             DailyReportDetail created=reportService.create(request); reportService.approve(created.getId(), DailyReportApproveRequests.freshKey());

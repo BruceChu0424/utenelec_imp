@@ -141,6 +141,19 @@ class ProductionDailyReportItem {
     this.goodsCode,
     this.colorName,
     this.unitName,
+    this.allowActualOverproduction = false,
+    this.outputBatchId,
+    this.outputBatchQty,
+    this.publicOutput = false,
+    this.actualSurplus = false,
+    this.outputKind,
+    this.supplementProofId,
+    this.outputSourceExecutionSegmentId,
+    this.outputSourcePlanItemId,
+    this.outputSourcePlanId,
+    this.outputSourcePlanNo,
+    this.outputSourceSalesAllocationId,
+    this.outputSourceSalesOrderItemId,
   });
 
   final String id;
@@ -192,6 +205,26 @@ class ProductionDailyReportItem {
   final String? goodsCode;
   final String? colorName;
   final String? unitName;
+  final bool allowActualOverproduction;
+  final String? outputBatchId;
+  final double? outputBatchQty;
+  final bool publicOutput;
+  final bool actualSurplus;
+  final String? outputKind;
+  final String? supplementProofId;
+  final String? outputSourceExecutionSegmentId;
+  final String? outputSourcePlanItemId;
+  final String? outputSourcePlanId;
+  final String? outputSourcePlanNo;
+  final String? outputSourceSalesAllocationId;
+  final String? outputSourceSalesOrderItemId;
+
+  String get outputKindLabel => switch (outputKind) {
+    'PLANNED' => '需求产出',
+    'PLANNED_PUBLIC' => '计划公共备货',
+    'ACTUAL_SURPLUS' => '实际超产 · 公共备货',
+    _ => publicOutput ? '公共备货' : '原来源',
+  };
 
   bool get isDirectTransfer => destination == 'WORKSHOP';
 
@@ -237,7 +270,138 @@ class ProductionDailyReportItem {
         goodsCode: json['goodsCode'] as String?,
         colorName: json['colorName'] as String?,
         unitName: json['unitName'] as String?,
+        allowActualOverproduction: json['allowActualOverproduction'] == true,
+        outputBatchId: json['outputBatchId'] as String?,
+        outputBatchQty: _asDouble(json['outputBatchQty']),
+        publicOutput: json['publicOutput'] == true,
+        actualSurplus: json['actualSurplus'] == true,
+        outputKind: json['outputKind'] as String?,
+        supplementProofId: json['supplementProofId'] as String?,
+        outputSourceExecutionSegmentId:
+            json['outputSourceExecutionSegmentId'] as String?,
+        outputSourcePlanItemId: json['outputSourcePlanItemId'] as String?,
+        outputSourcePlanId: json['outputSourcePlanId'] as String?,
+        outputSourcePlanNo: json['outputSourcePlanNo'] as String?,
+        outputSourceSalesAllocationId:
+            json['outputSourceSalesAllocationId'] as String?,
+        outputSourceSalesOrderItemId:
+            json['outputSourceSalesOrderItemId'] as String?,
       );
+}
+
+/// 保存后的需求/公共切片在编辑时还原为一次实际申报，避免再报一份超产。
+/// 合并只认服务端批次 UUID；同产品、同计划或同工单都不是合并依据。
+class ProductionDailyReportInputGroup {
+  ProductionDailyReportInputGroup(List<ProductionDailyReportItem> items)
+    : items = List.unmodifiable(items);
+
+  final List<ProductionDailyReportItem> items;
+  ProductionDailyReportItem get source =>
+      items.firstWhere((item) => !item.publicOutput, orElse: () => items.first);
+  double? get qty => source.outputBatchQty ?? source.qty;
+  bool get supplementBatch =>
+      source.supplementProofId != null &&
+      source.fqcRecoveryAuthorizationId == null;
+  String? get planId =>
+      supplementBatch ? source.outputSourcePlanId : source.planId;
+  String? get planItemId =>
+      supplementBatch ? source.outputSourcePlanItemId : source.planItemId;
+  String? get executionSegmentId => supplementBatch
+      ? source.outputSourceExecutionSegmentId
+      : source.executionSegmentId;
+  String? get allocationId => supplementBatch
+      ? source.outputSourceSalesAllocationId
+      : source.executionSegmentSalesAllocationId;
+  String? get salesOrderItemId => supplementBatch
+      ? source.outputSourceSalesOrderItemId
+      : source.salesOrderItemId;
+  String? get planNo => supplementBatch
+      ? source.outputSourcePlanNo ??
+            (source.planId == planId ? source.planNo : null)
+      : source.planNo;
+  double? get weight {
+    final weights = items.map((item) => item.weight).whereType<double>();
+    return weights.isEmpty ? null : weights.fold<double>(0, (a, b) => a + b);
+  }
+}
+
+List<ProductionDailyReportInputGroup> productionDailyReportInputGroups(
+  List<ProductionDailyReportItem> items,
+) {
+  final groups = <String, List<ProductionDailyReportItem>>{};
+  for (final item in items) {
+    final batchId = item.outputBatchId;
+    final key = batchId == null || batchId.isEmpty
+        ? 'line:${item.id}'
+        : 'batch:$batchId';
+    groups.putIfAbsent(key, () => []).add(item);
+  }
+  return [
+    for (final group in groups.values) _validatedProductionInputGroup(group),
+  ];
+}
+
+ProductionDailyReportInputGroup _validatedProductionInputGroup(
+  List<ProductionDailyReportItem> items,
+) {
+  final first = items.first;
+  final sameSupplement =
+      first.supplementProofId != null &&
+      first.fqcRecoveryAuthorizationId == null &&
+      first.outputSourceExecutionSegmentId != null &&
+      first.outputSourcePlanItemId != null &&
+      first.outputSourcePlanId != null &&
+      items.every(
+        (item) =>
+            item.supplementProofId == first.supplementProofId &&
+            item.fqcRecoveryAuthorizationId == null &&
+            item.outputSourceExecutionSegmentId ==
+                first.outputSourceExecutionSegmentId &&
+            item.outputSourcePlanItemId == first.outputSourcePlanItemId &&
+            item.outputSourcePlanId == first.outputSourcePlanId &&
+            item.outputSourceSalesAllocationId ==
+                first.outputSourceSalesAllocationId &&
+            item.outputSourceSalesOrderItemId ==
+                first.outputSourceSalesOrderItemId,
+      );
+  if (items.any(
+        (item) =>
+            item.supplementProofId != null &&
+            item.fqcRecoveryAuthorizationId == null,
+      ) &&
+      (!sameSupplement ||
+          first.outputBatchId?.isNotEmpty != true ||
+          first.outputBatchQty == null)) {
+    throw const FormatException('追加报工缺少完整原来源，请重新读取草稿');
+  }
+  if (first.outputBatchId?.isNotEmpty == true) {
+    final total = first.outputBatchQty;
+    final valid =
+        total != null &&
+        total.isFinite &&
+        total > 0 &&
+        items.every(
+          (item) =>
+              item.outputBatchQty == total &&
+              item.goodsId == first.goodsId &&
+              item.colorId == first.colorId &&
+              item.unitId == first.unitId &&
+              item.unitRate == first.unitRate &&
+              (sameSupplement ||
+                  (item.planItemId == first.planItemId &&
+                      item.executionSegmentId == first.executionSegmentId)) &&
+              item.qty != null &&
+              item.qty!.isFinite &&
+              item.qty! > 0,
+        );
+    if (!valid ||
+        (items.fold<double>(0, (sum, item) => sum + (item.qty ?? 0)) - total)
+                .abs() >
+            0.000001) {
+      throw const FormatException('报工分流明细不完整，请重新读取草稿');
+    }
+  }
+  return ProductionDailyReportInputGroup(items);
 }
 
 /// 生产日报详情（GET /production/daily-reports/{id} → DailyReportDetail）。

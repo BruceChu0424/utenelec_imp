@@ -51,6 +51,7 @@ import '../../../components/layout/uten_history_time_filter.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -85,6 +86,9 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
   /// 当前大类分段：pending/progress/history；null = 未选择引导态（不发请求）。
   String? _segment;
 
+  /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
+  String? _myLocation;
+
   /// 页级搜索关键字（300ms 防抖后的值，下发给当前分段）。
   String _keyword = '';
 
@@ -109,6 +113,15 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 返回即刷新（防御性注册）：两个 Tab 的子页（联合分析/恢复分析/计划详情）
+    // 大多 await push 返回重拉，但子页若以 go/popOrBackTo 栈空分支收尾，push
+    // 的 Future 会丢——登记后期间写过数据就重拉当前 Tab，与全站口径一致。
+    _myLocation ??= currentLocationOr(context, RouteName.productionSchedule);
+    // 返回即刷新（防御性注册）：子页（联合分析/恢复分析/计划详情）若以 go/
+    // popOrBackTo 栈空分支收尾，push 的 Future 会丢——登记后期间写过数据就
+    // 走与顶栏刷新按钮同一条路（驱动待排产面板重拉；进行中/历史面板各自有
+    // 自己的刷新信号注册）。
+    ref.onPageResume(_myLocation!, () => _pendingRefreshTick.value++);
     final segment = _segment;
     final historyReady = _historyTime.range != null || _historyTime.all;
     // 大类行计数: 待排产=红色通知徽章(调度员待办); 进行中=黄色进行中徽章
@@ -1740,7 +1753,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
 
   Widget _planCard(ThemeData theme, PlanProgressRow r) {
     final pct = r.percent.clamp(0.0, 1.0);
-    final done = widget.closed || pct >= 1.0;
+    final done = r.closed;
     final overdue = r.overdue && !done; // 已过交货日：整卡红色标注
     final urgent = r.urgent && !done && !overdue; // 交货 ≤3 天未逾期：浅色提醒
     final expanded = _expanded.contains(r.planId);
@@ -1885,6 +1898,15 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                           style: theme.textTheme.bodyMedium,
                         ),
                         Text(
+                          '计划实收 ${_fmt(r.plannedInboundQty)}',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                        if (r.actualSurplusInboundQty > 0)
+                          Text(
+                            '公共超产 ${_fmt(r.actualSurplusInboundQty)}',
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        Text(
                           '已报工 ${_fmt(r.reportedQty)}',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
@@ -1981,7 +2003,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
 
   Widget _subplanRow(ThemeData theme, SubPlanProgress s) {
     final pct = s.percent.clamp(0.0, 1.0);
-    final done = s.closed || pct >= 1.0;
+    final done = s.closed;
     final identity = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2012,11 +2034,16 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
           ),
         ),
         Text(
-          '已入库 ${_fmt(s.inboundQty)} / 排产 ${_fmt(s.totalQty)}',
+          '计划实收 ${_fmt(s.plannedInboundQty)} / 排产 ${_fmt(s.totalQty)}',
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
+        if (s.actualSurplusInboundQty > 0)
+          Text(
+            '实际入库 ${_fmt(s.inboundQty)} · 公共超产 ${_fmt(s.actualSurplusInboundQty)}',
+            style: theme.textTheme.bodyMedium,
+          ),
       ],
     );
     final material = s.materialState == null

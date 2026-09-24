@@ -24,6 +24,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/badges/badge_registry.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_finished_inbound_task.dart';
 import '../repositories/production_finished_inbound_task_repository.dart';
@@ -103,6 +104,9 @@ class _ProductionFinishedBatchStockInPageState
             ? '该批次已完成，已安全重放 ${result.confirmedCount} 张结果'
             : '已批量全量点收 ${result.confirmedCount} 张产成品入库任务',
       );
+      // 徽章兜底：宿主待点收视图 pop 返回后会重拉任务计数，深链直入本页时
+      // 仓库徽章也要即时跟上（与其它批量入库页口径一致）。
+      refreshBadges(ref);
       if (context.canPop()) context.pop(true);
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);

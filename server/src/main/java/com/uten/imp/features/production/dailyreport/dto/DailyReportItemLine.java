@@ -12,6 +12,14 @@ import java.util.UUID;
 @Getter
 @Setter
 public class DailyReportItemLine {
+    /** Server-authored output ownership; never accepted from a client. */
+    @com.fasterxml.jackson.annotation.JsonIgnore private UUID outputBatchId;
+    @com.fasterxml.jackson.annotation.JsonIgnore private BigDecimal outputBatchQty;
+    @com.fasterxml.jackson.annotation.JsonIgnore private boolean publicOutput;
+    @com.fasterxml.jackson.annotation.JsonIgnore private boolean actualSurplus;
+    /** Approved, exact same-batch additional-plan proof; never a free-form plan link. */
+    private UUID supplementProofId;
+    @com.fasterxml.jackson.annotation.JsonIgnore private Integer inputLineIndex;
     private Integer lineNo;
     @NotNull private UUID goodsId;
     private UUID colorId;

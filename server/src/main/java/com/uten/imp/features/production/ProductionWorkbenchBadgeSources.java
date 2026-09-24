@@ -25,6 +25,8 @@ class ProductionWorkbenchBadgeSources implements WorkbenchBadgeSources {
     private final ProductionWorkshopTaskController workshopTasks;
     private final ProductionExecutionWorkbenchController executionWorkbench;
     private final ProductionFqcInspectionController fqcInspections;
+    private final com.uten.imp.features.production.execution.ProductionOverproductionRateController overproductionRates;
+    private final com.uten.imp.features.production.fulfillment.ProductionMaterialIncrementController materialIncrements;
 
     @Override
     public List<Source> sources() {
@@ -32,6 +34,8 @@ class ProductionWorkbenchBadgeSources implements WorkbenchBadgeSources {
                 new Source("productionSchedule", () -> WorkbenchBadgeSources.numbers(schedule.pendingCount())),
                 new Source("workshopTask", () -> WorkbenchBadgeSources.numbers(workshopTasks.count())),
                 new Source("productionExecution", () -> WorkbenchBadgeSources.numbers(executionWorkbench.count())),
-                new Source("fqcPending", () -> WorkbenchBadgeSources.numbers(fqcInspections.count())));
+                new Source("fqcPending", () -> WorkbenchBadgeSources.numbers(fqcInspections.count())),
+                new Source("productionOverproductionRate", () -> WorkbenchBadgeSources.numbers(overproductionRates.count())),
+                new Source("productionMaterialIncrement", () -> WorkbenchBadgeSources.numbers(materialIncrements.count())));
     }
 }

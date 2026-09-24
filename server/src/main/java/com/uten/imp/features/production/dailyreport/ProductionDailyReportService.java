@@ -70,7 +70,7 @@ import java.util.UUID;
  * <p>审核（status 0→1）同事务内：
  * <ol>
  *   <li>按 planItemId + executionSegmentId UUID 精确锁定已开工来源；
- *       超报硬校验（累计 fqty ≤ 计划量）</li>
+ *       原计划份按批准配额校验，实际超产以独立公共产出事实分账</li>
  *   <li>回写 plan_items.fqty + plan_order_item_links.produced_qty（指定订单行直击，
  *       未指定按 FIFO 分摊）；订单行状态 3/4→5 生产中</li>
  *   <li>审核后进入仓库送检登记队列；仓库冻结目标仓/库位后逐行
@@ -103,6 +103,8 @@ public class ProductionDailyReportService {
     private final ProductionPlanItemRepository planItemRepo;
     private final PlanOrderItemLinkRepository linkRepo;
     private final DailyReportExecutionSegmentGuard executionSegments;
+    private final DailyReportOutputAllocationService outputAllocation;
+    private final ActualOutputSupplementService outputSupplements;
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final com.uten.imp.common.util.DepartmentNameResolver departmentNameResolver;
@@ -207,6 +209,13 @@ public class ProductionDailyReportService {
         List<UUID> segmentIds = items.stream().map(DailyReportItemDto::getExecutionSegmentId)
                 .filter(Objects::nonNull).distinct().toList();
         if (segmentIds.isEmpty()) return;
+        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id,fn_daily_report_is_public_output(id) FROM production_daily_report_items
+                WHERE report_id=:report AND NOT is_deleted
+                """).setParameter("report",report.getId()))) {
+            items.stream().filter(item->Objects.equals(item.getId(),row[0])).findFirst()
+                    .ifPresent(item->item.setPublicOutput(Boolean.TRUE.equals(row[1])));
+        }
         Map<UUID, Object[]> contexts = new HashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT segment.id, segment.plan_id,
@@ -214,9 +223,13 @@ public class ProductionDailyReportService {
                            SELECT SUM(item.qty) FROM production_daily_report_items item
                            JOIN production_daily_reports other ON other.id=item.report_id
                            WHERE item.execution_segment_id=segment.id
-                             AND item.fqc_recovery_authorization_id IS NULL AND NOT item.is_deleted
+                             AND item.fqc_recovery_authorization_id IS NULL AND NOT item.is_actual_surplus AND NOT item.is_deleted
                              AND other.status=1 AND NOT other.is_deleted
-                             AND other.id<>:report),0),0) ELSE NULL END
+                             AND other.id<>:report),0),0) ELSE NULL END,
+                       segment.allowed_overproduction_rate,
+                       trunc(segment.planned_qty*(1+segment.allowed_overproduction_rate),4),
+                       fn_execution_actual_surplus_available(segment.id,:report),
+                       fn_execution_overproduction_policy_applies(segment.id)
                 FROM production_execution_segments segment WHERE segment.id IN (:segments)
                 """).setParameter("segments",segmentIds).setParameter("report",report.getId())
                 .setParameter("draft",report.getStatus()==STATUS_DRAFT))) {
@@ -227,6 +240,27 @@ public class ProductionDailyReportService {
             if (context == null) continue;
             item.setPlanId((UUID) context[1]);
             item.setRemainingPlanQty((BigDecimal) context[2]);
+            item.setAllowedOverproductionRate((BigDecimal)context[3]);
+            item.setOverproductionLimitQty((BigDecimal)context[4]);
+            item.setRemainingActualSurplusQty((BigDecimal)context[5]);
+            item.setAllowActualOverproduction(item.getFqcRecoveryAuthorizationId()==null&&Boolean.TRUE.equals(context[6]));
+        }
+        Map<UUID,DailyReportItemDto> byId=items.stream().collect(java.util.stream.Collectors.toMap(DailyReportItemDto::getId,item->item));
+        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT item.id,proof.id,proof.batch_id,proof.actual_batch_qty,source.id,source.source_plan_item_id,
+                       request.source_sales_allocation_id,allocation.sales_order_item_id,source.plan_id
+                FROM production_daily_report_items item
+                JOIN production_actual_output_supplement_proofs proof ON proof.id=item.supplement_proof_id
+                JOIN production_actual_output_supplement_requests request ON request.id=proof.command_id
+                JOIN production_execution_segments source ON source.id=proof.source_execution_segment_id
+                LEFT JOIN execution_segment_sales_allocations allocation ON allocation.id=request.source_sales_allocation_id
+                WHERE item.report_id=:report AND NOT item.is_deleted AND item.fqc_recovery_authorization_id IS NULL
+                """).setParameter("report",report.getId()))) {
+            var item=byId.get((UUID)row[0]);if(item==null)continue;
+            item.setSupplementProofId((UUID)row[1]);item.setOutputBatchId((UUID)row[2]);item.setOutputBatchQty((BigDecimal)row[3]);
+            item.setOutputSourceExecutionSegmentId((UUID)row[4]);item.setOutputSourcePlanItemId((UUID)row[5]);
+            item.setOutputSourceSalesAllocationId((UUID)row[6]);item.setOutputSourceSalesOrderItemId((UUID)row[7]);
+            item.setOutputSourcePlanId((UUID)row[8]);
         }
     }
 
@@ -263,6 +297,7 @@ public class ProductionDailyReportService {
         saveItems(r, req.getItems());
         itemRepo.flush();
         syncMaterialUsages(r, req);
+        outputAllocation.requireMaterialDeclarations(r.getId());
         syncReportWorkers(r.getId(), workerIds);
         recordCommand(COMMAND_CREATE,
                 actorId, idempotencyKey, requestHash, r.getId());
@@ -278,6 +313,14 @@ public class ProductionDailyReportService {
         requireExpectedVersion(req == null ? null : req.getExpectedVersion(),
                 r.getRowVersion());
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
+        var existingProofs=itemRepo.findByReportIdOrderByLineNoAsc(id).stream()
+                .filter(item->item.getFqcRecoveryAuthorizationId()==null).map(ProductionDailyReportItem::getSupplementProofId)
+                .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        var submittedProofs=req.getItems().stream().filter(Objects::nonNull)
+                .filter(item->item.getFqcRecoveryAuthorizationId()==null).map(DailyReportItemLine::getSupplementProofId)
+                .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        if(!submittedProofs.containsAll(existingProofs))throw new ApiException(ErrorCode.CONFLICT,
+                "已批准的追加批次关联不可在同一草稿中移除或替换；本单其他行未改变。需要撤回本批时请先删除草稿，再按原申请办理取消或新单续报");
         List<UUID> workerIds = normalizeWorkerIds(req);
         validateWorkerIds(workerIds);
         applyHeader(req, r, workerIds);
@@ -286,6 +329,7 @@ public class ProductionDailyReportService {
         saveItems(r, req.getItems());
         itemRepo.flush();
         syncMaterialUsages(r, req);
+        outputAllocation.requireMaterialDeclarations(r.getId());
         syncReportWorkers(id, workerIds);
         // An item-only edit must still dirty the header so JPA @Version advances.
         r.setUpdatedAt(java.time.Instant.now());
@@ -303,6 +347,7 @@ public class ProductionDailyReportService {
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         reportRepo.saveAndFlush(r);
+        outputSupplements.releaseClaims(r.getId());
     }
 
     /** 审核（status 0→1）：报工链联动（见类注释）。 */
@@ -349,6 +394,8 @@ public class ProductionDailyReportService {
                     ErrorCode.VALIDATION_FAILED,
                     "每条报工必须关联精确生产计划行；新流程还必须选择已开工执行子任务");
         }
+        outputAllocation.requireMaterialDeclarations(id);
+        outputAllocation.requirePersistedAllowance(id);
         executionSegments.approve(id, items);
 
         for (ProductionDailyReportItem item : items) {
@@ -383,7 +430,9 @@ public class ProductionDailyReportService {
             Object[] pi = planItemRow(planItemId, true);
             requireMatchingPlanDimension(it, pi);
             BigDecimal qty = it.getQty();
-            BigDecimal remain = bd(pi[2]).subtract(bd(pi[3])); // qty - fqty
+            BigDecimal actualAllowance = bd(em.createNativeQuery("SELECT fn_plan_actual_surplus_qty(:id,TRUE)")
+                    .setParameter("id",planItemId).getSingleResult());
+            BigDecimal remain = bd(pi[2]).add(actualAllowance).subtract(bd(pi[3]));
             if (qty.compareTo(remain) > 0) {
                 throw new ApiException(ErrorCode.BUSINESS, "报工量超过计划剩余(剩 "
                         + remain.stripTrailingZeros().toPlainString() + ")");
@@ -602,6 +651,7 @@ public class ProductionDailyReportService {
         }
         r.setStatus(STATUS_REVERSED);
         reportRepo.saveAndFlush(r);
+        outputSupplements.releaseClaims(r.getId());
         costTargets.targetChangedByReport(r.getId(),currentUser.requireId());
         fqcRecovery.reverseReportEffects(r.getId());
         qualityInspection.cancelForReversedReport(r.getId());
@@ -826,7 +876,6 @@ public class ProductionDailyReportService {
 
         List<PlanOrderItemLink> snapshots = new ArrayList<>(
                 linkRepo.findActiveByPlanItemIds(new ArrayList<>(planItemIds)));
-        snapshots.sort(java.util.Comparator.comparing(PlanOrderItemLink::getId));
         if (positiveWrite) {
             java.util.Set<UUID> activePlanItemIds = snapshots.stream()
                     .map(PlanOrderItemLink::getPlanItemId)
@@ -853,8 +902,9 @@ public class ProductionDailyReportService {
         // We still lock and validate the original graph without rewriting it.
         lockSalesTargets(snapshots, positiveWrite, salesRequiredOrderItemIds, legacyRequiredPlanItemIds);
 
-        List<UUID> expectedIds = snapshots.stream()
-                .map(PlanOrderItemLink::getId).toList();
+        java.util.Set<UUID> expectedIds = snapshots.stream()
+                .map(PlanOrderItemLink::getId)
+                .collect(java.util.stream.Collectors.toSet());
         List<UUID> currentIds = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT id
                         FROM plan_order_item_links
@@ -863,15 +913,20 @@ public class ProductionDailyReportService {
                         ORDER BY id
                         FOR UPDATE
                         """).setParameter("planItemIds", planItemIds), UUID.class);
-        if (!currentIds.equals(expectedIds)) {
+        // UUID.compareTo compares signed longs, while PostgreSQL orders UUID
+        // bytes unsigned. Compare membership rather than these different list
+        // orders, retaining detection of inserted/deleted/replaced links.
+        if (currentIds.size() != snapshots.size()
+                || !new java.util.HashSet<>(currentIds).equals(expectedIds)) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "报工关联的排产分摊已被并发变更，请刷新后重试");
         }
 
         Map<UUID, List<PlanOrderItemLink>> result = new HashMap<>();
-        for (PlanOrderItemLink snapshot : snapshots) {
+        // Preserve the database's already-acquired lock order for entity refresh.
+        for (UUID linkId : currentIds) {
             PlanOrderItemLink link = em.find(
-                    PlanOrderItemLink.class, snapshot.getId(),
+                    PlanOrderItemLink.class, linkId,
                     jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
             if (link == null) {
                 throw new ApiException(ErrorCode.CONFLICT, "报工关联的排产分摊不存在");
@@ -998,7 +1053,10 @@ public class ProductionDailyReportService {
                               List<PlanOrderItemLink> lockedLinks) {
         Object[] pi = planItemRow(planItemId, true);
         BigDecimal plannedQty = bd(pi[2]);
-        BigDecimal produced = bd(pi[3]).max(primaryReportedQuantity(r.getId(),planItemId,null));
+        BigDecimal actualContribution=bd(em.createNativeQuery("SELECT fn_plan_actual_output_contribution_qty(:item,:report)")
+                .setParameter("item",planItemId).setParameter("report",r.getId()).getSingleResult());
+        BigDecimal produced = bd(pi[3]).subtract(actualContribution).max(BigDecimal.ZERO)
+                .max(primaryReportedQuantity(r.getId(),planItemId,null));
         BigDecimal shortfall = plannedQty.subtract(produced);
         if (shortfall.signum() <= 0) return; // 足量完结，无需补产
 
@@ -1269,7 +1327,8 @@ public class ProductionDailyReportService {
                 JOIN production_daily_reports report ON report.id=item.report_id
                 LEFT JOIN execution_segment_sales_allocations allocation ON allocation.id=item.execution_segment_sales_allocation_id
                 WHERE item.plan_item_id=:planItem AND NOT item.is_deleted AND NOT report.is_deleted
-                    AND item.fqc_recovery_authorization_id IS NULL AND (report.status=1 OR report.id=:currentReport)
+                    AND item.fqc_recovery_authorization_id IS NULL AND NOT item.is_actual_surplus
+                    AND (report.status=1 OR report.id=:currentReport)
                 """+(link==null?"":" AND allocation.plan_order_item_link_id=:link"))
                 .setParameter("planItem",planItem).setParameter("currentReport",currentReport);
         if(link!=null)query.setParameter("link",link);
@@ -1333,7 +1392,7 @@ public class ProductionDailyReportService {
     private void recomputePlanClosed(UUID planId) {
         em.createNativeQuery("""
                 UPDATE production_plans p SET is_closed = (
-                    SELECT COALESCE(bool_and(COALESCE(i.qty,0) - COALESCE(i.iqty,0) <= 0), true)
+                    SELECT COALESCE(bool_and(COALESCE(i.qty,0) + fn_plan_actual_surplus_qty(i.id,FALSE) - COALESCE(i.iqty,0) <= 0), true)
                     FROM production_plan_items i
                     WHERE i.plan_id = p.id AND COALESCE(i.is_deleted, false) = false
                 ) WHERE p.id = :pid
@@ -1556,6 +1615,7 @@ public class ProductionDailyReportService {
                 addCanonical(parts, path + ".fqcRecoveryAuthorizationId",
                         line.getFqcRecoveryAuthorizationId());
             }
+            if(line.getSupplementProofId()!=null)addCanonical(parts,path+".supplementProofId",line.getSupplementProofId());
             addCanonical(parts, path + ".isFinal",
                     Boolean.TRUE.equals(line.getIsFinal()));
             addCanonical(parts, path + ".outboundNo", line.getOutboundNo());
@@ -1927,12 +1987,14 @@ public class ProductionDailyReportService {
     }
 
     private List<DailyReportItemDto> saveItems(ProductionDailyReport r, List<DailyReportItemLine> lines) {
-        if (lines.stream().anyMatch(line -> line.getPrice() != null
-                || line.getTotal() != null || line.getStotal() != null)) {
+        if (lines.stream().anyMatch(line -> line != null && (line.getPrice() != null
+                || line.getTotal() != null || line.getStotal() != null))) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
                     "生产日报只记录数量事实；客户端单价/金额不是计件工资依据，已停止写入");
         }
+        lines = outputAllocation.split(r.getId(), outputSupplements.expand(r.getId(),lines));
+        outputAllocation.requireAllowance(r.getId(),lines);
         executionSegments.validateDraft(r.getId(), r.getDepartmentId(), lines);
         canonicalizeSourceSnapshots(lines);
         List<DailyReportItemDto> out = new ArrayList<>(lines.size());
@@ -1940,6 +2002,11 @@ public class ProductionDailyReportService {
         for (DailyReportItemLine l : lines) {
             ProductionDailyReportItem it = new ProductionDailyReportItem();
             it.setReportId(r.getId());
+            it.setOutputBatchId(l.getOutputBatchId());
+            it.setOutputBatchQty(l.getOutputBatchQty());
+            it.setPublicOutput(l.isPublicOutput());
+            it.setActualSurplus(l.isActualSurplus());
+            it.setSupplementProofId(l.getSupplementProofId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());
             it.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
@@ -2100,7 +2167,10 @@ public class ProductionDailyReportService {
                 identity == null ? null : identity[0],
                 identity == null ? null : identity[1],
                 identity == null ? null : identity[2],
-                identity == null ? null : identity[3]);
+                identity == null ? null : identity[3],
+                it.getOutputBatchId(), it.getOutputBatchQty(), it.isPublicOutput(), it.isActualSurplus(),
+                it.getExecutionSegmentId()!=null && it.getFqcRecoveryAuthorizationId()==null,
+                null,null,null,null,null,null,null,null,null);
     }
 
     /** 直送行的接收方(父件产品名 编号 · 工单号)，详情页「转给工单」列用；非直送行不出现。 */

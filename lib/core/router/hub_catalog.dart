@@ -66,6 +66,8 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     RouteName.productionSchedule,
     RouteName.productionMaterialAnalysis,
     RouteName.productionPlanList,
+    RouteName.productionOverproductionRateRequests,
+    RouteName.productionMaterialIncrementRequests,
     RouteName.productionDailyReportList,
     '/production/reports/plan-detail',
     '/production/reports/plan-summary',

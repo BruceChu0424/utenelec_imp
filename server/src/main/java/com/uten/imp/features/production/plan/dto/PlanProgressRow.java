@@ -7,7 +7,7 @@ import java.util.UUID;
 /**
  * 生产进度看板行：计划的聚合进度。
  * reportedQty = Σfqty（报工进度），inboundQty = Σiqty（成品入库进度）。
- * percent = inboundQty / totalQty，urgent = 交货 ≤3 天或已逾期，overdue = 交货日已过。
+ * percent = plannedInboundQty / totalQty；actualSurplusInboundQty 单列，不抵扣计划责任。
  * todayQty = 今日成品入库量（当日已审 FINISHED_IN 按 plan_draw_links 溯源汇总，基本单位）。
  * 顶层只列父计划；subplans 为拆分生成的子计划进度（点开展示）。
  * closed 为派生口径（所有明细 qty-iqty ≤ 0，与 recomputeClosed 同口径，不依赖 is_closed 是否已重算）。
@@ -40,7 +40,9 @@ public record PlanProgressRow(
         boolean pinned,
         boolean important,
         BigDecimal todayQty,
-        java.util.List<SubProgress> subplans) {
+        java.util.List<SubProgress> subplans,
+        BigDecimal plannedInboundQty,
+        BigDecimal actualSurplusInboundQty) {
 
     /** 子计划进度（subplan_links 溯源）。 */
     public record SubProgress(
@@ -59,6 +61,8 @@ public record PlanProgressRow(
             BigDecimal materialReadyQty,
             Double materialPercent,
             boolean canStartNow,
-            double percent) {
+            double percent,
+            BigDecimal plannedInboundQty,
+            BigDecimal actualSurplusInboundQty) {
     }
 }

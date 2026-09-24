@@ -423,8 +423,10 @@ class _VisitorApprovalListPageState
                 batchActionsBuilder: _isPendingTab
                     ? (context, ids) => _batchActions(context, ids, page.items)
                     : null,
-                // 双击行进入审批详情（保留现有路由与 go 语义）。
-                onRowTap: (app) => context.go('/visitor-approval/${app.id}'),
+                // 双击行进入审批详情：push（2026-09-24 起，原来 go 会抹掉列表实例，
+                // 详情返回只能落 default；push 后详情 pop 回本页，数据由
+                // autoDispose family 失效自动换新）。
+                onRowTap: (app) => context.push('/visitor-approval/${app.id}'),
                 emptyMessage: l10n.visitorApprovalEmpty,
                 currentPage: page.page,
                 totalPages: page.totalPages,

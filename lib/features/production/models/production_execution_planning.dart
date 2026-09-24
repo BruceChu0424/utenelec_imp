@@ -901,6 +901,9 @@ class ProductionExecutionSegmentView {
     this.fqcReworkAvailableQty = 0,
     this.fqcReplacementAvailableQty = 0,
     this.fqcReplacementReadyQty = 0,
+    this.allowActualOverproduction = false,
+    double? plannedInboundQty,
+    this.actualSurplusInboundQty = 0,
     this.zeroMaterial = false,
     this.segmentNo,
     this.productCode,
@@ -915,7 +918,7 @@ class ProductionExecutionSegmentView {
     this.responsibleEmployeeName,
     this.planBeginDate,
     this.planEndDate,
-  });
+  }) : plannedInboundQty = plannedInboundQty ?? inboundQty;
 
   final String id;
   final String packageId;
@@ -972,6 +975,9 @@ class ProductionExecutionSegmentView {
   final double fqcReworkAvailableQty;
   final double fqcReplacementAvailableQty;
   final double fqcReplacementReadyQty;
+  final bool allowActualOverproduction;
+  final double plannedInboundQty;
+  final double actualSurplusInboundQty;
   final int lockVersion;
 
   factory ProductionExecutionSegmentView.fromJson(Map<String, dynamic> json) {
@@ -1015,6 +1021,10 @@ class ProductionExecutionSegmentView {
       startRoute: json['startRoute'] as String?,
       canStart: json['canStart'] == true,
       sourceSegmentId: json['sourceSegmentId'] as String?,
+      allowActualOverproduction: json['allowActualOverproduction'] == true,
+      plannedInboundQty: _optionalDouble(json['plannedInboundQty']),
+      actualSurplusInboundQty:
+          _optionalDouble(json['actualSurplusInboundQty']) ?? 0,
       zeroMaterial: json['zeroMaterial'] == true,
       fqcPendingQty: _optionalDouble(json['fqcPendingQty']) ?? 0,
       fqcPassedQty: _optionalDouble(json['fqcPassedQty']) ?? 0,

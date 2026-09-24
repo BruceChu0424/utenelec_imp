@@ -226,7 +226,8 @@ class ProductionFinishedInPreStockEndToEndTest {
                 .toList();
         List<ArrivalRegistrationItemRequest> items = new java.util.ArrayList<>();
         for (int index = 0; index < reportItems.size(); index++) {
-            items.add(new ArrivalRegistrationItemRequest(reportItems.get(index), places.get(index)));
+            items.add(new ArrivalRegistrationItemRequest(reportItems.get(index), places.get(index),
+                    preStock ? new BigDecimal(quantities[index]) : null));
         }
         arrivals.register(reportId, new ArrivalRegistrationRequest(
                 tag + "-register-" + reportId, world.warehouseId(), items, "先入库后质检链路", preStock));

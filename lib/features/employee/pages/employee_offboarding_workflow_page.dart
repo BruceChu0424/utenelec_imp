@@ -281,7 +281,14 @@ class _EmployeeOffboardingWorkflowPageState
       });
       if (!mounted) return;
       context.appSuccess('离职办理及数据交接已完成');
-      context.go('/employee/${widget.employeeId}');
+      // pop 回员工详情（入口就是详情页 push 进来的，返回后它自己重拉）；
+      // 深链无栈才 go 兜底——原来 go 会整替栈，详情返回键落到 default。
+      final navigator = Navigator.of(context);
+      if (navigator.canPop()) {
+        navigator.pop();
+      } else {
+        context.go('/employee/${widget.employeeId}');
+      }
     } on ApiException catch (error) {
       if (!mounted) return;
       if (error.code == 'CONFLICT') {

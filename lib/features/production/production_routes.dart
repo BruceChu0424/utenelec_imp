@@ -20,6 +20,10 @@ import 'pages/production_plan_summary_sheet_page.dart';
 import 'pages/production_report_page.dart';
 import 'pages/where_used_report_page.dart';
 import 'pages/production_workshop_tasks_page.dart';
+import 'pages/production_overproduction_rate_pages.dart';
+import 'pages/production_material_increment_pages.dart';
+import 'pages/production_actual_output_supplement_page.dart';
+import 'repositories/production_actual_output_supplement_repository.dart';
 import 'pages/production_draw_request_page.dart';
 import 'pages/production_execution_batch_page.dart';
 
@@ -27,6 +31,38 @@ import 'pages/production_execution_batch_page.dart';
 ///
 /// 静态路径必须排在带 `:id` 的参数路径前，避免 Web 深链误匹配。
 final List<RouteBase> productionRoutes = [
+  GoRoute(
+    path: RouteName.productionMaterialIncrementRequests,
+    builder: (_, _) => const ProductionMaterialIncrementListPage(),
+  ),
+  GoRoute(
+    path: '/production/material-increment-requests/new',
+    builder: (_, state) => ProductionMaterialIncrementCreatePage(
+      segmentId: state.uri.queryParameters['segmentId'] ?? '',
+    ),
+  ),
+  GoRoute(
+    path: '/production/material-increment-requests/:id',
+    builder: (_, state) => ProductionMaterialIncrementDetailPage(
+      id: state.pathParameters['id']!,
+    ),
+  ),
+  GoRoute(
+    path: '/production/actual-output-supplements/:id',
+    builder: (_, state) => ProductionActualOutputSupplementPage(
+      id: state.pathParameters['id']!,
+      returnToReport: state.extra == 'return-to-report',
+    ),
+  ),
+  GoRoute(
+    path: RouteName.productionOverproductionRateRequests,
+    builder: (_, _) => const ProductionOverproductionRateListPage(),
+  ),
+  GoRoute(
+    path: '/production/overproduction-rate-requests/:id',
+    builder: (_, state) =>
+        ProductionOverproductionRateDetailPage(id: state.pathParameters['id']!),
+  ),
   GoRoute(
     path: RouteName.production,
     name: 'production-hub',
@@ -165,9 +201,19 @@ final List<RouteBase> productionRoutes = [
           .take(100)
           .toList(growable: false);
       return ProductionDailyReportEditPage(
+        id: state.extra is ProductionOutputSupplementView
+            ? (state.extra as ProductionOutputSupplementView).excludedReportId
+            : null,
+        initialSupplement: state.extra is ProductionOutputSupplementView
+            ? state.extra as ProductionOutputSupplementView
+            : null,
         initialExecutionSegmentId:
             state.uri.queryParameters['executionSegmentId'],
         initialExecutionSegmentIds: batch ?? const [],
+        // 保存后的落点：从车间任务 push 进来（from=workshop-tasks）保存成功
+        // pop 回任务页（列表+徽章随之刷新）；其余入口照旧 replace 成详情页。
+        returnToWorkshopTasks:
+            state.uri.queryParameters['from'] == 'workshop-tasks',
       );
     },
   ),

@@ -30,6 +30,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "production_plans")
 public class ProductionPlan extends SoftDeletableEntity {
+    @Column(name="actual_output_supplement_request_id")
+    private UUID actualOutputSupplementRequestId;
 
     @Column(name = "legacy_id", unique = true)
     private Integer legacyId;

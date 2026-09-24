@@ -37,6 +37,7 @@ import '../../../components/print/uten_print_preview.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
@@ -78,6 +79,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   bool _loading = false;
   String? _error;
   final _loadRequests = LatestRequestGuard();
+
+  /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
+  String? _myLocation;
   String? _warehouseId; // null = 全部（参与核算仓库聚合）；父仓 = 子树聚合（V476）
 
   /// 「含线边仓」(V595)：线边仓是车间直送料架，默认不计入即时库存；仅本页会话内生效。
@@ -610,6 +614,10 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         _load(1);
       }
     });
+    // 返回即刷新：从库存详情做授权调整等写操作返回后，余额列表静默重拉
+    // （此前详情只刷自己，本列表无任何监听，返回看到旧库存）。
+    _myLocation ??= currentLocationOr(context, RouteName.warehouse);
+    ref.onPageResume(_myLocation!, () => _load(_page?.page ?? 1));
     return Scaffold(
       appBar: UtenAppBar(
         title: '即时库存', // TODO(l10n): 补 arb

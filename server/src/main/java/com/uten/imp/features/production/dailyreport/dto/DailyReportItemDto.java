@@ -64,4 +64,22 @@ public class DailyReportItemDto {
     private String goodsCode;
     private String colorName;
     private String unitName;
+    @lombok.Setter private UUID outputBatchId;
+    @lombok.Setter private BigDecimal outputBatchQty;
+    @lombok.Setter private boolean publicOutput;
+    @lombok.Setter private boolean actualSurplus;
+    @lombok.Setter private boolean allowActualOverproduction;
+    @lombok.Setter private UUID supplementProofId;
+    @lombok.Setter private UUID outputSourceExecutionSegmentId;
+    @lombok.Setter private UUID outputSourcePlanItemId;
+    @lombok.Setter private UUID outputSourcePlanId;
+    @lombok.Setter private UUID outputSourceSalesAllocationId;
+    @lombok.Setter private UUID outputSourceSalesOrderItemId;
+    @lombok.Setter private BigDecimal allowedOverproductionRate;
+    @lombok.Setter private BigDecimal overproductionLimitQty;
+    @lombok.Setter private BigDecimal remainingActualSurplusQty;
+
+    public String getOutputKind() {
+        return actualSurplus ? "ACTUAL_SURPLUS" : publicOutput ? "PLANNED_PUBLIC" : "PLANNED";
+    }
 }

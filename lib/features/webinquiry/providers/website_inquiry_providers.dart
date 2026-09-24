@@ -49,10 +49,28 @@ class WebsiteInquiryListNotifier
   }
 
   /// 详情页写操作完成后，把服务端回执同步到当前页并保留页码。
+  ///
+  /// 2026-09-24 修补：写完的行如果已不在当前筛选口径里（如「新询盘」列表里
+  /// 点了开始跟进/转客户），要从当前页移除——原来一律原位替换，过滤后的列表
+  /// 一直挂着已离开该状态的旧行，返回列表要手动刷新才消失。
   void replaceIfPresent(WebsiteInquiry updated) {
     final current = state.valueOrNull;
-    if (current == null ||
-        !current.items.any((item) => item.id == updated.id)) {
+    if (current == null) return;
+    final filter = ref.read(websiteInquiryStatusFilterProvider);
+    final index = current.items.indexWhere((item) => item.id == updated.id);
+    if (index < 0) return; // 不在当前页：翻页/刷新自然带上，不动。
+    final stillInFilter = filter == null || updated.status == filter;
+    if (!stillInFilter) {
+      final items = [...current.items]..removeAt(index);
+      state = AsyncData(
+        PagedResult(
+          items: items,
+          page: current.page,
+          size: current.size,
+          total: current.total > 0 ? current.total - 1 : 0,
+          totalPages: current.totalPages,
+        ),
+      );
       return;
     }
     state = AsyncData(

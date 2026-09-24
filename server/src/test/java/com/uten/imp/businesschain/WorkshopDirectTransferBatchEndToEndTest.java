@@ -11,10 +11,22 @@ import com.uten.imp.features.production.execution.ProductionDrawRequest;
 import com.uten.imp.features.production.execution.ProductionExecutionBatch;
 import com.uten.imp.features.production.execution.ProductionExecutionSegmentService;
 import com.uten.imp.features.production.execution.SegmentTransitionRequest;
+import com.uten.imp.features.production.execution.SegmentAssignmentRequest;
 import com.uten.imp.features.production.mrp.ProductionExecutionBatchService;
 import com.uten.imp.features.production.dailyreport.ProductionDailyReportService;
+import com.uten.imp.features.production.dailyreport.ReportablePlanLineQueryService;
+import com.uten.imp.features.production.plan.ProductionPlanService;
+import com.uten.imp.features.production.mrp.BottomUpPlanOrchestrator;
+import com.uten.imp.features.production.mrp.GeneratePlanningPackageRequest;
+import com.uten.imp.features.production.mrp.ProductionPlanningPackageService;
+import com.uten.imp.features.production.mrp.MrpService;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest;
+import com.uten.imp.features.production.quality.ProductionFqcInspectionService;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.dto.StockDocIssueBatchRequest;
 import com.uten.imp.features.stock.dto.StockDocItemLine;
@@ -546,12 +558,282 @@ class WorkshopDirectTransferBatchEndToEndTest {
         assertEquals("IN_PROGRESS", started.status());
     }
 
+    @Test
+    void defaultContinuousRouteIsEffectiveAuditedChangeableAndStillRequiresPhysicalStart() {
+        Case c = create("dt-default-route", false);
+        assertEquals("CONTINUOUS", db.queryForObject("SELECT start_route FROM production_execution_segments WHERE id=?",
+                String.class, c.segment()));
+        assertEquals(Boolean.TRUE, db.queryForObject("SELECT continuous_supply AND route_confirmed_at IS NOT NULL FROM production_execution_segments WHERE id=?",
+                Boolean.class, c.segment()));
+        assertEquals(1, db.queryForObject("SELECT count(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='ROUTE_DEFAULTED' AND created_by IS NULL",
+                Integer.class, c.segment()), "默认路线由系统留痕，不能伪造人工确认");
+        assertEquals(0, db.queryForObject("SELECT count(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='ROUTE_CONFIRMED'",
+                Integer.class, c.segment()));
+        fixture.loginAs(c.workerUser());
+        assertThrows(ApiException.class, () -> segments.start(c.plan(), c.segment(),
+                new SegmentTransitionRequest(version(c.segment()), "default-without-material-" + c.segment())));
+        confirmRoute(c.plan(), c.segment(), "FULL_KIT");
+        assertEquals("FULL_KIT", db.queryForObject("SELECT start_route FROM production_execution_segments WHERE id=?", String.class, c.segment()));
+        confirmRoute(c.plan(), c.segment(), "CONTINUOUS");
+        transfer(c, "40");
+        assertNotEquals("IN_PROGRESS", status(c.segment()), "到料不能代替车间显式开工");
+        fixture.loginAs(c.workerUser());
+        var started = segments.start(c.plan(), c.segment(),
+                new SegmentTransitionRequest(version(c.segment()), "default-physical-start-" + c.segment()));
+        assertEquals("IN_PROGRESS", started.status());
+        qty("40", db.queryForObject("SELECT COALESCE(sum(qty_base),0) FROM production_material_stock_postings WHERE demand_id=? AND posting_type='ISSUE'",
+                BigDecimal.class, parentDemand(c)));
+    }
+
+    @Test
+    void actualSurplusDirectTransferPreservesDemandRemainderAndApprovalIsIdempotent() {
+        Case c = create("dt-actual-split", false);
+        approveOverproductionRate(c.childSegment(), c.world().superAdminUserId(), "0.30");
+        fixture.loginAs(c.workerUser());
+        confirmRoute(c.plan(), c.segment(), "CONTINUOUS");
+        receive(c, c.child(), c.leaf(), "20");
+        fixture.loginAs(c.workerUser());
+        segments.recheckMaterial(c.plan(), c.segment(), new SegmentTransitionRequest(
+                version(c.segment()), "actual-prepare-" + c.segment()));
+        var drawItems = List.of(new ProductionDrawRequest.Item(c.segment(), version(c.segment())));
+        var preview = drawRequests.preview(new ProductionDrawRequest.PreviewRequest(drawItems));
+        qty("20", preview.lines().getFirst().qty());
+        var submitted = drawRequests.submit(new ProductionDrawRequest.SubmitRequest(
+                drawItems, "actual-draw-" + c.segment(), preview.fingerprint()));
+        fixture.loginAs(c.world().superAdminUserId());
+        var issue = new StockDocIssueBatchRequest();
+        issue.setIdempotencyKey("actual-issue-" + c.segment());
+        issue.setDocIds(submitted.documentIds());
+        stock.issueFullBatch(issue);
+        fixture.loginAs(c.workerUser());
+        segments.start(c.plan(), c.segment(), new SegmentTransitionRequest(
+                version(c.segment()), "actual-parent-start-" + c.segment()));
+
+        UUID target = parentDemand(c);
+        qty("80", db.queryForObject("SELECT fn_workshop_direct_remaining_for_source(?,?)",
+                BigDecimal.class, c.childSegment(), target));
+        UUID reportId = createTransferDraft(c, "130", target);
+        var detail = reports.detail(reportId);
+        assertEquals(3, detail.getItems().size());
+        var direct = detail.getItems().stream().filter(line -> "WORKSHOP".equals(line.getDestination()))
+                .findFirst().orElseThrow();
+        var demandWarehouse = detail.getItems().stream()
+                .filter(line -> "WAREHOUSE".equals(line.getDestination()) && !line.isPublicOutput())
+                .findFirst().orElseThrow();
+        var surplus = detail.getItems().stream().filter(line -> line.isActualSurplus())
+                .findFirst().orElseThrow();
+        qty("80", direct.getQty());
+        qty("20", demandWarehouse.getQty());
+        qty("30", surplus.getQty());
+        assertEquals("WAREHOUSE", surplus.getDestination());
+        assertTrue(surplus.isPublicOutput());
+        assertNull(surplus.getDirectTransferDemandId());
+        assertNull(surplus.getSalesOrderItemId());
+        assertNull(surplus.getExecutionSegmentSalesAllocationId());
+        assertEquals(1, detail.getItems().stream().map(line -> line.getOutputBatchId()).distinct().count());
+        detail.getItems().forEach(line -> qty("130", line.getOutputBatchQty()));
+
+        var command = DailyReportApproveRequests.freshKey();
+        reports.approve(reportId, command);
+        reports.approve(reportId, command);
+        qty("80", db.queryForObject("""
+                SELECT COALESCE(sum(qty),0) FROM production_workshop_direct_transfer_items
+                WHERE to_demand_id=? AND reversal_id IS NULL
+                """, BigDecimal.class, target));
+        assertEquals(1, db.queryForObject("""
+                SELECT count(*) FROM production_workshop_direct_transfer_items
+                WHERE to_demand_id=? AND reversal_id IS NULL
+                """, Integer.class, target));
+        qty("100", db.queryForObject("SELECT required_qty FROM production_material_demands WHERE id=?",
+                BigDecimal.class, target));
+        qty("100", db.queryForObject("SELECT planned_qty FROM production_execution_segments WHERE id=?",
+                BigDecimal.class, c.childSegment()));
+        qty("130", db.queryForObject("SELECT COALESCE(sum(qty),0) FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted",
+                BigDecimal.class, reportId));
+        qty("0", db.queryForObject("SELECT COALESCE(sum(qty),0) FROM stock_balances WHERE goods_id=? AND warehouse_id=?",
+                BigDecimal.class, c.child(), c.leaf()));
+        qty("0", db.queryForObject("SELECT COALESCE(sum(qty),0) FROM stock_balances WHERE goods_id=? AND warehouse_id=?",
+                BigDecimal.class, c.child(), c.lineSide()));
+        assertNull(demandWarehouse.getDirectTransferDemandId());
+        fixture.loginAs(c.world().superAdminUserId());
+        var arrivals = beans.getBean(ProductionFinishedArrivalRegistrationService.class);
+        var quality = beans.getBean(ProductionFqcInspectionService.class);
+        for (var row : List.of(surplus, demandWarehouse)) {
+            arrivals.register(reportId, new ArrivalRegistrationRequest("actual-dt-arrival-" + row.getId(),
+                    c.leaf(), List.of(new ArrivalRegistrationItemRequest(row.getId(), "直送余量实物点收")), null));
+            UUID inspection = db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?",
+                    UUID.class, row.getId());
+            quality.decide(inspection, new DecisionRequest("PASS", row.getQty(), null, null, null,
+                    "actual-dt-pass-" + row.getId()));
+            UUID inbound = db.queryForObject("SELECT doc_id FROM stock_document_items WHERE source_daily_report_item_id=? AND NOT is_deleted",
+                    UUID.class, row.getId());
+            fixture.confirmFinishedInboundFully(inbound);
+            if (row.isActualSurplus()) {
+                assertEquals(0, db.queryForObject("SELECT count(*) FROM stock_reservations WHERE source_doc_type='PRODUCTION_INBOUND' AND source_doc_id=? AND NOT is_deleted",
+                        Integer.class, inbound), "公共超产不能再占下工序需求");
+                qty("30", db.queryForObject("SELECT COALESCE(sum(qty),0) FROM stock_balances WHERE goods_id=? AND warehouse_id=?",
+                        BigDecimal.class, c.child(), c.leaf()));
+            }
+        }
+        qty("50", db.queryForObject("SELECT COALESCE(sum(qty),0) FROM stock_balances WHERE goods_id=? AND warehouse_id=?",
+                BigDecimal.class, c.child(), c.leaf()));
+        qty("100", db.queryForObject("SELECT COALESCE(sum(qty_base),0) FROM production_material_stock_postings WHERE demand_id=? AND posting_type='ISSUE'",
+                BigDecimal.class, target));
+        qty("100", db.queryForObject("SELECT planned_qty FROM production_execution_segments WHERE id=?",
+                BigDecimal.class, c.childSegment()));
+    }
+
+    @Test
+    void actualSurplusCannotTurnCrossWorkshopTransferIntoPublicWarehouseOutput() {
+        Case c = create("dt-actual-cross", false);
+        approveOverproductionRate(c.childSegment(), c.world().superAdminUserId(), "0.30");
+        fixture.loginAs(c.world().superAdminUserId());
+        UUID workshop = UUID.randomUUID(), worker = UUID.randomUUID();
+        db.update("INSERT INTO departments(id,code,name,parent_id,level) VALUES(?,?,?,(SELECT id FROM departments WHERE code='DEPT_PROD'),'二级班组')",
+                workshop, "W-actual-cross-other", "另一接收车间");
+        db.update("""
+                INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
+                VALUES(?,?,?,'其他',?,DATE '2026-01-01','active','regular')
+                """, worker, "ACTUAL-CROSS-WORKER", "另一车间负责人", workshop);
+        segments.assign(c.plan(), c.segment(), new SegmentAssignmentRequest(
+                version(c.segment()), "actual-cross-assign-" + c.segment(),
+                workshop, null, worker, BusinessTime.today(), BusinessTime.today().plusDays(10)));
+        UUID target = parentDemand(c);
+        fixture.loginAs(c.workerUser());
+        ApiException error = assertThrows(ApiException.class, () -> {
+            UUID reportId = createTransferDraft(c, "130", target);
+            reports.approve(reportId, DailyReportApproveRequests.freshKey());
+        });
+        assertTrue(error.getMessage().contains("同车间") || error.getMessage().contains("跨车间"), error.getMessage());
+        assertEquals(0, db.queryForObject("SELECT count(*) FROM production_workshop_direct_transfer_items WHERE to_demand_id=?",
+                Integer.class, target));
+        qty("0", db.queryForObject("SELECT fqty FROM production_plan_items WHERE id=(SELECT source_plan_item_id FROM production_execution_segments WHERE id=?)",
+                BigDecimal.class, c.childSegment()));
+    }
+
+    @Test
+    void actualSurplusCannotTurnUnrelatedSameGoodsTransferIntoPublicWarehouseOutput() {
+        Case c = create("dt-actual-unrelated", false);
+        approveOverproductionRate(c.childSegment(), c.world().superAdminUserId(), "0.30");
+        fixture.loginAs(c.world().superAdminUserId());
+        UUID order = fixture.createApprovedOrder(c.world(), c.parent(), "100", "100");
+        UUID orderItem = db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?", UUID.class, order);
+        var analysis = analyses.preview(new PreviewRequest(null, null, null, c.world().warehouseId(),
+                "actual-unrelated-preview-" + order, List.of(new PreviewItem("SALES_ORDER_ITEM", orderItem,
+                null, null, null, null, null, BusinessTime.today().plusDays(10), new BigDecimal("100")))));
+        analyses.saveRoutes(analysis.analysisId(), new RouteRequest(analysis.version(), analysis.fingerprint(),
+                "actual-unrelated-route-" + order, analysis.flatMaterials().stream()
+                .map(row -> new RouteDecision(row.materialLineId(), row.actionGroupKey(), "MAKE", null)).toList()));
+        analysis = analyses.detail(analysis.analysisId());
+        var plan = commands.issueWorkshopPlans(analysis.analysisId(), new IssueWorkshopPlansRequest(
+                analysis.version(), analysis.fingerprint(), "actual-unrelated-plan-" + order, c.world().warehouseId(),
+                BusinessTime.today(), BusinessTime.today().plusDays(10), true,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null, analysis.products().getFirst().analysisLineId(),
+                        new BigDecimal("100"), BusinessTime.today(), BusinessTime.today().plusDays(10),
+                        c.workshop(), null, c.worker(), null, null))));
+        UUID target = db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND goods_id=?",
+                UUID.class, plan.plans().getFirst().segmentIds().getFirst(), c.child());
+        fixture.loginAs(c.workerUser());
+        ApiException error = assertThrows(ApiException.class, () -> {
+            UUID reportId = createTransferDraft(c, "130", target);
+            reports.approve(reportId, DailyReportApproveRequests.freshKey());
+        });
+        assertTrue(error.getMessage().contains("责任") || error.getMessage().contains("来源"), error.getMessage());
+        assertEquals(0, db.queryForObject("SELECT count(*) FROM production_workshop_direct_transfer_items WHERE to_demand_id=?",
+                Integer.class, target));
+        qty("0", db.queryForObject("SELECT fqty FROM production_plan_items WHERE id=(SELECT source_plan_item_id FROM production_execution_segments WHERE id=?)",
+                BigDecimal.class, c.childSegment()));
+    }
+
     // 「线边仓公共库存被无谱系任务占用→重核提升→自动投入资格拒绝」的构造依赖
     // 「先有兄弟需求、再做直送审核」，而那条直送审核会先被既有足迹守卫拦下
     //（来源集合含同货品兄弟计划，预读后变化）——即该状态在现有链路上不可达，
     // 预检（issueLineSideDrawsAfterPromotion）作为纵深防御保留，不另设测试锁定。
 
     // ===================== 夹具 =====================
+
+    @Test
+    void actualSurplusPublicFirstDoesNotAdvanceRootNestedOrMrpPlanProgress() {
+        for (boolean nested : List.of(false, true)) {
+            String tag = nested ? "dt-progress-child" : "dt-progress-root";
+            var world = fixture.seedWorld(tag);
+            fixture.loginAs(world.superAdminUserId());
+            UUID product = UUID.randomUUID();
+            fixture.insertGoods(product, "P-" + tag, "进度测试自制件", "自制", world.unitId(), world.unitLegacy());
+            fixture.insertBom(product, world.goodsD(), "1");
+            db.update("UPDATE goods_bom_items SET hard_gate=false WHERE goods_id=?", product);
+            UUID rootProduct = product;
+            if (nested) {
+                rootProduct = UUID.randomUUID();
+                fixture.insertGoods(rootProduct, "ROOT-" + tag, "进度测试上层件", "自制", world.unitId(), world.unitLegacy());
+                fixture.insertBom(rootProduct, product, "1");
+            }
+            UUID rootPlan = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                    fixture, "approvedPlan", world, rootProduct, "100", "100");
+            var packages = beans.getBean(ProductionPlanningPackageService.class);
+            var preview = packages.preview(rootPlan, world.warehouseId());
+            var generate = new GeneratePlanningPackageRequest();
+            generate.setWarehouseId(world.warehouseId());
+            generate.setIdempotencyKey("actual-progress-package-" + rootPlan);
+            generate.setPreviewFingerprint(preview.fingerprint());
+            generate.setGeneratePurchaseRequest(true);
+            beans.getBean(BottomUpPlanOrchestrator.class).confirmFullTree(rootPlan, generate);
+            UUID plan = nested ? db.queryForObject("SELECT subplan_id FROM subplan_links WHERE plan_id=? AND NOT is_deleted",
+                    UUID.class, rootPlan) : rootPlan;
+            UUID segment = db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",
+                    UUID.class, plan);
+            fixture.confirmFullKitRoute(plan, segment);
+            segments.start(plan, segment, new SegmentTransitionRequest(version(segment), "actual-progress-start-" + segment));
+            approveOverproductionRate(segment, world.superAdminUserId(), "0.30");
+            var source = beans.getBean(ReportablePlanLineQueryService.class).list(1, 50, null, null, List.of(segment))
+                    .getItems().getFirst();
+            var command = new DailyReportSaveRequest();
+            command.setIdempotencyKey("actual-progress-report-" + segment);
+            command.setBillDate(BusinessTime.today());
+            command.setDepartmentId(db.queryForObject("SELECT workshop_department_id FROM production_execution_segments WHERE id=?", UUID.class, segment));
+            command.setWorkerIds(List.of(db.queryForObject("SELECT responsible_employee_id FROM production_execution_segments WHERE id=?", UUID.class, segment)));
+            var line = new DailyReportItemLine();
+            line.setPlanItemId(source.planItemId());
+            line.setExecutionSegmentId(segment);
+            line.setExecutionSegmentSalesAllocationId(source.executionSegmentSalesAllocationId());
+            line.setSalesOrderItemId(source.orderItemId());
+            line.setGoodsId(product);
+            line.setUnitId(world.unitId());
+            line.setUnitRate(BigDecimal.ONE);
+            line.setQty(new BigDecimal("130"));
+            command.setItems(List.of(line));
+            UUID report = reports.approve(reports.create(command).getId(), DailyReportApproveRequests.freshKey()).getId();
+            var surplus = reports.detail(report).getItems().stream().filter(item -> item.isActualSurplus()).findFirst().orElseThrow();
+            beans.getBean(ProductionFinishedArrivalRegistrationService.class).register(report,
+                    new ArrivalRegistrationRequest("actual-progress-arrival-" + report, world.warehouseId(),
+                            List.of(new ArrivalRegistrationItemRequest(surplus.getId(), "超产先入库")), null));
+            UUID inspection = db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?", UUID.class, surplus.getId());
+            beans.getBean(ProductionFqcInspectionService.class).decide(inspection,
+                    new DecisionRequest("PASS", surplus.getQty(), null, null, null, "actual-progress-pass-" + report));
+            UUID inbound = db.queryForObject("SELECT doc_id FROM stock_document_items WHERE source_daily_report_item_id=? AND NOT is_deleted",
+                    UUID.class, surplus.getId());
+            fixture.confirmFinishedInboundFully(inbound);
+            qty("0", db.queryForObject("SELECT fn_plan_original_inbound_qty(?)", BigDecimal.class, source.planItemId()));
+            var segmentView = segments.list(plan).stream().filter(item -> item.id().equals(segment)).findFirst().orElseThrow();
+            qty("30", segmentView.inboundQty());
+            qty("0", segmentView.plannedInboundQty());
+            qty("30", segmentView.actualSurplusInboundQty());
+            var root = beans.getBean(ProductionPlanService.class).progress(false, "progress", 1, 100, null, null, null, null)
+                    .getItems().stream().filter(item -> item.planId().equals(rootPlan)).findFirst().orElseThrow();
+            assertEquals(0.0, root.percent());
+            assertFalse(root.closed());
+            if (nested) {
+                var child = root.subplans().stream().filter(item -> item.planId().equals(plan)).findFirst().orElseThrow();
+                qty("30", child.inboundQty()); qty("0", child.plannedInboundQty()); qty("30", child.actualSurplusInboundQty());
+                assertEquals(0.0, child.percent()); assertFalse(child.closed());
+                var mrp = beans.getBean(MrpService.class).subplans(rootPlan).stream().filter(item -> item.planId().equals(plan)).findFirst().orElseThrow();
+                qty("30", mrp.inboundQty()); qty("0", mrp.plannedInboundQty()); qty("30", mrp.actualSurplusInboundQty());
+                assertEquals(0.0, mrp.percent()); assertFalse(mrp.closed());
+            } else {
+                qty("30", root.inboundQty()); qty("0", root.plannedInboundQty()); qty("30", root.actualSurplusInboundQty());
+            }
+        }
+    }
 
     private record Case(
             FullChainEndToEndTest.World world,
@@ -560,6 +842,16 @@ class WorkshopDirectTransferBatchEndToEndTest {
             UUID childPlan, UUID childSegment,
             UUID workshop, UUID worker, UUID workerUser,
             UUID leaf, UUID lineSide) {
+    }
+
+    private void approveOverproductionRate(UUID segment, UUID administrator, String rate) {
+        fixture.loginAs(administrator);
+        var service = beans.getBean(com.uten.imp.features.production.execution.ProductionOverproductionRateService.class);
+        var context = service.context(segment);
+        var request = service.submit(new com.uten.imp.features.production.execution.ProductionOverproductionRateContracts.SubmitRequest(
+                segment, context.rateVersion(), new BigDecimal(rate), "回归验证已批准的实际生产容差", "rate-request-" + segment));
+        service.decide(request.id(), new com.uten.imp.features.production.execution.ProductionOverproductionRateContracts.DecisionRequest(
+                request.rowVersion(), "rate-approve-" + segment, "计划部批准此批容差"), true);
     }
 
     /** 父件(自制) → 子件(自制叶子，零料直制)；可选第二种采购子件。主仓下挂普通叶子子仓 + 车间线边仓。 */
@@ -646,6 +938,10 @@ class WorkshopDirectTransferBatchEndToEndTest {
 
     /** 子件报工选「转下一道工序」，把产出直送给父件对本子件的需求。 */
     private void transfer(Case c, String quantity) {
+        reports.approve(createTransferDraft(c, quantity, parentDemand(c)), DailyReportApproveRequests.freshKey());
+    }
+
+    private UUID createTransferDraft(Case c, String quantity, UUID targetDemand) {
         fixture.loginAs(c.workerUser());
         var report = new DailyReportSaveRequest();
         report.setIdempotencyKey("dt-report-" + c.segment() + "-" + quantity);
@@ -665,9 +961,9 @@ class WorkshopDirectTransferBatchEndToEndTest {
         item.setQty(new BigDecimal(quantity));
         item.setIsFinal(false);
         item.setDestination("WORKSHOP");
-        item.setDirectTransferDemandId(parentDemand(c));
+        item.setDirectTransferDemandId(targetDemand);
         report.setItems(List.of(item));
-        reports.approve(reports.create(report).getId(), DailyReportApproveRequests.freshKey());
+        return reports.create(report).getId();
     }
 
     private record TriggerProfile(ProductionJdbcMeasurement.Sample sample, java.util.Map<String, Long> calls,

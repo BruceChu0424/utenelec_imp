@@ -1853,9 +1853,14 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       errorFallback: '删除失败，请稍后重试',
     );
     if (!ok || !mounted) return;
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop(true);
-    }
+    // 删除后返回：pop 优先（打开方 await 后重载列表）；深链无栈时归位对应
+    // 分类列表页——原来 canPop 为假就停在已删除实体的详情页上。
+    backTo(
+      context,
+      defaultPath: _isClient
+          ? RouteName.basicinfoClient
+          : RouteName.basicinfoSupplier,
+    );
   }
 
   // ======================= 通用小件 =======================

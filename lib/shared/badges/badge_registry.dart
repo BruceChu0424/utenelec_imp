@@ -58,6 +58,8 @@ enum BadgeEntry {
   // —— 生产(计划员) ——
   /// 生产调度: 待排产行。
   productionSchedule(BadgeModule.production),
+  productionRateApprovals(BadgeModule.production),
+  productionMaterialIncrementApprovals(BadgeModule.production),
 
   /// 生产管理: 进行中的物料分析 / 根计划批次(黄)。
   productionBatches(BadgeModule.production),
@@ -165,6 +167,8 @@ abstract final class BadgeFact {
   static const iqcRejectionOpen = 'iqcRejection.open';
 
   static const productionScheduleCount = 'productionSchedule.count';
+  static const productionOverproductionRate = 'productionOverproductionRate.count';
+  static const productionMaterialIncrement = 'productionMaterialIncrement.count';
   static const productionScheduleUrgent = 'productionSchedule.urgent';
   static const productionScheduleOverdue = 'productionSchedule.overdue';
   static const productionExecution = 'productionExecution.count';

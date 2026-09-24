@@ -4,8 +4,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_user_avatar.dart';
@@ -16,6 +14,8 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../profile/models/profile_change_request.dart';
@@ -242,7 +242,10 @@ class _HrProfileChangeDetailPageState
       ref.invalidate(hrProfileChangeDetailProvider);
       refreshBadges(ref);
       context.appSuccess(l10n.profileChangeApproveSuccess);
-      context.pop();
+      // 审批后回队列：pop 优先（员工档案 pending 区 push 进来时回档案）；
+      // 队列列表入口是 go（栈内无可 pop 项），裸 pop 会抛 GoError 被下面 catch
+      // 吞掉，成功操作反而弹「失败」——backTo 的栈空兜底归位变更队列。
+      backTo(context, defaultPath: RouteName.hrProfileChanges);
     } on ApiException catch (e) {
       if (!context.mounted) return;
       context.appApiError(e);
@@ -315,7 +318,7 @@ class _HrProfileChangeDetailPageState
       ref.invalidate(hrProfileChangeDetailProvider);
       refreshBadges(ref);
       context.appSuccess(l10n.profileChangeRejectSuccess);
-      context.pop();
+      backTo(context, defaultPath: RouteName.hrProfileChanges);
     } on ApiException catch (e) {
       if (!context.mounted) return;
       context.appApiError(e);

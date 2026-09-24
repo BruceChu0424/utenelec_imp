@@ -315,6 +315,8 @@ class _WarehouseQualityResultDetailPageState
           .recordReturn(rejection.id, command);
       if (!mounted) return;
       context.appSuccess('实物退回凭证已登记');
+      // 与同页 _confirmStockIn 口径对齐：登记退回改变品质待办口径，徽章即时重拉。
+      refreshBadges(ref);
       await _load();
     } on ApiException catch (error) {
       if (!mounted) return;

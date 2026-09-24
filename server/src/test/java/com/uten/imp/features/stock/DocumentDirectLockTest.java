@@ -336,6 +336,8 @@ class DocumentDirectLockTest {
                 mock(ProductionPlanItemRepository.class),
                 mock(PlanOrderItemLinkRepository.class),
                 mock(DailyReportExecutionSegmentGuard.class),
+                mock(com.uten.imp.features.production.dailyreport.DailyReportOutputAllocationService.class),
+                mock(com.uten.imp.features.production.dailyreport.ActualOutputSupplementService.class),
                 mock(SecurityContextCurrentUser.class),
                 mock(EmployeeNameResolver.class),
                 mock(com.uten.imp.common.util.DepartmentNameResolver.class),

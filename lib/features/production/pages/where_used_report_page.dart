@@ -17,6 +17,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -90,6 +91,9 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   bool _loading = false;
   bool _openingDetail = false;
   String? _loadError;
+
+  /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
+  String? _myLocation;
 
   String _formatDate(DateTime date) =>
       '${date.year}-${date.month.toString().padLeft(2, '0')}-'
@@ -265,6 +269,12 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     final theme = Theme.of(context);
     final unattributed =
         (_data?.meta['unattributedDemandCount'] as num?)?.toInt() ?? 0;
+    // 返回即刷新：已查出的结果在行点击 push 的计划详情操作后可能过期，
+    // 返回时重查当前查询；尚未查询（无物料/无结果）不触发，避免弹「请先选物料」。
+    _myLocation ??= currentLocationOr(context, RouteName.production);
+    ref.onPageResume(_myLocation!, () {
+      if (_data != null) _load();
+    });
     return Scaffold(
       appBar: UtenAppBar(
         title: '物料反查产成品',

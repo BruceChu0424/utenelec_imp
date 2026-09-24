@@ -74,6 +74,11 @@ class SubcontractPreparationPaginationPostgresTest {
                                 AND (warehouse.is_line_side OR NOT child.is_line_side)));
                 $$
                 """);
+        // ADR-114(V688): 剩余可排量扣掉已独立结清的损耗。本夹具不建短交案件/损耗单表, 恒为 0(真实定义见 V688)。
+        jdbc.execute("""
+                CREATE FUNCTION fn_subcontract_settled_loss_qty(p_order_item_id UUID)
+                RETURNS NUMERIC LANGUAGE sql STABLE AS $$ SELECT 0::numeric $$
+                """);
         jdbc.execute("""
                 CREATE FUNCTION fn_subcontract_sole_component_goods(p_goods_id UUID)
                 RETURNS BOOLEAN LANGUAGE sql STABLE AS $$

@@ -142,6 +142,11 @@ public final class MigrationRehearsalSupport {
                 stockTotals(connection));
     }
 
+    /** V673 退役的 production_plan_costs 年分区/default 分区子表名。 */
+    static boolean isRetiredPlanCostPartition(String table) {
+        return table.matches("production_plan_costs_(\\d{4}|default)");
+    }
+
     static void assertStableSnapshot(Snapshot before, Snapshot after) {
         assertStableSnapshot(before, after, false);
     }
@@ -163,6 +168,9 @@ public final class MigrationRehearsalSupport {
                 "roles", "user_roles", "role_permissions", "department_roles");
         Set<String> requiredTables = new java.util.HashSet<>(before.tableRows().keySet());
         requiredTables.removeAll(intentionallyDropped);
+        // V673(ADR-105) production_plan_costs 由按年分区改为普通单表: 各年分区子表与 default 分区
+        // 合法消失, 行全部搬进同名父表(父表行数对账仍在下方逐表比较里)。
+        requiredTables.removeIf(MigrationRehearsalSupport::isRetiredPlanCostPartition);
         assertThat(after.tableRows().keySet())
                 .as("candidate migrations must not remove pre-existing business tables")
                 .containsAll(requiredTables);
@@ -174,7 +182,8 @@ public final class MigrationRehearsalSupport {
                     && !reviewedExpenseNamespaceAddition(before, after, entry.getKey(),
                             entry.getValue(), afterCount)
                     // 整表废弃后行数 0 -> null 同样合法（表已点名豁免删除）。
-                    && !intentionallyDropped.contains(entry.getKey())) {
+                    && !intentionallyDropped.contains(entry.getKey())
+                    && !isRetiredPlanCostPartition(entry.getKey())) {
                 unexpected.put(entry.getKey(), entry.getValue() + " -> " + afterCount);
             }
         }

@@ -9115,11 +9115,16 @@ class FullChainEndToEndTest {
         assertEquals(0, arVoucherBalance.compareTo(BigDecimal.ZERO),
                 "AR 凭证借贷必平 Σ(direction×amount) = 0");
         // global invariant: no unbalanced voucher exists after generation
-        assertEquals(0, intFor(
-                "select count(*) from ("
-                        + "  select gv.id from gl_vouchers gv join gl_entries ge on ge.voucher_id = gv.id "
-                        + "  group by gv.id having sum(ge.direction * ge.amount) <> 0) unbalanced"),
-                "全局：所有凭证借贷必平(无不平衡凭证)");
+        java.util.List<String> unbalanced = jdbc.queryForList(
+                "select gv.source_type || ' ' || coalesce(gv.voucher_no, '?') || ' period=' || coalesce(gv.period, '?')"
+                        + " || ' diff=' || sum(ge.direction * ge.amount)::text"
+                        + " || ' lines=' || string_agg(ge.direction::text || '*' || ge.amount::text, ',' order by ge.id)"
+                        + " from gl_vouchers gv join gl_entries ge on ge.voucher_id = gv.id"
+                        + " group by gv.id, gv.source_type, gv.voucher_no, gv.period"
+                        + " having sum(ge.direction * ge.amount) <> 0 order by 1 limit 10",
+                String.class);
+        assertTrue(unbalanced.isEmpty(),
+                "全局：所有凭证借贷必平(无不平衡凭证): " + unbalanced);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -13472,7 +13477,13 @@ class FullChainEndToEndTest {
     void confirmAllUnconfirmedFullKitRoutes() {
         java.util.List<UUID[]> pending = jdbc.query(
                 "SELECT s.id, s.plan_id FROM production_execution_segments s "
-                + "JOIN production_plans p ON p.id=s.plan_id AND p.status=1 "
+                // 与 ProductionExecutionSegmentService.requireActivePlan 同口径只挑"可执行"的段:
+                // 计划已审核且未结案/取消/暂停、计划包已确认。CI 全量跑时所有用例共用一个库,
+                // 别的用例留下的已结案/已取消/计划包未确认的段不属于本次旅程, 挑到就会被服务端拒绝。
+                + "JOIN production_plans p ON p.id=s.plan_id AND p.status=1 AND NOT p.is_deleted "
+                + "AND NOT p.is_closed AND NOT p.is_canceled AND NOT p.is_stopped "
+                + "JOIN production_planning_packages pkg ON pkg.id=s.package_id AND NOT pkg.is_deleted "
+                + "AND pkg.status='CONFIRMED' "
                 // 不筛状态：CompleteKitAllocator 下达即齐套的段落生就是 READY，同样要先确认路线。
                 + "WHERE s.start_route IS NULL AND NOT s.is_deleted "
                 + "AND s.status IN ('WAITING','READY','DISPATCHED') ORDER BY s.id LIMIT 200",

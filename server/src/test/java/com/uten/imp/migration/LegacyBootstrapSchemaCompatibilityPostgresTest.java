@@ -339,7 +339,9 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
             }
             jdbcSql.append(line).append('\n');
         }
-        String sql = "BEGIN;\nSET LOCAL uten.bootstrap_run_id = '77777777-7777-4777-8777-777777777777';\n" + jdbcSql.toString()
+        String sql = "BEGIN;\nSET LOCAL uten.bootstrap_run_id = '77777777-7777-4777-8777-777777777777';\n"
+                // 与 migrate.sh 引导会话同口径: app.legacy_import='on'(V673 起 production_plan_costs 只允许导入会话写入)。
+                + "SET LOCAL app.legacy_import = 'on';\n" + jdbcSql.toString()
                 .replace(":'pgp_key'", "'legacy-schema-test-key'")
                 .replace(":'pgp_ver'", "'test-v1'")
                 .replace(":'hmac_key'", "'legacy-schema-test-hmac-key'") + "\nCOMMIT;\n";

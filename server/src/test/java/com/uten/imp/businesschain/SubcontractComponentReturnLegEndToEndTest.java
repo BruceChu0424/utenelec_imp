@@ -61,7 +61,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <ul>
  *   <li>T1 一次到 950 (>= 下限 900): 仓库确认入库那一刻系统按约定损耗自动结案 —— 损耗单 50、案件
- *       ACCEPTED_LOSS、订货行受控改量到 950、关单; 受控改量照样开一条财务复核 case (V503 守卫)。</li>
+ *       ACCEPTED_LOSS、原订货仍为 1000、实收 950 加损耗 50 后关单；不改量、不新开财务复核。</li>
  *   <li>T2 800 → 分批 → 150: 严重短交先锁住不入库, 委外判定「分批到货」后闸解除; 最后一批把累计送进
  *       容差 (950 >= 900) 时, 对 WAITING_MORE 案件同样自动结案 (ADR-103 §2.5 第 4 行)。</li>
  *   <li>T3 超收 1050 (料只发了 1000): 登记落到货异常通知财务, 文案点明「委外商自带料」; 财务批准后
@@ -174,28 +174,25 @@ class SubcontractComponentReturnLegEndToEndTest {
         assertEquals(w.goodsD(), db.queryForObject(
                 "SELECT goods_id FROM subcontract_waste_items WHERE waste_id=? LIMIT 1", UUID.class, wasteId),
                 "路线 B 损耗单上的货品必须是子件 goodsD, 不是委外件");
-        qty("950", db.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, ordered.itemId()),
-                "订货行受控改量到实收");
-        assertEquals(1, count("""
+        qty("1000", db.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, ordered.itemId()),
+                "允许损耗独立结清履约, 原订货数量不变");
+        qty("950", db.queryForObject("SELECT received_qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, ordered.itemId()),
+                "真实回厂数量不加上损耗冒充足额实收");
+        assertEquals(0, count("""
                 SELECT COUNT(*) FROM procurement_order_qty_change_logs
-                WHERE order_type='SUBCONTRACT' AND order_item_id=? AND old_qty=1000 AND new_qty=950
-                """, ordered.itemId()), "受控改量必须留下 1000->950 的事实账");
+                WHERE order_type='SUBCONTRACT' AND order_item_id=?
+                """, ordered.itemId()), "按约定损耗结案不生成改量日志");
         assertTrue(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?", Boolean.class, ordered.orderId()),
-                "实收 950 >= 改后订货 950, 订货单现状未关, 期望关单");
-        // ADR-103 §2.5 实施记录: 受控改量照样开一条财务复核 case (V503 守卫要求同事务开 PENDING 复核),
-        // 改量日志挂在这条 case 上; 复核的是「按约定损耗改到实收」这笔既成事实, 短交判定本身已结束。
-        assertEquals(1, count("""
+                "合格实收 950 + 已接受损耗 50 = 原订货 1000, 应正常关单");
+        assertEquals(0, count("""
                 SELECT COUNT(*) FROM procurement_order_approval_cases
                 WHERE order_type='SUBCONTRACT' AND order_id=? AND status='PENDING'
-                """, ordered.orderId()), "自动结案的受控改量必须开一条 PENDING 财务复核 (V503 守卫)");
-        assertEquals(2, count("""
+                """, ordered.orderId()), "正常允许损耗不另开财务改量复核");
+        assertEquals(1, count("""
                 SELECT COUNT(*) FROM procurement_order_approval_cases
                 WHERE order_type='SUBCONTRACT' AND order_id=?
-                """, ordered.orderId()), "该单应有首次送审批准 + 改量复核共 2 条 case");
-        assertNotNull(db.queryForObject("""
-                SELECT case_id FROM procurement_order_qty_change_logs
-                WHERE order_type='SUBCONTRACT' AND order_item_id=? AND new_qty=950
-                """, UUID.class, ordered.itemId()), "自动结案的改量日志必须挂在复核 case 上");
+                """, ordered.orderId()), "保留首次订货批准, 不增加第二条改量审批");
+        assertNull(settled.get("qty_change_log_id"), "新损耗履约事实不关联缩单日志");
         assertEquals(0, count("""
                 SELECT COUNT(*) FROM subcontract_short_delivery_cases
                 WHERE order_item_id=? AND status IN ('PENDING_OWNER','WAITING_MORE')
@@ -327,18 +324,22 @@ class SubcontractComponentReturnLegEndToEndTest {
         assertNotNull(wasteId, "结案必须开损耗单, 现状 waste_id 为空");
         qty("50", db.queryForObject("SELECT SUM(qty) FROM subcontract_waste_items WHERE waste_id=?", BigDecimal.class, wasteId),
                 "损耗单核销子件 50");
-        qty("950", db.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, ordered.itemId()),
-                "订货行现状未改, 期望受控改量到 950");
+        qty("1000", db.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, ordered.itemId()),
+                "分批回厂按损耗结案仍保留原订货 1000");
+        qty("950", db.queryForObject("SELECT received_qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, ordered.itemId()),
+                "两批实际回厂仍为 950");
         assertTrue(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?", Boolean.class, ordered.orderId()),
-                "实收 950 >= 改后订货 950, 订货单现状未关, 期望关单");
-        assertEquals(1, count("""
+                "合格实收 950 加损耗 50 完成原订货 1000");
+        assertEquals(0, count("""
                 SELECT COUNT(*) FROM procurement_order_approval_cases
                 WHERE order_type='SUBCONTRACT' AND order_id=? AND status='PENDING'
-                """, ordered.orderId()), "分批后自动结案的受控改量同样开一条 PENDING 财务复核 (V503 守卫)");
-        assertEquals(2, count("""
+                """, ordered.orderId()), "分批后正常损耗结案同样不另开财务改量复核");
+        assertEquals(1, count("""
                 SELECT COUNT(*) FROM procurement_order_approval_cases
                 WHERE order_type='SUBCONTRACT' AND order_id=?
-                """, ordered.orderId()), "该单应有首次送审批准 + 改量复核共 2 条 case");
+                """, ordered.orderId()), "保留首次订货批准");
+        assertEquals(0,count("SELECT COUNT(*) FROM procurement_order_qty_change_logs WHERE order_item_id=?",ordered.itemId()));
+        assertNull(settled.get("qty_change_log_id"));
         assertEquals(0, shortDeliveries.counts().pending() + shortDeliveries.counts().waiting(),
                 "结完之后待判定/分批等待两段都不再挂这张单");
         assertEquals(0, count("""
@@ -386,7 +387,7 @@ class SubcontractComponentReturnLegEndToEndTest {
         stockIn(keeper, receipt.receiptId(), pass, "sc-exact-floor-stock", w);
         var replay = iqcStockIn.confirm("SUBCONTRACT", receipt.receiptId(), new ConfirmRequest("sc-exact-floor-stock",
                 List.of(new ConfirmItem(pass.passEventId(), pass.qty(), pass.qty(), "SC-COMP-01", w.warehouseId()))));
-        assertTrue(replay.replayed(), "相同入库命令重放不得重复库存、损耗或改量");
+        assertTrue(replay.replayed(), "相同入库命令重放不得重复库存或损耗履约事实");
 
         fixture.loginAs(w.superAdminUserId());
         qty("95", onHand(w.goodsE(), w.warehouseId()), "合格入库的是加工后的委外件");
@@ -398,7 +399,10 @@ class SubcontractComponentReturnLegEndToEndTest {
         qty("5", db.queryForObject("SELECT SUM(qty) FROM subcontract_waste_items WHERE waste_id=?",
                 BigDecimal.class, settled.get("waste_id")), "供应商处子件核销 5");
         assertTrue(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?", Boolean.class, ordered.orderId()));
-        assertEquals(1, count("SELECT COUNT(*) FROM procurement_order_qty_change_logs WHERE order_item_id=?", ordered.itemId()));
+        qty("100",db.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?",BigDecimal.class,ordered.itemId()),"原订货保留 100");
+        qty("95",db.queryForObject("SELECT received_qty FROM subcontract_order_items WHERE id=?",BigDecimal.class,ordered.itemId()),"实际回厂保留 95");
+        assertEquals(0, count("SELECT COUNT(*) FROM procurement_order_qty_change_logs WHERE order_item_id=?", ordered.itemId()));
+        assertEquals(0,count("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_type='SUBCONTRACT' AND order_id=? AND status='PENDING'",ordered.orderId()));
         assertEquals(1, count("SELECT COUNT(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?", receipt.receiptId()));
     }
 

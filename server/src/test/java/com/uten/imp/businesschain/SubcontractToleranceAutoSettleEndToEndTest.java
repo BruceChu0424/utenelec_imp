@@ -51,19 +51,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * ADR-101 容差内自动结案跑在「仓库确认入库」的同一个事务里 (真库全链)。
  *
- * <p>这条用例守的是一件事: 仓库账号确认 IQC 合格入库时, 系统替委外把容差内的短交自动结案,
- * 而这个结案动作不许反过来把仓库正常的入库搞失败。结案第三步是受控改量, 此前它走的是
- * {@code changeQtyForShortDelivery}, 那条路第一件事就是订货单属主守卫
- * ({@code access.requireWritable(order.getMakerId(), ...)}) —— 仓库账号既不是委外订货单的
- * 制单人, 也没有 subcontract:view:all, 必拿 FORBIDDEN; 而这段异常会把整个入库事务标成只能
- * 回滚, 货根本入不了库。修复新增了 {@code changeQtyForShortDeliveryBySystem}, 只跳过属主
- * 守卫这一条。
+ * <p>仓库账号确认 IQC 合格入库时，原订货 1000、实际入库 950、独立损耗 50 三项事实分别保留。
+ * 损耗履约结案不调用订货改量、不增加财务复核，也不因仓库没有订货单属主权限而阻断入库。
  *
  * <p>所以本用例是一正一反两面:
  * 正面 —— 用一个既不是制单人、也没有 subcontract:view:all 的仓库账号走完 IQC 合格入库,
- * 库存真的加上、案件落 ACCEPTED_LOSS、订货明细被受控改量改成实收量、损耗单真的生成;
+ * 库存真的加上、案件落 ACCEPTED_LOSS、原订货数量不变、损耗单真的生成;
  * 反面 —— 同一个仓库账号直接调人工自由改量的公开入口 {@code changeQty} 仍然拿 FORBIDDEN,
- * 证明放宽的只有系统自动结案那一条路, 属主守卫没有被拆掉。
+ * 证明正常损耗结案没有放宽人工改量的属主守卫。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
@@ -122,7 +117,7 @@ class SubcontractToleranceAutoSettleEndToEndTest {
                 "SELECT maker_id FROM subcontract_orders WHERE id=?", UUID.class, orderId);
         assertNotNull(makerId, "订货单必须有制单人, 否则属主守卫这一维根本没在测");
 
-        // ② 财务批准: 受控改量的前提是「仅财务批准后的委外订货单可改量」。
+        // ② 首次订货财务批准；之后正常允许损耗无需再次发起改量审批。
         UUID reviewer = ReflectionTestUtils.invokeMethod(fixture, "createApprover", w);
         financeApproval.submit("SUBCONTRACT", orderId);
         fixture.loginAs(reviewer);
@@ -207,7 +202,7 @@ class SubcontractToleranceAutoSettleEndToEndTest {
         assertEquals(0, onHandBefore.add(new BigDecimal("950")).compareTo(onHand(w.goodsE(), w.warehouseId())),
                 "库存必须真的加上 950; 修复前这一笔连同结案一起被回滚");
 
-        // 自动结案的三件事: 案件落 ACCEPTED_LOSS、订货明细受控改量到 950、损耗单生成。
+        // 自动结案保留原订货 1000，实际回厂 950，另记损耗 50。
         fixture.loginAs(w.superAdminUserId());
         Map<String, Object> settled = caseRow(itemId);
         assertEquals(caseId, settled.get("id"), "结的必须是同一个案件, 不是另开一张");
@@ -217,25 +212,23 @@ class SubcontractToleranceAutoSettleEndToEndTest {
         qty("5", (BigDecimal) settled.get("loss_pct"));
         assertEquals(keeperEmployeeId, settled.get("decided_by_employee_id"),
                 "结案的发起人就是仓库账号 —— 正是属主守卫此前拦下的那个身份");
-        qty("950", db.queryForObject(
+        qty("1000", db.queryForObject(
                 "SELECT qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, itemId));
-        assertEquals(1, count("""
+        qty("950", db.queryForObject(
+                "SELECT received_qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, itemId));
+        assertEquals(0, count("""
                 SELECT COUNT(*) FROM procurement_order_qty_change_logs
-                WHERE order_type='SUBCONTRACT' AND order_item_id=? AND old_qty=1000 AND new_qty=950
-                """, itemId), "受控改量必须留下 1000->950 的事实账");
-        assertEquals(keeperEmployeeId, db.queryForObject("""
-                SELECT changed_by_employee_id FROM procurement_order_qty_change_logs
-                WHERE order_type='SUBCONTRACT' AND order_item_id=? ORDER BY changed_at DESC LIMIT 1
-                """, UUID.class, itemId), "身份守卫与审计一个不动: 改量记在仓库账号名下");
-        // ADR-103 §2.5 实施记录: 自动结案的受控改量照样开财务复核 case (V503 守卫要求同事务开 PENDING 复核)。
-        assertNotNull(db.queryForObject("""
-                SELECT case_id FROM procurement_order_qty_change_logs
-                WHERE order_type='SUBCONTRACT' AND order_item_id=? ORDER BY changed_at DESC LIMIT 1
-                """, UUID.class, itemId), "自动结案的改量日志必须挂在财务复核 case 上");
-        assertEquals(1, count("""
+                WHERE order_type='SUBCONTRACT' AND order_item_id=?
+                """, itemId), "损耗独立结清履约，不生成缩单日志");
+        assertNull(settled.get("qty_change_log_id"), "案件不再关联改量日志");
+        assertEquals(0, count("""
                 SELECT COUNT(*) FROM procurement_order_approval_cases
                 WHERE order_type='SUBCONTRACT' AND order_id=? AND status='PENDING'
-                """, orderId), "自动结案开一条 PENDING 财务复核 (V503 守卫)");
+                """, orderId), "正常允许损耗不新增财务改量复核");
+        assertEquals(1,count("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_type='SUBCONTRACT' AND order_id=?",orderId),
+                "只有首次订货审批");
+        assertTrue(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?",Boolean.class,orderId),
+                "合格实收 950 加有效损耗 50，完成原订货 1000");
         UUID wasteId = (UUID) settled.get("waste_id");
         assertNotNull(wasteId, "接受损耗结案必须先开一张损耗单核销供应商处剩料");
         assertEquals(1, count("SELECT COUNT(*) FROM subcontract_wastes WHERE id=? AND status=1", wasteId),
@@ -248,14 +241,14 @@ class SubcontractToleranceAutoSettleEndToEndTest {
                 "结完之后不再挂在「容差内待结案」等人点一下");
 
         // ⑧ 反向: 同一个仓库账号直接走人工自由改量的公开入口, 属主守卫照旧拦死。
-        //    放宽的只有系统自动结案那一条路, 不是把守卫拆了。
+        //    正常损耗结案没有给仓库账号额外授予人工改量权。
         fixture.loginAs(keeper);
         ApiException denied = assertThrows(ApiException.class, () -> orders.changeQty(orderId,
                 new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(itemId, new BigDecimal("900"))))));
         assertEquals(ErrorCode.FORBIDDEN, denied.getCode(), "人工改量必须仍然是 403");
         assertTrue(denied.getMessage().contains("只能操作本人负责的委外订货单"), denied.getMessage());
         fixture.loginAs(w.superAdminUserId());
-        qty("950", db.queryForObject(
+        qty("1000", db.queryForObject(
                 "SELECT qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, itemId));
         assertEquals(0, count("""
                 SELECT COUNT(*) FROM procurement_order_qty_change_logs

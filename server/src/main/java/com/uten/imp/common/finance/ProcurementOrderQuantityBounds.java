@@ -139,12 +139,15 @@ public final class ProcurementOrderQuantityBounds {
         em.createNativeQuery("""
                 UPDATE inbound_expectations header
                 SET status=CASE WHEN EXISTS(SELECT 1 FROM inbound_expectation_items item
-                    WHERE item.expectation_id=header.id AND item.accepted_qty<item.ordered_qty)
+                    WHERE item.expectation_id=header.id AND %s)
                     THEN 'OPEN' ELSE 'CLOSED' END,updated_at=now()
                 WHERE header.order_type=:orderType AND header.status IN ('OPEN','CLOSED')
                   AND EXISTS(SELECT 1 FROM inbound_expectation_items item
                       WHERE item.expectation_id=header.id AND item.order_item_id=:itemId)
-                """).setParameter("orderType",orderType).setParameter("itemId",itemId).executeUpdate();
+                """.formatted("SUBCONTRACT".equals(orderType)
+                        ? SubcontractLossSettlementSql.expectationRemainingQty("item", "header.order_type") + " > 0"
+                        : "item.accepted_qty<item.ordered_qty"))
+                .setParameter("orderType",orderType).setParameter("itemId",itemId).executeUpdate();
     }
 
     private static String prefix(String orderType) {

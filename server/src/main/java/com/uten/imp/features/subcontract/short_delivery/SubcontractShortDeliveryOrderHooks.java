@@ -13,4 +13,7 @@ public interface SubcontractShortDeliveryOrderHooks {
 
     /** 订货单红冲：开放案件作废并撤回通知。 */
     void cancelOpenCasesForOrder(UUID orderId, String reason);
+
+    /** Reverse the independent fulfilment credit when its physical loss is reversed. */
+    default void lossReversed(UUID wasteId) {}
 }

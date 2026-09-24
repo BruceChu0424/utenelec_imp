@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 
@@ -15,6 +16,84 @@ void main() {
     ('compact(桌面)', VisualDensity.compact),
     ('standard(移动)', VisualDensity.standard),
   ]) {
+    testWidgets('trailing actions do not stretch filters (${density.$1})', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      Future<void> pumpToolbar(Widget? trailing) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: buildLightTheme().copyWith(visualDensity: density.$2),
+            home: Scaffold(
+              body: Center(
+                child: UtenFilterToolbar<String>(
+                  segments: const [
+                    UtenFilterSegment(value: 'draft', label: '草稿'),
+                    UtenFilterSegment(value: 'progress', label: '进行中'),
+                    UtenFilterSegment(value: 'history', label: '历史记录'),
+                  ],
+                  onSelectionChanged: (_) {},
+                  searchHint: '搜索单据号',
+                  trailing: trailing,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      }
+
+      await pumpToolbar(null);
+      final baselineSegmentHeight = tester
+          .getSize(find.byType(SegmentedButton<String>))
+          .height;
+      final baselineSearchHeight = tester
+          .getSize(find.byType(InputDecorator))
+          .height;
+
+      for (final wrapped in [false, true]) {
+        final action = wrapped
+            ? Wrap(
+                key: const Key('toolbar-actions'),
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (var i = 0; i < 3; i++)
+                    SizedBox(
+                      width: 260,
+                      child: UtenButton(onPressed: () {}, child: Text('操作 $i')),
+                    ),
+                ],
+              )
+            : UtenButton(
+                key: const Key('toolbar-actions'),
+                onPressed: () {},
+                child: const Text('创建新委外单'),
+              );
+        await pumpToolbar(action);
+
+        final segments = tester.getRect(find.byType(SegmentedButton<String>));
+        final search = tester.getRect(find.byType(InputDecorator));
+        final actions = tester.getRect(
+          find.byKey(const Key('toolbar-actions')),
+        );
+        final toolbar = tester.getRect(find.byType(UtenFilterToolbar<String>));
+        expect(segments.height, closeTo(baselineSegmentHeight, 0.5));
+        expect(search.height, closeTo(baselineSearchHeight, 0.5));
+        expect(segments.height, closeTo(search.height, 0.5));
+        expect(segments.center.dy, closeTo(search.center.dy, 0.5));
+        expect(actions.center.dy, closeTo(search.center.dy, 0.5));
+        expect(segments.left, closeTo(toolbar.left, 0.5));
+        expect(actions.right, closeTo(toolbar.right, 0.5));
+        expect(actions.bottom, lessThanOrEqualTo(toolbar.bottom));
+        expect(search.width, closeTo(360, 0.5));
+        if (wrapped) expect(actions.height, greaterThan(segments.height));
+      }
+    });
+
     testWidgets('search bar matches segment bar height (${density.$1})', (
       tester,
     ) async {

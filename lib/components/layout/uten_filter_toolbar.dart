@@ -217,35 +217,51 @@ class UtenFilterToolbar<T> extends StatelessWidget {
             ],
           );
         }
-        // IntrinsicHeight + stretch：分段与搜索框谁高就都拉到同一高度，
-        // 密度/字号档变化下两侧永远一致。
-        return IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 分段条必须是**有界可滚**的：分类多（其他入库明细表等十几个分类）
-              // 时 SegmentedButton 在 Row 里拿到的是无界宽，会直接顶出黄黑溢出条
-              // ——宽屏也一样，只是要分类更多才撞上（2026-09-11 用户反馈
-              //「分类内容多的时候小屏会显示不全」）。Flexible(loose)：分类少时
-              // 仍按自然宽度贴着搜索框，分类多时收进滚动区并显示滚动条。
-              if (button != null)
-                Flexible(child: _SegmentsScrollArea(child: button)),
-              if (search != null) ...[
-                if (button != null) const SizedBox(width: UtenSpacing.s12),
-                SizedBox(width: searchWidth, child: search),
-              ],
-              // 2026-09-10：行尾内容放进有界的 Expanded 里右对齐——此前用 Spacer +
-              // 裸 trailing，Row 主轴无界导致行尾 Wrap 永不换行，在 840~1000px
-              // 宽度带（下拉+开关+计数合计 ≈ 600px）直接溢出黄黑条。
-              if (trailing != null)
-                Expanded(
-                  child: Align(
-                    alignment: AlignmentDirectional.centerEnd,
-                    child: trailing,
+        // 只让分段与搜索框互相对齐高度。行尾按钮通常高 44，Wrap 还可能多行；
+        // 若把它们一起放进 IntrinsicHeight，会拉高分段描边，而搜索装饰仍按
+        // 内容高度绘制，出现「分类条变厚、搜索框却没变」的不一致。
+        // 宽度仍沿用原 Row 的分配：先扣搜索与间距，剩余宽度在分类/行尾等分；
+        // 没有分类时行尾独占剩余宽度，保留 Wrap 的有界换行与横向滚动行为。
+        final fixedWidth =
+            (search != null ? searchWidth : 0.0) +
+            (button != null && search != null ? UtenSpacing.s12 : 0.0);
+        final trailingWidth = trailing == null
+            ? 0.0
+            : ((constraints.maxWidth - fixedWidth) / (button == null ? 1 : 2))
+                  .clamp(0.0, constraints.maxWidth);
+        return Row(
+          // 分类较少时字段组自然收窄，空白留在搜索与行尾之间，动作仍贴右。
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            if (button != null || search != null)
+              Flexible(
+                child: IntrinsicHeight(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 分类少时按自然宽度贴着搜索框；多时收进有界横滚区。
+                      if (button != null)
+                        Flexible(child: _SegmentsScrollArea(child: button)),
+                      if (search != null) ...[
+                        if (button != null)
+                          const SizedBox(width: UtenSpacing.s12),
+                        SizedBox(width: searchWidth, child: search),
+                      ],
+                    ],
                   ),
                 ),
-            ],
-          ),
+              ),
+            if (trailing != null)
+              SizedBox(
+                width: trailingWidth,
+                child: Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  heightFactor: 1,
+                  child: trailing,
+                ),
+              ),
+          ],
         );
       },
     );

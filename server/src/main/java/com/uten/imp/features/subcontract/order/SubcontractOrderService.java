@@ -162,7 +162,20 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             if (f.closed() != null) ps.add(cb.equal(root.get("closed"), f.closed()));
             if (financeApproval != null) {
-                if ("PENDING".equals(financeApproval)) {
+                if ("IN_PROGRESS".equals(financeApproval)) {
+                    // 进行中包含财务在审/退回待修改，以及批准后尚未结案的执行单。
+                    // 聚合在数据库分页前完成，不能在前端拼接多份分页结果。
+                    java.util.Set<UUID> financeIds = new java.util.HashSet<>(pendingFinanceIds);
+                    financeIds.addAll(rejectedFinanceIds);
+                    Predicate financePending = financeIds.isEmpty()
+                            ? cb.disjunction()
+                            : cb.and(cb.equal(root.get("status"), STATUS_DRAFT),
+                                    root.get("id").in(financeIds));
+                    Predicate executing = cb.and(
+                            cb.equal(root.get("status"), STATUS_APPROVED),
+                            cb.isFalse(root.get("closed")));
+                    ps.add(cb.or(financePending, executing));
+                } else if ("PENDING".equals(financeApproval)) {
                     // 空集时 in() 会生成非法 SQL：无在审单 → 恒假。
                     if (pendingFinanceIds.isEmpty()) {
                         ps.add(cb.disjunction());
@@ -222,6 +235,16 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 .map(it -> toItemDto(it, sourceApplicationDocs(
                         sources.getOrDefault(it.getId(), List.of()))))
                 .toList();
+        if (!itemDtos.isEmpty() && r.getStatus() != null && r.getStatus() == STATUS_APPROVED) {
+            Map<UUID,BigDecimal> settled = new java.util.HashMap<>();
+            for (Object[] row : com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT id,fn_subcontract_settled_loss_qty(id)
+                    FROM subcontract_order_items WHERE order_id=:orderId AND NOT is_deleted
+                    """).setParameter("orderId",r.getId()))) {
+                settled.put((UUID)row[0],(BigDecimal)row[1]);
+            }
+            itemDtos.forEach(item -> item.setSettledLossQty(settled.getOrDefault(item.getId(),BigDecimal.ZERO)));
+        }
         return toDetail(r, itemDtos, approvalProjection.latestForOrder(
                 orderType(), r.getId(), r.getStatus()), shortDeliveryHold(r.getId()));
     }
@@ -555,12 +578,13 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     /**
      * 财务审批态切片参数：null/空 = 不切片（legacy 口径，status=0 含在审单）；
-     * NONE = 未提交的真草稿；PENDING = 已提交在审。非法值 fail-closed。
+     * NONE = 未提交的真草稿；PENDING = 已提交在审；REJECTED = 财务退回；
+     * IN_PROGRESS = 在审/退回待修改，或批准后未结案。非法值 fail-closed。
      */
     private static String normalizeFinanceApprovalSlice(String raw) {
         String value = raw == null ? "" : raw.trim().toUpperCase(java.util.Locale.ROOT);
         return switch (value) {
-            case "", "NONE", "PENDING", "REJECTED" -> value.isEmpty() ? null : value;
+            case "", "NONE", "PENDING", "REJECTED", "IN_PROGRESS" -> value.isEmpty() ? null : value;
             default -> throw new ApiException(
                     ErrorCode.VALIDATION_FAILED, "财务审批态筛选无效");
         };
@@ -725,7 +749,11 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             }
             var receiptBound=com.uten.imp.common.finance.ProcurementOrderQuantityBounds.receipts(em,orderType(),item.getId());
             BigDecimal unitRate=item.getUnitRate()==null ? BigDecimal.ONE : item.getUnitRate();
-            BigDecimal locked = receiptBound.minimumOrderedQty(unitRate)
+            BigDecimal settledLoss = (BigDecimal) em.createNativeQuery(
+                    "SELECT fn_subcontract_settled_loss_qty(CAST(:item AS uuid))")
+                    .setParameter("item",item.getId()).getSingleResult();
+            if (settledLoss == null) settledLoss = BigDecimal.ZERO;
+            BigDecimal locked = receiptBound.minimumOrderedQty(unitRate).add(settledLoss)
                     .max(materialPlanService.minimumOrderQtyFromIssued(item.getId(),unitRate));
             if (newQty.compareTo(locked) < 0) {
                 throw new ApiException(ErrorCode.CONFLICT,
@@ -1765,7 +1793,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 it.getAmountLocal(), it.getReceivedQty(), it.getReturnedQty(), it.getIssuedQty(),
                 it.getMaterialReturnedQty(), it.getApplicationItemId(), it.getDeliverDate(),
                 it.getWeight(), it.getSourceDocNo(), it.getRemark(),
-                sourceApplications, it.getAllowedLossPct());
+                sourceApplications, it.getAllowedLossPct(), BigDecimal.ZERO);
     }
 
     private OrderCostItemDto toCostItemDto(SubcontractOrderCostItem c) {
@@ -1841,7 +1869,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 it.getQty(), null, null, null, it.getReceivedQty(), it.getReturnedQty(),
                 it.getIssuedQty(), it.getMaterialReturnedQty(), it.getApplicationItemId(),
                 it.getDeliverDate(), it.getWeight(), it.getSourceDocNo(), it.getRemark(),
-                it.getSourceApplications(), it.getAllowedLossPct());
+                it.getSourceApplications(), it.getAllowedLossPct(), it.getSettledLossQty());
     }
 
     /** 全部明细（含 V463 合并行全部来源）同属一张委外申请时返回该申请 (id, billNo)；否则 null。 */

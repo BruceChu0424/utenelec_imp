@@ -10,6 +10,8 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -91,6 +93,36 @@ public class SubcontractLossValueService implements SubcontractMaterialValuePort
     }
 
     public void refresh(UUID order,UUID event,UUID actor){
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            refreshNow(order,event,actor);
+            return;
+        }
+        FinalLossCosts pending=TransactionSynchronizationManager.getSynchronizations().stream()
+                .filter(FinalLossCosts.class::isInstance).map(FinalLossCosts.class::cast)
+                .findFirst().orElse(null);
+        if(pending==null){
+            pending=new FinalLossCosts();
+            TransactionSynchronizationManager.registerSynchronization(pending);
+        }
+        pending.orders.put(order,new FinalLossCost(event,actor));
+    }
+
+    private record FinalLossCost(UUID event,UUID actor){}
+
+    private final class FinalLossCosts implements TransactionSynchronization {
+        private final Map<UUID,FinalLossCost> orders=new LinkedHashMap<>();
+        @Override public void beforeCommit(boolean readOnly){
+            // Stock-in and accepted loss occur in one transaction. Create only the
+            // final cost revision, after the loss has fixed the actual output basis.
+            while(!orders.isEmpty()){
+                Map<UUID,FinalLossCost> batch=new LinkedHashMap<>(orders);
+                orders.clear();
+                batch.forEach((order,fact)->refreshNow(order,fact.event(),fact.actor()));
+            }
+        }
+    }
+
+    private void refreshNow(UUID order,UUID event,UUID actor){
         var source=order(order);PoolKey product=registeredProduct(order);
         // Loss facts already retain their exact COST_WIP inputs. The first physical output will collect them.
         if(product==null)return;

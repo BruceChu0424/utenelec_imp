@@ -8,6 +8,7 @@ import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
 import com.uten.imp.application.port.ProcurementArrivalBlockedException;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.application.port.PreplanInboundAllocationReadPort;
+import com.uten.imp.common.finance.SubcontractLossSettlementSql;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.util.PostgresUuidOrder;
 import com.uten.imp.common.web.ErrorCode;
@@ -122,6 +123,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
      * 只释放已经审核出仓的目标件数量，并扣除已审核回厂。IQC 失败已实物退回的
      * 总量按 V440 加回；补货收货仍由“全部已审核回厂”统一扣除，不能再按 ACTIVE
      * allocation 重复扣减。最终容量仍受订单净未收量约束。
+     * 已全发且回厂数量进入允许损耗范围的开放短交案件，不再催仓库补登记余量；
+     * 待检与损耗结账仍由品质放行后的原流程处理。本方法仅用于任务查询，不改变财务批准额度。
      */
     private static String currentReceivableQty(String itemAlias) {
         // 共享折算式作为 %2$s **参数**注入，而不是拼进文本块：`.formatted(...)` 只会
@@ -129,6 +132,49 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         // 占位符原样留在 SQL 里（真库直接 42601）。这条 SQL 一旦拆段就必炸，别再拆。
         return """
                 CASE
+                  WHEN EXISTS (
+                      SELECT 1
+                      FROM subcontract_short_delivery_cases tolerance_case
+                      JOIN subcontract_order_items tolerance_order
+                        ON tolerance_order.id = tolerance_case.order_item_id
+                       AND tolerance_order.order_id = tolerance_case.order_id
+                       AND NOT tolerance_order.is_deleted
+                      JOIN inbound_expectations tolerance_expectation
+                        ON tolerance_expectation.id = %1$s.expectation_id
+                       AND tolerance_expectation.order_type = 'SUBCONTRACT'
+                       AND tolerance_expectation.order_id = tolerance_order.order_id
+                      CROSS JOIN LATERAL (
+                          SELECT GREATEST(COALESCE(tolerance_order.received_qty, 0)
+                              - COALESCE(tolerance_order.returned_qty, 0)
+                              - COALESCE((
+                                  SELECT SUM(rejection.failed_qty)
+                                  FROM procurement_iqc_rejection_cases rejection
+                                  WHERE rejection.receipt_type = 'SUBCONTRACT'
+                                    AND rejection.order_item_id = tolerance_order.id
+                                    AND NOT rejection.is_deleted
+                                    AND rejection.return_recorded_at IS NOT NULL
+                                    AND rejection.status IN ('RETURN_RECORDED', 'CREDIT_CONFIRMED',
+                                                             'CLOSED_NO_CREDIT', 'FINANCE_EXCEPTION')
+                              ), 0), 0) AS delivered_qty
+                      ) tolerance_delivery
+                      WHERE tolerance_case.order_item_id = %1$s.order_item_id
+                        AND tolerance_case.status IN ('PENDING_OWNER', 'WAITING_MORE')
+                        AND tolerance_order.allowed_loss_pct IS NOT NULL
+                        AND tolerance_order.qty > 0
+                        AND tolerance_delivery.delivered_qty > 0
+                        AND tolerance_delivery.delivered_qty < tolerance_order.qty
+                        AND tolerance_delivery.delivered_qty >= ROUND(tolerance_order.qty
+                            * (100 - tolerance_order.allowed_loss_pct) / 100, 4)
+                        AND NOT EXISTS (
+                            SELECT 1 FROM subcontract_material_plan_items tolerance_plan_item
+                            JOIN subcontract_material_plans tolerance_plan
+                              ON tolerance_plan.id = tolerance_plan_item.plan_id
+                             AND tolerance_plan.status = 'OPEN' AND NOT tolerance_plan.is_deleted
+                            WHERE tolerance_plan_item.order_item_id = tolerance_order.id
+                              AND NOT tolerance_plan_item.is_deleted
+                              AND tolerance_plan_item.issued_qty < tolerance_plan_item.planned_qty
+                        )
+                  ) THEN 0::numeric
                   WHEN NOT EXISTS (
                       SELECT 1
                       FROM subcontract_material_plan_items release_plan
@@ -136,9 +182,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         AND release_plan.flow_mode IN (
                             'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                         AND release_plan.is_deleted = FALSE
-                  ) THEN GREATEST(%1$s.ordered_qty - %1$s.accepted_qty, 0)
+                  ) THEN %3$s
                   ELSE LEAST(
-                      GREATEST(%1$s.ordered_qty - %1$s.accepted_qty, 0),
+                      %3$s,
                       GREATEST((
                           COALESCE((
                               SELECT %2$s
@@ -182,7 +228,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                       ) / NULLIF(%1$s.unit_rate, 0), 0)
                   )
                 END
-                """.formatted(itemAlias, SubcontractOutboundFlowSql.ISSUED_TARGET_BASE_SUM);
+                """.formatted(itemAlias, SubcontractOutboundFlowSql.ISSUED_TARGET_BASE_SUM,
+                        SubcontractLossSettlementSql.expectationRemainingQty(itemAlias, "'SUBCONTRACT'"));
     }
 
     /** 一条委外预计到货明细正在等待登记、续办、品质或异常处理。 */
@@ -586,7 +633,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 SET status = CASE WHEN NOT EXISTS (
                         SELECT 1 FROM inbound_expectation_items item
                         WHERE item.expectation_id = expectation.id
-                          AND item.accepted_qty < item.ordered_qty
+                          AND %s
                     ) THEN 'CLOSED' ELSE 'OPEN' END,
                     updated_at = now()
                 WHERE expectation.order_type = ?
@@ -595,8 +642,22 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                       WHERE item.expectation_id = expectation.id
                         AND item.order_item_id IN (%s)
                   )
-                """.formatted(placeholders),
+                """.formatted(SUBCONTRACT.equals(orderType)
+                                ? SubcontractLossSettlementSql.expectationRemainingQty("item", "expectation.order_type") + " > 0"
+                                : "item.accepted_qty < item.ordered_qty", placeholders),
                 prepend(orderType, orderItemIds));
+        if (SUBCONTRACT.equals(orderType) && chainNotice != null) {
+            List<UUID> closedOrders = jdbc.queryForList("""
+                    SELECT DISTINCT expectation.order_id
+                    FROM inbound_expectations expectation
+                    JOIN inbound_expectation_items item ON item.expectation_id=expectation.id
+                    WHERE expectation.order_type='SUBCONTRACT' AND expectation.status='CLOSED'
+                      AND item.order_item_id IN (%s)
+                    """.formatted(placeholders),UUID.class,orderItemIds.toArray());
+            for (UUID orderId : closedOrders) {
+                chainNotice.resolveArrivalExpectationNotices(SUBCONTRACT,orderId);
+            }
+        }
     }
 
     @Transactional(readOnly = true)
@@ -2142,7 +2203,16 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         return nonNegative(row.financeApprovedQty()
                 .add(zero(row.returnedQty()))
                 .add(returnedIqcFailureQty(orderType,row.orderItemId()))
-                .subtract(zero(row.receivedQty())));
+                .subtract(zero(row.receivedQty()))
+                .subtract(settledSubcontractLoss(orderType,row.orderItemId())));
+    }
+
+    /** A settled loss occupies contract fulfilment, but never becomes a receipt or warehouse stock. */
+    private BigDecimal settledSubcontractLoss(String orderType,UUID orderItemId) {
+        if (!SUBCONTRACT.equals(orderType)) return BigDecimal.ZERO;
+        return nonNegative(jdbc.queryForObject("SELECT "
+                + SubcontractLossSettlementSql.acceptedLossQty("CAST(? AS uuid)"),
+                BigDecimal.class,orderItemId));
     }
 
     private BigDecimal returnedIqcFailureQty(String orderType,UUID orderItemId) {
@@ -2197,6 +2267,14 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         if(supplied!=null){
             BigDecimal materialRemaining=nonNegative(supplied.subtract(zero(row.receivedQty())));
             if(materialRemaining.compareTo(normal)<=0){normal=materialRemaining;materialBound=true;}
+        }
+        if(SUBCONTRACT.equals(orderType)) {
+            BigDecimal settled=settledSubcontractLoss(orderType,row.orderItemId());
+            // Deduct once from the shared remaining obligation. Marking a late
+            // shipment as an IQC replacement cannot reopen an accepted loss.
+            BigDecimal beyondNormal=nonNegative(settled.subtract(normal));
+            normal=nonNegative(normal.subtract(settled));
+            replacement=nonNegative(replacement.subtract(beyondNormal));
         }
         return new ArrivalCapacity(normal,replacement,materialBound);
     }
@@ -2463,7 +2541,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 SET status = CASE WHEN NOT EXISTS (
                         SELECT 1 FROM inbound_expectation_items item
                         WHERE item.expectation_id = expectation.id
-                          AND item.accepted_qty < item.ordered_qty
+                          AND %s
                     ) THEN 'CLOSED' ELSE 'OPEN' END,
                     updated_at = now()
                 WHERE expectation.order_type = ?
@@ -2475,7 +2553,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                       WHERE item.expectation_id = expectation.id
                         AND receipt_item.receipt_id = ?
                   )
-                """.formatted(receiptItemTable), orderType, receiptId);
+                """.formatted(SUBCONTRACT.equals(orderType)
+                                ? SubcontractLossSettlementSql.expectationRemainingQty("item", "expectation.order_type") + " > 0"
+                                : "item.accepted_qty < item.ordered_qty", receiptItemTable), orderType, receiptId);
         // 弹卡办结：expectation 已 CLOSED（全部登记完）时撤回「预计到货」
         // 行动卡；订单红冲路径置 CANCELED 时同样撤回（见 cancelForOrderReversal
         // 另有直写）。仍在 OPEN（部分登记）不撤。通知为 null（单测直构）时跳过。

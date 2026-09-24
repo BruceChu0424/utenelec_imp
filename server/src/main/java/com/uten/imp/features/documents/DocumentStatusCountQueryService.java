@@ -28,7 +28,8 @@ import java.util.regex.Pattern;
  * {@code *:view} 权限时各桶固定 0 且不发 SQL.
  *
  * <p>分桶: 通用单据 DRAFT / APPROVED / REVERSED; 采购/委外订货单另有 PENDING_FINANCE /
- * FINANCE_REJECTED(最新一条审批 case 的状态); 销售出货按六个真实阶段
+ * FINANCE_REJECTED(最新一条审批 case 的状态); 委外订货另有 EXECUTING(已审且未结案),
+ * 保留 APPROVED 的已审总数; 销售出货按六个真实阶段
  * (DRAFT / PENDING_FINANCE / FINANCE_REJECTED / FINANCE_APPROVED=财务已放行待出库 / SHIPPED / REVERSED,
  * 逐条与 SalesShipmentService.addStagePredicates 一致). DRAFT 桶就是草稿计数的口径
  * (同一 extraPredicate), 保证列表「草稿」段与 hub 卡草稿徽章同数.
@@ -40,6 +41,8 @@ public class DocumentStatusCountQueryService {
     static final String PENDING_FINANCE = "PENDING_FINANCE";
     static final String FINANCE_REJECTED = "FINANCE_REJECTED";
     static final String APPROVED = "APPROVED";
+    /** 委外订货执行中: 财务已通过且链路未结案, 不含已结案的 APPROVED 记录。 */
+    static final String EXECUTING = "EXECUTING";
     /** 销售出货专用: 财务已放行待出库(status 0 + finance_audit 1), 键与前端 SalesShipmentStage 逐字一致. */
     static final String FINANCE_APPROVED = "FINANCE_APPROVED";
     static final String SHIPPED = "SHIPPED";
@@ -94,12 +97,16 @@ public class DocumentStatusCountQueryService {
             case "purchaseOrder", "subcontractOrder" -> {
                 String latest = DocumentDraftCountQueryService.latestApprovalCaseStatusSql(
                         "purchaseOrder".equals(kind) ? "PURCHASE" : "SUBCONTRACT");
-                yield List.of(
+                List<Bucket> buckets = new ArrayList<>(List.of(
                         new Bucket(DRAFT, draft),
                         new Bucket(PENDING_FINANCE, "o.status = 0 AND " + latest + " = 'PENDING'"),
                         new Bucket(FINANCE_REJECTED, "o.status = 0 AND " + latest + " = 'REJECTED'"),
                         new Bucket(APPROVED, "o.status = 1"),
-                        new Bucket(REVERSED, "o.status = -1"));
+                        new Bucket(REVERSED, "o.status = -1")));
+                if ("subcontractOrder".equals(kind)) {
+                    buckets.add(new Bucket(EXECUTING, "o.status = 1 AND o.is_closed = false"));
+                }
+                yield List.copyOf(buckets);
             }
             default -> List.of(
                     new Bucket(DRAFT, draft),

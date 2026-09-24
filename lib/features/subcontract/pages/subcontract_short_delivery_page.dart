@@ -2,7 +2,7 @@
 //
 // 仓库登记回厂时累计数量少于订货量即按订货行开案件；本页让委外跟单员判定：
 //  - 分批到货，继续等（填预计到齐日；到了还没到齐系统再提醒）；
-//  - 接受损耗，结案（自动登记损耗单 + 订货量改为已回厂量 + 记损耗率）。
+//  - 接受损耗，结清（登记损耗、保留订货量和来源申请占用、记录损耗率）。
 // 分段：待判定（红徽章；含分批等待已过预计到齐日）/ 分批等待中（中性括号）/
 // 历史记录（时间门控，ADR-066）。严重短交置顶并加「严重」标签。
 // 入口：委外 hub 卡片、任务中心状态列「回厂短交待判定」（?orderId=）、通知卡片（?caseId=）。
@@ -192,7 +192,9 @@ class _SubcontractShortDeliveryPageState
     final decided = row.status == 'WAITING_MORE'
         ? '已判定为分批到货，预计 ${row.expectedCompleteBy ?? '—'} 到齐；仓库继续等后面的批次'
         : row.status == 'ACCEPTED_LOSS'
-        ? '已接受损耗结案：订货量改为累计回厂量'
+        ? '已接受损耗结清：订货 ${formatSubcontractQty(row.orderedQty, row.unitName)}'
+              '，累计回厂 ${formatSubcontractQty(row.deliveredQty, row.unitName)}'
+              '，核销损耗 ${row.lossQty == null ? '—' : formatSubcontractQty(row.lossQty!, row.unitName)}'
               '${row.wasteBillNo == null ? '' : '，损耗单 ${row.wasteBillNo} 已登记'}'
         : '案件已更新';
     if (mounted) context.appSuccess(decided);
@@ -351,11 +353,11 @@ class _SubcontractShortDeliveryPageState
             SubcontractShortDeliverySegment.pending =>
               '低于允许损耗下限的短交与过了预计到齐日的分批等待；「严重」为短交率超过允许损耗两倍或 20%。仓库照实登记，判定权在委外。',
             SubcontractShortDeliverySegment.tolerant =>
-              '累计回厂在允许损耗范围内、或订货行未设允许损耗的短交：不急，但要有人判定是继续等还是结案记损耗。',
+              '已达到允许损耗下限的行，在质检与入库完成后自动结清；未设允许损耗或无法自动核销的行由委外判定。',
             SubcontractShortDeliverySegment.waiting =>
-              '已判定分批到货的案件；到齐自动完成，过了预计到齐日回到「待判定」并每天提醒一次。',
+              '已判定分批到货；累计回厂进入允许损耗范围并完成入库后自动结清，仍低于下限且逾期的回到「待判定」。',
             SubcontractShortDeliverySegment.history =>
-              '已接受损耗结案、自然到齐或作废的案件；损耗率计入委外商汇总。',
+              '已接受损耗结清、自然到齐或作废的案件；原订货量保留，实收与核销损耗分别记录。',
           },
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
@@ -422,7 +424,7 @@ class _SubcontractShortDeliveryPageState
         ),
         MasterColumnDef(
           key: 'orderedQty',
-          label: '订货量',
+          label: '原订货量',
           width: 100,
           type: 'number',
           value: (c) => formatSubcontractQty(c.orderedQty, c.unitName),
@@ -511,6 +513,15 @@ class _SubcontractShortDeliveryPageState
           ),
         if (historySeg) ...[
           MasterColumnDef(
+            key: 'lossQty',
+            label: '核销损耗',
+            width: 110,
+            type: 'number',
+            value: (c) => c.lossQty == null
+                ? '—'
+                : formatSubcontractQty(c.lossQty!, c.unitName),
+          ),
+          MasterColumnDef(
             key: 'lossPct',
             label: '损耗率',
             width: 90,
@@ -537,11 +548,12 @@ class _SubcontractShortDeliveryPageState
           key: 'status',
           label: '状态',
           width: 160,
-          value: (c) => c.statusLabel,
+          value: (c) =>
+              c.status == 'ACCEPTED_LOSS' ? '已结清（接受损耗）' : c.statusLabel,
           cellBuilder: (context, c) => Align(
             alignment: Alignment.centerLeft,
             child: UtenStatusBadge(
-              label: c.statusLabel,
+              label: c.status == 'ACCEPTED_LOSS' ? '已结清（接受损耗）' : c.statusLabel,
               type: _statusType(c),
               size: UtenStatusBadgeSize.small,
             ),
@@ -670,7 +682,9 @@ class _CaseDetailDialog extends StatelessWidget {
                 runSpacing: UtenSpacing.s4,
                 children: [
                   UtenStatusBadge(
-                    label: row.statusLabel,
+                    label: row.status == 'ACCEPTED_LOSS'
+                        ? '已结清（接受损耗）'
+                        : row.statusLabel,
                     type: _SubcontractShortDeliveryPageState._statusType(row),
                     size: UtenStatusBadgeSize.small,
                   ),
@@ -684,10 +698,10 @@ class _CaseDetailDialog extends StatelessWidget {
               const SizedBox(height: UtenSpacing.s12),
               _kv('委外商', row.supplierName ?? '—'),
               _kv('货品', row.goodsLabel),
+              _kv('原订货量', formatSubcontractQty(row.orderedQty, unit)),
               _kv(
-                '订货量 / 允许损耗',
-                '${formatSubcontractQty(row.orderedQty, unit)} / '
-                    '${row.allowedLossPct == null ? '未设' : formatSubcontractPct(row.allowedLossPct)}'
+                '允许损耗',
+                '${row.allowedLossPct == null ? '未设' : formatSubcontractPct(row.allowedLossPct)}'
                     '${row.floorQty == null ? '' : '(最少应到 ${formatSubcontractQty(row.floorQty!, unit)})'}',
               ),
               _kv(
@@ -703,11 +717,11 @@ class _CaseDetailDialog extends StatelessWidget {
                 _kv('预计到齐', row.expectedCompleteBy!),
               if (row.decisionNote?.isNotEmpty == true)
                 _kv('判定说明', row.decisionNote!),
-              if (row.lossPct != null)
+              if (row.lossQty != null || row.lossPct != null)
                 _kv(
-                  '记录的损耗',
-                  '${formatSubcontractQty(row.lossQty ?? 0, unit)}'
-                      '(${formatSubcontractPct(row.lossPct)})',
+                  '核销损耗',
+                  '${row.lossQty == null ? '—' : formatSubcontractQty(row.lossQty!, unit)}'
+                      '${row.lossPct == null ? '' : '(${formatSubcontractPct(row.lossPct)})'}',
                 ),
               if (row.wasteBillNo != null) _kv('损耗单', row.wasteBillNo!),
               const SizedBox(height: UtenSpacing.s12),

@@ -4,7 +4,7 @@ import jakarta.persistence.EntityManager;
 
 import java.util.UUID;
 
-/** Recalculates purchase/subcontract order closure from warehouse-stocked, net-returned quantity. */
+/** Recalculates closure from net warehouse stock-in plus separately accepted subcontract loss. */
 public final class ProcurementOrderClosurePolicy {
 
     public static final String PURCHASE = "PURCHASE";
@@ -44,6 +44,10 @@ public final class ProcurementOrderClosurePolicy {
         } else {
             throw new IllegalArgumentException("unsupported procurement order type: " + rawOrderType);
         }
+        String settledOrderQty = SUBCONTRACT.equals(orderType)
+                ? " + " + SubcontractLossSettlementSql.acceptedLossQty("order_item.id") : "";
+        String settledBaseQty = SUBCONTRACT.equals(orderType)
+                ? settledOrderQty + " * COALESCE(order_item.unit_rate,0)" : "";
         em.createNativeQuery("""
                 UPDATE %s order_doc
                 SET is_closed = (
@@ -76,12 +80,12 @@ public final class ProcurementOrderClosurePolicy {
                                   AND COALESCE(receipt_item.is_deleted,FALSE)=FALSE
                             ),0)
                             - COALESCE(order_item.returned_qty,0)
-                                * COALESCE(order_item.unit_rate,1)
+                                * COALESCE(order_item.unit_rate,1)%s
                             >= COALESCE(order_item.qty,0)
                                 * COALESCE(order_item.unit_rate,1)
                         ELSE
                             COALESCE(order_item.received_qty,0)
-                                - COALESCE(order_item.returned_qty,0)
+                                - COALESCE(order_item.returned_qty,0)%s
                                 >= COALESCE(order_item.qty,0)
                         END
                     ),TRUE)
@@ -96,6 +100,8 @@ public final class ProcurementOrderClosurePolicy {
                         receiptTable,
                         receiptItemTable,
                         receiptTable,
+                        settledBaseQty,
+                        settledOrderQty,
                         orderItemTable,
                         receiptScope ? "SELECT DISTINCT item.order_id FROM " + receiptItemTable + " receipt_item JOIN "
                                 + orderItemTable + " item ON item.id=receipt_item.order_item_id"

@@ -39,6 +39,8 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/models/subcontract_short_delivery.dart'
+    show formatSubcontractQty;
 import '../../../shared/widgets/source_doc_link.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -510,7 +512,8 @@ class _SubcontractDocDetailPageState
     final theme = Theme.of(context);
     return Scaffold(
       appBar: UtenAppBar(
-        title: '${_cfg.label}详情',
+        title:
+            '${_cfg.label}详情${widget.docType == SubcontractDocType.order && _detail?.closed == true ? ' · 已结清' : ''}',
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: _defaultBackPath),
         ),
@@ -587,6 +590,7 @@ class _SubcontractDocDetailPageState
                               if (canViewOrderProgress)
                                 SubcontractOrderProgressSection(
                                   orderId: _detail!.id,
+                                  orderClosed: _detail!.closed,
                                 )
                               else
                                 Text(
@@ -686,7 +690,7 @@ class _SubcontractDocDetailPageState
     if (approval?.isRejected == true) return '财务已退回，等待修改后重提';
     if (detail.status == kSubcontractStatusApproved ||
         approval?.isApproved == true) {
-      return '财务已审核，委外订货单已生效';
+      return detail.closed ? '已结清' : '财务已审核，委外订货单已生效';
     }
     if (detail.status == kSubcontractStatusReversed) return '已红冲';
     return '订货草稿，待提交财务';
@@ -916,7 +920,9 @@ class _SubcontractDocDetailPageState
                 ),
               MasterColumnDef(
                 key: 'qty',
-                label: '数量',
+                label: widget.docType == SubcontractDocType.order
+                    ? '订货量'
+                    : '数量',
                 width: 90,
                 type: 'number',
                 value: (it) => _historicalReceipt
@@ -971,6 +977,16 @@ class _SubcontractDocDetailPageState
                   width: 90,
                   type: 'number',
                   value: (it) => it.receivedQty?.toStringAsFixed(2),
+                ),
+              if (widget.docType == SubcontractDocType.order)
+                MasterColumnDef(
+                  key: 'settledLossQty',
+                  label: '结案损耗',
+                  width: 110,
+                  type: 'number',
+                  value: (it) => it.settledLossQty == null
+                      ? '—'
+                      : formatSubcontractQty(it.settledLossQty!),
                 ),
               // ADR-098：订货行允许损耗%（回厂累计低于 数量×(1−允许损耗) 即短交待判定）。
               if (_cfg.itemHasAllowedLossPct)

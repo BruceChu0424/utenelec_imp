@@ -98,6 +98,10 @@ public class SubcontractWasteService {
     @Autowired
     private CommercialPriceVisibility commercialPriceVisibility;
 
+    @Autowired
+    private org.springframework.beans.factory.ObjectProvider<
+            com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryOrderHooks> shortDeliveryHooks;
+
     @Transactional(readOnly = true)
     public PageResponse<WasteListItem> list(WasteQueryFilter f, int page, int size, String sort, String order) {
         boolean priceMasked = subcontractPriceMasked();
@@ -419,6 +423,7 @@ public class SubcontractWasteService {
         r.setStatus(STATUS_REVERSED);
         wasteRepo.save(r);
         em.flush();
+        if (shortDeliveryHooks != null) shortDeliveryHooks.ifAvailable(hooks -> hooks.lossReversed(id));
         materialValue.wasteRecorded(id,currentUser.requireId(),true);
         materialPlans.synchronizeWasteAllowance(id);
         return detail(id);

@@ -1,6 +1,7 @@
 package com.uten.imp.features.operations.workbench;
 
 import com.uten.imp.application.port.SubcontractTaskSource;
+import com.uten.imp.common.finance.SubcontractLossSettlementSql;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -708,6 +709,7 @@ public class FulfillmentWorkbenchQueryService {
                                          AND NOT pending_item.is_deleted
                                          AND COALESCE(pending_item.received_qty, 0)
                                              - COALESCE(pending_item.returned_qty, 0)
+                                             + %s
                                              < COALESCE(pending_item.qty, 0)) AS all_received,
                            EXISTS (SELECT 1 FROM subcontract_material_issue_items issued_item
                                    JOIN subcontract_material_issues issued_doc
@@ -721,7 +723,8 @@ public class FulfillmentWorkbenchQueryService {
                 ) progress ON TRUE
                 """.formatted(SHORT_DELIVERY_PENDING_EXISTS.formatted("base.action_doc_id"),
                         SHORT_DELIVERY_TOLERANT_EXISTS.formatted("base.action_doc_id"),
-                        COMPONENT_STOCK_AVAILABLE_SQL.formatted("NULL::uuid", "waiting_item.order_item_id")) : "";
+                        COMPONENT_STOCK_AVAILABLE_SQL.formatted("NULL::uuid", "waiting_item.order_item_id"),
+                        SubcontractLossSettlementSql.acceptedLossQty("pending_item.id")) : "";
         // ADR-100：采购侧的执行状态就是 task_status 本身(等待财务审核 / 财务已通过 /
         // 财务已退回三档), 下面的 ELSE 分支已经把它落进 display_stage —— 采购与委外因此
         // 共用同一列做状态列、表头筛选与排序, 采购不另算一遍。

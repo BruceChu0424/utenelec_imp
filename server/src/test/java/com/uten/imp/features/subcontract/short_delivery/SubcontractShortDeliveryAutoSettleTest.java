@@ -3,7 +3,6 @@ package com.uten.imp.features.subcontract.short_delivery;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.common.util.EmployeeNameResolver;
-import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeRequest;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.order.SubcontractOrderService;
 import com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService;
@@ -11,6 +10,7 @@ import com.uten.imp.features.subcontract.waste.SubcontractWasteService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -35,6 +35,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.RETURNS_SELF;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -47,7 +48,7 @@ import static org.mockito.Mockito.when;
  *   <li>累计仍低于下限的 WAITING_MORE 案件不动;</li>
  *   <li>仓库「不再出仓」关计划(没有本次到货)：一件都没回厂的行不开案件, 已回厂进容差的行
  *       补开案件(receipt_id 记空)并结案;</li>
- *   <li>自动结案走 changeQtyForShortDeliveryBySystem(不过属主守卫、仍开财务复核)。</li>
+ *   <li>自动结案保留原订货量，不调用人工或系统改量入口，不增加财务改量复核。</li>
  * </ul>
  * 真库全链见 SubcontractToleranceAutoSettleEndToEndTest / SubcontractSoleComponentUnlockEndToEndTest。
  */
@@ -61,7 +62,6 @@ class SubcontractShortDeliveryAutoSettleTest {
     private static final UUID ACTOR_USER = UUID.randomUUID();
     private static final UUID ACTOR_EMPLOYEE = UUID.randomUUID();
     private static final UUID WASTE_ID = UUID.randomUUID();
-    private static final UUID CHANGE_LOG_ID = UUID.randomUUID();
     private static final String WAITING_NOTE = "分批到货后累计回厂已进入允许损耗范围, 系统按约定的允许损耗自动结案";
     private static final String PENDING_NOTE = "累计回厂已在本单允许损耗范围内, 系统按约定的允许损耗自动结案";
 
@@ -83,7 +83,10 @@ class SubcontractShortDeliveryAutoSettleTest {
         SubcontractMaterialPlanService plans = mock(SubcontractMaterialPlanService.class);
         when(plans.minimumOrderQtyFromIssued(eq(ITEM_ID), any())).thenReturn(new BigDecimal("1000"));
         when(waste.recordShortDeliveryLoss(any(), any(), any(), any(), any(), any(), any())).thenReturn(WASTE_ID);
-        service = new SubcontractShortDeliveryService(jdbc, mock(EntityManager.class), mock(TxSessionVars.class),
+        EntityManager em = mock(EntityManager.class);
+        Query closure = mock(Query.class, RETURNS_SELF);
+        when(em.createNativeQuery(anyString())).thenReturn(closure);
+        service = new SubcontractShortDeliveryService(jdbc, em, mock(TxSessionVars.class),
                 currentUser, events, mock(SubcontractDocumentAccessPolicy.class), waste, orders, plans,
                 mock(EmployeeNameResolver.class), new ObjectMapper());
     }
@@ -100,14 +103,17 @@ class SubcontractShortDeliveryAutoSettleTest {
         assertEquals(ACTOR_USER, accepted[1]);
         assertEquals(ACTOR_EMPLOYEE, accepted[2], "decided_by 与人工接受损耗同款, 三列同非空过 V636 CHECK");
         assertEquals(0, new BigDecimal("50").compareTo((BigDecimal) accepted[3]), "loss_qty = 1000 - 950");
+        assertEquals(0, new BigDecimal("1000").compareTo((BigDecimal) accepted[6]), "原订货数量独立保留");
+        assertEquals(0, new BigDecimal("950").compareTo((BigDecimal) accepted[7]), "实际回厂不加损耗冒充实收");
         assertEquals(CASE_ID, accepted[accepted.length - 1]);
         String sql = jdbc.acceptedLossSql();
         assertTrue(sql.contains("decision = 'ACCEPT_LOSS'"), sql);
         assertTrue(sql.contains("expected_complete_by = NULL"), "分批等待的预计到齐日随结案清空");
         assertTrue(sql.contains("status IN ('PENDING_OWNER', 'WAITING_MORE')"), "WAITING_MORE 案件必须能被这条 UPDATE 命中");
+        assertTrue(sql.contains("qty_change_log_id = NULL"), "新损耗履约事实不挂缩单日志");
         verify(waste).recordShortDeliveryLoss(eq(ITEM_ID), eq(BigDecimal.ONE), argThat(q -> q.compareTo(new BigDecimal("50")) == 0),
                 argThat(q -> q.compareTo(new BigDecimal("50")) == 0), eq(new BigDecimal("10")), anyString(), any());
-        verify(orders).changeQtyForShortDeliveryBySystem(eq(ORDER_ID), argThat(request -> qtyOf(request).compareTo(new BigDecimal("950")) == 0));
+        verify(orders, never()).changeQtyForShortDeliveryBySystem(any(), any());
         verify(orders, never()).changeQtyForShortDelivery(any(), any());
         verify(events).publishOnce(eq(SubcontractShortDeliveryService.EVENT_RESOLVED),
                 eq(SubcontractShortDeliveryService.AGGREGATE_KIND), eq(CASE_ID), any(), anyString());
@@ -121,7 +127,8 @@ class SubcontractShortDeliveryAutoSettleTest {
         service.settleAfterStockIn(RECEIPT_ID);
 
         assertEquals(PENDING_NOTE, jdbc.acceptedLossArgs()[0]);
-        verify(orders).changeQtyForShortDeliveryBySystem(eq(ORDER_ID), any());
+        verify(orders, never()).changeQtyForShortDeliveryBySystem(any(), any());
+        verify(orders, never()).changeQtyForShortDelivery(any(), any());
     }
 
     @Test
@@ -160,7 +167,8 @@ class SubcontractShortDeliveryAutoSettleTest {
         assertNull(insertArgs[10], "关计划那条路没有收货单, receipt_id 记空");
         assertNull(insertArgs[11]);
         assertEquals(PENDING_NOTE, jdbc.acceptedLossArgs()[0], "补开的是 PENDING_OWNER 案件, 随即按允许损耗结案");
-        verify(orders).changeQtyForShortDeliveryBySystem(eq(ORDER_ID), any());
+        verify(orders, never()).changeQtyForShortDeliveryBySystem(any(), any());
+        verify(orders, never()).changeQtyForShortDelivery(any(), any());
     }
 
     @Test
@@ -170,11 +178,7 @@ class SubcontractShortDeliveryAutoSettleTest {
         assertFalse(jdbc.factsLoaded);
     }
 
-    private static BigDecimal qtyOf(OrderQtyChangeRequest request) {
-        return request.items().getFirst().newQty();
-    }
-
-    /** 只桩短交服务在自动结案路径上真正会碰的五个 JdbcTemplate 入口, SQL 原样记下来供断言。 */
+    /** 只桩自动结案需要的事实读取与案件写入；本夹具的全部回厂量均已合格入库。 */
     private static final class FakeJdbc extends JdbcTemplate {
         String openStatus;
         BigDecimal delivered = BigDecimal.ZERO;
@@ -186,6 +190,14 @@ class SubcontractShortDeliveryAutoSettleTest {
         @SuppressWarnings("unchecked")
         public <T> List<T> queryForList(String sql, Class<T> elementType, Object... args) {
             return (List<T>) List.of(ITEM_ID);
+        }
+
+        @Override
+        public <T> T queryForObject(String sql, Class<T> requiredType, Object... args) {
+            if (requiredType == BigDecimal.class && sql.contains("inspection.warehouse_stocked_base_qty")) {
+                return requiredType.cast(delivered);
+            }
+            throw new AssertionError("Unsupported fixture query: " + sql);
         }
 
         @Override
@@ -212,12 +224,7 @@ class SubcontractShortDeliveryAutoSettleTest {
         public <T> T query(String sql, ResultSetExtractor<T> rse, Object... args) {
             try {
                 ResultSet rs = mock(ResultSet.class);
-                if (sql.contains("procurement_order_qty_change_logs")) {
-                    when(rs.next()).thenReturn(true);
-                    when(rs.getObject("id", UUID.class)).thenReturn(CHANGE_LOG_ID);
-                } else {
-                    when(rs.next()).thenReturn(false);
-                }
+                when(rs.next()).thenReturn(false);
                 return rse.extractData(rs);
             } catch (SQLException e) {
                 throw new IllegalStateException(e);
@@ -278,6 +285,7 @@ class SubcontractShortDeliveryAutoSettleTest {
             when(rs.getBigDecimal(17)).thenReturn(BigDecimal.ONE);
             when(rs.getBigDecimal(18)).thenReturn(delivered);
             when(rs.getBoolean(19)).thenReturn(true);
+            when(rs.getBigDecimal(20)).thenReturn(BigDecimal.ZERO);
             return rs;
         }
 

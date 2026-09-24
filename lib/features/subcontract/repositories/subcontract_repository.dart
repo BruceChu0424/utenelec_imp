@@ -36,6 +36,7 @@ class SubcontractDocFilter {
 
   /// 财务审批态切片（仅订货单端点支持）：财务通过前 status=0，
   /// 「草稿」段传 'NONE'（排除在审单）、「等待财务审核」段传 'PENDING'。
+  /// 'IN_PROGRESS' 聚合待财审、财务退回及已审未结案订货单。
   final String? financeApproval;
 
   Map<String, dynamic> toQuery() => <String, dynamic>{

@@ -48,6 +48,9 @@ public class OrderItemDto {
     private List<SourceApplicationDoc> sourceApplications;
     /** 本行允许损耗百分比(ADR-098); 空 = 未设。 */
     private BigDecimal allowedLossPct;
+    /** Independently settled loss, in this order line's unit; never a receipt quantity. */
+    @lombok.Setter
+    private BigDecimal settledLossQty;
 
     /** 订货行的来源委外申请引用（合并行多来源展示/编辑回显/跳转）。 */
     public record SourceApplicationDoc(

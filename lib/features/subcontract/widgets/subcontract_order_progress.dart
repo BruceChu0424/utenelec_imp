@@ -17,9 +17,16 @@ import '../repositories/subcontract_repository.dart';
 import '../models/subcontract_doc.dart';
 
 class SubcontractOrderProgressSection extends ConsumerStatefulWidget {
-  const SubcontractOrderProgressSection({super.key, required this.orderId});
+  const SubcontractOrderProgressSection({
+    super.key,
+    required this.orderId,
+    this.orderClosed = false,
+  });
 
   final String orderId;
+
+  /// 结清由订货详情的服务端 closed 判定，不能因缩减订货量或材料结存归零推断。
+  final bool orderClosed;
 
   @override
   ConsumerState<SubcontractOrderProgressSection> createState() =>
@@ -217,7 +224,6 @@ class _SubcontractOrderProgressSectionState
     final warehouseStockInDone =
         qualityDone &&
         approvedReceipts.every((receipt) => receipt.warehouseStocked);
-    final settled = p.supplierLedger.every((l) => l.supplierEnding <= 0.0001);
 
     final nodes = <_Node>[
       const _Node('下单', true),
@@ -237,7 +243,7 @@ class _SubcontractOrderProgressSectionState
         warehouseStockInDone,
         current: qualityDone && !warehouseStockInDone,
       ),
-      _Node('结案核销', warehouseStockInDone && settled),
+      _Node('结案核销', widget.orderClosed),
     ];
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,

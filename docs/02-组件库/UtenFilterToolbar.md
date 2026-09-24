@@ -16,7 +16,7 @@
 自成一套的分段样式：
 
 - **分段导航**：M3 胶囊 StadiumBorder、**选中只变背景色不出 ✓ 图标**，
-  与搜索框**结构化严格同高**（宽屏行内 `IntrinsicHeight + stretch`，谁高都拉齐；
+  与搜索框**结构化严格同高**（宽屏字段组内 `IntrinsicHeight + stretch`，两者按内容高度拉齐；
   密度/字号档变化下恒成立——visualDensity 对两侧折减不一致，不能靠各自设高度）；
 - **分段计数**：分段可挂数量(`count`)，呈现有**三种形态**
   （`UtenFilterSegment.countForm` → `UtenSegmentBadgeLabel`，见 §三）：
@@ -174,8 +174,13 @@ UtenFilterSegment(
 
 筛选已下沉到列头 autofilter 或行尾筛选字段的页面（范本：即时库存的货品分类/仓库改
 `UtenFilterPickerField` + 侧滑面板，2026-09-11），不传 `segments`（`segments`/`selected`/`onSelectionChanged` 均已可省略）即得到「搜索框 + 行尾控件」
-工具条，不渲染空分段条。宽屏行尾内容放在有界的 `Expanded + Align(centerEnd)` 里（此前 `Spacer` +
-裸 `trailing` 让 Row 主轴无界、行尾 `Wrap` 永不换行，840~1000px 宽度带会溢出黄黑条），超宽自动换行；
-`UtenSearchBar` 高度内容驱动（≈44）；分段条经 IntrinsicHeight+stretch 与之同高，行尾筛选字段
-（`UtenFilterPickerField`）按同一口径算内边距、表单下拉传紧凑 `contentPadding` 才能严格等高
-（2026-09-10 回退过「搜索框强拉 48」——那会把全站分段一起拉高）。
+工具条，不渲染空分段条。宽屏行尾放在有界的独立宽度槽中，居中且贴右；超宽的 `Wrap` 自动换行。
+先扣除搜索宽度与分类间距，再把剩余宽度分给分类和行尾；没有分类时行尾使用全部剩余宽度。
+分类较短时，空白留在搜索和行尾之间，动作仍贴页面右侧（此前裸 `trailing` 会让 `Wrap` 拿到
+无界宽度，840~1000px 宽度带出现溢出）。
+
+`UtenSearchBar` 高度由内容与主题密度决定；分类和搜索作为独立字段组，通过
+`IntrinsicHeight + stretch` 同高。**行尾不参与字段组的高度计算**：44px 动作按钮或多行
+`Wrap` 只增加工具条整体高度，不能把分类描边撑厚，分类和搜索在整条工具条内垂直居中。
+行尾筛选字段（`UtenFilterPickerField`）按同一口径算内边距，表单下拉传紧凑
+`contentPadding`（2026-09-10 回退过「搜索框强拉 48」；2026-09-23 修复行尾撑高分类）。

@@ -130,6 +130,7 @@ class SubcontractDocItem {
     this.checkQty,
     this.orderQty,
     this.receivedQty,
+    this.settledLossQty,
     this.legacyIssuedQty,
     this.returnedQty,
     this.wastedQty,
@@ -178,6 +179,9 @@ class SubcontractDocItem {
   final double? checkQty;
   final double? orderQty;
   final double? receivedQty;
+
+  /// 已核销的结案损耗，按订货行单位返回；不能用子件损耗或数量差额代算。
+  final double? settledLossQty;
 
   /// 历史订货明细累计发料量。
   ///
@@ -249,6 +253,7 @@ class SubcontractDocItem {
         checkQty: (json['checkQty'] as num?)?.toDouble(),
         orderQty: (json['orderQty'] as num?)?.toDouble(),
         receivedQty: (json['receivedQty'] as num?)?.toDouble(),
+        settledLossQty: (json['settledLossQty'] as num?)?.toDouble(),
         legacyIssuedQty: (json['issuedQty'] as num?)?.toDouble(),
         returnedQty: (json['returnedQty'] as num?)?.toDouble(),
         wastedQty: (json['wastedQty'] as num?)?.toDouble(),

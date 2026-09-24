@@ -46,7 +46,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * V636 / ADR-098 委外允许损耗与回厂短交(真库)：订货带允许损耗并回写主档记忆 → 财务批准 → 出仓 →
  * 第一批回厂低于下限(登记 409 → 仓库确认 → 案件 + 紧急通知) → 判定分批到货 → 第二批仍未到齐(不再通知) →
- * 接受损耗结案(自动损耗单 + 受控改量 + 记损耗率) → 供应商汇总视图。
+ * 接受损耗结案(自动损耗单 + 独立履约量 + 记损耗率，原订货不变) → 供应商汇总视图。
  */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
@@ -205,7 +205,7 @@ class SubcontractShortDeliveryEndToEndTest {
         assertEquals(1,count("SELECT COUNT(*) FROM notices WHERE source_event='SUBCONTRACT_SHORT_DELIVERY_DETECTED' AND audience_user_id=?",w.superAdminUserId()),
                 "分批等待未过预计到齐日：再次到货不再打扰");
 
-        // ⑥ 接受损耗结案：损耗单核销供应商处剩下的 3 件(允许 1 件 + 超耗 2 件) → 订货量改为 17 → 记 15% 损耗。
+        // ⑥ 接受损耗结案：原订货 20、实际回厂 17、损耗 3 (允许 1 + 超耗 2) 分开记录，不修改合同数量。
         long version2=((Number)c.get("version")).longValue();
         CaseDetail accepted=shortDeliveries.decide(caseId,new DecisionRequest("ACCEPT_LOSS",null,"委外商确认 3 件加工报废",version2));
         assertEquals("ACCEPTED_LOSS",accepted.row().status());
@@ -215,23 +215,24 @@ class SubcontractShortDeliveryEndToEndTest {
         rate("3",db.queryForObject("SELECT SUM(qty) FROM subcontract_waste_items WHERE waste_id=?",BigDecimal.class,accepted.row().wasteId()));
         rate("1",db.queryForObject("SELECT SUM(standard_qty) FROM subcontract_waste_items WHERE waste_id=?",BigDecimal.class,accepted.row().wasteId()));
         rate("3",db.queryForObject("SELECT SUM(wasted_qty) FROM subcontract_material_issue_items WHERE order_item_id=?",BigDecimal.class,itemId));
-        rate("17",db.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?",BigDecimal.class,itemId));
+        rate("20",db.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?",BigDecimal.class,itemId));
+        rate("17",db.queryForObject("SELECT received_qty FROM subcontract_order_items WHERE id=?",BigDecimal.class,itemId));
         assertFalse(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?",Boolean.class,orderId),
-                "结案不等于入库：17 件仍在质检, 订货单按既有口径(仓库实收净量≥订货量)要等 IQC 合格入库后才关闭");
+                "损耗确认不等于合格入库：第二批 5 件仍在质检，要等累计合格实收 17 加损耗 3 满足原订货 20 后关单");
         assertEquals("CLOSED",db.queryForObject("SELECT status FROM inbound_expectations WHERE order_type='SUBCONTRACT' AND order_id=?",String.class,orderId));
-        assertEquals(1,count("SELECT COUNT(*) FROM procurement_order_qty_change_logs WHERE order_type='SUBCONTRACT' AND order_item_id=? AND old_qty=20 AND new_qty=17",itemId));
-        assertNotNull(db.queryForObject("SELECT qty_change_log_id FROM subcontract_short_delivery_cases WHERE id=?",UUID.class,caseId));
-        assertEquals(1,count("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_type='SUBCONTRACT' AND order_id=? AND status='PENDING'",orderId),
-                "受控改量自动开财务复核");
+        assertEquals(0,count("SELECT COUNT(*) FROM procurement_order_qty_change_logs WHERE order_type='SUBCONTRACT' AND order_item_id=?",itemId));
+        assertNull(db.queryForObject("SELECT qty_change_log_id FROM subcontract_short_delivery_cases WHERE id=?",UUID.class,caseId));
+        assertEquals(0,count("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_type='SUBCONTRACT' AND order_id=? AND status='PENDING'",orderId),
+                "人工接受损耗也不伪造订货改量，超耗财务责任仍走独立损耗案件");
         assertEquals("OPEN",db.queryForObject("SELECT status FROM subcontract_loss_cases WHERE waste_id=?",String.class,accepted.row().wasteId()),
                 "超出允许损耗的 2 件转财务责任判定");
         rate("20",db.queryForObject("SELECT ordered_qty FROM subcontract_short_delivery_cases WHERE id=?",BigDecimal.class,caseId));
         assertEquals(List.of("DETECTED","WAIT_MORE_DECIDED","REDETECTED","ACCEPT_LOSS_DECIDED"),events(caseId));
         assertEquals(0,shortDeliveries.counts().pending());assertEquals(0,shortDeliveries.counts().waiting());
-        assertEquals("RECEIVED_PENDING_STOCK",workbenchRow(orderId).displayStage(),"回厂 17 ≥ 改后订货 17：状态列=已回厂待入库(结案不等于入库)");
+        assertEquals("RECEIVED_PENDING_STOCK",workbenchRow(orderId).displayStage(),"回厂 17 加损耗 3 完成原订货 20 的到货追踪，仍待合格入库");
 
         // ⑥b 第二张收货单 IQC 合格 5 件 → 仓库确认入库(第一张 12 件已在 ④b 解锁后入库)：
-        //     实收净量 17 ≥ 改后订货量 17, 订货单按既有结案口径关闭。
+        //     合格实收净量 17 + 已接受损耗 3 = 原订货量 20，订货单关闭。
         for(var receipt:List.of(second)){
             UUID inspection=db.queryForObject("SELECT id FROM procurement_inspection_items WHERE receipt_type='SUBCONTRACT' AND receipt_id=?",UUID.class,receipt.receiptId());
             fixture.loginAs(w.superAdminUserId());

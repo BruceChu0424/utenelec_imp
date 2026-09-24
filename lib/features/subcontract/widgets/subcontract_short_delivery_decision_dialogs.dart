@@ -137,8 +137,11 @@ showSubcontractShortDeliveryAcceptDialog(
                     '按发料时冻结的用量，把短交对应的材料登记成委外损耗单；'
                     '超出允许损耗的部分转财务判定责任。',
                   ),
-                  const _Bullet('订货量改为累计回厂量，来源申请的剩余需求回到「待处理」，可以另行下单。'),
-                  const _Bullet('财务会收到一张改量复核；本案件记下这次的损耗率，计入委外商汇总。'),
+                  const _Bullet('保留订货数量和来源申请占用，实收如实记录，剩余按损耗核销并结清，不重新下单。'),
+                  const _Bullet(
+                    '记录损耗量和损耗率，计入委外商汇总；此次结清不产生改量复核。'
+                    '允许损耗范围内正常结清，不通知财务。',
+                  ),
                   const SizedBox(height: UtenSpacing.s12),
                   UtenInput(
                     key: const Key('short-delivery-accept-note'),

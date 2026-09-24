@@ -23,6 +23,9 @@ abstract final class DocumentStatusBucket {
 
   /// 通用单据 = 已审(status 1); 销售出货 = 财务已放行待出库(status 0 + finance_audit 1)。
   static const approved = 'APPROVED';
+
+  /// 委外订货已审且未结案；不包含历史已结案订货单。
+  static const executing = 'EXECUTING';
   static const shipped = 'SHIPPED';
   static const reversed = 'REVERSED';
 }

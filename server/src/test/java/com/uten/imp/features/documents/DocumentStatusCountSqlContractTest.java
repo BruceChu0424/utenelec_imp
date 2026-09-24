@@ -36,10 +36,10 @@ class DocumentStatusCountSqlContractTest {
     void bucketsFollowTheDocumentFamily() {
         assertThat(keys("salesShipment")).containsExactly(
                 "DRAFT", "PENDING_FINANCE", "FINANCE_REJECTED", "FINANCE_APPROVED", "SHIPPED", "REVERSED");
-        for (String kind : List.of("purchaseOrder", "subcontractOrder")) {
-            assertThat(keys(kind)).containsExactly(
-                    "DRAFT", "PENDING_FINANCE", "FINANCE_REJECTED", "APPROVED", "REVERSED");
-        }
+        assertThat(keys("purchaseOrder")).containsExactly(
+                "DRAFT", "PENDING_FINANCE", "FINANCE_REJECTED", "APPROVED", "REVERSED");
+        assertThat(keys("subcontractOrder")).containsExactly(
+                "DRAFT", "PENDING_FINANCE", "FINANCE_REJECTED", "APPROVED", "REVERSED", "EXECUTING");
         for (String kind : List.of("salesQuote", "salesReturn", "financeReceipt", "productionPlan",
                 "purchaseReceipt", "subcontractWaste", "stockDocument", "stockTransfer")) {
             assertThat(keys(kind)).as(kind).containsExactly("DRAFT", "APPROVED", "REVERSED");
@@ -92,6 +92,13 @@ class DocumentStatusCountSqlContractTest {
             assertThat(predicate(buckets, "FINANCE_REJECTED")).isEqualTo("o.status = 0 AND " + latest + " = 'REJECTED'");
             assertThat(predicate(buckets, "DRAFT")).isEqualTo("o.status = 0 AND " + latest + " NOT IN ('PENDING', 'REJECTED')");
         }
+        List<Bucket> subcontract = DocumentStatusCountQueryService.bucketsOf(
+                "subcontractOrder", DocumentDraftCountQueryService.SUBCONTRACT_ORDER);
+        assertThat(predicate(subcontract, "EXECUTING"))
+                .isEqualTo("o.status = 1 AND o.is_closed = false");
+        assertThat(predicate(subcontract, "APPROVED"))
+                .as("保留既有已审总数; 进行中不得把已结案件混入执行中")
+                .isEqualTo("o.status = 1");
     }
 
     @Test

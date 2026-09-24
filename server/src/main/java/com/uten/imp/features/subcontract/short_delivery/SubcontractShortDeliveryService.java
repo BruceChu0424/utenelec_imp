@@ -10,7 +10,6 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
-import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.order.SubcontractOrderService;
 import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.CaseDetail;
@@ -26,6 +25,8 @@ import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,8 +50,8 @@ import java.util.UUID;
  * 供应商损耗汇总。数量全部按订货单位; 累计回厂口径 = received − returned − IQC 已退回不合格量,
  * 与预计到货 accepted_qty 一致但不封顶。
  *
- * <p>「接受损耗结案」三步顺序固定(ADR-098 §2.3)：损耗单(核销供应商处剩料, 允许量按允许损耗) →
- * ADR-072 受控改量到累计回厂量(来源申请余量回到待下单、预计到货关闭、财务复核) → 案件记损耗率。
+ * <p>接受损耗以独立履约事实结清：原订货与申请占用不变，实收与损耗分别记录；
+ * 正常允许损耗不走订货改量、财务改量复核或重新下单。
  * 通知一律走 Outbox 事件, 由 ChainNoticeService 发卡/撤卡。
  */
 @Service
@@ -124,7 +125,8 @@ public class SubcontractShortDeliveryService
                          -- 备齐的是当前可发批次, 不是总发料承诺。前置生产只做完并发出首批时,
                          -- 不能按 prepared_qty 把余下还没做完的计划量当作已全部发完。
                          AND plan_item.issued_qty < plan_item.planned_qty
-                   ) AS material_fully_issued
+                   ) AS material_fully_issued,
+                   fn_subcontract_settled_loss_qty(oi.id) AS settled_loss_qty
             FROM subcontract_order_items oi
             JOIN subcontract_orders order_doc ON order_doc.id = oi.order_id
             JOIN goods ON goods.id = oi.goods_id
@@ -145,6 +147,8 @@ public class SubcontractShortDeliveryService
     private final com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService materialPlans;
     private final EmployeeNameResolver nameResolver;
     private final ObjectMapper objectMapper;
+    @Autowired
+    private ObjectProvider<com.uten.imp.application.port.ProcurementArrivalControlPort> arrivalControl;
 
     public SubcontractShortDeliveryService(
             JdbcTemplate jdbc,
@@ -198,7 +202,7 @@ public class SubcontractShortDeliveryService
                     fact.orderedQty(), fact.allowedLossPct(),
                     SubcontractShortDeliveryPolicy.floorQty(fact.orderedQty(), fact.allowedLossPct()),
                     fact.deliveredQty(), now, after,
-                    SubcontractShortDeliveryPolicy.shortfallQty(fact.orderedQty(), after),
+                    outstandingShortfall(fact, after),
                     SubcontractShortDeliveryPolicy.shortfallPct(fact.orderedQty(), after),
                     severity, waitingActive, open == null ? null : open.expectedCompleteBy()));
         }
@@ -226,7 +230,8 @@ public class SubcontractShortDeliveryService
                        c.goods_code_snapshot AS goods_code,
                        unit.name AS unit_name,
                        oi.qty AS ordered_qty, current_return.delivered_qty,
-                       GREATEST(oi.qty-current_return.delivered_qty,0) AS shortfall_qty,
+                       GREATEST(oi.qty-current_return.delivered_qty
+                           - fn_subcontract_settled_loss_qty(oi.id),0) AS shortfall_qty,
                        (c.status = 'WAITING_MORE') AS overdue_wait
                 FROM subcontract_receipt_items receipt_item
                 JOIN subcontract_order_items oi ON oi.id = receipt_item.order_item_id
@@ -276,8 +281,7 @@ public class SubcontractShortDeliveryService
         Map<UUID, OpenCase> openCases = openCases(orderItemIds, true);
         for (ItemFacts fact : loadFacts(orderItemIds, false)) {
             OpenCase open = openCases.get(fact.orderItemId());
-            String severity = SubcontractShortDeliveryPolicy.severity(
-                    fact.orderedQty(), fact.allowedLossPct(), fact.deliveredQty());
+            String severity = remainingSeverity(fact, fact.deliveredQty());
             if (severity == null) {
                 if (open != null) {
                     closeCase(open, STATUS_COMPLETED, "COMPLETED", actorUser, actorEmployee,
@@ -315,8 +319,7 @@ public class SubcontractShortDeliveryService
         for (ItemFacts fact : loadFacts(orderItemIds, false)) {
             OpenCase open = openCases.get(fact.orderItemId());
             if (open == null) continue;
-            String severity = SubcontractShortDeliveryPolicy.severity(
-                    fact.orderedQty(), fact.allowedLossPct(), fact.deliveredQty());
+            String severity = remainingSeverity(fact, fact.deliveredQty());
             if (severity == null) {
                 closeCase(open, STATUS_COMPLETED, "COMPLETED", actorUser, actorEmployee,
                         snapshot(fact, null, "订货量改为不高于累计回厂量"));
@@ -344,6 +347,32 @@ public class SubcontractShortDeliveryService
     }
 
     // ===================== 判定 =====================
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lossReversed(UUID wasteId) {
+        List<Map<String,Object>> settled = jdbc.queryForList("""
+                SELECT id,order_item_id,version FROM subcontract_short_delivery_cases
+                WHERE waste_id=? AND status='ACCEPTED_LOSS' AND qty_change_log_id IS NULL
+                ORDER BY order_item_id FOR UPDATE
+                """, wasteId);
+        List<UUID> items = new ArrayList<>();
+        for (Map<String,Object> row : settled) {
+            UUID caseId=(UUID)row.get("id"), itemId=(UUID)row.get("order_item_id");
+            jdbc.update("""
+                    UPDATE subcontract_short_delivery_cases
+                    SET status='CANCELED',closed_at=now(),updated_at=now(),version=version+1
+                    WHERE id=? AND status='ACCEPTED_LOSS'
+                    """, caseId);
+            appendEvent(caseId,"CANCELED",currentUser.requireId(),currentUser.requireEmployeeId(),
+                    Map.of("reason","损耗单已红冲，撤回本次损耗履约，原订货数量不变","wasteId",wasteId.toString()));
+            publishResolved(caseId,((Number)row.get("version")).longValue()+1,"LOSS_REVERSED");
+            com.uten.imp.common.finance.ProcurementOrderClosurePolicy.recalculate(em,"SUBCONTRACT",itemId);
+            items.add(itemId);
+        }
+        if (!items.isEmpty() && arrivalControl != null)
+            arrivalControl.getObject().refreshAfterReturn("SUBCONTRACT",items);
+    }
 
     @Transactional
     public CaseDetail decide(UUID caseId, DecisionRequest request) {
@@ -387,19 +416,16 @@ public class SubcontractShortDeliveryService
     }
 
     /**
-     * 「接受损耗·结案」的本体：损耗单 → 案件落 ACCEPTED_LOSS → 受控改量到累计回厂量。
+     * 接受损耗：核销供应商处损耗，追加独立履约事实，按合格实收加损耗重算结清。
      * 人工判定({@link #decide})与容差内自动结案({@link #settleAfterStockIn} /
      * {@link #settleAfterMaterialIssueClosed})共用，权限/归属校验在各自入口做完。
      *
-     * <p>{@code systemInitiated} 区分第三步受控改量走哪条入口：人工判定是本人在操作自己
-     * 负责的单, 照旧过订货单属主守卫; 容差内自动结案跑在**仓库确认入库的同一个事务**里,
-     * 发起人是仓库账号 —— 它既不是委外订货单的制单人, 通常也没有 subcontract:view:all,
-     * 走属主守卫必拿 FORBIDDEN, 而这段异常会把整个事务标成只能回滚, 货就入不了库。
-     * 自动结案是锦上添花, 绝不能反过来把仓库正常的入库动作搞失败。
+     * <p>人工判定在入口核对属主权限；仓库自动结清不修改商业合同，
+     * 也不返回仓库无权查看的委外案件详情。
      */
     private CaseDetail acceptLoss(UUID caseId, LockedCase locked, ItemFacts fact, String note,
                                   UUID actorUser, UUID actorEmployee, boolean systemInitiated) {
-        BigDecimal shortfall = SubcontractShortDeliveryPolicy.shortfallQty(fact.orderedQty(), fact.deliveredQty());
+        BigDecimal shortfall = outstandingShortfall(fact, fact.deliveredQty());
         if (shortfall.signum() <= 0) {
             closeCase(new OpenCase(caseId, locked.status(), null, locked.version(), locked.ownerEmployeeId()),
                     STATUS_COMPLETED, "COMPLETED", actorUser, actorEmployee,
@@ -416,11 +442,11 @@ public class SubcontractShortDeliveryService
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "低于允许损耗下限的短交结案必须填写说明");
         }
         BigDecimal allowedShortfall = SubcontractShortDeliveryPolicy.allowedLossQty(
-                fact.orderedQty(), fact.allowedLossPct()).min(shortfall);
+                fact.orderedQty(), fact.allowedLossPct()).subtract(fact.settledLossQty())
+                .max(BigDecimal.ZERO).min(shortfall);
         String cause = "委外回厂短交结案(订货单 " + fact.orderBillNo() + " 第 " + fact.lineNo() + " 行，短交 "
                 + plain(shortfall) + (fact.unitName() == null ? "" : " " + fact.unitName()) + ")";
-        // 顺序固定(ADR-098 §2.3)：① 损耗单核销供应商处剩料 → ② 案件先落 ACCEPTED_LOSS(记损耗) →
-        // ③ 受控改量到累计回厂量(改量回调重评时案件已终态, 不会被当成自然到齐)→ ④ 记改量 id。
+        // 数量合同不变。成本分摊在事务提交前读最终损耗事实，不需要制造财务改量复核。
         UUID wasteId = wasteService.recordShortDeliveryLoss(
                 fact.orderItemId(), fact.orderUnitRate(), shortfall, allowedShortfall,
                 fact.allowedLossPct(), cause, BusinessTime.today());
@@ -434,7 +460,7 @@ public class SubcontractShortDeliveryService
                 SET status = 'ACCEPTED_LOSS', decision = 'ACCEPT_LOSS', expected_complete_by = NULL,
                     decision_note = ?, decided_by_user_id = ?, decided_by_employee_id = ?,
                     decided_at = now(), closed_at = now(), loss_qty = ?, loss_pct = ?,
-                    waste_id = ?,
+                    waste_id = ?, qty_change_log_id = NULL,
                     ordered_qty = ?, delivered_qty = ?, shortfall_qty = ?, shortfall_pct = ?, severity = ?,
                     last_evaluated_at = now(), version = version + 1, updated_at = now()
                 WHERE id = ? AND status IN ('PENDING_OWNER', 'WAITING_MORE')
@@ -443,30 +469,16 @@ public class SubcontractShortDeliveryService
         if (changed != 1) {
             throw new ApiException(ErrorCode.CONFLICT, "该短交案件状态已变化，请刷新后重试");
         }
-        var qtyChange = new ProcurementApprovalContracts.OrderQtyChangeRequest(List.of(
-                new ProcurementApprovalContracts.OrderQtyChangeItem(
-                        fact.orderItemId(), fact.deliveredQty())));
-        if (systemInitiated) {
-            // 系统路径只跳过订货单属主守卫; 财务复核 case 照开(V503 守卫要求同事务开一条 PENDING 复核)。
-            orderService.changeQtyForShortDeliveryBySystem(fact.orderId(), qtyChange);
-        } else {
-            orderService.changeQtyForShortDelivery(fact.orderId(), qtyChange);
-        }
-        UUID changeLogId = jdbc.query("""
-                SELECT id FROM procurement_order_qty_change_logs
-                WHERE order_type = 'SUBCONTRACT' AND order_item_id = ?
-                ORDER BY changed_at DESC LIMIT 1
-                """, rs -> rs.next() ? rs.getObject("id", UUID.class) : null, fact.orderItemId());
-        if (changeLogId != null) {
-            jdbc.update("UPDATE subcontract_short_delivery_cases SET qty_change_log_id = ? WHERE id = ?",
-                    changeLogId, caseId);
-        }
+        com.uten.imp.common.finance.ProcurementOrderClosurePolicy.recalculate(
+                em, "SUBCONTRACT", fact.orderItemId());
+        if (arrivalControl != null) arrivalControl.getObject().refreshAfterReturn(
+                "SUBCONTRACT", List.of(fact.orderItemId()));
         Map<String, Object> snapshot = new LinkedHashMap<>(snapshot(fact, null, null));
         snapshot.put("lossQty", shortfall);
         snapshot.put("lossPct", lossPct);
         snapshot.put("allowedShortfallQty", allowedShortfall);
         if (wasteId != null) snapshot.put("wasteId", wasteId.toString());
-        if (changeLogId != null) snapshot.put("qtyChangeLogId", changeLogId.toString());
+        snapshot.put("settlementBasis", "RECEIVED_PLUS_LOSS");
         if (note != null && !note.isBlank()) snapshot.put("note", note);
         appendEvent(caseId, "ACCEPT_LOSS_DECIDED", actorUser, actorEmployee, snapshot);
         publishResolved(caseId, locked.version() + 1, "ACCEPT_LOSS_DECIDED");
@@ -498,9 +510,7 @@ public class SubcontractShortDeliveryService
      * 用户口径「最后一批 >= 100 就可以直接入库并结束, 损耗 100」——此前 WAITING_MORE 案件
      * 只刷数字不结案, 单子要等预计到齐日过期、调度器催人再点一次。
      *
-     * <p>同一张收货单可能一次结掉同一订货单的多行。逐行结案能走通，靠的是
-     * {@code changeQtyForShortDelivery} 不再受「无在办财务复核」那道闸约束——否则第二行会被
-     * 第一行自己开出来的复核 case 挡死，连它刚开的损耗单一起回滚。
+     * <p>同一收货单的多行分别记录损耗履约，不改变商业订货数量，不产生改量财务待办。
      */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -539,8 +549,7 @@ public class SubcontractShortDeliveryService
         List<ItemFacts> tolerant = new ArrayList<>();
         for (ItemFacts fact : loadFacts(orderItemIds, false)) {
             if (!fact.materialFullyIssued()) continue;
-            String severity = SubcontractShortDeliveryPolicy.severity(
-                    fact.orderedQty(), fact.allowedLossPct(), fact.deliveredQty());
+            String severity = remainingSeverity(fact, fact.deliveredQty());
             OpenCase open = openCases.get(fact.orderItemId());
             if (severity == null) {
                 // 到齐即完结。补开路径开的案件没有「登记 → recordArrival」替它落 COMPLETED——
@@ -810,7 +819,10 @@ public class SubcontractShortDeliveryService
             String unitName, Integer lineNo, BigDecimal orderedQty, BigDecimal allowedLossPct,
             BigDecimal orderUnitRate, BigDecimal deliveredQty,
             /** 本行的料是不是已经全部发给委外商了(没有 OPEN 计划行还留着未发的量)。 */
-            boolean materialFullyIssued) {
+            boolean materialFullyIssued, BigDecimal settledLossQty) {
+        ItemFacts {
+            settledLossQty = settledLossQty == null ? BigDecimal.ZERO : settledLossQty;
+        }
         String goodsLabel() {
             StringBuilder label = new StringBuilder();
             if (goodsName != null && !goodsName.isBlank()) label.append(goodsName);
@@ -820,17 +832,22 @@ public class SubcontractShortDeliveryService
         }
     }
 
-    /**
-     * 自动结案的前置体检：结案第三步的受控改量有一条下限——订货量不得低于「供应商手上还
-     * 没交代的料」。结案第一步的损耗单会把短交那一份核销掉，所以只要供应商手上的料不超过
-     * 原订货量，改量就一定过得去。
-     *
-     * <p>为什么必须先体检而不是 try/catch：这段跑在**仓库确认入库的同一个事务**里，
-     * changeQtyForShortDelivery 一旦抛异常就会把整个事务标成只能回滚——货就入不了库了。
-     * 自动结案是锦上添花，绝不能反过来把仓库正常的入库动作搞失败。体检没过的行原样留着，
-     * 由人去判定页按 ADR-098 的老路处理(多半是供应商手上还有多发的料，要先退料或记损耗)。
-     */
+    /** Automatic loss closure requires the delivered quantity to have passed quality and reached stock. */
     private boolean autoCloseWouldSucceed(ItemFacts fact) {
+        BigDecimal stocked = jdbc.queryForObject("""
+                SELECT GREATEST(COALESCE(SUM(
+                    CASE WHEN inspection.id IS NULL THEN item.qty*item.unit_rate
+                         WHEN inspection.status='REVERSED' THEN 0
+                         ELSE inspection.warehouse_stocked_base_qty END),0)
+                    - MAX(COALESCE(order_item.returned_qty,0)*order_item.unit_rate),0)
+                FROM subcontract_order_items order_item
+                LEFT JOIN subcontract_receipt_items item ON item.order_item_id=order_item.id AND NOT item.is_deleted
+                LEFT JOIN subcontract_receipts receipt ON receipt.id=item.receipt_id
+                LEFT JOIN procurement_inspection_items inspection
+                  ON inspection.receipt_type='SUBCONTRACT' AND inspection.receipt_item_id=item.id
+                WHERE order_item.id=? AND (item.id IS NULL OR (receipt.status=1 AND NOT receipt.is_deleted))
+                """, BigDecimal.class, fact.orderItemId());
+        if (stocked == null || stocked.compareTo(fact.deliveredQty().multiply(fact.orderUnitRate())) < 0) return false;
         try {
             BigDecimal supplierHeld = materialPlans.minimumOrderQtyFromIssued(
                     fact.orderItemId(), fact.orderUnitRate());
@@ -851,8 +868,18 @@ public class SubcontractShortDeliveryService
      */
     private String severityOf(ItemFacts fact, BigDecimal deliveredQty) {
         if (!fact.materialFullyIssued()) return null;
-        return SubcontractShortDeliveryPolicy.severity(
-                fact.orderedQty(), fact.allowedLossPct(), deliveredQty);
+        return remainingSeverity(fact, deliveredQty);
+    }
+
+    private static BigDecimal outstandingShortfall(ItemFacts fact, BigDecimal deliveredQty) {
+        return fact.orderedQty().subtract(deliveredQty).subtract(fact.settledLossQty())
+                .max(BigDecimal.ZERO).setScale(4, RoundingMode.HALF_UP);
+    }
+
+    private static String remainingSeverity(ItemFacts fact, BigDecimal deliveredQty) {
+        if (outstandingShortfall(fact, deliveredQty).signum() == 0) return null;
+        // The original total allowance is shared with past accepted loss, never granted again.
+        return SubcontractShortDeliveryPolicy.severity(fact.orderedQty(), fact.allowedLossPct(), deliveredQty);
     }
 
     private record OpenCase(UUID id, String status, LocalDate expectedCompleteBy, long version,
@@ -872,7 +899,7 @@ public class SubcontractShortDeliveryService
                 rs.getString(10), rs.getString(11), rs.getString(12), rs.getString(13),
                 rs.getObject(14) == null ? null : rs.getInt(14),
                 rs.getBigDecimal(15), rs.getBigDecimal(16), rs.getBigDecimal(17), rs.getBigDecimal(18),
-                rs.getBoolean(19)),
+                rs.getBoolean(19), rs.getBigDecimal(20)),
                 ids.toArray());
     }
 
@@ -908,7 +935,7 @@ public class SubcontractShortDeliveryService
     private void openCase(ItemFacts fact, UUID receiptId, String receiptBillNo, String severity,
                           UUID actorUser, UUID actorEmployee, boolean acknowledged) {
         UUID caseId = UUID.randomUUID();
-        BigDecimal shortfall = SubcontractShortDeliveryPolicy.shortfallQty(fact.orderedQty(), fact.deliveredQty());
+        BigDecimal shortfall = outstandingShortfall(fact, fact.deliveredQty());
         jdbc.update("""
                 INSERT INTO subcontract_short_delivery_cases (
                     id, order_id, order_item_id, order_bill_no_snapshot, supplier_id, goods_id, color_id, unit_id,
@@ -955,7 +982,7 @@ public class SubcontractShortDeliveryService
 
     private void updateFigures(UUID caseId, ItemFacts fact, String severity, UUID receiptId,
                                String receiptBillNo, boolean countArrival) {
-        BigDecimal shortfall = SubcontractShortDeliveryPolicy.shortfallQty(fact.orderedQty(), fact.deliveredQty());
+        BigDecimal shortfall = outstandingShortfall(fact, fact.deliveredQty());
         jdbc.update("""
                 UPDATE subcontract_short_delivery_cases
                 SET ordered_qty = ?, allowed_loss_pct = ?, floor_qty = ?, delivered_qty = ?,
@@ -1011,7 +1038,8 @@ public class SubcontractShortDeliveryService
         snapshot.put("orderedQty", fact.orderedQty());
         snapshot.put("allowedLossPct", fact.allowedLossPct());
         snapshot.put("deliveredQty", fact.deliveredQty());
-        snapshot.put("shortfallQty", SubcontractShortDeliveryPolicy.shortfallQty(fact.orderedQty(), fact.deliveredQty()));
+        snapshot.put("shortfallQty", outstandingShortfall(fact, fact.deliveredQty()));
+        snapshot.put("settledLossQtyBefore", fact.settledLossQty());
         if (receiptBillNo != null) snapshot.put("receiptBillNo", receiptBillNo);
         if (note != null) snapshot.put("note", note);
         return snapshot;

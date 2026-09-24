@@ -47,7 +47,7 @@ class FloatingCapsuleNavBar extends StatelessWidget {
 
   /// 根据最长 label 计算单格宽度。
   ///
-  /// [textScaler] 必须传入（全局字号档 小/标准/大/超大/超超大 通过 MediaQuery
+  /// [textScaler] 必须传入（全局字号档（手机上）通过 MediaQuery
   /// textScaler 生效）——否则按 1.0 量出的宽度在大字号下偏小，文字溢出。
   /// [style] 是渲染侧的基准样式（titleMedium），量宽与渲染必须同源。
   static double calcItemWidth(

@@ -4,7 +4,7 @@
 // 解决超宽屏下内容被无限拉宽的问题：
 // - 内容最大宽度钳制在 maxWidth（默认 UtenBreakpoints.maxContentWidth = 1600）
 // - 居中显示，两侧留白
-// - 水平 gutter 随可用宽度自适应（<600: 16 / <840: 24 / >=840: 32）
+// - 水平 gutter 随可用宽度自适应（<600: 16 / <840: 24 / >=840: 32）；大字号按倍率反向收
 //
 // 注意：gutter 基于 LayoutBuilder 拿到的"可用宽度"（父容器实际宽度），
 // 而不是屏幕宽度——桌面端被侧边栏挤窄的内容区也能正确取 gutter。
@@ -26,6 +26,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/responsive/breakpoint.dart';
+import '../../core/responsive/display_zoom.dart';
 
 /// Uten 内容宽度收敛容器
 ///
@@ -103,11 +104,19 @@ class UtenContentContainer extends StatelessWidget {
   /// 页面传 false 退出，见类注释）。
   final bool selectable;
 
-  /// 响应式水平 gutter：<600 取 16，<840 取 24，>=840 取 32
-  static double gutterForWidth(double width) {
-    if (width < UtenBreakpoints.mediumStart) return 16;
-    if (width < UtenBreakpoints.expandedStart) return 24;
-    return 32;
+  /// 响应式水平 gutter：<600 取 16，<840 取 24，>=840 取 32。
+  ///
+  /// [fontZoom] 是字号档带来的整体放大倍率（UtenDisplayScale.fontZoom）：大字号时
+  /// gutter 按倍率反向收（最小 12），窗口上看留白基本不变——字放大、留白不跟着放大，
+  /// 把宽度让给内容（2026-09-24，docs/00-项目准则/04-字体与字号可调.md §一.2）。
+  static double gutterForWidth(double width, {double fontZoom = 1}) {
+    final base = width < UtenBreakpoints.mediumStart
+        ? 16.0
+        : width < UtenBreakpoints.expandedStart
+        ? 24.0
+        : 32.0;
+    if (fontZoom <= 1) return base;
+    return math.max(12.0, (base / fontZoom).roundToDouble());
   }
 
   @override
@@ -118,7 +127,10 @@ class UtenContentContainer extends StatelessWidget {
         final available = constraints.hasBoundedWidth
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
-        final gutter = gutterForWidth(available);
+        final gutter = gutterForWidth(
+          available,
+          fontZoom: UtenDisplayScale.fontZoomOf(context),
+        );
 
         Widget content = ConstrainedBox(
           constraints: BoxConstraints(maxWidth: math.min(maxWidth, available)),

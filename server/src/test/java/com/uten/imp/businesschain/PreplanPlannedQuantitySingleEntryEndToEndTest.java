@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * ADR-099 计划量单一入口(2026-09-21)的真库回归：顶层按本批数量下达车间后下层需求按
  * 计划产出量放大、既有自制锚点配额自动增长；下达采购「填多少下多少」由服务端分账；
  * 申请明细未订货时追加就地改大(V640)、已订货后另立新申请；下达时自动认领同主仓公共
- * 在途；下达预览真实跑一遍再整体回滚、库里一行不留。
+ * 在途；下达预览(ADR-115)是只读投影：不取锁、库里一行不写，结果与真实下达后的详情逐字段相等。
  *
  * <p><b>CI 必须显式设置 {@code UTEN_RUN_DB_TESTS=true}</b>，否则本类全部 SKIP。
  */
@@ -40,6 +40,8 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
     @Autowired JdbcTemplate db;
     @Autowired MaterialAnalysisService analyses;
     @Autowired MaterialAnalysisCommandService commands;
+    @Autowired javax.sql.DataSource dataSource;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
     private FullChainEndToEndTest fixture;
     @BeforeEach void prepare() { fixture=new FullChainEndToEndTest();beans.autowireBean(fixture); }
 
@@ -148,14 +150,16 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
     }
 
-    @Test void issuePreviewRunsTheRealCommandThenRollsBackEverything() {
+    @Test void issuePreviewIsAReadOnlyProjectionThatLeavesNothing() {
         Tree t=seed("preview");
         AnalysisView before=analyses.detail(t.analysis());
         AnalysisView preview=commands.previewIssuePlans(t.analysis(),previewOf(issue(before,t,"preview-root",new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("1500")))));
         // 预览结果就是真实下达后的样子：下层需求已按 1500 展开。
         qty("1500",material(preview,t.parentLine()).requiredQty());qty("1500",material(preview,t.childLine()).requiredQty());
         qty("1500",material(preview,t.buyLine()).requiredQty());
-        // 库里一行不留：计划、link、命令记录、版本号全部还原。
+        // 版本与指纹是当前库内的那一对(预览不改库, 客户端拿它提交真实下达不会 409)。
+        assertEquals(before.version(),preview.version());assertEquals(before.fingerprint(),preview.fingerprint());
+        // 库里一行不写：计划、link、命令记录、版本号都没有。
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_material_analysis_plan_links WHERE analysis_id=?",Integer.class,t.analysis()));
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_material_analysis_commands WHERE analysis_id=? AND idempotency_key LIKE 'planned-issue-%preview-root'",Integer.class,t.analysis()));
@@ -170,9 +174,8 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
     }
 
     /**
-     * ADR-107 评审补充：下达车间预览真实跑一遍下达(建计划、审核、写预留)再整体回滚, 主仓协调锁改取
-     * 共享模式后, 同一主仓两份分析的预览会同时写。两边反复同时预览：都成功、不互相等死或死锁,
-     * 库里一行不留。
+     * ADR-107 评审补充(ADR-115 起预览只读、不取锁)：同一主仓两份分析反复同时预览,
+     * 都成功、不互相等待, 库里一行不留。
      */
     @Test void concurrentIssuePreviewsInTheSameMainWarehouseBothSucceedAndLeaveNothing() throws Exception {
         Tree a=seed("parallel-preview-a");
@@ -197,6 +200,92 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
             assertEquals(pair.getValue().version(),after.version());assertEquals(pair.getValue().fingerprint(),after.fingerprint());
             qty("1000",material(after,t.parentLine()).requiredQty());
         }
+    }
+
+    /**
+     * ADR-115 验收: 同一组输入, 「预览结果」与「真实下达后 GET 详情」逐行逐字段相等。
+     * 顶层 1500 超量 + 既有自制锚点跟涨 + 立即审核(真实下达会写审核、执行段与预留)。
+     */
+    @Test void issuePreviewEqualsTheRealIssueForAnOverQuantityRootWithAnExistingAnchor() {
+        Tree t=seed("parity-root");
+        commands.issueWorkshopPlans(t.analysis(),issue(analyses.detail(t.analysis()),t,"parity-anchor",candidate(t.parentLine(),"1000")));
+        AnalysisView issued=assertPreviewEqualsIssue(t,issue(analyses.detail(t.analysis()),t,"parity-root-1500",
+                new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("1500"))),java.util.Set.of());
+        qty("1500",material(issued,t.childLine()).requiredQty());
+        qty("1500",product(issued,material(issued,t.parentLine()).planAnchorAnalysisLineId()).requestedQty());
+    }
+
+    /** 真实下达当场新建锚点(部分量 600): 除候选行自身(真实下达后才挂上锚点), 全表逐字段相等。 */
+    @Test void issuePreviewEqualsTheRealIssueForAPartialNewMakeAnchor() {
+        Tree t=seed("parity-new-anchor");
+        assertPreviewEqualsIssue(t,issue(analyses.detail(t.analysis()),t,"parity-parent-600",candidate(t.parentLine(),"600")),
+                java.util.Set.of(t.parentLine()));
+    }
+
+    /** 不立即审核(草稿计划): 归需求量记在「已提交」而不是「已审核」, 同样逐字段相等。 */
+    @Test void issuePreviewEqualsTheRealIssueForADraftWithoutApproval() {
+        Tree t=seed("parity-draft");
+        AnalysisView before=analyses.detail(t.analysis());
+        var request=new IssueWorkshopPlansRequest(before.version(),before.fingerprint(),"planned-issue-"+t.analysis()+"-parity-draft",
+                t.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),false,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("1200"))));
+        AnalysisView issued=assertPreviewEqualsIssue(t,request,java.util.Set.of());
+        qty("1000",product(issued,t.rootLine()).submittedQty());
+    }
+
+    /** ADR-104 并入既有计划 + 固定批量非线性单耗: 预览按「并入后的整批」重算, 与真实并入一致。 */
+    @Test void issuePreviewEqualsTheRealIssueWhenAppendingIntoAnExistingPlanOnANonLinearCurve() {
+        Tree t=seed("parity-merge",null,"1000",true);
+        var first=commands.issueWorkshopPlans(t.analysis(),issue(analyses.detail(t.analysis()),t,"parity-first-50",candidate(t.parentLine(),"50")));
+        var request=issue(analyses.detail(t.analysis()),t,"parity-append-25",candidate(t.parentLine(),"25"));
+        assertPreviewEqualsIssue(t,request,java.util.Set.of());
+        assertSameTask(first.plans().getFirst().planId(),segmentId(first.plans().getFirst().planId()),
+                segmentCode(segmentId(first.plans().getFirst().planId())),"75");
+    }
+
+    /**
+     * ADR-115 验收: 预览不取任何锁、不写库。另一个连接把分析表头、全部物料行与来源行
+     * FOR UPDATE 锁住并独占主仓协调锁——预览照样立即返回(取任何一把都要等到 lock_timeout)。
+     * 预览事务由数据库强制只读: 事务里任何写或行锁都会直接报错, 不可能「写了再回滚」。
+     */
+    @Test void issuePreviewTakesNoLockAndRunsInADatabaseEnforcedReadOnlyTransaction() throws Exception {
+        Tree t=seed("no-lock");
+        AnalysisView before=analyses.detail(t.analysis());
+        var request=preview(before,t,"no-lock",
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("1500"))),
+                List.of(typed(t.parentLine(),"1800")));
+        try (var holder=dataSource.getConnection()) {
+            holder.setAutoCommit(false);
+            try (var lock=holder.createStatement()) {
+                lock.execute("SELECT id FROM production_material_analyses WHERE id='"+t.analysis()+"' FOR UPDATE");
+                lock.execute("SELECT id FROM production_material_analysis_materials WHERE analysis_id='"+t.analysis()+"' FOR UPDATE");
+                lock.execute("SELECT id FROM production_material_analysis_items WHERE analysis_id='"+t.analysis()+"' FOR UPDATE");
+                lock.execute("SELECT pg_advisory_xact_lock(hashtextextended('MATERIAL-ANALYSIS-WAREHOUSE:"+t.world().warehouseId()+"',0))");
+            }
+            long started=System.nanoTime();
+            AnalysisView preview=commands.previewIssuePlans(t.analysis(),request);
+            long millis=(System.nanoTime()-started)/1_000_000L;
+            qty("1500",material(preview,t.parentLine()).requiredQty());
+            qty("1800",material(preview,t.childLine()).requiredQty());
+            assertTrue(millis<5_000,"预览不得等待任何分析/主仓锁, 实际 "+millis+"ms");
+            holder.rollback();
+        }
+        var readOnly=new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        readOnly.setReadOnly(true);
+        assertEquals("on",readOnly.execute(status->db.queryForObject("SHOW transaction_read_only",String.class)),
+                "@Transactional(readOnly=true) 必须落到数据库只读事务");
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
+        AnalysisView after=analyses.detail(t.analysis());
+        assertEquals(before.version(),after.version());assertEquals(before.fingerprint(),after.fingerprint());
+    }
+
+    private AnalysisView assertPreviewEqualsIssue(Tree t,IssueWorkshopPlansRequest request,java.util.Set<UUID> skip) {
+        AnalysisView preview=commands.previewIssuePlans(t.analysis(),previewOf(request));
+        commands.issueWorkshopPlans(t.analysis(),request);
+        AnalysisView issued=analyses.detail(t.analysis());
+        var mismatches=MaterialAnalysisPreviewParity.mismatches(preview,issued,skip);
+        assertTrue(mismatches.isEmpty(),"预览与真实下达后详情不一致:\n"+String.join("\n",mismatches));
+        return issued;
     }
 
     private AnalysisView previewAs(Tree t,AnalysisView view,UUID warehouse,String key,java.util.concurrent.CyclicBarrier start) throws Exception {

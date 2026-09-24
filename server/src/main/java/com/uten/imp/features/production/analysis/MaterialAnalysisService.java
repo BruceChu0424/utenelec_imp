@@ -1292,8 +1292,8 @@ public class MaterialAnalysisService {
      * 填在中间层的数量能像顶层一样把它自己的子层、孙层一路带大；节点自己的需求量、
      * 还需安排量一个字节不动(那是祖先决定的，不能被自己填的数覆盖)。</p>
      *
-     * <p><b>只有下达预览会传它</b>：预览整体回滚，库里不留痕。真实下达恒传空 Map，
-     * 此时这里与旧版逐字等价。</p>
+     * <p><b>只有下达预览会传它</b>(ADR-115 起预览不再调本方法, 走
+     * {@link #issuePreviewView} 的只读投影)。真实下达恒传空 Map。</p>
      */
     int refreshLocked(UUID analysisId, Map<UUID, BigDecimal> typedOutputByMaterialLine) {
         AnalysisHeader header = lockHeader(analysisId);
@@ -1311,29 +1311,10 @@ public class MaterialAnalysisService {
         stockEntitlement.restoreAllMakeDelegations(analysisId);
         reconcileSupplyActionStatuses(analysisId);
         if (rootSupply != null) rootSupply.ensureRootNodes(analysisId);
-        List<SourceLine> sources = loadSourceLines(analysisId, true);
-        // Existing fulfillment belongs to the admitted analysis snapshot. A later
-        // sales amendment must not roll back a real receipt merely because new
-        // planning now needs another finance review. Commands check admission
-        // for their selected source lines before creating any new commitment.
-        List<BomNode> nodes = loadBomTrees(sources);
-        Map<UUID, SourceLine> sourcesById = sources.stream()
-                .collect(Collectors.toMap(SourceLine::analysisItemId, source -> source));
-        Map<String,List<BigDecimal>> plannedBatches = plannedMaterialBatches(analysisId);
-        // 层级表上「顶层供给行」那一行填的数量：第 1 层子件是按**来源行**展开的，
-        // 不走 parentSupply，所以它要并到来源的计划产出量上(顶层直委外件按 1500
-        // 下达时，那颗我方供料的子件就要按 1500 备)。
-        Map<UUID, BigDecimal> typedSourceOutput =
-                typedSourceOutputs(analysisId, typedOutputByMaterialLine);
-        nodes = nodes.stream().map(node -> {
-            BomNode batched = node.withOutputBatches(plannedBatches.getOrDefault(
-                    node.analysisItemId()+"|"+Objects.toString(node.parentNodeKey(),""),List.of()));
-            // 第 1 层按来源「计划产出量」展开（需求与已下达计划取大，ADR-099）。
-            return node.depth()==1 ? batched.withSnapshotRequiredQty(batched.requiredForOutput(
-                    plannedSourceOutput(sourcesById.get(node.analysisItemId()), typedSourceOutput)))
-                    : batched;
-        }).toList();
-        validateExactPegRefreshCompatibility(analysisId, nodes);
+        RefreshTree tree = refreshTree(analysisId, true, typedOutputByMaterialLine,
+                MaterialAnalysisIssuePreviewOverlay.NONE);
+        List<BomNode> nodes = tree.nodes();
+        List<SourceLine> sources = tree.sources();
         // Reconcile identity membership, not every row's active flag. Existing
         // exact/borrow endpoints remain active when the same BOM node survives.
         em.createNativeQuery("""
@@ -1359,28 +1340,7 @@ public class MaterialAnalysisService {
         // 写入前后各取一次已确认节点键，统计本次被清空的人工确认数（返回给刷新响应）。
         MaterialAnalysisSnapshotBaseline baseline = MaterialAnalysisSnapshotBaseline.load(em, analysisId, NODE_STRUCTURE_COLUMNS);
         Set<String> confirmedBefore = baseline.confirmedNodes();
-        List<NodeSnapshotRow> snapshotRows = new ArrayList<>(nodes.size());
-        for (BomNode node : nodes) {
-            MaterialDimension key = node.dimension();
-            StockValue stock = availability.stock().getOrDefault(key, StockValue.ZERO);
-            SourceLine source = Optional.ofNullable(
-                    sourcesById.get(node.analysisItemId())).orElseThrow();
-            InboundValue inbound = availability.inboundOnOrBefore(
-                    key, source.deliveryDate());
-            BigDecimal available = stock.availableAfterSafety(node.safetyStock());
-            BigDecimal required = node.snapshotRequiredQty();
-            BigDecimal shortage = required.subtract(available)
-                    .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING);
-            // 初始快照与 persistAllocationSnapshot 权威口径一致：MAKE 与有子层
-            // SUBCONTRACT（先自制链）都可能下层未齐；随后权威重算会覆盖本值。
-            boolean lowerPending = node.hasChildren()
-                    && ("MAKE".equals(node.suggestion())
-                        || "SUBCONTRACT".equals(node.suggestion()))
-                    && shortage.signum() > 0;
-            snapshotRows.add(new NodeSnapshotRow(node, required, available,
-                    stock.reserved(), inbound.qty(), shortage, inbound.expectedDate(),
-                    lowerPending));
-        }
+        List<NodeSnapshotRow> snapshotRows = nodeSnapshotRows(tree, availability);
         boolean structureChanged = upsertNodeSnapshots(analysisId, snapshotRows, baseline);
         int routeResets = 0;
         if (structureChanged && !confirmedBefore.isEmpty()) {
@@ -1393,12 +1353,79 @@ public class MaterialAnalysisService {
             }
         }
         validateActiveBorrowEndpointsAfterRefresh(analysisId);
-        persistAllocationSnapshot(
-                analysisId, header.warehouseId(), sources, nodes, availability, snapshotRows, baseline,
-                typedOutputByMaterialLine);
+        AllocationSnapshot allocation = computeAllocationSnapshot(
+                analysisId, header.warehouseId(), sources, nodes, availability, snapshotRows,
+                typedOutputByMaterialLine, MaterialAnalysisIssuePreviewOverlay.NONE);
+        if (allocation.hasBorrows()) {
+            persistBorrowEffectiveQuantities(allocation.borrowEffective());
+        }
+        updateSourceReadiness(analysisId, allocation.sourceReadyRows());
+        updateNodeAllocations(analysisId, allocation.nodeRows(), baseline);
         if (rootSupply != null) rootSupply.refreshRootNodes(analysisId,activeFutureCoverageByMaterial(analysisId));
         bumpFingerprint(analysisId);
         return routeResets;
+    }
+
+    /** 刷新的来源行与 BOM 树(第 1 层已按来源计划产出量展开)。 */
+    private record RefreshTree(List<SourceLine> sources, Map<UUID, SourceLine> sourcesById, List<BomNode> nodes) {}
+
+    /**
+     * 刷新第一段(只读): 来源行、BOM 树、计划批次与第 1 层按「计划产出量」展开。
+     * 真实刷新与下达预览共用; 预览把下达会写的事实经 [overlay] 叠进来。
+     */
+    private RefreshTree refreshTree(UUID analysisId, boolean lockSales,
+            Map<UUID, BigDecimal> typedOutputByMaterialLine, MaterialAnalysisIssuePreviewOverlay overlay) {
+        List<SourceLine> sources = loadSourceLines(analysisId, lockSales, overlay);
+        // Existing fulfillment belongs to the admitted analysis snapshot. A later
+        // sales amendment must not roll back a real receipt merely because new
+        // planning now needs another finance review. Commands check admission
+        // for their selected source lines before creating any new commitment.
+        List<BomNode> nodes = loadBomTrees(sources);
+        Map<UUID, SourceLine> sourcesById = sources.stream()
+                .collect(Collectors.toMap(SourceLine::analysisItemId, source -> source));
+        Map<String,List<BigDecimal>> plannedBatches = plannedMaterialBatches(analysisId, overlay);
+        // 层级表上「顶层供给行」那一行填的数量：第 1 层子件是按**来源行**展开的，
+        // 不走 parentSupply，所以它要并到来源的计划产出量上(顶层直委外件按 1500
+        // 下达时，那颗我方供料的子件就要按 1500 备)。
+        Map<UUID, BigDecimal> typedSourceOutput =
+                typedSourceOutputs(analysisId, typedOutputByMaterialLine);
+        nodes = nodes.stream().map(node -> {
+            BomNode batched = node.withOutputBatches(plannedBatches.getOrDefault(
+                    node.analysisItemId()+"|"+Objects.toString(node.parentNodeKey(),""),List.of()));
+            // 第 1 层按来源「计划产出量」展开（需求与已下达计划取大，ADR-099）。
+            return node.depth()==1 ? batched.withSnapshotRequiredQty(batched.requiredForOutput(
+                    plannedSourceOutput(sourcesById.get(node.analysisItemId()), typedSourceOutput)))
+                    : batched;
+        }).toList();
+        validateExactPegRefreshCompatibility(analysisId, nodes);
+        return new RefreshTree(sources, sourcesById, nodes);
+    }
+
+    /** 刷新第二段(纯计算): 每个节点的库存/在途/缺口初值。 */
+    private List<NodeSnapshotRow> nodeSnapshotRows(RefreshTree tree, AvailabilitySnapshot availability) {
+        List<NodeSnapshotRow> snapshotRows = new ArrayList<>(tree.nodes().size());
+        for (BomNode node : tree.nodes()) {
+            MaterialDimension key = node.dimension();
+            StockValue stock = availability.stock().getOrDefault(key, StockValue.ZERO);
+            SourceLine source = Optional.ofNullable(
+                    tree.sourcesById().get(node.analysisItemId())).orElseThrow();
+            InboundValue inbound = availability.inboundOnOrBefore(
+                    key, source.deliveryDate());
+            BigDecimal available = stock.availableAfterSafety(node.safetyStock());
+            BigDecimal required = node.snapshotRequiredQty();
+            BigDecimal shortage = required.subtract(available)
+                    .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING);
+            // 初始快照与 computeAllocationSnapshot 权威口径一致：MAKE 与有子层
+            // SUBCONTRACT（先自制链）都可能下层未齐；随后权威重算会覆盖本值。
+            boolean lowerPending = node.hasChildren()
+                    && ("MAKE".equals(node.suggestion())
+                        || "SUBCONTRACT".equals(node.suggestion()))
+                    && shortage.signum() > 0;
+            snapshotRows.add(new NodeSnapshotRow(node, required, available,
+                    stock.reserved(), inbound.qty(), shortage, inbound.expectedDate(),
+                    lowerPending));
+        }
+        return snapshotRows;
     }
 
     private static String nodeRef(UUID analysisItemId, String nodeKey) {
@@ -1417,7 +1444,7 @@ public class MaterialAnalysisService {
         return keys;
     }
 
-    /** 刷新初始快照的一行（权威分配随后由 persistAllocationSnapshot 覆盖）。 */
+    /** 刷新初始快照的一行（权威分配随后由 computeAllocationSnapshot 覆盖）。 */
     private record NodeSnapshotRow(
             BomNode node, BigDecimal required, BigDecimal available, BigDecimal reserved,
             BigDecimal inbound, BigDecimal shortage, LocalDate expectedReadyDate,
@@ -1552,6 +1579,15 @@ public class MaterialAnalysisService {
     }
 
     /** Deduplicate the same source/path key before one statement; retain the original encounter order. */
+    /** 与 {@link #NODE_STRUCTURE_COLUMNS} 逐列对应的结构值。 */
+    private static Object[] nodeStructure(BomNode node) {
+        return new Object[] {
+                node.parentNodeKey(), node.bomItemId(), node.goodsId(), node.colorId(), node.unitId(), node.depth(), node.path(),
+                node.perProductQty(), node.controlStage(), node.consumptionBasis(), node.basisOutputQty(),
+                node.allowPartialPackage(), node.hardGate(), node.bomQty(), node.parentPerProductQty(),
+                "EDGE_RULE", node.suggestion(), true};
+    }
+
     private boolean upsertNodeSnapshots(UUID analysisId, List<NodeSnapshotRow> rows, MaterialAnalysisSnapshotBaseline baseline) {
         Map<String, NodeSnapshotRow> distinct = new LinkedHashMap<>();
         for (NodeSnapshotRow row : rows) {
@@ -1559,11 +1595,7 @@ public class MaterialAnalysisService {
         }
         List<NodeSnapshotRow> ordered = distinct.values().stream().filter(row -> {
             BomNode node = row.node();
-            return !baseline.unchangedStructure(node.analysisItemId(), node.nodeKey(), new Object[] {
-                    node.parentNodeKey(), node.bomItemId(), node.goodsId(), node.colorId(), node.unitId(), node.depth(), node.path(),
-                    node.perProductQty(), node.controlStage(), node.consumptionBasis(), node.basisOutputQty(),
-                    node.allowPartialPackage(), node.hardGate(), node.bomQty(), node.parentPerProductQty(),
-                    "EDGE_RULE", node.suggestion(), true});
+            return !baseline.unchangedStructure(node.analysisItemId(), node.nodeKey(), nodeStructure(node));
         }).toList();
         UUID actorId = currentUser.requireId();
         for (int from = 0; from < ordered.size(); from += NODE_WRITE_CHUNK) {
@@ -2265,15 +2297,15 @@ public class MaterialAnalysisService {
      * and cannot reserve this pool, so every actionable depth-one readiness projection and
      * production hard-gate allocation uses one conserved pool.</p>
      */
-    private void persistAllocationSnapshot(
+    private AllocationSnapshot computeAllocationSnapshot(
             UUID analysisId,
             UUID warehouseId,
             List<SourceLine> sources,
             List<BomNode> nodes,
             AvailabilitySnapshot availability,
             List<NodeSnapshotRow> inputs,
-            MaterialAnalysisSnapshotBaseline storedSnapshot,
-            Map<UUID, BigDecimal> typedOutputByMaterialLine) {
+            Map<UUID, BigDecimal> typedOutputByMaterialLine,
+            MaterialAnalysisIssuePreviewOverlay overlay) {
         Map<String, NodeSnapshotRow> inputsByNode = inputs.stream().collect(Collectors.toMap(
                 row -> nodeAllocationKey(row.node()), row -> row));
         Map<UUID, List<BomNode>> directBySource = nodes.stream()
@@ -2297,7 +2329,7 @@ public class MaterialAnalysisService {
         // 子层展开基准的输入：父件已被外部最终件在途覆盖的量，以及父件已经
         // 承诺由我方制造的量。两条语句都按 analysis_id 一次取回。
         Map<String, ParentSupplyCommitment> parentSupply = withTypedOutput(
-                analysisId, parentSupplyCommitments(analysisId), typedOutputByMaterialLine);
+                analysisId, parentSupplyCommitments(analysisId, overlay), typedOutputByMaterialLine, overlay);
         // V307 精确到货归属：先在扣除安全库存后的真实可分配池内，为原供应
         // 分摊行锁定 secured coverage；同分析兄弟产品只能看到扣除后的共享池。
         // 没有 exact 子账的历史 V298 预留仍留在共享池，维持兼容语义。
@@ -2335,9 +2367,6 @@ public class MaterialAnalysisService {
                 sources, nodes, tunedStock, externalHardCommitments,
                 effectiveRoutes, delegatedMakeNodes,
                 subcontractTakeoverByNode, parentSupply, tuning);
-        if (!borrows.isEmpty()) {
-            persistBorrowEffectiveQuantities(borrowEffective);
-        }
         NestedDiagnosticPlan nestedDiagnostic = projection.nestedDiagnostic();
         nodes = projection.nodes();
         StagePlan stagePlan = projection.stagePlan();
@@ -2368,7 +2397,6 @@ public class MaterialAnalysisService {
             sourceReadyRows.add(new SourceReadyRow(source.analysisItemId(), source.unplannedReadyQty(readyStart),
                     source.unplannedReadyQty(readyFinish), source.unplannedReadyQty(readyShip), source.unplannedReadyQty(readyByDate)));
         }
-        updateSourceReadiness(analysisId, sourceReadyRows);
 
         Map<String, NodeAllocation> hardAllocations = projection.hardAllocations();
         Map<String, NodeAllocation> allocations = projection.allocations();
@@ -2417,8 +2445,15 @@ public class MaterialAnalysisService {
                     allocation.shortageQty(), lowerPending, input.available(), input.reserved(),
                     node.safetyStock(), input.inbound(), input.expectedReadyDate()));
         }
-        updateNodeAllocations(analysisId, allocationRows, storedSnapshot);
+        return new AllocationSnapshot(sourceReadyRows, allocationRows, !borrows.isEmpty(), borrowEffective);
     }
+
+    /**
+     * 权威分配快照(纯计算结果): 真实刷新据此写回来源齐套列、物料行数量列与借用生效量;
+     * 下达预览(ADR-115)只把它叠进内存视图, 一行不写。
+     */
+    private record AllocationSnapshot(List<SourceReadyRow> sourceReadyRows, List<NodeAllocationRow> nodeRows,
+                                      boolean hasBorrows, Map<UUID, BigDecimal> borrowEffective) {}
 
     /** 权威分配快照写回的一行（按 analysis_item_id + node_key 定位活动节点）。 */
     private record SourceReadyRow(UUID sourceId, BigDecimal start, BigDecimal finish, BigDecimal ship, BigDecimal byDate) {}
@@ -3081,15 +3116,23 @@ public class MaterialAnalysisService {
         return result;
     }
 
-    private Map<String,List<BigDecimal>> plannedMaterialBatches(UUID analysisId) {
-        Map<String,List<BigDecimal>> result = new LinkedHashMap<>();
+    /**
+     * [overlay] 非空时(下达预览, ADR-115): 本批新计划追加在各自键的末尾(计划按建立时间
+     * 排序), ADR-104 并入既有计划的追加量加在那张计划的最后一批上——与真实下达后重读
+     * 本查询的结果一致。
+     */
+    private Map<String,List<BigDecimal>> plannedMaterialBatches(
+            UUID analysisId, MaterialAnalysisIssuePreviewOverlay overlay) {
+        record Batch(String key, UUID planId, BigDecimal qty) {}
+        List<Batch> batches = new ArrayList<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT COALESCE(parent.analysis_item_id,source.id),
                        CASE WHEN parent.node_role='ROOT_SUPPLY' THEN NULL ELSE parent.node_key END,
                        CASE WHEN source.source_type = 'MAKE_COMPONENT'
                          THEN GREATEST(COALESCE(segment.planned_qty,item.qty)
                            -COALESCE(finished.qty,item.iqty,0),0)
-                         ELSE COALESCE(segment.planned_qty,item.qty) END * COALESCE(item.unit_rate,1)
+                         ELSE COALESCE(segment.planned_qty,item.qty) END * COALESCE(item.unit_rate,1),
+                       plan.id
                 FROM production_plans plan
                 JOIN production_plan_items item ON item.plan_id=plan.id AND item.is_deleted=FALSE
                 JOIN production_material_analysis_items source
@@ -3112,9 +3155,23 @@ public class MaterialAnalysisService {
                   AND plan.status IN (0,1) AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE
                 ORDER BY plan.created_at,plan.id,segment.segment_no
                 """).setParameter("analysisId",analysisId))) {
-            BigDecimal qty = decimal(row[2]);
-            if (qty.signum()>0) result.computeIfAbsent(
-                    uuid(row[0])+"|"+Objects.toString(row[1],""),ignored -> new ArrayList<>()).add(qty);
+            batches.add(new Batch(uuid(row[0])+"|"+Objects.toString(row[1],""), uuid(row[3]), decimal(row[2])));
+        }
+        if (!overlay.isNone()) {
+            Map<UUID, Integer> lastBatchOfPlan = new HashMap<>();
+            for (int index = 0; index < batches.size(); index++) lastBatchOfPlan.put(batches.get(index).planId(), index);
+            lastBatchOfPlan.forEach((planId, index) -> {
+                BigDecimal grown = overlay.grownPlanBatch(planId);
+                if (grown == null) return;
+                Batch batch = batches.get(index);
+                batches.set(index, new Batch(batch.key(), planId, batch.qty().add(grown)));
+            });
+            overlay.appendedBatches().forEach((key, appended) ->
+                    appended.forEach(qty -> batches.add(new Batch(key, null, qty))));
+        }
+        Map<String,List<BigDecimal>> result = new LinkedHashMap<>();
+        for (Batch batch : batches) {
+            if (batch.qty().signum()>0) result.computeIfAbsent(batch.key(), ignored -> new ArrayList<>()).add(batch.qty());
         }
         return Map.copyOf(result);
     }
@@ -4113,12 +4170,21 @@ public class MaterialAnalysisService {
     }
 
     AnalysisView detailInternal(UUID analysisId, boolean enforceAccess) {
+        return detailInternal(analysisId, enforceAccess, MaterialAnalysisIssuePreviewOverlay.NONE);
+    }
+
+    /**
+     * [overlay] 非空时(下达预览, ADR-115)来源行与物料行的数量取内存投影, 其余事实照读库内;
+     * 视图推导与 GET 详情逐行同一套代码。
+     */
+    private AnalysisView detailInternal(
+            UUID analysisId, boolean enforceAccess, MaterialAnalysisIssuePreviewOverlay overlay) {
         AnalysisHeader header = readHeader(analysisId);
         if (enforceAccess) {
             access.requireReadable(header.makerId(), "物料分析不存在",scopeForAnalysis(header));
         }
-        List<SourceLine> sources = loadSourceLines(analysisId, false);
-        List<MaterialRow> materialRows = loadMaterialRows(analysisId);
+        List<SourceLine> sources = loadSourceLines(analysisId, false, overlay);
+        List<MaterialRow> materialRows = loadMaterialRows(analysisId, overlay);
         SharedFutureIndex sharedFuture = sharedFutureSupply(
                 analysisId, header.warehouseId(), materialRows);
         Map<UUID, ClaimedFutureState> claimedFuture = sharedFutureClaimedByMaterial(analysisId);
@@ -4792,6 +4858,196 @@ public class MaterialAnalysisService {
     }
 
     /**
+     * 下达预览(ADR-115): 只读、不取任何锁、不建计划也不回滚。
+     *
+     * <p>[overlay] 已由命令服务装好「本批下达之后」会多出来的事实(本批计划的归需求量/
+     * 公共备货量、计划批次、锚点父节点的计划产出、新锚点的内部承诺),
+     * [typedOutputByMaterialLine] 是层级表上其余各行填的数量。这里按
+     * {@link #refreshWithAnchorGrowth} 的同一顺序——刷新投影 → 锚点配额跟涨/跟落 →
+     * (有调整时)再投影一次——全部在内存里算, 最后由与 GET 详情同一个视图构建器出视图。
+     * 刷新引擎、分配、锚点规则与顶层供给行只有一份代码, 预览与真实下达不会各算各的。</p>
+     *
+     * <p>分析的 BOM 结构与库内快照不一致(需要刷新改写结构、可能清掉人工确认的路线)时
+     * 直接 409, 请先刷新分析——预览不替真实刷新做结构决定。</p>
+     */
+    AnalysisView issuePreviewView(UUID analysisId, MaterialAnalysisIssuePreviewOverlay overlay,
+            Map<UUID, BigDecimal> typedOutputByMaterialLine) {
+        AnalysisHeader header = readHeader(analysisId);
+        if (!isOpenForFulfillment(header)) {
+            throw conflict("物料分析已结束，不能预览下达");
+        }
+        if (header.warehouseId() == null) {
+            throw conflict("物料分析未选择目标仓库");
+        }
+        Map<UUID, BigDecimal> previous = makeAnchorParentRequirements(analysisId);
+        projectPreview(analysisId, header.warehouseId(), typedOutputByMaterialLine, overlay, true);
+        AnalysisView view = detailInternal(analysisId, false, overlay);
+        if (previous.isEmpty()) return view;
+        boolean adjusted = false;
+        for (AnchorQuotaChange change : planAnchorQuotaChanges(analysisId, view, previous)) {
+            // 与真实 UPDATE 的守卫同口径: 退到 0 不在这里做(走撤回链路)。
+            if (change.previousRequested().add(change.delta()).signum() <= 0) continue;
+            overlay.addSourceQuantities(change.anchorId(), change.delta(),
+                    BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+            overlay.addInternalCommitment(change.parentNodeRef(), change.delta());
+            adjusted = true;
+        }
+        if (!adjusted) return view;
+        projectPreview(analysisId, header.warehouseId(), typedOutputByMaterialLine, overlay, false);
+        return detailInternal(analysisId, false, overlay);
+    }
+
+    /** 下达预览只读取表头, 不取锁。 */
+    AnalysisHeader readOnlyHeader(UUID analysisId) {
+        return readHeader(analysisId);
+    }
+
+    /**
+     * 下达预览(ADR-115)里的一张「本批计划」, 已由命令服务按真实下达的同一套校验解析好:
+     * [lineId] 是计划挂的分析行(来源行或既有锚点); 为 null 时表示真实下达会当场为
+     * [newAnchorParentMaterialId] 新建锚点, [newAnchorQuota] 是它的初始配额。
+     * [growPlanId] 非空表示按 ADR-104 并入那张既有计划。
+     */
+    record IssuePreviewSeed(UUID lineId, UUID newAnchorParentMaterialId, BigDecimal newAnchorQuota,
+                            BigDecimal qty, BigDecimal demandQty, BigDecimal surplusQty, UUID growPlanId) {}
+
+    /**
+     * 把本批计划折成「真实下达后重读会多出来的事实」叠进 [overlay]: 分析行的归需求量/
+     * 公共备货量(计划关联行触发器同步到分析行的那两列)、计划批次、锚点父节点的计划产出、
+     * 新锚点的内部承诺、顶层供给行的未完工计划量。
+     */
+    void addIssuePreviewSeeds(UUID analysisId, List<IssuePreviewSeed> seeds, boolean approveNow,
+            MaterialAnalysisIssuePreviewOverlay overlay) {
+        if (seeds.isEmpty()) return;
+        Map<UUID, SourceLine> sources = loadSourceLines(analysisId, false).stream()
+                .collect(Collectors.toMap(SourceLine::analysisItemId, source -> source));
+        // 分析行 → 其锚点父物料行的两种键: 计划产出(父节点键)与计划批次(顶层供给行按来源汇总)。
+        Map<UUID, String[]> anchorParents = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT item.id, parent.analysis_item_id || '|' || parent.node_key,
+                       parent.analysis_item_id || '|'
+                           || CASE WHEN parent.node_role = 'ROOT_SUPPLY' THEN '' ELSE parent.node_key END
+                FROM production_material_analysis_items item
+                JOIN production_material_analysis_materials parent
+                  ON parent.id = item.parent_analysis_material_id
+                 AND parent.analysis_id = item.analysis_id
+                 AND parent.active = TRUE
+                WHERE item.analysis_id = :analysisId AND item.is_deleted = FALSE
+                  AND item.source_type IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')
+                """).setParameter("analysisId", analysisId))) {
+            anchorParents.put(uuid(row[0]), new String[] {string(row[1]), string(row[2])});
+        }
+        List<UUID> newAnchorParents = seeds.stream().map(IssuePreviewSeed::newAnchorParentMaterialId)
+                .filter(Objects::nonNull).distinct().toList();
+        Map<UUID, String[]> materialRefs = new HashMap<>();
+        if (!newAnchorParents.isEmpty()) {
+            for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT id, analysis_item_id || '|' || node_key,
+                           analysis_item_id || '|' || CASE WHEN node_role = 'ROOT_SUPPLY' THEN '' ELSE node_key END
+                    FROM production_material_analysis_materials
+                    WHERE analysis_id = :analysisId AND active = TRUE AND id IN (:ids)
+                    """).setParameter("analysisId", analysisId).setParameter("ids", newAnchorParents))) {
+                materialRefs.put(uuid(row[0]), new String[] {string(row[1]), string(row[2])});
+            }
+        }
+        BigDecimal zero = BigDecimal.ZERO;
+        for (IssuePreviewSeed seed : seeds) {
+            if (seed.lineId() == null) {
+                String[] refs = materialRefs.get(seed.newAnchorParentMaterialId());
+                if (refs == null) throw conflict("候选物料节点不存在或路线未确认，请刷新后重试");
+                overlay.appendBatch(refs[1], seed.qty());
+                overlay.addPlannedOutput(refs[0], seed.qty());
+                if (seed.newAnchorQuota() != null && seed.newAnchorQuota().signum() > 0) {
+                    overlay.addInternalCommitment(refs[0], seed.newAnchorQuota());
+                }
+                continue;
+            }
+            SourceLine source = sources.get(seed.lineId());
+            if (source == null) throw validation("待生成计划产品不属于当前分析");
+            overlay.addSourceQuantities(seed.lineId(), zero,
+                    approveNow ? zero : seed.demandQty(), approveNow ? seed.demandQty() : zero, seed.surplusQty());
+            BigDecimal baseQty = seed.qty().multiply(source.unitRate());
+            String[] parent = anchorParents.get(seed.lineId());
+            if (seed.growPlanId() != null) overlay.growPlanBatch(seed.growPlanId(), baseQty);
+            else overlay.appendBatch(parent == null ? seed.lineId() + "|" : parent[1], baseQty);
+            if (parent != null) overlay.addPlannedOutput(parent[0], seed.qty());
+            overlay.addOpenPlanQty(seed.lineId(), baseQty);
+        }
+    }
+
+    /** 下达预览的一轮刷新投影: 与 {@link #refreshLocked} 同一组计算, 结果只进 [overlay]。 */
+    private void projectPreview(UUID analysisId, UUID warehouseId, Map<UUID, BigDecimal> typedOutputByMaterialLine,
+            MaterialAnalysisIssuePreviewOverlay overlay, boolean requireStoredStructure) {
+        RefreshTree tree = refreshTree(analysisId, false, typedOutputByMaterialLine, overlay);
+        if (requireStoredStructure) requireStoredStructure(analysisId, tree.nodes());
+        AvailabilitySnapshot availability = availability(analysisId, warehouseId, tree.nodes(), tree.sources());
+        List<NodeSnapshotRow> snapshotRows = nodeSnapshotRows(tree, availability);
+        AllocationSnapshot allocation = computeAllocationSnapshot(analysisId, warehouseId, tree.sources(),
+                tree.nodes(), availability, snapshotRows, typedOutputByMaterialLine, overlay);
+        Map<String, MaterialAnalysisIssuePreviewOverlay.NodeSnapshot> nodes = new HashMap<>();
+        for (NodeAllocationRow row : allocation.nodeRows()) {
+            nodes.put(nodeRef(row.analysisItemId(), row.nodeKey()), new MaterialAnalysisIssuePreviewOverlay.NodeSnapshot(
+                    row.required(), row.available(), row.allocated(), row.reserved(), row.safety(),
+                    row.inbound(), row.shortage(), row.expectedReadyDate(), row.lowerPending()));
+        }
+        // 与 updateSourceReadiness 及其后顶层供给行「非自制根清零齐套列」同口径。
+        Map<UUID, BigDecimal[]> ready = new HashMap<>();
+        for (SourceReadyRow row : allocation.sourceReadyRows()) {
+            ready.put(row.sourceId(), new BigDecimal[] {row.finish(), row.byDate(), row.start(), row.finish(), row.ship()});
+        }
+        Map<UUID, MaterialAnalysisIssuePreviewOverlay.RootSnapshot> roots = new HashMap<>();
+        if (rootSupply != null) {
+            BigDecimal zero = BigDecimal.ZERO;
+            for (SourceLine source : tree.sources()) {
+                if (source.rootMaterialLineId() != null && source.rootRoute() != null
+                        && !"MAKE".equals(source.rootRoute())) {
+                    ready.put(source.analysisItemId(), new BigDecimal[] {zero, zero, zero, zero, zero});
+                }
+            }
+            Map<String, UUID> materialIds = activeBomMaterialIds(analysisId);
+            Map<UUID, BigDecimal> allocatedByMaterial = new HashMap<>();
+            nodes.forEach((ref, node) -> {
+                UUID id = materialIds.get(ref);
+                if (id != null) allocatedByMaterial.put(id, node.allocated());
+            });
+            for (MaterialAnalysisRootSupplyService.RootQuantityRow row : rootSupply.projectRootNodes(analysisId,
+                    activeFutureCoverageByMaterial(analysisId), allocatedByMaterial, overlay.openPlanQtyBySource())) {
+                roots.put(row.id(), new MaterialAnalysisIssuePreviewOverlay.RootSnapshot(row.required(), row.stock(),
+                        row.reserved(), row.safety(), row.allocated(), row.shortage(), row.inbound()));
+            }
+        }
+        overlay.replaceSnapshots(nodes, ready, roots);
+    }
+
+    /** 预览不做结构决定: 需要新增/停用节点或改写结构列时, 请先刷新分析。 */
+    private void requireStoredStructure(UUID analysisId, List<BomNode> nodes) {
+        MaterialAnalysisSnapshotBaseline baseline = MaterialAnalysisSnapshotBaseline.load(em, analysisId, NODE_STRUCTURE_COLUMNS);
+        Set<String> refs = new HashSet<>();
+        for (BomNode node : nodes) {
+            refs.add(nodeRef(node.analysisItemId(), node.nodeKey()));
+            if (!baseline.unchangedStructure(node.analysisItemId(), node.nodeKey(), nodeStructure(node))) {
+                throw conflict("物料分析的 BOM 结构已变化，请先刷新分析再预览下达");
+            }
+        }
+        if (activeBomMaterialIds(analysisId).size() != refs.size()) {
+            throw conflict("物料分析的 BOM 结构已变化，请先刷新分析再预览下达");
+        }
+    }
+
+    /** 活动 BOM 物料行: 节点键 → 物料行 id。 */
+    private Map<String, UUID> activeBomMaterialIds(UUID analysisId) {
+        Map<String, UUID> result = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT analysis_item_id, node_key, id
+                FROM production_material_analysis_materials
+                WHERE analysis_id = :analysisId AND active = TRUE AND node_role = 'BOM_COMPONENT'
+                """).setParameter("analysisId", analysisId))) {
+            result.put(nodeRef(uuid(row[0]), string(row[1])), uuid(row[2]));
+        }
+        return result;
+    }
+
+    /**
      * 让自制锚点的配额跟着来源需求走。
      *
      * <p>涨：只认**新增的来源需求**，老的物理缺口不能把配额撑大。</p>
@@ -4806,41 +5062,11 @@ public class MaterialAnalysisService {
     private boolean growMakeAnchorQuotasAfterSourcePreview(
             UUID analysisId, Map<UUID, BigDecimal> previousRequirements) {
         if (previousRequirements.isEmpty()) return false;
-        AnalysisView view=detailInternal(analysisId,false);
-        Map<UUID,ProductView> products=view.products().stream()
-                .collect(Collectors.toMap(ProductView::analysisLineId,product->product));
-        Map<UUID,BigDecimal> actionBackedAnchors=null;
         boolean changed=false;
-        for (MaterialView material:view.flatMaterials()) {
-            BigDecimal previous=previousRequirements.get(material.materialLineId());
-            if (previous==null || material.planAnchorAnalysisLineId()==null) continue;
-            BigDecimal delta=material.requiredQty().subtract(previous);
-            if (delta.signum()==0) continue;
-            BigDecimal admittedIncrease=delta.max(BigDecimal.ZERO);
-            ProductView anchor=products.get(material.planAnchorAnalysisLineId());
-            if (anchor==null || !SOURCE_MAKE_COMPONENT.equals(anchor.sourceType())
-                    || !Objects.equals(anchor.goodsId(),material.goodsId())
-                    || !Objects.equals(anchor.colorId(),material.colorId())
-                    || !Objects.equals(anchor.unitId(),material.unitId())) {
-                if (delta.signum()<0) continue;
-                throw conflict("来源变化后的物料与原计划锚点不一致，请先核对原任务");
-            }
-            String blocked=view.planningBlockedReasons().get(material.analysisLineId());
-            if (blocked!=null) {
-                if (delta.signum()<0) continue;
-                throw conflict(blocked);
-            }
-            if (delta.signum()<0) {
-                if (actionBackedAnchors==null) actionBackedAnchors=actionBackedAnchorQuantities(analysisId);
-                // 行动背书的那一截由撤回链路管, 不在这里退; 其余(下达车间建的锚点
-                // 本来就没有行动)照退。涨的那一侧对行动背书锚点也是加的, 只退不涨
-                // 或只涨不退都会让配额单向漂移。
-                BigDecimal actionFloor=actionBackedAnchors
-                        .getOrDefault(anchor.analysisLineId(),BigDecimal.ZERO);
-                BigDecimal decrease=delta.negate().min(anchor.remainingQty())
-                        .min(anchor.requestedQty().subtract(actionFloor).max(BigDecimal.ZERO))
-                        .max(BigDecimal.ZERO).setScale(4,RoundingMode.DOWN);
-                if (decrease.signum()==0) continue;
+        for (AnchorQuotaChange change : planAnchorQuotaChanges(
+                analysisId, detailInternal(analysisId,false), previousRequirements)) {
+            if (change.delta().signum()<0) {
+                BigDecimal decrease=change.delta().negate();
                 // 齐套列(ready_*)是按旧配额算的, 紧跟着的那次 refreshLocked 会重算,
                 // 但本条 UPDATE 必须先把它们压回新配额的余量内, 否则撞
                 // production_material_analysis_item_qty_chk。退到 0 不在这里做
@@ -4864,11 +5090,78 @@ public class MaterialAnalysisService {
                           AND requested_qty-:decrease>=submitted_qty+approved_qty
                           AND requested_qty-:decrease>0
                         """).setParameter("decrease",decrease).setParameter("actor",currentUser.requireId())
-                        .setParameter("child",anchor.analysisLineId()).setParameter("analysis",analysisId)
-                        .setParameter("parent",material.materialLineId())
-                        .setParameter("previous",anchor.requestedQty())
+                        .setParameter("child",change.anchorId()).setParameter("analysis",analysisId)
+                        .setParameter("parent",change.parentMaterialId())
+                        .setParameter("previous",change.previousRequested())
                         .executeUpdate();
                 if (shrunk==1) changed=true;
+                continue;
+            }
+            int updated=em.createNativeQuery("""
+                    UPDATE production_material_analysis_items
+                    SET requested_qty=requested_qty+:increase,updated_by=:actor,updated_at=now()
+                    WHERE id=:child AND analysis_id=:analysis AND parent_analysis_material_id=:parent
+                      AND source_type='MAKE_COMPONENT' AND is_deleted=FALSE AND requested_qty=:previous
+                    """).setParameter("increase",change.delta()).setParameter("actor",currentUser.requireId())
+                    .setParameter("child",change.anchorId()).setParameter("analysis",analysisId)
+                    .setParameter("parent",change.parentMaterialId()).setParameter("previous",change.previousRequested())
+                    .executeUpdate();
+            if (updated!=1) throw conflict("计划锚点需求已变化，请刷新后重试");
+            changed=true;
+        }
+        return changed;
+    }
+
+    /**
+     * 自制锚点配额的一次调整: delta 为正是涨、为负是退; parentNodeRef 是锚点父物料行的
+     * 节点键(内部承诺按它汇总); 退的那一侧只在「退后仍 ≥ 已提交+已审核且 > 0」时生效。
+     */
+    private record AnchorQuotaChange(UUID anchorId, UUID parentMaterialId, String parentNodeRef,
+                                     BigDecimal previousRequested, BigDecimal delta) {}
+
+    /**
+     * 锚点配额该怎么调(纯计算, 不写库): 真实刷新据此执行 UPDATE, 下达预览(ADR-115)
+     * 把同一组调整叠进内存投影——两条路径同一套规则。
+     */
+    private List<AnchorQuotaChange> planAnchorQuotaChanges(
+            UUID analysisId, AnalysisView view, Map<UUID, BigDecimal> previousRequirements) {
+        Map<UUID,ProductView> products=view.products().stream()
+                .collect(Collectors.toMap(ProductView::analysisLineId,product->product));
+        Map<UUID,BigDecimal> actionBackedAnchors=null;
+        List<AnchorQuotaChange> changes=new ArrayList<>();
+        for (MaterialView material:view.flatMaterials()) {
+            BigDecimal previous=previousRequirements.get(material.materialLineId());
+            if (previous==null || material.planAnchorAnalysisLineId()==null) continue;
+            BigDecimal delta=material.requiredQty().subtract(previous);
+            if (delta.signum()==0) continue;
+            BigDecimal admittedIncrease=delta.max(BigDecimal.ZERO);
+            ProductView anchor=products.get(material.planAnchorAnalysisLineId());
+            if (anchor==null || !SOURCE_MAKE_COMPONENT.equals(anchor.sourceType())
+                    || !Objects.equals(anchor.goodsId(),material.goodsId())
+                    || !Objects.equals(anchor.colorId(),material.colorId())
+                    || !Objects.equals(anchor.unitId(),material.unitId())) {
+                if (delta.signum()<0) continue;
+                throw conflict("来源变化后的物料与原计划锚点不一致，请先核对原任务");
+            }
+            String blocked=view.planningBlockedReasons().get(material.analysisLineId());
+            if (blocked!=null) {
+                if (delta.signum()<0) continue;
+                throw conflict(blocked);
+            }
+            String parentNodeRef=nodeRef(material.analysisLineId(),material.nodeKey());
+            if (delta.signum()<0) {
+                if (actionBackedAnchors==null) actionBackedAnchors=actionBackedAnchorQuantities(analysisId);
+                // 行动背书的那一截由撤回链路管, 不在这里退; 其余(下达车间建的锚点
+                // 本来就没有行动)照退。涨的那一侧对行动背书锚点也是加的, 只退不涨
+                // 或只涨不退都会让配额单向漂移。
+                BigDecimal actionFloor=actionBackedAnchors
+                        .getOrDefault(anchor.analysisLineId(),BigDecimal.ZERO);
+                BigDecimal decrease=delta.negate().min(anchor.remainingQty())
+                        .min(anchor.requestedQty().subtract(actionFloor).max(BigDecimal.ZERO))
+                        .max(BigDecimal.ZERO).setScale(4,RoundingMode.DOWN);
+                if (decrease.signum()==0) continue;
+                changes.add(new AnchorQuotaChange(anchor.analysisLineId(),material.materialLineId(),
+                        parentNodeRef,anchor.requestedQty(),decrease.negate()));
                 continue;
             }
             // Unplanned, submitted and approved-but-not-inbound quantities are one quota,
@@ -4877,19 +5170,10 @@ public class MaterialAnalysisService {
             BigDecimal increase=material.demandSupplyGapQty().subtract(openQuota).max(BigDecimal.ZERO)
                     .min(admittedIncrease).setScale(4,RoundingMode.CEILING);
             if (increase.signum()==0) continue;
-            int updated=em.createNativeQuery("""
-                    UPDATE production_material_analysis_items
-                    SET requested_qty=requested_qty+:increase,updated_by=:actor,updated_at=now()
-                    WHERE id=:child AND analysis_id=:analysis AND parent_analysis_material_id=:parent
-                      AND source_type='MAKE_COMPONENT' AND is_deleted=FALSE AND requested_qty=:previous
-                    """).setParameter("increase",increase).setParameter("actor",currentUser.requireId())
-                    .setParameter("child",anchor.analysisLineId()).setParameter("analysis",analysisId)
-                    .setParameter("parent",material.materialLineId()).setParameter("previous",anchor.requestedQty())
-                    .executeUpdate();
-            if (updated!=1) throw conflict("计划锚点需求已变化，请刷新后重试");
-            changed=true;
+            changes.add(new AnchorQuotaChange(anchor.analysisLineId(),material.materialLineId(),
+                    parentNodeRef,anchor.requestedQty(),increase));
         }
-        return changed;
+        return changes;
     }
 
     private void syncRequestedQuantities(
@@ -5030,6 +5314,12 @@ public class MaterialAnalysisService {
     }
 
     private List<SourceLine> loadSourceLines(UUID analysisId, boolean lockSales) {
+        return loadSourceLines(analysisId, lockSales, MaterialAnalysisIssuePreviewOverlay.NONE);
+    }
+
+    /** [overlay] 非空时(下达预览, ADR-115)把本批计划与锚点配额、齐套重算结果叠到库内来源行上。 */
+    private List<SourceLine> loadSourceLines(
+            UUID analysisId, boolean lockSales, MaterialAnalysisIssuePreviewOverlay overlay) {
         if (lockSales) {
             @SuppressWarnings("unchecked")
             List<UUID> salesIds = (List<UUID>) em.createNativeQuery("""
@@ -5116,7 +5406,12 @@ public class MaterialAnalysisService {
                 WHERE ai.analysis_id = :id AND ai.is_deleted = FALSE
                 ORDER BY ai.line_priority, ai.delivery_date NULLS LAST, ai.id
                 """).setParameter("id", analysisId));
-        return rows.stream().map(SourceLine::from).toList();
+        List<SourceLine> sources = rows.stream().map(SourceLine::from).toList();
+        if (overlay.isNone()) return sources;
+        return sources.stream().map(source -> {
+            MaterialAnalysisIssuePreviewOverlay.SourceDelta delta = overlay.source(source.analysisItemId());
+            return delta == null ? source : source.withPreview(delta);
+        }).toList();
     }
 
     private void validateSourceCapacity(List<SourceLine> sources) {
@@ -5749,6 +6044,28 @@ public class MaterialAnalysisService {
     }
 
     private List<MaterialRow> loadMaterialRows(UUID analysisId) {
+        return loadMaterialRows(analysisId, MaterialAnalysisIssuePreviewOverlay.NONE);
+    }
+
+    /** [overlay] 非空时(下达预览, ADR-115)数量列取内存重算值, 结构列与主档列仍取库内。 */
+    private List<MaterialRow> loadMaterialRows(UUID analysisId, MaterialAnalysisIssuePreviewOverlay overlay) {
+        List<MaterialRow> rows = loadStoredMaterialRows(analysisId);
+        if (overlay.isNone()) return rows;
+        return rows.stream().map(row -> {
+            MaterialAnalysisIssuePreviewOverlay.NodeSnapshot node =
+                    overlay.node(nodeRef(row.analysisItemId(), row.nodeKey()));
+            if (node != null) return row.withSnapshot(node.required(), node.available(), node.allocated(),
+                    node.reserved(), node.safety(), node.inbound(), node.shortage(),
+                    node.expectedReadyDate(), node.lowerPending());
+            MaterialAnalysisIssuePreviewOverlay.RootSnapshot root = overlay.root(row.id());
+            if (root != null) return row.withSnapshot(root.required(), root.available(), root.allocated(),
+                    root.reserved(), root.safety(), root.inbound(), root.shortage(),
+                    row.expectedReadyDate(), row.lowerLevelPending());
+            return row;
+        }).toList();
+    }
+
+    private List<MaterialRow> loadStoredMaterialRows(UUID analysisId) {
         return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT m.id, m.analysis_item_id, m.node_key,
                        m.goods_id, g.code, g.name, g.spec,
@@ -6265,7 +6582,12 @@ public class MaterialAnalysisService {
      * 那部分已完工的量——一旦这里改成 required − produced，毛需求缩了而覆盖
      * 没缩，缺口会被算小，车间反而少备料。</p>
      */
-    private Map<String, ParentSupplyCommitment> parentSupplyCommitments(UUID analysisId) {
+    /**
+     * [overlay] 非空时(下达预览, ADR-115)再叠上本批计划的计划产出(锚点/新锚点所在父节点)
+     * 与锚点配额差(内部承诺), 即真实下达后本查询重读会多出来的那部分。
+     */
+    private Map<String, ParentSupplyCommitment> parentSupplyCommitments(
+            UUID analysisId, MaterialAnalysisIssuePreviewOverlay overlay) {
         Map<String, BigDecimal> external = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery(
                 ACTIVE_FUTURE_COVERAGE_SQL + """
@@ -6362,6 +6684,10 @@ public class MaterialAnalysisService {
                 """).setParameter("analysisId", analysisId))) {
             planned.merge(string(row[0]), decimal(row[1]), BigDecimal::add);
         }
+        if (!overlay.isNone()) {
+            overlay.plannedOutputByNode().forEach((key, qty) -> planned.merge(key, qty, BigDecimal::add));
+            overlay.internalCommitmentByNode().forEach((key, qty) -> internal.merge(key, qty, BigDecimal::add));
+        }
         if (external.isEmpty() && internal.isEmpty() && planned.isEmpty()) return Map.of();
         Map<String, ParentSupplyCommitment> result = new LinkedHashMap<>();
         Set<String> keys = new LinkedHashSet<>(external.keySet());
@@ -6433,7 +6759,7 @@ public class MaterialAnalysisService {
      */
     private Map<String, ParentSupplyCommitment> withTypedOutput(
             UUID analysisId, Map<String, ParentSupplyCommitment> committed,
-            Map<UUID, BigDecimal> typedOutputByMaterialLine) {
+            Map<UUID, BigDecimal> typedOutputByMaterialLine, MaterialAnalysisIssuePreviewOverlay overlay) {
         if (typedOutputByMaterialLine == null || typedOutputByMaterialLine.isEmpty()) return committed;
         List<UUID> lineIds = typedOutputByMaterialLine.entrySet().stream()
                 .filter(entry -> entry.getValue() != null && entry.getValue().signum() > 0)
@@ -6458,7 +6784,11 @@ public class MaterialAnalysisService {
                   AND owner.active = TRUE
                   AND owner.id IN (:lineIds)
                 """).setParameter("analysisId", analysisId).setParameter("lineIds", lineIds))) {
-            peers.add(new Peer(uuid(row[0]), string(row[1]), decimal(row[2])));
+            // 下达预览第二轮(锚点配额增长后)按上一轮内存重算的需求拆分, 与真实刷新重读
+            // 上一轮写回值同口径。
+            MaterialAnalysisIssuePreviewOverlay.NodeSnapshot projected = overlay.node(string(row[1]));
+            peers.add(new Peer(uuid(row[0]), string(row[1]),
+                    projected == null ? decimal(row[2]) : projected.required()));
         }
         if (peers.isEmpty()) return committed;
         Map<UUID, List<Peer>> byOwner = peers.stream()
@@ -7905,6 +8235,27 @@ public class MaterialAnalysisService {
                     row.length > 51 ? decimal(row[51]) : BigDecimal.ZERO);
         }
 
+        /** 下达预览(ADR-115): 叠上本批计划/锚点配额差与重算后的齐套列; 其余字段原样。 */
+        SourceLine withPreview(MaterialAnalysisIssuePreviewOverlay.SourceDelta delta) {
+            return new SourceLine(analysisItemId, sourceType, salesOrderItemId, salesOrderId, salesOrderNo,
+                    orderDate, deliveryDate, clientName, goodsId, goodsCode, goodsName, spec,
+                    colorId, colorName, unitId, unitName, unitRate,
+                    requestedQty.add(delta.requested()), submittedQty.add(delta.submitted()),
+                    approvedQty.add(delta.approved()),
+                    salesQty, shippedQty, returnedQty, flagQty, reservedQty, plannedQty, producedQty,
+                    activeDraftQty, orderStatus, orderStopped, orderClosed, orderDeleted, orderItemDeleted,
+                    sourceRef, sourceReason, allocationPriority,
+                    delta.readyNow() == null ? readyNowQty : delta.readyNow(),
+                    delta.readyByDate() == null ? readyByDateQty : delta.readyByDate(),
+                    delta.readyStart() == null ? readyStartQty : delta.readyStart(),
+                    delta.readyFinish() == null ? readyFinishQty : delta.readyFinish(),
+                    delta.readyShip() == null ? readyShipQty : delta.readyShip(),
+                    parentAnalysisLineId, parentGoodsName, orderFinanceConfirmed,
+                    rootMaterialLineId, rootFulfilledQty, rootRoute,
+                    owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName,
+                    plannedSurplusQty.add(delta.surplus()));
+        }
+
         BigDecimal remainingAnalysisQty() {
             return requestedQty.subtract(submittedQty).subtract(approvedQty).subtract(rootFulfilledQty)
                     .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
@@ -8268,6 +8619,19 @@ public class MaterialAnalysisService {
         }
         MaterialDimension dimension() {
             return new MaterialDimension(goodsId, colorId, unitId);
+        }
+        /** 下达预览(ADR-115): 换上内存重算的数量列(与刷新写回的列一一对应)。 */
+        MaterialRow withSnapshot(BigDecimal required, BigDecimal available, BigDecimal allocated,
+                                 BigDecimal reserved, BigDecimal safety, BigDecimal inbound,
+                                 BigDecimal shortage, LocalDate expectedReady, boolean lowerPending) {
+            return new MaterialRow(id, analysisItemId, nodeKey, goodsId, goodsCode, goodsName, spec,
+                    colorId, colorName, unitId, unitName, depth, path, parentNodeKey, parentGoodsId,
+                    controlStage, consumptionBasis, basisOutputQty, allowPartialPackage, hardGate,
+                    bomQty, parentPerProductQty, perProductQty,
+                    required, available, allocated, reserved, safety, inbound, shortage,
+                    expectedReady, suggestion, confirmedRoute, routeReason, lowerPending,
+                    minOrderQty, orderMultipleQty, owningWarehouseId, owningWarehouseName,
+                    owningWorkshopId, owningWorkshopName);
         }
         MaterialView toView(List<WarehouseBreakdown> breakdown,
                             List<DownstreamReference> references,

@@ -148,19 +148,6 @@ public class FulfillmentMutationLocks {
     }
 
     /**
-     * 本事务是「只读可用量、最后整笔回滚」的预览: 主仓协调锁取共享模式(预览之间并行,
-     * 与真实下达/入库互斥)。必须在本事务第一次 {@link #acquire} 之前调用。
-     */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public void useSharedWarehouseLocksForReadOnlyPreview() {
-        FulfillmentLockState.State state = state();
-        if (state.prepared) {
-            throw FulfillmentLockState.conflict("预览须在取预锁之前声明只读，请刷新后重试");
-        }
-        state.sharedWarehouseLocks = true;
-    }
-
-    /**
      * For callbacks after their own writes: only coverage, never the pre-write status fingerprint.
      * 纯内存比较调用方<b>声明的已知 id</b>; 超出集合是足迹声明缺口, 不可重跑并记 ERROR。
      */
@@ -279,14 +266,14 @@ public class FulfillmentMutationLocks {
     /**
      * 主仓协调锁仍是阻塞式咨询锁: 在锁管理器里排队(大致先来先得), 死锁由数据库检测。等待上限就是
      * 连接上的 lock_timeout(应用连接默认 10 秒, 见 uten.database.lock-timeout; 后台任务可在自己的事务里
-     * 调短), 到点拿不到回可重跑 409「有人正在处理同一仓库的单据」。只读预览取共享模式, 预览之间互不排队。
+     * 调短), 到点拿不到回可重跑 409「有人正在处理同一仓库的单据」。物料分析下达预览自 ADR-115 起
+     * 是只读投影, 不再取这把锁。
      *
      * <p>走 JDBC 直接执行并在这里接住等锁超时: 不经 JPA 查询异常转换, Hibernate 不会把事务标成只能回滚
      * (数据库事务已因这条语句出错而作废, 调用方的保存点回滚仍能照常恢复)。</p>
      */
     private void lockMainWarehouses(FulfillmentLockState.State state, Collection<UUID> mainWarehouses) {
-        String sql = "SELECT " + (state.sharedWarehouseLocks ? "pg_advisory_xact_lock_shared" : "pg_advisory_xact_lock")
-                + "(hashtextextended(?,0))";
+        String sql = "SELECT pg_advisory_xact_lock(hashtextextended(?,0))";
         for (UUID warehouse : sorted(mainWarehouses)) {
             String key = "MATERIAL-ANALYSIS-WAREHOUSE:" + warehouse;
             boolean acquired = em.unwrap(Session.class).doReturningWork(connection -> {

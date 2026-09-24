@@ -114,6 +114,29 @@ class ApiClient {
     }
   }
 
+  /// Read-only POST computation (a preview that carries a request body) that
+  /// the caller can abandon: [cancelToken] aborts the transport when the page
+  /// goes away. Never use it for commands; a cancelled command may still have
+  /// committed on the server.
+  Future<Map<String, dynamic>> postCancellable(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final r = await _dio.post<dynamic>(
+        path,
+        data: body,
+        queryParameters: query,
+        cancelToken: cancelToken,
+      );
+      return _asMap(r.data);
+    } on DioException catch (e) {
+      throw _convert(e);
+    }
+  }
+
   Future<Map<String, dynamic>> post(
     String path, {
     Object? body,

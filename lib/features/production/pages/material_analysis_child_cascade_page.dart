@@ -83,6 +83,12 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
   int _previewGeneration = 0;
   bool _previewing = false;
 
+  /// 预览单飞 + 尾随(ADR-115)：同一时刻最多 1 个预览在途；在途期间又改了数只记
+  /// [_previewTrailing]，这一趟回来后按**最新**的数补发一次。离开页面取消在途那份。
+  bool _previewInFlight = false;
+  bool _previewTrailing = false;
+  CancelToken? _previewCancelToken;
+
   bool _running = false;
 
   /// 顶部说明默认收起。
@@ -194,6 +200,8 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
   @override
   void dispose() {
     _previewDebounce?.cancel();
+    _previewTrailing = false;
+    _previewCancelToken?.cancel('child cascade preview disposed');
     _grid.removeListener(_trackManualDeselection);
     final visible = _grid.rows.toSet();
     for (final row in _allRows) {
@@ -512,8 +520,16 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
       setState(() {});
       return;
     }
+    if (_previewInFlight) {
+      // 单飞：上一份还在路上，只记「回来后按最新的数再要一次」；在途那份照常装上。
+      _previewTrailing = true;
+      return;
+    }
     final generation = ++_previewGeneration;
     _previewing = true;
+    _previewInFlight = true;
+    final cancelToken = CancelToken();
+    _previewCancelToken = cancelToken;
     // 这份重算是按**此刻**这些数算的。等它回来的这段时间用户可能又改了几下，
     // 所以记下请求时各行的数：回来以后分母按请求时那个数摆正，再把用户后来
     // 多改的那部分补算一次，屏幕不会先跳回旧数字再跳回来。
@@ -533,6 +549,7 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
           includeSeedIssue: _canPreviewSeedIssue,
           seedPending: _seedPending,
           willIssue: _grid.isSelected,
+          cancelToken: cancelToken,
         );
         if (!mounted || generation != _previewGeneration || view == null) {
           return;
@@ -562,8 +579,17 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         );
       } finally {
         if (generation == _previewGeneration) _previewing = false;
+        _previewInFlight = false;
+        if (identical(_previewCancelToken, cancelToken)) {
+          _previewCancelToken = null;
+        }
       }
     });
+    // 尾随：在途期间用户又改过数，按此刻的数补发一次(提交进行中不发)。
+    if (_previewTrailing && mounted && !_running) {
+      _previewTrailing = false;
+      unawaited(_refreshPreview());
+    }
   }
 
   /// 按 [view] 重建行集，并继承用户已填的数量 / 车间 / 负责人 / 勾选。
@@ -1270,6 +1296,7 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
     String? parentOnlyNote,
   }) async {
     _previewDebounce?.cancel();
+    _previewTrailing = false;
     _previewGeneration++;
     setState(() {
       _running = true;

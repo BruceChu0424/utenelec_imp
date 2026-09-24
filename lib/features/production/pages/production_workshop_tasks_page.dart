@@ -122,6 +122,13 @@ class _ProductionWorkshopTasksPageState
     description: '正在按当前生产路线复核物料到位情况，完成后自动刷新。',
   );
 
+  /// 催计划(ADR-117): 一次纯网络提交 + 整页重拉。
+  static const _busyUrge = (
+    semanticsKey: Key('workshop-planning-urge-busy'),
+    title: '正在提醒计划员',
+    description: '正在把缺的料告诉计划员，完成后自动刷新。',
+  );
+
   /// 网络段之后的整页重拉段: 换文案不撤遮罩, 免得提示已经弹出来、表格还停在
   /// 旧事实(表格组件在有数据时刷新是零画面的)。
   ///
@@ -555,6 +562,17 @@ class _ProductionWorkshopTasksPageState
           enabled: !_navigating,
           onTap: () => _recheckMaterials(task),
         ),
+      if (task.canUrgePlanning && task.waitingForPlanning)
+        UtenMenuItem(
+          label: task.urgeCoolingDown(DateTime.now())
+              ? '催计划(刚催过，${_clock(task.planningNextUrgeAt!)} 后可再催)'
+              : task.planningUrgeCount > 0
+              ? '再催一次计划'
+              : '催计划(缺的料还没下单)',
+          icon: Icons.campaign_rounded,
+          enabled: !busy && !task.urgeCoolingDown(DateTime.now()),
+          onTap: () => _urgePlanning(task),
+        ),
       if (_isPreparing &&
           (!_canStartTask(task) || !_routeAllowsKitActions(task)))
         UtenMenuItem(
@@ -819,6 +837,18 @@ class _ProductionWorkshopTasksPageState
     }
     if (task.startRoute == null) {
       return '请先确认生产路线，再按所选路线备料和开工';
+    }
+    // ADR-117：缺的料计划还没下单——料没人去订就到不了，先说这个。
+    if (task.waitingForPlanning &&
+        task.segmentStatus != 'IN_PROGRESS' &&
+        !task.canStart &&
+        !task.canRequestDraw) {
+      final named = task.materialPlanningGapSummary == null
+          ? ''
+          : '（${task.materialPlanningGapSummary}）';
+      return '还有 ${task.materialPlanningGapKindCount} 种料计划没下单$named，'
+          '料没订就到不了；'
+          '${task.planningUrgeCount > 0 ? '已催计划 ${task.planningUrgeCount} 次，计划下单后这里会自动更新' : '打开任务详情可以点「催计划」提醒计划员'}';
     }
     if (task.startRoute == 'BATCH') {
       return '请按本批物料共同支持的产量办理分批生产领料；各批独立开工和报工';
@@ -1153,6 +1183,58 @@ class _ProductionWorkshopTasksPageState
     }
   }
 
+  /// 催计划(ADR-117)：缺的料里有计划还没下单的，提醒计划员去下单。30 分钟内
+  /// 再点不会再打扰计划员，如实告诉车间什么时候可以再催。
+  Future<void> _urgePlanning(ProductionExecutionWorkbenchSegment task) async {
+    if (!task.canUrgePlanning || _navigating || _loading) return;
+    try {
+      final result = await _runBusy(
+        _busyUrge,
+        () => ref
+            .read(productionExecutionWorkbenchRepositoryProvider)
+            .urgePlanning(task.segmentId),
+      );
+      if (!mounted) return;
+      if (result.notified) {
+        context.appSuccess(
+          result.urgeCount > 1
+              ? '已再次提醒计划员(第 ${result.urgeCount} 次)，计划下单后这里会自动更新'
+              : '已提醒计划员，计划下单后这里会自动更新',
+        );
+      } else {
+        final next = result.nextUrgeAllowedAt;
+        context.appInfo(
+          next == null
+              ? '刚催过，计划员已经收到提醒，请稍后再催'
+              : '刚催过，计划员已经收到提醒；${_clock(next)} 以后可以再催',
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        context.appWarning(
+          productionErrorMessage(error, fallback: '催计划没有成功，请刷新后重试'),
+        );
+        await _reloadAfterChange();
+      }
+    }
+  }
+
+  /// 时间点 → 中国时间「HH:mm」(今天)或「MM-dd HH:mm」。
+  static String _clock(DateTime instant) {
+    final china = ChinaDateTime.fromInstant(instant);
+    final today = ChinaDateTime.fromInstant(DateTime.now());
+    final hm =
+        '${china.hour.toString().padLeft(2, '0')}:'
+        '${china.minute.toString().padLeft(2, '0')}';
+    if (china.year == today.year &&
+        china.month == today.month &&
+        china.day == today.day) {
+      return hm;
+    }
+    return '${china.month.toString().padLeft(2, '0')}-'
+        '${china.day.toString().padLeft(2, '0')} $hm';
+  }
+
   /// 报工入口唯一：勾选后右下角悬浮「批量报工(N)」进入汇总报工页，
   /// 一次提交（服务端口径：一次报工=同一车间；跨车间选择在这里给明确提示）。
   Future<void> _reportSelected() async {
@@ -1291,6 +1373,14 @@ class _ProductionWorkshopTasksPageState
                 const SizedBox(height: UtenSpacing.s12),
                 Text(_flowStageOf(task).label),
                 const SizedBox(height: UtenSpacing.s8),
+                if (task.waitingForPlanning) ...[
+                  _planningGapBlock(
+                    dialogContext,
+                    task,
+                    onUrge: () => Navigator.of(dialogContext).pop('urge'),
+                  ),
+                  const SizedBox(height: UtenSpacing.s8),
+                ],
                 // 逐种物料(ADR-095/096)：自制子件只有交到本任务后才算已领(直送或经仓库)；
                 // 齐套生产到齐前不预留，「仓库已到」按齐套口径显示实物。
                 Text(
@@ -1384,7 +1474,93 @@ class _ProductionWorkshopTasksPageState
         await _openMaterialUsage(task);
       case 'start':
         await _startTasks([task]);
+      case 'urge':
+        await _urgePlanning(task);
     }
+  }
+
+  /// 详情里的「计划还没下单」提示块(ADR-117)：品红底色 + 喇叭图标，一眼看出
+  /// 是「料还没人去订」而不是「在路上」；右侧就是「催计划」按钮。
+  Widget _planningGapBlock(
+    BuildContext context,
+    ProductionExecutionWorkbenchSegment task, {
+    required VoidCallback onUrge,
+  }) {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final accent = dark ? UtenColors.fuchsiaOnDark : UtenColors.fuchsia;
+    final text = dark ? UtenColors.fuchsiaOnDark : UtenColors.fuchsiaText;
+    final cooling = task.urgeCoolingDown(DateTime.now());
+    final urgedAt = task.planningUrgedAt;
+    return Container(
+      key: ValueKey('workshop-planning-gap-${task.segmentId}'),
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: dark ? 0.14 : 0.08),
+        border: Border.all(color: accent.withValues(alpha: 0.45)),
+        borderRadius: BorderRadius.circular(UtenRadius.md),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.campaign_rounded, color: accent, size: 28),
+          const SizedBox(width: UtenSpacing.s12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '还有 ${task.materialPlanningGapKindCount} 种料计划没下单',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: text,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (task.materialPlanningGapSummary != null)
+                  Text(
+                    task.materialPlanningGapSummary!,
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                Text(
+                  task.planningUrgeCount > 0 && urgedAt != null
+                      ? '已催 ${task.planningUrgeCount} 次 · 最近 ${_clock(urgedAt)}'
+                            '${task.planningUrgedByName == null ? '' : '（${task.planningUrgedByName}）'}'
+                      : '料没订就到不了，点右边按钮提醒计划员去下单',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: UtenSpacing.s12),
+          if (task.canUrgePlanning)
+            FilledButton.icon(
+              key: ValueKey('workshop-detail-urge-${task.segmentId}'),
+              style: FilledButton.styleFrom(
+                backgroundColor: accent,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: cooling ? null : onUrge,
+              icon: const Icon(Icons.campaign_rounded),
+              label: Text(
+                cooling
+                    ? '${_clock(task.planningNextUrgeAt!)} 后可再催'
+                    : task.planningUrgeCount > 0
+                    ? '再催一次'
+                    : '催计划',
+              ),
+            )
+          else
+            Text(
+              '找车间负责人催',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   static String _taskQuantity(double value) =>
@@ -1540,6 +1716,8 @@ class _ProductionWorkshopTasksPageState
     awaitingWarehouseKindCount: task.materialAwaitingWarehouseKindCount,
     lineSidePendingKindCount: task.materialLineSidePendingKindCount,
     supportedOutputQty: task.materialSupportedOutputQty,
+    planningGapKindCount: task.materialPlanningGapKindCount,
+    planningUrged: task.planningUrgeCount > 0,
   );
 
   /// 「物料」列的分段摘要(ADR-095/096)：已领 a/n 种；缺 k 种(自制子件 j)红；
@@ -1563,6 +1741,13 @@ class _ProductionWorkshopTasksPageState
             ? '缺 ${task.materialShortKindCount} 种(自制子件 ${task.materialShortMakeKindCount})'
             : '缺 ${task.materialShortKindCount} 种',
         _MaterialSummaryTone.short,
+      ));
+    }
+    // ADR-117：缺的料里计划还没下单的，单独用品红点出来(车间可以催计划)。
+    if (task.materialPlanningGapKindCount > 0) {
+      parts.add((
+        '计划未下单 ${task.materialPlanningGapKindCount} 种',
+        _MaterialSummaryTone.planning,
       ));
     }
     if (task.materialDrawableKindCount > 0) {
@@ -1607,6 +1792,10 @@ class _ProductionWorkshopTasksPageState
       if (task.materialShortKindCount > 0)
         '未到 ${task.materialShortKindCount} 种'
             '${task.materialShortMakeKindCount > 0 ? '(其中 ${task.materialShortMakeKindCount} 种由自制子件工单供给，做完直送本车间或入库后领料)' : '(采购/委外未入库)'}',
+      if (task.materialPlanningGapKindCount > 0)
+        '其中计划还没下单 ${task.materialPlanningGapKindCount} 种'
+            '${task.materialPlanningGapSummary == null ? '' : '：${task.materialPlanningGapSummary}'}'
+            '${task.planningUrgeCount > 0 ? '（已催 ${task.planningUrgeCount} 次）' : '，可以在详情里「催计划」'}',
       '已投料可产 ${_taskQuantity(task.materialSupportedOutputQty)}'
           '${task.productUnitName ?? ''}'
           '，已预留可产 ${_taskQuantity(task.materialPreparedOutputQty)}${task.productUnitName ?? ''}',
@@ -2106,6 +2295,8 @@ class _ProductionWorkshopTasksPageState
               dark ? UtenColors.errorOnDark : UtenColors.errorText,
             _MaterialSummaryTone.drawable =>
               dark ? UtenColors.successOnDark : UtenColors.successText,
+            _MaterialSummaryTone.planning =>
+              dark ? UtenColors.fuchsiaOnDark : UtenColors.fuchsiaText,
             _MaterialSummaryTone.muted => theme.colorScheme.onSurfaceVariant,
             _MaterialSummaryTone.plain => null,
           };
@@ -2263,4 +2454,4 @@ class _ProductionWorkshopTasksPageState
 }
 
 /// 「物料」列分段的着色档：缺料=红、可领=绿、待发=灰、其余默认。
-enum _MaterialSummaryTone { plain, short, drawable, muted }
+enum _MaterialSummaryTone { plain, short, planning, drawable, muted }

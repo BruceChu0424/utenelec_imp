@@ -220,6 +220,7 @@ UtenStatusBadgeType productionFlowBadgeType(ProductionFlowStage stage) =>
       ProductionFlowTone.toDraw => UtenStatusBadgeType.info,
       ProductionFlowTone.toDrawPartial => UtenStatusBadgeType.violet,
       ProductionFlowTone.waiting => UtenStatusBadgeType.warning,
+      ProductionFlowTone.waitPlanning => UtenStatusBadgeType.fuchsia,
       ProductionFlowTone.decide => UtenStatusBadgeType.danger,
       ProductionFlowTone.pending => UtenStatusBadgeType.neutral,
     };
@@ -248,6 +249,10 @@ Color productionFlowToneColor(ThemeData theme, ProductionFlowTone tone) =>
             ? UtenColors.violetOnDark
             : UtenColors.violet,
       ProductionFlowTone.waiting => UtenColors.warning,
+      ProductionFlowTone.waitPlanning =>
+        theme.brightness == Brightness.dark
+            ? UtenColors.fuchsiaOnDark
+            : UtenColors.fuchsia,
       ProductionFlowTone.decide =>
         theme.brightness == Brightness.dark
             ? UtenColors.errorOnDark

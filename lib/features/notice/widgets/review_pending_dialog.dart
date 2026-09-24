@@ -58,6 +58,12 @@ String workbenchRouteFor(
   'SUBCONTRACT_PREPARATION_REQUIRED' ||
   'SUBCONTRACT_ORDER_PREPARATION_DISPATCHED' =>
     RouteName.productionMaterialAnalysis,
+  // ADR-117 车间催计划：直落被催的那一份物料分析(?analysisId=)。
+  'PRODUCTION_PLANNING_URGED' =>
+    actionRoute != null &&
+            actionRoute.startsWith('${RouteName.productionMaterialAnalysis}?')
+        ? actionRoute
+        : RouteName.productionMaterialAnalysis,
   'PROCUREMENT_IQC_STOCK_IN_PENDING' => RouteName.warehouseQualityResults,
   'PRODUCTION_DRAW_PENDING' => RouteName.warehouseDrawTasks,
   'PROCUREMENT_FINANCE_APPROVED' => RouteName.warehouseInboundTasks,
@@ -587,6 +593,7 @@ String _eventGroupLabel(String? sourceEvent) => switch (sourceEvent) {
   'SALES_ORDER_APPROVED' => '订单已确认待分析',
   'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED' => '车间任务',
   'PRODUCTION_DRAW_PENDING' => '领料待出库',
+  'PRODUCTION_PLANNING_URGED' => '车间催下单',
   'SUBCONTRACT_PREPARATION_REQUIRED' => '委外准备',
   'SUBCONTRACT_ORDER_PREPARATION_DISPATCHED' => '委外订货已派出',
   'PROFILE_CHANGE_SUBMITTED' => '信息变更待审核',
@@ -608,6 +615,7 @@ IconData _eventIcon(String? sourceEvent) => switch (sourceEvent) {
   'SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP' => Icons.local_shipping_outlined,
   'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED' =>
     Icons.precision_manufacturing_outlined,
+  'PRODUCTION_PLANNING_URGED' => Icons.campaign_outlined,
   // 人事域（HrNoticeService）
   'PROFILE_CHANGE_SUBMITTED' => Icons.badge_outlined,
   'VISITOR_APPLY_SUBMITTED' => Icons.person_add_alt_outlined,

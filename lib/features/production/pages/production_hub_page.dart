@@ -124,9 +124,17 @@ class ProductionHubPage extends ConsumerWidget {
                     location: canCreatePlan
                         ? RouteName.productionMaterialAnalysis
                         : RouteName.productionPlanList,
-                    // 本卡没有别的待办徽章，草稿徽章独占右上角浮层（badge）——
-                    // 这是用户点名要的位置，行内后缀会被标题挤得看不见。
-                    badge: const UtenDraftBadge(
+                    // ADR-117：车间在催计划下单的任务数(红，待办)占 badge 槽；
+                    // 本人草稿按 UtenHubCard 口径退到标题右侧行内。没有在催时
+                    // badge 槽为空，草稿照旧在标题旁可见。
+                    badge: UtenNotificationBadge(
+                      count: ref.watch(
+                        badgeEntryTodoProvider(
+                          BadgeEntry.productionPlanningUrges,
+                        ),
+                      ),
+                    ),
+                    labelSuffix: const UtenDraftBadge(
                       kind: DraftDocKind.productionPlan,
                     ),
                   ),
@@ -272,6 +280,7 @@ class _Entry {
     required this.location,
     this.badge,
     this.progressBadge,
+    this.labelSuffix,
   });
 
   final IconData icon;
@@ -293,6 +302,9 @@ class _Entry {
   /// 放「已经在办、还没完、现在不用我动手」的数; 两个槽同时有数是正常的,
   /// 它们回答的是两个问题(我还欠多少活 / 我手上还有多少在跑), 不是双计。
   final Widget? progressBadge;
+
+  /// 标题右侧行内的次要计数(一张卡同时有待办和草稿时，草稿退到这里)。
+  final Widget? labelSuffix;
 }
 
 class _EntryTile extends StatelessWidget {
@@ -308,6 +320,7 @@ class _EntryTile extends StatelessWidget {
       onTap: () => goFrom(context, entry.location),
       badge: entry.badge,
       progressBadge: entry.progressBadge,
+      labelSuffix: entry.labelSuffix,
     );
   }
 }

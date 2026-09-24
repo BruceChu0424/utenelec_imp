@@ -81,6 +81,29 @@ void main() {
     );
   });
 
+  // ADR-117：车间催计划的待办卡直落被催的那一份物料分析；只认物料分析页自己的
+  // 深链，别的 actionRoute(被篡改或旧数据)一律回落到物料分析首页。
+  test('workshop planning urge lands on the urged material analysis', () {
+    expect(
+      workbenchRouteFor(
+        'PRODUCTION_PLANNING_URGED',
+        actionRoute: '${RouteName.productionMaterialAnalysis}?analysisId=a-1',
+      ),
+      '${RouteName.productionMaterialAnalysis}?analysisId=a-1',
+    );
+    expect(
+      workbenchRouteFor('PRODUCTION_PLANNING_URGED'),
+      RouteName.productionMaterialAnalysis,
+    );
+    expect(
+      workbenchRouteFor(
+        'PRODUCTION_PLANNING_URGED',
+        actionRoute: '/admin/users?x=1',
+      ),
+      RouteName.productionMaterialAnalysis,
+    );
+  });
+
   test(
     'expanded review events land in real task pages after inbox retirement',
     () {

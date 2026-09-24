@@ -23,6 +23,8 @@ enum ProductionFlowRoute { make, buy, subcontract }
 /// - [pending]       还没轮到本环节(等下达、待审核、已交仓库待发料)—— 中性灰
 /// - [decide]        车间必须先做决定(待选生产路线)，其它动作全部锁着 —— 红
 /// - [waiting]       在等别人/等物料到位 —— 琥珀(看得见但不催人)
+/// - [waitPlanning]  缺的料计划还没下单(ADR-117)，车间可以催计划 —— 品红(与琥珀的
+///                   「已下单等到货」一眼分开：一个是料在路上，一个是料还没人去订)
 /// - [toDrawPartial] 备好了一部分，可先领这部分(还缺料)—— 紫
 /// - [toDraw]        料全备齐了，可由车间提交领料 —— 蓝
 /// - [readyPartial]  部分物料已投，**可开工**(持续生产)—— 品牌青
@@ -33,6 +35,7 @@ enum ProductionFlowTone {
   pending,
   decide,
   waiting,
+  waitPlanning,
   toDrawPartial,
   toDraw,
   readyPartial,
@@ -53,6 +56,8 @@ class ProductionMaterialFacts {
     this.awaitingWarehouseKindCount = 0,
     this.lineSidePendingKindCount = 0,
     this.supportedOutputQty = 0,
+    this.planningGapKindCount = 0,
+    this.planningUrged = false,
   });
 
   final int kindCount;
@@ -68,6 +73,12 @@ class ProductionMaterialFacts {
 
   /// 已实领物料共同支持的可产量。
   final double supportedOutputQty;
+
+  /// ADR-117：缺料里计划还没下单的种数(物料分析「还缺数量」> 0)。
+  final int planningGapKindCount;
+
+  /// 车间已经催过计划(在催)。
+  final bool planningUrged;
 
   /// 已备齐（预留足量或已领）的种数。
   int get coveredKindCount => (kindCount - shortKindCount).clamp(0, kindCount);
@@ -119,6 +130,8 @@ class ProductionFlowStage {
     ProductionFlowTone.toDraw => Icons.move_to_inbox_rounded,
     ProductionFlowTone.toDrawPartial => Icons.move_to_inbox_rounded,
     ProductionFlowTone.waiting => Icons.hourglass_bottom_rounded,
+    // 等计划下单 = 料还没人去订，用「喇叭(催)」图标。
+    ProductionFlowTone.waitPlanning => Icons.campaign_rounded,
     // 待选路线 = 车间要先做决定，用「岔路」图标。
     ProductionFlowTone.decide => Icons.alt_route_rounded,
     ProductionFlowTone.pending => Icons.schedule_rounded,
@@ -281,6 +294,23 @@ class ProductionFlowStage {
       return _make(2, '待选生产路线', ProductionFlowTone.decide);
     }
     final facts = materials;
+    // ADR-117：还没开工、缺的料里有计划还没下单的——车间自己能先办的(可开工 / 可领料 /
+    // 已交仓库待发)照旧排在前面，其余一律先说「等计划下单」，而不是笼统的「等待到货」。
+    if (facts != null &&
+        facts.planningGapKindCount > 0 &&
+        !zeroMaterial &&
+        const ['WAITING', 'READY', 'DISPATCHED'].contains(status) &&
+        canStartNow != true &&
+        !canRequestDraw &&
+        facts.awaitingWarehouseKindCount == 0) {
+      return _make(
+        2,
+        facts.planningUrged
+            ? '已催计划 · 等下单 ${facts.planningGapKindCount} 种'
+            : '等计划下单 · 缺 ${facts.planningGapKindCount} 种',
+        ProductionFlowTone.waitPlanning,
+      );
+    }
     if (facts != null &&
         facts.kindCount > 0 &&
         !zeroMaterial &&

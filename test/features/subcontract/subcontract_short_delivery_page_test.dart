@@ -239,7 +239,7 @@ void main() {
     expect(repo.decisions.single['note'], '委外商确认报废 40 件');
     expect(repo.decisions.single['expectedVersion'], 3);
     expect(repo.decisions.single['expectedCompleteBy'], isNull);
-    expect(find.textContaining('已接受损耗结案'), findsOneWidget);
+    expect(find.textContaining('已接受损耗结清：订货'), findsOneWidget);
   });
 
   testWidgets('分批到货：预计到齐日必填，已有值时直接确认并带日期提交', (tester) async {

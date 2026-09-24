@@ -110,7 +110,7 @@ class ProcurementArrivalMaterialBoundTest {
         return new Capacity((BigDecimal) normal.get(capacity), materialBound.getBoolean(capacity));
     }
 
-    /** arrivalCapacity 只会走 queryForObject 四条标量查询, 按 SQL 片段分发。 */
+    /** arrivalCapacity 只会走 queryForObject 五条标量查询, 按 SQL 片段分发。 */
     private static final class CapacityJdbc extends JdbcTemplate {
         private final BigDecimal supplied;
 
@@ -124,6 +124,8 @@ class ProcurementArrivalMaterialBoundTest {
             if (sql.contains("procurement_iqc_replacement_allocations")) return requiredType.cast(BigDecimal.ZERO);
             if (sql.contains("procurement_iqc_rejection_cases")) return requiredType.cast(BigDecimal.ZERO);
             if (sql.contains("subcontract_material_issue_items")) return requiredType.cast(supplied);
+            // ADR-114(V688): 委外行已独立结清的损耗量从可到货上限里扣掉; 本用例无损耗。
+            if (sql.contains("fn_subcontract_settled_loss_qty")) return requiredType.cast(BigDecimal.ZERO);
             throw new IllegalStateException("unexpected scalar query: " + sql);
         }
     }

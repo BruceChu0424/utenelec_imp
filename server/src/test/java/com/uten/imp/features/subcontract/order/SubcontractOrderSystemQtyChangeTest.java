@@ -70,6 +70,12 @@ class SubcontractOrderSystemQtyChangeTest {
         // ProcurementOrderQuantityBounds.receipts：received / returned / iqc_returned / excess 基本量全 0。
         when(query.getSingleResult()).thenReturn(
                 new Object[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
+        // ADR-114(V688): 改量下限另加本行已独立结清的损耗量(标量查询), 本用例无损耗。
+        Query settledLoss = mock(Query.class);
+        when(em.createNativeQuery(org.mockito.ArgumentMatchers.contains("fn_subcontract_settled_loss_qty")))
+                .thenReturn(settledLoss);
+        when(settledLoss.setParameter(anyString(), any())).thenReturn(settledLoss);
+        when(settledLoss.getSingleResult()).thenReturn(BigDecimal.ZERO);
         when(materialPlans.minimumOrderQtyFromIssued(any(), any())).thenReturn(BigDecimal.ZERO);
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
         when(currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());

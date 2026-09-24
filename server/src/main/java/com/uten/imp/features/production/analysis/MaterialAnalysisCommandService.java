@@ -1149,7 +1149,7 @@ public class MaterialAnalysisCommandService {
         return growablePlanFor(analysisId, analysisLineId, departmentId, approveNow, true);
     }
 
-    /** [lock] = false 供下达预览(ADR-115): 同一谓词只读判定, 不锁计划行。 */
+    /** [lock] = false 供下达预览(ADR-116): 同一谓词只读判定, 不锁计划行。 */
     private GrowablePlan growablePlanFor(
             UUID analysisId, UUID analysisLineId, UUID departmentId, boolean approveNow, boolean lock) {
         String sql = """
@@ -1277,7 +1277,7 @@ public class MaterialAnalysisCommandService {
     }
 
     /**
-     * 下达车间预览（ADR-099；ADR-115 起只读）：给出「按这批数量真实下达之后」的分析视图——
+     * 下达车间预览（ADR-099；ADR-116 起只读）：给出「按这批数量真实下达之后」的分析视图——
      * 下层需求、还需安排、锚点剩余全部按计划产出量重算。客户端据此在「父件 + 下层一起下单」
      * 页面和物料分析主表展示服务端算好的下层数量，不在浏览器里按单耗自行相乘。
      *
@@ -1285,7 +1285,7 @@ public class MaterialAnalysisCommandService {
      * 数量，按「计划产出量」并进重算——中间层改量、追加量同样带得动它自己的子层与孙层
      * (2026-09-21 用户口径)。{@code lines} 是本批真实要下达的行，可以为空(只重算)。</p>
      *
-     * <p>2026-09-24(ADR-115) 起<b>不再真跑下达再回滚</b>：只读事务，不取分析锁、主仓协调锁
+     * <p>2026-09-24(ADR-116) 起<b>不再真跑下达再回滚</b>：只读事务，不取分析锁、主仓协调锁
      * 或维度锁，不建计划/锚点/台账/命令记录。本批计划先按真实下达的同一套校验解析
      * (候选路线、锚点、可排产、ADR-104 并入)，再折成「下达后重读会多出来的事实」叠进
      * 内存投影，由与真实刷新同一套引擎、与 GET 详情同一个视图构建器算出结果。预览之间、
@@ -1485,7 +1485,7 @@ public class MaterialAnalysisCommandService {
     private record WorkshopAnchorDemand(ActionGroup group, UUID existingAnchorId, BigDecimal newQuota) {}
 
     /**
-     * 候选锚点该怎么补(纯计算, 不写库): 真实下达据此建/加锚点, 下达预览(ADR-115)据此
+     * 候选锚点该怎么补(纯计算, 不写库): 真实下达据此建/加锚点, 下达预览(ADR-116)据此
      * 模拟新锚点的初始配额——两条路径同一套口径。缺口已被在途覆盖的组不建锚点, 不在结果里。
      */
     private List<WorkshopAnchorDemand> workshopAnchorDemands(

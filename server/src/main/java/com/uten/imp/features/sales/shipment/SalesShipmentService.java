@@ -227,6 +227,22 @@ public class SalesShipmentService {
             }
             if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
+            // 仓库任务中心的仓库范围(ADR-115)：表头仓或任一明细拣货仓(V631 逐行选仓)在范围内；
+            // 「我的仓库」另含表头尚未定仓的单据。
+            if (f.warehouseScope().active()) {
+                java.util.List<java.util.UUID> scopeIds = f.warehouseScope().warehouseIds();
+                List<Predicate> inScope = new ArrayList<>();
+                if (!scopeIds.isEmpty()) {
+                    inScope.add(root.get("warehouseId").in(scopeIds));
+                    jakarta.persistence.criteria.Subquery<java.util.UUID> lines = q.subquery(java.util.UUID.class);
+                    Root<SalesShipmentItem> line = lines.from(SalesShipmentItem.class);
+                    lines.select(line.get("shipmentId")).where(cb.isFalse(line.get("deleted")),
+                            line.get("warehouseId").in(scopeIds));
+                    inScope.add(root.get("id").in(lines));
+                }
+                if (f.warehouseScope().includeUnassigned()) inScope.add(cb.isNull(root.get("warehouseId")));
+                ps.add(inScope.isEmpty() ? cb.disjunction() : cb.or(inScope.toArray(Predicate[]::new)));
+            }
             if (f.currencyId() != null) ps.add(cb.equal(root.get("currencyId"), f.currencyId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.arPosted() != null) ps.add(cb.equal(root.get("arPosted"), f.arPosted()));

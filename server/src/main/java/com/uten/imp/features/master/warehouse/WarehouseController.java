@@ -2,8 +2,12 @@ package com.uten.imp.features.master.warehouse;
 
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.features.master.warehouse.dto.MyWarehouseScope;
 import com.uten.imp.features.master.warehouse.dto.WarehouseDetail;
 import com.uten.imp.features.master.warehouse.dto.WarehouseFacets;
+import com.uten.imp.features.master.warehouse.dto.WarehouseKeeper;
+import com.uten.imp.features.master.warehouse.dto.WarehouseKeeperAssignment;
+import com.uten.imp.features.master.warehouse.dto.WarehouseKeeperSaveRequest;
 import com.uten.imp.features.master.warehouse.dto.WarehouseListItem;
 import com.uten.imp.features.master.warehouse.dto.WarehouseQueryFilter;
 import com.uten.imp.features.master.warehouse.dto.WarehouseSaveRequest;
@@ -34,6 +38,11 @@ import java.util.UUID;
  * - POST /api/master/warehouses                 （warehouse:edit）
  * - PUT  /api/master/warehouses/{id}            （warehouse:edit）
  * - DEL  /api/master/warehouses/{id}            （warehouse:edit，软删）
+ * - GET  /api/master/warehouses/keepers          （全部负责关系，列表「负责人」列）
+ * - GET  /api/master/warehouses/keeper-candidates（warehouse:edit，负责人候选员工）
+ * - GET  /api/master/warehouses/my-scope         （登录即可：当前账号的「我的仓库」）
+ * - GET  /api/master/warehouses/{id}/keepers     （某仓库的负责人）
+ * - PUT  /api/master/warehouses/{id}/keepers     （warehouse:edit，整组替换负责人，ADR-115）
  */
 @RestController
 @RequestMapping("/api/master/warehouses")
@@ -41,6 +50,7 @@ import java.util.UUID;
 public class WarehouseController {
 
     private final WarehouseService service;
+    private final WarehouseKeeperService keeperService;
     private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
@@ -76,6 +86,44 @@ public class WarehouseController {
     @PreAuthorize("hasAuthority('warehouse:view')")
     public List<WarehouseWorkshopOption> workshops() {
         return service.workshopOptions();
+    }
+
+    /** 全部负责关系(ADR-115)：仓库资料列表「负责人」列。 */
+    @GetMapping("/keepers")
+    @PreAuthorize("hasAuthority('warehouse:view')")
+    public List<WarehouseKeeperAssignment> keeperAssignments() {
+        return keeperService.assignments();
+    }
+
+    /** 负责人候选：在职员工，仓库部门的人排前面，标出有无账号/是否仓库部门。 */
+    @GetMapping("/keeper-candidates")
+    @PreAuthorize("hasAuthority('warehouse:edit')")
+    public List<WarehouseKeeper> keeperCandidates(@RequestParam(required = false) String keyword) {
+        return keeperService.candidates(keyword);
+    }
+
+    /**
+     * 当前账号的「我的仓库」：仓库任务中心的仓库范围选择器用。只回本人负责的仓与范围 id，
+     * 不含任何他人信息，登录即可读(任务中心各列表自己再按各自权限校验)。
+     */
+    @GetMapping("/my-scope")
+    @PreAuthorize("isAuthenticated()")
+    public MyWarehouseScope myScope() {
+        return keeperService.myScope();
+    }
+
+    @GetMapping("/{id}/keepers")
+    @PreAuthorize("hasAuthority('warehouse:view')")
+    public List<WarehouseKeeper> keepers(@PathVariable UUID id) {
+        return keeperService.keepers(id);
+    }
+
+    /** 整组替换负责人(ADR-115)：空列表 = 清空，该仓的仓库类通知回到整个仓库部门。 */
+    @PutMapping("/{id}/keepers")
+    @PreAuthorize("hasAuthority('warehouse:edit')")
+    public List<WarehouseKeeper> replaceKeepers(
+            @PathVariable UUID id, @Valid @RequestBody WarehouseKeeperSaveRequest req) {
+        return keeperService.replaceKeepers(id, req);
     }
 
     @GetMapping("/{id}")

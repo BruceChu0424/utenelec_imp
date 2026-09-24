@@ -18,11 +18,18 @@ public record FulfillmentWorkbenchTableQuery(
             "goods", "goods_id::text", "spec", "NULLIF(concat_ws(' / ',NULLIF(spec,''),NULLIF(color_name,'')),'')",
             "status", "display_stage", "needDate", "need_date::text",
             "issuedAt", "(issued_at AT TIME ZONE 'Asia/Shanghai')::date::text");
+    /**
+     * 只能排序、不做列筛选/分面的列(生产领料任务中心 2026-09-24 表头排序: 发料仓、待领数量)。
+     * 不进 {@link #FIELDS}: 那张表同时决定分面查询要算哪些列, 加进去会让采购/委外每次多算两组分面。
+     */
+    static final Map<String, String> SORT_ONLY_FIELDS = Map.of(
+            "warehouseName", "NULLIF(warehouse_name,'')", "openQty", "open_qty");
 
     public FulfillmentWorkbenchTableQuery {
         sort = sort == null || sort.isBlank() ? "needDate" : sort.strip();
         order = order == null || order.isBlank() ? "asc" : order.strip().toLowerCase(java.util.Locale.ROOT);
-        if (!FIELDS.containsKey(sort) || !java.util.Set.of("asc", "desc").contains(order)) {
+        if (!FIELDS.containsKey(sort) && !SORT_ONLY_FIELDS.containsKey(sort)
+                || !java.util.Set.of("asc", "desc").contains(order)) {
             throw invalid("工作台排序字段或方向无效");
         }
         Map<String, String> safe = new LinkedHashMap<>();
@@ -81,7 +88,7 @@ public record FulfillmentWorkbenchTableQuery(
             case "goods" -> "goods_code " + order + " NULLS LAST, goods_name";
             case "issuedAt" -> "issued_at";
             case "needDate" -> "need_date";
-            default -> FIELDS.get(sort);
+            default -> FIELDS.containsKey(sort) ? FIELDS.get(sort) : SORT_ONLY_FIELDS.get(sort);
         };
         return expression + " " + order + " NULLS LAST, task_id";
     }

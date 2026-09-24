@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * ADR-099 计划量单一入口(2026-09-21)的真库回归：顶层按本批数量下达车间后下层需求按
  * 计划产出量放大、既有自制锚点配额自动增长；下达采购「填多少下多少」由服务端分账；
  * 申请明细未订货时追加就地改大(V640)、已订货后另立新申请；下达时自动认领同主仓公共
- * 在途；下达预览(ADR-115)是只读投影：不取锁、库里一行不写，结果与真实下达后的详情逐字段相等。
+ * 在途；下达预览(ADR-116)是只读投影：不取锁、库里一行不写，结果与真实下达后的详情逐字段相等。
  *
  * <p><b>CI 必须显式设置 {@code UTEN_RUN_DB_TESTS=true}</b>，否则本类全部 SKIP。
  */
@@ -174,7 +174,7 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
     }
 
     /**
-     * ADR-107 评审补充(ADR-115 起预览只读、不取锁)：同一主仓两份分析反复同时预览,
+     * ADR-107 评审补充(ADR-116 起预览只读、不取锁)：同一主仓两份分析反复同时预览,
      * 都成功、不互相等待, 库里一行不留。
      */
     @Test void concurrentIssuePreviewsInTheSameMainWarehouseBothSucceedAndLeaveNothing() throws Exception {
@@ -203,7 +203,7 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
     }
 
     /**
-     * ADR-115 验收: 同一组输入, 「预览结果」与「真实下达后 GET 详情」逐行逐字段相等。
+     * ADR-116 验收: 同一组输入, 「预览结果」与「真实下达后 GET 详情」逐行逐字段相等。
      * 顶层 1500 超量 + 既有自制锚点跟涨 + 立即审核(真实下达会写审核、执行段与预留)。
      */
     @Test void issuePreviewEqualsTheRealIssueForAnOverQuantityRootWithAnExistingAnchor() {
@@ -277,7 +277,7 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
     }
 
     /**
-     * ADR-115 验收: 预览不取任何锁、不写库。另一个连接把分析表头、全部物料行与来源行
+     * ADR-116 验收: 预览不取任何锁、不写库。另一个连接把分析表头、全部物料行与来源行
      * FOR UPDATE 锁住并独占主仓协调锁——预览照样立即返回(取任何一把都要等到 lock_timeout)。
      * 预览事务由数据库强制只读: 事务里任何写或行锁都会直接报错, 不可能「写了再回滚」。
      */

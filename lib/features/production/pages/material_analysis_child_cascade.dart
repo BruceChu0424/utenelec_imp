@@ -147,7 +147,7 @@ abstract class _MaterialAnalysisChildCascadeState
       willIssue: willIssue,
     );
     if (lines.isEmpty && typedOutputs.isEmpty) return analysis;
-    // 服务端只读预览已不用幂等键(ADR-115)，字段仍按契约带上一个新键。
+    // 服务端只读预览已不用幂等键(ADR-116)，字段仍按契约带上一个新键。
     final key = businessIdempotencyKey(
       'material-analysis-issue-preview',
       [

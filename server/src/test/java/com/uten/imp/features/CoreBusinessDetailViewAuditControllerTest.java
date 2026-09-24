@@ -379,7 +379,7 @@ class CoreBusinessDetailViewAuditControllerTest {
         when(stockService.detail(stockId)).thenReturn(stock);
         assertSame(
                 stock,
-                new StockDocController(stockService, recorder).detail(stockId));
+                new StockDocController(stockService, recorder, null).detail(stockId));
         verify(recorder).record(
                 "view_stock_document_detail",
                 "stock_documents",
@@ -416,7 +416,7 @@ class CoreBusinessDetailViewAuditControllerTest {
                 .thenThrow(new IllegalStateException("query failed"));
         assertThrows(
                 IllegalStateException.class,
-                () -> new StockDocController(stockService, recorder)
+                () -> new StockDocController(stockService, recorder, null)
                         .detail(failedId));
 
         verifyNoInteractions(recorder);

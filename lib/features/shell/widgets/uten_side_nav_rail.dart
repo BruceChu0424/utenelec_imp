@@ -3,12 +3,15 @@
 //
 // 设计：
 // - 全高 surface 底 + 右侧 1px 发丝边框，与内容区自然分层
-// - 宽度 ≥1280dp 时 extended（常驻文字标签），否则纯图标 + Tooltip
+// - 宽度 ≥1280dp 时 extended（常驻文字标签），否则纯图标 + Tooltip；大字号档按窗口
+//   口径再判一次（extendedFor），超大档起收成图标栏
 // - 顶部品牌位：extended 放横向字标 UtenWordmarkLogo.compact；
 //   折叠态字标太宽放不下，改用品牌吉祥物小图标
 // - 通知项未读角标（Badge，>0 显示）
 // - 选中态指示器与配色全部来自主题 NavigationRailTheme
 //   （浅色 teal100 底 + teal600 图标文字 / 深色 teal900 底 + teal400），不另做覆盖
+
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -41,6 +44,17 @@ class UtenSideNavRail extends StatelessWidget {
 
   /// 展开态最小宽度
   static const double _extendedWidth = 216;
+
+  /// 展开（常驻标签）要求的最小画布宽
+  static const double extendedMinCanvasWidth = 1280;
+
+  /// 是否展开：画布够宽，且字号档放大后按窗口口径仍够宽——大字号时收成图标栏
+  /// （带 Tooltip），把宽度让给内容（docs/00-项目准则/04-字体与字号可调.md §一.2）。
+  /// 1920 窗口：标准/大(115%)展开，超大(130%)起收起。
+  static bool extendedFor({
+    required double canvasWidth,
+    required double fontZoom,
+  }) => canvasWidth >= extendedMinCanvasWidth * math.max(1.0, fontZoom);
 
   static const _icons = <IconData>[
     Icons.space_dashboard_outlined,

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
 import '../models/warehouse_sales_outbound.dart';
 
 abstract interface class WarehouseSalesOutboundGateway {
@@ -12,6 +13,7 @@ abstract interface class WarehouseSalesOutboundGateway {
     String? warehouseWorkStatus,
     String? dateFrom,
     String? dateTo,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   });
 
   Future<WarehouseSalesOutboundDetail> detail(String id);
@@ -42,6 +44,7 @@ class WarehouseSalesOutboundRepository
     String? warehouseWorkStatus,
     String? dateFrom,
     String? dateTo,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   }) async {
     final query = <String, dynamic>{
       'page': page < 1 ? 1 : page,
@@ -53,6 +56,7 @@ class WarehouseSalesOutboundRepository
     }
     if (_trimmed(dateFrom) case final value?) query['dateFrom'] = value;
     if (_trimmed(dateTo) case final value?) query['dateTo'] = value;
+    query.addAll(scope.queryParameters);
     final json = await api.get(_base, query: query);
     return PagedResult.fromJson(json, WarehouseSalesOutboundSummary.fromJson);
   }

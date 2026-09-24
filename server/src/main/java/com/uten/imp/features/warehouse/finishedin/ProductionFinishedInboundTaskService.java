@@ -1,5 +1,6 @@
 package com.uten.imp.features.warehouse.finishedin;
 
+import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
@@ -55,7 +56,13 @@ public class ProductionFinishedInboundTaskService {
                        COUNT(report_item.id)::integer AS line_count,
                        COALESCE(SUM(report_item.qty), 0) AS pending_qty,
                        report.created_at,
-                       FALSE AS residual_task
+                       FALSE AS residual_task,
+                       -- 仓库范围(ADR-115)：待登记还没选仓，按成品主档「所属仓库」归属；
+                       -- 一单多个所属仓或有未登记所属仓的成品时为空(「我的仓库」照样显示)。
+                       CASE WHEN COUNT(DISTINCT goods.owning_warehouse_id) = 1
+                                 AND COUNT(goods.owning_warehouse_id) = COUNT(*)
+                            THEN MIN(goods.owning_warehouse_id::text)::uuid END
+                           AS scope_warehouse_id
                 FROM production_daily_reports report
                 JOIN production_daily_report_items report_item
                   ON report_item.report_id = report.id
@@ -118,7 +125,8 @@ public class ProductionFinishedInboundTaskService {
                            FROM production_finished_in_confirmations confirmation
                            WHERE confirmation.residual_stock_document_id =
                                  document.id
-                       ) AS residual_task
+                       ) AS residual_task,
+                       document.warehouse_id AS scope_warehouse_id
                 FROM stock_documents document
                 JOIN stock_document_items item
                   ON item.doc_id = document.id
@@ -197,6 +205,15 @@ public class ProductionFinishedInboundTaskService {
     public PageResponse<ProductionFinishedInboundTask> list(
             String keyword, String taskStage, UUID warehouseId,
             int requestedPage, int requestedSize) {
+        return list(keyword, taskStage, warehouseId, requestedPage, requestedSize, WarehouseTaskScope.ALL);
+    }
+
+    /** 同上, 另按仓库任务中心的「仓库范围」(ADR-115)过滤。 */
+    @Transactional(readOnly = true)
+    public PageResponse<ProductionFinishedInboundTask> list(
+            String keyword, String taskStage, UUID warehouseId,
+            int requestedPage, int requestedSize, WarehouseTaskScope warehouseScope) {
+        boolean scoped = warehouseScope != null && warehouseScope.active();
         PageRequest pageable = Pageables.of(
                 requestedPage, requestedSize);
         int page = pageable.getPageNumber() + 1;
@@ -231,13 +248,17 @@ public class ProductionFinishedInboundTaskService {
                         : " AND task_stage = :task_stage\n")
                 + (warehouseId == null
                         ? ""
-                        : " AND warehouse_id = :warehouse_id\n");
+                        : " AND warehouse_id = :warehouse_id\n")
+                + (scoped
+                        ? " AND " + warehouseScope.predicate("scope_warehouse_id", ":warehouse_scope") + "\n"
+                        : "");
 
         Query countQuery = em.createNativeQuery(
                 BASE_SQL + " SELECT COUNT(*) FROM task_documents " + filter);
         bindKeyword(countQuery, normalized);
         if (!normalizedStage.isEmpty()) countQuery.setParameter("task_stage", normalizedStage);
         if (warehouseId != null) countQuery.setParameter("warehouse_id", warehouseId);
+        if (scoped) countQuery.setParameter("warehouse_scope", warehouseScope.idsCsv());
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
         Query rowsQuery = em.createNativeQuery(BASE_SQL + """
@@ -254,6 +275,7 @@ public class ProductionFinishedInboundTaskService {
         bindKeyword(rowsQuery, normalized);
         if (!normalizedStage.isEmpty()) rowsQuery.setParameter("task_stage", normalizedStage);
         if (warehouseId != null) rowsQuery.setParameter("warehouse_id", warehouseId);
+        if (scoped) rowsQuery.setParameter("warehouse_scope", warehouseScope.idsCsv());
         rowsQuery.setParameter("offset", pageable.getOffset());
         rowsQuery.setParameter("limit", size);
         List<ProductionFinishedInboundTask> items =

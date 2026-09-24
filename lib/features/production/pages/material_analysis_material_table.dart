@@ -1951,7 +1951,7 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 清空输入框 = 从这里移除 = 把这一行交还给系统算。
   final Map<String, double> _tableUserTypedQty = {};
 
-  /// 父行改量之后，服务端算出的「下达之后」快照(ADR-099；ADR-115 起为只读投影)。
+  /// 父行改量之后，服务端算出的「下达之后」快照(ADR-099；ADR-116 起为只读投影)。
   ///
   /// **只用于展示子层数量，绝不替换权威快照 [_analysis]**：它是「假如按这些数下达」
   /// 的投影，库里并没有这些计划。提交一律按 [_analysis] 走，否则就是拿假设当依据下单。
@@ -1960,7 +1960,7 @@ abstract class _MaterialAnalysisMaterialTableState
   Timer? _tableCascadeDebounce;
   bool _tableCascadePreviewing = false;
 
-  /// 预览单飞 + 尾随(ADR-115)：同一时刻最多 1 个预览在途；在途期间又改了数只记
+  /// 预览单飞 + 尾随(ADR-116)：同一时刻最多 1 个预览在途；在途期间又改了数只记
   /// [_tableCascadeTrailing]，这一趟回来后按**最新**填数补发一次(中间那些填数不发)。
   bool _tableCascadeInFlight = false;
   bool _tableCascadeTrailing = false;
@@ -2642,7 +2642,7 @@ abstract class _MaterialAnalysisMaterialTableState
             analysis: analysis,
             warehouseId: warehouseId,
             cancelToken: cancelToken,
-            // 服务端只读预览已不用幂等键(ADR-115)，字段仍按契约带上。
+            // 服务端只读预览已不用幂等键(ADR-116)，字段仍按契约带上。
             idempotencyKey: businessIdempotencyKey(
               'material-analysis-table-cascade-preview',
               [

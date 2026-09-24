@@ -24,6 +24,8 @@ import 'package:uten_imp/features/production/repositories/production_execution_w
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_material_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
@@ -441,6 +443,63 @@ void main() {
       expect(find.text('计划 plan-segment-c'), findsOneWidget);
     },
   );
+
+  // 2026-09-24 用户反馈「点批量开工后左上角分类徽章加载不出来，得手动刷新页面」：
+  // 批量开工提交后必须连同分类徽章(徽章汇总)一起重拉，「生产中」黄徽章立刻出现。
+  testWidgets('batch start refreshes the category badges with the list', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final router = _router();
+    addTearDown(router.dispose);
+    final badges = _CountingBadgeSummary();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.productionExecutionView,
+            Perm.productionExecutionStart,
+          }),
+          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+            _repository(withWaitingRow: true),
+          ),
+          productionPlanRepositoryProvider.overrideWithValue(
+            _FakePlanRepository(),
+          ),
+          badgeSummaryProvider.overrideWith(() => badges),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('等待物料'));
+    await tester.pumpAndSettle();
+    expect(find.byType(UtenInProgressBadge), findsNothing);
+    final before = badges.refreshes;
+
+    // 服务端开工后「生产中」变 1：下一次汇总带回新数。
+    badges.next = const BadgeSummary(
+      loaded: true,
+      facts: {
+        BadgeFact.workshopTotal: 1,
+        BadgeFact.workshopPreparing: 0,
+        BadgeFact.workshopInProgress: 1,
+      },
+    );
+    await _selectRow(tester, '产品 A');
+    await tester.tap(find.text('批量开工(1)'));
+    await tester.pumpAndSettle();
+
+    expect(badges.refreshes, greaterThan(before));
+    expect(find.byType(UtenInProgressBadge), findsOneWidget);
+  });
 
   testWidgets(
     'a ready kit still requires actual warehouse issue before start',
@@ -2455,4 +2514,26 @@ Finder _frozenRowOf(String text) {
   return find
       .ancestor(of: find.text(text).first, matching: find.byType(Row))
       .first;
+}
+
+/// 徽章汇总替身: 记录 refresh 次数, 每次 refresh 落下 [next](模拟服务端最新汇总)。
+class _CountingBadgeSummary extends BadgeSummaryNotifier {
+  int refreshes = 0;
+  BadgeSummary next = const BadgeSummary(
+    loaded: true,
+    facts: {
+      BadgeFact.workshopTotal: 1,
+      BadgeFact.workshopPreparing: 1,
+      BadgeFact.workshopInProgress: 0,
+    },
+  );
+
+  @override
+  BadgeSummary build() => next;
+
+  @override
+  Future<void> refresh() async {
+    refreshes++;
+    state = next;
+  }
 }

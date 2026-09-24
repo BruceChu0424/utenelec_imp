@@ -26,12 +26,15 @@ public class WarehouseSalesOutboundController {
 
     private final WarehouseSalesOutboundProjectionService service;
     private final AuditDetailViewRecorder auditViews;
+    private final com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes;
 
     public WarehouseSalesOutboundController(
             WarehouseSalesOutboundProjectionService service,
-            AuditDetailViewRecorder auditViews) {
+            AuditDetailViewRecorder auditViews,
+            com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes) {
         this.service = service;
         this.auditViews = auditViews;
+        this.warehouseScopes = warehouseScopes;
     }
 
     @GetMapping
@@ -41,8 +44,12 @@ public class WarehouseSalesOutboundController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return service.list(keyword, warehouseWorkStatus, dateFrom, dateTo, page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "") String warehouseScope,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        // 仓库范围(ADR-115)：MINE = 我负责的仓库；scopeWarehouseId = 指定仓库(含子仓)。
+        return service.list(keyword, warehouseWorkStatus, dateFrom, dateTo, page, size,
+                warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
     }
 
     /** 待出库任务计数（出库任务中心/工作台角标：未交接出库的放行单）。 */

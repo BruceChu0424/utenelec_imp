@@ -129,7 +129,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
     }
 
     /**
-     * 顶层供给行数量的纯计算(不写库)。真实刷新传空覆盖值后写回; 下达预览(ADR-115)传入
+     * 顶层供给行数量的纯计算(不写库)。真实刷新传空覆盖值后写回; 下达预览(ADR-116)传入
      * [allocatedByMaterial](BOM 物料行 id → 内存重算的已分配量, 替代库内旧值)与
      * [openPlanBySource](来源行 id → 本批计划新增的未完工量, 基本单位), 只叠进视图。
      */

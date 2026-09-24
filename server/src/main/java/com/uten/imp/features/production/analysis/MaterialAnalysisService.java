@@ -1292,7 +1292,7 @@ public class MaterialAnalysisService {
      * 填在中间层的数量能像顶层一样把它自己的子层、孙层一路带大；节点自己的需求量、
      * 还需安排量一个字节不动(那是祖先决定的，不能被自己填的数覆盖)。</p>
      *
-     * <p><b>只有下达预览会传它</b>(ADR-115 起预览不再调本方法, 走
+     * <p><b>只有下达预览会传它</b>(ADR-116 起预览不再调本方法, 走
      * {@link #issuePreviewView} 的只读投影)。真实下达恒传空 Map。</p>
      */
     int refreshLocked(UUID analysisId, Map<UUID, BigDecimal> typedOutputByMaterialLine) {
@@ -2450,7 +2450,7 @@ public class MaterialAnalysisService {
 
     /**
      * 权威分配快照(纯计算结果): 真实刷新据此写回来源齐套列、物料行数量列与借用生效量;
-     * 下达预览(ADR-115)只把它叠进内存视图, 一行不写。
+     * 下达预览(ADR-116)只把它叠进内存视图, 一行不写。
      */
     private record AllocationSnapshot(List<SourceReadyRow> sourceReadyRows, List<NodeAllocationRow> nodeRows,
                                       boolean hasBorrows, Map<UUID, BigDecimal> borrowEffective) {}
@@ -3117,7 +3117,7 @@ public class MaterialAnalysisService {
     }
 
     /**
-     * [overlay] 非空时(下达预览, ADR-115): 本批新计划追加在各自键的末尾(计划按建立时间
+     * [overlay] 非空时(下达预览, ADR-116): 本批新计划追加在各自键的末尾(计划按建立时间
      * 排序), ADR-104 并入既有计划的追加量加在那张计划的第一段上(与 growSegment 取最小段号
      * 同口径)——与真实下达后重读本查询的结果一致。
      */
@@ -4174,7 +4174,7 @@ public class MaterialAnalysisService {
     }
 
     /**
-     * [overlay] 非空时(下达预览, ADR-115)来源行与物料行的数量取内存投影, 其余事实照读库内;
+     * [overlay] 非空时(下达预览, ADR-116)来源行与物料行的数量取内存投影, 其余事实照读库内;
      * 视图推导与 GET 详情逐行同一套代码。
      */
     private AnalysisView detailInternal(
@@ -4858,7 +4858,7 @@ public class MaterialAnalysisService {
     }
 
     /**
-     * 下达预览(ADR-115): 只读、不取任何锁、不建计划也不回滚。
+     * 下达预览(ADR-116): 只读、不取任何锁、不建计划也不回滚。
      *
      * <p>[overlay] 已由命令服务装好「本批下达之后」会多出来的事实(本批计划的归需求量/
      * 公共备货量、计划批次、锚点父节点的计划产出、新锚点的内部承诺),
@@ -4946,7 +4946,7 @@ public class MaterialAnalysisService {
     }
 
     /**
-     * 下达预览(ADR-115)里的一张「本批计划」, 已由命令服务按真实下达的同一套校验解析好:
+     * 下达预览(ADR-116)里的一张「本批计划」, 已由命令服务按真实下达的同一套校验解析好:
      * [lineId] 是计划挂的分析行(来源行或既有锚点); 为 null 时表示真实下达会当场为
      * [newAnchorParentMaterialId] 新建锚点(其初始配额已由命令服务作为内部承诺叠入)。
      * [growPlanId] 非空表示按 ADR-104 并入那张既有计划; 并入的是草稿且立即审核时,
@@ -5164,7 +5164,7 @@ public class MaterialAnalysisService {
                                      BigDecimal previousRequested, BigDecimal delta) {}
 
     /**
-     * 锚点配额该怎么调(纯计算, 不写库): 真实刷新据此执行 UPDATE, 下达预览(ADR-115)
+     * 锚点配额该怎么调(纯计算, 不写库): 真实刷新据此执行 UPDATE, 下达预览(ADR-116)
      * 把同一组调整叠进内存投影——两条路径同一套规则。
      */
     private List<AnchorQuotaChange> planAnchorQuotaChanges(
@@ -5361,7 +5361,7 @@ public class MaterialAnalysisService {
         return loadSourceLines(analysisId, lockSales, MaterialAnalysisIssuePreviewOverlay.NONE);
     }
 
-    /** [overlay] 非空时(下达预览, ADR-115)把本批计划与锚点配额、齐套重算结果叠到库内来源行上。 */
+    /** [overlay] 非空时(下达预览, ADR-116)把本批计划与锚点配额、齐套重算结果叠到库内来源行上。 */
     private List<SourceLine> loadSourceLines(
             UUID analysisId, boolean lockSales, MaterialAnalysisIssuePreviewOverlay overlay) {
         if (lockSales) {
@@ -6091,7 +6091,7 @@ public class MaterialAnalysisService {
         return loadMaterialRows(analysisId, MaterialAnalysisIssuePreviewOverlay.NONE);
     }
 
-    /** [overlay] 非空时(下达预览, ADR-115)数量列取内存重算值, 结构列与主档列仍取库内。 */
+    /** [overlay] 非空时(下达预览, ADR-116)数量列取内存重算值, 结构列与主档列仍取库内。 */
     private List<MaterialRow> loadMaterialRows(UUID analysisId, MaterialAnalysisIssuePreviewOverlay overlay) {
         List<MaterialRow> rows = loadStoredMaterialRows(analysisId);
         if (overlay.isNone()) return rows;
@@ -6627,7 +6627,7 @@ public class MaterialAnalysisService {
      * 没缩，缺口会被算小，车间反而少备料。</p>
      */
     /**
-     * [overlay] 非空时(下达预览, ADR-115)再叠上本批计划的计划产出(锚点/新锚点所在父节点)
+     * [overlay] 非空时(下达预览, ADR-116)再叠上本批计划的计划产出(锚点/新锚点所在父节点)
      * 与锚点配额差(内部承诺), 即真实下达后本查询重读会多出来的那部分。
      */
     private Map<String, ParentSupplyCommitment> parentSupplyCommitments(
@@ -8279,7 +8279,7 @@ public class MaterialAnalysisService {
                     row.length > 51 ? decimal(row[51]) : BigDecimal.ZERO);
         }
 
-        /** 下达预览(ADR-115): 叠上本批计划/锚点配额差与重算后的齐套列; 其余字段原样。 */
+        /** 下达预览(ADR-116): 叠上本批计划/锚点配额差与重算后的齐套列; 其余字段原样。 */
         SourceLine withPreview(MaterialAnalysisIssuePreviewOverlay.SourceDelta delta) {
             return new SourceLine(analysisItemId, sourceType, salesOrderItemId, salesOrderId, salesOrderNo,
                     orderDate, deliveryDate, clientName, goodsId, goodsCode, goodsName, spec,
@@ -8664,7 +8664,7 @@ public class MaterialAnalysisService {
         MaterialDimension dimension() {
             return new MaterialDimension(goodsId, colorId, unitId);
         }
-        /** 下达预览(ADR-115): 换上内存重算的数量列(与刷新写回的列一一对应)。 */
+        /** 下达预览(ADR-116): 换上内存重算的数量列(与刷新写回的列一一对应)。 */
         MaterialRow withSnapshot(BigDecimal required, BigDecimal available, BigDecimal allocated,
                                  BigDecimal reserved, BigDecimal safety, BigDecimal inbound,
                                  BigDecimal shortage, LocalDate expectedReady, boolean lowerPending) {

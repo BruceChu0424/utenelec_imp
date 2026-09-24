@@ -83,7 +83,7 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
   int _previewGeneration = 0;
   bool _previewing = false;
 
-  /// 预览单飞 + 尾随(ADR-115)：同一时刻最多 1 个预览在途；在途期间又改了数只记
+  /// 预览单飞 + 尾随(ADR-116)：同一时刻最多 1 个预览在途；在途期间又改了数只记
   /// [_previewTrailing]，这一趟回来后按**最新**的数补发一次。离开页面取消在途那份。
   bool _previewInFlight = false;
   bool _previewTrailing = false;

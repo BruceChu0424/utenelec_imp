@@ -27,6 +27,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../support/collapsing_header_harness.dart';
 import '../../helpers/document_scope_fixture.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 /// 仓库单据详情用的假后端：明细多行（撑出可内滚的表体）。
 class _StockDocApi extends ApiClient {
@@ -233,6 +234,7 @@ class _OutboundGateway implements WarehouseSalesOutboundGateway {
     String? warehouseWorkStatus,
     String? dateFrom,
     String? dateTo,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   }) async => PagedResult(
     items: [summary],
     page: page,

@@ -17,6 +17,7 @@ import 'package:uten_imp/features/warehouse/repositories/warehouse_quality_resul
 import 'package:uten_imp/features/warehouse/repositories/warehouse_sales_outbound_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 /// 可编辑表格控制器的偏好持久化需要 SharedPreferences（测试统一 mock）。
 late final SharedPreferences _sharedPrefs;
@@ -172,6 +173,7 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
     String? warehouseWorkStatus,
     String? dateFrom,
     String? dateTo,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   }) async => PagedResult(
     items: [_salesDetail.header],
     page: page,

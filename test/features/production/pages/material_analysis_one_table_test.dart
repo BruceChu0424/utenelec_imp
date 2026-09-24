@@ -339,7 +339,7 @@ void main() {
     expect(_qtyText(tester, _orderQty('m-pc')), '1500');
   });
 
-  testWidgets('层级预览单飞 + 尾随：在途期间连改 5 次，只按最后一次补发一份(ADR-115)', (tester) async {
+  testWidgets('层级预览单飞 + 尾随：在途期间连改 5 次，只按最后一次补发一份(ADR-116)', (tester) async {
     await _pump(tester, previewDelayMs: 3000);
     await tester.enterText(_appendQty('m-p'), '1100');
     // 去抖到点，第一份预览发出并一直在途。
@@ -1301,7 +1301,7 @@ void main() {
 /// 本次 pump 期间发出的每一份「下达预览」请求体，供断言 typedOutputs。
 final List<Map<String, dynamic>> previews = [];
 
-/// 假后端上同时在途的预览数与本次 pump 期间的最大值(ADR-115 单飞)。
+/// 假后端上同时在途的预览数与本次 pump 期间的最大值(ADR-116 单飞)。
 int previewsInFlight = 0;
 int maxPreviewsInFlight = 0;
 

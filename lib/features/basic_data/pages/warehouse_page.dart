@@ -2,11 +2,17 @@
 //
 // 复刻 color_page：编号/名称/位置/核算/状态。accountable(bool) 用 select 使用/不使用
 // （提交 'true'/'false' 字符串，Jackson 自动转 Boolean）。查看全员可见，编辑按 warehouse:edit。
+//
+// 仓库负责人(仓管员, ADR-115, 2026-09-24)：列表「负责人」列 + 详情「设置负责人」。登记后该仓的
+// 仓库类通知只发给负责人(没登记的仓照旧发给整个仓库部门)，仓库任务中心「我的仓库」按它筛选；
+// 登记在主仓上 = 负责它下面全部子仓。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_employee_multi_picker.dart';
+import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -22,6 +28,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/warehouse_node.dart';
+import '../repositories/warehouse_keeper_repository.dart';
 import '../repositories/warehouse_repository.dart';
 import '../repositories/master_status_repository.dart';
 import '../widgets/master_data_table_view.dart';
@@ -47,12 +54,16 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
   WarehouseFacets? _facets;
   bool _detailLoading = false;
 
+  /// 仓库 id → 负责人姓名(ADR-115)；加载失败时列显示「—」不挡列表。
+  Map<String, List<String>> _keeperNames = const {};
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadWarehouses(1);
       _loadFacets();
+      _loadKeepers();
     });
   }
 
@@ -111,6 +122,63 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     } catch (_) {
       // Facets are optional; the primary list remains usable.
     }
+  }
+
+  Future<void> _loadKeepers() async {
+    try {
+      final assignments = await ref
+          .read(warehouseKeeperRepositoryProvider)
+          .assignments();
+      if (!mounted) return;
+      final byWarehouse = <String, List<String>>{};
+      for (final a in assignments) {
+        byWarehouse.putIfAbsent(a.warehouseId, () => []).add(a.name);
+      }
+      setState(() => _keeperNames = byWarehouse);
+    } catch (_) {
+      // 负责人列是附加信息；失败时列显示「—」，主列表照常可用。
+    }
+  }
+
+  String _keeperLabel(String warehouseId) {
+    final names = _keeperNames[warehouseId];
+    return names == null || names.isEmpty ? '—' : names.join('、');
+  }
+
+  /// 设置负责人：整组替换；保存后刷新负责人列。
+  Future<void> _editKeepers(WarehouseDetail d) async {
+    final repo = ref.read(warehouseKeeperRepositoryProvider);
+    List<WarehouseKeeper> current;
+    try {
+      current = await repo.keepers(d.id);
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+      return;
+    } catch (_) {
+      if (mounted) context.appError('加载仓库负责人失败');
+      return;
+    }
+    if (!mounted) return;
+    final saved = await showDialog<List<WarehouseKeeper>>(
+      context: context,
+      builder: (_) => _WarehouseKeepersDialog(
+        warehouseId: d.id,
+        warehouseName: d.name?.isNotEmpty == true ? d.name! : (d.code ?? '仓库'),
+        initial: current,
+        repository: repo,
+      ),
+    );
+    if (saved == null || !mounted) return;
+    final warnings = [
+      for (final keeper in saved)
+        if (keeper.noticeWarning case final warning?) '${keeper.name}：$warning',
+    ];
+    if (warnings.isEmpty) {
+      context.appSuccess(saved.isEmpty ? '已清空负责人，该仓通知发给整个仓库部门' : '负责人已保存');
+    } else {
+      context.appWarning('负责人已保存。${warnings.join('；')}', force: true);
+    }
+    await _loadKeepers();
   }
 
   // 表头筛选：列 key → 服务端 query 参数名（上级仓库列在服务端是 parentId；核算列同名）。
@@ -367,6 +435,14 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       statusActionLabel: detail.status == '使用' ? '停用' : '启用',
       onEdit: () => _showEdit(detail),
       onDelete: () => _delete(detail),
+      extraActions: [
+        if (_canEdit)
+          MasterDetailAction(
+            label: '设置负责人',
+            icon: Icons.manage_accounts_outlined,
+            onPressed: () => _editKeepers(detail),
+          ),
+      ],
     );
     if (mounted) _detailLoading = false;
   }
@@ -380,11 +456,12 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     MasterDetailRow('备注', w.remark),
     MasterDetailRow('状态', w.status),
     MasterDetailRow('所属车间', w.workshopDepartmentName),
+    MasterDetailRow('仓库负责人', _keeperLabel(w.id)),
     MasterDetailRow('旧操作员ID', w.legacyOperatorId?.toString()),
     MasterDetailRow('旧系统 ID', w.legacyId?.toString()),
   ];
 
-  static final _columns = <MasterColumnDef<WarehouseListItem>>[
+  List<MasterColumnDef<WarehouseListItem>> get _columns => [
     MasterColumnDef(key: 'code', label: '编号', width: 120, value: (w) => w.code),
     MasterColumnDef(
       key: 'name',
@@ -411,6 +488,13 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       width: 90,
       value: (w) => w.accountable ? '是' : '否',
     ),
+    // ADR-115：登记后该仓的仓库类通知只发给负责人；主仓负责人管全部子仓。
+    MasterColumnDef(
+      key: 'keepers',
+      label: '负责人',
+      width: 180,
+      value: (w) => _keeperLabel(w.id),
+    ),
     MasterColumnDef(
       key: 'status',
       label: '状态',
@@ -420,7 +504,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
   ];
 
   Future<void> _refresh() async {
-    await Future.wait([_loadWarehouses(1), _loadFacets()]);
+    await Future.wait([_loadWarehouses(1), _loadFacets(), _loadKeepers()]);
   }
 
   @override
@@ -633,6 +717,142 @@ class _WarehouseWorkshopFieldState
           widget.onChanged(value);
         },
       ),
+    );
+  }
+}
+
+/// 设置仓库负责人(ADR-115)：多选在职员工，整组替换。
+class _WarehouseKeepersDialog extends StatefulWidget {
+  const _WarehouseKeepersDialog({
+    required this.warehouseId,
+    required this.warehouseName,
+    required this.initial,
+    required this.repository,
+  });
+
+  final String warehouseId;
+  final String warehouseName;
+  final List<WarehouseKeeper> initial;
+  final WarehouseKeeperRepository repository;
+
+  @override
+  State<_WarehouseKeepersDialog> createState() =>
+      _WarehouseKeepersDialogState();
+}
+
+class _WarehouseKeepersDialogState extends State<_WarehouseKeepersDialog> {
+  late List<UtenEmployeePickerItem> _selection = [
+    for (final keeper in widget.initial) _itemOf(keeper),
+  ];
+
+  /// 候选里带回的账号/部门事实，保存前给出「收不到通知」提示。
+  late final Map<String, WarehouseKeeper> _known = {
+    for (final keeper in widget.initial) keeper.employeeId: keeper,
+  };
+  bool _saving = false;
+  String? _error;
+
+  static UtenEmployeePickerItem _itemOf(WarehouseKeeper keeper) =>
+      UtenEmployeePickerItem(
+        id: keeper.employeeId,
+        name: keeper.name,
+        employeeCode: keeper.code,
+        departmentName: keeper.departmentName,
+      );
+
+  Future<List<UtenEmployeePickerItem>> _load(String? keyword) async {
+    final candidates = await widget.repository.candidates(keyword);
+    for (final candidate in candidates) {
+      _known[candidate.employeeId] = candidate;
+    }
+    return [for (final candidate in candidates) _itemOf(candidate)];
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final saved = await widget.repository.replace(widget.warehouseId, [
+        for (final item in _selection) item.id,
+      ]);
+      if (mounted) Navigator.of(context).pop(saved);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = '保存失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final warnings = [
+      for (final item in _selection)
+        if (_known[item.id]?.noticeWarning case final warning?)
+          '${item.name}：$warning',
+    ];
+    return AlertDialog(
+      title: Text('设置负责人 · ${widget.warehouseName}'),
+      content: SizedBox(
+        width: 460,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '登记后，这个仓(含下级子仓)的领料、采购/委外到货、IQC 入库、产成品、'
+              '销售出库等仓库通知只发给负责人；不登记则照旧发给整个仓库部门。'
+              '仓库任务中心选「我的仓库」即可只看自己负责的仓。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            UtenEmployeeMultiPicker(
+              key: const Key('warehouse-keeper-picker'),
+              label: '负责人',
+              sheetTitle: '选择仓库负责人',
+              initialSelection: _selection,
+              enabled: !_saving,
+              loader: _load,
+              onChanged: (next) => setState(() => _selection = next),
+            ),
+            for (final warning in warnings)
+              Padding(
+                padding: const EdgeInsets.only(top: UtenSpacing.s4),
+                child: Text(
+                  warning,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                child: Text(
+                  _error!,
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+              ),
+          ],
+        ),
+      ),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _save,
+          child: Text(_saving ? '保存中…' : '保存'),
+        ),
+      ],
     );
   }
 }

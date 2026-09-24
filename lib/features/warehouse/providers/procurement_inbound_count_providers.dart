@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/auth/permissions.dart';
 import '../repositories/procurement_inbound_repository.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 // 预计到货 / 到货异常 / 超量到货财务审批 / 待退回供应商 / IQC 待检的入口数随工作台徽章汇总
 // 一次带回(ADR-108), 读 badgeEntryTodoProvider / badgeFactProvider; 这里只剩入库任务中心
@@ -12,6 +13,7 @@ import '../repositories/procurement_inbound_repository.dart';
 ///
 /// 页内专用、autoDispose: 只在入库任务中心打开期间存活, 不再自带 60s 轮询;
 /// 仓库写操作成功后由 invalidateWarehouseTaskCounts 失效重拉。
+/// 按任务中心当前的「仓库范围」计数(ADR-115), 与分段里的列表同一范围。
 final warehouseInboundExpectationTypeCountsProvider =
     FutureProvider.autoDispose<Map<String, int>>((ref) async {
       if (!ref
@@ -22,5 +24,5 @@ final warehouseInboundExpectationTypeCountsProvider =
       }
       return ref
           .watch(procurementInboundRepositoryProvider)
-          .expectationTypeCounts();
+          .expectationTypeCounts(scope: ref.watch(warehouseTaskScopeProvider));
     });

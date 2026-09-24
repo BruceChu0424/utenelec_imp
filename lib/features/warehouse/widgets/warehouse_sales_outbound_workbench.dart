@@ -32,6 +32,7 @@ import '../pages/warehouse_sales_outbound_batch_page.dart';
 import '../providers/warehouse_sales_outbound_count_provider.dart';
 import '../repositories/warehouse_sales_outbound_repository.dart';
 import 'warehouse_sales_outbound_table_columns.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 /// 状态小类分段值：真实作业状态或历史单据哨兵。
 class _SalesOutboundSeg {
@@ -163,6 +164,7 @@ class _WarehouseSalesOutboundWorkbenchState
                 ? null
                 : ChinaDateTime.formatDate(range.start),
             dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+            scope: WarehouseListScope.of(context),
           );
       if (!mounted || version != _requestVersion) return;
       setState(() {

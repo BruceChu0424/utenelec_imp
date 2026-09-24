@@ -27,6 +27,9 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:dio/dio.dart';
+import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/repositories/warehouse_keeper_repository.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -194,7 +197,63 @@ void main() {
       await tester.pumpAndSettle();
       expect(warehouses.lastFilters?['parentId'], kMasterFilterNullValue);
     });
+
+    // ADR-115：列表「负责人」列按全部负责关系显示；没登记的仓显示「—」。
+    testWidgets('负责人列显示登记的仓管员', (tester) async {
+      await _pump(
+        tester,
+        ProviderScope(
+          overrides: [
+            warehouseRepositoryProvider.overrideWithValue(
+              _FakeWarehouseRepository(),
+            ),
+            warehouseKeeperRepositoryProvider.overrideWithValue(
+              _FakeWarehouseKeeperRepository(),
+            ),
+            currentPermissionsProvider.overrideWithValue(<String>{
+              Perm.warehouseView,
+            }),
+          ],
+          child: const WarehousePage(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final table = _tableOf<WarehouseListItem>(tester);
+      final keepers = table.columns.singleWhere((c) => c.key == 'keepers');
+      expect(keepers.label, '负责人');
+      expect(
+        keepers.value(
+          const WarehouseListItem(id: 'wh-1', code: 'C01', name: '成品仓库'),
+        ),
+        '成品仓管、仓库主管',
+      );
+      expect(
+        keepers.value(
+          const WarehouseListItem(id: 'wh-2', code: 'C02', name: '五金仓库'),
+        ),
+        '—',
+      );
+    });
   });
+}
+
+class _FakeWarehouseKeeperRepository extends WarehouseKeeperRepository {
+  _FakeWarehouseKeeperRepository() : super(ApiClient(Dio()));
+
+  @override
+  Future<List<WarehouseKeeperAssignment>> assignments() async => const [
+    WarehouseKeeperAssignment(
+      warehouseId: 'wh-1',
+      employeeId: 'e-1',
+      name: '成品仓管',
+    ),
+    WarehouseKeeperAssignment(
+      warehouseId: 'wh-1',
+      employeeId: 'e-3',
+      name: '仓库主管',
+    ),
+  ];
 }
 
 MasterDataTableView<T> _tableOf<T>(WidgetTester tester) =>

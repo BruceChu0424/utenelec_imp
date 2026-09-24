@@ -368,6 +368,51 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertTrue(sql.getValue().contains("fn_production_draw_requested(v.action_doc_id)"));
     }
 
+    /** 生产领料任务中心表头排序(2026-09-24): 按生产计划号排, 白名单字段, 不为仓库多跑分面查询。 */
+    @Test
+    void warehouseRowsSortByPlanNumberWithoutFacetQuery() {
+        EntityManager em = mock(EntityManager.class);
+        Query rows = mock(Query.class);
+        Query summary = mock(Query.class);
+        Query statuses = mock(Query.class);
+        Query exceptions = mock(Query.class);
+        Query pending = mock(Query.class);
+        when(em.createNativeQuery(anyString()))
+                .thenReturn(rows, summary, statuses, exceptions, pending);
+        when(rows.getResultList()).thenReturn(List.of());
+        when(summary.getSingleResult()).thenReturn(new Object[]{0L, 0L, 0L, BigDecimal.ZERO});
+        when(statuses.getResultList()).thenReturn(List.of());
+        when(exceptions.getResultList()).thenReturn(List.of());
+        when(pending.getSingleResult()).thenReturn(0L);
+        FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
+        when(access.canAccessWarehouseTasks()).thenReturn(true);
+
+        FulfillmentWorkbenchPage result = new FulfillmentWorkbenchQueryService(em, access).query(
+                "WAREHOUSE", "OPEN_ANY", "", "", null, null, 1, 20,
+                new FulfillmentWorkbenchTableQuery("planNo", "desc", java.util.Map.of(), null, null, null, null));
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em, times(5)).createNativeQuery(sql.capture());
+        assertTrue(sql.getAllValues().getFirst().contains("NULLIF(plan_no,'') desc NULLS LAST, task_id"));
+        assertTrue(result.facets().isEmpty());
+    }
+
+    @Test
+    void warehouseSortOnlyColumnsAreWhitelistedAndNeverBecomeFilters() {
+        assertEquals("NULLIF(warehouse_name,'') asc NULLS LAST, task_id",
+                new FulfillmentWorkbenchTableQuery("warehouseName", "asc", java.util.Map.of(),
+                        null, null, null, null).orderSql());
+        assertEquals("open_qty desc NULLS LAST, task_id",
+                new FulfillmentWorkbenchTableQuery("openQty", "desc", java.util.Map.of(),
+                        null, null, null, null).orderSql());
+        org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
+                () -> new FulfillmentWorkbenchTableQuery("warehouseName", "asc",
+                        java.util.Map.of("warehouseName", "成品仓库"), null, null, null, null));
+        org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
+                () -> new FulfillmentWorkbenchTableQuery("warehouse_name;--", "asc",
+                        java.util.Map.of(), null, null, null, null));
+    }
+
     @Test
     void warehouseCountIsZeroOutsideTheWarehouseOrganizationScope() {
         EntityManager em = mock(EntityManager.class);

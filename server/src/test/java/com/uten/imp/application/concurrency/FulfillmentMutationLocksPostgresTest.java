@@ -350,7 +350,7 @@ class FulfillmentMutationLocksPostgresTest {
 
     /**
      * ADR-107 + 评审: 主仓协调锁仍在数据库锁管理器里排队(不再轮询), 等待上限就是连接上的 lock_timeout;
-     * 到点拿不到回可重跑冲突和大白话提示。(ADR-115: 物料分析下达预览改为只读投影后不再取这把锁,
+     * 到点拿不到回可重跑冲突和大白话提示。(ADR-116: 物料分析下达预览改为只读投影后不再取这把锁,
      * 原「预览取共享锁」模式随之删除。)
      */
     @Test void mainWarehouseLockQueuesUpToLockTimeout() throws Exception {

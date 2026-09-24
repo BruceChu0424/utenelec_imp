@@ -16,6 +16,7 @@ import 'package:uten_imp/features/warehouse/widgets/warehouse_sales_picking_fiel
 import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 void main() {
   final summary = WarehouseSalesOutboundSummary.fromJson(_detailJson);
@@ -398,6 +399,7 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
     String? warehouseWorkStatus,
     String? dateFrom,
     String? dateTo,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   }) async => PagedResult(
     items: [summary],
     page: page,

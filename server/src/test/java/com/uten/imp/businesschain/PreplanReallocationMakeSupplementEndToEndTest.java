@@ -76,7 +76,7 @@ class PreplanReallocationMakeSupplementEndToEndTest {
         assertEquals(materialId,donor.materialLineId());qty("10",donor.requiredQty());qty("4",donor.priorityPendingQty());qty("4",donor.demandSupplyGapQty());
         qty("10",db.queryForObject("SELECT requested_qty FROM production_material_analysis_items WHERE id=?",BigDecimal.class,childItem));
         var request=planRequest(c,yielded,materialId,"4","make-supplement-"+a.analysisId());
-        // ADR-115: 预览与真实下达同口径, 先给既有锚点补上让料配额再排产, 结果逐字段相等。
+        // ADR-116: 预览与真实下达同口径, 先给既有锚点补上让料配额再排产, 结果逐字段相等。
         AnalysisView previewed=commands.previewIssuePlans(a.analysisId(),new PreviewIssuePlansRequest(request.version(),
                 request.fingerprint(),request.idempotencyKey(),request.warehouseId(),request.billDate(),request.deliveryDate(),
                 request.approveNow(),request.lines(),List.of()));

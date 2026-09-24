@@ -33,7 +33,9 @@ import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../models/production_daily_report.dart';
+import '../providers/production_execution_refresh.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_status_badge.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
@@ -120,6 +122,12 @@ class _ProductionDailyReportDetailPageState
     });
   }
 
+  /// 审核/红冲/删除改变了车间任务的已报数量与分类归属(2026-09-24 用户口径「报工成功
+  /// 回到生产中，分类或整个页面应该刷新」)：发生产执行刷新信号——徽章汇总立刻重拉，
+  /// 车间任务页与调度台返回时整页重拉。
+  void _signalExecutionChanged() =>
+      bumpListRefresh(ref, productionExecutionRefreshKey);
+
   Future<void> _approve() => _doAction(
     '审核后只累计完工申报量 fqty，并生成仓库到货登记任务；'
         '此时不会增加库存或 iqty。仓库登记成品仓与库位并送品质部检查，'
@@ -184,6 +192,7 @@ class _ProductionDailyReportDetailPageState
       context.appSuccess(ok);
       // 服务端已返回审核/红冲后的完整详情：直接落页面，省掉一次详情往返。
       _applyDetail(updated);
+      _signalExecutionChanged();
     } on ApiException catch (e) {
       await _settleFailedAction(e.message, ok);
     } catch (_) {
@@ -221,6 +230,7 @@ class _ProductionDailyReportDetailPageState
     if (fresh != null) {
       _applyDetail(fresh);
       if (fresh.status != before) {
+        _signalExecutionChanged();
         context.appSuccess('$successMessage(本次提交服务端已完成，页面已刷新)');
         return;
       }
@@ -257,6 +267,7 @@ class _ProductionDailyReportDetailPageState
     try {
       await ref.read(productionDailyReportRepositoryProvider).delete(widget.id);
       if (!mounted) return;
+      _signalExecutionChanged();
       context.appSuccess('已删除');
       // 返回键契约（路由设计 §十一）：pop 回来源（列表/车间任务），栈空回 hub。
       popOrBackTo(context, defaultPath: RouteName.production);

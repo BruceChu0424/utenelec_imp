@@ -36,6 +36,7 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/procurement_inbound_repository.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 class WarehouseInboundExpectationsView extends ConsumerStatefulWidget {
   const WarehouseInboundExpectationsView({
@@ -460,16 +461,18 @@ class _WarehouseInboundExpectationsViewState
     });
     try {
       final repo = ref.read(procurementInboundRepositoryProvider);
+      final scope = WarehouseListScope.of(context);
       final result = await repo.expectations(
         page: page,
         orderType: _orderType,
         keyword: _keyword.isEmpty ? null : _keyword,
         supplierId: _supplierIdFilter,
+        scope: scope,
       );
       if (!current()) return;
       // 类型计数失败不阻断列表（分段按钮降级为 '—'）。
       repo
-          .expectationTypeCounts()
+          .expectationTypeCounts(scope: scope)
           .then((counts) {
             if (current()) setState(() => _typeCounts = counts);
           })

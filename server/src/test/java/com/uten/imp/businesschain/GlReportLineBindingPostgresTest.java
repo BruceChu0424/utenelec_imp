@@ -248,7 +248,10 @@ class GlReportLineBindingPostgresTest {
                 .targets().stream().map(GlReportLineBindingService.Target::id).toList();
     }
 
-    /** 一张手工凭证上的一笔费用借方分录(贷方用同额的另一分录平衡不影响费用科目取数)。 */
+    /**
+     * 一张借贷平衡的手工凭证: 借费用科目, 贷一个不参与报表行绑定的往来科目(同额)。
+     * 测试库在 CI 全量里被所有用例共用, 单边凭证会让别的用例的"全局凭证借贷必平"不变量失败。
+     */
     private void post(UUID style, String amount, java.time.LocalDate date) {
         UUID voucher = UUID.randomUUID();
         String period = date.toString().substring(0, 7);
@@ -260,6 +263,20 @@ class GlReportLineBindingPostgresTest {
                 INSERT INTO gl_entries(id,voucher_id,line_no,style_id,direction,amount,entry_date,period,summary)
                 VALUES (?,?,1,?,1,?,?,?,'报表验收')
                 """, UUID.randomUUID(), voucher, style, new BigDecimal(amount), date, period);
+        jdbc.update("""
+                INSERT INTO gl_entries(id,voucher_id,line_no,style_id,direction,amount,entry_date,period,summary)
+                VALUES (?,?,2,?,-1,?,?,?,'报表验收对方科目')
+                """, UUID.randomUUID(), voucher, offsetStyle(), new BigDecimal(amount), date, period);
+    }
+
+    private UUID offsetStyle;
+
+    /** 贷方对方科目: 往来类(不是费用类), 不绑定任何报表行, 不影响费用取数。 */
+    private UUID offsetStyle() {
+        if (offsetStyle == null) {
+            offsetStyle = style("GL-CR-" + UUID.randomUUID().toString().substring(0, 8), "报表验收对方科目", "ACCOUNT");
+        }
+        return offsetStyle;
     }
 
     private UUID style(String code, String name, String category) {

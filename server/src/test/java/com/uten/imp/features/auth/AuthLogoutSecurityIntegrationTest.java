@@ -61,7 +61,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         },
         properties = {
                 "uten.security.cors-allowed-origins=https://trusted.example.test",
-                "uten.security.require-https=false"
+                "uten.security.require-https=false",
+                // 未设 UTEN_PROFILE 时按 prod 启动(故意 fail-closed), 而 prod 要求显式配置内网网段(ADR-110 security-17);
+                // CI 没有 server/.env, 这里给出本用例的网段, 不放宽生产启动校验。
+                "uten.deployment.local-allowed-cidrs=127.0.0.0/8,::1/128"
         },
         excludeFilters = @ComponentScan.Filter(
                 type = FilterType.ASSIGNABLE_TYPE,

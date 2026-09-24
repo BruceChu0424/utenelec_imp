@@ -119,6 +119,8 @@ systemctl enable --now uten-imp.service uten-imp-updater.timer
 
 当前独立 migrator 固定连接同机 `127.0.0.1:5432/uten_imp`、使用 `uten_migrator`，从 `UTEN_MIGRATOR_DB_PASSWORD` 读取专用密码（20–512 位字母数字）。激活前只检查变量存在、格式和该角色真实连接/DDL权限，不打印密码。应用角色与迁移角色分离，数据库名、主机或端口不符合这一部署协议时先修正部署方案，不能等到停服后才发现凭据缺失。
 
+**因为连接串写死, 不要在服务器上拿它对副本库"演练"**(改 `UTEN_DB_URL` 无效, 会直接迁正式库; 2026-09-24 v2.0.0 发版踩过)。迁移演练在开发机克隆库上做: pg_dump 服务器库 → 本机恢复 → 用待发布 JAR 起实例指向克隆库。
+
 ## 数据与附件备份
 
 日常备份统一使用[配套备份](../postgres/backup/PAIRED_INTERNAL_BACKUP.zh-CN.md)，以同一数据库快照和原件校验生成可恢复集合。旧 `uten-backup-daily` 入口只委托该程序，不再先导出数据库、后 `rsync --delete` 或自动覆盖上一份附件副本。安装入口前必须配齐 `/usr/local/lib/uten-imp/paired_internal_backup.py`、系统依赖和 `/etc/uten-imp/paired-internal-backup.json`；配置保持 root:root、0600，备份集合保持私有权限。

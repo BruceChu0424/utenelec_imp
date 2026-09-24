@@ -420,8 +420,9 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(689, 618)")
                 .contains("(690, 619)")
                 .contains("(691, 620)")
-                // 迁移头 V691 / 620 张 (V648至V669 跳号)。
-                .contains("V507/469、V508/470及V511至V691完整目录")
+                .contains("(692, 621)")
+                // 迁移头 V692 / 621 张 (V648至V669 跳号)。
+                .contains("V507/469、V508/470及V511至V692完整目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

@@ -55,6 +55,9 @@ class ProductionExecutionSegmentOperationsPostgresTest {
             throws Exception {
         try (Connection connection = connection()) {
             Fixture f = fixture(connection);
+            // V690 起无销售分配的公共产出入库以"已审核报工"为上限(与真实链路 报工→点收 同构),
+            // 先审一张覆盖计划量 10 的报工, 再验分批入库与超量拒绝。
+            approvedPublicReport(connection, f, "10");
 
             UUID firstInbound = finishedIn(connection, f, "4");
             update(connection,
@@ -328,6 +331,29 @@ class ProductionExecutionSegmentOperationsPostgresTest {
         return new Fixture(
                 warehouse, product, unit, plan, planItem, segment,
                 demand, reservation, draw, drawItem);
+    }
+
+    private static void approvedPublicReport(
+            Connection c, Fixture f, String qty) throws Exception {
+        UUID report = UUID.randomUUID();
+        LocalDate billDate = LocalDate.of(2026, 7, 31);
+        String reportNo = businessIdentifier("SR", billDate);
+        insert(c, """
+                insert into production_daily_reports(
+                    id,bill_no,bill_date,status
+                ) values(?,?,?,0)
+                """, report, reportNo, billDate);
+        insert(c, """
+                insert into production_daily_report_items(
+                    id,bill_no,bill_date,report_id,line_no,
+                    goods_id,unit_id,unit_rate,qty,plan_item_id,
+                    execution_segment_id
+                ) values(?,?,?,?,1,?,?,1,?,?,?)
+                """, UUID.randomUUID(), reportNo, billDate, report,
+                f.productGoodsId(), f.unitId(), decimal(qty),
+                f.planItemId(), f.segmentId());
+        update(c, "update production_daily_reports set status=1, row_version=row_version+1 where id=?",
+                report);
     }
 
     private static UUID finishedIn(

@@ -3,7 +3,6 @@ package com.uten.imp.features.production.analysis;
 import com.uten.imp.application.port.WorkshopPlanningGapReadPort;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.util.NativeValueConverters;
-import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
 import jakarta.persistence.EntityManager;
@@ -49,18 +48,24 @@ public class MaterialAnalysisPlanningGapReader implements WorkshopPlanningGapRea
     private final EntityManager em;
     private final MaterialAnalysisService analyses;
     private final ProductionDocumentAccessPolicy access;
+    private final com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy draftPreparationAccess;
 
     /**
      * 车间任务需求 → 分析物料行。只取「还缺」的需求(缺口桶)，已领齐、可领、待仓库发料、线边
-     * 待投入、备料中的都不是在等计划。没有分析来源的计划(手工计划、品质补产)自然连不上。
+     * 待投入、备料中的都不是在等计划。没有分析来源的计划(手工计划、品质补产)自然连不上；追加用料
+     * 申请(V702)与品质补料周期生成的需求不在物料分析里，也排除。
      */
     private static final String SHORT_DEMAND_SQL = """
             SELECT segment.id, facts.demand_id, plan.material_analysis_id, material.id,
-                   facts.shortage_qty, goods.id, goods.code, goods.name, color.name, unit.name
+                   facts.shortage_qty, goods.id, goods.code, goods.name, color.name, unit.name,
+                   facts.color_id, facts.unit_id
             FROM production_execution_segments segment
             JOIN production_plans plan ON plan.id = segment.plan_id AND NOT plan.is_deleted
              AND plan.material_analysis_id IS NOT NULL AND plan.material_analysis_item_id IS NOT NULL
             CROSS JOIN LATERAL fn_execution_segment_material_facts(segment.id) facts
+            JOIN production_material_demands demand ON demand.id = facts.demand_id
+             AND demand.material_increment_request_id IS NULL
+             AND demand.fqc_replenishment_cycle_id IS NULL
             JOIN production_material_analysis_materials material
               ON material.analysis_id = plan.material_analysis_id AND material.active
              AND material.goods_id = facts.goods_id
@@ -75,58 +80,122 @@ public class MaterialAnalysisPlanningGapReader implements WorkshopPlanningGapRea
             ORDER BY segment.id, goods.name, goods.code, facts.demand_id, material.id
             """;
 
+    /** 显示用的分析快照复用多久。 */
+    static final long DISPLAY_CACHE_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
+    private static final int DISPLAY_CACHE_LIMIT = 256;
+
+    /** 分析 id → (算好的时刻, 表头版本戳, 各物料行的计划口径；null = 这份分析此刻读不出来)。 */
+    private final java.util.concurrent.ConcurrentHashMap<UUID, CachedNodes> displayCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     @Override
     @Transactional(readOnly = true)
-    public Map<UUID, List<Gap>> planningGaps(Collection<UUID> segmentIds) {
+    public PlanningGaps planningGaps(Collection<UUID> segmentIds) {
+        return compute(segmentIds, true);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PlanningGaps freshPlanningGaps(Collection<UUID> segmentIds) {
+        return compute(segmentIds, false);
+    }
+
+    private PlanningGaps compute(Collection<UUID> segmentIds, boolean reuse) {
         List<UUID> ids = segmentIds == null ? List.of()
                 : segmentIds.stream().filter(Objects::nonNull).distinct().toList();
-        if (ids.isEmpty()) return Map.of();
+        if (ids.isEmpty()) return PlanningGaps.NONE;
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery(SHORT_DEMAND_SQL).setParameter("ids", ids));
-        if (rows.isEmpty()) return Map.of();
-        Map<UUID, Map<UUID, MaterialView>> materialsByAnalysis = new HashMap<>();
-        // (任务, 需求) → 这条需求在分析里对应的各行(同一物料在同一父件下出现多行时逐行合计)。
-        Map<UUID, Map<UUID, DemandGap>> bySegment = new LinkedHashMap<>();
+        if (rows.isEmpty()) return PlanningGaps.NONE;
+        Map<UUID, Map<UUID, Node>> nodesByAnalysis = new HashMap<>();
+        Map<UUID, String> stamps = reuse ? stamps(rows) : Map.of();
+        Set<UUID> unknown = new LinkedHashSet<>();
+        // (任务, 货品 + 颜色 + 单位) → 一条缺口。同一物料可能挂在几条需求上(不同需用日期)、也可能
+        // 对上分析里的几行(同一父件下两条 BOM)：需求按条合计自己的缺口，分析行按行各计一次。
+        Map<UUID, Map<List<Object>, MaterialGap>> bySegment = new LinkedHashMap<>();
         for (Object[] row : rows) {
             UUID segmentId = (UUID) row[0];
             UUID demandId = (UUID) row[1];
             UUID analysisId = (UUID) row[2];
             UUID materialLineId = (UUID) row[3];
-            Map<UUID, MaterialView> materials = materialsByAnalysis.computeIfAbsent(
-                    analysisId, this::materialsOf);
-            MaterialView material = materials.get(materialLineId);
-            if (material == null || isNonProductionStage(material.controlStage())) continue;
-            BigDecimal net = positive(material.netShortageQty());
-            if (net.signum() <= 0) continue;
-            DemandGap gap = bySegment.computeIfAbsent(segmentId, ignored -> new LinkedHashMap<>())
-                    .computeIfAbsent(demandId, ignored -> new DemandGap(segmentId, demandId, analysisId,
-                            positive(NativeValueConverters.toBigDecimal(row[4])), (UUID) row[5],
-                            (String) row[6], (String) row[7], (String) row[8], (String) row[9]));
-            gap.add(material, net);
+            Map<UUID, Node> nodes = nodesByAnalysis.computeIfAbsent(analysisId,
+                    id -> reuse ? cachedNodes(id, stamps.get(id)) : nodesOf(id));
+            if (nodes == null) {
+                unknown.add(segmentId);
+                continue;
+            }
+            Node node = nodes.get(materialLineId);
+            if (node == null || !node.production()) continue;
+            List<Object> key = java.util.Arrays.asList(row[5], row[10], row[11]);
+            bySegment.computeIfAbsent(segmentId, ignored -> new LinkedHashMap<>())
+                    .computeIfAbsent(key, ignored -> new MaterialGap(segmentId, analysisId, (UUID) row[5],
+                            (String) row[6], (String) row[7], (String) row[8], (String) row[9]))
+                    .add(demandId, positive(NativeValueConverters.toBigDecimal(row[4])), materialLineId, node);
         }
         Map<UUID, List<Gap>> result = new LinkedHashMap<>();
-        bySegment.forEach((segmentId, demands) -> {
-            List<Gap> gaps = demands.values().stream().map(DemandGap::toGap).toList();
+        bySegment.forEach((segmentId, materials) -> {
+            if (unknown.contains(segmentId)) return;
+            List<Gap> gaps = materials.values().stream().map(MaterialGap::toGap)
+                    .filter(Objects::nonNull).toList();
             if (!gaps.isEmpty()) result.put(segmentId, gaps);
         });
-        return result;
+        return new PlanningGaps(result, unknown);
     }
 
     /**
-     * 一个分析的全部物料行(按物料行 id)。分析已删除或读不出时当作「没有可对照的计划口径」，
-     * 不让一张坏分析把整页车间任务拖垮；这里只接业务异常，数据库错误照常上抛。
+     * 分析表头的版本戳(版本号 + 指纹 + 更新时间)。计划员下单 / 下达、刷新分析都会改它，缓存
+     * 随之作废，车间立刻看到新数；只有不经分析的外部变化(比如到货)才最多晚一个缓存周期。
      */
-    private Map<UUID, MaterialView> materialsOf(UUID analysisId) {
+    private Map<UUID, String> stamps(List<Object[]> rows) {
+        List<UUID> analysisIds = rows.stream().map(row -> (UUID) row[2]).distinct().toList();
+        Map<UUID, String> stamps = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id, version::text || '|' || fingerprint || '|' || updated_at::text
+                FROM production_material_analyses WHERE id IN (:ids)
+                """).setParameter("ids", analysisIds))) {
+            stamps.put((UUID) row[0], (String) row[1]);
+        }
+        return stamps;
+    }
+
+    private Map<UUID, Node> cachedNodes(UUID analysisId, String stamp) {
+        long now = System.nanoTime();
+        CachedNodes cached = displayCache.get(analysisId);
+        if (cached != null && stamp != null && stamp.equals(cached.stamp())
+                && now - cached.at() < DISPLAY_CACHE_NANOS) {
+            return cached.nodes();
+        }
+        Map<UUID, Node> nodes = nodesOf(analysisId);
+        if (displayCache.size() >= DISPLAY_CACHE_LIMIT) {
+            displayCache.entrySet().removeIf(entry -> now - entry.getValue().at() >= DISPLAY_CACHE_NANOS);
+            if (displayCache.size() >= DISPLAY_CACHE_LIMIT) displayCache.clear();
+        }
+        if (stamp != null) displayCache.put(analysisId, new CachedNodes(now, stamp, nodes));
+        return nodes;
+    }
+
+    /**
+     * 一个分析每个物料行的计划口径。读不出来(分析已删、BOM 变了要重新分析、视图计算出错)时返回
+     * null——「不知道」，不当成「计划已下够单」；数据库错误照常上抛(事务已经不能用了)。
+     */
+    private Map<UUID, Node> nodesOf(UUID analysisId) {
         try {
             AnalysisView view = analyses.detailInternal(analysisId, false);
-            Map<UUID, MaterialView> byLine = new HashMap<>();
+            Map<UUID, Node> byLine = new HashMap<>();
             for (MaterialView material : view.flatMaterials()) {
-                byLine.put(material.materialLineId(), material);
+                byLine.put(material.materialLineId(), new Node(
+                        positive(material.netShortageQty()),
+                        !isNonProductionStage(material.controlStage()),
+                        material.routeConfirmed(),
+                        material.sourceConfirmed() != null ? material.sourceConfirmed() : material.sourceSuggestion()));
             }
             return byLine;
-        } catch (ApiException unavailable) {
-            log.debug("车间催计划: 物料分析 {} 暂不可读({}), 本次不判计划缺口", analysisId, unavailable.getMessage());
-            return Map.of();
+        } catch (jakarta.persistence.PersistenceException | org.springframework.dao.DataAccessException database) {
+            throw database;
+        } catch (RuntimeException unavailable) {
+            log.warn("车间催计划: 物料分析 {} 暂不可读({}), 本次不判计划缺口",
+                    analysisId, unavailable.getClass().getSimpleName());
+            return null;
         }
     }
 
@@ -139,27 +208,29 @@ public class MaterialAnalysisPlanningGapReader implements WorkshopPlanningGapRea
         return value == null || value.signum() < 0 ? BigDecimal.ZERO : value;
     }
 
-    /** 同一条需求可能对上分析里的几行(同一物料在同一父件下挂了两条 BOM)：合计后封顶到需求自己的缺口。 */
-    private static final class DemandGap {
+    private record CachedNodes(long at, String stamp, Map<UUID, Node> nodes) {
+    }
+
+    /** 分析物料行里本功能要的几项：还缺数量、是否生产阶段、路线确认与供应方式。 */
+    record Node(BigDecimal net, boolean production, boolean routeConfirmed, String route) {
+    }
+
+    /** 任务里一种物料(货品 + 颜色 + 单位)：几条需求的缺口合计、对上的分析行各计一次还缺数量。 */
+    static final class MaterialGap {
         private final UUID segmentId;
-        private final UUID demandId;
         private final UUID analysisId;
-        private final BigDecimal demandShortage;
         private final UUID goodsId;
         private final String goodsCode;
         private final String goodsName;
         private final String colorName;
         private final String unitName;
-        private BigDecimal net = BigDecimal.ZERO;
-        private MaterialView first;
-        private boolean allConfirmed = true;
+        private final Map<UUID, BigDecimal> demandShortage = new LinkedHashMap<>();
+        private final Map<UUID, Node> lines = new LinkedHashMap<>();
 
-        DemandGap(UUID segmentId, UUID demandId, UUID analysisId, BigDecimal demandShortage, UUID goodsId,
-                  String goodsCode, String goodsName, String colorName, String unitName) {
+        MaterialGap(UUID segmentId, UUID analysisId, UUID goodsId, String goodsCode, String goodsName,
+                    String colorName, String unitName) {
             this.segmentId = segmentId;
-            this.demandId = demandId;
             this.analysisId = analysisId;
-            this.demandShortage = demandShortage;
             this.goodsId = goodsId;
             this.goodsCode = goodsCode;
             this.goodsName = goodsName;
@@ -167,17 +238,31 @@ public class MaterialAnalysisPlanningGapReader implements WorkshopPlanningGapRea
             this.unitName = unitName;
         }
 
-        void add(MaterialView material, BigDecimal materialNet) {
-            if (first == null) first = material;
-            net = net.add(materialNet);
-            allConfirmed &= material.routeConfirmed();
+        void add(UUID demandId, BigDecimal shortage, UUID materialLineId, Node node) {
+            demandShortage.putIfAbsent(demandId, shortage);
+            lines.putIfAbsent(materialLineId, node);
         }
 
         Gap toGap() {
-            BigDecimal gapQty = demandShortage.signum() > 0 ? net.min(demandShortage) : net;
-            String route = first.sourceConfirmed() != null ? first.sourceConfirmed() : first.sourceSuggestion();
-            return new Gap(segmentId, demandId, analysisId, first.materialLineId(), goodsId, goodsCode,
-                    goodsName, colorName, unitName, gapQty, route, allConfirmed);
+            BigDecimal net = lines.values().stream().map(Node::net).reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (net.signum() <= 0) return null;
+            BigDecimal shortage = demandShortage.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal gapQty = net.min(shortage);
+            if (gapQty.signum() <= 0) return null;
+            // 逐条需求填到它自己的缺口为止，物料表逐行显示「还差多少没下单」。
+            Map<UUID, BigDecimal> perDemand = new LinkedHashMap<>();
+            BigDecimal left = gapQty;
+            for (Map.Entry<UUID, BigDecimal> demand : demandShortage.entrySet()) {
+                if (left.signum() <= 0) break;
+                BigDecimal share = left.min(demand.getValue());
+                if (share.signum() > 0) perDemand.put(demand.getKey(), share);
+                left = left.subtract(share);
+            }
+            Map.Entry<UUID, Node> first = lines.entrySet().iterator().next();
+            boolean confirmed = lines.values().stream().allMatch(Node::routeConfirmed);
+            return new Gap(segmentId, analysisId, first.getKey(), goodsId, goodsCode, goodsName, colorName,
+                    unitName, gapQty, java.util.Collections.unmodifiableMap(perDemand), first.getValue().route(),
+                    confirmed);
         }
     }
 
@@ -232,7 +317,7 @@ public class MaterialAnalysisPlanningGapReader implements WorkshopPlanningGapRea
 
     /**
      * 计划员徽章：本人能看到的物料分析上、仍在催的车间任务数。与分析列表同一可见范围
-     * (制单人数据范围)；缺口已补上但核对任务还没轮到的，最多多计一个核对周期。
+     * (制单人数据范围 + 委外备料直接来源对计划池开放)；缺口已补上但核对任务还没轮到的，最多多计一个核对周期。
      */
     @Transactional(readOnly = true)
     public long openUrgeCount() {
@@ -242,8 +327,8 @@ public class MaterialAnalysisPlanningGapReader implements WorkshopPlanningGapRea
                 FROM production_planning_urges urge
                 JOIN production_material_analyses analysis ON analysis.id = urge.material_analysis_id
                  AND NOT analysis.is_deleted
-                WHERE urge.status = 'OPEN' AND (%s)
-                """.formatted(scope.predicate()));
+                WHERE urge.status = 'OPEN' AND %s
+                """.formatted(draftPreparationAccess.readPredicate("analysis.id", "(" + scope.predicate() + ")")));
         scope.bind(count);
         return ((Number) count.getSingleResult()).longValue();
     }

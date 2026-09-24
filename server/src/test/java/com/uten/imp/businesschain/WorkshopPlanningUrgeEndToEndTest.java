@@ -69,6 +69,7 @@ class WorkshopPlanningUrgeEndToEndTest {
     @Autowired MaterialAnalysisCommandService commands;
     @Autowired ProductionExecutionWorkbenchService workbench;
     @Autowired ProductionPlanningUrgeService urges;
+    @Autowired com.uten.imp.features.production.execution.ProductionPlanningUrgeReconciler reconciler;
     @Autowired MaterialAnalysisPlanningGapReader planningSide;
     @Autowired com.uten.imp.features.notice.outbox.BusinessOutboxProcessor outbox;
     FullChainEndToEndTest fixture;
@@ -256,8 +257,58 @@ class WorkshopPlanningUrgeEndToEndTest {
         fixture.loginAs(c.world().superAdminUserId());
         orderChild(c, "100");
         SecurityContextHolder.clearContext();
-        assertTrue(urges.reconcileOpen(50) >= 1, "后台核对不需要登录身份");
+        assertTrue(reconciler.runBatch() >= 1, "后台核对不需要登录身份");
         assertEquals("RESOLVED|ARRANGED", urgeState(urge.urgeId()));
+    }
+
+    @Test
+    void cardsOnlyReachPlannersWhoCanOpenThisAnalysis() {
+        Case c = create("pu-reach", "采购", false);
+        // 这份分析归一位计划员(制单人)：生产部的人有下单权限但看不到别人的分析，不该收到卡。
+        UUID makerUser = fixture.createUserWithPerms(c.world(), "pu-maker-" + UUID.randomUUID(), "notice:read",
+                "production_material_analysis:view", "production_material_analysis:notify");
+        UUID makerEmployee = db.queryForObject("SELECT employee_id FROM users WHERE id=?", UUID.class, makerUser);
+        withoutGuards("UPDATE production_material_analyses SET maker_id='" + makerEmployee + "' WHERE id='"
+                + c.analysis() + "'");
+        UUID production = db.queryForObject("SELECT id FROM departments WHERE code='DEPT_PROD'", UUID.class);
+        UUID blind = fixture.createUserWithPerms(c.world(), "pu-blind-" + UUID.randomUUID(), "notice:read",
+                "production_material_analysis:view", "production_material_analysis:generate");
+        UUID scoped = fixture.createUserWithPerms(c.world(), "pu-scoped-" + UUID.randomUUID(), "notice:read",
+                "production_material_analysis:view", "production_material_analysis:generate");
+        db.update("UPDATE employees SET department_id=? WHERE id IN (SELECT employee_id FROM users WHERE id IN (?,?))",
+                production, blind, scoped);
+        db.update("""
+                INSERT INTO user_data_scopes(user_id, scope, owner_employee_id, owner_employment_generation)
+                VALUES (?, 'production_plan', ?, 0)
+                """, scoped, makerEmployee);
+
+        fixture.loginAs(c.workerUser());
+        var urge = urges.urge(c.segment());
+        deliver(urge.urgeId());
+        assertEquals(1, openCards(makerUser, urge.urgeId()), "制单计划员不在计划部门也收到");
+        assertEquals(1, openCards(scoped, urge.urgeId()), "授权看这位计划员单据的生产部成员收到");
+        assertEquals(0, openCards(blind, urge.urgeId()), "看不到这份分析的人不收(收了也打不开, 还泄露物料)");
+    }
+
+    @Test
+    void unreadableAnalysisIsNeitherAGapNorArranged() {
+        Case c = create("pu-lost", "采购", false);
+        fixture.loginAs(c.workerUser());
+        var urge = urges.urge(c.segment());
+        // 分析读不出来(这里用删掉来模拟；现实里多是 BOM 变了要重新分析)：不能当成「计划已下够单」撤卡。
+        withoutGuards("UPDATE production_material_analyses SET is_deleted=TRUE WHERE id='" + c.analysis() + "'");
+        fixture.loginAs(c.world().superAdminUserId());
+        assertEquals(0, urges.reconcileAnalysis(c.analysis()));
+        SecurityContextHolder.clearContext();
+        reconciler.runBatch();
+        assertEquals("OPEN|", urgeState(urge.urgeId()), "不知道计划下没下单时保持在催");
+
+        db.update("UPDATE production_planning_urges SET last_urged_at=last_urged_at-interval '31 minutes', "
+                + "first_urged_at=first_urged_at-interval '31 minutes' WHERE id=?", urge.urgeId());
+        fixture.loginAs(c.workerUser());
+        ApiException unknown = assertThrows(ApiException.class, () -> urges.urge(c.segment()));
+        assertEquals(ErrorCode.CONFLICT, unknown.getCode());
+        assertTrue(unknown.getMessage().contains("读不出来"), unknown.getMessage());
     }
 
     // ------------------------------------------------------------------ fixture
@@ -392,6 +443,21 @@ class WorkshopPlanningUrgeEndToEndTest {
                 statement.execute("SET session_replication_role = replica");
                 statement.execute("UPDATE production_execution_segments SET status='CANCELLED' WHERE id='" + segmentId + "'");
                 statement.execute("SET session_replication_role = origin");
+            }
+            return null;
+        });
+    }
+
+    /** 在同一连接上临时跳过守卫触发器执行一条造数语句(只用于构造极端现场)。 */
+    private void withoutGuards(String sql) {
+        db.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+            try (var statement = connection.createStatement()) {
+                statement.execute("SET session_replication_role = replica");
+                try {
+                    statement.execute(sql);
+                } finally {
+                    statement.execute("SET session_replication_role = origin");
+                }
             }
             return null;
         });

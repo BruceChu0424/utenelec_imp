@@ -21,8 +21,6 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,7 +35,7 @@ import java.util.UUID;
  * 催计划：记一条「在催」、给计划员发一张居中待办卡。同一个任务 30 分钟内再点只回报「刚催过」，
  * 不重复打扰计划员；过了 30 分钟再催，次数加一、卡片换成最新一张。
  *
- * <p>计划员下够单(缺口归零)或任务结束，由 {@link #reconcileAnalysis} / {@link #reconcileOpen}
+ * <p>计划员下够单(缺口归零)或任务结束，由 {@link #reconcileAnalysis} / {@link #reconcileUrges}
  * 办结在催记录并撤回卡片：计划员在物料分析页下单后页面会立即请求核对一次，后台核对任务每 5 分钟
  * 兜底一次(采购 / 委外模块里直接改单、仓库到货等不经物料分析页的变化)。
  *
@@ -83,7 +81,12 @@ public class ProductionPlanningUrgeService {
         if (analysisId == null) {
             throw new ApiException(ErrorCode.CONFLICT, "这个任务不是从物料分析下达的，缺料请直接联系计划员");
         }
-        List<Gap> current = gaps.planningGaps(List.of(segmentId)).getOrDefault(segmentId, List.of());
+        WorkshopPlanningGapReadPort.PlanningGaps fresh = gaps.freshPlanningGaps(List.of(segmentId));
+        if (fresh.isUnknown(segmentId)) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "物料分析暂时读不出来(可能要计划员重新分析)，这次没法判断缺什么，请直接联系计划员");
+        }
+        List<Gap> current = fresh.of(segmentId);
         if (current.isEmpty()) {
             throw new ApiException(ErrorCode.CONFLICT, "计划已经为缺的料下过单了，正在等到货，不用再催");
         }
@@ -91,27 +94,36 @@ public class ProductionPlanningUrgeService {
         UUID actor = currentUser.requireId();
         String actorName = operatorName();
         // 同一任务同时两次点击：部分唯一索引兜住「只有一条在催」，后到的那次落到下面的再催分支。
-        UUID urgeId = UUID.randomUUID();
-        int inserted = em.createNativeQuery("""
-                INSERT INTO production_planning_urges(id, execution_segment_id, material_analysis_id,
-                    gap_kind_count, gap_summary, first_urged_by, last_urged_by, last_urged_by_name)
-                VALUES (:id, :segment, :analysis, :kinds, :summary, :actor, :actor, :name)
-                ON CONFLICT (execution_segment_id) WHERE status = 'OPEN' DO NOTHING
-                """).setParameter("id", urgeId).setParameter("segment", segmentId)
-                .setParameter("analysis", analysisId).setParameter("kinds", current.size())
-                .setParameter("summary", summary).setParameter("actor", actor)
-                .setParameter("name", actorName).executeUpdate();
-        if (inserted == 0) {
-            Object[] open = (Object[]) em.createNativeQuery("""
-                    SELECT id, last_urged_at FROM production_planning_urges
+        // 在催记录刚好被核对任务办结时(插入撞上、再读又没了)，重来一次就是一条新的在催。
+        UUID urgeId = null;
+        for (int attempt = 0; attempt < 2 && urgeId == null; attempt++) {
+            UUID candidate = UUID.randomUUID();
+            int inserted = em.createNativeQuery("""
+                    INSERT INTO production_planning_urges(id, execution_segment_id, material_analysis_id,
+                        gap_kind_count, gap_summary, first_urged_by, last_urged_by, last_urged_by_name)
+                    VALUES (:id, :segment, :analysis, :kinds, :summary, :actor, :actor, :name)
+                    ON CONFLICT (execution_segment_id) WHERE status = 'OPEN' DO NOTHING
+                    """).setParameter("id", candidate).setParameter("segment", segmentId)
+                    .setParameter("analysis", analysisId).setParameter("kinds", current.size())
+                    .setParameter("summary", summary).setParameter("actor", actor)
+                    .setParameter("name", actorName).executeUpdate();
+            if (inserted == 1) {
+                urgeId = candidate;
+                break;
+            }
+            // 冷却按数据库时钟比较(last_urged_at 也是数据库 now())，不受应用服务器时钟偏差影响。
+            List<Object[]> open = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT id, last_urged_at + make_interval(mins => :cooldown) > now()
+                    FROM production_planning_urges
                     WHERE execution_segment_id = :segment AND status = 'OPEN'
                     FOR UPDATE
-                    """).setParameter("segment", segmentId).getSingleResult();
-            urgeId = (UUID) open[0];
-            OffsetDateTime last = NativeValueConverters.toOffsetDateTime(open[1]);
-            if (last != null && last.plus(COOLDOWN).isAfter(OffsetDateTime.now())) {
+                    """).setParameter("segment", segmentId)
+                    .setParameter("cooldown", (int) COOLDOWN.toMinutes()));
+            if (open.isEmpty()) continue;
+            UUID existing = (UUID) open.getFirst()[0];
+            if (Boolean.TRUE.equals(open.getFirst()[1])) {
                 // 刚催过：不再打扰计划员，如实告诉车间什么时候可以再催。
-                return result(urgeId, false);
+                return result(existing, false);
             }
             em.createNativeQuery("""
                     UPDATE production_planning_urges
@@ -121,7 +133,11 @@ public class ProductionPlanningUrgeService {
                     WHERE id = :id AND status = 'OPEN'
                     """).setParameter("kinds", current.size()).setParameter("summary", summary)
                     .setParameter("actor", actor).setParameter("name", actorName)
-                    .setParameter("id", urgeId).executeUpdate();
+                    .setParameter("id", existing).executeUpdate();
+            urgeId = existing;
+        }
+        if (urgeId == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "刚好有人在同时处理这条催办，请稍后再试");
         }
         Number count = (Number) em.createNativeQuery(
                 "SELECT urge_count FROM production_planning_urges WHERE id = :id")
@@ -139,14 +155,42 @@ public class ProductionPlanningUrgeService {
         return reconcile(openUrges("urge.material_analysis_id = :scope", analysisId, 200));
     }
 
-    /** 后台兜底：最久没核对的一批在催记录。返回办结条数。 */
-    @Transactional
-    public int reconcileOpen(int limit) {
-        tx.bind();
-        return reconcile(openUrges("TRUE", null, Math.max(1, limit)));
+    /**
+     * 后台兜底的候选：最久没核对的一批在催记录，按物料分析分组——核对任务每组开一个事务，
+     * 一份分析算不出来或太慢，只影响这一组，不拖住整批。
+     */
+    @Transactional(readOnly = true)
+    public List<List<UUID>> openUrgeBatches(int limit) {
+        Map<UUID, List<UUID>> byAnalysis = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT urge.id, urge.material_analysis_id
+                FROM production_planning_urges urge
+                WHERE urge.status = 'OPEN'
+                ORDER BY urge.updated_at, urge.id
+                LIMIT :limit
+                """).setParameter("limit", Math.max(1, limit)))) {
+            byAnalysis.computeIfAbsent((UUID) row[1], ignored -> new ArrayList<>()).add((UUID) row[0]);
+        }
+        return List.copyOf(byAnalysis.values());
     }
 
-    private List<OpenUrge> openUrges(String predicate, UUID scope, int limit) {
+    /** 核对指定的几条在催记录(同一份分析)。返回办结条数。 */
+    @Transactional
+    public int reconcileUrges(List<UUID> urgeIds) {
+        tx.bind();
+        if (urgeIds == null || urgeIds.isEmpty()) return 0;
+        return reconcile(openUrges("urge.id IN (:scope)", urgeIds, urgeIds.size()));
+    }
+
+    /** 这几条这轮没核对成(分析算不出来 / 超时)：排到队尾，下一轮先看别的。 */
+    @Transactional
+    public void deferUrges(List<UUID> urgeIds) {
+        if (urgeIds == null || urgeIds.isEmpty()) return;
+        em.createNativeQuery("UPDATE production_planning_urges SET updated_at = now() WHERE id IN (:ids) AND status = 'OPEN'")
+                .setParameter("ids", urgeIds).executeUpdate();
+    }
+
+    private List<OpenUrge> openUrges(String predicate, Object scope, int limit) {
         var query = em.createNativeQuery("""
                 SELECT urge.id, urge.execution_segment_id,
                        segment.status, segment.is_deleted
@@ -168,12 +212,15 @@ public class ProductionPlanningUrgeService {
     private int reconcile(List<OpenUrge> urges) {
         if (urges.isEmpty()) return 0;
         List<UUID> activeSegments = urges.stream().filter(OpenUrge::active).map(OpenUrge::segmentId).toList();
-        Map<UUID, List<Gap>> current = activeSegments.isEmpty() ? Map.of() : gaps.planningGaps(activeSegments);
+        WorkshopPlanningGapReadPort.PlanningGaps current = activeSegments.isEmpty()
+                ? WorkshopPlanningGapReadPort.PlanningGaps.NONE : gaps.freshPlanningGaps(activeSegments);
         int resolved = 0;
         List<UUID> stillOpen = new ArrayList<>();
         for (OpenUrge urge : urges) {
+            // 分析读不出来 = 不知道计划下没下单：保持在催，不当成「已下够单」撤卡。
             String resolution = !urge.active() ? "TASK_CLOSED"
-                    : current.getOrDefault(urge.segmentId(), List.of()).isEmpty() ? "ARRANGED" : null;
+                    : current.isUnknown(urge.segmentId()) ? null
+                    : current.of(urge.segmentId()).isEmpty() ? "ARRANGED" : null;
             if (resolution == null) {
                 stillOpen.add(urge.id());
                 continue;
@@ -194,28 +241,6 @@ public class ProductionPlanningUrgeService {
                     .setParameter("ids", stillOpen).executeUpdate();
         }
         return resolved;
-    }
-
-    /**
-     * 车间任务列表 / 详情要显示的在催状态(每个任务最多一条)。只读，不判缺口——缺口由
-     * {@link WorkshopPlanningGapReadPort} 当场算，列表把两者拼起来。
-     */
-    @Transactional(readOnly = true)
-    public Map<UUID, UrgeState> openStates(Collection<UUID> segmentIds) {
-        List<UUID> ids = segmentIds == null ? List.of()
-                : segmentIds.stream().filter(Objects::nonNull).distinct().toList();
-        if (ids.isEmpty()) return Map.of();
-        Map<UUID, UrgeState> result = new HashMap<>();
-        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT execution_segment_id, id, urge_count, last_urged_at, last_urged_by_name
-                FROM production_planning_urges
-                WHERE execution_segment_id IN (:ids) AND status = 'OPEN'
-                """).setParameter("ids", ids))) {
-            OffsetDateTime last = NativeValueConverters.toOffsetDateTime(row[3]);
-            result.put((UUID) row[0], new UrgeState((UUID) row[1], ((Number) row[2]).intValue(), last,
-                    last == null ? null : last.plus(COOLDOWN), (String) row[4]));
-        }
-        return result;
     }
 
     private UrgeResult result(UUID urgeId, boolean notified) {
@@ -279,11 +304,6 @@ public class ProductionPlanningUrgeService {
     }
 
     private record OpenUrge(UUID id, UUID segmentId, boolean active) {
-    }
-
-    /** 一个车间任务此刻的在催状态。 */
-    public record UrgeState(UUID urgeId, int urgeCount, OffsetDateTime lastUrgedAt,
-                            OffsetDateTime nextUrgeAllowedAt, String lastUrgedByName) {
     }
 
     /**

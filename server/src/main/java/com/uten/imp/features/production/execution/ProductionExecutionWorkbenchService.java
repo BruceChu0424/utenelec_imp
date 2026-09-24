@@ -346,11 +346,16 @@ public class ProductionExecutionWorkbenchService {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(query);
         java.util.Map<UUID, BigDecimal> warehouseAvailable = warehouseAvailableByDemand(segmentId,
                 rows.stream().map(row -> uuid(row[0])).toList());
+        // 一种物料的计划缺口按需求逐条摊到各行(ADR-117)，物料表每行显示自己还差多少没下单。
+        java.util.Map<UUID, BigDecimal> gapQtyByDemand = new java.util.HashMap<>();
         java.util.Map<UUID, com.uten.imp.application.port.WorkshopPlanningGapReadPort.Gap> gapByDemand =
                 new java.util.HashMap<>();
         if (planningGaps != null && rows.stream().anyMatch(row -> isShortState(text(row[16])))) {
-            for (var gap : planningGaps.planningGaps(List.of(segmentId)).getOrDefault(segmentId, List.of())) {
-                gapByDemand.put(gap.demandId(), gap);
+            for (var gap : planningGaps.planningGaps(List.of(segmentId)).of(segmentId)) {
+                gap.demandGapQty().forEach((demandId, qty) -> {
+                    gapQtyByDemand.put(demandId, qty);
+                    gapByDemand.put(demandId, gap);
+                });
             }
         }
         return rows.stream()
@@ -363,7 +368,7 @@ public class ProductionExecutionWorkbenchService {
                         decimal(row[14]), decimal(row[15]),
                         warehouseAvailable.getOrDefault(uuid(row[0]), BigDecimal.ZERO),
                         text(row[16]), text(row[17]),
-                        gap == null ? BigDecimal.ZERO : gap.gapQty(),
+                        gapQtyByDemand.getOrDefault(uuid(row[0]), BigDecimal.ZERO),
                         gap == null || gap.routeConfirmed());
                 })
                 .toList();
@@ -597,7 +602,7 @@ public class ProductionExecutionWorkbenchService {
                         && integer(row[56]) > 0)
                 .map(row -> uuid(row[0])).toList();
         if (shortTasks.isEmpty()) return java.util.Map.of();
-        var gaps = planningGaps.planningGaps(shortTasks);
+        var gaps = planningGaps.planningGaps(shortTasks).gaps();
         if (gaps.isEmpty()) return java.util.Map.of();
         java.util.Map<UUID, Object[]> urges = new java.util.HashMap<>();
         for (Object[] urge : NativeQueryResults.objectArrayRows(em.createNativeQuery("""

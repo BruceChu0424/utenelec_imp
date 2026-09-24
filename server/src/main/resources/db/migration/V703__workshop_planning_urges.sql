@@ -38,11 +38,12 @@ CREATE UNIQUE INDEX uq_production_planning_urge_open_segment
 -- 车间任务详情 / 列表按任务取最近一条; 同时承担外键索引。
 CREATE INDEX idx_production_planning_urge_segment
     ON production_planning_urges(execution_segment_id, last_urged_at DESC);
--- 计划侧按物料分析取在催记录、徽章与核对任务按在催扫描。
+-- 计划侧按物料分析取在催记录与徽章计数。
 CREATE INDEX idx_production_planning_urge_analysis
     ON production_planning_urges(material_analysis_id, status);
+-- 后台核对任务按「最久没核对」取一批在催记录(ORDER BY updated_at, id)。
 CREATE INDEX idx_production_planning_urge_open
-    ON production_planning_urges(last_urged_at, id) WHERE status = 'OPEN';
+    ON production_planning_urges(updated_at, id) WHERE status = 'OPEN';
 
 COMMENT ON TABLE production_planning_urges IS
     'ADR-117 车间催计划下单子层物料: 每个车间任务最多一条在催记录; 缺口归零或任务结束由核对任务办结。只是提醒协调状态, 不改任何数量。';

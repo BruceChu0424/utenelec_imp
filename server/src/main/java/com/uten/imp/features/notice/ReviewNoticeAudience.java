@@ -116,9 +116,9 @@ public class ReviewNoticeAudience {
                     && permissions.contains("production_material_analysis:view")
                     && any(permissions, "production_material_analysis:route", "production_material_analysis:generate");
             case WORKSHOP_EVENT -> canHandleWorkshop(permissions);
-            // ADR-117 车间催计划：计划 / 生产部门里能在物料分析页下单的人(下达采购委外或下达车间)。
-            case "PRODUCTION_PLANNING_URGED" -> any(departments, "SUB_PLAN", "DEPT_PROD")
-                    && permissions.contains("production_material_analysis:view")
+            // ADR-117 车间催计划：能在物料分析页下单的人(下达采购委外或下达车间)。收件人在发卡时已按
+            // 计划 / 生产部门池 + 制单计划员 + 分析可见范围精确算好，这里不再卡部门(制单人不在池里也要弹)。
+            case "PRODUCTION_PLANNING_URGED" -> permissions.contains("production_material_analysis:view")
                     && any(permissions, "production_material_analysis:notify", "production_material_analysis:generate");
             case "PROCUREMENT_IQC_STOCK_IN_PENDING" -> departments.contains("SUB_WH")
                     && permissions.containsAll(Set.of("warehouse_iqc_stock_in:view", "warehouse_iqc_stock_in:confirm"));

@@ -176,6 +176,21 @@ abstract class _MaterialAnalysisChildShortageState
     };
   }
 
+  /// 和下单前比，有没有哪一行的累计已下单量真的变多了。
+  bool _orderedSince(Map<String, double> before) {
+    final analysis = _analysis;
+    if (analysis == null) return false;
+    for (final group in _analysisIndexes(analysis).groupsByKey.values) {
+      final previous = before[_issuedSnapshotKey(group)];
+      if (previous == null) continue;
+      if (_tableGroupIssuedQty(group, authoritative: true) - previous >
+          0.0001) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   String _issuedSnapshotKey(_MaterialGroup group) =>
       '${group.key}@${_draftRoute(group).name}';
 
@@ -430,6 +445,8 @@ abstract class _MaterialAnalysisChildShortageState
     Map<String, double> before,
   ) async {
     if (!mounted) return;
+    // 这一轮什么都没下成(比如级联页里放弃了、第一段就失败)：不核对、不弹窗，一个写请求都不发。
+    if (!_orderedSince(before)) return;
     unawaited(_reconcileWorkshopUrgesAfterOrder());
     final roots = _childShortageRoots(before: before);
     if (roots.isEmpty) return;

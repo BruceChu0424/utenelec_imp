@@ -60,7 +60,7 @@ class UtenApp extends ConsumerWidget {
         (session.user?.can(Perm.noticeRead) ?? false);
     final noticeIdentityKey = _notificationSessionKey(session);
 
-    // 基础主题 + 字号缩放（通过 textScaler 乘到全局）
+    // 基础主题（字号档经下方 builder 的整体缩放生效）
     final lightTheme = buildLightTheme();
     final darkTheme = buildDarkTheme();
 
@@ -99,8 +99,10 @@ class UtenApp extends ConsumerWidget {
         // textScaler——文字、图标、卡片、间距同步变化；窗口比 1920 宽时自动放大，
         // 宽屏观感与基准机器一致）。之下的 MediaQuery 已换算成画布口径，
         // 见 core/responsive/display_zoom.dart。
-        return UtenDisplayZoomBox(
+        return UtenDisplayZoomBox.adaptive(
+          // null = 自动（按屏幕推荐）；手动档超出窗口容量时按上限生效（display_capacity.dart）。
           fontFactor: fontScale.factor,
+          autoLadder: FontScale.ladder,
           child: Column(
             children: [
               // 通知目标路由桥（不渲染）：导航到有通知指向的路由时自动已读。

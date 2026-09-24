@@ -33,6 +33,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../core/responsive/display_zoom.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../dashboard/pages/dashboard_page.dart';
@@ -67,9 +68,6 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
     RouteName.profile,
     RouteName.settings,
   ];
-
-  /// Rail 展开（常驻标签）的最小屏宽
-  static const double _railExtendedWidth = 1280;
 
   /// 连续页位置（喂胶囊滑块跟手；由 UtenSlidingTabView 随转场 lerp 驱动）
   late final ValueNotifier<double> _position;
@@ -294,7 +292,10 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             UtenSideNavRail(
-              extended: context.screenWidth >= _railExtendedWidth,
+              extended: UtenSideNavRail.extendedFor(
+                canvasWidth: context.screenWidth,
+                fontZoom: UtenDisplayScale.fontZoomOf(context),
+              ),
               // 主 Tab 页高亮当前页；业务子页面高亮归属 tab（前缀匹配）
               selectedIndex: tabIndex ?? _capsuleIndex(location),
               onTap: _onTabTap,

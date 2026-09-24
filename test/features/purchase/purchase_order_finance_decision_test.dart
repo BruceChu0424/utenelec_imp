@@ -1,7 +1,7 @@
 // 采购订货单详情页的财务审批入口边界测试。
 //
 // 即使当前账号是合格财务审核员、详情投影意外带有 APPROVE/REJECT，业务详情页
-// 也只能展示待审状态；审批唯一入口是「财务 → 订货审批任务中心」。
+// 也只能展示待审状态(提示「审核期间仅可查看，财务将在订货审批中处理」)；审批唯一入口是「财务 → 订货审批任务中心」。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -166,7 +166,7 @@ void main() {
         findsNothing,
       );
       expect(find.text('返回列表'), findsOneWidget);
-      expect(find.textContaining('财务 → 订货审批任务中心'), findsOneWidget);
+      expect(find.textContaining('审核期间仅可查看，财务将在订货审批中处理'), findsOneWidget);
       expect(api.posts, isEmpty);
     });
   }

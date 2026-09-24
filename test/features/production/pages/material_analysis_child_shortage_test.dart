@@ -609,7 +609,6 @@ Map<String, dynamic> _analysis({required bool issuedRoot}) => {
       confirmed: 'SUBCONTRACT',
       subcontractOutboundForm: 'COMPONENT_OUTBOUND',
       net: 0,
-      stock: 0,
       downstream: const [
         {
           'actionId': 'act-p',

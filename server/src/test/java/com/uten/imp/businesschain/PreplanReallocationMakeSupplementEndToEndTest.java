@@ -76,7 +76,13 @@ class PreplanReallocationMakeSupplementEndToEndTest {
         assertEquals(materialId,donor.materialLineId());qty("10",donor.requiredQty());qty("4",donor.priorityPendingQty());qty("4",donor.demandSupplyGapQty());
         qty("10",db.queryForObject("SELECT requested_qty FROM production_material_analysis_items WHERE id=?",BigDecimal.class,childItem));
         var request=planRequest(c,yielded,materialId,"4","make-supplement-"+a.analysisId());
+        // ADR-115: 预览与真实下达同口径, 先给既有锚点补上让料配额再排产, 结果逐字段相等。
+        AnalysisView previewed=commands.previewIssuePlans(a.analysisId(),new PreviewIssuePlansRequest(request.version(),
+                request.fingerprint(),request.idempotencyKey(),request.warehouseId(),request.billDate(),request.deliveryDate(),
+                request.approveNow(),request.lines(),List.of()));
         var supplemented=commands.issueWorkshopPlans(a.analysisId(),request);
+        var mismatches=MaterialAnalysisPreviewParity.mismatches(previewed,analyses.detail(a.analysisId()),java.util.Set.of());
+        assertTrue(mismatches.isEmpty(),"预览与真实下达后详情不一致:\n"+String.join("\n",mismatches));
         UUID nextPlan=supplemented.plans().getFirst().planId();
         assertEquals(childItem,db.queryForObject("SELECT material_analysis_item_id FROM production_plans WHERE id=?",UUID.class,nextPlan));
         qty("14",db.queryForObject("SELECT requested_qty FROM production_material_analysis_items WHERE id=?",BigDecimal.class,childItem));

@@ -1291,7 +1291,8 @@ public class MaterialAnalysisCommandService {
      * 内存投影，由与真实刷新同一套引擎、与 GET 详情同一个视图构建器算出结果。预览之间、
      * 预览与仓库命令之间不再互相排队或 409；幂等键不再使用(请求里保留字段只为兼容)。</p>
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true,
+            isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public AnalysisView previewIssuePlans(UUID analysisId, PreviewIssuePlansRequest request) {
         if (request.lines().isEmpty() && request.typedOutputs().isEmpty()) {
             throw validation("预览至少要给出一行本批数量");
@@ -1315,9 +1316,12 @@ public class MaterialAnalysisCommandService {
             throw new ApiException(ErrorCode.FORBIDDEN, "生成并审核需要独立的生产计划审核权限");
         }
         MaterialAnalysisIssuePreviewOverlay overlay = MaterialAnalysisIssuePreviewOverlay.create();
+        // 真实下达入口先按实况刷新一次(库存可能在上次刷新后被仓库命令改过)；预览同口径先投影
+        // 「不含本批」的实况，锚点跟涨/跟落的基线、新锚点配额与可排产都以它为准。
+        analysisService.projectIssuePreviewBase(analysisId, overlay);
         if (!request.lines().isEmpty()) {
             analysisService.addIssuePreviewSeeds(analysisId,
-                    issuePreviewSeeds(analysisId, request.toIssueRequest()), request.approveNow(), overlay);
+                    issuePreviewSeeds(analysisId, request.toIssueRequest(), overlay), request.approveNow(), overlay);
         }
         return analysisService.issuePreviewView(analysisId, overlay, Map.copyOf(typedOutputs));
     }
@@ -1328,8 +1332,8 @@ public class MaterialAnalysisCommandService {
      * 真实下达会拒绝的行(路线不对、不可排产、候选已被在途覆盖)在这里同样拒绝。
      */
     private List<MaterialAnalysisService.IssuePreviewSeed> issuePreviewSeeds(
-            UUID analysisId, IssueWorkshopPlansRequest request) {
-        AnalysisView current = analysisService.detailInternal(analysisId, false);
+            UUID analysisId, IssueWorkshopPlansRequest request, MaterialAnalysisIssuePreviewOverlay overlay) {
+        AnalysisView current = analysisService.issuePreviewDetail(analysisId, overlay);
         Map<UUID, String> candidateRoutes = candidateRoutesByMaterialLine(current);
         Map<UUID, UUID> goodsByMaterialLine = new HashMap<>();
         for (MaterialView material : current.flatMaterials()) {
@@ -1362,15 +1366,28 @@ public class MaterialAnalysisCommandService {
                         + "请走委外下达，不能直接建生产计划");
             }
         }
-        // 真实下达当场新建的自制锚点: 代表物料行 → 初始配额(与 ensureWorkshopChildAnchors 同口径)。
+        // 与 ensureWorkshopChildAnchors 同口径的锚点安排：真实下达在建计划之前先新建锚点(初始配额
+        // 计入父节点内部承诺)、给既有锚点补让料配额, 随后刷新一次。预览把同样的事实叠进投影再投一次。
         Map<UUID, BigDecimal> newAnchorQuota = new HashMap<>();
+        boolean anchorsChanged = false;
         if (!makeLines.isEmpty()) {
             for (WorkshopAnchorDemand demand : workshopAnchorDemands(analysisId, current, makeLines)) {
+                MaterialView representative = demand.group().materials().getFirst();
+                String parentNodeRef = representative.analysisLineId() + "|" + representative.nodeKey();
                 if (demand.existingAnchorId() == null) {
-                    newAnchorQuota.put(demand.group().materials().getFirst().materialLineId(), demand.newQuota());
+                    newAnchorQuota.put(representative.materialLineId(), demand.newQuota());
+                    overlay.addInternalCommitment(parentNodeRef, demand.newQuota());
+                    anchorsChanged = true;
+                } else if (representative.priorityMakeSupplementQty().signum() > 0) {
+                    BigDecimal supplement = representative.priorityMakeSupplementQty();
+                    overlay.addSourceQuantities(demand.existingAnchorId(), supplement,
+                            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+                    overlay.addInternalCommitment(parentNodeRef, supplement);
+                    anchorsChanged = true;
                 }
             }
         }
+        if (anchorsChanged) current = analysisService.reprojectIssuePreview(analysisId, overlay);
         Map<UUID, UUID> childLineByMaterialLine = batchChildLineIds(analysisId,
                 request.lines().stream().map(IssueWorkshopPlansRequest.IssuePlanLine::materialLineId)
                         .filter(Objects::nonNull).collect(Collectors.toSet()));
@@ -1378,9 +1395,13 @@ public class MaterialAnalysisCommandService {
                 .collect(Collectors.toMap(ProductView::analysisLineId, value -> value));
         Set<Object> seen = new HashSet<>();
         List<MaterialAnalysisService.IssuePreviewSeed> seeds = new ArrayList<>();
+        PlanScheduleDefaults defaults = new PlanScheduleDefaults(request.billDate(), request.deliveryDate());
         for (IssueWorkshopPlansRequest.IssuePlanLine line : request.lines()) {
             UUID lineId = line.analysisLineId() != null
                     ? line.analysisLineId() : childLineByMaterialLine.get(line.materialLineId());
+            validatePlanSchedule(new PlanQuantity(lineId, line.qty(), line.billDate(), line.deliveryDate(),
+                    line.departmentId(), line.workshopName(), line.workerId(), line.teamDepartmentId(),
+                    line.productNo()), defaults);
             if (lineId == null) {
                 UUID material = line.materialLineId();
                 boolean newAnchor = newAnchorQuota.containsKey(material)
@@ -1389,8 +1410,7 @@ public class MaterialAnalysisCommandService {
                     throw validation("物料库存或候选任务已变化，本次未下达；请点击刷新重新核对后再提交");
                 }
                 seeds.add(new MaterialAnalysisService.IssuePreviewSeed(null, material,
-                        newAnchorQuota.getOrDefault(material, BigDecimal.ZERO),
-                        line.qty(), line.qty(), BigDecimal.ZERO, null));
+                        line.qty(), line.qty(), BigDecimal.ZERO, null, BigDecimal.ZERO));
                 continue;
             }
             if (!seen.add(lineId)) {
@@ -1409,8 +1429,12 @@ public class MaterialAnalysisCommandService {
             BigDecimal demandQty = line.qty().min(product.remainingQty());
             GrowablePlan growable = growablePlanFor(
                     analysisId, lineId, line.departmentId(), request.approveNow(), false);
-            seeds.add(new MaterialAnalysisService.IssuePreviewSeed(lineId, null, null, line.qty(),
-                    demandQty, line.qty().subtract(demandQty), growable == null ? null : growable.planId()));
+            // ADR-104 并入一张草稿计划并立即审核: 审核把整条关联行(原已提交 + 本次)转成已审核。
+            BigDecimal draftSubmitted = growable != null && growable.status() == 0
+                    ? growable.submittedQty() : BigDecimal.ZERO;
+            seeds.add(new MaterialAnalysisService.IssuePreviewSeed(lineId, null, line.qty(),
+                    demandQty, line.qty().subtract(demandQty), growable == null ? null : growable.planId(),
+                    draftSubmitted));
         }
         return seeds;
     }

@@ -243,6 +243,39 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
                 segmentCode(segmentId(first.plans().getFirst().planId())),"75");
     }
 
+    /** ADR-104 并入一张草稿计划并立即审核: 审核把整条关联行转成已审核, 预览同样把原已提交量一起转过去。 */
+    @Test void issuePreviewEqualsTheRealIssueWhenGrowingADraftPlanWithApproval() {
+        Tree t=seed("parity-draft-grow");
+        AnalysisView before=analyses.detail(t.analysis());
+        commands.issueWorkshopPlans(t.analysis(),new IssueWorkshopPlansRequest(before.version(),before.fingerprint(),
+                "planned-issue-"+t.analysis()+"-draft-400",t.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),false,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("400")))));
+        AnalysisView issued=assertPreviewEqualsIssue(t,issue(analyses.detail(t.analysis()),t,"parity-grow-200",
+                new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("200"))),java.util.Set.of());
+        qty("0",product(issued,t.rootLine()).submittedQty());qty("600",product(issued,t.rootLine()).approvedQty());
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,t.analysis()));
+    }
+
+    /**
+     * 仓库命令不刷新分析: 上次刷新后中间件进了现货。真实下达入口先按实况刷新, 锚点配额以实况为基线;
+     * 预览同口径, 不会按库内旧快照把孙层锚点多退或多涨。
+     */
+    @Test void issuePreviewEqualsTheRealIssueAfterStockDriftSinceTheLastRefresh() {
+        Tree t=seed("parity-drift");
+        AnalysisView routed=analyses.detail(t.analysis());
+        MaterialView child=material(routed,t.childLine());
+        routed=analyses.saveRoutes(t.analysis(),new RouteRequest(routed.version(),routed.fingerprint(),"parity-drift-route-"+t.analysis(),
+                List.of(new RouteDecision(child.materialLineId(),child.actionGroupKey(),"MAKE",null))));
+        commands.issueWorkshopPlans(t.analysis(),issue(routed,t,"parity-drift-child-600",candidate(t.childLine(),"600")));
+        UUID childAnchor=material(analyses.detail(t.analysis()),t.childLine()).planAnchorAnalysisLineId();
+        assertNotNull(childAnchor);
+        // 中间件 P 进了 300 现货(只动库存, 不刷新分析): 孙层 C 的实况需求 1000 → 700。
+        db.update("INSERT INTO stock_balances(warehouse_id,goods_id,qty) VALUES (?,?,300)",t.world().warehouseId(),t.parent());
+        AnalysisView issued=assertPreviewEqualsIssue(t,issue(analyses.detail(t.analysis()),t,"parity-drift-root",
+                new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("1000"))),java.util.Set.of());
+        qty("700",material(issued,t.childLine()).requiredQty());
+    }
+
     /**
      * ADR-115 验收: 预览不取任何锁、不写库。另一个连接把分析表头、全部物料行与来源行
      * FOR UPDATE 锁住并独占主仓协调锁——预览照样立即返回(取任何一把都要等到 lock_timeout)。

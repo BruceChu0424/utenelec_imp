@@ -3118,8 +3118,8 @@ public class MaterialAnalysisService {
 
     /**
      * [overlay] 非空时(下达预览, ADR-115): 本批新计划追加在各自键的末尾(计划按建立时间
-     * 排序), ADR-104 并入既有计划的追加量加在那张计划的最后一批上——与真实下达后重读
-     * 本查询的结果一致。
+     * 排序), ADR-104 并入既有计划的追加量加在那张计划的第一段上(与 growSegment 取最小段号
+     * 同口径)——与真实下达后重读本查询的结果一致。
      */
     private Map<String,List<BigDecimal>> plannedMaterialBatches(
             UUID analysisId, MaterialAnalysisIssuePreviewOverlay overlay) {
@@ -3158,9 +3158,9 @@ public class MaterialAnalysisService {
             batches.add(new Batch(uuid(row[0])+"|"+Objects.toString(row[1],""), uuid(row[3]), decimal(row[2])));
         }
         if (!overlay.isNone()) {
-            Map<UUID, Integer> lastBatchOfPlan = new HashMap<>();
-            for (int index = 0; index < batches.size(); index++) lastBatchOfPlan.put(batches.get(index).planId(), index);
-            lastBatchOfPlan.forEach((planId, index) -> {
+            Map<UUID, Integer> firstBatchOfPlan = new HashMap<>();
+            for (int index = 0; index < batches.size(); index++) firstBatchOfPlan.putIfAbsent(batches.get(index).planId(), index);
+            firstBatchOfPlan.forEach((planId, index) -> {
                 BigDecimal grown = overlay.grownPlanBatch(planId);
                 if (grown == null) return;
                 Batch batch = batches.get(index);
@@ -4872,15 +4872,11 @@ public class MaterialAnalysisService {
      */
     AnalysisView issuePreviewView(UUID analysisId, MaterialAnalysisIssuePreviewOverlay overlay,
             Map<UUID, BigDecimal> typedOutputByMaterialLine) {
-        AnalysisHeader header = readHeader(analysisId);
-        if (!isOpenForFulfillment(header)) {
-            throw conflict("物料分析已结束，不能预览下达");
-        }
-        if (header.warehouseId() == null) {
-            throw conflict("物料分析未选择目标仓库");
-        }
-        Map<UUID, BigDecimal> previous = makeAnchorParentRequirements(analysisId);
-        projectPreview(analysisId, header.warehouseId(), typedOutputByMaterialLine, overlay, true);
+        AnalysisHeader header = previewableHeader(analysisId);
+        // 锚点配额的基线 = 建计划之前那次刷新的需求(真实下达里是入口刷新, 有新锚点/让料补充时是
+        // 其后那次刷新); 预览里就是 overlay 此刻持有的实况投影, 不是库内上次刷新留下的旧值。
+        Map<UUID, BigDecimal> previous = projectedAnchorParentRequirements(analysisId, overlay);
+        projectPreview(analysisId, header.warehouseId(), typedOutputByMaterialLine, overlay, false);
         AnalysisView view = detailInternal(analysisId, false, overlay);
         if (previous.isEmpty()) return view;
         boolean adjusted = false;
@@ -4897,6 +4893,53 @@ public class MaterialAnalysisService {
         return detailInternal(analysisId, false, overlay);
     }
 
+    private AnalysisHeader previewableHeader(UUID analysisId) {
+        AnalysisHeader header = readHeader(analysisId);
+        if (!isOpenForFulfillment(header)) {
+            throw conflict("物料分析已结束，不能预览下达");
+        }
+        if (header.warehouseId() == null) {
+            throw conflict("物料分析未选择目标仓库");
+        }
+        return header;
+    }
+
+    /**
+     * 下达预览第一步: 与真实下达入口的 refreshLocked 同一组计算——不含本批、按实况库存投影一次
+     * (仓库命令不刷新分析, 库内快照可能已旧)。BOM 结构与库内快照不一致时在这里 409。
+     */
+    void projectIssuePreviewBase(UUID analysisId, MaterialAnalysisIssuePreviewOverlay overlay) {
+        projectPreview(analysisId, previewableHeader(analysisId).warehouseId(), Map.of(), overlay, true);
+    }
+
+    /** 真实下达建锚点/补让料配额之后、建计划之前的那次刷新(不含本批计划与层级填数)。 */
+    AnalysisView reprojectIssuePreview(UUID analysisId, MaterialAnalysisIssuePreviewOverlay overlay) {
+        projectPreview(analysisId, previewableHeader(analysisId).warehouseId(), Map.of(), overlay, false);
+        return detailInternal(analysisId, false, overlay);
+    }
+
+    /** 当前投影下的分析视图(与 GET 详情同一个构建器)。 */
+    AnalysisView issuePreviewDetail(UUID analysisId, MaterialAnalysisIssuePreviewOverlay overlay) {
+        return detailInternal(analysisId, false, overlay);
+    }
+
+    /** {@link #makeAnchorParentRequirements} 的投影版: 需求取 overlay 此刻持有的投影值。 */
+    private Map<UUID, BigDecimal> projectedAnchorParentRequirements(
+            UUID analysisId, MaterialAnalysisIssuePreviewOverlay overlay) {
+        Map<UUID, BigDecimal> stored = makeAnchorParentRequirements(analysisId);
+        if (stored.isEmpty()) return stored;
+        Map<UUID, String> refs = new HashMap<>();
+        activeBomMaterialIds(analysisId).forEach((ref, id) -> refs.put(id, ref));
+        Map<UUID, BigDecimal> projected = new LinkedHashMap<>();
+        stored.forEach((id, required) -> {
+            String ref = refs.get(id);
+            MaterialAnalysisIssuePreviewOverlay.NodeSnapshot node = ref == null ? null : overlay.node(ref);
+            MaterialAnalysisIssuePreviewOverlay.RootSnapshot root = overlay.root(id);
+            projected.put(id, node != null ? node.required() : root != null ? root.required() : required);
+        });
+        return projected;
+    }
+
     /** 下达预览只读取表头, 不取锁。 */
     AnalysisHeader readOnlyHeader(UUID analysisId) {
         return readHeader(analysisId);
@@ -4905,16 +4948,18 @@ public class MaterialAnalysisService {
     /**
      * 下达预览(ADR-115)里的一张「本批计划」, 已由命令服务按真实下达的同一套校验解析好:
      * [lineId] 是计划挂的分析行(来源行或既有锚点); 为 null 时表示真实下达会当场为
-     * [newAnchorParentMaterialId] 新建锚点, [newAnchorQuota] 是它的初始配额。
-     * [growPlanId] 非空表示按 ADR-104 并入那张既有计划。
+     * [newAnchorParentMaterialId] 新建锚点(其初始配额已由命令服务作为内部承诺叠入)。
+     * [growPlanId] 非空表示按 ADR-104 并入那张既有计划; 并入的是草稿且立即审核时,
+     * [growDraftSubmittedQty] 是该计划关联行原有的已提交量——审核会把它一并转成已审核。
      */
-    record IssuePreviewSeed(UUID lineId, UUID newAnchorParentMaterialId, BigDecimal newAnchorQuota,
-                            BigDecimal qty, BigDecimal demandQty, BigDecimal surplusQty, UUID growPlanId) {}
+    record IssuePreviewSeed(UUID lineId, UUID newAnchorParentMaterialId,
+                            BigDecimal qty, BigDecimal demandQty, BigDecimal surplusQty, UUID growPlanId,
+                            BigDecimal growDraftSubmittedQty) {}
 
     /**
      * 把本批计划折成「真实下达后重读会多出来的事实」叠进 [overlay]: 分析行的归需求量/
      * 公共备货量(计划关联行触发器同步到分析行的那两列)、计划批次、锚点父节点的计划产出、
-     * 新锚点的内部承诺、顶层供给行的未完工计划量。
+     * 顶层供给行的未完工计划量。
      */
     void addIssuePreviewSeeds(UUID analysisId, List<IssuePreviewSeed> seeds, boolean approveNow,
             MaterialAnalysisIssuePreviewOverlay overlay) {
@@ -4957,15 +5002,14 @@ public class MaterialAnalysisService {
                 if (refs == null) throw conflict("候选物料节点不存在或路线未确认，请刷新后重试");
                 overlay.appendBatch(refs[1], seed.qty());
                 overlay.addPlannedOutput(refs[0], seed.qty());
-                if (seed.newAnchorQuota() != null && seed.newAnchorQuota().signum() > 0) {
-                    overlay.addInternalCommitment(refs[0], seed.newAnchorQuota());
-                }
                 continue;
             }
             SourceLine source = sources.get(seed.lineId());
             if (source == null) throw validation("待生成计划产品不属于当前分析");
+            BigDecimal draftSubmitted = approveNow ? seed.growDraftSubmittedQty() : zero;
             overlay.addSourceQuantities(seed.lineId(), zero,
-                    approveNow ? zero : seed.demandQty(), approveNow ? seed.demandQty() : zero, seed.surplusQty());
+                    approveNow ? draftSubmitted.negate() : seed.demandQty(),
+                    approveNow ? seed.demandQty().add(draftSubmitted) : zero, seed.surplusQty());
             BigDecimal baseQty = seed.qty().multiply(source.unitRate());
             String[] parent = anchorParents.get(seed.lineId());
             if (seed.growPlanId() != null) overlay.growPlanBatch(seed.growPlanId(), baseQty);

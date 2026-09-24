@@ -478,7 +478,11 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
 
   void _schedulePreviewRefresh() {
     _previewDebounce?.cancel();
-    if (_seedQtyPending) return;
+    if (_seedQtyPending) {
+      // 树顶数量清空待填：在途那份回来后也不补发(否则按「父件不下达」要一份快照)。
+      _previewTrailing = false;
+      return;
+    }
     // 没有任何要送给服务端的数量时(比如唯一填过数的那一行刚被清空)，屏幕上
     // 却还留着先行换算的估算值——这时不发请求，但必须按**当前真实快照**把整页
     // 重建一次，否则那些估算值会永久留在屏幕上、也会被提交。
@@ -585,8 +589,8 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         }
       }
     });
-    // 尾随：在途期间用户又改过数，按此刻的数补发一次(提交进行中不发)。
-    if (_previewTrailing && mounted && !_running) {
+    // 尾随：在途期间用户又改过数，按此刻的数补发一次(提交进行中、树顶数量待填时不发)。
+    if (_previewTrailing && mounted && !_running && !_seedQtyPending) {
       _previewTrailing = false;
       unawaited(_refreshPreview());
     }

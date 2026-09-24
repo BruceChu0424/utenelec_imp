@@ -153,13 +153,19 @@ void main() {
     );
     request.data['beforeSnapshot'] = {
       'items': [
-        {...((_snapshot(0)['items'] as List).first as Map<String, dynamic>), 'itemId': 'different-demand'},
+        {
+          ...((_snapshot(0)['items'] as List).first as Map<String, dynamic>),
+          'itemId': 'different-demand',
+        },
       ],
     };
     expect(request.snapshotItems('beforeSnapshot'), isNull);
     request.data['beforeSnapshot'] = {
       'items': [
-        {...((_snapshot(0)['items'] as List).first as Map<String, dynamic>), 'authorizedQty': null},
+        {
+          ...((_snapshot(0)['items'] as List).first as Map<String, dynamic>),
+          'authorizedQty': null,
+        },
       ],
     };
     expect(request.snapshotItems('beforeSnapshot'), isNull);

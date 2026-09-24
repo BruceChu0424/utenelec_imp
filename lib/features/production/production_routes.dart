@@ -43,9 +43,8 @@ final List<RouteBase> productionRoutes = [
   ),
   GoRoute(
     path: '/production/material-increment-requests/:id',
-    builder: (_, state) => ProductionMaterialIncrementDetailPage(
-      id: state.pathParameters['id']!,
-    ),
+    builder: (_, state) =>
+        ProductionMaterialIncrementDetailPage(id: state.pathParameters['id']!),
   ),
   GoRoute(
     path: '/production/actual-output-supplements/:id',

@@ -224,7 +224,10 @@ class _ExpenseApprovalDetailPageState
                       size: UtenButtonSize.large,
                       onPressed: _acting
                           ? null
-                          : () => backTo(context, defaultPath: '/expense/approval'),
+                          : () => backTo(
+                              context,
+                              defaultPath: '/expense/approval',
+                            ),
                       child: const Text('返回'),
                     ),
                     UtenButton(

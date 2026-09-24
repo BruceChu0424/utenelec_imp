@@ -417,6 +417,7 @@ void main() {
         {
           'materialLineId': 'make-path-1',
           'qty': 8.0,
+          'allowedOverproductionRate': 0.1,
           'departmentId': 'workshop-1',
           'workshopName': '装配一车间',
           'workerId': 'worker-1',
@@ -2472,6 +2473,7 @@ void main() {
         {
           'materialLineId': 'pending-make-1',
           'qty': 2.0,
+          'allowedOverproductionRate': 0.1,
           'departmentId': 'workshop-1',
           'workshopName': '装配一车间',
           'workerId': 'worker-1',
@@ -2590,6 +2592,7 @@ void main() {
         {
           'analysisLineId': 'pending-make-child-1',
           'qty': 2.0,
+          'allowedOverproductionRate': 0.1,
           'departmentId': 'workshop-1',
           'workshopName': '装配一车间',
           'workerId': 'worker-1',
@@ -4230,6 +4233,7 @@ void main() {
         {
           'materialLineId': 'make-path-1',
           'qty': 8.0,
+          'allowedOverproductionRate': 0.1,
           'departmentId': 'workshop-1',
           'workshopName': '装配一车间',
           'workerId': 'worker-1',
@@ -4630,6 +4634,7 @@ void main() {
         {
           'analysisLineId': 'make-child-ready-1',
           'qty': 3.0,
+          'allowedOverproductionRate': 0.1,
           'departmentId': 'workshop-1',
           'workshopName': '装配一车间',
           'workerId': 'worker-1',
@@ -8080,7 +8085,9 @@ void _expectBucketCount(WidgetTester tester, String bucket, int count) {
     final found = tester.widgetList(matches).toList();
     if (found.isEmpty) return 0;
     // ignore: avoid_dynamic_calls
-    return found.map((w) => (w as dynamic).count as int).reduce((a, b) => a + b);
+    return found
+        .map((w) => (w as dynamic).count as int)
+        .reduce((a, b) => a + b);
   }
 
   final total =

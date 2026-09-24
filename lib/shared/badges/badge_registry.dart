@@ -167,8 +167,10 @@ abstract final class BadgeFact {
   static const iqcRejectionOpen = 'iqcRejection.open';
 
   static const productionScheduleCount = 'productionSchedule.count';
-  static const productionOverproductionRate = 'productionOverproductionRate.count';
-  static const productionMaterialIncrement = 'productionMaterialIncrement.count';
+  static const productionOverproductionRate =
+      'productionOverproductionRate.count';
+  static const productionMaterialIncrement =
+      'productionMaterialIncrement.count';
   static const productionScheduleUrgent = 'productionSchedule.urgent';
   static const productionScheduleOverdue = 'productionSchedule.overdue';
   static const productionExecution = 'productionExecution.count';

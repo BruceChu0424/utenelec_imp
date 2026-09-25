@@ -1,7 +1,7 @@
 {
+  "bomLearningTitle": "BOM 学习记录",
   "materialDiscoveryBatchHelp": "请先选择持续生产或齐套生产，登记实际物料后再安排分批",
   "materialDiscoveryCancel": "撤回待登记领料申请",
-  "bomLearningTitle": "BOM 学习记录",
   "bomLearningHelp": "完成生产并核清余料后，按累计净耗料除以累计实际产量更新单耗。已有任务仍按下达时的用料执行。",
   "bomLearningInactive": "尚无学习记录。无底层材料的自制任务完成领料和生产后开始累计。",
   "bomLearningAuto": "自动更新 BOM",

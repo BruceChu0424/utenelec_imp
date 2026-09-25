@@ -46,7 +46,7 @@ class ActualOutputSupplementScopePostgresTest {
                 "production_material_return_request_items","production_material_return_requests","production_material_return_request_cancellations",
                 "production_planning_package_documents","production_planning_package_document_items",
                 "stock_documents","stock_document_items","stock_reservations")) {
-            sql("CREATE TABLE "+schema+"."+table+" AS SELECT * FROM public."+table+" WITH NO DATA");
+            com.uten.imp.support.MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(db,table);
         }
         for(String function:List.of("fn_production_material_usage_source_segments(uuid)",
                 "fn_production_execution_cost_scope(uuid)","fn_production_execution_cost_members(uuid)",

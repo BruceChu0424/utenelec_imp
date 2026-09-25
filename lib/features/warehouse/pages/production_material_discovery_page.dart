@@ -435,6 +435,7 @@ class _DiscoveryPageState
                   ),
                 ),
               ),
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
         floatingActionButton: detail?.canConfigure == true && _canWrite
             ? UtenButton(
                 key: const Key('discovery-save'),

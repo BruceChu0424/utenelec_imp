@@ -1,4 +1,5 @@
 {
+  "bomLearningTitle": "BOM 학습 기록",
   "materialDiscoveryTitle": "실제 출고 자재 입력",
   "materialDiscoveryHelp": "현장 담당자와 확인한 뒤 자재, 수량, 실제 출고 창고를 입력하세요. 저장 후 생성된 출고 문서에서 실제 출고를 처리합니다.",
   "materialDiscoveryRequestHelp": "이 자체 생산품에는 하위 자재가 아직 없습니다. 자재를 요청한 후 창고와 실제 자재를 확인하세요. 실제 출고가 완료되어야 작업을 시작할 수 있습니다.",
@@ -26,7 +27,6 @@
   "materialDiscoveryRequestTitle": "자재 요청 확인",
   "materialDiscoveryBatchHelp": "연속 생산 또는 전량 준비 생산을 선택하여 자재를 등록한 후 분할 생산을 진행하세요.",
   "materialDiscoveryCancel": "자재 입력 요청 철회",
-  "bomLearningTitle": "BOM 학습 기록",
   "bomLearningHelp": "생산 및 잔여 자재 정산 후 누적 순소비량을 실제 생산량으로 나누어 단위 소요량을 갱신합니다. 기존 작업 지시의 자재는 유지됩니다.",
   "bomLearningInactive": "학습 기록이 없습니다. 하위 자재가 없는 자체 생산품의 출고와 생산 완료 후 누적됩니다.",
   "bomLearningAuto": "BOM 자동 갱신",

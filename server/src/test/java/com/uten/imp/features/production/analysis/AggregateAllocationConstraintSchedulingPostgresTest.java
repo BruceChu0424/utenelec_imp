@@ -55,37 +55,13 @@ class AggregateAllocationConstraintSchedulingPostgresTest {
         schema = "aggregate_schedule_" + UUID.randomUUID().toString().replace("-", "");
         sql("CREATE SCHEMA " + schema);
         sql("SET search_path TO " + schema + ",public");
-        sql("""
-                CREATE TABLE production_material_analyses(id UUID PRIMARY KEY);
-                CREATE TABLE preplan_supply_actions(
-                  id UUID PRIMARY KEY, analysis_id UUID NOT NULL REFERENCES production_material_analyses(id),
-                  requested_qty NUMERIC(18,4) NOT NULL CHECK(requested_qty>=0),
-                  public_surplus_qty NUMERIC(18,4) NOT NULL DEFAULT 0,
-                  external_document_type TEXT, external_document_id UUID,
-                  public_surplus_external_item_id UUID, UNIQUE(analysis_id,id));
-                CREATE TABLE preplan_supply_action_allocations(
-                  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), analysis_id UUID NOT NULL,
-                  action_id UUID NOT NULL REFERENCES preplan_supply_actions(id) ON DELETE RESTRICT,
-                  analysis_material_id UUID NOT NULL, allocated_qty NUMERIC(18,4) NOT NULL CHECK(allocated_qty>0),
-                  external_item_id UUID,
-                  FOREIGN KEY(analysis_id,action_id) REFERENCES preplan_supply_actions(analysis_id,id),
-                  UNIQUE(action_id,analysis_material_id));
-                CREATE INDEX idx_preplan_supply_action_allocation_material
-                  ON preplan_supply_action_allocations(analysis_material_id,action_id);
-                CREATE TABLE preplan_aggregate_batches(
-                  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), analysis_id UUID NOT NULL,
-                  action_id UUID NOT NULL UNIQUE REFERENCES preplan_supply_actions(id),
-                  anchor_analysis_item_id UUID NOT NULL, route TEXT NOT NULL);
-                CREATE TABLE preplan_subcontract_make_tasks(
-                  id UUID PRIMARY KEY, analysis_id UUID NOT NULL,
-                  supply_action_id UUID NOT NULL REFERENCES preplan_supply_actions(id),
-                  preparation_item_id UUID NOT NULL);
-                CREATE TABLE preplan_subcontract_make_task_batches(
-                  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), task_id UUID NOT NULL REFERENCES preplan_subcontract_make_tasks(id),
-                  application_id UUID NOT NULL, application_item_id UUID NOT NULL,
-                  allocation_id UUID REFERENCES preplan_supply_action_allocations(id));
-                CREATE INDEX notification_application ON preplan_subcontract_make_task_batches(application_id,task_id);
-                """);
+        // Full catalog shapes avoid a second hand-written schema. This test
+        // applies the actual V712 tail, so first restore its pre-signal shape.
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(
+                new org.springframework.jdbc.core.JdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(db, true)),
+                "production_material_analyses", "preplan_supply_actions", "preplan_supply_action_allocations",
+                "preplan_aggregate_batches", "preplan_subcontract_make_tasks", "preplan_subcontract_make_task_batches");
+        sql("ALTER TABLE preplan_supply_actions DROP COLUMN aggregate_allocation_check_revision");
         String original = resource("V234__production_material_analysis.sql");
         sql(original.substring(original.indexOf("CREATE OR REPLACE FUNCTION fn_check_preplan_supply_action_allocation()"),
                 original.indexOf("-- Generic idempotency ledger")));
@@ -93,7 +69,7 @@ class AggregateAllocationConstraintSchedulingPostgresTest {
         assertTrue(migration.contains(MARKER), "Run the real V712 scheduling section, never a test-side substitute");
         sql(migration.substring(migration.indexOf(MARKER)));
         analysis = UUID.randomUUID();
-        sql("INSERT INTO production_material_analyses VALUES(?)", analysis);
+        sql("INSERT INTO production_material_analyses(id) VALUES(?)", analysis);
     }
 
     @AfterEach void close() throws Exception {
@@ -329,7 +305,7 @@ class AggregateAllocationConstraintSchedulingPostgresTest {
         Action continuation = seed(Scope.ORDINARY);
         sql("UPDATE preplan_supply_actions SET external_document_type='SUBCONTRACT_APPLICATION',external_document_id=? WHERE id=?", continuation.application(), continuation.id());
         UUID task = UUID.randomUUID();
-        sql("INSERT INTO preplan_subcontract_make_tasks VALUES(?,?,?,?)", task, analysis, parent.id(), parent.anchor());
+        sql("INSERT INTO preplan_subcontract_make_tasks(id,analysis_id,supply_action_id,preparation_item_id) VALUES(?,?,?,?)", task, analysis, parent.id(), parent.anchor());
         return new PendingContinuation(continuation, task);
     }
 

@@ -1,7 +1,7 @@
 {
+  "bomLearningTitle": "BOM learning",
   "materialDiscoveryBatchHelp": "Select continuous or full-kit production to identify materials before arranging batches.",
   "materialDiscoveryCancel": "Withdraw material definition request",
-  "bomLearningTitle": "BOM learning",
   "bomLearningHelp": "After production and material reconciliation, usage is updated from cumulative net consumption divided by actual output. Existing work orders keep their frozen requirements.",
   "bomLearningInactive": "No learning record yet. Learning begins when a manufactured leaf item completes material issue and production.",
   "bomLearningAuto": "BOM updates automatically",

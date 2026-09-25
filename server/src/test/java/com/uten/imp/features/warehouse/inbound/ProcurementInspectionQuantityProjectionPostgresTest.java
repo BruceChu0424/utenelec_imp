@@ -39,7 +39,7 @@ class ProcurementInspectionQuantityProjectionPostgresTest {
         var ds = new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
         jdbc = new JdbcTemplate(ds);
         jdbc.execute("CREATE TABLE units(id uuid PRIMARY KEY, name text)");
-        jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, unit_id uuid, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid)");
+        jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, unit_id uuid, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6))");
         jdbc.execute("CREATE TABLE colors(id uuid PRIMARY KEY, name text)");
         // V596: pendingForReceipt projects the pre-stocked shelf (warehouse name + employee name).
         jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY, name text)");

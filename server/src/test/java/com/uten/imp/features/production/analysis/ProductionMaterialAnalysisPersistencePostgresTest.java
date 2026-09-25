@@ -83,6 +83,12 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
             assertText(connection, """
                     SELECT status FROM production_material_analyses WHERE id=?
                     """, fixture.analysisId(), "PARTIALLY_PLANNED");
+            // A projection fixture must establish approved production before
+            // inbound; V695 deliberately rejects positive iqty with fqty=0.
+            update(connection, "UPDATE production_plan_items SET fqty=4 WHERE plan_id=? AND is_deleted=FALSE",
+                    fixture.planId());
+            assertText(connection, "SELECT fn_material_analysis_fulfillment_status(?)",
+                    fixture.analysisId(), "PARTIALLY_PLANNED");
             update(connection, """
                     UPDATE production_plan_items SET iqty=4
                     WHERE plan_id=? AND is_deleted=FALSE

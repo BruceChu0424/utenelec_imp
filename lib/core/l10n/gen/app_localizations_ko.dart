@@ -9,14 +9,14 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get bomLearningTitle => 'BOM 학습 기록';
+
+  @override
   String get materialDiscoveryBatchHelp =>
       '연속 생산 또는 전량 준비 생산을 선택하여 자재를 등록한 후 분할 생산을 진행하세요.';
 
   @override
   String get materialDiscoveryCancel => '자재 입력 요청 철회';
-
-  @override
-  String get bomLearningTitle => 'BOM 학습 기록';
 
   @override
   String get bomLearningHelp =>

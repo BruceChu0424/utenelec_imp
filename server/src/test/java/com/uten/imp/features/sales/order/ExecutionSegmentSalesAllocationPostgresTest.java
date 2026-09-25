@@ -109,23 +109,23 @@ class ExecutionSegmentSalesAllocationPostgresTest {
             UUID report = insertReport(
                     connection,
                     fixture,
-                    allocations.segmentOneOrderOne(),
-                    fixture.segmentOne(),
+                    allocations.segmentTwoOrderOne(),
+                    fixture.segmentTwo(),
                     fixture.orderItemOne(),
-                    "6",
+                    "1",
                     (short) 1);
             assertQuantity(connection, """
                     SELECT SUM(item.qty)
                     FROM production_daily_report_items item
                     WHERE item.report_id = ?
-                    """, report, "6");
+                    """, report, "1");
 
             connection.setAutoCommit(false);
             insertReport(
                     connection,
                     fixture,
-                    allocations.segmentOneOrderOne(),
-                    fixture.segmentOne(),
+                    allocations.segmentTwoOrderOne(),
+                    fixture.segmentTwo(),
                     fixture.orderItemOne(),
                     "0.1",
                     (short) 0);
@@ -138,19 +138,23 @@ class ExecutionSegmentSalesAllocationPostgresTest {
             connection.rollback();
             connection.setAutoCommit(true);
 
+            // Keep aggregate production headroom distinct from this sales
+            // owner's one-unit share. Another owner cannot lend its report cap.
+            insertReport(connection,fixture,allocations.segmentTwoOrderTwo(),
+                    fixture.segmentTwo(),fixture.orderItemTwo(),"3",(short)1);
             insertFinishedIn(
                     connection,
                     fixture,
-                    allocations.segmentOneOrderOne(),
-                    fixture.segmentOne(),
-                    "6");
+                    allocations.segmentTwoOrderOne(),
+                    fixture.segmentTwo(),
+                    "1");
 
             connection.setAutoCommit(false);
             insertFinishedIn(
                     connection,
                     fixture,
-                    allocations.segmentOneOrderOne(),
-                    fixture.segmentOne(),
+                    allocations.segmentTwoOrderOne(),
+                    fixture.segmentTwo(),
                     "0.1");
             PSQLException overInbound =
                     assertThrows(PSQLException.class, connection::commit);

@@ -8845,6 +8845,8 @@ class FullChainEndToEndTest {
         var offsetFirst=customerAdvanceOffsets.apply(applyFirst);
         assertEquals(offsetFirst.batchId(),customerAdvanceOffsets.apply(applyFirst).batchId());
         assertCashCycleState(w,order,account,"10","700","400","1600");
+        // Monetary API text is lossless and canonical; database NUMERIC scale
+        // does not require presentation-only trailing zeroes (DecimalText.of).
         assertEquals("100",salesMoneyQuery.salesOrderSummary(order).prepaymentAvailableOriginal());
 
         UUID firstReceipt=receiptService.create(receiptRequest(w,firstAr,account,null,"200","200","0","0",
@@ -8865,7 +8867,7 @@ class FullChainEndToEndTest {
                 "cash-cycle-advance-b-"+order,advanceLedger,List.of(new com.uten.imp.features.finance.receivables.CustomerPrepaymentContracts.Target(
                 secondAr,order,new BigDecimal("100"))),"抵第二批发货"));
         assertCashCycleState(w,order,account,"0","1400","600","1400");
-        assertEquals("0.0000",salesMoneyQuery.salesOrderSummary(order).prepaymentAvailableOriginal());
+        assertEquals("0",salesMoneyQuery.salesOrderSummary(order).prepaymentAvailableOriginal());
 
         var finalReceiptRequest=receiptRequest(w,firstAr,account,null,"500","1400","0","0",BigDecimal.ONE,BusinessTime.today());
         var lastLine=new com.uten.imp.features.finance.receipt.dto.FinanceReceiptLineInput();
@@ -8918,11 +8920,11 @@ class FullChainEndToEndTest {
         UUID returnItem=approvedReturn.getItems().getFirst().getId();
         assertEquals(0,approvedReturn.getTotalOriginal().compareTo(new BigDecimal("500")));
         assertCashCycleState(w,order,account,"0","0","2000","0");
-        assertEquals("500.0000",salesMoneyQuery.salesOrderSummary(order).customerPendingBalanceOriginal());
-        assertEquals("500.0000",salesMoneyQuery.salesOrderSummary(order).unrecognizedOrderOriginal());
+        assertEquals("500",salesMoneyQuery.salesOrderSummary(order).customerPendingBalanceOriginal());
+        assertEquals("500",salesMoneyQuery.salesOrderSummary(order).unrecognizedOrderOriginal());
         customerReturnService.setDisposition(returnId,new com.uten.imp.features.sales.ret.dto.CustomerDispositionRequest(
                 "REFUND_CLOSED","不再补发，资金留待财务处置","cash-cycle-refund-choice-"+returnId));
-        assertEquals("0.0000",salesMoneyQuery.salesOrderSummary(order).unrecognizedOrderOriginal());
+        assertEquals("0",salesMoneyQuery.salesOrderSummary(order).unrecognizedOrderOriginal());
         assertThrows(ApiException.class,()->customerReturnService.reverse(returnId));
         assertEquals(0,bigDecimalFor("SELECT balance_current FROM accounts WHERE id=?",account).compareTo(new BigDecimal("2000")),
                 "选择不再补发没有执行现金退款");
@@ -9017,8 +9019,8 @@ class FullChainEndToEndTest {
         UUID laterLedger=jdbc.queryForObject("SELECT id FROM ar_ap_ledger WHERE source_doc_type='SALES_SHIPMENT' AND source_doc_id=?",UUID.class,laterShipment);
         assertDecimal("7000","SELECT amount_original_local FROM ar_ap_ledger WHERE id=?",ledger);
         assertDecimal("8000","SELECT amount_original_local FROM ar_ap_ledger WHERE id=?",laterLedger);
-        assertEquals("11500.0000",salesMoneyQuery.salesOrderSummary(order).arOutstandingLocal());
-        assertEquals("0.0000",salesMoneyQuery.salesOrderSummary(order).unrecognizedOrderOriginal());
+        assertEquals("11500",salesMoneyQuery.salesOrderSummary(order).arOutstandingLocal());
+        assertEquals("0",salesMoneyQuery.salesOrderSummary(order).unrecognizedOrderOriginal());
         assertEquals("1400",salesMoneyQuery.salesOrderSummary(order).plannedRemainingOriginal());
         glPostingService.generate(java.time.YearMonth.from(BusinessTime.today()).toString());
         assertNonemptySourceVoucher("CUSTOMER_PREPAYMENT_OFFSET",offset.batchId());
@@ -9039,7 +9041,7 @@ class FullChainEndToEndTest {
         assertDecimal("6.800000","SELECT exchange_rate FROM finance_receipts WHERE id=?",advanceReceipt);
         assertDecimal("7.200000","SELECT exchange_rate FROM finance_receipts WHERE id=?",receipt);
         assertDecimal("8000","SELECT amount_balance FROM ar_ap_ledger WHERE id=?",laterLedger);
-        assertEquals("2000.0000",salesMoneyQuery.salesOrderSummary(order).plannedRemainingOriginal());
+        assertEquals("2000",salesMoneyQuery.salesOrderSummary(order).plannedRemainingOriginal());
         assertNonemptySourceVoucher("RECEIPT_REV",receipt);
         assertNonemptySourceVoucher("RECEIPT_REV",advanceReceipt);
     }

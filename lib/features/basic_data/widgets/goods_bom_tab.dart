@@ -50,7 +50,6 @@ import '../repositories/goods_bom_repository.dart';
 import 'master_data_table_view.dart';
 import 'uten_goods_picker.dart';
 import 'goods_bom_learning_panel.dart';
-import '../../../core/l10n/gen/app_localizations.dart';
 
 /// 树节点：BOM 行 + 懒加载子级状态。
 class _BomNode {
@@ -893,7 +892,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                 key: const Key('goods-bom-learning'),
                 icon: Icons.history_outlined,
                 onPressed: () => showGoodsBomLearning(context, widget.goodsId),
-                child: Text(AppLocalizations.of(context).bomLearningTitle),
+                child: const Text('BOM 学习记录'), // TODO(l10n): 补 arb
               ),
               if (widget.onPreview != null)
                 UtenButton(

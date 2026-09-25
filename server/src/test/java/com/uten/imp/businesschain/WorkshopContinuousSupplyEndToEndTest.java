@@ -159,10 +159,20 @@ class WorkshopContinuousSupplyEndToEndTest {
         assertEquals("IN_PROGRESS", status(c.segment()), "补投不改变工单状态");
 
         // 父件报工：只到 40 套子件就只能报 40 个。
-        assertEquals(0, new BigDecimal("40").compareTo(maxReportQty(c)));
+        // V707 起持续任务报工上限按计划量计(100), 已投物料的约束由保存时校验。
+        assertEquals(0, new BigDecimal("100").compareTo(maxReportQty(c)));
         reportParent(c, "30", false);
         ApiException over = assertThrows(ApiException.class, () -> reportParent(c, "20", false));
-        assertTrue(over.getMessage().contains("最多可报"), over.getMessage());
+        assertTrue(over.getMessage().contains("最多可报") || over.getMessage().contains("本次清账超过准确原领料未耗用数量"), over.getMessage());
+        // 超报的拒绝发生在审核段, 会留下未审草稿占住需求份; 清掉草稿再继续后续场景。
+        fixture.loginAs(c.world().superAdminUserId());
+        db.queryForList("""
+                        SELECT report.id FROM production_daily_reports report
+                        JOIN production_daily_report_items item ON item.report_id=report.id
+                        WHERE item.execution_segment_id=? AND report.status=0 AND NOT report.is_deleted
+                        """, UUID.class, c.segment())
+                .forEach(reports::delete);
+        fixture.loginAs(c.workerUser());
 
         // 后续直送 60 → 上限 100，最后一次报工 70 完结。
         transfer(c, "60", false);
@@ -227,7 +237,7 @@ class WorkshopContinuousSupplyEndToEndTest {
         assertEquals("IN_PROGRESS", started.status());
         // 开工那一刻料架上的 50 已经投进去了：报工上限就是 50，多报一个都不行。
         qty("50", issued(parentDemand(c)));
-        assertEquals(0, new BigDecimal("50").compareTo(maxReportQty(c)));
+        assertEquals(0, new BigDecimal("100").compareTo(maxReportQty(c)));
         reportParent(c, "50", false);
 
         // 后续直送继续补投，上限随之抬到 100。
@@ -329,7 +339,7 @@ class WorkshopContinuousSupplyEndToEndTest {
         assertEquals("WAITING", status(c.segment()));
         assertEquals(Boolean.FALSE, db.queryForObject(
                 "SELECT fn_execution_start_material_ready(?)", Boolean.class, c.segment()),
-                "路线尚未确认，料架上的库存不能直接等同于可开工");
+                "齐套路线下只到三十件仍不足开工；切换持续路线后才按现有量生产");
 
         fixture.loginAs(c.workerUser());
         // V599：直送料已在线边仓、工单未被动过——先确认持续生产路线再开工。
@@ -340,7 +350,7 @@ class WorkshopContinuousSupplyEndToEndTest {
         qty("30", reserved(parentDemand(c)));
         qty("30", issued(parentDemand(c)));
         qty("0", balance(lineSide, c.child()));
-        assertEquals(0, new BigDecimal("30").compareTo(maxReportQty(c)), "开工时就把线边仓已到的 30 投进去了");
+        assertEquals(0, new BigDecimal("100").compareTo(maxReportQty(c)), "开工时就把线边仓已到的 30 投进去了(报工上限按计划量计)");
 
         // 之后的直送继续逐笔补投，同一需求另起一行正式预留(上一行已出库消耗)。
         transfer(c, "20", false);
@@ -362,7 +372,7 @@ class WorkshopContinuousSupplyEndToEndTest {
             UUID leaf, UUID planItem) {
     }
 
-    /** 父件(自制) → 子件(自制叶子，零料直制)；可选第二种采购子件。主仓下挂普通叶子子仓，**不**预建线边仓。 */
+    /** 父件→自制子件→真实原料；主仓下挂普通叶仓，不预建线边仓。 */
     private Case create(String tag, boolean withBuyMaterial) {
         var w = fixture.seedWorld(tag);
         fixture.loginAs(w.superAdminUserId());
@@ -371,6 +381,7 @@ class WorkshopContinuousSupplyEndToEndTest {
         fixture.insertGoods(parent, "P-" + tag, "持续父件-" + tag, "自制", w.unitId(), w.unitLegacy());
         fixture.insertGoods(child, "CL-" + tag, "持续子件-" + tag, "自制", w.unitId(), w.unitLegacy());
         fixture.insertBom(parent, child, "1");
+        UUID raw=UUID.randomUUID();fixture.insertGoods(raw,"RAW-"+tag,"持续供料实际原料","采购",w.unitId(),w.unitLegacy());fixture.insertBom(child,raw,"1");
         if (withBuyMaterial) {
             fixture.insertGoods(secondMaterial, "MAT-" + tag, "仓库子件-" + tag, "采购", w.unitId(), w.unitLegacy());
             fixture.insertBom(parent, secondMaterial, "1");
@@ -407,6 +418,7 @@ class WorkshopContinuousSupplyEndToEndTest {
                         .map(row -> new RouteDecision(row.materialLineId(), row.actionGroupKey(),
                                 row.goodsId().equals(parent) || row.goodsId().equals(child) ? "MAKE" : "BUY", null))
                         .toList()));
+        WorkshopMaterialFlowTestSupport.receiveFreeInput(stock,w,leaf,raw,new BigDecimal("100"));
         view = analyses.detail(view.analysisId());
         UUID childLineId = view.flatMaterials().stream()
                 .filter(row -> row.goodsId().equals(child)).findFirst().orElseThrow().materialLineId();
@@ -419,7 +431,7 @@ class WorkshopContinuousSupplyEndToEndTest {
                         workshop, null, worker, null, null))));
         UUID childPlan = childResult.plans().getFirst().planId();
         UUID childSegment = childResult.plans().getFirst().segmentIds().getFirst();
-        assertEquals("READY", status(childSegment), "零料直制子件任务应直接可开工");
+        assertEquals("READY", status(childSegment), "原料已预留，子件仍须真实发料");
         view = analyses.detail(view.analysisId());
         var rootResult = commands.issueWorkshopPlans(view.analysisId(), new IssueWorkshopPlansRequest(
                 view.version(), view.fingerprint(), "root-" + tag, w.warehouseId(),
@@ -433,9 +445,11 @@ class WorkshopContinuousSupplyEndToEndTest {
                 "SELECT id FROM production_execution_segments WHERE plan_id=? AND status='WAITING'", UUID.class, plan);
         UUID planItem = db.queryForObject(
                 "SELECT source_plan_item_id FROM production_execution_segments WHERE id=?", UUID.class, segment);
-        fixture.loginAs(workerUser);
-        // V599：零料直制子件落生即 READY，开工前也要先确认齐套路线（唯一可选项）。
+        // Rack/custody scenarios deliberately begin with FULL_KIT; each continuous case switches through the real API.
+        confirmRoute(plan,segment,"FULL_KIT");
         confirmRoute(childPlan, childSegment, "FULL_KIT");
+        WorkshopMaterialFlowTestSupport.issue(db,drawRequests,stock,childSegment);
+        fixture.loginAs(workerUser);
         segments.start(childPlan, childSegment,
                 new SegmentTransitionRequest(version(childSegment), "cs-child-start-" + childSegment));
         return new Case(w, parent, child, secondMaterial, plan, segment, childPlan, childSegment,
@@ -465,6 +479,7 @@ class WorkshopContinuousSupplyEndToEndTest {
         item.setDestination("WORKSHOP");
         item.setDirectTransferDemandId(parentDemand(c));
         report.setItems(List.of(item));
+        report.setMaterialLines(WorkshopMaterialFlowTestSupport.materialUse(db,c.childSegment(),item.getQty()));
         reports.approve(reports.create(report).getId(), DailyReportApproveRequests.freshKey());
     }
 
@@ -493,6 +508,7 @@ class WorkshopContinuousSupplyEndToEndTest {
         item.setExecutionSegmentSalesAllocationId((UUID) allocation.get("id"));
         item.setSalesOrderItemId((UUID) allocation.get("sales_order_item_id"));
         report.setItems(List.of(item));
+        report.setMaterialLines(WorkshopMaterialFlowTestSupport.materialUse(db,c.segment(),item.getQty()));
         reports.approve(reports.create(report).getId(), DailyReportApproveRequests.freshKey());
     }
 

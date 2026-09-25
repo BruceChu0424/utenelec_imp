@@ -116,6 +116,7 @@ class _RequestState
             ),
           ),
         ),
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
         floatingActionButton: UtenButton(
           key: const Key('discovery-request-submit'),
           type: UtenButtonType.danger,

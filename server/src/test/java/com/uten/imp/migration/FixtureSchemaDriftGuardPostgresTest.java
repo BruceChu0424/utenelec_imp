@@ -99,6 +99,9 @@ class FixtureSchemaDriftGuardPostgresTest {
             "outbox_wake_test_deliveries",
             // 委外准备分页的工作台文档投影桩。
             "workbench_documents",
+            // Workbench query function outcomes are test-owned facts, never
+            // invented columns on the production_execution_segments table.
+            "workbench_execution_policy_facts",
             // 物料分析测试的影子事实/取证暂存表（聚合口径桩，不是业务表）。
             "entitlement_evidence",
             "entitlement_facts",

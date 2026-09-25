@@ -50,14 +50,14 @@ class SubcontractPreparationPaginationPostgresTest {
         var dataSource = new DriverManagerDataSource(DB.getJdbcUrl()
                 + "&options=-c%20jit%3Doff", DB.getUsername(), DB.getPassword());
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, is_deleted boolean NOT NULL DEFAULT false, auto_created boolean NOT NULL DEFAULT false, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid)");
+        jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, is_deleted boolean NOT NULL DEFAULT false, auto_created boolean NOT NULL DEFAULT false, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6))");
         jdbc.execute("CREATE TABLE colors(id uuid PRIMARY KEY, name text)");
         jdbc.execute("CREATE TABLE units(id uuid PRIMARY KEY, name text)");
         jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY, name text, parent_id uuid, is_deleted boolean NOT NULL DEFAULT false, is_defective boolean NOT NULL DEFAULT false, is_line_side boolean NOT NULL DEFAULT false)");
         // ADR-103 路线 B 锁判据要读的最小集: 申请明细、BOM 边、可动用库存视图、发料计划两表,
         // 以及 V581 / V613 的两个判据函数 (桩的函数体与迁移原文逐字一致, 判据不在测试里另写一遍).
         jdbc.execute("CREATE TABLE subcontract_application_items(id uuid PRIMARY KEY, application_id uuid, goods_id uuid, color_id uuid, qty numeric, ordered_qty numeric DEFAULT 0, is_deleted boolean NOT NULL DEFAULT false)");
-        jdbc.execute("CREATE TABLE goods_bom_items(id uuid PRIMARY KEY, goods_id uuid, component_goods_id uuid, color_id uuid, qty numeric NOT NULL DEFAULT 1, consumption_basis text NOT NULL DEFAULT 'PER_UNIT', control_stage text NOT NULL DEFAULT 'START', is_deleted boolean NOT NULL DEFAULT false)");
+        jdbc.execute("CREATE TABLE goods_bom_items(id uuid PRIMARY KEY, goods_id uuid, component_goods_id uuid, color_id uuid, qty numeric NOT NULL DEFAULT 1, consumption_basis text NOT NULL DEFAULT 'PER_UNIT', control_stage text NOT NULL DEFAULT 'START', is_deleted boolean NOT NULL DEFAULT false, learning_profile_goods_id uuid, learning_unit_id uuid)");
         jdbc.execute("CREATE TABLE stock_balances(id uuid PRIMARY KEY, warehouse_id uuid, goods_id uuid, color_id uuid, qty numeric)");
         jdbc.execute("CREATE VIEW v_stock_available AS SELECT warehouse_id, goods_id, color_id, qty AS available_qty FROM stock_balances");
         jdbc.execute("CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, order_id uuid, status text, is_deleted boolean NOT NULL DEFAULT false)");
@@ -121,10 +121,10 @@ class SubcontractPreparationPaginationPostgresTest {
                     required_qty numeric(18,4), produced_qty numeric(18,4), notified_qty numeric(18,4),
                     status text, updated_at timestamptz)
                 """);
-        jdbc.execute("CREATE TABLE production_plans(id uuid PRIMARY KEY, material_analysis_item_id uuid, is_deleted boolean, is_canceled boolean)");
-        jdbc.execute("CREATE TABLE production_execution_segments(id uuid PRIMARY KEY, plan_id uuid, status text, is_deleted boolean)");
+        jdbc.execute("CREATE TABLE production_plans(id uuid PRIMARY KEY, material_analysis_item_id uuid, is_deleted boolean, is_canceled boolean, actual_output_supplement_request_id uuid)");
+        jdbc.execute("CREATE TABLE production_execution_segments(id uuid PRIMARY KEY, plan_id uuid, status text, is_deleted boolean, allowed_overproduction_rate numeric(9,6) NOT NULL DEFAULT 0.10, material_discovery_required boolean NOT NULL DEFAULT FALSE, overproduction_rate_version bigint NOT NULL DEFAULT 0, route_defaulted_at timestamptz)");
         jdbc.execute("CREATE TABLE production_material_analysis_plan_links(analysis_id uuid, analysis_item_id uuid, submitted_qty numeric, allocation_status text)");
-        jdbc.execute("CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY, created_at timestamptz, external_document_type text, route text)");
+        jdbc.execute("CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY, created_at timestamptz, external_document_type text, route text, aggregate_allocation_check_revision bigint NOT NULL DEFAULT 0)");
         jdbc.execute("CREATE TABLE preplan_supply_action_allocations(id uuid PRIMARY KEY, external_item_id uuid, action_id uuid)");
         jdbc.execute("CREATE TABLE preplan_subcontract_make_task_batches(id uuid PRIMARY KEY, application_item_id uuid, task_id uuid)");
         jdbc.execute("CREATE TABLE subcontract_order_item_sources(order_item_id uuid, application_item_id uuid, alloc_qty numeric)");

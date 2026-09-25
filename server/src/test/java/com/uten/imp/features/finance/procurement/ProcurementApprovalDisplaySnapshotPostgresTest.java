@@ -180,7 +180,7 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                 CREATE TABLE currencies(id uuid,name text);
                 CREATE TABLE settlement_methods(id uuid,name text);
                 CREATE TABLE employees(id uuid,full_name text);
-                CREATE TABLE goods(id uuid,code text,name text);
+                CREATE TABLE goods(id uuid,code text,name text, production_overproduction_rate numeric(9,6));
                 CREATE TABLE colors(id uuid,name text);
                 CREATE TABLE units(id uuid,name text);
                 """);

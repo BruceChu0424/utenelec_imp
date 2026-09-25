@@ -259,7 +259,16 @@ class PreplanReallocationMakeSupplementEndToEndTest {
         fixture.confirmFinishedInboundFully(fixture.finishedInDocForReport(report));
     }
     private void replenishRaw(Scenario c,UUID analysis,UUID nextPlan) {
-        assertEquals("WAITING",db.queryForObject("SELECT status FROM production_execution_segments WHERE plan_id=?",String.class,nextPlan));
+        // This scenario waits for the complete replacement batch. The default
+        // CONTINUOUS route may legitimately be READY from another available input.
+        fixture.confirmFullKitRoutes(nextPlan);
+        // ADR-095 preserves READY incremental preparation after switching an
+        // already-partially-prepared task to FULL_KIT. READY is not START permission.
+        assertEquals(c.make()?"WAITING":"READY",db.queryForObject("SELECT status FROM production_execution_segments WHERE plan_id=?",String.class,nextPlan));
+        UUID segment=db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=?",UUID.class,nextPlan);
+        assertEquals(Boolean.FALSE,db.queryForObject("SELECT fn_execution_start_material_ready(?)",Boolean.class,segment));
+        assertThrows(com.uten.imp.common.web.ApiException.class,()->segments.start(nextPlan,segment,
+                new SegmentTransitionRequest(version(segment),"yield-before-raw-"+segment)));
         var rawView=analyses.detail(analysis);
         var rawCandidates=rawView.flatMaterials().stream().filter(row->row.goodsId().equals(c.raw())&&row.actionable()).toList();
         assertEquals(1,rawCandidates.size(),"补做原材料必须保留一个可操作采购来源，不重复展开；原材料投影="+rawView.flatMaterials().stream().filter(row->row.goodsId().equals(c.raw())).toList());

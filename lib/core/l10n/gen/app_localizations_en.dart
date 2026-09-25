@@ -9,14 +9,14 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get bomLearningTitle => 'BOM learning';
+
+  @override
   String get materialDiscoveryBatchHelp =>
       'Select continuous or full-kit production to identify materials before arranging batches.';
 
   @override
   String get materialDiscoveryCancel => 'Withdraw material definition request';
-
-  @override
-  String get bomLearningTitle => 'BOM learning';
 
   @override
   String get bomLearningHelp =>

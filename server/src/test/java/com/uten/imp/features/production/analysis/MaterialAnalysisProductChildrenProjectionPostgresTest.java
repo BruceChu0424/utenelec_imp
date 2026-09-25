@@ -230,6 +230,9 @@ class MaterialAnalysisProductChildrenProjectionPostgresTest {
                 WHERE analysis_item_id=? AND node_key='direct'
                 """,BigDecimal.class,analysis.analysisItemId())).isEqualByComparingTo("10");
         jdbc.update("UPDATE production_plans SET status=1 WHERE id=?",plan.planId());
+        // Projection fixture: approved output exists before warehouse inbound.
+        // V695 correctly refuses iqty when no approved fqty has been recorded.
+        jdbc.update("UPDATE production_plan_items SET fqty=10 WHERE id=?",plan.planItemId());
         jdbc.update("UPDATE production_plan_items SET iqty=4 WHERE id=?",plan.planItemId());
         assertThat(jdbc.queryForObject("SELECT fn_material_analysis_fulfillment_status(?)",
                 String.class,analysis.analysisId())).isEqualTo("PARTIALLY_PLANNED");
@@ -278,12 +281,14 @@ class MaterialAnalysisProductChildrenProjectionPostgresTest {
         PlanFixture first = insertLinkedPlan(
                 analysis, employeeId, userId, childGoodsId, unitId, "4");
         jdbc.update("UPDATE production_plans SET status=1 WHERE id=?", first.planId());
+        jdbc.update("UPDATE production_plan_items SET fqty=4 WHERE id=?", first.planItemId());
         jdbc.update("UPDATE production_plan_items SET iqty=4 WHERE id=?",
                 first.planItemId());
 
         PlanFixture second = insertLinkedPlan(
                 analysis, employeeId, userId, childGoodsId, unitId, "6");
         jdbc.update("UPDATE production_plans SET status=1 WHERE id=?", second.planId());
+        jdbc.update("UPDATE production_plan_items SET fqty=6 WHERE id=?", second.planItemId());
         jdbc.update("UPDATE production_plan_items SET iqty=2 WHERE id=?",
                 second.planItemId());
         insertReadySegment(

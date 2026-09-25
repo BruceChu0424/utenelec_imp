@@ -198,7 +198,7 @@ class AggregateMaterialDirectTransferEndToEndTest {
             statement.execute("CREATE SCHEMA "+schema);statement.execute("SET LOCAL search_path TO "+schema+",public");
             for(String table:List.of("stock_documents","stock_document_items","production_material_stock_postings","production_workshop_direct_source_allocations",
                     "production_workshop_direct_transfer_items","production_workshop_direct_transfers","preplan_aggregate_direct_transfer_slices","production_material_demands",
-                    "production_execution_segment_events","production_daily_report_items","stock_value_nodes","stock_value_events","stock_value_edges","stock_value_pools","stock_value_position_transfers","production_material_movement_links","production_material_stock_events"))statement.execute("CREATE TABLE "+table+" AS SELECT * FROM public."+table);
+                    "production_execution_segment_events","production_daily_report_items","stock_value_nodes","stock_value_events","stock_value_edges","stock_value_pools","stock_value_position_transfers","production_material_movement_links","production_material_stock_events"))com.uten.imp.support.MigratedProjectionSchema.copyTablesWithDataFromMigratedCatalog(connection,table);
             String definition;try(var result=statement.executeQuery("SELECT pg_get_functiondef('public.fn_preplan_aggregate_direct_draw_reversible(uuid)'::regprocedure)")){result.next();definition=result.getString(1);}
             statement.execute(definition.replace("FUNCTION public.","FUNCTION "+schema+"."));
             try(var result=statement.executeQuery("SELECT fn_preplan_aggregate_direct_draw_reversible('"+document+"')")){assertTrue(result.next()&&result.getBoolean(1));}

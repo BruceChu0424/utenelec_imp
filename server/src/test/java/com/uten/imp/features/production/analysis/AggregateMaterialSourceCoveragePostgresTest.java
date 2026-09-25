@@ -44,7 +44,7 @@ class AggregateMaterialSourceCoveragePostgresTest {
                 "production_daily_reports","production_daily_report_items","preplan_root_output_events",
                 "preplan_future_supply_transfers","preplan_future_supply_transfer_cancellations","preplan_reallocation_make_supplements",
                 "v_preplan_stock_entitlement_beneficiary_balance","v_preplan_buy_action_slice_progress")) {
-            sql("CREATE TABLE "+table+" AS SELECT * FROM public."+table+" WITH NO DATA");
+            com.uten.imp.support.MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(db,table);
             try(var statement=db.prepareStatement("""
                     SELECT attribute.attname,pg_get_expr(definition.adbin,definition.adrelid)
                     FROM pg_attribute attribute JOIN pg_attrdef definition ON definition.adrelid=attribute.attrelid AND definition.adnum=attribute.attnum

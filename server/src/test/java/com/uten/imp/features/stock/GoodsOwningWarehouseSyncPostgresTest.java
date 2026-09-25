@@ -64,7 +64,7 @@ class GoodsOwningWarehouseSyncPostgresTest {
                     version bigint NOT NULL DEFAULT 0,
                     is_deleted boolean NOT NULL DEFAULT false,
                     updated_at timestamptz,
-                    updated_by uuid, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid)
+                    updated_by uuid, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6))
                 """);
         // Production uses JPA @Version, not a database version trigger.
         // The native learning command itself must advance the optimistic-lock token.

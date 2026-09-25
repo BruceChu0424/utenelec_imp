@@ -35,9 +35,9 @@ class SubcontractComponentEntitledLotsPostgresTest {
         connection.setAutoCommit(false);
         execute("CREATE SCHEMA entitled_lots_test; SET LOCAL search_path TO entitled_lots_test; SET LOCAL jit TO off");
         execute("""
-                CREATE TABLE goods(id uuid PRIMARY KEY, is_deleted boolean DEFAULT false, auto_created boolean DEFAULT false);
+                CREATE TABLE goods(id uuid PRIMARY KEY, is_deleted boolean DEFAULT false, auto_created boolean DEFAULT false, production_overproduction_rate numeric(9,6));
                 CREATE TABLE goods_bom_items(id uuid PRIMARY KEY, goods_id uuid, component_goods_id uuid,
-                    color_id uuid, qty numeric, consumption_basis text, control_stage text, is_deleted boolean DEFAULT false);
+                    color_id uuid, qty numeric, consumption_basis text, control_stage text, is_deleted boolean DEFAULT false, learning_profile_goods_id uuid, learning_unit_id uuid);
                 CREATE TABLE warehouses(id uuid PRIMARY KEY, is_deleted boolean DEFAULT false,
                     is_defective boolean DEFAULT false, is_line_side boolean DEFAULT false);
                 CREATE TABLE subcontract_application_items(id uuid PRIMARY KEY, goods_id uuid, color_id uuid,
@@ -45,7 +45,7 @@ class SubcontractComponentEntitledLotsPostgresTest {
                 CREATE TABLE subcontract_order_items(id uuid PRIMARY KEY, unit_rate numeric(18,6) DEFAULT 1);
                 CREATE TABLE subcontract_order_item_sources(order_item_id uuid, application_item_id uuid, alloc_qty numeric(18,4));
                 CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY, analysis_id uuid, route text,
-                    status text, external_document_type text, public_surplus_external_item_id uuid);
+                    status text, external_document_type text, public_surplus_external_item_id uuid, aggregate_allocation_check_revision bigint NOT NULL DEFAULT 0);
                 CREATE TABLE preplan_supply_action_allocations(id uuid PRIMARY KEY, action_id uuid, analysis_id uuid,
                     analysis_material_id uuid, external_item_id uuid, allocated_qty numeric(18,4));
                 CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY, analysis_id uuid,

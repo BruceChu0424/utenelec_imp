@@ -100,6 +100,12 @@ abstract class AppLocalizations {
     Locale('ko'),
   ];
 
+  /// No description provided for @bomLearningTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'BOM 学习记录'**
+  String get bomLearningTitle;
+
   /// No description provided for @materialDiscoveryBatchHelp.
   ///
   /// In zh, this message translates to:
@@ -111,12 +117,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'撤回待登记领料申请'**
   String get materialDiscoveryCancel;
-
-  /// No description provided for @bomLearningTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'BOM 学习记录'**
-  String get bomLearningTitle;
 
   /// No description provided for @bomLearningHelp.
   ///

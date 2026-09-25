@@ -9,13 +9,13 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get bomLearningTitle => 'BOM 学习记录';
+
+  @override
   String get materialDiscoveryBatchHelp => '请先选择持续生产或齐套生产，登记实际物料后再安排分批';
 
   @override
   String get materialDiscoveryCancel => '撤回待登记领料申请';
-
-  @override
-  String get bomLearningTitle => 'BOM 学习记录';
 
   @override
   String get bomLearningHelp => '完成生产并核清余料后，按累计净耗料除以累计实际产量更新单耗。已有任务仍按下达时的用料执行。';

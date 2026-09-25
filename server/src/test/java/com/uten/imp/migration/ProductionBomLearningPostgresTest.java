@@ -41,7 +41,7 @@ class ProductionBomLearningPostgresTest {
                 "production_execution_segment_splits","production_actual_output_supplement_requests","production_actual_output_supplement_proofs",
                 "production_actual_output_supplement_reversals","production_material_return_requests","production_material_return_request_items",
                 "production_material_return_request_cancellations","stock_documents","business_outbox")) {
-            sql("CREATE TABLE "+table+" AS SELECT * FROM public."+table+" WITH NO DATA");
+            com.uten.imp.support.MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(db,table);
             // Preserve real scalar defaults, while intentionally omitting the
             // unrelated business guards in this focused projection fixture.
             try(var statement=db.prepareStatement("""
@@ -61,7 +61,7 @@ class ProductionBomLearningPostgresTest {
         }
         for(String table:List.of("goods_bom_items","goods_bom_learning_profiles","production_bom_learning_samples",
                 "goods_bom_learning_material_totals","production_bom_learning_refresh_queue"))
-            sql("CREATE TABLE "+table+" (LIKE public."+table+" INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES)");
+            com.uten.imp.support.MigratedProjectionSchema.copyConstrainedTablesFromMigratedCatalog(db,table);
         for(String function:List.of("fn_production_execution_cost_scope(uuid)","fn_production_execution_cost_members(uuid)",
                 "fn_material_issue_pending_return(uuid,uuid)","fn_bom_learning_manual_ownership()","fn_enqueue_bom_learning(uuid)",
                 "fn_publish_learned_bom(uuid)","fn_refresh_bom_learning(uuid)","fn_drain_bom_learning_queue()","fn_touch_bom_learning()")) {

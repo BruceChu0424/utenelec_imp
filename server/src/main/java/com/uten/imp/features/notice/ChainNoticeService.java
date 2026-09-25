@@ -3949,7 +3949,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             return;
         }
         String status = str(task.get("segment_status"));
-        boolean continuous = Boolean.TRUE.equals(task.get("continuous_supply"));
+        // continuous_supply is an incremental-material flag (ADR-095). It may
+        // remain true after switching a prepared task back to FULL_KIT; only
+        // the explicit route determines whether this is continuous production.
+        String route = str(task.get("start_route"));
+        boolean continuous = "CONTINUOUS".equals(route);
         if (!Set.of("WAITING", "READY", "DISPATCHED").contains(status)
                 && !(continuous && "IN_PROGRESS".equals(status))) {
             noticeService.resolveReviewNotices("PRODUCTION_EXECUTION_SEGMENT", segmentId, "STATE_CHANGED");
@@ -3960,7 +3964,6 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         if (workshopId == null) return;
 
         boolean issued = Boolean.TRUE.equals(task.get("issued"));
-        String route = str(task.get("start_route"));
         boolean canStart = workshopStartSupported(status, route, Boolean.TRUE.equals(task.get("start_material_ready")));
         String drawNo = str(task.get("draw_summary"));
         if (onlyFullyIssued && !canStart && !"IN_PROGRESS".equals(status)) return;

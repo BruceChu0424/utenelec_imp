@@ -18,7 +18,9 @@ import 'package:flutter_test/flutter_test.dart';
 // 总账报表「附表取数设置」按钮 +1, 仓库到货预期视图 -1, 净 +4。改为服务端下发动作集合归后续 uikit 工作流。
 // 2026-09-24 +10：V694–V702 三个新审批页(追加用料/超产比例/追加生产计划)的按钮显隐
 // 与服务端 @PreAuthorize 组合一一对应地本地预演，非新增裁决逻辑。
-const _baseline = 605;
+// 2026-09-25 +8：物料聚合单(聚合明细表 +3/物料表 +2/分析页 +1)与叶层物料发现页(+2)
+// 的按钮显隐与服务端 @PreAuthorize 一一对应地本地预演，非新增裁决逻辑。
+const _baseline = 613;
 
 final _permReference = RegExp(r'\bPerm\.[a-zA-Z]');
 

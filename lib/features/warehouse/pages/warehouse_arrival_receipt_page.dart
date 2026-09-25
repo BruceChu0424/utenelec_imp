@@ -777,8 +777,6 @@ class _WarehouseArrivalReceiptPageState
             UtenFloatingActionGroup.scrollClearance,
           ),
           children: [
-            _arrivalBanner(theme, prefill),
-            const SizedBox(height: UtenSpacing.s12),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -1041,64 +1039,6 @@ class _WarehouseArrivalReceiptPageState
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _arrivalBanner(ThemeData theme, ProcurementReceiptPrefill prefill) {
-    return Semantics(
-      container: true,
-      label:
-          '请按实际到货数量登记；数量单位由货品单位的数量/重量维度决定。'
-          '超出财务批准剩余量时不会直接入库，'
-          '系统会隔离并通知财务审核组共享处理。',
-      child: Card(
-        color: theme.colorScheme.tertiaryContainer,
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.fact_check_outlined,
-                color: theme.colorScheme.onTertiaryContainer,
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '请按实际到货数量登记',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: theme.colorScheme.onTertiaryContainer,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s4),
-                    Text(
-                      '来源订货单：${prefill.orderBillNo}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onTertiaryContainer,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s4),
-                    Text(
-                      '本页登记带单位的数量与库位，不涉及价格与金额；'
-                      '重量统计由单位的数量/重量维度承载，无需另填实称重量。'
-                      '实到数量超过财务批准剩余量时仍可如实填写——超出部分不会入库、'
-                      '不会生成应付，系统会自动隔离并通知财务审核组共享处理。',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onTertiaryContainer,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );

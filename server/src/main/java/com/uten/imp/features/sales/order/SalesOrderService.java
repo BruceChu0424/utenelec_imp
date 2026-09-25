@@ -1157,11 +1157,17 @@ public class SalesOrderService {
 
     private void assertNoMaterialAnalysisForRevision(List<UUID> orderItemIds) {
         if (orderItemIds.isEmpty()) return;
+        // 只拦有效分析：取消分析仅把头置 CANCELLED、来源行留作历史事实，
+        // 不联头表会把已取消的分析也算成"分析事实"，订单从此无法修订 (2026-09-24)。
         long count = ((Number) em.createNativeQuery("""
                 SELECT COUNT(*)
                 FROM production_material_analysis_items analysis_item
+                JOIN production_material_analyses analysis
+                  ON analysis.id = analysis_item.analysis_id
+                 AND COALESCE(analysis.is_deleted, FALSE) = FALSE
                 WHERE analysis_item.sales_order_item_id IN (:ids)
                   AND COALESCE(analysis_item.is_deleted, FALSE) = FALSE
+                  AND analysis.status <> 'CANCELLED'
                 """)
                 .setParameter("ids", orderItemIds)
                 .getSingleResult()).longValue();

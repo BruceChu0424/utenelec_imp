@@ -258,7 +258,6 @@ class _WarehouseSalesOutboundDetailPageState
       child: Scaffold(
         appBar: UtenAppBar(
           title: '销售出库详情',
-          subtitle: '仓库作业视图',
           leading: UtenBackButton(
             onPressed: _acting
                 ? null
@@ -512,13 +511,6 @@ class _OutboundStatusBanner extends StatelessWidget {
                 detail.header.warehouseWorkStatus,
               ),
               style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              '仓库作业视图不包含商业与财务信息，也不提供销售业务编辑操作。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
             ),
           ],
         ),

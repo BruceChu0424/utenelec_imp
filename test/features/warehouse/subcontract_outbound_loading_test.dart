@@ -88,7 +88,6 @@ void main() {
         child: MaterialApp(
           home: WarehouseTaskCenterScaffold(
             title: '出库任务中心',
-            subtitle: '',
             searchHint: '搜索',
             location: '/warehouse/tasks/outbound',
             segments: const [

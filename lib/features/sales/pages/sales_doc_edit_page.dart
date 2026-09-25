@@ -342,11 +342,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         _currencyId = d.currencyId;
         _settlementMethodId = d.settlementMethodId;
         _rate.text =
-            d.exactDecimals['exchangeRate'] ??
-            d.exchangeRate?.toString() ??
+            financeExactTrimmed(
+              d.exactDecimals['exchangeRate'] ?? d.exchangeRate?.toString(),
+            ) ??
             '1';
         _taxRate.text =
-            d.exactDecimals['taxRate'] ?? d.taxRate?.toString() ?? '';
+            financeExactTrimmed(
+              d.exactDecimals['taxRate'] ?? d.taxRate?.toString(),
+            ) ??
+            '';
         _sellerId = d.sellerId;
         _senderId = d.senderId;
         _validUntil = _parseDate(d.validUntil);
@@ -396,34 +400,60 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             ..unitRateExact = it.exactDecimals['unitRate']
             ..solution = it.solution
             ..responsible = it.responsible;
-          row.qty.text = it.exactDecimals['qty'] ?? it.qty?.toString() ?? '';
+          row.qty.text =
+              financeExactTrimmed(
+                it.exactDecimals['qty'] ?? it.qty?.toString(),
+              ) ??
+              '';
           row.weight.text =
-              it.exactDecimals['weight'] ?? it.weight?.toString() ?? '';
+              financeExactTrimmed(
+                it.exactDecimals['weight'] ?? it.weight?.toString(),
+              ) ??
+              '';
           row.price.text =
-              it.exactDecimals['price'] ?? it.price?.toString() ?? '';
+              financeExactTrimmed(
+                it.exactDecimals['price'] ?? it.price?.toString(),
+              ) ??
+              '';
           // 补列回填（按 docType 仅填该单据类型对应字段；其余保持空）。
           if (it.machiningPrice != null) {
             row.machiningPrice.text =
-                it.exactDecimals['machiningPrice'] ??
-                it.machiningPrice.toString();
+                financeExactTrimmed(
+                  it.exactDecimals['machiningPrice'] ??
+                      it.machiningPrice.toString(),
+                ) ??
+                '';
           }
           if (it.circumference != null) {
             row.circumference.text =
-                it.exactDecimals['circumference'] ??
-                it.circumference.toString();
+                financeExactTrimmed(
+                  it.exactDecimals['circumference'] ??
+                      it.circumference.toString(),
+                ) ??
+                '';
           }
           if (it.inboundQty != null) {
             row.inboundQty.text =
-                it.exactDecimals['inboundQty'] ?? it.inboundQty.toString();
+                financeExactTrimmed(
+                  it.exactDecimals['inboundQty'] ?? it.inboundQty.toString(),
+                ) ??
+                '';
           }
           if (it.materialPrice != null) {
             row.materialPrice.text =
-                it.exactDecimals['materialPrice'] ??
-                it.materialPrice.toString();
+                financeExactTrimmed(
+                  it.exactDecimals['materialPrice'] ??
+                      it.materialPrice.toString(),
+                ) ??
+                '';
           }
           if (it.dieCastPrice != null) {
             row.dieCastPrice.text =
-                it.exactDecimals['dieCastPrice'] ?? it.dieCastPrice.toString();
+                financeExactTrimmed(
+                  it.exactDecimals['dieCastPrice'] ??
+                      it.dieCastPrice.toString(),
+                ) ??
+                '';
           }
           if (it.discount != null) {
             // 旧订单用 null/0 表示不打折；编辑页统一展示为明确的 1 倍，金额语义不变。
@@ -434,7 +464,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             row.discount.text =
                 widget.docType == SalesDocType.order && it.discount == 0
                 ? '1'
-                : it.exactDecimals['discount'] ?? discount.toString();
+                : financeExactTrimmed(
+                        it.exactDecimals['discount'] ?? discount.toString(),
+                      ) ??
+                      '';
           }
           row.remark.text = it.remark ?? '';
           rows.add(row);
@@ -507,7 +540,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       );
       row.unitRateExact = item.exactDecimals['unitRate'];
       row.price.text =
-          item.exactDecimals['price'] ?? item.price?.toString() ?? '';
+          financeExactTrimmed(
+            item.exactDecimals['price'] ?? item.price?.toString(),
+          ) ??
+          '';
       rows.add(row);
     }
     _grid.replaceAll(rows);
@@ -571,7 +607,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       // 订单折扣：货品 zk 倍率仅作建议初值(1=原价；空/0→1)，销售可逐行调整。
       if (widget.docType == SalesDocType.order) {
         final disc = (g.discount == null || g.discount == 0) ? 1.0 : g.discount;
-        target.discount.text = disc.toString();
+        target.discount.text = financeExactTrimmed(disc.toString()) ?? '';
       }
     }
 

@@ -1,18 +1,14 @@
-// 采购管理入口页（hub）—— 两个分组卡片：
-//  ① 采购管理：4 单据卡片（申请/订货/收货/退货）
-//  ② 采购报表：报表卡片（明细/汇总/待交货）
-// 点卡片进对应列表/报表页。卡片统一用 UtenHubCard；红色徽章
-//（准则 14-徽章与计数口径）：任务中心 / 待退回供应商 / 订货·收货·退货草稿
-// 都是「必须我处理完的活」，全部登记进本模块累加
-//(入口口径在服务端徽章目录 WorkbenchBadgeCatalog, ADR-108；2026-09-11 起草稿也算待办)；
-// 「采购申请」不挂徽章——它的待处理量已由任务中心「待分解」计入，重复挂会双计。
+// 采购管理入口页（hub）—— 2026-09-24 模块三段式统一（docs/01-规划/
+// 2026-09-24-模块三段式统一-任务中心查单与模块新建.md）：
+//  ① 任务中心（置顶）：采购任务中心（运营工作台）+ 待退回供应商，红/黄徽章照准则 14。
+//  ② 新建单据：新建采购订货/收货/退货（creator-only 直达 /new，一律不挂数）
+//     + 采购催料（跟单动作，用户口径放新建区）。「计划下达的采购申请」只读卡已撤
+//     （申请由物料分析下达；浏览在任务中心「申请待分解」段与 /purchase/requests 深链）。
+//  ③ 报表中心（最底）：明细/汇总。
 //
-// ADR-100(2026-09-21): 右上角再并一枚黄色「进行中」徽章(黄左红右), 回答另一个问题
-// 「我手上还有多少在跑」。采购只有「采购任务中心」一张卡登记黄色(= 任务中心
-// 「进行中」段, 等待财务审核 + 财务已通过 + 财务驳回); 订货/收货/退货三张单据卡
-// **刻意不挂黄** —— 那些在途单据已经全在任务中心的 IN_PROGRESS 里, 再按单据数一遍
-// 就是同一条黄链内的双计(见准则 14-徽章与计数口径「已知重叠」)。
-// 「采购申请」与报表区两种颜色都不挂。
+// 卡片统一用 UtenHubCard；显隐走 hub_catalog + 路由守卫同一份 any/all 契约
+// (hubCardAllowed，ADR-109)。顶栏两枚药丸（黄=进行中/红=待办）= 服务端徽章目录
+// 对 BadgeModule.purchase 求和；页面里不做加法。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -20,7 +16,6 @@ import '../../../components/feedback/uten_module_progress_chip.dart';
 import '../../../components/feedback/uten_module_todo_chip.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
-import '../../../components/feedback/uten_draft_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_in_progress_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -92,19 +87,28 @@ class PurchaseHubPage extends ConsumerWidget {
       ),
     ]);
     final documentEntries = visible([
-      _Entry.fromCfg(PurchaseDocConfig.request, l10n, canOpen),
-      _Entry.fromCfg(PurchaseDocConfig.order, l10n, canOpen),
-      _Entry.fromCfg(PurchaseDocConfig.receipt, l10n, canOpen),
-      _Entry.fromCfg(PurchaseDocConfig.returnDoc, l10n, canOpen),
+      _Entry.fromCfg(PurchaseDocConfig.order, l10n),
+      _Entry.fromCfg(PurchaseDocConfig.receipt, l10n),
+      _Entry.fromCfg(PurchaseDocConfig.returnDoc, l10n),
+      // 2026-09-24 用户口径：催料是跟单动作，不是报表——放「新建单据」区。
+      _Entry(
+        icon: Icons.notifications_active_outlined,
+        label: '采购催料',
+        description: '跟单催料：订货未收与可用库存对照，逐单催办',
+        location: '/purchase/report/expediting',
+      ),
+      // 「计划下达的采购申请」只读卡已撤（2026-09-24 用户口径：新建区不需要；
+      // 申请由物料分析下达，浏览在任务中心「申请待分解」段与 /purchase/requests 深链）。
     ]);
     final reportEntries = visible([
       for (final kind in PurchaseReportKind.values)
-        _Entry(
-          icon: kind.icon,
-          label: _purchaseReportTitle(kind, l10n),
-          description: _purchaseReportSubtitle(kind, l10n),
-          location: '/purchase/report/${kind.name}',
-        ),
+        if (kind != PurchaseReportKind.expediting)
+          _Entry(
+            icon: kind.icon,
+            label: _purchaseReportTitle(kind, l10n),
+            description: _purchaseReportSubtitle(kind, l10n),
+            location: '/purchase/report/${kind.name}',
+          ),
     ]);
     return Scaffold(
       appBar: UtenAppBar(
@@ -153,21 +157,11 @@ class PurchaseHubPage extends ConsumerWidget {
               if (taskEntries.isNotEmpty && documentEntries.isNotEmpty)
                 const SizedBox(height: UtenSpacing.s16),
               if (documentEntries.isNotEmpty)
-                _section(
-                  context,
-                  theme,
-                  l10n.purchaseHubTitle,
-                  documentEntries,
-                ),
+                _section(context, theme, '新建单据', documentEntries),
               if (documentEntries.isNotEmpty && reportEntries.isNotEmpty)
                 const SizedBox(height: UtenSpacing.s16),
               if (reportEntries.isNotEmpty)
-                _section(
-                  context,
-                  theme,
-                  l10n.purchaseHubSectionReports,
-                  reportEntries,
-                ),
+                _section(context, theme, '报表中心', reportEntries),
               if (taskEntries.isEmpty &&
                   documentEntries.isEmpty &&
                   reportEntries.isEmpty)
@@ -229,33 +223,15 @@ class _Entry {
     this.progressBadge,
   });
 
-  /// 单据卡；有草稿计数口径的类型在右上角挂红色草稿徽章（本人未提交的活）。
-  ///
-  /// 「新建页带历史列表」的单据只对能新建的人落到新建页；只能查看的人落到列表页
-  /// (两个落点都登记在 hub_catalog，守卫各自生效)。
-  _Entry.fromCfg(
-    PurchaseDocConfig cfg,
-    AppLocalizations l10n,
-    bool Function(String location) canOpen,
-  ) : icon = cfg.icon,
-      label = _purchaseDocTitle(cfg.type, l10n),
+  /// 新建单据卡（2026-09-24 三段式）：只对能新建的人显示（外层 canOpen 过滤），
+  /// 落点恒为 /new 编辑页（进卡即新建态，不显示历史）；新建入口一律不挂徽章
+  ///（浏览去任务中心与列表深链）。
+  _Entry.fromCfg(PurchaseDocConfig cfg, AppLocalizations l10n)
+    : icon = cfg.icon,
+      label = '新建${_purchaseDocTitle(cfg.type, l10n)}',
       description = _purchaseDocSubtitle(cfg.type, l10n),
-      location =
-          cfg.skipListOnCreate &&
-              canOpen(RoutePath.purchaseDocNew(cfg.type.pathSegment))
-          ? RoutePath.purchaseDocNew(cfg.type.pathSegment)
-          : '/purchase/${cfg.type.pathSegment}',
-      // 草稿徽章占 badge（卡右上角浮层）：4 张单据卡都没有别的待办徽章，
-      // 这个空槽正是用户要的位置。将来哪张卡挂上待办徽章（如「待收货」），
-      // 待办留 badge、草稿改传 UtenHubCard.labelSuffix——一个槽两个红点读不懂。
-      // 采购订货卡: 草稿 + 财务已退回(列表页两段红徽章之和, 2026-09-21;
-      // 退回件的待办累加由采购任务中心 FINANCE_REJECTED 承担, 卡面只是同数展示)。
-      badge = cfg.draftKind == null
-          ? null
-          : UtenDraftBadge(
-              kind: cfg.draftKind!,
-              withFinanceRejected: cfg.type == PurchaseDocType.order,
-            ),
+      location = RoutePath.purchaseDocNew(cfg.type.pathSegment),
+      badge = null,
       // 单据卡不挂黄: 订货/收货/退货的在途单据已经全在采购任务中心「进行中」里,
       // 这里再按单据数一遍就是同一条黄链内的双计(ADR-100 §2.4)。
       progressBadge = null;

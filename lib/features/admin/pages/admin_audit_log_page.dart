@@ -859,7 +859,6 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     return Scaffold(
       appBar: UtenAppBar(
         title: '审计中心',
-        subtitle: viewportWidth >= 720 ? '人员行为、登录会话与安全异常调查' : null,
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),

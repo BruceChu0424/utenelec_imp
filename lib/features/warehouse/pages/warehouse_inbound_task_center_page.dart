@@ -37,7 +37,17 @@ import '../widgets/warehouse_task_center_scaffold.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 class WarehouseInboundTaskCenterPage extends ConsumerWidget {
-  const WarehouseInboundTaskCenterPage({super.key});
+  const WarehouseInboundTaskCenterPage({
+    super.key,
+    this.embedded = false,
+    this.externalKeyword,
+    this.externalRefreshTick,
+  });
+
+  /// 嵌入态：作为合并页（/warehouse/tasks）「入库」大类的正文，见骨架注释。
+  final bool embedded;
+  final String? externalKeyword;
+  final int? externalRefreshTick;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -96,9 +106,11 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
     return WarehouseTaskCenterScaffold(
       location: RouteName.warehouseInboundTasks,
       title: '入库任务中心',
-      subtitle: '采购 · 委外 · 产成品 · 其它入库一站式办理',
       searchHint: '搜索单号 / 供应商 / 委外商 / 货品',
       segments: segments,
+      embedded: embedded,
+      externalKeyword: externalKeyword,
+      externalRefreshTick: externalRefreshTick,
       onResume: () => invalidateWarehouseTaskCounts(ref),
       bodyBuilder: (segment, keyword, refreshTick) => switch (segment) {
         'purchase' => _PurchaseInboundSegment(
@@ -226,7 +238,6 @@ class _PurchaseInboundSegmentState extends State<_PurchaseInboundSegment> {
                 keyword: widget.keyword,
                 refreshTick: widget.refreshTick,
                 embedded: true,
-                showBanner: false,
                 dateFrom: time.range == null
                     ? null
                     : ChinaDateTime.formatDate(time.range!.start),
@@ -320,7 +331,6 @@ class _SubcontractInboundSegmentState
                     keyword: widget.keyword,
                     refreshTick: widget.refreshTick,
                     embedded: true,
-                    showBanner: false,
                     dateFrom: time.range == null
                         ? null
                         : ChinaDateTime.formatDate(time.range!.start),

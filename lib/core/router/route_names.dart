@@ -329,7 +329,11 @@ abstract final class RouteName {
   /// 财务已放行的销售出货仓库作业工作台（静态段须先于 /warehouse/:code）。
   static const String warehouseSalesOutbound = '/warehouse/sales-outbound';
 
-  // —— 仓库任务中心三页（2026-09-01 重组；静态段 tasks 须先于 /warehouse/:code）——
+  // —— 仓库任务中心（2026-09-24 四卡合并页；静态段 tasks 须先于 /warehouse/:code）——
+  /// 仓库任务中心：出库 / 入库 / 生产领料 / 品质检查结果 / 委外成品退货 /
+  /// 委外损耗 六个大类的一站式入口（?group= 深链预设大类）。
+  static const String warehouseTasks = '/warehouse/tasks';
+
   /// 出库任务中心：销售出库（待出库/已出库历史）+ 委外出仓（任务/出仓
   /// 历史）+ 其它出库 + 产成品出库（各自新建/历史）。
   static const String warehouseOutboundTasks = '/warehouse/tasks/outbound';
@@ -356,6 +360,10 @@ abstract final class RouteName {
   static const String sales = '/sales';
   static const String salesScarcity = '/sales/scarcity';
   static const String salesOrderProgress = '/sales/progress';
+
+  /// 销售任务中心（2026-09-24 三段式）：订货进度 + 出货/零星/退货/报价 +
+  /// 历史其它出货的一站式查看入口（?group= 深链预设大类）。
+  static const String salesTasks = '/sales/tasks';
   static const String salesReport = '/sales/report';
   static const String salesReportDetail = '/sales/report/detail';
   static const String salesReportSummary = '/sales/report/summary';

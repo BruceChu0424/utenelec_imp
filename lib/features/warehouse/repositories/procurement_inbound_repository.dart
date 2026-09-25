@@ -68,6 +68,10 @@ abstract interface class ProcurementInboundRepository {
     int page = 1,
     int size = 20,
     ProcurementInboundOrderType? orderType,
+    String? status,
+    String? dateFrom,
+    String? dateTo,
+    String? keyword,
   });
 
   Future<ProcurementArrivalException> ownerTaskDetail(String id);
@@ -269,13 +273,23 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
     int page = 1,
     int size = 20,
     ProcurementInboundOrderType? orderType,
+    String? status,
+    String? dateFrom,
+    String? dateTo,
+    String? keyword,
   }) async {
+    final kw = keyword?.trim();
     final json = await api.get(
       ApiEndpoints.procurementArrivalExceptionTasks,
       query: {
         'page': page,
         'size': size,
         if (orderType != null) 'orderType': orderType.name.toUpperCase(),
+        // 2026-09-24 任务中心统一：status=COMPLETED + 日期区间 = 历史记录段。
+        if (status != null && status.isNotEmpty) 'status': status,
+        if (dateFrom != null && dateFrom.isNotEmpty) 'dateFrom': dateFrom,
+        if (dateTo != null && dateTo.isNotEmpty) 'dateTo': dateTo,
+        if (kw != null && kw.isNotEmpty) 'keyword': kw,
       },
     );
     return PagedResult.fromJson(json, ProcurementArrivalException.fromJson);

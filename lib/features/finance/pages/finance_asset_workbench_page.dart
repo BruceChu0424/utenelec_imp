@@ -140,7 +140,6 @@ class _FinanceAssetWorkbenchPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: '资产与待摊',
-        subtitle: '专业子账 · 审批 · 折旧摊销 · 期间控制',
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.finance),
         ),

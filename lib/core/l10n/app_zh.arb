@@ -814,7 +814,6 @@
   "warehouseHubTitle": "仓库管理",
   "warehouseHubSectionDocs": "出入库单据",
   "warehouseHubSectionInventory": "库存查询",
-  "warehouseHubSectionInventoryDesc": "即时库存·库存查询·出入库流水",
   "warehouseHubSectionReports": "仓库报表",
   "warehouseHubSectionReportsDesc": "明细(一行一货品)·汇总(一行一单)",
   "warehouseHubDocTransfer": "仓库调拨",
@@ -1477,7 +1476,6 @@
   "warehouseSubcontractOutboundSuggestedWarehouse": "建议发料仓",
   "warehouseSubcontractOutboundComponentEffects": "审核后，子件从所选仓库实际出库并交委外商加工；加工完回厂登记的是委外件，仍需品质检查，合格后才正式入仓。",
   "warehouseSubcontractOutboundComponentNotArrived": "子件还没到货，仓里一件都没有；子件入库后系统会自动补草稿并通知仓库。",
-  "warehouseSubcontractOutboundWorkView": "仓库作业视图",
   "warehouseSubcontractOutboundBannerScope": "仓库作业视图不含价格与金额, 也不提供委外业务编辑操作。",
   "warehouseSubcontractOutboundBannerDraftPending": "草稿 {billNo} 待拣货审核",
   "@warehouseSubcontractOutboundBannerDraftPending": {

@@ -365,6 +365,24 @@ List<String>? requiredAnyPermFor(String rawLocation) {
       location.startsWith('${RouteName.warehouseDrawTasks}/')) {
     return const [Perm.stockDocView];
   }
+  // 仓库任务中心合并页（2026-09-24）：六大类任一业务域可看即可进入，
+  // 页内各大类/分段再按各自权限显隐；须放在旧三路径之后——
+  // /warehouse/tasks/outbound 等子路径先被上面更具体的分支接走，
+  // 未知子段继续落入 /warehouse/:code 回退（fail-closed）。
+  if (location == RouteName.warehouseTasks) {
+    return const [
+      Perm.warehouseSalesOutboundView,
+      Perm.subcontractOutboundView,
+      Perm.stockDocView,
+      Perm.warehouseInboundView,
+      Perm.warehousePurchaseReceiptHistoryView,
+      Perm.warehouseSubcontractReceiptHistoryView,
+      Perm.warehouseIqcStockInView,
+      Perm.warehouseIqcReturnView,
+      Perm.warehouseSubcontractFinishedReturnHistoryView,
+      Perm.warehouseSubcontractWasteHistoryView,
+    ];
+  }
   if (location.startsWith('/warehouse/')) {
     final authority = _documentRouteAuthority(
       location,
@@ -464,6 +482,17 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (location == RouteName.salesOrderProgress ||
       location.startsWith('${RouteName.salesOrderProgress}/')) {
     return const [Perm.salesOrderView];
+  }
+  // 销售任务中心（2026-09-24 三段式）：任一单据查看权限即可进入，
+  // 页内各大类再按各自列表/进度页守卫显隐。
+  if (location == RouteName.salesTasks) {
+    return const [
+      Perm.salesQuoteView,
+      Perm.salesOrderView,
+      Perm.salesShipmentView,
+      Perm.salesOtherShipmentView,
+      Perm.salesReturnView,
+    ];
   }
   if (location.startsWith('/sales/')) {
     final authority = _documentRouteAuthority(

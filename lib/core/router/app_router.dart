@@ -95,7 +95,6 @@ import '../../features/warehouse/models/production_finished_inbound_task.dart';
 import '../../features/warehouse/models/warehouse_quality_result.dart';
 import '../../features/warehouse/pages/warehouse_quality_batch_stock_in_page.dart';
 import '../../features/warehouse/pages/warehouse_quality_pre_stock_in_page.dart';
-import '../../features/warehouse/pages/warehouse_quality_results_page.dart';
 import '../../features/warehouse/pages/warehouse_quality_result_detail_page.dart';
 import '../../features/warehouse/pages/warehouse_sales_outbound_detail_page.dart';
 import '../../features/warehouse/pages/warehouse_document_history_detail_page.dart';
@@ -123,9 +122,7 @@ import '../../features/warehouse/pages/shelf_label_page.dart';
 import '../../features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart';
 import '../../features/warehouse/pages/warehouse_subcontract_outbound_page.dart';
 import '../../features/warehouse/pages/warehouse_sales_outbound_page.dart';
-import '../../features/warehouse/pages/warehouse_outbound_task_center_page.dart';
-import '../../features/warehouse/pages/warehouse_inbound_task_center_page.dart';
-import '../../features/warehouse/pages/warehouse_draw_task_center_page.dart';
+import '../../features/warehouse/pages/warehouse_task_center_page.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
 import '../../features/notice/models/notice.dart';
@@ -158,6 +155,7 @@ import '../../features/sales/pages/sales_report_page.dart';
 import '../../features/sales/pages/sales_scarcity_page.dart';
 import '../../features/sales/pages/sales_order_progress_detail_page.dart';
 import '../../features/sales/pages/sales_order_progress_page.dart';
+import '../../features/sales/pages/sales_task_center_page.dart';
 import '../../features/subcontract/models/subcontract_doc.dart';
 import '../../features/subcontract/pages/subcontract_decomposition_page.dart';
 import '../../features/subcontract/pages/subcontract_hub_page.dart';
@@ -965,7 +963,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.warehouseQualityResults,
             name: 'warehouse-quality-results',
-            builder: (_, _) => const WarehouseQualityResultsPage(),
+            // 2026-09-24 并入仓库任务中心合并页（品质检查结果大类）；
+            // 详情/批量入库/先入库后检子路由不变。
+            builder: (_, _) =>
+                const WarehouseTaskCenterPage(initialGroup: 'quality'),
           ),
           // 待入库多选「批量入库」页（2026-09-12 弹窗改页；须先于
           // :receiptType/:receiptId 声明）。
@@ -1191,12 +1192,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               )!,
             ),
           ),
-          // 仓库任务中心三页（2026-09-01 重组；静态段 tasks 必须先于 /warehouse/:code，
-          // 否则会被 :code/:id 单据路由吞掉）。
+          // 仓库任务中心（2026-09-24 四卡合并页；静态段 tasks 须先于 /warehouse/:code，
+          // 否则会被 :code/:id 单据路由吞掉）。旧三路由与本页等价（预设大类构建），
+          // 通知深链/收藏/草稿按钮原样可达；?group= 可直达任一大类。
+          GoRoute(
+            path: RouteName.warehouseTasks,
+            name: 'warehouse-tasks',
+            builder: (_, state) => WarehouseTaskCenterPage(
+              initialGroup: state.uri.queryParameters['group'],
+              initialSection: state.uri.queryParameters['section'],
+              initialView: state.uri.queryParameters['view'],
+            ),
+          ),
           GoRoute(
             path: RouteName.warehouseOutboundTasks,
             name: 'warehouse-outbound-tasks',
-            builder: (_, state) => WarehouseOutboundTaskCenterPage(
+            builder: (_, state) => WarehouseTaskCenterPage(
+              initialGroup: 'outbound',
               initialSection: state.uri.queryParameters['section'],
               initialView: state.uri.queryParameters['view'],
             ),
@@ -1204,12 +1216,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.warehouseInboundTasks,
             name: 'warehouse-inbound-tasks',
-            builder: (_, _) => const WarehouseInboundTaskCenterPage(),
+            builder: (_, _) =>
+                const WarehouseTaskCenterPage(initialGroup: 'inbound'),
           ),
           GoRoute(
             path: RouteName.warehouseDrawTasks,
             name: 'warehouse-draw-tasks',
-            builder: (_, _) => const WarehouseDrawTaskCenterPage(),
+            builder: (_, _) =>
+                const WarehouseTaskCenterPage(initialGroup: 'draw'),
           ),
           GoRoute(
             path: '/warehouse/:code/new',
@@ -1295,6 +1309,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'sales-order-progress-detail',
             builder: (_, s) => SalesOrderProgressDetailPage(
               orderId: s.pathParameters['orderId']!,
+            ),
+          ),
+          // 销售任务中心（2026-09-24 三段式：一站式查看；静态段 tasks 须先于
+          // /sales/:seg 参数路由声明，否则会被 :seg 列表路由吞掉）。
+          GoRoute(
+            path: RouteName.salesTasks,
+            name: 'sales-tasks',
+            builder: (_, s) => SalesTaskCenterPage(
+              initialGroup: s.uri.queryParameters['group'],
             ),
           ),
           GoRoute(

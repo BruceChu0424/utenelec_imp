@@ -319,8 +319,9 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
               listenable: _list,
               builder: (context, _) {
                 final total = _list.total;
-                // 「顶部折叠 + 表格吸顶内滚」：分类工具条随上滑收起腾出空间，
-                // 标题行钉在表格上方常驻，表格占满剩余空间内部滚动。
+                // 「顶部折叠 + 表格吸顶内滚」：分类工具条随上滑收起腾出空间。
+                // 2026-09-24 对齐物料分析页：页面头/时间行一并移入滚走区，
+                // body 只剩表格——上滑后表格直抵页顶。
                 return UtenCollapsingHeaderScrollView(
                   collapsingHeader: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -383,12 +384,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                           },
                         ),
                       ],
-                      const SizedBox(height: UtenSpacing.s8),
-                    ],
-                  ),
-                  body: Column(
-                    children: [
-                      // 页面头：Icon + 标题 + 计数 + 新建。
+                      // 页面头：Icon + 标题 + 计数 + 新建（2026-09-24 移入滚走区）。
                       Padding(
                         padding: const EdgeInsets.only(
                           bottom: UtenSpacing.s8,
@@ -438,63 +434,61 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                           ),
                         ),
                       ],
-                      Expanded(
-                        child: seg == null
-                            ? const UtenFilterPlaceholder()
-                            : seg.history && _historyTime.isNone
-                            ? const UtenHistoryTimePlaceholder()
-                            : MasterDataTableView<StockDocListItem>(
-                                // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
-                                primary: true,
-                                columns: _columns(),
-                                items: _list.page?.items ?? const [],
-                                facets: {
-                                  'warehouse': masterDictionaryFacets(
-                                    names.warehouseEntries,
-                                  ),
-                                  if (_isDraw)
-                                    'department': masterDictionaryFacets(
-                                      names.departmentEntries,
-                                    ),
-                                  if (widget.docType == StockDocType.transfer)
-                                    'toWarehouse': masterDictionaryFacets(
-                                      names.warehouseEntries,
-                                    ),
-                                },
-                                nullCounts: const {},
-                                filters: {
-                                  'warehouse': _warehouseIdFilter,
-                                  if (_isDraw)
-                                    'department': _departmentIdFilter,
-                                  if (widget.docType == StockDocType.transfer)
-                                    'toWarehouse': _toWarehouseIdFilter,
-                                },
-                                onFilterChanged: _onColumnFilterChanged,
-                                sortColumn: _list.sortKey == 'total'
-                                    ? null
-                                    : _list.sortKey,
-                                sortAscending: _list.sortAsc,
-                                onSortChange: _onSortChange,
-                                onRowTap: (it) => context.push(
-                                  RoutePath.stockDocDetail(
-                                    widget.docType.code,
-                                    it.id,
-                                  ),
-                                ),
-                                isLoading: _list.isLoadingFirst,
-                                loadingMore: _list.isLoadingMore,
-                                error: _list.error,
-                                onRetry: () => _reload(),
-                                emptyMessage: seg.history
-                                    ? '该时间段内暂无${widget.docType.label}'
-                                    : '暂无${widget.docType.label}', // TODO(l10n): 补 arb
-                                currentPage: _list.currentPage,
-                                totalPages: _list.totalPages,
-                                onPageChange: (p) => _reload(p),
-                              ),
-                      ),
+                      const SizedBox(height: UtenSpacing.s8),
                     ],
                   ),
+                  body: seg == null
+                      ? const UtenFilterPlaceholder()
+                      : seg.history && _historyTime.isNone
+                      ? const UtenHistoryTimePlaceholder()
+                      : MasterDataTableView<StockDocListItem>(
+                          // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
+                          primary: true,
+                          columns: _columns(),
+                          items: _list.page?.items ?? const [],
+                          facets: {
+                            'warehouse': masterDictionaryFacets(
+                              names.warehouseEntries,
+                            ),
+                            if (_isDraw)
+                              'department': masterDictionaryFacets(
+                                names.departmentEntries,
+                              ),
+                            if (widget.docType == StockDocType.transfer)
+                              'toWarehouse': masterDictionaryFacets(
+                                names.warehouseEntries,
+                              ),
+                          },
+                          nullCounts: const {},
+                          filters: {
+                            'warehouse': _warehouseIdFilter,
+                            if (_isDraw) 'department': _departmentIdFilter,
+                            if (widget.docType == StockDocType.transfer)
+                              'toWarehouse': _toWarehouseIdFilter,
+                          },
+                          onFilterChanged: _onColumnFilterChanged,
+                          sortColumn: _list.sortKey == 'total'
+                              ? null
+                              : _list.sortKey,
+                          sortAscending: _list.sortAsc,
+                          onSortChange: _onSortChange,
+                          onRowTap: (it) => context.push(
+                            RoutePath.stockDocDetail(
+                              widget.docType.code,
+                              it.id,
+                            ),
+                          ),
+                          isLoading: _list.isLoadingFirst,
+                          loadingMore: _list.isLoadingMore,
+                          error: _list.error,
+                          onRetry: () => _reload(),
+                          emptyMessage: seg.history
+                              ? '该时间段内暂无${widget.docType.label}'
+                              : '暂无${widget.docType.label}', // TODO(l10n): 补 arb
+                          currentPage: _list.currentPage,
+                          totalPages: _list.totalPages,
+                          onPageChange: (p) => _reload(p),
+                        ),
                 );
               },
             ),

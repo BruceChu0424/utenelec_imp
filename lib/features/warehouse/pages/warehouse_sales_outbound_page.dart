@@ -43,7 +43,6 @@ class _WarehouseSalesOutboundPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: '仓库销售出库',
-        subtitle: '财务放行后一步确认出库',
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: '/warehouse'),
         ),

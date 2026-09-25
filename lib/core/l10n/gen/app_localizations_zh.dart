@@ -1895,9 +1895,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseHubSectionInventory => '库存查询';
 
   @override
-  String get warehouseHubSectionInventoryDesc => '即时库存·库存查询·出入库流水';
-
-  @override
   String get warehouseHubSectionReports => '仓库报表';
 
   @override
@@ -3201,9 +3198,6 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get warehouseSubcontractOutboundComponentNotArrived =>
       '子件还没到货，仓里一件都没有；子件入库后系统会自动补草稿并通知仓库。';
-
-  @override
-  String get warehouseSubcontractOutboundWorkView => '仓库作业视图';
 
   @override
   String get warehouseSubcontractOutboundBannerScope =>

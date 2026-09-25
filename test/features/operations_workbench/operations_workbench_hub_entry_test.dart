@@ -60,13 +60,12 @@ void main() {
   });
 
   testWidgets('warehouse task center card opens its workbench', (tester) async {
-    // 2026-09-01 重组：拣货工作台并入「生产领料任务中心」的待领任务分段，
-    // hub 卡直连 /warehouse/tasks/draw。
+    // 2026-09-24 仓库任务中心合并：hub 一张「仓库任务中心」卡直连 /warehouse/tasks。
     final router = _router(
       hubPath: RouteName.warehouse,
       hub: const WarehouseHubPage(),
-      workbenchPath: RouteName.warehouseDrawTasks,
-      destinationLabel: '生产领料任务中心已打开',
+      workbenchPath: RouteName.warehouseTasks,
+      destinationLabel: '仓库任务中心已打开',
     );
     addTearDown(router.dispose);
 
@@ -88,14 +87,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('任务中心'), findsOneWidget);
-    expect(find.text('生产领料任务中心'), findsOneWidget);
-    await tester.tap(find.text('生产领料任务中心'));
+    expect(find.text('仓库任务中心'), findsOneWidget);
+    expect(find.text('生产领料任务中心'), findsNothing);
+    await tester.tap(find.text('仓库任务中心'));
     await tester.pumpAndSettle();
 
-    expect(find.text('生产领料任务中心已打开'), findsOneWidget);
+    expect(find.text('仓库任务中心已打开'), findsOneWidget);
     _expectCurrentLocation(
       router,
-      RouteName.warehouseDrawTasks,
+      RouteName.warehouseTasks,
       RouteName.warehouse,
     );
   });
@@ -144,7 +144,8 @@ void main() {
     // V458：Hub 分组为 任务中心/单据/报表/历史兼容，卡片标题精简。
     // 2026-09-06 收口：计划委外申请卡并入任务中心、回厂与品质卡退役，
     // 单据组只保留订货等真实单据卡。
-    expect(find.text('委外订货'), findsOneWidget);
+    // 2026-09-24 三段式：单据区改「新建单据」，卡名带「新建」前缀。
+    expect(find.text('新建委外订货'), findsOneWidget);
     expect(find.text('计划委外申请'), findsNothing);
     expect(find.text('回厂与品质'), findsNothing);
     // 历史发料卡按 materialIssue:view 单独显隐，本账号未授权故不渲染。
@@ -189,7 +190,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('任务中心'), findsNothing);
-    expect(find.text('生产领料任务中心'), findsNothing);
+    expect(find.text('仓库任务中心'), findsNothing);
   });
 
   testWidgets('subcontract task center is hidden without its permission', (

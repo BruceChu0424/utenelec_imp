@@ -1,20 +1,31 @@
 // UtenGoodsPicker - 货品选择器（单据明细/报表选货品用）。
 //
 // 触发：函数式 showUtenGoodsPicker(context, ref) → 返回 GoodsListItem?。
-// 形态仿 UtenDepartmentPicker：compact 底部抽屉（85% 屏高）/ medium+ 右侧滑入 720 宽面板。
-// 内容：左分类树（UtenCategoryTreeView，排除原材料/辅料/未分类）+ 右货品列表（搜索+分页）。
-// 点货品行即选中返回。分类树来自 productCategoryRepositoryProvider.tree()，货品来自
+// 形态仿 UtenDepartmentPicker：compact 底部抽屉（85% 屏高）/ medium+ 右侧滑入面板。
+// 宽度跟屏幕自适应（2026-09-24 用户口径：滑窗再大点，约占屏宽 50%，下限 720）。
+// 内容：左分类树 + 右货品列表（搜索+分页），中间是可拖分割线（UtenSplitView，
+// 与货品资料页同款；默认宽度 = 左侧最长一行内容的实测宽度，可拖可双击复位）。
+// 左树用无缩进层级色模式（flatLevelColors）：一级深绿白字、二级浅灰、三级更浅，
+// 整库只有「货品资料」一个根分类时自动提升，直接列原材料/半成品/成品等子类。
+// 分类树来自 productCategoryRepositoryProvider.tree()，货品来自
 // goodsRepositoryProvider.list(分类子树)/search(全库)。
+//
+// 多选（showUtenGoodsPickerMulti）：底部「已选 N 项」胶囊可点，点开从底部滑出
+// 已选清单滑层，可逐项取消；「确定(N)」返回所选列表。
 //
 // 与旧 sales_goods_picker / goods_picker_dialog（居中搜索框）的区别：带分类树浏览、
 // 返回完整 GoodsListItem（含 colorId/unitId 及展示名称；legacy 字段仅供历史只读显示），供调用方
 // 自动回填颜色/单位。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
+import '../../../components/layout/uten_split_view.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
@@ -272,6 +283,9 @@ Future<T?> _presentSheet<T>(
     return null;
   }
   if (!context.mounted) return null;
+  // 单根提升：整库只有一个「货品资料」包装根时不占一层，直接列其子类
+  //（2026-09-24 用户口径：左边显示原材料/半成品/成品，不显示货品资料本身）。
+  tree = hoistSingleRootTree(tree);
   if (tree.isEmpty) {
     context.appWarning('当前业务范围没有可选择的货品分类');
     return null;
@@ -282,9 +296,11 @@ Future<T?> _presentSheet<T>(
     multiSelect: multiSelect,
     requireConfirm: requireConfirm,
   );
+  // 滑窗宽度跟屏幕自适应：约占屏宽 50%，下限保持旧款 720（再窄装不下左树+右表）。
+  final screenWidth = MediaQuery.sizeOf(context).width;
   return showUtenAdaptivePanel<T>(
     context: context,
-    drawerWidth: 720,
+    drawerWidth: math.max(720.0, screenWidth * 0.5),
     builder: (_) => sheet,
   );
 }
@@ -326,6 +342,12 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   /// 多选模式下已勾选的货品（id → 完整 item）。
   final Map<String, GoodsListItem> _selected = {};
 
+  /// 多选模式：底部「已选 N 项」滑层是否展开。
+  bool _selectedPanelOpen = false;
+
+  /// 左树自然宽度缓存（见 [_treeNaturalWidth]）。
+  double? _naturalTreeWidth;
+
   @override
   void initState() {
     super.initState();
@@ -340,6 +362,17 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   void dispose() {
     _keywordCtl.dispose();
     super.dispose();
+  }
+
+  /// 左树默认宽度 = 全树最长一行「名称(编码)」的实测文字宽 + 行内装具
+  ///（2026-09-24 用户口径：默认划分就是左边内容最宽那行的宽度；层级多/名字长
+  /// 时不再靠 240 固定宽硬截断）。量宽只算一次；超出 maxLeadingWidth 的部分
+  /// 交给省略号与可拖分割线。
+  double _treeNaturalWidth(ThemeData theme) {
+    return _naturalTreeWidth ??= measureCategoryTreeNaturalWidth(
+      widget.tree,
+      theme.textTheme.bodyMedium,
+    );
   }
 
   void _onCategoryTap(ProductCategoryNode node) {
@@ -625,80 +658,307 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final treeWidth = context.breakpoint.isCompact ? 176.0 : 240.0;
-    return Column(
+    final treePane = UtenCategoryTreeView<ProductCategoryNode>(
+      nodes: widget.tree,
+      mode: UtenCategoryTreeMode.single,
+      selectedIds: _selectedCategoryId == null
+          ? const <String>{}
+          : <String>{_selectedCategoryId!},
+      expandOnRowTap: true,
+      // 左树默认全部收起（2026-09-24 用户口径）：只显示一级分类，点了再展开。
+      initiallyExpandDepth: 0,
+      initiallyCollapsedNames: const {'未分类'},
+      showSearch: false,
+      visibleFilterIds: _visibleFilterIds,
+      externalSearchQuery: _query,
+      externalSearchLoading: _searchLoading,
+      externalSearchError: _searchError,
+      header: _buildUnifiedSearch(),
+      flatLevelColors: true,
+      onToggleSelect: _onCategoryTap,
+    );
+    Widget body;
+    if (context.breakpoint.isCompact) {
+      body = Row(
+        children: [
+          SizedBox(width: 176, child: treePane),
+          const VerticalDivider(width: 1),
+          Expanded(child: _buildRightPane(theme)),
+        ],
+      );
+    } else {
+      // medium+：可拖分割线（货品资料页同款），默认宽度 = 左树最长行实测宽。
+      body = UtenSplitView(
+        persistenceKey: 'goodsPicker.categoryTree',
+        initialLeadingWidth: _treeNaturalWidth(theme),
+        minLeadingWidth: 200,
+        maxLeadingWidth: 560,
+        leading: treePane,
+        trailing: _buildRightPane(theme),
+      );
+    }
+    return Stack(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '选择货品',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+        Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '选择货品',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
-                ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
               ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ],
-          ),
+            ),
+            const Divider(height: 1),
+            Expanded(child: body),
+            if (widget.multiSelect || widget.requireConfirm)
+              _buildConfirmBar(theme),
+          ],
         ),
-        const Divider(height: 1),
-        Expanded(
-          child: Row(
-            children: [
-              SizedBox(
-                width: treeWidth,
-                child: UtenCategoryTreeView<ProductCategoryNode>(
-                  nodes: widget.tree,
-                  mode: UtenCategoryTreeMode.single,
-                  selectedIds: _selectedCategoryId == null
-                      ? const <String>{}
-                      : <String>{_selectedCategoryId!},
-                  expandOnRowTap: true,
-                  initiallyCollapsedNames: const {'未分类'},
-                  showSearch: false,
-                  visibleFilterIds: _visibleFilterIds,
-                  externalSearchQuery: _query,
-                  externalSearchLoading: _searchLoading,
-                  externalSearchError: _searchError,
-                  header: _buildUnifiedSearch(),
-                  onToggleSelect: _onCategoryTap,
-                ),
-              ),
-              const VerticalDivider(width: 1),
-              Expanded(child: _buildRightPane(theme)),
-            ],
-          ),
-        ),
-        if (widget.multiSelect || widget.requireConfirm)
-          _buildConfirmBar(theme),
+        // 多选：底部「已选 N 项」点开的已选清单滑层（盖住主体与底栏）。
+        if (widget.multiSelect)
+          Positioned.fill(child: _buildSelectedPanelOverlay(theme)),
       ],
     );
   }
 
   Widget _buildConfirmBar(ThemeData theme) {
+    if (widget.multiSelect) return _buildMultiSelectBar(theme);
     final single = _selected.isEmpty ? null : _selected.values.first;
     return UtenPickerConfirmBar(
       selectedCount: _selected.length,
-      selectedLabel: widget.multiSelect || single == null
-          ? null
-          : _goodsLabel(single),
-      onClear: widget.multiSelect ? () => setState(_selected.clear) : null,
-      confirmLabel: widget.multiSelect ? '确定(${_selected.length})' : '确定',
-      onConfirm: () => Navigator.of(
-        context,
-      ).pop(widget.multiSelect ? _selected.values.toList() : single),
+      selectedLabel: single == null ? null : _goodsLabel(single),
+      onConfirm: () => Navigator.of(context).pop(single),
     );
   }
 
+  /// 多选底栏：左侧「已选 N 项」胶囊点开已选清单滑层；右侧 清空/取消/确定(N)。
+  Widget _buildMultiSelectBar(ThemeData theme) {
+    final count = _selected.length;
+    return UtenBottomActionBar(
+      child: Row(
+        children: [
+          InkWell(
+            key: const Key('goods-picker-selected-summary'),
+            borderRadius: BorderRadius.circular(8),
+            onTap: count == 0
+                ? null
+                : () => setState(() => _selectedPanelOpen = true),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: count > 0
+                    ? theme.colorScheme.primaryContainer.withValues(alpha: 0.55)
+                    : theme.colorScheme.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    count > 0
+                        ? Icons.checklist_rounded
+                        : Icons.checklist_outlined,
+                    size: 18,
+                    color: count > 0
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    count > 0 ? '已选 $count 项' : '未选择',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: count > 0
+                          ? theme.colorScheme.onSurface
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.keyboard_arrow_up_rounded,
+                    size: 18,
+                    color: count > 0
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: count > 0 ? () => setState(_selected.clear) : null,
+            child: const Text('清空'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            key: const Key('goods-picker-multi-confirm'),
+            onPressed: count > 0
+                ? () => Navigator.of(context).pop(_selected.values.toList())
+                : null,
+            child: Text('确定($count)'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 已选清单滑层：从滑窗底部滑出，列出全部已选货品并可逐项取消选择。
+  Widget _buildSelectedPanelOverlay(ThemeData theme) {
+    final open = _selectedPanelOpen;
+    return IgnorePointer(
+      ignoring: !open,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final panelHeight = (constraints.maxHeight * 0.55).clamp(
+            220.0,
+            480.0,
+          );
+          return Stack(
+            children: [
+              // 遮罩：点击收起滑层（不清空选择）。
+              Positioned.fill(
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: open ? 1 : 0,
+                  child: GestureDetector(
+                    onTap: () => setState(() => _selectedPanelOpen = false),
+                    child: const ColoredBox(
+                      color: Colors.black38,
+                      child: SizedBox.expand(),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: panelHeight,
+                child: AnimatedSlide(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  offset: open ? Offset.zero : const Offset(0, 1),
+                  child: Material(
+                    color: theme.colorScheme.surfaceContainerLow,
+                    child: SafeArea(
+                      top: false,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.checklist_rounded,
+                                  size: 20,
+                                  color: theme.colorScheme.primary,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '已选货品（${_selected.length}）',
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: _selected.isEmpty
+                                      ? null
+                                      : () => setState(_selected.clear),
+                                  child: const Text('清空全部'),
+                                ),
+                                IconButton(
+                                  tooltip: '收起',
+                                  onPressed: () => setState(
+                                    () => _selectedPanelOpen = false,
+                                  ),
+                                  icon: const Icon(Icons.close_rounded),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Divider(height: 1),
+                          Expanded(
+                            child: _selected.isEmpty
+                                ? Center(
+                                    child: Text(
+                                      '还没有选择货品；收起后在列表点货品行即可勾选',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                    ),
+                                  )
+                                : ListView.separated(
+                                    itemCount: _selected.length,
+                                    separatorBuilder: (_, _) =>
+                                        const Divider(height: 1),
+                                    itemBuilder: (ctx, i) {
+                                      final g = _selected.values.elementAt(i);
+                                      return ListTile(
+                                        key: ValueKey(
+                                          'goods-picker-selected-row-${g.id}',
+                                        ),
+                                        dense: true,
+                                        title: Text(
+                                          _goodsLabel(g),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        trailing: IconButton(
+                                          key: ValueKey(
+                                            'goods-picker-selected-remove-${g.id}',
+                                          ),
+                                          tooltip: '取消选择',
+                                          icon: const Icon(Icons.close_rounded),
+                                          onPressed: () => setState(
+                                            () => _selected.remove(g.id),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// 货品行统一一行文案：名字(编号) · 颜色（2026-09-24 用户口径：列表一行显示，
+  /// 只显示名字/编号/颜色——带单位/规格/库位会把行撑得太宽）。
   String _goodsLabel(GoodsListItem g) =>
       '${g.name ?? '—'}'
-      '${g.code != null && g.code!.isNotEmpty ? '(${g.code})' : ''}';
+      '${g.code != null && g.code!.isNotEmpty ? '(${g.code})' : ''}'
+      '${g.colorName != null && g.colorName!.isNotEmpty ? ' · ${g.colorName}' : ''}';
 
   Widget _buildRightPane(ThemeData theme) {
     return Column(
@@ -765,26 +1025,17 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (ctx, i) {
         final g = page.items[i];
-        final sub = [
-          // 库位号放最前：仓库按挂牌拣货/上架时第一眼要看的就是位置。
-          if (g.stockPlace != null && g.stockPlace!.isNotEmpty)
-            '库位 ${g.stockPlace}',
-          g.spec,
-          g.colorName,
-          g.unitName,
-        ].where((s) => s != null && s.isNotEmpty).join(' · ');
         final picked = _selected.containsKey(g.id);
         final showPicked =
             (widget.multiSelect || widget.requireConfirm) && picked;
         return ListTile(
           selected: showPicked,
+          // 一行显示：名字(编号) · 颜色（不显单位/规格/库位，见 _goodsLabel 注释）。
           title: Text(
-            '${g.name ?? '—'}'
-            '${g.code != null && g.code!.isNotEmpty ? '(${g.code})' : ''}',
+            _goodsLabel(g),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-          subtitle: sub.isEmpty
-              ? null
-              : Text(sub, style: theme.textTheme.bodySmall),
           trailing: showPicked
               ? Icon(
                   Icons.check_circle_rounded,

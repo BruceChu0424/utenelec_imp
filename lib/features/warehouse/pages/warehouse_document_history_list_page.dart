@@ -39,7 +39,6 @@ class _WarehouseDocumentHistoryListPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: widget.type.title,
-        subtitle: '仓库实物视图',
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: '/warehouse'),
         ),

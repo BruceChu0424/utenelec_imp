@@ -1940,10 +1940,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseHubSectionInventory => 'Inventory queries';
 
   @override
-  String get warehouseHubSectionInventoryDesc =>
-      'Live stock, balances, movements';
-
-  @override
   String get warehouseHubSectionReports => 'Warehouse reports';
 
   @override
@@ -3334,9 +3330,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get warehouseSubcontractOutboundComponentNotArrived =>
       'The component has not been received yet; there is none in stock. The system adds a draft and notifies the warehouse automatically once the component is received.';
-
-  @override
-  String get warehouseSubcontractOutboundWorkView => 'Warehouse work view';
 
   @override
   String get warehouseSubcontractOutboundBannerScope =>

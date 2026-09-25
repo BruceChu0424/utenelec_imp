@@ -206,7 +206,6 @@ class _WarehouseQualityPreStockInPageState
       child: Scaffold(
         appBar: UtenAppBar(
           title: '先入库上架 · ${detail?.billNo ?? widget.receiptId}',
-          subtitle: '实物先落库位，品质部到库位检验',
           leading: UtenBackButton(
             color: _saving ? theme.disabledColor : null,
             onPressed: _saving

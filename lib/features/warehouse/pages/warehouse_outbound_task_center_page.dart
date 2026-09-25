@@ -43,9 +43,17 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
     super.key,
     this.initialSection,
     this.initialView,
+    this.embedded = false,
+    this.externalKeyword,
+    this.externalRefreshTick,
   });
   final String? initialSection;
   final String? initialView;
+
+  /// 嵌入态：作为合并页（/warehouse/tasks）「出库」大类的正文，见骨架注释。
+  final bool embedded;
+  final String? externalKeyword;
+  final int? externalRefreshTick;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -96,17 +104,18 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
     return WarehouseTaskCenterScaffold(
       location: RouteName.warehouseOutboundTasks,
       title: '出库任务中心',
-      subtitle: '销售 · 委外 · 其它 · 产成品出库一站式办理',
       searchHint: '搜索单号 / 客户 / 委外商 / 货品',
       segments: segments,
       initialSegment: initialSection,
+      embedded: embedded,
+      externalKeyword: externalKeyword,
+      externalRefreshTick: externalRefreshTick,
       onResume: () => invalidateWarehouseTaskCounts(ref),
       bodyBuilder: (segment, keyword, refreshTick) => switch (segment) {
         'sales' => WarehouseSalesOutboundWorkbench(
           keyword: keyword,
           refreshTick: refreshTick,
           embedded: true,
-          showBoundaryBanner: false,
         ),
         'subcontract' => _SubcontractOutboundSegment(
           keyword: keyword,
@@ -234,7 +243,6 @@ class _SubcontractOutboundSegmentState
                 keyword: widget.keyword,
                 refreshTick: widget.refreshTick,
                 embedded: true,
-                showBanner: false,
                 dateFrom: time.range == null
                     ? null
                     : ChinaDateTime.formatDate(time.range!.start),

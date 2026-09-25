@@ -1,7 +1,7 @@
 # UtenSplitView（左右分栏 + 可拖动分割线）
 
 > 路径：`lib/components/layout/uten_split_view.dart` · 测试：`test/uten_split_view_test.dart`、`test/components/uten_list_two_pane_test.dart`
-> 已接入：货品资料 / 客户分类 / 供应商分类 / 模具分类 / 部门管理 / 我的部门 / 应收应付 / 权限管理；2026-09-03 起另经 `UtenListTwoPane` 内部实现覆盖 15 个「左筛选 + 右表格」页（财务单据/对账/报表/往来/钱流/应付、生产计划与报表、where-used、采购/销售/委外/仓库报表），另有生产计划向导（步骤栏）、IQC 拒收详情（事实/流转 3:2）直接接入。**大屏左右双栏一律走本组件（或 UtenListTwoPane），禁止再写固定宽 `Row(SizedBox(width:…), Expanded)` 双栏**（准则 §2 布局统一口径）。
+> 已接入：货品资料 / 客户分类 / 供应商分类 / 模具分类 / 部门管理 / 我的部门 / 应收应付 / 权限管理 / 货品选择滑窗（2026-09-24，见 [UtenGoodsPicker](UtenGoodsPicker.md)）；2026-09-03 起另经 `UtenListTwoPane` 内部实现覆盖 15 个「左筛选 + 右表格」页（财务单据/对账/报表/往来/钱流/应付、生产计划与报表、where-used、采购/销售/委外/仓库报表），另有生产计划向导（步骤栏）、IQC 拒收详情（事实/流转 3:2）直接接入。**大屏左右双栏一律走本组件（或 UtenListTwoPane），禁止再写固定宽 `Row(SizedBox(width:…), Expanded)` 双栏**（准则 §2 布局统一口径）。
 
 ## 一、解决什么
 
@@ -59,6 +59,8 @@ UtenSplitView(
 - 依赖父容器给出有界宽度（页面 body 天然有界）。
 - 各页面已使用的 persistenceKey：`basicData.goods`、`basicData.client`、
   `basicData.supplier`、`basicData.mould`、`department.manage`、
-  `department.mine`、`finance.arAp`、`admin.permissions`。新页面接入请起新 key。
+  `department.mine`、`finance.arAp`、`admin.permissions`、
+  `goodsPicker.categoryTree`（货品选择滑窗左树，2026-09-24 起；`initialLeadingWidth`
+  传全树最长行的 TextPainter 实测宽，实现「默认划分 = 左边最宽内容」）。新页面接入请起新 key。
 - 与 `UtenListTwoPane`（筛选 + 表格）的区别：UtenListTwoPane 自 2026-09-10 起**所有断点都是「筛选在上 / 表格在下」**（列表页表格要横向空间，筛选窄栏会压表格），本组件只服务分类树主档页的「树 + 详情」左右分栏。以下旧描述保留作背景：UtenListTwoPane 曾是断点驱动的
   筛选侧栏布局；UtenSplitView 是「树 + 详情」的可拖分栏。需要拖宽的用本组件。

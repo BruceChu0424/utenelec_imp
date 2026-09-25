@@ -51,7 +51,7 @@ public class BootstrapRunner implements ApplicationRunner {
                     "BOOTSTRAP_ADMIN_LOGIN must be an approved non-placeholder account identifier");
         }
         if (userRepo.existsByLoginAccount(props.getAdminLogin())) {
-            log.info("引导超管账号 [{}] 已存在，跳过", props.getAdminLogin());
+            // 已存在属每次启动的正常情况，不输出日志（2026-09-24 用户口径）。
             return;
         }
         Employee adminEmp = employeeRepo.findByCode("ADMIN")

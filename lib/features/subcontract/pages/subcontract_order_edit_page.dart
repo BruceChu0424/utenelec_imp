@@ -137,7 +137,6 @@ class _SubcontractOrderEditPageState
   bool _saving = false;
   bool _loading = false;
   bool _orderSourceReady = true;
-  String? _sourceApplicationBillNo;
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
   String? _createdAt;
@@ -305,11 +304,6 @@ class _SubcontractOrderEditPageState
               .toList()
             ..sort();
       _deliverDate = dates.isEmpty ? null : dates.first;
-      _sourceApplicationBillNo = open
-          .map((line) => line.sourceDocumentNo)
-          .where((number) => number.isNotEmpty)
-          .toSet()
-          .join('、');
       _orderSourceReady = true;
     } on StateError catch (error) {
       _orderSourceReady = false;
@@ -375,9 +369,9 @@ class _SubcontractOrderEditPageState
                           .read(masterNameServiceProvider)
                           .goods(it.goodsId),
                     )
-              ..qty.text = it.qty?.toString() ?? ''
-              ..price.text = it.price?.toString() ?? ''
-              ..weight.text = it.weight?.toString() ?? ''
+              ..qty.text = financeExactTrimmed(it.qty?.toString()) ?? ''
+              ..price.text = financeExactTrimmed(it.price?.toString()) ?? ''
+              ..weight.text = financeExactTrimmed(it.weight?.toString()) ?? ''
               ..upstreamItemId = it.applicationItemId
               // V463：多来源合并行回显（来源明细 ids + 单号逐条带回）。
               ..upstreamItemIds = [
@@ -401,8 +395,9 @@ class _SubcontractOrderEditPageState
           ..supplierId = d.supplierId
           ..settlementMethodId = d.settlementMethodId
           ..currencyId = d.currencyId;
-        row.exchangeRate.text = d.exchangeRate?.toString() ?? '1';
-        row.taxRate.text = d.taxRate?.toString() ?? '0';
+        row.exchangeRate.text =
+            financeExactTrimmed(d.exchangeRate?.toString()) ?? '1';
+        row.taxRate.text = financeExactTrimmed(d.taxRate?.toString()) ?? '0';
         rows.add(row);
       }
       _grid.replaceAll(rows);
@@ -524,7 +519,8 @@ class _SubcontractOrderEditPageState
             r.currencyId == terms.currencyId &&
             r.exchangeRate.text.trim().isEmpty &&
             terms.exchangeRate != null) {
-          r.exchangeRate.text = terms.exchangeRate.toString();
+          r.exchangeRate.text =
+              financeExactTrimmed(terms.exchangeRate.toString()) ?? '';
           r.markTermsAutofilled('rate', r.exchangeRate.text);
           changed = true;
         }
@@ -532,7 +528,7 @@ class _SubcontractOrderEditPageState
             r.supplierId != null &&
             r.taxRate.text.trim().isEmpty &&
             terms.taxRate != null) {
-          r.taxRate.text = terms.taxRate.toString();
+          r.taxRate.text = financeExactTrimmed(terms.taxRate.toString()) ?? '';
           r.markTermsAutofilled('tax', r.taxRate.text);
           changed = true;
         }
@@ -550,7 +546,8 @@ class _SubcontractOrderEditPageState
         if (r.price.text.trim().isEmpty &&
             terms.subcontractPrice != null &&
             matchesPriceContext()) {
-          r.price.text = terms.subcontractPrice.toString();
+          r.price.text =
+              financeExactTrimmed(terms.subcontractPrice.toString()) ?? '';
           r.markTermsAutofilled('price', r.price.text);
           r.watchDefaultPrice(
             price: r.price,
@@ -690,11 +687,12 @@ class _SubcontractOrderEditPageState
         r.clearTermsAutofilled('currency');
       }
       if (result.exchangeRate != null) {
-        r.exchangeRate.text = result.exchangeRate.toString();
+        r.exchangeRate.text =
+            financeExactTrimmed(result.exchangeRate.toString()) ?? '';
         r.clearTermsAutofilled('rate');
       }
       if (result.taxRate != null) {
-        r.taxRate.text = result.taxRate.toString();
+        r.taxRate.text = financeExactTrimmed(result.taxRate.toString()) ?? '';
         r.clearTermsAutofilled('tax');
       }
     }
@@ -1219,7 +1217,10 @@ class _SubcontractOrderEditPageState
                           UtenFloatingActionGroup.scrollClearance,
                         ),
                         children: [
-                          if (_isCreate) ...[
+                          // 2026-09-24 简洁口径：来源说明横幅只在「来源未就绪」
+                          // （必须回任务中心重选申请）这种阻塞性错误时出现；
+                          // 正常新建不再显示顶部教学横幅。
+                          if (_isCreate && !_orderSourceReady) ...[
                             _orderSourceBanner(theme),
                             const SizedBox(height: UtenSpacing.s12),
                           ],
@@ -1525,35 +1526,23 @@ class _SubcontractOrderEditPageState
     );
   }
 
-  /// 来源横幅：物料分析带单 / 直接委外下单；条款行级说明与超委外允许。
+  /// 来源横幅：仅「来源未就绪」的阻塞性错误态（2026-09-24 简洁口径——正常新建
+  /// 不再显示顶部教学横幅，只有必须回任务中心重选申请时才提示）。
   Widget _orderSourceBanner(ThemeData theme) {
-    final ready = _orderSourceReady;
-    final source = _sourceApplicationBillNo?.trim();
-    final fromMaterialAnalysis =
-        source?.isNotEmpty == true || widget.applicationItemIds.isNotEmpty;
-    final background = ready
-        ? theme.colorScheme.secondaryContainer
-        : theme.colorScheme.errorContainer;
-    final foreground = ready
-        ? theme.colorScheme.onSecondaryContainer
-        : theme.colorScheme.onErrorContainer;
+    if (_orderSourceReady) return const SizedBox.shrink();
     return Semantics(
       container: true,
-      label: !ready
-          ? '必须先从委外任务中心选择计划下达申请'
-          : '委外商与结算方式、币种、汇率、税率都在明细行填写；勾选多行可统一设置；'
-                '条款来自货品与供应商资料里的默认值，保存订单会更新这些资料；'
-                '数量允许超过申请剩余量。',
+      label: '必须先从委外任务中心选择计划下达申请',
       child: Card(
-        color: background,
+        color: theme.colorScheme.errorContainer,
         child: Padding(
           padding: const EdgeInsets.all(UtenSpacing.s12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
-                ready ? Icons.tune_rounded : Icons.task_alt_rounded,
-                color: foreground,
+                Icons.task_alt_rounded,
+                color: theme.colorScheme.onErrorContainer,
               ),
               const SizedBox(width: UtenSpacing.s8),
               Expanded(
@@ -1561,40 +1550,28 @@ class _SubcontractOrderEditPageState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      !ready
-                          ? '请先选择委外申请明细'
-                          : fromMaterialAnalysis
-                          ? '物料分析下达委外 · 条款在明细行填写'
-                          : '直接委外下单 · 条款在明细行填写',
+                      '请先选择委外申请明细',
                       style: theme.textTheme.titleSmall?.copyWith(
-                        color: foreground,
+                        color: theme.colorScheme.onErrorContainer,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
-                      !ready
-                          ? '来源申请未加载完整。请回到委外任务中心重新选择需要分解的申请明细。'
-                          : '委外商与结算方式、币种、汇率、税率逐行选择；勾选多行后可'
-                                '「统一设置条款」一次写全套。条款来自货品资料与供应商资料里的'
-                                '默认值，保存订单会把本次选择更新回资料。'
-                                '保存时按「委外商+条款组合」自动拆单。'
-                                '数量允许超过申请剩余量（超委外备货）。',
+                      '来源申请未加载完整。请回到委外任务中心重新选择需要分解的申请明细。',
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: foreground,
+                        color: theme.colorScheme.onErrorContainer,
                       ),
                     ),
-                    if (!ready) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      UtenButton(
-                        icon: Icons.arrow_back_rounded,
-                        onPressed: () => goFrom(
-                          context,
-                          RouteName.operationsSubcontractWorkbench,
-                        ),
-                        child: const Text('返回委外任务中心选择'),
+                    const SizedBox(height: UtenSpacing.s12),
+                    UtenButton(
+                      icon: Icons.arrow_back_rounded,
+                      onPressed: () => goFrom(
+                        context,
+                        RouteName.operationsSubcontractWorkbench,
                       ),
-                    ],
+                      child: const Text('返回委外任务中心选择'),
+                    ),
                   ],
                 ),
               ),

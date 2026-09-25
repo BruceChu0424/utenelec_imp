@@ -1119,7 +1119,7 @@ class _FinanceSalesShipmentAuditReviewPageState
                       ? '不收费（货款 0）'
                       : d.priceMasked
                       ? '***'
-                      : '${d.exactDecimals['totalOriginal'] ?? d.totalOriginal ?? '—'}（所选币种）',
+                      : '${financeExactTrimmed(d.exactDecimals['totalOriginal'] ?? d.totalOriginal?.toString()) ?? '—'}（所选币种）',
                 ),
                 if ((d.sourceDocNo?.isNotEmpty ?? false))
                   kv('来源订单', d.sourceDocNo),

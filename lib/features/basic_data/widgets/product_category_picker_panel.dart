@@ -81,10 +81,15 @@ Future<ProductCategoryPickResult?> showUtenProductCategoryPickerPanel(
   String allLabel = '全部', // TODO(l10n): 补 arb
   bool hideEmptyCategories = true,
 }) {
+  // 单根提升：整库只有一个「货品资料」包装根时不占一层，直接列其子类
+  //（与货品选择滑窗同口径，2026-09-24）。
+  final visibleTree = hoistSingleRootTree(
+    hideEmptyCategories ? pruneCategoriesWithoutGoods(tree) : tree,
+  );
   return showUtenAdaptivePanel<ProductCategoryPickResult>(
     context: context,
     builder: (_) => _ProductCategoryPickerSheet(
-      tree: hideEmptyCategories ? pruneCategoriesWithoutGoods(tree) : tree,
+      tree: visibleTree,
       selectedId: selectedId,
       title: title,
       subtitle: subtitle,
@@ -193,9 +198,13 @@ class _ProductCategoryPickerSheet extends StatelessWidget {
                       // 行点击 = 选中并关闭；展开/收起交给左侧 chevron
                       //（默认 expandOnRowTap=false，此处必须保持默认——
                       //  开了会「点一下既展开又关窗」）。
+                      // 左树默认全部收起（2026-09-24 用户口径，与货品选择滑窗同款）。
+                      initiallyExpandDepth: 0,
                       initiallyCollapsedNames: const {'未分类'},
                       searchFieldKey: const Key('category-picker-search'),
                       searchHint: '搜索分类名称 / 编号', // TODO(l10n): 补 arb
+                      // 无缩进层级色（与货品选择滑窗左树同款，2026-09-24）。
+                      flatLevelColors: true,
                       trailingBuilder: (node) => node.goodsCount == null
                           ? null
                           : Text(

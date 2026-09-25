@@ -525,7 +525,6 @@ class _SubcontractDecompositionPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: '委外任务中心',
-        subtitle: '计划申请只读 · 待处理（含前置生产进度）· 一商一单 · 保存后提交财务',
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.subcontract),
         ),

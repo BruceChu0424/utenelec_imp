@@ -27,14 +27,15 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     RouteName.basicinfoSettlementMethod,
   ],
   RouteName.warehouse: [
-    RouteName.warehouseOutboundTasks,
-    RouteName.warehouseInboundTasks,
-    RouteName.warehouseDrawTasks,
-    RouteName.warehouseQualityResults,
-    RoutePath.stockDocList('TRANSFER'),
-    RoutePath.stockDocList('CHECK'),
-    RouteName.warehouseSubcontractFinishedReturnHistory,
-    RouteName.warehouseSubcontractWasteHistory,
+    // 2026-09-24 三段式：任务中心一张卡（合并页）+ 新建单据六卡（creator-only）。
+    // 调拨/盘点列表卡与委外两张历史只读卡撤下（浏览并入任务中心大类）。
+    RouteName.warehouseTasks,
+    RoutePath.stockDocNew('OTHER_OUT'),
+    RoutePath.stockDocNew('FINISHED_OUT'),
+    RoutePath.stockDocNew('OTHER_IN'),
+    RoutePath.stockDocNew('FINISHED_IN'),
+    RoutePath.stockDocNew('TRANSFER'),
+    RoutePath.stockDocNew('CHECK'),
     RouteName.stockInstantInventory,
     RouteName.warehouseShelfLabels,
     '${RouteName.warehouseReport}/detail',
@@ -63,12 +64,13 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     RouteName.financeReportGl,
   ],
   RouteName.production: const [
+    // 2026-09-24 三段式：任务中心置顶（调度台更名生产任务中心）+ 两个审批队列；
+    // 计划/日报列表卡撤下（浏览走任务中心与既有深链），新建卡直达分析/新建页。
     RouteName.productionSchedule,
-    RouteName.productionMaterialAnalysis,
-    RouteName.productionPlanList,
     RouteName.productionOverproductionRateRequests,
     RouteName.productionMaterialIncrementRequests,
-    RouteName.productionDailyReportList,
+    RouteName.productionMaterialAnalysis,
+    '/production/daily-reports/new',
     '/production/reports/plan-detail',
     '/production/reports/plan-summary',
     RouteName.productionWhereUsed,
@@ -77,23 +79,26 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
   RouteName.purchase: [
     RouteName.operationsPurchaseWorkbench,
     RouteName.procurementArrivalExceptions,
-    for (final seg in const ['requests', 'orders', 'receipts', 'returns']) ...[
-      '/purchase/$seg',
+    // 2026-09-24 三段式：订货/收货/退货 creator-only 新建卡 + 催料跟单入口；
+    // 「计划下达的采购申请」只读卡已撤（浏览走任务中心「申请待分解」段）。
+    for (final seg in const ['orders', 'receipts', 'returns'])
       RoutePath.purchaseDocNew(seg),
-    ],
-    for (final kind in const ['detail', 'summary', 'expediting'])
+    '/purchase/report/expediting',
+    for (final kind in const ['detail', 'summary'])
       '${RouteName.purchaseReport}/$kind',
   ],
   RouteName.sales: [
-    RouteName.salesOrderProgress,
+    // 2026-09-24 三段式：任务中心一张卡 + 新建单据五卡（creator-only，
+    // 直达 /new）；列表页与订单进度查询不再是 hub 卡（浏览收进任务中心）。
+    RouteName.salesTasks,
     for (final seg in const [
       'quotes',
       'orders',
       'shipments',
       'customer-shipments',
-      'other-shipments',
       'returns',
-    ]) ...['/sales/$seg', '/sales/$seg/new'],
+    ])
+      '/sales/$seg/new',
     '${RouteName.salesReport}/detail',
     '${RouteName.salesReport}/summary',
     RouteName.salesScarcity,
@@ -102,14 +107,11 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     RouteName.operationsSubcontractWorkbench,
     RouteName.subcontractShortDeliveries,
     RouteName.procurementArrivalExceptions,
-    for (final seg in const [
-      'orders',
-      'returns',
-      'material-returns',
-      'wastes',
-      'material-issues',
-    ])
-      '/subcontract/$seg',
+    // 2026-09-24 三段式：订货/成品退回/余料退回/损耗改 creator-only 新建卡；
+    // 历史 BOM 子件发料是只读历史，保留列表入口。
+    for (final seg in const ['orders', 'returns', 'material-returns', 'wastes'])
+      '/subcontract/$seg/new',
+    '/subcontract/material-issues',
     for (final kind in const ['detail', 'summary', 'in-out-status'])
       '${RouteName.subcontractReport}/$kind',
   ],

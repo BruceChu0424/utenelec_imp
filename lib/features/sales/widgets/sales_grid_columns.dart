@@ -15,10 +15,10 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
 import 'sales_doc_link_picker.dart';
-import '../../../shared/formatters/exact_decimal.dart';
 
 final _salesOrderDiscountPattern = RegExp(r'^(?:0\.\d{1,4}|1(?:\.0{1,4})?)$');
 
@@ -78,7 +78,8 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   /// 避免换货后仍显示上一货品的价格。
   void applyLockedPricePreview(num? value) {
     requiresOrderPriceRefresh = false;
-    price.text = value?.toString() ?? '';
+    // 展示口径统一去尾随零：主档价 10.0 显示 "10" 而非 "10.0"。
+    price.text = financeExactTrimmed(value?.toString()) ?? '';
   }
 
   /// 当前单据自身明细 UUID。仅受控更新既有销售订货行时回传为 JSON `id`。

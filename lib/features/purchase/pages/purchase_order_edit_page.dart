@@ -379,17 +379,18 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
                 .where((id) => id != it.requestItemId),
           ]
           ..sourceDocs = it.sourceRequests;
-        row.qty.text = it.qty?.toString() ?? '';
-        row.weight.text = it.weight?.toString() ?? '';
-        row.price.text = it.price?.toString() ?? '';
+        row.qty.text = financeExactTrimmed(it.qty?.toString()) ?? '';
+        row.weight.text = financeExactTrimmed(it.weight?.toString()) ?? '';
+        row.price.text = financeExactTrimmed(it.price?.toString()) ?? '';
         row.remark.text = it.remark ?? '';
         // 既有单一套条款：明细不落条款，编辑回显按单头条款回填各行。
         row
           ..supplierId = d.supplierId
           ..settlementMethodId = d.settlementMethodId
           ..currencyId = d.currencyId;
-        row.exchangeRate.text = d.exchangeRate?.toString() ?? '1';
-        row.taxRate.text = d.taxRate?.toString() ?? '0';
+        row.exchangeRate.text =
+            financeExactTrimmed(d.exchangeRate?.toString()) ?? '1';
+        row.taxRate.text = financeExactTrimmed(d.taxRate?.toString()) ?? '0';
         rows.add(row);
       }
       // 「申请来源」列回显：有逐行 sources 用之；全单同源旧单退回表头谱系。
@@ -525,7 +526,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
             r.currencyId == terms.currencyId &&
             r.exchangeRate.text.trim().isEmpty &&
             terms.exchangeRate != null) {
-          r.exchangeRate.text = terms.exchangeRate.toString();
+          r.exchangeRate.text =
+              financeExactTrimmed(terms.exchangeRate.toString()) ?? '';
           r.markTermsAutofilled('rate', r.exchangeRate.text);
           changed = true;
         }
@@ -533,7 +535,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
             r.supplierId != null &&
             r.taxRate.text.trim().isEmpty &&
             terms.taxRate != null) {
-          r.taxRate.text = terms.taxRate.toString();
+          r.taxRate.text = financeExactTrimmed(terms.taxRate.toString()) ?? '';
           r.markTermsAutofilled('tax', r.taxRate.text);
           changed = true;
         }
@@ -551,7 +553,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
         if (r.price.text.trim().isEmpty &&
             terms.purchasePrice != null &&
             matchesPriceContext()) {
-          r.price.text = terms.purchasePrice.toString();
+          r.price.text =
+              financeExactTrimmed(terms.purchasePrice.toString()) ?? '';
           r.markTermsAutofilled('price', r.price.text);
           r.watchDefaultPrice(
             price: r.price,
@@ -1236,8 +1239,6 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
                           UtenFloatingActionGroup.scrollClearance,
                         ),
                         children: [
-                          _termsBanner(theme),
-                          const SizedBox(height: UtenSpacing.s12),
                           Card(
                             child: Padding(
                               padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -1573,58 +1574,6 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
                 );
               },
             ),
-    );
-  }
-
-  /// 行级条款说明横幅：条款在行内、批量设置、主档默认值预填、允许超采。
-  Widget _termsBanner(ThemeData theme) {
-    return Semantics(
-      container: true,
-      label:
-          '供应商与结账方式、币种、汇率、税率都在明细行填写；'
-          '勾选多行可统一设置；条款来自货品与供应商资料里的默认值，保存订单会更新这些资料；'
-          '数量允许超过申请剩余量（超采备货）。',
-      child: Card(
-        color: theme.colorScheme.secondaryContainer,
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.tune_rounded,
-                color: theme.colorScheme.onSecondaryContainer,
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '供应商与商业条款都在明细行填写',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: theme.colorScheme.onSecondaryContainer,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s4),
-                    Text(
-                      '结账方式、币种、汇率、税率逐行选择；勾选多行后可「统一设置条款」一次写全套。'
-                      '条款来自货品资料与供应商资料里的默认值，保存订单会把本次选择更新回资料。'
-                      '保存时按「供应商+条款组合」自动拆单，每组条款归集到各张订货单。'
-                      '从任务中心多选带入时，同货品+颜色+单位的需求自动合并成一行、数量加总'
-                      '（来源申请逐条保留可点开）。数量允许超过申请剩余量（超采备货）。',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSecondaryContainer,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 

@@ -32,12 +32,13 @@ void main() {
       expect(sources, contains('new Source("finishedInbound"'));
       // 工作台模块卡按容器取服务端算好的和, 不在前端逐个求和。
       expect(moduleBadge, contains('BadgeModule.warehouse'));
-      // 2026-09-01 重组：hub 卡角标由 WarehouseInboundTaskBadge（入库任务中心）
-      // 渲染；独立任务页路由保留(深链)，入口改为 /warehouse/tasks/inbound。
-      expect(warehouseHub, contains('WarehouseInboundTaskBadge'));
+      // 2026-09-24 仓库任务中心合并：hub 一张「仓库任务中心」卡角标 = 模块累计
+      //（容器求和）；入库大类分段红数在合并页直接读 warehouseInboundCenter 入口，
+      // 独立任务页路由保留(深链)，入口改为 /warehouse/tasks/inbound。
+      expect(warehouseHub, contains('RouteName.warehouseTasks'));
       expect(
         File(
-          'lib/features/warehouse/widgets/warehouse_task_center_badges.dart',
+          'lib/features/warehouse/pages/warehouse_task_center_page.dart',
         ).readAsStringSync(),
         contains('BadgeEntry.warehouseInboundCenter'),
       );

@@ -1902,9 +1902,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get warehouseHubSectionInventory => '재고 조회';
 
   @override
-  String get warehouseHubSectionInventoryDesc => '실시간 재고·잔액·이동';
-
-  @override
   String get warehouseHubSectionReports => '창고 보고서';
 
   @override
@@ -3261,9 +3258,6 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get warehouseSubcontractOutboundComponentNotArrived =>
       '부품이 아직 입고되지 않아 창고에 하나도 없습니다. 부품이 입고되면 시스템이 자동으로 초안을 보충하고 창고에 알립니다.';
-
-  @override
-  String get warehouseSubcontractOutboundWorkView => '창고 작업 보기';
 
   @override
   String get warehouseSubcontractOutboundBannerScope =>

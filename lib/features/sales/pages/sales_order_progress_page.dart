@@ -101,7 +101,11 @@ bool _stageNeedsSales(String stage) =>
     stage == 'REJECTED' || stage == 'SHIPPABLE';
 
 class SalesOrderProgressPage extends ConsumerStatefulWidget {
-  const SalesOrderProgressPage({super.key});
+  const SalesOrderProgressPage({super.key, this.embedded = false});
+
+  /// 嵌入态（2026-09-24 销售任务中心）：作为 /sales/tasks「订货进度」大类的正文，
+  /// 不渲染 Scaffold/AppBar；大类/小类分段、搜索、表格与独立页完全一致。
+  final bool embedded;
 
   @override
   ConsumerState<SalesOrderProgressPage> createState() =>
@@ -374,11 +378,106 @@ class _SalesOrderProgressPageState
     final theme = Theme.of(context);
     final seg = _seg;
     // 返回即刷新：从详情/编辑页回到本页时重拉当前页与计数，不再看到老数据。
-    _myLocation ??= GoRouterState.of(context).matchedLocation;
+    // 嵌入态（任务中心「订货进度」大类）无独立路由落点时回退到进度页路径。
+    _myLocation ??= currentLocationOr(context, RouteName.salesOrderProgress);
     ref.onPageResume(_myLocation!, () {
       _load(_page);
       _loadStageCounts();
     });
+    // 正文（大类/小类分段 + 表格）：独立页与任务中心嵌入态共用一份。
+    // 嵌入态不再自套 SafeArea/容器（宿主页已有容器，双重边距会把小类行
+    // 推离父分类行与左缘，2026-09-24 用户走查修正），头部空行程也只在独立页留。
+    final bodyContent = UtenCollapsingHeaderScrollView(
+      collapsingHeader: Padding(
+        padding: widget.embedded
+            ? const EdgeInsets.only(
+                left: UtenSpacing.s4,
+                right: UtenSpacing.s4,
+                bottom: UtenSpacing.s8,
+              )
+            : const EdgeInsets.fromLTRB(
+                UtenSpacing.s12,
+                UtenSpacing.s12,
+                UtenSpacing.s12,
+                UtenSpacing.s8,
+              ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 大类行（ADR-100，用户口径「就分三种」）：进行中 / 可发货 /
+            // 历史记录 + 搜索。每个大类同时挂两枚徽章——黄色 = 这一类里
+            // 还在别人手上跑的单，红色 = 这一类里等销售动手的单；
+            // 两枚都是「本大类各小类之和」，所以大类数与小类行对得上。
+            UtenFilterToolbar<_ProgressSeg>(
+              segmentsKey: const Key('sales-order-progress-stages'),
+              segments: [
+                for (final group in _stageGroups.keys)
+                  UtenFilterSegment(
+                    value: _ProgressSeg.stage(group),
+                    label: _groupLabels[group]!,
+                    count: _groupCount(group, _stageNeedsSales),
+                    countForm: UtenSegmentCountForm.actionable,
+                    inProgressCount: _groupCount(
+                      group,
+                      (stage) => !_stageNeedsSales(stage),
+                    ),
+                  ),
+                const UtenFilterSegment(
+                  value: _ProgressSeg.history(),
+                  label: '历史记录',
+                ),
+              ],
+              selected: seg == null
+                  ? const {}
+                  : {
+                      // 选中小类时大类保持高亮：大类段的值是大类码，
+                      // 直接拿 seg 去比会让整行看起来一个都没选。
+                      if (_selectedGroup != null)
+                        _ProgressSeg.stage(_selectedGroup!)
+                      else
+                        seg,
+                    },
+              onSelectionChanged: _selectSeg,
+              searchHint: '搜索订单号 / 客户',
+              onSearchChanged: _applyKeyword,
+            ),
+            // 小类行：选中大类后才解锁（与采购/委外任务中心的异常小类行同构）。
+            // 没有「全部」段——大类本身就是全部；要看全量就点回大类。
+            if (_selectedGroup != null) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              UtenFilterToolbar<_ProgressSeg>(
+                segmentsKey: const Key('sales-order-progress-substages'),
+                segments: [
+                  for (final stage in _stageGroups[_selectedGroup]!)
+                    UtenFilterSegment(
+                      value: _ProgressSeg.stage(stage),
+                      label: salesProgressStageLabel(stage),
+                      count: _stageCounts?[stage],
+                      countForm: _stageCountForm(stage),
+                    ),
+                ],
+                // 停在大类上时小类一个都不选（看的是整个大类）。
+                selected: _stageGroups.containsKey(seg?.stage)
+                    ? const {}
+                    : {seg!},
+                onSelectionChanged: _selectSeg,
+              ),
+            ],
+            if (seg?.history == true) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              UtenHistoryTimeFilter(
+                key: const Key('sales-order-progress-history-time'),
+                value: _historyTime,
+                onChanged: _onHistoryTime,
+              ),
+            ],
+          ],
+        ),
+      ),
+      body: _body(theme),
+    );
+    // 嵌入态（销售任务中心「订货进度」大类正文）：宿主页负责 Scaffold/AppBar/容器。
+    if (widget.embedded) return bodyContent;
     return Scaffold(
       appBar: UtenAppBar(
         title: '订单进度查询',
@@ -400,93 +499,7 @@ class _SalesOrderProgressPageState
           const SizedBox(width: UtenSpacing.s8),
         ],
       ),
-      body: SafeArea(
-        child: UtenContentContainer(
-          child: UtenCollapsingHeaderScrollView(
-            collapsingHeader: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UtenSpacing.s12,
-                UtenSpacing.s12,
-                UtenSpacing.s12,
-                UtenSpacing.s8,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 大类行（ADR-100，用户口径「就分三种」）：进行中 / 可发货 /
-                  // 历史记录 + 搜索。每个大类同时挂两枚徽章——黄色 = 这一类里
-                  // 还在别人手上跑的单，红色 = 这一类里等销售动手的单；
-                  // 两枚都是「本大类各小类之和」，所以大类数与小类行对得上。
-                  UtenFilterToolbar<_ProgressSeg>(
-                    segmentsKey: const Key('sales-order-progress-stages'),
-                    segments: [
-                      for (final group in _stageGroups.keys)
-                        UtenFilterSegment(
-                          value: _ProgressSeg.stage(group),
-                          label: _groupLabels[group]!,
-                          count: _groupCount(group, _stageNeedsSales),
-                          countForm: UtenSegmentCountForm.actionable,
-                          inProgressCount: _groupCount(
-                            group,
-                            (stage) => !_stageNeedsSales(stage),
-                          ),
-                        ),
-                      const UtenFilterSegment(
-                        value: _ProgressSeg.history(),
-                        label: '历史记录',
-                      ),
-                    ],
-                    selected: seg == null
-                        ? const {}
-                        : {
-                            // 选中小类时大类保持高亮：大类段的值是大类码，
-                            // 直接拿 seg 去比会让整行看起来一个都没选。
-                            if (_selectedGroup != null)
-                              _ProgressSeg.stage(_selectedGroup!)
-                            else
-                              seg,
-                          },
-                    onSelectionChanged: _selectSeg,
-                    searchHint: '搜索订单号 / 客户',
-                    onSearchChanged: _applyKeyword,
-                  ),
-                  // 小类行：选中大类后才解锁（与采购/委外任务中心的异常小类行同构）。
-                  // 没有「全部」段——大类本身就是全部；要看全量就点回大类。
-                  if (_selectedGroup != null) ...[
-                    const SizedBox(height: UtenSpacing.s8),
-                    UtenFilterToolbar<_ProgressSeg>(
-                      segmentsKey: const Key('sales-order-progress-substages'),
-                      segments: [
-                        for (final stage in _stageGroups[_selectedGroup]!)
-                          UtenFilterSegment(
-                            value: _ProgressSeg.stage(stage),
-                            label: salesProgressStageLabel(stage),
-                            count: _stageCounts?[stage],
-                            countForm: _stageCountForm(stage),
-                          ),
-                      ],
-                      // 停在大类上时小类一个都不选（看的是整个大类）。
-                      selected: _stageGroups.containsKey(seg?.stage)
-                          ? const {}
-                          : {seg!},
-                      onSelectionChanged: _selectSeg,
-                    ),
-                  ],
-                  if (seg?.history == true) ...[
-                    const SizedBox(height: UtenSpacing.s8),
-                    UtenHistoryTimeFilter(
-                      key: const Key('sales-order-progress-history-time'),
-                      value: _historyTime,
-                      onChanged: _onHistoryTime,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            body: _body(theme),
-          ),
-        ),
-      ),
+      body: SafeArea(child: UtenContentContainer(child: bodyContent)),
     );
   }
 

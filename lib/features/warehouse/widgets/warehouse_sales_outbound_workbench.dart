@@ -76,7 +76,6 @@ class WarehouseSalesOutboundWorkbench extends ConsumerStatefulWidget {
     this.keyword = '',
     this.refreshTick = 0,
     this.embedded = false,
-    this.showBoundaryBanner = true,
   });
 
   /// 任务中心页级搜索关键字（embedded 模式生效；300ms 防抖后的值）。
@@ -87,9 +86,6 @@ class WarehouseSalesOutboundWorkbench extends ConsumerStatefulWidget {
 
   /// true = 嵌在出库任务中心分段内（状态分段 + 表格，无搜索框）。
   final bool embedded;
-
-  /// 是否显示仓库作业边界提示条（任务中心分段内空间有限可关）。
-  final bool showBoundaryBanner;
 
   @override
   ConsumerState<WarehouseSalesOutboundWorkbench> createState() =>
@@ -314,10 +310,6 @@ class _WarehouseSalesOutboundWorkbenchState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (widget.showBoundaryBanner) ...[
-          const _WarehouseOutboundBoundaryBanner(),
-          const SizedBox(height: UtenSpacing.s12),
-        ],
         _toolbar(result),
         if (_seg?.history == true) ...[
           const SizedBox(height: UtenSpacing.s8),
@@ -495,31 +487,4 @@ class _WarehouseSalesOutboundWorkbenchState
           WarehouseSalesOutboundStatus.nextStep(item.warehouseWorkStatus),
     ),
   ];
-}
-
-class _WarehouseOutboundBoundaryBanner extends StatelessWidget {
-  const _WarehouseOutboundBoundaryBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      container: true,
-      label: '仓库销售出库作业视图，只处理实物出库。',
-      child: Container(
-        key: const Key('warehouse-sales-outbound-boundary'),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Text(
-          '仓库作业视图 · 财务放行后核对货品、数量与库位，一步确认出库。'
-          '本页不包含商业与财务信息，也不提供销售业务编辑操作。',
-          style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
-        ),
-      ),
-    );
-  }
 }

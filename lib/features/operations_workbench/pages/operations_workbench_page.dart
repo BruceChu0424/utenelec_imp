@@ -464,7 +464,6 @@ class _OperationsWorkbenchPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: widget.department.label,
-        subtitle: _departmentSubtitle(widget.department),
         leading: UtenBackButton(
           onPressed: () =>
               backTo(context, defaultPath: _departmentHome(widget.department)),
@@ -1306,16 +1305,6 @@ String _departmentHome(OperationsWorkbenchDepartment department) {
     OperationsWorkbenchDepartment.warehouse => RouteName.warehouse,
     OperationsWorkbenchDepartment.purchase => RouteName.purchase,
     OperationsWorkbenchDepartment.subcontract => RouteName.subcontract,
-  };
-}
-
-String _departmentSubtitle(OperationsWorkbenchDepartment department) {
-  return switch (department) {
-    OperationsWorkbenchDepartment.purchase =>
-      '采购任务：申请待分解 / 进行中(等待财务审核·财务已通过·财务驳回, 见状态列) / 已完成',
-    OperationsWorkbenchDepartment.subcontract =>
-      '委外任务：待处理 / 进行中(等待财务审核·财务已通过·财务驳回, 见状态列) / 已完成',
-    OperationsWorkbenchDepartment.warehouse => '仓库履约：待备料 / 部分领取 / 已领取',
   };
 }
 

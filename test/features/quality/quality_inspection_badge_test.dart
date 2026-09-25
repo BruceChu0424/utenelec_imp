@@ -698,7 +698,12 @@ Future<void> _selectRow(WidgetTester tester, String rowText) async {
 }
 
 Future<void> _submitReport(WidgetTester tester) async {
-  await tester.tap(find.byKey(const Key('iqc-submit-report')));
+  // 2026-09-24 检验处置页改折叠头联动后，矮视口（800x600）走整页滚动回退，
+  // 悬浮「提交报告」可能落在折叠下方——先滚到可见再点。
+  final button = find.byKey(const Key('iqc-submit-report'));
+  await tester.ensureVisible(button);
+  await tester.pumpAndSettle();
+  await tester.tap(button);
   await tester.pumpAndSettle();
 }
 

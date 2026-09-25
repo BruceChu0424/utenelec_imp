@@ -42,6 +42,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/widgets/source_doc_link.dart';
@@ -1146,7 +1147,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               ? '不收费（货款 0）'
               : d.priceMasked
               ? '***'
-              : '${d.exactDecimals['totalOriginal'] ?? d.totalOriginal ?? '—'}（所选币种）',
+              : '${financeExactTrimmed(d.exactDecimals['totalOriginal'] ?? d.totalOriginal?.toString()) ?? '—'}（所选币种）',
         )
       else
         _KV('合计(本币)', d.priceMasked ? '***' : d.totalLocal?.toStringAsFixed(2)),

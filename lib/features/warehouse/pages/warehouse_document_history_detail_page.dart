@@ -83,7 +83,6 @@ class _WarehouseDocumentHistoryDetailPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: '${widget.type.documentLabel}详情',
-        subtitle: '仓库实物视图',
         leading: UtenBackButton(
           onPressed: () =>
               popOrBackTo(context, defaultPath: widget.type.listPath()),
@@ -117,7 +116,7 @@ class _WarehouseDocumentHistoryDetailPageState
             : detail == null
             ? UtenEmpty.error(message: '记录不存在或您无权查看')
             // 2026-09-11 折叠头+表内滚（对齐采购/货品资料页）：上滑先收头部
-            // （实物视图横幅/错误提示/事实卡），明细标题吸顶后表格内部继续滚。
+            // （错误提示/事实卡），明细标题吸顶后表格内部继续滚。
             : UtenContentContainer.wide(
                 child: UtenCollapsingHeaderScrollView(
                   collapsingHeader: Padding(
@@ -125,7 +124,6 @@ class _WarehouseDocumentHistoryDetailPageState
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _DetailPhysicalBanner(type: widget.type),
                         if (_error != null) ...[
                           const SizedBox(height: UtenSpacing.s8),
                           Semantics(
@@ -469,44 +467,6 @@ class _WarehouseDocumentHistoryDetailPageState
         ),
     ];
     return columns;
-  }
-}
-
-class _DetailPhysicalBanner extends StatelessWidget {
-  const _DetailPhysicalBanner({required this.type});
-
-  final WarehouseDocumentHistoryType type;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      container: true,
-      label: '仓库实物视图，不含商业信息，也不提供采购或委外业务操作。库位是当前建议值。',
-      child: Container(
-        key: Key('warehouse-history-detail-banner-${type.segment}'),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Row(
-          children: [
-            Icon(type.icon, color: theme.colorScheme.primary),
-            const SizedBox(width: UtenSpacing.s12),
-            Expanded(
-              child: Text(
-                '仓库实物视图 · 仅显示数量、重量、当前建议库位、质量、来源与经办人员。'
-                '库位来自当前货品主档，不是历史快照。'
-                '本页不包含商业与财务信息，也不提供跨部门业务操作。',
-                style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 

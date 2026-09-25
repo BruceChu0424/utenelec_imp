@@ -231,12 +231,16 @@ class _SubcontractDocEditPageState
         _supplierId = d.supplierId;
         _warehouseId = d.warehouseId;
         _currencyId = d.currencyId;
-        _rate.text = d.exchangeRate?.toString() ?? '1';
-        if (d.taxRate != null) _taxRate.text = d.taxRate.toString();
+        _rate.text = financeExactTrimmed(d.exchangeRate?.toString()) ?? '1';
+        if (d.taxRate != null)
+          _taxRate.text = financeExactTrimmed(d.taxRate.toString()) ?? '';
         if (d.bStyle != null) _bStyle.text = d.bStyle.toString();
-        if (d.totalWeight != null) _totalWeight.text = d.totalWeight.toString();
+        if (d.totalWeight != null)
+          _totalWeight.text =
+              financeExactTrimmed(d.totalWeight.toString()) ?? '';
         if (d.deductAmount != null) {
-          _deductAmount.text = d.deductAmount.toString();
+          _deductAmount.text =
+              financeExactTrimmed(d.deductAmount.toString()) ?? '';
         }
         _settlementMethodId = d.settlementMethodId;
         _purchaserId = d.purchaserId;
@@ -262,9 +266,9 @@ class _SubcontractDocEditPageState
                         .read(mn.masterNameServiceProvider)
                         .goods(it.goodsId),
                   )
-            ..qty.text = it.qty?.toString() ?? ''
-            ..price.text = it.price?.toString() ?? ''
-            ..weight.text = it.weight?.toString() ?? ''
+            ..qty.text = financeExactTrimmed(it.qty?.toString()) ?? ''
+            ..price.text = financeExactTrimmed(it.price?.toString()) ?? ''
+            ..weight.text = financeExactTrimmed(it.weight?.toString()) ?? ''
             ..upstreamItemId = upstreamItemId
             ..planItemId = it.planItemId
             ..colorId = it.colorId
@@ -272,12 +276,15 @@ class _SubcontractDocEditPageState
             ..unitRate = it.unitRate
             ..sourceDocNo = it.sourceDocNo;
           row.remark.text = it.remark ?? '';
-          row.endingQty.text = it.endingQty?.toString() ?? '';
-          row.standardQty.text = it.standardQty?.toString() ?? '';
-          row.wasteRate.text = it.wasteRate?.toString() ?? '';
+          row.endingQty.text =
+              financeExactTrimmed(it.endingQty?.toString()) ?? '';
+          row.standardQty.text =
+              financeExactTrimmed(it.standardQty?.toString()) ?? '';
+          row.wasteRate.text =
+              financeExactTrimmed(it.wasteRate?.toString()) ?? '';
           row.cause.text = it.cause ?? '';
-          row.girth.text = it.girthQty?.toString() ?? '';
-          row.boxQty.text = it.boxQty?.toString() ?? '';
+          row.girth.text = financeExactTrimmed(it.girthQty?.toString()) ?? '';
+          row.boxQty.text = financeExactTrimmed(it.boxQty?.toString()) ?? '';
           rows.add(row);
         }
         if (_cfg.itemHasStockPlace) {

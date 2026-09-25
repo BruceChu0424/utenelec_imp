@@ -3691,12 +3691,6 @@ abstract class AppLocalizations {
   /// **'库存查询'**
   String get warehouseHubSectionInventory;
 
-  /// No description provided for @warehouseHubSectionInventoryDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'即时库存·库存查询·出入库流水'**
-  String get warehouseHubSectionInventoryDesc;
-
   /// No description provided for @warehouseHubSectionReports.
   ///
   /// In zh, this message translates to:
@@ -6090,12 +6084,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'子件还没到货，仓里一件都没有；子件入库后系统会自动补草稿并通知仓库。'**
   String get warehouseSubcontractOutboundComponentNotArrived;
-
-  /// No description provided for @warehouseSubcontractOutboundWorkView.
-  ///
-  /// In zh, this message translates to:
-  /// **'仓库作业视图'**
-  String get warehouseSubcontractOutboundWorkView;
 
   /// No description provided for @warehouseSubcontractOutboundBannerScope.
   ///

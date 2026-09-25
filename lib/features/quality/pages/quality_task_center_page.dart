@@ -85,15 +85,7 @@ class QualityTaskCenterPage extends ConsumerWidget {
               if (taskEntries.isNotEmpty && recordEntries.isNotEmpty)
                 const SizedBox(height: UtenSpacing.s16),
               if (recordEntries.isNotEmpty)
-                _section(
-                  context,
-                  theme,
-                  '查询与记录',
-                  recordEntries,
-                  description:
-                      '检测记录页仅供只读查询；质量决定及后续撤销历史会完整保留，'
-                      '不能在记录页修改或删除。',
-                ),
+                _section(context, theme, '查询与记录', recordEntries),
               if (taskEntries.isEmpty && recordEntries.isEmpty)
                 const UtenEmpty(
                   icon: Icons.lock_outline_rounded,
@@ -111,9 +103,8 @@ class QualityTaskCenterPage extends ConsumerWidget {
     BuildContext context,
     ThemeData theme,
     String title,
-    List<_QualityEntry> entries, {
-    String? description,
-  }) {
+    List<_QualityEntry> entries,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: Column(
@@ -133,15 +124,6 @@ class QualityTaskCenterPage extends ConsumerWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                if (description != null) ...[
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    description,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
               ],
             ),
           ),

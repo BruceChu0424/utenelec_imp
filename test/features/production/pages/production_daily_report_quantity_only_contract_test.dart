@@ -40,7 +40,8 @@ void main() {
       expect(edit, isNot(contains('_warehouseId')));
       expect(edit, isNot(contains("'warehouseId'")));
       expect(edit, isNot(contains("label: '仓库'")));
-      expect(edit, contains('先由仓库登记成品仓和库位并送检'));
+      // 2026-09-24 简洁口径：计量口径教学横幅已撤，不再常驻页面。
+      expect(edit, isNot(contains('先由仓库登记成品仓和库位并送检')));
       expect(list, isNot(contains("label: '仓库'")));
       expect(detail, isNot(contains("_KV('仓库'")));
       expect(columns, contains('返工再检'));

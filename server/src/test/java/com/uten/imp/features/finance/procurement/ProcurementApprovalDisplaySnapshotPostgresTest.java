@@ -107,7 +107,8 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                 assertThat(display(jdbc, first)).isEqualTo(frozen);
                 assertThat(current.path("remark").isNull()).isTrue();
                 assertThat(current.path("items").get(0).path("remark").isNull()).isTrue();
-                assertThat(current.path("items").get(0).path("weight").asText()).isEqualTo("2.7500");
+                // ExactDecimalText 2026-09-24 起去尾随零：展示 "2.75"。
+                assertThat(current.path("items").get(0).path("weight").asText()).isEqualTo("2.75");
                 assertThat(new BigDecimal(current.path("items").get(0).path(extraKey).asText())).isEqualByComparingTo("3.75");
                 assertThat(current.path("items").get(0).path("sources").get(0).path("quantity").asText()).isEqualTo("6");
                 assertThat(jdbc.queryForObject("SELECT snapshot_hash FROM procurement_order_approval_cases WHERE id=?", String.class, second))

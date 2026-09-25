@@ -38,11 +38,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 2026-09-01 重组：销售出库并入「出库任务中心」卡（页内分段），不再是独立卡。
-    expect(find.text('出库任务中心'), findsOneWidget);
+    // 2026-09-24 仓库任务中心合并：出库并入「仓库任务中心」合并页（页内大类），
+    // hub 只剩一张任务中心卡；旧四张任务卡与独立出库卡不再是 hub 卡。
+    expect(find.text('仓库任务中心'), findsOneWidget);
+    expect(find.text('出库任务中心'), findsNothing);
     expect(find.text('销售出库'), findsNothing);
     expect(find.text('入库任务中心'), findsNothing);
     expect(find.text('生产领料任务中心'), findsNothing);
+    expect(find.text('品质部检查结果'), findsNothing);
     expect(find.text('委外出仓'), findsNothing);
   });
 }

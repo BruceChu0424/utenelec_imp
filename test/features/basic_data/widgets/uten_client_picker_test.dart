@@ -20,6 +20,11 @@ void main() {
 
     await _openPicker(tester);
 
+    // 左树默认全部收起（2026-09-24 用户口径）：只显示一级分类，
+    // 二级「东南亚客户」须点父级行展开后才可见。
+    expect(find.text('海外客户(OVERSEAS)'), findsOneWidget);
+    expect(find.text('东南亚客户(SEA)'), findsNothing);
+
     final sheet = _widePickerSheet();
     expect(sheet, findsOneWidget);
     final searchFields = find.descendant(

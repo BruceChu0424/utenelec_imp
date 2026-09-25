@@ -6,6 +6,7 @@ import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.Arriv
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ReturnCompletionRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.Map;
 import java.util.UUID;
 
@@ -31,9 +33,17 @@ public class ProcurementArrivalExceptionController {
     @GetMapping("/tasks")
     public PageResponse<ArrivalExceptionTask> tasks(
             @RequestParam(required = false) String orderType,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate dateTo,
+            @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.ownerTasks(orderType, page, size);
+        // 2026-09-24 任务中心统一：status=COMPLETED + dateFrom/dateTo = 历史记录段
+        // （时间门控）；keyword 供页级搜索。缺省仍是待退回队列（向后兼容）。
+        return service.ownerTasks(orderType, page, size, status, dateFrom, dateTo, keyword);
     }
 
     @GetMapping("/count")

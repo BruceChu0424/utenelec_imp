@@ -731,8 +731,6 @@ class _WarehouseArrivalBatchReceiptPageState
           controller: _scrollCtl,
           padding: const EdgeInsets.all(UtenSpacing.s12),
           children: [
-            _banner(theme),
-            const SizedBox(height: UtenSpacing.s12),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -858,39 +856,6 @@ class _WarehouseArrivalBatchReceiptPageState
 
   int get _orderCount =>
       _lines.map((line) => line.prefill.orderId).toSet().length;
-
-  Widget _banner(ThemeData theme) {
-    return Semantics(
-      container: true,
-      label: '按实际到货数量登记；提交后直接送品质部待检。超量部分自动隔离待财务定案。',
-      child: Card(
-        color: theme.colorScheme.tertiaryContainer,
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.fact_check_outlined,
-                color: theme.colorScheme.onTertiaryContainer,
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Text(
-                  '批量登记 · $_orderCount 张订货单：本次实收默认=批准剩余量；'
-                  '入库仓库逐行必填。提交后按「订货单 × 入库仓库」分组建收货单并直接送检，'
-                  '实到超量部分自动隔离待财务定案，不会入库、不会生成应付。',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onTertiaryContainer,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   /// 表头筛选桶标签：空白与主档未解析的「—」不建桶（返回 null → 计入「未填」）。
   String? _bucketOrNull(String? value) {

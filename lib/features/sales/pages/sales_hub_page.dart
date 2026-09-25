@@ -1,20 +1,16 @@
-// 销售管理入口页（hub）—— 两个分组卡片：
-//  ① 销售管理：5 单据卡片（报价/订货/出货/其它出货/退货）
-//  ② 销售报表：报表卡片（明细/汇总/待交货）
-// 点卡片进对应列表/报表页。卡片按权限显隐（无 view 权限不渲染对应入口）；
-// 销售管理卡 / 销售报表卡 若整组无可显项则整卡隐藏。
+// 销售管理入口页（hub）—— 2026-09-24 模块三段式统一（docs/01-规划/
+// 2026-09-24-模块三段式统一*.md）：
+//  ① 任务中心：销售任务中心（订货进度/出货/零星/退货/报价/历史其它出货一站式查看）
+//  ② 新建单据：报价/订货/出货/客户零星发货/退货 —— 直达各 /new 编辑页，
+//     只对持新建权限者显示（浏览去任务中心），一律不挂徽章（用户口径）。
+//     「历史其它出货单」是只读历史，不放新建区（浏览在任务中心）。
+//  ③ 销售报表：明细/汇总 + 稀缺仲裁（不变）。
 //
-// 卡片统一用 UtenHubCard，右上角徽章槽恒放红色待办数（准则 14-徽章与计数口径）：
-//   · 任务中心卡：SalesProgressBadge(财务驳回 + 完工提醒，BadgeEntry.salesAttention)。
-//   · 报价/订货/出货/退货单据卡：UtenDraftBadge(本人待自审草稿数)——2026-09-11 起
-//     草稿由中性括号改红徽章并逐级累加(BadgeEntry.salesDrafts)。
-// 2026-09-21(ADR-100) 起右上角还可能有第二枚徽章: 黄色「进行中」数, 排在红徽章左边,
-// 回答「我手上还有多少在跑」(红徽章回答「我还欠多少活」)。销售只有「订单进度查询」
-// 一张卡登记黄数, 四张单据卡刻意不挂, 理由见下方 _Entry.fromCfg 注释。
-// 顶栏右上角另有一枚红徽章 = 本模块累计(全部登记入口之和), 其左边是同口径的黄色
-// 「进行中 N」药丸。
-// 「客户零星发货」故意不显草稿数——与「销售出货」同属 sales_shipments，
-// /sales/shipments 列表本就含这批单，两处各显一次会双计(见准则 14-徽章与计数口径)。
+// 卡片统一用 UtenHubCard。计数口径（准则 14）：
+//   · 任务中心卡：红 = SalesProgressBadge（财务驳回 + 可分批发货，salesAttention），
+//     黄 = 在途订单数（salesOrderInFlight，ADR-100）。
+//   · 新建区五张卡不挂数（2026-09-24 用户口径：新建入口不需要通知数量徽章；
+//     草稿仍在新页「草稿(N)」按钮与任务中心草稿分段可见，模块累计照旧含草稿）。
 // 权限来自 currentPermissionsProvider；路由用 SalesRoutePath 字面量。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,7 +18,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/feedback/uten_module_todo_chip.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
-import '../../../components/feedback/uten_draft_badge.dart';
 import '../../../components/feedback/uten_in_progress_badge.dart';
 import '../../../components/feedback/uten_module_progress_chip.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -57,15 +52,16 @@ class SalesHubPage extends ConsumerWidget {
     bool canOpen(String location) =>
         hubCardAllowed(RouteName.sales, location, perms, superAdmin);
 
-    // 任务中心：订单进度查询（财务驳回待修正 + 未读完工提醒同源徽章）。
-    // 黄徽章 = 在途订单数(待排产 + 生产中 + 出货待财审 + 等仓库出货): 这批单还在
-    // 生产/财务/仓库手上跑着, 销售现在不用动手, 与红徽章各答一个问题(ADR-100)。
+    // 任务中心：销售任务中心（一站式查看全部销售单据与进度）。
+    // 红徽章 = 财务驳回待修正 + 可分批发货待开单；黄徽章 = 在途订单数
+    // (待排产 + 生产中 + 出货待财审 + 等仓库出货): 这批单还在生产/财务/仓库
+    // 手上跑着, 销售现在不用动手, 与红徽章各答一个问题(ADR-100)。
     final taskEntries = <_Entry>[
       _Entry(
         icon: Icons.timeline_outlined,
-        label: l10n.salesHubTaskOrderProgress,
+        label: '销售任务中心',
         description: l10n.salesHubTaskOrderProgressSub,
-        location: RouteName.salesOrderProgress,
+        location: RouteName.salesTasks,
         badge: const SalesProgressBadge(),
         progressBadge: UtenInProgressBadge(
           count: ref.watch(
@@ -76,13 +72,14 @@ class SalesHubPage extends ConsumerWidget {
       ),
     ].where((e) => canOpen(e.location)).toList();
 
+    // 新建单据（2026-09-24 三段式）：直达各 /new 编辑页，creator-only
+    //（无新建权限时隐藏，浏览去任务中心）；新建入口一律不挂徽章。
     final docEntries = <_Entry>[
-      _Entry.fromCfg(SalesDocConfig.quote, l10n, canOpen),
-      _Entry.fromCfg(SalesDocConfig.order, l10n, canOpen),
-      _Entry.fromCfg(SalesDocConfig.shipment, l10n, canOpen),
-      _Entry.fromCfg(SalesDocConfig.customerShipment, l10n, canOpen),
-      _Entry.fromCfg(SalesDocConfig.otherShipment, l10n, canOpen),
-      _Entry.fromCfg(SalesDocConfig.returnDoc, l10n, canOpen),
+      _Entry.fromCfg(SalesDocConfig.quote, l10n),
+      _Entry.fromCfg(SalesDocConfig.order, l10n),
+      _Entry.fromCfg(SalesDocConfig.shipment, l10n),
+      _Entry.fromCfg(SalesDocConfig.customerShipment, l10n),
+      _Entry.fromCfg(SalesDocConfig.returnDoc, l10n),
     ].where((e) => canOpen(e.location)).toList();
 
     final reportEntries = <_Entry>[
@@ -153,16 +150,11 @@ class SalesHubPage extends ConsumerWidget {
               if (taskEntries.isNotEmpty)
                 const SizedBox(height: UtenSpacing.s16),
               if (docEntries.isNotEmpty)
-                _section(context, theme, l10n.salesHubTitle, docEntries),
+                _section(context, theme, '新建单据', docEntries),
               if (docEntries.isNotEmpty && reportEntries.isNotEmpty)
                 const SizedBox(height: UtenSpacing.s16),
               if (reportEntries.isNotEmpty)
-                _section(
-                  context,
-                  theme,
-                  l10n.salesHubSectionReports,
-                  reportEntries,
-                ),
+                _section(context, theme, '报表中心', reportEntries),
               if (reportEntries.isNotEmpty && scarcityEntries.isNotEmpty)
                 const SizedBox(height: UtenSpacing.s16),
               if (scarcityEntries.isNotEmpty)
@@ -226,38 +218,14 @@ class _Entry {
     this.progressBadge,
   });
 
-  /// 单据卡；有草稿计数口径的类型挂草稿红徽章（本人待自审草稿数）。
-  ///
-  /// 草稿占的是 [badge]（卡片右上角浮层）而不是标题右侧的 labelSuffix：销售这几张
-  /// 单据卡本身没有别的待办徽章，右上角空着——用户要的就是这个位置。只有像采购收货
-  /// 那样已被「待收货」占掉 badge 的卡，草稿才退到标题行内（一个槽塞两个红点读不懂）。
-  ///
-  /// 「新建页带历史列表」的单据只对能新建的人落到新建页；只能查看的人落到列表页
-  /// (两个落点都登记在 hub_catalog，守卫各自生效)。
-  _Entry.fromCfg(
-    SalesDocConfig cfg,
-    AppLocalizations l10n,
-    bool Function(String location) canOpen,
-  ) : icon = cfg.icon,
-      label = _salesDocTitle(cfg.type, l10n),
+  /// 新建单据卡（2026-09-24 三段式）：只对能新建的人显示（外层 canOpen 过滤），
+  /// 落点恒为 /new 编辑页（进卡即新建态，不显示历史）；新建入口一律不挂徽章。
+  _Entry.fromCfg(SalesDocConfig cfg, AppLocalizations l10n)
+    : icon = cfg.icon,
+      label = '新建${_salesDocTitle(cfg.type, l10n)}',
       description = _salesDocSubtitle(cfg.type, l10n),
-      location =
-          cfg.skipListOnCreate &&
-              canOpen(SalesRoutePath.docNew(cfg.type.pathSegment))
-          ? SalesRoutePath.docNew(cfg.type.pathSegment)
-          : SalesRoutePath.list(cfg.type.pathSegment),
-      // 销售出货卡: 草稿 + 财务已退回(列表页两段红徽章之和, 2026-09-21)。
-      badge = cfg.draftKind == null
-          ? null
-          : UtenDraftBadge(
-              kind: cfg.draftKind!,
-              withFinanceRejected: cfg.type == SalesDocType.shipment,
-            ),
-      // 单据卡一律不挂黄色「进行中」数(ADR-100 §2.4 的去重结论, 别来补):
-      // 订单进度那张卡的黄数已经含「出货待财审 + 等仓库出货」两段, 而这两段本就是
-      // 从出货单派生的(服务端 progressStageExpr 看的是 shipment_*_qty), 在出货/订货/
-      // 报价/退货卡再按单据数一遍, 就是同一批出货在销售模块里翻倍。黄链与红链一样,
-      // 链内同一件活只能计一次。
+      location = SalesRoutePath.docNew(cfg.type.pathSegment),
+      badge = null,
       progressBadge = null;
 
   final IconData icon;

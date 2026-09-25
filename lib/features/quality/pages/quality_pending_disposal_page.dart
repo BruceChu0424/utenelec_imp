@@ -1318,32 +1318,36 @@ class _ProcurementInspectionDetailPageState
         if (item.preStocked != null) item,
     ];
     return UtenContentContainer.wide(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 先入库后检(V596)：顶部标红——货品已在库位上，不在待检区。
-          if (preStockedItems.isNotEmpty ||
-              (_receipt?.hasPreStockedItems == true && _items.isEmpty)) ...[
-            UtenInlineNotice(
-              key: const Key('iqc-pre-stocked-notice'),
-              level: UtenInlineNoticeLevel.error,
-              title: '货品已入库，需到对应储放区域检查',
-              message: _preStockedNoticeMessage(preStockedItems),
-            ),
+      // 2026-09-24 用户口径：对齐其他页的「整页先滚 → 摘要卡随页收起 → 表格
+      // 顶到页面顶 → 表体内滚」联动；先入库标红/摘要卡/错误行都随页滚走。
+      child: UtenCollapsingHeaderScrollView(
+        collapsingHeader: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 先入库后检(V596)：顶部标红——货品已在库位上，不在待检区。
+            if (preStockedItems.isNotEmpty ||
+                (_receipt?.hasPreStockedItems == true && _items.isEmpty)) ...[
+              UtenInlineNotice(
+                key: const Key('iqc-pre-stocked-notice'),
+                level: UtenInlineNoticeLevel.error,
+                title: '货品已入库，需到对应储放区域检查',
+                message: _preStockedNoticeMessage(preStockedItems),
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+            ],
+            _buildSummaryCard(theme),
+            if (_error != null) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              _InlineWorkbenchError(message: _error!, onRetry: _load),
+            ],
+            if (_busyDecision) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              const LinearProgressIndicator(key: Key('iqc-decision-progress')),
+            ],
             const SizedBox(height: UtenSpacing.s8),
           ],
-          _buildSummaryCard(theme),
-          if (_error != null) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            _InlineWorkbenchError(message: _error!, onRetry: _load),
-          ],
-          if (_busyDecision) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            const LinearProgressIndicator(key: Key('iqc-decision-progress')),
-          ],
-          const SizedBox(height: UtenSpacing.s8),
-          Expanded(child: _buildItemTable()),
-        ],
+        ),
+        body: _buildItemTable(),
       ),
     );
   }
@@ -1486,6 +1490,8 @@ class _ProcurementInspectionDetailPageState
       absorbing: _busyDecision,
       child: MasterDataTableView<ProcurementInspectionItem>(
         key: ValueKey('iqc-item-table-${widget.receiptId}'),
+        // 折叠头联动：表体拾取 PrimaryScrollController，页面先滚、表格置顶后内滚。
+        primary: true,
         columns: _itemColumns,
         items: _items,
         facets: const {},

@@ -2173,38 +2173,40 @@ class _ProductionDailyReportEditPageState
                             ),
                           ),
                           const SizedBox(height: UtenSpacing.s12),
-                          Container(
-                            padding: const EdgeInsets.all(UtenSpacing.s12),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.tertiaryContainer,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  Icons.info_outline_rounded,
-                                  color: theme.colorScheme.onTertiaryContainer,
-                                ),
-                                const SizedBox(width: UtenSpacing.s8),
-                                Expanded(
-                                  child: Text(
-                                    '${_resumeNotice == null ? '' : '$_resumeNotice\n'}'
-                                    '计量口径：填写本次实际完工申报量。'
-                                    '按工单已生效的允许超产比例核对；超过允许范围时，先办理追加生产计划，原实际总量不改写。'
-                                    '转下工序只交需求内数量，超出部分送仓；'
-                                    '送仓部分先由仓库登记成品仓和库位并送检。'
-                                    '只有品质通过且仓库最终点收的数量才会增加库存与完成率。'
-                                    '疑似不良也应按实际完工事实申报，由品质登记通过、返工、报废或拒收。',
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      color:
-                                          theme.colorScheme.onTertiaryContainer,
+                          // 2026-09-24 简洁口径：常驻教学横幅撤掉；仅恢复草稿/申请
+                          // 时显示一条紧凑状态提示（条件渲染，非教学）。
+                          if (_resumeNotice != null) ...[
+                            Container(
+                              padding: const EdgeInsets.all(UtenSpacing.s12),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.tertiaryContainer,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    Icons.info_outline_rounded,
+                                    color:
+                                        theme.colorScheme.onTertiaryContainer,
+                                  ),
+                                  const SizedBox(width: UtenSpacing.s8),
+                                  Expanded(
+                                    child: Text(
+                                      _resumeNotice!,
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onTertiaryContainer,
+                                          ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
+                            const SizedBox(height: UtenSpacing.s12),
+                          ],
                           // 日报附件（报工照片/检验记录）：已有单直接挂 PRODUCTION_DAILY_REPORT；
                           // 新建单先本地暂存，保存拿到 UUID 后逐个确认上传（ADR-074）。
                           const SizedBox(height: UtenSpacing.s12),

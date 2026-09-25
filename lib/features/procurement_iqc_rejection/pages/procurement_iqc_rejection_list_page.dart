@@ -196,7 +196,6 @@ class _ProcurementIqcRejectionListPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: 'IQC 不合格退回与贷项',
-        subtitle: '品质冻结事实 · 实物退回 · 供应商贷项 · 可审计反向',
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: _defaultBackPath),
         ),

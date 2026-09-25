@@ -18,7 +18,17 @@ import '../widgets/warehouse_task_center_scaffold.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 class WarehouseDrawTaskCenterPage extends ConsumerWidget {
-  const WarehouseDrawTaskCenterPage({super.key});
+  const WarehouseDrawTaskCenterPage({
+    super.key,
+    this.embedded = false,
+    this.externalKeyword,
+    this.externalRefreshTick,
+  });
+
+  /// 嵌入态：作为合并页（/warehouse/tasks）「生产领料」大类的正文，见骨架注释。
+  final bool embedded;
+  final String? externalKeyword;
+  final int? externalRefreshTick;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -38,7 +48,6 @@ class WarehouseDrawTaskCenterPage extends ConsumerWidget {
     return WarehouseTaskCenterScaffold(
       location: RouteName.warehouseDrawTasks,
       title: '生产领料任务中心',
-      subtitle: '待领任务 · 领料单 · 生产退料一站式办理',
       searchHint: '搜索单号 / 生产计划 / 货品 / 车间',
       segments: [
         WarehouseTaskSegmentSpec(
@@ -53,6 +62,9 @@ class WarehouseDrawTaskCenterPage extends ConsumerWidget {
           count: returnCount,
         ),
       ],
+      embedded: embedded,
+      externalKeyword: externalKeyword,
+      externalRefreshTick: externalRefreshTick,
       onResume: () => invalidateWarehouseTaskCounts(ref),
       bodyBuilder: (segment, keyword, refreshTick) => switch (segment) {
         'pending' => WarehouseDrawTaskSegment(

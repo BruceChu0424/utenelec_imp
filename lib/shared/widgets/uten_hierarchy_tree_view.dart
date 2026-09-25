@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 
 import '../../components/inputs/uten_search_bar.dart';
+import '../../core/theme/uten_colors.dart';
 import '../models/uten_tree_node.dart';
 
 /// 树的选择语义。
@@ -45,6 +46,7 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
     this.externalSearchLoading = false,
     this.externalSearchError,
     this.sortByCode = false,
+    this.flatLevelColors = false,
   });
 
   /// 树数据(调用方给，组件不自己拉)。
@@ -114,6 +116,13 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   /// 是否在组件内按编码重排同级节点。
   final bool sortByCode;
 
+  /// 无缩进层级色模式（选择器滑窗窄左栏用，2026-09-24 用户口径：层级多或名字长
+  /// 时缩进吃掉宽度，名字几乎看不到）。行不按深度缩进，改为整行按深度铺色：
+  /// 一级深绿白字（对齐权限目录分组的一级模块头）、二级 surfaceContainerHigh、
+  /// 三级及更深 surfaceContainerLow；方角、行距收紧；选中 = 左缘 3px 强调条 +
+  /// 加粗 + 勾选图标（深绿行上反白）。层级语义只靠颜色与勾选图标表达。
+  final bool flatLevelColors;
+
   @override
   State<UtenHierarchyTreeView<T>> createState() =>
       _UtenHierarchyTreeViewState<T>();
@@ -130,6 +139,14 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   bool _enabled(T node) => widget.nodeEnabledPredicate?.call(node) ?? true;
 
   bool _passes(T node) => widget.passThrough?.call(node) ?? false;
+
+  /// flat 模式按深度铺色：一级深绿实底（白字）、二级 surfaceContainerHigh、
+  /// 三级及更深 surfaceContainerLow（三级往上只分三档，再深的层级同三档色）。
+  Color? _flatRowBackground(ThemeData theme, int depth) => switch (depth) {
+    0 => UtenColors.deepGreen,
+    1 => theme.colorScheme.surfaceContainerHigh,
+    _ => theme.colorScheme.surfaceContainerLow,
+  };
 
   @override
   void initState() {
@@ -264,68 +281,102 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     final leading = widget.leadingBuilder?.call(node, enabled);
     final highlight = widget.mode == UtenTreeSelectMode.none && isSelected;
 
+    // flat 模式的行样式（见 [flatLevelColors] 文档）：铺色 + 方角 + 无缩进；
+    // 非 flat 保持原样（缩进 + 圆角高亮）。
+    final flat = widget.flatLevelColors;
+    final rowBg = flat
+        ? _flatRowBackground(theme, depth)
+        : (highlight ? theme.colorScheme.primaryContainer : null);
+    // 深绿实底行上的前景（文字/勾选/强调条）一律反白，浅色行用主色强调选中。
+    final onDarkRow = flat && depth == 0;
+    final rowAccent = onDarkRow ? Colors.white : theme.colorScheme.primary;
+
     final row = Material(
-      color: highlight ? theme.colorScheme.primaryContainer : null,
-      borderRadius: BorderRadius.circular(8),
+      color: rowBg,
+      borderRadius: flat ? BorderRadius.zero : BorderRadius.circular(8),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => _onRowTap(node),
-        child: Padding(
-          padding: EdgeInsets.only(
-            left: 8 + depth * 18.0,
-            right: 8,
-            top: 6,
-            bottom: 6,
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 24,
-                child: node.hasChildren
-                    ? GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => _toggleExpand(node),
-                        child: Icon(
-                          expanded
-                              ? Icons.expand_more_rounded
-                              : Icons.chevron_right_rounded,
-                          size: 20,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      )
-                    : null,
-              ),
-              if (leading != null) ...[leading, const SizedBox(width: 8)],
-              if (leading == null) const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  widget.labelOf?.call(node) ?? node.name,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                    color: enabled
-                        ? (isSelected ? theme.colorScheme.primary : null)
-                        : theme.colorScheme.onSurfaceVariant,
+        child: DecoratedBox(
+          // flat 模式选中强调条：常驻 3px 透明边占位，行文字左缘对各层级恒对齐。
+          decoration: flat
+              ? BoxDecoration(
+                  border: Border(
+                    left: BorderSide(
+                      width: 3,
+                      color: isSelected ? rowAccent : Colors.transparent,
+                    ),
+                  ),
+                )
+              : const BoxDecoration(),
+          child: Padding(
+            padding: flat
+                ? EdgeInsets.only(
+                    left: 8,
+                    right: 8,
+                    top: depth == 0 ? 7 : 4,
+                    bottom: depth == 0 ? 7 : 4,
+                  )
+                : EdgeInsets.only(
+                    left: 8 + depth * 18.0,
+                    right: 8,
+                    top: 6,
+                    bottom: 6,
+                  ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 24,
+                  child: node.hasChildren
+                      ? GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => _toggleExpand(node),
+                          child: Icon(
+                            expanded
+                                ? Icons.expand_more_rounded
+                                : Icons.chevron_right_rounded,
+                            size: 20,
+                            color: onDarkRow
+                                ? Colors.white70
+                                : theme.colorScheme.onSurfaceVariant,
+                          ),
+                        )
+                      : null,
+                ),
+                if (leading != null) ...[leading, const SizedBox(width: 8)],
+                if (leading == null) const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    widget.labelOf?.call(node) ?? node.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: isSelected || onDarkRow
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                      color: enabled
+                          ? (onDarkRow
+                                ? Colors.white
+                                : isSelected
+                                ? theme.colorScheme.primary
+                                : null)
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
-              ),
-              ?trailing,
-              if (enabled && widget.mode == UtenTreeSelectMode.multi)
-                Checkbox(
-                  value: isSelected,
-                  onChanged: (_) => widget.onToggleSelect?.call(node),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
-                )
-              else if (enabled &&
-                  widget.mode == UtenTreeSelectMode.single &&
-                  isSelected)
-                Icon(
-                  Icons.check_circle_rounded,
-                  size: 18,
-                  color: theme.colorScheme.primary,
-                ),
-            ],
+                ?trailing,
+                if (enabled && widget.mode == UtenTreeSelectMode.multi)
+                  Checkbox(
+                    value: isSelected,
+                    onChanged: (_) => widget.onToggleSelect?.call(node),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  )
+                else if (enabled &&
+                    widget.mode == UtenTreeSelectMode.single &&
+                    isSelected)
+                  Icon(Icons.check_circle_rounded, size: 18, color: rowAccent),
+              ],
+            ),
           ),
         ),
       ),

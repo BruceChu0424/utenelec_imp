@@ -10,6 +10,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/features/warehouse/pages/warehouse_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_draw_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_inbound_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_outbound_task_center_page.dart';
@@ -129,6 +130,90 @@ void main() {
       // 任务中心静态段不能落入 /warehouse/:code 单据回退：未知子段 fail-closed
       //（返回空列表 → 路由守卫送 notFound）。
       expect(requiredAnyPermFor('/warehouse/tasks/unknown'), isEmpty);
+      // 2026-09-24 合并页：六大类业务域任一可看即可进入（页内再按大类显隐）。
+      expect(requiredAnyPermFor(RouteName.warehouseTasks), const [
+        Perm.warehouseSalesOutboundView,
+        Perm.subcontractOutboundView,
+        Perm.stockDocView,
+        Perm.warehouseInboundView,
+        Perm.warehousePurchaseReceiptHistoryView,
+        Perm.warehouseSubcontractReceiptHistoryView,
+        Perm.warehouseIqcStockInView,
+        Perm.warehouseIqcReturnView,
+        Perm.warehouseSubcontractFinishedReturnHistoryView,
+        Perm.warehouseSubcontractWasteHistoryView,
+      ]);
+    });
+  });
+
+  group('merged warehouse task center (2026-09-24)', () {
+    testWidgets('大类按权限显隐，嵌入态复用子任务中心', (tester) async {
+      await tester.pumpWidget(
+        app(const WarehouseTaskCenterPage(), const {
+          Perm.stockDocView,
+          Perm.stockDocCreate,
+        }),
+      );
+      await tester.pump();
+
+      // 库存单据权限：出库/入库/生产领料三大类；品质与委外两类历史隐藏。
+      expect(find.text('出库'), findsOneWidget);
+      expect(find.text('入库'), findsOneWidget);
+      expect(find.text('生产领料'), findsOneWidget);
+      expect(find.text('品质检查结果'), findsNothing);
+      expect(find.text('委外成品退货'), findsNothing);
+      expect(find.text('委外损耗'), findsNothing);
+      // 进页面不预选大类：引导空态，不发请求。
+      expect(find.text('在上方选择分类后开始办理'), findsOneWidget);
+
+      // 切到「出库」大类：嵌入的出库任务中心小类行出现（无销售出库权限 →
+      // 只见其它/产成品出库两段）。
+      await tester.tap(find.text('出库'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('销售出库'), findsNothing);
+      expect(find.text('其它出库'), findsOneWidget);
+      expect(find.text('产成品出库'), findsOneWidget);
+      // 小类行同样默认不选：仍是引导占位。
+      expect(find.text('在上方选择分类后开始办理'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 61));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    testWidgets('品质查看权限解锁品质检查结果大类（原页嵌入）', (tester) async {
+      await tester.pumpWidget(
+        app(const WarehouseTaskCenterPage(), const {
+          Perm.warehouseIqcStockInView,
+        }),
+      );
+      await tester.pump();
+      expect(find.text('品质检查结果'), findsOneWidget);
+
+      await tester.tap(find.text('品质检查结果'));
+      await tester.pump();
+      await tester.pump();
+      // 嵌入的品质结果页保留自己的来源行（进页面不选来源）。
+      expect(find.text('在上方选择来源和状态后开始办理'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 61));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    testWidgets('深链 initialGroup 预设大类', (tester) async {
+      await tester.pumpWidget(
+        app(const WarehouseTaskCenterPage(initialGroup: 'draw'), const {
+          Perm.stockDocView,
+        }),
+      );
+      await tester.pump();
+      // 预选生产领料大类：直接见到领料小类行，不再是引导空态。
+      expect(find.text('待领任务'), findsOneWidget);
+      expect(find.text('领料单'), findsOneWidget);
+      expect(find.text('生产退料'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 61));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
     });
   });
 

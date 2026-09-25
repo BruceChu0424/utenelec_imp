@@ -137,7 +137,6 @@ class _FinanceAuditCenterPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: '业务审核中心',
-        subtitle: '销售订单 · 订单修改 · 出货 · 订货 · 超量到货 · IQC 退回',
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.finance),
         ),

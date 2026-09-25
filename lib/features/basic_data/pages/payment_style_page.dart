@@ -548,7 +548,6 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
     return Scaffold(
       appBar: UtenAppBar(
         title: '收付款类别',
-        subtitle: directoryInDrawer ? null : '维护财务类别层级、业务属性与使用状态',
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
         ),

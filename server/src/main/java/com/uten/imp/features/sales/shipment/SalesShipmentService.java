@@ -1046,14 +1046,14 @@ public class SalesShipmentService {
                 // 财审页汇率框的预填值：已冻结的 > 本位币恒 1 > 主档参考汇率 > 空(要财务填)。
                 Map.entry("suggestedExchangeRate", suggestedFinanceReleaseRate(s, rateState)),
                 Map.entry("outstanding", outstanding),
-                Map.entry("outstandingExact",outstanding.toPlainString()),
+                Map.entry("outstandingExact",outstanding.stripTrailingZeros().toPlainString()),
                 Map.entry("creditFloor", creditFloor),
-                Map.entry("creditFloorExact",creditFloor.toPlainString()),
+                Map.entry("creditFloorExact",creditFloor.stripTrailingZeros().toPlainString()),
                 Map.entry("overFloor", outstanding.subtract(creditFloor)),
-                Map.entry("overFloorExact",outstanding.subtract(creditFloor).toPlainString()),
+                Map.entry("overFloorExact",outstanding.subtract(creditFloor).stripTrailingZeros().toPlainString()),
                 Map.entry("availablePrepaymentOriginal", availablePrepaymentOriginal),
-                Map.entry("availablePrepaymentOriginalExact",availablePrepaymentOriginal.toPlainString()),
-                Map.entry("availablePrepaymentLocalExact",availablePrepaymentLocal.toPlainString()),
+                Map.entry("availablePrepaymentOriginalExact",availablePrepaymentOriginal.stripTrailingZeros().toPlainString()),
+                Map.entry("availablePrepaymentLocalExact",availablePrepaymentLocal.stripTrailingZeros().toPlainString()),
                 Map.entry("availablePrepaymentLocal", availablePrepaymentLocal));
     }
 

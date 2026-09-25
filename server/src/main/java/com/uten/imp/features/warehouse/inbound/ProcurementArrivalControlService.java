@@ -665,29 +665,82 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     @PreAuthorize("hasAuthority('supplier_return_task:view')")
     public PageResponse<ArrivalExceptionTask> ownerTasks(
             String rawOrderType, int page, int size) {
+        return ownerTasks(rawOrderType, page, size, null, null, null, null);
+    }
+
+    /**
+     * 2026-09-24 任务中心统一：待退回任务页按任务中心范式分段。
+     * status=PENDING_RETURN（默认，向后兼容）= 待退回队列；status=COMPLETED = 历史
+     * （已退回，按办结日 completed_at 时间门控 dateFrom/dateTo）；keyword 匹配
+     * 收货单号/订货单号/货品名称与编号/供应商名（不区分大小写包含）。
+     */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('supplier_return_task:view')")
+    public PageResponse<ArrivalExceptionTask> ownerTasks(
+            String rawOrderType, int page, int size,
+            String status, LocalDate completedFrom, LocalDate completedTo, String keyword) {
         int safePage = safePage(page);
         int safeSize = safeSize(size);
         UUID actor = currentUser.requireId();
         String orderType = optionalOrderType(rawOrderType);
+        boolean history = "COMPLETED".equalsIgnoreCase(
+                status == null ? "" : status.trim());
         List<Object> args = new ArrayList<>();
         args.add(actor);
-        String typePredicate = "";
+        StringBuilder where = new StringBuilder("return_task.owner_user_id = ?");
+        where.append(history
+                ? " AND return_task.status = 'COMPLETED'"
+                : " AND return_task.status = 'PENDING_RETURN'");
         if (orderType != null) {
-            typePredicate = " AND exception.order_type = ?";
+            where.append(" AND exception.order_type = ?");
             args.add(orderType);
         }
-        long total = countOwnerTasks(actor, orderType);
+        if (history) {
+            where.append("""
+                  AND (CAST(? AS date) IS NULL OR return_task.completed_at::date >= CAST(? AS date))
+                  AND (CAST(? AS date) IS NULL OR return_task.completed_at::date <= CAST(? AS date))
+                """);
+            args.add(completedFrom);
+            args.add(completedFrom);
+            args.add(completedTo);
+            args.add(completedTo);
+        }
+        String search = keyword == null ? "" : keyword.trim().toLowerCase();
+        if (!search.isEmpty()) {
+            where.append("""
+                  AND (LOWER(COALESCE(exception.receipt_bill_no_snapshot, '')) LIKE ?
+                    OR LOWER(COALESCE(exception.order_bill_no_snapshot, '')) LIKE ?
+                    OR LOWER(COALESCE(goods.name, '')) LIKE ?
+                    OR LOWER(COALESCE(goods.code, '')) LIKE ?
+                    OR LOWER(COALESCE(supplier.name, '')) LIKE ?)
+                """);
+            String like = "%" + search + "%";
+            for (int i = 0; i < 5; i++) {
+                args.add(like);
+            }
+        }
+        long total = countOwnerTasksWhere(where.toString(), args);
         args.add(safeSize);
         args.add((safePage - 1) * safeSize);
         List<ArrivalExceptionTask> items = queryExceptions(
-                """
-                return_task.owner_user_id = ?
-                  AND return_task.status = 'PENDING_RETURN'
-                """ + typePredicate,
+                where.toString(),
                 ActionScope.OWNER,
                 "LIMIT ? OFFSET ?",
                 args.toArray());
         return page(items, safePage, safeSize, total);
+    }
+
+    /** 与 {@link #ownerTasks} 的 where 完全同谓词的计数（历史/关键字过滤后的总数）。 */
+    private long countOwnerTasksWhere(String whereClause, List<Object> args) {
+        Long count = jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM supplier_return_tasks return_task
+                JOIN procurement_arrival_exceptions exception
+                  ON exception.id = return_task.arrival_exception_id
+                LEFT JOIN suppliers supplier ON supplier.id = exception.supplier_id
+                JOIN goods goods ON goods.id = exception.goods_id
+                WHERE """ + whereClause, Long.class, args.toArray());
+        return count == null ? 0 : count;
     }
 
     @Transactional(readOnly = true)

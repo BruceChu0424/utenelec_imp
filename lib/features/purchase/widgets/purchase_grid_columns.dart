@@ -109,8 +109,9 @@ class PurchaseGridRow extends EditableGridRow
       if (li.upstreamItemId != null && li.upstreamItemId!.isNotEmpty)
         li.upstreamItemId!,
     ];
-    r.qty.text = li.qty.toString();
-    if (li.price != null) r.price.text = li.price.toString();
+    r.qty.text = financeExactTrimmed(li.qty.toString()) ?? '';
+    if (li.price != null)
+      r.price.text = financeExactTrimmed(li.price.toString()) ?? '';
     return r;
   }
 

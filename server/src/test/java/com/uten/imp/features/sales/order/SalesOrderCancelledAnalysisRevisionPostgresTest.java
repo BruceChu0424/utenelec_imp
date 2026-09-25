@@ -19,7 +19,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -59,13 +58,6 @@ class SalesOrderCancelledAnalysisRevisionPostgresTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
-    }
-
-    /** 类级共享：号段触发器要求 XD+日期+6 位序号注册格式，序号不重复。 */
-    private static final AtomicInteger BILL_SEQUENCE = new AtomicInteger();
-
-    private static String billNo() {
-        return "XD20260924%06d".formatted(BILL_SEQUENCE.incrementAndGet());
     }
 
     @Autowired
@@ -137,7 +129,6 @@ class SalesOrderCancelledAnalysisRevisionPostgresTest {
     private com.uten.imp.features.sales.order.dto.OrderSaveRequest orderRequest(
             UUID currencyId, com.uten.imp.features.sales.order.dto.OrderItemLine item) {
         var request = new com.uten.imp.features.sales.order.dto.OrderSaveRequest();
-        request.setBillNo(billNo());
         request.setBillDate(LocalDate.of(2026, 9, 24));
         request.setClientId(client());
         request.setCurrencyId(currencyId);
@@ -158,13 +149,20 @@ class SalesOrderCancelledAnalysisRevisionPostgresTest {
     }
 
     private UUID insertAnalysisHeader(String status, UUID makerEmployeeId) {
+        // 分析头触发器要求有效主仓（is_accountable 默认 TRUE）；测试自插避开环境差异。
+        UUID warehouseId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO warehouses (id, code, name, status)
+                VALUES (?, ?, '取消分析修订测试仓', '使用')
+                """, warehouseId, "WH-CXA-" + warehouseId.toString().substring(0, 8));
         UUID id = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO production_material_analyses(
-                    id, status, fingerprint, initial_idempotency_key, maker_id)
-                VALUES (?, ?, ?, ?, ?)
+                    id, status, fingerprint, initial_idempotency_key, maker_id,
+                    warehouse_id)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """, id, status, "ab".repeat(32),
-                "cxa-idem-" + id, makerEmployeeId);
+                "cxa-idem-" + id, makerEmployeeId, warehouseId);
         return id;
     }
 
@@ -231,9 +229,9 @@ class SalesOrderCancelledAnalysisRevisionPostgresTest {
                 """, unitId, "U-CXA-" + tag + "-" + unitId.toString().substring(0, 8));
         UUID id = UUID.randomUUID();
         jdbc.update("""
-                INSERT INTO goods (id, code, name, unit_id, status, code_sequence,
+                INSERT INTO goods (id, code, name, unit_id, price, status, code_sequence,
                                    created_at, updated_at, is_deleted)
-                VALUES (?, ?, '取消分析修订测试货品', ?, '使用',
+                VALUES (?, ?, '取消分析修订测试货品', ?, 10, '使用',
                         (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM goods),
                         now(), now(), FALSE)
                 """, id, "G-CXA-" + tag + "-" + id.toString().substring(0, 8), unitId);

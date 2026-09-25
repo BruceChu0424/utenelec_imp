@@ -739,7 +739,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                   ON exception.id = return_task.arrival_exception_id
                 LEFT JOIN suppliers supplier ON supplier.id = exception.supplier_id
                 JOIN goods goods ON goods.id = exception.goods_id
-                WHERE """ + whereClause, Long.class, args.toArray());
+                """ + " WHERE " + whereClause, Long.class, args.toArray());
         return count == null ? 0 : count;
     }
 

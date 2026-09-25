@@ -232,12 +232,14 @@ class _SubcontractDocEditPageState
         _warehouseId = d.warehouseId;
         _currencyId = d.currencyId;
         _rate.text = financeExactTrimmed(d.exchangeRate?.toString()) ?? '1';
-        if (d.taxRate != null)
+        if (d.taxRate != null) {
           _taxRate.text = financeExactTrimmed(d.taxRate.toString()) ?? '';
+        }
         if (d.bStyle != null) _bStyle.text = d.bStyle.toString();
-        if (d.totalWeight != null)
+        if (d.totalWeight != null) {
           _totalWeight.text =
               financeExactTrimmed(d.totalWeight.toString()) ?? '';
+        }
         if (d.deductAmount != null) {
           _deductAmount.text =
               financeExactTrimmed(d.deductAmount.toString()) ?? '';

@@ -47,6 +47,11 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                 assertThat(migration).isNotNull();
                 jdbc.execute(new String(migration.readAllBytes(), StandardCharsets.UTF_8));
             }
+            // V708 重建函数对齐 trim_scale 展示口径(与 Flyway 全量顺序一致)。
+            try (var migration = getClass().getResourceAsStream("/db/migration/V708__procurement_display_snapshot_trim_scale.sql")) {
+                assertThat(migration).isNotNull();
+                jdbc.execute(new String(migration.readAllBytes(), StandardCharsets.UTF_8));
+            }
             assertThat(jdbc.queryForObject("SELECT display_snapshot::text FROM procurement_order_approval_cases WHERE id=?", String.class, legacy)).isNull();
             assertThat(jdbc.queryForObject("SELECT snapshot_hash FROM procurement_order_approval_cases WHERE id=?", String.class, legacy)).isEqualTo("legacy");
 

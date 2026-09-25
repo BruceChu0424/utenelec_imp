@@ -247,8 +247,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         _currencyId = d.currencyId;
         _settlementMethodId = d.settlementMethodId;
         _rate.text = financeExactTrimmed(d.exchangeRate?.toString()) ?? '1';
-        if (d.taxRate != null)
+        if (d.taxRate != null) {
           _taxRate.text = financeExactTrimmed(d.taxRate.toString()) ?? '';
+        }
         _applicantId = d.applicantId;
         _purchaserId = d.purchaserId;
         _senderId = d.senderId;

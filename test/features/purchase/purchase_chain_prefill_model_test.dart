@@ -55,7 +55,8 @@ void main() {
     expect(row.sourceLocked, isTrue);
     expect(row.upstreamItemId, 'request-item-1');
     expect(row.maxQty, 6);
-    expect(row.qty.text, '6.0');
+    // 2026-09-24 展示口径去尾随零：上游带入 6.0 显示 "6"。
+    expect(row.qty.text, '6');
   });
 
   testWidgets(

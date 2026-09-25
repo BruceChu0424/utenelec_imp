@@ -124,8 +124,9 @@ class SubcontractGridRow extends EditableGridRow
         li.upstreamItemId!,
     ];
     r.qty.text = financeExactTrimmed(li.qty.toString()) ?? '';
-    if (li.price != null)
+    if (li.price != null) {
       r.price.text = financeExactTrimmed(li.price.toString()) ?? '';
+    }
     return r;
   }
 

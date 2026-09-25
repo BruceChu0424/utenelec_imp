@@ -32,6 +32,8 @@ import com.uten.imp.features.production.execution.ExecutionSegmentView;
 import com.uten.imp.features.production.execution.ProductionExecutionSegmentService;
 import com.uten.imp.features.production.execution.SegmentAssignmentRequest;
 import com.uten.imp.features.production.execution.SegmentTransitionRequest;
+import com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryContracts;
+import com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryService;
 import com.uten.imp.features.production.schedule.ProductionScheduleService;
 import com.uten.imp.features.production.dailyreport.ProductionDailyReportService;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
@@ -177,6 +179,7 @@ class FullChainEndToEndTest {
     @Autowired private com.uten.imp.features.production.mrp.ProductionPlanResourceGuard planGuard;
     @Autowired private ProductionPlanningPackageService planningPackageService;
     @Autowired private ProductionExecutionSegmentService executionSegmentService;
+    @Autowired private ProductionMaterialDiscoveryService materialDiscoveryService;
     @Autowired private com.uten.imp.features.purchase.order.PurchaseOrderService purchaseOrderService;
     @Autowired private com.uten.imp.features.purchase.request.PurchaseRequestService purchaseRequestService;
     @Autowired private com.uten.imp.features.subcontract.order.SubcontractOrderService subcontractOrderService;
@@ -2601,7 +2604,7 @@ class FullChainEndToEndTest {
                 "服务端明确投影为无生产子层级");
         assertEquals(0, new BigDecimal("10").compareTo(
                 view.products().getFirst().readyNowQty()),
-                "无子层级 → 剩余需求全额可直接自制");
+                "无子层级仍可按原需求排产；齐套参考不代表无需领料即可开工");
 
         AnalysisView refreshed = analysisService.detail(analysisId);
         confirmRootMakeRoute(analysisId, refreshed);
@@ -2622,7 +2625,7 @@ class FullChainEndToEndTest {
         GeneratedPlan plan = generated.plans().getFirst();
         assertEquals("APPROVED", plan.status());
         assertEquals(1, plan.segmentIds().size());
-        assertTrue(currentPlanDrawIds(plan.planId()).isEmpty(), "无下层物料不得生成空 DRAW");
+        assertTrue(currentPlanDrawIds(plan.planId()).isEmpty(), "仓库登记实际材料前不得生成空 DRAW");
         UUID segmentId = plan.segmentIds().getFirst();
         assertEquals(
                 "READY|ZERO_MATERIAL|DIRECT_MAKE",
@@ -2678,15 +2681,64 @@ class FullChainEndToEndTest {
                         jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segmentId),
                         "idem-ma-direct-dispatch-" + segmentId));
         confirmFullKitRoute(plan.planId(), segmentId);
+        assertTrue(materialDiscoveryService.context(segmentId).materialDiscoveryRequired());
+        assertFalse(Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT fn_execution_start_material_ready(?)", Boolean.class, segmentId)));
+        assertThrows(ApiException.class, () -> executionSegmentService.start(
+                plan.planId(), segmentId, new SegmentTransitionRequest(
+                        jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?", Long.class, segmentId),
+                        "idem-ma-direct-start-before-materials-" + segmentId)));
+
+        var discoveryRequest = new ProductionMaterialDiscoveryContracts.Request(
+                jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?", Long.class, segmentId),
+                "idem-ma-direct-material-request-" + segmentId);
+        var pendingMaterials = materialDiscoveryService.request(segmentId, discoveryRequest);
+        assertEquals("PENDING", pendingMaterials.status());
+        assertEquals(pendingMaterials.requestId(), materialDiscoveryService.request(segmentId, discoveryRequest).requestId());
+        assertTrue(currentPlanDrawIds(plan.planId()).isEmpty(), "未知料请求本身不预留或伪造领料");
+        putDirectTargetStock(w, w.goodsD(), "5");
+        var configureMaterials = new ProductionMaterialDiscoveryContracts.Configure(
+                pendingMaterials.version(), "idem-ma-direct-material-configure-" + segmentId,
+                List.of(new ProductionMaterialDiscoveryContracts.Material(
+                        w.goodsD(), null, w.unitId(), w.warehouseId(), new BigDecimal("5"))));
+        var definedMaterials = materialDiscoveryService.configure(pendingMaterials.requestId(), configureMaterials);
+        assertEquals("CONFIGURED", definedMaterials.status());
+        assertEquals(1, definedMaterials.items().size());
+        assertEquals(1, definedMaterials.drawDocIds().size());
+        assertEquals(definedMaterials, materialDiscoveryService.configure(pendingMaterials.requestId(), configureMaterials));
+        assertEquals("DEMANDED", strFor("SELECT material_requirement_mode FROM production_execution_segments WHERE id=?", segmentId));
+        assertEquals(0, count("SELECT count(*) FROM production_material_stock_postings WHERE demand_id=?", definedMaterials.items().getFirst().demandId()));
+        assertThrows(ApiException.class, () -> executionSegmentService.start(
+                plan.planId(), segmentId, new SegmentTransitionRequest(
+                        jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?", Long.class, segmentId),
+                        "idem-ma-direct-start-before-issue-" + segmentId)));
+        UUID materialDraw = definedMaterials.drawDocIds().getFirst();
+        var materialIssue = new StockDocIssueRequest();
+        materialIssue.setIdempotencyKey("idem-ma-direct-material-issue-" + materialDraw);
+        materialIssue.setLines(jdbc.query("SELECT id,qty FROM stock_document_items WHERE doc_id=? AND NOT is_deleted", (row, index) -> {
+            var item = new StockDocIssueRequest.Line();
+            item.setItemId(row.getObject(1, UUID.class)); item.setQty(row.getBigDecimal(2));
+            return item;
+        }, materialDraw));
+        stockDocService.approveAndIssue(materialDraw, materialIssue);
+        assertTrue(Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT fn_execution_start_material_ready(?)", Boolean.class, segmentId)));
+        assertEquals(0, new BigDecimal("5").compareTo(bigDecimalFor(
+                "SELECT sum(qty_base) FROM production_material_stock_postings WHERE demand_id=? AND posting_type='ISSUE'",
+                definedMaterials.items().getFirst().demandId())));
         executionSegmentService.start(
                 plan.planId(), segmentId,
                 new SegmentTransitionRequest(
                         jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segmentId),
                         "idem-ma-direct-start-" + segmentId));
 
+        var actualMaterialUse = new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();
+        actualMaterialUse.setDemandId(definedMaterials.items().getFirst().demandId());
+        actualMaterialUse.setQtyBase(new BigDecimal("5"));
         UUID reportId = reportAndApproveExecutionSegment(
                 w, planItemId, orderItemId, w.goodsC(),
-                segmentId, salesAllocationId, "10");
+                segmentId, salesAllocationId, "10", false, "0", null, null,
+                List.of(actualMaterialUse));
         confirmFinishedInboundFully(finishedInDocForReport(reportId));
 
         assertEquals(0, new BigDecimal("10").compareTo(
@@ -2697,6 +2749,10 @@ class FullChainEndToEndTest {
         assertEquals(0, new BigDecimal("10").compareTo(
                 stockBalance(w.warehouseId(), w.goodsC())),
                 "仓库点收后直接自制成品库存增加 10");
+        assertEquals(0, stockBalance(w.warehouseId(), w.goodsD()).signum(), "真实原料实发扣库存");
+        assertEquals(0, new BigDecimal("0.5").compareTo(bigDecimalFor(
+                "SELECT qty FROM goods_bom_items WHERE goods_id=? AND component_goods_id=? AND NOT is_deleted",
+                w.goodsC(), w.goodsD())), "十件实产、五单位实际耗料学习为每件半单位");
     }
 
     @Test
@@ -8789,7 +8845,7 @@ class FullChainEndToEndTest {
         var offsetFirst=customerAdvanceOffsets.apply(applyFirst);
         assertEquals(offsetFirst.batchId(),customerAdvanceOffsets.apply(applyFirst).batchId());
         assertCashCycleState(w,order,account,"10","700","400","1600");
-        assertEquals("100.0000",salesMoneyQuery.salesOrderSummary(order).prepaymentAvailableOriginal());
+        assertEquals("100",salesMoneyQuery.salesOrderSummary(order).prepaymentAvailableOriginal());
 
         UUID firstReceipt=receiptService.create(receiptRequest(w,firstAr,account,null,"200","200","0","0",
                 BigDecimal.ONE,BusinessTime.today())).getId();
@@ -8948,7 +9004,7 @@ class FullChainEndToEndTest {
         assertDecimal("1440","SELECT amount_local FROM finance_receipt_lines WHERE receipt_id=?",receipt);
         assertDecimal("40","SELECT exchange_diff FROM finance_receipt_lines WHERE receipt_id=?",receipt);
         assertDecimal("600","SELECT balance_current FROM accounts WHERE id=?",account);
-        assertEquals("1400.0000",salesMoneyQuery.salesOrderSummary(order).plannedRemainingOriginal());
+        assertEquals("1400",salesMoneyQuery.salesOrderSummary(order).plannedRemainingOriginal());
         assertNonemptySourceVoucher("RECEIPT",receipt);
         loginAs(w.superAdminUserId());
         // A later dispatch freezes its own finance rate; the earlier AR and
@@ -8963,7 +9019,7 @@ class FullChainEndToEndTest {
         assertDecimal("8000","SELECT amount_original_local FROM ar_ap_ledger WHERE id=?",laterLedger);
         assertEquals("11500.0000",salesMoneyQuery.salesOrderSummary(order).arOutstandingLocal());
         assertEquals("0.0000",salesMoneyQuery.salesOrderSummary(order).unrecognizedOrderOriginal());
-        assertEquals("1400.0000",salesMoneyQuery.salesOrderSummary(order).plannedRemainingOriginal());
+        assertEquals("1400",salesMoneyQuery.salesOrderSummary(order).plannedRemainingOriginal());
         glPostingService.generate(java.time.YearMonth.from(BusinessTime.today()).toString());
         assertNonemptySourceVoucher("CUSTOMER_PREPAYMENT_OFFSET",offset.batchId());
         assertNonemptySourceVoucher("AR_POST",shipment);

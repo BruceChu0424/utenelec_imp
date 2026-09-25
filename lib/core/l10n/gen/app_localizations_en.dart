@@ -9,6 +9,128 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get materialDiscoveryBatchHelp =>
+      'Select continuous or full-kit production to identify materials before arranging batches.';
+
+  @override
+  String get materialDiscoveryCancel => 'Withdraw material definition request';
+
+  @override
+  String get bomLearningTitle => 'BOM learning';
+
+  @override
+  String get bomLearningHelp =>
+      'After production and material reconciliation, usage is updated from cumulative net consumption divided by actual output. Existing work orders keep their frozen requirements.';
+
+  @override
+  String get bomLearningInactive =>
+      'No learning record yet. Learning begins when a manufactured leaf item completes material issue and production.';
+
+  @override
+  String get bomLearningAuto => 'BOM updates automatically';
+
+  @override
+  String get bomLearningPaused =>
+      'Automatic updates are paused to protect a manual BOM or resolve material, unit or color conflicts. Accumulated records are retained. Review the component records.';
+
+  @override
+  String get bomLearningOutput => 'Cumulative actual output';
+
+  @override
+  String get bomLearningSamples => 'Valid production batches';
+
+  @override
+  String get bomLearningNet => 'Cumulative net consumption';
+
+  @override
+  String get bomLearningAverage => 'Average usage per unit';
+
+  @override
+  String get materialDiscoveryTitle => 'Record materials to issue';
+
+  @override
+  String get materialDiscoveryHelp =>
+      'Confirm with the workshop, add the materials, quantities and physical warehouses, then issue them from the generated draw documents.';
+
+  @override
+  String get materialDiscoveryRequestHelp =>
+      'These manufactured items have no material definition yet. Send the request, then confirm the materials with the warehouse. Actual issue is required before starting.';
+
+  @override
+  String get materialDiscoveryPending => 'Awaiting warehouse material entry';
+
+  @override
+  String get materialDiscoveryNeeded => 'Materials must be identified';
+
+  @override
+  String get materialDiscoverySend => 'Request materials';
+
+  @override
+  String get materialDiscoverySave => 'Create draw documents';
+
+  @override
+  String get materialDiscoverySaved =>
+      'Materials recorded. Review and issue them from the draw documents.';
+
+  @override
+  String get materialDiscoveryInvalid =>
+      'Choose a material and physical warehouse on each row, and enter a positive quantity with up to 4 decimal places. The goods base unit is used.';
+
+  @override
+  String get materialDiscoveryUncertain =>
+      'The result is uncertain. Your input is preserved. Check the result or retry the same request.';
+
+  @override
+  String get materialDiscoveryCheck => 'Check submitted result';
+
+  @override
+  String get materialDiscoveryPick => 'Choose material';
+
+  @override
+  String get materialDiscoveryWarehouse => 'Physical issue warehouse';
+
+  @override
+  String get materialDiscoveryQuantity => 'Quantity to issue';
+
+  @override
+  String get materialDiscoveryUnit => 'Unit';
+
+  @override
+  String get materialDiscoveryCode => 'Code';
+
+  @override
+  String get materialDiscoveryColor => 'Color';
+
+  @override
+  String get materialDiscoveryLoadFailed =>
+      'Could not load the material request. Try again.';
+
+  @override
+  String get materialDiscoveryNoPermission =>
+      'You do not have permission to define materials for this request.';
+
+  @override
+  String get materialDiscoveryDone =>
+      'This request has been processed. Open its draw documents.';
+
+  @override
+  String get materialDiscoveryOpenDraw => 'Open draw document';
+
+  @override
+  String get materialDiscoveryRetry => 'Retry';
+
+  @override
+  String get materialDiscoveryRequestSent =>
+      'Material request sent. Awaiting warehouse material entry.';
+
+  @override
+  String get materialDiscoveryMissingUnit =>
+      'This material has no base unit. Complete its goods record first.';
+
+  @override
+  String get materialDiscoveryRequestTitle => 'Review material request';
+
+  @override
   String get appTitle => 'Uten Integrated Management Platform';
 
   @override

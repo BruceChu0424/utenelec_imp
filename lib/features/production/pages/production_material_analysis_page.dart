@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter/material.dart';
@@ -61,6 +62,7 @@ import '../../employee/repositories/employee_repository.dart';
 import '../models/material_cascade_math.dart';
 import '../models/production_material_analysis.dart';
 import '../models/material_future_transfer.dart';
+import '../models/material_aggregate_order.dart';
 import '../models/material_future_transfer_progress.dart';
 import '../models/production_flow_stage.dart';
 import '../models/production_work_card.dart';
@@ -94,6 +96,8 @@ part 'material_analysis_child_shortage_page.dart';
 part 'material_analysis_plan_actions.dart';
 part 'material_analysis_product_tasks.dart';
 part 'material_analysis_material_table.dart';
+part 'material_analysis_aggregate_table.dart';
+part 'material_analysis_aggregate_submission.dart';
 part 'material_analysis_supply_actions.dart';
 part 'material_analysis_view_models.dart';
 
@@ -345,12 +349,14 @@ abstract class _MaterialAnalysisPageBase
       key,
       () => TextEditingController(
         text: productionOverproductionPercentText(
-          sourceProduct == null
-              ? 0.1
-              : widget.seed.initialAllowedOverproductionRateFor(
+          (sourceProduct == null
+                  ? null
+                  : widget.seed.initialAllowedOverproductionRateFor(
                       sourceProduct,
-                    ) ??
-                    0.1,
+                    )) ??
+              analysis?.overproductionDefaults[product?.goodsId ??
+                  material?.goodsId] ??
+              0,
         ),
       ),
     );
@@ -444,7 +450,8 @@ abstract class _MaterialAnalysisPageBase
       _permissions.contains(Perm.productionMaterialAnalysisCancel) &&
       _serverAllows('CANCEL_ANALYSIS');
   bool get _canCancelAction =>
-      (_permissions.contains(Perm.productionMaterialAnalysisNotify) ||
+      (_permissions.contains(Perm.productionMaterialAnalysisGenerate) ||
+          _permissions.contains(Perm.productionMaterialAnalysisNotify) ||
           _permissions.contains(
             Perm.productionMaterialAnalysisClaimSharedFuture,
           )) &&
@@ -638,7 +645,14 @@ abstract class _MaterialAnalysisPageBase
 
   /// 主表「这一行此刻能不能下单」的判据，不能时返回人话原因(ADR-102)。
   /// 实现见 material_analysis_material_table.dart。
-  String? _tableIssueBlockedReason(_MaterialGroup group);
+  String? _tableIssueBlockedReason(
+    _MaterialGroup group, {
+    bool forAggregate = false,
+  });
+  Widget? _materialAggregateToolbarAction() => null;
+  void _materialAggregateAnalysisChanged() {}
+  bool _materialAggregateOwnsLine(String lineId) => false;
+  bool _materialAggregateOwnsProductLine(String lineId) => false;
 
   /// 主表里还有用户手填未提交的数量，或还勾着待下单的行(ADR-102)。
   /// 轮询期间必须让路，否则整树换快照会把人填了一屏的数与勾选一起吃掉。
@@ -647,6 +661,10 @@ abstract class _MaterialAnalysisPageBase
   /// 主表勾选集里此刻真能下单的那些行，以及被折叠/表头筛选藏起来的行数
   /// (ADR-102)。实现见 material_analysis_material_table.dart。
   ({List<_MaterialGroup> visible, int hidden}) _selectedIssuableGroups();
+
+  int _materialOrderSelectionCount(List<_MaterialGroup> groups) =>
+      groups.length;
+  bool get _materialAggregateWorking => false;
 
   /// 把这些行按「车间逐层 → 采购 → 委外」分段下达(ADR-102)。全部段都成功返回 true。
   Future<bool> _submitMaterialTableRows(List<_MaterialGroup> groups);
@@ -932,6 +950,7 @@ abstract class _MaterialAnalysisPageBase
       _resetMaterialTableInputsForNewAnalysis();
     }
     _analysis = view;
+    _materialAggregateAnalysisChanged();
     // 权威快照优先：先让父子联动的模拟快照作废，再按新快照刷系统预填值
     // (只覆盖用户没动过的格子)。顺序不能反——反了就是拿模拟值去回填。
     _invalidateMaterialTableCascadePreview();
@@ -989,7 +1008,11 @@ abstract class _MaterialAnalysisPageBase
         .where(
           (g) =>
               (_canEditMaterialRoute(g) && _routeGroupSelectable(g)) ||
-              _tableIssueBlockedReason(g) == null,
+              const [
+                null,
+                '先在「生产车间」列里指定本次交给哪个车间',
+                '先在「负责人」列里指定本次谁负责',
+              ].contains(_tableIssueBlockedReason(g, forAggregate: true)),
         )
         .map((g) => g.key)
         .toSet();
@@ -1162,7 +1185,8 @@ abstract class _MaterialAnalysisPageBase
       // MAKE_COMPONENT / SUBCONTRACT_MAKE 都是系统生成的子件任务行，
       // 与服务端 requireSameSources 排除口径一致，不能回填为用户来源。
       if (product.sourceType != 'MAKE_COMPONENT' &&
-          product.sourceType != 'SUBCONTRACT_MAKE')
+          product.sourceType != 'SUBCONTRACT_MAKE' &&
+          product.sourceType != 'AGGREGATE_MAKE')
         (product.salesOrderItemId?.isNotEmpty ?? false)
             ? MaterialAnalysisSourceInput(
                 salesOrderItemId: product.salesOrderItemId,
@@ -2196,7 +2220,11 @@ class _ProductionMaterialAnalysisPageState
   /// 来源行去重出的订单列表(按单号升序，稳定顺序)。
   List<({String orderId, String billNo, String? clientName})>
   _linkedSalesOrders(ProductionMaterialAnalysisView analysis) {
-    const childSourceTypes = {'MAKE_COMPONENT', 'SUBCONTRACT_MAKE'};
+    const childSourceTypes = {
+      'MAKE_COMPONENT',
+      'SUBCONTRACT_MAKE',
+      'AGGREGATE_MAKE',
+    };
     final byId =
         <String, ({String orderId, String billNo, String? clientName})>{};
     for (final product in analysis.products) {

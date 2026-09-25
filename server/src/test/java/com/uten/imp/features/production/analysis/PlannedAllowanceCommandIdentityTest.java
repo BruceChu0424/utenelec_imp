@@ -16,12 +16,19 @@ import static org.junit.jupiter.api.Assertions.*;
 class PlannedAllowanceCommandIdentityTest {
     private final UUID analysis=UUID.randomUUID(), line=UUID.randomUUID(), warehouse=UUID.randomUUID();
 
-    @Test void defaultCompatibilityDoesNotMakeDifferentAllowanceOrPublicIntentionInterchangeable() {
-        assertEquals(hash(null,null),hash(".100000",false));
+    @Test void omittedGoodsDefaultIsNotInterchangeableWithAnExplicitAllowance() {
+        assertEquals(hash(null,null),hash(null,false));
+        assertNotEquals(hash(null,null),hash(".100000",false));
+        assertNotEquals(hash(null,true),hash(".1",true));
+        assertNotEquals(hash(null,false),hash("0",false));
+    }
+
+    @Test void equivalentExplicitNumbersKeepTheirIdentityAndPublicIntentionRemainsDistinct() {
+        assertEquals(hash(".1",null),hash(".100000",false));
         assertEquals(hash(".2",false),hash(".200000",null));
         assertNotEquals(hash(".2",false),hash(".200001",false));
         assertNotEquals(hash(".1",false),hash(".1",true));
-        assertEquals(hash(".1",true),hash(null,true));
+        assertNotEquals(hash(null,false),hash(null,true));
     }
 
     @Test void theSameNumericContractAppliesWithoutAnHttpValidator() {

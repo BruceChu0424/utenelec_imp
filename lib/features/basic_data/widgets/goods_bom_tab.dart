@@ -49,6 +49,8 @@ import '../models/goods_node.dart';
 import '../repositories/goods_bom_repository.dart';
 import 'master_data_table_view.dart';
 import 'uten_goods_picker.dart';
+import 'goods_bom_learning_panel.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 
 /// 树节点：BOM 行 + 懒加载子级状态。
 class _BomNode {
@@ -887,6 +889,12 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             // toolbarLeadingActions 紧挨「全屏」按钮，样式同款（48 高、primary），
             // 全屏路由与空态工具条同位置渲染。
             toolbarLeadingActions: [
+              UtenButton(
+                key: const Key('goods-bom-learning'),
+                icon: Icons.history_outlined,
+                onPressed: () => showGoodsBomLearning(context, widget.goodsId),
+                child: Text(AppLocalizations.of(context).bomLearningTitle),
+              ),
               if (widget.onPreview != null)
                 UtenButton(
                   key: const ValueKey('goods-bom-preview'),

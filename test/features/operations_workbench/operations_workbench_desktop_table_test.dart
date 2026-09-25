@@ -8,6 +8,84 @@ import 'package:uten_imp/features/operations_workbench/pages/operations_workbenc
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
 
 void main() {
+  testWidgets(
+    'warehouse discovery stage exposes its row with unknown quantities and a valid entry',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final task = OperationsWorkbenchTask.fromJson({
+        'taskId': 'discovery-1',
+        'supplyRoute': 'MAKE',
+        'taskStatus': 'MATERIALS_TO_DEFINE',
+        'goodsName': '待登记外壳用料',
+        'goodsCount': 1,
+        'openLineCount': 1,
+        'unitName': 'kg',
+        'actionDocType': 'MATERIAL_DISCOVERY',
+        'actionDocId': 'request-1',
+        'actionDocCanView': true,
+      }, OperationsWorkbenchDepartment.warehouse);
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.warehouse,
+              repository: _FakeGateway(
+                OperationsWorkbenchData(
+                  department: OperationsWorkbenchDepartment.warehouse,
+                  summary: const OperationsWorkbenchSummary(
+                    totalTasks: 1,
+                    overdueTasks: 0,
+                    openTasks: 1,
+                    openQty: 0,
+                    statusCounts: {'MATERIALS_TO_DEFINE': 1},
+                  ),
+                  items: [task],
+                  page: 1,
+                  size: 20,
+                  total: 1,
+                  totalPages: 1,
+                  capabilities: const OperationsWorkbenchCapabilities(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('待填写物料'));
+      await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
+        find.descendant(
+          of: find.byKey(const Key('operations-workbench-desktop-table')),
+          matching: find.byWidgetPredicate(
+            (widget) => widget is MasterDataTableView<OperationsWorkbenchTask>,
+          ),
+        ),
+      );
+      for (final key in [
+        'requiredQty',
+        'allocatedQty',
+        'fulfilledQty',
+        'openQty',
+      ]) {
+        expect(
+          table.columns.singleWhere((column) => column.key == key).value(task),
+          '—',
+        );
+      }
+      expect(
+        table.columns
+            .singleWhere((column) => column.key == 'status')
+            .value(task),
+        '待填写物料',
+      );
+      expect(table.canOpenRow!(task), isTrue);
+      expect(task.actionDocument?.path, '/warehouse/tasks/draw');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('expanded desktop table renders header and rows with items', (
     tester,
   ) async {

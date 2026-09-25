@@ -76,13 +76,16 @@ import static org.junit.jupiter.api.Assertions.*;
 class WorkshopDirectTransferBatchEndToEndTest {
 
     /**
-     * 一行车间直送审核的语句预算(2026-09-22 实测 490 条; 2026-09-23 ADR-107 预锁只发现一轮、
-     * 锁后只比行版本、会话变量每事务只绑一次之后实测 385 条, 预算取实测 +10%)。
+     * 一行车间直送审核的语句预算。V710 后当前自制叶件不能沿用零原料夹具；
+     * 此夹具现在先真实登记原料、标准 DRAW 实发，再在报工中计入真实耗料/成本及 BOM 学习。
+     * 2026-09-25 server/target-aggregate-direct-closure.log 实测 446 条、JDBC 1396ms、
+     * commit 277ms，因此新有料工况预算为 450。旧零料工况的 424 预算不再可比；
+     * 事务数、MD5 次数、真实自动实发和独立触发器预算均保持原断言。
      *
      * <p>这个数字是拿来挡回归的，不是拿来抬的：抬它之前先跑这条用例看剖面，
      * 确认多出来的语句是新做的事而不是又一遍重复的读。
      */
-    private static final int APPROVE_STATEMENTS_BUDGET = 424;
+    private static final int APPROVE_STATEMENTS_BUDGET = 450;
 
     /**
      * 一行车间直送审核里触发器函数的调用预算(ADR-106)。统计口径：pg_stat_user_functions 里
@@ -214,6 +217,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
         item.setDestination("WORKSHOP");
         item.setDirectTransferDemandId(parentDemand(c));
         report.setItems(List.of(item));
+        report.setMaterialLines(directInputUse(c,item.getQty()));
         UUID reportId = reports.create(report).getId();
 
         assertEquals(List.of("APPROVE"), reports.detail(reportId).getAllowedActions(),
@@ -854,7 +858,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
                 request.rowVersion(), "rate-approve-" + segment, "计划部批准此批容差"), true);
     }
 
-    /** 父件(自制) → 子件(自制叶子，零料直制)；可选第二种采购子件。主仓下挂普通叶子子仓 + 车间线边仓。 */
+    /** 父件→无历史BOM子件；仓库真实登记并发料后子件开工，直送计量只覆盖后续报工。 */
     private Case create(String tag, boolean withBuyMaterial) {
         var w = fixture.seedWorld(tag);
         fixture.loginAs(w.superAdminUserId());
@@ -914,7 +918,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
                         workshop, null, worker, null, null))));
         UUID childPlan = childResult.plans().getFirst().planId();
         UUID childSegment = childResult.plans().getFirst().segmentIds().getFirst();
-        assertEquals("READY", status(childSegment), "零料直制子件任务应直接可开工");
+        assertTrue(db.queryForObject("SELECT fn_material_discovery_pending(?)",Boolean.class,childSegment),"无BOM子件必须先登记真实投入");
         view = analyses.detail(view.analysisId());
         var rootResult = commands.issueWorkshopPlans(view.analysisId(), new IssueWorkshopPlansRequest(
                 view.version(), view.fingerprint(), "root-" + tag, w.warehouseId(),
@@ -926,10 +930,19 @@ class WorkshopDirectTransferBatchEndToEndTest {
         UUID plan = rootResult.plans().getFirst().planId();
         UUID segment = db.queryForObject(
                 "SELECT id FROM production_execution_segments WHERE plan_id=? AND status='WAITING'", UUID.class, plan);
+        // V710: keep the measured transfer action unchanged; its source is now made from real issued input.
+        confirmRoute(childPlan,childSegment,"FULL_KIT");
+        UUID raw=UUID.randomUUID();fixture.insertGoods(raw,"RAW-"+tag,"直送子件实际原料","采购",w.unitId(),w.unitLegacy());
+        var receipt=new StockDocSaveRequest();receipt.setDocType("OTHER_IN");receipt.setWarehouseId(leaf);receipt.setBillDate(BusinessTime.today());
+        var rawLine=new StockDocItemLine();rawLine.setGoodsId(raw);rawLine.setUnitId(w.unitId());rawLine.setUnitRate(BigDecimal.ONE);rawLine.setQty(BigDecimal.ONE);rawLine.setPrice(BigDecimal.TEN);rawLine.setAmountOriginal(BigDecimal.TEN);rawLine.setAmountLocal(BigDecimal.TEN);receipt.setItems(List.of(rawLine));stock.approve(stock.create(receipt).getId());
+        var discovery=beans.getBean(com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryService.class);
+        var pending=discovery.request(childSegment,new com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryContracts.Request(version(childSegment),"direct-input-request-"+childSegment));
+        var configured=discovery.configure(pending.requestId(),new com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryContracts.Configure(pending.version(),"direct-input-configure-"+childSegment,
+                List.of(new com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryContracts.Material(raw,null,w.unitId(),leaf,BigDecimal.ONE))));
+        for(UUID draw:configured.drawDocIds()){var issue=new com.uten.imp.features.stock.dto.StockDocIssueRequest();issue.setIdempotencyKey("direct-input-issue-"+draw);
+            issue.setLines(db.query("SELECT id,qty FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",(rs,index)->{var line=new com.uten.imp.features.stock.dto.StockDocIssueRequest.Line();line.setItemId(rs.getObject(1,UUID.class));line.setQty(rs.getBigDecimal(2));return line;},draw));stock.approveAndIssue(draw,issue);}
         // 子件开工后才能报工直送。
         fixture.loginAs(workerUser);
-        // V599：零料直制子件开工前先确认齐套路线。
-        confirmRoute(childPlan, childSegment, "FULL_KIT");
         segments.start(childPlan, childSegment,
                 new SegmentTransitionRequest(version(childSegment), "dt-child-start-" + childSegment));
         return new Case(w, parent, child, secondMaterial, plan, segment, childPlan, childSegment,
@@ -963,6 +976,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
         item.setDestination("WORKSHOP");
         item.setDirectTransferDemandId(targetDemand);
         report.setItems(List.of(item));
+        report.setMaterialLines(directInputUse(c,item.getQty()));
         return reports.create(report).getId();
     }
 
@@ -1005,6 +1019,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
         item.setDestination("WORKSHOP");
         item.setDirectTransferDemandId(parentDemand(c));
         report.setItems(List.of(item));
+        report.setMaterialLines(directInputUse(c,item.getQty()));
         UUID reportId = reports.create(report).getId();
         var before = triggerFunctionCalls();
         ProductionJdbcMeasurement.Sample sample = ProductionJdbcMeasurement.begin();
@@ -1065,6 +1080,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
         item.setDestination("WORKSHOP");
         item.setDirectTransferDemandId(parentDemand(c));
         report.setItems(List.of(item));
+        report.setMaterialLines(directInputUse(c,item.getQty()));
         UUID reportId = reports.create(report).getId();
         ProductionJdbcMeasurement.Sample sample = ProductionJdbcMeasurement.begin();
         try {
@@ -1073,6 +1089,12 @@ class WorkshopDirectTransferBatchEndToEndTest {
             ProductionJdbcMeasurement.end();
         }
         return sample;
+    }
+
+    private List<com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine> directInputUse(Case c,BigDecimal output){
+        var use=new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();
+        use.setDemandId(db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",UUID.class,c.childSegment()));
+        use.setQtyBase(output.divide(new BigDecimal("100"),4,java.math.RoundingMode.UP));return List.of(use);
     }
 
     private void receive(Case c, UUID goods, UUID warehouse, String quantity) {

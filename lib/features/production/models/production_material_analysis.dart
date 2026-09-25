@@ -576,6 +576,7 @@ class ProductionMaterialAnalysisView {
     this.fqcRecoveryAuthorizationId,
     this.planningBlockedReasons = const {},
     this.routeResetCount = 0,
+    this.overproductionDefaults = const {},
   });
 
   final String analysisId;
@@ -593,6 +594,7 @@ class ProductionMaterialAnalysisView {
   final bool fqcReplenishmentOnly;
   final String? fqcRecoveryAuthorizationId;
   final Map<String, String> planningBlockedReasons;
+  final Map<String, double> overproductionDefaults;
 
   /// 本次刷新（POST /preview）因主档/BOM 事实变更而被服务端清空的人工确认
   /// 路线条数；只在刷新响应上非零，详情/命令响应恒为 0。页面据此提示
@@ -663,6 +665,13 @@ class ProductionMaterialAnalysisView {
       fqcReplenishmentOnly: json['fqcReplenishmentOnly'] == true,
       fqcRecoveryAuthorizationId: _string(json['fqcRecoveryAuthorizationId']),
       routeResetCount: _int(json['routeResetCount']) ?? 0,
+      overproductionDefaults: {
+        if (json['overproductionDefaults']
+            case final Map<Object?, Object?> rates)
+          for (final entry in rates.entries)
+            if (entry.value case final num rate)
+              entry.key.toString(): rate.toDouble(),
+      },
       planningBlockedReasons: {
         if (json['planningBlockedReasons']
             case final Map<Object?, Object?> reasons)
@@ -2223,13 +2232,13 @@ class MaterialAnalysisIssueLine {
     this.workshopName,
     this.workerId,
     this.publicSurplusOnly = false,
-    this.allowedOverproductionRate = 0.1,
+    this.allowedOverproductionRate,
   });
 
   final String? materialLineId;
   final String? analysisLineId;
   final double qty;
-  final double allowedOverproductionRate;
+  final double? allowedOverproductionRate;
   final String? departmentId;
   final String? workshopName;
   final String? workerId;
@@ -2242,7 +2251,8 @@ class MaterialAnalysisIssueLine {
     if (materialLineId != null) 'materialLineId': materialLineId,
     if (analysisLineId != null) 'analysisLineId': analysisLineId,
     'qty': qty,
-    'allowedOverproductionRate': allowedOverproductionRate,
+    if (allowedOverproductionRate != null)
+      'allowedOverproductionRate': allowedOverproductionRate,
     if (departmentId != null) 'departmentId': departmentId,
     if (workshopName?.trim().isNotEmpty == true)
       'workshopName': workshopName!.trim(),

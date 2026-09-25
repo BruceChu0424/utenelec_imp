@@ -33,7 +33,7 @@ void main() {
     await tester.tap(
       find.descendant(
         of: find.byKey(const Key('material-analysis-material-table-region')),
-        matching: find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
+        matching: find.byKey(const Key('master-data-table-select-all')),
       ),
     );
     await tester.pumpAndSettle();
@@ -263,9 +263,7 @@ void main() {
             of: find.byKey(
               const Key('material-analysis-material-table-region'),
             ),
-            matching: find.byWidgetPredicate(
-              (w) => w is Checkbox && w.tristate,
-            ),
+            matching: find.byKey(const Key('master-data-table-select-all')),
           ),
         );
         await tester.pumpAndSettle();
@@ -338,6 +336,13 @@ void main() {
         );
       }
       await _selectRoot(tester, 1);
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('material-table-row-child-1-1')),
+          matching: find.byType(Checkbox),
+        ),
+      );
+      await tester.pumpAndSettle();
       expect(find.text('确认路线(1)'), findsOneWidget);
       await _confirm(tester);
       expect(_decisions(harness.writes.single), [
@@ -351,7 +356,21 @@ void main() {
         isTrue,
       );
       await _selectRoot(tester, 2);
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('material-table-row-child-2-1')),
+          matching: find.byType(Checkbox),
+        ),
+      );
+      await tester.pumpAndSettle();
       await _selectRoot(tester, 3);
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('material-table-row-child-3-1')),
+          matching: find.byType(Checkbox),
+        ),
+      );
+      await tester.pumpAndSettle();
       await _confirm(tester);
       expect(_decisions(harness.writes.last), [
         {'actionGroupKey': 'root-action-2', 'route': 'BUY'},
@@ -454,7 +473,7 @@ void main() {
         {
           'analysisLineId': 'p1',
           'qty': 10.0,
-          'allowedOverproductionRate': 0.1,
+          'allowedOverproductionRate': 0,
           'departmentId': 'workshop',
           'workshopName': '装配车间',
           'workerId': 'worker',
@@ -577,16 +596,14 @@ void main() {
       expect(find.descendant(of: ancestor, matching: _route(1)), findsNothing);
       final header = find.descendant(
         of: find.byKey(const Key('material-analysis-material-table-region')),
-        matching: find.byWidgetPredicate(
-          (widget) => widget is Checkbox && widget.tristate,
-        ),
+        matching: find.byKey(const Key('master-data-table-select-all')),
       );
       await tester.tap(header);
       await tester.pumpAndSettle();
-      expect(find.text('确认路线(22)'), findsOneWidget);
+      expect(find.text('确认路线(100)'), findsOneWidget);
       await _confirm(tester);
       final decisions = _decisions(harness.writes.single);
-      expect(decisions, hasLength(22));
+      expect(decisions, hasLength(100));
       expect(
         decisions.where(
           (decision) => decision['actionGroupKey'] == 'root-action-1',
@@ -595,7 +612,7 @@ void main() {
       );
       expect(
         decisions.map((decision) => decision['actionGroupKey']).toSet(),
-        hasLength(22),
+        hasLength(100),
       );
     },
   );
@@ -616,7 +633,7 @@ void main() {
       await tester.tap(
         find.descendant(
           of: find.byKey(const Key('material-analysis-material-table-region')),
-          matching: find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
+          matching: find.byKey(const Key('master-data-table-select-all')),
         ),
       );
       await tester.pumpAndSettle();
@@ -625,7 +642,7 @@ void main() {
       await tester.tap(
         find.descendant(
           of: find.byKey(const Key('material-analysis-material-table-region')),
-          matching: find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
+          matching: find.byKey(const Key('master-data-table-select-all')),
         ),
       );
       await tester.pumpAndSettle();

@@ -60,6 +60,61 @@ Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets(
+    'a partial row explicitly selects all and a full row clears on the next click',
+    (tester) async {
+      bool? rowState;
+      var selected = <String>{};
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, update) {
+                return MasterDataTableView<String>(
+                  columns: [
+                    MasterColumnDef<String>(
+                      key: 'label',
+                      label: '项目',
+                      width: 200,
+                      value: (value) => value,
+                    ),
+                  ],
+                  items: const ['group'],
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  selectable: true,
+                  idOf: (item) => item,
+                  rowWidgetKeyOf: (_) => const Key('partial-selection-row'),
+                  selectedIds: selected,
+                  selectionStateOf: (_) => rowState,
+                  onSelectedIdsChanged: (next) => update(() {
+                    selected = next;
+                    rowState = next.contains('group');
+                  }),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final checkbox = find.descendant(
+        of: find.byKey(const Key('partial-selection-row')),
+        matching: find.byType(Checkbox),
+      );
+      expect(tester.widget<Checkbox>(checkbox).value, isNull);
+      await tester.tap(checkbox);
+      await tester.pumpAndSettle();
+      expect(selected, contains('group'));
+      expect(tester.widget<Checkbox>(checkbox).value, isTrue);
+      await tester.tap(checkbox);
+      await tester.pumpAndSettle();
+      expect(selected, isEmpty);
+      expect(tester.widget<Checkbox>(checkbox).value, isFalse);
+    },
+  );
   testWidgets('body is wrapped in SelectionArea (cells selectable)', (
     tester,
   ) async {

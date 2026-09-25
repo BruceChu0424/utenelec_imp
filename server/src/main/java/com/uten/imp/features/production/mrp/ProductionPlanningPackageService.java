@@ -268,13 +268,26 @@ public class ProductionPlanningPackageService {
             BigDecimal issuedQty = issueRows.stream()
                     .map(ProductionPlanningPackageService::decimal)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
+            boolean reversedSharedDirect = !rows.isEmpty()
+                    && ((Number) rows.getFirst()[0]).shortValue() == 1
+                    && issuedQty.signum() == 0
+                    && Boolean.TRUE.equals(em.createNativeQuery(
+                            "SELECT fn_preplan_aggregate_direct_draw_reversible(:document)")
+                            .setParameter("document", id).getSingleResult());
             if (rows.isEmpty()
                     || Boolean.TRUE.equals(rows.getFirst()[1])
-                    || ((Number) rows.getFirst()[0]).shortValue() != 0
+                    || (((Number) rows.getFirst()[0]).shortValue() != 0 && !reversedSharedDirect)
                     || issuedQty.signum() > 0) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
                         "备料单已审核、发料或删除，必须先完成退料/红冲链路");
+            }
+            if (reversedSharedDirect) {
+                em.createNativeQuery("""
+                        UPDATE stock_documents SET status=-1,updated_at=now()
+                        WHERE id=:id AND status=1 AND NOT is_deleted
+                        """).setParameter("id",id).executeUpdate();
+                continue;
             }
             ledger.authorizeDraftDrawCleanup(id);
             if (action == ProductionFulfillmentLedgerService.LifecycleAction.CANCEL) {

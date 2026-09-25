@@ -6,6 +6,61 @@ import 'package:uten_imp/features/operations_workbench/repositories/operations_w
 
 void main() {
   test(
+    'warehouse discovery links to the existing draw queue and keeps quantities unknown',
+    () {
+      final json = <String, dynamic>{
+        'taskId': 'discovery-1',
+        'supplyRoute': 'MAKE',
+        'taskStatus': 'MATERIALS_TO_DEFINE',
+        'unitName': 'kg',
+        'requiredQty': 0,
+        'allocatedQty': 0,
+        'fulfilledQty': 0,
+        'openQty': 0,
+        'goodsCount': 1,
+        'openLineCount': 1,
+        'actionDocType': 'MATERIAL_DISCOVERY',
+        'actionDocId': 'request-1',
+        'actionDocNo': 'ZX-1',
+        'actionDocCanView': true,
+        'actionDocCanEdit': true,
+      };
+      final task = OperationsWorkbenchTask.fromJson(
+        json,
+        OperationsWorkbenchDepartment.warehouse,
+      );
+      expect(task.isMaterialDiscovery, isTrue);
+      expect(task.statusLabel, '待填写物料');
+      expect(task.quantityText, '—');
+      expect(task.actionDocument?.path, '/warehouse/tasks/draw');
+      expect(task.actionDocument?.label, '填写实际领料 ZX-1');
+      expect(operationsWorkbenchStatusLabel('materials_to_define'), '待填写物料');
+
+      final hidden = OperationsWorkbenchTask.fromJson({
+        ...json,
+        'actionDocCanView': false,
+      }, OperationsWorkbenchDepartment.warehouse);
+      expect(hidden.actionDocument, isNull);
+      expect(hidden.quantityText, '—');
+      final otherDepartment = OperationsWorkbenchTask.fromJson(
+        json,
+        OperationsWorkbenchDepartment.purchase,
+      );
+      expect(otherDepartment.actionDocument, isNull);
+
+      final draw = OperationsWorkbenchTask.fromJson({
+        ...json,
+        'taskStatus': 'READY_TO_PICK',
+        'actionDocType': 'DRAW',
+        'actionDocId': 'draw-1',
+      }, OperationsWorkbenchDepartment.warehouse);
+      expect(draw.isMaterialDiscovery, isFalse);
+      expect(draw.quantityText, '0 kg');
+      expect(draw.actionDocument?.path, '/warehouse/DRAW/draw-1');
+    },
+  );
+
+  test(
     'subcontract column queries preserve stage and history filters and read server facets',
     () async {
       late RequestOptions captured;

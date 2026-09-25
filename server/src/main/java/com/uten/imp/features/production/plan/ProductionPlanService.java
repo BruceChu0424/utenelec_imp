@@ -163,9 +163,7 @@ public class ProductionPlanService {
             throw new ApiException(ErrorCode.CONFLICT,
                     "物料分析生成的计划不可直接编辑，请删除草稿后回到物料分析重新生成");
         }
-        if (req.getItems().stream().anyMatch(line -> line.getAllowedOverproductionRate() == null)
-                && itemRepo.findByPlanIdOrderByLineNoAsc(id).stream().anyMatch(item ->
-                        item.getAllowedOverproductionRate().compareTo(ProductionOverproductionAllowance.DEFAULT_RATE) != 0)) {
+        if (req.getItems().stream().anyMatch(line -> line.getAllowedOverproductionRate() == null)) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "计划已填写允许超产比例，请刷新后逐行核对比例再保存，不能由缺失字段恢复为默认值");
         }
@@ -1580,7 +1578,7 @@ public class ProductionPlanService {
             it.setClientNo(l.getClientNo());
             it.setOqty(zeroIfNull(l.getOqty()));
             it.setQty(zeroIfNull(l.getQty()));
-            it.setAllowedOverproductionRate(ProductionOverproductionAllowance.normalize(l.getAllowedOverproductionRate()));
+            it.setAllowedOverproductionRate(ProductionOverproductionAllowance.resolve(em, l.getGoodsId(), l.getAllowedOverproductionRate()));
             it.setLqty(zeroIfNull(l.getLqty()));
             it.setIqty(zeroIfNull(l.getIqty()));
             it.setFqty(zeroIfNull(l.getFqty()));

@@ -61,7 +61,10 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                     product_goods_id uuid,plan_id uuid,package_id uuid,workshop_department_id uuid,responsible_employee_id uuid,
                     continuous_supply boolean DEFAULT FALSE, start_route text DEFAULT 'FULL_KIT', route_confirmed_at timestamptz,
                     allowed_overproduction_rate numeric DEFAULT .10,overproduction_rate_version bigint DEFAULT 0,
-                    overproduction_policy_applies boolean DEFAULT TRUE, actual_supplement_material_ready boolean DEFAULT FALSE);
+                    overproduction_policy_applies boolean DEFAULT TRUE, actual_supplement_material_ready boolean DEFAULT FALSE,
+                    material_discovery_required boolean DEFAULT FALSE);
+                CREATE TABLE production_material_discovery_requests(id uuid PRIMARY KEY,execution_segment_id uuid,status text);
+                CREATE FUNCTION fn_material_discovery_pending(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT COALESCE((SELECT material_discovery_required FROM production_execution_segments WHERE id=$1),FALSE)';
                 CREATE TABLE production_overproduction_rate_requests(id uuid,execution_segment_id uuid,status text,requested_rate numeric);
                 CREATE FUNCTION fn_execution_overproduction_policy_applies(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT COALESCE((SELECT overproduction_policy_applies FROM production_execution_segments WHERE id=$1),TRUE)';
                 CREATE FUNCTION fn_actual_supplement_material_ready(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT COALESCE((SELECT actual_supplement_material_ready FROM production_execution_segments WHERE id=$1),FALSE)';
@@ -340,6 +343,38 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
     private ProductionExecutionWorkbenchSegment row(UUID task) {
         return service.workshopTasks(1, 50, null, "PREPARING", null, null, null)
                 .getItems().stream().filter(row -> row.segmentId().equals(task)).findFirst().orElseThrow();
+    }
+
+    @Test void unknownLeafMaterialsStayInDrawRequestFiltersAndNeverBecomeZeroMaterialStartable() {
+        UUID task = new UUID(0, 2), request = UUID.randomUUID();
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
+        jdbc.update("UPDATE production_execution_segments SET material_discovery_required=TRUE WHERE id=?", task);
+        jdbc.update("UPDATE v_production_execution_workbench_segments SET zero_material=TRUE WHERE segment_id=?", task);
+        try {
+            var before = row(task);
+            assertThat(before.materialDiscoveryRequired()).isTrue();
+            assertThat(before.zeroMaterial()).isFalse();
+            assertThat(before.canRequestMaterialDiscovery()).isTrue();
+            assertThat(before.canRequestDraw()).isFalse();
+            assertThat(before.canStart()).isFalse();
+            assertThat(service.workshopTasks(1, 50, null, "PREPARING", null, null, null, "DRAW_NOT_REQUESTED").getItems())
+                    .extracting(ProductionExecutionWorkbenchSegment::segmentId).contains(task);
+            assertThat(service.workshopTasks(1, 50, null, "PREPARING", null, null, null, "READY_TO_START").getItems())
+                    .extracting(ProductionExecutionWorkbenchSegment::segmentId).doesNotContain(task);
+            jdbc.update("INSERT INTO production_material_discovery_requests VALUES (?,?,'PENDING')", request, task);
+            var pending = row(task);
+            assertThat(pending.materialDiscoveryRequestId()).isEqualTo(request);
+            assertThat(pending.materialDiscoveryStatus()).isEqualTo("PENDING");
+            assertThat(pending.canRequestMaterialDiscovery()).isFalse();
+            assertThat(service.workshopTasks(1, 50, null, "PREPARING", null, null, null, "DRAW_REQUESTED").getItems())
+                    .extracting(ProductionExecutionWorkbenchSegment::segmentId).contains(task);
+            assertThat(service.workshopTasks(1, 50, null, "PREPARING", null, null, null, "DRAW_NOT_REQUESTED").getItems())
+                    .extracting(ProductionExecutionWorkbenchSegment::segmentId).doesNotContain(task);
+        } finally {
+            jdbc.update("DELETE FROM production_material_discovery_requests WHERE id=?", request);
+            jdbc.update("UPDATE production_execution_segments SET material_discovery_required=FALSE WHERE id=?", task);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET zero_material=FALSE WHERE segment_id=?", task);
+        }
     }
 
     @Test

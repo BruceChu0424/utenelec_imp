@@ -60,6 +60,7 @@ final class _MaterialTableRow {
 
   /// 分页补祖先行（与表头筛选保留的上下文行区分：后者保留原 widget key）。
   bool get isPageContext => key.startsWith('PAGE_CONTEXT|');
+  bool get isAggregateSource => kind == _MaterialTableRowKind.aggregatePath;
 
   /// 套上共享树投影的连线信息。[hasChildren] / [childCount] **不由投影接管**：
   /// 折叠起来的分支在渲染序里没有子行，但展开箭头与「N」徽章必须照旧显示，
@@ -104,6 +105,44 @@ final class _MaterialTableRow {
 /// this file owns presentation only and never recalculates inventory facts.
 abstract class _MaterialAnalysisMaterialTableState
     extends _MaterialAnalysisBorrowState {
+  late final _aggregateTable = _MaterialAggregateTableController(this);
+  void _mutateAggregateTable(VoidCallback change) {
+    if (mounted) setState(change);
+  }
+
+  @override
+  bool get _busy =>
+      super._busy ||
+      _aggregateTable.saving ||
+      _aggregateTable.submission.running;
+  @override
+  bool get _materialAggregateWorking => _aggregateTable.saving;
+  @override
+  Widget? _materialAggregateToolbarAction() => _aggregateTable.toolbarAction();
+  @override
+  void _materialAggregateAnalysisChanged() => _aggregateTable.analysisChanged();
+  @override
+  bool _materialAggregateOwnsLine(String lineId) =>
+      _aggregateTable.ownsLine(lineId);
+  @override
+  bool _materialAggregateOwnsProductLine(String lineId) {
+    final analysis = _analysis;
+    if (analysis == null) return false;
+    final indexes = _analysisIndexes(analysis);
+    final material = indexes.materialsByAnchorProduct[lineId];
+    final root = indexes.productsById[lineId]?.rootMaterialLineId;
+    return (root != null && _aggregateTable.ownsLine(root)) ||
+        (material != null && _aggregateTable.ownsLine(material.materialLineId));
+  }
+
+  @override
+  int _materialOrderSelectionCount(List<_MaterialGroup> groups) =>
+      _bomAggregateByMaterial
+      ? groups
+            .map((group) => _aggregateKeyOf(group.representative))
+            .toSet()
+            .length
+      : groups.length;
   static const int _materialTablePageSize = 100;
   ProductionMaterialAnalysisView? _materialRowsCacheAnalysis;
   String? _materialRowsCacheKey;
@@ -254,6 +293,7 @@ abstract class _MaterialAnalysisMaterialTableState
         );
       }
     }
+    result.addAll(_aggregateTable.sharedProductionRows(analysis, projection));
     final knownProductIds = analysis.products
         .map((product) => product.analysisLineId)
         .toSet();
@@ -261,7 +301,9 @@ abstract class _MaterialAnalysisMaterialTableState
       for (final entry in projection.nodesByProduct.entries)
         if (entry.key == null ||
             !knownProductIds.contains(entry.key) ||
-            _isEmbeddedMakeChildProduct(indexes.productsById[entry.key]))
+            (_isEmbeddedMakeChildProduct(indexes.productsById[entry.key]) &&
+                indexes.productsById[entry.key]?.sourceType !=
+                    'AGGREGATE_MAKE'))
           ...entry.value,
     ];
     if (unassigned.isNotEmpty) {
@@ -351,7 +393,22 @@ abstract class _MaterialAnalysisMaterialTableState
     ];
     _materialRowsFacetsCache = _materialTableFacetsOf(aggregateRows);
     final filterActive = _hasActiveMaterialTableFilters;
-    final result = <_MaterialTableRow>[];
+    final result = <_MaterialTableRow>[
+      for (final product in analysis.products.where(
+        (product) => !_isEmbeddedMakeChildProduct(product),
+      ))
+        _MaterialTableRow(
+          kind: _MaterialTableRowKind.product,
+          key: 'PRODUCT|${product.analysisLineId}',
+          sequence: 'P',
+          depth: 0,
+          product: product,
+          material:
+              indexes.groupsByLine[product.rootMaterialLineId]?.representative,
+          rootAnalysisLineId: product.analysisLineId,
+          contextOnly: true,
+        ),
+    ];
     for (final aggregateRow in aggregateRows) {
       if (filterActive && !_headerFilterMatchesRow(aggregateRow)) continue;
       final aggregate = aggregateRow.aggregate!;
@@ -591,9 +648,14 @@ abstract class _MaterialAnalysisMaterialTableState
 
   /// 本行里**可以改供料路线**的操作组(已有未撤销下游任务的组不在内)。
   List<_MaterialGroup> _materialRowGroups(_MaterialTableRow row) =>
-      _materialRowAllGroups(
-        row,
-      ).where(_canEditMaterialRoute).toList(growable: false);
+      row.isAggregateSource ||
+          (row.aggregate == null &&
+              row.material != null &&
+              _aggregateTable.ownsLine(row.material!.materialLineId))
+      ? const []
+      : _materialRowAllGroups(
+          row,
+        ).where(_canEditMaterialRoute).toList(growable: false);
 
   /// 可勾选的操作组(ADR-102 勾选换义)。
   ///
@@ -603,22 +665,8 @@ abstract class _MaterialAnalysisMaterialTableState
   ///
   /// 并集是必须的：以前这个谓词绑死在路线权限上，换义之后只有采购权限的
   /// 采购员会一行都勾不上。
-  List<_MaterialGroup> _materialRowSelectableGroups(_MaterialTableRow row) {
-    // 「能下单」这一支只对真正持有输入框的行成立：汇总视图的聚合行五列全是
-    // 横杠，勾了它提交的就是界面从没显示过的默认值。路线确认那一支不受影响
-    // ——它本来就按逐路径的真实节点提交。
-    final issuable = _tableEditableGroup(row);
-    return _materialRowAllGroups(row)
-        .where(
-          (group) =>
-              (_canRoute &&
-                  _canEditMaterialRoute(group) &&
-                  _routeGroupSelectable(group)) ||
-              (identical(group, issuable) &&
-                  _tableIssueBlockedReason(group) == null),
-        )
-        .toList(growable: false);
-  }
+  List<_MaterialGroup> _materialRowSelectableGroups(_MaterialTableRow row) =>
+      _aggregateTable.selectableGroups(row);
 
   /// 勾选框本身的权限门：四把锁的并集，缺哪一把只是少一个可做的动作，
   /// 不该整列没有勾选框。
@@ -636,19 +684,42 @@ abstract class _MaterialAnalysisMaterialTableState
     List<_MaterialTableRow> rows,
     Set<String> selected,
   ) {
+    if (_aggregateTable.uncertain) {
+      context.appWarning('提交回执尚未确认，请先在汇总视图重试核对');
+      return;
+    }
     if (_busy || !_canSelectMaterialRows) return;
     final additions = <String>{};
     final removals = <String>{};
     for (final row in rows) {
-      final wasSelected = _materialRowSelected(row);
+      final directGroups = row.product != null
+          ? _materialRowAllGroups(row)
+                .where(
+                  (group) => _materialRowSelectableGroups(
+                    row,
+                  ).any((candidate) => candidate.key == group.key),
+                )
+                .toList()
+          : _materialRowSelectableGroups(row);
+      final wasSelected =
+          directGroups.isNotEmpty &&
+          directGroups.every(
+            (group) => _selectedMaterialGroupKeys.contains(group.key),
+          );
       final nowSelected = selected.contains(row.key);
       if (wasSelected == nowSelected) continue;
       final target = nowSelected ? additions : removals;
-      target.addAll(
-        _materialRowSelectableGroups(row).map((group) => group.key),
-      );
+      target.addAll(directGroups.map((group) => group.key));
     }
     setState(() {
+      for (final row in rows) {
+        final aggregate = row.aggregate;
+        if (aggregate != null &&
+            selected.contains(row.key) &&
+            _aggregateTable.drafts.containsKey(aggregate.key)) {
+          _aggregateTable.begin(aggregate);
+        }
+      }
       _selectedMaterialGroupKeys.removeAll(removals);
       _selectedMaterialGroupKeys.addAll(additions);
       // 亲手撤掉的勾，父行改量的自动勾选不再替他勾回来；亲手勾上 / 撤掉的都
@@ -659,6 +730,32 @@ abstract class _MaterialAnalysisMaterialTableState
       _tableAutoSelectedKeys
         ..removeAll(removals)
         ..removeAll(additions);
+    });
+  }
+
+  void _changeMaterialRowSelection(_MaterialTableRow row, bool selected) {
+    if (_busy || !_canSelectMaterialRows) return;
+    if (_aggregateTable.uncertain) {
+      context.appWarning('提交回执尚未确认，请先在汇总视图重试核对');
+      return;
+    }
+    final keys = _materialRowSelectableGroups(
+      row,
+    ).map((group) => group.key).toSet();
+    setState(() {
+      if (selected) {
+        if (row.aggregate case final aggregate?) {
+          if (_aggregateTable.drafts.containsKey(aggregate.key)) {
+            _aggregateTable.begin(aggregate);
+          }
+        }
+        _selectedMaterialGroupKeys.addAll(keys);
+        _tableUserDeselectedKeys.removeAll(keys);
+      } else {
+        _selectedMaterialGroupKeys.removeAll(keys);
+        _tableUserDeselectedKeys.addAll(keys);
+      }
+      _tableAutoSelectedKeys.removeAll(keys);
     });
   }
 
@@ -705,6 +802,7 @@ abstract class _MaterialAnalysisMaterialTableState
         toolbarLeadingActions: [..._bomToolbarActions(theme, analysis)],
         selectable: true,
         preserveSelectionOnContextMenu: true,
+        selectionStateOf: _aggregateTable.selectionState,
         // 已确认且未改动的行无勾选框（F2d）；改下拉后（脏组）勾选框出现并自动勾上。
         idOf: (row) =>
             _canSelectMaterialRows &&
@@ -714,12 +812,25 @@ abstract class _MaterialAnalysisMaterialTableState
         // idOf 为 null 的行组件默认渲染灰勾选框：已确认未改动的行明确「无勾选框」
         // （勾了也不计数），其余不可勾选行（产品行/只读上下文/不可改路线）保持既有灰框。
         unselectableLeadingBuilder: (_, row) =>
-            _materialRowGroups(row).isNotEmpty &&
-                _materialRowSelectableGroups(row).isEmpty
+            row.isAggregateSource ||
+                (_materialRowGroups(row).isNotEmpty &&
+                    _materialRowSelectableGroups(row).isEmpty)
             ? const SizedBox.shrink()
             : const Checkbox(value: false, onChanged: null),
-        selectionSummaryCount: _selectedMaterialGroupKeys.length,
+        selectionSummaryCount: _bomAggregateByMaterial
+            ? _materialOrderSelectionCount(
+                _analysisIndexes(analysis).groups
+                    .where(
+                      (group) => _selectedMaterialGroupKeys.contains(group.key),
+                    )
+                    .toList(),
+              )
+            : _selectedMaterialGroupKeys.length,
         onClearSelection: () {
+          if (_aggregateTable.uncertain) {
+            context.appWarning('提交回执尚未确认，请先核对结果');
+            return;
+          }
           if (_busy) return;
           setState(() {
             _selectedMaterialGroupKeys.clear();
@@ -732,7 +843,8 @@ abstract class _MaterialAnalysisMaterialTableState
             if (_materialRowSelected(row)) row.key,
         },
         onSelectedIdsChanged: (selected) =>
-            _changeMaterialTableSelection(rows, selected),
+            _changeMaterialTableSelection(pageRows, selected),
+        onRowSelectionChanged: _changeMaterialRowSelection,
         batchActionsBuilder: (_, _) => _bottomActionButtons(),
         items: pageRows,
         // 表头筛选（2026-09-09 用户口径：进度/路线列下拉筛选，UtenTableColumnKit
@@ -1315,6 +1427,9 @@ abstract class _MaterialAnalysisMaterialTableState
       width: 152,
       info: '本次下达计划允许的超产比例，默认 10%。不增加计划数量或自动多领料。已下达工单的比例修改仍须计划部审批。',
       value: (row) {
+        if (row.aggregate case final aggregate?) {
+          return _aggregateTable.rateText(aggregate);
+        }
         final group = _tableEditableGroup(row);
         return group == null || !_tableIssueTarget(group).viaWorkshop
             ? '—'
@@ -1322,9 +1437,18 @@ abstract class _MaterialAnalysisMaterialTableState
       },
       cellBuilderHandlesSemantics: true,
       cellBuilder: (_, row) {
+        if (row.aggregate case final aggregate?) {
+          return _aggregateTable.rateCell(aggregate);
+        }
         final group = _tableEditableGroup(row);
         if (group == null || !_tableIssueTarget(group).viaWorkshop) {
           return const Text('—');
+        }
+        if (row.isAggregateSource ||
+            _aggregateTable.ownsLine(group.representative.materialLineId)) {
+          return Text(
+            '${_overproductionPercentController(materialLineId: group.representative.materialLineId).text}%',
+          );
         }
         return ProductionOverproductionRateField(
           key: ValueKey('material-analysis-overproduction-rate-${group.key}'),
@@ -1463,6 +1587,15 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   String? _materialTableIdentityText(_MaterialTableRow row) {
+    if (_bomAggregateByMaterial && row.product != null) {
+      return '产品任务（按产品办理）· ${row.product?.goodsName ?? row.product?.goodsCode ?? ''}';
+    }
+    if (row.product?.sourceType == 'AGGREGATE_MAKE') {
+      return '汇总生产用料 · ${row.product?.goodsName ?? row.product?.goodsCode ?? ''}';
+    }
+    if (row.isAggregateSource && row.material != null) {
+      return _aggregateTable.sourceLabel(row.material!);
+    }
     final name = switch (row.kind) {
       _MaterialTableRowKind.product =>
         row.product?.goodsName ?? row.product?.goodsCode ?? '未命名产品',
@@ -1547,14 +1680,19 @@ abstract class _MaterialAnalysisMaterialTableState
         _bomTablePageNo = 1;
       });
     }
-    final title =
-        product?.goodsName ??
-        product?.goodsCode ??
-        aggregate?.goodsName ??
-        aggregate?.goodsCode ??
-        material?.goodsName ??
-        material?.goodsCode ??
-        '未命名物料';
+    final title = _bomAggregateByMaterial && product != null
+        ? '产品任务（按产品办理）· ${product.goodsName ?? product.goodsCode ?? ''}'
+        : product?.sourceType == 'AGGREGATE_MAKE'
+        ? '汇总生产用料 · ${product?.goodsName ?? product?.goodsCode ?? ''}'
+        : row.isAggregateSource && material != null
+        ? _aggregateTable.sourceLabel(material)
+        : product?.goodsName ??
+              product?.goodsCode ??
+              aggregate?.goodsName ??
+              aggregate?.goodsCode ??
+              material?.goodsName ??
+              material?.goodsCode ??
+              '未命名物料';
     return UtenTreeTableCell(
       key: ValueKey('material-table-tree-${row.key}'),
       toggleKey: ValueKey('material-table-toggle-${row.key}'),
@@ -1677,7 +1815,13 @@ abstract class _MaterialAnalysisMaterialTableState
         )) {
           return;
         }
-        unawaited(_confirmRouteChanges(groups, next));
+        unawaited(
+          _confirmRouteChanges(
+            groups,
+            next,
+            forAggregate: row.aggregate != null,
+          ),
+        );
       },
     );
     // ADR-102：还没确认路线的行把这一格框成红的。这一行的下单、追加、办理
@@ -1774,7 +1918,12 @@ abstract class _MaterialAnalysisMaterialTableState
       style: theme.textTheme.bodyMedium?.copyWith(color: foreground),
     );
     final goodsId = _materialTableOwningWarehouseRef(row).goodsId;
-    if (row.contextOnly || goodsId == null || goodsId.isEmpty) return label;
+    if (row.contextOnly ||
+        row.isAggregateSource ||
+        goodsId == null ||
+        goodsId.isEmpty) {
+      return label;
+    }
     return Tooltip(
       message: '$text\n点击改这个货品的所属仓库(货品主档归属, 不是本次分析范围仓, 也不是入库落点仓)',
       child: InkWell(
@@ -1833,6 +1982,7 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     final product = row.product;
     if (_isEmbeddedMakeChildProduct(product)) {
+      if (product?.sourceType == 'AGGREGATE_MAKE') return 0;
       final analysis = _analysis;
       if (analysis == null) return null;
       return _analysisIndexes(
@@ -2033,6 +2183,7 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 页面销毁时统一释放行内输入控制器。
   @override
   void _disposeMaterialTableInputs() {
+    _aggregateTable.dispose();
     _tableCascadeDebounce?.cancel();
     _tableCascadeDebounce = null;
     // 离开页面 / 换分析：在途的那份预览直接丢掉，也不再补发。
@@ -2146,7 +2297,14 @@ abstract class _MaterialAnalysisMaterialTableState
       }
       if (route == MaterialSupplyRoute.make) return 0;
     }
-    var ordered = 0.0;
+    final legacyAnchor = _tableLegacyAnchorWithSharedSupply(
+      group,
+      authoritative: authoritative,
+    );
+    var ordered = legacyAnchor == null
+        ? 0.0
+        : legacyAnchor.issuedPlanQty *
+              _tableAnchorUnitRate(group, legacyAnchor);
     for (final path in group.paths) {
       for (final target in path.notifiedTargets) {
         if (target.target != route ||
@@ -2162,7 +2320,12 @@ abstract class _MaterialAnalysisMaterialTableState
         if (const {
           'FUTURE_TRANSFER',
           'SHARED_FUTURE_CLAIM',
+          'AGGREGATE_CONTINUATION',
         }.contains(_supplyOperationType(target.actionId))) {
+          continue;
+        }
+        if (legacyAnchor != null &&
+            _supplyOperationType(target.actionId) != 'AGGREGATE_SUPPLY') {
           continue;
         }
         final allocated = target.allocatedQty ?? 0;
@@ -2174,7 +2337,9 @@ abstract class _MaterialAnalysisMaterialTableState
         // 一条行动可能分摊到多条物料行(各一条 allocation)，公共份按本行分摊量占行动
         // 需求份的比例摊，几条行加起来正好是整条行动的公共份，不会每行都算一遍。
         final action = _supplyActionOf(target.actionId);
-        if (action != null && action.publicSurplusQty > 0) {
+        if (action != null &&
+            action.publicSurplusQty > 0 &&
+            _supplyOperationType(target.actionId) != 'AGGREGATE_SUPPLY') {
           final share = action.requestedQty > 0.0001
               ? (allocated / action.requestedQty).clamp(0.0, 1.0)
               : 1.0;
@@ -2232,8 +2397,36 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 目标件的委外行(它们的下达都是 issue-plans 出计划, 锚点产品才是事实源)。与级联页
   /// `preparationAnchor` 同一口径。
   bool _tableUsesMakeAnchor(_MaterialGroup group) =>
-      _draftRoute(group) == MaterialSupplyRoute.make ||
-      _tableSubcontractNeedsPreparation(group);
+      !group.paths.any(
+        (path) => path.notifiedTargets.any(
+          (target) =>
+              target.status != 'CANCELLED' &&
+              _supplyOperationType(target.actionId) == 'AGGREGATE_SUPPLY',
+        ),
+      ) &&
+      (_draftRoute(group) == MaterialSupplyRoute.make ||
+          _tableSubcontractNeedsPreparation(group));
+
+  ProductionMaterialAnalysisProduct? _tableLegacyAnchorWithSharedSupply(
+    _MaterialGroup group, {
+    bool authoritative = false,
+  }) {
+    if (!group.paths.any(
+      (path) => path.notifiedTargets.any(
+        (target) =>
+            target.status != 'CANCELLED' &&
+            _supplyOperationType(target.actionId) == 'AGGREGATE_SUPPLY',
+      ),
+    )) {
+      return null;
+    }
+    final anchor = _tableMakeAnchorOf(group, authoritative: authoritative);
+    if (anchor == null || anchor.sourceType == 'AGGREGATE_MAKE') return null;
+    return _draftRoute(group) == MaterialSupplyRoute.make ||
+            anchor.sourceType == 'SUBCONTRACT_MAKE'
+        ? anchor
+        : null;
+  }
 
   /// 这一行下过单没有(下过 = 下单数量列锁死、改填追加下单列)。
   bool _tableGroupIssued(_MaterialGroup group) =>
@@ -2637,6 +2830,10 @@ abstract class _MaterialAnalysisMaterialTableState
   /// (ADR-099 不变量——客户端没有任何缺口减在途的回退)。代价是有一次
   /// 往返延迟，换来的是主表不会把父子联动的算术重实现一遍再踩一遍坑。
   Future<void> _refreshTableCascadePreview() async {
+    if (_aggregateTable.hasDrafts) {
+      await _aggregateTable.refreshPreview();
+      return;
+    }
     final analysis = _analysis;
     final warehouseId = _warehouseId;
     if (analysis == null || warehouseId == null || !mounted) return;
@@ -3239,6 +3436,7 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 主表里还有用户手填未提交的数量，或还勾着待下单的行。
   @override
   bool get _hasUnsubmittedMaterialTableInput =>
+      _aggregateTable.hasDrafts ||
       _selectedMaterialGroupKeys.isNotEmpty ||
       _tableUserTypedQty.isNotEmpty ||
       _tableOrderQtyControllers.entries.any(
@@ -3252,7 +3450,17 @@ abstract class _MaterialAnalysisMaterialTableState
 
   /// 这一行现在能不能下达；不能时给出**人话**原因(缺权限要说清缺哪一个)。
   @override
-  String? _tableIssueBlockedReason(_MaterialGroup group) {
+  String? _tableIssueBlockedReason(
+    _MaterialGroup group, {
+    bool forAggregate = false,
+  }) {
+    if (_aggregateTable.inactiveSourceContext(group)) {
+      return '此来源已转交生产责任或不再需要备料，当前仅保留来源说明';
+    }
+    if (!forAggregate &&
+        _aggregateTable.ownsLine(group.representative.materialLineId)) {
+      return '此来源已有未提交的汇总总量，请到「按物料汇总」修改、下达或撤销该草稿';
+    }
     if (group.representative.confirmedRoute == null) {
       return '这一行还没确认供应方式，先在「供应方式」列里选好并确认';
     }
@@ -3354,7 +3562,27 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   Widget _materialTableHandleCell(ThemeData theme, _MaterialTableRow row) {
+    if (_bomAggregateByMaterial && row.product != null) {
+      return TextButton(
+        onPressed: _busy
+            ? null
+            : () => setState(() {
+                _bomAggregateByMaterial = false;
+                _bomTablePageNo = 1;
+                _pruneMaterialTableFilters();
+              }),
+        child: const Text('按产品办理'),
+      );
+    }
+    if (row.aggregate case final aggregate?) {
+      return _aggregateTable.actionCell(aggregate);
+    }
+    if (row.isAggregateSource) return const Text('—');
     final group = _tableEditableGroup(row);
+    if (group != null &&
+        _aggregateTable.ownsLine(group.representative.materialLineId)) {
+      return _aggregateTable.lockedText('汇总草稿中');
+    }
     if (group == null) return const Text('—');
     final transferReason = _tableTransferBlockedReason(group);
     final transferable = _tableTransferableInQty(group);
@@ -3490,6 +3718,9 @@ abstract class _MaterialAnalysisMaterialTableState
   // ------------------------- 下单数量 / 追加下单 -------------------------
 
   String? _materialTableOrderQtyText(_MaterialTableRow row) {
+    if (row.aggregate case final aggregate?) {
+      return _aggregateTable.orderText(aggregate);
+    }
     final group = _tableEditableGroup(row);
     if (group == null) return '—';
     if (_tableGroupIssued(group)) return _qty(_tableGroupIssuedQty(group));
@@ -3498,8 +3729,17 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   Widget _materialTableOrderQtyCell(ThemeData theme, _MaterialTableRow row) {
+    if (row.aggregate case final aggregate?) {
+      return _aggregateTable.quantityCell(theme, aggregate, append: false);
+    }
+    if (row.isAggregateSource) {
+      return Text(_materialTableOrderQtyText(row) ?? '—');
+    }
     final group = _tableEditableGroup(row);
     if (group == null) return const Text('—');
+    if (_aggregateTable.ownsLine(group.representative.materialLineId)) {
+      return _aggregateTable.lockedText(_materialTableOrderQtyText(row) ?? '—');
+    }
     // 已下达：这一格锁住并改成显示累计已下单量，本次要再下就填右边的追加。
     if (_tableGroupIssued(group)) {
       return Tooltip(
@@ -3576,14 +3816,28 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   String? _materialTableAppendQtyText(_MaterialTableRow row) {
+    if (row.aggregate case final aggregate?) {
+      return _aggregateTable.appendText(aggregate);
+    }
     final group = _tableEditableGroup(row);
     if (group == null || !_tableGroupIssued(group)) return '—';
     return _tableAppendQtyControllers[group.key]?.text ?? '0';
   }
 
   Widget _materialTableAppendQtyCell(ThemeData theme, _MaterialTableRow row) {
+    if (row.aggregate case final aggregate?) {
+      return _aggregateTable.quantityCell(theme, aggregate, append: true);
+    }
+    if (row.isAggregateSource) {
+      return Text(_materialTableAppendQtyText(row) ?? '—');
+    }
     final group = _tableEditableGroup(row);
     if (group == null) return const Text('—');
+    if (_aggregateTable.ownsLine(group.representative.materialLineId)) {
+      return _aggregateTable.lockedText(
+        _materialTableAppendQtyText(row) ?? '—',
+      );
+    }
     // 整批接管的行(需先自制目标件的委外)提交量恒等于剩余需求，这一格填了也不会
     // 被读走——所以不给输入框，直接说清追加走哪条路。
     // 2026-09-22 对抗复查：原先这一格对已下达的自制行是可编辑的，用户填的数
@@ -3672,6 +3926,9 @@ abstract class _MaterialAnalysisMaterialTableState
       group != null && _draftRoute(group) == MaterialSupplyRoute.make;
 
   String? _materialTableProductionWorkshopText(_MaterialTableRow row) {
+    if (row.aggregate case final aggregate?) {
+      return _aggregateTable.workshopText(aggregate);
+    }
     final group = _tableEditableGroup(row);
     if (!_tableAssignable(group)) return '—';
     return _tableWorkshopFor(group!).name ?? '待指派';
@@ -3681,9 +3938,20 @@ abstract class _MaterialAnalysisMaterialTableState
     ThemeData theme,
     _MaterialTableRow row,
   ) {
+    if (row.aggregate case final aggregate?) {
+      return _aggregateTable.assignmentCell(theme, aggregate, worker: false);
+    }
+    if (row.isAggregateSource) {
+      return Text(_materialTableProductionWorkshopText(row) ?? '—');
+    }
     final group = _tableEditableGroup(row);
     if (!_tableAssignable(group)) return const Text('—');
-    final current = _tableWorkshopFor(group!);
+    if (_aggregateTable.ownsLine(group!.representative.materialLineId)) {
+      return _aggregateTable.lockedText(
+        _materialTableProductionWorkshopText(row) ?? '—',
+      );
+    }
+    final current = _tableWorkshopFor(group);
     return _materialTableAssignmentCell(
       theme,
       key: 'material-analysis-workshop-${group.key}',
@@ -3698,15 +3966,29 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   String? _materialTableResponsibleText(_MaterialTableRow row) {
+    if (row.aggregate case final aggregate?) {
+      return _aggregateTable.workerText(aggregate);
+    }
     final group = _tableEditableGroup(row);
     if (!_tableAssignable(group)) return '—';
     return _tableWorkerFor(group!).name ?? '待指派';
   }
 
   Widget _materialTableResponsibleCell(ThemeData theme, _MaterialTableRow row) {
+    if (row.aggregate case final aggregate?) {
+      return _aggregateTable.assignmentCell(theme, aggregate, worker: true);
+    }
+    if (row.isAggregateSource) {
+      return Text(_materialTableResponsibleText(row) ?? '—');
+    }
     final group = _tableEditableGroup(row);
     if (!_tableAssignable(group)) return const Text('—');
-    final current = _tableWorkerFor(group!);
+    if (_aggregateTable.ownsLine(group!.representative.materialLineId)) {
+      return _aggregateTable.lockedText(
+        _materialTableResponsibleText(row) ?? '—',
+      );
+    }
+    final current = _tableWorkerFor(group);
     return _materialTableAssignmentCell(
       theme,
       key: 'material-analysis-worker-${group.key}',
@@ -3767,7 +4049,10 @@ abstract class _MaterialAnalysisMaterialTableState
     final onScreen = <String, _MaterialGroup>{};
     for (final row in _materialTableRows(analysis)) {
       if (row.contextOnly) continue;
-      for (final group in _materialRowAllGroups(row)) {
+      for (final group
+          in row.product != null
+              ? _aggregateTable.selectionScope(row)
+              : _materialRowAllGroups(row)) {
         onScreen[group.key] = group;
       }
     }
@@ -3779,7 +4064,12 @@ abstract class _MaterialAnalysisMaterialTableState
         hidden++;
         continue;
       }
-      if (_tableIssueBlockedReason(group) == null) visible.add(group);
+      if (_bomAggregateByMaterial &&
+          (group.representative.isRootSupply ||
+              group.representative.level <= 0)) {
+        continue;
+      }
+      if (_aggregateTable.selectableForOrder(group)) visible.add(group);
     }
     return (visible: visible, hidden: hidden);
   }
@@ -3791,6 +4081,9 @@ abstract class _MaterialAnalysisMaterialTableState
     List<_MaterialGroup> groups, {
     bool fromShortagePage = false,
   }) async {
+    if (_bomAggregateByMaterial && !fromShortagePage) {
+      return _aggregateTable.submit(groups);
+    }
     final analysis = _analysis;
     if (analysis == null || _busy || groups.isEmpty) return false;
 
@@ -4083,6 +4376,9 @@ abstract class _MaterialAnalysisMaterialTableState
     List<String> blocked, {
     required int hiddenSelected,
   }) async {
+    final includedHidden = _aggregateTable.includedOutsideCurrentRows(
+      pending.keys,
+    );
     final lines = <String>[
       for (final entry in pending.entries)
         '· ${_tableGroupLabel(entry.key)}'
@@ -4097,6 +4393,8 @@ abstract class _MaterialAnalysisMaterialTableState
           [
             ...lines.take(12),
             if (lines.length > 12) '…… 以及其余 ${lines.length - 12} 行',
+            if (includedHidden > 0)
+              '其中 $includedHidden 行在折叠分支、筛选之外或其他分页，已按你的产品/来源选择计入本次。',
             if (blocked.isNotEmpty) ...[
               '',
               '以下 ${blocked.length} 行本次跳过：',
@@ -4934,7 +5232,19 @@ abstract class _MaterialAnalysisMaterialTableState
   bool _canCancelSpecificAction(String? actionId) {
     if (!_canCancelAction || actionId == null) return false;
     final operation = _supplyOperationType(actionId);
-    if (operation == 'FUTURE_TRANSFER') return false;
+    if (operation == 'FUTURE_TRANSFER' ||
+        operation == 'AGGREGATE_CONTINUATION') {
+      return false;
+    }
+    if (operation == 'AGGREGATE_SUPPLY') {
+      final action = _supplyActionOf(actionId);
+      return _permissions.contains(
+        (action?.route == MaterialSupplyRoute.make ||
+                action?.documentType == 'SUBCONTRACT_MAKE_TASK')
+            ? Perm.productionMaterialAnalysisGenerate
+            : Perm.productionMaterialAnalysisNotify,
+      );
+    }
     return _permissions.contains(
       operation == 'SHARED_FUTURE_CLAIM'
           ? Perm.productionMaterialAnalysisClaimSharedFuture
@@ -5014,6 +5324,9 @@ abstract class _MaterialAnalysisMaterialTableState
                             ).materialNotificationReversalReconcile
                           : _isSharedFutureClaimAction(target.actionId)
                           ? '撤回认领'
+                          : _supplyOperationType(target.actionId) ==
+                                'AGGREGATE_SUPPLY'
+                          ? '整批撤回'
                           : '撤回',
                     ),
                   ),
@@ -5260,6 +5573,9 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   Future<bool> _cancelMaterialAction(String actionId) async {
+    if (_supplyOperationType(actionId) == 'AGGREGATE_SUPPLY') {
+      return _aggregateTable.cancelAction(actionId);
+    }
     final analysis = _analysis;
     if (analysis == null || !_canCancelSpecificAction(actionId) || _busy) {
       return false;

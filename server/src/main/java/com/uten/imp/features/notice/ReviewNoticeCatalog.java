@@ -22,6 +22,8 @@ public final class ReviewNoticeCatalog {
                     new Entry("PRODUCTION_OVERPRODUCTION_RATE_REQUEST",null)),
             Map.entry("PRODUCTION_MATERIAL_INCREMENT_SUBMITTED",
                     new Entry("PRODUCTION_MATERIAL_INCREMENT_REQUEST",null)),
+            Map.entry("PRODUCTION_MATERIAL_DISCOVERY_PENDING",
+                    new Entry("PRODUCTION_MATERIAL_DISCOVERY_REQUEST",null)),
             // ADR-117 车间催计划下单子层物料：计划下够单(缺口归零)或任务结束时按催办记录撤卡。
             Map.entry("PRODUCTION_PLANNING_URGED",
                     new Entry("PRODUCTION_PLANNING_URGE", null)),

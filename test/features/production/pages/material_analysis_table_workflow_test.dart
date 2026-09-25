@@ -97,7 +97,7 @@ void main() {
   );
 
   testWidgets(
-    'current-page selection never selects hidden product descendants and clear is global',
+    'header selection remains on the current page while explicit product selection includes descendants',
     (tester) async {
       final harness = await _pump(tester, count: 250);
       final region = find.byKey(
@@ -105,7 +105,7 @@ void main() {
       );
       final header = find.descendant(
         of: region,
-        matching: find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
+        matching: find.byKey(const Key('master-data-table-select-all')),
       );
       await tester.tap(header);
       await tester.pumpAndSettle();
@@ -160,9 +160,7 @@ void main() {
         findsOneWidget,
       );
       // 全屏下按物料汇总布局没有 region key 包装：直接找当页表格的表头三态复选框。
-      await tester.tap(
-        find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
-      );
+      await tester.tap(find.byKey(const Key('master-data-table-select-all')));
       await tester.pumpAndSettle();
       expect(find.text('已选 2 项'), findsOneWidget);
       await tester.tap(
@@ -188,7 +186,7 @@ void main() {
       await tester.tap(
         find.descendant(
           of: find.byKey(const Key('material-analysis-material-table-region')),
-          matching: find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
+          matching: find.byKey(const Key('master-data-table-select-all')),
         ),
       );
       await tester.pumpAndSettle();

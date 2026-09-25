@@ -31,6 +31,8 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/warehouse_draw_task.dart';
+import '../pages/production_material_discovery_page.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../repositories/production_draw_task_repository.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
 
@@ -234,6 +236,16 @@ class _WarehouseDrawTaskSegmentState
   }
 
   Future<void> _openTask(WarehouseDrawTask task) async {
+    if (task.isMaterialDiscovery) {
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) =>
+              ProductionMaterialDiscoveryPage(requestId: task.actionDocId!),
+        ),
+      );
+      if (mounted) await _load(_result?.page ?? 1);
+      return;
+    }
     final path = task.drawDocPath;
     if (path == null) {
       // 服务端判定当前账号不可见对应领料单（对象范围裁剪）；只读行不提供入口。
@@ -358,12 +370,14 @@ class _WarehouseDrawTaskSegmentState
                   )
                 : null,
             onRowTap: _openTask,
-            canOpenRow: (task) => task.drawDocPath != null,
-            rowMenuBuilder: (task) => task.drawDocPath == null
+            canOpenRow: (task) => task.canOpen,
+            rowMenuBuilder: (task) => !task.canOpen
                 ? const <UtenMenuItem>[]
                 : [
                     UtenMenuItem(
-                      label: '进入领料单办理出库',
+                      label: task.isMaterialDiscovery
+                          ? AppLocalizations.of(context).materialDiscoveryTitle
+                          : '进入领料单办理出库',
                       icon: Icons.outbound_outlined,
                       onTap: () => _openTask(task),
                     ),

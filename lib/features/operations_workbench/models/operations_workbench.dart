@@ -97,6 +97,7 @@ class OperationsWorkbenchSummary {
         // 仓库履约任务台（领料/备料域，与采购/委外不同）：保留状态卡 + 逾期/未完成数量。
         return [
           pending,
+          _statusMetric('MATERIALS_TO_DEFINE', '待填写物料', 'warning'),
           _statusMetric('READY_TO_PICK', '待备料 / 待领取', 'warning'),
           _statusMetric('PARTIAL', '部分领取', 'info'),
           _statusMetric('DONE', '已领取', 'success'),
@@ -229,8 +230,11 @@ class OperationsActionDocument {
     final type = rawType.trim();
     if (type.isEmpty || id.trim().isEmpty) return null;
     return switch (department) {
-      OperationsWorkbenchDepartment.warehouse =>
-        type.toUpperCase() == 'DRAW' ? '/warehouse/DRAW/$id' : null,
+      OperationsWorkbenchDepartment.warehouse => switch (type.toUpperCase()) {
+        'DRAW' => '/warehouse/DRAW/$id',
+        'MATERIAL_DISCOVERY' => '/warehouse/tasks/draw',
+        _ => null,
+      },
       OperationsWorkbenchDepartment.purchase => switch (type.toUpperCase()) {
         'PURCHASE_REQUEST' || 'REQUEST' => '/purchase/requests/$id',
         'PURCHASE_ORDER' || 'ORDER' => '/purchase/orders/$id',
@@ -351,6 +355,10 @@ class OperationsWorkbenchTask {
   /// 状态列用的阶段码：优先服务端展示阶段，老响应回落 taskStatus。
   String get progressStatus => displayStage ?? taskStatus;
 
+  bool get isMaterialDiscovery =>
+      taskStatus.toUpperCase() == 'MATERIALS_TO_DEFINE' ||
+      actionDocument?.docType.toUpperCase() == 'MATERIAL_DISCOVERY';
+
   /// ADR-103：路线 B 申请行被子件库存锁住 (黄，在办等别人到货，不可下单)。
   bool get waitingComponentStock => displayStage == 'WAITING_COMPONENT_STOCK';
 
@@ -389,7 +397,9 @@ class OperationsWorkbenchTask {
   String get dueDate => needDate ?? expectedDate ?? '—';
 
   /// 单货品单据照旧显示数量；多货品归组行不同单位不能加总，显示行级摘要。
-  String get quantityText => isDocumentGrouped
+  String get quantityText => isMaterialDiscovery
+      ? '—'
+      : isDocumentGrouped
       ? (openLineCount > 0 ? '$openLineCount 行待处理' : '$goodsCount 种物料')
       : '${_displayNumber(openQty)} $unitName'.trim();
   bool get hasException => exceptionCode != null;
@@ -579,6 +589,7 @@ String operationsWorkbenchStatusLabel(String code) =>
       'OPEN_ANY' => '待完成',
       'OPEN' => '待处理',
       'READY_TO_PICK' => '待备料 / 待发料',
+      'MATERIALS_TO_DEFINE' => '待填写物料',
       'UNPEGGED' => '待生成供给单',
       'WAITING' => '等待中',
       'WAITING_SUPPLY' => '采购 / 委外执行中',
@@ -658,6 +669,7 @@ String _actionDocumentLabel(OperationsActionDocument document) {
       _ => '委外回厂单$suffix',
     },
     'PURCHASE_RETURN' || 'RETURN' => '采购退货单$suffix',
+    'MATERIAL_DISCOVERY' => '填写实际领料$suffix',
     'DRAW' => status == '1' ? '已发料$suffix' : '领料单$suffix',
     _ => document.number.isEmpty ? '查看单据' : '查看 ${document.number}',
   };

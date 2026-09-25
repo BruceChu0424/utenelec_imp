@@ -611,6 +611,14 @@ final class MasterReferenceCatalog {
         exempt(out, ExemptReason.OWN_CONFIG, "货品自己的计量采集设置", "measurement_capture_profiles", "goods_id");
         exempt(out, ExemptReason.OWN_CONFIG, "父件自己的组装清单(删父件时同一事务软删)", "goods_bom_items",
                 "goods_id");
+        exempt(out, ExemptReason.OWN_CONFIG, "BOM学习所属父件与原单位快照，停用主档后不再发布", "goods_bom_learning_profiles",
+                "goods_id", "output_unit_id");
+        exempt(out, ExemptReason.HISTORY, "累计实际耗用的历史身份；当前使用由有效BOM边覆盖", "goods_bom_learning_material_totals",
+                "component_goods_id", "color_id", "unit_id");
+        exempt(out, ExemptReason.COVERED, "仓库选料冻结证据；配置同事务生成真实需求，其主档在办引用由需求覆盖", "production_material_discovery_lines",
+                "goods_id", "color_id", "unit_id", "warehouse_id");
+        exempt(out, ExemptReason.HISTORY, "学习来源父件与原基础单位快照；有效BOM组件由既有目录覆盖", "goods_bom_items",
+                "learning_unit_id");
 
         exempt(out, ExemptReason.COVERED, "库存成本池跟着库存余额走(库存余额检查)", "stock_value_pools",
                 "goods_id", "color_id", "warehouse_id");

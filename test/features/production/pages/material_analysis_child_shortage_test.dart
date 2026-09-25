@@ -57,6 +57,22 @@ Future<void> _check(WidgetTester tester, Finder checkbox) async {
   await tester.pump();
 }
 
+/// Parent selection now explicitly includes its subtree. These tests exercise
+/// issuing only the parent, then the established child-shortage workflow.
+Future<void> _selectParentOnly(WidgetTester tester) async {
+  final parent = _productCheckbox('product-1');
+  if (tester.widget<Checkbox>(parent).value != true) {
+    await _check(tester, parent);
+  }
+  for (final id in ['m-c1', 'm-c2', 'm-c3', 'm-g1', 'm-ok', 'm-c4']) {
+    final checkbox = _rowCheckbox(id);
+    if (checkbox.evaluate().isNotEmpty &&
+        tester.widget<Checkbox>(checkbox).value == true) {
+      await _check(tester, checkbox);
+    }
+  }
+}
+
 /// 等假后端应答与分段编排跑完(期间没有动画帧, pumpAndSettle 会提前返回)。
 Future<void> _drain(WidgetTester tester) async {
   for (var i = 0; i < 30; i++) {
@@ -156,7 +172,7 @@ void main() {
     expect(find.byKey(const Key('child-shortage-banner')), findsOneWidget);
     expect(find.text('已下单的件里，还有 1 种下层物料没下够'), findsOneWidget);
 
-    await _check(tester, _productCheckbox('product-1'));
+    await _selectParentOnly(tester);
     await _submitMainTable(tester);
     expect(
       _writes().map((request) => request.path.split('/').last).toList(),
@@ -204,7 +220,7 @@ void main() {
 
   testWidgets('去补下单：数量按缺口填好、父先子后一键下完，回主表下单数量已锁成累计', (tester) async {
     await _pump(tester);
-    await _check(tester, _productCheckbox('product-1'));
+    await _selectParentOnly(tester);
     await _submitMainTable(tester);
     await tester.tap(find.byKey(const Key('child-shortage-go')));
     await tester.pumpAndSettle();
@@ -298,7 +314,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
     await tester.pumpAndSettle();
-    await _check(tester, _productCheckbox('product-1'));
+    await _selectParentOnly(tester);
     await _submitMainTable(tester);
 
     expect(find.byKey(const Key('child-shortage-dialog')), findsOneWidget);
@@ -341,7 +357,7 @@ void main() {
         return data;
       },
     );
-    await _check(tester, _productCheckbox('product-1'));
+    await _selectParentOnly(tester);
     await _submitMainTable(tester);
     await tester.tap(find.byKey(const Key('child-shortage-go')));
     await tester.pumpAndSettle();
@@ -455,7 +471,7 @@ void main() {
     await _pump(tester);
     final state = tester.state(find.byType(ProductionMaterialAnalysisPage));
     // 主表里勾一行 = 有未提交的选择。
-    await _check(tester, _productCheckbox('product-1'));
+    await _selectParentOnly(tester);
     requests.clear();
     await tester.pumpWidget(_treeFor('analysis-2'));
     await _drain(tester);
@@ -505,7 +521,7 @@ void main() {
 
   testWidgets('父件下成、采购那段失败：照样提醒下层还缺(正是「只下了父件」)', (tester) async {
     await _pump(tester, failNotify: true);
-    await _check(tester, _productCheckbox('product-1'));
+    await _selectParentOnly(tester);
     await _check(tester, _rowCheckbox('m-c1'));
     await _submitMainTable(tester);
     final paths = _writes().map((r) => r.path.split('/').last).toList();
@@ -676,6 +692,7 @@ Future<void> _pump(
 ///   → 委外件的子料 m-pc(采购, 缺 600)。
 /// [issuedRoot] = 父件与下层都已下够单(父件计划 1000 已排满, 铜片已订 1000)。
 Map<String, dynamic> _analysis({required bool issuedRoot}) => {
+  'overproductionDefaults': {'g-m-root': 0, 'g-m-c3': 0.1},
   'analysisId': 'analysis-1',
   'version': 3,
   'fingerprint': 'a' * 64,

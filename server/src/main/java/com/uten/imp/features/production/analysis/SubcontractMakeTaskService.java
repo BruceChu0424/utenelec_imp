@@ -180,7 +180,7 @@ public class SubcontractMakeTaskService {
                        COALESCE(workshop.working, 0), analysis.maker_id,
                        source_item.id, source_item.source_type,
                        COALESCE(source_sale.bill_no, source_item.source_ref), source_sale.line_no,
-                       source_goods.code, source_goods.name, item.requested_qty
+                       source_goods.code, source_goods.name, item.requested_qty,item.source_type
                 """ + listFrom + where
                 + " ORDER BY task.updated_at DESC NULLS LAST, task.id");
         if (!access.hasAuthority("subcontract_application:view")) {
@@ -210,6 +210,8 @@ public class SubcontractMakeTaskService {
                 .setFirstResult((page - 1) * size)
                 .setMaxResults(size)
                 .getResultList();
+        Map<UUID,List<SubcontractTaskSource>> aggregateSources=aggregateTaskSources(rows.stream()
+                .filter(row->"AGGREGATE_MAKE".equals(row[32])).map(row->(UUID)row[0]).toList());
         List<TaskView> content = rows.stream().map(row -> new TaskView(
                 (UUID) row[0], (UUID) row[1], Objects.toString(row[2], ""),
                 Objects.toString(row[3], ""),
@@ -230,7 +232,7 @@ public class SubcontractMakeTaskService {
                         ? allowedActions(decimal(row[15]), Objects.toString(row[18], ""))
                         : List.of(),
                 row[19] == null ? null : toInstant(row[19]),
-                (UUID) row[20], taskSources(row))).toList();
+                (UUID) row[20], aggregateSources.getOrDefault((UUID)row[0],taskSources(row)))).toList();
         return new PageResponse<>(content, page, size, total,
                 (int) Math.ceil((double) total / size));
     }
@@ -252,6 +254,39 @@ public class SubcontractMakeTaskService {
                 Objects.toString(row[5], ""), Objects.toString(row[6], ""), surplus,
                 Objects.toString(row[10], "")));
         return List.copyOf(sources);
+    }
+
+    private Map<UUID,List<SubcontractTaskSource>> aggregateTaskSources(List<UUID> taskIds){
+        if(taskIds.isEmpty())return Map.of();
+        List<Object[]> rows=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT task.id,item.id,item.source_type,COALESCE(sale.bill_no,item.source_ref),sale.line_no,
+                       source_goods.code,source_goods.name,target_goods.code,target_goods.name,allocation.allocated_qty,unit.name
+                FROM preplan_subcontract_make_tasks task
+                JOIN preplan_aggregate_batches batch ON batch.action_id=task.supply_action_id
+                  AND batch.analysis_id=task.analysis_id AND batch.anchor_analysis_item_id=task.preparation_item_id AND batch.route='SUBCONTRACT'
+                JOIN preplan_supply_action_allocations allocation ON allocation.action_id=batch.action_id
+                JOIN production_material_analysis_materials material ON material.id=allocation.analysis_material_id
+                JOIN production_material_analysis_items item ON item.id=material.analysis_item_id
+                JOIN goods source_goods ON source_goods.id=item.goods_id
+                JOIN goods target_goods ON target_goods.id=task.goods_id
+                JOIN units unit ON unit.id=task.unit_id
+                LEFT JOIN sales_order_items sale ON sale.id=item.sales_order_item_id
+                WHERE task.id IN(:ids)
+                UNION ALL
+                SELECT task.id,NULL,'PUBLIC_STOCK','',NULL,'','',goods.code,goods.name,action.public_surplus_qty,unit.name
+                FROM preplan_subcontract_make_tasks task
+                JOIN preplan_aggregate_batches batch ON batch.action_id=task.supply_action_id
+                  AND batch.analysis_id=task.analysis_id AND batch.anchor_analysis_item_id=task.preparation_item_id AND batch.route='SUBCONTRACT'
+                JOIN preplan_supply_actions action ON action.id=batch.action_id
+                JOIN goods ON goods.id=task.goods_id JOIN units unit ON unit.id=task.unit_id
+                WHERE task.id IN(:ids) AND action.public_surplus_qty>0
+                ORDER BY 1,3,4,5 NULLS LAST,2
+                """).setParameter("ids",taskIds));
+        Map<UUID,List<SubcontractTaskSource>> result=new java.util.LinkedHashMap<>();
+        for(Object[] row:rows)result.computeIfAbsent((UUID)row[0],ignored->new java.util.ArrayList<>()).add(new SubcontractTaskSource(
+                (UUID)row[1],Objects.toString(row[2],""),Objects.toString(row[3],""),row[4]==null?null:((Number)row[4]).intValue(),
+                Objects.toString(row[5],""),Objects.toString(row[6],""),Objects.toString(row[7],""),Objects.toString(row[8],""),decimal(row[9]),Objects.toString(row[10],"")));
+        return result;
     }
 
     /**
@@ -437,7 +472,8 @@ public class SubcontractMakeTaskService {
                 SELECT requested_qty FROM production_material_analysis_items
                 WHERE id = :itemId AND is_deleted = FALSE
                 """).setParameter("itemId", task.preparationItemId()).getSingleResult());
-        BigDecimal demandNotifiedBefore = task.notifiedQty().min(demandTotal);
+        boolean aggregate=aggregateTask(task);
+        BigDecimal demandNotifiedBefore = aggregate?aggregateNotifiedDemand(task):task.notifiedQty().min(demandTotal);
         BigDecimal demandPart = qty.min(
                 demandTotal.subtract(demandNotifiedBefore).max(BigDecimal.ZERO))
                 .max(BigDecimal.ZERO).setScale(4, java.math.RoundingMode.CEILING);
@@ -528,20 +564,25 @@ public class SubcontractMakeTaskService {
         if (demandPart.signum() > 0) {
             // 纯公共批不建需求 allocation（allocated_qty 有 >0 CHECK，
             // V589 已放开批次行的 allocation 锚可空）。
-            allocationId = UUID.randomUUID();
+            List<NotificationSource> notificationSources=notificationSources(task,demandPart,aggregate);
+            var notificationRows=com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.arrayNode();
+            for(NotificationSource notificationSource:notificationSources) {
+            UUID sourceAllocationId = UUID.randomUUID();
+            if(allocationId==null)allocationId=sourceAllocationId;
+            var row=notificationRows.addObject();row.put("id",sourceAllocationId.toString());row.put("material_id",notificationSource.materialId().toString());row.put("qty",notificationSource.qty());
+            }
             em.createNativeQuery("""
                     INSERT INTO preplan_supply_action_allocations (
                         id, analysis_id, action_id, analysis_material_id,
                         allocated_qty, external_item_id, created_by)
-                    VALUES (
-                        :id, :analysisId, :actionId, :materialId,
-                        :qty, :externalItemId, :actorId)
+                    SELECT input.id,:analysisId,:actionId,input.material_id,
+                        input.qty,:externalItemId,:actorId
+                    FROM jsonb_to_recordset(CAST(:rows AS jsonb)) AS input(id uuid,material_id uuid,qty numeric)
+                    ORDER BY input.material_id
                     """)
-                    .setParameter("id", allocationId)
+                    .setParameter("rows",notificationRows.toString())
                     .setParameter("analysisId", task.analysisId())
                     .setParameter("actionId", notifyActionId)
-                    .setParameter("materialId", task.analysisMaterialId())
-                    .setParameter("qty", demandPart)
                     .setParameter("externalItemId", line.applicationItemId())
                     .setParameter("actorId", actorUserId)
                     .executeUpdate();
@@ -584,6 +625,43 @@ public class SubcontractMakeTaskService {
         chainNotice.notifySubcontractMakeNotified(batchId);
         return new CreatedBatch(batchId, result.applicationId(), result.billNo());
     }
+
+    /** Shared preparation retains its positive private source shares across every notified slice. */
+    private boolean aggregateTask(LockedTask task){return ((Number)em.createNativeQuery("""
+                SELECT COUNT(*) FROM preplan_aggregate_batches batch
+                WHERE batch.analysis_id=:analysis AND batch.action_id=:action
+                  AND batch.anchor_analysis_item_id=:anchor AND batch.route='SUBCONTRACT'
+                """).setParameter("analysis",task.analysisId()).setParameter("action",task.supplyActionId())
+                .setParameter("anchor",task.preparationItemId()).getSingleResult()).longValue()>0;}
+    private BigDecimal aggregateNotifiedDemand(LockedTask task){return decimal(em.createNativeQuery("""
+                SELECT COALESCE(SUM(allocation.allocated_qty),0)
+                FROM preplan_subcontract_make_task_batches notified
+                JOIN preplan_supply_action_allocations marker ON marker.id=notified.allocation_id
+                JOIN preplan_supply_action_allocations allocation ON allocation.action_id=marker.action_id
+                WHERE notified.task_id=:task AND NOT EXISTS(SELECT 1 FROM preplan_subcontract_make_batch_reversals reversal WHERE reversal.batch_id=notified.id)
+                """).setParameter("task",task.taskId()).getSingleResult());}
+    private List<NotificationSource> notificationSources(LockedTask task,BigDecimal quantity,boolean aggregate) {
+        if(!aggregate)return List.of(new NotificationSource(task.analysisMaterialId(),quantity));
+        List<Object[]> sources=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT allocation.analysis_material_id,GREATEST(allocation.allocated_qty-COALESCE((
+                    SELECT SUM(sent.allocated_qty) FROM preplan_subcontract_make_task_batches notified
+                    JOIN preplan_supply_action_allocations marker ON marker.id=notified.allocation_id
+                    JOIN preplan_supply_action_allocations sent ON sent.action_id=marker.action_id AND sent.analysis_material_id=allocation.analysis_material_id
+                    WHERE notified.task_id=:task AND NOT EXISTS(SELECT 1 FROM preplan_subcontract_make_batch_reversals reversal WHERE reversal.batch_id=notified.id)),0),0)
+                FROM preplan_supply_action_allocations allocation
+                JOIN production_material_analysis_materials material ON material.id=allocation.analysis_material_id
+                JOIN production_material_analysis_items item ON item.id=material.analysis_item_id
+                WHERE allocation.analysis_id=:analysis AND allocation.action_id=:action
+                ORDER BY item.line_priority,item.delivery_date NULLS LAST,allocation.analysis_material_id
+                """).setParameter("analysis",task.analysisId()).setParameter("action",task.supplyActionId()).setParameter("task",task.taskId()));
+        BigDecimal remaining=quantity;List<NotificationSource> result=new java.util.ArrayList<>();
+        for(Object[] source:sources){BigDecimal take=remaining.min(decimal(source[1]));if(take.signum()>0){result.add(new NotificationSource((UUID)source[0],take));remaining=remaining.subtract(take);}
+            if(remaining.signum()==0)break;
+        }
+        if(remaining.signum()>0)throw new ApiException(ErrorCode.CONFLICT,"共享委外批次通知量超出冻结来源份额，请刷新核对");
+        return result;
+    }
+    private record NotificationSource(UUID materialId,BigDecimal qty) {}
 
     private LockedTask lockTask(UUID taskId) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""

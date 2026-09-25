@@ -509,6 +509,70 @@ public class PreplanStockEntitlementService {
         return transferred;
     }
 
+    /** V712 exact, many-parent path aliases. Origin pegs are never rewritten. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public BigDecimal delegateAggregateMakeEntitlements(UUID analysisId, UUID actionId) {
+        return delegateAggregateMakeEntitlements(analysisId,actionId,null);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public BigDecimal delegateAggregateMakeEntitlements(UUID analysisId, UUID actionId, UUID originEventId) {
+        tx.bind();
+        UUID originReservation=originEventId==null?null:uuid(em.createNativeQuery(
+                "SELECT stock_reservation_id FROM preplan_stock_entitlement_events WHERE id=:event")
+                .setParameter("event",originEventId).getSingleResult());
+        List<Object[]> aliases = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT alias.id,alias.source_parent_material_id,batch.anchor_analysis_item_id,
+                       alias.source_material_id,alias.aggregate_material_id,target.goods_id,target.color_id,target.unit_id,
+                       fn_preplan_aggregate_material_capacity(target.id)
+                FROM preplan_aggregate_batches batch JOIN preplan_supply_actions action ON action.id=batch.action_id
+                JOIN production_material_analyses analysis ON analysis.id=batch.analysis_id AND NOT analysis.is_deleted
+                JOIN preplan_aggregate_material_aliases alias ON alias.batch_id=batch.id
+                JOIN production_material_analysis_materials target ON target.id=alias.aggregate_material_id AND target.active
+                WHERE batch.analysis_id=:analysisId AND batch.action_id=:actionId AND action.status<>'CANCELLED'
+                  AND analysis.status IN('ACTIVE','PARTIALLY_PLANNED','COMPLETED')
+                  AND fn_preplan_aggregate_alias_valid(alias.id)
+                ORDER BY alias.created_at,alias.id FOR UPDATE OF batch,action,alias,target
+                """).setParameter("analysisId",analysisId).setParameter("actionId",actionId));
+        BigDecimal transferred=BigDecimal.ZERO;
+        for(Object[] row:aliases) {
+            UUID aliasId=uuid(row[0]),sourceMaterial=uuid(row[3]),targetMaterial=uuid(row[4]);
+            BigDecimal aliasRemaining=decimal(em.createNativeQuery("""
+                    SELECT GREATEST(fn_preplan_aggregate_alias_qty(:alias)-fn_preplan_aggregate_alias_delegated_qty(:alias),0)
+                    """).setParameter("alias",aliasId).getSingleResult());
+            BigDecimal targetRemaining=decimal(row[8]).subtract(decimal(em.createNativeQuery(
+                    "SELECT fn_preplan_aggregate_target_committed_qty(:target)").setParameter("target",targetMaterial).getSingleResult())).max(BigDecimal.ZERO);
+            BigDecimal remaining=aliasRemaining.min(targetRemaining);
+            if(remaining.signum()<=0)continue;
+            List<UUID> warehouses=NativeQueryResults.typedRows(em.createNativeQuery("""
+                    SELECT DISTINCT reservation.warehouse_id
+                    FROM v_preplan_stock_entitlement_beneficiary_balance balance
+                    JOIN stock_reservations reservation ON reservation.id=balance.stock_reservation_id
+                    WHERE balance.beneficiary_analysis_id=:analysis AND balance.beneficiary_analysis_material_id=:material
+                      AND balance.effective_qty>0 AND reservation.status=0 AND NOT reservation.is_deleted
+                    ORDER BY reservation.warehouse_id
+                    """).setParameter("analysis",analysisId).setParameter("material",sourceMaterial),UUID.class);
+            for(UUID warehouse:warehouses) {
+                MakeDelegationTarget target=new MakeDelegationTarget(uuid(row[1]),uuid(row[2]),sourceMaterial,targetMaterial,
+                        warehouse,uuid(row[5]),uuid(row[6]),uuid(row[7]),decimal(row[8]));
+                for(AvailableLot lot:listAvailableBeneficiaryLots(analysisId,sourceMaterial,warehouse,target.goodsId(),target.colorId(),true)) {
+                    if(originReservation!=null&&!originReservation.equals(lot.stockReservationId()))continue;
+                    BigDecimal sourceFree=decimal(em.createNativeQuery("""
+                            SELECT GREATEST(fn_preplan_aggregate_source_delegate_available_qty(:source),
+                                fn_preplan_aggregate_direct_delegate_credit(:alias,:event))
+                            """).setParameter("source",sourceMaterial).setParameter("alias",aliasId)
+                            .setParameter("event",lot.entitlementEventId()).getSingleResult());
+                    BigDecimal take=remaining.min(lot.remainingQty()).min(sourceFree);
+                    if(take.signum()<=0)continue;
+                    appendMakeDelegation(actionId,analysisId,target,lot,take,aliasId);
+                    remaining=remaining.subtract(take);transferred=transferred.add(take);
+                }
+                if(remaining.signum()<=0)break;
+            }
+        }
+        return transferred;
+    }
+
     /**
      * 2026-09-05 简化：分析刷新前批量归还旧模式遗留的 MAKE 权益委托
      * （新模式不再委托；归还后 exact 权益回到原始物料节点，投影单份数据）。
@@ -521,6 +585,7 @@ public class PreplanStockEntitlementService {
                 SELECT DISTINCT delegation.supply_action_id
                 FROM preplan_make_entitlement_delegations delegation
                 WHERE delegation.analysis_id = :analysisId
+                  AND NOT EXISTS(SELECT 1 FROM preplan_aggregate_batches batch WHERE batch.action_id=delegation.supply_action_id)
                 """).setParameter("analysisId", analysisId).getResultList();
         for (UUID actionId : actionIds) {
             restoreMakeDelegationsForAction(
@@ -579,6 +644,67 @@ public class PreplanStockEntitlementService {
         }
     }
 
+    /** Reverse only the exact physical receipt's unused shared-path grants,
+     * after every receiving package has been cancelled/reversed. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void restoreAggregateDelegationsForFinishedInbound(UUID documentId) {
+        tx.bind();
+        for(int depth=0;depth<32;depth++) {
+        var rows=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT delegation.id,delegation.analysis_id,delegation.source_analysis_material_id,
+                       delegation.target_analysis_material_id,delegation.stock_reservation_id,
+                       fn_preplan_aggregate_delegation_active_qty(delegation.id),outgoing.id,
+                       reservation.warehouse_id,reservation.goods_id,reservation.color_id
+                FROM preplan_make_entitlement_delegations delegation
+                JOIN stock_reservations reservation ON reservation.id=delegation.stock_reservation_id
+                JOIN preplan_stock_entitlement_events outgoing ON outgoing.event_group_id=delegation.id AND outgoing.event_type='MAKE_DELEGATE_OUT'
+                WHERE reservation.source_doc_type='PRODUCTION_INBOUND' AND reservation.source_doc_id=:document
+                  AND delegation.aggregate_alias_id IS NOT NULL AND fn_preplan_aggregate_delegation_active_qty(delegation.id)>0
+                ORDER BY delegation.created_at DESC,delegation.id DESC FOR UPDATE OF delegation,reservation,outgoing
+                """).setParameter("document",documentId));
+        if(rows.isEmpty())return;
+        BigDecimal restored=BigDecimal.ZERO;
+        for(Object[] row:rows) {
+            UUID delegation=uuid(row[0]),analysis=uuid(row[1]),target=uuid(row[3]),reservation=uuid(row[4]);
+            if(Boolean.TRUE.equals(em.createNativeQuery("""
+                    SELECT EXISTS(SELECT 1 FROM production_material_analysis_materials material
+                        JOIN production_plans plan ON plan.material_analysis_item_id=material.analysis_item_id AND NOT plan.is_deleted
+                        JOIN production_planning_packages package ON package.plan_id=plan.id AND package.status='CONFIRMED' AND NOT package.is_deleted
+                        WHERE material.id=:target)
+                    """).setParameter("target",target).getSingleResult()))throw conflict("共享接收计划仍有效，请先撤回实际领料并取消接收计划包后再红冲来源入库");
+            var lots=NativeQueryResults.typedRows(em.createNativeQuery("""
+                            WITH RECURSIVE descendants(id) AS (
+                                SELECT id FROM preplan_stock_entitlement_events WHERE event_group_id=:delegation AND event_type='MAKE_DELEGATE_IN'
+                                UNION SELECT child.id FROM descendants parent
+                                JOIN preplan_stock_entitlement_events counter ON counter.source_entitlement_event_id=parent.id
+                                JOIN preplan_stock_entitlement_events child ON child.counter_event_id=counter.id
+                                WHERE child.event_type IN('MAKE_DELEGATE_IN','REALLOCATE_IN','PRIORITY_IN','RESTORE'))
+                            SELECT positive.id FROM descendants JOIN preplan_stock_entitlement_events positive ON positive.id=descendants.id
+                            WHERE positive.stock_reservation_id=:reservation AND positive.beneficiary_analysis_id=:analysis
+                              AND positive.beneficiary_analysis_material_id=:target
+                              AND positive.qty>COALESCE((SELECT sum(negative.qty) FROM preplan_stock_entitlement_events negative
+                                  WHERE negative.source_entitlement_event_id=positive.id AND negative.event_type IN(
+                                    'MAKE_DELEGATE_OUT','SUBCONTRACT_HANDOFF_OUT','REALLOCATE_OUT','PRIORITY_OUT','FORMALIZE','RELEASE')),0)
+                            ORDER BY positive.created_at,positive.id FOR UPDATE OF positive
+                            """).setParameter("delegation",delegation).setParameter("reservation",reservation)
+                            .setParameter("analysis",analysis).setParameter("target",target),UUID.class).stream()
+                    .map(id->requireAvailableLot(id,true)).toList();
+            BigDecimal quantity=decimal(row[5]);
+            if(lots.stream().map(AvailableLot::remainingQty).reduce(BigDecimal.ZERO,BigDecimal::add).compareTo(quantity)!=0)
+                continue; // A deeper exact alias must be restored first.
+            for(AvailableLot lot:lots) {
+                String key="AGGREGATE-INBOUND-REVERSE:"+documentId+":"+delegation+":"+lot.entitlementEventId();
+                appendReleaseLot(delegation,lot,lot.remainingQty(),lot.reallocationId(),key+":RELEASE");
+                appendRestoreFromCounter(delegation,reservation,uuid(row[6]),analysis,uuid(row[2]),lot.remainingQty(),
+                        lot.reallocationId(),lot.sourceExactPegId(),key+":RESTORE");
+                restored=restored.add(lot.remainingQty());
+            }
+        }
+        if(restored.signum()==0)throw conflict("共享来源仍被领料、正式占用或后续让料使用，不能直接红冲来源入库");
+        }
+        throw conflict("共享来源层级超过允许范围，不能自动红冲");
+    }
+
     static BigDecimal makeDelegationTake(
             BigDecimal required, BigDecimal alreadyOwned,
             BigDecimal lotRemaining) {
@@ -592,11 +718,22 @@ public class PreplanStockEntitlementService {
     private void appendMakeDelegation(
             UUID actionId, UUID analysisId, MakeDelegationTarget target,
             AvailableLot sourceLot, BigDecimal qty) {
+        appendMakeDelegation(actionId,analysisId,target,sourceLot,qty,null);
+    }
+
+    private void appendMakeDelegation(
+            UUID actionId, UUID analysisId, MakeDelegationTarget target,
+            AvailableLot sourceLot, BigDecimal qty, UUID aggregateAliasId) {
         requirePositiveWithin(qty, sourceLot.remainingQty(),
                 "MAKE delegation exceeds the source entitlement balance");
         String key = "MAKE-DELEGATE:" + actionId + ":"
                 + sourceLot.entitlementEventId() + ":"
                 + target.targetMaterialId();
+        if(aggregateAliasId!=null) {
+            BigDecimal prior=decimal(em.createNativeQuery("SELECT fn_preplan_aggregate_alias_delegated_qty(:alias)")
+                    .setParameter("alias",aggregateAliasId).getSingleResult());
+            key="AGGREGATE-DELEGATE:"+aggregateAliasId+":"+sourceLot.entitlementEventId()+":"+prior.stripTrailingZeros().toPlainString();
+        }
         UUID proposedId = UUID.randomUUID();
         int inserted = em.createNativeQuery("""
                 INSERT INTO preplan_make_entitlement_delegations (
@@ -604,13 +741,13 @@ public class PreplanStockEntitlementService {
                     parent_analysis_material_id, child_analysis_item_id,
                     source_analysis_material_id, target_analysis_material_id,
                     stock_reservation_id, source_entitlement_event_id,
-                    qty, idempotency_key, created_by
+                    qty, idempotency_key, created_by, aggregate_alias_id
                 ) VALUES (
                     :id, :analysisId, :actionId,
                     :parentMaterialId, :childItemId,
                     :sourceMaterialId, :targetMaterialId,
                     :reservationId, :sourceEventId,
-                    :qty, :key, :actorId
+                    :qty, :key, :actorId, :aggregateAliasId
                 )
                 ON CONFLICT (idempotency_key) DO NOTHING
                 """)
@@ -626,6 +763,7 @@ public class PreplanStockEntitlementService {
                 .setParameter("qty", qty)
                 .setParameter("key", key)
                 .setParameter("actorId", currentUser.requireId())
+                .setParameter("aggregateAliasId",aggregateAliasId)
                 .executeUpdate();
         List<Object[]> replay = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""

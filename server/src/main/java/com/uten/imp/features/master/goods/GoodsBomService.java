@@ -172,6 +172,7 @@ public class GoodsBomService {
     @Transactional
     public BomItemView setAudited(UUID goodsId, UUID itemId, boolean audited, UUID userId) {
         tx.bind();
+        goodsRepo.lockBomParents(List.of(goodsId));
         references.requireVisibleGoods(goodsId);
         GoodsBomItem r = requireItem(goodsId, itemId);
         if (audited) {
@@ -189,6 +190,7 @@ public class GoodsBomService {
     @Transactional
     public void delete(UUID goodsId, UUID itemId) {
         tx.bind();
+        goodsRepo.lockBomParents(List.of(goodsId));
         references.requireVisibleGoods(goodsId);
         GoodsBomItem r = requireItem(goodsId, itemId);
         Goods parent = r.getGoods();
@@ -232,6 +234,7 @@ public class GoodsBomService {
         }
         Set<UUID> parents = new java.util.LinkedHashSet<>();
         for (Object[] row : live) parents.add((UUID) row[1]);
+        goodsRepo.lockBomParents(parents);
         Set<UUID> tree = treeGoodsIds(goodsId, parents);
         for (UUID parent : parents) {
             if (!tree.contains(parent)) {
@@ -542,6 +545,7 @@ public class GoodsBomService {
 
     /** 父件与组件先加 KEY SHARE 锁再读，与主档删除互斥(见 GoodsRepository.lockForReference)。 */
     private void lockReferencedGoods(UUID goodsId, UUID componentId) {
+        if (goodsId != null) goodsRepo.lockBomParents(List.of(goodsId));
         List<UUID> ids = new ArrayList<>(2);
         if (goodsId != null) ids.add(goodsId);
         if (componentId != null) ids.add(componentId);

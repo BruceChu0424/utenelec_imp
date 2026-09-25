@@ -47,6 +47,9 @@ class WarehouseDrawTask {
   final String? actionDocStatus;
   final int goodsCount;
   final int openLineCount;
+  bool get isMaterialDiscovery =>
+      actionDocType == 'MATERIAL_DISCOVERY' && actionDocId != null;
+  bool get canOpen => isMaterialDiscovery || drawDocPath != null;
 
   /// 归组行（一张领料单多行物料）：货品身份列改显示规模摘要。
   bool get isDocumentGrouped => goodsCount > 1 || openLineCount > 1;
@@ -79,6 +82,7 @@ class WarehouseDrawTask {
   String get drawBillLabel => actionDocNo.isEmpty ? '—' : actionDocNo;
 
   String get quantityText {
+    if (isMaterialDiscovery) return '—';
     if (isDocumentGrouped) {
       return openLineCount > 0 ? '$openLineCount 行' : '—';
     }
@@ -98,6 +102,7 @@ class WarehouseDrawTask {
     'DONE' || 'COMPLETED' => '已完成',
     'OPEN_ANY' => '待完成',
     'BLOCKED' => '已阻塞',
+    'MATERIALS_TO_DEFINE' => '待填写物料',
     _ => taskStatus,
   };
 

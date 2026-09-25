@@ -116,6 +116,7 @@ class _OperationsWorkbenchPageState
         (code: 'IN_PROGRESS', label: '进行中'),
       ],
       OperationsWorkbenchDepartment.warehouse => const [
+        (code: 'MATERIALS_TO_DEFINE', label: '待填写物料'),
         (code: 'READY_TO_PICK', label: '待备料 / 待领取'),
         (code: 'PARTIAL', label: '部分领取'),
       ],
@@ -135,6 +136,7 @@ class _OperationsWorkbenchPageState
   /// 其中真要动手的「财务驳回」由异常小类行的红徽章负责喊人。
   UtenSegmentCountForm _stageCountForm(String code) => switch (code) {
     'WAITING_ORDER' ||
+    'MATERIALS_TO_DEFINE' ||
     'READY_TO_PICK' ||
     'PARTIAL' => UtenSegmentCountForm.actionable,
     'IN_PROGRESS' => UtenSegmentCountForm.inProgress,
@@ -924,7 +926,7 @@ class _DesktopTaskTable extends StatelessWidget {
           width: 110,
           type: 'number',
           // 归组行不同单位不能加总：数量列让位给「未完成」的行级摘要。
-          value: (item) => item.isDocumentGrouped
+          value: (item) => item.isDocumentGrouped || item.isMaterialDiscovery
               ? '—'
               : _quantity(item.requiredQty, item.unitName),
         ),
@@ -933,7 +935,7 @@ class _DesktopTaskTable extends StatelessWidget {
           label: '已分配',
           width: 100,
           type: 'number',
-          value: (item) => item.isDocumentGrouped
+          value: (item) => item.isDocumentGrouped || item.isMaterialDiscovery
               ? '—'
               : _quantity(item.allocatedQty, item.unitName),
         ),
@@ -942,7 +944,7 @@ class _DesktopTaskTable extends StatelessWidget {
           label: '已履约',
           width: 100,
           type: 'number',
-          value: (item) => item.isDocumentGrouped
+          value: (item) => item.isDocumentGrouped || item.isMaterialDiscovery
               ? '—'
               : _quantity(item.fulfilledQty, item.unitName),
         ),
@@ -951,7 +953,9 @@ class _DesktopTaskTable extends StatelessWidget {
           label: '未完成',
           width: 110,
           type: 'number',
-          value: (item) => item.isDocumentGrouped
+          value: (item) => item.isMaterialDiscovery
+              ? '—'
+              : item.isDocumentGrouped
               ? '${item.openLineCount} 行'
               : _quantity(item.openQty, item.unitName),
         ),

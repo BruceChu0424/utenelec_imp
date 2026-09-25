@@ -479,9 +479,25 @@ public final class MaterialAnalysisContracts {
              * 只在刷新响应上非零，详情/命令响应恒为 0。前端据此提示
              * 「N 条路线因主档变更需重新确认」，让静默清空可见。
              */
-            int routeResetCount) {
+            int routeResetCount,
+            Map<UUID, BigDecimal> overproductionDefaults) {
         public AnalysisView {
             planningBlockedReasons = Map.copyOf(planningBlockedReasons);
+            overproductionDefaults = Map.copyOf(overproductionDefaults);
+        }
+
+        public AnalysisView(UUID analysisId, String status, long version,
+                String fingerprint, String analysisFingerprint, UUID warehouseId,
+                List<UUID> warehouseIds, OffsetDateTime analyzedAt,
+                List<ProductView> products, List<MaterialView> flatMaterials,
+                List<WarehouseView> warehouses, List<SupplyActionView> supplyActions,
+                List<String> allowedActions, boolean fqcReplenishmentOnly,
+                UUID fqcRecoveryAuthorizationId,
+                Map<UUID, String> planningBlockedReasons, int routeResetCount) {
+            this(analysisId, status, version, fingerprint, analysisFingerprint,
+                    warehouseId, warehouseIds, analyzedAt, products, flatMaterials,
+                    warehouses, supplyActions, allowedActions, fqcReplenishmentOnly,
+                    fqcRecoveryAuthorizationId, planningBlockedReasons, routeResetCount, Map.of());
         }
 
         public AnalysisView(UUID analysisId, String status, long version,
@@ -517,7 +533,7 @@ public final class MaterialAnalysisContracts {
                     analysisId, status, version, fingerprint, analysisFingerprint,
                     warehouseId, warehouseIds, analyzedAt, products, flatMaterials,
                     warehouses, supplyActions, allowedActions, fqcReplenishmentOnly,
-                    fqcRecoveryAuthorizationId, planningBlockedReasons, count);
+                    fqcRecoveryAuthorizationId, planningBlockedReasons, count, overproductionDefaults);
         }
     }
 

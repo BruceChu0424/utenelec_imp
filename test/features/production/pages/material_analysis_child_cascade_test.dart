@@ -68,7 +68,7 @@ void main() {
       of: find.byKey(ValueKey('material-analysis-child-cascade-rate-$id')),
       matching: find.byType(TextField),
     );
-    expect(tester.widget<TextField>(rate('root-1')).controller!.text, '10');
+    expect(tester.widget<TextField>(rate('root-1')).controller!.text, '0');
     expect(tester.widget<TextField>(rate('m-c')).controller!.text, '10');
     expect(rate('m-b'), findsNothing);
     expect(rate('m-d'), findsNothing);
@@ -1295,6 +1295,7 @@ Map<String, dynamic> _analysis({
   bool topLevelIssued = false,
   bool subcontractChildIssued = false,
 }) => {
+  'overproductionDefaults': {'g-a': 0, 'g-c': 0.1, 'g-s': 0},
   'analysisId': 'analysis-1',
   'status': 'ACTIVE',
   'version': 3,

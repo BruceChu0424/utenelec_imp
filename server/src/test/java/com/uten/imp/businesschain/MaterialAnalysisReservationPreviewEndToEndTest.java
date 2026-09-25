@@ -237,7 +237,13 @@ class MaterialAnalysisReservationPreviewEndToEndTest {
         assertEquals(before,counts(c),"预览不得写计划、命令或库存预留");
         AnalysisView after=commands.issueWorkshopPlans(c.analysis(),request).analysis();
         assertEquals(List.of(),MaterialAnalysisPreviewParity.mismatches(preview,after,Set.of()));
-        for(MaterialView row:after.flatMaterials()) assertEquals(row.warehouseBreakdown(),material(preview,row.materialLineId()).warehouseBreakdown(),"分仓详情也要与真实下达一致");
+        for(MaterialView row:after.flatMaterials()) {
+            org.assertj.core.api.Assertions.assertThat(material(preview,row.materialLineId()).warehouseBreakdown())
+                    .as("分仓数量与来源必须与真实下达一致；数据库运算的小数位数不改变数量")
+                    .usingRecursiveComparison()
+                    .withComparatorForType(BigDecimal::compareTo,BigDecimal.class)
+                    .isEqualTo(row.warehouseBreakdown());
+        }
         return after;
     }
 

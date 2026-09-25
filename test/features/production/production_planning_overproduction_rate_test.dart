@@ -8,6 +8,35 @@ import 'package:uten_imp/features/production/widgets/production_overproduction_r
 
 void main() {
   test(
+    'analysis carries server defaults and omitted issue allowance stays omitted',
+    () {
+      final view = ProductionMaterialAnalysisView.fromJson({
+        'analysisId': 'analysis',
+        'overproductionDefaults': {
+          'parent': 0,
+          'leaf': 0.1,
+          'remembered': 0.275,
+        },
+      });
+      expect(view.overproductionDefaults, {
+        'parent': 0,
+        'leaf': 0.1,
+        'remembered': 0.275,
+      });
+      expect(
+        const MaterialAnalysisIssueLine(qty: 1).toJson(),
+        isNot(contains('allowedOverproductionRate')),
+      );
+      expect(
+        const MaterialAnalysisIssueLine(
+          qty: 1,
+          allowedOverproductionRate: 0,
+        ).toJson()['allowedOverproductionRate'],
+        0,
+      );
+    },
+  );
+  test(
     'percentage precision matches API ratio without floating point tails',
     () {
       for (final entry in <String, double>{

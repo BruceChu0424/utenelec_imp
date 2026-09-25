@@ -417,7 +417,7 @@ void main() {
         {
           'materialLineId': 'make-path-1',
           'qty': 8.0,
-          'allowedOverproductionRate': 0.1,
+          'allowedOverproductionRate': 0,
           'departmentId': 'workshop-1',
           'workshopName': '装配一车间',
           'workerId': 'worker-1',
@@ -2473,7 +2473,7 @@ void main() {
         {
           'materialLineId': 'pending-make-1',
           'qty': 2.0,
-          'allowedOverproductionRate': 0.1,
+          'allowedOverproductionRate': 0,
           'departmentId': 'workshop-1',
           'workshopName': '装配一车间',
           'workerId': 'worker-1',
@@ -2592,7 +2592,7 @@ void main() {
         {
           'analysisLineId': 'pending-make-child-1',
           'qty': 2.0,
-          'allowedOverproductionRate': 0.1,
+          'allowedOverproductionRate': 0,
           'departmentId': 'workshop-1',
           'workshopName': '装配一车间',
           'workerId': 'worker-1',
@@ -3620,7 +3620,7 @@ void main() {
       // 表头全选只勾未确认行。
       final header = find.descendant(
         of: find.byKey(const Key('material-analysis-material-table-region')),
-        matching: find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
+        matching: find.byKey(const Key('master-data-table-select-all')),
       );
       await tester.ensureVisible(header);
       await tester.pumpAndSettle();
@@ -4233,7 +4233,7 @@ void main() {
         {
           'materialLineId': 'make-path-1',
           'qty': 8.0,
-          'allowedOverproductionRate': 0.1,
+          'allowedOverproductionRate': 0,
           'departmentId': 'workshop-1',
           'workshopName': '装配一车间',
           'workerId': 'worker-1',
@@ -4634,7 +4634,7 @@ void main() {
         {
           'analysisLineId': 'make-child-ready-1',
           'qty': 3.0,
-          'allowedOverproductionRate': 0.1,
+          'allowedOverproductionRate': 0,
           'departmentId': 'workshop-1',
           'workshopName': '装配一车间',
           'workerId': 'worker-1',
@@ -8012,7 +8012,7 @@ Future<void> _selectAllMaterialRoutes(WidgetTester tester) async {
   while (true) {
     final header = find.descendant(
       of: find.byKey(const Key('material-analysis-material-table-region')),
-      matching: find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
+      matching: find.byKey(const Key('master-data-table-select-all')),
     );
     await tester.ensureVisible(header);
     await tester.pumpAndSettle();
@@ -8097,9 +8097,9 @@ void _expectBucketCount(WidgetTester tester, String bucket, int count) {
 }
 
 /// 分桶表格的表头三态全选框。MasterDataTableView 与 UtenEditableGrid 的
-/// 表头全选框都是 tristate，行勾选框都不是——用 tristate 唯一定位表头。
+/// 用稳定键定位表头；物料父行和汇总行同样支持三态。
 Finder _bucketHeaderCheckbox() =>
-    find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate);
+    find.byKey(const Key('master-data-table-select-all'));
 
 /// 详情页里的竖向滚动视图（横向滚动条在树序上更靠前，需按方向过滤）。
 Finder _verticalScrollable() => find.byWidgetPredicate(

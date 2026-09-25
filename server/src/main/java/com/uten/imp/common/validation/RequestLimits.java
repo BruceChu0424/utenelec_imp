@@ -9,6 +9,8 @@ package com.uten.imp.common.validation;
 public final class RequestLimits {
 
     public static final int DOCUMENT_LINES = 500;
+    /** One aggregate document line can retain many more original BOM source paths. */
+    public static final int MATERIAL_AGGREGATE_SOURCE_PATHS = 10_000;
     public static final int BATCH_IDS = 500;
     public static final int LOOKUP_IDS = 200;
     public static final int ADMIN_SCOPE_OWNERS = 1_000;

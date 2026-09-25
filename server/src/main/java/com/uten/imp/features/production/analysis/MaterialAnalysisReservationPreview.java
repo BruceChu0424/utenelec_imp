@@ -121,7 +121,7 @@ final class MaterialAnalysisReservationPreview {
                     needs.add(new Need((UUID)row[0],dimension,paths,number(row[4]),number(row[5]),number(row[6])));
                 }
             }
-            boolean childMake=source!=null ? "MAKE_COMPONENT".equals(source.sourceType())
+            boolean childMake=source!=null ? ("MAKE_COMPONENT".equals(source.sourceType()) || "AGGREGATE_MAKE".equals(source.sourceType()))
                     : materials.stream().anyMatch(row->row.id().equals(seed.newAnchorParentMaterialId())&&"MAKE".equals(row.confirmedRoute()));
             batches.add(new Batch(needs,matching,continuous,childMake,baseOutput));
         }

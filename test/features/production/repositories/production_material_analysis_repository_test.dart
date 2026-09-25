@@ -6,6 +6,31 @@ import 'package:uten_imp/features/production/repositories/production_repository.
 
 void main() {
   test(
+    'overproduction defaults batch goods IDs and preserve zero and remembered values',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = ProductionPlanRepository(
+        _api((request) {
+          requests.add(request);
+          expect(request.method, 'GET');
+          expect(request.path, '/production/overproduction-rate/defaults');
+          final ids = (request.queryParameters['ids'] as String).split(',');
+          expect(ids.length, lessThanOrEqualTo(100));
+          return {for (final id in ids) id: id == 'g-1' ? 0 : 0.175};
+        }),
+      );
+      final result = await repository.overproductionDefaults({
+        for (var i = 0; i < 205; i++) 'g-$i',
+      });
+      expect(requests, hasLength(3));
+      expect(result, hasLength(205));
+      expect(result['g-1'], 0);
+      expect(result['g-2'], 0.175);
+      expect(await repository.overproductionDefaults({}), isEmpty);
+      expect(requests, hasLength(3));
+    },
+  );
+  test(
     'private future source list keeps exact allocation and command carries both reviewed CAS',
     () async {
       final requests = <RequestOptions>[];
@@ -538,7 +563,6 @@ void main() {
           {
             'materialLineId': 'material-line-1',
             'qty': 8.0,
-            'allowedOverproductionRate': 0.1,
             'departmentId': 'workshop-2',
             'workshopName': '装配二车间',
             'workerId': 'worker-2',

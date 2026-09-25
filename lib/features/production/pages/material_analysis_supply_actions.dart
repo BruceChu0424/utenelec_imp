@@ -188,8 +188,18 @@ abstract class _MaterialAnalysisSupplyActionsState
   /// Main preparation table and bucket detail use the same persisted decision.
   Future<bool> _confirmRouteChanges(
     List<_MaterialGroup> groups,
-    MaterialSupplyRoute route,
-  ) async {
+    MaterialSupplyRoute route, {
+    bool forAggregate = false,
+  }) async {
+    if (!forAggregate &&
+        groups.any(
+          (group) => group.paths.any(
+            (path) => _materialAggregateOwnsLine(path.materialLineId),
+          ),
+        )) {
+      context.appWarning('此来源已有未提交的汇总总量，请在汇总行修改或撤销草稿');
+      return false;
+    }
     if (_busy) return false;
     if (!_canRoute) {
       context.appWarning('没有确认物料路线权限');
@@ -807,6 +817,14 @@ abstract class _MaterialAnalysisSupplyActionsState
         .toList(growable: false);
     if (groups.isEmpty) {
       context.appInfo('请先勾选要提交的${route.label}缺料');
+      return null;
+    }
+    if (groups.any(
+      (group) => group.paths.any(
+        (path) => _materialAggregateOwnsLine(path.materialLineId),
+      ),
+    )) {
+      context.appWarning('此来源已有未提交的汇总总量，请在汇总行下达或撤销草稿');
       return null;
     }
     if (_dirtyRouteGroups.isNotEmpty) {

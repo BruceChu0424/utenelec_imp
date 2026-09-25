@@ -858,6 +858,37 @@ public class ProductionExecutionReadinessService
         tryPromote(segmentId,requestId,warehouseId,ReceiptKind.PLAN_GROWTH,null,true);
     }
 
+    /** A warehouse-selected discovery line owns exactly one real leaf reservation and DRAW. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<UUID> prepareDiscoveredMaterials(UUID segmentId, UUID requestId) {
+        Object[] context=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT segment.package_id,segment.plan_id,plan.bill_no,package.warehouse_id,
+                       segment.workshop_department_id,segment.responsible_employee_id
+                FROM production_execution_segments segment JOIN production_plans plan ON plan.id=segment.plan_id
+                JOIN production_planning_packages package ON package.id=segment.package_id
+                WHERE segment.id=:id AND segment.material_discovery_required
+                """).setParameter("id",segmentId)).getFirst();
+        List<Object[]> lines=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT demand.id,demand.goods_id,demand.color_id,demand.unit_id,line.qty,line.warehouse_id
+                FROM production_material_discovery_lines line JOIN production_material_demands demand ON demand.id=line.demand_id
+                WHERE line.request_id=:request ORDER BY demand.goods_id,demand.color_id NULLS FIRST,line.warehouse_id
+                """).setParameter("request",requestId));
+        PromotionActor actor=new PromotionActor(currentUser.requireId(),currentUser.requireEmployeeId());
+        Map<UUID,StockGoodsSnapshot> snapshots=StockGoodsSnapshot.fromMaster(em,lines.stream().map(row->uuid(row[1])).toList(),StockGoodsSnapshot.MASTER_AT_SAVE);
+        Map<UUID,StockDocument> documents=new LinkedHashMap<>();Map<UUID,Integer> numbers=new HashMap<>();
+        for(Object[] line:lines) {
+            DemandRow demand=new DemandRow(uuid(line[0]),uuid(line[1]),uuid(line[2]),uuid(line[3]),decimal(line[4]),false);
+            var request=new ProductionMaterialAllocationFacade.AllocationRequest(uuid(context[0]),demand.id(),demand.goodsId(),demand.colorId(),uuid(context[3]),demand.requiredQty(),"DISCOVERY:"+requestId+":"+demand.id()+":"+line[5],actor.userId());
+            var allocation=stockAllocation.allocateWithinLeaf(request,uuid(line[5]),List.of());
+            BigDecimal allocated=allocation.stream().map(ProductionMaterialAllocationFacade.AllocationResult::allocatedQty).reduce(BigDecimal.ZERO,BigDecimal::add);
+            if(allocated.compareTo(demand.requiredQty())!=0)throw conflict("所选实际仓库可用库存不足，请核对材料及数量");
+            StockDocument draw=documents.computeIfAbsent(uuid(line[5]),warehouse->createDraw(uuid(context[0]),segmentId,uuid(context[1]),(String)context[2],warehouse,uuid(context[4]),uuid(context[5]),actor));
+            addDrawItem(draw,uuid(context[0]),demand,demand.requiredQty(),nextDrawLine(draw,numbers),(String)context[2],"最底层自制件实际领料",StockGoodsSnapshot.require(snapshots,demand.goodsId(),"实际领料"),actor.userId());
+        }
+        ledger.refreshDemandStatuses(lines.stream().map(row->uuid(row[0])).toList());
+        return documents.values().stream().map(StockDocument::getId).toList();
+    }
+
     /** Quantity growth preserves the task's route and never submits or issues a DRAW. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void promoteAfterPlanGrowth(UUID segmentId, UUID warehouseId, UUID growthEventId) {

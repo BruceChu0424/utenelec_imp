@@ -57,6 +57,7 @@ abstract class _MaterialAnalysisBomTreeState
     void link(String childId, String sourceId) {
       final child = indexes.productsById[childId];
       final source = byId[sourceId];
+      if (child?.sourceType == 'AGGREGATE_MAKE') return;
       if (!_isEmbeddedMakeChildProduct(child) || source == null) return;
       if (child!.parentAnalysisLineId != null &&
           child.parentAnalysisLineId != source.analysisLineId) {
@@ -109,6 +110,11 @@ abstract class _MaterialAnalysisBomTreeState
     }
     final ownershipSourceIds = sourceByChild.values.toSet();
     final shadowIds = <String>{
+      for (final material in analysis.materials)
+        if (material.isRootSupply &&
+            indexes.productsById[material.analysisLineId]?.sourceType ==
+                'AGGREGATE_MAKE')
+          material.materialLineId,
       for (final material in analysis.materials)
         if (!ownershipSourceIds.contains(material.materialLineId) &&
             material.requiredQty <= 0 &&
@@ -186,7 +192,9 @@ abstract class _MaterialAnalysisBomTreeState
       analysis,
     ).rootIdsByMaterial[material.materialLineId];
     final product = _analysisIndexes(analysis).productsById[rootId];
-    return product != null && !_isEmbeddedMakeChildProduct(product);
+    return product != null &&
+        (product.sourceType == 'AGGREGATE_MAKE' ||
+            !_isEmbeddedMakeChildProduct(product));
   }
 
   /// 树顶筛选按钮（全部 BOM/只看缺料/待确认路线 + 按产品看/按物料汇总）。
@@ -300,6 +308,7 @@ abstract class _MaterialAnalysisBomTreeState
       }),
       label: _l10n.materialByMaterial,
     ),
+    ?_materialAggregateToolbarAction(),
   ];
 
   /// chip 计数与表格同口径：视图条件 × 关键词 × 表头筛选（产品视图）。
@@ -334,7 +343,8 @@ abstract class _MaterialAnalysisBomTreeState
     ProductionMaterialAnalysisProduct? product,
   ) =>
       product?.sourceType == 'MAKE_COMPONENT' ||
-      product?.sourceType == 'SUBCONTRACT_MAKE';
+      product?.sourceType == 'SUBCONTRACT_MAKE' ||
+      product?.sourceType == 'AGGREGATE_MAKE';
 
   bool _bomModeMatches(ProductionMaterialAnalysisMaterial material) =>
       switch (_bomViewMode) {
@@ -420,6 +430,7 @@ abstract class _MaterialAnalysisBomTreeState
     final presentation = _bomPresentation(analysis);
     for (final nodes in presentation.nodesByProduct.values) {
       for (final material in nodes) {
+        if (material.isRootSupply || material.level <= 0) continue;
         if (!_bomModeMatches(material)) continue;
         final product = indexes.productsById[material.analysisLineId];
         final root =
@@ -439,7 +450,12 @@ abstract class _MaterialAnalysisBomTreeState
           paths: entry.value,
           rootProductIds: {
             for (final material in entry.value)
-              presentation.rootIdsByMaterial[material.materialLineId],
+              if (indexes
+                      .productsById[presentation.rootIdsByMaterial[material
+                          .materialLineId]]
+                      ?.sourceType !=
+                  'AGGREGATE_MAKE')
+                presentation.rootIdsByMaterial[material.materialLineId],
           },
         ),
     ];
@@ -593,7 +609,9 @@ abstract class _MaterialAnalysisBomTreeState
     for (final entry in presentation.nodesByProduct.entries) {
       final product = indexes.productsById[entry.key];
       final ownsProductRow =
-          product != null && !_isEmbeddedMakeChildProduct(product);
+          product != null &&
+          (product.sourceType == 'AGGREGATE_MAKE' ||
+              !_isEmbeddedMakeChildProduct(product));
       bool textMatches(ProductionMaterialAnalysisMaterial material) =>
           _bomTextMatches(material, product) ||
           _bomTextMatches(

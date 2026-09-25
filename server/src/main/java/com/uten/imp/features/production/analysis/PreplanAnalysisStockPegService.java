@@ -365,12 +365,31 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         UUID parentAnalysisMaterialId = (UUID) context[3];
         String sourceType = Objects.toString(context[2], "");
         String analysisStatus = Objects.toString(context[4], "");
+        boolean aggregateMake="AGGREGATE_MAKE".equals(sourceType);
+        if(aggregateMake) {
+            List<?> routes=em.createNativeQuery("""
+                    SELECT route FROM preplan_aggregate_batches WHERE analysis_id=:analysis
+                      AND anchor_analysis_item_id=:anchor AND plan_id=:plan
+                    """).setParameter("analysis",analysisId).setParameter("anchor",analysisItemId).setParameter("plan",planId).getResultList();
+            if(routes.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"共享生产缺少准确的来源批次证明");
+            // Shared subcontract preparation remains in its dedicated custody
+            // chain until the final vendor receipt; it is not MAKE supply.
+            if("SUBCONTRACT".equals(routes.getFirst()))return;
+            if(!"MAKE".equals(routes.getFirst()))throw new ApiException(ErrorCode.CONFLICT,"共享生产来源路线不匹配");
+        }
         boolean activeAnalysis = List.of("ACTIVE", "PARTIALLY_PLANNED")
                 .contains(analysisStatus);
         boolean completedWaitingOwner = "COMPLETED".equals(analysisStatus)
-                && parentAnalysisMaterialId != null
-                && hasAutoPromotableWaitingDemand(
-                        analysisId, parentAnalysisMaterialId);
+                && ((parentAnalysisMaterialId != null && (hasAutoPromotableWaitingDemand(analysisId,parentAnalysisMaterialId)
+                    || Boolean.TRUE.equals(em.createNativeQuery("""
+                        SELECT EXISTS(SELECT 1 FROM preplan_aggregate_material_aliases alias
+                          WHERE alias.source_material_id=:material AND fn_preplan_aggregate_alias_identity_valid(alias.id))
+                        """).setParameter("material",parentAnalysisMaterialId).getSingleResult())))
+                    || (aggregateMake && Boolean.TRUE.equals(em.createNativeQuery("""
+                        SELECT EXISTS(SELECT 1 FROM preplan_supply_action_allocations allocation
+                          JOIN preplan_aggregate_batches batch ON batch.action_id=allocation.action_id
+                          WHERE batch.anchor_analysis_item_id=:anchor AND fn_preplan_aggregate_material_has_waiting_demand(allocation.analysis_material_id))
+                        """).setParameter("anchor",analysisItemId).getSingleResult())));
         if (!activeAnalysis && !completedWaitingOwner) {
             return;
         }
@@ -383,7 +402,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             // reservation; PREPLAN_ANALYSIS must not reserve the same stock.
             return;
         }
-        if (!"MAKE_COMPONENT".equals(sourceType)) {
+        if (!"MAKE_COMPONENT".equals(sourceType) && !aggregateMake) {
             // Preserve the historical analysis-pool behavior for non-MAKE
             // analysis products. Only PREPLAN_MAKE_TASK output has an exact
             // parent material allocation that V309 can prove.
@@ -406,19 +425,41 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         for (FinishedInboundSlice line : lines) {
             if (line.baseQty() == null || line.baseQty().signum() <= 0) continue;
             inventoryLock.lock(new InventoryKey(line.goodsId(), line.colorId()));
+            Map<UUID,BigDecimal> directMembers=new HashMap<>();
+            if(aggregateMake) {
+                for(Object[] slice:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT proof.supply_action_allocation_id,SUM(proof.qty_base)
+                        FROM preplan_aggregate_direct_transfer_slices proof
+                        JOIN production_workshop_direct_transfer_items transfer ON transfer.id=proof.transfer_item_id AND transfer.reversal_id IS NULL
+                        JOIN stock_document_items item ON item.source_daily_report_item_id=transfer.source_report_item_id
+                        WHERE item.id=:item AND proof.supply_action_allocation_id IS NOT NULL
+                        GROUP BY proof.supply_action_allocation_id
+                        """).setParameter("item",line.stockDocumentItemId())))directMembers.put((UUID)slice[0],decimal(slice[1]));
+            }
+            BigDecimal unrecorded=line.baseQty();
+            if(aggregateMake) {
+                BigDecimal already=decimal(em.createNativeQuery("""
+                        SELECT COALESCE((SELECT SUM(qty) FROM preplan_analysis_stock_exact_pegs
+                            WHERE source_receipt_type='MAKE' AND source_stock_document_item_id=:item),0)
+                          +COALESCE((SELECT SUM(allocated_qty) FROM production_material_make_receipt_allocations
+                            WHERE receipt_item_id=:item AND status='EFFECTIVE'),0)
+                        """).setParameter("item",line.stockDocumentItemId()).getSingleResult());
+                unrecorded=unrecorded.subtract(already).max(BigDecimal.ZERO);
+                if(unrecorded.signum()==0)continue;
+            }
             BigDecimal formalRemaining = formalRemainingByPlanItem.computeIfAbsent(
                     line.planItemId(), this::activeFormalMakeCommitment);
-            BigDecimal formalUse = line.baseQty().min(formalRemaining);
+            BigDecimal formalUse = unrecorded.min(formalRemaining);
             formalRemainingByPlanItem.put(
                     line.planItemId(), formalRemaining.subtract(formalUse));
-            BigDecimal remaining = line.baseQty().subtract(formalUse);
+            BigDecimal remaining = unrecorded.subtract(formalUse);
             if (remaining.signum() <= 0) continue;
 
             List<Object[]> allocations = NativeQueryResults.objectArrayRows(
                     em.createNativeQuery("""
                             SELECT allocation.id, allocation.analysis_id,
                                    allocation.analysis_material_id,
-                                   allocation.allocated_qty
+                                   fn_preplan_allocation_admitted_qty(allocation.id)
                             FROM preplan_supply_action_allocations allocation
                             JOIN preplan_supply_actions action
                               ON action.id = allocation.action_id
@@ -433,8 +474,10 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                              AND material.active = TRUE
                             WHERE allocation.analysis_id = :analysisId
                               AND allocation.external_item_id = :analysisItemId
-                              AND allocation.analysis_material_id =
-                                  :parentMaterialId
+                              AND (allocation.analysis_material_id = :parentMaterialId
+                                  OR EXISTS(SELECT 1 FROM preplan_aggregate_batches batch
+                                      WHERE batch.action_id=action.id AND batch.anchor_analysis_item_id=:analysisItemId
+                                        AND batch.plan_id=:planId AND batch.route='MAKE'))
                               AND material.goods_id = :goodsId
                               AND material.color_id IS NOT DISTINCT FROM
                                   CAST(:colorId AS uuid)
@@ -445,12 +488,14 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                             .setParameter("analysisItemId", analysisItemId)
                             .setParameter("goodsId", line.goodsId())
                             .setParameter("parentMaterialId", parentAnalysisMaterialId)
+                            .setParameter("planId",planId)
                             .setParameter("colorId", line.colorId()));
             for (Object[] allocation : allocations) {
                 if (remaining.signum() <= 0) break;
                 UUID allocationId = (UUID) allocation[0];
                 UUID materialId = (UUID) allocation[2];
-                BigDecimal exactAttributed = exactAttributed(allocationId);
+                if(!directMembers.isEmpty()&&!directMembers.containsKey(allocationId))continue;
+                BigDecimal exactAttributed = exactAttributed(allocationId,stockDocumentId);
                 BigDecimal capacity = decimal(allocation[3])
                         .subtract(exactAttributed).max(BigDecimal.ZERO);
                 BigDecimal legacyRemaining = legacyRemainingByAnalysis
@@ -461,6 +506,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         analysisId, legacyRemaining.subtract(legacyUse));
                 BigDecimal take = capacity.subtract(legacyUse)
                         .max(BigDecimal.ZERO).min(remaining);
+                if(!directMembers.isEmpty())take=take.min(directMembers.get(allocationId));
                 if (take.signum() <= 0) continue;
                 origins.add(insertExactMakeReservation(
                         allocationId, null, analysisId, materialId,
@@ -469,7 +515,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         line.stockDocumentItemId()));
                 remaining = remaining.subtract(take);
             }
-            if (remaining.signum() > 0 && parentAnalysisMaterialId != null) {
+            if (remaining.signum() > 0 && parentAnalysisMaterialId != null && !aggregateMake) {
                 // Current issuance retains a real MAKE_COMPONENT/parent-material
                 // anchor without creating a legacy notification action or another BOM.
                 BigDecimal capacity = directMakeCapacity(analysisId, analysisItemId,
@@ -491,7 +537,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     private BigDecimal directMakeCapacity(UUID analysisId, UUID childId, UUID materialId, UUID currentDocument) {
         return decimal(em.createNativeQuery("""
                 WITH budget AS (
-                SELECT child.requested_qty,material.required_qty,
+                SELECT child.requested_qty,fn_preplan_aggregate_source_capacity(material.id) AS required_qty,
                     fn_preplan_direct_make_admitted_qty(child.id,material.id) AS admitted_qty,
                     COALESCE((
                     SELECT SUM(exact.qty) FROM preplan_analysis_stock_exact_pegs exact
@@ -511,7 +557,9 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         WHERE relation.status IN ('OPEN','PARTIAL')),0) AS outstanding_supplement_qty
                 FROM production_material_analysis_items child
                 JOIN production_material_analysis_materials material ON material.id=child.parent_analysis_material_id
-                  AND material.analysis_id=child.analysis_id AND material.active
+                  AND material.analysis_id=child.analysis_id AND (material.active OR EXISTS(
+                    SELECT 1 FROM preplan_aggregate_material_aliases alias WHERE alias.source_material_id=material.id
+                      AND fn_preplan_aggregate_alias_identity_valid(alias.id)))
                 WHERE child.id=:child AND child.analysis_id=:analysis AND child.source_type='MAKE_COMPONENT'
                   AND NOT child.is_deleted AND material.id=:material
                 )
@@ -683,7 +731,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                      AND demand.status NOT IN ('RELEASED', 'REVERSED')
                      AND demand.is_deleted = FALSE
                     WHERE material.analysis_id = :analysisId
-                      AND material.id = :analysisMaterialId
+                      AND material.id IN(SELECT material_id FROM fn_preplan_aggregate_material_targets(:analysisMaterialId))
                       AND material.active = TRUE
                 )
                 """)
@@ -719,6 +767,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 "PRODUCTION_INBOUND", stockDocumentId,
                 "该成品入库的分析归属库存已转入生产领料或委外发料；请先撤回或红冲对应下游并恢复原归属，"
                         + "禁止直接红冲。无法恢复一对一可逆转移链时，请提交受控异常处理");
+        entitlement.restoreAggregateDelegationsForFinishedInbound(stockDocumentId);
         prepareEntitlementRelease("PRODUCTION_INBOUND", stockDocumentId);
     }
 
@@ -1351,6 +1400,10 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     }
 
     BigDecimal exactAttributed(UUID allocationId) {
+        return exactAttributed(allocationId,null);
+    }
+
+    private BigDecimal exactAttributed(UUID allocationId,UUID currentDocumentId) {
         return decimal(em.createNativeQuery("""
                 SELECT COALESCE(SUM(peg.qty), 0)
                 FROM preplan_analysis_stock_exact_pegs peg
@@ -1372,12 +1425,13 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                       (
                           peg.source_receipt_type = 'MAKE'
                           AND stock_document.id IS NOT NULL
-                          AND stock_document.status = 1
+                          AND (stock_document.status = 1 OR stock_document.id=CAST(:currentDocumentId AS uuid))
                           AND stock_document.is_deleted = FALSE
                       )
                   )
                 """)
                 .setParameter("allocationId", allocationId)
+                .setParameter("currentDocumentId",currentDocumentId)
                 .getSingleResult());
     }
 

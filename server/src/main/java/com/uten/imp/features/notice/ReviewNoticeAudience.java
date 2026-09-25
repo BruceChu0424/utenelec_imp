@@ -124,7 +124,7 @@ public class ReviewNoticeAudience {
                     && any(permissions, "production_material_analysis:notify", "production_material_analysis:generate");
             case "PROCUREMENT_IQC_STOCK_IN_PENDING" -> departments.contains("SUB_WH")
                     && permissions.containsAll(Set.of("warehouse_iqc_stock_in:view", "warehouse_iqc_stock_in:confirm"));
-            case "PRODUCTION_DRAW_PENDING" -> departments.contains("SUB_WH")
+            case "PRODUCTION_DRAW_PENDING", "PRODUCTION_MATERIAL_DISCOVERY_PENDING" -> departments.contains("SUB_WH")
                     && permissions.containsAll(Set.of("stock_doc:view", "stock_doc:approve", "stock_doc:issue"));
             case "PROCUREMENT_FINANCE_APPROVED" -> departments.contains("SUB_WH")
                     && permissions.containsAll(Set.of("warehouse_inbound:view", "warehouse_inbound:stock_in"));

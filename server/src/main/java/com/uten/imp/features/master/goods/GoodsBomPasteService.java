@@ -71,6 +71,7 @@ public class GoodsBomPasteService {
             expected.putIfAbsent(target.goodsId(), target.expectedItemIds());
         }
         List<UUID> targetIds = List.copyOf(expected.keySet());
+        goodsRepo.lockBomParents(targetIds);
         List<BomItemSaveRequest> items = request.items();
         Set<UUID> componentIds = items.stream().map(BomItemSaveRequest::getComponentGoodsId)
                 .filter(Objects::nonNull).collect(Collectors.toCollection(LinkedHashSet::new));

@@ -40,6 +40,13 @@ public interface GoodsRepository extends JpaRepository<Goods, UUID>, JpaSpecific
             """, nativeQuery = true)
     List<UUID> lockForReference(@Param("ids") Collection<UUID> ids);
 
+    /** Serialize recipe ownership/publication per parent, in database UUID order. */
+    @Query(value = """
+            SELECT id FROM goods WHERE id IN (:ids)
+            ORDER BY id FOR NO KEY UPDATE
+            """, nativeQuery = true)
+    List<UUID> lockBomParents(@Param("ids") Collection<UUID> ids);
+
     /**
      * 基本单位是否已被数量引用(V675，按需现查)：任一数量来源表(含取消、红冲、软删的历史行)
      * 或组装清单引用过该货品即为 true，此时基本单位不能再改。数据库守卫用的是同一个函数。

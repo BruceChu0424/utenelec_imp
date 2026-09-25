@@ -38,6 +38,7 @@ import '../models/production_material_analysis.dart';
 import '../models/material_analysis_projection.dart';
 import '../models/material_priority_replenishment.dart';
 import '../models/material_future_transfer.dart';
+import '../models/material_aggregate_order.dart';
 import '../models/production_plan.dart';
 import '../models/production_work_card.dart';
 import '../models/reportable_plan_line.dart';
@@ -112,6 +113,29 @@ class ProductionPlanRepository {
   Future<ProductionPlanDetail> detail(String id) async {
     final json = await api.get('/production/plans/$id'); // ENDPOINT
     return ProductionPlanDetail.fromJson(json);
+  }
+
+  /// Current server defaults, fetched once per selected batch with bounded UUID lists.
+  Future<Map<String, double>> overproductionDefaults(
+    Set<String> goodsIds,
+  ) async {
+    final ids = goodsIds.toList(growable: false)..sort();
+    final requests = <Future<Map<String, double>> Function()>[];
+    for (var start = 0; start < ids.length; start += 100) {
+      final end = start + 100 < ids.length ? start + 100 : ids.length;
+      final batch = ids.sublist(start, end).join(',');
+      requests.add(() async {
+        final json = await api.get(
+          '/production/overproduction-rate/defaults',
+          query: {'ids': batch},
+        );
+        return {
+          for (final entry in json.entries)
+            entry.key: (entry.value as num).toDouble(),
+        };
+      });
+    }
+    return {for (final batch in await _runBounded(requests)) ...batch};
   }
 
   Future<ProductionPlanDetail> create(Map<String, dynamic> body) async {
@@ -852,6 +876,24 @@ class ProductionPlanRepository {
     return ProductionMaterialAnalysisView.fromJson(json);
   }
 
+  Future<ProductionMaterialAnalysisView> cancelAggregateMaterialOrder({
+    required ProductionMaterialAnalysisView analysis,
+    required String actionId,
+    required String idempotencyKey,
+    required String reason,
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/${analysis.analysisId}/aggregate-orders/actions/$actionId/cancel',
+      body: {
+        'version': analysis.version,
+        'fingerprint': analysis.fingerprint,
+        'idempotencyKey': idempotencyKey,
+        'reason': reason,
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
   Future<ProductionMaterialAnalysisView> revokeMaterialRootStockOutput({
     required ProductionMaterialAnalysisView analysis,
     required String eventId,
@@ -1303,6 +1345,27 @@ class ProductionPlanRepository {
     ); // ENDPOINT
     return ProductionMaterialAnalysisView.fromJson(json);
   }
+
+  Future<MaterialAggregateOrderPreview> previewAggregateOrders(
+    MaterialAggregateOrderRequest request, {
+    CancelToken? cancelToken,
+  }) async => MaterialAggregateOrderPreview.fromJson(
+    await api.postCancellable(
+      '$_materialAnalysesBase/${request.analysisId}/aggregate-orders/preview',
+      cancelToken: cancelToken,
+      body: request.toJson(),
+    ),
+  );
+
+  Future<MaterialAggregateOrderResult> submitAggregateOrders(
+    MaterialAggregateOrderRequest request, {
+    required String previewFingerprint,
+  }) async => MaterialAggregateOrderResult.fromJson(
+    await api.post(
+      '$_materialAnalysesBase/${request.analysisId}/aggregate-orders/submit',
+      body: request.toJson(previewFingerprint: previewFingerprint),
+    ),
+  );
 
   // ───────────────────────── 调度工作台（业务链 · 排产段 V90） ─────────────────────────
 

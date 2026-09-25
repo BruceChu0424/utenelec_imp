@@ -81,12 +81,12 @@ class _BucketCandidatePlanInput {
     required this.workshopName,
     required this.workerId,
     this.publicSurplusOnly = false,
-    this.allowedOverproductionRate = 0.1,
+    this.allowedOverproductionRate,
   });
 
   final String materialLineId;
   final double qty;
-  final double allowedOverproductionRate;
+  final double? allowedOverproductionRate;
   final String? departmentId;
   final String? workshopName;
   final String? workerId;
@@ -104,12 +104,12 @@ class _BucketPlanDraft {
     required this.workshopName,
     required this.workerId,
     this.publicSurplusOnly = false,
-    this.allowedOverproductionRate = 0.1,
+    this.allowedOverproductionRate,
   });
 
   final String analysisLineId;
   final double qty;
-  final double allowedOverproductionRate;
+  final double? allowedOverproductionRate;
   final String? departmentId;
   final String? workshopName;
   final String? workerId;
@@ -1556,7 +1556,8 @@ class _MaterialAnalysisBucketPageState
       product != null &&
       (product.parentAnalysisLineId?.isEmpty ?? true) &&
       product.sourceType != 'MAKE_COMPONENT' &&
-      product.sourceType != 'SUBCONTRACT_MAKE';
+      product.sourceType != 'SUBCONTRACT_MAKE' &&
+      product.sourceType != 'AGGREGATE_MAKE';
 
   /// 物料名称格：身份格 + 顶层产品的红色「顶层」小框。
   ///

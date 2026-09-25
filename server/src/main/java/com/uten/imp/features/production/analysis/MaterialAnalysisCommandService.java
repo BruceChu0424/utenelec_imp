@@ -884,6 +884,47 @@ public class MaterialAnalysisCommandService {
         return issueWorkshopPlansInternal(analysisId, request, Map.of());
     }
 
+    /** Shared batch entry keeps the ordinary plan/package/stock chain and its one-item identity intact. */
+    GeneratedPlan issueAggregateAnchor(UUID analysisId,UUID batchId,UUID anchorId,
+            AggregateMaterialOrderContracts.GroupPreview group,UUID warehouse,boolean approveNow,String key) {
+        ProductView product=analysisService.detailInternal(analysisId,false).products().stream()
+                .filter(row->anchorId.equals(row.analysisLineId())).findFirst().orElseThrow(()->conflict("共享生产锚点尚未形成有效物料快照"));
+        PlanQuantity quantity=new PlanQuantity(anchorId,group.requestedQty(),group.billDate(),group.deliveryDate(),
+                group.departmentId(),null,group.workerId(),group.teamDepartmentId(),group.productNo(),group.allowedOverproductionRate());
+        PlanScheduleDefaults defaults=new PlanScheduleDefaults(group.billDate(),group.deliveryDate());
+        validatePlanSchedule(quantity,defaults);
+        UUID existingPlan=scalarUuid("SELECT plan_id FROM preplan_aggregate_batches WHERE id=:id",batchId);
+        if(existingPlan!=null) {
+            GrowablePlan growable=growablePlanFor(analysisId,anchorId,group.departmentId(),approveNow,group.allowedOverproductionRate());
+            if(growable==null||!existingPlan.equals(growable.planId()))throw conflict("共享生产批次已进入执行，追加须生成新批次");
+            return growPlan(analysisId,product,growable,quantity,defaults,group.requestedQty().subtract(group.publicExtraQty()),group.publicExtraQty(),
+                    new IssueWorkshopPlansRequest(0L,"0".repeat(64),key,warehouse,group.billDate(),group.deliveryDate(),approveNow,List.of()));
+        }
+        PlanDetail plan=createDraftPlan(analysisId,product,quantity,defaults,group.publicExtraQty());
+        em.createNativeQuery("UPDATE preplan_aggregate_batches SET plan_id=:plan WHERE id=:id AND plan_id IS NULL")
+                .setParameter("plan",plan.getId()).setParameter("id",batchId).executeUpdate();
+        ProductionPlanningDraftView draft=savePlanningDraft(analysisId,product,plan,quantity,defaults,warehouse);
+        PlanningPackageResult applied=null;
+        if(approveNow) {
+            planService.approve(plan.getId());
+            applied=planningPackages.currentResult(plan.getId()).orElseThrow(()->conflict("共享生产计划已审核但正式计划包未生成"));
+        }
+        return toGenerated(plan,draft,applied);
+    }
+
+    /** Preserve normal automatic public-future adoption before a genuinely new aggregate external order. */
+    Map<UUID,BigDecimal> claimAggregateFuture(UUID analysisId,AnalysisView view,
+            AggregateMaterialOrderContracts.GroupPreview preview,String key,String hash) {
+        if("MAKE".equals(preview.route()))return Map.of();
+        List<ActionGroup> groups=selectedGroups(view,new NotifyRequest(view.version(),view.fingerprint(),key,preview.route(),
+                preview.sources().stream().map(AggregateMaterialOrderContracts.SourcePreview::materialLineId).toList(),null,null));
+        Map<UUID,BigDecimal> desired=preview.sources().stream().collect(Collectors.toMap(AggregateMaterialOrderContracts.SourcePreview::materialLineId,AggregateMaterialOrderContracts.SourcePreview::allocatedQty));
+        Map<UUID,BigDecimal> claimed=new HashMap<>();List<UUID> claimIds=new ArrayList<>();List<Map<String,String>> late=new ArrayList<>();
+        for(ActionGroup group:groups){UUID material=group.materials().getFirst().materialLineId();BigDecimal qty=desired.getOrDefault(material,BigDecimal.ZERO);
+            if(qty.signum()>0)claimed.put(material,claimSharedFutureForGroup(analysisId,view,group,qty,null,true,key,hash,claimIds,late));}
+        return claimed;
+    }
+
     /**
      * @param typedOutputByMaterialLine 下达预览专用：层级表上每个父行填的数量
      *        (键 = 物料行 id)。只影响最后那次重算里「子件按父件计划产出展开」
@@ -1088,7 +1129,7 @@ public class MaterialAnalysisCommandService {
                 PlanQuantity quantity = new PlanQuantity(lineId, line.qty(),
                         line.billDate(), line.deliveryDate(), line.departmentId(),
                         line.workshopName(), line.workerId(), line.teamDepartmentId(),
-                        line.productNo(), line.allowedOverproductionRate());
+                        line.productNo(), ProductionOverproductionAllowance.resolve(em, product.goodsId(), line.allowedOverproductionRate()));
                 validatePlanSchedule(quantity, defaults);
                 // ADR-104：同一分析行已有一张还没开工的计划(草稿, 或已审核但车间没领料没开工)
                 // 时, 追加量并进那张计划——同一单号、明细加量、关联行加量, 已审核的在同一个
@@ -1225,11 +1266,13 @@ public class MaterialAnalysisCommandService {
         int items = em.createNativeQuery("""
                         UPDATE production_plan_items
                         SET qty = qty + CAST(:added AS numeric),
+                            allowed_overproduction_rate = :allowedRate,
                             updated_at = now(), updated_by = :actorId
                         WHERE id = :itemId AND plan_id = :planId AND is_deleted = FALSE
                           AND qty = CAST(:expectedQty AS numeric)
                         """)
                 .setParameter("added", added)
+                .setParameter("allowedRate", quantity.allowedOverproductionRate())
                 .setParameter("actorId", currentUser.requireId())
                 .setParameter("itemId", target.planItemId())
                 .setParameter("planId", target.planId())
@@ -1439,7 +1482,7 @@ public class MaterialAnalysisCommandService {
             BigDecimal demandQty = line.qty().min(product.remainingQty());
             GrowablePlan growable = growablePlanFor(
                     analysisId, lineId, line.departmentId(), request.approveNow(),
-                    line.allowedOverproductionRate(), false);
+                    ProductionOverproductionAllowance.resolve(em, product.goodsId(), line.allowedOverproductionRate()), false);
             // ADR-104 并入一张草稿计划并立即审核: 审核把整条关联行(原已提交 + 本次)转成已审核。
             BigDecimal draftSubmitted = growable != null && growable.status() == 0
                     ? growable.submittedQty() : BigDecimal.ZERO;
@@ -1608,8 +1651,11 @@ public class MaterialAnalysisCommandService {
                 itemHash += "|PUBLIC_SURPLUS_ONLY|true";
             }
             BigDecimal allowedRate = ProductionOverproductionAllowance.normalize(line.allowedOverproductionRate());
-            // Omitted/default rates retain the historical command hash for safe retries across upgrades.
-            if (allowedRate.compareTo(ProductionOverproductionAllowance.DEFAULT_RATE) != 0) {
+            // Omission now means the current goods default, not an explicit historical 10%.
+            // Keep the explicit 10% hash stable, but never treat different intentions as one retry.
+            if (line.allowedOverproductionRate() == null) {
+                itemHash += "|ALLOWED_OVERPRODUCTION_RATE|DEFAULT_BY_GOODS";
+            } else if (allowedRate.compareTo(ProductionOverproductionAllowance.DEFAULT_RATE) != 0) {
                 itemHash += "|ALLOWED_OVERPRODUCTION_RATE|" + MaterialAnalysisService.decimalText(allowedRate);
             }
             parts.add(itemHash);
@@ -1678,6 +1724,12 @@ public class MaterialAnalysisCommandService {
         }
         mutationGuard.verifyUnchanged();
         analysisService.requireCurrent(header, request.version(), request.fingerprint());
+        if(Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM preplan_aggregate_batches batch WHERE batch.analysis_id=:analysis AND batch.action_id=:action
+                    AND jsonb_array_length(batch.configuration_snapshot->'materialLineIds')>1)
+                """).setParameter("analysis",analysisId).setParameter("action",actionId).getSingleResult())) {
+            throw conflict("该汇总任务同时承接多个来源，不能从单个来源撤回；请核对正式共享单据的全部来源后处理");
+        }
         List<UUID> cancelledActionIds = cancelActionLocked(analysisId, actionId, request.effectiveReason());
         analysisService.refreshLocked(analysisId);
         recordCommand(analysisId, OP_CANCEL_ACTION, request.idempotencyKey(), hash,
@@ -2593,7 +2645,7 @@ public class MaterialAnalysisCommandService {
             throw validation("生产计划数量最多保留四位小数");
         }
         line.setQty(normalizedQty);
-        line.setAllowedOverproductionRate(ProductionOverproductionAllowance.normalize(quantity.allowedOverproductionRate()));
+        line.setAllowedOverproductionRate(ProductionOverproductionAllowance.resolve(em, product.goodsId(), quantity.allowedOverproductionRate()));
         line.setOrderDate(product.orderDate());
         line.setOutboundDate(product.deliveryDate());
         line.setPlanBeginDate(billDate);
@@ -2835,6 +2887,13 @@ public class MaterialAnalysisCommandService {
         return batch;
     }
 
+    /** Explicit whole aggregate scope; public single-source cancellation remains guarded. */
+    void cancelAggregateAction(UUID analysisId,UUID actionId,String reason) {
+        if(!Boolean.TRUE.equals(em.createNativeQuery("SELECT EXISTS(SELECT 1 FROM preplan_aggregate_batches WHERE analysis_id=:analysis AND action_id=:action)")
+                .setParameter("analysis",analysisId).setParameter("action",actionId).getSingleResult()))throw conflict("共享批次不存在或不属于当前分析");
+        cancelActionLocked(analysisId,actionId,reason);
+    }
+
     private static boolean sharesExternalDocument(String type, UUID documentId) {
         return documentId != null
                 && ("PURCHASE_REQUEST".equals(type)
@@ -2993,11 +3052,15 @@ public class MaterialAnalysisCommandService {
     private void cancelMakeDemandRow(
             UUID analysisId, UUID actionId, UUID itemId, BigDecimal qty,
             String notFoundMessage) {
+        if(Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM preplan_aggregate_batches batch JOIN production_plans plan ON plan.id=batch.plan_id
+                    WHERE batch.action_id=:action AND plan.status IN(0,1) AND NOT plan.is_deleted AND NOT plan.is_canceled)
+                """).setParameter("action",actionId).getSingleResult()))throw conflict("共享制造已有正式计划，请先按整个共享计划处理其报工、库存及来源依赖");
         Object[] item = one(em.createNativeQuery("""
                 SELECT requested_qty, submitted_qty, approved_qty
                 FROM production_material_analysis_items
                 WHERE id = :id AND analysis_id = :analysisId
-                  AND source_type IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')
+                  AND source_type IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE','AGGREGATE_MAKE')
                   AND is_deleted = FALSE
                 FOR UPDATE
                 """).setParameter("id", itemId).setParameter("analysisId", analysisId),

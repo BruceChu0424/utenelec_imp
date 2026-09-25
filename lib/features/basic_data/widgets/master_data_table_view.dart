@@ -219,8 +219,10 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.rowWidgetKeyOf,
     this.unselectableLeadingBuilder,
     this.leadingOverlayBuilder,
+    this.selectionStateOf,
     this.selectedIds = const <String>{},
     this.onSelectedIdsChanged,
+    this.onRowSelectionChanged,
     this.selectionSummaryCount,
     this.onClearSelection,
     this.showSelectionSummary = true,
@@ -334,12 +336,20 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// short (2026-09-20). Return null for no badge.
   final Widget? Function(BuildContext context, T item)? leadingOverlayBuilder;
 
+  /// Optional controlled row state for hierarchical selection. Null represents
+  /// partial selection; clicking it selects the complete row scope.
+  final bool? Function(T item)? selectionStateOf;
+
   /// 多选选中集合（调用方拥有，单一真值源）。组件只读它判定勾选/高亮、只通过
   /// [onSelectedIdsChanged] 把"新集合"回交调用方，从不自行清空——故跨页天然保留。
   final Set<String> selectedIds;
 
   /// 选中集合变化回调：行勾选与表头三态全选共用这一个（传入新的 Set）。
   final void Function(Set<String> next)? onSelectedIdsChanged;
+
+  /// Explicit row gestures can select a subtree while header selection remains
+  /// scoped to displayed page rows. Omit for ordinary flat tables.
+  final void Function(T item, bool selected)? onRowSelectionChanged;
 
   /// Optional count of canonical business tasks when one displayed row represents
   /// several tasks. Selection may include items hidden by the current filter.
@@ -1278,6 +1288,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 单行勾选切换。
   void _toggleRow(T item, bool checked) {
+    if (widget.onRowSelectionChanged case final onRowSelection?) {
+      onRowSelection(item, checked);
+      _fsTick.value++;
+      return;
+    }
     final id = widget.idOf?.call(item);
     if (id == null || id.isEmpty) return;
     final next = Set<String>.of(widget.selectedIds);
@@ -2174,6 +2189,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       ),
       child: Center(
         child: Checkbox(
+          key: const Key('master-data-table-select-all'),
           tristate: true,
           value: _headerCheckValue,
           onChanged: _pageSelectableIds().isEmpty ? null : _onToggleAllPage,
@@ -2358,10 +2374,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final Widget? leadingOverlay = rowSelectable
         ? widget.leadingOverlayBuilder?.call(context, item)
         : null;
+    final rowSelectionState = widget.selectionStateOf == null
+        ? selected
+        : widget.selectionStateOf!(item);
     final Widget checkbox = Checkbox(
-      value: selected,
+      tristate: widget.selectionStateOf != null,
+      value: rowSelectionState,
       // 无业务 id 的行禁用勾选(不计入全选)。
-      onChanged: !rowSelectable ? null : (v) => _toggleRow(item, v ?? false),
+      onChanged: !rowSelectable
+          ? null
+          : (_) => _toggleRow(item, rowSelectionState != true),
     );
     final selectionCheckbox = Center(
       child: !rowSelectable && widget.unselectableLeadingBuilder != null
@@ -2460,7 +2482,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (widget.selectable) {
         final id = widget.idOf?.call(item);
         if (id == null || id.isEmpty) return;
-        _toggleRow(item, !selected);
+        _toggleRow(item, rowSelectionState != true);
         return;
       }
       // 单击高亮该行：滚动时常驻（数据不刷新），翻页/重查换对象后自然失效。

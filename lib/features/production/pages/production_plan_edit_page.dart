@@ -293,12 +293,40 @@ class _ProductionPlanEditPageState
 
   Future<void> _pickGoods(ProductionGridRow row) async {
     final g = await showUtenGoodsPicker(context, ref);
-    if (g == null) return;
+    if (g == null || !mounted) return;
     row
       ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
       // 颜色/单位直接回填货品主档 UUID，单元格只读显示。
       ..colorId = g.colorId
       ..unitId = g.unitId;
+    final defaultRequestVersion = ++row.overproductionDefaultRequestVersion;
+    row.overproductionPercent.clear();
+    try {
+      final rates = await ref
+          .read(productionPlanRepositoryProvider)
+          .overproductionDefaults({g.id});
+      if (!mounted ||
+          !_grid.rows.contains(row) ||
+          row.goods?.id != g.id ||
+          row.overproductionDefaultRequestVersion != defaultRequestVersion) {
+        return;
+      }
+      // A late response must preserve an explicit entry made while it was loading.
+      if (row.overproductionPercent.text.isEmpty) {
+        final rate = rates[g.id];
+        if (rate == null) throw StateError('Missing production rate default');
+        row.overproductionPercent.text = productionOverproductionPercentText(
+          rate,
+        );
+      }
+    } catch (error) {
+      if (mounted &&
+          _grid.rows.contains(row) &&
+          row.goods?.id == g.id &&
+          row.overproductionDefaultRequestVersion == defaultRequestVersion) {
+        context.appApiError(error);
+      }
+    }
   }
 
   Future<void> _pickSourceOrder() async {
@@ -331,6 +359,18 @@ class _ProductionPlanEditPageState
       context.appInfo('所选货品行已在明细中，未重复带入');
       return;
     }
+    Map<String, double> rates;
+    try {
+      rates = await ref
+          .read(productionPlanRepositoryProvider)
+          .overproductionDefaults(
+            fresh.map((line) => line.goodsId).whereType<String>().toSet(),
+          );
+    } catch (error) {
+      if (mounted) context.appApiError(error);
+      return;
+    }
+    if (!mounted) return;
     setState(() {
       // 清掉新建时的占位空行（未选货品的空行）
       for (var i = _grid.length - 1; i >= 0; i--) {
@@ -341,6 +381,9 @@ class _ProductionPlanEditPageState
       }
       for (final l in fresh) {
         final row = ProductionGridRow()
+          ..overproductionPercent.text = rates[l.goodsId] == null
+              ? ''
+              : productionOverproductionPercentText(rates[l.goodsId]!)
           ..salesOrderNo.text = d.billNo ?? ''
           ..qty.text = _numText(l.needQty)
           ..oqty.text = _numText(l.qty)

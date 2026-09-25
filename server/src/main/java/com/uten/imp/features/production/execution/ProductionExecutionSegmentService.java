@@ -786,7 +786,13 @@ public class ProductionExecutionSegmentService {
 
     private void requireMaterialsIssuedForStart(LockedSegment segment) {
         assignmentValidator.requireMaterialCustody(segment.id());
-        if ("ZERO_MATERIAL".equals(segment.materialRequirementMode())) return;
+        if ("ZERO_MATERIAL".equals(segment.materialRequirementMode())) {
+            if(Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_material_discovery_pending(:id)")
+                    .setParameter("id",segment.id()).getSingleResult())) {
+                throw conflict("请先提交领料，由仓库登记实际物料并发料后再开工");
+            }
+            return;
+        }
         if (Boolean.TRUE.equals(em.createNativeQuery("""
                 SELECT EXISTS(SELECT 1 FROM production_actual_output_supplement_proofs
                     WHERE supplement_execution_segment_id=:id)

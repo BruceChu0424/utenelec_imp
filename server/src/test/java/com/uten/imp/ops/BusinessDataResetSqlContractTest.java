@@ -127,25 +127,35 @@ class BusinessDataResetSqlContractTest {
             Map.entry("production_material_increment_decisions", 702),
             Map.entry("production_material_increment_reversals", 702),
             // V703 车间催计划下单子层物料 (ADR-117)：催办提醒随业务流程数据清空。
-            Map.entry("production_planning_urges", 703));
+            Map.entry("production_planning_urges", 703),
+            Map.entry("production_material_discovery_requests", 710),
+            Map.entry("production_material_discovery_lines", 710),
+            Map.entry("production_bom_learning_samples", 711),
+            Map.entry("production_bom_learning_refresh_queue", 711),
+            Map.entry("preplan_aggregate_batches", 712),
+            Map.entry("preplan_aggregate_batch_events", 712),
+            Map.entry("preplan_aggregate_material_aliases", 712),
+            Map.entry("preplan_aggregate_direct_transfer_slices", 715));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
      * 同样走「读取已安装函数定义 + 锚点替换插入」补丁；与 CLEAR 扩展分开登记，
      * ops 脚本与 V579 补丁锚点保持一致。
      */
-    private static final Map<String, Integer> PRESERVE_RESET_EXTENSIONS = Map.of(
-            "legacy_subcontract_order_import_sources", 624,
-            "legacy_finance_import_sources", 626,
-            "legacy_procurement_receipt_import_sources", 627,
-            "expense_claim_settings", 617,
-            "party_activity_records", 579,
-            "party_addresses", 579,
-            "party_contact_methods", 579,
+    private static final Map<String, Integer> PRESERVE_RESET_EXTENSIONS = Map.ofEntries(
+            Map.entry("legacy_subcontract_order_import_sources", 624),
+            Map.entry("legacy_finance_import_sources", 626),
+            Map.entry("legacy_procurement_receipt_import_sources", 627),
+            Map.entry("expense_claim_settings", 617),
+            Map.entry("party_activity_records", 579),
+            Map.entry("party_addresses", 579),
+            Map.entry("party_contact_methods", 579),
             // V686 总账附表行绑定(ADR-112): 报表配置随科目/部门主档保留。
-            "finance_report_line_bindings", 686,
+            Map.entry("finance_report_line_bindings", 686),
             // V693 仓库负责人(ADR-115): 仓库的附属设置随主档保留。
-            "warehouse_keepers", 693);
+            Map.entry("warehouse_keepers", 693),
+            Map.entry("goods_bom_learning_profiles", 711),
+            Map.entry("goods_bom_learning_material_totals", 711));
 
     /**
      * V590 起整表废弃并从清空策略移除的表（「读取已安装定义 + 锚点替换删除」
@@ -282,7 +292,11 @@ class BusinessDataResetSqlContractTest {
                 "V698__production_overproduction_rate_review.sql",
                 "V700__actual_output_supplement_plans.sql",
                 "V702__production_material_increment_authorizations.sql",
-                "V703__workshop_planning_urges.sql")) {
+                "V703__workshop_planning_urges.sql",
+                "V710__leaf_material_discovery.sql",
+                "V711__production_bom_learning.sql",
+                "V712__material_aggregate_batches.sql",
+                "V715__aggregate_material_direct_transfers.sql")) {
             extensionSql += read(Path.of("src/main/resources/db/migration",migration),
                     Path.of("server/src/main/resources/db/migration",migration));
         }
@@ -500,8 +514,8 @@ class BusinessDataResetSqlContractTest {
                 .contains("(692, 621)")
                 .contains("(693, 622)").contains("(694, 623)").contains("(695, 624)").contains("(696, 625)").contains("(697, 626)").contains("(698, 627)").contains("(699, 628)").contains("(700, 629)").contains("(701, 630), (702, 631), (703, 632), (704, 633), (705, 634), (706, 635), (707, 636),")
                 .contains("(708, 637)")
-                // 迁移头 V708 / 637 张 (V648至V669 跳号)。
-                .contains("V507/469、V508/470及V511至V708完整目录");
+                // 迁移头 V715 / 644 条 (V648至V669 跳号)。
+                .contains("V507/469、V508/470及V511至V715完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

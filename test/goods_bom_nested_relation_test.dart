@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -101,6 +102,9 @@ Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
     ProviderScope(
       overrides: [goodsBomRepositoryProvider.overrideWithValue(repo)],
       child: const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: Locale('zh'),
         home: Scaffold(
           body: GoodsBomTab(
             goodsId: 'goods-a',
@@ -153,6 +157,9 @@ void main() {
             isSuperAdminProvider.overrideWithValue(false),
           ],
           child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: Locale('zh'),
             home: Scaffold(
               body: GoodsBomTab(
                 goodsId: 'goods-a',
@@ -191,6 +198,9 @@ void main() {
       ProviderScope(
         overrides: [goodsBomRepositoryProvider.overrideWithValue(repo)],
         child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
           home: Scaffold(
             body: GoodsBomTab(
               goodsId: 'goods-a',
@@ -278,6 +288,9 @@ void main() {
         ],
         // canEdit=false：审计与编辑权限解耦（质检可只有审计权）。
         child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
           home: Scaffold(
             body: GoodsBomTab(
               goodsId: 'goods-a',
@@ -325,6 +338,9 @@ void main() {
           isSuperAdminProvider.overrideWithValue(false),
         ],
         child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
           home: Scaffold(
             body: GoodsBomTab(
               goodsId: 'goods-a',

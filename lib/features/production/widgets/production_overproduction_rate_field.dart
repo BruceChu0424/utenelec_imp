@@ -45,7 +45,7 @@ class ProductionOverproductionRateField extends StatelessWidget {
             InputDecoration(
               isDense: true,
               suffixText: '%',
-              hintText: '10',
+              hintText: '0',
               error: parseProductionOverproductionPercent(value.text) == null
                   ? const UtenFieldMessage.error('请输入非负百分比，最多 4 位小数')
                   : null,

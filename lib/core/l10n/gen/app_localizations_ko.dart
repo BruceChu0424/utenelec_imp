@@ -9,6 +9,123 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get materialDiscoveryBatchHelp =>
+      '연속 생산 또는 전량 준비 생산을 선택하여 자재를 등록한 후 분할 생산을 진행하세요.';
+
+  @override
+  String get materialDiscoveryCancel => '자재 입력 요청 철회';
+
+  @override
+  String get bomLearningTitle => 'BOM 학습 기록';
+
+  @override
+  String get bomLearningHelp =>
+      '생산 및 잔여 자재 정산 후 누적 순소비량을 실제 생산량으로 나누어 단위 소요량을 갱신합니다. 기존 작업 지시의 자재는 유지됩니다.';
+
+  @override
+  String get bomLearningInactive =>
+      '학습 기록이 없습니다. 하위 자재가 없는 자체 생산품의 출고와 생산 완료 후 누적됩니다.';
+
+  @override
+  String get bomLearningAuto => 'BOM 자동 갱신';
+
+  @override
+  String get bomLearningPaused =>
+      '수동 BOM 보호 또는 자재, 단위, 색상 충돌로 자동 갱신이 중지되었습니다. 누적 기록은 유지됩니다. 구성품 정보를 확인하세요.';
+
+  @override
+  String get bomLearningOutput => '누적 실제 생산량';
+
+  @override
+  String get bomLearningSamples => '유효 생산 배치';
+
+  @override
+  String get bomLearningNet => '누적 순소비량';
+
+  @override
+  String get bomLearningAverage => '개당 평균 소요량';
+
+  @override
+  String get materialDiscoveryTitle => '실제 출고 자재 입력';
+
+  @override
+  String get materialDiscoveryHelp =>
+      '현장 담당자와 확인한 뒤 자재, 수량, 실제 출고 창고를 입력하세요. 저장 후 생성된 출고 문서에서 실제 출고를 처리합니다.';
+
+  @override
+  String get materialDiscoveryRequestHelp =>
+      '이 자체 생산품에는 하위 자재가 아직 없습니다. 자재를 요청한 후 창고와 실제 자재를 확인하세요. 실제 출고가 완료되어야 작업을 시작할 수 있습니다.';
+
+  @override
+  String get materialDiscoveryPending => '창고의 자재 입력 대기';
+
+  @override
+  String get materialDiscoveryNeeded => '사용 자재 확인 필요';
+
+  @override
+  String get materialDiscoverySend => '자재 요청 제출';
+
+  @override
+  String get materialDiscoverySave => '저장 및 출고 문서 생성';
+
+  @override
+  String get materialDiscoverySaved => '자재를 등록했습니다. 출고 문서에서 확인 후 실제 출고를 처리하세요.';
+
+  @override
+  String get materialDiscoveryInvalid =>
+      '각 행에 자재와 실제 창고를 선택하고 소수점 4자리 이하의 양수를 입력하세요. 품목의 기본 단위를 사용합니다.';
+
+  @override
+  String get materialDiscoveryUncertain =>
+      '처리 결과를 확인하지 못했습니다. 입력 내용은 보존됩니다. 결과를 확인하거나 같은 요청을 다시 제출하세요.';
+
+  @override
+  String get materialDiscoveryCheck => '제출 결과 확인';
+
+  @override
+  String get materialDiscoveryPick => '자재 선택';
+
+  @override
+  String get materialDiscoveryWarehouse => '실제 출고 창고';
+
+  @override
+  String get materialDiscoveryQuantity => '이번 출고 수량';
+
+  @override
+  String get materialDiscoveryUnit => '단위';
+
+  @override
+  String get materialDiscoveryCode => '코드';
+
+  @override
+  String get materialDiscoveryColor => '색상';
+
+  @override
+  String get materialDiscoveryLoadFailed => '자재 요청을 불러오지 못했습니다. 다시 시도하세요.';
+
+  @override
+  String get materialDiscoveryNoPermission => '이 요청의 자재를 입력할 권한이 없습니다.';
+
+  @override
+  String get materialDiscoveryDone => '처리된 요청입니다. 관련 출고 문서를 확인하세요.';
+
+  @override
+  String get materialDiscoveryOpenDraw => '출고 문서 열기';
+
+  @override
+  String get materialDiscoveryRetry => '다시 시도';
+
+  @override
+  String get materialDiscoveryRequestSent => '자재 요청을 제출했습니다. 창고의 자재 입력을 기다립니다.';
+
+  @override
+  String get materialDiscoveryMissingUnit =>
+      '자재의 기본 단위가 없습니다. 품목 정보를 먼저 등록하세요.';
+
+  @override
+  String get materialDiscoveryRequestTitle => '자재 요청 확인';
+
+  @override
   String get appTitle => '우텅 통합 관리 플랫폼';
 
   @override

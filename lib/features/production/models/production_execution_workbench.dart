@@ -194,6 +194,10 @@ class ProductionExecutionWorkbenchSegment {
     this.canRecheckMaterial = false,
     this.drawRequested = false,
     this.canRequestDraw = false,
+    this.materialDiscoveryRequired = false,
+    this.materialDiscoveryRequestId,
+    this.materialDiscoveryStatus,
+    this.canRequestMaterialDiscovery = false,
     this.canSplitBatch = false,
     this.sourceSegmentId,
     this.splitReplaced = false,
@@ -291,6 +295,10 @@ class ProductionExecutionWorkbenchSegment {
   final bool canRecheckMaterial;
   final bool drawRequested;
   final bool canRequestDraw;
+  final bool materialDiscoveryRequired;
+  final String? materialDiscoveryRequestId;
+  final String? materialDiscoveryStatus;
+  final bool canRequestMaterialDiscovery;
   final bool canSplitBatch;
   final String? sourceSegmentId;
   final bool splitReplaced;
@@ -472,6 +480,10 @@ class ProductionExecutionWorkbenchSegment {
     canRecheckMaterial: json['canRecheckMaterial'] == true,
     drawRequested: json['drawRequested'] == true,
     canRequestDraw: json['canRequestDraw'] == true,
+    materialDiscoveryRequired: json['materialDiscoveryRequired'] == true,
+    materialDiscoveryRequestId: json['materialDiscoveryRequestId'] as String?,
+    materialDiscoveryStatus: json['materialDiscoveryStatus'] as String?,
+    canRequestMaterialDiscovery: json['canRequestMaterialDiscovery'] == true,
     canSplitBatch: json['canSplitBatch'] == true,
     sourceSegmentId: json['sourceSegmentId'] as String?,
     splitReplaced: json['splitReplaced'] == true,

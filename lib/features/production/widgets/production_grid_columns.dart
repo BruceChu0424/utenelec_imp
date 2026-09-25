@@ -29,8 +29,9 @@ class ProductionGridRow extends EditableGridRow {
   final TextEditingController productNo = TextEditingController();
   final TextEditingController qty = TextEditingController();
   final TextEditingController overproductionPercent = TextEditingController(
-    text: '10',
+    text: '0',
   );
+  int overproductionDefaultRequestVersion = 0;
   final TextEditingController oqty = TextEditingController();
   final TextEditingController salesOrderNo = TextEditingController();
   final TextEditingController remark = TextEditingController();

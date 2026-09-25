@@ -151,6 +151,22 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
         }
     }
 
+    @Test void warehouseUnionExecutesAgainstTheFullSchemaWithoutMakingUnrequestedDemandsActionable() throws Exception {
+        Fixture data;
+        try (Connection connection = connection()) { data = fixture(connection); }
+        FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
+        when(access.canAccessWarehouseTasks()).thenReturn(true);
+        var service = new FulfillmentWorkbenchQueryService(entityManager, access);
+        var page = transactions.execute(status -> service.query("WAREHOUSE", "OPEN_ANY", data.planNo(),
+                "", null, null, 1, 20));
+        assertNotNull(page);
+        assertTrue(page.items().isEmpty());
+        assertEquals(0L, page.summary().pendingTasks());
+        var counts = transactions.execute(status -> service.warehouseStatusBreakdown());
+        assertNotNull(counts);
+        assertEquals(0L, counts.get("MATERIALS_TO_DEFINE"));
+    }
+
     @Test
     void nonEmptyPostgresProjectionMapsHibernateInstantToUtc() throws Exception {
         Fixture fixture;

@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 // 组装信息页签的多选批量删除(2026-09-21 用户口径「组件信息最前面加个多选框，
 // 然后可以多选，批量删除」)。
 //
@@ -113,6 +114,9 @@ Future<void> _pumpTab(
         isSuperAdminProvider.overrideWithValue(false),
       ],
       child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('zh'),
         home: Scaffold(
           body: GoodsBomTab(
             goodsId: 'goods-a',

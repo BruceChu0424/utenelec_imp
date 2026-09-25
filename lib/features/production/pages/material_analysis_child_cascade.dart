@@ -446,7 +446,8 @@ abstract class _MaterialAnalysisChildCascadeState
         ? null
         : indexes.productsById[analysisLineId];
     if (product == null) return null;
-    if (_isEmbeddedMakeChildProduct(product)) {
+    if (_isEmbeddedMakeChildProduct(product) &&
+        product.sourceType != 'AGGREGATE_MAKE') {
       // 锚点子件不展开自己的 BOM（ADR-071 §四）：它的料仍留在原树的来源
       // 节点下，展开起点必须回到那个节点。
       final source = indexes

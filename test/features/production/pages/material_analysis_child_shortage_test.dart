@@ -356,7 +356,14 @@ void main() {
       tester,
       mutate: (data) {
         (data['flatMaterials'] as List).add(
-          _material(line: 'm-c4', name: '未定方式件', confirmed: null, net: 300),
+          _material(
+            line: 'm-c4',
+            name: '未定方式件',
+            confirmed: null,
+            net: 300,
+            // REVIEW: 无法推导供应方式 -> 红框空选、不能下单(2026-09-25 确认路线退役口径)
+            suggestion: null,
+          ),
         );
         return data;
       },
@@ -644,6 +651,9 @@ Future<void> _pump(
           }
           _applyNotify(data, request.data as Map<String, dynamic>);
           result = bumped();
+        } else if (path.endsWith('/routes') && request.method == 'PUT') {
+          // 进页自动确认兜底: 未处理的空列表回包会把整份视图清空。
+          result = bumped();
         } else if (path == '/production/material-analyses/analysis-1') {
           result = data;
         } else if (path == '/production/material-analyses/analysis-2') {
@@ -870,6 +880,7 @@ Map<String, dynamic> _material({
   String unit = '个',
   String product = 'product-1',
   List<Map<String, dynamic>> downstream = const [],
+  String? suggestion = 'BUY',
 }) => {
   'subcontractOutboundForm': ?subcontractOutboundForm,
   'materialLineId': line,
@@ -894,7 +905,7 @@ Map<String, dynamic> _material({
   'inboundQty': 0,
   'additionalSupplyRecommendedQty': net,
   'netShortageQty': net,
-  'sourceSuggestion': 'BUY',
+  'sourceSuggestion': suggestion,
   'sourceConfirmed': confirmed,
   'routeConfirmed': confirmed != null,
   'controlStage': 'START',

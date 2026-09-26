@@ -12450,6 +12450,12 @@ class FullChainEndToEndTest {
                                  where child.parent_id = warehouse.id and not child.is_deleted)
                 order by warehouse.id limit 1
                 """, (rs, i) -> rs.getObject("id", UUID.class), main).stream().findFirst().orElse(null);
+        // 主仓自身就是无子仓的独立叶仓时直接用它: 再补建子仓会把任务计划仓贬成非叶仓,
+        // 后续成品送仓登记的「必须叶仓」校验随之失败(服务端 same_main 校验对自身恒真)。
+        if (leafForInput == null && Boolean.TRUE.equals(
+                jdbc.queryForObject("SELECT fn_warehouse_is_operational_leaf(?)", Boolean.class, main))) {
+            leafForInput = main;
+        }
         if (leafForInput == null) {
             leafForInput = UUID.randomUUID();
             jdbc.update("""

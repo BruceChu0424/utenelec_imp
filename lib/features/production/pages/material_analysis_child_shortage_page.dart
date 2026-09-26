@@ -597,13 +597,21 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
     final workshop = assignable
         ? SizedBox(
             width: 132,
-            child: _host._materialTableProductionWorkshopCell(theme, row),
+            child: _host._materialTableProductionWorkshopCell(
+              theme,
+              row,
+              revealKey: false,
+            ),
           )
         : null;
     final worker = assignable
         ? SizedBox(
             width: 116,
-            child: _host._materialTableResponsibleCell(theme, row),
+            child: _host._materialTableResponsibleCell(
+              theme,
+              row,
+              revealKey: false,
+            ),
           )
         : null;
     final indent = (line.depth - 1) * 20.0;

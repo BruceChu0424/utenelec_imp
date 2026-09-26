@@ -23,7 +23,9 @@ import 'package:flutter_test/flutter_test.dart';
 // 2026-09-25 +7：基础资料五个主档(模具/颜色/单位/结算方式/仓库)补齐导出/打印按钮(+9，
 // 与币种/账户页同款 UtenExportButton 本地权限引用)；组装信息页单价/金额列退役顺手
 // 移除 2 处价格权限引用，净 +7。
-const _baseline = 620;
+// 2026-09-25 +1：销售订单详情「修改订单」按钮显隐本地预演(与服务端 sales:order:edit
+// 的 @PreAuthorize 一一对应，随列对齐编辑保存 pop 回宿主批次)。
+const _baseline = 621;
 
 final _permReference = RegExp(r'\bPerm\.[a-zA-Z]');
 

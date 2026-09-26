@@ -116,7 +116,8 @@ class StockBalanceAdjustmentUuidRelationContractTest {
         assertThat(materialCategory)
                 .contains("systemCategories.isMaterialCategory(c.getId())")
                 .contains("n.setSystemManaged(c.getId().equals(systemCategoryId))")
-                .contains("requireMutableCategory")
+                // V718 未分类根放开为普通可编辑分类：可编辑性守卫 requireMutableCategory 退役。
+                .doesNotContain("requireMutableCategory")
                 .doesNotContain("LEGACY_ORPHAN");
         assertThat(flutterGuard)
                 .contains("required bool systemManaged")

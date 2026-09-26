@@ -361,7 +361,8 @@ class MaterialStockReallocationServiceTest {
                 targetAnalysis, 7L, TARGET_FP, targetMaterial,
                 warehouse, "主仓",
                 java.sql.Date.valueOf(LocalDate.of(2026, 9, 3)),
-                new BigDecimal("4"), "计划B", "P-B", "产品B"
+                new BigDecimal("4"), "计划B", "P-B", "产品B",
+                "WL-E2E-CAND"
         };
         EntityManager em = mock(EntityManager.class);
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {

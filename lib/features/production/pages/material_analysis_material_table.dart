@@ -4046,8 +4046,9 @@ abstract class _MaterialAnalysisMaterialTableState
 
   Widget _materialTableProductionWorkshopCell(
     ThemeData theme,
-    _MaterialTableRow row,
-  ) {
+    _MaterialTableRow row, {
+    bool revealKey = true,
+  }) {
     if (row.aggregate case final aggregate?) {
       return _aggregateTable.assignmentCell(theme, aggregate, worker: false);
     }
@@ -4062,20 +4063,22 @@ abstract class _MaterialAnalysisMaterialTableState
       );
     }
     final current = _tableWorkshopFor(group);
-    return KeyedSubtree(
-      key: _tableAssignmentCellKey('W', group),
-      child: _materialTableAssignmentCell(
-        theme,
-        key: 'material-analysis-workshop-${group.key}',
-        text: current.name ?? '点击选择',
-        autofilled: current.autofilled && current.id != null,
-        empty: current.id == null,
-        semanticsLabel: '生产车间 ${current.name ?? "待指派"}',
-        onTap: _canGenerate && !_busy
-            ? () => unawaited(_pickTableWorkshop(group))
-            : null,
-      ),
+    // 滚动定位 GlobalKey 只在主表挂一份: 补下层物料页与主表同时在树里,
+    // 同组同 Key 双挂会触发 Duplicate GlobalKeys 崩帧。
+    final cell = _materialTableAssignmentCell(
+      theme,
+      key: 'material-analysis-workshop-${group.key}',
+      text: current.name ?? '点击选择',
+      autofilled: current.autofilled && current.id != null,
+      empty: current.id == null,
+      semanticsLabel: '生产车间 ${current.name ?? "待指派"}',
+      onTap: _canGenerate && !_busy
+          ? () => unawaited(_pickTableWorkshop(group))
+          : null,
     );
+    return revealKey
+        ? KeyedSubtree(key: _tableAssignmentCellKey('W', group), child: cell)
+        : cell;
   }
 
   String? _materialTableResponsibleText(_MaterialTableRow row) {
@@ -4087,7 +4090,11 @@ abstract class _MaterialAnalysisMaterialTableState
     return _tableWorkerFor(group!).name ?? '待指派';
   }
 
-  Widget _materialTableResponsibleCell(ThemeData theme, _MaterialTableRow row) {
+  Widget _materialTableResponsibleCell(
+    ThemeData theme,
+    _MaterialTableRow row, {
+    bool revealKey = true,
+  }) {
     if (row.aggregate case final aggregate?) {
       return _aggregateTable.assignmentCell(theme, aggregate, worker: true);
     }
@@ -4102,20 +4109,21 @@ abstract class _MaterialAnalysisMaterialTableState
       );
     }
     final current = _tableWorkerFor(group);
-    return KeyedSubtree(
-      key: _tableAssignmentCellKey('R', group),
-      child: _materialTableAssignmentCell(
-        theme,
-        key: 'material-analysis-worker-${group.key}',
-        text: current.name ?? '点击选择',
-        autofilled: current.autofilled && current.id != null,
-        empty: current.id == null,
-        semanticsLabel: '负责人 ${current.name ?? "待指派"}',
-        onTap: _canGenerate && !_busy
-            ? () => unawaited(_pickTableWorker(group))
-            : null,
-      ),
+    // 与生产车间格同规则: 定位键只在主表挂, 补料页复用格子时不再双挂 GlobalKey。
+    final cell = _materialTableAssignmentCell(
+      theme,
+      key: 'material-analysis-worker-${group.key}',
+      text: current.name ?? '点击选择',
+      autofilled: current.autofilled && current.id != null,
+      empty: current.id == null,
+      semanticsLabel: '负责人 ${current.name ?? "待指派"}',
+      onTap: _canGenerate && !_busy
+          ? () => unawaited(_pickTableWorker(group))
+          : null,
     );
+    return revealKey
+        ? KeyedSubtree(key: _tableAssignmentCellKey('R', group), child: cell)
+        : cell;
   }
 
   // ------------------------- 一张表的下达编排 -------------------------

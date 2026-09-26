@@ -95,7 +95,8 @@ class SubcontractMakeTaskAutomaticNotificationTest {
                 } else if (sql.contains("AS available_qty")) {
                     rows = Collections.singletonList(new Object[]{task, analysis, material, source,
                             preparation, goods, null, unit, warehouse, BigDecimal.TEN, BigDecimal.TEN,
-                            BigDecimal.ZERO, LocalDate.now(), OffsetDateTime.now(), BigDecimal.TEN});
+                            BigDecimal.ZERO, LocalDate.now(), OffsetDateTime.now(), BigDecimal.TEN,
+                            "WL-E2E-NOTIFY"});
                 } else if (sql.contains("SELECT source.action_group_key")) {
                     rows = Collections.singletonList(new Object[]{"a".repeat(64), 1, "b".repeat(64), source});
                 } else {

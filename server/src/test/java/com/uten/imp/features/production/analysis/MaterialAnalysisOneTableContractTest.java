@@ -34,7 +34,9 @@ class MaterialAnalysisOneTableContractTest {
         assertThat(planning).contains(
                 ".subtract(committedPlanQty.max(BigDecimal.ZERO).subtract(internalCovered)");
         assertThat(planning).doesNotContain("sharedFutureClaimable");
-        assertThat(service).contains("netShortage, sourceRequiredQty, planningUncovered);");
+        // 2026-09-26：同料合并共享批次的转交份额(aggregateDelegatedShare)作为尾参追加,
+        // 断言放宽为前三个值按序传入即可, 契约意图不变。
+        assertThat(service).contains("netShortage, sourceRequiredQty, planningUncovered,");
         // 2026-09-23：再扣掉本节点已下达自制计划里归本需求的那一份(不含公共备货产出——
         // 那份不绑需求, 锚点余量也不因它归零), 且不与已作为 INTERNAL 在途扣过的前置自制
         // 台账 / 自制任务重复; additionalRecommended 那一行原样。

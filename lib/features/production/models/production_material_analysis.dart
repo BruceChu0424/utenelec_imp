@@ -1131,6 +1131,7 @@ class ProductionMaterialAnalysisMaterial {
     this.delegatedToAnalysisLineId,
     this.delegatedToSourceRef,
     this.delegatedToRequestedQty,
+    this.aggregateDelegatedQty = 0,
     this.sourceSuggestion,
     this.sourceConfirmed,
     this.routeConfirmed = false,
@@ -1323,6 +1324,11 @@ class ProductionMaterialAnalysisMaterial {
   /// 关联 child 当前总 requested_qty。它不是旧后代单行委派量，也不是本次
   /// 正式计划量；当前无 delegated_qty 时，服务端强制按全部实时余量创建。
   final double? delegatedToRequestedQty;
+
+  /// 同料合并共享批次里这一行已转交给共享制造的份额。需求转走后本行
+  /// requiredQty 归零、没有自己的下单引用——产品视图靠它把行锁成
+  /// 「已并入共享批次 N」，而不是显示成可填的 0。
+  final double aggregateDelegatedQty;
   final MaterialSupplyRoute? sourceSuggestion;
   final MaterialSupplyRoute? sourceConfirmed;
   final bool routeConfirmed;
@@ -1454,6 +1460,7 @@ class ProductionMaterialAnalysisMaterial {
     delegatedToAnalysisLineId: _string(json['delegatedToAnalysisLineId']),
     delegatedToSourceRef: _string(json['delegatedToSourceRef']),
     delegatedToRequestedQty: _double(json['delegatedToRequestedQty']),
+    aggregateDelegatedQty: _double(json['aggregateDelegatedQty']) ?? 0,
     sourceSuggestion: MaterialSupplyRoute.fromWire(
       json['sourceSuggestion'] ?? json['suggestedRoute'],
     ),

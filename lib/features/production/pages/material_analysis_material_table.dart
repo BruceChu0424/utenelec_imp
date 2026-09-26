@@ -343,7 +343,10 @@ abstract class _MaterialAnalysisMaterialTableState
         );
       }
     }
-    result.addAll(_aggregateTable.sharedProductionRows(analysis, projection));
+    // 同料合并的共享制造批次(AGGREGATE_MAKE 产品)不在产品视图再立顶层行：
+    // 2026-09-26 用户实机「下单后结构变了，正常只有插座0/1/2，现在把子层级也
+    // 拿出来了」——它的用料与进度在「按物料汇总」视图整装待阅，产品视图里
+    // 原行锁成转交份额即可(见 _tableAggregateDelegatedShare)。
     final knownProductIds = analysis.products
         .map((product) => product.analysisLineId)
         .toSet();
@@ -2492,6 +2495,38 @@ abstract class _MaterialAnalysisMaterialTableState
   bool _tableGroupIssued(_MaterialGroup group) =>
       _tableGroupIssuedQty(group) > 0.0001;
 
+  /// 同料合并共享批次的转交份额：这一行的需求**整体**转入共享制造批次时返回
+  /// 正数；部分需求仍在本行、或没有转交时返回 null。
+  ///
+  /// 需求转走后本行 requiredQty 归零、也没有自己的下单引用——没有这一支，
+  /// 产品视图只能把这些行显示成「可填的 0」(2026-09-26 用户实机「下单数量
+  /// 大部分是 0、超量下的也没锁」)。份额来自服务端逐来源行累计的别名量，
+  /// 各行份额加起来正好是共享批次的总量。
+  double? _tableAggregateDelegatedShare(_MaterialGroup group) {
+    var share = 0.0;
+    for (final path in group.paths) {
+      if (path.requiredQty > 0.0001) return null;
+      share += path.aggregateDelegatedQty;
+    }
+    return share > 0.0001 ? share : null;
+  }
+
+  /// 本行转交到的共享批次里，同物料的目标行组(共享批次自己的 BOM 树上)。
+  /// 目标行已经下过单时，转交份额按「已并入共享批次下达」上锁展示。
+  _MaterialGroup? _tableAggregateDelegationTarget(_MaterialGroup group) {
+    final analysis = _analysis;
+    final anchorId = group.representative.delegatedToAnalysisLineId;
+    if (analysis == null || anchorId == null) return null;
+    final indexes = _analysisIndexes(analysis);
+    final key = _aggregateKeyOf(group.representative);
+    for (final ProductionMaterialAnalysisMaterial node
+        in _bomPresentation(analysis).nodesByProduct[anchorId] ?? const []) {
+      if (_aggregateKeyOf(node) != key) continue;
+      return indexes.groupsByLine[node.materialLineId];
+    }
+    return null;
+  }
+
   /// 本提交单元本次要**覆盖**的量 = 「下单数量」列的预填值与提交值。
   ///
   /// **必须用毛口径 additionalSupplyRecommendedQty, 不能用「还缺数量」那个净数。**
@@ -3812,6 +3847,8 @@ abstract class _MaterialAnalysisMaterialTableState
     final group = _tableEditableGroup(row);
     if (group == null) return '—';
     if (_tableGroupIssued(group)) return _qty(_tableGroupIssuedQty(group));
+    final delegatedShare = _tableAggregateDelegatedShare(group);
+    if (delegatedShare != null) return _qty(delegatedShare);
     return _tableOrderQtyControllers[group.key]?.text ??
         _qty(_tableGroupResidual(group));
   }
@@ -3847,6 +3884,42 @@ abstract class _MaterialAnalysisMaterialTableState
               _qty(_tableGroupIssuedQty(group)),
               style: theme.textTheme.bodySmall?.copyWith(
                 fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    // 需求已并入同料合并共享批次的行：锁成本行的转交份额。真实下单引用在共享
+    // 批次的目标行上，共享批次已把这种物料下出去时上锁，还没下时只读并指路
+    // 「按物料汇总」——两种形态都不再给输入框(2026-09-26 用户实机「中间子层
+    // 大量 0、超量行没锁住」)。
+    final delegatedShare = _tableAggregateDelegatedShare(group);
+    if (delegatedShare != null) {
+      final target = _tableAggregateDelegationTarget(group);
+      final ordered = target != null && _tableGroupIssuedQty(target) > 0.0001;
+      return Tooltip(
+        message: ordered
+            ? '已并入共享制造批次下达：本行份额 ${_qty(delegatedShare)}，'
+                  '多来源的合计与进度在「按物料汇总」视图查看。'
+            : '这一行的需求已转入共享制造批次（本行份额 ${_qty(delegatedShare)}），'
+                  '请在「按物料汇总」视图核对并下达。',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (ordered) ...[
+              Icon(
+                Icons.lock_outline_rounded,
+                size: 13,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: UtenSpacing.s4),
+            ],
+            Text(
+              _qty(delegatedShare),
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: ordered ? null : theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -3958,6 +4031,18 @@ abstract class _MaterialAnalysisMaterialTableState
         message:
             '这一行没有「下达车间」权限时按整批接管提交，追加产出请在「下达车间」'
             '建好的计划里填，不在这里。',
+        child: Text(
+          '—',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+    // 需求已并入共享批次的行：追加/撤回都在共享批次上办，这里不给入口。
+    if (_tableAggregateDelegatedShare(group) != null) {
+      return Tooltip(
+        message: '这一行的需求在共享制造批次里，追加或撤回到「按物料汇总」视图办理。',
         child: Text(
           '—',
           style: theme.textTheme.bodySmall?.copyWith(

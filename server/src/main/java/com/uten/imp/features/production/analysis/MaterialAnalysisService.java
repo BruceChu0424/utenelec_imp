@@ -4256,6 +4256,10 @@ public class MaterialAnalysisService {
         Map<MaterialNodeIdentity, DelegatedRequirementOwner> delegatedOwners = new HashMap<>();
         for(AggregateMember member:aggregateMembers)delegatedOwners.put(new MaterialNodeIdentity(member.sourceId(),member.nodeKey()),
                 new DelegatedRequirementOwner(member.materialId(),member.anchorId(),member.sourceRef(),member.qty()));
+        // 同料合并共享批次的逐来源转交份额(preplan_aggregate_material_aliases)：
+        // 需求转走的产品树原行 requiredQty 已归零、也没有自己的下单引用，靠这份
+        // 份额在产品视图锁成「已并入共享批次 N」而不是显示成可填的 0。
+        Map<UUID,BigDecimal> aggregateAliasShares=aggregateSources?aggregateAliasShares(analysisId):Map.of();
         Set<MaterialNodeIdentity> subcontractPreparationOwners =
                 loadSubcontractTakeoverByNode(analysisId).keySet().stream()
                         .map(key -> {
@@ -4449,7 +4453,8 @@ public class MaterialAnalysisService {
                             plannedOutput,
                             sharedFutureDeductible(
                                     row, subcontractBomParentGoods, soleRowDimensions),
-                            committedPlan, sourceRequiredByMaterial.get(row.id()));
+                            committedPlan, sourceRequiredByMaterial.get(row.id()),
+                            aggregateAliasShares.getOrDefault(row.id(), BigDecimal.ZERO));
                 })
                 .toList();
         Map<UUID, String> planningBlocks = planningBlockedReasons(sources);
@@ -6739,6 +6744,20 @@ public class MaterialAnalysisService {
         return result;
     }
 
+    /** 逐来源行的共享批次转交份额：只统计未撤回批次上的别名数量。 */
+    private Map<UUID, BigDecimal> aggregateAliasShares(UUID analysisId) {
+        Map<UUID, BigDecimal> result=new HashMap<>();
+        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT alias.source_material_id,SUM(alias.qty)
+                FROM preplan_aggregate_material_aliases alias
+                JOIN preplan_aggregate_batches batch ON batch.id=alias.batch_id
+                JOIN preplan_supply_actions action ON action.id=batch.action_id AND action.status<>'CANCELLED'
+                WHERE batch.analysis_id=:analysisId
+                GROUP BY alias.source_material_id
+                """).setParameter("analysisId",analysisId)))result.put(uuid(row[0]),decimal(row[1]));
+        return Map.copyOf(result);
+    }
+
     /**
      * 子层展开基准的两个输入，按节点键（analysis_item_id|node_key）给出：
      * 父件已被外部最终件在途覆盖的量，以及父件已承诺由我方制造的量。
@@ -8912,7 +8931,8 @@ public class MaterialAnalysisService {
                             BigDecimal plannedOutputQty,
                             boolean sharedFutureDeductible,
                             BigDecimal committedPlanQty,
-                            BigDecimal sourceRequiredQty) {
+                            BigDecimal sourceRequiredQty,
+                            BigDecimal aggregateDelegatedShare) {
             List<String> notified = references.stream().map(DownstreamReference::route)
                     .distinct().sorted().toList();
             BigDecimal demandGap = unboundDemandSupplyGap(
@@ -8998,7 +9018,8 @@ public class MaterialAnalysisService {
                     externalFutureCoverageQty, internalCommittedOutputQty,
                     sharedFutureClaimable,
                     plannedOutputQty == null ? BigDecimal.ZERO : plannedOutputQty,
-                    netShortage, sourceRequiredQty, planningUncovered);
+                    netShortage, sourceRequiredQty, planningUncovered,
+                    aggregateDelegatedShare);
         }
 
         String actionGroupKey() {

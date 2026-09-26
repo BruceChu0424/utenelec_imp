@@ -818,7 +818,16 @@ public final class MaterialAnalysisContracts {
              * 不扣仅可认领但尚未认领的公共在途。催计划、补下层物料和办结催办使用此量；
              * netShortageQty 仍只表示采用当前公共候选后需要另外新下单的展示量。
              */
-            BigDecimal planningUncoveredQty) {
+            BigDecimal planningUncoveredQty,
+            /**
+             * 同料合并下达（来源保全共享批次）里，这一行的需求已经转交给共享制造
+             * 批次的份额：按 preplan_aggregate_material_aliases 逐来源行累计，只统计
+             * 未撤回批次的别名。需求转走后本行 requiredQty 归零、也没有自己的下单
+             * 引用——没有这个份额，产品视图只能把这类行显示成「0 还能输」，用户
+             * 实机(2026-09-26)看到的就是「下单数量大部分是 0、超量行没锁」。
+             * 旧服务端没有该字段，客户端按 0 兼容。
+             */
+            BigDecimal aggregateDelegatedQty) {
         @JsonProperty("nodeRole")
         public String nodeRole() {
             return level == 0 ? "ROOT_SUPPLY" : "BOM_COMPONENT";

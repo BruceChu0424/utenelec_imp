@@ -1336,6 +1336,124 @@ void main() {
     expect(_orderQty('m-pc'), findsOneWidget);
   });
 
+  // 同料合并走「来源保全共享批次」后，原产品树里的行 requiredQty 归零、也没有
+  // 自己的下单引用(引用在共享批次的目标行上)。2026-09-26 用户实机：这些行
+  // 显示成可填的 0、超量下的也没锁；共享批次本身还在产品视图立了顶层行，
+  // 「正常只有插座0/1/2」的结构被打破。守的是修复后的两条口径：
+  // 1) 原行锁成本行转交份额，不给输入框；2) 共享批次不在产品视图出现。
+  Map<String, dynamic> delegatedFixture(
+    Map<String, dynamic> data, {
+    required bool ordered,
+  }) {
+    (data['products'] as List).add({
+      'analysisLineId': 'shared-anchor',
+      'sourceType': 'AGGREGATE_MAKE',
+      'goodsId': 'g-m-6',
+      'goodsCode': 'M-m-6',
+      'goodsName': '自制外壳',
+      'requestedQty': 4000,
+      if (ordered) 'issuedPlanQty': 4000,
+      'remainingQty': ordered ? 0 : 4000,
+      'canSchedule': !ordered,
+      'canIssueSurplus': true,
+      'unitName': '个',
+    });
+    // 共享批次 BOM 上的同物料目标行：真实下单引用挂在它身上。
+    (data['flatMaterials'] as List).add({
+      ..._material(
+        line: 'm-6-shared',
+        name: '自制外壳',
+        confirmed: 'MAKE',
+        netShortageQty: 0,
+        requiredQty: 4000,
+        stockQty: 0,
+      ),
+      // 与 m-6 同「货品+颜色+单位」，页面按这个键找共享批次里的目标行。
+      'goodsId': 'g-m-6',
+      'goodsCode': 'M-m-6',
+      'analysisLineId': 'shared-anchor',
+      'planAnchorAnalysisLineId': 'shared-anchor',
+      'downstreamReferences': [
+        if (ordered)
+          {
+            'actionId': 'act-agg',
+            'route': 'MAKE',
+            'status': 'REQUESTED',
+            'documentNo': 'SJ-0009',
+            'allocatedQty': 4000,
+          },
+      ],
+    });
+    // 原行：需求整体转交(份额 1000)，本行没有任何引用。
+    final original = _fixtureMaterial(data, 'm-6');
+    original['requiredQty'] = 0;
+    original['sourceRequiredQty'] = 0;
+    original['allocatedAvailableQty'] = 0;
+    original['availableQty'] = 0;
+    original['shortageQty'] = 0;
+    original['demandSupplyGapQty'] = 0;
+    original['additionalSupplyRecommendedQty'] = 0;
+    original['netShortageQty'] = 0;
+    original['requirementState'] = 'DELEGATED_TO_MAKE_CHILD';
+    original['delegatedToAnalysisLineId'] = 'shared-anchor';
+    original['aggregateDelegatedQty'] = 1000;
+    return data;
+  }
+
+  testWidgets('需求并入共享批次且已下达：原行锁成转交份额，产品视图不再立共享批次顶层行(2026-09-26)', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      mutate: (data) => delegatedFixture(data, ordered: true),
+    );
+    // 结构：产品视图只有产品顶层，「汇总生产用料」批次行不再出现。
+    expect(find.textContaining('汇总生产用料'), findsNothing);
+    // 原行：下单格没有输入框，锁成本行份额 1000。
+    expect(_orderQty('m-6'), findsNothing);
+    expect(_appendQty('m-6'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('material-table-row-m-6')),
+        matching: find.text('1000'),
+      ),
+      findsWidgets,
+      reason: '转交份额 1000 应显示在下单数量格里',
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip && (widget.message ?? '').contains('已并入共享制造批次下达'),
+      ),
+      findsOneWidget,
+    );
+    // 追加格是「—」并指路按物料汇总，不再是可编辑的 0。
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            (widget.message ?? '').contains('追加或撤回到「按物料汇总」'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('需求转入共享批次但还没下达：原行只读份额并指路，不给输入框(2026-09-26)', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) => delegatedFixture(data, ordered: false),
+    );
+    expect(_orderQty('m-6'), findsNothing);
+    expect(_appendQty('m-6'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip && (widget.message ?? '').contains('需求已转入共享制造批次'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('主表追加格也带动子层：在已下达父件的追加格填数，子件按新数量重算', (tester) async {
     await _pump(tester);
     // 已下达的自制父件两格都在(下单数量 + 追加下单)，它们是同一个提交单元的

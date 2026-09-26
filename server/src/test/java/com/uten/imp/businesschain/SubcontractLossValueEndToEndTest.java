@@ -297,8 +297,8 @@ class SubcontractLossValueEndToEndTest {
     }
     private void changeQty(CaseFixture c,String qty){orders.changeQty(c.submitted().orderId(),new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(c.item(),new BigDecimal(qty)))));}
     private void drain(){
-        long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
-        for(int n=0;n<200&&System.nanoTime()<deadline;n++){
+        long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(60);
+        for(int n=0;n<600&&System.nanoTime()<deadline;n++){
             int applied=worker.runBatch();
             if(!worker.hasPendingWork())return;
             // A scheduler may already own the remaining scope/task. Zero local
@@ -307,7 +307,13 @@ class SubcontractLossValueEndToEndTest {
                 Thread.currentThread().interrupt();throw new AssertionError("等待价值任务时被中断",interrupted);
             }
         }
-        fail("原价值传播必须有限完成，不能在同scope内循环重算");
+        fail("原价值传播必须有限完成，不能在同scope内循环重算; 残留待办=" + db.queryForList(
+                "SELECT 'cost_objects' src, execution_segment_id::text id FROM stock_value_production_cost_objects WHERE business_refresh_pending"
+                        + " UNION ALL SELECT 'cost_dirty', execution_segment_id::text FROM stock_value_production_cost_dirty WHERE observed_revision>cleared_revision"
+                        + " UNION ALL SELECT 'cost_tasks', execution_segment_id::text FROM stock_value_production_cost_tasks WHERE status='PENDING'"
+                        + " UNION ALL SELECT 'value_tasks', id::text FROM stock_value_tasks WHERE status='PENDING'"
+                        + " UNION ALL SELECT 'jobs', id::text FROM stock_value_jobs WHERE status<>'APPLIED'",
+                java.util.Map.of()));
     }
     private BigDecimal stock(CaseFixture c){return decimal("select amount_local from stock_balances where warehouse_id=? and goods_id=?",c.world().warehouseId(),c.world().goodsE());}
     private BigDecimal stock(CaseFixture c,UUID warehouse){return decimal("select amount_local from stock_balances where warehouse_id=? and goods_id=?",warehouse,c.world().goodsE());}

@@ -240,11 +240,11 @@ public final class MigrationRehearsalSupport {
                 .isEqualTo(1);
         assertThat(scalarLong(connection,
                 "SELECT count(*) FROM system_master_category_registry")).isEqualTo(1);
+        // V718 起注册表 material_category_id 置空脱钩(未分类根放开为普通分类)：
+        // 货品根按本体身份单独核对，客户/模具/供应商三根仍由注册表绑定。
         assertThat(scalarLong(connection, """
                 SELECT count(*)
                 FROM system_master_category_registry registry
-                JOIN material_categories material
-                  ON material.id = registry.material_category_id
                 JOIN client_categories client
                   ON client.id = registry.client_category_id
                 JOIN mould_categories mould
@@ -252,9 +252,7 @@ public final class MigrationRehearsalSupport {
                 JOIN supplier_categories supplier
                   ON supplier.id = registry.supplier_category_id
                 WHERE registry.id = '27500000-0000-4000-8000-000000000001'::uuid
-                  AND material.legacy_id = -1
-                  AND material.legacy_code_snapshot = 'LEGACY_ORPHAN'
-                  AND material.is_deleted = FALSE
+                  AND registry.material_category_id IS NULL
                   AND client.legacy_id = -1
                   AND client.code = 'SYS_UNCATEGORIZED_CLIENT'
                   AND client.is_deleted = FALSE
@@ -264,6 +262,13 @@ public final class MigrationRehearsalSupport {
                   AND supplier.legacy_id = -1
                   AND supplier.code = 'SYS_UNCATEGORIZED_SUPPLIER'
                   AND supplier.is_deleted = FALSE
+                """)).isEqualTo(1);
+        assertThat(scalarLong(connection, """
+                SELECT count(*)
+                FROM material_categories goods_root
+                WHERE goods_root.legacy_id = -1
+                  AND goods_root.legacy_code_snapshot = 'LEGACY_ORPHAN'
+                  AND goods_root.is_deleted = FALSE
                 """)).isEqualTo(1);
         assertThat(scalarLong(connection,
                 "SELECT count(*) FROM production_material_analysis_borrows")).isZero();

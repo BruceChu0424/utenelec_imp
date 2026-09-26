@@ -95,16 +95,13 @@ SELECT :'run_id'::uuid, 'export_manifest.json', 'legacy_migration_run_files',
 FROM legacy_migration_run_files
 WHERE run_id = :'run_id'::uuid AND file_name LIKE '%.csv'
 UNION ALL
+-- V718 起注册表 material_category_id 置空脱钩；货品未分类根按本体身份核对，
+-- 客户/模具/供应商三根仍由注册表绑定。
 SELECT :'run_id'::uuid, 'V272/V275 system roots',
        'system_master_category_registry', 'exact_authority_rows', 1, count(*),
        count(*) = 1,
-       'The singleton registry must still bind all four protected legacy_id=-1 roots.'
+       'The singleton registry must bind client/mould/supplier legacy_id=-1 roots; the goods uncategorized root (V718-decoupled) must exist as LEGACY_ORPHAN.'
 FROM system_master_category_registry registry
-JOIN material_categories material
-  ON material.id = registry.material_category_id
- AND material.legacy_id = -1
- AND material.legacy_code_snapshot = 'LEGACY_ORPHAN'
- AND material.is_deleted = FALSE
 JOIN client_categories client
   ON client.id = registry.client_category_id
  AND client.legacy_id = -1
@@ -121,6 +118,11 @@ JOIN supplier_categories supplier
  AND supplier.code = 'SYS_UNCATEGORIZED_SUPPLIER'
  AND supplier.is_deleted = FALSE
 WHERE registry.id = '27500000-0000-4000-8000-000000000001'::uuid
+  AND registry.material_category_id IS NULL
+  AND EXISTS (SELECT 1 FROM material_categories goods_root
+              WHERE goods_root.legacy_id = -1
+                AND goods_root.legacy_code_snapshot = 'LEGACY_ORPHAN'
+                AND goods_root.is_deleted = FALSE)
 UNION ALL
 SELECT :'run_id'::uuid, 'B_Goods legacy references', 'goods UUID relations',
        'unresolved_current_uuid_relations', 0, count(*), count(*) = 0,

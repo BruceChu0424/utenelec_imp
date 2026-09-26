@@ -18,14 +18,16 @@ SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 
 DO $$
 BEGIN
+    -- V718 起注册表 material_category_id 置空脱钩(未分类根放开为普通分类)；
+    -- 权威形态 = 注册表恰好一行且该列为空，未分类根本体仍是 legacy_id=-1 的
+    -- LEGACY_ORPHAN 行。只允许在没有下游业务引用的 bootstrap 库重载。
     IF (SELECT count(*) FROM system_master_category_registry) <> 1
+       OR (SELECT material_category_id FROM system_master_category_registry
+           WHERE id = '27500000-0000-4000-8000-000000000001'::uuid) IS NOT NULL
        OR NOT EXISTS (
            SELECT 1
-           FROM system_master_category_registry registry
-           JOIN material_categories category
-             ON category.id = registry.material_category_id
-           WHERE registry.id = '27500000-0000-4000-8000-000000000001'::uuid
-             AND category.legacy_id = -1
+           FROM material_categories category
+           WHERE category.legacy_id = -1
              AND category.legacy_code_snapshot = 'LEGACY_ORPHAN'
              AND category.is_deleted = FALSE
        ) THEN
@@ -35,12 +37,9 @@ END;
 $$;
 
 DELETE FROM goods;
+-- V718 脱钩后注册表不再钉住根 UUID；按本体身份保留未分类根，其余清掉重载。
 DELETE FROM material_categories
-WHERE id <> (
-    SELECT material_category_id
-    FROM system_master_category_registry
-    WHERE id = '27500000-0000-4000-8000-000000000001'::uuid
-);
+WHERE NOT (legacy_id = -1 AND legacy_code_snapshot = 'LEGACY_ORPHAN');
 
 CREATE TEMP TABLE mc_stage (legacy_id int, parent_legacy int, code text, name text)
 ON COMMIT DROP;
@@ -98,9 +97,10 @@ INSERT INTO material_categories
     (legacy_id, code, remark, legacy_code_snapshot, name, level, sort_order, parent_id)
 SELECT s.legacy_id, pg_temp.next_category_code('FL'), s.code, s.code, s.name,
        1, 0, (
-           SELECT material_category_id
-           FROM system_master_category_registry
-           WHERE id = '27500000-0000-4000-8000-000000000001'::uuid
+           SELECT id
+           FROM material_categories
+           WHERE legacy_id = -1 AND legacy_code_snapshot = 'LEGACY_ORPHAN'
+             AND is_deleted = FALSE
        )
 FROM mc_stage s
 WHERE s.parent_legacy <> 0

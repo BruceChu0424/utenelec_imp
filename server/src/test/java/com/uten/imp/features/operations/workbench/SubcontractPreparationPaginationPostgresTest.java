@@ -113,7 +113,7 @@ class SubcontractPreparationPaginationPostgresTest {
                     );
                 $$
                 """);
-        jdbc.execute("CREATE TABLE production_material_analyses(id uuid PRIMARY KEY, status text, maker_id uuid)");
+        jdbc.execute("CREATE TABLE production_material_analyses(id uuid PRIMARY KEY, status text, maker_id uuid, analysis_no text)");
         jdbc.execute("CREATE TABLE production_material_analysis_items(id uuid PRIMARY KEY, source_ref text, delivery_date date)");
         jdbc.execute("""
                 CREATE TABLE preplan_subcontract_make_tasks(id uuid PRIMARY KEY, analysis_id uuid,

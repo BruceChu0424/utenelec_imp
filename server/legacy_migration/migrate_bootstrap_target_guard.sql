@@ -35,7 +35,9 @@ BEGIN
        OR EXISTS (SELECT 1 FROM warehouses)
        OR EXISTS (SELECT 1 FROM currencies WHERE NOT is_base_currency)
        OR EXISTS (SELECT 1 FROM employees WHERE code <> 'ADMIN' OR legacy_id IS NOT NULL)
-       OR EXISTS (SELECT 1 FROM material_categories WHERE id NOT IN (SELECT material_category_id FROM system_master_category_registry))
+       -- V718 脱钩后注册表不再钉货品根；按本体身份放行未分类根，其余视为脏数据。
+       OR EXISTS (SELECT 1 FROM material_categories
+                  WHERE NOT (legacy_id = -1 AND legacy_code_snapshot = 'LEGACY_ORPHAN'))
        OR EXISTS (SELECT 1 FROM client_categories WHERE id NOT IN (SELECT client_category_id FROM system_master_category_registry))
        OR EXISTS (SELECT 1 FROM supplier_categories WHERE id NOT IN (SELECT supplier_category_id FROM system_master_category_registry))
        OR EXISTS (SELECT 1 FROM mould_categories WHERE id NOT IN (SELECT mould_category_id FROM system_master_category_registry))

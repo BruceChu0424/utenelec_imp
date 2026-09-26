@@ -61,7 +61,7 @@ class FulfillmentMutationLocksPostgresTest {
         jdbc.execute("CREATE TABLE sales_shipments(id uuid PRIMARY KEY,revision int NOT NULL DEFAULT 0,is_deleted boolean NOT NULL DEFAULT false)");
         jdbc.execute("CREATE TABLE sales_shipment_items(id uuid PRIMARY KEY,shipment_id uuid NOT NULL REFERENCES sales_shipments(id),order_item_id uuid REFERENCES sales_order_items(id),goods_id uuid,color_id uuid,is_deleted boolean NOT NULL DEFAULT false)");
         // 新建来源登记只凭本事务行版本(xmin)判定, 不依赖审计日志(db-schema-02): 这里刻意没有审计表和触发器。
-        jdbc.execute("CREATE TABLE production_material_analyses(id uuid PRIMARY KEY)");
+        jdbc.execute("CREATE TABLE production_material_analyses(id uuid PRIMARY KEY, analysis_no text)");
         var bean = new LocalContainerEntityManagerFactoryBean();
         bean.setDataSource(ds); bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
         bean.setJpaDialect(new com.uten.imp.support.NativeSavepointJpaDialect());

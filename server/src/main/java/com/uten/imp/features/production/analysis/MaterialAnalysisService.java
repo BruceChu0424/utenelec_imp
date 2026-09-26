@@ -334,8 +334,6 @@ public class MaterialAnalysisService {
                 FROM production_material_analyses analysis
                 WHERE analysis.is_deleted = FALSE
                   AND (:status = '' OR analysis.status = :status)
-                  AND (:keyword = ''
-                       OR lower(COALESCE(analysis.analysis_no, '')) LIKE :keywordLike)
                   AND (%s)
 
                   AND EXISTS (
@@ -350,6 +348,7 @@ public class MaterialAnalysisService {
                         AND source.is_deleted = FALSE
                         AND (:sourceType = '' OR source.source_type = :sourceType)
                         AND (:keyword = '' OR
+                             lower(COALESCE(analysis.analysis_no, '')) LIKE :keywordLike OR
                              lower(COALESCE(source.source_ref,'')) LIKE :keywordLike OR
                              lower(COALESCE(goods.code,'')) LIKE :keywordLike OR
                              lower(COALESCE(goods.name,'')) LIKE :keywordLike OR

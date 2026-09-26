@@ -90,6 +90,8 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 CREATE TABLE production_planning_packages(id uuid PRIMARY KEY,status text DEFAULT 'CONFIRMED',is_deleted boolean DEFAULT FALSE, cancel_idempotency_key text, created_at timestamp with time zone DEFAULT now(), created_by uuid, deleted_at timestamp with time zone, execution_model_version smallint DEFAULT 0, idempotency_key text, lifecycle_reason text, lock_version bigint DEFAULT 0, plan_id uuid, preview_fingerprint text, purchase_request_id uuid, request_hash text, reverse_idempotency_key text, updated_at timestamp with time zone DEFAULT now(), updated_by uuid, warehouse_id uuid);
                 CREATE TABLE production_material_analysis_items(analysis_id uuid, goods_id uuid,
                     sales_order_item_id uuid, is_deleted boolean, source_ref text);
+                -- V719: 工作台根工单列引用 root 分析的编号子查询。
+                CREATE TABLE production_material_analyses(id uuid PRIMARY KEY, analysis_no text);
                 CREATE TABLE sales_order_items(id uuid, order_id uuid, is_deleted boolean);
                 CREATE TABLE sales_orders(id uuid, client_id uuid, bill_no text, is_deleted boolean);
                 CREATE TABLE clients(id uuid, name text);

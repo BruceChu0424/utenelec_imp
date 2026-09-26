@@ -36,7 +36,11 @@ import static org.junit.jupiter.api.Assertions.*;
         "uten.policy-intelligence.enabled=false","uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true",
         "uten.storage.malware-scan.provider=test-only","uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789","uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
-        "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+        "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!",
+        // CI 全量套件里共享库行多、机器慢: 后台价值工作调度器与 drain() 抢同一把
+        // 咨询锁的占空比过高, 30 秒收敛窗被耗尽(单跑恒绿、全量红)。drain 本就显式
+        // runBatch, 这里把调度器延迟调到 1 小时, 让收敛确定性化。
+        "uten.inventory.value-work-delay-ms=3600000"})
 class SubcontractLossValueEndToEndTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
     @Autowired AutowireCapableBeanFactory beans;

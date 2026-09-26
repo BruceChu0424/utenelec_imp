@@ -18,21 +18,22 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
 
-Map<String, dynamic> _orderDetail({required List<Map<String, dynamic>> items}) =>
-    {
-      'id': 'order-dup',
-      'makerId': 'maker-1',
-      'billNo': 'WO-2026-091-001',
-      'billDate': '2026-09-25',
-      'status': 0,
-      'canEdit': true,
-      'supplierId': 'sup-1',
-      'settlementMethodId': 'sm-1',
-      'currencyId': 'cny',
-      'exchangeRate': 1,
-      'taxRate': 0,
-      'items': items,
-    };
+Map<String, dynamic> _orderDetail({
+  required List<Map<String, dynamic>> items,
+}) => {
+  'id': 'order-dup',
+  'makerId': 'maker-1',
+  'billNo': 'WO-2026-091-001',
+  'billDate': '2026-09-25',
+  'status': 0,
+  'canEdit': true,
+  'supplierId': 'sup-1',
+  'settlementMethodId': 'sm-1',
+  'currencyId': 'cny',
+  'exchangeRate': 1,
+  'taxRate': 0,
+  'items': items,
+};
 
 Future<_DupApi> _pumpEditor(
   WidgetTester tester,
@@ -48,7 +49,9 @@ Future<_DupApi> _pumpEditor(
         apiClientProvider.overrideWithValue(api),
         subcontractRepositoryProvider(
           SubcontractDocType.order,
-        ).overrideWithValue(SubcontractRepository(api, SubcontractDocType.order)),
+        ).overrideWithValue(
+          SubcontractRepository(api, SubcontractDocType.order),
+        ),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         writeAllDocumentScope(DocumentDataScope.subcontract),
         sessionProvider.overrideWith(_EmptySessionNotifier.new),
@@ -59,7 +62,8 @@ Future<_DupApi> _pumpEditor(
           routes: [
             GoRoute(
               path: '/edit',
-              builder: (_, _) => const SubcontractOrderEditPage(id: 'order-dup'),
+              builder: (_, _) =>
+                  const SubcontractOrderEditPage(id: 'order-dup'),
             ),
             GoRoute(
               path: '/:rest(.*)',
@@ -115,7 +119,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.lastPutBody, isNotNull);
-    final items = (api.lastPutBody!['items'] as List).cast<Map<String, dynamic>>();
+    final items = (api.lastPutBody!['items'] as List)
+        .cast<Map<String, dynamic>>();
     expect(items, hasLength(1));
     expect(items.single['goodsId'], 'goods-1');
     expect(items.single['qty'], 5.0);
@@ -150,7 +155,8 @@ void main() {
     await tester.tap(find.text('汇总合并'));
     await tester.pumpAndSettle();
 
-    final items = (api.lastPutBody!['items'] as List).cast<Map<String, dynamic>>();
+    final items = (api.lastPutBody!['items'] as List)
+        .cast<Map<String, dynamic>>();
     expect(items, hasLength(1));
     expect(items.single['qty'], 15.0);
     expect(tester.takeException(), isNull);

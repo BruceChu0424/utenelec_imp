@@ -296,8 +296,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
   // ---- 导出 / 打印（V717 settlement_method:export） --------------------------
 
   /// 导出查询参数（与 _load 一致；字典不分页无 page/size）。
-  Map<String, dynamic> get _exportQuery =>
-      masterFilterQueryParams(_filters);
+  Map<String, dynamic> get _exportQuery => masterFilterQueryParams(_filters);
 
   /// 打印预览数据：按当前筛选口径拉全量，列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {

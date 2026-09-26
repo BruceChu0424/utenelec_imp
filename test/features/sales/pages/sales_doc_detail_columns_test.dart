@@ -52,7 +52,9 @@ void main() {
             SalesMasterNameService(api),
           ),
         ],
-        child: const MaterialApp(home: SalesDocDetailPage(id: 'order-1', docType: SalesDocType.order)),
+        child: const MaterialApp(
+          home: SalesDocDetailPage(id: 'order-1', docType: SalesDocType.order),
+        ),
       ),
     );
     await tester.pumpAndSettle();

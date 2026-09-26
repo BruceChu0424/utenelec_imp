@@ -119,7 +119,6 @@ void main() {
   );
 }
 
-
 /// 深拷贝后把本次 decisions 回写成已确认（对齐真实服务端语义）。
 Map<String, dynamic> _confirmRoutes(
   Map<String, dynamic> analysis,

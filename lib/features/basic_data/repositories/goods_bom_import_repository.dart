@@ -105,9 +105,7 @@ class DioGoodsBomImportRepository implements GoodsBomImportRepository {
     final json = await api.postBytes(
       ApiEndpoints.goodsBomImportCommit(goodsId),
       bytes,
-      query: {
-        'mode': mode == BomImportMode.replace ? 'REPLACE' : 'APPEND',
-      },
+      query: {'mode': mode == BomImportMode.replace ? 'REPLACE' : 'APPEND'},
     );
     return BomImportResult.fromJson(json);
   }

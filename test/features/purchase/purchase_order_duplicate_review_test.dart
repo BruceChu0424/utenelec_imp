@@ -19,21 +19,22 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
 
-Map<String, dynamic> _orderDetail({required List<Map<String, dynamic>> items}) =>
-    {
-      'id': 'order-dup',
-      'makerId': 'maker-1',
-      'billNo': 'PO-2026-091-001',
-      'billDate': '2026-09-25',
-      'status': 0,
-      'canEdit': true,
-      'supplierId': 'sup-1',
-      'settlementMethodId': 'sm-1',
-      'currencyId': 'cny',
-      'exchangeRate': 1,
-      'taxRate': 0,
-      'items': items,
-    };
+Map<String, dynamic> _orderDetail({
+  required List<Map<String, dynamic>> items,
+}) => {
+  'id': 'order-dup',
+  'makerId': 'maker-1',
+  'billNo': 'PO-2026-091-001',
+  'billDate': '2026-09-25',
+  'status': 0,
+  'canEdit': true,
+  'supplierId': 'sup-1',
+  'settlementMethodId': 'sm-1',
+  'currencyId': 'cny',
+  'exchangeRate': 1,
+  'taxRate': 0,
+  'items': items,
+};
 
 Future<_DupApi> _pumpEditor(
   WidgetTester tester,
@@ -122,7 +123,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.lastPutBody, isNotNull);
-    final items = (api.lastPutBody!['items'] as List).cast<Map<String, dynamic>>();
+    final items = (api.lastPutBody!['items'] as List)
+        .cast<Map<String, dynamic>>();
     expect(items, hasLength(1));
     expect(items.single['goodsId'], 'goods-1');
     expect(items.single['qty'], 15.0);
@@ -151,10 +153,9 @@ void main() {
     ]);
 
     final ctx = tester.element(find.byKey(const ValueKey('uten-edit-save')));
-    final tint = Theme.of(ctx)
-        .colorScheme
-        .errorContainer
-        .withValues(alpha: 0.42);
+    final tint = Theme.of(
+      ctx,
+    ).colorScheme.errorContainer.withValues(alpha: 0.42);
     expect(_redRowDecorations(tint), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('uten-edit-save')));

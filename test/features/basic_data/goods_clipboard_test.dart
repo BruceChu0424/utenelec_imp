@@ -6,11 +6,8 @@ import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/providers/goods_clipboard.dart';
 
-GoodsDetail _detail(String id, String name) => GoodsDetail(
-  id: id,
-  name: name,
-  status: '使用',
-);
+GoodsDetail _detail(String id, String name) =>
+    GoodsDetail(id: id, name: name, status: '使用');
 
 const _bom = [
   GoodsBomItem(id: 'row-1', componentGoodsId: 'goods-x', qty: 2),
@@ -50,9 +47,9 @@ void main() {
       isEmpty,
     );
 
-    container.read(goodsClipboardProvider.notifier).copyGoods(
-      GoodsCopyClip(detail: _detail('g3', '螺丝')),
-    );
+    container
+        .read(goodsClipboardProvider.notifier)
+        .copyGoods(GoodsCopyClip(detail: _detail('g3', '螺丝')));
     expect(container.read(goodsClipboardProvider).goodsList, hasLength(1));
   });
 

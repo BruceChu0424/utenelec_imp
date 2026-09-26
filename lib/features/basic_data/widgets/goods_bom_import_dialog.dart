@@ -27,10 +27,8 @@ Future<void> showGoodsBomImport(
 }) {
   return showDialog<void>(
     context: context,
-    builder: (_) => _GoodsBomImportDialog(
-      goodsId: goodsId,
-      onImported: onImported,
-    ),
+    builder: (_) =>
+        _GoodsBomImportDialog(goodsId: goodsId, onImported: onImported),
   );
 }
 
@@ -237,7 +235,8 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
           Text('导入方式：', style: theme.textTheme.titleSmall), // TODO(l10n): 补 arb
           RadioGroup<BomImportMode>(
             groupValue: _mode,
-            onChanged: (v) => setState(() => _mode = v ?? BomImportMode.replace),
+            onChanged: (v) =>
+                setState(() => _mode = v ?? BomImportMode.replace),
             child: const Column(
               children: [
                 RadioListTile<BomImportMode>(

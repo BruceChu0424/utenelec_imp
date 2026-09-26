@@ -628,7 +628,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
           RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id),
         );
       } else {
-        context.replace(RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id));
+        context.replace(
+          RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id),
+        );
       }
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);

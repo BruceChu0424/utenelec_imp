@@ -32,7 +32,8 @@ List<T> hoistSingleRootTree<T extends UtenTreeNode<T>>(List<T> nodes) {
 /// SYS_UNCATEGORIZED_*）只显示名称，不带括号英文快照（2026-09-25 用户口径）。
 String categoryNodeLabel<T extends UtenTreeNode<T>>(T node) {
   if (node.code.isEmpty) return node.name;
-  if (node.code == 'LEGACY_ORPHAN' || node.code.startsWith('SYS_UNCATEGORIZED')) {
+  if (node.code == 'LEGACY_ORPHAN' ||
+      node.code.startsWith('SYS_UNCATEGORIZED')) {
     return node.name;
   }
   return '${node.name}(${node.code})';

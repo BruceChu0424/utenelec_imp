@@ -1809,7 +1809,8 @@ void main() {
       // 自动确认超时回滚后还会带着同一纪元补发一次（幂等成功，无重复落库）；
       // 本用例锁的是最后两次直改重发：内容与幂等键逐字相同。
       expect(writes.length, greaterThanOrEqualTo(4));
-      final failedChunk = writes[writes.length - 2].data! as Map<String, dynamic>;
+      final failedChunk =
+          writes[writes.length - 2].data! as Map<String, dynamic>;
       final retriedChunk = writes.last.data! as Map<String, dynamic>;
       expect(failedChunk['decisions'], hasLength(1));
       expect(retriedChunk['version'], failedChunk['version']);
@@ -2703,7 +2704,8 @@ void main() {
       );
       final decisionMap = {
         for (final decision
-            in (routeRequest.data! as Map<String, dynamic>)['decisions'] as List)
+            in (routeRequest.data! as Map<String, dynamic>)['decisions']
+                as List)
           (decision as Map)['actionGroupKey']: decision['route'],
       };
       expect(decisionMap, {
@@ -8018,12 +8020,11 @@ Future<void> _createDefaultRoutes(WidgetTester tester) async {
 }
 
 /// 主表某一行供应方式下拉的当前值（wire 名）。
-String? _routeDropdownValue(WidgetTester tester, String lineId) =>
-    tester
-        .widget<UtenDropdownField>(
-          find.byKey(ValueKey('material-route-dropdown-$lineId')),
-        )
-        .value;
+String? _routeDropdownValue(WidgetTester tester, String lineId) => tester
+    .widget<UtenDropdownField>(
+      find.byKey(ValueKey('material-route-dropdown-$lineId')),
+    )
+    .value;
 
 // ===== 2026-09-04 分桶改版：主页面入口条 + 全屏分桶详情页的通用操作 =====
 
@@ -8432,7 +8433,6 @@ ApiClient _api(
   return ApiClient(dio);
 }
 
-
 /// PUT /routes 的夹具回包：基于用例自己的分析 JSON 深拷贝后，把本次 decisions
 /// 逐条回写成已确认（对齐真实服务端：确认即落库 + 对齐建议）。2026-09-25
 /// 确认路线退役后进页自动确认也会打这条通道，回包必须保持同一棵树。
@@ -8446,7 +8446,8 @@ Map<String, dynamic> _confirmRoutesInJson(
     final decisionMap = decision as Map<String, dynamic>;
     for (final row
         in (result['flatMaterials'] as List).cast<Map<String, dynamic>>()) {
-      final matches = row['actionGroupKey'] == decisionMap['actionGroupKey'] ||
+      final matches =
+          row['actionGroupKey'] == decisionMap['actionGroupKey'] ||
           row['materialLineId'] == decisionMap['materialLineId'];
       if (!matches) continue;
       row['sourceConfirmed'] = decisionMap['route'];

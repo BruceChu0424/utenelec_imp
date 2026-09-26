@@ -278,70 +278,73 @@ void main() {
   // 2026-09-25 用户口径「进行中前面加个草稿」：新建订货单中途退出后，单据只存在于
   // 草稿态（chain_status 恒为 0，落不进任何链路大类），此前在本页找不到。
   // 草稿段按 stage='DRAFT' 直查；草稿行没有进度可看，行点击直达编辑页继续办单。
-  testWidgets('draft segment queries stage=DRAFT and routes rows to the edit page', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final api = _ProgressApi();
+  testWidgets(
+    'draft segment queries stage=DRAFT and routes rows to the edit page',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _ProgressApi();
 
-    String? editRouteId;
-    final router = GoRouter(
-      initialLocation: '/sales/progress',
-      routes: [
-        GoRoute(
-          path: '/sales/progress',
-          builder: (_, _) => const SalesOrderProgressPage(),
-        ),
-        GoRoute(
-          path: '/sales/orders/:id/edit',
-          builder: (_, state) {
-            editRouteId = state.pathParameters['id'];
-            return const Scaffold(body: Center(child: Text('EDIT-STUB')));
-          },
-        ),
-      ],
-    );
-    addTearDown(router.dispose);
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          apiClientProvider.overrideWithValue(api),
-          currentPermissionsProvider.overrideWithValue(const {
-            Perm.salesOrderView,
-          }),
+      String? editRouteId;
+      final router = GoRouter(
+        initialLocation: '/sales/progress',
+        routes: [
+          GoRoute(
+            path: '/sales/progress',
+            builder: (_, _) => const SalesOrderProgressPage(),
+          ),
+          GoRoute(
+            path: '/sales/orders/:id/edit',
+            builder: (_, state) {
+              editRouteId = state.pathParameters['id'];
+              return const Scaffold(body: Center(child: Text('EDIT-STUB')));
+            },
+          ),
         ],
-        child: MaterialApp.router(routerConfig: router),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      addTearDown(router.dispose);
 
-    Finder segment(String label) => find.byWidgetPredicate(
-      (widget) => widget is UtenSegmentBadgeLabel && widget.label == label,
-    );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.salesOrderView,
+            }),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    // 选中草稿段：按 stage='DRAFT' 直查，不叠加链路大类过滤。
-    await tester.tap(segment('草稿'));
-    await tester.pumpAndSettle();
-    expect(api.progressQueries.single['stage'], 'DRAFT');
+      Finder segment(String label) => find.byWidgetPredicate(
+        (widget) => widget is UtenSegmentBadgeLabel && widget.label == label,
+      );
 
-    // 草稿段没有小类行（草稿不是链路阶段，无子档可分）。
-    expect(segment('待排产'), findsNothing);
-    expect(segment('财务驳回'), findsNothing);
+      // 选中草稿段：按 stage='DRAFT' 直查，不叠加链路大类过滤。
+      await tester.tap(segment('草稿'));
+      await tester.pumpAndSettle();
+      expect(api.progressQueries.single['stage'], 'DRAFT');
 
-    // 草稿行状态列显示「草稿」，不因 finance_confirmed=false 错显「等待财务审核」。
-    expect(find.text('SO-DRAFT'), findsOneWidget);
-    expect(find.text('草稿'), findsWidgets);
-    expect(find.text('等待财务审核'), findsNothing);
+      // 草稿段没有小类行（草稿不是链路阶段，无子档可分）。
+      expect(segment('待排产'), findsNothing);
+      expect(segment('财务驳回'), findsNothing);
 
-    // 双击行直达编辑页（表格单击选中、双击打开；草稿没有进度详情可看）。
-    await tester.tap(find.text('SO-DRAFT'));
-    await tester.pump(kDoubleTapMinTime);
-    await tester.tap(find.text('SO-DRAFT'));
-    await tester.pumpAndSettle();
-    expect(editRouteId, 'order-draft');
-    expect(find.text('EDIT-STUB'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+      // 草稿行状态列显示「草稿」，不因 finance_confirmed=false 错显「等待财务审核」。
+      expect(find.text('SO-DRAFT'), findsOneWidget);
+      expect(find.text('草稿'), findsWidgets);
+      expect(find.text('等待财务审核'), findsNothing);
+
+      // 双击行直达编辑页（表格单击选中、双击打开；草稿没有进度详情可看）。
+      await tester.tap(find.text('SO-DRAFT'));
+      await tester.pump(kDoubleTapMinTime);
+      await tester.tap(find.text('SO-DRAFT'));
+      await tester.pumpAndSettle();
+      expect(editRouteId, 'order-draft');
+      expect(find.text('EDIT-STUB'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 class _ProgressApi extends ApiClient {
@@ -413,7 +416,12 @@ class _ProgressApi extends ApiClient {
       // 不先判草稿再判财务闸门，会错显「等待财务审核」。
       if (stage == 'DRAFT') {
         allRows.add(
-          _row('order-draft', 'SO-DRAFT', stage: 'DRAFT', financeConfirmed: false),
+          _row(
+            'order-draft',
+            'SO-DRAFT',
+            stage: 'DRAFT',
+            financeConfirmed: false,
+          ),
         );
       }
       // 大类码展开成一组阶段(与后端 progressStagePredicate 同口径)；

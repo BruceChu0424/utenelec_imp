@@ -230,41 +230,40 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
   /// 当前大类的正文：进度页与各单据列表页以嵌入态整体复用（小类行、搜索、
   /// 表格、行级办理动作与独立页完全一致）。[externalHeader] = 宿主大类行，
   /// 由嵌入页挂进自己的折叠头一起随页滚走。
-  Widget _buildGroupBody(String group, {Widget? externalHeader}) => switch (
-        group
-      ) {
-    'progress' => SalesOrderProgressPage(
-      embedded: true,
-      externalHeader: externalHeader,
-    ),
-    'shipments' => SalesDocListPage(
-      docType: SalesDocType.shipment,
-      embedded: true,
-      externalHeader: externalHeader,
-    ),
-    'customerShipments' => SalesDocListPage(
-      docType: SalesDocType.customerShipment,
-      embedded: true,
-      externalHeader: externalHeader,
-    ),
-    'returns' => SalesDocListPage(
-      docType: SalesDocType.returnDoc,
-      embedded: true,
-      externalHeader: externalHeader,
-    ),
-    'quotes' => SalesDocListPage(
-      docType: SalesDocType.quote,
-      embedded: true,
-      externalHeader: externalHeader,
-    ),
-    // 历史其它出货：只读历史（进入即预选「历史记录」段，时间门控在段内）。
-    _ => SalesDocListPage(
-      docType: SalesDocType.otherShipment,
-      embedded: true,
-      initialHistory: true,
-      externalHeader: externalHeader,
-    ),
-  };
+  Widget _buildGroupBody(String group, {Widget? externalHeader}) =>
+      switch (group) {
+        'progress' => SalesOrderProgressPage(
+          embedded: true,
+          externalHeader: externalHeader,
+        ),
+        'shipments' => SalesDocListPage(
+          docType: SalesDocType.shipment,
+          embedded: true,
+          externalHeader: externalHeader,
+        ),
+        'customerShipments' => SalesDocListPage(
+          docType: SalesDocType.customerShipment,
+          embedded: true,
+          externalHeader: externalHeader,
+        ),
+        'returns' => SalesDocListPage(
+          docType: SalesDocType.returnDoc,
+          embedded: true,
+          externalHeader: externalHeader,
+        ),
+        'quotes' => SalesDocListPage(
+          docType: SalesDocType.quote,
+          embedded: true,
+          externalHeader: externalHeader,
+        ),
+        // 历史其它出货：只读历史（进入即预选「历史记录」段，时间门控在段内）。
+        _ => SalesDocListPage(
+          docType: SalesDocType.otherShipment,
+          embedded: true,
+          initialHistory: true,
+          externalHeader: externalHeader,
+        ),
+      };
 }
 
 /// 大类未选时的内容区占位：进页面不预选，引导先选分类。

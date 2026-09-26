@@ -15,19 +15,20 @@ import 'package:uten_imp/features/sales/pages/sales_doc_edit_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
-Map<String, dynamic> _orderDetail({required List<Map<String, dynamic>> items}) =>
-    {
-      'id': 'order-dup',
-      'status': 0,
-      'writable': true,
-      'clientId': 'client-1',
-      'sellerId': 'seller-1',
-      'currencyId': 'cny',
-      'settlementMethodId': 'settlement-net30',
-      'deliverDate': '2026-09-30',
-      'shipmentPolicy': 'ALLOW_PARTIAL',
-      'items': items,
-    };
+Map<String, dynamic> _orderDetail({
+  required List<Map<String, dynamic>> items,
+}) => {
+  'id': 'order-dup',
+  'status': 0,
+  'writable': true,
+  'clientId': 'client-1',
+  'sellerId': 'seller-1',
+  'currencyId': 'cny',
+  'settlementMethodId': 'settlement-net30',
+  'deliverDate': '2026-09-30',
+  'shipmentPolicy': 'ALLOW_PARTIAL',
+  'items': items,
+};
 
 Future<_DupApi> _pumpEditor(
   WidgetTester tester,
@@ -120,7 +121,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.lastPutBody, isNotNull);
-    final items = (api.lastPutBody!['items'] as List).cast<Map<String, dynamic>>();
+    final items = (api.lastPutBody!['items'] as List)
+        .cast<Map<String, dynamic>>();
     expect(items, hasLength(1));
     expect(items.single['goodsId'], 'goods-1');
     expect(items.single['qty'], '15');
@@ -155,7 +157,8 @@ void main() {
     await tester.tap(find.text('删除重复行'));
     await tester.pumpAndSettle();
 
-    final items = (api.lastPutBody!['items'] as List).cast<Map<String, dynamic>>();
+    final items = (api.lastPutBody!['items'] as List)
+        .cast<Map<String, dynamic>>();
     expect(items, hasLength(1));
     expect(items.single['qty'], '5');
     expect(tester.takeException(), isNull);
@@ -182,10 +185,9 @@ void main() {
     ]);
 
     final ctx = tester.element(find.text('保存'));
-    final tint = Theme.of(ctx)
-        .colorScheme
-        .errorContainer
-        .withValues(alpha: 0.42);
+    final tint = Theme.of(
+      ctx,
+    ).colorScheme.errorContainer.withValues(alpha: 0.42);
     expect(_redRowDecorations(tint), findsNothing);
 
     await tester.tap(find.text('保存'));

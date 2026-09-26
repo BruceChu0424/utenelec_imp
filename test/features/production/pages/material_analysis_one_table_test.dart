@@ -385,7 +385,9 @@ void main() {
     // m-3 已有下游申请（allocated 800）：切到「按物料汇总」视图，这一物料的
     // 下单数量必须是锁定样式（锁图标 + 累计已下单），裸文本会被读成「没锁
     // 住、还能改」（2026-09-25 用户实机误读）。
-    await tester.tap(find.byKey(const ValueKey('material-bom-layout-material')));
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
     await tester.pumpAndSettle();
     final orderText = find.byKey(
       const ValueKey('material-aggregate-order-g-m-3|本色|unit-1'),
@@ -1325,8 +1327,7 @@ void main() {
     expect(_orderQty('m-covered'), findsNothing);
     final readonly = find.byWidgetPredicate(
       (widget) =>
-          widget is Tooltip &&
-          (widget.message ?? '').contains('没有要下单的量'),
+          widget is Tooltip && (widget.message ?? '').contains('没有要下单的量'),
     );
     expect(readonly, findsNWidgets(2));
     // 追加格照旧是「还没下达过」的纯文本 0。
@@ -2582,14 +2583,13 @@ Future<void> _pump(
           // 真实服务端，回写 confirmed（否则脏组永存，拖死后续下单拦截）。
           data = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
           for (final decision
-              in (request.data as Map<String, dynamic>)['decisions']
-                  as List) {
+              in (request.data as Map<String, dynamic>)['decisions'] as List) {
             final decisionMap = decision as Map<String, dynamic>;
             for (final row
                 in (data['flatMaterials'] as List)
                     .cast<Map<String, dynamic>>()) {
-              final matches = row['actionGroupKey'] ==
-                      decisionMap['actionGroupKey'] ||
+              final matches =
+                  row['actionGroupKey'] == decisionMap['actionGroupKey'] ||
                   row['materialLineId'] == decisionMap['materialLineId'];
               if (!matches) continue;
               row['sourceConfirmed'] = decisionMap['route'];

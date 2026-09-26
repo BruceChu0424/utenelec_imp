@@ -316,9 +316,9 @@ void main() {
       expect(harness.writes, hasLength(1));
       final decisions = _decisions(harness.writes.single);
       expect(
-        decisions.where((row) => row['actionGroupKey'].toString().startsWith(
-          'root-action-',
-        )),
+        decisions.where(
+          (row) => row['actionGroupKey'].toString().startsWith('root-action-'),
+        ),
         [
           {'actionGroupKey': 'root-action-1', 'route': 'SUBCONTRACT'},
           {'actionGroupKey': 'root-action-2', 'route': 'BUY'},
@@ -456,8 +456,11 @@ void main() {
         const Key('material-analysis-entry-workshop'),
       );
       expect(workshopEntry, findsOneWidget);
-      expect(tester.widget<InkWell>(workshopEntry).onTap, isNotNull,
-          reason: '主档自制的根自动确认后进入车间桶');
+      expect(
+        tester.widget<InkWell>(workshopEntry).onTap,
+        isNotNull,
+        reason: '主档自制的根自动确认后进入车间桶',
+      );
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
 

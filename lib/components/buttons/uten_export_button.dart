@@ -123,8 +123,11 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
     return UtenButton(
       type: widget.type,
       size: widget.size,
-      height: widget.height
-          ?? (widget.size == UtenButtonSize.large ? UtenTableToolbar.controlHeight : null),
+      height:
+          widget.height ??
+          (widget.size == UtenButtonSize.large
+              ? UtenTableToolbar.controlHeight
+              : null),
       icon: widget.icon,
       isLoading: _loading,
       onPressed: widget.enabled ? _onTap : null,

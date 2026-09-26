@@ -440,9 +440,7 @@ class _GoodsBomPreviewDialogState
             children: [
               TableRow(
                 decoration: const BoxDecoration(color: UtenColors.slate100),
-                children: [
-                  for (final h in _columns) _PaperHeaderCell(h),
-                ],
+                children: [for (final h in _columns) _PaperHeaderCell(h)],
               ),
               for (var i = 0; i < rows.length; i++)
                 TableRow(

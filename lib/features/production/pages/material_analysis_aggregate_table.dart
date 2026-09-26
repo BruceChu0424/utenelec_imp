@@ -208,9 +208,9 @@ final class _MaterialAggregateTableController {
             Text(
               owner._qty(orderedQty(aggregate)),
               key: cellKey,
-              style: Theme.of(owner.context).textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+              style: Theme.of(
+                owner.context,
+              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
             ),
           ],
         ),

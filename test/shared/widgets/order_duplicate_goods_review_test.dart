@@ -104,10 +104,9 @@ void main() {
   });
 
   testWidgets('完全一致的组：三个按钮，删除重复行返回 dedupe', (tester) async {
-    final result = await _pumpDialog(
-      tester,
-      [_group([_Row('A', '5', '3.5'), _Row('A', '5', '3.5')])],
-    );
+    final result = await _pumpDialog(tester, [
+      _group([_Row('A', '5', '3.5'), _Row('A', '5', '3.5')]),
+    ]);
     // result 是持有器：点击动作后从 value 读弹窗返回值。
 
     expect(find.text('发现重复货品'), findsOneWidget);
@@ -123,10 +122,9 @@ void main() {
   });
 
   testWidgets('完全一致的组：汇总合并返回 merge', (tester) async {
-    final result = await _pumpDialog(
-      tester,
-      [_group([_Row('A', '5', '3.5'), _Row('A', '5', '3.5')])],
-    );
+    final result = await _pumpDialog(tester, [
+      _group([_Row('A', '5', '3.5'), _Row('A', '5', '3.5')]),
+    ]);
 
     await tester.tap(find.text('汇总合并'));
     await tester.pumpAndSettle();
@@ -134,10 +132,9 @@ void main() {
   });
 
   testWidgets('数量不同的组：不提供删除重复行；返回修改返回 back', (tester) async {
-    final result = await _pumpDialog(
-      tester,
-      [_group([_Row('A', '10', '3.5'), _Row('A', '5', '3.5')])],
-    );
+    final result = await _pumpDialog(tester, [
+      _group([_Row('A', '10', '3.5'), _Row('A', '5', '3.5')]),
+    ]);
 
     expect(find.text('删除重复行'), findsNothing);
     expect(find.textContaining('各行数量或单价不同'), findsOneWidget);

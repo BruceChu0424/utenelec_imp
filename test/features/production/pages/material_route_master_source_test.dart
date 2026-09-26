@@ -81,7 +81,8 @@ void main() {
     // 「确认并换桶」弹窗退役：选好即写，没有中间确认。
     expect(find.text('确认并换桶'), findsNothing);
     expect(harness.writes, hasLength(writesBefore + 1));
-    final decisions = (harness.writes.last.data as Map<String, dynamic>)['decisions'];
+    final decisions =
+        (harness.writes.last.data as Map<String, dynamic>)['decisions'];
     expect(decisions, [
       {'actionGroupKey': 'a-m1', 'route': 'SUBCONTRACT'},
     ]);
@@ -95,7 +96,8 @@ void main() {
     await _choose(tester, 'm5', '采购');
     await tester.pumpAndSettle();
     expect(harness.writes, hasLength(2));
-    final decisions = (harness.writes.last.data as Map<String, dynamic>)['decisions'];
+    final decisions =
+        (harness.writes.last.data as Map<String, dynamic>)['decisions'];
     expect(decisions, [
       {'actionGroupKey': 'a-m5', 'route': 'BUY'},
     ]);

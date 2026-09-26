@@ -906,9 +906,7 @@ class _SubcontractOrderEditPageState
             financeExactSumTexts(g.rows.map((r) => r.qty.text)) ??
             keep.qty.text;
         keep.maxQty = g.rows.fold<double>(0, (sum, r) => sum + (r.maxQty ?? 0));
-        keep.upstreamItemIds = [
-          for (final r in g.rows) ...r.upstreamItemIds,
-        ];
+        keep.upstreamItemIds = [for (final r in g.rows) ...r.upstreamItemIds];
         keep.sourceDocs = [for (final r in g.rows) ...r.sourceDocs];
         String? pickNonEmpty(Iterable<String?> values) {
           for (final v in values) {
@@ -1160,13 +1158,19 @@ class _SubcontractOrderEditPageState
         bumpListRefresh(ref, _cfg.refreshKey);
         // 编辑既有单：pop 回宿主详情（其「返回即刷新」重取保存后数据），深链直达
         // 才落新详情；replace 会把新详情叠在旧详情上，返回一次看到旧快照。
-        popSavedEditOrReplace(context, SubcontractRoute.detail(_cfg.pathSegment, d.id));
+        popSavedEditOrReplace(
+          context,
+          SubcontractRoute.detail(_cfg.pathSegment, d.id),
+        );
         return;
       }
       if (!mounted) return;
       context.appSuccess(_canSubmitFinance ? '委外订货单已提交财务审核' : '委外订货单草稿已保存');
       bumpListRefresh(ref, _cfg.refreshKey);
-      popSavedEditOrReplace(context, SubcontractRoute.detail(_cfg.pathSegment, d.id));
+      popSavedEditOrReplace(
+        context,
+        SubcontractRoute.detail(_cfg.pathSegment, d.id),
+      );
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {

@@ -954,9 +954,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
             financeExactSumTexts(g.rows.map((r) => r.qty.text)) ??
             keep.qty.text;
         keep.maxQty = g.rows.fold<double>(0, (sum, r) => sum + (r.maxQty ?? 0));
-        keep.upstreamItemIds = [
-          for (final r in g.rows) ...r.upstreamItemIds,
-        ];
+        keep.upstreamItemIds = [for (final r in g.rows) ...r.upstreamItemIds];
         keep.sourceDocs = [for (final r in g.rows) ...r.sourceDocs];
         String? pickNonEmpty(Iterable<String?> values) {
           for (final v in values) {

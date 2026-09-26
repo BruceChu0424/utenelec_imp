@@ -202,9 +202,11 @@ void main() {
       await tester.tap(_route('m-1'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('采购').last);
-      for (var attempt = 0;
-          attempt < 10 && harness.writes.length < 2;
-          attempt++) {
+      for (
+        var attempt = 0;
+        attempt < 10 && harness.writes.length < 2;
+        attempt++
+      ) {
         await tester.pump(const Duration(milliseconds: 50));
       }
       expect(harness.writes, hasLength(2));
@@ -215,10 +217,7 @@ void main() {
       complete.complete();
       await tester.pumpAndSettle();
       expect(harness.writes, hasLength(2));
-      expect(
-        tester.widget<UtenDropdownField>(_route('m-1')).value,
-        'buy',
-      );
+      expect(tester.widget<UtenDropdownField>(_route('m-1')).value, 'buy');
     },
   );
 

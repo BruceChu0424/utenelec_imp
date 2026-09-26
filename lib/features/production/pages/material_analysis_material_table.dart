@@ -171,11 +171,9 @@ abstract class _MaterialAnalysisMaterialTableState
       }
       _invalidateBucketRowsCache();
     });
-    await _saveRoutes(
-      automatic: true,
-      automaticRollbackKeys: autoKeys,
-    );
+    await _saveRoutes(automatic: true, automaticRollbackKeys: autoKeys);
   }
+
   @override
   bool _materialAggregateOwnsProductLine(String lineId) {
     final analysis = _analysis;
@@ -3889,7 +3887,8 @@ abstract class _MaterialAnalysisMaterialTableState
     if ((typedOrder == null || typedOrder <= 0.0001) &&
         _tableGroupResidual(group) <= 0.0001) {
       return Tooltip(
-        message: '这一行没有要下单的量：需要数量与还缺数量都是 0'
+        message:
+            '这一行没有要下单的量：需要数量与还缺数量都是 0'
             '（同物料的需求记在它的需求行上，缺口也已覆盖）。要额外备货请在有缺口的行上填数。',
         child: Text(
           '0',

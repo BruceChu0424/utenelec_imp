@@ -53,9 +53,7 @@ List<DuplicateGoodsGroup<T>> collectDuplicateGoodsGroups<T>({
       DuplicateGoodsGroup<T>(
         rows: group,
         identityLabel: identityLabel(group.first),
-        rowSummaries: [
-          for (final row in group) rowSummary(row, rowNoOf(row)),
-        ],
+        rowSummaries: [for (final row in group) rowSummary(row, rowNoOf(row))],
         identical: group.map(identicalSignature).toSet().length == 1,
       ),
   ];
@@ -74,9 +72,9 @@ Future<DuplicateGoodsReviewAction?> showDuplicateGoodsReviewDialog<T>(
     context: context,
     builder: (ctx) {
       final scheme = Theme.of(ctx).colorScheme;
-      final small = Theme.of(ctx).textTheme.bodySmall?.copyWith(
-        color: scheme.onSurfaceVariant,
-      );
+      final small = Theme.of(
+        ctx,
+      ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant);
       return SelectionArea(
         child: AlertDialog(
           title: Text(
@@ -109,10 +107,9 @@ Future<DuplicateGoodsReviewAction?> showDuplicateGoodsReviewDialog<T>(
                         children: [
                           Text(
                             g.identityLabel,
-                            style: Theme.of(ctx)
-                                .textTheme
-                                .titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w700),
+                            style: Theme.of(ctx).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                           const SizedBox(height: 4),
                           for (final line in g.rowSummaries)
@@ -122,9 +119,7 @@ Future<DuplicateGoodsReviewAction?> showDuplicateGoodsReviewDialog<T>(
                             ),
                           const SizedBox(height: 4),
                           Text(
-                            g.identical
-                                ? '各行内容完全一致'
-                                : '各行数量或单价不同，汇总后单价沿用第一行',
+                            g.identical ? '各行内容完全一致' : '各行数量或单价不同，汇总后单价沿用第一行',
                             style: small,
                           ),
                         ],
@@ -158,7 +153,8 @@ Future<DuplicateGoodsReviewAction?> showDuplicateGoodsReviewDialog<T>(
                 child: const Text('删除重复行'),
               ),
             UtenButton(
-              onPressed: () => Navigator.pop(ctx, DuplicateGoodsReviewAction.merge),
+              onPressed: () =>
+                  Navigator.pop(ctx, DuplicateGoodsReviewAction.merge),
               child: const Text('汇总合并'),
             ),
           ],

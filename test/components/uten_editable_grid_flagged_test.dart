@@ -68,10 +68,9 @@ void main() {
     await tester.pumpAndSettle();
 
     final ctx = tester.element(find.text('A'));
-    final tint = Theme.of(ctx)
-        .colorScheme
-        .errorContainer
-        .withValues(alpha: 0.42);
+    final tint = Theme.of(
+      ctx,
+    ).colorScheme.errorContainer.withValues(alpha: 0.42);
     expect(rowsWithColor(tint), findsNothing);
 
     // 标红第一行：不 setState，靠通知器局部重绘。
@@ -97,10 +96,9 @@ void main() {
     await tester.pump();
 
     final ctx = tester.element(find.text('B'));
-    final tint = Theme.of(ctx)
-        .colorScheme
-        .errorContainer
-        .withValues(alpha: 0.42);
+    final tint = Theme.of(
+      ctx,
+    ).colorScheme.errorContainer.withValues(alpha: 0.42);
     expect(rowsWithColor(pageTint), findsOneWidget);
     expect(rowsWithColor(tint), findsOneWidget);
     expect(tester.takeException(), isNull);

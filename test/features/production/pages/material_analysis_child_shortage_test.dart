@@ -36,6 +36,10 @@ requests = [];
 
 String _groupKey(String line) => 'NODE|a-$line|$line';
 
+// 横滚时行首勾选框会有一份「钉在视口左缘」的冻结副本(UtenFrozenLeadingColumn
+// 复用同一个 selectionCell)：加了「可用数量」列后测试里出现横向滚动，同一行能
+// 找到两份 Checkbox——取值一律用 `.last`(原件滚出视口时它才是可点的)，判空
+// 用原始 finder 的 evaluate()(`.last` 求值器空集会抛 No element)。
 Finder _productCheckbox(String product) => find.descendant(
   of: find.byKey(ValueKey('material-bom-product-$product')),
   matching: find.byType(Checkbox),
@@ -53,8 +57,24 @@ Finder _pageLine(String line) =>
     find.byKey(ValueKey('child-shortage-line-${_groupKey(line)}'));
 
 Future<void> _check(WidgetTester tester, Finder checkbox) async {
-  tester.widget<Checkbox>(checkbox).onChanged!(true);
+  tester.widget<Checkbox>(checkbox.last).onChanged!(true);
   await tester.pump();
+}
+
+/// Parent selection now explicitly includes its subtree. These tests exercise
+/// issuing only the parent, then the established child-shortage workflow.
+Future<void> _selectParentOnly(WidgetTester tester) async {
+  final parent = _productCheckbox('product-1');
+  if (tester.widget<Checkbox>(parent.last).value != true) {
+    await _check(tester, parent);
+  }
+  for (final id in ['m-c1', 'm-c2', 'm-c3', 'm-g1', 'm-ok', 'm-c4']) {
+    final checkbox = _rowCheckbox(id);
+    if (checkbox.evaluate().isNotEmpty &&
+        tester.widget<Checkbox>(checkbox.last).value == true) {
+      await _check(tester, checkbox);
+    }
+  }
 }
 
 /// 等假后端应答与分段编排跑完(期间没有动画帧, pumpAndSettle 会提前返回)。
@@ -105,13 +125,58 @@ double? _notifyQty(Map<String, dynamic>? body, String line) {
 }
 
 void main() {
+  for (final hasPlanningFact in [true, false]) {
+    testWidgets('公共在途尚未认领时保留补料入口 (${hasPlanningFact ? '权威待办理量' : '旧服务端缺字段'})', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        issuedRoot: true,
+        mutate: (data) {
+          final copper = _line(data, 'm-c1');
+          copper['netShortageQty'] = 0;
+          copper['additionalSupplyRecommendedQty'] = 500;
+          copper['sharedFutureClaimableQty'] = 500;
+          if (hasPlanningFact) copper['planningUncoveredQty'] = 500;
+          return data;
+        },
+      );
+      expect(find.text('已下单的件里，还有 2 种下层物料没下够'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('child-shortage-banner-go')));
+      await tester.pumpAndSettle();
+      expect(_pageLine('m-c1'), findsOneWidget);
+      expect(find.text('待认领 500个'), findsOneWidget);
+      await _submitShortagePage(tester);
+      expect(_notifyQty(_writes().single.body, 'm-c1'), 500);
+      expect(_pageLine('m-c1'), findsNothing);
+    });
+  }
+
+  testWidgets('权威待办理量为零时不把已落实内部供给列成需要再次下单', (tester) async {
+    await _pump(
+      tester,
+      issuedRoot: true,
+      mutate: (data) {
+        final copper = _line(data, 'm-c1');
+        copper['additionalSupplyRecommendedQty'] = 500;
+        copper['planningUncoveredQty'] = 0;
+        return data;
+      },
+    );
+    expect(find.text('已下单的件里，还有 1 种下层物料没下够'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('child-shortage-banner-go')));
+    await tester.pumpAndSettle();
+    expect(_pageLine('m-c1'), findsNothing);
+    expect(_pageLine('m-pc'), findsOneWidget);
+  });
+
   testWidgets('下单父件后只点名它自己下层缺的料；稍后再说后提示条常驻', (tester) async {
     await _pump(tester);
     // 下单前：只有已下单的委外件 m-p 下面缺 1 种，提示条如实说。
     expect(find.byKey(const Key('child-shortage-banner')), findsOneWidget);
     expect(find.text('已下单的件里，还有 1 种下层物料没下够'), findsOneWidget);
 
-    await _check(tester, _productCheckbox('product-1'));
+    await _selectParentOnly(tester);
     await _submitMainTable(tester);
     expect(
       _writes().map((request) => request.path.split('/').last).toList(),
@@ -159,7 +224,7 @@ void main() {
 
   testWidgets('去补下单：数量按缺口填好、父先子后一键下完，回主表下单数量已锁成累计', (tester) async {
     await _pump(tester);
-    await _check(tester, _productCheckbox('product-1'));
+    await _selectParentOnly(tester);
     await _submitMainTable(tester);
     await tester.tap(find.byKey(const Key('child-shortage-go')));
     await tester.pumpAndSettle();
@@ -177,6 +242,33 @@ void main() {
     expect(find.text('还缺 500个'), findsOneWidget, reason: '弹簧有 500 现货, 只缺 500');
     expect(find.text('用在「自制底座」里'), findsOneWidget, reason: '孙层说清用在哪一件里');
 
+    final rateField = find.descendant(
+      of: find.byKey(
+        ValueKey('child-shortage-overproduction-rate-${_groupKey('m-c3')}'),
+      ),
+      matching: find.byType(TextField),
+    );
+    expect(tester.widget<TextField>(rateField).controller!.text, '10');
+    for (final line in ['m-c1', 'm-c2', 'm-g1']) {
+      expect(
+        find.byKey(
+          ValueKey('child-shortage-overproduction-rate-${_groupKey(line)}'),
+        ),
+        findsNothing,
+        reason: '采购料没有自制超产比例',
+      );
+    }
+    await tester.enterText(rateField, '-1');
+    await tester.pump();
+    requests.clear();
+    await tester.tap(find.byKey(const Key('child-shortage-submit')));
+    await tester.pumpAndSettle();
+    expect(_writes(), isEmpty, reason: '比例无效时不能下达任何一段');
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(tester.widget<TextField>(rateField).controller!.text, '-1');
+    await tester.enterText(rateField, '17.5');
+    await tester.pump();
+
     await _submitShortagePage(tester);
     final writes = _writes();
     expect(
@@ -188,6 +280,7 @@ void main() {
     expect(issued['materialLineId'], 'm-c3');
     expect(issued['qty'], 1000);
     expect(issued['departmentId'], 'ws-1', reason: '车间按货品学习默认带出');
+    expect(issued['allowedOverproductionRate'], 0.175);
     expect(_notifyQty(writes.last.body, 'm-c1'), 1000);
     expect(_notifyQty(writes.last.body, 'm-c2'), 500);
     expect(_notifyQty(writes.last.body, 'm-g1'), 1000);
@@ -225,7 +318,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
     await tester.pumpAndSettle();
-    await _check(tester, _productCheckbox('product-1'));
+    await _selectParentOnly(tester);
     await _submitMainTable(tester);
 
     expect(find.byKey(const Key('child-shortage-dialog')), findsOneWidget);
@@ -263,12 +356,19 @@ void main() {
       tester,
       mutate: (data) {
         (data['flatMaterials'] as List).add(
-          _material(line: 'm-c4', name: '未定方式件', confirmed: null, net: 300),
+          _material(
+            line: 'm-c4',
+            name: '未定方式件',
+            confirmed: null,
+            net: 300,
+            // REVIEW: 无法推导供应方式 -> 红框空选、不能下单(2026-09-25 确认路线退役口径)
+            suggestion: null,
+          ),
         );
         return data;
       },
     );
-    await _check(tester, _productCheckbox('product-1'));
+    await _selectParentOnly(tester);
     await _submitMainTable(tester);
     await tester.tap(find.byKey(const Key('child-shortage-go')));
     await tester.pumpAndSettle();
@@ -382,7 +482,7 @@ void main() {
     await _pump(tester);
     final state = tester.state(find.byType(ProductionMaterialAnalysisPage));
     // 主表里勾一行 = 有未提交的选择。
-    await _check(tester, _productCheckbox('product-1'));
+    await _selectParentOnly(tester);
     requests.clear();
     await tester.pumpWidget(_treeFor('analysis-2'));
     await _drain(tester);
@@ -432,7 +532,7 @@ void main() {
 
   testWidgets('父件下成、采购那段失败：照样提醒下层还缺(正是「只下了父件」)', (tester) async {
     await _pump(tester, failNotify: true);
-    await _check(tester, _productCheckbox('product-1'));
+    await _selectParentOnly(tester);
     await _check(tester, _rowCheckbox('m-c1'));
     await _submitMainTable(tester);
     final paths = _writes().map((r) => r.path.split('/').last).toList();
@@ -551,6 +651,9 @@ Future<void> _pump(
           }
           _applyNotify(data, request.data as Map<String, dynamic>);
           result = bumped();
+        } else if (path.endsWith('/routes') && request.method == 'PUT') {
+          // 进页自动确认兜底: 未处理的空列表回包会把整份视图清空。
+          result = bumped();
         } else if (path == '/production/material-analyses/analysis-1') {
           result = data;
         } else if (path == '/production/material-analyses/analysis-2') {
@@ -603,6 +706,7 @@ Future<void> _pump(
 ///   → 委外件的子料 m-pc(采购, 缺 600)。
 /// [issuedRoot] = 父件与下层都已下够单(父件计划 1000 已排满, 铜片已订 1000)。
 Map<String, dynamic> _analysis({required bool issuedRoot}) => {
+  'overproductionDefaults': {'g-m-root': 0, 'g-m-c3': 0.1},
   'analysisId': 'analysis-1',
   'version': 3,
   'fingerprint': 'a' * 64,
@@ -776,6 +880,7 @@ Map<String, dynamic> _material({
   String unit = '个',
   String product = 'product-1',
   List<Map<String, dynamic>> downstream = const [],
+  String? suggestion = 'BUY',
 }) => {
   'subcontractOutboundForm': ?subcontractOutboundForm,
   'materialLineId': line,
@@ -800,7 +905,7 @@ Map<String, dynamic> _material({
   'inboundQty': 0,
   'additionalSupplyRecommendedQty': net,
   'netShortageQty': net,
-  'sourceSuggestion': 'BUY',
+  'sourceSuggestion': suggestion,
   'sourceConfirmed': confirmed,
   'routeConfirmed': confirmed != null,
   'controlStage': 'START',
@@ -840,6 +945,9 @@ void _applyNotify(Map<String, dynamic> data, Map<String, dynamic> body) {
     ];
     material['additionalSupplyRecommendedQty'] = residual - demand;
     material['netShortageQty'] = residual - demand;
+    if (material.containsKey('planningUncoveredQty')) {
+      material['planningUncoveredQty'] = residual - demand;
+    }
     data['supplyActions'] = [
       ...(data['supplyActions'] as List? ?? const []),
       {

@@ -194,6 +194,10 @@ class ProductionExecutionWorkbenchSegment {
     this.canRecheckMaterial = false,
     this.drawRequested = false,
     this.canRequestDraw = false,
+    this.materialDiscoveryRequired = false,
+    this.materialDiscoveryRequestId,
+    this.materialDiscoveryStatus,
+    this.canRequestMaterialDiscovery = false,
     this.canSplitBatch = false,
     this.sourceSegmentId,
     this.splitReplaced = false,
@@ -227,6 +231,7 @@ class ProductionExecutionWorkbenchSegment {
     this.planningNextUrgeAt,
     this.canUrgePlanning = false,
     this.salesOrderNos,
+    this.analysisNo,
     this.workshopDepartmentId,
     this.workshopName,
     this.responsibleEmployeeName,
@@ -245,6 +250,9 @@ class ProductionExecutionWorkbenchSegment {
   final String planNo;
   final String segmentCode;
   final String? salesOrderNos;
+
+  /// 来源计划（V719）：ANALYSIS 根的 WL 分析编号；历史计划根为 null。
+  final String? analysisNo;
   final String? workshopDepartmentId;
   final String? workshopName;
   final String? responsibleEmployeeName;
@@ -291,6 +299,10 @@ class ProductionExecutionWorkbenchSegment {
   final bool canRecheckMaterial;
   final bool drawRequested;
   final bool canRequestDraw;
+  final bool materialDiscoveryRequired;
+  final String? materialDiscoveryRequestId;
+  final String? materialDiscoveryStatus;
+  final bool canRequestMaterialDiscovery;
   final bool canSplitBatch;
   final String? sourceSegmentId;
   final bool splitReplaced;
@@ -421,6 +433,7 @@ class ProductionExecutionWorkbenchSegment {
     planNo: json['planNo'] as String? ?? '—',
     segmentCode: json['segmentCode'] as String? ?? '—',
     salesOrderNos: json['salesOrderNos'] as String?,
+    analysisNo: json['analysisNo'] as String?,
     workshopDepartmentId: json['workshopDepartmentId'] as String?,
     workshopName: json['workshopName'] as String?,
     responsibleEmployeeName: json['responsibleEmployeeName'] as String?,
@@ -472,6 +485,10 @@ class ProductionExecutionWorkbenchSegment {
     canRecheckMaterial: json['canRecheckMaterial'] == true,
     drawRequested: json['drawRequested'] == true,
     canRequestDraw: json['canRequestDraw'] == true,
+    materialDiscoveryRequired: json['materialDiscoveryRequired'] == true,
+    materialDiscoveryRequestId: json['materialDiscoveryRequestId'] as String?,
+    materialDiscoveryStatus: json['materialDiscoveryStatus'] as String?,
+    canRequestMaterialDiscovery: json['canRequestMaterialDiscovery'] == true,
     canSplitBatch: json['canSplitBatch'] == true,
     sourceSegmentId: json['sourceSegmentId'] as String?,
     splitReplaced: json['splitReplaced'] == true,

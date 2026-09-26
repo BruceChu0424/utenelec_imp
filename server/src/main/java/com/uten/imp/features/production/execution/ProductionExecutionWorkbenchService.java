@@ -210,7 +210,7 @@ public class ProductionExecutionWorkbenchService {
                     + " OR task.plan_end_date <= CAST(:dateTo AS date))";
         }
         if (workshopDepartmentId != null) {
-            predicate += " AND task.workshop_department_id = :workshopId";
+            predicate += " AND task.workshop_department_id = :workshopId ";
         }
         if (keyword != null && !keyword.isBlank()) {
             predicate += """
@@ -235,6 +235,7 @@ public class ProductionExecutionWorkbenchService {
                     " AND task.segment_status <> 'IN_PROGRESS'";
                 case "READY_TO_START" ->
                     " AND task.segment_status IN ('READY', 'DISPATCHED')"
+                    + " AND NOT fn_material_discovery_pending(task.segment_id)"
                     + " AND (" + effectiveIssuedPredicate() + " OR task.zero_material)";
                 case "IN_PROGRESS" -> " AND task.segment_status = 'IN_PROGRESS'";
                 default -> "";
@@ -500,6 +501,7 @@ public class ProductionExecutionWorkbenchService {
     private static final String SEGMENT_ORDER_READINESS = """
             ORDER BY CASE
                          WHEN task.segment_status IN ('READY','DISPATCHED')
+                              AND NOT fn_material_discovery_pending(task.segment_id)
                               AND (task.zero_material OR task.issued
                                    OR fn_split_batch_empty_issued(task.segment_id)
                                    OR fn_actual_supplement_material_ready(task.segment_id)) THEN 0
@@ -557,6 +559,7 @@ public class ProductionExecutionWorkbenchService {
         String dataFrom = " FROM v_production_execution_workbench_segments task"
                 + " LEFT JOIN LATERAL fn_execution_segment_material_summary(task.segment_id) material ON TRUE"
                 + " JOIN production_execution_segments rate_segment ON rate_segment.id=task.segment_id"
+                + " LEFT JOIN production_material_discovery_requests discovery ON discovery.execution_segment_id=task.segment_id AND discovery.status IN ('PENDING','CONFIGURED')"
                 + " LEFT JOIN production_overproduction_rate_requests rate_request ON rate_request.execution_segment_id=task.segment_id AND rate_request.status='PENDING'"
                 + " LEFT JOIN LATERAL (SELECT (fn_execution_overproduction_policy_applies(task.segment_id)"
                 + " OR EXISTS(SELECT 1 FROM v_production_fqc_recovery_balance recovery"
@@ -877,6 +880,9 @@ public class ProductionExecutionWorkbenchService {
                        (:allowReport AND task.reportable AND report_origin.allowed AND fn_execution_overproduction_policy_applies(task.segment_id) AND task.segment_status = 'IN_PROGRESS'
                         AND task.report_source_count = 1 AND task.remaining_qty > 0),
                        CASE
+                           WHEN fn_material_discovery_pending(task.segment_id) THEN
+                             CASE WHEN discovery.id IS NULL THEN '请提交领料，由仓库填写实际材料'
+                               ELSE '等待仓库填写实际材料并办理发料' END
                            WHEN NOT report_origin.allowed THEN '固定追加工单请从追加计划回原批次续报'
                            WHEN :allowReport AND task.reportable
                                 AND task.segment_status = 'IN_PROGRESS' THEN NULL
@@ -887,8 +893,8 @@ public class ProductionExecutionWorkbenchService {
                        END,
                        task.plan_begin_date, task.plan_end_date,
                        task.lock_version,
-                       task.zero_material,
-                       (:allowRequestDraw AND EXISTS (SELECT 1 FROM production_execution_segments current_segment
+                       (task.zero_material AND NOT fn_material_discovery_pending(task.segment_id)),
+                       (:allowRequestDraw AND NOT fn_material_discovery_pending(task.segment_id) AND EXISTS (SELECT 1 FROM production_execution_segments current_segment
                            WHERE current_segment.id = task.segment_id
                              AND current_segment.status IN ('WAITING','READY','DISPATCHED','IN_PROGRESS')
                              AND current_segment.start_route IN ('FULL_KIT','CONTINUOUS')
@@ -943,7 +949,16 @@ public class ProductionExecutionWorkbenchService {
                        task.planned_inbound_qty,rate_segment.allowed_overproduction_rate,
                        rate_segment.overproduction_rate_version,rate_request.id,rate_request.requested_rate,
                        fn_execution_overproduction_policy_applies(rate_segment.id),
-                       (SELECT actual_output_supplement_request_id FROM production_plans WHERE id=task.plan_id)
+                       (SELECT actual_output_supplement_request_id FROM production_plans WHERE id=task.plan_id),
+                       fn_material_discovery_pending(task.segment_id),
+                       discovery.id, discovery.status,
+                       (:allowRequestDraw AND fn_material_discovery_pending(task.segment_id)
+                         AND rate_segment.start_route IN ('FULL_KIT','CONTINUOUS')
+                         AND discovery.id IS NULL AND task.segment_status IN ('WAITING','READY','DISPATCHED')),
+                       (SELECT root_analysis.analysis_no
+                          FROM production_material_analyses root_analysis
+                         WHERE task.root_type = 'ANALYSIS'
+                           AND root_analysis.id = task.root_id)
                 """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), drawRequestedPredicate(), pendingDrawItemSql());
     }
 
@@ -986,10 +1001,13 @@ public class ProductionExecutionWorkbenchService {
         return switch (rawFilter.strip().toUpperCase(Locale.ROOT)) {
             case "WAITING_MATERIAL" -> " AND task.segment_status='WAITING'";
             case "DRAW_NOT_REQUESTED" -> " AND task.segment_status IN ('READY','DISPATCHED')"
-                    + " AND NOT task.zero_material AND NOT (" + effectiveIssuedPredicate() + ") AND NOT (" + drawRequestedPredicate() + ")";
+                    + " AND ((fn_material_discovery_pending(task.segment_id) AND NOT " + discoveryRequestedPredicate() + ")"
+                    + " OR (NOT task.zero_material AND NOT (" + effectiveIssuedPredicate() + ") AND NOT (" + drawRequestedPredicate() + ")))";
             case "DRAW_REQUESTED" -> " AND task.segment_status IN ('READY','DISPATCHED')"
-                    + " AND NOT task.zero_material AND NOT (" + effectiveIssuedPredicate() + ") AND (" + drawRequestedPredicate() + ")";
+                    + " AND ((fn_material_discovery_pending(task.segment_id) AND " + discoveryRequestedPredicate() + ")"
+                    + " OR (NOT task.zero_material AND NOT (" + effectiveIssuedPredicate() + ") AND (" + drawRequestedPredicate() + ")))";
             case "READY_TO_START" -> " AND task.segment_status IN ('READY','DISPATCHED')"
+                    + " AND NOT fn_material_discovery_pending(task.segment_id)"
                     + " AND (task.zero_material OR " + effectiveIssuedPredicate() + ")";
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "等待物料状态筛选无效");
         };
@@ -997,6 +1015,11 @@ public class ProductionExecutionWorkbenchService {
 
     static String effectiveIssuedPredicate() {
         return "(task.issued OR fn_split_batch_empty_issued(task.segment_id) OR fn_actual_supplement_material_ready(task.segment_id))";
+    }
+
+    private static String discoveryRequestedPredicate() {
+        return "EXISTS (SELECT 1 FROM production_material_discovery_requests discovery_filter"
+                + " WHERE discovery_filter.execution_segment_id=task.segment_id AND discovery_filter.status='PENDING')";
     }
 
     private static String rootFilters(
@@ -1161,7 +1184,9 @@ public class ProductionExecutionWorkbenchService {
                 decimal(row[60]), decimal(row[61]), decimal(row[62]),decimal(row[63]),
                 ((Number)row[64]).longValue(),uuid(row[65]),row[66]==null?null:decimal(row[66]),bool(row[67]),uuid(row[68]),
                 planning.gapKindCount(), planning.gapSummary(), planning.urgeCount(), planning.urgedAt(),
-                planning.urgedByName(), planning.nextUrgeAt(), planning.canUrge());
+                planning.urgedByName(), planning.nextUrgeAt(), planning.canUrge(),
+                bool(row[69]), uuid(row[70]), text(row[71]), executable && bool(row[72]),
+                text(row[73]));
     }
 
     private static int boundedSize(int requested) {

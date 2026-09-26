@@ -1,6 +1,6 @@
 # UtenPickerConfirmBar · 滑窗选择器统一确认栏
 
-> 源码：[`uten_picker_confirm_bar.dart`](../../lib/components/layout/uten_picker_confirm_bar.dart) · 视觉基座：[UtenBottomActionBar](UtenBottomActionBar.md) · 最后核对：2026-08-27。
+> 源码：[`uten_picker_confirm_bar.dart`](../../lib/components/layout/uten_picker_confirm_bar.dart) · 视觉基座：[UtenBottomActionBar](UtenBottomActionBar.md) · 最后核对：2026-09-24。
 
 ## 一、用途
 
@@ -23,7 +23,7 @@
 ## 三、接入方(2026-08-16 起)
 
 - [UtenClientPicker](UtenClientPicker.md)(客户，单选)
-- [UtenGoodsPicker](UtenGoodsPicker.md)(货品，单/多选；单选默认即二次确认)
+- [UtenGoodsPicker](UtenGoodsPicker.md)(货品，单选；**多选 2026-09-24 起改用自有底栏**——左侧「已选 N 项」胶囊点开底部已选清单滑层可逐项取消，右侧仍为 清空/取消/确定(N)，二次操作契约不变)
 - [UtenEmployeePicker](UtenEmployeePicker.md)(员工，单选)
 - `UtenDepartmentPicker`(部门，单/多选；单选默认即二次确认)
 - `UtenPositionPicker`(岗位，单选)

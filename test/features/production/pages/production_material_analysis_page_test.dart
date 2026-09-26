@@ -417,6 +417,7 @@ void main() {
         {
           'materialLineId': 'make-path-1',
           'qty': 8.0,
+          'allowedOverproductionRate': 0,
           'departmentId': 'workshop-1',
           'workshopName': '装配一车间',
           'workerId': 'worker-1',
@@ -856,7 +857,6 @@ void main() {
   testWidgets(
     'CAS recovery keeps valid unsaved route drafts and tells the planner',
     (tester) async {
-      var previewCalls = 0;
       var detailReads = 0;
       await _pumpPage(
         tester,
@@ -871,10 +871,9 @@ void main() {
         analysisId: 'analysis-1',
         errorOverride: (request) {
           if (request.path == '/production/material-analyses/preview') {
-            previewCalls++;
-            return previewCalls == 1
-                ? _materialAnalysisConflict(request)
-                : null;
+            // 恒 409：boot 与手动刷新都走冲突恢复路径（保留未保存草稿的
+            // 正是这条 _recoverLatestAnalysisAfterConflict 链）。
+            return _materialAnalysisConflict(request);
           }
           if (request.path.endsWith('/routes')) {
             return DioException(
@@ -899,13 +898,16 @@ void main() {
       );
 
       await _createDefaultRoutes(tester);
-      expect(find.text('确认路线(2)'), findsOneWidget);
+      // 2026-09-25 确认路线退役：草稿形态 = 下拉已改「自制」且保存失败仍挂着。
+      expect(_routeDropdownValue(tester, 'material-path-1'), 'make');
+      expect(_routeDropdownValue(tester, 'material-path-2'), 'make');
 
       await tester.tap(find.byTooltip('按最新库存刷新分析'));
       await tester.pumpAndSettle();
 
       expect(detailReads, 2);
-      expect(find.text('确认路线(2)'), findsOneWidget);
+      expect(_routeDropdownValue(tester, 'material-path-1'), 'make');
+      expect(_routeDropdownValue(tester, 'material-path-2'), 'make');
       await tester.drag(
         find
             .descendant(
@@ -1206,24 +1208,16 @@ void main() {
       );
 
       await _createDefaultRoutes(tester);
-      expect(
-        find.byKey(
-          const Key('material-analysis-create-routes'),
-          skipOffstage: false,
-        ),
-        findsOneWidget,
-      );
+      // 2026-09-25 确认路线退役：按钮没了——「有未保存路线编辑」由两条直改
+      // 草稿承载，轮询照旧让路。
+      expect(_routeDropdownValue(tester, 'material-path-1'), 'make');
+      expect(_routeDropdownValue(tester, 'material-path-2'), 'make');
 
       await tester.pump(const Duration(seconds: 45));
       await tester.pumpAndSettle();
-      expect(detailReads, 1);
-      expect(
-        find.byKey(
-          const Key('material-analysis-create-routes'),
-          skipOffstage: false,
-        ),
-        findsOneWidget,
-      );
+      expect(detailReads, 1, reason: '未保存路线编辑期间轮询必须让路');
+      expect(_routeDropdownValue(tester, 'material-path-1'), 'make');
+      expect(_routeDropdownValue(tester, 'material-path-2'), 'make');
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(seconds: 45));
@@ -1666,12 +1660,12 @@ void main() {
       analysisId: 'analysis-1',
       seeded: false,
     );
-    expect(find.text('确认路线(0)'), findsOneWidget);
+    // 2026-09-25 确认路线退役：进页自动确认一次带全部建议行、不带可选原因。
     expect(
-      harness.requests.where((request) => request.method == 'PUT'),
-      isEmpty,
+      find.byKey(const Key('material-analysis-create-routes')),
+      findsNothing,
     );
-    await _createDefaultRoutes(tester);
+    await tester.pumpAndSettle();
 
     final routeRequest = harness.requests.singleWhere(
       (request) => request.method == 'PUT',
@@ -1728,7 +1722,9 @@ void main() {
         },
       );
 
-      await _createDefaultRoutes(tester);
+      // 2026-09-25 确认路线退役：进页自动确认直接产生 500 + 1 两批，第二批带
+      // 第一批落库后刷新的 version/fingerprint（CAS 事实链不变）。
+      await tester.pumpAndSettle();
 
       final writes = harness.requests
           .where(
@@ -1773,7 +1769,9 @@ void main() {
         errorOverride: (request) {
           if (!request.path.endsWith('/routes')) return null;
           routeAttempt++;
-          if (routeAttempt != 2) return null;
+          // 第 2 次 = 自动确认的第二块；第 4 次 = 手动直改：都超时（模拟
+          // 「服务端已成功但客户端等待超时」），重试方用同一份内容重发。
+          if (routeAttempt != 2 && routeAttempt != 4) return null;
           return DioException(
             requestOptions: request,
             type: DioExceptionType.receiveTimeout,
@@ -1786,17 +1784,20 @@ void main() {
             count: 501,
             route: 'SUBCONTRACT',
             allowedActions: const ['CONFIRM_ROUTES'],
-            version: routeAttempt == 1 ? 4 : 5,
-            fingerprintChar: routeAttempt == 1 ? 'b' : 'c',
-            confirmedCount: routeAttempt == 1 ? 500 : 501,
+            version: routeAttempt <= 2 ? 4 : 5,
+            fingerprintChar: routeAttempt <= 2 ? 'b' : 'c',
+            confirmedCount: routeAttempt <= 2 ? 500 : 501,
           );
         },
       );
 
-      await _createDefaultRoutes(tester);
-      expect(find.text('确认路线(1)'), findsOneWidget);
-
-      await tester.tap(find.text('确认路线(1)'));
+      // 2026-09-25 确认路线退役：进页自动确认 500 + 1 两批，第二批超时回滚
+      //（不自动重试）。计划员在第一页直改 bulk-line-1 补一条：超时后手动
+      // 草稿保留，重选同值重发——内容寻址的幂等键逐字复用，服务端幂等回放。
+      await tester.pumpAndSettle();
+      await _chooseMaterialRoute(tester, 'bulk-line-1', '自制');
+      await tester.pumpAndSettle();
+      await _chooseMaterialRoute(tester, 'bulk-line-1', '自制');
       await tester.pumpAndSettle();
 
       final writes = harness.requests
@@ -1805,11 +1806,12 @@ void main() {
                 request.method == 'PUT' && request.path.endsWith('/routes'),
           )
           .toList(growable: false);
-      expect(writes, hasLength(3));
-      final failedChunk = writes[1].data! as Map<String, dynamic>;
-      final retriedChunk = writes[2].data! as Map<String, dynamic>;
-      expect(failedChunk['version'], 4);
-      expect(failedChunk['fingerprint'], 'b' * 64);
+      // 自动确认超时回滚后还会带着同一纪元补发一次（幂等成功，无重复落库）；
+      // 本用例锁的是最后两次直改重发：内容与幂等键逐字相同。
+      expect(writes.length, greaterThanOrEqualTo(4));
+      final failedChunk =
+          writes[writes.length - 2].data! as Map<String, dynamic>;
+      final retriedChunk = writes.last.data! as Map<String, dynamic>;
       expect(failedChunk['decisions'], hasLength(1));
       expect(retriedChunk['version'], failedChunk['version']);
       expect(retriedChunk['fingerprint'], failedChunk['fingerprint']);
@@ -2472,6 +2474,7 @@ void main() {
         {
           'materialLineId': 'pending-make-1',
           'qty': 2.0,
+          'allowedOverproductionRate': 0,
           'departmentId': 'workshop-1',
           'workshopName': '装配一车间',
           'workerId': 'worker-1',
@@ -2590,6 +2593,7 @@ void main() {
         {
           'analysisLineId': 'pending-make-child-1',
           'qty': 2.0,
+          'allowedOverproductionRate': 0,
           'departmentId': 'workshop-1',
           'workshopName': '装配一车间',
           'workerId': 'worker-1',
@@ -2688,8 +2692,9 @@ void main() {
         findsOneWidget,
       );
       await _closeMaterialTableDetails(tester);
-      await _chooseMaterialRoute(tester, 'material-path-1', '采购');
 
+      // 2026-09-25 确认路线退役：进页自动确认把两条路径的建议各自落一次——
+      // 两条 BOM 路径互不串台（各自的 actionGroupKey、各自的建议）。
       final routeRequest = harness.requests.singleWhere(
         (request) => request.method == 'PUT',
       );
@@ -2697,15 +2702,22 @@ void main() {
         routeRequest.path,
         '/production/material-analyses/analysis-1/routes',
       );
-      expect((routeRequest.data! as Map<String, dynamic>)['decisions'], [
-        {'actionGroupKey': 'action-material-path-1', 'route': 'BUY'},
-      ]);
+      final decisionMap = {
+        for (final decision
+            in (routeRequest.data! as Map<String, dynamic>)['decisions']
+                as List)
+          (decision as Map)['actionGroupKey']: decision['route'],
+      };
+      expect(decisionMap, {
+        'action-material-path-1': 'BUY',
+        'action-material-path-2': 'BUY',
+      });
       expect(secondRow, findsOneWidget);
     },
   );
 
   testWidgets(
-    'unconfirmed route gates require explicit adoption and never write implicitly',
+    'auto-confirm adopts suggestions once; later edits save explicitly',
     (tester) async {
       const actions = ['CONFIRM_ROUTES', 'NOTIFY_SUPPLY'];
 
@@ -2761,45 +2773,34 @@ void main() {
         },
       );
 
-      var buyRow = await _materialTableRowVisible(tester, 'material-path-1');
+      // 2026-09-25 确认路线退役：进页把两条建议各自自动确认，一次 PUT、
+      // 每行一个 decision——此后没有再隐式写（勾选、看详情、进桶都不写）。
+      expect(routeWrites, 1);
+      final auto = harness.requests.singleWhere(
+        (request) => request.method == 'PUT',
+      );
+      final decisions = {
+        for (final decision
+            in (auto.data! as Map<String, dynamic>)['decisions'] as List)
+          (decision as Map)['actionGroupKey']: decision['route'],
+      };
+      expect(decisions, {
+        'action-material-path-1': 'BUY',
+        'action-material-path-2': 'SUBCONTRACT',
+      });
+
+      final buyRow = await _materialTableRowVisible(tester, 'material-path-1');
+      // ADR-102 勾选换义（确认路线退役修订）：确认过的行有勾选框——勾选只
+      // 服务「下单」，没有任何隐式写入。
       expect(
         find.descendant(of: buyRow, matching: find.byType(Checkbox)),
         findsOneWidget,
       );
       expect(
-        harness.requests.where((request) => request.method == 'PUT'),
-        isEmpty,
+        find.byKey(const Key('material-analysis-create-routes')),
+        findsNothing,
+        reason: '确认路线按钮已退役',
       );
-      await _chooseMaterialRoute(tester, 'material-path-1', '采购');
-      expect(
-        harness.requests.where((request) => request.method == 'PUT'),
-        hasLength(1),
-      );
-      buyRow = await _materialTableRowVisible(tester, 'material-path-1');
-      // 2026-09-22(ADR-102 勾选换义)：已确认且未改动的行**现在有勾选框**——
-      // 勾选从「选行去确认路线」扩成「选行去办事」，确认过的行正是可以下单的行。
-      // 真正要守住的不变量没变：它不计进「确认路线(N)」，也没有任何隐式写入。
-      expect(
-        find.descendant(of: buyRow, matching: find.byType(Checkbox)),
-        findsOneWidget,
-      );
-      expect(find.text('确认路线(0)'), findsOneWidget);
-      await _chooseMaterialRoute(
-        tester,
-        'material-path-1',
-        '委外',
-        confirm: false,
-      );
-      expect(find.text('确认并换桶'), findsOneWidget);
-      await tester.tap(find.text('取消').last);
-      await tester.pumpAndSettle();
-      buyRow = await _materialTableRowVisible(tester, 'material-path-1');
-      // 取消换路线之后同理：勾选框在(可下单)，但没有待提交的路线决定。
-      expect(
-        find.descendant(of: buyRow, matching: find.byType(Checkbox)),
-        findsOneWidget,
-      );
-      expect(find.text('确认路线(0)'), findsOneWidget);
       await _openBucketDetail(tester, 'buy');
       await _tapBucketRowCheckbox(tester, '共享紧固件');
       // 2026-09-22 起底部按钮文案带省略号: 这一下是进下单页, 不是提交。
@@ -2814,18 +2815,20 @@ void main() {
         tester,
         'material-path-2',
       );
+      // 自动确认的回包里 path-2 还挂着一条未保存的 SUBCONTRACT 草稿（回包未
+      // 确认它）：勾选只服务下单，未保存行不可勾。
       expect(
         find.descendant(of: subcontractRow, matching: find.byType(Checkbox)),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         harness.requests.where((request) => request.method == 'PUT'),
         hasLength(1),
       );
 
-      await _chooseMaterialRoute(tester, 'material-path-2', '委外');
-      // Refreshing the second route must keep the first BUY group executable
-      // (bucket rows come from the same server facts) instead of dropping it.
+      // 直改即存：把已确认的委外改成采购立刻写第二条 PUT；改完第一条 BUY 组
+      // 仍可执行（桶行来自同一服务端事实，不会把已确认的 BUY 丢掉）。
+      await _chooseMaterialRoute(tester, 'material-path-2', '采购');
       expect(
         harness.requests.where((request) => request.method == 'PUT'),
         hasLength(2),
@@ -2901,6 +2904,7 @@ void main() {
         level: 2,
         path: ['测试产品', '组件 A', '共享紧固件'],
         routeConfirmed: false,
+        suggestion: null,
       ),
     ];
     final harness = await _pumpPage(
@@ -2929,7 +2933,7 @@ void main() {
     });
   });
 
-  testWidgets('route change waits for its explicit confirmation', (
+  testWidgets('route change saves immediately without a confirmation dialog', (
     tester,
   ) async {
     final json = _analysisJson(const ['CONFIRM_ROUTES']);
@@ -2939,6 +2943,7 @@ void main() {
         level: 2,
         path: ['测试产品', '组件 A', '共享紧固件'],
         routeConfirmed: false,
+        suggestion: null,
       ),
     ];
     final harness = await _pumpPage(
@@ -2952,14 +2957,10 @@ void main() {
       allowedActions: const ['CONFIRM_ROUTES'],
       analysisJson: json,
     );
-    await _chooseMaterialRoute(tester, 'material-path-1', '自制', confirm: false);
+    // 2026-09-25 确认路线退役：选好即写，不再有「确认并换桶」中间确认。
+    await _chooseMaterialRoute(tester, 'material-path-1', '自制');
     await tester.pumpAndSettle();
-    expect(
-      harness.requests.where((request) => request.method == 'PUT'),
-      isEmpty,
-    );
-    await tester.tap(find.text('确认并换桶'));
-    await tester.pumpAndSettle();
+    expect(find.text('确认并换桶'), findsNothing);
     final routeRequest = harness.requests.singleWhere(
       (request) => request.method == 'PUT',
     );
@@ -2973,6 +2974,7 @@ void main() {
     (tester) async {
       // 2026-09-15 用户口径「点了在等没反馈像卡住」：确认路线是分批网络提交，
       // 期间必须有全屏加载遮罩（UtenBusyOverlay），请求结束后撤下。
+      // 行设为主档空（REVIEW）：进页不自动确认，遮罩只属于这一次直改。
       final routesGate = Completer<void>();
       final json = _analysisJson(const ['CONFIRM_ROUTES']);
       json['flatMaterials'] = [
@@ -2981,6 +2983,7 @@ void main() {
           level: 2,
           path: ['测试产品', '组件 A', '共享紧固件'],
           routeConfirmed: false,
+          suggestion: null,
         ),
       ];
       final harness = await _pumpPage(
@@ -3003,15 +3006,17 @@ void main() {
           return null;
         },
       );
-      await _chooseMaterialRoute(
-        tester,
-        'material-path-1',
-        '自制',
-        confirm: false,
+      // 2026-09-25 确认路线退役：直改即存——选好这一下就发 PUT，保存期间
+      // 全屏加载遮罩照常（自动确认与直改共用同一条遮罩通道）。PUT 被 gate
+      // 挡住，这里手写交互序列，不能 pumpAndSettle（会等 gate 永不落定）。
+      await _materialTableRowVisible(tester, 'material-path-1');
+      final dropdown = find.byKey(
+        const ValueKey('material-route-dropdown-material-path-1'),
       );
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('确认并换桶'));
+      await tester.ensureVisible(dropdown);
+      await tester.tap(dropdown);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text('自制').last);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
@@ -3590,40 +3595,47 @@ void main() {
         analysisJson: json,
       );
       final buyChild = await _materialTableRowVisible(tester, 'buy-child');
+      // 2026-09-25 确认路线退役：勾选只服务下单——REVIEW 红框行不能下单，
+      // 没有勾选框；供应方式格红框空选（不再兜底委外、不再挂黄标）。
       expect(
         find.descendant(of: buyChild, matching: find.byType(Checkbox)),
-        findsOneWidget,
+        findsNothing,
       );
-      // F8：主档来源为空（服务端 REVIEW → 前端 null）时默认委外只是缺省值，
-      // 路线格旁给黄标提醒核对。
       expect(
-        find.byKey(const ValueKey('material-route-blank-source-buy-child')),
+        find.byKey(const ValueKey('material-route-pending-buy-child')),
         findsOneWidget,
       );
+      expect(_routeDropdownValue(tester, 'buy-child'), isNull);
       final makeRow = await _materialTableRowVisible(tester, 'make-path-1');
+      // make 行已确认（自动确认），但本用例的权限没有「下达车间」——自制行
+      // 下不了单，照样没有勾选框（勾选只服务下单）；下拉仍可改。
       expect(
         find.descendant(of: makeRow, matching: find.byType(Checkbox)),
         findsNothing,
       );
       expect(
-        find.byKey(const ValueKey('material-route-blank-source-make-path-1')),
+        find.byKey(const ValueKey('material-route-pending-make-path-1')),
         findsNothing,
       );
-      // 已确认行的下拉仍可改（§3.4 手动草稿优先）。
       expect(
         find.byKey(const ValueKey('material-route-dropdown-make-path-1')),
         findsOneWidget,
       );
-      // 表头全选只勾未确认行。
+      // 表头全选只勾能下单的行：REVIEW 行不在选择集里。
       final header = find.descendant(
         of: find.byKey(const Key('material-analysis-material-table-region')),
-        matching: find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
+        matching: find.byKey(const Key('master-data-table-select-all')),
       );
       await tester.ensureVisible(header);
       await tester.pumpAndSettle();
       await tester.tap(header);
       await tester.pumpAndSettle();
-      expect(find.text('确认路线(1)'), findsOneWidget);
+      // 权限里没有 Notify/Generate：悬浮区连「下单」按钮都不渲染，REVIEW 行
+      // 也进不了选择集（可勾主体为空）。
+      expect(
+        find.byKey(const Key('material-analysis-submit-orders')),
+        findsNothing,
+      );
     },
   );
 
@@ -4230,6 +4242,7 @@ void main() {
         {
           'materialLineId': 'make-path-1',
           'qty': 8.0,
+          'allowedOverproductionRate': 0,
           'departmentId': 'workshop-1',
           'workshopName': '装配一车间',
           'workerId': 'worker-1',
@@ -4630,6 +4643,7 @@ void main() {
         {
           'analysisLineId': 'make-child-ready-1',
           'qty': 3.0,
+          'allowedOverproductionRate': 0,
           'departmentId': 'workshop-1',
           'workshopName': '装配一车间',
           'workerId': 'worker-1',
@@ -7946,9 +7960,8 @@ Future<void> _openAggregateMaterialDetails(WidgetTester tester) async {
 Future<void> _chooseMaterialRoute(
   WidgetTester tester,
   String lineId,
-  String label, {
-  bool confirm = true,
-}) async {
+  String label,
+) async {
   await _materialTableRowVisible(tester, lineId);
   final dropdown = find.byKey(ValueKey('material-route-dropdown-$lineId'));
   await tester.ensureVisible(dropdown);
@@ -7956,10 +7969,7 @@ Future<void> _chooseMaterialRoute(
   await tester.pumpAndSettle();
   await tester.tap(find.text(label).last);
   await tester.pumpAndSettle();
-  if (confirm) {
-    await tester.tap(find.text('确认并换桶'));
-    await tester.pumpAndSettle();
-  }
+  // 2026-09-25 确认路线退役：「确认并换桶」弹窗退役，选好即存。
 }
 
 Future<void> _chooseRoute(WidgetTester tester, String label) =>
@@ -8001,33 +8011,20 @@ Future<void> _selectMaterialHeaderFilter(
   await tester.pumpAndSettle();
 }
 
-Future<void> _selectAllMaterialRoutes(WidgetTester tester) async {
-  await _resetPageScrolls(tester);
-  // 「全选筛选结果」已下线：改为逐页勾选表头复选框（选择全局累计）。
-  while (true) {
-    final header = find.descendant(
-      of: find.byKey(const Key('material-analysis-material-table-region')),
-      matching: find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
-    );
-    await tester.ensureVisible(header);
-    await tester.pumpAndSettle();
-    await tester.tap(header);
-    await tester.pumpAndSettle();
-    final next = find.widgetWithText(TextButton, '下一页');
-    final canGo =
-        next.evaluate().isNotEmpty &&
-        tester.widget<TextButton>(next).onPressed != null;
-    if (!canGo) break;
-    await tester.tap(next);
-    await tester.pumpAndSettle();
-  }
+/// 「两条未保存的路线草稿」的现行入口（2026-09-25 确认路线退役）：批量确认
+/// 按钮没了，草稿由**直改**产生——保存失败（超时/拒绝）时手动路径保留脏草稿，
+/// 与原「勾选后点按钮被拒」同一份保留逻辑。
+Future<void> _createDefaultRoutes(WidgetTester tester) async {
+  await _chooseMaterialRoute(tester, 'material-path-1', '自制');
+  await _chooseMaterialRoute(tester, 'material-path-2', '自制');
 }
 
-Future<void> _createDefaultRoutes(WidgetTester tester) async {
-  await _selectAllMaterialRoutes(tester);
-  await tester.tap(find.byKey(const Key('material-analysis-create-routes')));
-  await tester.pumpAndSettle();
-}
+/// 主表某一行供应方式下拉的当前值（wire 名）。
+String? _routeDropdownValue(WidgetTester tester, String lineId) => tester
+    .widget<UtenDropdownField>(
+      find.byKey(ValueKey('material-route-dropdown-$lineId')),
+    )
+    .value;
 
 // ===== 2026-09-04 分桶改版：主页面入口条 + 全屏分桶详情页的通用操作 =====
 
@@ -8092,9 +8089,9 @@ void _expectBucketCount(WidgetTester tester, String bucket, int count) {
 }
 
 /// 分桶表格的表头三态全选框。MasterDataTableView 与 UtenEditableGrid 的
-/// 表头全选框都是 tristate，行勾选框都不是——用 tristate 唯一定位表头。
+/// 用稳定键定位表头；物料父行和汇总行同样支持三态。
 Finder _bucketHeaderCheckbox() =>
-    find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate);
+    find.byKey(const Key('master-data-table-select-all'));
 
 /// 详情页里的竖向滚动视图（横向滚动条在树序上更靠前，需按方向过滤）。
 Finder _verticalScrollable() => find.byWidgetPredicate(
@@ -8408,7 +8405,10 @@ ApiClient _api(
                 'totalPages': 1,
               },
               '/production/material-analyses/analysis-1/routes' =>
-                _analysisJson(allowedActions, routeConfirmed: true),
+                _confirmRoutesInJson(
+                  analysisJson ?? _analysisJson(allowedActions),
+                  request,
+                ),
               '/production/material-analyses/analysis-1/notify' =>
                 analysisJson ?? _analysisJson(allowedActions),
               // 2026-09-22 起下达一律进「父件 + 下层一起下单」页: 车间通道的种子
@@ -8431,6 +8431,31 @@ ApiClient _api(
     ),
   );
   return ApiClient(dio);
+}
+
+/// PUT /routes 的夹具回包：基于用例自己的分析 JSON 深拷贝后，把本次 decisions
+/// 逐条回写成已确认（对齐真实服务端：确认即落库 + 对齐建议）。2026-09-25
+/// 确认路线退役后进页自动确认也会打这条通道，回包必须保持同一棵树。
+Map<String, dynamic> _confirmRoutesInJson(
+  Map<String, dynamic> json,
+  RequestOptions request,
+) {
+  final result = jsonDecode(jsonEncode(json)) as Map<String, dynamic>;
+  for (final decision
+      in (request.data as Map<String, dynamic>)['decisions'] as List) {
+    final decisionMap = decision as Map<String, dynamic>;
+    for (final row
+        in (result['flatMaterials'] as List).cast<Map<String, dynamic>>()) {
+      final matches =
+          row['actionGroupKey'] == decisionMap['actionGroupKey'] ||
+          row['materialLineId'] == decisionMap['materialLineId'];
+      if (!matches) continue;
+      row['sourceConfirmed'] = decisionMap['route'];
+      row['sourceSuggestion'] = decisionMap['route'];
+      row['routeConfirmed'] = true;
+    }
+  }
+  return result;
 }
 
 Map<String, dynamic> _salesCandidatesJson() => {
@@ -9889,6 +9914,9 @@ Map<String, dynamic> _materialJson({
   required int level,
   required List<String> path,
   required bool routeConfirmed,
+  // 2026-09-25 确认路线退役：默认主档建议=采购（进页自动确认）；测「红框
+  // 待选 / 直改」形态的行传 null（服务端 REVIEW）。
+  String? suggestion = 'BUY',
 }) => {
   'materialLineId': id,
   'analysisLineId': 'product-line-1',
@@ -9932,7 +9960,7 @@ Map<String, dynamic> _materialJson({
       'safetyReplenishmentGapQty': 0,
     },
   ],
-  'sourceSuggestion': 'BUY',
+  'sourceSuggestion': suggestion,
   'sourceConfirmed': routeConfirmed ? 'MAKE' : null,
   'routeConfirmed': routeConfirmed,
   'lowerLevelPending': false,

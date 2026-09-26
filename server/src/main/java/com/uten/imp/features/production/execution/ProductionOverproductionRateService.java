@@ -49,6 +49,10 @@ public class ProductionOverproductionRateService {
     private final BusinessEventPublisher events;
     private final ProductionPlanMutationFootprintService planFootprints;
 
+    public Map<UUID, BigDecimal> defaults(Set<UUID> goodsIds) {
+        return com.uten.imp.features.production.plan.ProductionOverproductionAllowance.defaults(em, goodsIds);
+    }
+
     public RateContext context(UUID id) {
         Segment segment=segment(id,false);
         requireReadable(segment);

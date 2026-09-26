@@ -81,8 +81,6 @@ void main() {
       expect(find.text('待检处置'), findsOneWidget);
       expect(find.text('生产成品质检'), findsNothing);
       expect(find.text('检测记录'), findsOneWidget);
-      expect(find.textContaining('检测记录页仅供只读查询'), findsOneWidget);
-      expect(find.textContaining('撤销历史会完整保留'), findsOneWidget);
     },
   );
 

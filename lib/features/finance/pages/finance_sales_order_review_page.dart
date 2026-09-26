@@ -502,13 +502,10 @@ class _FinanceSalesOrderReviewPageState
                             _orderCard(theme, _review!),
                             if (canViewMoneySummary) ...[
                               const SizedBox(height: UtenSpacing.s12),
-                              ExpansionTile(
-                                title: const Text('资金情况'),
-                                children: [
-                                  SalesOrderMoneySummaryCard(
-                                    salesOrderId: widget.id,
-                                  ),
-                                ],
+                              // 2026-09-24 用户口径：不再外嵌折叠块——订单资金
+                              // 状态卡直接展开显示。
+                              SalesOrderMoneySummaryCard(
+                                salesOrderId: widget.id,
                               ),
                             ],
                             const SizedBox(height: UtenSpacing.s12),
@@ -899,107 +896,87 @@ class _FinanceSalesOrderReviewPageState
         summaryBar: _itemsSummary(r),
       );
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '产品明细(${r.items.length})',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+    return MasterDataTableView<SalesOrderFinanceReviewLine>(
+      primary: true,
+      bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+      columns: [
+        // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
+        // 不再拼成「编号 · 名称(颜色 · 单位)」一长串。
+        MasterColumnDef(
+          key: 'goods',
+          label: '货品名称',
+          width: 200,
+          value: (it) => it.goodsName ?? it.goodsCode ?? '—',
         ),
-        const SizedBox(height: UtenSpacing.s8),
-        Expanded(
-          child: MasterDataTableView<SalesOrderFinanceReviewLine>(
-            primary: true,
-            bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-            columns: [
-              // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
-              // 不再拼成「编号 · 名称(颜色 · 单位)」一长串。
-              MasterColumnDef(
-                key: 'goods',
-                label: '货品名称',
-                width: 200,
-                value: (it) => it.goodsName ?? it.goodsCode ?? '—',
-              ),
-              MasterColumnDef(
-                key: 'goodsCode',
-                label: '编号',
-                width: 130,
-                value: (it) => UtenGoodsAttributeCell.text(it.goodsCode),
-                cellBuilder: (_, it) => UtenGoodsAttributeCell(it.goodsCode),
-              ),
-              MasterColumnDef(
-                key: 'colorName',
-                label: '颜色',
-                width: 96,
-                value: (it) => UtenGoodsAttributeCell.text(it.colorName),
-                cellBuilder: (_, it) => UtenGoodsAttributeCell(it.colorName),
-              ),
-              MasterColumnDef(
-                key: 'unitName',
-                label: '单位',
-                width: 80,
-                value: (it) => UtenGoodsAttributeCell.text(it.unitName),
-                cellBuilder: (_, it) => UtenGoodsAttributeCell(it.unitName),
-              ),
-              MasterColumnDef(
-                key: 'clientModel',
-                label: '客型',
-                width: 110,
-                value: (it) => UtenGoodsAttributeCell.text(it.clientModel),
-                cellBuilder: (_, it) => UtenGoodsAttributeCell(it.clientModel),
-              ),
-              MasterColumnDef(
-                key: 'qty',
-                label: '数量',
-                width: 90,
-                type: 'number',
-                value: (it) => _trimNum(it.qty),
-              ),
-              // 实际重量列已下线（2026-09-04：单位已表达重量，销售订单编辑不再录入）。
-              MasterColumnDef(
-                key: 'price',
-                label: '单价',
-                width: 110,
-                type: 'money',
-                value: (it) => _trimNum(it.price),
-              ),
-              MasterColumnDef(
-                key: 'discount',
-                label: '折扣',
-                width: 80,
-                type: 'number',
-                value: (it) => _trimNum(it.discount),
-              ),
-              MasterColumnDef(
-                key: 'amount',
-                label: '金额(${_currencyLabel(r)})',
-                width: 120,
-                type: 'money',
-                value: (it) => _trimNum(it.amountOriginal),
-              ),
-              MasterColumnDef(
-                key: 'remark',
-                label: '备注',
-                width: 160,
-                value: (it) =>
-                    (it.remark?.isNotEmpty ?? false) ? it.remark : null,
-              ),
-            ],
-            items: r.items,
-            facets: const {},
-            nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
-            emptyMessage: '(无明细)',
-            // 2026-09-15 用户口径：合计条属于表格那一块——渲染进表体滚动内容
-            // 末尾（最后一行数据之下），不钉在表体外/按钮上方。
-            summaryBar: _itemsSummary(r),
-            summaryBarInline: true,
-          ),
+        MasterColumnDef(
+          key: 'goodsCode',
+          label: '编号',
+          width: 130,
+          value: (it) => UtenGoodsAttributeCell.text(it.goodsCode),
+          cellBuilder: (_, it) => UtenGoodsAttributeCell(it.goodsCode),
+        ),
+        MasterColumnDef(
+          key: 'colorName',
+          label: '颜色',
+          width: 96,
+          value: (it) => UtenGoodsAttributeCell.text(it.colorName),
+          cellBuilder: (_, it) => UtenGoodsAttributeCell(it.colorName),
+        ),
+        // 2026-09-25 用户口径：明细列与销售订货编辑页对齐——数量后紧跟单位，
+        // 客型列退役（开单不录入，审单看是空列）。
+        MasterColumnDef(
+          key: 'qty',
+          label: '数量',
+          width: 90,
+          type: 'number',
+          value: (it) => _trimNum(it.qty),
+        ),
+        MasterColumnDef(
+          key: 'unitName',
+          label: '单位',
+          width: 80,
+          value: (it) => UtenGoodsAttributeCell.text(it.unitName),
+          cellBuilder: (_, it) => UtenGoodsAttributeCell(it.unitName),
+        ),
+        // 实际重量列已下线（2026-09-04：单位已表达重量，销售订单编辑不再录入）。
+        MasterColumnDef(
+          key: 'price',
+          label: '单价',
+          width: 110,
+          type: 'money',
+          value: (it) => _trimNum(it.price),
+        ),
+        MasterColumnDef(
+          key: 'discount',
+          label: '折扣',
+          width: 80,
+          type: 'number',
+          value: (it) => _trimNum(it.discount),
+        ),
+        MasterColumnDef(
+          key: 'amount',
+          label: '金额(${_currencyLabel(r)})',
+          width: 120,
+          type: 'money',
+          value: (it) => _trimNum(it.amountOriginal),
+        ),
+        MasterColumnDef(
+          key: 'remark',
+          label: '备注',
+          width: 160,
+          value: (it) => (it.remark?.isNotEmpty ?? false) ? it.remark : null,
         ),
       ],
+      items: r.items,
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      emptyMessage: '(无明细)',
+      // 2026-09-15 用户口径：合计条属于表格那一块——渲染进表体滚动内容
+      // 末尾（最后一行数据之下），不钉在表体外/按钮上方。
+      summaryBar: _itemsSummary(r),
+      summaryBarInline: true,
     );
   }
 

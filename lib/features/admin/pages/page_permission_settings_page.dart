@@ -424,7 +424,6 @@ class _PagePermissionSettingsPageState
       child: Scaffold(
         appBar: UtenAppBar(
           title: '权限设置 · ${scope.title}',
-          subtitle: '仅管理当前业务页面',
           showBackButton: !compactDetail,
           leading: compactDetail
               ? IconButton(

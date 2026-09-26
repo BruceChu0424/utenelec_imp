@@ -32,18 +32,26 @@ final class MaterialAnalysisSupplyCoverageReader {
     Coverage read(UUID analysisId, List<Group> groups) {
         if (groups.isEmpty()) return new Coverage(Map.of(), Map.of());
         Map<UUID, Set<Key>> legacyByMaterial = new HashMap<>();
+        boolean hasAggregate=false;
         List<UUID> materialIds = groups.stream().flatMap(group -> group.materialIds().stream()).distinct().sorted().toList();
         if (!materialIds.isEmpty()) {
             for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                    SELECT DISTINCT allocation.analysis_material_id, action.action_group_key, action.route
+                    SELECT DISTINCT allocation.analysis_material_id, action.action_group_key, action.route, aggregate_batch.id
                     FROM preplan_supply_action_allocations allocation
                     JOIN preplan_supply_actions action ON action.id = allocation.action_id
+                    LEFT JOIN preplan_aggregate_batches aggregate_batch ON aggregate_batch.action_id=action.id
                     WHERE allocation.analysis_id = :analysisId
                       AND allocation.analysis_material_id IN (SELECT unnest(CAST(string_to_array(:materialIds, ',') AS uuid[])))
                       AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
+                    UNION ALL
+                    SELECT alias.aggregate_material_id,NULL,NULL,alias.batch_id
+                    FROM preplan_aggregate_material_aliases alias JOIN preplan_aggregate_batches batch ON batch.id=alias.batch_id
+                    WHERE batch.analysis_id=:analysisId
+                      AND alias.aggregate_material_id IN(SELECT unnest(CAST(string_to_array(:materialIds,',') AS uuid[])))
                     """).setParameter("analysisId", analysisId).setParameter("materialIds", materialIds.stream()
                             .map(UUID::toString).collect(java.util.stream.Collectors.joining(","))))) {
-                legacyByMaterial.computeIfAbsent((UUID) row[0], ignored -> new LinkedHashSet<>())
+                hasAggregate|=row[3]!=null;
+                if(row[1]!=null && row[2]!=null)legacyByMaterial.computeIfAbsent((UUID) row[0], ignored -> new LinkedHashSet<>())
                         .add(new Key((String) row[1], (String) row[2]));
             }
         }
@@ -87,6 +95,36 @@ final class MaterialAnalysisSupplyCoverageReader {
         keysByGroup.forEach((key, aliases) -> active.put(key, aliases.stream()
                 .map(alias -> activeByKey.getOrDefault(alias, BigDecimal.ZERO))
                 .reduce(BigDecimal.ZERO, BigDecimal::add)));
+        // A real aggregate action may be an alias of several original nodes.
+        // Attribute its promise by exact allocation; never copy its whole
+        // 3000 to each of three 1000 parents. Imported aliases are coverage,
+        // not another order, and are read once for this command's node set.
+        Map<UUID,BigDecimal> aggregateByMaterial=new HashMap<>();
+        if(hasAggregate && !materialIds.isEmpty()) {
+            for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    WITH inherited AS MATERIALIZED(SELECT * FROM fn_preplan_aggregate_alias_coverage(:analysisId))
+                    SELECT material.id,
+                      COALESCE((SELECT SUM(fn_preplan_aggregate_allocation_pending_qty(allocation.id))
+                        FROM preplan_supply_action_allocations allocation JOIN preplan_aggregate_batches batch ON batch.action_id=allocation.action_id
+                        WHERE allocation.analysis_material_id=material.id),0)
+                      +COALESCE(inherited.inherited_pending_qty,0)
+                    FROM production_material_analysis_materials material
+                    LEFT JOIN inherited ON inherited.analysis_material_id=material.id
+                    WHERE material.analysis_id=:analysisId
+                      AND material.id IN(SELECT unnest(CAST(string_to_array(:materialIds,',') AS uuid[])))
+                      AND (EXISTS(SELECT 1 FROM preplan_supply_action_allocations allocation JOIN preplan_aggregate_batches batch ON batch.action_id=allocation.action_id
+                            WHERE allocation.analysis_material_id=material.id)
+                        OR EXISTS(SELECT 1 FROM preplan_aggregate_material_aliases alias WHERE alias.aggregate_material_id=material.id))
+                    """).setParameter("analysisId",analysisId).setParameter("materialIds",materialIds.stream()
+                            .map(UUID::toString).collect(java.util.stream.Collectors.joining(","))))) {
+                aggregateByMaterial.put((UUID)row[0],(BigDecimal)row[1]);
+            }
+        }
+        for(Group group:groups) {
+            BigDecimal exact=group.materialIds().stream().distinct().map(id->aggregateByMaterial.getOrDefault(id,BigDecimal.ZERO))
+                    .reduce(BigDecimal.ZERO,BigDecimal::add);
+            active.merge(new Key(group.key(),group.route()),exact,BigDecimal::add);
+        }
         // IQC replacement historically follows the exact current group, whereas
         // still-active legacy actions also follow their allocation aliases.
         return new Coverage(Map.copyOf(active), Map.copyOf(replacementByKey));
@@ -94,6 +132,10 @@ final class MaterialAnalysisSupplyCoverageReader {
 
     private void readQuantities(String sql, UUID analysisId, Set<String> groupKeys,
             String route, String receiptType, Map<Key, BigDecimal> into) {
+        if(receiptType==null) {
+            sql=sql.replace("WHERE action.analysis_id = :analysisId",
+                    "WHERE NOT EXISTS (SELECT 1 FROM preplan_aggregate_batches aggregate_batch WHERE aggregate_batch.action_id=action.id) AND action.analysis_id = :analysisId");
+        }
         Query query = em.createNativeQuery(sql).setParameter("analysisId", analysisId)
                 .setParameter("groupKeys", groupKeys);
         if (sql.contains(":route")) query.setParameter("route", route);

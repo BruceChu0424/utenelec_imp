@@ -80,9 +80,9 @@ class SalesOrderRevisionTable extends StatelessWidget {
   Widget build(BuildContext context) {
     final fields = <(String, String, double)>[
       ('颜色', '颜色', 90),
-      ('单位', '单位', 80),
-      ('客户型号', '客型', 110),
+      // 2026-09-25 用户口径：与编辑页列序对齐——数量后紧跟单位；客户型号退役。
       ('数量', '数量', 100),
+      ('单位', '单位', 80),
       ('单价', '单价', 100),
       ('折扣', '折扣', 80),
       (
@@ -96,8 +96,8 @@ class SalesOrderRevisionTable extends StatelessWidget {
       ('客户编号', '客户编号', 120),
       ('换算率', '换算率', 100),
       ('重量', '重量', 100),
-      ('加工费', '加工费', 100),
-      ('周长', '周长', 100),
+      ('加工费', '机加价', 100),
+      ('周长', '围数', 100),
       ('来源单号', '来源单号', 140),
       ('备注', '备注', 180),
     ];
@@ -105,7 +105,7 @@ class SalesOrderRevisionTable extends StatelessWidget {
     // Keep ordinary identity/commercial columns; include additional fields when
     // either version has content, so an emptied value cannot disappear.
     bool show(String key) =>
-        const {'颜色', '单位', '客户型号', '数量', '单价', '折扣', '原币金额'}.contains(key) ||
+        const {'颜色', '单位', '数量', '单价', '折扣', '原币金额'}.contains(key) ||
         allRows.any((row) {
           final value = row.values[key];
           return value != null &&

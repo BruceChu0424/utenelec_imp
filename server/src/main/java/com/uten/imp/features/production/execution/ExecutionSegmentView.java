@@ -63,5 +63,7 @@ public record ExecutionSegmentView(
         /** Open, started task accepts actual output above plan; action permissions still apply. */
         boolean allowActualOverproduction,
         BigDecimal plannedInboundQty,
-        BigDecimal actualSurplusInboundQty) {
+        BigDecimal actualSurplusInboundQty,
+        BigDecimal allowedOverproductionRate,
+        boolean overproductionPolicyApplies) {
 }

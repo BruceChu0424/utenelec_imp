@@ -1,19 +1,19 @@
 // 供应方式（供料路线）的单一事实源 = 货品主档 `goods.source_type`（2026-09-16，
 // ADR-070 §2.3 修订 / ADR-081 §5）。
 //
-// 本文件取代原 `material_route_memory_test.dart`：那套「按历史分析推导上次确认
-// 路线」的前端记忆（`GET /last-routes` + 本地缓存 + 会话作用域隔离 + 迟到响应
-// 代际防护）整套退役——用户实测「我在物料分析准备页把供应方式改了，下次进来还是
-// 老的」，根因就是确认只写分析行、货品主档从没更新，而新分析的建议路线又是从主档
-// 算出来的。现在确认路线同事务回写主档，建议路线随分析快照下发。
+// 2026-09-25 确认路线退役（ADR-102 修订）：进页对「主档能定路线」的行**自动确认**，
+// 缺路线（主档空且无子层 → 服务端 REVIEW）的行红框空选、不能下单；下拉直改即存，
+// 「确认并换桶」弹窗与右下「确认路线(N)」按钮退役。
 //
 // 这里守住的契约：
 //  1. 进页只拉分析本身——**不再有第二趟记忆请求**（端点已删，发了就是 404）；
-//  2. 显示的路线优先级 = 本地草稿 > 已确认 > 主档建议 > 兜底委外；
-//  3. 主档来源为空（服务端 REVIEW → 前端 null）的行显示的委外只是缺省值，
-//     必须挂黄标提醒核对，不能看着像「已决定」；
-//  4. 修改供应方式经明确确认立即保存，取消不变；勾选批量确认仍只保存所选行；
-//  5. 提交的 decisions 逐字等于表里显示的那几行。
+//  2. 进页自动确认恰好发一次 PUT /routes：只含「未确认且建议非空」的行
+//     （已确认、REVIEW 不进），按显示值提交、一行都不多发；
+//  3. REVIEW 行显示空下拉 + 红框（没有兜底委外、没有黄标——缺省值不再
+//     假装已决定），选好即自动保存；
+//  4. 下拉直改（含把确认过的路线改掉）立即保存，不弹确认框；保存同时
+//     回写货品主档（服务端同事务），重进仍显示最新路线；
+//  5. 没有 route 权限的人进页零写入，行保持建议值 + 红框只读。
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -31,75 +31,88 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 void main() {
-  testWidgets('建议路线直接来自主档快照，进页不再发第二趟记忆请求', (tester) async {
+  testWidgets('进页自动确认：只提交建议非空的未确认行，恰好一次', (tester) async {
     final harness = await _pump(tester);
 
-    // m1/m3 主档来源=自制、m2=采购、m4 已确认委外（已确认压过建议）、
-    // m5 主档来源为空（服务端 REVIEW → 前端 null）只能兜底委外。
+    // m1/m3 主档来源=自制、m2=采购：进页即自动确认（服务端夹具回写确认）。
     expect(_value(tester, 'm1'), MaterialSupplyRoute.make);
     expect(_value(tester, 'm2'), MaterialSupplyRoute.buy);
     expect(_value(tester, 'm3'), MaterialSupplyRoute.make);
+    // m4 已确认委外（确认压过建议），不进自动确认批次。
     expect(_value(tester, 'm4'), MaterialSupplyRoute.subcontract);
-    expect(_value(tester, 'm5'), MaterialSupplyRoute.subcontract);
+    // m5 主档来源为空（REVIEW → null）：红框空选，不自动确认。
+    expect(_value(tester, 'm5'), isNull);
+    expect(_pendingFrame(tester, 'm5'), isTrue);
+    expect(_pendingFrame(tester, 'm1'), isFalse);
 
+    // 自动确认整批一次 PUT：只含 m1/m2/m3（m4 已确认、m5 REVIEW 不进）。
+    expect(harness.writes, hasLength(1));
+    expect((harness.writes.single.data as Map<String, dynamic>)['decisions'], [
+      {'actionGroupKey': 'a-m1', 'route': 'MAKE'},
+      {'actionGroupKey': 'a-m2', 'route': 'BUY'},
+      {'actionGroupKey': 'a-m3', 'route': 'MAKE'},
+    ]);
+    // 确认路线按钮已退役：悬浮区不再渲染。
+    expect(
+      find.byKey(const Key('material-analysis-create-routes')),
+      findsNothing,
+    );
     // /last-routes 已退役：一次都不能发（端点删了，发了就是 404）。
     expect(
       harness.requests.where((r) => r.path.contains('last-routes')),
       isEmpty,
     );
-    expect(harness.writes, isEmpty, reason: '打开页面不写任何东西');
   });
 
-  testWidgets('主档来源为空的行：兜底委外要挂黄标，不能看着像已决定', (tester) async {
-    await _pump(tester);
-    // m5 主档没给来源，显示的委外只是硬回退；m1 有主档建议，不挂黄标。
-    expect(_hintIconNear(tester, 'm5'), isTrue);
-    expect(_hintIconNear(tester, 'm1'), isFalse);
-  });
-
-  testWidgets('修改供应方式确认后立即保存，重进仍显示最新路线', (tester) async {
+  testWidgets('自动确认每纪元只发一次，保存回包不引发连环写', (tester) async {
     final harness = await _pump(tester);
-    await _choose(tester, 'm1', '委外');
-    expect(harness.writes, isEmpty, reason: '尚未确认不落盘');
-    await tester.tap(find.text('确认并换桶'));
+    expect(harness.writes, hasLength(1));
+    // 保存回包换新快照（version/fingerprint 已进位）后再 settle：纪元守卫
+    // 挡住重复提交，不再有第二次 PUT。
     await tester.pumpAndSettle();
     expect(harness.writes, hasLength(1));
-    expect((harness.writes.single.data as Map<String, dynamic>)['decisions'], [
+  });
+
+  testWidgets('下拉直改即存：不弹确认框，立即保存并回写', (tester) async {
+    final harness = await _pump(tester);
+    final writesBefore = harness.writes.length;
+    await _choose(tester, 'm1', '委外');
+    await tester.pumpAndSettle();
+    // 「确认并换桶」弹窗退役：选好即写，没有中间确认。
+    expect(find.text('确认并换桶'), findsNothing);
+    expect(harness.writes, hasLength(writesBefore + 1));
+    final decisions =
+        (harness.writes.last.data as Map<String, dynamic>)['decisions'];
+    expect(decisions, [
       {'actionGroupKey': 'a-m1', 'route': 'SUBCONTRACT'},
     ]);
     expect(_value(tester, 'm1'), MaterialSupplyRoute.subcontract);
-    expect(_value(tester, 'm3'), MaterialSupplyRoute.make);
-    await tester.pumpWidget(const SizedBox.shrink());
-    await _pump(tester, existing: harness);
-    expect(_value(tester, 'm1'), MaterialSupplyRoute.subcontract);
-    expect(harness.writes, hasLength(1), reason: '重进只读已保存路线');
+    expect(_pendingFrame(tester, 'm1'), isFalse);
   });
 
-  testWidgets('取消供应方式修改不改变当前行，也不影响随后批量确认', (tester) async {
+  testWidgets('REVIEW 红框行：选好供应方式即自动保存', (tester) async {
     final harness = await _pump(tester);
-    await _choose(tester, 'm1', '委外');
-    await tester.tap(find.text('取消').last);
+    expect(_value(tester, 'm5'), isNull, reason: '主档来源为空显示空选，不再兜底委外');
+    await _choose(tester, 'm5', '采购');
     await tester.pumpAndSettle();
-    expect(_value(tester, 'm1'), MaterialSupplyRoute.make);
-    expect(harness.writes, isEmpty);
-    await _select(tester, 'm2');
-    await tester.tap(find.byKey(const Key('material-analysis-create-routes')));
-    await tester.pumpAndSettle();
-    expect((harness.writes.single.data as Map<String, dynamic>)['decisions'], [
-      {'actionGroupKey': 'a-m2', 'route': 'BUY'},
+    expect(harness.writes, hasLength(2));
+    final decisions =
+        (harness.writes.last.data as Map<String, dynamic>)['decisions'];
+    expect(decisions, [
+      {'actionGroupKey': 'a-m5', 'route': 'BUY'},
     ]);
+    expect(_value(tester, 'm5'), MaterialSupplyRoute.buy);
+    expect(_pendingFrame(tester, 'm5'), isFalse);
   });
 
-  testWidgets('只勾选不改下拉：按当前显示的路线提交，一行都不多发', (tester) async {
-    final harness = await _pump(tester);
-    await _select(tester, 'm1');
-    await tester.pumpAndSettle();
-    expect(harness.writes, isEmpty);
-    await tester.tap(find.byKey(const Key('material-analysis-create-routes')));
-    await tester.pumpAndSettle();
-    expect((harness.writes.single.data as Map<String, dynamic>)['decisions'], [
-      {'actionGroupKey': 'a-m1', 'route': 'MAKE'},
-    ]);
+  testWidgets('没有 route 权限：进页零写入，建议值只读展示', (tester) async {
+    final harness = await _pump(tester, routePermission: false);
+    expect(harness.writes, isEmpty, reason: '无权限不自动确认、不写任何东西');
+    // 无权限时路线格是只读文本（没有下拉可改），建议路线照常显示，
+    // 行仍是「路线待确认」（进度徽章红字指路）。
+    expect(_pendingFrame(tester, 'm1'), isFalse, reason: '只读格没有红框框选');
+    expect(_routeTextNear(tester, 'm1'), contains('自制'));
+    expect(_routeTextNear(tester, 'm5'), contains('—'));
   });
 }
 
@@ -111,11 +124,19 @@ MaterialSupplyRoute? _value(WidgetTester tester, String id) {
   return value == null ? null : MaterialSupplyRoute.values.byName(value);
 }
 
-/// 路线格旁边有没有「主档来源为空，请核对」的黄标提示图标。
-bool _hintIconNear(WidgetTester tester, String id) => find
-    .byKey(ValueKey('material-route-blank-source-$id'))
-    .evaluate()
-    .isNotEmpty;
+/// 路线格有没有被红框框住（未确认供应方式）。
+bool _pendingFrame(WidgetTester tester, String id) =>
+    find.byKey(ValueKey('material-route-pending-$id')).evaluate().isNotEmpty;
+
+/// 只读路线格里显示的文本（无权限时路线格没有下拉）。
+String _routeTextNear(WidgetTester tester, String id) {
+  final row = find.byKey(ValueKey('material-table-row-$id'));
+  final texts = tester
+      .widgetList<Text>(find.descendant(of: row, matching: find.byType(Text)))
+      .map((text) => text.data ?? '')
+      .toList();
+  return texts.join(' ');
+}
 
 Future<void> _choose(WidgetTester tester, String id, String label) async {
   await tester.ensureVisible(_dropdown(id));
@@ -125,21 +146,11 @@ Future<void> _choose(WidgetTester tester, String id, String label) async {
   await tester.pump(const Duration(milliseconds: 300));
 }
 
-Future<void> _select(WidgetTester tester, String id) async {
-  // 表格横滚后前导勾选格会多渲染一份钉在视口左缘的副本
-  // (UtenFrozenLeadingColumn)，两份共享同一 onChanged，取第一份即可。
-  final checkbox = find
-      .descendant(
-        of: find.byKey(ValueKey('material-table-row-$id')),
-        matching: find.byType(Checkbox),
-      )
-      .first;
-  await tester.ensureVisible(checkbox);
-  await tester.tap(checkbox);
-  await tester.pumpAndSettle();
-}
-
-Future<_Harness> _pump(WidgetTester tester, {_Harness? existing}) async {
+Future<_Harness> _pump(
+  WidgetTester tester, {
+  _Harness? existing,
+  bool routePermission = true,
+}) async {
   tester.view.physicalSize = const Size(1600, 1000);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -201,9 +212,9 @@ Future<_Harness> _pump(WidgetTester tester, {_Harness? existing}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        currentPermissionsProvider.overrideWithValue(const {
+        currentPermissionsProvider.overrideWithValue({
           Perm.productionMaterialAnalysisView,
-          Perm.productionMaterialAnalysisRoute,
+          if (routePermission) Perm.productionMaterialAnalysisRoute,
         }),
         productionPlanRepositoryProvider.overrideWithValue(
           ProductionPlanRepository(api),
@@ -274,7 +285,7 @@ Map<String, dynamic> _analysis() => {
     _material('m4', 'BUY')
       ..['sourceConfirmed'] = 'SUBCONTRACT'
       ..['routeConfirmed'] = true,
-    // 主档来源为空：服务端给 REVIEW，前端解析成 null，只能兜底委外并挂黄标。
+    // 主档来源为空：服务端给 REVIEW，前端解析成 null → 红框空选。
     _material('m5', null)..['goodsId'] = 'new-goods',
   ],
 };

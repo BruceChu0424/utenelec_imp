@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/paged_result.dart';
@@ -24,7 +25,7 @@ class WarehouseDocumentHistoryView extends ConsumerStatefulWidget {
     this.keyword = '',
     this.refreshTick = 0,
     this.embedded = false,
-    this.showBanner = true,
+    this.externalHeader,
     this.dateFrom,
     this.dateTo,
   });
@@ -40,8 +41,9 @@ class WarehouseDocumentHistoryView extends ConsumerStatefulWidget {
   /// true = 嵌在任务中心分段内（状态分段 + 表格，无搜索框）。
   final bool embedded;
 
-  /// 是否显示「仓库实物视图」提示条。
-  final bool showBanner;
+  /// 宿主（任务中心大类行/小类行/复合分段行）：挂进折叠头随页滚走
+  /// （2026-09-24 用户口径「表格完全置顶」）。
+  final Widget? externalHeader;
 
   /// 业务日期范围（yyyy-MM-dd；「历史单据」时间门控模式下由
   /// WarehouseHistoryGate 下发，变化即重拉）。
@@ -153,46 +155,50 @@ class _WarehouseDocumentHistoryViewState
           total: 0,
           totalPages: 1,
         );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (widget.showBanner) ...[
-          _PhysicalViewBanner(type: widget.type),
+    // 2026-09-24 用户口径「表格完全置顶」：状态行/错误行进折叠头随页滚走，
+    // body 只剩表格（primary 拾取联动控制器）。
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.externalHeader != null) ...[
+            widget.externalHeader!,
+            const SizedBox(height: UtenSpacing.s12),
+          ],
+          _toolbar(result),
+          if (_error != null && result.items.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          ],
           const SizedBox(height: UtenSpacing.s12),
         ],
-        _toolbar(result),
-        if (_error != null && result.items.isNotEmpty) ...[
-          const SizedBox(height: UtenSpacing.s8),
-          Semantics(
-            liveRegion: true,
-            child: Text(
-              _error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          ),
-        ],
-        const SizedBox(height: UtenSpacing.s12),
-        Expanded(
-          child: MasterDataTableView<WarehouseDocumentHistorySummary>(
-            key: Key('warehouse-history-table-${widget.type.segment}'),
-            columns: _columns,
-            items: result.items,
-            facets: const {},
-            nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
-            onRowTap: _openDetail,
-            isLoading: _loading && _result == null,
-            loadingMore: _loading && _result != null,
-            error: result.items.isEmpty ? _error : null,
-            onRetry: () => _load(result.page),
-            emptyMessage: _emptyMessage,
-            currentPage: result.page,
-            totalPages: result.totalPages,
-            onPageChange: _load,
-          ),
-        ),
-      ],
+      ),
+      body: MasterDataTableView<WarehouseDocumentHistorySummary>(
+        // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+        primary: true,
+        key: Key('warehouse-history-table-${widget.type.segment}'),
+        columns: _columns,
+        items: result.items,
+        facets: const {},
+        nullCounts: const {},
+        filters: const {},
+        onFilterChanged: (_, _) {},
+        onRowTap: _openDetail,
+        isLoading: _loading && _result == null,
+        loadingMore: _loading && _result != null,
+        error: result.items.isEmpty ? _error : null,
+        onRetry: () => _load(result.page),
+        emptyMessage: _emptyMessage,
+        currentPage: result.page,
+        totalPages: result.totalPages,
+        onPageChange: _load,
+      ),
     );
   }
 
@@ -291,57 +297,4 @@ class _WarehouseDocumentHistoryViewState
       value: (item) => item.approverName ?? '—',
     ),
   ];
-}
-
-class _PhysicalViewBanner extends StatelessWidget {
-  const _PhysicalViewBanner({required this.type});
-
-  final WarehouseDocumentHistoryType type;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      container: true,
-      label: '仓库实物视图。仅显示数量、重量、当前建议库位、质量、来源与经办人员。',
-      child: Container(
-        key: Key('warehouse-history-physical-banner-${type.segment}'),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(type.icon, color: theme.colorScheme.primary),
-            const SizedBox(width: UtenSpacing.s12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '仓库实物视图',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    '${type.description}。库位为当前货品主档建议，不是历史库位快照。'
-                    '本页不包含商业与财务信息，也不提供跨部门业务操作。',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      height: 1.45,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

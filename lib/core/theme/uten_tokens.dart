@@ -114,10 +114,11 @@ abstract final class UtenSpacing {
 /// 表格工具条控件统一高度。
 ///
 /// 表头上方工具条（表头设置/全屏/选择摘要条/筛选 chip 等）所有控件统一到
-/// 48——与物料分析「全部 BOM」筛选 chip 的最小高度一致；UtenButton 通过
-/// `height:` 覆盖参与对齐（全站默认 44/52 不动）。
+/// 44——2026-09-25 用户口径「按钮高度统一成 BOM学习记录那个高度，稍微矮点，
+/// 整个平台 UI 统一」；UtenButton 通过 `height:` 覆盖参与对齐
+/// （右下悬浮动作组仍是 52 大按钮，不在此口径内）。
 abstract final class UtenTableToolbar {
-  static const double controlHeight = 48;
+  static const double controlHeight = 44;
 }
 
 /// Uten 阴影 token（双层柔和阴影）

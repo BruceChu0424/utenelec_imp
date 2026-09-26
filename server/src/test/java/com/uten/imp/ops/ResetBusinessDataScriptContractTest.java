@@ -77,7 +77,19 @@ class ResetBusinessDataScriptContractTest {
         // V693 +1 仓库负责人(ADR-115, 仓库附属设置随主档保留): 402 表, PRESERVE 100。
         // V698 review history, V700 actual-output proof and V702 material increment: nine CLEAR tables.
         // V703 +1 车间催计划记录(ADR-117, 协调提醒随业务流程数据清空): 412 表。
-        assertThat(policy).hasSize(412);
+        // V710/V711: four business tables and two preserved learning aggregates.
+        // V712/V715: shared batches, events, exact aliases and direct-transfer slices.
+        assertThat(policy).hasSize(422);
+        assertThat(policy).containsEntry("preplan_aggregate_batches", "CLEAR")
+                .containsEntry("preplan_aggregate_batch_events", "CLEAR")
+                .containsEntry("preplan_aggregate_material_aliases", "CLEAR")
+                .containsEntry("preplan_aggregate_direct_transfer_slices", "CLEAR");
+        assertThat(policy).containsEntry("production_material_discovery_requests", "CLEAR")
+                .containsEntry("production_material_discovery_lines", "CLEAR")
+                .containsEntry("production_bom_learning_samples", "CLEAR")
+                .containsEntry("production_bom_learning_refresh_queue", "CLEAR")
+                .containsEntry("goods_bom_learning_profiles", "PRESERVE")
+                .containsEntry("goods_bom_learning_material_totals", "PRESERVE");
         assertThat(policy).containsEntry("production_planning_urges", "CLEAR");
         assertThat(policy).containsEntry("finance_report_line_bindings", "PRESERVE");
         assertThat(policy).containsEntry("warehouse_keepers", "PRESERVE");
@@ -91,7 +103,7 @@ class ResetBusinessDataScriptContractTest {
         assertThat(policy).containsEntry("legacy_procurement_receipt_import_sources", "PRESERVE");
         assertThat(policy).containsEntry("expense_claim_settings", "PRESERVE");
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(312);
+                .isEqualTo(320);
         assertThat(policy).containsEntry("production_material_return_requests", "CLEAR");
         assertThat(policy).containsEntry("production_material_return_request_items", "CLEAR");
         assertThat(policy).containsEntry("production_material_return_request_cancellations", "CLEAR");
@@ -121,7 +133,7 @@ class ResetBusinessDataScriptContractTest {
         // V677(ADR-109)：删除角色体系四张 PRESERVE 表，102→98。
         // V693 仓库负责人 +1：99→100。
         assertThat(policy.values().stream().filter("PRESERVE"::equals).count())
-                .isEqualTo(100);
+                .isEqualTo(102);
 
         // V463：订货行多来源锚定的两张分配表随业务数据清空。
         assertThat(policy).containsEntry(
@@ -427,9 +439,12 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(690, 619)")
                 .contains("(691, 620)")
                 .contains("(692, 621)")
-                .contains("(693, 622)").contains("(694, 623)").contains("(695, 624)").contains("(696, 625)").contains("(697, 626)").contains("(698, 627)").contains("(699, 628)").contains("(700, 629)").contains("(701, 630), (702, 631)").contains("(703, 632)")
-                // 迁移头 V702 / 631 张 (V648至V669 跳号)。
-                .contains("V507/469、V508/470及V511至V703完整目录")
+                .contains("(693, 622)").contains("(694, 623)").contains("(695, 624)").contains("(696, 625)").contains("(697, 626)").contains("(698, 627)").contains("(699, 628)").contains("(700, 629)").contains("(701, 630), (702, 631), (703, 632), (704, 633), (705, 634), (706, 635), (707, 636),")
+                .contains("(708, 637),")
+                .contains("(709, 638), (710, 639), (711, 640), (712, 641), (713, 642), (714, 643), (715, 644),")
+                .contains("(716, 645)")
+                // 迁移头 V720 / 649 条 (V648至V669 跳号)。
+                .contains("V507/469、V508/470及V511至V720完整目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

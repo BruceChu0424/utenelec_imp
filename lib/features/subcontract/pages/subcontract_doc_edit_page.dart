@@ -231,12 +231,18 @@ class _SubcontractDocEditPageState
         _supplierId = d.supplierId;
         _warehouseId = d.warehouseId;
         _currencyId = d.currencyId;
-        _rate.text = d.exchangeRate?.toString() ?? '1';
-        if (d.taxRate != null) _taxRate.text = d.taxRate.toString();
+        _rate.text = financeExactTrimmed(d.exchangeRate?.toString()) ?? '1';
+        if (d.taxRate != null) {
+          _taxRate.text = financeExactTrimmed(d.taxRate.toString()) ?? '';
+        }
         if (d.bStyle != null) _bStyle.text = d.bStyle.toString();
-        if (d.totalWeight != null) _totalWeight.text = d.totalWeight.toString();
+        if (d.totalWeight != null) {
+          _totalWeight.text =
+              financeExactTrimmed(d.totalWeight.toString()) ?? '';
+        }
         if (d.deductAmount != null) {
-          _deductAmount.text = d.deductAmount.toString();
+          _deductAmount.text =
+              financeExactTrimmed(d.deductAmount.toString()) ?? '';
         }
         _settlementMethodId = d.settlementMethodId;
         _purchaserId = d.purchaserId;
@@ -262,9 +268,9 @@ class _SubcontractDocEditPageState
                         .read(mn.masterNameServiceProvider)
                         .goods(it.goodsId),
                   )
-            ..qty.text = it.qty?.toString() ?? ''
-            ..price.text = it.price?.toString() ?? ''
-            ..weight.text = it.weight?.toString() ?? ''
+            ..qty.text = financeExactTrimmed(it.qty?.toString()) ?? ''
+            ..price.text = financeExactTrimmed(it.price?.toString()) ?? ''
+            ..weight.text = financeExactTrimmed(it.weight?.toString()) ?? ''
             ..upstreamItemId = upstreamItemId
             ..planItemId = it.planItemId
             ..colorId = it.colorId
@@ -272,12 +278,15 @@ class _SubcontractDocEditPageState
             ..unitRate = it.unitRate
             ..sourceDocNo = it.sourceDocNo;
           row.remark.text = it.remark ?? '';
-          row.endingQty.text = it.endingQty?.toString() ?? '';
-          row.standardQty.text = it.standardQty?.toString() ?? '';
-          row.wasteRate.text = it.wasteRate?.toString() ?? '';
+          row.endingQty.text =
+              financeExactTrimmed(it.endingQty?.toString()) ?? '';
+          row.standardQty.text =
+              financeExactTrimmed(it.standardQty?.toString()) ?? '';
+          row.wasteRate.text =
+              financeExactTrimmed(it.wasteRate?.toString()) ?? '';
           row.cause.text = it.cause ?? '';
-          row.girth.text = it.girthQty?.toString() ?? '';
-          row.boxQty.text = it.boxQty?.toString() ?? '';
+          row.girth.text = financeExactTrimmed(it.girthQty?.toString()) ?? '';
+          row.boxQty.text = financeExactTrimmed(it.boxQty?.toString()) ?? '';
           rows.add(row);
         }
         if (_cfg.itemHasStockPlace) {
@@ -641,13 +650,29 @@ class _SubcontractDocEditPageState
       if (outcome.financeSubmitError case final error?) {
         context.appWarning('单据已保存，但未提交财务：$error。可在详情页重新提交。');
         bumpListRefresh(ref, _cfg.refreshKey);
-        context.replace(SubcontractRoute.detail(_cfg.pathSegment, d.id));
+        // 编辑既有单：pop 回宿主详情（其「返回即刷新」重取保存后数据），深链直达
+        // 才落新详情；replace 会把新详情叠在旧详情上，返回一次看到旧快照。
+        if (widget.id != null) {
+          popSavedEditOrReplace(
+            context,
+            SubcontractRoute.detail(_cfg.pathSegment, d.id),
+          );
+        } else {
+          context.replace(SubcontractRoute.detail(_cfg.pathSegment, d.id));
+        }
         return;
       }
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
       bumpListRefresh(ref, _cfg.refreshKey);
-      context.replace(SubcontractRoute.detail(_cfg.pathSegment, d.id));
+      if (widget.id != null) {
+        popSavedEditOrReplace(
+          context,
+          SubcontractRoute.detail(_cfg.pathSegment, d.id),
+        );
+      } else {
+        context.replace(SubcontractRoute.detail(_cfg.pathSegment, d.id));
+      }
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
@@ -749,16 +774,19 @@ class _SubcontractDocEditPageState
                                 showColumnSettings: true,
                                 initialColumnOrder: columnPrefs?.order,
                                 initialHiddenColumnKeys: columnPrefs?.hidden,
-                                onColumnSettingsChanged: (order, hidden) => ref
-                                    .read(
-                                      subcontractApplicationGridColumnPrefsProvider
-                                          .notifier,
-                                    )
-                                    .updateFor(
-                                      widget.docType.name,
-                                      order,
-                                      hidden,
-                                    ),
+                                initialPinnedColumnKeys: columnPrefs?.pinned,
+                                onColumnSettingsChanged:
+                                    (order, hidden, pinned) => ref
+                                        .read(
+                                          subcontractApplicationGridColumnPrefsProvider
+                                              .notifier,
+                                        )
+                                        .updateFor(
+                                          widget.docType.name,
+                                          order,
+                                          hidden,
+                                          pinned,
+                                        ),
                                 columns: subcontractGridColumns(
                                   _pickGoods,
                                   _cfg,

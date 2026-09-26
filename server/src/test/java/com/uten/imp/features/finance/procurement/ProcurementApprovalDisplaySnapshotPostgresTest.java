@@ -47,6 +47,11 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                 assertThat(migration).isNotNull();
                 jdbc.execute(new String(migration.readAllBytes(), StandardCharsets.UTF_8));
             }
+            // V708 重建函数对齐 trim_scale 展示口径(与 Flyway 全量顺序一致)。
+            try (var migration = getClass().getResourceAsStream("/db/migration/V708__procurement_display_snapshot_trim_scale.sql")) {
+                assertThat(migration).isNotNull();
+                jdbc.execute(new String(migration.readAllBytes(), StandardCharsets.UTF_8));
+            }
             assertThat(jdbc.queryForObject("SELECT display_snapshot::text FROM procurement_order_approval_cases WHERE id=?", String.class, legacy)).isNull();
             assertThat(jdbc.queryForObject("SELECT snapshot_hash FROM procurement_order_approval_cases WHERE id=?", String.class, legacy)).isEqualTo("legacy");
 
@@ -107,7 +112,8 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                 assertThat(display(jdbc, first)).isEqualTo(frozen);
                 assertThat(current.path("remark").isNull()).isTrue();
                 assertThat(current.path("items").get(0).path("remark").isNull()).isTrue();
-                assertThat(current.path("items").get(0).path("weight").asText()).isEqualTo("2.7500");
+                // ExactDecimalText 2026-09-24 起去尾随零：展示 "2.75"。
+                assertThat(current.path("items").get(0).path("weight").asText()).isEqualTo("2.75");
                 assertThat(new BigDecimal(current.path("items").get(0).path(extraKey).asText())).isEqualByComparingTo("3.75");
                 assertThat(current.path("items").get(0).path("sources").get(0).path("quantity").asText()).isEqualTo("6");
                 assertThat(jdbc.queryForObject("SELECT snapshot_hash FROM procurement_order_approval_cases WHERE id=?", String.class, second))
@@ -174,7 +180,7 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                 CREATE TABLE currencies(id uuid,name text);
                 CREATE TABLE settlement_methods(id uuid,name text);
                 CREATE TABLE employees(id uuid,full_name text);
-                CREATE TABLE goods(id uuid,code text,name text);
+                CREATE TABLE goods(id uuid,code text,name text, production_overproduction_rate numeric(9,6));
                 CREATE TABLE colors(id uuid,name text);
                 CREATE TABLE units(id uuid,name text);
                 """);

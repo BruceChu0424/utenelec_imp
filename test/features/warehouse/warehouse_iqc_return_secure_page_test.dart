@@ -48,13 +48,14 @@ void main() {
         reason: 'warehouse IQC parser must ignore $key',
       );
     }
-    // 2026-09-01 合并后：仓库 hub 只保留「品质部检查结果」一张卡，
-    // 旧的退回列表入口重定向到合并页，不再单独露卡。
+    // 2026-09-24 仓库任务中心合并后：退回结果并入合并页「品质检查结果」大类，
+    // hub 只保留「仓库任务中心」一张卡（角标 = 模块累计），不再单独露卡；
+    // 旧退回列表路由仍重定向到品质结果入口。
     final hubSource = File(
       'lib/features/warehouse/pages/warehouse_hub_page.dart',
     ).readAsStringSync();
-    expect(hubSource, contains('RouteName.warehouseQualityResults'));
-    expect(hubSource, contains('WarehouseQualityResultBadge'));
+    expect(hubSource, contains('RouteName.warehouseTasks'));
+    expect(hubSource, isNot(contains('RouteName.warehouseQualityResults')));
     expect(hubSource, isNot(contains('RoutePath.procurementIqcRejections')));
   });
 }

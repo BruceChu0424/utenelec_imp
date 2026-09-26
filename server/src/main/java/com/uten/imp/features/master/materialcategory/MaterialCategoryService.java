@@ -148,7 +148,6 @@ public class MaterialCategoryService {
             lockCategoryHierarchy();
         }
         MaterialCategory c = requireCategory(id);
-        requireMutableCategory(c.getId());
         OptimisticLocks.requireUpToDate(c.getVersion(), req.getVersion());
         CategoryDrivenCodeService.EffectivePrefix oldEffective = categoryCodes.effectivePrefix(
                 CategoryDrivenCodeService.MasterType.GOODS, id);
@@ -242,7 +241,6 @@ public class MaterialCategoryService {
         // 与分类移动串行(同一把层级锁)，再锁住子树分类行：之后读到的子分类与货品就是全部。
         lockCategoryHierarchy();
         MaterialCategory root = requireCategory(id);
-        requireMutableCategory(id);
         List<MaterialCategory> nodes = lockedSubtree(id);
         List<UUID> ids = nodes.stream().map(MaterialCategory::getId).toList();
         lifecycle.cascadeDeleteGoods(repo.findGoodsIdsByCategoryIds(ids),
@@ -330,12 +328,6 @@ public class MaterialCategoryService {
         n.setLegacyId(c.getLegacyId());
         n.setSystemManaged(c.getId().equals(systemCategoryId));
         return n;
-    }
-
-    private void requireMutableCategory(UUID id) {
-        if (systemCategories.isMaterialCategory(id)) {
-            throw new ApiException(ErrorCode.CONFLICT, "系统未分类根不能编辑或删除");
-        }
     }
 
     private MaterialCategory requireCategory(UUID id) {

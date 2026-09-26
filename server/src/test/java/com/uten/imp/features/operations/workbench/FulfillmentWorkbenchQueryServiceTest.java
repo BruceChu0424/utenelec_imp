@@ -341,13 +341,12 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertEquals(4L, count);
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());
-        // 2026-09-03 仓库口径与列表归组对齐：一张 DRAW 领料单=一个待办
-        //（DISTINCT COALESCE 兜底尚未挂单的行级需求）。
+        // One requested DRAW or one pending material-definition request is one task.
         assertTrue(sql.getValue().contains("v_fulfillment_workbench_actions"));
-        assertTrue(sql.getValue().contains("open_qty > 0"));
-        assertTrue(sql.getValue().contains("fn_production_draw_pending(action_doc_id)"));
-        assertTrue(sql.getValue()
-                .contains("DISTINCT COALESCE(action_doc_id, task_id)"));
+        assertTrue(sql.getValue().contains("open_line_count > 0"));
+        assertTrue(sql.getValue().contains("fn_production_draw_requested(v.action_doc_id)"));
+        assertTrue(sql.getValue().contains("production_material_discovery_requests"));
+        assertTrue(sql.getValue().contains("request.status='PENDING'"));
         verify(countQuery).setParameter("department", "WAREHOUSE");
     }
 
@@ -366,6 +365,27 @@ class FulfillmentWorkbenchQueryServiceTest {
         verify(em).createNativeQuery(sql.capture());
         assertTrue(sql.getValue().contains(FulfillmentWorkbenchQueryService.WAREHOUSE_DOCUMENT_ROWS));
         assertTrue(sql.getValue().contains("fn_production_draw_requested(v.action_doc_id)"));
+    }
+
+    @Test void warehouseUnknownMaterialRequestsHaveTheirOwnStatusAndCountOnceWithoutInventingQuantity() {
+        EntityManager em = mock(EntityManager.class);
+        Query query = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.of(new Object[]{"READY_TO_PICK", 3L},
+                new Object[]{"PARTIAL", 2L}, new Object[]{"MATERIALS_TO_DEFINE", 4L}));
+        FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
+        when(access.canAccessWarehouseTasks()).thenReturn(true);
+        var counts = new FulfillmentWorkbenchQueryService(em, access).warehouseStatusBreakdown(
+                new com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope(true, List.of(), true));
+        assertEquals(4L, counts.get("MATERIALS_TO_DEFINE"));
+        assertEquals(9L, counts.get("OPEN_ANY"));
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em).createNativeQuery(sql.capture());
+        assertTrue(sql.getValue().contains("NULL::numeric, 'MATERIALS_TO_DEFINE'"));
+        assertTrue(sql.getValue().contains("request.status='PENDING'"));
+        assertTrue(sql.getValue().contains("NOT plan.is_closed"));
+        assertTrue(sql.getValue().contains("warehouse_id IS NULL OR"));
+        verify(query).setParameter("warehouse_scope", "");
     }
 
     /** 生产领料任务中心表头排序(2026-09-24): 按生产计划号排, 白名单字段, 不为仓库多跑分面查询。 */

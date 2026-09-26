@@ -214,7 +214,12 @@ void main() {
     expect(_innerOffset(), 0, reason: '交接那格的余量不带进表内');
     expect(find.text('ROW-0'), findsOneWidget, reason: '置顶时第一行还在');
 
-    // 越点后先吃 50 空行程, 这一格只剩 50 进表内; 再往后整格进表内。
+    // 停顿窗（2026-09-25）：截停后 350ms 内同方向格属同一滚势，整格吞掉——
+    // 「滚一下」没停就置顶了，必须停住等下一次滚才继续。
+    await _wheel(tester, pointer, at, 100);
+    expect(_innerOffset(), 0, reason: '停顿窗内的后续格被吞掉');
+    await tester.pump(const Duration(milliseconds: 400));
+    // 滚势停住后恢复空行程门：先吃 50 空行程, 这一格只剩 50 进表内; 再往后整格进表内。
     await _wheel(tester, pointer, at, 100);
     expect(_innerOffset(), 100 - _gate);
     await _wheel(tester, pointer, at, 100);
@@ -226,7 +231,10 @@ void main() {
     await _wheel(tester, pointer, at, -100);
     expect(_innerOffset(), 0, reason: '表内刚好回顶');
     expect(outer.offset, _headerHeight, reason: '回顶那格的余量不带去放头部');
-    // 越点后先吃 50 空行程, 这一格只放 50; 之后整格放。
+    // 停顿窗内的同方向格被吞掉；停住后恢复空行程门：这一格只放 50; 之后整格放。
+    await _wheel(tester, pointer, at, -100);
+    expect(outer.offset, _headerHeight, reason: '停顿窗内的后续格被吞掉');
+    await tester.pump(const Duration(milliseconds: 400));
     await _wheel(tester, pointer, at, -100);
     expect(outer.offset, _headerHeight - (100 - _gate));
     await _wheel(tester, pointer, at, -100);
@@ -235,6 +243,30 @@ void main() {
     // 掉头即撤门：再往上滚, 头部立刻收(不吃空行程)。
     await _wheel(tester, pointer, at, 100);
     expect(outer.offset, _headerHeight - (100 - _gate));
+  });
+
+  testWidgets('停顿窗距离放行线：滚不停的人推够 250 即继续，不卡死在置顶', (tester) async {
+    final outer = ScrollController();
+    addTearDown(outer.dispose);
+    await _pumpHarness(tester, outer: outer);
+    final at = _tableCenter(tester);
+    final pointer = TestPointer(6, PointerDeviceKind.mouse);
+
+    // 260 高的头部：三格收完，第三格截停在置顶点并开停顿窗。
+    for (var i = 0; i < 3; i++) {
+      await _wheel(tester, pointer, at, 100);
+    }
+    expect(outer.offset, _headerHeight);
+    expect(_innerOffset(), 0);
+
+    // 连续滚不停：第 1、2 格（累计 100/200 < 250）吞掉；第 3 格（300 ≥ 250）
+    // 达到距离放行线——放行那格走正常门逻辑（先吃 50 空行程，余 50 进表内）。
+    await _wheel(tester, pointer, at, 100);
+    await _wheel(tester, pointer, at, 100);
+    expect(_innerOffset(), 0, reason: '未达距离线仍属同一滚势');
+    await _wheel(tester, pointer, at, 100);
+    expect(outer.offset, _headerHeight, reason: '头部仍钉住');
+    expect(_innerOffset(), 100 - _gate, reason: '推够距离后先吃空行程再进表内');
   });
 
   testWidgets('滚轮门：置顶时掉头往下, 头部立刻放, 不吃空行程', (tester) async {
@@ -264,6 +296,8 @@ void main() {
     expect(_innerOffset(), 0);
     // 头部滚走后鼠标落在搜索行(表格外、无内滚体)上, 继续滚：先吃空行程再进表内。
     final searchRow = tester.getCenter(find.byKey(const ValueKey('searchrow')));
+    // （截停后停顿窗内的格被吞——先等窗过期再验证空行程门。）
+    await tester.pump(const Duration(milliseconds: 400));
     await _wheel(tester, pointer, searchRow, 100);
     expect(_innerOffset(), 100 - _gate);
   });
@@ -285,6 +319,8 @@ void main() {
     await _wheel(tester, pointer, at, 100);
     await _wheel(tester, pointer, at, 100);
     expect(outer.offset, _headerHeight);
+    // （置顶截停后停顿窗内的格被吞——先等窗过期。）
+    await tester.pump(const Duration(milliseconds: 400));
     // 置顶之后, 侧栏自己能滚：滚轮归它, 表内不动。
     await _wheel(tester, pointer, at, 100);
     expect(sideOffset(), 100);

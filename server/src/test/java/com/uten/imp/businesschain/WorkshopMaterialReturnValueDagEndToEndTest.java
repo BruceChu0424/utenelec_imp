@@ -17,13 +17,7 @@ class WorkshopMaterialReturnValueDagEndToEndTest extends WorkshopMaterialReturnA
   if(valued){Object family=read(this,"manualFamily",tag,false,true);c=read(family,"context");target=read(family,"first");}
   else {c=read(this,"create",tag,false);target=new UUID[]{read(c,"plan"),read(c,"segment"),read(this,"parentDemand",c)};}
   FullChainEndToEndTest.World world=read(c,"world");UUID worker=read(c,"workerUser"),warehouse=read(c,"leaf"),goods=read(c,"child");
-  if(valued){
-   UUID childSegment=read(c,"childSegment"),childPlan=read(c,"childPlan");
-   UUID demand=db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=?",UUID.class,childSegment);
-   var request=new ProductionMaterialSettlementRequest();request.setExecutionSegmentId(childSegment);request.setIdempotencyKey(tag+"-cost");request.setReason("Actual input cost");
-   var line=new ProductionMaterialSettlementRequest.Line();line.setDemandId(demand);line.setSettlementType("CONSUMED");line.setQtyBase(BigDecimal.TEN);request.setLines(List.of(line));
-   fixture.loginAs(world.superAdminUserId());beans.getBean(ProductionMaterialSettlementService.class).post(childPlan,request,world.superAdminUserId());
-  }
+  // Each real report below supplies its actual use. Do not pre-consume the same ten inputs twice.
   read(this,"transferTo",c,target[2],"5");read(this,"transferTo",c,target[2],"5");
   if(valued)read(this,"drainValue",c,List.of(goods,db.queryForObject("SELECT goods_id FROM production_material_demands WHERE execution_segment_id=?",UUID.class,(Object)read(c,"childSegment"))));
   read(this,"confirmRoute",target[0],target[1],"CONTINUOUS");fixture.loginAs(worker);

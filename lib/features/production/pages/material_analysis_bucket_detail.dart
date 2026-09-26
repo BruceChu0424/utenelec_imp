@@ -81,10 +81,12 @@ class _BucketCandidatePlanInput {
     required this.workshopName,
     required this.workerId,
     this.publicSurplusOnly = false,
+    this.allowedOverproductionRate,
   });
 
   final String materialLineId;
   final double qty;
+  final double? allowedOverproductionRate;
   final String? departmentId;
   final String? workshopName;
   final String? workerId;
@@ -102,10 +104,12 @@ class _BucketPlanDraft {
     required this.workshopName,
     required this.workerId,
     this.publicSurplusOnly = false,
+    this.allowedOverproductionRate,
   });
 
   final String analysisLineId;
   final double qty;
+  final double? allowedOverproductionRate;
   final String? departmentId;
   final String? workshopName;
   final String? workerId;
@@ -495,6 +499,12 @@ class _MaterialAnalysisBucketPageState
           return _BucketCandidatePlanInput(
             materialLineId: input.materialLineId,
             qty: seed?.batchQty ?? input.qty,
+            allowedOverproductionRate: seed == null
+                ? input.allowedOverproductionRate
+                : _host._overproductionRate(
+                    analysisLineId: seed.analysisLineId,
+                    materialLineId: seed.materialLineId,
+                  ),
             departmentId: seed?.departmentId ?? input.departmentId,
             workshopName: seed?.departmentName ?? input.workshopName,
             workerId: seed?.workerId ?? input.workerId,
@@ -510,6 +520,12 @@ class _MaterialAnalysisBucketPageState
           return _BucketPlanDraft(
             analysisLineId: draft.analysisLineId,
             qty: seed?.batchQty ?? draft.qty,
+            allowedOverproductionRate: seed == null
+                ? draft.allowedOverproductionRate
+                : _host._overproductionRate(
+                    analysisLineId: seed.analysisLineId,
+                    materialLineId: seed.materialLineId,
+                  ),
             departmentId: seed?.departmentId ?? draft.departmentId,
             workshopName: seed?.departmentName ?? draft.workshopName,
             workerId: seed?.workerId ?? draft.workerId,
@@ -717,7 +733,7 @@ class _MaterialAnalysisBucketPageState
         '同时记为该货品下次的默认供料方式。',
     value: (row) {
       final group = _rowRouteGroup(row);
-      return group == null ? null : _host._draftRoute(group).label;
+      return group == null ? null : _host._draftRoute(group)?.label;
     },
     cellBuilderHandlesSemantics: true,
     cellBuilder: (context, row) => _routeCell(context, row),
@@ -734,7 +750,7 @@ class _MaterialAnalysisBucketPageState
         _host._canEditMaterialRoute(group);
     if (!editable) {
       return Text(
-        current.label,
+        current?.label ?? '—',
         style: theme.textTheme.bodyMedium?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
         ),
@@ -745,7 +761,8 @@ class _MaterialAnalysisBucketPageState
     return UtenDropdownField(
       key: ValueKey('material-bucket-route-${row.id}'),
       dense: true,
-      value: current.name,
+      value: current?.name,
+      hintText: '请选择供应方式',
       items: [
         for (final option in MaterialSupplyRoute.values)
           UtenDropdownItem(value: option.name, label: option.label),
@@ -1540,7 +1557,8 @@ class _MaterialAnalysisBucketPageState
       product != null &&
       (product.parentAnalysisLineId?.isEmpty ?? true) &&
       product.sourceType != 'MAKE_COMPONENT' &&
-      product.sourceType != 'SUBCONTRACT_MAKE';
+      product.sourceType != 'SUBCONTRACT_MAKE' &&
+      product.sourceType != 'AGGREGATE_MAKE';
 
   /// 物料名称格：身份格 + 顶层产品的红色「顶层」小框。
   ///

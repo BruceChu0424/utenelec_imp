@@ -236,7 +236,8 @@ void main() {
     await tester.tap(find.text('待出库'));
     await tester.pumpAndSettle();
     expect(find.text('SO-OUT-001'), findsOneWidget);
-    expect(find.textContaining('仓库作业视图'), findsOneWidget);
+    // 2026-09-24 标题下说明小字全站删除：顶栏不再有「仓库作业视图」副标题。
+    expect(find.textContaining('仓库作业视图'), findsNothing);
     expect(find.textContaining('金额'), findsNothing);
     expect(tester.takeException(), isNull);
 

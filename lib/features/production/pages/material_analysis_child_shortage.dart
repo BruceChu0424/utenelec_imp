@@ -13,8 +13,8 @@ part of 'production_material_analysis_page.dart';
 // 3. 页面顶部提示条：已下单的件下面还有没下够的料时常驻提醒；车间催计划(车间任务等料开工)时
 //    换成红色「车间在催」，点「去补下单」进同一页。
 //
-// 「还缺」的口径只有一个：主表「还缺数量」那一列(服务端 netShortageQty)。判断「下层缺不缺」
-// 只看权威快照，不看父行改量时的估算值——估算只是展示，库里并没有那些单。
+// 是否仍需办理由权威 planningUncoveredQty 决定：可认领公共在途尚未占用时仍须办理。
+// netShortageQty 只说明另需新下单多少，不能把候选在途当作已认领。父行估算不是已下单事实。
 
 /// 一件已下单的物料(树顶)和它下面还缺的物料。
 final class _ChildShortageRoot {
@@ -192,13 +192,17 @@ abstract class _MaterialAnalysisChildShortageState
   }
 
   String _issuedSnapshotKey(_MaterialGroup group) =>
-      '${group.key}@${_draftRoute(group).name}';
+      '${group.key}@${_draftRoute(group)?.name ?? 'PENDING'}';
 
-  /// 这一行在权威快照里还缺不缺(主表「还缺数量」那一列 > 0)。SHIP / REFERENCE 阶段的料
-  /// 不写正式生产需求(ADR-029 §4.1)，不算「做不够」。
+  double _childShortageUncovered(ProductionMaterialAnalysisMaterial material) =>
+      material.planningUncoveredQty ??
+      _tableShownQty(material, authoritative: true).residual;
+
+  /// 未认领公共在途仍需办理；兼容旧服务端时保守沿用未减候选在途的剩余量，不能把缺字段当零。
+  /// SHIP / REFERENCE 阶段不写正式生产需求(ADR-029 §4.1)。
   bool _childShortageMissing(ProductionMaterialAnalysisMaterial material) =>
       !_isNonProductionStage(material.controlStage) &&
-      _tableShownQty(material, authoritative: true).net > 0.0001;
+      _childShortageUncovered(material) > 0.0001;
 
   /// 这一件的下层要不要一起看：自制，或 BOM 上还有生产性下层的委外(含 V581 单一子件
   /// 委外——那颗子件仍要我方备)。与「父件 + 下层一起下单」同一条下钻口径。
@@ -375,7 +379,7 @@ abstract class _MaterialAnalysisChildShortageState
     return _childShortageBannerRoots;
   }
 
-  /// 车间在催、而且那个任务缺的料里此刻还有计划没下够单的(按同一份快照的「还缺数量」)。
+  /// 车间在催、而且任务缺料里仍有计划尚未下单或认领的数量。
   List<MaterialAnalysisWorkshopUrge> _activeWorkshopUrges(
     ProductionMaterialAnalysisView analysis,
   ) {
@@ -500,7 +504,7 @@ abstract class _MaterialAnalysisChildShortageState
                           name: _tableGroupLabel(line.group),
                           route: _draftRoute(line.group),
                           short:
-                              '还缺 ${_qty(_tableShownQty(line.material, authoritative: true).net)}'
+                              '${line.material.netShortageQty > 0.0001 ? '还缺' : '待认领'} ${_qty(_childShortageUncovered(line.material))}'
                               '${line.material.unitName ?? ''}',
                         ),
                     ],
@@ -726,7 +730,7 @@ class _ChildShortageRootSummary extends StatelessWidget {
 
   final String title;
   final String orderedLabel;
-  final List<({String name, MaterialSupplyRoute route, String short})> lines;
+  final List<({String name, MaterialSupplyRoute? route, String short})> lines;
   final int more;
 
   @override
@@ -811,25 +815,37 @@ class _ChildShortageRootSummary extends StatelessWidget {
   }
 }
 
-/// 供应方式小标签：采购蓝、委外紫、自制青，一眼分得开。
+/// 供应方式小标签：采购蓝、委外紫、自制青，一眼分得开；没解析出路线的行
+/// 显示待选（2026-09-25 确认路线退役后红框行补选前的形态）。
 class _RouteChip extends StatelessWidget {
   const _RouteChip({required this.route});
 
-  final MaterialSupplyRoute route;
+  final MaterialSupplyRoute? route;
 
   @override
-  Widget build(BuildContext context) => UtenStatusBadge(
-    label: route.label,
-    size: UtenStatusBadgeSize.small,
-    type: switch (route) {
-      MaterialSupplyRoute.buy => UtenStatusBadgeType.info,
-      MaterialSupplyRoute.subcontract => UtenStatusBadgeType.violet,
-      MaterialSupplyRoute.make => UtenStatusBadgeType.success,
-    },
-    icon: switch (route) {
-      MaterialSupplyRoute.buy => Icons.shopping_cart_outlined,
-      MaterialSupplyRoute.subcontract => Icons.local_shipping_outlined,
-      MaterialSupplyRoute.make => Icons.precision_manufacturing_outlined,
-    },
-  );
+  Widget build(BuildContext context) {
+    final resolved = route;
+    if (resolved == null) {
+      return const UtenStatusBadge(
+        label: '待选供应方式',
+        size: UtenStatusBadgeSize.small,
+        type: UtenStatusBadgeType.danger,
+        icon: Icons.help_outline_rounded,
+      );
+    }
+    return UtenStatusBadge(
+      label: resolved.label,
+      size: UtenStatusBadgeSize.small,
+      type: switch (resolved) {
+        MaterialSupplyRoute.buy => UtenStatusBadgeType.info,
+        MaterialSupplyRoute.subcontract => UtenStatusBadgeType.violet,
+        MaterialSupplyRoute.make => UtenStatusBadgeType.success,
+      },
+      icon: switch (resolved) {
+        MaterialSupplyRoute.buy => Icons.shopping_cart_outlined,
+        MaterialSupplyRoute.subcontract => Icons.local_shipping_outlined,
+        MaterialSupplyRoute.make => Icons.precision_manufacturing_outlined,
+      },
+    );
+  }
 }

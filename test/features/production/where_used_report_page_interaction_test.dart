@@ -325,7 +325,7 @@ void main() {
       await tester.tap(find.byKey(const Key('where-used-open-bom')));
       await tester.pumpAndSettle();
       // 整页详情（tab=1 组装信息）：BOM 表拉取并显示空态。
-      expect(find.text('该货品暂无组装信息'), findsOneWidget);
+      expect(find.text('暂无组装信息，点右下「添加组件」录入'), findsOneWidget);
       expect(bom.listCalls, [_productId]);
 
       // 返回反查页（等价于详情页返回键 pop）。

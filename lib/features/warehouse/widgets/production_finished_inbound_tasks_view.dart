@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -35,6 +36,7 @@ class ProductionFinishedInboundTasksView extends ConsumerStatefulWidget {
     this.refreshTick = 0,
     this.embedded = false,
     this.onLoadingChanged,
+    this.externalHeader,
   });
 
   /// 任务中心页级搜索关键字（embedded 模式生效）。
@@ -45,6 +47,10 @@ class ProductionFinishedInboundTasksView extends ConsumerStatefulWidget {
 
   /// true = 嵌在入库任务中心·产成品入库分段内（搜索框由页级工具条接管）。
   final bool embedded;
+
+  /// 宿主（任务中心大类行 + 小类行/复合分段行）：挂进折叠头随页滚走
+  /// （2026-09-24 用户口径「表格完全置顶」）。
+  final Widget? externalHeader;
 
   /// 加载态变化回调（独立页 AppBar 刷新按钮据此置灰/转圈）。
   final ValueChanged<bool>? onLoadingChanged;
@@ -346,98 +352,106 @@ class _ProductionFinishedInboundTasksViewState
           total: 0,
           totalPages: 1,
         );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildToolbar(result),
-        const SizedBox(height: UtenSpacing.s8),
-        const _ProcessHint(),
-        if (_error != null && result.items.isNotEmpty) ...[
-          const SizedBox(height: UtenSpacing.s12),
-          Semantics(
-            liveRegion: true,
-            child: Text(
-              '刷新失败：$_error',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+    // 2026-09-24 用户口径「表格完全置顶」：工具行/流程提示/错误行进折叠头
+    // 随页滚走，body 只剩表格（primary 拾取联动控制器）。
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.externalHeader != null) ...[
+            widget.externalHeader!,
+            const SizedBox(height: UtenSpacing.s12),
+          ],
+          _buildToolbar(result),
+          const SizedBox(height: UtenSpacing.s8),
+          const _ProcessHint(),
+          if (_error != null && result.items.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                '刷新失败：$_error',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             ),
+          ],
+          const SizedBox(height: UtenSpacing.s12),
+        ],
+      ),
+      body: MasterDataTableView<ProductionFinishedInboundTask>(
+        // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+        primary: true,
+        key: const Key('production-finished-inbound-task-table'),
+        columns: _columns,
+        items: result.items,
+        // 表头筛选桶（2026-09-16）：任务步骤固定枚举两档（服务端 task_stage）；
+        // 仓库走主档 dict（待登记任务尚无仓库，会被该筛选取自然排除）。
+        facets: {
+          'taskStage': const [
+            MasterFacetBucket(
+              value: 'ARRIVAL_REGISTRATION',
+              count: 0,
+              label: '待登记成品仓与库位',
+            ),
+            MasterFacetBucket(
+              value: 'FINAL_COUNT',
+              count: 0,
+              label: '待最终点收（含短收余量）',
+            ),
+          ],
+          'warehouseName': masterDictionaryFacets(
+            ref.watch(masterNameServiceProvider).warehouseEntries,
+          ),
+        },
+        nullCounts: const {},
+        filters: {
+          'taskStage': _taskStageFilter,
+          'warehouseName': _warehouseIdFilter,
+        },
+        onFilterChanged: (key, value) {
+          setState(() {
+            if (key == 'taskStage') {
+              _taskStageFilter = value;
+            } else if (key == 'warehouseName') {
+              _warehouseIdFilter = value;
+            }
+          });
+          _load(1, replaceActive: true);
+        },
+        selectable: canCount,
+        // 两类任务分别可选：待登记任务键 reg:<reportId>（批量登记送检），
+        // 待点收任务键 doc:<documentId>(批量全量点收)；只展示所选阶段的动作。
+        idOf: (task) => task.isArrivalRegistration
+            ? (task.reportId?.isNotEmpty == true
+                  ? 'reg:${task.reportId}'
+                  : null)
+            : ((task.documentId ?? '').isEmpty
+                  ? null
+                  : 'doc:${task.documentId}'),
+        selectedIds: _selectedIds,
+        onSelectedIdsChanged: _setSelectedIds,
+        batchActionsBuilder: canCount ? _batchActions : null,
+        onRowTap: _openTask,
+        rowMenuBuilder: (task) => [
+          UtenMenuItem(
+            label: _taskActionLabel(task, canCount: canCount),
+            icon: canCount
+                ? task.isArrivalRegistration
+                      ? Icons.edit_location_alt_outlined
+                      : Icons.inventory_rounded
+                : Icons.visibility_outlined,
+            onTap: () => _openTask(task),
           ),
         ],
-        const SizedBox(height: UtenSpacing.s12),
-        Expanded(
-          child: MasterDataTableView<ProductionFinishedInboundTask>(
-            key: const Key('production-finished-inbound-task-table'),
-            columns: _columns,
-            items: result.items,
-            // 表头筛选桶（2026-09-16）：任务步骤固定枚举两档（服务端 task_stage）；
-            // 仓库走主档 dict（待登记任务尚无仓库，会被该筛选取自然排除）。
-            facets: {
-              'taskStage': const [
-                MasterFacetBucket(
-                  value: 'ARRIVAL_REGISTRATION',
-                  count: 0,
-                  label: '待登记成品仓与库位',
-                ),
-                MasterFacetBucket(
-                  value: 'FINAL_COUNT',
-                  count: 0,
-                  label: '待最终点收（含短收余量）',
-                ),
-              ],
-              'warehouseName': masterDictionaryFacets(
-                ref.watch(masterNameServiceProvider).warehouseEntries,
-              ),
-            },
-            nullCounts: const {},
-            filters: {
-              'taskStage': _taskStageFilter,
-              'warehouseName': _warehouseIdFilter,
-            },
-            onFilterChanged: (key, value) {
-              setState(() {
-                if (key == 'taskStage') {
-                  _taskStageFilter = value;
-                } else if (key == 'warehouseName') {
-                  _warehouseIdFilter = value;
-                }
-              });
-              _load(1, replaceActive: true);
-            },
-            selectable: canCount,
-            // 两类任务分别可选：待登记任务键 reg:<reportId>（批量登记送检），
-            // 待点收任务键 doc:<documentId>(批量全量点收)；只展示所选阶段的动作。
-            idOf: (task) => task.isArrivalRegistration
-                ? (task.reportId?.isNotEmpty == true
-                      ? 'reg:${task.reportId}'
-                      : null)
-                : ((task.documentId ?? '').isEmpty
-                      ? null
-                      : 'doc:${task.documentId}'),
-            selectedIds: _selectedIds,
-            onSelectedIdsChanged: _setSelectedIds,
-            batchActionsBuilder: canCount ? _batchActions : null,
-            onRowTap: _openTask,
-            rowMenuBuilder: (task) => [
-              UtenMenuItem(
-                label: _taskActionLabel(task, canCount: canCount),
-                icon: canCount
-                    ? task.isArrivalRegistration
-                          ? Icons.edit_location_alt_outlined
-                          : Icons.inventory_rounded
-                    : Icons.visibility_outlined,
-                onTap: () => _openTask(task),
-              ),
-            ],
-            isLoading: _loading || value == null,
-            loadingMore: _loading && value != null,
-            error: result.items.isEmpty ? _error : null,
-            onRetry: () => _load(result.page),
-            emptyMessage: _keyword.isEmpty ? '目前没有待处理的产成品入库任务' : '没有匹配的产成品入库任务',
-            currentPage: result.page,
-            totalPages: result.totalPages,
-            onPageChange: _load,
-          ),
-        ),
-      ],
+        isLoading: _loading || value == null,
+        loadingMore: _loading && value != null,
+        error: result.items.isEmpty ? _error : null,
+        onRetry: () => _load(result.page),
+        emptyMessage: _keyword.isEmpty ? '目前没有待处理的产成品入库任务' : '没有匹配的产成品入库任务',
+        currentPage: result.page,
+        totalPages: result.totalPages,
+        onPageChange: _load,
+      ),
     );
   }
 

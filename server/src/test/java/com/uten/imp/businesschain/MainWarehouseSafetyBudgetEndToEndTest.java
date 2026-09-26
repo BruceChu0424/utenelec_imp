@@ -103,11 +103,11 @@ class MainWarehouseSafetyBudgetEndToEndTest {
     @Test void seventyNineAvailableRejectsEightyWithoutAnyPartialReservationOrDraw() {
         Case c = setup("main-safety-79", 1, "20");
         Plan plan = issue(c, "80", "short"); // Establish one 80-unit workshop task before stock arrives.
+        // This verifies atomic full-kit allocation, not the default continuous
+        // route's legitimate partial reservation when stock subsequently arrives.
+        fixture.confirmFullKitRoute(plan.plan(), execution.list(plan.plan()).getFirst().id());
         receive(c, c.a(), null, "30"); receive(c, c.b(), null, "69");
         assertEquals("WAITING", status(plan)); qty("0", reserved(plan)); assertTrue(draws(plan).isEmpty());
-        // V599：重新核对备料是齐套(FULL_KIT)路线专用动作——先确认路线再重核。
-        var segment = execution.list(plan.plan()).getFirst();
-        fixture.confirmFullKitRoute(plan.plan(), segment.id());
         var confirmed = execution.list(plan.plan()).getFirst();
         assertTrue(assertThrows(ApiException.class, () -> execution.recheckMaterial(plan.plan(), confirmed.id(),
                 new SegmentTransitionRequest(confirmed.lockVersion(), "main-safety-short-" + plan.plan())))
@@ -119,12 +119,10 @@ class MainWarehouseSafetyBudgetEndToEndTest {
         Case c = setup("main-safety-boundaries", 1, "20");
         UUID otherMain = warehouse(null, "other-main");
         Plan plan = issue(c, "80", "boundaries");
+        fixture.confirmFullKitRoute(plan.plan(), execution.list(plan.plan()).getFirst().id());
         receive(c, c.a(), null, "30"); receive(c, c.b(), c.world().colorId(), "70");
         receive(c, otherMain, null, "100");
         assertEquals("WAITING", status(plan)); qty("0", reserved(plan));
-        // V599：重核前先确认齐套路线（确认本身不动库存——缺料不会提升）。
-        var unavailable = execution.list(plan.plan()).getFirst();
-        fixture.confirmFullKitRoute(plan.plan(), unavailable.id());
         var confirmedUnavailable = execution.list(plan.plan()).getFirst();
         assertTrue(assertThrows(ApiException.class, () -> execution.recheckMaterial(plan.plan(), confirmedUnavailable.id(),
                 new SegmentTransitionRequest(confirmedUnavailable.lockVersion(), "main-safety-color-short-" + plan.plan())))
@@ -190,7 +188,18 @@ class MainWarehouseSafetyBudgetEndToEndTest {
 
     @Test void databaseRejectsPhysicalOverdrawMainBufferOverdrawAndUnprovenQualifiedFlag() {
         Case c=setup("main-safety-db-guards",1,"20");Plan plan=issue(c,"100","guards");
+        fixture.confirmFullKitRoute(plan.plan(), execution.list(plan.plan()).getFirst().id());
         receive(c,c.a(),null,"30");receive(c,c.b(),null,"70");
+        // Full-kit demand 100 cannot consume the public budget of 80. Keep the
+        // demand empty so each attack isolates its named stock/proof boundary;
+        // a prior continuous reservation would instead hit demand capacity first.
+        assertEquals("WAITING", status(plan)); qty("0",reserved(plan)); assertTrue(draws(plan).isEmpty());
+        qty("100", db.queryForObject("SELECT required_qty FROM production_material_demands WHERE plan_id=? AND goods_id=?",
+                BigDecimal.class, plan.plan(), c.materials().getFirst()));
+        qty("30", db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NULL",
+                BigDecimal.class, c.a(), c.materials().getFirst()));
+        qty("70", db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NULL",
+                BigDecimal.class, c.b(), c.materials().getFirst()));
         var transaction=new org.springframework.transaction.support.TransactionTemplate(transactionManager);
         for(String attack:List.of("physical","public-buffer","fake-qualified")) {
             RuntimeException failure=assertThrows(RuntimeException.class,()->transaction.executeWithoutResult(status->{

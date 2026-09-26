@@ -30,20 +30,13 @@ void main() {
     expect(parsed.planningBlockedReason('p2'), isNull);
     final harness = await _pump(tester, data);
     expect(find.text(reason), findsWidgets);
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(const Key('material-analysis-material-table-region')),
-        matching: find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('确认路线(1)'), findsOneWidget);
-    await _confirm(tester);
+    // 2026-09-25 确认路线退役：进页自动确认只带没被拦的 p2；被财务拦截的 p1
+    // 不进批次（否则服务端会拒掉整批），留在主表红框等放行。
     expect(harness.writes, hasLength(1));
-    expect(
-      _decisions(harness.writes.single).single['actionGroupKey'],
-      'root-action-2',
-    );
+    expect(_decisions(harness.writes.single), [
+      {'actionGroupKey': 'root-action-2', 'route': 'BUY'},
+    ]);
+    expect(find.text('确认路线(1)'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -256,26 +249,8 @@ void main() {
         data,
         removeBomAfterExternalRootConfirmation: true,
       );
-      // 「全选筛选结果」已下线：跨页全选改为逐页勾选表头复选框（100/页）。
-      for (var page = 1; page <= 6; page++) {
-        await tester.tap(
-          find.descendant(
-            of: find.byKey(
-              const Key('material-analysis-material-table-region'),
-            ),
-            matching: find.byWidgetPredicate(
-              (w) => w is Checkbox && w.tristate,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        if (page < 6) {
-          await tester.tap(find.text('下一页'));
-          await tester.pumpAndSettle();
-        }
-      }
-      expect(find.text('确认路线(502)'), findsOneWidget);
-      await _confirm(tester);
+      // 2026-09-25 确认路线退役：不再勾选+点按钮——进页自动确认一次带全部
+      // 502 组，仍按「先深后浅、根最后」排序并 500 一批分块提交。
       expect(harness.writes, hasLength(2));
       expect(harness.failedRouteResolutions, 0);
       final first = _decisions(harness.writes.first);
@@ -310,7 +285,6 @@ void main() {
         '000-root-action': 'BUY',
       });
       expect(harness.data['flatMaterials'], hasLength(1));
-      expect(find.text('确认路线(0)'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -337,26 +311,20 @@ void main() {
           findsOneWidget,
         );
       }
-      await _selectRoot(tester, 1);
-      expect(find.text('确认路线(1)'), findsOneWidget);
-      await _confirm(tester);
-      expect(_decisions(harness.writes.single), [
-        {'actionGroupKey': 'root-action-1', 'route': 'SUBCONTRACT'},
-      ]);
+      // 2026-09-25 确认路线退役：进页自动确认一次带全部行——每个根按各自的
+      // 主档建议落自己的路线，互不串台；没有确认按钮、没有逐个勾选。
+      expect(harness.writes, hasLength(1));
+      final decisions = _decisions(harness.writes.single);
       expect(
-        (harness.data['flatMaterials'] as List)
-            .cast<Map<String, dynamic>>()
-            .where((row) => row['nodeRole'] != 'ROOT_SUPPLY')
-            .every((row) => row['routeConfirmed'] == false),
-        isTrue,
+        decisions.where(
+          (row) => row['actionGroupKey'].toString().startsWith('root-action-'),
+        ),
+        [
+          {'actionGroupKey': 'root-action-1', 'route': 'SUBCONTRACT'},
+          {'actionGroupKey': 'root-action-2', 'route': 'BUY'},
+          {'actionGroupKey': 'root-action-3', 'route': 'MAKE'},
+        ],
       );
-      await _selectRoot(tester, 2);
-      await _selectRoot(tester, 3);
-      await _confirm(tester);
-      expect(_decisions(harness.writes.last), [
-        {'actionGroupKey': 'root-action-2', 'route': 'BUY'},
-        {'actionGroupKey': 'root-action-3', 'route': 'MAKE'},
-      ]);
       expect(
         harness.requests.where((request) => request.path.endsWith('/notify')),
         isEmpty,
@@ -454,6 +422,7 @@ void main() {
         {
           'analysisLineId': 'p1',
           'qty': 10.0,
+          'allowedOverproductionRate': 0,
           'departmentId': 'workshop',
           'workshopName': '装配车间',
           'workerId': 'worker',
@@ -471,26 +440,54 @@ void main() {
   testWidgets(
     'an unconfirmed root stays out of the workshop bucket until its route is confirmed',
     (tester) async {
-      // 2026-09-05 顶层与子层自制同构：顶层路线未确认时不进车间桶（与未确认
-      // 的子层候选同口径，只留在主表红色「路线待确认」）——车间桶入口计数为
-      // 0 且灰显不可点；确认自制后才进入车间桶，与子层共用下层齐套词汇。
-      final harness = await _pump(
+      // 2026-09-25 确认路线退役修订：主档能定路线（建议 MAKE）的根进页即自动
+      // 确认、照旧进车间桶；主档来源为空的根（REVIEW）不自动确认，仍不进
+      // 车间桶（入口计数 0 且灰显不可点），留在主表红框等人选。
+      final confirmed = await _pump(
         tester,
         _analysis(routes: ['MAKE'], withChildren: false),
         generate: true,
       );
-      expect(find.text('路线待确认'), findsWidgets);
+      expect(confirmed.writes, hasLength(1));
+      expect(_decisions(confirmed.writes.single), [
+        {'actionGroupKey': 'root-action-1', 'route': 'MAKE'},
+      ]);
       final workshopEntry = find.byKey(
         const Key('material-analysis-entry-workshop'),
       );
       expect(workshopEntry, findsOneWidget);
-      // 2026-09-14 分桶入口改分类栏形态：待办红徽章 0 不渲染（徽章口径），
-      // 计数为 0 的入口灰显不可点仍由此锁定。
-      expect(tester.widget<InkWell>(workshopEntry).onTap, isNull);
+      expect(
+        tester.widget<InkWell>(workshopEntry).onTap,
+        isNotNull,
+        reason: '主档自制的根自动确认后进入车间桶',
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+
+      final review = await _pump(
+        tester,
+        _analysis(routes: [null], withChildren: false),
+        generate: true,
+      );
+      expect(review.writes, isEmpty, reason: 'REVIEW 根不自动确认');
+      expect(find.text('路线待确认'), findsWidgets);
+      expect(
+        find.byKey(const Key('material-analysis-entry-workshop')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<InkWell>(
+              find.byKey(const Key('material-analysis-entry-workshop')),
+            )
+            .onTap,
+        isNull,
+        reason: 'REVIEW 根未确认仍不进车间桶',
+      );
       // 确认自制后顶层进入车间桶、共用下层齐套词汇的契约由下方
       // 'confirmed root MAKE waits for materials...' 用例锁定。
       expect(
-        harness.requests.where((request) => request.path.endsWith('/notify')),
+        review.requests.where((request) => request.path.endsWith('/notify')),
         isEmpty,
       );
     },
@@ -544,12 +541,23 @@ void main() {
       );
       expect(_root(1), findsOneWidget);
       final dropdown = tester.widget<UtenDropdownField>(_route(1));
-      expect(dropdown.value, 'subcontract');
+      // 2026-09-25 确认路线退役：主档来源为空的根显示空选（不再兜底委外），
+      // 红框指路；选好即自动保存。
+      expect(dropdown.value, isNull);
       expect(dropdown.enabled, isTrue);
-      await _selectRoot(tester, 1);
-      await _confirm(tester);
+      expect(
+        find.byKey(const ValueKey('material-route-pending-root-1')),
+        findsOneWidget,
+      );
+      expect(harness.writes, isEmpty, reason: 'REVIEW 根不自动确认');
+      await tester.ensureVisible(_route(1));
+      await tester.tap(_route(1));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text('采购').last);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
       expect(_decisions(harness.writes.single), [
-        {'actionGroupKey': 'root-action-1', 'route': 'SUBCONTRACT'},
+        {'actionGroupKey': 'root-action-1', 'route': 'BUY'},
       ]);
     },
   );
@@ -561,7 +569,20 @@ void main() {
         tester,
         _analysis(routes: ['SUBCONTRACT'], childrenPerProduct: 120),
       );
-      await _selectRoot(tester, 1);
+      // 2026-09-25 确认路线退役：自动确认按操作组去重——第 2 页的只读重复
+      // 祖先行不会把 root 再确认一遍。
+      final decisions = _decisions(harness.writes.single);
+      expect(decisions, hasLength(121));
+      expect(
+        decisions.where(
+          (decision) => decision['actionGroupKey'] == 'root-action-1',
+        ),
+        hasLength(1),
+      );
+      expect(
+        decisions.map((decision) => decision['actionGroupKey']).toSet(),
+        hasLength(121),
+      );
       await tester.ensureVisible(find.text('下一页'));
       await tester.tap(find.text('下一页'));
       await tester.pumpAndSettle();
@@ -574,28 +595,7 @@ void main() {
         expect(checkbox.onChanged, isNull);
       }
       expect(find.descendant(of: ancestor, matching: _route(1)), findsNothing);
-      final header = find.descendant(
-        of: find.byKey(const Key('material-analysis-material-table-region')),
-        matching: find.byWidgetPredicate(
-          (widget) => widget is Checkbox && widget.tristate,
-        ),
-      );
-      await tester.tap(header);
-      await tester.pumpAndSettle();
-      expect(find.text('确认路线(22)'), findsOneWidget);
-      await _confirm(tester);
-      final decisions = _decisions(harness.writes.single);
-      expect(decisions, hasLength(22));
-      expect(
-        decisions.where(
-          (decision) => decision['actionGroupKey'] == 'root-action-1',
-        ),
-        hasLength(1),
-      );
-      expect(
-        decisions.map((decision) => decision['actionGroupKey']).toSet(),
-        hasLength(22),
-      );
+      expect(harness.writes, hasLength(1), reason: '翻页不触发第二次确认');
     },
   );
 
@@ -612,24 +612,8 @@ void main() {
           withChildren: false,
         ),
       );
-      await tester.tap(
-        find.descendant(
-          of: find.byKey(const Key('material-analysis-material-table-region')),
-          matching: find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('下一页'));
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.descendant(
-          of: find.byKey(const Key('material-analysis-material-table-region')),
-          matching: find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('确认路线(101)'), findsOneWidget);
-      await _confirm(tester);
+      // 2026-09-25 确认路线退役：不再逐页勾选——进页自动确认一次带全部
+      // 101 个根，每个按各自主档建议、真实身份唯一不重复。
       final decisions = _decisions(harness.writes.single);
       expect(decisions, hasLength(101));
       expect(
@@ -649,23 +633,6 @@ void main() {
 Finder _root(int index) => find.byKey(ValueKey('material-bom-product-p$index'));
 Finder _route(int index) =>
     find.byKey(ValueKey('material-route-dropdown-root-$index'));
-Future<void> _selectRoot(WidgetTester tester, int index) async {
-  final checkbox = find.descendant(
-    of: _root(index),
-    matching: find.byType(Checkbox),
-  );
-  await tester.ensureVisible(checkbox);
-  await tester.tap(checkbox);
-  await tester.pumpAndSettle();
-}
-
-Future<void> _confirm(WidgetTester tester) async {
-  final button = find.byKey(const Key('material-analysis-create-routes'));
-  await tester.ensureVisible(button);
-  await tester.tap(button);
-  await tester.pumpAndSettle();
-}
-
 Future<void> _openBucket(WidgetTester tester, String route) async {
   final entry = find.byKey(Key('material-analysis-entry-$route'));
   await tester.ensureVisible(entry);

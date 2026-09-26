@@ -24,6 +24,9 @@ public interface GoodsRepository extends JpaRepository<Goods, UUID>, JpaSpecific
     /** 编号查重（仅未软删）—— 手动编号校验用。 */
     boolean existsByCodeAndDeletedFalse(String code);
 
+    /** 按编号取货品（仅未软删）—— 组装信息导入按物料编号定位组件用（2026-09-25）。 */
+    Optional<Goods> findByCodeAndDeletedFalse(String code);
+
     /** 编号查重排除自身（编辑改码用）。 */
     boolean existsByCodeAndDeletedFalseAndIdNot(String code, UUID id);
 
@@ -39,6 +42,13 @@ public interface GoodsRepository extends JpaRepository<Goods, UUID>, JpaSpecific
             ORDER BY id FOR KEY SHARE
             """, nativeQuery = true)
     List<UUID> lockForReference(@Param("ids") Collection<UUID> ids);
+
+    /** Serialize recipe ownership/publication per parent, in database UUID order. */
+    @Query(value = """
+            SELECT id FROM goods WHERE id IN (:ids)
+            ORDER BY id FOR NO KEY UPDATE
+            """, nativeQuery = true)
+    List<UUID> lockBomParents(@Param("ids") Collection<UUID> ids);
 
     /**
      * 基本单位是否已被数量引用(V675，按需现查)：任一数量来源表(含取消、红冲、软删的历史行)

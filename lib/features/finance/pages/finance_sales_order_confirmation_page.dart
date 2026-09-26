@@ -11,12 +11,14 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
@@ -51,11 +53,16 @@ class FinanceSalesOrderConfirmationPage extends ConsumerStatefulWidget {
     super.key,
     this.changesOnly = false,
     this.embedded = false,
+    this.externalHeader,
     this.refreshTick = 0,
   });
 
   final bool changesOnly;
   final bool embedded;
+
+  /// 宿主（业务审核中心）的大类行：挂进本页折叠头，随页一起滚走
+  /// （2026-09-24 用户口径「表格滑到顶」，置顶后只剩表格自身工具条）。
+  final Widget? externalHeader;
 
   /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前视图。
   final int refreshTick;
@@ -522,20 +529,31 @@ class _FinanceSalesOrderConfirmationPageState
         ref.watch(isSuperAdminProvider) ||
         permissions.contains(Perm.salesOrderFinanceConfirm);
     final body = SafeArea(
-      child: !allowed
-          ? UtenEmpty.error(
-              message: '无权查看销售订单财务确认任务',
-              description: '只有被授权的财务人员可以进入（权限设置中授予 sales_order_finance:view）。',
-            )
-          : _loading && _result == null
-          ? const UtenSkeletonList()
-          : _error != null && _result == null
-          ? UtenEmpty.error(
-              message: _error,
-              actionLabel: '重新加载',
-              onAction: () => _load(1),
-            )
-          : _buildBody(context, canConfirm: canConfirm),
+      child: Stack(
+        children: [
+          !allowed
+              ? UtenEmpty.error(
+                  message: '无权查看销售订单财务确认任务',
+                  description:
+                      '只有被授权的财务人员可以进入（权限设置中授予 sales_order_finance:view）。',
+                )
+              : _loading && _result == null
+              ? const UtenSkeletonList()
+              : _error != null && _result == null
+              ? UtenEmpty.error(
+                  message: _error,
+                  actionLabel: '重新加载',
+                  onAction: () => _load(1),
+                )
+              : _buildBody(context, canConfirm: canConfirm),
+          // 批量确认提交期间的全屏居中遮罩（2026-09-25 统一口径：点按钮跑
+          // 网络一律 UtenBusyOverlay，弃折叠头/紧凑列表里的加载条）。
+          if (_batchBusy)
+            const Positioned.fill(
+              child: UtenBusyOverlay(title: '正在确认所选订单，请稍候'),
+            ),
+        ],
+      ),
     );
     if (widget.embedded) {
       // 嵌入形态：无 AppBar（标题/刷新由业务审核中心提供），保留批量确认 FAB。
@@ -560,7 +578,7 @@ class _FinanceSalesOrderConfirmationPageState
                   key: const Key('sales-order-finance-confirm-refresh'),
                   label: '刷新',
                   icon: Icons.refresh_rounded,
-                  isLoading: _loading || _batchBusy,
+                  isLoading: _loading,
                   onPressed: _loading || _batchBusy ? null : _refreshCurrent,
                 ),
               ]
@@ -604,7 +622,6 @@ class _FinanceSalesOrderConfirmationPageState
             size: UtenButtonSize.large,
             type: UtenButtonType.danger,
             icon: Icons.fact_check_outlined,
-            isLoading: _batchBusy,
             onPressed: canConfirmNow ? _confirmSelected : null,
             onDisabledTap: canConfirmNow
                 ? null
@@ -649,78 +666,78 @@ class _FinanceSalesOrderConfirmationPageState
     required bool canConfirm,
   }) {
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _filters(theme),
-        if (_error != null) ...[
+    // 2026-09-24 对齐物料分析页口径：筛选/错误行进折叠头（上滑先收走，
+    // 表头顶到头再表内滚）；独立页与业务审核中心嵌入态同款。
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 宿主大类行随页滚走（2026-09-24「表格滑到顶」）。
+          if (widget.externalHeader != null) ...[
+            widget.externalHeader!,
+            const SizedBox(height: UtenSpacing.s12),
+          ],
+          _filters(theme),
+          if (_error != null) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            _InlineError(message: _error!, onRetry: () => _load(result.page)),
+          ],
           const SizedBox(height: UtenSpacing.s12),
-          _InlineError(message: _error!, onRetry: () => _load(result.page)),
         ],
-        if (_batchBusy) ...[
-          const SizedBox(height: UtenSpacing.s8),
-          const LinearProgressIndicator(
-            key: Key('sales-order-finance-batch-progress'),
+      ),
+      body: MasterDataTableView<SalesOrderFinancePendingItem>(
+        // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+        primary: true,
+        key: const Key('sales-order-finance-desktop-table'),
+        selectable: !_showRejected && canConfirm,
+        idOf: (item) => item.orderId,
+        selectedIds: _selectedIds,
+        onSelectedIdsChanged: _setSelectedIds,
+        // 传空动作只启用共享选择摘要；真正业务动作由页面右下 FAB 渲染。
+        batchActionsBuilder: !_showRejected && canConfirm
+            ? (_, _) => const <Widget>[]
+            : null,
+        columns: _columns(),
+        items: result.items,
+        facets: const <String, List<MasterFacetBucket>>{},
+        nullCounts: const <String, int>{},
+        filters: const <String, String?>{},
+        onFilterChanged: (_, _) {},
+        onRowTap: _open,
+        onSelectionChanged: canConfirm
+            ? null
+            : (item) => setState(() => _activeItem = item),
+        onSelectionCleared: canConfirm
+            ? null
+            : () => setState(() => _activeItem = null),
+        rowMenuBuilder: (item) => [
+          UtenMenuItem(
+            label: '查看审核详情',
+            icon: Icons.open_in_new_rounded,
+            onTap: () => _open(item),
           ),
         ],
-        const SizedBox(height: UtenSpacing.s12),
-        Expanded(
-          child: AbsorbPointer(
-            absorbing: _batchBusy,
-            child: MasterDataTableView<SalesOrderFinancePendingItem>(
-              key: const Key('sales-order-finance-desktop-table'),
-              selectable: !_showRejected && canConfirm,
-              idOf: (item) => item.orderId,
-              selectedIds: _selectedIds,
-              onSelectedIdsChanged: _setSelectedIds,
-              // 传空动作只启用共享选择摘要；真正业务动作由页面右下 FAB 渲染。
-              batchActionsBuilder: !_showRejected && canConfirm
-                  ? (_, _) => const <Widget>[]
-                  : null,
-              columns: _columns(),
-              items: result.items,
-              facets: const <String, List<MasterFacetBucket>>{},
-              nullCounts: const <String, int>{},
-              filters: const <String, String?>{},
-              onFilterChanged: (_, _) {},
-              onRowTap: _open,
-              onSelectionChanged: canConfirm
-                  ? null
-                  : (item) => setState(() => _activeItem = item),
-              onSelectionCleared: canConfirm
-                  ? null
-                  : () => setState(() => _activeItem = null),
-              rowMenuBuilder: (item) => [
-                UtenMenuItem(
-                  label: '查看审核详情',
+        rowColor: (item) => _rowColor(theme, item),
+        isLoading: _loading,
+        emptyMessage: _emptyMessage,
+        currentPage: result.page,
+        totalPages: result.totalPages,
+        onPageChange: _load,
+        toolbarActions: canConfirm
+            ? null
+            : [
+                UtenButton(
+                  key: const Key('sales-order-finance-open-selected'),
+                  size: UtenButtonSize.large,
+                  type: UtenButtonType.secondary,
                   icon: Icons.open_in_new_rounded,
-                  onTap: () => _open(item),
+                  onPressed: _activeItem == null || _batchBusy
+                      ? null
+                      : () => _open(_activeItem!),
+                  child: const Text('查看选中详情'),
                 ),
               ],
-              rowColor: (item) => _rowColor(theme, item),
-              isLoading: _loading,
-              emptyMessage: _emptyMessage,
-              currentPage: result.page,
-              totalPages: result.totalPages,
-              onPageChange: _load,
-              toolbarActions: canConfirm
-                  ? null
-                  : [
-                      UtenButton(
-                        key: const Key('sales-order-finance-open-selected'),
-                        size: UtenButtonSize.large,
-                        type: UtenButtonType.secondary,
-                        icon: Icons.open_in_new_rounded,
-                        onPressed: _activeItem == null || _batchBusy
-                            ? null
-                            : () => _open(_activeItem!),
-                        child: const Text('查看选中详情'),
-                      ),
-                    ],
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
@@ -750,13 +767,6 @@ class _FinanceSalesOrderConfirmationPageState
             const SizedBox(height: UtenSpacing.s12),
             _mobileSelectionBar(result),
           ],
-          if (_batchBusy)
-            const Padding(
-              padding: EdgeInsets.only(top: UtenSpacing.s8),
-              child: LinearProgressIndicator(
-                key: Key('sales-order-finance-batch-progress'),
-              ),
-            ),
           const SizedBox(height: UtenSpacing.s12),
           if (result.items.isEmpty)
             SizedBox(
@@ -771,15 +781,12 @@ class _FinanceSalesOrderConfirmationPageState
             )
           else
             for (final item in result.items) ...[
-              AbsorbPointer(
-                absorbing: _batchBusy,
-                child: _CompactTaskRow(
-                  key: Key('sales-order-finance-task-${item.orderId}'),
-                  item: item,
-                  selected: selectable && _selectedIds.contains(item.orderId),
-                  onSelected: selectable ? () => _toggleSelected(item) : null,
-                  onOpen: () => _open(item),
-                ),
+              _CompactTaskRow(
+                key: Key('sales-order-finance-task-${item.orderId}'),
+                item: item,
+                selected: selectable && _selectedIds.contains(item.orderId),
+                onSelected: selectable ? () => _toggleSelected(item) : null,
+                onOpen: () => _open(item),
               ),
               const SizedBox(height: UtenSpacing.s8),
             ],
@@ -787,7 +794,7 @@ class _FinanceSalesOrderConfirmationPageState
             _Pager(
               page: result.page,
               totalPages: result.totalPages,
-              loading: _loading || _batchBusy,
+              loading: _loading,
               onPage: _load,
             ),
         ],

@@ -38,21 +38,24 @@ void main() {
   testWidgets('purchase hub hides every page without its view permission', (
     tester,
   ) async {
+    // 2026-09-24 三段式：申请只读卡已撤、单据卡 creator-only 带新建前缀；
+    // 仅申请查看权限的人新建区全隐藏（浏览在任务中心）。
     await tester.pumpWidget(
       _app(const PurchaseHubPage(), const {Perm.purchaseRequestView}),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('计划下达的采购申请'), findsOneWidget);
-    expect(find.text('采购订货单'), findsNothing);
-    expect(find.text('采购收货单'), findsNothing);
-    expect(find.text('采购退货单'), findsNothing);
+    expect(find.text('任务中心'), findsOneWidget);
+    expect(find.text('计划下达的采购申请'), findsNothing);
+    expect(find.text('新建采购订货单'), findsNothing);
+    expect(find.text('新建采购收货单'), findsNothing);
+    expect(find.text('新建采购退货单'), findsNothing);
   });
 
   testWidgets('warehouse hub filters task centers, documents and queries', (
     tester,
   ) async {
-    // 仅库存查看：三张任务中心、内部单据与报表全部隐藏，只留库存查询两张卡。
+    // 仅库存查看：任务中心、新建区与报表全部隐藏，只留库存查询两张卡。
     await tester.pumpWidget(
       _app(const WarehouseHubPage(), const {Perm.stockView}),
     );
@@ -60,48 +63,51 @@ void main() {
 
     expect(find.text('即时库存'), findsOneWidget);
     expect(find.text('货架目视化清单'), findsOneWidget);
-    expect(find.text('出库任务中心'), findsNothing);
-    expect(find.text('入库任务中心'), findsNothing);
-    expect(find.text('生产领料任务中心'), findsNothing);
-    expect(find.text('仓库调拨'), findsNothing);
-    expect(find.text('盘点'), findsNothing);
-    expect(find.text('委外成品退货单'), findsNothing);
-    expect(find.text('委外损耗单'), findsNothing);
+    expect(find.text('仓库任务中心'), findsNothing);
+    expect(find.text('新建调拨单'), findsNothing);
+    expect(find.text('新建盘点单'), findsNothing);
 
-    // 库存单据查看：三张任务中心与调拨/盘点单据可见，其它出库等已并入任务中心
-    // 不再是独立卡。
+    // 2026-09-24 合并：库存单据查看 = 任务中心一张卡 + 新建区六卡（creator 另需
+    // stock_doc:create；本用例只给 view，新建卡守卫含 create 故隐藏）。
     await tester.pumpWidget(
       _app(const WarehouseHubPage(), const {Perm.stockDocView}),
     );
     await tester.pumpAndSettle();
-    expect(find.text('出库任务中心'), findsOneWidget);
-    expect(find.text('入库任务中心'), findsOneWidget);
-    expect(find.text('生产领料任务中心'), findsOneWidget);
-    expect(find.text('仓库调拨'), findsOneWidget);
-    expect(find.text('盘点'), findsOneWidget);
-    expect(find.text('其它出库'), findsNothing);
-    expect(find.text('产成品进仓'), findsNothing);
+    expect(find.text('仓库任务中心'), findsOneWidget);
+    expect(find.text('新建调拨单'), findsNothing);
+    expect(find.text('新建盘点单'), findsNothing);
+    await tester.pumpWidget(
+      _app(const WarehouseHubPage(), const {
+        Perm.stockDocView,
+        Perm.stockDocCreate,
+      }),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('新建调拨单'), findsOneWidget);
+    expect(find.text('新建盘点单'), findsOneWidget);
+    expect(find.text('新建其它出库'), findsOneWidget);
     expect(find.text('采购收货单'), findsNothing);
   });
 
   testWidgets('warehouse quality-result card follows either view permission', (
     tester,
   ) async {
-    // 合并卡：两块仓库视图权限任一满足即可见。
+    // 2026-09-24 合并页：品质检查结果并入「仓库任务中心」一张卡，
+    // 两块仓库视图权限任一满足即可见。
     await tester.pumpWidget(
       _app(const WarehouseHubPage(), const {Perm.warehouseIqcStockInView}),
     );
     await tester.pumpAndSettle();
-    expect(find.text('品质部检查结果'), findsOneWidget);
+    expect(find.text('仓库任务中心'), findsOneWidget);
 
     await tester.pumpWidget(
       _app(const WarehouseHubPage(), const {Perm.warehouseIqcReturnView}),
     );
     await tester.pumpAndSettle();
-    expect(find.text('品质部检查结果'), findsOneWidget);
+    expect(find.text('仓库任务中心'), findsOneWidget);
 
     await tester.pumpWidget(_app(const WarehouseHubPage(), const {}));
     await tester.pumpAndSettle();
-    expect(find.text('品质部检查结果'), findsNothing);
+    expect(find.text('仓库任务中心'), findsNothing);
   });
 }

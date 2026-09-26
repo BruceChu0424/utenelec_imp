@@ -61,10 +61,17 @@ void main() {
     ).readAsStringSync();
     final router = File('lib/core/router/app_router.dart').readAsStringSync();
 
-    // 2026-09-01 合并后：hub 卡改挂「品质部检查结果」徽章，旧列表路由重定向保链；
-    // 旧详情页已删除，深链重定向到合并页详情（同参）。
-    expect(hub, contains('WarehouseQualityResultBadge'));
-    expect(hub, contains('RouteName.warehouseQualityResults'));
+    // 2026-09-24 仓库任务中心合并后：品质结果并入合并页「品质检查结果」大类
+    //（hub 一张「仓库任务中心」卡，角标 = 模块累计）；旧列表路由构建合并页
+    // 预设品质大类，详情深链不变。
+    expect(hub, contains('RouteName.warehouseTasks'));
+    expect(
+      File(
+        'lib/features/warehouse/pages/warehouse_task_center_page.dart',
+      ).readAsStringSync(),
+      contains('BadgeEntry.warehouseQualityResult'),
+    );
+    expect(router, contains('initialGroup: \'quality\''));
     // hub 的计数刷新统一走 invalidateWarehouseTaskCounts(→ 徽章汇总重拉);
     // 品质结果红黄两数是服务端目录 warehouseQualityResult 入口按全部来源大类求和。
     final countRefresh = File(

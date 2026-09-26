@@ -177,6 +177,21 @@ class ProductionOutputSupplementRepository {
   );
   Future<ProductionOutputSupplementView> detail(String id) async =>
       ProductionOutputSupplementView(await api.get('$_base/$id'));
+  Future<ProductionOutputSupplementView> cancel(
+    String id,
+    String reason,
+  ) async => ProductionOutputSupplementView(
+    await api.post(
+      '$_base/$id/cancel',
+      body: {
+        'reason': reason,
+        'idempotencyKey': businessIdempotencyKey(
+          'actual-supplement-cancel',
+          '$id|$reason',
+        ),
+      },
+    ),
+  );
   Future<ProductionOutputSupplementView> approve(String id) async =>
       ProductionOutputSupplementView(
         await api.post(

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -85,6 +86,7 @@ class _FinanceAssetPolicySurfaceState
   List<PaymentStyleNode> _expenseStyles = const [];
   bool _showStyleErrors = false;
   bool _dirty = false;
+  bool _saving = false;
 
   final _code = TextEditingController();
   final _name = TextEditingController();
@@ -323,6 +325,7 @@ class _FinanceAssetPolicySurfaceState
       expectedVersion: _selected?.rowVersion,
     );
     try {
+      setState(() => _saving = true);
       final repository = ref.read(financeAssetCategoryRepositoryProvider);
       if (_selected == null) {
         await repository.create(input);
@@ -337,6 +340,8 @@ class _FinanceAssetPolicySurfaceState
       if (mounted) {
         context.appApiError(error, fallback: '保存失败，表单内容已保留');
       }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -352,6 +357,7 @@ class _FinanceAssetPolicySurfaceState
     );
     if (!confirmed || !mounted) return;
     try {
+      setState(() => _saving = true);
       await ref
           .read(financeAssetCategoryRepositoryProvider)
           .activate(selected.id, expectedVersion: selected.rowVersion);
@@ -360,6 +366,8 @@ class _FinanceAssetPolicySurfaceState
       await _load();
     } catch (error) {
       if (mounted) context.appApiError(error, fallback: '启用失败，请刷新后重试');
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -376,94 +384,105 @@ class _FinanceAssetPolicySurfaceState
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _close();
       },
-      child: Material(
-        color: theme.colorScheme.surface,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UtenSpacing.s20,
-                UtenSpacing.s12,
-                UtenSpacing.s8,
-                UtenSpacing.s12,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '资产类别与会计政策',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Text(
-                          '所有口径由服务端政策驱动；此处不预设金额门槛或税务优惠。',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
+      child: Stack(
+        children: [
+          Material(
+            color: theme.colorScheme.surface,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    UtenSpacing.s20,
+                    UtenSpacing.s12,
+                    UtenSpacing.s8,
+                    UtenSpacing.s12,
                   ),
-                  IconButton(
-                    constraints: const BoxConstraints(
-                      minWidth: 48,
-                      minHeight: 48,
-                    ),
-                    tooltip: '关闭',
-                    onPressed: _close,
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s12),
-              child: SegmentedButton<FinanceAssetLedger>(
-                segments: const [
-                  ButtonSegment(
-                    value: FinanceAssetLedger.fixedAsset,
-                    label: Text('固定资产'),
-                    icon: Icon(Icons.apartment_outlined),
-                  ),
-                  ButtonSegment(
-                    value: FinanceAssetLedger.deferredExpense,
-                    label: Text('长期待摊'),
-                    icon: Icon(Icons.calendar_month_outlined),
-                  ),
-                ],
-                selected: {_ledger},
-                onSelectionChanged: (values) => _switchLedger(values.single),
-              ),
-            ),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  if (constraints.maxWidth < UtenBreakpoints.expandedStart) {
-                    return Column(
-                      children: [
-                        SizedBox(height: 180, child: _categoryList(theme)),
-                        const Divider(height: 1),
-                        Expanded(child: _policyForm(theme)),
-                      ],
-                    );
-                  }
-                  return Row(
+                  child: Row(
                     children: [
-                      SizedBox(width: 300, child: _categoryList(theme)),
-                      const VerticalDivider(width: 1),
-                      Expanded(child: _policyForm(theme)),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '资产类别与会计政策',
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            Text(
+                              '所有口径由服务端政策驱动；此处不预设金额门槛或税务优惠。',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        constraints: const BoxConstraints(
+                          minWidth: 48,
+                          minHeight: 48,
+                        ),
+                        tooltip: '关闭',
+                        onPressed: _close,
+                        icon: const Icon(Icons.close_rounded),
+                      ),
                     ],
-                  );
-                },
-              ),
+                  ),
+                ),
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  child: SegmentedButton<FinanceAssetLedger>(
+                    segments: const [
+                      ButtonSegment(
+                        value: FinanceAssetLedger.fixedAsset,
+                        label: Text('固定资产'),
+                        icon: Icon(Icons.apartment_outlined),
+                      ),
+                      ButtonSegment(
+                        value: FinanceAssetLedger.deferredExpense,
+                        label: Text('长期待摊'),
+                        icon: Icon(Icons.calendar_month_outlined),
+                      ),
+                    ],
+                    selected: {_ledger},
+                    onSelectionChanged: (values) =>
+                        _switchLedger(values.single),
+                  ),
+                ),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      if (constraints.maxWidth <
+                          UtenBreakpoints.expandedStart) {
+                        return Column(
+                          children: [
+                            SizedBox(height: 180, child: _categoryList(theme)),
+                            const Divider(height: 1),
+                            Expanded(child: _policyForm(theme)),
+                          ],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          SizedBox(width: 300, child: _categoryList(theme)),
+                          const VerticalDivider(width: 1),
+                          Expanded(child: _policyForm(theme)),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          // 保存/启用网络段的全屏居中遮罩（2026-09-25 统一口径）。
+          if (_saving)
+            const Positioned.fill(
+              child: UtenBusyOverlay(title: '正在保存会计政策，请稍候'),
+            ),
+        ],
       ),
     );
   }

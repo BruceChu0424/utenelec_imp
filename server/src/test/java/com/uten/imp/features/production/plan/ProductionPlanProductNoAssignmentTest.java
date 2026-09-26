@@ -68,6 +68,7 @@ class ProductionPlanProductNoAssignmentTest {
         line.setProductNo(productNo);
         line.setGoodsId(UUID.randomUUID());
         line.setQty(BigDecimal.ONE);
+        line.setAllowedOverproductionRate(BigDecimal.ZERO);
         return line;
     }
 }

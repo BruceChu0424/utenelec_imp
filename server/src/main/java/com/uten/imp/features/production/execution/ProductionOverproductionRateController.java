@@ -18,6 +18,19 @@ import static com.uten.imp.features.production.execution.ProductionOverproductio
 public class ProductionOverproductionRateController {
     private final ProductionOverproductionRateService service;
     private final AuditDetailViewRecorder auditViews;
+    private final com.uten.imp.features.master.goods.GoodsService goods;
+
+    @GetMapping("/defaults")
+    @PreAuthorize("hasAnyAuthority('production_material_analysis:view','production_material_analysis:create','production_plan:edit')")
+    public Map<UUID, java.math.BigDecimal> defaults(@RequestParam("ids") java.util.Set<UUID> ids) {
+        if (ids.isEmpty() || ids.size() > com.uten.imp.common.validation.RequestLimits.LOOKUP_IDS) {
+            throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,
+                    "货品 ID 数量必须为 1-" + com.uten.imp.common.validation.RequestLimits.LOOKUP_IDS);
+        }
+        var visibleIds = goods.lookup(ids).stream().map(com.uten.imp.features.master.goods.dto.GoodsDictItem::getId)
+                .collect(java.util.stream.Collectors.toSet());
+        return service.defaults(visibleIds);
+    }
 
     @GetMapping("/segments/{id}")
     @PreAuthorize("hasAnyAuthority('production_execution:view','production_plan:approve')")

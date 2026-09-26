@@ -857,8 +857,9 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         String billNo="SPCR-"+resolution.id();
         java.time.OffsetDateTime businessDate=request.cashReceiptDate()
                 .atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime();
-        String supplierName=(String)em.createNativeQuery("SELECT name FROM suppliers WHERE id=:id")
-                .setParameter("id",supplierId).getResultStream().findFirst().orElse(null);
+        List<?> supplierNames=em.createNativeQuery("SELECT name FROM suppliers WHERE id=:id")
+                .setParameter("id",supplierId).getResultList();
+        String supplierName=supplierNames.isEmpty()?null:(String)supplierNames.getFirst();
         accountFlowLedger.post(account,AccountPosting.in("SUPPLIER_CLAIM_RECEIPT",cashReceiptId,billNo,request.accountId())
                 .rule(AccountPosting.CurrencyRule.BASE_ONLY,currencyId)
                 .amounts(cashLocal,cashLocal)

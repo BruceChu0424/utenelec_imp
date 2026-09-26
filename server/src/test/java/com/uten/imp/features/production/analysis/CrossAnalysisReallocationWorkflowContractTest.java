@@ -83,10 +83,11 @@ class CrossAnalysisReallocationWorkflowContractTest {
         assertThat(pegging).contains("entitlement.appendoriginiqc(");
         assertThat(pegging).contains("entitlement.appendoriginmake(");
         assertThat(occurrences(pegging,
-                "hook -> hook.applypriorityfororiginevent(origineventid)"))
+                "originhooks.orderedstream().foreach(hook -> inserted.foreach(hook::applypriorityfororiginevent))"))
                 .isGreaterThanOrEqualTo(1);
-        assertThat(pegging).contains("if (origin.inserted())");
-        assertThat(occurrences(pegging, "applyoriginpriority(origin);"))
+        assertThat(pegging).contains(
+                "origins.stream().filter(preplanstockentitlementservice.originappendresult::inserted)");
+        assertThat(occurrences(pegging, "applyoriginpriority(origins);"))
                 .isGreaterThanOrEqualTo(2);
     }
 

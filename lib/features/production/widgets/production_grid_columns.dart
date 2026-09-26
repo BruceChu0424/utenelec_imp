@@ -6,6 +6,7 @@
 // 颜色/单位选货品后直接回填货品主档 UUID；编号/名称只作只读显示，不做 legacy→UUID 反查。
 // productionGridColumns：与 salesGridColumns 同形（货品点选 / 颜色单位只读 / 数量 numeric）。
 import 'package:flutter/material.dart';
+import 'production_overproduction_rate_field.dart';
 
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -27,6 +28,10 @@ class ProductionGridRow extends EditableGridRow {
 
   final TextEditingController productNo = TextEditingController();
   final TextEditingController qty = TextEditingController();
+  final TextEditingController overproductionPercent = TextEditingController(
+    text: '0',
+  );
+  int overproductionDefaultRequestVersion = 0;
   final TextEditingController oqty = TextEditingController();
   final TextEditingController salesOrderNo = TextEditingController();
   final TextEditingController remark = TextEditingController();
@@ -79,6 +84,7 @@ class ProductionGridRow extends EditableGridRow {
       ..unitId = unitId;
     c.productNo.text = productNo.text;
     c.qty.text = qty.text;
+    c.overproductionPercent.text = overproductionPercent.text;
     c.remark.text = remark.text;
     return c;
   }
@@ -91,6 +97,7 @@ class ProductionGridRow extends EditableGridRow {
     qtyNotifier.dispose();
     productNo.dispose();
     qty.dispose();
+    overproductionPercent.dispose();
     oqty.dispose();
     salesOrderNo.dispose();
     remark.dispose();
@@ -207,6 +214,18 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
+      ),
+    ),
+    EditableGridColumn<ProductionGridRow>(
+      key: 'allowedOverproductionRate',
+      label: '允许超产比例',
+      width: 152,
+      numeric: true,
+      textOf: (row) => '${row.overproductionPercent.text}%',
+      listenableOf: (row) => row.overproductionPercent,
+      cellBuilder: (context, row) => ProductionOverproductionRateField(
+        key: ObjectKey(row),
+        controller: row.overproductionPercent,
       ),
     ),
     EditableGridColumn<ProductionGridRow>(

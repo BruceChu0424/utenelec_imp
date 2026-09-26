@@ -63,7 +63,7 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
     @BeforeAll static void database() throws Exception {
         source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());jdbc=new JdbcTemplate(source);
         jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY,parent_id uuid,code text,name text,is_deleted boolean,is_accountable boolean,is_defective boolean,is_line_side boolean DEFAULT FALSE)");
-        jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY,min_qty double precision, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid)");
+        jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY,min_qty double precision, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6))");
         jdbc.execute("CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY,analysis_id uuid,goods_id uuid,color_id uuid,unit_id uuid,active boolean)");
         jdbc.execute("CREATE INDEX ON production_material_analysis_materials(analysis_id,goods_id)");
         jdbc.execute("CREATE TABLE stock_facts(warehouse_id uuid,goods_id uuid,color_id uuid,on_hand_qty numeric,reserved_qty numeric,available_qty numeric)");
@@ -73,7 +73,7 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
         jdbc.execute("CREATE TABLE preplan_stock_entitlement_events(stock_reservation_id uuid)");
         jdbc.execute("CREATE TABLE entitlement_facts(stock_reservation_id uuid,beneficiary_analysis_id uuid,beneficiary_analysis_material_id uuid,effective_qty numeric)");
         jdbc.execute("CREATE VIEW v_preplan_stock_entitlement_beneficiary_balance AS SELECT * FROM entitlement_facts");
-        jdbc.execute("CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY,route text,status text,warehouse_id uuid,goods_id uuid,color_id uuid,requested_qty numeric,safety_replenishment_qty numeric,safety_external_item_id uuid,external_document_id uuid)");
+        jdbc.execute("CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY,route text,status text,warehouse_id uuid,goods_id uuid,color_id uuid,requested_qty numeric,safety_replenishment_qty numeric,safety_external_item_id uuid,external_document_id uuid, aggregate_allocation_check_revision bigint NOT NULL DEFAULT 0)");
         jdbc.execute("CREATE INDEX ON preplan_supply_actions(warehouse_id,goods_id,color_id)");
         jdbc.execute("CREATE TABLE preplan_supply_action_allocations(action_id uuid,external_item_id uuid)");
         jdbc.execute("CREATE INDEX ON preplan_supply_action_allocations(action_id)");

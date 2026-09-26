@@ -32,6 +32,8 @@ import com.uten.imp.features.production.execution.ExecutionSegmentView;
 import com.uten.imp.features.production.execution.ProductionExecutionSegmentService;
 import com.uten.imp.features.production.execution.SegmentAssignmentRequest;
 import com.uten.imp.features.production.execution.SegmentTransitionRequest;
+import com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryContracts;
+import com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryService;
 import com.uten.imp.features.production.schedule.ProductionScheduleService;
 import com.uten.imp.features.production.dailyreport.ProductionDailyReportService;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
@@ -177,6 +179,7 @@ class FullChainEndToEndTest {
     @Autowired private com.uten.imp.features.production.mrp.ProductionPlanResourceGuard planGuard;
     @Autowired private ProductionPlanningPackageService planningPackageService;
     @Autowired private ProductionExecutionSegmentService executionSegmentService;
+    @Autowired private ProductionMaterialDiscoveryService materialDiscoveryService;
     @Autowired private com.uten.imp.features.purchase.order.PurchaseOrderService purchaseOrderService;
     @Autowired private com.uten.imp.features.purchase.request.PurchaseRequestService purchaseRequestService;
     @Autowired private com.uten.imp.features.subcontract.order.SubcontractOrderService subcontractOrderService;
@@ -728,6 +731,7 @@ class FullChainEndToEndTest {
         assertEquals(0, pendingRow.needQty().compareTo(new BigDecimal("6")), "缺口 6");
 
         // 入库红冲：produced/reserved 回 0 → 未排 6 → 2。
+        drainCosts(w);
         stockDocService.reverseFinishedInbound(finishedInId);
         assertEquals(0, producedQty(orderItemId).compareTo(BigDecimal.ZERO));
         assertEquals(2, itemChainStatusByItem(orderItemId), "入库红冲后回待排产(2)");
@@ -885,8 +889,7 @@ class FullChainEndToEndTest {
 
         PlanningPackageResult result = planningPackageService.confirm(planId, req);
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(planId);
 
         // CURRENT architecture = direct-layer-only (spec decision #16): confirming A's package
         // handles only A's DIRECT components. B (自制) -> MAKE child subplan; E (委外) -> subcontract
@@ -964,8 +967,7 @@ class FullChainEndToEndTest {
         PlanningPackageResult first = planningPackageService.confirm(
                 planId, request);
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(planId);
         assertEquals(
                 "EXACT_SNAPSHOT",
                 first.executionSegments().getFirst()
@@ -1018,8 +1020,7 @@ class FullChainEndToEndTest {
         PlanningPackageResult replay = planningPackageService.confirm(
                 planId, request);
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(planId);
         assertTrue(replay.replayed());
         assertEquals(first.packageId(), replay.packageId());
         assertEquals(1, count("""
@@ -1105,8 +1106,7 @@ class FullChainEndToEndTest {
 
         planningPackageService.confirm(planId, request);
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(planId);
 
         Map<String, Object> totals = jdbc.queryForMap("""
                 select count(*) as demand_count,
@@ -1164,8 +1164,7 @@ class FullChainEndToEndTest {
         PlanningPackageResult result = planningPackageService.confirm(
                 planId, request);
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(planId);
         ExecutionSegmentResult zeroSegment =
                 result.executionSegments().getFirst();
         UUID segmentId = zeroSegment.segmentId();
@@ -1300,8 +1299,7 @@ class FullChainEndToEndTest {
                                 assignment.workshopId(), null,
                                 assignment.workerId(), null, null))));
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(childWaitingResult.plans().getFirst().planId());
         assertTrue(hasSegmentStatus(
                 childWaitingResult.plans().getFirst().planId(), "WAITING"));
         assertTrue(childWaitingResult.plans().getFirst().drawIds().isEmpty(),
@@ -1344,8 +1342,7 @@ class FullChainEndToEndTest {
                                 assignment.workshopId(), null,
                                 assignment.workerId(), null, null))));
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(waitingResult.plans().getFirst().planId());
         GeneratedPlan waitingPlan = waitingResult.plans().getFirst();
         assertEquals("APPROVED", waitingPlan.status(), "待料计划也可显式审核下达");
         assertTrue(hasSegmentStatus(waitingPlan.planId(), "WAITING"),
@@ -1419,8 +1416,11 @@ class FullChainEndToEndTest {
 
         assertFalse(result.plans().isEmpty(), "生成了一张生产计划");
         GeneratedPlan g = result.plans().getFirst();
-        assertTrue(g.drawIds().isEmpty(), "尚未确认生产路线时不生成领料单");
-        confirmAllUnconfirmedFullKitRoutes();
+        assertFalse(g.drawIds().isEmpty(), "默认持续生产已确认；真实库存齐备时生成待申请的备料单");
+        assertEquals("CONTINUOUS", strFor("SELECT start_route FROM production_execution_segments WHERE id=?",g.segmentIds().getFirst()));
+        assertEquals(0,count("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='START'",g.segmentIds().getFirst()),
+                "默认路线和备料不等于员工已经开工");
+        confirmFullKitRoutes(g.planId());
         assertEquals("APPROVED", g.status(), "approveNow=true → 计划已批准");
         assertEquals(1, planStatus(g.planId()), "production_plans.status=1(已审核)");
         assertTrue(hasSegmentStatus(g.planId(), "READY"), "生成 READY 执行分段");
@@ -1444,8 +1444,7 @@ class FullChainEndToEndTest {
                         LocalDate.of(2026,8,8),null,true,
                         List.of(new IssueWorkshopPlansRequest.IssuePlanLine(productLineId,BigDecimal.ONE)))));
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(g.planId());
         assertEquals(1,count("select count(*) from production_plans where material_analysis_id=?",
                 analysisId),"需求保留不能重复排产");
     }
@@ -1477,8 +1476,7 @@ class FullChainEndToEndTest {
                         w.warehouseId(),LocalDate.of(2026,9,6),null,true,
                         List.of(new IssueWorkshopPlansRequest.IssuePlanLine(sourceId,new BigDecimal("50")))));
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(first.plans().getFirst().planId());
         assertTrue(hasSegmentStatus(first.plans().getFirst().planId(),"READY"));
         UUID originalSegment=jdbc.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",UUID.class,first.plans().getFirst().planId());
         String originalCode=jdbc.queryForObject("SELECT segment_code FROM production_execution_segments WHERE id=?",String.class,originalSegment);
@@ -1492,8 +1490,7 @@ class FullChainEndToEndTest {
                         w.warehouseId(),LocalDate.of(2026,9,6),null,true,
                         List.of(new IssueWorkshopPlansRequest.IssuePlanLine(sourceId,new BigDecimal("50")))));
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(second.plans().getFirst().planId());
         // 未申请领料时 50+50 并成原工单 100；固定批次需求按累计 100 计算，仍只需 10。
         UUID mergedPlan=second.plans().getFirst().planId();
         assertEquals(first.plans().getFirst().planId(),mergedPlan);
@@ -1551,8 +1548,7 @@ class FullChainEndToEndTest {
                                 null, null, null, null, null, null, null))))
                 .plans().getFirst();
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(plan.planId());
 
         assertTrue(hasSegmentStatus(plan.planId(), "READY"));
         assertEquals(2, currentPlanDrawIds(plan.planId()).size(), "不同实际子仓各一张领料单");
@@ -1616,8 +1612,7 @@ class FullChainEndToEndTest {
                                 null,assignment.workerId(),null,null))))
                 .plans().getFirst();
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(plan.planId());
         UUID segmentId = plan.segmentIds().getFirst();
         assertTrue(hasSegmentStatus(plan.planId(),"READY"));
         assertEquals(assignment.workshopId(),jdbc.queryForObject("""
@@ -1654,6 +1649,7 @@ class FullChainEndToEndTest {
         reportLine.setPlanItemId(planItemOfPlan(plan.planId()));
         reportLine.setExecutionSegmentId(segmentId);
         report.setItems(List.of(reportLine));
+        report.setMaterialLines(materialUseForFixtureBatch(segmentId,BigDecimal.ONE));
         ApiException beforeStart = assertThrows(ApiException.class,() -> reportService.create(report));
         assertTrue(beforeStart.getMessage().contains("开工"));
         assertTrue(hasSegmentStatus(plan.planId(),"READY"),"报工拒绝不能偷偷开工");
@@ -1737,8 +1733,7 @@ class FullChainEndToEndTest {
                                 new BigDecimal("10"),null,null,null,null,null,null,null))))
                 .plans().getFirst();
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(plan.planId());
         assertEquals(2,currentPlanDrawIds(plan.planId()).size());
         UUID draw = currentPlanDrawIds(plan.planId()).getFirst();
         UUID actualWarehouse = jdbc.queryForObject(
@@ -1839,8 +1834,7 @@ class FullChainEndToEndTest {
                                 LocalDate.of(2026, 8, 8), null,
                                 assignment.workshopId(), null, assignment.workerId(), null, null))));
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(result.plans().getFirst().planId());
         assertEquals(1, result.plans().size());
         assertEquals("APPROVED", result.plans().getFirst().status(),
                 "approveNow=true → 子件计划同事务审核下达");
@@ -2083,8 +2077,7 @@ class FullChainEndToEndTest {
                                 assignment.workerId(), null, null))))
                 .plans().getFirst();
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(generated.planId());
         UUID drawId = currentPlanDrawIds(generated.planId()).getFirst();
         UUID segmentId = generated.segmentIds().getFirst();
         assertEquals(0, count("""
@@ -2309,6 +2302,7 @@ class FullChainEndToEndTest {
         reportLine.setExecutionSegmentSalesAllocationId(
                 salesAllocationOf(segmentId, orderItemId));
         reportRequest.setItems(List.of(reportLine));
+        reportRequest.setMaterialLines(materialUseForFixtureBatch(segmentId,BigDecimal.ONE));
         loginAs(workshopUser);
         assertThrows(ApiException.class,() -> reportService.create(reportRequest),
                 "实际领料并不等于开工，未显式开工不能创建报工");
@@ -2552,8 +2546,7 @@ class FullChainEndToEndTest {
                                 null, null, null, null, null, null, null))))
                 .plans().getFirst();
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(plan.planId());
         assertEquals(1, currentPlanDrawIds(plan.planId()).size(), tag + "：库存全在同一仓只生成一张领料单");
         return currentPlanDrawIds(plan.planId()).getFirst();
     }
@@ -2611,7 +2604,7 @@ class FullChainEndToEndTest {
                 "服务端明确投影为无生产子层级");
         assertEquals(0, new BigDecimal("10").compareTo(
                 view.products().getFirst().readyNowQty()),
-                "无子层级 → 剩余需求全额可直接自制");
+                "无子层级仍可按原需求排产；齐套参考不代表无需领料即可开工");
 
         AnalysisView refreshed = analysisService.detail(analysisId);
         confirmRootMakeRoute(analysisId, refreshed);
@@ -2627,13 +2620,12 @@ class FullChainEndToEndTest {
                                 null, productLineId, new BigDecimal("10"),
                                 null, null, null, null, null, null, null))));
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(generated.plans().getFirst().planId());
 
         GeneratedPlan plan = generated.plans().getFirst();
         assertEquals("APPROVED", plan.status());
         assertEquals(1, plan.segmentIds().size());
-        assertTrue(currentPlanDrawIds(plan.planId()).isEmpty(), "无下层物料不得生成空 DRAW");
+        assertTrue(currentPlanDrawIds(plan.planId()).isEmpty(), "仓库登记实际材料前不得生成空 DRAW");
         UUID segmentId = plan.segmentIds().getFirst();
         assertEquals(
                 "READY|ZERO_MATERIAL|DIRECT_MAKE",
@@ -2689,15 +2681,64 @@ class FullChainEndToEndTest {
                         jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segmentId),
                         "idem-ma-direct-dispatch-" + segmentId));
         confirmFullKitRoute(plan.planId(), segmentId);
+        assertTrue(materialDiscoveryService.context(segmentId).materialDiscoveryRequired());
+        assertFalse(Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT fn_execution_start_material_ready(?)", Boolean.class, segmentId)));
+        assertThrows(ApiException.class, () -> executionSegmentService.start(
+                plan.planId(), segmentId, new SegmentTransitionRequest(
+                        jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?", Long.class, segmentId),
+                        "idem-ma-direct-start-before-materials-" + segmentId)));
+
+        var discoveryRequest = new ProductionMaterialDiscoveryContracts.Request(
+                jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?", Long.class, segmentId),
+                "idem-ma-direct-material-request-" + segmentId);
+        var pendingMaterials = materialDiscoveryService.request(segmentId, discoveryRequest);
+        assertEquals("PENDING", pendingMaterials.status());
+        assertEquals(pendingMaterials.requestId(), materialDiscoveryService.request(segmentId, discoveryRequest).requestId());
+        assertTrue(currentPlanDrawIds(plan.planId()).isEmpty(), "未知料请求本身不预留或伪造领料");
+        putDirectTargetStock(w, w.goodsD(), "5");
+        var configureMaterials = new ProductionMaterialDiscoveryContracts.Configure(
+                pendingMaterials.version(), "idem-ma-direct-material-configure-" + segmentId,
+                List.of(new ProductionMaterialDiscoveryContracts.Material(
+                        w.goodsD(), null, w.unitId(), w.warehouseId(), new BigDecimal("5"))));
+        var definedMaterials = materialDiscoveryService.configure(pendingMaterials.requestId(), configureMaterials);
+        assertEquals("CONFIGURED", definedMaterials.status());
+        assertEquals(1, definedMaterials.items().size());
+        assertEquals(1, definedMaterials.drawDocIds().size());
+        assertEquals(definedMaterials, materialDiscoveryService.configure(pendingMaterials.requestId(), configureMaterials));
+        assertEquals("DEMANDED", strFor("SELECT material_requirement_mode FROM production_execution_segments WHERE id=?", segmentId));
+        assertEquals(0, count("SELECT count(*) FROM production_material_stock_postings WHERE demand_id=?", definedMaterials.items().getFirst().demandId()));
+        assertThrows(ApiException.class, () -> executionSegmentService.start(
+                plan.planId(), segmentId, new SegmentTransitionRequest(
+                        jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?", Long.class, segmentId),
+                        "idem-ma-direct-start-before-issue-" + segmentId)));
+        UUID materialDraw = definedMaterials.drawDocIds().getFirst();
+        var materialIssue = new StockDocIssueRequest();
+        materialIssue.setIdempotencyKey("idem-ma-direct-material-issue-" + materialDraw);
+        materialIssue.setLines(jdbc.query("SELECT id,qty FROM stock_document_items WHERE doc_id=? AND NOT is_deleted", (row, index) -> {
+            var item = new StockDocIssueRequest.Line();
+            item.setItemId(row.getObject(1, UUID.class)); item.setQty(row.getBigDecimal(2));
+            return item;
+        }, materialDraw));
+        stockDocService.approveAndIssue(materialDraw, materialIssue);
+        assertTrue(Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT fn_execution_start_material_ready(?)", Boolean.class, segmentId)));
+        assertEquals(0, new BigDecimal("5").compareTo(bigDecimalFor(
+                "SELECT sum(qty_base) FROM production_material_stock_postings WHERE demand_id=? AND posting_type='ISSUE'",
+                definedMaterials.items().getFirst().demandId())));
         executionSegmentService.start(
                 plan.planId(), segmentId,
                 new SegmentTransitionRequest(
                         jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segmentId),
                         "idem-ma-direct-start-" + segmentId));
 
+        var actualMaterialUse = new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();
+        actualMaterialUse.setDemandId(definedMaterials.items().getFirst().demandId());
+        actualMaterialUse.setQtyBase(new BigDecimal("5"));
         UUID reportId = reportAndApproveExecutionSegment(
                 w, planItemId, orderItemId, w.goodsC(),
-                segmentId, salesAllocationId, "10");
+                segmentId, salesAllocationId, "10", false, "0", null, null,
+                List.of(actualMaterialUse));
         confirmFinishedInboundFully(finishedInDocForReport(reportId));
 
         assertEquals(0, new BigDecimal("10").compareTo(
@@ -2708,6 +2749,10 @@ class FullChainEndToEndTest {
         assertEquals(0, new BigDecimal("10").compareTo(
                 stockBalance(w.warehouseId(), w.goodsC())),
                 "仓库点收后直接自制成品库存增加 10");
+        assertEquals(0, stockBalance(w.warehouseId(), w.goodsD()).signum(), "真实原料实发扣库存");
+        assertEquals(0, new BigDecimal("0.5").compareTo(bigDecimalFor(
+                "SELECT qty FROM goods_bom_items WHERE goods_id=? AND component_goods_id=? AND NOT is_deleted",
+                w.goodsC(), w.goodsD())), "十件实产、五单位实际耗料学习为每件半单位");
     }
 
     @Test
@@ -2747,13 +2792,11 @@ class FullChainEndToEndTest {
         GeneratedPlan first = analysisCommandService
                 .issueWorkshopPlans(analysisId, request).plans().getFirst();
 
-                // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-                confirmAllUnconfirmedFullKitRoutes();
+
         GeneratedPlan replay = analysisCommandService
                 .issueWorkshopPlans(analysisId, request).plans().getFirst();
 
-                // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-                confirmAllUnconfirmedFullKitRoutes();
+
 
         assertEquals("DRAFT", first.status());
         assertEquals(first.planId(), replay.planId());
@@ -2811,8 +2854,7 @@ class FullChainEndToEndTest {
                         LocalDate.of(2026,9,5),LocalDate.of(2026,9,30),
                         assignment.workshopId(),null,assignment.workerId(),null,null)))).plans().getFirst();
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(generated.planId());
         assertTrue(currentPlanDrawIds(generated.planId()).isEmpty());
         assertEquals(1,count("select count(*) from production_execution_segments where plan_id=? and status='WAITING'",generated.planId()));
         assertEquals(0,count("select count(*) from production_material_analysis_items where analysis_id=? and source_type='MAKE_COMPONENT'",view.analysisId()));
@@ -3938,8 +3980,7 @@ class FullChainEndToEndTest {
                                 null, productLineId, new BigDecimal("5"),
                                 null, null, null, null, null, null, null))));
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(result.plans().getFirst().planId());
         GeneratedPlan g = result.plans().getFirst();
         assertEquals("APPROVED", g.status(), "分批也是 approveNow 一步批准");
         assertEquals(1, planStatus(g.planId()));
@@ -3966,12 +4007,10 @@ class FullChainEndToEndTest {
                         null,null,null,null,null,null,null)));
         var second = analysisCommandService.issueWorkshopPlans(analysisId,secondRequest);
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(second.plans().getFirst().planId());
         var replay = analysisCommandService.issueWorkshopPlans(analysisId,secondRequest);
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(replay.plans().getFirst().planId());
         assertEquals(second.plans().getFirst().planId(),replay.plans().getFirst().planId());
         assertEquals(0,plannedQty(orderId).compareTo(new BigDecimal("10")));
         assertEquals(0,bigDecimalFor("SELECT ready_start_qty+ready_finish_qty+ready_ship_qty FROM production_material_analysis_items WHERE id=?",
@@ -4020,8 +4059,7 @@ class FullChainEndToEndTest {
                                 null,productLineId,new BigDecimal("100"),
                                 null,null,null,null,null,null,null))));
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(generated.plans().getFirst().planId());
         UUID planId = generated.plans().getFirst().planId();
         Map<String, BigDecimal> segmentQty = new java.util.HashMap<>();
         jdbc.query("""
@@ -4454,8 +4492,7 @@ class FullChainEndToEndTest {
         assertNotNull(planningPackageService.confirm(planId, req).purchaseRequest(),
                 "H 直层采购件 (direct BUY) -> 采购申请");
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(planId);
 
         String planNo = strFor("select bill_no from production_plans where id = ?", planId);
         UUID requestItemId = jdbc.queryForObject(
@@ -4537,8 +4574,7 @@ class FullChainEndToEndTest {
         req.setGeneratePurchaseRequest(true);
         planningPackageService.confirm(planId, req);
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(planId);
         String planNo = strFor("select bill_no from production_plans where id = ?", planId);
         UUID requestItemId = jdbc.queryForObject(
                 "select pri.id from purchase_request_items pri "
@@ -4771,9 +4807,12 @@ class FullChainEndToEndTest {
                                 anchorItem,new BigDecimal("10"),null,null,null,null,null,null,null))))
                 .plans().getFirst();
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
-        assertTrue(hasSegmentStatus(plan.planId(),"WAITING"));
+        confirmFullKitRoutes(plan.planId());
+        var waiting=executionSegmentService.list(plan.planId()).getFirst();
+        assertEquals("FULL_KIT",waiting.startRoute());
+        assertFalse(waiting.materialReady(),"one stocked component cannot make the whole kit ready");
+        assertTrue(waiting.shortageKindCount()>0);
+        assertFalse(waiting.canStart(),"changing route preserves partial preparation, not permission to start without a complete issued kit");
         AnalysisView awaiting = analysisService.detail(analysisId);
         MaterialView originalMaterial = awaiting.flatMaterials().stream()
                 .filter(row -> row.goodsId().equals(material) && row.actionable())
@@ -4785,8 +4824,10 @@ class FullChainEndToEndTest {
         UUID receipt = receiveAndPassPurchase(receiptWorld,purchaseLine,material,
                 new BigDecimal("20"),suffix+"-receipt");
         loginAs(w.superAdminUserId());
-        assertTrue(hasSegmentStatus(plan.planId(),"READY"),
-                "原树底层料足量合格入库后应自动解除车间等待");
+        var ready=executionSegmentService.list(plan.planId()).getFirst();
+        assertTrue(ready.materialReady(),"原树底层料足量合格入库后，各项备料才真正齐全");
+        assertEquals(0,ready.shortageKindCount());
+        assertFalse(ready.canStart(),"仓库已备齐仍不等于车间已经实际领齐");
         assertEquals(1,count("""
                 SELECT count(*) FROM stock_reservations reservation
                 JOIN production_material_demands demand ON demand.id=reservation.demand_id
@@ -5668,8 +5709,7 @@ class FullChainEndToEndTest {
                                 null, null, null, null, null, null, null))))
                 .plans().getFirst();
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(generated.planId());
         assertEquals("APPROVED", generated.status(), "approveNow=true 应审核生产计划");
         assertTrue(hasSegmentStatus(generated.planId(), "READY"),
                 "正式计划生成 READY 执行段");
@@ -5919,8 +5959,7 @@ class FullChainEndToEndTest {
                                 null, null, null, null, null, null, null))))
                 .plans().getFirst();
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(makeGenerated.planId());
         for (UUID drawId : currentPlanDrawIds(makeGenerated.planId())) {
             var drawLines = jdbc.queryForList(
                     "select id, qty from stock_document_items where doc_id = ? and is_deleted = false",
@@ -6062,6 +6101,8 @@ class FullChainEndToEndTest {
                     """,UUID.randomUUID(),"excess-prepared-source-"+taskId,taskId));
             assertTrue(overReserved.getMessage().contains("prepared reservations exceed their finished receipt source"),
                     "同一前置实收的PREP与OUTBOUND合计不得超额，不能只逐片判断上限");
+            InventoryValueWorkTestSupport.drain(inventoryValueWork,jdbc,
+                    List.of(finished,siblingFinished,subcontracted,suppliedMaterial,secondSuppliedMaterial));
             assertThrows(ApiException.class,()->stockDocService.reverseFinishedInbound(preparedInboundId),
                     "已通知且订货未反向时不能直接撤销前置产出");
             AnalysisView beforeBlockedCancel = analysisService.detail(analysisA);
@@ -6107,6 +6148,8 @@ class FullChainEndToEndTest {
                     .compareTo(new BigDecimal("10")),"原通知批次仍完整保留");
             assertEquals(0,bigDecimalFor("SELECT SUM(qty) FROM preplan_subcontract_make_batch_reversals WHERE task_id=?",taskId)
                     .compareTo(new BigDecimal("10")),"冲销以追加事实释放通知占用");
+            InventoryValueWorkTestSupport.drain(inventoryValueWork,jdbc,
+                    List.of(finished,siblingFinished,subcontracted,suppliedMaterial,secondSuppliedMaterial));
             stockDocService.reverseFinishedInbound(preparedInboundId);
             assertEquals(0,bigDecimalFor("SELECT produced_qty FROM preplan_subcontract_make_tasks WHERE id=?",taskId).signum(),
                     "6+4两份有效切片只回减10，不得回减原qty10再加恢复qty4");
@@ -6591,7 +6634,7 @@ class FullChainEndToEndTest {
                 makeProduct.analysisLineId()).compareTo(new BigDecimal("10")),
                 "分析 SUBCONTRACT_MAKE 行仍只记归需求量 10——V634 前守卫拿它卡订货行");
 
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(makeGenerated.planId());
         for (UUID drawId : currentPlanDrawIds(makeGenerated.planId())) {
             var drawLines = jdbc.queryForList(
                     "select id, qty from stock_document_items where doc_id = ? and is_deleted = false",
@@ -6626,21 +6669,22 @@ class FullChainEndToEndTest {
                 w.superAdminUserId(), w.superAdminUserId(),
                 superAdminEmployeeId, makeWorkshopId);
 
-        // 两次报工各 15 -> 两张成品入库草稿, 一次批量点收(「批量全量点收入库」页同一通道)。
+        // 两次实际报工各15：需求/计划公共切片各自放行，批量点收必须包含全部真实草稿。
         UUID firstReport = reportAndApproveExecutionSegment(
                 w, makePlanItem, null, subcontracted,
                 makeSegment.segmentId(), makeSegment.salesAllocationId(), "15");
         UUID secondReport = reportAndApproveExecutionSegment(
                 w, makePlanItem, null, subcontracted,
                 makeSegment.segmentId(), makeSegment.salesAllocationId(), "15", true);
-        UUID firstInbound = finishedInDocForReport(firstReport);
-        UUID secondInbound = finishedInDocForReport(secondReport);
-        assertTrue(!firstInbound.equals(secondInbound), "两次报工各自生成成品入库草稿");
+        var allInbounds=new ArrayList<UUID>(finishedInDocsForReport(firstReport));
+        allInbounds.addAll(finishedInDocsForReport(secondReport));
+        assertEquals(3,allInbounds.size(),"首报需求10+计划公共5、续报计划公共15均有独立放行草稿");
+        assertEquals(3,java.util.Set.copyOf(allInbounds).size());
         var finishedBatch = new com.uten.imp.features.stock.dto.FinishedInboundBatchConfirmRequest();
         finishedBatch.setIdempotencyKey("scoq-finished-batch-" + analysisId);
-        finishedBatch.setDocumentIds(List.of(firstInbound, secondInbound));
+        finishedBatch.setDocumentIds(allInbounds);
         var finishedResult = stockDocService.confirmFinishedInboundBatch(finishedBatch);
-        assertEquals(2, finishedResult.confirmedCount(), "两张成品入库草稿一次批量点收");
+        assertEquals(allInbounds.size(), finishedResult.confirmedCount(), "全部真实切片一次批量点收，不丢掉计划公共产出");
         assertEquals(0, stockBalance(w.warehouseId(), subcontracted).compareTo(new BigDecimal("30")),
                 "批量点收后 30 个委外件先落本仓(专属预留扣住公共可用量)");
         assertEquals(0, bigDecimalFor(
@@ -7368,8 +7412,7 @@ class FullChainEndToEndTest {
                 finally {org.springframework.security.core.context.SecurityContextHolder.clearContext();}
             }).get(15,java.util.concurrent.TimeUnit.SECONDS);
 
-                // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-                confirmAllUnconfirmedFullKitRoutes();
+                confirmFullKitRoutes(planId);
             assertNull(result.purchaseRequest());
             assertEquals(0,count("""
                     SELECT count(*) FROM production_material_supply_pegs peg JOIN production_material_demands demand ON demand.id=peg.demand_id
@@ -7428,8 +7471,7 @@ class FullChainEndToEndTest {
         command.setPreviewFingerprint(nextPreview.fingerprint()); command.setIdempotencyKey("recreated-package-"+planId);
         var recreated=planningPackageService.confirm(planId,command);
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(planId);
         assertFalse(packageId.equals(recreated.packageId()));
         assertEquals("CANCELLED",strFor("SELECT status FROM production_planning_packages WHERE id=?",packageId));
         assertEquals(0,bigDecimalFor("SELECT qty FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",planId).compareTo(new BigDecimal("10")));
@@ -7529,7 +7571,7 @@ class FullChainEndToEndTest {
             loginAs(report.reporter());
             assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->reportService.reverse(report.id())).getCode(),
                     "actual inbound must be reversed before the source report");
-            loginAs(w.superAdminUserId()); stockDocService.reverseFinishedInbound(inbound);
+            loginAs(w.superAdminUserId()); drainCosts(w); stockDocService.reverseFinishedInbound(inbound);
             loginAs(report.reporter()); reportService.reverse(report.id()); loginAs(w.superAdminUserId());
             assertEquals(1,count("SELECT count(*) FROM production_fqc_recovery_cancellation_events WHERE authorization_id=?",authorization));
             assertEquals(0,count("SELECT count(*) FROM production_material_demands WHERE fqc_recovery_authorization_id=? AND status NOT IN ('RELEASED','REVERSED')",authorization));
@@ -7601,6 +7643,7 @@ class FullChainEndToEndTest {
         DailyReportItemLine line=new DailyReportItemLine();line.setGoodsId(w.goodsA());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);
         line.setQty(new BigDecimal(qty));line.setPlanItemId(planItem);line.setSalesOrderItemId(orderItem);
         line.setExecutionSegmentId(segment.segmentId());line.setExecutionSegmentSalesAllocationId(segment.salesAllocationId());request.setItems(List.of(line));
+        request.setMaterialLines(materialUseForFixtureBatch(segment.segmentId(),new BigDecimal(qty)));
         loginAs(reporter);
         try {return new PrefixReportDraft(reportService.create(request).getId(),reporter);}
         finally {loginAs(w.superAdminUserId());}
@@ -7769,8 +7812,7 @@ class FullChainEndToEndTest {
                         LocalDate.of(2026, 1, 25),
                         LocalDate.of(2026, 1, 31)));
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(planId);
         requestWorkshopDraws("exact-part", currentPlanDrawIds(planId));
         for (UUID drawId : currentPlanDrawIds(planId)) {
             stockDocService.approveAndIssue(drawId,drawIssueRequest(drawId,
@@ -7912,29 +7954,13 @@ class FullChainEndToEndTest {
                 segmentId, salesAllocationId, "5");
         UUID finishedIn2 = finishedInDocForReport(report2);
         confirmFinishedInboundFully(finishedIn2);
-        assertEquals("IN_PROGRESS", strFor(
+        assertEquals("COMPLETED", strFor(
                 "select status from production_execution_segments where id=?",segmentId),
-                "全量成品实收不代替真实材料清账，仍未确认的实耗不能凭BOM自动补齐");
+                "两次真实报工已分别结耗，累计实收齐全后任务完成");
         loginAs(w.superAdminUserId());
-        assertThrows(ApiException.class,() -> materialSettlementService.close(planId),
-                "领用原料未结清前不能关闭生产计划");
-        var consumption = new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest();
-        consumption.setIdempotencyKey("exact-part-consumed-"+planId);
-        consumption.setReason("车间实际确认十件A耗用B20和E10，无退料、损耗或剩余在制");
-        List<com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line> consumedLines = new ArrayList<>();
-        for (var input : Map.of(w.goodsB(),new BigDecimal("20"),w.goodsE(),new BigDecimal("10")).entrySet()) {
-            var consumed = new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line();
-            consumed.setDemandId(jdbc.queryForObject("""
-                    select id from production_material_demands
-                    where execution_segment_id=? and goods_id=? and is_deleted=false
-                    """,UUID.class,segmentId,input.getKey()));
-            consumed.setSettlementType("CONSUMED");
-            consumed.setQtyBase(input.getValue());
-            consumedLines.add(consumed);
-        }
-        consumption.setLines(consumedLines);
-        assertTrue(materialSettlementService.post(planId,consumption,w.superAdminUserId())
-                .stream().allMatch(com.uten.imp.features.stock.allocation.dto.ProductionMaterialClearanceRow::canClose));
+        assertFixtureMaterialsConsumed(planId);
+        assertTrue(materialSettlementService.clearance(planId).stream()
+                .allMatch(com.uten.imp.features.stock.allocation.dto.ProductionMaterialClearanceRow::canClose));
         materialSettlementService.close(planId);
         assertEquals("COMPLETED", strFor("""
                 SELECT status
@@ -8147,6 +8173,7 @@ class FullChainEndToEndTest {
         assertEquals(0, stockBalance(w.warehouseId(), w.goodsA()).compareTo(new BigDecimal("10")),
                 "前置库存 10");
 
+        drainCosts(w);
         stockDocService.reverseFinishedInbound(finishedInId);
 
         assertEquals(0, stockBalance(w.warehouseId(), w.goodsA()).compareTo(BigDecimal.ZERO),
@@ -8818,7 +8845,9 @@ class FullChainEndToEndTest {
         var offsetFirst=customerAdvanceOffsets.apply(applyFirst);
         assertEquals(offsetFirst.batchId(),customerAdvanceOffsets.apply(applyFirst).batchId());
         assertCashCycleState(w,order,account,"10","700","400","1600");
-        assertEquals("100.0000",salesMoneyQuery.salesOrderSummary(order).prepaymentAvailableOriginal());
+        // Monetary API text is lossless and canonical; database NUMERIC scale
+        // does not require presentation-only trailing zeroes (DecimalText.of).
+        assertEquals("100",salesMoneyQuery.salesOrderSummary(order).prepaymentAvailableOriginal());
 
         UUID firstReceipt=receiptService.create(receiptRequest(w,firstAr,account,null,"200","200","0","0",
                 BigDecimal.ONE,BusinessTime.today())).getId();
@@ -8838,7 +8867,7 @@ class FullChainEndToEndTest {
                 "cash-cycle-advance-b-"+order,advanceLedger,List.of(new com.uten.imp.features.finance.receivables.CustomerPrepaymentContracts.Target(
                 secondAr,order,new BigDecimal("100"))),"抵第二批发货"));
         assertCashCycleState(w,order,account,"0","1400","600","1400");
-        assertEquals("0.0000",salesMoneyQuery.salesOrderSummary(order).prepaymentAvailableOriginal());
+        assertEquals("0",salesMoneyQuery.salesOrderSummary(order).prepaymentAvailableOriginal());
 
         var finalReceiptRequest=receiptRequest(w,firstAr,account,null,"500","1400","0","0",BigDecimal.ONE,BusinessTime.today());
         var lastLine=new com.uten.imp.features.finance.receipt.dto.FinanceReceiptLineInput();
@@ -8891,11 +8920,11 @@ class FullChainEndToEndTest {
         UUID returnItem=approvedReturn.getItems().getFirst().getId();
         assertEquals(0,approvedReturn.getTotalOriginal().compareTo(new BigDecimal("500")));
         assertCashCycleState(w,order,account,"0","0","2000","0");
-        assertEquals("500.0000",salesMoneyQuery.salesOrderSummary(order).customerPendingBalanceOriginal());
-        assertEquals("500.0000",salesMoneyQuery.salesOrderSummary(order).unrecognizedOrderOriginal());
+        assertEquals("500",salesMoneyQuery.salesOrderSummary(order).customerPendingBalanceOriginal());
+        assertEquals("500",salesMoneyQuery.salesOrderSummary(order).unrecognizedOrderOriginal());
         customerReturnService.setDisposition(returnId,new com.uten.imp.features.sales.ret.dto.CustomerDispositionRequest(
                 "REFUND_CLOSED","不再补发，资金留待财务处置","cash-cycle-refund-choice-"+returnId));
-        assertEquals("0.0000",salesMoneyQuery.salesOrderSummary(order).unrecognizedOrderOriginal());
+        assertEquals("0",salesMoneyQuery.salesOrderSummary(order).unrecognizedOrderOriginal());
         assertThrows(ApiException.class,()->customerReturnService.reverse(returnId));
         assertEquals(0,bigDecimalFor("SELECT balance_current FROM accounts WHERE id=?",account).compareTo(new BigDecimal("2000")),
                 "选择不再补发没有执行现金退款");
@@ -8977,7 +9006,7 @@ class FullChainEndToEndTest {
         assertDecimal("1440","SELECT amount_local FROM finance_receipt_lines WHERE receipt_id=?",receipt);
         assertDecimal("40","SELECT exchange_diff FROM finance_receipt_lines WHERE receipt_id=?",receipt);
         assertDecimal("600","SELECT balance_current FROM accounts WHERE id=?",account);
-        assertEquals("1400.0000",salesMoneyQuery.salesOrderSummary(order).plannedRemainingOriginal());
+        assertEquals("1400",salesMoneyQuery.salesOrderSummary(order).plannedRemainingOriginal());
         assertNonemptySourceVoucher("RECEIPT",receipt);
         loginAs(w.superAdminUserId());
         // A later dispatch freezes its own finance rate; the earlier AR and
@@ -8990,9 +9019,9 @@ class FullChainEndToEndTest {
         UUID laterLedger=jdbc.queryForObject("SELECT id FROM ar_ap_ledger WHERE source_doc_type='SALES_SHIPMENT' AND source_doc_id=?",UUID.class,laterShipment);
         assertDecimal("7000","SELECT amount_original_local FROM ar_ap_ledger WHERE id=?",ledger);
         assertDecimal("8000","SELECT amount_original_local FROM ar_ap_ledger WHERE id=?",laterLedger);
-        assertEquals("11500.0000",salesMoneyQuery.salesOrderSummary(order).arOutstandingLocal());
-        assertEquals("0.0000",salesMoneyQuery.salesOrderSummary(order).unrecognizedOrderOriginal());
-        assertEquals("1400.0000",salesMoneyQuery.salesOrderSummary(order).plannedRemainingOriginal());
+        assertEquals("11500",salesMoneyQuery.salesOrderSummary(order).arOutstandingLocal());
+        assertEquals("0",salesMoneyQuery.salesOrderSummary(order).unrecognizedOrderOriginal());
+        assertEquals("1400",salesMoneyQuery.salesOrderSummary(order).plannedRemainingOriginal());
         glPostingService.generate(java.time.YearMonth.from(BusinessTime.today()).toString());
         assertNonemptySourceVoucher("CUSTOMER_PREPAYMENT_OFFSET",offset.batchId());
         assertNonemptySourceVoucher("AR_POST",shipment);
@@ -9012,7 +9041,7 @@ class FullChainEndToEndTest {
         assertDecimal("6.800000","SELECT exchange_rate FROM finance_receipts WHERE id=?",advanceReceipt);
         assertDecimal("7.200000","SELECT exchange_rate FROM finance_receipts WHERE id=?",receipt);
         assertDecimal("8000","SELECT amount_balance FROM ar_ap_ledger WHERE id=?",laterLedger);
-        assertEquals("2000.0000",salesMoneyQuery.salesOrderSummary(order).plannedRemainingOriginal());
+        assertEquals("2000",salesMoneyQuery.salesOrderSummary(order).plannedRemainingOriginal());
         assertNonemptySourceVoucher("RECEIPT_REV",receipt);
         assertNonemptySourceVoucher("RECEIPT_REV",advanceReceipt);
     }
@@ -10145,8 +10174,7 @@ class FullChainEndToEndTest {
                         "amend-new-plan-" + salesOrder, w.warehouseId(), BusinessTime.today(), BusinessTime.today(),
                         false, List.of(new IssueWorkshopPlansRequest.IssuePlanLine(analysisItem, new BigDecimal("10"))))));
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+
         assertEquals(ErrorCode.CONFLICT, denied.getCode());
         assertTrue(denied.getMessage().contains("等待财务确认"));
         assertEquals(1, count("select count(*) from preplan_supply_actions where analysis_id=? and route='BUY'",
@@ -10682,8 +10710,7 @@ class FullChainEndToEndTest {
         req.setGeneratePurchaseRequest(true);
         planningPackageService.confirm(planId, req);
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(planId);
         String planNo = strFor("select bill_no from production_plans where id = ?", planId);
         UUID requestItemId = jdbc.queryForObject(
                 "select pri.id from purchase_request_items pri "
@@ -10961,8 +10988,7 @@ class FullChainEndToEndTest {
         req.setGeneratePurchaseRequest(true);
         planningPackageService.confirm(planId, req);
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(planId);
         String planNo = strFor("select bill_no from production_plans where id = ?", planId);
         UUID requestItemId = jdbc.queryForObject(
                 "select pri.id from purchase_request_items pri "
@@ -11294,8 +11320,7 @@ class FullChainEndToEndTest {
         var plan=analysisCommandService.issueWorkshopPlans(analysis,new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),"sc-draft-plan-"+order.getId(),w.warehouseId(),BusinessTime.today(),null,true,
                 List.of(new IssueWorkshopPlansRequest.IssuePlanLine(null,view.products().getFirst().analysisLineId(),new BigDecimal("5"),BusinessTime.today(),null,assignment.workshopId(),null,assignment.workerId(),null,null)))).plans().getFirst();
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(plan.planId());
         assertTrue(hasSegmentStatus(plan.planId(),"WAITING"));assertTrue(currentPlanDrawIds(plan.planId()).isEmpty());
         var changed=directSubcontractDraft(w,w.goodsA(),"6");loginAs(clerk);
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->subcontractOrderService.update(order.getId(),changed)).getCode());
@@ -11866,8 +11891,7 @@ class FullChainEndToEndTest {
         packageRequest.setSegments(segmentRequests);
         var issued=planningPackageService.confirm(planId,packageRequest);
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(planId);
         requestWorkshopDraws("scope", currentPlanDrawIds(planId));
         for(UUID drawId:currentPlanDrawIds(planId)) stockDocService.approveAndIssue(drawId,
                 drawIssueRequest(drawId,"scope-issue-"+drawId,null,BigDecimal.ZERO));
@@ -12098,13 +12122,13 @@ class FullChainEndToEndTest {
         var lines=new ArrayList<com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line>();
         for(var demand:jdbc.queryForList("SELECT id,required_qty FROM production_material_demands WHERE plan_id=? AND NOT is_deleted",plan)){
             var line=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line();line.setDemandId((UUID)demand.get("id"));
-            line.setSettlementType("CONSUMED");line.setQtyBase((BigDecimal)demand.get("required_qty"));lines.add(line);
+            line.setSettlementType("CONSUMED");line.setQtyBase(((BigDecimal)demand.get("required_qty")).multiply(new BigDecimal("0.75")));lines.add(line);
         }
         consumption.setLines(lines);materialSettlementService.post(plan,consumption,w.superAdminUserId());drainCostsWithFreshRunnerWithoutSession(w);
         assertEquals(0,bigDecimalFor("SELECT amount_local FROM stock_balances WHERE warehouse_id=? AND goods_id=?",w.warehouseId(),w.goodsA()).compareTo(new BigDecimal("150")));
         StartedSegment segment=startedSegmentFor(w,plan,planItem,orderItem);
         UUID finalReport=InventoryValueWorkTestSupport.withRefreshClaim(jdbc,segment.segmentId(),()->{
-            UUID report=reportAndApproveExecutionSegment(w,planItem,orderItem,w.goodsA(),segment.segmentId(),segment.salesAllocationId(),"5",true);
+            UUID report=reportAndApproveExecutionSegment(w,planItem,orderItem,w.goodsA(),segment.segmentId(),segment.salesAllocationId(),"5",true,"0",null,null,previouslyConsumedFixtureWip(segment.segmentId()));
             assertEquals(0,bigDecimalFor("SELECT planned_qty FROM production_execution_segments WHERE id=?",segment.segmentId()).compareTo(BigDecimal.TEN));
             var pending=jdbc.queryForMap("SELECT business_refresh_pending,business_refresh_event_id,business_refresh_actor_id FROM stock_value_production_cost_objects WHERE execution_segment_id=?",segment.segmentId());
             assertEquals(Boolean.TRUE,pending.get("business_refresh_pending"),"The committed report persists work before any background consumer can claim it");
@@ -12141,14 +12165,8 @@ class FullChainEndToEndTest {
         confirmFinishedInboundFully(finishedInDocForReport(second));
         assertEquals(0,bigDecimalFor("SELECT planned_qty FROM production_execution_segments WHERE id=?",segment.segmentId()).compareTo(new BigDecimal("20")),
                 "The ten failed units are produced units; final reporting cannot silently cancel their cost basis");
-        var request=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest();
-        request.setIdempotencyKey("actual-bad-consumption-"+plan);request.setReason("实际确认20件产出所耗材料，10件不良成本待处置");
-        var lines=new ArrayList<com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line>();
-        for(var demand:jdbc.queryForList("SELECT id,required_qty FROM production_material_demands WHERE plan_id=? AND NOT is_deleted",plan)){
-            var line=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line();line.setDemandId((UUID)demand.get("id"));
-            line.setSettlementType("CONSUMED");line.setQtyBase((BigDecimal)demand.get("required_qty"));lines.add(line);
-        }
-        request.setLines(lines);materialSettlementService.post(plan,request,w.superAdminUserId());drainCostsWithFreshRunnerWithoutSession(w);
+        assertFixtureMaterialsConsumed(plan);
+        drainCostsWithFreshRunnerWithoutSession(w);
         assertEquals(0,bigDecimalFor("SELECT amount_local FROM stock_balances WHERE warehouse_id=? AND goods_id=?",w.warehouseId(),w.goodsA()).compareTo(new BigDecimal("300")));
         assertEquals(0,bigDecimalFor("SELECT sum(owned_value_local) FROM stock_value_nodes WHERE owner_kind='COST_WIP' AND owner_id=?",segment.segmentId()).compareTo(new BigDecimal("300")));
         assertEquals(0,count("SELECT count(*) FROM stock_value_production_cost_objects WHERE execution_segment_id=? AND state='FINAL'",segment.segmentId()));
@@ -12164,14 +12182,7 @@ class FullChainEndToEndTest {
         shipThroughWarehouse(shipment);
         assertEquals(0,bigDecimalFor("SELECT amount_local FROM stock_balances WHERE warehouse_id=? AND goods_id=?",w.warehouseId(),w.goodsA()).compareTo(BigDecimal.ZERO),
                 "Sales price 2000 cannot subtract from the pending inventory cost");
-        var request=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest();
-        request.setIdempotencyKey("actual-consume-600-"+plan);request.setReason("实际确认B40和E20全部耗用");
-        var lines=new ArrayList<com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line>();
-        for(var demand:jdbc.queryForList("SELECT id,required_qty FROM production_material_demands WHERE plan_id=? AND NOT is_deleted",plan)){
-            var line=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line();
-            line.setDemandId((UUID)demand.get("id"));line.setSettlementType("CONSUMED");line.setQtyBase((BigDecimal)demand.get("required_qty"));lines.add(line);
-        }
-        request.setLines(lines);materialSettlementService.post(plan,request,w.superAdminUserId());
+        assertFixtureMaterialsConsumed(plan);
         var operatorContext=SecurityContextHolder.getContext();
         SecurityContextHolder.clearContext();
         try {
@@ -12263,8 +12274,7 @@ class FullChainEndToEndTest {
         request.setGeneratePurchaseRequest(false);
         PlanningPackageResult issued = planningPackageService.confirm(planId,request);
 
-        // V599：下达后车间确认齐套生产路线——未确认路线时领料/开工/提升被路线门拦下。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitRoutes(planId);
         var preparedSegments = executionSegmentService.list(planId);
         assertFalse(preparedSegments.isEmpty());
         assertTrue(preparedSegments.stream().allMatch(segment -> "READY".equals(segment.status())),
@@ -12388,7 +12398,112 @@ class FullChainEndToEndTest {
      * materials are fixture errors: this helper never creates a package, changes a BOM, or seeds stock.
      * A complete saved assignment is retained; repeated reporting reuses the started segment.
      */
+    /** 单据仓必须是具体子仓: 世界主仓带有子仓时, 取/建一个普通实际叶仓(保持其它叶仓世界的原行为)。 */
+    private UUID reportWarehouse(World w) {
+        Boolean isMain = jdbc.query("""
+                select exists(select 1 from warehouses child
+                              where child.parent_id = ? and not child.is_deleted)
+                """, (rs, i) -> rs.getBoolean(1), w.warehouseId()).getFirst();
+        if (!Boolean.TRUE.equals(isMain)) return w.warehouseId();
+        UUID leaf = jdbc.query("""
+                select warehouse.id from warehouses warehouse
+                where warehouse.parent_id = ? and warehouse.status = '使用'
+                  and coalesce(warehouse.is_line_side, false) = false and warehouse.is_deleted = false
+                  and not exists(select 1 from warehouses child
+                                 where child.parent_id = warehouse.id and not child.is_deleted)
+                order by warehouse.id limit 1
+                """, (rs, i) -> rs.getObject("id", UUID.class), w.warehouseId())
+                .stream().findFirst().orElse(null);
+        if (leaf == null) {
+            leaf = UUID.randomUUID();
+            jdbc.update("""
+                    insert into warehouses(id, code, name, parent_id, status, is_accountable)
+                    values (?, ?, ?, ?, '使用', true)
+                    """, leaf, "E2E-RPT-" + leaf, "报工叶仓-" + leaf, w.warehouseId());
+        }
+        return leaf;
+    }
+
     private StartedSegment startedSegmentFor(World w, UUID planId, UUID planItemId, UUID orderItemId) {
+        return startedSegmentFor(w, planId, planItemId, orderItemId, null);
+    }
+
+    /** V710 起 ZERO_MATERIAL+DIRECT_MAKE 叶段开工前须声明真实物料来源: 申报物料既不能是
+     * 本段产出也不能成环, 就地新建无 BOM 的中性采购料; 零价自投保持老夹具「零成本产出」
+     * 的价值前提(OTHER_IN +qty 零价 → 领料出库 -qty → 净库存不变)。 */
+    private void declareAndIssueSelfInput(World w, UUID segmentId, UUID goodsId) {
+        BigDecimal planned = jdbc.queryForObject(
+                "SELECT planned_qty FROM production_execution_segments WHERE id=?", BigDecimal.class, segmentId);
+        UUID neutral = UUID.randomUUID();
+        insertGoods(neutral, "E2E-DISC-" + neutral, "发现自投料-" + neutral, "采购", w.unitId(), w.unitLegacy());
+        // 物料发现配置只接受「与该任务同主仓」的普通实际叶仓; 按任务计划仓解析主仓, 缺叶仓时就地补建。
+        UUID main = jdbc.queryForObject(
+                "SELECT fn_warehouse_main_id(package.warehouse_id) FROM production_execution_segments segment"
+                        + " JOIN production_planning_packages package ON package.id=segment.package_id"
+                        + " WHERE segment.id=?",
+                UUID.class, segmentId);
+        UUID leafForInput = jdbc.query("""
+                select warehouse.id from warehouses warehouse
+                where warehouse.parent_id = ? and warehouse.status = '使用'
+                  and coalesce(warehouse.is_line_side, false) = false and warehouse.is_deleted = false
+                  and not exists(select 1 from warehouses child
+                                 where child.parent_id = warehouse.id and not child.is_deleted)
+                order by warehouse.id limit 1
+                """, (rs, i) -> rs.getObject("id", UUID.class), main).stream().findFirst().orElse(null);
+        // 主仓自身就是无子仓的独立叶仓时直接用它: 再补建子仓会把任务计划仓贬成非叶仓,
+        // 后续成品送仓登记的「必须叶仓」校验随之失败(服务端 same_main 校验对自身恒真)。
+        if (leafForInput == null && Boolean.TRUE.equals(
+                jdbc.queryForObject("SELECT fn_warehouse_is_operational_leaf(?)", Boolean.class, main))) {
+            leafForInput = main;
+        }
+        if (leafForInput == null) {
+            leafForInput = UUID.randomUUID();
+            jdbc.update("""
+                    insert into warehouses(id, code, name, parent_id, status, is_accountable)
+                    values (?, ?, ?, ?, '使用', true)
+                    """, leafForInput, "E2E-SELF-" + leafForInput, "自投叶仓-" + leafForInput, main);
+        }
+        var pendingMaterials = materialDiscoveryService.request(segmentId, new ProductionMaterialDiscoveryContracts.Request(
+                jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segmentId),
+                "e2e-discovery-" + segmentId));
+        putDirectTargetStockZeroPriceAt(w, neutral, planned, leafForInput);
+        var configured = materialDiscoveryService.configure(pendingMaterials.requestId(),
+                new ProductionMaterialDiscoveryContracts.Configure(
+                        pendingMaterials.version(), "e2e-discovery-configure-" + segmentId,
+                        List.of(new ProductionMaterialDiscoveryContracts.Material(
+                                neutral, null, w.unitId(), leafForInput, planned))));
+        for (UUID materialDraw : configured.drawDocIds()) {
+            var materialIssue = new com.uten.imp.features.stock.dto.StockDocIssueRequest();
+            materialIssue.setIdempotencyKey("e2e-discovery-issue-" + materialDraw);
+            materialIssue.setLines(jdbc.query("SELECT id,qty FROM stock_document_items WHERE doc_id=? AND NOT is_deleted", (row, index) -> {
+                var line = new com.uten.imp.features.stock.dto.StockDocIssueRequest.Line();
+                line.setItemId(row.getObject(1, UUID.class));
+                line.setQty(row.getBigDecimal(2));
+                return line;
+            }, materialDraw));
+            stockDocService.approveAndIssue(materialDraw, materialIssue);
+        }
+    }
+
+    private void putDirectTargetStockZeroPriceAt(World w, UUID goods, java.math.BigDecimal qty, UUID warehouseId) {
+        loginAs(w.superAdminUserId());
+        var request = new com.uten.imp.features.stock.dto.StockDocSaveRequest();
+        request.setDocType("OTHER_IN");
+        request.setWarehouseId(warehouseId);
+        request.setBillDate(BusinessTime.today());
+        var line = new com.uten.imp.features.stock.dto.StockDocItemLine();
+        line.setGoodsId(goods);
+        line.setUnitId(w.unitId());
+        line.setUnitRate(BigDecimal.ONE);
+        line.setQty(qty);
+        line.setPrice(BigDecimal.ZERO);
+        line.setAmountOriginal(BigDecimal.ZERO);
+        line.setAmountLocal(BigDecimal.ZERO);
+        request.setItems(List.of(line));
+        stockDocService.approve(stockDocService.create(request).getId());
+    }
+
+    private StartedSegment startedSegmentFor(World w, UUID planId, UUID planItemId, UUID orderItemId, UUID selfInputGoodsId) {
         UUID segmentId = jdbc.query("""
                 select id from production_execution_segments
                 where plan_id = ? and source_plan_item_id = ? and is_deleted = false
@@ -12419,6 +12534,12 @@ class FullChainEndToEndTest {
                                 current.planBeginDate(),current.planEndDate()));
             }
             confirmFullKitRoute(planId, startedSegmentId);
+            if (Boolean.TRUE.equals(jdbc.queryForObject(
+                    "SELECT fn_material_discovery_pending(?)", Boolean.class, startedSegmentId))) {
+                assertNotNull(selfInputGoodsId,
+                        "discovery-pending leaf fixture must declare its real material");
+                declareAndIssueSelfInput(w, startedSegmentId, selfInputGoodsId);
+            }
             executionSegmentService.start(
                     planId, startedSegmentId,
                     new SegmentTransitionRequest(
@@ -12472,6 +12593,14 @@ class FullChainEndToEndTest {
 
     UUID reportAndApproveExecutionSegment(World w,UUID planItemId,UUID orderItemId,UUID goodsId,
             UUID executionSegmentId,UUID salesAllocationId,String qty,boolean finalReport,String failedQty,UUID warehouseActor,UUID qualityActor) {
+        return reportAndApproveExecutionSegment(w,planItemId,orderItemId,goodsId,executionSegmentId,
+                salesAllocationId,qty,finalReport,failedQty,warehouseActor,qualityActor,null);
+    }
+
+    UUID reportAndApproveExecutionSegment(World w,UUID planItemId,UUID orderItemId,UUID goodsId,
+            UUID executionSegmentId,UUID salesAllocationId,String qty,boolean finalReport,String failedQty,
+            UUID warehouseActor,UUID qualityActor,
+            List<com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine> explicitMaterialUse) {
         Map<String, Object> segmentReportingScope = jdbc.queryForMap("""
                 select workshop_department_id, responsible_employee_id
                 from production_execution_segments
@@ -12484,7 +12613,7 @@ class FullChainEndToEndTest {
         DailyReportSaveRequest req = new DailyReportSaveRequest();
         req.setIdempotencyKey("e2e-report-" + UUID.randomUUID());
         req.setBillDate(LocalDate.of(2026, 1, 25));
-        req.setWarehouseId(w.warehouseId());
+        req.setWarehouseId(reportWarehouse(w));
         req.setDepartmentId(workshopDepartmentId);
         req.setWorkerId(responsibleEmployeeId);
         req.setWorkerIds(List.of(responsibleEmployeeId));
@@ -12499,6 +12628,8 @@ class FullChainEndToEndTest {
         line.setExecutionSegmentSalesAllocationId(salesAllocationId);
         line.setIsFinal(finalReport);
         req.setItems(List.of(line));
+        req.setMaterialLines(explicitMaterialUse == null
+                ? materialUseForFixtureBatch(executionSegmentId,new BigDecimal(qty)) : explicitMaterialUse);
         // V470 车间任务写侧对象范围：报工操作者必须属于执行段车间（超管不豁免）。
         // E2E 用车间员工身份执行 create/approve，随后还原调用者身份。
         org.springframework.security.core.Authentication previousAuth =
@@ -12528,44 +12659,38 @@ class FullChainEndToEndTest {
                 WHERE source_report_id = ?
                 """, report.getId()),
                 "报工审核后待仓库登记，不得越过仓库直接建 FQC");
-        UUID reportItemId = jdbc.queryForObject("""
-                        SELECT id
-                        FROM production_daily_report_items
-                        WHERE report_id = ? AND is_deleted = FALSE
-                        """, UUID.class, report.getId());
+        var reportItems=jdbc.queryForList("""
+                SELECT id,qty FROM production_daily_report_items
+                WHERE report_id=? AND NOT is_deleted ORDER BY line_no NULLS LAST,id
+                """,report.getId());
+        assertFalse(reportItems.isEmpty());
+        assertEquals(0,reportItems.stream().map(row -> (BigDecimal)row.get("qty"))
+                .reduce(BigDecimal.ZERO,BigDecimal::add).compareTo(new BigDecimal(qty)),
+                "the exact demand/public slices preserve the physically declared total");
+        BigDecimal failed=new BigDecimal(failedQty);
+        assertTrue(reportItems.size()==1 || failed.signum()==0,
+                "a mixed-source failed batch needs explicit per-source quality decisions, not guessed failure allocation");
         if(warehouseActor!=null)loginAs(warehouseActor);
-        finishedArrivalRegistrationService.register(
-                report.getId(),
-                new ArrivalRegistrationRequest(
-                        "e2e-arrival-" + UUID.randomUUID(),
-                        w.warehouseId(),
-                        List.of(new ArrivalRegistrationItemRequest(
-                                reportItemId, "E2E-FINISHED-01")), null));
-        UUID inspectionId = jdbc.queryForObject("""
-                        SELECT id
-                        FROM production_fqc_inspections
-                        WHERE source_report_id = ?
-                          AND source_report_item_id IN (
-                              SELECT id
-                              FROM production_daily_report_items
-                              WHERE report_id = ?)
-                        """, UUID.class, report.getId(), report.getId());
-        BigDecimal failed=new BigDecimal(failedQty),passed=new BigDecimal(qty).subtract(failed);
+        finishedArrivalRegistrationService.register(report.getId(),new ArrivalRegistrationRequest(
+                "e2e-arrival-"+UUID.randomUUID(),w.warehouseId(),
+                reportItems.stream().map(row -> new ArrivalRegistrationItemRequest(
+                        (UUID)row.get("id"),"E2E-FINISHED-01")).toList(),null));
         if(qualityActor!=null)loginAs(qualityActor);
-        var fqc = fqcService.decide(
-                inspectionId,
-                new DecisionRequest(
-                        failed.signum()==0?"PASS":passed.signum()==0?"FAIL":"PARTIAL",
-                        passed.signum()==0?null:passed,
-                        failed.signum()==0?null:failed,
-                        failed.signum()==0?null:"REWORK",
-                        failed.signum()==0?null:"实际不良保留待返工处置",
-                        "e2e-fqc-" + UUID.randomUUID()));
-        assertFalse(fqc.replay());
-        assertEquals(
-                0,
-                fqc.inspection().authorizedInboundQty()
-                        .compareTo(passed));
+        for(var reportItem:reportItems) {
+            UUID reportItemId=(UUID)reportItem.get("id");
+            UUID inspectionId=jdbc.queryForObject("""
+                    SELECT id FROM production_fqc_inspections
+                    WHERE source_report_id=? AND source_report_item_id=?
+                    """,UUID.class,report.getId(),reportItemId);
+            BigDecimal passed=((BigDecimal)reportItem.get("qty")).subtract(failed);
+            var fqc=fqcService.decide(inspectionId,new DecisionRequest(
+                    failed.signum()==0?"PASS":passed.signum()==0?"FAIL":"PARTIAL",
+                    passed.signum()==0?null:passed,failed.signum()==0?null:failed,
+                    failed.signum()==0?null:"REWORK",failed.signum()==0?null:"实际不良保留待返工处置",
+                    "e2e-fqc-"+UUID.randomUUID()));
+            assertFalse(fqc.replay());
+            assertEquals(0,fqc.inspection().authorizedInboundQty().compareTo(passed));
+        }
         return report.getId();
     }
 
@@ -12860,29 +12985,75 @@ class FullChainEndToEndTest {
         }
         request.setItems(lines);
         BigDecimal actualOutput=lines.stream().map(DailyReportItemLine::getQty).reduce(BigDecimal.ZERO,BigDecimal::add);
-        var actualUses=new ArrayList<com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine>();
-        for(var demand:jdbc.queryForList("""
-                SELECT demand.id,demand.required_qty,segment.planned_qty,
-                       (SELECT COALESCE(SUM(fn_material_issue_available(issue.id,NULL)),0)
-                        FROM production_material_stock_postings issue WHERE issue.demand_id=demand.id AND issue.posting_type='ISSUE') available
-                FROM production_material_demands demand JOIN production_execution_segments segment ON segment.id=demand.execution_segment_id
-                WHERE demand.execution_segment_id=? AND NOT demand.is_deleted AND demand.status NOT IN('RELEASED','REVERSED')
-                """,segment.segmentId())) {
-            // This harness manufactures the declared quantity with its seeded
-            // linear recipe; only genuine issued material is consumed.
-            BigDecimal used=((BigDecimal)demand.get("required_qty")).multiply(actualOutput)
-                    .divide((BigDecimal)demand.get("planned_qty"),4,java.math.RoundingMode.HALF_UP);
-            assertTrue(used.compareTo((BigDecimal)demand.get("available"))<=0,"fixture consumption must have a real ISSUE source");
-            var usage=new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();
-            usage.setDemandId((UUID)demand.get("id"));usage.setQtyBase(used);actualUses.add(usage);
-        }
-        request.setMaterialLines(actualUses);
+        request.setMaterialLines(materialUseForFixtureBatch(segment.segmentId(),actualOutput));
         loginAs(reporter);
         try {
             DailyReportDetail created=reportService.create(request); reportService.approve(created.getId(), DailyReportApproveRequests.freshKey());
             List<UUID> itemIds=jdbc.queryForList("SELECT id FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted ORDER BY line_no NULLS LAST, id",UUID.class,created.getId());
             return new MultiLineReport(created.getId(),created.getBillNo(),reporter,itemIds);
         } finally {loginAs(w.superAdminUserId());}
+    }
+
+    /** The fixture explicitly manufactures to its frozen recipe and declares that use.
+     * Reject missing or insufficient ISSUE sources instead of inventing or clipping consumption. */
+    private List<com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine> materialUseForFixtureBatch(
+            UUID segmentId,BigDecimal actualOutput) {
+        var actualUses=new ArrayList<com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine>();
+        for(var demand:jdbc.queryForList("""
+                SELECT demand.id,demand.per_product_qty,demand.requirement_mode,
+                       (SELECT COALESCE(SUM(fn_material_issue_available(issue.id,NULL)),0)
+                        FROM production_material_stock_postings issue WHERE issue.demand_id=demand.id AND issue.posting_type='ISSUE') available
+                FROM production_material_demands demand
+                WHERE demand.execution_segment_id=? AND NOT demand.is_deleted AND demand.status NOT IN('RELEASED','REVERSED')
+                """,segmentId)) {
+            // This harness manufactures the declared quantity with its seeded
+            // linear recipe; only genuine issued material is consumed.
+            assertTrue(java.util.List.of("LINEAR", "EXACT_SNAPSHOT")
+                            .contains((String) demand.get("requirement_mode")),
+                    "fixed/absolute batch recipes must explicitly declare their real use through the material-use overload;"
+                            + " discovery-created snapshot demands carry per_product_qty and use the same proportional math");
+            BigDecimal used=((BigDecimal)demand.get("per_product_qty")).multiply(actualOutput)
+                    .setScale(4,java.math.RoundingMode.HALF_UP);
+            assertTrue(used.compareTo((BigDecimal)demand.get("available"))<=0,"fixture consumption must have a real ISSUE source");
+            var usage=new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();
+            usage.setDemandId((UUID)demand.get("id"));usage.setQtyBase(used);actualUses.add(usage);
+        }
+        return actualUses;
+    }
+
+    private void assertFixtureMaterialsConsumed(UUID planId) {
+        var rows=materialSettlementService.clearance(planId);
+        assertFalse(rows.isEmpty(),"the seeded fixture has physical input materials");
+        assertTrue(rows.stream().allMatch(row -> row.availableToSettleQty().signum()==0),
+                "the exact issued sources were consumed once by the approved reports/explicit WIP settlement");
+        assertEquals(0,count("""
+                SELECT COUNT(*) FROM production_material_demands demand
+                WHERE demand.plan_id=? AND NOT demand.is_deleted
+                  AND demand.required_qty <> COALESCE((
+                    SELECT SUM(CASE WHEN event.event_type='POST' THEN posting.qty_base ELSE -posting.qty_base END)
+                    FROM production_material_settlement_postings posting
+                    JOIN production_material_settlement_events event ON event.id=posting.event_id
+                    WHERE posting.demand_id=demand.id AND posting.settlement_type='CONSUMED'),0)
+                """,planId),"fixture CONSUMED quantities equal its exact issued recipe, without duplicate postings");
+    }
+
+    /** This named scenario has already consumed all inputs into WIP. A later output batch
+     * declares zero new consumption only after proving that same segment's real approved use. */
+    private List<com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine> previouslyConsumedFixtureWip(UUID segmentId) {
+        assertTrue(Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT fn_report_has_prior_same_segment_consumption(?,?)",Boolean.class,segmentId,UUID.randomUUID())));
+        var lines=new ArrayList<com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine>();
+        for (var demand:jdbc.queryForList("""
+                SELECT demand.id,(SELECT COALESCE(SUM(fn_material_issue_available(issue.id,NULL)),0)
+                    FROM production_material_stock_postings issue WHERE issue.demand_id=demand.id AND issue.posting_type='ISSUE') available
+                FROM production_material_demands demand WHERE demand.execution_segment_id=? AND NOT demand.is_deleted
+                """,segmentId)) {
+            assertEquals(0,((BigDecimal)demand.get("available")).signum(),"all fixture input is already consumed into proven WIP");
+            var line=new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();
+            line.setDemandId((UUID)demand.get("id"));line.setQtyBase(BigDecimal.ZERO);lines.add(line);
+        }
+        assertFalse(lines.isEmpty());
+        return lines;
     }
 
     private MultiLineReport approvedMultiLineReportOfNewPlan(World w,String... qtys) {
@@ -12946,6 +13117,14 @@ class FullChainEndToEndTest {
                         + "and coalesce(is_deleted, false) = false "
                         + "order by code limit 1",
                 java.util.UUID.class);
+    }
+
+    private List<UUID> finishedInDocsForReport(UUID reportId) {
+        return jdbc.queryForList("""
+                SELECT id FROM stock_documents WHERE doc_type='FINISHED_IN'
+                  AND source_daily_report_id=? AND NOT is_deleted
+                ORDER BY created_at,id
+                """,UUID.class,reportId);
     }
 
     /** FINISHED_IN draft generated by legacy compatibility or FQC PASS (UUID true source). */
@@ -13196,7 +13375,7 @@ class FullChainEndToEndTest {
         orchestrator.confirmFullTree(planId, req);
 
         // V599：整树下达后统一确认齐套路线。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitTree(planId);
 
         // B = A's direct MAKE child; C = B's direct MAKE child (full tree, not just one level)
         UUID bPlanId = jdbc.queryForObject(
@@ -13278,7 +13457,7 @@ class FullChainEndToEndTest {
         orchestrator.confirmFullTree(planId, req);
 
         // V599：整树下达后统一确认齐套路线。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitTree(planId);
 
         UUID yPlan = subplanOf(planId);
         UUID zPlan = subplanOf(yPlan);
@@ -13318,7 +13497,7 @@ class FullChainEndToEndTest {
         orchestrator.confirmFullTree(planId, req);
 
         // V599：整树下达后统一确认齐套路线。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitTree(planId);
         int plansBefore = count("select count(*) from production_plans where is_deleted = false");
         int segmentsBefore = count("select count(*) from production_execution_segments where is_deleted = false");
         int pegsBefore = count("select count(*) from production_material_supply_pegs where supply_type = 'PRODUCTION_PLAN_ITEM' and status <> 'REVERSED'");
@@ -13354,7 +13533,7 @@ class FullChainEndToEndTest {
         orchestrator.confirmFullTree(planId, req);
 
         // V599：整树下达后统一确认齐套路线。
-        confirmAllUnconfirmedFullKitRoutes();
+        confirmFullKitTree(planId);
         UUID bPlan = subplanOf(planId);
         UUID cPlan = subplanOf(bPlan);
         UUID aPkg = jdbc.queryForObject(
@@ -13396,7 +13575,7 @@ class FullChainEndToEndTest {
         UUID planId = jdbc.queryForObject(
                 "select plan_id from production_plan_items where id = ?", UUID.class, planItemId);
         // V414 后内部件报工同样必须引用已开工执行段（无销售关联 → 分摊为空）
-        StartedSegment segment = startedSegmentFor(w, planId, planItemId, null);
+        StartedSegment segment = startedSegmentFor(w, planId, planItemId, null, goodsId);
         UUID reportId = reportAndApproveExecutionSegment(
                 w, planItemId, null, goodsId,
                 segment.segmentId(), null, qty);
@@ -13458,16 +13637,15 @@ class FullChainEndToEndTest {
                 """, UUID.class, planId);
     }
 
-    /** V599 / ADR-091：把段确认为齐套生产路线（主流程测试的默认旅程；未确认路线时开工侧动作被拒）。
-     * 幂等：已确认齐套路线的段直接跳过——首确 FULL_KIT 可能就地把它提升成 READY，
-     * 再确认一遍会撞「改路线仅限 WAITING 未动过」的服务端口径。 */
+    /** Prepare this exact fixture task through assignment and an explicit FULL_KIT command.
+     * The default CONTINUOUS route never stands in for either a workshop assignment or START. */
     void confirmFullKitRoute(UUID planId, UUID segmentId) {
-        var row = jdbc.queryForMap(
-                "SELECT lock_version, start_route FROM production_execution_segments WHERE id=?",
-                segmentId);
-        if ("FULL_KIT".equals(row.get("start_route"))) {
-            return;
-        }
+        var row = jdbc.queryForMap("""
+                SELECT start_route,workshop_department_id,responsible_employee_id
+                FROM production_execution_segments WHERE id=? AND plan_id=?
+                """,segmentId,planId);
+        if ("FULL_KIT".equals(row.get("start_route"))
+                && row.get("workshop_department_id") != null && row.get("responsible_employee_id") != null) return;
         var current = executionSegmentService.list(planId).stream()
                 .filter(segment -> segment.id().equals(segmentId)).findFirst().orElseThrow();
         if (current.workshopDepartmentId() == null || current.responsibleEmployeeId() == null) {
@@ -13475,8 +13653,7 @@ class FullChainEndToEndTest {
             UUID worker = current.responsibleEmployeeId();
             if (worker == null) {
                 var assignment = productionAssignment("route-" + segmentId, workshop);
-                workshop = assignment.workshopId();
-                worker = assignment.workerId();
+                workshop = assignment.workshopId(); worker = assignment.workerId();
             } else if (workshop == null) {
                 workshop = jdbc.queryForObject("SELECT department_id FROM employees WHERE id=?", UUID.class, worker);
             }
@@ -13485,48 +13662,48 @@ class FullChainEndToEndTest {
                             workshop, current.teamDepartmentId(), worker,
                             current.planBeginDate(), current.planEndDate()));
         }
-        Long version = current.lockVersion();
+        if ("FULL_KIT".equals(row.get("start_route"))) return;
+        long version = current.lockVersion();
         executionSegmentService.confirmRoute(planId, segmentId,
                 new com.uten.imp.features.production.execution.SegmentRouteConfirmRequest(
                         version, "fullkit-" + segmentId + "-v" + version, "FULL_KIT"));
     }
-    /** V599：下达后统一把所有未确认的 WAITING 段确认为齐套路线（保持当前登录不变，超管执行）。
-     * FullChain 的用户旅程默认走齐套链；验证路线门本身的用例在 ProductionExecutionRouteGateEndToEndTest。 */
-    void confirmAllUnconfirmedFullKitRoutes() {
-        java.util.List<UUID[]> pending = jdbc.query(
-                "SELECT s.id, s.plan_id FROM production_execution_segments s "
-                // 与 ProductionExecutionSegmentService.requireActivePlan 同口径只挑"可执行"的段:
-                // 计划已审核且未结案/取消/暂停、计划包已确认。CI 全量跑时所有用例共用一个库,
-                // 别的用例留下的已结案/已取消/计划包未确认的段不属于本次旅程, 挑到就会被服务端拒绝。
-                + "JOIN production_plans p ON p.id=s.plan_id AND p.status=1 AND NOT p.is_deleted "
-                + "AND NOT p.is_closed AND NOT p.is_canceled AND NOT p.is_stopped "
-                + "JOIN production_planning_packages pkg ON pkg.id=s.package_id AND NOT pkg.is_deleted "
-                + "AND pkg.status='CONFIRMED' "
-                // 不筛状态：CompleteKitAllocator 下达即齐套的段落生就是 READY，同样要先确认路线。
-                + "WHERE s.start_route IS NULL AND NOT s.is_deleted "
-                + "AND s.status IN ('WAITING','READY','DISPATCHED') ORDER BY s.id LIMIT 200",
-                (rs, i) -> new UUID[]{rs.getObject(1, UUID.class), rs.getObject(2, UUID.class)});
-        if (pending.isEmpty()) return;
-        var security = org.springframework.security.core.context.SecurityContextHolder.getContext();
+
+    /** Only the named plan is prepared, under the fixture planner. Restore the real
+     * caller before any DRAW, START, reporting or permission assertion executes. */
+    void confirmFullKitRoutes(UUID planId) {
+        var security = SecurityContextHolder.getContext();
         var previous = security.getAuthentication();
         try {
             loginAs(lastSeedSuperAdminUserId);
-            for (UUID[] pair : pending) confirmFullKitRoute(pair[1], pair[0]);
-        } finally {
-            security.setAuthentication(previous);
-        }
-    }
-    void confirmFullKitRoutes(UUID planId) {
-        for (UUID segmentId : jdbc.queryForList("""
-                SELECT id FROM production_execution_segments
-                WHERE plan_id=? AND status='WAITING' AND start_route IS NULL AND NOT is_deleted
-                ORDER BY id
-                """, UUID.class, planId)) {
-            confirmFullKitRoute(planId, segmentId);
-        }
+            for (UUID segmentId : jdbc.queryForList("""
+                    SELECT segment.id FROM production_execution_segments segment
+                    JOIN production_plans plan ON plan.id=segment.plan_id
+                    JOIN production_planning_packages package ON package.id=segment.package_id
+                    WHERE segment.plan_id=? AND NOT segment.is_deleted
+                      AND segment.status IN ('WAITING','READY','DISPATCHED')
+                      AND plan.status=1 AND NOT plan.is_deleted AND NOT plan.is_closed
+                      AND NOT plan.is_canceled AND NOT plan.is_stopped
+                      AND package.status='CONFIRMED' AND NOT package.is_deleted
+                    ORDER BY segment.id
+                    """,UUID.class,planId)) confirmFullKitRoute(planId,segmentId);
+        } finally { security.setAuthentication(previous); }
     }
 
-    /** V599：seedWorld 最后一次创建的超管（confirmAllUnconfirmedFullKitRoutes 借用执行）。 */
+    /** Full-tree scenarios name one root; unrelated worlds in the shared DB are untouched. */
+    private void confirmFullKitTree(UUID rootPlanId) {
+        for (UUID planId : jdbc.queryForList("""
+                WITH RECURSIVE plan_tree(id) AS (
+                    SELECT CAST(? AS UUID)
+                    UNION
+                    SELECT link.subplan_id FROM subplan_links link
+                    JOIN plan_tree parent ON parent.id=link.plan_id
+                    WHERE link.source='EXECUTION_V1' AND NOT link.is_deleted
+                ) SELECT id FROM plan_tree ORDER BY id
+                """,UUID.class,rootPlanId)) confirmFullKitRoutes(planId);
+    }
+
+    /** The current world planner is used only for explicit fixture preparation. */
     UUID lastSeedSuperAdminUserId;
     World seedWorld(String tag) {
         UUID deptId = UUID.randomUUID();

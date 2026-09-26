@@ -17,7 +17,6 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/auth/permissions.dart';
-import '../providers/expense_settings_provider.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -168,7 +167,6 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage> {
         permissions.contains(Perm.expenseApply) &&
         canEdit &&
         (!_isEdit || claim != null);
-    final settings = ref.watch(expenseSettingsProvider).valueOrNull;
 
     final body = UtenContentContainer.narrow(
       child: ListView(
@@ -191,46 +189,24 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage> {
             ),
           if (detail != null) const SizedBox(height: UtenSpacing.s16),
 
+          // 2026-09-24 简洁口径：撤掉顶部流程教学文案，只留申请人/部门/日期事实行。
           Card(
             margin: EdgeInsets.zero,
             child: Padding(
               padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Wrap(
+                spacing: UtenSpacing.s24,
+                runSpacing: UtenSpacing.s8,
                 children: [
                   Text(
-                    l10n.expenseFlowFlowGuide,
-                    style: theme.textTheme.bodyMedium,
+                    '${l10n.expenseFlowApplicant}: ${claim?.applicantName ?? (me == null ? '—' : '${me.name}(${me.code})')}',
                   ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  Wrap(
-                    spacing: UtenSpacing.s24,
-                    runSpacing: UtenSpacing.s8,
-                    children: [
-                      Text(
-                        '${l10n.expenseFlowApplicant}: ${claim?.applicantName ?? (me == null ? '—' : '${me.name}(${me.code})')}',
-                      ),
-                      Text(
-                        '${l10n.expenseFlowDepartment}: ${claim?.departmentName ?? me?.department ?? '—'}',
-                      ),
-                      Text(
-                        '${l10n.expenseFlowDate}: ${_fmtDate(claim?.createdAt ?? ChinaDateTime.today())}',
-                      ),
-                    ],
+                  Text(
+                    '${l10n.expenseFlowDepartment}: ${claim?.departmentName ?? me?.department ?? '—'}',
                   ),
-                  if (settings != null) ...[
-                    const SizedBox(height: UtenSpacing.s8),
-                    Text(
-                      '${settings.companyName}${settings.companyTaxNo.isEmpty ? '' : ' · ${settings.companyTaxNo}'}',
-                    ),
-                    if (settings.submissionGuide.isNotEmpty)
-                      Text(settings.submissionGuide),
-                    Text(
-                      settings.requireInvoice
-                          ? l10n.expenseFlowInvoiceRequiredGuide
-                          : l10n.expenseFlowNoInvoiceGuide,
-                    ),
-                  ],
+                  Text(
+                    '${l10n.expenseFlowDate}: ${_fmtDate(claim?.createdAt ?? ChinaDateTime.today())}',
+                  ),
                 ],
               ),
             ),
@@ -246,9 +222,6 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage> {
 
           // 合计：小写 + 大写
           _totalCard(theme),
-          const SizedBox(height: UtenSpacing.s16),
-
-          _invoiceHintCard(theme),
         ],
       ),
     );
@@ -546,37 +519,6 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _invoiceHintCard(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: UtenRadius.lgAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.receipt_outlined,
-            size: 16,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              l10n.expenseFlowInvoiceGuide,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.5,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -136,11 +136,18 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
     @Transactional(propagation = Propagation.MANDATORY)
     public List<RootQuantityRow> projectRootNodes(UUID analysisId, Map<UUID,BigDecimal> futureCoverage,
             Map<UUID,BigDecimal> allocatedByMaterial, Map<UUID,BigDecimal> openPlanBySource) {
+        return projectRootNodes(analysisId,futureCoverage,allocatedByMaterial,openPlanBySource,MaterialAnalysisIssuePreviewOverlay.NONE);
+    }
+
+    List<RootQuantityRow> projectRootNodes(UUID analysisId, Map<UUID,BigDecimal> futureCoverage,
+            Map<UUID,BigDecimal> allocatedByMaterial, Map<UUID,BigDecimal> openPlanBySource,
+            MaterialAnalysisIssuePreviewOverlay overlay) {
         Map<InventoryKey, BigDecimal> publicPools = new HashMap<>();
         List<RootQuantityRow> quantities = new ArrayList<>();
         StringBuilder overrides = new StringBuilder("[");
         allocatedByMaterial.forEach((id, qty) -> overrides.append(overrides.length() > 1 ? "," : "")
-                .append("{\"id\":\"").append(id).append("\",\"qty\":").append(qty.toPlainString()).append('}'));
+                .append("{\"id\":\"").append(id).append("\",\"qty\":").append(qty.toPlainString())
+                .append(",\"formalized\":").append(overlay.transferredMaterial(id).toPlainString()).append('}'));
         overrides.append(']');
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT item.id,item.root_material_id,item.goods_id,item.color_id,
@@ -153,13 +160,13 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                     AND r.color_id IS NOT DISTINCT FROM item.color_id
                     AND (r.warehouse_id=analysis.warehouse_id OR r.warehouse_id IS NULL)
                     AND r.status=0 AND r.is_deleted=FALSE),0),
-                  GREATEST(COALESCE((SELECT SUM(GREATEST(COALESCE(override.qty,m.allocated_available_qty)-COALESCE((
+                  GREATEST(COALESCE((SELECT SUM(GREATEST(COALESCE(override.qty,m.allocated_available_qty)-GREATEST(COALESCE((
                       SELECT SUM(ent.effective_qty)
                       FROM v_preplan_stock_entitlement_beneficiary_balance ent
                       WHERE ent.beneficiary_analysis_id=item.analysis_id
-                        AND ent.beneficiary_analysis_material_id=m.id),0),0))
+                        AND ent.beneficiary_analysis_material_id=m.id),0)-COALESCE(override.formalized,0),0),0))
                     FROM production_material_analysis_materials m
-                    LEFT JOIN jsonb_to_recordset(CAST(:overrides AS jsonb)) AS override(id uuid, qty numeric)
+                    LEFT JOIN jsonb_to_recordset(CAST(:overrides AS jsonb)) AS override(id uuid, qty numeric, formalized numeric)
                       ON override.id=m.id
                     WHERE m.analysis_id=item.analysis_id AND m.active=TRUE
                       AND m.node_role='BOM_COMPONENT' AND m.goods_id=item.goods_id
@@ -208,7 +215,8 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
             InventoryKey dimension = new InventoryKey((UUID) row[2], (UUID) row[3]);
             BigDecimal required = decimal(row[6]).multiply(decimal(row[4]))
                     .setScale(4, RoundingMode.CEILING).max(BigDecimal.ZERO);
-            BigDecimal stock = decimal(row[9]).subtract(decimal(row[10])).max(BigDecimal.ZERO);
+            BigDecimal reserved = decimal(row[10]).add(overlay.publicReservationChange((UUID)row[7],(UUID)row[2],(UUID)row[3]));
+            BigDecimal stock = decimal(row[9]).subtract(reserved).max(BigDecimal.ZERO);
             BigDecimal publicAvailable = publicPools.computeIfAbsent(dimension,
                     ignored -> stock.subtract(decimal(row[11])).subtract(decimal(row[8]))
                             .max(BigDecimal.ZERO));
@@ -225,7 +233,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                     : decimal(row[14]).min(required);
             if (external) publicPools.put(dimension, publicAvailable.subtract(publicAllocated));
             BigDecimal openPlan = decimal(row[15]).add(openPlanBySource.getOrDefault((UUID) row[0], BigDecimal.ZERO));
-            quantities.add(new RootQuantityRow(materialId,required,stock,decimal(row[10]),decimal(row[8]),allocated,
+            quantities.add(new RootQuantityRow(materialId,required,stock,reserved,decimal(row[8]),allocated,
                     required.subtract(allocated),external?futureCoverage.getOrDefault(materialId,BigDecimal.ZERO):openPlan));
         }
         return quantities;

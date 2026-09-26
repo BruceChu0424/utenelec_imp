@@ -236,7 +236,9 @@ void main() {
       await _confirm(tester);
       await tester.pump(const Duration(milliseconds: 200));
       expect(iqc.sent.length, 1);
-      await tester.tap(find.byType(UtenBackButton));
+      // The busy overlay deliberately intercepts this location. Exercise the
+      // user's tap there without claiming that the covered button receives it.
+      await tester.tapAt(tester.getCenter(find.byType(UtenBackButton)));
       await tester.pump();
       expect(
         find.byKey(const Key('batch-approval-submit-report')),

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -92,11 +94,12 @@ void main() {
         find.byKey(const ValueKey('material-route-dropdown-child-material')),
         findsNothing,
       );
-      // 「全选筛选结果」已下线；无可选组时确认路线保持 0。
+      // 2026-09-25 确认路线退役：按钮没了；已解析来源的行不再有待确认决定
+      //（未挂勾的子件本来就没有可确认的路线）。
       await tester.pumpAndSettle();
       expect(
-        find.text('确认路线(0)'),
-        findsOneWidget,
+        find.byKey(const Key('material-analysis-create-routes')),
+        findsNothing,
         reason:
             'The resolved source already has a route; the unlinked child cannot be created.',
       );
@@ -114,6 +117,29 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+}
+
+/// 深拷贝后把本次 decisions 回写成已确认（对齐真实服务端语义）。
+Map<String, dynamic> _confirmRoutes(
+  Map<String, dynamic> analysis,
+  RequestOptions request,
+) {
+  final result = jsonDecode(jsonEncode(analysis)) as Map<String, dynamic>;
+  for (final decision
+      in (request.data as Map<String, dynamic>)['decisions'] as List) {
+    final decisionMap = decision as Map<String, dynamic>;
+    for (final row
+        in (result['flatMaterials'] as List).cast<Map<String, dynamic>>()) {
+      if (row['actionGroupKey'] != decisionMap['actionGroupKey'] &&
+          row['materialLineId'] != decisionMap['materialLineId']) {
+        continue;
+      }
+      row['sourceConfirmed'] = decisionMap['route'];
+      row['sourceSuggestion'] = decisionMap['route'];
+      row['routeConfirmed'] = true;
+    }
+  }
+  return result;
 }
 
 Finder _row(String id) => find.byKey(ValueKey('material-table-row-$id'));
@@ -137,6 +163,10 @@ Future<void> _pumpAnalysis(
           '/production/material-analyses/analysis-child' => analysis,
           '/production/material-analyses/preview' => analysis,
           '/production/material-analyses/last-routes' => <String, dynamic>{},
+          // 2026-09-25 确认路线退役：进页自动确认会打这条通道——回写确认，
+          // 并保持同一棵树（否则回包把树换掉，行会凭空消失）。
+          '/production/material-analyses/analysis-child/routes' =>
+            _confirmRoutes(analysis, request),
           _ => <dynamic>[],
         };
         handler.resolve(

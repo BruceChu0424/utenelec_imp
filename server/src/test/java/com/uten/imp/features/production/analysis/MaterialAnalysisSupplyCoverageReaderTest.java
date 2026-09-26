@@ -37,8 +37,8 @@ class MaterialAnalysisSupplyCoverageReaderTest {
     void historicalGroupAliasesAreDeduplicatedWithinTheSelectedRoute() {
         EntityManager em = mock(EntityManager.class);
         UUID material = UUID.randomUUID();
-        Query aliases = query(List.of(new Object[]{material, "legacy", "BUY"},
-                new Object[]{material, "legacy", "BUY"}, new Object[]{material, "unrelated", "SUBCONTRACT"}));
+        Query aliases = query(List.of(new Object[]{material, "legacy", "BUY",null},
+                new Object[]{material, "legacy", "BUY",null}, new Object[]{material, "unrelated", "SUBCONTRACT",null}));
         Query active = query(List.of(new Object[]{"current", new BigDecimal("2")},
                 new Object[]{"legacy", new BigDecimal("3")}));
         Query replacement = query(List.of(new Object[]{"current", new BigDecimal("4")},
@@ -73,6 +73,38 @@ class MaterialAnalysisSupplyCoverageReaderTest {
         assertThat(coverage.replacement("sc", "SUBCONTRACT")).isEqualByComparingTo("3");
         assertThat(coverage.active("sc", "BUY")).isZero();
         verify(em, times(5)).createNativeQuery(anyString());
+    }
+
+    @Test
+    void sharedActionCoverageIsReturnedPerMaterialRatherThanCopiedToEveryAlias() {
+        EntityManager em=mock(EntityManager.class);
+        UUID first=UUID.randomUUID(),second=UUID.randomUUID(),third=UUID.randomUUID(),batch=UUID.randomUUID();
+        Query aliases=query(List.of(new Object[]{first,"shared","MAKE",batch},new Object[]{second,"shared","MAKE",batch},new Object[]{third,"shared","MAKE",batch}));
+        Query legacy=query(List.of()),cross=query(List.of());
+        Query exact=query(List.of(new Object[]{first,new BigDecimal("400")},new Object[]{second,new BigDecimal("1000")},new Object[]{third,new BigDecimal("1000")}));
+        when(em.createNativeQuery(anyString())).thenReturn(aliases,legacy,cross,exact);
+        var coverage=new MaterialAnalysisSupplyCoverageReader(em).read(UUID.randomUUID(),List.of(
+                new MaterialAnalysisSupplyCoverageReader.Group("a","MAKE",List.of(first)),
+                new MaterialAnalysisSupplyCoverageReader.Group("b","MAKE",List.of(second)),
+                new MaterialAnalysisSupplyCoverageReader.Group("c","MAKE",List.of(third))));
+        assertThat(coverage.active("a","MAKE")).isEqualByComparingTo("400");
+        assertThat(coverage.active("b","MAKE")).isEqualByComparingTo("1000");
+        assertThat(coverage.active("c","MAKE")).isEqualByComparingTo("1000");
+        verify(em).createNativeQuery(contains("WITH inherited AS MATERIALIZED"));
+        verify(em,times(4)).createNativeQuery(anyString());
+    }
+
+    @Test
+    void canonicalMaterialIncludesItsExactOldPlanCoverageWithoutInventingAnotherOrder() {
+        EntityManager em=mock(EntityManager.class);UUID canonical=UUID.randomUUID();
+        Query aliases=query(java.util.Collections.singletonList(new Object[]{canonical,null,null,UUID.randomUUID()}));
+        Query legacy=query(List.of()),cross=query(List.of());
+        Query inherited=query(java.util.Collections.singletonList(new Object[]{canonical,new BigDecimal("3000")}));
+        when(em.createNativeQuery(anyString())).thenReturn(aliases,legacy,cross,inherited);
+        var coverage=new MaterialAnalysisSupplyCoverageReader(em).read(UUID.randomUUID(),List.of(
+                new MaterialAnalysisSupplyCoverageReader.Group("canonical","MAKE",List.of(canonical))));
+        assertThat(coverage.active("canonical","MAKE")).isEqualByComparingTo("3000");
+        assertThat(coverage.replacement("canonical","MAKE")).isZero();
     }
 
     private static Query query(List<Object[]> rows) {

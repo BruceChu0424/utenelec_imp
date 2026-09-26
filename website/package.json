@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "中山市优腾电器有限公司官网 (Next.js 全栈 + 多语言 CMS)",
+  "engines": {
+    "node": ">=22.13.1 <23"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",

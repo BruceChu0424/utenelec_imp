@@ -11,9 +11,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_employee_multi_picker.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/print/uten_print_preview.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -25,6 +27,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../models/master_facet.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/warehouse_node.dart';
@@ -461,6 +464,30 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     MasterDetailRow('旧系统 ID', w.legacyId?.toString()),
   ];
 
+  /// 导出查询参数（与 _loadWarehouses 一致，不含 page/size；V717）。
+  Map<String, dynamic> get _exportQuery => <String, dynamic>{
+    if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+    ...masterFilterQueryParams(_filters),
+  };
+
+  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  Future<UtenPrintTable> _printLoader() async {
+    final result = await ref
+        .read(warehouseRepositoryProvider)
+        .list(
+          size: 2000,
+          keyword: _keyword.trim().isEmpty ? null : _keyword,
+          filters: _filters,
+        );
+    return UtenPrintTable(
+      headers: [for (final c in _columns) c.label],
+      rows: [
+        for (final item in result.items)
+          [for (final c in _columns) c.value(item) ?? ''],
+      ],
+    );
+  }
+
   List<MasterColumnDef<WarehouseListItem>> get _columns => [
     MasterColumnDef(key: 'code', label: '编号', width: 120, value: (w) => w.code),
     MasterColumnDef(
@@ -575,6 +602,32 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
                   child: MasterDataTableView<WarehouseListItem>(
                     columns: _columns,
                     items: _page?.items ?? const [],
+                    // 导出/打印（V717 warehouse:export）：打印预览用本页列渲染，
+                    // 导出列集服务端与表格对齐——「表格显示啥导出啥」。
+                    toolbarActions: [
+                      UtenPrintPreviewButton(
+                        title: '仓库资料', // TODO(l10n): 补 arb
+                        subtitle: '最多前 2000 行', // TODO(l10n): 补 arb
+                        loader: _printLoader,
+                        exportEndpoint: '/master/warehouses/export',
+                        exportPermission: Perm.warehouseExport,
+                        exportReport: '',
+                        exportQuery: _exportQuery,
+                        exportFilename: '仓库资料', // TODO(l10n): 补 arb
+                        type: UtenButtonType.primary,
+                        size: UtenButtonSize.large,
+                      ),
+                      UtenExportButton(
+                        endpoint: '/master/warehouses/export',
+                        requiredPermission: Perm.warehouseExport,
+                        report: '',
+                        queryParams: _exportQuery,
+                        filename: '仓库资料', // TODO(l10n): 补 arb
+                        label: '导出仓库', // TODO(l10n): 补 arb
+                        type: UtenButtonType.primary,
+                        size: UtenButtonSize.large,
+                      ),
+                    ],
                     facets: _facets?.fields ?? const {},
                     nullCounts: _facets?.nullCounts ?? const {},
                     filters: _columnFilters,

@@ -88,14 +88,13 @@ void main() {
         child: MaterialApp(
           home: WarehouseTaskCenterScaffold(
             title: '出库任务中心',
-            subtitle: '',
             searchHint: '搜索',
             location: '/warehouse/tasks/outbound',
             segments: const [
               WarehouseTaskSegmentSpec(value: 'subcontract', label: '委外出库'),
             ],
             initialSegment: 'subcontract',
-            bodyBuilder: (_, _, tick) => Text('revision:$tick'),
+            bodyBuilder: (_, _, tick, _) => Text('revision:$tick'),
           ),
         ),
       ),

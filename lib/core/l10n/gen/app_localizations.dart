@@ -100,6 +100,222 @@ abstract class AppLocalizations {
     Locale('ko'),
   ];
 
+  /// No description provided for @bomLearningTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'BOM 学习记录'**
+  String get bomLearningTitle;
+
+  /// No description provided for @materialDiscoveryBatchHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先选择持续生产或齐套生产，登记实际物料后再安排分批'**
+  String get materialDiscoveryBatchHelp;
+
+  /// No description provided for @materialDiscoveryCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回待登记领料申请'**
+  String get materialDiscoveryCancel;
+
+  /// No description provided for @bomLearningHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'完成生产并核清余料后，按累计净耗料除以累计实际产量更新单耗。已有任务仍按下达时的用料执行。'**
+  String get bomLearningHelp;
+
+  /// No description provided for @bomLearningInactive.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚无学习记录。无底层材料的自制任务完成领料和生产后开始累计。'**
+  String get bomLearningInactive;
+
+  /// No description provided for @bomLearningAuto.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动更新 BOM'**
+  String get bomLearningAuto;
+
+  /// No description provided for @bomLearningPaused.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保留人工 BOM 或发现材料、单位、颜色冲突，自动更新已暂停；累计记录仍保留，请核对组件资料。'**
+  String get bomLearningPaused;
+
+  /// No description provided for @bomLearningOutput.
+  ///
+  /// In zh, this message translates to:
+  /// **'累计实际产量'**
+  String get bomLearningOutput;
+
+  /// No description provided for @bomLearningSamples.
+  ///
+  /// In zh, this message translates to:
+  /// **'有效生产批次'**
+  String get bomLearningSamples;
+
+  /// No description provided for @bomLearningNet.
+  ///
+  /// In zh, this message translates to:
+  /// **'累计净耗料'**
+  String get bomLearningNet;
+
+  /// No description provided for @bomLearningAverage.
+  ///
+  /// In zh, this message translates to:
+  /// **'每件平均用量'**
+  String get bomLearningAverage;
+
+  /// No description provided for @materialDiscoveryTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'填写实际领料'**
+  String get materialDiscoveryTitle;
+
+  /// No description provided for @materialDiscoveryHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'请与领料人核对，为本工单添加一种或多种材料，填写数量和实际发料仓。保存后进入领料单办理实际出库。'**
+  String get materialDiscoveryHelp;
+
+  /// No description provided for @materialDiscoveryRequestHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'这些自制件尚未登记底层材料。提交领料后，请领料人与仓库对接，由仓库填写实际材料；实际发料后才能开工。'**
+  String get materialDiscoveryRequestHelp;
+
+  /// No description provided for @materialDiscoveryPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'待仓库填写物料'**
+  String get materialDiscoveryPending;
+
+  /// No description provided for @materialDiscoveryNeeded.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要登记领料物料'**
+  String get materialDiscoveryNeeded;
+
+  /// No description provided for @materialDiscoverySend.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交领料申请'**
+  String get materialDiscoverySend;
+
+  /// No description provided for @materialDiscoverySave.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存并生成领料单'**
+  String get materialDiscoverySave;
+
+  /// No description provided for @materialDiscoverySaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料已登记，请在领料单核对并实际出库'**
+  String get materialDiscoverySaved;
+
+  /// No description provided for @materialDiscoveryInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'请逐行选择材料和实际仓库，填写大于0且最多4位小数的数量；单位采用货品基本单位'**
+  String get materialDiscoveryInvalid;
+
+  /// No description provided for @materialDiscoveryUncertain.
+  ///
+  /// In zh, this message translates to:
+  /// **'回执尚未确认，输入已保留。请核对结果或使用相同内容重试'**
+  String get materialDiscoveryUncertain;
+
+  /// No description provided for @materialDiscoveryCheck.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对提交结果'**
+  String get materialDiscoveryCheck;
+
+  /// No description provided for @materialDiscoveryPick.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择材料'**
+  String get materialDiscoveryPick;
+
+  /// No description provided for @materialDiscoveryWarehouse.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际发料仓'**
+  String get materialDiscoveryWarehouse;
+
+  /// No description provided for @materialDiscoveryQuantity.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次领料数量'**
+  String get materialDiscoveryQuantity;
+
+  /// No description provided for @materialDiscoveryUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'单位'**
+  String get materialDiscoveryUnit;
+
+  /// No description provided for @materialDiscoveryCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'编号'**
+  String get materialDiscoveryCode;
+
+  /// No description provided for @materialDiscoveryColor.
+  ///
+  /// In zh, this message translates to:
+  /// **'颜色'**
+  String get materialDiscoveryColor;
+
+  /// No description provided for @materialDiscoveryLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'领料申请加载失败，请重试'**
+  String get materialDiscoveryLoadFailed;
+
+  /// No description provided for @materialDiscoveryNoPermission.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前账号没有填写领料物料的权限'**
+  String get materialDiscoveryNoPermission;
+
+  /// No description provided for @materialDiscoveryDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'该申请已办理，请查看对应领料单'**
+  String get materialDiscoveryDone;
+
+  /// No description provided for @materialDiscoveryOpenDraw.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开领料单'**
+  String get materialDiscoveryOpenDraw;
+
+  /// No description provided for @materialDiscoveryRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get materialDiscoveryRetry;
+
+  /// No description provided for @materialDiscoveryRequestSent.
+  ///
+  /// In zh, this message translates to:
+  /// **'领料申请已提交，等待仓库填写物料'**
+  String get materialDiscoveryRequestSent;
+
+  /// No description provided for @materialDiscoveryMissingUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'该材料没有基本单位，请先完善货品资料'**
+  String get materialDiscoveryMissingUnit;
+
+  /// No description provided for @materialDiscoveryRequestTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认领料申请'**
+  String get materialDiscoveryRequestTitle;
+
   /// 应用标题
   ///
   /// In zh, this message translates to:
@@ -363,18 +579,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'修改密码'**
   String get profileChangePassword;
-
-  /// No description provided for @entryStaff.
-  ///
-  /// In zh, this message translates to:
-  /// **'内部人员登录'**
-  String get entryStaff;
-
-  /// No description provided for @entryVisitor.
-  ///
-  /// In zh, this message translates to:
-  /// **'访客登录'**
-  String get entryVisitor;
 
   /// No description provided for @visitorLoginTitle.
   ///
@@ -3691,12 +3895,6 @@ abstract class AppLocalizations {
   /// **'库存查询'**
   String get warehouseHubSectionInventory;
 
-  /// No description provided for @warehouseHubSectionInventoryDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'即时库存·库存查询·出入库流水'**
-  String get warehouseHubSectionInventoryDesc;
-
   /// No description provided for @warehouseHubSectionReports.
   ///
   /// In zh, this message translates to:
@@ -4279,6 +4477,12 @@ abstract class AppLocalizations {
   /// **'需要数量'**
   String get materialRequired;
 
+  /// No description provided for @materialPublicAvailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'可用数量'**
+  String get materialPublicAvailable;
+
   /// No description provided for @materialShortage.
   ///
   /// In zh, this message translates to:
@@ -4350,12 +4554,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'{products} 个产品 · {paths} 条路径'**
   String materialAggregateSources(int products, int paths);
-
-  /// No description provided for @materialCreateRoutes.
-  ///
-  /// In zh, this message translates to:
-  /// **'确认路线({count})'**
-  String materialCreateRoutes(int count);
 
   /// No description provided for @materialRouteChangedRetry.
   ///
@@ -4456,7 +4654,7 @@ abstract class AppLocalizations {
   /// No description provided for @materialRoutesNext.
   ///
   /// In zh, this message translates to:
-  /// **'下一步：核对 {count} 条待确认路线，勾选后点击“确认路线”。每条路线按当前选择保存。'**
+  /// **'下一步：还有 {count} 行没选供应方式（红框），在「供应方式」列选好后即自动保存，这些行才能下单。其余行的供应方式已按货品档案自动确认。'**
   String materialRoutesNext(int count);
 
   /// No description provided for @materialIssueNext.
@@ -6091,12 +6289,6 @@ abstract class AppLocalizations {
   /// **'子件还没到货，仓里一件都没有；子件入库后系统会自动补草稿并通知仓库。'**
   String get warehouseSubcontractOutboundComponentNotArrived;
 
-  /// No description provided for @warehouseSubcontractOutboundWorkView.
-  ///
-  /// In zh, this message translates to:
-  /// **'仓库作业视图'**
-  String get warehouseSubcontractOutboundWorkView;
-
   /// No description provided for @warehouseSubcontractOutboundBannerScope.
   ///
   /// In zh, this message translates to:
@@ -6138,12 +6330,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'出仓记录 ({count})'**
   String warehouseSubcontractOutboundHistoryTitle(int count);
-
-  /// No description provided for @warehouseSubcontractOutboundLinesTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'出仓明细 ({count})'**
-  String warehouseSubcontractOutboundLinesTitle(int count);
 
   /// No description provided for @warehouseSubcontractOutboundSaveDraft.
   ///
@@ -6598,18 +6784,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已解除拉黑'**
   String get securityBlacklistRemoveDone;
-
-  /// No description provided for @entryStaffSubtitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'员工工号登录，进入工作台'**
-  String get entryStaffSubtitle;
-
-  /// No description provided for @entryVisitorSubtitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'访客手机验证码登记，快速通行'**
-  String get entryVisitorSubtitle;
 
   /// No description provided for @visitorColName.
   ///

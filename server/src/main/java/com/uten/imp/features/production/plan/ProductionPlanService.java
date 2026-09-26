@@ -163,6 +163,10 @@ public class ProductionPlanService {
             throw new ApiException(ErrorCode.CONFLICT,
                     "物料分析生成的计划不可直接编辑，请删除草稿后回到物料分析重新生成");
         }
+        if (req.getItems().stream().anyMatch(line -> line.getAllowedOverproductionRate() == null)) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "计划已填写允许超产比例，请刷新后逐行核对比例再保存，不能由缺失字段恢复为默认值");
+        }
         planningDraftService.supersedeActive(id, "生产计划已编辑，原预排草案失效");
         applyHeader(req, p);
         itemRepo.deleteByPlanId(id);
@@ -180,7 +184,11 @@ public class ProductionPlanService {
 
     private void deleteLocked(UUID id) {
         ProductionPlan p = requirePlanForUpdate(id);
-        access.requireWritable(p.getMakerId(), "只能操作本人负责的生产计划");
+        boolean reviewedSupplementCancellation = p.getActualOutputSupplementRequestId()!=null && Objects.equals(
+                p.getActualOutputSupplementRequestId().toString(),
+                em.createNativeQuery("SELECT current_setting('app.actual_output_supplement_request',true)").getSingleResult());
+        if(reviewedSupplementCancellation) access.requireWritable(p.getMakerId(), "无权取消此追加生产计划", "production_plan:approve");
+        else access.requireWritable(p.getMakerId(), "只能操作本人负责的生产计划");
         if(p.getActualOutputSupplementRequestId()!=null&&!Objects.equals(p.getActualOutputSupplementRequestId().toString(),
                 em.createNativeQuery("SELECT current_setting('app.actual_output_supplement_request',true)").getSingleResult()))
             throw new ApiException(ErrorCode.CONFLICT,"请在实际超产追加申请中取消，保留原批次、审批和数量责任");
@@ -1570,6 +1578,7 @@ public class ProductionPlanService {
             it.setClientNo(l.getClientNo());
             it.setOqty(zeroIfNull(l.getOqty()));
             it.setQty(zeroIfNull(l.getQty()));
+            it.setAllowedOverproductionRate(ProductionOverproductionAllowance.resolve(em, l.getGoodsId(), l.getAllowedOverproductionRate()));
             it.setLqty(zeroIfNull(l.getLqty()));
             it.setIqty(zeroIfNull(l.getIqty()));
             it.setFqty(zeroIfNull(l.getFqty()));
@@ -1644,7 +1653,7 @@ public class ProductionPlanService {
                 it.getLstatus(), it.getCstatus(), it.getStepLegacyId(),
                 it.getVeilLegacyId(), it.getAssTeamLegacyId(), it.getFittings(),
                 it.getRequestNote(), it.getCustomerModel(), it.getDiscount(), it.getLabelNo(), it.getPlanAppNo(),
-                it.getSourceDocNo(), it.getRemark());
+                it.getSourceDocNo(), it.getRemark(), it.getAllowedOverproductionRate());
     }
 
     private PlanDetail toDetail(ProductionPlan p, List<PlanItemDto> items) {

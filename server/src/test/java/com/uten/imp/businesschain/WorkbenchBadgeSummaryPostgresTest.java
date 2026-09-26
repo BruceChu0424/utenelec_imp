@@ -24,7 +24,6 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -406,10 +405,8 @@ class WorkbenchBadgeSummaryPostgresTest {
 
     private void assertRollups(JsonNode summary) {
         Map<String, long[]> modules = new TreeMap<>();
-        Iterator<Map.Entry<String, JsonNode>> it = summary.path("modules").fields();
         long totalTodo = 0, totalInProgress = 0;
-        while (it.hasNext()) {
-            var module = it.next();
+        for (var module : summary.path("modules").properties()) {
             modules.put(module.getKey(), new long[] {
                     module.getValue().path("todo").asLong(), module.getValue().path("inProgress").asLong()});
             totalTodo += module.getValue().path("todo").asLong();
@@ -486,7 +483,7 @@ class WorkbenchBadgeSummaryPostgresTest {
 
     private Map<String, Long> facts(JsonNode summary) {
         Map<String, Long> out = new TreeMap<>();
-        summary.path("facts").fields().forEachRemaining(fact -> out.put(fact.getKey(), fact.getValue().asLong()));
+        summary.path("facts").properties().forEach(fact -> out.put(fact.getKey(), fact.getValue().asLong()));
         return out;
     }
 

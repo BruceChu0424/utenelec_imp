@@ -66,6 +66,8 @@ public enum DocNumberPrefix {
     /** V608 员工费用报销单（打印报销单/归档编号；打款侧仍生成 YF 财务费用单）。 */
     EXPENSE_CLAIM("BX"),
     // 生产
+    /** V719 物料分析编号：各页「计划单号」与采购/委外来源计划的展示锚点。 */
+    MATERIAL_ANALYSIS("WL"),
     PRODUCTION_PLAN("SJ"),
     PRODUCTION_SUBPLAN("SZ"),
     PRODUCTION_DAILY_REPORT("SR"),

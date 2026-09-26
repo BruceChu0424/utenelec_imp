@@ -1,14 +1,21 @@
 package com.uten.imp.features.production.analysis;
 
 import org.junit.jupiter.api.Test;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
 /**
  * ADR-117 车间任务里同一种物料(货品 + 颜色 + 单位)挂在几条需求上、对上分析里几行时的合计口径：
@@ -64,5 +71,57 @@ class MaterialAnalysisPlanningGapAggregationTest {
         var gap = gap();
         gap.add(UUID.randomUUID(), new BigDecimal("100"), UUID.randomUUID(), node("0", true));
         assertNull(gap.toGap());
+    }
+
+    @Test
+    void unclaimedPublicCandidateNeverSettlesThePlanningGap() {
+        var em = mock(EntityManager.class);
+        var analyses = mock(MaterialAnalysisService.class);
+        var query = mock(Query.class);
+        UUID materialId = UUID.randomUUID();
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter("ids", List.of(SEGMENT))).thenReturn(query);
+        when(query.getResultList()).thenReturn(java.util.Collections.singletonList(shortRow(materialId)));
+        var view = mock(MaterialAnalysisContracts.AnalysisView.class);
+        var material = mock(MaterialAnalysisContracts.MaterialView.class);
+        when(analyses.detailInternal(ANALYSIS, false)).thenReturn(view);
+        when(view.flatMaterials()).thenReturn(List.of(material));
+        when(material.materialLineId()).thenReturn(materialId);
+        when(material.planningUncoveredQty()).thenReturn(new BigDecimal("100"));
+        when(material.netShortageQty()).thenReturn(BigDecimal.ZERO);
+        when(material.controlStage()).thenReturn("START");
+
+        var reader = new MaterialAnalysisPlanningGapReader(em, analyses, null, null);
+        var result = reader.freshPlanningGaps(List.of(SEGMENT));
+        assertFalse(result.isUnknown(SEGMENT));
+        assertEquals(1, result.of(SEGMENT).size());
+        assertEquals(0, new BigDecimal("100").compareTo(result.of(SEGMENT).getFirst().gapQty()));
+
+        // 缺少权威字段时是未知，绝不能被默认 0 误办结。
+        when(material.planningUncoveredQty()).thenReturn(null);
+        assertTrue(reader.freshPlanningGaps(List.of(SEGMENT)).isUnknown(SEGMENT));
+    }
+
+    @Test
+    void failedAnalysisIsReadOnlyOnceAcrossItsMultipleDemands() {
+        var em = mock(EntityManager.class);
+        var analyses = mock(MaterialAnalysisService.class);
+        var query = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter("ids", List.of(SEGMENT))).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.of(shortRow(UUID.randomUUID()), shortRow(UUID.randomUUID())));
+        when(analyses.detailInternal(ANALYSIS, false))
+                .thenThrow(new ApiException(ErrorCode.CONFLICT, "需要重新分析"));
+
+        var reader = new MaterialAnalysisPlanningGapReader(em, analyses, null, null);
+        var result = reader.freshPlanningGaps(List.of(SEGMENT));
+        assertTrue(result.isUnknown(SEGMENT));
+        assertTrue(result.of(SEGMENT).isEmpty());
+        verify(analyses, times(1)).detailInternal(ANALYSIS, false);
+    }
+
+    private static Object[] shortRow(UUID materialId) {
+        return new Object[]{SEGMENT, UUID.randomUUID(), ANALYSIS, materialId, new BigDecimal("100"),
+                UUID.randomUUID(), "TP-01", "铜片", null, "个", null, UUID.randomUUID()};
     }
 }

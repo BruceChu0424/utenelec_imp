@@ -795,6 +795,7 @@ abstract class _MaterialAnalysisProductTasksState
           product.canIssueSurplus &&
           !product.canSchedule &&
           product.sourceType != 'SUBCONTRACT_MAKE' &&
+          product.sourceType != 'AGGREGATE_MAKE' &&
           _productRouteConfirmedForWorkshop(product);
     }
     final group = row.group;
@@ -936,6 +937,7 @@ abstract class _MaterialAnalysisProductTasksState
         MaterialAnalysisIssueLine(
           materialLineId: input.materialLineId,
           qty: input.qty,
+          allowedOverproductionRate: input.allowedOverproductionRate,
           departmentId: input.departmentId,
           workshopName: input.workshopName,
           workerId: input.workerId,
@@ -945,12 +947,22 @@ abstract class _MaterialAnalysisProductTasksState
         MaterialAnalysisIssueLine(
           analysisLineId: draft.analysisLineId,
           qty: draft.qty,
+          allowedOverproductionRate: draft.allowedOverproductionRate,
           departmentId: draft.departmentId,
           workshopName: draft.workshopName,
           workerId: draft.workerId,
           publicSurplusOnly: draft.publicSurplusOnly,
         ),
     ];
+    if (lines.any(
+      (line) => line.materialLineId != null
+          ? _materialAggregateOwnsLine(line.materialLineId!)
+          : line.analysisLineId != null &&
+                _materialAggregateOwnsProductLine(line.analysisLineId!),
+    )) {
+      context.appWarning('此来源已有未提交的汇总总量，请在汇总行下达或撤销草稿');
+      return false;
+    }
     final key = businessIdempotencyKey(
       'material-analysis-issue-plans',
       [

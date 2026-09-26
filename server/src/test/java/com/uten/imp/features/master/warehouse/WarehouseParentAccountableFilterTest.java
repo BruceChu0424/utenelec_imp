@@ -110,6 +110,7 @@ class WarehouseParentAccountableFilterTest {
                 mock(TxSessionVars.class),
                 em,
                 mock(MasterCodeService.class),
-                mock(OrganizationReferencePort.class));
+                mock(OrganizationReferencePort.class),
+                mock(WarehouseKeeperService.class));
     }
 }

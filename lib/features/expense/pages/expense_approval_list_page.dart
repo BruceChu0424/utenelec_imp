@@ -73,45 +73,48 @@ class _ExpenseApprovalListPageState
       child: UtenCollapsingHeaderScrollView(
         // 两队列都是「确实在等本页用户动手」→ actionable 红徽章
         // （docs/00-项目准则/14-徽章与计数口径.md §二）。
-        collapsingHeader: UtenFilterToolbar<ApprovalQueue>(
-          segmentsKey: const Key('expense-approval-segments'),
-          segments: [
-            if (canApprove)
-              UtenFilterSegment(
-                value: ApprovalQueue.pending,
-                label: '待审批',
-                count: summary?.pendingCount,
-                countForm: UtenSegmentCountForm.actionable,
-              ),
-            if (canPay)
-              UtenFilterSegment(
-                value: ApprovalQueue.payable,
-                label: '待付款',
-                count: summary?.payableCount,
-                countForm: UtenSegmentCountForm.actionable,
-              ),
-            UtenFilterSegment(
-              value: ApprovalQueue.history,
-              label: l10n.expenseFlowHistory,
-              count: queue == ApprovalQueue.history
-                  ? listAsync.valueOrNull?.total
-                  : null,
-            ),
-          ],
-          selected: {queue},
-          onSelectionChanged: (value) {
-            setState(() {
-              ref.read(approvalQueueProvider.notifier).state = value;
-              _selectedIds = {}; // 选中的是旧分段内的报销单
-            });
-          },
-        ),
-        body: Column(
+        // 2026-09-24 对齐物料分析页：统计条随页滚走，body 只剩表格。
+        collapsingHeader: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 队列汇总统计条（/summary：两队列 + 本月口径，财务汇总）。
+            UtenFilterToolbar<ApprovalQueue>(
+              segmentsKey: const Key('expense-approval-segments'),
+              segments: [
+                if (canApprove)
+                  UtenFilterSegment(
+                    value: ApprovalQueue.pending,
+                    label: '待审批',
+                    count: summary?.pendingCount,
+                    countForm: UtenSegmentCountForm.actionable,
+                  ),
+                if (canPay)
+                  UtenFilterSegment(
+                    value: ApprovalQueue.payable,
+                    label: '待付款',
+                    count: summary?.payableCount,
+                    countForm: UtenSegmentCountForm.actionable,
+                  ),
+                UtenFilterSegment(
+                  value: ApprovalQueue.history,
+                  label: l10n.expenseFlowHistory,
+                  count: queue == ApprovalQueue.history
+                      ? listAsync.valueOrNull?.total
+                      : null,
+                ),
+              ],
+              selected: {queue},
+              onSelectionChanged: (value) {
+                setState(() {
+                  ref.read(approvalQueueProvider.notifier).state = value;
+                  _selectedIds = {}; // 选中的是旧分段内的报销单
+                });
+              },
+            ),
+            // 队列汇总统计条（/summary：两队列 + 本月口径，财务汇总；随页滚走）。
             if (summary != null)
               Padding(
                 padding: const EdgeInsets.only(
+                  top: UtenSpacing.s8,
                   bottom: UtenSpacing.s8,
                   left: UtenSpacing.s4,
                   right: UtenSpacing.s4,
@@ -143,61 +146,55 @@ class _ExpenseApprovalListPageState
                   ],
                 ),
               ),
-            Expanded(
-              child: listAsync.when(
-                loading: () => const UtenSkeletonList(itemCount: 4),
-                error: (e, _) => UtenEmpty.error(
-                  message: '加载失败，请重试',
-                  actionLabel: l10n.commonRetry,
-                  onAction: () => ref.invalidate(expenseApprovalListProvider),
-                ),
-                data: (page) => MasterDataTableView<ExpenseClaim>(
-                  key: const Key('expense-approval-table'),
-                  primary: true,
-                  columns: _columns,
-                  items: page.items,
-                  // 部门 / 年月筛选桶来自后端聚合；未加载完成前列头暂无筛选项。
-                  facets: facets.valueOrNull ?? const {},
-                  nullCounts: const {},
-                  filters: filters.asTableFilters,
-                  onFilterChanged: _onFilterChanged,
-                  // 待审批段开多选 + 悬浮批量通过/驳回；待付款段只读浏览
-                  //（打款参数逐单不同，打款在详情页完成）。
-                  selectable: isPendingQueue,
-                  idOf: (claim) => claim.id,
-                  selectedIds: _selectedIds,
-                  onSelectedIdsChanged: (next) => setState(() {
-                    _selectedVersions.removeWhere(
-                      (id, _) => !next.contains(id),
-                    );
-                    for (final claim in page.items) {
-                      if (next.contains(claim.id) &&
-                          !_selectedIds.contains(claim.id)) {
-                        _selectedVersions[claim.id] = claim.version;
-                      }
-                    }
-                    _selectedIds = next;
-                  }),
-                  batchActionsBuilder: isPendingQueue ? _batchActions : null,
-                  // 双击行进入审批详情：push（2026-09-24 起），审批后详情 pop 回本页，
-                  // 列表实例与筛选/页码保留，数据由 provider 失效自动换新；
-                  // 原来 go 直达会把列表实例抹掉，详情返回只能落 default。
-                  onRowTap: (claim) =>
-                      context.push('/expense/approval/${claim.id}'),
-                  emptyMessage: switch (queue) {
-                    ApprovalQueue.pending => '暂无待审批报销',
-                    ApprovalQueue.payable => '暂无待付款报销',
-                    ApprovalQueue.history => '暂无已处理报销',
-                  },
-                  currentPage: page.page,
-                  totalPages: page.totalPages,
-                  onPageChange: (p) => ref
-                      .read(expenseApprovalListProvider.notifier)
-                      .goToPage(p),
-                ),
-              ),
-            ),
           ],
+        ),
+        body: listAsync.when(
+          loading: () => const UtenSkeletonList(itemCount: 4),
+          error: (e, _) => UtenEmpty.error(
+            message: '加载失败，请重试',
+            actionLabel: l10n.commonRetry,
+            onAction: () => ref.invalidate(expenseApprovalListProvider),
+          ),
+          data: (page) => MasterDataTableView<ExpenseClaim>(
+            key: const Key('expense-approval-table'),
+            primary: true,
+            columns: _columns,
+            items: page.items,
+            // 部门 / 年月筛选桶来自后端聚合；未加载完成前列头暂无筛选项。
+            facets: facets.valueOrNull ?? const {},
+            nullCounts: const {},
+            filters: filters.asTableFilters,
+            onFilterChanged: _onFilterChanged,
+            // 待审批段开多选 + 悬浮批量通过/驳回；待付款段只读浏览
+            //（打款参数逐单不同，打款在详情页完成）。
+            selectable: isPendingQueue,
+            idOf: (claim) => claim.id,
+            selectedIds: _selectedIds,
+            onSelectedIdsChanged: (next) => setState(() {
+              _selectedVersions.removeWhere((id, _) => !next.contains(id));
+              for (final claim in page.items) {
+                if (next.contains(claim.id) &&
+                    !_selectedIds.contains(claim.id)) {
+                  _selectedVersions[claim.id] = claim.version;
+                }
+              }
+              _selectedIds = next;
+            }),
+            batchActionsBuilder: isPendingQueue ? _batchActions : null,
+            // 双击行进入审批详情：push（2026-09-24 起），审批后详情 pop 回本页，
+            // 列表实例与筛选/页码保留，数据由 provider 失效自动换新；
+            // 原来 go 直达会把列表实例抹掉，详情返回只能落 default。
+            onRowTap: (claim) => context.push('/expense/approval/${claim.id}'),
+            emptyMessage: switch (queue) {
+              ApprovalQueue.pending => '暂无待审批报销',
+              ApprovalQueue.payable => '暂无待付款报销',
+              ApprovalQueue.history => '暂无已处理报销',
+            },
+            currentPage: page.page,
+            totalPages: page.totalPages,
+            onPageChange: (p) =>
+                ref.read(expenseApprovalListProvider.notifier).goToPage(p),
+          ),
         ),
       ),
     );

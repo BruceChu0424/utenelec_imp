@@ -176,7 +176,26 @@ public class FulfillmentWorkbenchQueryService {
              WHERE v.department = 'WAREHOUSE'
                AND fn_production_draw_requested(v.action_doc_id)
                AND fn_production_draw_item_requested_qty(draw_item.id)>0
-             GROUP BY v.department, COALESCE(v.action_doc_id, v.task_id))
+             GROUP BY v.department, COALESCE(v.action_doc_id, v.task_id)
+             UNION ALL
+             SELECT 'WAREHOUSE', request.id, segment.package_id, segment.plan_id,
+                    plan.bill_no, NULL::uuid, NULL::text,
+                    segment.product_goods_id, goods.code, goods.name, goods.spec,
+                    segment.product_color_id, color.name, segment.product_unit_id, unit.name,
+                    'MAKE', NULL::numeric, NULL::numeric, NULL::numeric, NULL::numeric,
+                    NULL::numeric, 'MATERIALS_TO_DEFINE', segment.plan_end_date, NULL::date,
+                    NULL::text, request.created_at, 'MATERIAL_DISCOVERY', request.id,
+                    segment.segment_code, NULL::uuid, NULL::text, 1::bigint, 1::bigint, ARRAY[]::text[]
+             FROM production_material_discovery_requests request
+             JOIN production_execution_segments segment ON segment.id=request.execution_segment_id
+             JOIN production_plans plan ON plan.id=segment.plan_id
+             JOIN goods ON goods.id=segment.product_goods_id
+             LEFT JOIN colors color ON color.id=segment.product_color_id
+             LEFT JOIN units unit ON unit.id=segment.product_unit_id
+             WHERE request.status='PENDING' AND NOT segment.is_deleted
+               AND segment.status IN ('WAITING','READY','DISPATCHED')
+               AND plan.status=1 AND NOT plan.is_deleted AND NOT plan.is_closed
+               AND NOT plan.is_canceled AND NOT plan.is_stopped)
             """;
 
     private final EntityManager em;
@@ -551,13 +570,9 @@ public class FulfillmentWorkbenchQueryService {
                     ) documents
                     """.formatted(shortDelivery, preparation)
                 : """
-                    SELECT COUNT(*) FROM (
-                        SELECT DISTINCT COALESCE(action_doc_id, task_id)
-                        FROM v_fulfillment_workbench_actions
-                        WHERE department = :department AND open_qty > 0
-                          AND fn_production_draw_pending(action_doc_id)
-                    ) documents
-                    """);
+                    SELECT COUNT(*) FROM %s documents
+                    WHERE department = :department AND open_line_count > 0
+                    """.formatted(WAREHOUSE_DOCUMENT_ROWS));
         query.setParameter("department", department);
         return ((Number) query.getSingleResult()).longValue();
     }
@@ -629,23 +644,26 @@ public class FulfillmentWorkbenchQueryService {
         Query query = em.createNativeQuery("""
                 SELECT task_status, COUNT(*)
                 FROM %s document_rows
-                WHERE task_status IN ('READY_TO_PICK', 'PARTIAL')%s
+                WHERE task_status IN ('READY_TO_PICK', 'PARTIAL', 'MATERIALS_TO_DEFINE')%s
                 GROUP BY task_status
                 """.formatted(WAREHOUSE_DOCUMENT_ROWS, scoped
                         ? " AND " + warehouseScope.predicate("warehouse_id", ":warehouse_scope") : ""));
         if (scoped) query.setParameter("warehouse_scope", warehouseScope.idsCsv());
         long ready = 0;
         long partial = 0;
+        long discovery = 0;
         for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
             String status = String.valueOf(row[0]);
             long count = ((Number) row[1]).longValue();
             if ("READY_TO_PICK".equals(status)) ready = count;
             else if ("PARTIAL".equals(status)) partial = count;
+            else if ("MATERIALS_TO_DEFINE".equals(status)) discovery = count;
         }
         return Map.of(
                 "READY_TO_PICK", ready,
                 "PARTIAL", partial,
-                "OPEN_ANY", ready + partial);
+                "MATERIALS_TO_DEFINE", discovery,
+                "OPEN_ANY", ready + partial + discovery);
     }
 
     /** Pending preparation is a server-paged read-only task, never a client-side extra row. */

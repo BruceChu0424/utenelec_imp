@@ -68,6 +68,7 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/commercial_terms_batch_sheet.dart';
 import '../../../shared/widgets/editable_grid_totals_bar.dart';
+import '../../../shared/widgets/order_duplicate_goods_review.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
@@ -137,7 +138,6 @@ class _SubcontractOrderEditPageState
   bool _saving = false;
   bool _loading = false;
   bool _orderSourceReady = true;
-  String? _sourceApplicationBillNo;
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
   String? _createdAt;
@@ -305,11 +305,6 @@ class _SubcontractOrderEditPageState
               .toList()
             ..sort();
       _deliverDate = dates.isEmpty ? null : dates.first;
-      _sourceApplicationBillNo = open
-          .map((line) => line.sourceDocumentNo)
-          .where((number) => number.isNotEmpty)
-          .toSet()
-          .join('、');
       _orderSourceReady = true;
     } on StateError catch (error) {
       _orderSourceReady = false;
@@ -375,9 +370,9 @@ class _SubcontractOrderEditPageState
                           .read(masterNameServiceProvider)
                           .goods(it.goodsId),
                     )
-              ..qty.text = it.qty?.toString() ?? ''
-              ..price.text = it.price?.toString() ?? ''
-              ..weight.text = it.weight?.toString() ?? ''
+              ..qty.text = financeExactTrimmed(it.qty?.toString()) ?? ''
+              ..price.text = financeExactTrimmed(it.price?.toString()) ?? ''
+              ..weight.text = financeExactTrimmed(it.weight?.toString()) ?? ''
               ..upstreamItemId = it.applicationItemId
               // V463：多来源合并行回显（来源明细 ids + 单号逐条带回）。
               ..upstreamItemIds = [
@@ -401,8 +396,9 @@ class _SubcontractOrderEditPageState
           ..supplierId = d.supplierId
           ..settlementMethodId = d.settlementMethodId
           ..currencyId = d.currencyId;
-        row.exchangeRate.text = d.exchangeRate?.toString() ?? '1';
-        row.taxRate.text = d.taxRate?.toString() ?? '0';
+        row.exchangeRate.text =
+            financeExactTrimmed(d.exchangeRate?.toString()) ?? '1';
+        row.taxRate.text = financeExactTrimmed(d.taxRate?.toString()) ?? '0';
         rows.add(row);
       }
       _grid.replaceAll(rows);
@@ -524,7 +520,8 @@ class _SubcontractOrderEditPageState
             r.currencyId == terms.currencyId &&
             r.exchangeRate.text.trim().isEmpty &&
             terms.exchangeRate != null) {
-          r.exchangeRate.text = terms.exchangeRate.toString();
+          r.exchangeRate.text =
+              financeExactTrimmed(terms.exchangeRate.toString()) ?? '';
           r.markTermsAutofilled('rate', r.exchangeRate.text);
           changed = true;
         }
@@ -532,7 +529,7 @@ class _SubcontractOrderEditPageState
             r.supplierId != null &&
             r.taxRate.text.trim().isEmpty &&
             terms.taxRate != null) {
-          r.taxRate.text = terms.taxRate.toString();
+          r.taxRate.text = financeExactTrimmed(terms.taxRate.toString()) ?? '';
           r.markTermsAutofilled('tax', r.taxRate.text);
           changed = true;
         }
@@ -550,7 +547,8 @@ class _SubcontractOrderEditPageState
         if (r.price.text.trim().isEmpty &&
             terms.subcontractPrice != null &&
             matchesPriceContext()) {
-          r.price.text = terms.subcontractPrice.toString();
+          r.price.text =
+              financeExactTrimmed(terms.subcontractPrice.toString()) ?? '';
           r.markTermsAutofilled('price', r.price.text);
           r.watchDefaultPrice(
             price: r.price,
@@ -690,11 +688,12 @@ class _SubcontractOrderEditPageState
         r.clearTermsAutofilled('currency');
       }
       if (result.exchangeRate != null) {
-        r.exchangeRate.text = result.exchangeRate.toString();
+        r.exchangeRate.text =
+            financeExactTrimmed(result.exchangeRate.toString()) ?? '';
         r.clearTermsAutofilled('rate');
       }
       if (result.taxRate != null) {
-        r.taxRate.text = result.taxRate.toString();
+        r.taxRate.text = financeExactTrimmed(result.taxRate.toString()) ?? '';
         r.clearTermsAutofilled('tax');
       }
     }
@@ -840,6 +839,97 @@ class _SubcontractOrderEditPageState
         '${rate.toStringAsFixed(6)}|${tax.toStringAsFixed(4)}';
   }
 
+  /// 保存前查重：同「委外商+条款+货品+颜色+单位+换算率」多行 → 弹窗汇总/去重/
+  /// 标红返回。返回 null = 用户返回修改（不保存）；否则返回复查后应提交的行
+  /// （查重可能已合并/删行，须重新取行集）。
+  Future<List<SubcontractGridRow>?> _reviewDuplicateGoods(
+    List<SubcontractGridRow> rows,
+  ) async {
+    final names = ref.read(masterNameServiceProvider);
+    final gridRows = _grid.rows;
+    final rowNoOf = <SubcontractGridRow, int>{};
+    for (var i = 0; i < gridRows.length; i++) {
+      rowNoOf[gridRows[i]] = i + 1;
+    }
+    final groups = collectDuplicateGoodsGroups<SubcontractGridRow>(
+      rows: rows,
+      rowNoOf: (r) => rowNoOf[r] ?? 0,
+      groupKey: (r) =>
+          '${_comboKey(r)}|${r.goods?.id ?? ''}|${r.colorId ?? ''}|'
+          '${r.unitId ?? ''}|${r.unitRate ?? 1}',
+      identityLabel: (r) {
+        final parts = <String>[
+          if ((r.goods?.name ?? '').isNotEmpty) r.goods!.name!,
+          if ((r.goods?.code ?? '').isNotEmpty) r.goods!.code!,
+          if ((names.colorEntries[r.colorId] ?? '').isNotEmpty)
+            names.colorEntries[r.colorId]!,
+          if ((names.unitEntries[r.unitId] ?? '').isNotEmpty)
+            names.unitEntries[r.unitId]!,
+          if ((names.supplierEntries[r.supplierId] ?? '').isNotEmpty)
+            '委外商：${names.supplierEntries[r.supplierId]}',
+        ];
+        return parts.isEmpty ? '该货品' : parts.join(' · ');
+      },
+      rowSummary: (r, rowNo) {
+        final qty = r.qty.text.trim();
+        final price = r.price.text.trim();
+        return '第 $rowNo 行 · 数量 ${qty.isEmpty ? '—' : qty}'
+            '${price.isEmpty ? '' : ' · 单价 $price'}';
+      },
+      identicalSignature: (r) => [
+        financeExactTrimmed(r.qty.text) ?? r.qty.text.trim(),
+        financeExactTrimmed(r.price.text) ?? r.price.text.trim(),
+        r.weight.text.trim(),
+        r.allowedLossPct.text.trim(),
+        r.remark.text.trim(),
+      ].join('|'),
+    );
+    if (groups.isEmpty) return rows;
+    final action = await showDuplicateGoodsReviewDialog<SubcontractGridRow>(
+      context,
+      groups: groups,
+    );
+    if (!mounted) return null;
+    if (action == null || action == DuplicateGoodsReviewAction.back) {
+      for (final g in groups) {
+        for (final r in g.rows) {
+          r.flagged = true;
+        }
+      }
+      return null;
+    }
+    for (final g in groups) {
+      final keep = g.rows.first;
+      if (action == DuplicateGoodsReviewAction.merge) {
+        // 汇总口径与「从上游引入」的 V463 合并一致：数量/maxQty 相加、来源聚合。
+        keep.qty.text =
+            financeExactSumTexts(g.rows.map((r) => r.qty.text)) ??
+            keep.qty.text;
+        keep.maxQty = g.rows.fold<double>(0, (sum, r) => sum + (r.maxQty ?? 0));
+        keep.upstreamItemIds = [for (final r in g.rows) ...r.upstreamItemIds];
+        keep.sourceDocs = [for (final r in g.rows) ...r.sourceDocs];
+        String? pickNonEmpty(Iterable<String?> values) {
+          for (final v in values) {
+            if (v != null && v.isNotEmpty) return v;
+          }
+          return null;
+        }
+
+        if ((keep.upstreamItemId ?? '').isEmpty) {
+          keep.upstreamItemId = pickNonEmpty(
+            g.rows.map((r) => r.upstreamItemId),
+          );
+        }
+        keep.sourceDocNo ??= pickNonEmpty(g.rows.map((r) => r.sourceDocNo));
+      }
+      _grid.removeRows(g.rows.skip(1).toList());
+    }
+    // 合并/去重后行集变了：按原口径（新建=勾选行，编辑=全部行）重新取。
+    return (_isCreate ? _grid.selectedRows : _grid.rows)
+        .where((r) => r.goods != null)
+        .toList();
+  }
+
   Future<void> _save() async {
     if (_createdOrders case final created?) {
       // 订货单已生成、附件未全部上传：只补传附件，成功后再提交财务/进入详情。
@@ -854,7 +944,7 @@ class _SubcontractOrderEditPageState
     // 新建态只提交勾选行（2026-09-17 用户口径，与采购订货单同款）；
     // 编辑既有单保持整单保存（行选择只是批量条款的助手，不能悄悄丢行）。
     final candidate = _isCreate ? _grid.selectedRows : _grid.rows;
-    final rows = candidate.where((r) => r.goods != null).toList();
+    var rows = candidate.where((r) => r.goods != null).toList();
     if (rows.isEmpty) {
       context.appError(_isCreate ? '请先勾选要生成订货的明细行' : '请至少添加一条明细');
       return;
@@ -972,6 +1062,13 @@ class _SubcontractOrderEditPageState
       );
       return;
     }
+    // 保存前查重（2026-09-25，与采购订货单同款）：同「委外商+条款+货品+颜色+单位
+    // +换算率」多行时弹窗汇总/去重/标红返回；不同委外商/条款的同货品行会拆进
+    // 不同订货单，不属于重复。
+    final reviewed = await _reviewDuplicateGoods(rows);
+    if (reviewed == null) return;
+    if (!mounted) return;
+    rows = reviewed;
     // 逐行校验已全部通过，这里只组装提交体。
     final itemsBody = <Map<String, dynamic>>[];
     for (final r in rows) {
@@ -1059,13 +1156,21 @@ class _SubcontractOrderEditPageState
       if (outcome.financeSubmitError case final error?) {
         context.appWarning('委外订货单已保存，但未提交财务：$error。可在详情页重新提交。');
         bumpListRefresh(ref, _cfg.refreshKey);
-        context.replace(SubcontractRoute.detail(_cfg.pathSegment, d.id));
+        // 编辑既有单：pop 回宿主详情（其「返回即刷新」重取保存后数据），深链直达
+        // 才落新详情；replace 会把新详情叠在旧详情上，返回一次看到旧快照。
+        popSavedEditOrReplace(
+          context,
+          SubcontractRoute.detail(_cfg.pathSegment, d.id),
+        );
         return;
       }
       if (!mounted) return;
       context.appSuccess(_canSubmitFinance ? '委外订货单已提交财务审核' : '委外订货单草稿已保存');
       bumpListRefresh(ref, _cfg.refreshKey);
-      context.replace(SubcontractRoute.detail(_cfg.pathSegment, d.id));
+      popSavedEditOrReplace(
+        context,
+        SubcontractRoute.detail(_cfg.pathSegment, d.id),
+      );
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
@@ -1219,7 +1324,10 @@ class _SubcontractOrderEditPageState
                           UtenFloatingActionGroup.scrollClearance,
                         ),
                         children: [
-                          if (_isCreate) ...[
+                          // 2026-09-24 简洁口径：来源说明横幅只在「来源未就绪」
+                          // （必须回任务中心重选申请）这种阻塞性错误时出现；
+                          // 正常新建不再显示顶部教学横幅。
+                          if (_isCreate && !_orderSourceReady) ...[
                             _orderSourceBanner(theme),
                             const SizedBox(height: UtenSpacing.s12),
                           ],
@@ -1389,12 +1497,19 @@ class _SubcontractOrderEditPageState
                                 showColumnSettings: true,
                                 initialColumnOrder: columnPrefs?.order,
                                 initialHiddenColumnKeys: columnPrefs?.hidden,
-                                onColumnSettingsChanged: (order, hidden) => ref
-                                    .read(
-                                      subcontractOrderGridColumnPrefsProvider
-                                          .notifier,
-                                    )
-                                    .updateFor('order', order, hidden),
+                                initialPinnedColumnKeys: columnPrefs?.pinned,
+                                onColumnSettingsChanged:
+                                    (order, hidden, pinned) => ref
+                                        .read(
+                                          subcontractOrderGridColumnPrefsProvider
+                                              .notifier,
+                                        )
+                                        .updateFor(
+                                          'order',
+                                          order,
+                                          hidden,
+                                          pinned,
+                                        ),
                                 toolbarActions: [
                                   UtenImportButton(
                                     label: '从上游引入',
@@ -1525,35 +1640,23 @@ class _SubcontractOrderEditPageState
     );
   }
 
-  /// 来源横幅：物料分析带单 / 直接委外下单；条款行级说明与超委外允许。
+  /// 来源横幅：仅「来源未就绪」的阻塞性错误态（2026-09-24 简洁口径——正常新建
+  /// 不再显示顶部教学横幅，只有必须回任务中心重选申请时才提示）。
   Widget _orderSourceBanner(ThemeData theme) {
-    final ready = _orderSourceReady;
-    final source = _sourceApplicationBillNo?.trim();
-    final fromMaterialAnalysis =
-        source?.isNotEmpty == true || widget.applicationItemIds.isNotEmpty;
-    final background = ready
-        ? theme.colorScheme.secondaryContainer
-        : theme.colorScheme.errorContainer;
-    final foreground = ready
-        ? theme.colorScheme.onSecondaryContainer
-        : theme.colorScheme.onErrorContainer;
+    if (_orderSourceReady) return const SizedBox.shrink();
     return Semantics(
       container: true,
-      label: !ready
-          ? '必须先从委外任务中心选择计划下达申请'
-          : '委外商与结算方式、币种、汇率、税率都在明细行填写；勾选多行可统一设置；'
-                '条款来自货品与供应商资料里的默认值，保存订单会更新这些资料；'
-                '数量允许超过申请剩余量。',
+      label: '必须先从委外任务中心选择计划下达申请',
       child: Card(
-        color: background,
+        color: theme.colorScheme.errorContainer,
         child: Padding(
           padding: const EdgeInsets.all(UtenSpacing.s12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
-                ready ? Icons.tune_rounded : Icons.task_alt_rounded,
-                color: foreground,
+                Icons.task_alt_rounded,
+                color: theme.colorScheme.onErrorContainer,
               ),
               const SizedBox(width: UtenSpacing.s8),
               Expanded(
@@ -1561,40 +1664,28 @@ class _SubcontractOrderEditPageState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      !ready
-                          ? '请先选择委外申请明细'
-                          : fromMaterialAnalysis
-                          ? '物料分析下达委外 · 条款在明细行填写'
-                          : '直接委外下单 · 条款在明细行填写',
+                      '请先选择委外申请明细',
                       style: theme.textTheme.titleSmall?.copyWith(
-                        color: foreground,
+                        color: theme.colorScheme.onErrorContainer,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
-                      !ready
-                          ? '来源申请未加载完整。请回到委外任务中心重新选择需要分解的申请明细。'
-                          : '委外商与结算方式、币种、汇率、税率逐行选择；勾选多行后可'
-                                '「统一设置条款」一次写全套。条款来自货品资料与供应商资料里的'
-                                '默认值，保存订单会把本次选择更新回资料。'
-                                '保存时按「委外商+条款组合」自动拆单。'
-                                '数量允许超过申请剩余量（超委外备货）。',
+                      '来源申请未加载完整。请回到委外任务中心重新选择需要分解的申请明细。',
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: foreground,
+                        color: theme.colorScheme.onErrorContainer,
                       ),
                     ),
-                    if (!ready) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      UtenButton(
-                        icon: Icons.arrow_back_rounded,
-                        onPressed: () => goFrom(
-                          context,
-                          RouteName.operationsSubcontractWorkbench,
-                        ),
-                        child: const Text('返回委外任务中心选择'),
+                    const SizedBox(height: UtenSpacing.s12),
+                    UtenButton(
+                      icon: Icons.arrow_back_rounded,
+                      onPressed: () => goFrom(
+                        context,
+                        RouteName.operationsSubcontractWorkbench,
                       ),
-                    ],
+                      child: const Text('返回委外任务中心选择'),
+                    ),
                   ],
                 ),
               ),

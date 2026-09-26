@@ -54,6 +54,10 @@ String workbenchRouteFor(
   'SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP' => RouteName.salesOrderProgress,
   'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED' =>
     RouteName.productionWorkshopTasks,
+  'PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED' =>
+    RouteName.productionOverproductionRateRequests,
+  'PRODUCTION_MATERIAL_INCREMENT_SUBMITTED' =>
+    RouteName.productionMaterialIncrementRequests,
   'SALES_ORDER_APPROVED' ||
   'SUBCONTRACT_PREPARATION_REQUIRED' ||
   'SUBCONTRACT_ORDER_PREPARATION_DISPATCHED' =>
@@ -597,6 +601,8 @@ String _eventGroupLabel(String? sourceEvent) => switch (sourceEvent) {
   'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED' => '车间任务',
   'PRODUCTION_DRAW_PENDING' => '领料待出库',
   'PRODUCTION_PLANNING_URGED' => '车间催下单',
+  'PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED' => '超产比例待审批',
+  'PRODUCTION_MATERIAL_INCREMENT_SUBMITTED' => '追加用料待审批',
   'SUBCONTRACT_PREPARATION_REQUIRED' => '委外准备',
   'SUBCONTRACT_ORDER_PREPARATION_DISPATCHED' => '委外订货已派出',
   'PROFILE_CHANGE_SUBMITTED' => '信息变更待审核',
@@ -619,6 +625,8 @@ IconData _eventIcon(String? sourceEvent) => switch (sourceEvent) {
   'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED' =>
     Icons.precision_manufacturing_outlined,
   'PRODUCTION_PLANNING_URGED' => Icons.campaign_outlined,
+  'PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED' => Icons.percent_rounded,
+  'PRODUCTION_MATERIAL_INCREMENT_SUBMITTED' => Icons.playlist_add_check_rounded,
   // 人事域（HrNoticeService）
   'PROFILE_CHANGE_SUBMITTED' => Icons.badge_outlined,
   'VISITOR_APPLY_SUBMITTED' => Icons.person_add_alt_outlined,

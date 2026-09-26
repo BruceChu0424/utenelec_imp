@@ -85,7 +85,7 @@ class GoodsOwningWarehouseWritePostgresTest {
                     version bigint NOT NULL DEFAULT 0,
                     updated_at timestamptz NOT NULL DEFAULT now(),
                     updated_by uuid,
-                    is_deleted boolean NOT NULL DEFAULT false, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid)
+                    is_deleted boolean NOT NULL DEFAULT false, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6))
                 """);
     }
 

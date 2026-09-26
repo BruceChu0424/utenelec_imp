@@ -22,7 +22,14 @@ abstract class _MaterialAnalysisSupplyActionsState
     _bulkOperationTotal = 0;
   }
 
-  Future<void> _saveRoutes({Set<String>? onlyGroupKeys}) async {
+  /// [automatic] = 进页自动确认（2026-09-25 确认路线退役）：成功提示降为一条
+  /// appInfo、没有待确认时静默、失败回滚草稿并只轻提示一次——非本人分析/无权限
+  /// 时打开页面不该弹一串红错。手动直改（[_confirmRouteChanges]）保持强提示。
+  Future<void> _saveRoutes({
+    Set<String>? onlyGroupKeys,
+    bool automatic = false,
+    Set<String>? automaticRollbackKeys,
+  }) async {
     final analysis = _analysis;
     if (analysis == null || !_canRoute || _savingRoutes) return;
     final groups = {
@@ -62,7 +69,7 @@ abstract class _MaterialAnalysisSupplyActionsState
       }
     }
     if (changes.isEmpty) {
-      context.appInfo('没有待确认的路线变更');
+      if (!automatic) context.appInfo('没有待确认的路线变更');
       return;
     }
     changes.sort((left, right) {
@@ -121,11 +128,40 @@ abstract class _MaterialAnalysisSupplyActionsState
           changes.take(completed).map((change) => change.groupKey),
         );
       });
-      context.appSuccess(
-        batches.length == 1 ? '物料路线已确认' : '物料路线已分 ${batches.length} 批全部确认',
-      );
+      if (automatic) {
+        context.appInfo('已按货品档案自动确认 $completed 条供应方式');
+      } else {
+        context.appSuccess(
+          batches.length == 1 ? '物料路线已确认' : '物料路线已分 ${batches.length} 批全部确认',
+        );
+      }
     } catch (error) {
       if (!mounted) return;
+      if (automatic) {
+        // 自动路径失败：回滚**自动确认自己建的**这批草稿（行回到红框/建议
+        // 显示），轻提示一次。人工直改建立的草稿不在回滚集合里，不能吞掉。
+        final failedKeys = changes
+            .skip(completed)
+            .map((change) => change.groupKey)
+            .where(automaticRollbackKeys?.contains ?? (_) => true)
+            .toSet();
+        setState(() {
+          _savingRoutes = false;
+          _clearBulkOperation();
+          for (final key in failedKeys) {
+            _routeDraft.remove(key);
+            _dirtyRouteGroups.remove(key);
+          }
+          _applyAnalysisPreservingRouteDrafts(current);
+          _invalidateBucketRowsCache();
+        });
+        context.appInfo(
+          completed > 0
+              ? '已自动确认 $completed 条供应方式；其余 ${failedKeys.length} 条自动确认失败，请在供应方式列补选'
+              : '供应方式自动确认失败，请在供应方式列补选（红框行不能下单）',
+        );
+        return;
+      }
       if (await _recoverLatestAnalysisAfterConflict(
         error,
         operation: '批量保存物料路线',
@@ -175,21 +211,31 @@ abstract class _MaterialAnalysisSupplyActionsState
   }
 
   /// 分桶详情里就地改供料方式（2026-09-14 用户口径「下达车间/委外/采购里面
-  /// 供应方式也可以改变，改变了自动换到其他地方」）。
+  /// 供应方式也可以改变，改变了自动到其他地方」）。
   ///
-  /// 桶归属只认服务端的 `confirmed_route`，所以「换桶」必须真的写一次路线确认；
-  /// 主表和分桶复用明确确认后的即时保存；批量入口仍用于采用未确认建议。
+  /// 桶归属只认服务端的 `confirmed_route`，所以「换桶」必须真的写一次路线确认。
   /// 确认同时回写货品主档的默认供应方式，新分析直接从主档读取。
   Future<bool> _confirmRouteChange(
     _MaterialGroup group,
     MaterialSupplyRoute route,
   ) => _confirmRouteChanges([group], route);
 
-  /// Main preparation table and bucket detail use the same persisted decision.
+  /// 主表与分桶详情共用的直改即存（2026-09-25 确认路线退役：选好就写，
+  /// 「确认并换桶」弹窗退役——用户口径「不需要去确认路线，只需要选好就写」）。
   Future<bool> _confirmRouteChanges(
     List<_MaterialGroup> groups,
-    MaterialSupplyRoute route,
-  ) async {
+    MaterialSupplyRoute route, {
+    bool forAggregate = false,
+  }) async {
+    if (!forAggregate &&
+        groups.any(
+          (group) => group.paths.any(
+            (path) => _materialAggregateOwnsLine(path.materialLineId),
+          ),
+        )) {
+      context.appWarning('此来源已有未提交的汇总总量，请在汇总行修改或撤销草稿');
+      return false;
+    }
     if (_busy) return false;
     if (!_canRoute) {
       context.appWarning('没有确认物料路线权限');
@@ -200,24 +246,6 @@ abstract class _MaterialAnalysisSupplyActionsState
       context.appWarning('本行已有下游行动或已被阻断，供料方式不可改');
       return false;
     }
-    final material = groups.first.representative;
-    final name = material.goodsName ?? material.goodsCode ?? '该物料';
-    final current = material.confirmedRoute;
-    final ok = await UtenDialog.show(
-      context,
-      title: '改变供料方式',
-      content: Text(
-        '把「$name」的供料方式'
-        '${current == null ? '确认为' : '从「${current.label}」改为'}'
-        '「${route.label}」？\n\n'
-        '确认后所选 ${groups.length} 个物料节点立即按新路线归类'
-        '(有自制子层的委外件进入「下达车间」先做前置自制)。'
-        '同时更新货品资料中的默认供应方式，下次分析默认带出。',
-      ),
-      confirmLabel: '确认并换桶',
-    );
-    if (ok != true || !mounted) return false;
-    if (_busy) return false;
     setState(() {
       for (final group in groups) {
         _routeDraft[group.key] = route;
@@ -234,37 +262,6 @@ abstract class _MaterialAnalysisSupplyActionsState
             .where((group) => keys.contains(group.key))
             .every((group) => group.representative.confirmedRoute == route) &&
         keys.every((key) => !_dirtyRouteGroups.contains(key));
-  }
-
-  /// Dropdown changes are local. Only selected task identities are submitted.
-  Future<void> _createSelectedRoutes() async {
-    final analysis = _analysis;
-    if (analysis == null || !_canRoute || _busy) return;
-    final groups = _materialGroups(analysis)
-        .where(
-          (group) =>
-              _selectedMaterialGroupKeys.contains(group.key) &&
-              _canEditMaterialRoute(group) &&
-              _routeGroupSelectable(group),
-        )
-        .toList(growable: false);
-    if (groups.isEmpty) return;
-    final decisions = {
-      for (final group in groups) group.key: _draftRoute(group),
-    };
-    // A poll must not turn a stale dropdown decision into a different write.
-    if (!identical(analysis, _analysis) || !_canRoute || _busy) {
-      context.appWarning(_l10n.materialRouteChangedRetry);
-      return;
-    }
-    setState(() {
-      for (final group in groups) {
-        _routeDraft[group.key] = decisions[group.key]!;
-        _dirtyRouteGroups.add(group.key);
-      }
-      _invalidateBucketRowsCache();
-    });
-    await _saveRoutes(onlyGroupKeys: decisions.keys.toSet());
   }
 
   /// 指定路线下「仍在途」的已提交量估算：汇总各路径下游引用中
@@ -807,6 +804,14 @@ abstract class _MaterialAnalysisSupplyActionsState
         .toList(growable: false);
     if (groups.isEmpty) {
       context.appInfo('请先勾选要提交的${route.label}缺料');
+      return null;
+    }
+    if (groups.any(
+      (group) => group.paths.any(
+        (path) => _materialAggregateOwnsLine(path.materialLineId),
+      ),
+    )) {
+      context.appWarning('此来源已有未提交的汇总总量，请在汇总行下达或撤销草稿');
       return null;
     }
     if (_dirtyRouteGroups.isNotEmpty) {

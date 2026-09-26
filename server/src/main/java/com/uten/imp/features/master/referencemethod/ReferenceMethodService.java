@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.referencemethod;
 
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.util.NativeQueryResults;
@@ -120,6 +122,93 @@ public class ReferenceMethodService {
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<SettlementMethod> root,
                               String field, String value) {
         if (value != null && !value.isBlank()) ps.add(cb.equal(root.get(field), value));
+    }
+
+    // ===== 加密 Excel 导出（2026-09-25「表格显示啥导出啥」，V717） =====
+
+    /** 到期基准代码 → 展示文字（与前端 settlement_method_admin.dart 同口径）。 */
+    private static final Map<String, String> TERMS_BASE_LABELS = Map.of(
+            "RECEIPT_DATE", "收货/进仓日",
+            "QC_ACCEPTANCE_DATE", "质检验收日(待开放)",
+            "STATEMENT_END", "月末",
+            "STATEMENT_CONFIRM_DATE", "对账确认日(待开放)",
+            "INVOICE_DATE", "发票日(待开放)");
+
+    /** 到期规则代码 → 展示文字（同上）。 */
+    private static final Map<String, String> DUE_RULE_LABELS = Map.of(
+            "NET_DAYS", "基准 + N 天",
+            "EOM_PLUS_DAYS", "月末 + N 天",
+            "FIXED_DAY_OF_MONTH", "固定日");
+
+    private static String termsBaseLabel(String v) {
+        return TERMS_BASE_LABELS.getOrDefault(v, v == null ? "—" : v);
+    }
+
+    private static String dueRuleLabel(String v) {
+        return DUE_RULE_LABELS.getOrDefault(v, v == null ? "—" : v);
+    }
+
+    /** 账期口径一句话摘要（与前端 settlementTermsSummary 逐字对齐）。 */
+    private static String termsSummary(SettlementMethodAdminItem m) {
+        boolean lockedBySystemRole = m.systemRole() != null && !m.systemRole().isEmpty();
+        if (lockedBySystemRole && "CASH".equals(m.systemRole())) {
+            return "现金：收货/进仓当天到期";
+        }
+        String base = termsBaseLabel(m.termsBase());
+        boolean futureBase = "QC_ACCEPTANCE_DATE".equals(m.termsBase())
+                || "STATEMENT_CONFIRM_DATE".equals(m.termsBase())
+                || "INVOICE_DATE".equals(m.termsBase());
+        if (futureBase) {
+            return base + "触发后按" + dueRuleLabel(m.dueRule()) + "计算；事件处理器开放前到期日保持未定";
+        }
+        int dueDays = m.defaultDueDays() == null ? 0 : m.defaultDueDays();
+        int monthsAhead = m.monthsAhead() == null ? 0 : m.monthsAhead();
+        return switch (m.dueRule() == null ? "" : m.dueRule()) {
+            case "NET_DAYS" -> dueDays == 0 ? base + "当天到期" : base + " + " + dueDays + " 天";
+            case "EOM_PLUS_DAYS" -> (dueDays == 0 ? "月末" : "月末 + " + dueDays + " 天")
+                    + (monthsAhead > 0 ? "（跨 " + monthsAhead + " 月）" : "");
+            case "FIXED_DAY_OF_MONTH" -> "基准月+" + monthsAhead + "月的 "
+                    + (m.fixedDayOfMonth() == null ? "?" : m.fixedDayOfMonth()) + " 日（不足顺延下月）";
+            default -> "—";
+        };
+    }
+
+    /**
+     * 加密 Excel 导出（settlement_method:export）：小字典不分页，全量导出。
+     * 列集与前端结算方式表格一致：编号 / 名称 / 状态 / 系统角色 / 到期基准 / 到期规则 / 账期口径。
+     */
+    @Transactional(readOnly = true)
+    public ExportPayload exportSettlementAdmin(SettlementMethodAdminQueryFilter f, int maxRows) {
+        List<SettlementMethodAdminItem> items = settlementAdminList(f);
+        if (items.size() > maxRows) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出行数超过上限 " + maxRows);
+        }
+        List<ExportColumn> cols = List.of(
+                new ExportColumn("code", "编号", ExportColumn.TEXT),
+                new ExportColumn("name", "名称", ExportColumn.TEXT),
+                new ExportColumn("status", "状态", ExportColumn.TEXT),
+                new ExportColumn("systemRole", "系统角色", ExportColumn.TEXT),
+                new ExportColumn("termsBase", "到期基准", ExportColumn.TEXT),
+                new ExportColumn("dueRule", "到期规则", ExportColumn.TEXT),
+                new ExportColumn("terms", "账期口径", ExportColumn.TEXT));
+        List<Map<String, Object>> rows = new ArrayList<>(items.size());
+        for (SettlementMethodAdminItem m : items) {
+            boolean lockedBySystemRole = m.systemRole() != null && !m.systemRole().isEmpty();
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("code", m.code());
+            row.put("name", m.name());
+            row.put("status", m.status());
+            row.put("systemRole", lockedBySystemRole ? switch (m.systemRole()) {
+                case "CASH" -> "现金 · 系统锁定";
+                case "MONTHLY" -> "月结 · 系统锁定";
+                default -> "—";
+            } : "—");
+            row.put("termsBase", termsBaseLabel(m.termsBase()));
+            row.put("dueRule", dueRuleLabel(m.dueRule()));
+            row.put("terms", termsSummary(m));
+            rows.add(row);
+        }
+        return new ExportPayload(cols, rows, rows.size());
     }
 
     // ===== facets（各可筛字段 distinct + 空值计数） =====

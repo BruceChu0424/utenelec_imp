@@ -51,6 +51,7 @@ import '../models/currency_node.dart';
 import '../models/reference_method_option.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/supplier_master_edit.dart';
+import '../widgets/uten_detail_tab_bar.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -333,10 +334,10 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     );
   }
 
-  TabBar _tabBar(ThemeData theme) => TabBar(
+  // 基础资料详情统一页签条（2026-09-25：选中指示条加高到 12px）。
+  TabBar _tabBar(ThemeData theme) => buildUtenDetailTabBar(
+    context,
     controller: _tab,
-    isScrollable: true,
-    tabAlignment: TabAlignment.start,
     labelStyle: theme.textTheme.titleSmall?.copyWith(
       fontWeight: FontWeight.w600,
     ),

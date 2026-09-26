@@ -133,14 +133,19 @@ public class GoodsImportService {
         for (String a : new String[]{"后模镶件编号", "后模镶件", "镶件编号"}) {
             putAlias(a, "rearInsertCode");
         }
+        // 备注（2026-09-25 导入导出格式对齐）：GoodsSaveRequest.paper 本就可编辑，
+        // 此前登记为 ignored → 导出里的备注列改完再导入会被静默丢弃。接线落库。
+        for (String a : new String[]{"备注", "纸样"}) putAlias(a, "paper");
         // 导出有但 DTO 未开放编辑——识别但忽略其值（不报「无法识别」）。
         //
-        // 所属仓库 (V587)：导出写这一列，但导入侧只拿得到仓库「名称」，而在线关系只认 UUID
-        // (本文件的 UUID-only 契约)，按名反查会重蹈按名猜关系的老路，故本轮登记为 ignored
-        // 只识别不落值——导出改完再导入，这一列的值不会写进新货品，与 客户型号/备注 同口径。
-        // 必须登记：把「刻意丢弃」写成明账，避免后来人把它当成又一个 V457 式的漏登记去补，
-        // 也避免别处误把它接成别的字段。真要支持编辑，得先给导入一条 UUID 口径的仓库选择通道。
-        for (String a : new String[]{"客户型号", "备注", "所属仓库", "归属仓库"}) putAlias(a, "ignored");
+        // 所属仓库 (V587) / 归属车间 (V590) / 模具编号 / 客户型号：导出写这些列，
+        // 但导入侧只拿得到「名称/编号」，而在线关系只认 UUID（本文件的 UUID-only 契约），
+        // 按名反查会重蹈按名猜关系的老路，故登记为 ignored 只识别不落值——导出改完再导入，
+        // 这些列的值不会写进新货品。必须登记：把「刻意丢弃」写成明账，避免后来人把它
+        // 当成又一个 V457 式的漏登记去补，也避免别处误把它接成别的字段。真要支持编辑，
+        // 得先给导入一条 UUID 口径的选择通道。
+        for (String a : new String[]{"客户型号", "所属仓库", "归属仓库", "归属车间", "车间",
+                "模具编号", "模具"}) putAlias(a, "ignored");
     }
 
     private static void putAlias(String alias, String key) {
@@ -299,6 +304,7 @@ public class GoodsImportService {
             req.setSpec(emptyToNull(r.spec));
             req.setMaterial(emptyToNull(r.material));
             req.setRearInsertCode(emptyToNull(r.rearInsertCode));
+            req.setPaper(emptyToNull(r.paper));
             req.setSourceType(emptyToNull(r.sourceType));
             req.setPrice(r.price);
             req.setMinOrderQty(r.minOrderQty);
@@ -544,6 +550,7 @@ public class GoodsImportService {
                 pr.spec = trim(str(row, col.get("spec")));
                 pr.material = trim(str(row, col.get("material")));
                 pr.rearInsertCode = trim(str(row, col.get("rearInsertCode")));
+                pr.paper = trim(str(row, col.get("paper")));
                 pr.colorName = normKey(str(row, col.get("colorName")));
                 pr.unitName = normKey(str(row, col.get("unitName")));
                 pr.sourceType = normKey(str(row, col.get("sourceType")));
@@ -908,6 +915,7 @@ public class GoodsImportService {
         String spec;
         String material;
         String rearInsertCode;       // 后模镶件编号（V457）
+        String paper;                // 备注（2026-09-25 导入导出格式对齐，落库）
         String colorName;
         String unitName;
         String sourceType;

@@ -9,6 +9,123 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get bomLearningTitle => 'BOM 학습 기록';
+
+  @override
+  String get materialDiscoveryBatchHelp =>
+      '연속 생산 또는 전량 준비 생산을 선택하여 자재를 등록한 후 분할 생산을 진행하세요.';
+
+  @override
+  String get materialDiscoveryCancel => '자재 입력 요청 철회';
+
+  @override
+  String get bomLearningHelp =>
+      '생산 및 잔여 자재 정산 후 누적 순소비량을 실제 생산량으로 나누어 단위 소요량을 갱신합니다. 기존 작업 지시의 자재는 유지됩니다.';
+
+  @override
+  String get bomLearningInactive =>
+      '학습 기록이 없습니다. 하위 자재가 없는 자체 생산품의 출고와 생산 완료 후 누적됩니다.';
+
+  @override
+  String get bomLearningAuto => 'BOM 자동 갱신';
+
+  @override
+  String get bomLearningPaused =>
+      '수동 BOM 보호 또는 자재, 단위, 색상 충돌로 자동 갱신이 중지되었습니다. 누적 기록은 유지됩니다. 구성품 정보를 확인하세요.';
+
+  @override
+  String get bomLearningOutput => '누적 실제 생산량';
+
+  @override
+  String get bomLearningSamples => '유효 생산 배치';
+
+  @override
+  String get bomLearningNet => '누적 순소비량';
+
+  @override
+  String get bomLearningAverage => '개당 평균 소요량';
+
+  @override
+  String get materialDiscoveryTitle => '실제 출고 자재 입력';
+
+  @override
+  String get materialDiscoveryHelp =>
+      '현장 담당자와 확인한 뒤 자재, 수량, 실제 출고 창고를 입력하세요. 저장 후 생성된 출고 문서에서 실제 출고를 처리합니다.';
+
+  @override
+  String get materialDiscoveryRequestHelp =>
+      '이 자체 생산품에는 하위 자재가 아직 없습니다. 자재를 요청한 후 창고와 실제 자재를 확인하세요. 실제 출고가 완료되어야 작업을 시작할 수 있습니다.';
+
+  @override
+  String get materialDiscoveryPending => '창고의 자재 입력 대기';
+
+  @override
+  String get materialDiscoveryNeeded => '사용 자재 확인 필요';
+
+  @override
+  String get materialDiscoverySend => '자재 요청 제출';
+
+  @override
+  String get materialDiscoverySave => '저장 및 출고 문서 생성';
+
+  @override
+  String get materialDiscoverySaved => '자재를 등록했습니다. 출고 문서에서 확인 후 실제 출고를 처리하세요.';
+
+  @override
+  String get materialDiscoveryInvalid =>
+      '각 행에 자재와 실제 창고를 선택하고 소수점 4자리 이하의 양수를 입력하세요. 품목의 기본 단위를 사용합니다.';
+
+  @override
+  String get materialDiscoveryUncertain =>
+      '처리 결과를 확인하지 못했습니다. 입력 내용은 보존됩니다. 결과를 확인하거나 같은 요청을 다시 제출하세요.';
+
+  @override
+  String get materialDiscoveryCheck => '제출 결과 확인';
+
+  @override
+  String get materialDiscoveryPick => '자재 선택';
+
+  @override
+  String get materialDiscoveryWarehouse => '실제 출고 창고';
+
+  @override
+  String get materialDiscoveryQuantity => '이번 출고 수량';
+
+  @override
+  String get materialDiscoveryUnit => '단위';
+
+  @override
+  String get materialDiscoveryCode => '코드';
+
+  @override
+  String get materialDiscoveryColor => '색상';
+
+  @override
+  String get materialDiscoveryLoadFailed => '자재 요청을 불러오지 못했습니다. 다시 시도하세요.';
+
+  @override
+  String get materialDiscoveryNoPermission => '이 요청의 자재를 입력할 권한이 없습니다.';
+
+  @override
+  String get materialDiscoveryDone => '처리된 요청입니다. 관련 출고 문서를 확인하세요.';
+
+  @override
+  String get materialDiscoveryOpenDraw => '출고 문서 열기';
+
+  @override
+  String get materialDiscoveryRetry => '다시 시도';
+
+  @override
+  String get materialDiscoveryRequestSent => '자재 요청을 제출했습니다. 창고의 자재 입력을 기다립니다.';
+
+  @override
+  String get materialDiscoveryMissingUnit =>
+      '자재의 기본 단위가 없습니다. 품목 정보를 먼저 등록하세요.';
+
+  @override
+  String get materialDiscoveryRequestTitle => '자재 요청 확인';
+
+  @override
   String get appTitle => '우텅 통합 관리 플랫폼';
 
   @override
@@ -144,12 +261,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get profileChangePassword => '비밀번호 변경';
-
-  @override
-  String get entryStaff => '임직원 로그인';
-
-  @override
-  String get entryVisitor => '방문자 로그인';
 
   @override
   String get visitorLoginTitle => '방문자 로그인';
@@ -1902,9 +2013,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get warehouseHubSectionInventory => '재고 조회';
 
   @override
-  String get warehouseHubSectionInventoryDesc => '실시간 재고·잔액·이동';
-
-  @override
   String get warehouseHubSectionReports => '창고 보고서';
 
   @override
@@ -2216,6 +2324,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get materialRequired => 'Demand';
 
   @override
+  String get materialPublicAvailable => '공용 가용수량';
+
+  @override
   String get materialShortage => 'Kit shortage';
 
   @override
@@ -2253,11 +2364,6 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String materialAggregateSources(int products, int paths) {
     return '$products products · $paths paths';
-  }
-
-  @override
-  String materialCreateRoutes(int count) {
-    return 'Confirm routes ($count)';
   }
 
   @override
@@ -2316,7 +2422,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String materialRoutesNext(int count) {
-    return 'Next: review $count routes, select them and confirm. Each row keeps its selected route.';
+    return 'Next: $count rows still need a supply route (red frame). Pick one in the route column to save it instantly; only then can they be ordered. Other routes were auto-confirmed from goods masters.';
   }
 
   @override
@@ -3263,9 +3369,6 @@ class AppLocalizationsKo extends AppLocalizations {
       '부품이 아직 입고되지 않아 창고에 하나도 없습니다. 부품이 입고되면 시스템이 자동으로 초안을 보충하고 창고에 알립니다.';
 
   @override
-  String get warehouseSubcontractOutboundWorkView => '창고 작업 보기';
-
-  @override
   String get warehouseSubcontractOutboundBannerScope =>
       '창고 작업 보기에는 가격과 금액이 없으며 외주 업무 편집 기능도 제공하지 않습니다.';
 
@@ -3292,11 +3395,6 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String warehouseSubcontractOutboundHistoryTitle(int count) {
     return '출고 기록 ($count)';
-  }
-
-  @override
-  String warehouseSubcontractOutboundLinesTitle(int count) {
-    return '출고 명세 ($count)';
   }
 
   @override
@@ -3565,12 +3663,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get securityBlacklistRemoveDone => '차단이 해제되었습니다';
 
   @override
-  String get entryStaffSubtitle => '직원 계정으로 로그인하여 작업 공간에 들어갑니다';
-
-  @override
-  String get entryVisitorSubtitle => '방문자는 휴대폰 인증번호로 등록하여 신속히 출입합니다';
-
-  @override
   String get visitorColName => '이름';
 
   @override
@@ -3805,267 +3897,283 @@ class AppLocalizationsKo extends AppLocalizations {
       '기본적으로 \'확인 대기\' 항목만 표시합니다. 헤더 필터로 전달됨/승인됨/거부됨으로 전환할 수 있습니다(백엔드 전달).';
 
   @override
-  String get expenseFlowNew => '新建报销';
+  String get expenseFlowNew => '경비 정산 신청';
 
   @override
-  String get expenseFlowEdit => '编辑报销';
+  String get expenseFlowEdit => '경비 정산 수정';
 
   @override
-  String get expenseFlowSaveAndContinue => '保存并补充凭证';
+  String get expenseFlowSaveAndContinue => '저장 후 증빙 추가';
 
   @override
-  String get expenseFlowSaveDraft => '存草稿';
+  String get expenseFlowSaveDraft => '초안 저장';
 
   @override
-  String get expenseFlowSave => '保存';
+  String get expenseFlowSave => '저장';
 
   @override
-  String get expenseFlowFlowGuide => '填写费用 → 保存草稿 → 上传原件并登记凭证 → 提交审批 → 财务登记付款';
+  String get expenseFlowFlowGuide =>
+      '경비 입력 → 초안 저장 → 원본 업로드 및 증빙 등록 → 승인 요청 → 재무 담당자 지급 등록';
 
   @override
   String get expenseFlowInvoiceGuide =>
-      '请先保存草稿，再上传发票或其他合法凭证原件。电子凭证应保留收到的原始文件；图片识别仅辅助填写，不能代替查验或归档。';
+      '먼저 초안을 저장한 후 세금계산서 또는 기타 적법한 증빙 원본을 업로드하세요. 전자 증빙은 수신한 원본 파일을 보관해야 합니다. 이미지 인식은 입력을 돕는 기능이며, 진위 확인이나 원본 보관을 대신하지 않습니다.';
 
   @override
   String get expenseFlowNoInvoiceGuide =>
-      '无发票时，请在说明中写明原因及凭证情况，上传能够证明真实业务的合法凭证，由财务审核。';
+      '세금계산서가 없으면 사유와 증빙 현황을 설명에 기재하고, 실제 거래를 입증하는 적법한 증빙을 업로드하여 재무 검토를 받으세요.';
 
   @override
-  String get expenseFlowApplicant => '申请人';
+  String get expenseFlowApplicant => '신청자';
 
   @override
-  String get expenseFlowDepartment => '部门';
+  String get expenseFlowDepartment => '부서';
 
   @override
-  String get expenseFlowDate => '制单日期';
+  String get expenseFlowDate => '작성일';
 
   @override
-  String get expenseFlowTitle => '报销标题 *';
+  String get expenseFlowTitle => '정산 제목 *';
 
   @override
-  String get expenseFlowTitleHint => '如：上海客户拜访差旅';
+  String get expenseFlowTitleHint => '예: 상하이 고객 방문 출장';
 
   @override
-  String get expenseFlowTitleInfo => '简要说明费用用途，将打印在报销单事由栏。';
+  String get expenseFlowTitleInfo => '경비 용도를 간략히 기재하세요. 정산서의 사유란에 인쇄됩니다.';
 
   @override
-  String get expenseFlowRemark => '事由与说明';
+  String get expenseFlowRemark => '사유 및 설명';
 
   @override
-  String get expenseFlowRemarkHint => '行程、项目、同行人员，或无发票的情况说明';
+  String get expenseFlowRemarkHint => '일정, 프로젝트, 동행자 또는 세금계산서가 없는 사유';
 
   @override
-  String get expenseFlowMissingTitle => '请填写报销标题';
+  String get expenseFlowMissingTitle => '정산 제목을 입력하세요';
 
   @override
-  String get expenseFlowTitleLength => '报销标题最多 200 字';
+  String get expenseFlowTitleLength => '정산 제목은 최대 200자입니다';
 
   @override
-  String get expenseFlowMissingItems => '请至少添加一项报销明细';
+  String get expenseFlowMissingItems => '정산 내역을 한 항목 이상 추가하세요';
 
   @override
-  String get expenseFlowItems => '报销明细';
+  String get expenseFlowItems => '정산 내역';
 
   @override
-  String get expenseFlowAdd => '添加';
+  String get expenseFlowAdd => '추가';
 
   @override
-  String get expenseFlowEmptyItems => '点击添加，填写费用类别、实际金额及发生日期。';
+  String get expenseFlowEmptyItems => '추가를 눌러 경비 유형, 실제 금액, 발생일을 입력하세요.';
 
   @override
-  String get expenseFlowTotal => '报销合计';
+  String get expenseFlowTotal => '정산 합계';
 
   @override
-  String get expenseFlowCapital => '人民币大写';
+  String get expenseFlowCapital => '위안화 금액 한자 대문자 표기';
 
   @override
-  String get expenseFlowDeleteItem => '删除明细';
+  String get expenseFlowDeleteItem => '내역 삭제';
 
   @override
-  String get expenseFlowDraftSaved => '草稿已保存，请补充凭证后提交审批';
+  String get expenseFlowDraftSaved => '초안을 저장했습니다. 증빙을 추가한 후 승인을 요청하세요';
 
   @override
-  String get expenseFlowSaved => '已保存';
+  String get expenseFlowSaved => '저장했습니다';
 
   @override
-  String get expenseFlowRejectedGuide => '已被驳回，请根据原因修订，保存后重新提交。';
+  String get expenseFlowRejectedGuide => '반려되었습니다. 사유에 따라 수정하고 저장한 후 다시 제출하세요.';
 
   @override
-  String get expenseFlowLoadFailed => '加载失败，请重试';
+  String get expenseFlowLoadFailed => '불러오지 못했습니다. 다시 시도하세요';
 
   @override
-  String get expenseFlowNotEditable => '仅申请人可编辑草稿或已驳回的报销单。';
+  String get expenseFlowNotEditable => '신청자만 초안 또는 반려된 정산서를 수정할 수 있습니다.';
 
   @override
-  String get expenseFlowAmountInvalid => '金额须大于 0，最多两位小数，不超过 9999999999.99 元';
+  String get expenseFlowAmountInvalid =>
+      '금액은 0보다 커야 하며 소수점 이하 두 자리까지 입력할 수 있습니다. 최대 금액은 9999999999.99위안입니다';
 
   @override
-  String get expenseFlowInvoiceAmountInvalid => '金额最多两位小数；价税合计须大于 0，其余金额不能为负';
+  String get expenseFlowInvoiceAmountInvalid =>
+      '금액은 소수점 이하 두 자리까지 입력할 수 있습니다. 세금 포함 합계는 0보다 커야 하며, 나머지 금액은 음수일 수 없습니다';
 
   @override
-  String get expenseFlowOcrGuide => '选择图片识别并预填，再对照原件逐项确认。识别不会查验真伪，也不会自动保存原件。';
+  String get expenseFlowOcrGuide =>
+      '이미지를 선택하여 인식 결과를 미리 채운 후 원본과 항목별로 대조하세요. 이미지 인식은 진위를 확인하지 않으며 원본을 자동으로 저장하지 않습니다.';
 
   @override
-  String get expenseFlowOcrConfirm => '我已对照原件核对识别结果';
+  String get expenseFlowOcrConfirm => '인식 결과를 원본과 대조했습니다';
 
   @override
-  String get expenseFlowOcrConfirmRequired => '请先核对识别结果并勾选确认';
+  String get expenseFlowOcrConfirmRequired => '먼저 인식 결과를 확인한 후 확인란을 선택하세요';
 
   @override
-  String get expenseFlowOriginalRequired => '请先在详情页上传凭证原件，并在此关联对应文件';
+  String get expenseFlowOriginalRequired =>
+      '먼저 상세 페이지에서 증빙 원본을 업로드한 후 해당 파일을 연결하세요';
 
   @override
-  String get expenseFlowInvoiceDateRequired => '请选择凭证日期';
+  String get expenseFlowInvoiceDateRequired => '증빙 일자를 선택하세요';
 
   @override
   String get expenseFlowOtherNumberInvalid =>
-      '其他凭证号码可包含字母、数字、斜线和短横线，最多 60 位；请填写开具方';
+      '기타 증빙 번호에는 영문자, 숫자, 슬래시, 하이픈을 사용할 수 있으며 최대 60자입니다. 발행처도 입력하세요';
 
   @override
-  String get expenseFlowVerify => '登记查验结果';
+  String get expenseFlowVerify => '확인 결과 등록';
 
   @override
-  String get expenseFlowVerifyTitle => '凭证人工查验';
+  String get expenseFlowVerifyTitle => '증빙 수동 확인';
 
   @override
   String get expenseFlowVerifyGuide =>
-      '先核对业务真实性和附件原件。税务发票请在国家税务总局发票查验平台或电子税务局查验；其他合法凭证按其适用渠道核实。金额勾稽与图片识别均不代表税务查验。';
+      '먼저 거래의 실제 발생 여부와 첨부 원본을 확인하세요. 중국 세금계산서는 국가세무총국의 세금계산서 조회 플랫폼 또는 전자세무국에서 확인하고, 기타 적법한 증빙은 해당 확인 경로를 이용하세요. 금액 대조와 이미지 인식은 세무상 진위 확인을 의미하지 않습니다.';
 
   @override
-  String get expenseFlowVerifyOfficial => '打开国家税务总局查验平台';
+  String get expenseFlowVerifyOfficial => '국가세무총국 조회 플랫폼 열기';
 
   @override
-  String get expenseFlowVerifyRemark => '查验记录(渠道、结果及必要说明) *';
+  String get expenseFlowVerifyRemark => '확인 기록(경로, 결과 및 필요한 설명) *';
 
   @override
-  String get expenseFlowVerifyPassed => '查验通过';
+  String get expenseFlowVerifyPassed => '확인 통과';
 
   @override
-  String get expenseFlowVerifyMismatch => '查验不符';
+  String get expenseFlowVerifyMismatch => '확인 결과 불일치';
 
   @override
-  String get expenseFlowVerifyRequired => '请填写查验渠道和结果说明';
+  String get expenseFlowVerifyRequired => '확인 경로와 결과 설명을 입력하세요';
 
   @override
-  String get expenseFlowVerifyBeforeApprove => '请先逐张登记凭证的人工查验结果，再审批通过';
+  String get expenseFlowVerifyBeforeApprove => '먼저 증빙별 수동 확인 결과를 등록한 후 승인하세요';
 
   @override
-  String get expenseFlowPaymentRecord => '登记付款';
+  String get expenseFlowPaymentRecord => '지급 등록';
 
   @override
-  String get expenseFlowPaymentConfirm => '确认已付款';
+  String get expenseFlowPaymentConfirm => '지급 완료 확인';
 
   @override
   String get expenseFlowPaymentGuide =>
-      '请先在线下完成实际付款。此操作只登记已发生的付款、扣减系统账户余额并生成财务记录，不会向银行发起转账。';
+      '먼저 시스템 외부에서 실제 지급을 완료하세요. 이 작업은 이미 이루어진 지급을 등록하고 시스템 계좌 잔액을 차감하며 재무 기록을 생성합니다. 은행 송금을 실행하지는 않습니다.';
 
   @override
-  String get expenseFlowPaymentDone => '已登记付款，财务记录已生成';
+  String get expenseFlowPaymentDone => '지급을 등록하고 재무 기록을 생성했습니다';
 
   @override
-  String get expenseFlowPrintDisclaimer => '内部报销审批展示单；不替代原始凭证、税务查验或法定电子档案。';
+  String get expenseFlowPrintDisclaimer =>
+      '내부 경비 정산 승인용 문서입니다. 원본 증빙, 세무상 진위 확인 또는 법정 전자 기록을 대신하지 않습니다.';
 
   @override
-  String get expenseFlowSettingsTitle => '报销设置';
+  String get expenseFlowSettingsTitle => '경비 정산 설정';
 
   @override
-  String get expenseFlowSettingsDescription => '由财务维护公司抬头和凭证要求，员工填单时自动显示。';
+  String get expenseFlowSettingsDescription =>
+      '재무 담당자가 회사 정보와 증빙 요건을 관리하며, 직원이 신청서를 작성할 때 자동으로 표시됩니다.';
 
   @override
-  String get expenseFlowCompanyName => '公司名称';
+  String get expenseFlowCompanyName => '회사명';
 
   @override
-  String get expenseFlowCompanyTaxNo => '纳税人识别号';
+  String get expenseFlowCompanyTaxNo => '납세자 식별번호';
 
   @override
-  String get expenseFlowSubmissionGuide => '报销及凭证说明';
+  String get expenseFlowSubmissionGuide => '정산 및 증빙 안내';
 
   @override
-  String get expenseFlowRequireInvoice => '提交时必须登记发票';
+  String get expenseFlowRequireInvoice => '제출 시 세금계산서 등록 필수';
 
   @override
-  String get expenseFlowRequireInvoiceHint => '关闭后仍须上传合法原始凭证，并填写无发票情况说明。';
+  String get expenseFlowRequireInvoiceHint =>
+      '이 설정을 꺼도 적법한 원본 증빙을 업로드하고 세금계산서가 없는 사유를 작성해야 합니다.';
 
   @override
-  String get expenseFlowSettingsSaved => '报销设置已保存';
+  String get expenseFlowSettingsSaved => '경비 정산 설정을 저장했습니다';
 
   @override
-  String get expenseFlowSettingsSave => '保存设置';
+  String get expenseFlowSettingsSave => '설정 저장';
 
   @override
-  String get expenseFlowSettingsLoadFailed => '报销设置加载失败';
+  String get expenseFlowSettingsLoadFailed => '경비 정산 설정을 불러오지 못했습니다';
 
   @override
-  String get expenseFlowRetry => '重试';
+  String get expenseFlowRetry => '다시 시도';
 
   @override
-  String get expenseFlowCompanyNameRequired => '请填写公司名称';
+  String get expenseFlowCompanyNameRequired => '회사명을 입력하세요';
 
   @override
-  String get expenseFlowSettingsEntryDescription => '公司抬头、税号及提交凭证要求';
+  String get expenseFlowSettingsEntryDescription => '회사명, 납세자 식별번호 및 증빙 제출 요건';
 
   @override
-  String get expenseFlowApprovalEntryDescription => '核对凭证、审批及登记付款';
+  String get expenseFlowApprovalEntryDescription => '증빙 확인, 승인 및 지급 등록';
 
   @override
-  String get expenseFlowApprovalTitle => '报销审批';
+  String get expenseFlowApprovalTitle => '경비 정산 승인';
 
   @override
-  String get expenseFlowInvoiceRequiredGuide => '按财务设置，本单须登记发票并关联原件后才能提交。';
+  String get expenseFlowInvoiceRequiredGuide =>
+      '재무 설정에 따라 이 정산서는 세금계산서를 등록하고 원본을 연결해야 제출할 수 있습니다.';
 
   @override
-  String get expenseFlowReadEvidenceRequired => '审批通过前需要具备凭证预览与下载权限，请联系授权人。';
+  String get expenseFlowReadEvidenceRequired =>
+      '승인하려면 증빙 미리 보기 및 다운로드 권한이 필요합니다. 권한 관리자에게 문의하세요.';
 
   @override
-  String get expenseFlowHistory => '已处理';
+  String get expenseFlowHistory => '처리 완료';
 
   @override
-  String get expenseFlowPendingCorrection => '待修订';
+  String get expenseFlowPendingCorrection => '수정 대기';
 
   @override
-  String get expenseFlowPaymentProofs => '付款证明(银行回单或现金签收凭据)';
+  String get expenseFlowPaymentProofs => '지급 증빙(은행 이체 확인서 또는 현금 수령증)';
 
   @override
-  String get expenseFlowPaymentProofGuide => '先完成实际付款并上传凭据，再登记付款。';
+  String get expenseFlowPaymentProofGuide =>
+      '실제 지급을 완료하고 증빙을 업로드한 후 지급을 등록하세요.';
 
   @override
-  String get expenseFlowPaymentProofRequired => '请先上传付款证明，再确认已付款。';
+  String get expenseFlowPaymentProofRequired =>
+      '지급 증빙을 먼저 업로드한 후 지급 완료를 확인하세요.';
 
   @override
-  String get expenseFlowItemPurpose => '费用用途 *';
+  String get expenseFlowItemPurpose => '경비 용도 *';
 
   @override
-  String get expenseFlowItemPurposeHint => '请说明这笔费用的真实用途，如客户、项目或具体行程。';
+  String get expenseFlowItemPurposeHint =>
+      '고객, 프로젝트 또는 구체적인 일정 등 실제 경비 용도를 설명하세요.';
 
   @override
-  String get expenseFlowItemPurposeRequired => '请填写费用用途';
+  String get expenseFlowItemPurposeRequired => '경비 용도를 입력하세요';
 
   @override
-  String get goodsLearnedPriceUnconfirmed => '计价单位与币种待核对';
+  String get goodsLearnedPriceUnconfirmed => '가격 단위 및 통화 확인 필요';
 
   @override
-  String get goodsLearnedPriceTaxRate => '税率';
+  String get goodsLearnedPriceTaxRate => '세율';
 
   @override
-  String get shelfLocationQuantityHint => '库位是存放建议；库存按实际仓库和颜色统计，不代表该库位的盘点数量。';
+  String get shelfLocationQuantityHint =>
+      '보관 위치는 권장 사항입니다. 재고는 실제 창고와 색상별로 집계되며, 해당 위치의 실사 수량을 뜻하지 않습니다.';
 
   @override
-  String get shelfActualWarehouse => '实际仓库';
+  String get shelfActualWarehouse => '실제 창고';
 
   @override
-  String get shelfMasterOnly => '主档建议(未指定仓库)';
+  String get shelfMasterOnly => '품목 기본 권장 위치(창고 미지정)';
 
   @override
   String get shelfChooseWarehouseForRack =>
-      '当前包含多个仓库，请选择具体仓库查看货架图。下表按实际仓库分别列示。';
+      '현재 여러 창고가 포함되어 있습니다. 선반 배치도를 보려면 창고를 선택하세요. 아래 표는 실제 창고별로 표시됩니다.';
 
   @override
-  String get warehouseGoodsMasterDefaultHint => '已带入货品主档的默认存放仓，请核对本次实际仓库';
+  String get warehouseGoodsMasterDefaultHint =>
+      '품목 기본 정보의 기본 보관 창고를 불러왔습니다. 이번 실제 창고를 확인하세요';
 
   @override
-  String get warehouseSuggestedDestinationHint => '已带入建议存放仓，请核对本次实际仓库';
+  String get warehouseSuggestedDestinationHint =>
+      '권장 보관 창고를 불러왔습니다. 이번 실제 창고를 확인하세요';
 
   @override
   String get warehouseBatchRegistrationHelp =>
-      '成品仓、库位号逐行必填；优先带入货品主档默认仓，缺项再参考个人选仓上下文。勾选多行后改仓或填写库位可批量应用。每张报工单各生成一份送检，品质放行后再最终点收。';
+      '완제품 창고와 보관 위치 번호는 각 행에 필수입니다. 품목 기본 창고를 우선 적용하고, 없는 항목은 개인 창고 선택 정보를 참고합니다. 여러 행을 선택한 후 창고나 위치를 변경하면 일괄 적용할 수 있습니다. 생산 실적 보고서별로 검사 의뢰를 생성하며, 품질 승인 후 최종 실수량을 확인하여 입고합니다.';
 }

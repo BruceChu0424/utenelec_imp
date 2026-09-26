@@ -9,7 +9,6 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
@@ -43,14 +42,18 @@ void main() {
       //   的悬浮说明)；「在途调拨」条件列退役并入「物料办理」(本视口本就不算)。
       //   且不再有条件列——15 列恒定出现，列集合不会因为某行数据归零就翻转，
       //   用户拖好的列宽列序也就不会被清空。
-      expect(find.text('表头设置 15/15'), findsOneWidget);
+      expect(find.text('表头设置 17/17'), findsOneWidget);
       expect(find.text('处理'), findsNothing);
-      expect(find.text('确认路线(0)'), findsOneWidget);
+      // 2026-09-25 确认路线退役：按钮没了；进页自动确认一次（全部建议 SUBCONTRACT）。
+      expect(
+        find.byKey(const Key('material-analysis-create-routes')),
+        findsNothing,
+      );
       expect(
         find.byKey(const Key('material-analysis-entry-workshop')),
         findsOneWidget,
       );
-      expect(harness.writes, isEmpty);
+      expect(harness.writes, hasLength(1));
       var dropdown = tester.widget<UtenDropdownField>(_route('m-1'));
       expect(dropdown.value, 'subcontract');
       final tree = tester.widget<UtenTreeTableCell>(
@@ -58,18 +61,14 @@ void main() {
       );
       // 2026-09-13 起树格不再随选中/未选中强制字色（走主题默认）。
       expect(tree.foregroundColor, isNull);
+      // 直改即存：选好这一下就写，不再有「确认并换桶」中间确认。
       await tester.tap(_route('m-1'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('采购').last);
       await tester.pumpAndSettle();
       dropdown = tester.widget<UtenDropdownField>(_route('m-1'));
-      expect(dropdown.value, 'subcontract');
-      expect(
-        harness.writes,
-        isEmpty,
-        reason: 'The change waits for the explicit confirmation.',
-      );
-      expect(find.text('确认并换桶'), findsOneWidget);
+      expect(dropdown.value, 'buy');
+      expect(find.text('确认并换桶'), findsNothing);
       // 2026-09-13 全站表格选中口径：选中行淡绿底+常态字色，树格不再切白字。
       expect(
         tester
@@ -79,11 +78,9 @@ void main() {
             .foregroundColor,
         isNull,
       );
-      await tester.tap(find.text('确认并换桶'));
-      await tester.pumpAndSettle();
       expect(find.byKey(const Key('material-route-reason')), findsNothing);
-      expect(harness.writes, hasLength(1));
-      final body = harness.writes.single.data! as Map<String, dynamic>;
+      expect(harness.writes, hasLength(2));
+      final body = harness.writes.last.data! as Map<String, dynamic>;
       expect(body['decisions'], [
         {'actionGroupKey': 'a-1', 'route': 'BUY'},
       ]);
@@ -97,20 +94,26 @@ void main() {
   );
 
   testWidgets(
-    'current-page selection never selects hidden product descendants and clear is global',
+    'header selection remains on the current page while explicit product selection includes descendants',
     (tester) async {
-      final harness = await _pump(tester, count: 250);
+      final harness = await _pump(
+        tester,
+        count: 250,
+        route: 'BUY',
+        permissions: {..._permissions, Perm.productionMaterialAnalysisNotify},
+      );
       final region = find.byKey(
         const Key('material-analysis-material-table-region'),
       );
       final header = find.descendant(
         of: region,
-        matching: find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
+        matching: find.byKey(const Key('master-data-table-select-all')),
       );
       await tester.tap(header);
       await tester.pumpAndSettle();
+      // 2026-09-25 确认路线退役：勾选只服务下单（进页已自动确认全部路线）。
       expect(find.text('已选 99 项'), findsOneWidget);
-      expect(find.text('确认路线(99)'), findsOneWidget);
+      expect(find.text('下单(99)'), findsOneWidget);
       await tester.enterText(
         find.byKey(const Key('material-bom-search')),
         '紧固件 249',
@@ -122,14 +125,14 @@ void main() {
         findsOneWidget,
         reason: 'Filtering must not hide the global selected count.',
       );
-      expect(find.text('确认路线(99)'), findsOneWidget);
+      expect(find.text('下单(99)'), findsOneWidget);
       await tester.tap(find.byKey(const Key('master-table-clear-selection')));
       await tester.pumpAndSettle();
       expect(find.text('已选 0 项'), findsOneWidget);
       // 筛选结果全选按钮已下线：表头复选框作用于当前筛选页，行为等价覆盖。
       await tester.tap(header);
       await tester.pumpAndSettle();
-      expect(find.text('确认路线(1)'), findsOneWidget);
+      expect(find.text('下单(1)'), findsOneWidget);
       await tester.enterText(
         find.byKey(const Key('material-bom-search')),
         '不存在的物料',
@@ -140,14 +143,20 @@ void main() {
       await tester.tap(find.byKey(const Key('master-table-clear-selection')));
       await tester.pumpAndSettle();
       expect(find.text('已选 0 项'), findsOneWidget);
-      expect(harness.writes, isEmpty);
+      expect(harness.writes, hasLength(1), reason: '只有进页自动确认那一次');
     },
   );
 
   testWidgets(
     'fullscreen preserves table state while switching layouts and filters',
     (tester) async {
-      await _pump(tester);
+      // 2026-09-25 确认路线退役：勾选只服务下单——BUY + 通知权限下选中
+      // 跨布局保持。
+      await _pump(
+        tester,
+        route: 'BUY',
+        permissions: {..._permissions, Perm.productionMaterialAnalysisNotify},
+      );
       await tester.tap(find.text('全屏'));
       await tester.pumpAndSettle();
       await tester.tap(
@@ -160,9 +169,7 @@ void main() {
         findsOneWidget,
       );
       // 全屏下按物料汇总布局没有 region key 包装：直接找当页表格的表头三态复选框。
-      await tester.tap(
-        find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
-      );
+      await tester.tap(find.byKey(const Key('master-data-table-select-all')));
       await tester.pumpAndSettle();
       expect(find.text('已选 2 项'), findsOneWidget);
       await tester.tap(
@@ -180,42 +187,37 @@ void main() {
   testWidgets(
     'saving keeps selected white text on selected rows and blocks duplicate writes',
     (tester) async {
+      // 2026-09-25 确认路线退役：保存期防重复写改由「直改」承担——进页
+      // 自动确认先行落库（第一次 PUT 放行），手动直改挂在 gate 上验证
+      // 进行中不会重复提交。
       final complete = Completer<void>();
+      var routeWrites = 0;
       final harness = await _pump(
         tester,
-        beforeRouteWrite: () => complete.future,
+        beforeRouteWrite: () async {
+          routeWrites++;
+          if (routeWrites > 1) await complete.future;
+        },
       );
-      await tester.tap(
-        find.descendant(
-          of: find.byKey(const Key('material-analysis-material-table-region')),
-          matching: find.byWidgetPredicate((w) => w is Checkbox && w.tristate),
-        ),
-      );
+      await tester.tap(_route('m-1'));
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('material-analysis-create-routes')),
-      );
-      for (var attempt = 0; attempt < 10 && harness.writes.isEmpty; attempt++) {
+      await tester.tap(find.text('采购').last);
+      for (
+        var attempt = 0;
+        attempt < 10 && harness.writes.length < 2;
+        attempt++
+      ) {
         await tester.pump(const Duration(milliseconds: 50));
       }
-      expect(harness.writes, hasLength(1));
+      expect(harness.writes, hasLength(2));
       final tree = tester.widget<UtenTreeTableCell>(
         find.byKey(const ValueKey('material-table-tree-MATERIAL|m-1')),
       );
       expect(tree.foregroundColor, isNull);
-      final checkbox = find.descendant(
-        of: find.byKey(const ValueKey('material-table-row-m-1')),
-        matching: find.byType(Checkbox),
-      );
-      expect(tester.widget<Checkbox>(checkbox).value, isTrue);
-      final button = tester.widget<UtenButton>(
-        find.byKey(const Key('material-analysis-create-routes')),
-      );
-      expect(button.isLoading, isTrue);
       complete.complete();
       await tester.pumpAndSettle();
-      expect(harness.writes, hasLength(1));
-      expect(find.text('确认路线(0)'), findsOneWidget);
+      expect(harness.writes, hasLength(2));
+      expect(tester.widget<UtenDropdownField>(_route('m-1')).value, 'buy');
     },
   );
 
@@ -355,6 +357,7 @@ Future<_Harness> _pump(
   Future<void> Function()? beforeRouteWrite,
   Size size = const Size(1600, 1000),
   Brightness brightness = Brightness.light,
+  String route = 'SUBCONTRACT',
 }) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pump();
@@ -363,7 +366,7 @@ Future<_Harness> _pump(
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   final harness = _Harness();
-  var data = _analysis(count, allowRefresh: allowRefresh);
+  var data = _analysis(count, allowRefresh: allowRefresh, route: route);
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
@@ -487,14 +490,23 @@ Future<_Harness> _pump(
   return harness;
 }
 
-Map<String, dynamic> _analysis(int count, {required bool allowRefresh}) => {
+Map<String, dynamic> _analysis(
+  int count, {
+  required bool allowRefresh,
+  String route = 'SUBCONTRACT',
+}) => {
   'analysisId': 'analysis-1',
   'version': 3,
   'fingerprint': 'a' * 64,
   'warehouseId': 'warehouse-1',
   'warehouseIds': ['warehouse-1', 'warehouse-2'],
   'status': 'ACTIVE',
-  'allowedActions': ['VIEW', 'CONFIRM_ROUTES', if (allowRefresh) 'REFRESH'],
+  'allowedActions': [
+    'VIEW',
+    'CONFIRM_ROUTES',
+    'NOTIFY_SUPPLY',
+    if (allowRefresh) 'REFRESH',
+  ],
   'products': [
     {
       'analysisLineId': 'product-1',
@@ -532,7 +544,7 @@ Map<String, dynamic> _analysis(int count, {required bool allowRefresh}) => {
         'shortageQty': 800,
         'demandSupplyGapQty': 800,
         'additionalSupplyRecommendedQty': 800,
-        'sourceSuggestion': 'SUBCONTRACT',
+        'sourceSuggestion': route,
         'routeConfirmed': false,
         'controlStage': 'START',
         'hardGate': true,

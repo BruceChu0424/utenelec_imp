@@ -15,10 +15,10 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
 import 'sales_doc_link_picker.dart';
-import '../../../shared/formatters/exact_decimal.dart';
 
 final _salesOrderDiscountPattern = RegExp(r'^(?:0\.\d{1,4}|1(?:\.0{1,4})?)$');
 
@@ -56,6 +56,12 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     qty.addListener(_clearInvalid);
     price.addListener(_clearInvalid);
     discount.addListener(_clearInvalid);
+    // 查重标红（保存前查重被拦回时标记）同样「改动即消除」，下次保存重新判定。
+    goodsNotifier.addListener(_clearFlagged);
+    qty.addListener(_clearFlagged);
+    price.addListener(_clearFlagged);
+    discount.addListener(_clearFlagged);
+    remark.addListener(_clearFlagged);
     // 新销售订单默认原价倍率；货品主档折扣或用户输入随后可覆盖。
     if (amountUsesDiscount) discount.text = '1';
   }
@@ -78,7 +84,8 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   /// 避免换货后仍显示上一货品的价格。
   void applyLockedPricePreview(num? value) {
     requiresOrderPriceRefresh = false;
-    price.text = value?.toString() ?? '';
+    // 展示口径统一去尾随零：主档价 10.0 显示 "10" 而非 "10.0"。
+    price.text = financeExactTrimmed(value?.toString()) ?? '';
   }
 
   /// 当前单据自身明细 UUID。仅受控更新既有销售订货行时回传为 JSON `id`。
@@ -134,6 +141,12 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
 
   void _clearInvalid() {
     if (invalidNotifier.value) invalidNotifier.value = false;
+  }
+
+  /// 清除整行查重标红（[EditableGridRow.flagged]）：货品/数量/单价/折扣/备注任一
+  /// 被改动即视为用户已处理该行。
+  void _clearFlagged() {
+    if (flaggedNotifier.value) flaggedNotifier.value = false;
   }
 
   /// 从上游引入项构造（货品/数量/单价/upstream/颜色/单位 预填）。
@@ -354,6 +367,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       numeric: true,
       required: true,
       headerInfo: qtyHint,
+      frozenTextOf: (r) => r.qty.text,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.qty,
         isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
@@ -387,6 +401,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         required: priceRequired,
         // 锁定/可编辑两种分支共用表头说明（锁定口径 + 录入口径按 docType 择一）。
         headerInfo: priceHint,
+        frozenTextOf: (r) => r.price.text,
         cellBuilder: (context, row) => RequiredCellFrame(
           listenable: row.price,
           isEmpty: () =>
@@ -423,6 +438,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         required: true,
         // 表头 ⓘ 悬停说明折扣口径（2026-09-04 用户口径）；格内不再重复 ⓘ。
         headerInfo: l10n.workflowDiscountHint,
+        frozenTextOf: (r) => r.discount.text,
         cellBuilder: (context, row) => RequiredCellFrame(
           listenable: row.discount,
           isEmpty: () => !isValidSalesOrderDiscountText(row.discount.text),
@@ -448,6 +464,12 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
             : '金额',
         width: 110,
         numeric: true,
+        frozenTextOf: (r) => r.amountExactNotifier.value == null
+            ? ''
+            : docType == SalesDocType.order ||
+                  docType == SalesDocType.customerShipment
+            ? financeExactMoneyDisplay(r.amountExactNotifier.value!)
+            : '¥${financeExactMoneyDisplay(r.amountExactNotifier.value!)}',
         cellBuilder: (context, row) => ValueListenableBuilder<String?>(
           valueListenable: row.amountExactNotifier,
           builder: (_, v, _) => Text(
@@ -580,6 +602,7 @@ EditableGridColumn<SalesGridRow> _extraNumericColumn(
     label: label,
     width: 100,
     numeric: true,
+    frozenTextOf: (row) => controller(row).text,
     cellBuilder: (context, row) => TextField(
       controller: controller(row),
       textAlign: TextAlign.right,

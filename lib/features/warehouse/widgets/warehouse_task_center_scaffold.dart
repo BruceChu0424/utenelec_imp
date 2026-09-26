@@ -1,6 +1,11 @@
 // 仓库任务中心页骨架（出库/入库/生产领料三页共用）：AppBar + 大类分段导航
 // （带红圆数字徽章 + 页级胶囊搜索框）+ 分段内容区。
 //
+// 2026-09-24 仓库任务中心合并：三页以 embedded 态嵌入合并页 /warehouse/tasks
+// 成为其中的「出库/入库/生产领料」三个大类正文；embedded 时本骨架不再渲染
+// Scaffold/AppBar 与搜索框，自身分段行降级为合并页的小类行，搜索词与刷新信号
+// 由宿主页传入（externalKeyword / externalRefreshTick，与自身 resume 计数叠加）。
+//
 // 布局对齐品质「待检处置/检查结果」页范式：UtenFilterToolbar 大类在上（每段右侧
 // 计数徽章，父分类徽章 = 其子类待办之和，计数取后端全量口径）；各分段内容自带
 // 小类行（状态/来源）在下。进页面不预选大类（UtenFilterToolbar「默认不选」
@@ -53,7 +58,6 @@ class WarehouseTaskCenterScaffold extends ConsumerStatefulWidget {
   const WarehouseTaskCenterScaffold({
     super.key,
     required this.title,
-    required this.subtitle,
     required this.searchHint,
     required this.location,
     required this.segments,
@@ -61,20 +65,30 @@ class WarehouseTaskCenterScaffold extends ConsumerStatefulWidget {
     this.trailingBuilder,
     this.onResume,
     this.initialSegment,
+    this.embedded = false,
+    this.externalKeyword,
+    this.externalRefreshTick,
+    this.externalHeader,
   });
 
   /// 本页路由常量（onPageResume 注册用；无路由上下文时同样安全）。
   final String location;
 
   final String title;
-  final String subtitle;
   final String searchHint;
 
   /// 大类分段（调用方已按权限过滤；至少一段）。
   final List<WarehouseTaskSegmentSpec> segments;
 
-  /// 当前选中分段的内容（小类行 + 表格）。
-  final Widget Function(String segmentValue, String keyword, int refreshTick)
+  /// 当前选中分段的内容（表格 + 折叠联动）。[headerPrefix] = 大类行(嵌入态)
+  /// + 本骨架小类行——由分段视图挂进自己的折叠头随页滚走（2026-09-24
+  /// 用户口径「表格完全置顶」，置顶后只剩表格自身工具条）。
+  final Widget Function(
+    String segmentValue,
+    String keyword,
+    int refreshTick,
+    Widget headerPrefix,
+  )
   bodyBuilder;
 
   /// 工具条尾挂（如「共 N 项」由各分段自带，一般不传）。
@@ -83,6 +97,21 @@ class WarehouseTaskCenterScaffold extends ConsumerStatefulWidget {
   /// 返回本页时重拉计数 provider（分段徽章/上级 hub 角标用）。
   final VoidCallback? onResume;
   final String? initialSegment;
+
+  /// 嵌入态（2026-09-24 仓库任务中心合并）：作为合并页某一大类的正文嵌入，
+  /// 不再渲染 Scaffold/AppBar/页面容器，本类分段行降级为合并页的「小类行」；
+  /// 搜索框与刷新由宿主页承担（[externalKeyword] / [externalRefreshTick]）。
+  final bool embedded;
+
+  /// 宿主页搜索词（嵌入态非 null 时隐藏自身搜索框并直接采用）。
+  final String? externalKeyword;
+
+  /// 宿主页刷新信号（嵌入态与自身 resume 计数叠加传导给分段）。
+  final int? externalRefreshTick;
+
+  /// 宿主（合并页）的大类行：嵌入态挂进分段视图折叠头随页滚走
+  /// （2026-09-24 用户口径「表格完全置顶」；未选小类时仍钉在占位区上方）。
+  final Widget? externalHeader;
 
   @override
   ConsumerState<WarehouseTaskCenterScaffold> createState() =>
@@ -139,10 +168,81 @@ class _WarehouseTaskCenterScaffoldState
       widget.onResume?.call();
     });
     final warehouseScope = ref.watch(warehouseTaskScopeProvider);
+    // 嵌入态：宿主页(合并页)负责 Scaffold/AppBar/搜索/刷新，这里只出小类行 + 正文，
+    // 自身 resume 计数与宿主刷新信号相加传导（任一变化都会推进分段重拉）。
+    final keyword = widget.embedded ? (widget.externalKeyword ?? '') : _keyword;
+    final refreshTick = _refreshTick + (widget.externalRefreshTick ?? 0);
+    final toolbar = UtenFilterToolbar<String>(
+      segmentsKey: Key('warehouse-task-center-segments-${widget.title}'),
+      searchKey: Key('warehouse-task-center-search-${widget.title}'),
+      segments: [
+        for (final segment in widget.segments)
+          UtenFilterSegment(
+            value: segment.value,
+            label: segment.label,
+            count: segment.count,
+            // 任务中心大类计数**只有待办语义**（见
+            // [WarehouseTaskSegmentSpec.count]）：卡面角标就是这些
+            // 分段之和，浏览型分段在这里传 null 而不是换形态。
+            countForm: UtenSegmentCountForm.actionable,
+            inProgressCount: segment.inProgressCount,
+          ),
+      ],
+      selected: _segment == null ? const <String>{} : {_segment!},
+      onSelectionChanged: (value) {
+        setState(() => _segment = value);
+      },
+      searchHint: widget.embedded ? null : widget.searchHint,
+      onSearchChanged: widget.embedded
+          ? null
+          : (value) {
+              setState(() => _keyword = value.trim());
+            },
+      trailing: widget.trailingBuilder?.call(_segment ?? ''),
+    );
+    // 大类行(嵌入态宿主传) + 小类行(本骨架)组合头：选中分段后由分段视图
+    // 挂进自己的折叠头，随页一起滚走；未选小类时钉在占位区上方。
+    Widget combinedHeader() => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.externalHeader != null) ...[
+          widget.externalHeader!,
+          const SizedBox(height: UtenSpacing.s12),
+        ],
+        Padding(
+          padding: const EdgeInsets.only(
+            bottom: UtenSpacing.s12,
+            left: UtenSpacing.s4,
+            right: UtenSpacing.s4,
+          ),
+          child: toolbar,
+        ),
+      ],
+    );
+    final body = _segment == null
+        ? null
+        : WarehouseListScope(
+            scope: warehouseScope,
+            child: widget.bodyBuilder(
+              _segment!,
+              keyword,
+              refreshTick,
+              combinedHeader(),
+            ),
+          );
+    if (widget.embedded) {
+      return body ??
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              combinedHeader(),
+              const Expanded(child: _SegmentPlaceholder()),
+            ],
+          );
+    }
     return Scaffold(
       appBar: UtenAppBar(
         title: widget.title,
-        subtitle: widget.subtitle,
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
         ),
@@ -162,54 +262,16 @@ class _WarehouseTaskCenterScaffoldState
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                UtenFilterToolbar<String>(
-                  segmentsKey: Key(
-                    'warehouse-task-center-segments-${widget.title}',
-                  ),
-                  searchKey: Key(
-                    'warehouse-task-center-search-${widget.title}',
-                  ),
-                  segments: [
-                    for (final segment in widget.segments)
-                      UtenFilterSegment(
-                        value: segment.value,
-                        label: segment.label,
-                        count: segment.count,
-                        // 任务中心大类计数**只有待办语义**（见
-                        // [WarehouseTaskSegmentSpec.count]）：卡面角标就是这些
-                        // 分段之和，浏览型分段在这里传 null 而不是换形态。
-                        countForm: UtenSegmentCountForm.actionable,
-                        inProgressCount: segment.inProgressCount,
-                      ),
+            child:
+                body ??
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    toolbar,
+                    const SizedBox(height: UtenSpacing.s12),
+                    const Expanded(child: _SegmentPlaceholder()),
                   ],
-                  selected: _segment == null ? const <String>{} : {_segment!},
-                  onSelectionChanged: (value) {
-                    setState(() => _segment = value);
-                  },
-                  searchHint: widget.searchHint,
-                  onSearchChanged: (value) {
-                    setState(() => _keyword = value.trim());
-                  },
-                  trailing: widget.trailingBuilder?.call(_segment ?? ''),
                 ),
-                const SizedBox(height: UtenSpacing.s12),
-                Expanded(
-                  child: _segment == null
-                      ? const _SegmentPlaceholder()
-                      : WarehouseListScope(
-                          scope: warehouseScope,
-                          child: widget.bodyBuilder(
-                            _segment!,
-                            _keyword,
-                            _refreshTick,
-                          ),
-                        ),
-                ),
-              ],
-            ),
           ),
         ),
       ),

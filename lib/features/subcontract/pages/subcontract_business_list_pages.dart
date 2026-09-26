@@ -58,7 +58,6 @@ class SubcontractOrderWorkspacePage extends StatelessWidget {
     presentation: const _ListPresentation(
       type: SubcontractDocType.order,
       title: '委外订货与全链路',
-      subtitle: '直接委外 / 任务中心下单 · 财务批准 · 目标件出仓 · 回厂 IQC · 结算',
       icon: Icons.precision_manufacturing_outlined,
       primaryAction: _PageAction(
         label: '创建新委外单',
@@ -84,7 +83,6 @@ class SubcontractLegacyMaterialIssueHistoryPage extends StatelessWidget {
     presentation: _ListPresentation(
       type: SubcontractDocType.materialIssue,
       title: '历史委外发料记录',
-      subtitle: '历史 BOM 子件发料兼容 · 新单在仓库「委外出仓」工作台办理',
       icon: Icons.history_rounded,
       emptyMessage: '暂无历史委外发料记录',
       columns: _legacyIssueColumns,
@@ -101,7 +99,6 @@ class SubcontractFinishedReturnHistoryPage extends StatelessWidget {
     presentation: _ListPresentation(
       type: SubcontractDocType.returnDoc,
       title: '委外成品退回记录',
-      subtitle: '绑定回厂 / IQC 处置 · 反向加工费应付 · 不允许空白新建',
       icon: Icons.undo_outlined,
       primaryAction: _PageAction(
         label: '从回厂来源登记退回',
@@ -127,7 +124,6 @@ class SubcontractMaterialReturnHistoryPage extends StatelessWidget {
     presentation: _ListPresentation(
       type: SubcontractDocType.materialReturn,
       title: '委外余料退回记录',
-      subtitle: '绑定委外商处台账 · 仓库实收入库 · 对称减少供应商结存',
       icon: Icons.assignment_return_outlined,
       primaryAction: _PageAction(
         label: '从在外结存登记余料',
@@ -153,7 +149,6 @@ class SubcontractWasteResponsibilityPage extends StatelessWidget {
     presentation: _ListPresentation(
       type: SubcontractDocType.waste,
       title: '委外损耗与责任',
-      subtitle: '实物损耗确认 · 超耗责任另审 · 索赔/抵销/赔偿不得混写',
       icon: Icons.gavel_outlined,
       primaryAction: _PageAction(
         label: '从在外结存登记损耗',
@@ -179,7 +174,6 @@ class SubcontractInquiryArchivePage extends StatelessWidget {
     presentation: _ListPresentation(
       type: SubcontractDocType.inquiry,
       title: '委外询价历史',
-      subtitle: '当前业务未启用 · 仅保留兼容查询',
       icon: Icons.archive_outlined,
       emptyMessage: '暂无委外询价历史',
       columns: _inquiryColumns,
@@ -197,7 +191,6 @@ class _ListPresentation {
   const _ListPresentation({
     required this.type,
     required this.title,
-    required this.subtitle,
     required this.icon,
     required this.emptyMessage,
     required this.columns,
@@ -206,7 +199,6 @@ class _ListPresentation {
 
   final SubcontractDocType type;
   final String title;
-  final String subtitle;
   final IconData icon;
   final String emptyMessage;
   final _ColumnsBuilder columns;
@@ -477,7 +469,6 @@ class _SubcontractBusinessListPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: _p.title,
-        subtitle: _p.subtitle,
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: SubcontractRoute.hub),
         ),

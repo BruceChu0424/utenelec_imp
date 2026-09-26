@@ -146,9 +146,9 @@ void main() {
       final line = (api.lastPutBody!['items'] as List).single as Map;
       expect(line['id'], 'stable-direct-line');
       expect(line['price'], '1234567890123.4567');
-      expect(line['qty'], '2.0000');
+      expect(line['qty'], '2');
       expect(line['unitRate'], '1.000000');
-      expect(line['discount'], '1.0000');
+      expect(line['discount'], '1');
       expect(line.containsKey('amountOriginal'), isFalse);
       expect(line.containsKey('amountLocal'), isFalse);
     },
@@ -346,7 +346,7 @@ void main() {
 
       expect(api.lastPutBody, isNotNull);
       expect(api.lastPutBody!['currencyId'], 'currency-usd');
-      expect(api.lastPutBody!['taxRate'], '13.0');
+      expect(api.lastPutBody!['taxRate'], '13');
       expect(api.lastPutBody!.containsKey('exchangeRate'), isFalse);
       expect(api.lastPutBody!.containsKey('deposit'), isFalse);
       final item = Map<String, dynamic>.from(

@@ -2,7 +2,7 @@
 
 > 位置：`lib/features/basic_data/widgets/uten_goods_picker.dart`（跨模块共享，同 `MasterDataTableView` 一样放在 basic_data 域）
 > 入口：`showUtenGoodsPicker(...)`（单选）/ `showUtenGoodsPickerMulti(...)`（多选）
-> 最后核对：2026-08-27
+> 最后核对：2026-09-24
 > 决策背景：[ADR-015 统一货品选择器与 legacy→UUID 桥接](../99-决策记录-ADR/ADR-015-统一货品选择器与legacy到UUID桥接.md)
 > 统一搜索契约：[UtenHierarchySearch](UtenHierarchySearch.md)
 
@@ -27,7 +27,7 @@
 | 项 | 签名 | 说明 |
 |---|---|---|
 | 入口 | `Future<GoodsListItem?> showUtenGoodsPicker(BuildContext context, WidgetRef ref, {UtenGoodsPickerScope scope = UtenGoodsPickerScope.sellable, bool requireConfirm = true})` | 弹出选择器；默认二次操作（点行高亮 → 底部「取消/确定」确认），`requireConfirm=false` 恢复点行即返回的历史行为；取消/关闭返回 `null` |
-| 多选入口 | `Future<List<GoodsListItem>> showUtenGoodsPickerMulti(BuildContext context, WidgetRef ref, {UtenGoodsPickerScope scope = UtenGoodsPickerScope.component})` | 多选款：点货品行勾选/取消（显 ✓），底部「确定(N)」返回所选列表；取消返回空列表。BOM 组装「一个层级添加多个组件」批量录入用 |
+| 多选入口 | `Future<List<GoodsListItem>> showUtenGoodsPickerMulti(BuildContext context, WidgetRef ref, {UtenGoodsPickerScope scope = UtenGoodsPickerScope.component})` | 多选款：点货品行勾选/取消（显 ✓），**底部「已选 N 项」胶囊点开从底部滑出已选清单滑层，可逐项取消选择**（2026-09-24）；「确定(N)」返回所选列表；取消返回空列表。BOM 组装「一个层级添加多个组件」批量录入用 |
 | 返回 | `GoodsListItem` | 完整模型：除 `id/code/name/spec/model/price/series/material` 外，还含 `discount/status/legacyId/cNumber/requireRemark/sourceType/categoryId/autoCreated/stockQty/stockPlace` 及颜色、单位 UUID/名称；legacy ID 只作历史溯源，权威字段见 `goods_node.dart` |
 
 > 内部 `_GoodsPickerSheet` 为实现细节，调用方不直接使用。
@@ -54,9 +54,7 @@
 - **权限与归属范围**：接口要求 `goods:view`；货品归属隔离只在 `UTEN_GOODS_OWNER_SCOPE_ENABLED=true` 时生效，默认关闭时 `GoodsService` 全员可见全部货品。滑窗与列表/定位同源，前端不自行扩大范围；分类树仍要求 `material_category:view`。
 - **懒载**（2026-07-31）：打开预选第一个根分类（树高亮，用户有定位感）但**不立即加载货品列表**，输关键词或点分类才加载（省资源，与各资料页统一）。
 - **搜索扩字段**（2026-07-31）：`keyword` 除名称/编号/型号/规格/系列外，新增**客户型号/材质/备注**模糊匹配（后端 `GoodsService.list` keyword OR 谓词）。
-- **列表项库位号**（2026-08-17）：货品行副标题在有库位号（`goods.stock_place`，挂牌「库行-层-位」）时
-  前置显示「库位 A31-3-1」（无库位不显示，不占位）——仓库在所有单据选品时第一眼可见摆放位置，
-  与货架目视化清单同口径；各单据编辑页选品后直接把该值带入明细「库位号」只读列。
+- **列表项一行显示**（2026-09-24 用户口径：**只显示 名字(编号) · 颜色，一行显示**；带单位/规格/库位会把行撑得太宽）：右侧货品行、已选清单滑层行、单选确认栏「已选择」文案共用 `_goodsLabel` 一个实现。单位/规格/库位不再上列表，但仍在返回的 `GoodsListItem` 里——各单据编辑页选品后照旧把 `stockPlace` 带入明细「库位号」只读列。**选中行背景 = 全站统一淡绿**（`utenTableSelectedRowColor`，与全站表格/编辑网格同款，2026-09-24 起）。
 
 ---
 
@@ -66,10 +64,14 @@
 
 | 断点 | 形态 |
 |---|---|
-| **compact**（手机） | 底部抽屉（`showModalBottomSheet`，`isScrollControlled` + `useSafeArea`，85% 屏高） |
-| **medium / expanded**（平板/桌面） | 右侧滑入面板（`showGeneralDialog` + `SlideTransition` 右滑 250ms），**宽 720**（部门选择器是 420；货品要容纳「左树 + 右表」故加宽） |
+| **compact**（手机） | 底部抽屉（`showModalBottomSheet`，`isScrollControlled` + `useSafeArea`，85% 屏高），左树固定 176 宽 |
+| **medium / expanded**（平板/桌面） | 右侧滑入面板（`showGeneralDialog` + `SlideTransition` 右滑 250ms），**宽 = max(720, 屏宽 50%)**（2026-09-24：跟屏幕自适应，下限保持旧款 720） |
 
-内部布局：`标题行 + Row[ 左分类树（含统一搜索，compact 176 / medium+ 240 宽）| VerticalDivider | 右（货品列表 + 分页）]`。
+内部布局（2026-09-24 改版）：`标题行 + UtenSplitView[ 左分类树（含统一搜索）| 可拖分割线 | 右（货品列表 + 分页）] + 底栏`。
+
+- **可拖分割线**（medium+）：与货品资料页同款 [UtenSplitView](UtenSplitView.md)，持久化 key `goodsPicker.categoryTree`；**默认左栏宽 = 全树最长一行「名称(编码)」的 TextPainter 实测宽**（+行内装具，夹在 200–560），双击复位也回该宽度。compact 仍为固定 176 + 1px 分隔线。
+- **左树 = 无缩进层级色**（`UtenCategoryTreeView(flatLevelColors: true)`，同款样式也用于货品分类筛选面板）：行不缩进，整行按深度铺**五档梯度色**（`UtenColors.treeLevelRow`，2026-09-24 第二轮口径「至少 5 个层级色差、最底层固定一色、色差拉开且协调」）——一级深绿实底白字（teal800）、二级中青灰绿 `#BCDED8`、三级浅青绿 `#DDEEEA`、四级中性灰 `#E3E8EF`、五级及更深固定近白 `#F8FAFC`（深色主题同构五档渐沉再转深 slate）；方角、行距收紧、行间 1px 分隔线（深绿行白线 / 浅色行灰线）；选中 = 左缘 3px 强调条 + 加粗 + 勾选图标（深绿行上反白）。**默认全部收起**（`initiallyExpandDepth: 0`，2026-09-24）：只显示一级分类，点行/箭头再展开；搜索命中路径仍自动展开。
+- **单根提升**（`hoistSingleRootTree`，scope 过滤后应用）：整片森林只剩一个根（如整库唯一的「货品资料」包装根）时不再占一层，逐层提升直到出现多个根或根为叶子——左边直接显示 原材料/半成品/成品 等实际分类；提升后的根集合就是统一搜索交给后端的 `categoryRootIds`。
 
 ---
 

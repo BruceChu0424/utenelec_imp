@@ -1,5 +1,37 @@
 # ER 草图
 
+## 同料汇总与精确交接 (V712/V713/V715)
+
+```mermaid
+erDiagram
+  production_material_analyses ||--o{ preplan_aggregate_batches : owns
+  preplan_aggregate_batches ||--|| preplan_supply_actions : actual_order
+  preplan_supply_actions ||--o{ preplan_supply_action_allocations : private_shares
+  production_material_analysis_materials ||--o{ preplan_supply_action_allocations : beneficiary
+  preplan_aggregate_batches ||--o{ preplan_aggregate_batch_events : immutable_intent
+  preplan_aggregate_batches ||--o{ preplan_aggregate_material_aliases : input_handover
+  preplan_aggregate_material_aliases ||--o{ preplan_make_entitlement_delegations : exact_stock
+  production_workshop_direct_transfer_items ||--o{ preplan_aggregate_direct_transfer_slices : exact_handover
+```
+
+共享制造另有唯一系统准备项与计划；原产品仍保留独立需求。别名同时引用原父、原子料和共享子料，不能按名称合并库存。共享委外台账通过批次关联多个原来源，普通单父关系不变。模型与交接上限见 [ADR-120](../99-决策记录-ADR/ADR-120-物料汇总办理与共享制造来源.md)。本节是源码设计，安装状态以各数据库实际迁移记录为准。
+
+## 底层自制材料发现与 BOM 学习 (V710–V711)
+
+```mermaid
+erDiagram
+    production_execution_segments ||--o{ production_material_discovery_requests : requests
+    production_material_discovery_requests ||--o{ production_material_discovery_lines : defines
+    production_material_demands ||--o{ production_material_discovery_lines : physical_warehouses
+    production_execution_segments ||--o| production_bom_learning_samples : family_contribution
+    goods ||--o| goods_bom_learning_profiles : learns
+    goods_bom_learning_profiles ||--o{ goods_bom_learning_material_totals : aggregates
+    goods_bom_learning_profiles ||--o{ production_bom_learning_samples : contributions
+    goods_bom_items |o--o| goods_bom_learning_material_totals : learned_edge
+```
+
+同种物料按需求聚合，实际叶仓明细独立保存；拆批和实际追加共用一个生产族贡献。净耗与实际产量由原台账派生，BOM 学习不重复记库存。规则见 [ADR-119](../99-决策记录-ADR/ADR-119-底层自制实际领料与BOM累计学习.md)。
+
 ## 2026-09-23 未领料原工单追加(V647 / ADR-104)
 
 ```mermaid

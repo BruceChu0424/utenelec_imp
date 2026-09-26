@@ -14,6 +14,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/notice/models/notice.dart';
 import 'package:uten_imp/features/notice/providers/notice_providers.dart';
+import 'package:uten_imp/features/notice/providers/notice_page_clear_events.dart';
 import 'package:uten_imp/features/notice/repositories/notice_repository.dart';
 import 'package:uten_imp/features/notice/widgets/review_pending_dialog.dart';
 
@@ -80,6 +81,32 @@ void main() {
       RouteName.productionWorkshopTasks,
     );
   });
+
+  test(
+    'production rate and material approvals use their exact queues and read scopes',
+    () {
+      for (final entry in [
+        (
+          'PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED',
+          RouteName.productionOverproductionRateRequests,
+        ),
+        (
+          'PRODUCTION_MATERIAL_INCREMENT_SUBMITTED',
+          RouteName.productionMaterialIncrementRequests,
+        ),
+      ]) {
+        expect(
+          workbenchRouteFor(entry.$1, actionRoute: '/dashboard'),
+          entry.$2,
+        );
+        expect(noticeClearEventsForLocation(entry.$2), contains(entry.$1));
+        expect(
+          noticeClearEventsForLocation('${entry.$2}/request-1'),
+          contains(entry.$1),
+        );
+      }
+    },
+  );
 
   // ADR-117：车间催计划的待办卡直落被催的那一份物料分析；只认物料分析页自己的
   // 深链，别的 actionRoute(被篡改或旧数据)一律回落到物料分析首页。
@@ -235,6 +262,53 @@ void main() {
       showReviewPendingDialog(context, pending: pending, manual: manual),
     );
     await tester.pumpAndSettle();
+  }
+
+  for (final entry in [
+    (
+      'PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED',
+      RouteName.productionOverproductionRateRequests,
+      '超产比例待审批',
+      Icons.percent_rounded,
+    ),
+    (
+      'PRODUCTION_MATERIAL_INCREMENT_SUBMITTED',
+      RouteName.productionMaterialIncrementRequests,
+      '追加用料待审批',
+      Icons.playlist_add_check_rounded,
+    ),
+  ]) {
+    testWidgets('${entry.$3} 单条和分组通知都进入对应审批队列', (tester) async {
+      final repo = _FakeNoticeRepository();
+      await pumpDialog(
+        tester,
+        repo: repo,
+        pending: [noticeOf('review-1', title: '本次申请', sourceEvent: entry.$1)],
+        routes: [GoRoute(path: entry.$2, builder: (_, _) => Text(entry.$3))],
+      );
+      expect(find.byIcon(entry.$4), findsOneWidget);
+      await tester.tap(find.text('去工作台处理'));
+      await tester.pumpAndSettle();
+      expect(find.text(entry.$3), findsOneWidget);
+      expect(repo.readIds, ['review-1']);
+
+      resetReviewPendingDialogForTest();
+      final groupedRepo = _FakeNoticeRepository();
+      await pumpDialog(
+        tester,
+        repo: groupedRepo,
+        pending: [
+          noticeOf('review-2', title: '生产申请', sourceEvent: entry.$1),
+          noticeOf('finance', title: '财务申请'),
+        ],
+        routes: [GoRoute(path: entry.$2, builder: (_, _) => Text(entry.$3))],
+      );
+      expect(find.text('${entry.$3} 1'), findsOneWidget);
+      await tester.tap(find.text('生产申请'));
+      await tester.pumpAndSettle();
+      expect(find.text(entry.$3), findsOneWidget);
+      expect(groupedRepo.readIds, ['review-2'], reason: '点击单条不把另一个业务事件当作已处理');
+    });
   }
 
   for (final grouped in [false, true]) {

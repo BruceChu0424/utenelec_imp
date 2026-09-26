@@ -73,19 +73,22 @@ class ProductionExecutionRouteGateEndToEndTest {
     }
 
     @Test
-    void newTaskWaitsForRouteEvenWhenMaterialsArrive() {
+    void newTaskDefaultsToContinuousButStillRequiresActualIssueAndExplicitStart() {
         Case c=create("rg-kit",false);
-        assertNull(route(c.segment()));
-        assertFalse(allowsAutoPromote(c.segment()));
+        assertEquals("CONTINUOUS",route(c.segment()));
+        assertTrue(allowsAutoPromote(c.segment()));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='ROUTE_DEFAULTED' AND created_by IS NULL",Integer.class,c.segment()));
         receive(c,c.material(),c.leaf(),"100");
-        assertEquals("WAITING",status(c.segment()));
-        assertEquals(0,drawCount(c.segment()));
+        assertEquals("READY",status(c.segment()));
+        assertEquals(1,drawCount(c.segment()));
+        qty("0",capacity(c));
         fixture.loginAs(c.workerUser());
-        assertTrue(assertThrows(ApiException.class,()->segments.start(c.plan(),c.segment(),
-                new SegmentTransitionRequest(version(c.segment()),"rg-unconfirmed-start"))).getMessage().contains("确认生产路线"));
-        assertThrows(ApiException.class,()->drawRequests.preview(new com.uten.imp.features.production.execution.ProductionDrawRequest.PreviewRequest(
-                List.of(new com.uten.imp.features.production.execution.ProductionDrawRequest.Item(c.segment(),version(c.segment()))))));
+        assertThrows(ApiException.class,()->segments.start(c.plan(),c.segment(),
+                new SegmentTransitionRequest(version(c.segment()),"rg-unissued-start")));
+        assertFalse(drawRequests.preview(new com.uten.imp.features.production.execution.ProductionDrawRequest.PreviewRequest(
+                List.of(new com.uten.imp.features.production.execution.ProductionDrawRequest.Item(c.segment(),version(c.segment()))))).lines().isEmpty());
         assertThrows(ApiException.class,()->batches.preview(new ProductionExecutionBatch.PreviewRequest(c.segment(),version(c.segment()),null)));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action IN('START','ROUTE_CONFIRMED')",Integer.class,c.segment()));
         confirm(c,"FULL_KIT");
         assertEquals("READY",status(c.segment()));
         issueDraws(c);
@@ -260,44 +263,25 @@ class ProductionExecutionRouteGateEndToEndTest {
     }
 
     /**
-     * ADR-096：无需物料的任务同样三条路线都可选。持续生产=随时可开工；分批从 READY 的零料
-     * 任务按数量拆出两个生来 READY 的零料子任务(快照空数组)，批次段可直接开工，剩余段继续分批。
+     * Discovery replaces the old empty DIRECT_MAKE start: route choice does not prove physical material.
+     * FULL_KIT/CONTINUOUS remain selectable; unknown material cannot authorize START or an empty split.
      */
     @Test
-    void zeroMaterialTaskAcceptsEveryRouteAndSplitsIntoZeroMaterialBatches() {
+    void unknownLeafMaterialsAllowRouteChoiceButNeverEmptyStartOrSplit() {
         Case c=create("rg-zero",true,"100",false);
         UUID child=c.childSegment();
         assertEquals("READY",status(child));
-        assertEquals(Boolean.TRUE,db.queryForObject("SELECT fn_can_split_execution_batch(?)",Boolean.class,child),"零料 READY 任务可拆批");
+        assertEquals(Boolean.FALSE,db.queryForObject("SELECT fn_can_split_execution_batch(?)",Boolean.class,child),"实际物料未知不能证明子批齐套");
         fixture.loginAs(c.workerUser());
         segments.confirmRoute(c.childPlan(),child,new SegmentRouteConfirmRequest(version(child),"rg-zero-cont","CONTINUOUS"));
         assertEquals("CONTINUOUS",route(child));
-        assertEquals(Boolean.TRUE,db.queryForObject("SELECT fn_execution_start_material_ready(?)",Boolean.class,child),"零料任务改持续后开工门为真");
-        segments.confirmRoute(c.childPlan(),child,new SegmentRouteConfirmRequest(version(child),"rg-zero-batch","BATCH"));
-        assertEquals("BATCH",route(child));
-        var preview=batches.preview(new ProductionExecutionBatch.PreviewRequest(child,version(child),null));
-        qty("100",preview.maxReadyQty()); assertTrue(preview.lines().isEmpty());
-        preview=batches.preview(new ProductionExecutionBatch.PreviewRequest(child,version(child),new BigDecimal("30")));
-        var result=batches.submit(new ProductionExecutionBatch.SubmitRequest(child,preview.expectedVersion(),
-                preview.quantity(),preview.fingerprint(),"rg-zero-split-"+child));
-        assertNotNull(result.remainingSegmentId()); assertTrue(result.documentIds().isEmpty());
-        assertEquals("CANCELLED",status(child));
-        for(UUID segment:List.of(result.batchSegmentId(),result.remainingSegmentId())) {
-            assertEquals("READY",status(segment),"零料子任务生来就是 READY");
-            assertEquals("ZERO_MATERIAL",db.queryForObject("SELECT material_requirement_mode FROM production_execution_segments WHERE id=?",String.class,segment));
-            assertEquals("[]",db.queryForObject("SELECT split_material_snapshot::text FROM production_execution_segments WHERE id=?",String.class,segment));
-        }
-        qty("30",db.queryForObject("SELECT planned_qty FROM production_execution_segments WHERE id=?",BigDecimal.class,result.batchSegmentId()));
-        qty("70",db.queryForObject("SELECT planned_qty FROM production_execution_segments WHERE id=?",BigDecimal.class,result.remainingSegmentId()));
-        assertEquals("FULL_KIT",route(result.batchSegmentId())); assertEquals("BATCH",route(result.remainingSegmentId()));
-        fixture.loginAs(c.workerUser());
-        segments.start(c.childPlan(),result.batchSegmentId(),new SegmentTransitionRequest(version(result.batchSegmentId()),"rg-zero-start-batch"));
-        assertEquals("IN_PROGRESS",status(result.batchSegmentId()));
-        // 剩余零料段可以再改成齐套直接开工，也可以继续拆。
-        assertEquals(Boolean.TRUE,db.queryForObject("SELECT fn_can_split_execution_batch(?)",Boolean.class,result.remainingSegmentId()));
-        segments.confirmRoute(c.childPlan(),result.remainingSegmentId(),new SegmentRouteConfirmRequest(version(result.remainingSegmentId()),"rg-zero-rest-kit","FULL_KIT"));
-        segments.start(c.childPlan(),result.remainingSegmentId(),new SegmentTransitionRequest(version(result.remainingSegmentId()),"rg-zero-start-rest"));
-        assertEquals("IN_PROGRESS",status(result.remainingSegmentId()));
+        assertEquals(Boolean.FALSE,db.queryForObject("SELECT fn_execution_start_material_ready(?)",Boolean.class,child));
+        assertThrows(ApiException.class,()->segments.start(c.childPlan(),child,new SegmentTransitionRequest(version(child),"rg-zero-start")));
+        assertThrows(ApiException.class,()->segments.confirmRoute(c.childPlan(),child,new SegmentRouteConfirmRequest(version(child),"rg-zero-batch","BATCH")));
+        assertThrows(ApiException.class,()->batches.preview(new ProductionExecutionBatch.PreviewRequest(child,version(child),new BigDecimal("30"))));
+        segments.confirmRoute(c.childPlan(),child,new SegmentRouteConfirmRequest(version(child),"rg-zero-kit","FULL_KIT"));
+        assertEquals("FULL_KIT",route(child));assertFalse(db.queryForObject("SELECT fn_execution_start_material_ready(?)",Boolean.class,child));
+        assertEquals(0,drawCount(child));assertEquals("READY",status(child));
     }
 
     /**
@@ -375,6 +359,7 @@ class ProductionExecutionRouteGateEndToEndTest {
     @Test
     void backgroundPreparedDirectMaterialKeepsAnExplicitStartEntry() {
         Case c=create("rg-system-direct",true);
+        confirm(c,"BATCH");
         transfer(c,"20");
         assertEquals("WAITING",status(c.segment()));
         // Exact upgrade fixture: V606 saved the old route and V611 activates its supply mode.
@@ -446,9 +431,12 @@ class ProductionExecutionRouteGateEndToEndTest {
         fixture.loginAs(c.world().superAdminUserId());
         UUID outsider=fixture.createUserWithPerms(c.world(),"adv-other-workshop","production_execution:view","production_execution:start");
         fixture.loginAs(outsider);
+        long originalVersion=version(c.segment());
         assertThrows(ApiException.class,()->segments.confirmRoute(c.plan(),c.segment(),
-                new SegmentRouteConfirmRequest(version(c.segment()),"adv-foreign-route","CONTINUOUS")));
-        assertNull(route(c.segment()));
+                new SegmentRouteConfirmRequest(originalVersion,"adv-foreign-route","FULL_KIT")));
+        assertEquals(originalVersion,version(c.segment()));
+        assertEquals("CONTINUOUS",route(c.segment()));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='ROUTE_CONFIRMED'",Integer.class,c.segment()));
         confirm(c,"CONTINUOUS"); receive(c,c.material(),c.leaf(),"10");
         fixture.loginAs(outsider);
         assertThrows(ApiException.class,()->drawRequests.preview(new com.uten.imp.features.production.execution.ProductionDrawRequest.PreviewRequest(
@@ -469,9 +457,11 @@ class ProductionExecutionRouteGateEndToEndTest {
         fixture.loginAs(c.world().superAdminUserId());
         segments.assign(c.plan(),c.segment(),new com.uten.imp.features.production.execution.SegmentAssignmentRequest(
                 version(c.segment()),"adv-clear-assignment",null,null,null,null,null));
+        long unassignedVersion=version(c.segment());
         assertThrows(ApiException.class,()->segments.confirmRoute(c.plan(),c.segment(),
                 new SegmentRouteConfirmRequest(version(c.segment()),"adv-defer-batch","BATCH")));
-        assertNull(route(c.segment()));
+        assertEquals("CONTINUOUS",route(c.segment()));
+        assertEquals(unassignedVersion,version(c.segment()));
         segments.assign(c.plan(),c.segment(),new com.uten.imp.features.production.execution.SegmentAssignmentRequest(
                 version(c.segment()),"adv-restore-assignment",c.workshop(),null,c.worker(),BusinessTime.today(),BusinessTime.today().plusDays(10)));
         confirm(c,"CONTINUOUS"); receive(c,c.material(),c.leaf(),"10");
@@ -643,13 +633,14 @@ class ProductionExecutionRouteGateEndToEndTest {
     }
 
     @Test
-    void directReceiptBeforeRouteConfirmationAlsoFreezesWorkshopCustody() {
+    void directReceiptOnTheDefaultRouteFreezesWorkshopCustodyBeforeManualRouteChoice() {
         Case c=create("adv-move-direct",true);
         transfer(c,"20");
-        assertNull(route(c.segment()));
+        assertEquals("CONTINUOUS",route(c.segment()));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='ROUTE_CONFIRMED'",Integer.class,c.segment()));
         var target=otherWorkshopAssignment(c,"adv-move-direct");
         assertThrows(ApiException.class,()->segments.assign(c.plan(),c.segment(),target),
-                "路线确认前已经实际收到的直送料也属于原车间");
+                "默认路线下已经实际收到的直送料属于原车间");
         assertEquals(c.workshop(),db.queryForObject("SELECT workshop_department_id FROM production_execution_segments WHERE id=?",UUID.class,c.segment()));
     }
 
@@ -817,6 +808,7 @@ class ProductionExecutionRouteGateEndToEndTest {
     @Test
     void explicitSameAssignmentRepairsLegacyUnissuedRecipientAndPreservesActualLeafWarehouse() {
         Case c=create("adv-legacy-unissued",false);
+        confirm(c,"FULL_KIT");
         receive(c,c.material(),c.leaf(),"10");
         var historical=otherWorkshopAssignment(c,"adv-legacy-receiver");
         UUID document=legacyPendingDraw(c,historical,true);
@@ -833,6 +825,7 @@ class ProductionExecutionRouteGateEndToEndTest {
     @Test
     void historicalWrongWorkshopIssueCannotStartAndIssuedHistoryIsNotRewritten() {
         Case c=create("adv-legacy-start",false);
+        confirm(c,"FULL_KIT");
         receive(c,c.material(),c.leaf(),"10");
         var historical=otherWorkshopAssignment(c,"adv-legacy-physical");
         UUID document=legacyPendingDraw(c,historical,true);
@@ -859,6 +852,7 @@ class ProductionExecutionRouteGateEndToEndTest {
                 .filter(row->row.segmentId().equals(c.segment())).findFirst().orElseThrow();
         assertFalse(task.canReport()); assertTrue(task.blockedReason().contains("车间不一致"));
         var report=adversarialFinalReport(c); report.getItems().getFirst().setIsFinal(false); report.getItems().getFirst().setQty(BigDecimal.ONE);
+        report.getMaterialLines().getFirst().setQtyBase(BigDecimal.ONE);
         assertTrue(assertThrows(ApiException.class,()->reports().create(report)).getMessage().contains("车间"));
         assertTrue(beans.getBean(com.uten.imp.features.production.dailyreport.ReportablePlanLineQueryService.class)
                 .list(1,50,null,c.workshop(),List.of(c.segment())).getItems().isEmpty());
@@ -1038,9 +1032,11 @@ class ProductionExecutionRouteGateEndToEndTest {
     }
 
     @Test
-    void unissuedDirectMaterialCanGoToNormalStockBeforeAnyRouteOrIssue() {
-        Case c=create("adv-free-direct-return",true,"10"); transfer(c,"10");
-        assertThrows(ApiException.class,()->confirm(c,"BATCH"),"已有真实直送料不能再进入未使用任务的独立拆批路线");
+    void unissuedDirectMaterialCanGoToNormalStockBeforeIssueOnAnExplicitBatchRoute() {
+        Case c=create("adv-free-direct-return",true,"10"); confirm(c,"BATCH"); transfer(c,"10");
+        assertEquals("BATCH",route(c.segment()));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_splits WHERE source_segment_id=?",Integer.class,c.segment()));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='START'",Integer.class,c.segment()));
         fixture.loginAs(c.workerUser());
         var returns=beans.getBean(com.uten.imp.features.stock.allocation.ProductionMaterialReturnRequestService.class);
         var source=returns.sources(c.plan(),c.segment()).stream().filter(row->"DIRECT_LOT".equals(row.sourceType())).findFirst().orElseThrow();
@@ -1049,7 +1045,7 @@ class ProductionExecutionRouteGateEndToEndTest {
         var unissuedTask=beans.getBean(com.uten.imp.features.production.execution.ProductionExecutionWorkbenchService.class)
                 .workshopTasks(1,50,null,null,c.workshop(),null,null).getItems().stream()
                 .filter(task->task.segmentId().equals(c.segment())).findFirst().orElseThrow();
-        assertTrue(unissuedTask.hasMaterialActivity(),"未选路线的已到直送料必须在车间任务显示物料入口");
+        assertTrue(unissuedTask.hasMaterialActivity(),"已到但未投入的直送料必须在车间任务显示物料入口");
         assertFalse(unissuedTask.hasUnregisteredMaterial(),"尚未实际领入的直送料不能虚标待登记实耗");
         var request=returns.submit(c.plan(),new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Submit(
                 c.segment(),"adv-free-direct-to-normal","当前车间收到的三件直送料实际送到正常仓库",
@@ -1064,10 +1060,12 @@ class ProductionExecutionRouteGateEndToEndTest {
                 new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(source.sourceWarehouseId(),"adv-reject-tech-as-receiving")));
         stock.confirmProductionMaterialReturn(request.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.leaf(),"adv-free-direct-received"));
         qty("7",physical(source.sourceWarehouseId(),c.material())); qty("3",physical(c.leaf(),c.material()));
-        assertEquals("WAITING",status(c.segment())); assertNull(route(c.segment()));
+        assertEquals("WAITING",status(c.segment())); assertEquals("BATCH",route(c.segment()));
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_material_stock_postings WHERE demand_id=?",Integer.class,parentDemand(c)));
         qty("3",db.queryForObject("SELECT COALESCE(SUM(qty-consumed_qty-released_qty),0) FROM stock_reservations WHERE warehouse_id=? AND goods_id=? AND owner_type='WORKSHOP_CUSTODY' AND NOT is_deleted",BigDecimal.class,c.leaf(),c.material()));
-        confirm(c,"FULL_KIT"); issueDraws(c); start(c); qty("10",capacity(c));
+        confirm(c,"FULL_KIT");
+        segments.recheckMaterial(c.plan(),c.segment(),new SegmentTransitionRequest(version(c.segment()),"adv-free-direct-explicit-reclaim"));
+        issueDraws(c); start(c); qty("10",capacity(c));
         fixture.loginAs(c.world().superAdminUserId());
         int originalMovements=db.queryForObject("SELECT COUNT(*) FROM stock_movements WHERE source_doc_id=?",Integer.class,request.documentId());
         assertTrue(assertSqlIntegrity(()->stock.reverse(request.documentId())).contains("already been issued"),
@@ -1079,7 +1077,7 @@ class ProductionExecutionRouteGateEndToEndTest {
 
     @Test
     void unusedPreparedDirectReturnAndReversalAdjustOnlyExactPickingInstructions() {
-        Case c=create("adv-held-direct-return",true,"10"); transfer(c,"10");
+        Case c=create("adv-held-direct-return",true,"10"); confirm(c,"BATCH"); transfer(c,"10");
         // An upgrade-era saved route is reconciled without impersonating staff;
         // every physical direct receipt and formal allocation remains genuine.
         db.update("UPDATE production_execution_segments SET start_route='FULL_KIT',route_confirmed_at=now() WHERE id=?",c.segment());
@@ -1182,7 +1180,7 @@ class ProductionExecutionRouteGateEndToEndTest {
 
     @Test
     void continuousStartUsesOnlyTheUnfrozenDirectQuantityWhileSurplusWaitsForReceipt() {
-        Case c=create("adv-cont-direct-freeze",true,"10"); transfer(c,"10");
+        Case c=create("adv-cont-direct-freeze",true,"10"); confirm(c,"BATCH"); transfer(c,"10");
         db.update("UPDATE production_execution_segments SET start_route='CONTINUOUS',continuous_supply=TRUE,route_confirmed_at=now() WHERE id=?",c.segment());
         org.springframework.security.core.context.SecurityContextHolder.clearContext();
         var reconciler=beans.getBean(com.uten.imp.features.production.fulfillment.ProductionReadinessReconciler.class);
@@ -1298,7 +1296,11 @@ class ProductionExecutionRouteGateEndToEndTest {
         line.setQty(new BigDecimal("4")); line.setIsFinal(true);
         var allocation=db.queryForMap("SELECT id,sales_order_item_id FROM execution_segment_sales_allocations WHERE execution_segment_id=?",c.segment());
         line.setExecutionSegmentSalesAllocationId((UUID)allocation.get("id")); line.setSalesOrderItemId((UUID)allocation.get("sales_order_item_id"));
-        request.setItems(List.of(line)); return request;
+        request.setItems(List.of(line));
+        var actualUse=new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();
+        actualUse.setDemandId(parentDemand(c));actualUse.setQtyBase(new BigDecimal("4"));
+        request.setMaterialLines(List.of(actualUse));
+        return request;
     }
 
     private static String assertSqlIntegrity(Runnable attack) {
@@ -1437,7 +1439,9 @@ class ProductionExecutionRouteGateEndToEndTest {
             childSegment = childResult.plans().getFirst().segmentIds().getFirst();
             assertEquals("READY", status(childSegment), "零料直制子件任务直接可开工");
             if (startChild) {
-                // The zero-material child still confirms its route before explicit start.
+                // A newly created leaf now needs its own physical inputs before the
+                // parent-flow scenarios can exercise direct handoff and returns.
+                prepareLeafInputs(w,childSegment,leaf,total,workerUser);
                 fixture.loginAs(workerUser);
                 segments.confirmRoute(childPlan, childSegment,new SegmentRouteConfirmRequest(version(childSegment),"rg-child-route-"+childSegment,"FULL_KIT"));
                 segments.start(childPlan, childSegment,
@@ -1486,7 +1490,28 @@ class ProductionExecutionRouteGateEndToEndTest {
         item.setDestination("WORKSHOP");
         item.setDirectTransferDemandId(parentDemand(c));
         report.setItems(List.of(item));
+        var usage=new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();
+        usage.setDemandId(db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",UUID.class,c.childSegment()));
+        usage.setQtyBase(new BigDecimal(quantity));report.setMaterialLines(List.of(usage));
         reports().approve(reports().create(report).getId(), DailyReportApproveRequests.freshKey());
+    }
+
+    private void prepareLeafInputs(FullChainEndToEndTest.World world,UUID childSegment,UUID leaf,String total,UUID workerUser) {
+        fixture.loginAs(world.superAdminUserId());
+        var receipt=new StockDocSaveRequest();receipt.setDocType("OTHER_IN");receipt.setWarehouseId(leaf);receipt.setBillDate(BusinessTime.today());
+        var material=new StockDocItemLine();material.setGoodsId(world.goodsD());material.setUnitId(world.unitId());material.setUnitRate(BigDecimal.ONE);
+        material.setQty(new BigDecimal(total));material.setPrice(BigDecimal.ONE);material.setAmountOriginal(material.getQty());material.setAmountLocal(material.getQty());receipt.setItems(List.of(material));stock.approve(stock.create(receipt).getId());
+        var discovery=beans.getBean(com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryService.class);
+        fixture.loginAs(workerUser);
+        var pending=discovery.request(childSegment,new com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryContracts.Request(version(childSegment),"rg-child-material-"+childSegment));
+        fixture.loginAs(world.superAdminUserId());
+        var configured=discovery.configure(pending.requestId(),new com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryContracts.Configure(
+                pending.version(),"rg-child-material-define-"+childSegment,List.of(new com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryContracts.Material(world.goodsD(),null,world.unitId(),leaf,new BigDecimal(total)))));
+        for(UUID document:configured.drawDocIds()){
+            var issue=new com.uten.imp.features.stock.dto.StockDocIssueRequest();issue.setIdempotencyKey("rg-child-material-issue-"+document);
+            issue.setLines(db.query("SELECT id,qty FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",(rs,index)->{var line=new com.uten.imp.features.stock.dto.StockDocIssueRequest.Line();line.setItemId(rs.getObject(1,UUID.class));line.setQty(rs.getBigDecimal(2));return line;},document));
+            stock.approveAndIssue(document,issue);
+        }
     }
 
     private UUID childGoods(Case c) {

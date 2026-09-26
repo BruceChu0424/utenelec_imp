@@ -1,5 +1,5 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空(支持至 V703；保留主档、人事、权限与治理证据)
+-- 本地/测试库业务数据一键清空(支持至 V720；保留主档、人事、权限与治理证据)
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
@@ -287,6 +287,10 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('preplan_supply_action_allocations', 'CLEAR'),
 ('preplan_public_supply_events', 'CLEAR'),
 ('preplan_supply_actions', 'CLEAR'),
+('preplan_aggregate_batches', 'CLEAR'),
+('preplan_aggregate_batch_events', 'CLEAR'),
+('preplan_aggregate_material_aliases', 'CLEAR'),
+('preplan_aggregate_direct_transfer_slices', 'CLEAR'),
 ('procurement_arrival_exception_events', 'CLEAR'),
 ('procurement_arrival_exceptions', 'CLEAR'),
 ('procurement_inspection_events', 'CLEAR'),
@@ -338,6 +342,10 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('production_material_analysis_materials', 'CLEAR'),
 ('production_material_analysis_plan_links', 'CLEAR'),
 ('production_material_demands', 'CLEAR'),
+('production_material_discovery_requests', 'CLEAR'),
+('production_material_discovery_lines', 'CLEAR'),
+('production_bom_learning_samples', 'CLEAR'),
+('production_bom_learning_refresh_queue', 'CLEAR'),
 ('production_material_make_receipt_allocations', 'CLEAR'),
 ('production_material_peg_transfers', 'CLEAR'),
 ('production_material_receipt_allocations', 'CLEAR'),
@@ -493,6 +501,10 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('flyway_schema_history', 'PRESERVE'),
 ('goods', 'PRESERVE'),
 ('goods_bom_items', 'PRESERVE'),
+-- Learned recipes and cumulative averages are master knowledge; reset-away
+-- samples become its fixed historical baseline, without reweighting the BOM.
+('goods_bom_learning_profiles', 'PRESERVE'),
+('goods_bom_learning_material_totals', 'PRESERVE'),
 ('goods_import_batches', 'PRESERVE'),
 ('goods_import_creations', 'PRESERVE'),
 ('legacy_departments', 'PRESERVE'),
@@ -1248,12 +1260,24 @@ BEGIN
         (698, 627),
         (699, 628),
         (700, 629),
-        (701, 630), (702, 631),
-        -- V703 车间催计划下单子层物料 (ADR-117): 新增 production_planning_urges 一张 CLEAR 表; 本迁移 631→632。
-        (703, 632)
+        (701, 630), (702, 631), (703, 632), (704, 633), (705, 634), (706, 635), (707, 636),
+        -- V708 采购审批 display 快照 weight/giftQty/allowedLossPct 对齐 trim_scale 去尾随零口径: 只重建函数, 不加表; 本迁移 636→637。
+        (708, 637),
+        -- V709 播种 production_plan:create 权限码(补 #29 目录欠账): 只插目录, 不加表; 本迁移 637→638。
+        (709, 638), (710, 639), (711, 640), (712, 641), (713, 642), (714, 643), (715, 644),
+        -- V716 播种 production_plan:create 并授予生产部(补 V714 目录欠账的可达性): 只插目录, 不加表; 本迁移 644→645。
+        (716, 645),
+        -- V717 基础资料五主档(模具/颜色/单位/结算方式/仓库)补导出权限点并按"导出跟随查看"回填: 只插目录与授权, 不加表; 本迁移 645→646。
+        (717, 646),
+        -- V718 货品未分类根放开为普通分类(触发器退役/注册表脱钩/改名): 不加表; 本迁移 646→647。
+        (718, 647),
+        -- V719 物料分析编号(analysis_no 列+WL命名空间+存量回填+谱系标签回写): 不加表; 本迁移 647→648。
+        (719, 648),
+        -- V720 汇总下单来源标签并入编号口径(存量「物料分析汇总 <日期>」回写): 不加表; 本迁移 648→649。
+        (720, 649)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V703完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669 跳号)，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V720完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669 跳号)，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -1434,7 +1458,17 @@ BEGIN
             ('production_material_increment_requests', 702),
             ('production_material_increment_decisions', 702),
             ('production_material_increment_reversals', 702),
-            ('production_planning_urges', 703)
+            ('production_planning_urges', 703),
+            ('production_material_discovery_requests', 710),
+            ('production_material_discovery_lines', 710),
+            ('goods_bom_learning_profiles', 711),
+            ('goods_bom_learning_material_totals', 711),
+            ('production_bom_learning_samples', 711),
+            ('production_bom_learning_refresh_queue', 711),
+            ('preplan_aggregate_batches', 712),
+            ('preplan_aggregate_batch_events', 712),
+            ('preplan_aggregate_material_aliases', 712),
+            ('preplan_aggregate_direct_transfer_slices', 715)
     ) AS required(table_name, introduced_version)
     WHERE (to_regclass(format('public.%I', required.table_name)) IS NOT NULL)
         IS DISTINCT FROM (applied_max_version >= required.introduced_version);
@@ -1443,7 +1477,7 @@ BEGIN
     END IF;
     SELECT count(*) INTO current_operational_table_count
     FROM reset_business_table_policy
-    WHERE table_name IN ('preplan_future_supply_transfers','preplan_future_supply_transfer_cancellations','preplan_reallocation_make_supplements','production_material_return_requests','production_material_return_request_items','production_material_return_request_cancellations','production_execution_segment_splits','production_execution_segment_growth_events','sales_shipment_submission_events','production_material_movement_links','stock_value_acquisition_sources','stock_value_position_transfers','stock_value_production_cost_dirty','stock_value_production_cost_inputs','stock_value_production_cost_objects','stock_value_production_cost_outputs','stock_value_production_cost_revisions','stock_value_production_cost_shares','stock_value_production_cost_tasks','procurement_iqc_consideration_reversals','procurement_iqc_consideration_review_approvals','procurement_iqc_credit_case_allocations','procurement_iqc_credit_documents','procurement_iqc_credit_slices','procurement_iqc_funding_settlements','procurement_iqc_funding_slices','procurement_iqc_quality_consideration_parts','procurement_iqc_stock_consideration_parts','procurement_receipt_consideration_parts','subcontract_receipt_material_consumptions','production_fqc_inspection_sheets','production_fqc_inspection_sheet_items','production_finished_arrival_registration_reversals','production_daily_report_material_usages','production_workshop_direct_transfers','production_workshop_direct_transfer_items','production_workshop_direct_transfer_reversals','expense_claim_invoices','expense_claim_events','production_daily_report_target_events','production_daily_report_material_release_events','production_workshop_direct_source_allocations','production_workshop_direct_source_events','production_workshop_direct_legacy_anomalies','production_material_return_receiving_confirmations','production_workshop_material_return_slices','production_workshop_material_custody_preparations','production_workshop_material_custody_moves','production_workshop_material_custody_reversals','production_workshop_material_custody_handoffs','production_workshop_custody_handoff_reversals','production_workshop_custody_reverse_preparations','production_workshop_return_preplan_events','subcontract_short_delivery_cases','subcontract_short_delivery_case_events','subcontract_component_stock_handoffs','auth_sessions','auth_step_up_states','production_overproduction_rate_requests','production_overproduction_rate_decisions','production_actual_output_supplement_requests','production_actual_output_supplement_proofs','production_actual_output_supplement_reversals','production_actual_output_supplement_claims','production_material_increment_requests','production_material_increment_decisions','production_material_increment_reversals','production_planning_urges');
+    WHERE table_name IN ('preplan_future_supply_transfers','preplan_future_supply_transfer_cancellations','preplan_reallocation_make_supplements','production_material_return_requests','production_material_return_request_items','production_material_return_request_cancellations','production_execution_segment_splits','production_execution_segment_growth_events','sales_shipment_submission_events','production_material_movement_links','stock_value_acquisition_sources','stock_value_position_transfers','stock_value_production_cost_dirty','stock_value_production_cost_inputs','stock_value_production_cost_objects','stock_value_production_cost_outputs','stock_value_production_cost_revisions','stock_value_production_cost_shares','stock_value_production_cost_tasks','procurement_iqc_consideration_reversals','procurement_iqc_consideration_review_approvals','procurement_iqc_credit_case_allocations','procurement_iqc_credit_documents','procurement_iqc_credit_slices','procurement_iqc_funding_settlements','procurement_iqc_funding_slices','procurement_iqc_quality_consideration_parts','procurement_iqc_stock_consideration_parts','procurement_receipt_consideration_parts','subcontract_receipt_material_consumptions','production_fqc_inspection_sheets','production_fqc_inspection_sheet_items','production_finished_arrival_registration_reversals','production_daily_report_material_usages','production_workshop_direct_transfers','production_workshop_direct_transfer_items','production_workshop_direct_transfer_reversals','expense_claim_invoices','expense_claim_events','production_daily_report_target_events','production_daily_report_material_release_events','production_workshop_direct_source_allocations','production_workshop_direct_source_events','production_workshop_direct_legacy_anomalies','production_material_return_receiving_confirmations','production_workshop_material_return_slices','production_workshop_material_custody_preparations','production_workshop_material_custody_moves','production_workshop_material_custody_reversals','production_workshop_material_custody_handoffs','production_workshop_custody_handoff_reversals','production_workshop_custody_reverse_preparations','production_workshop_return_preplan_events','subcontract_short_delivery_cases','subcontract_short_delivery_case_events','subcontract_component_stock_handoffs','auth_sessions','auth_step_up_states','production_overproduction_rate_requests','production_overproduction_rate_decisions','production_actual_output_supplement_requests','production_actual_output_supplement_proofs','production_actual_output_supplement_reversals','production_actual_output_supplement_claims','production_material_increment_requests','production_material_increment_decisions','production_material_increment_reversals','production_planning_urges','production_material_discovery_requests','production_material_discovery_lines','production_bom_learning_samples','production_bom_learning_refresh_queue','preplan_aggregate_batches','preplan_aggregate_batch_events','preplan_aggregate_material_aliases','preplan_aggregate_direct_transfer_slices');
 
     -- V459 新增兼职部门表（PRESERVE 95→96，组织与权限治理数据）。
     -- V579 新增客户/供应商联系方式·地址·跟进记录三张子表(PRESERVE 96→99，
@@ -1461,7 +1495,8 @@ BEGIN
        -- V677 删角色体系四张 PRESERVE 表(102→98, ADR-109)；V686 新增总账附表行绑定(98→99, ADR-112)。
        OR (applied_max_version BETWEEN 677 AND 685 AND preserve_count <> 98)
        OR (applied_max_version BETWEEN 686 AND 692 AND preserve_count <> 99)
-       OR (applied_max_version >= 693 AND preserve_count <> 100)
+       OR (applied_max_version BETWEEN 693 AND 710 AND preserve_count <> 100)
+       OR (applied_max_version >= 711 AND preserve_count <> 102)
        OR NOT (
            (v446_business_table_count = 0
                 AND v447_business_table_count = 0

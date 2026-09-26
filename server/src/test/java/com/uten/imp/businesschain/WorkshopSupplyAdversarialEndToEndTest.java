@@ -187,12 +187,6 @@ class WorkshopSupplyAdversarialEndToEndTest {
     void directSurplusCarriesActualSourceValueAndReversesBothTypedOrigins(boolean alreadyIssued) {
         ManualFamily family=manualFamily("adv-direct-cost-"+alreadyIssued);Case c=family.context();UUID[] target=family.first();
         UUID demand=db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=?",UUID.class,c.childSegment());
-        var settlement=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest();
-        settlement.setExecutionSegmentId(c.childSegment());settlement.setIdempotencyKey("adv-direct-cost-consumed-"+alreadyIssued);settlement.setReason("真实十件报工材料成本");
-        var line=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line();
-        line.setDemandId(demand);line.setSettlementType("CONSUMED");line.setQtyBase(BigDecimal.TEN);settlement.setLines(List.of(line));
-        fixture.loginAs(c.world().superAdminUserId());
-        beans.getBean(com.uten.imp.features.stock.allocation.ProductionMaterialSettlementService.class).post(c.childPlan(),settlement,c.world().superAdminUserId());
         transferTo(c,target[2],"10");
         drainValue(c,List.of(c.child(),db.queryForObject("SELECT goods_id FROM production_material_demands WHERE id=?",UUID.class,demand)));
         // Current non-final output10 owns 10/200 of the true consumed cost100.
@@ -261,11 +255,12 @@ class WorkshopSupplyAdversarialEndToEndTest {
         stock.confirmProductionMaterialReturn(request.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.leaf(),"adv-legacy-custody-receive"));
         assertEquals("WAITING",status(target[1]));
         fixture.loginAs(c.workerUser());confirmRoute(target[0],target[1],"CONTINUOUS");
-        requestAndIssue(c,target[1]);
-        qty("10",issued(target[2]));
-        qty("10",db.queryForObject("SELECT SUM(consumed_qty) FROM production_material_supply_pegs WHERE demand_id=?",BigDecimal.class,target[2]));
-        qty("10",db.queryForObject("SELECT SUM(allocated_qty) FROM production_material_make_receipt_allocations WHERE demand_id=? AND status='EFFECTIVE'",BigDecimal.class,target[2]));
-        qty("0",db.queryForObject("SELECT COALESCE(SUM(qty-consumed_qty-released_qty),0) FROM stock_reservations WHERE owner_type='WORKSHOP_CUSTODY' AND owner_id=? AND NOT is_deleted",BigDecimal.class,target[2]));
+        // V710 起路线确认即把手工看管料自动投入(车间直送料会自动投入), 无需再走仓库领料;
+        // 送正常仓保存的 3 件在路线确认时回到车间看管, 留待开工时投入。
+        qty("7",issued(target[2]));
+        qty("7",db.queryForObject("SELECT SUM(consumed_qty) FROM production_material_supply_pegs WHERE demand_id=?",BigDecimal.class,target[2]));
+        qty("7",db.queryForObject("SELECT SUM(allocated_qty) FROM production_material_make_receipt_allocations WHERE demand_id=? AND status='EFFECTIVE'",BigDecimal.class,target[2]));
+        qty("3",db.queryForObject("SELECT COALESCE(SUM(qty-consumed_qty-released_qty),0) FROM stock_reservations WHERE owner_type='WORKSHOP_CUSTODY' AND owner_id=? AND NOT is_deleted",BigDecimal.class,target[2]));
     }
 
     private void poolValue(UUID warehouse,UUID goods,String quantity,String value) {
@@ -335,11 +330,6 @@ class WorkshopSupplyAdversarialEndToEndTest {
         fixture.loginAs(c.workerUser());
         UUID finalReport=reportParentFinal(c,"5");
         fixture.loginAs(c.world().superAdminUserId());
-        var settlement=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest();
-        settlement.setExecutionSegmentId(target[1]);settlement.setIdempotencyKey("adv-source-consumed-"+target[1]);settlement.setReason("本任务实际耗用五件");
-        var consumed=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line();
-        consumed.setDemandId(target[2]);consumed.setSettlementType("CONSUMED");consumed.setQtyBase(new BigDecimal("5"));settlement.setLines(List.of(consumed));
-        beans.getBean(com.uten.imp.features.stock.allocation.ProductionMaterialSettlementService.class).post(c.plan(),settlement,c.world().superAdminUserId());
         UUID finished=acceptWarehouseReport(c,finalReport,"5");
         assertEquals("COMPLETED",status(target[1]));
         sourceBalance(a,"0","0");sourceBalance(b,"5","5");
@@ -459,8 +449,9 @@ class WorkshopSupplyAdversarialEndToEndTest {
         var direct=beans.getBean(com.uten.imp.features.production.directtransfer.ProductionWorkshopDirectTransferService.class);
         var candidate=direct.candidates(otherSegment,c.child(),null).candidates().stream().filter(row->row.demandId().equals(target[2])).findFirst().orElseThrow();
         qty("10",candidate.remainingQty());
-        assertThrows(ApiException.class,()->transferTo(other,target[2],"11"));
-        transferTo(other,target[2],"10");
+        // V707 起超额直送不再当场硬拒(转入超产申请/审批口径), 原边界断言退役;
+        // 仍锁定共享责任主线: 许可内 15 正常直送, 随后原段共享额度耗尽归零。
+        transferTo(other,target[2],"15");
         qty("0",db.queryForObject("SELECT fn_workshop_direct_remaining_for_source(?,?)",BigDecimal.class,c.childSegment(),target[2]));
     }
 
@@ -484,10 +475,10 @@ class WorkshopSupplyAdversarialEndToEndTest {
     private ManualFamily manualFamily(String tag,boolean splitProducer,boolean singleTarget) {
         Case original=create(tag,false);
         fixture.loginAs(original.world().superAdminUserId());
-        UUID raw=UUID.randomUUID();
-        fixture.insertGoods(raw,"RAW-"+tag,"来源原料","采购",original.world().unitId(),original.world().unitLegacy());
-        fixture.insertBom(original.child(),raw,"1");
+        UUID raw=db.queryForObject("SELECT component_goods_id FROM goods_bom_items WHERE goods_id=? AND NOT is_deleted",UUID.class,original.child());
+        poolValue(original.leaf(),raw,"0","0");
         receive(original,raw,original.leaf(),"200");
+        poolValue(original.leaf(),raw,"200","2000");
         UUID parent=manualPlan(original,original.parent(),new BigDecimal("200"));
         var parentPackage=manualPackage(original,parent,tag+"-parent",singleTarget?List.of(new BigDecimal("200")):List.of(new BigDecimal("100"),new BigDecimal("100")));
         UUID producer=parentPackage.subplans().getFirst().planId();
@@ -495,6 +486,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
         var producerPackage=manualPackage(original,producer,tag+"-child",splitProducer?List.of(new BigDecimal("100"),new BigDecimal("100")):List.of(new BigDecimal("200")));
         UUID childSegment=producerPackage.executionSegments().getFirst().segmentId();
         UUID firstSegment=parentPackage.executionSegments().get(0).segmentId(),secondSegment=parentPackage.executionSegments().get(singleTarget?0:1).segmentId();
+        confirmRoute(parent,firstSegment,"FULL_KIT");if(!firstSegment.equals(secondSegment))confirmRoute(parent,secondSegment,"FULL_KIT");
         Case c=new Case(original.world(),original.parent(),original.child(),null,parent,firstSegment,
                 producer,childSegment,original.workshop(),original.worker(),original.workerUser(),original.leaf(),original.lineSide());
         fixture.loginAs(c.workerUser());confirmRoute(c.childPlan(),c.childSegment(),"FULL_KIT");
@@ -589,6 +581,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
         segment.setBomFingerprint(proposal.bomFingerprint());segment.setWorkshopDepartmentId(c.workshop());
         segment.setResponsibleEmployeeId(c.worker());request.setSegments(List.of(segment));
         var result=packages.confirm(plan,request);UUID execution=result.executionSegments().getFirst().segmentId();
+        confirmRoute(plan,execution,"FULL_KIT");
         assertNull(db.queryForObject("SELECT material_analysis_id FROM production_plans WHERE id=?",UUID.class,plan));
         return new UUID[]{plan,execution,db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=?",UUID.class,execution)};
     }
@@ -614,6 +607,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
         item.setSalesOrderItemId(db.queryForObject("SELECT sales_order_item_id FROM execution_segment_sales_allocations WHERE execution_segment_id=?",UUID.class,c.segment()));
         item.setGoodsId(c.parent());item.setUnitId(c.world().unitId());item.setUnitRate(BigDecimal.ONE);item.setQty(new BigDecimal(quantity));
         item.setIsFinal(true);item.setDestination("WAREHOUSE");report.setItems(List.of(item));
+        report.setMaterialLines(WorkshopMaterialFlowTestSupport.materialUse(db,c.segment(),item.getQty()));
         UUID reportId=reports.create(report).getId();reports.approve(reportId, DailyReportApproveRequests.freshKey());return reportId;
     }
 
@@ -627,6 +621,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
         var allocations=db.queryForList("SELECT id FROM execution_segment_sales_allocations WHERE execution_segment_id=?",UUID.class,c.childSegment());
         if(allocations.size()==1)item.setExecutionSegmentSalesAllocationId(allocations.getFirst());
         item.setDestination(demand==null?"WAREHOUSE":"WORKSHOP");item.setDirectTransferDemandId(demand);report.setItems(List.of(item));
+        report.setMaterialLines(WorkshopMaterialFlowTestSupport.materialUse(db,c.childSegment(),item.getQty()));
         UUID reportId=reports.create(report).getId();reports.approve(reportId, DailyReportApproveRequests.freshKey());return reportId;
     }
 
@@ -641,7 +636,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
             UUID leaf, UUID lineSide) {
     }
 
-    /** 父件(自制) → 子件(自制叶子，零料直制)；可选第二种采购子件。主仓下挂普通叶子子仓 + 车间线边仓。 */
+    /** 父件→自制子件→有实收/实发证据的原料；可选第二种父件采购输入。 */
     private Case create(String tag, boolean withBuyMaterial) {
         var w = fixture.seedWorld(tag);
         fixture.loginAs(w.superAdminUserId());
@@ -650,6 +645,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
         fixture.insertGoods(parent, "P-" + tag, "直送父件-" + tag, "自制", w.unitId(), w.unitLegacy());
         fixture.insertGoods(child, "CL-" + tag, "直送子件-" + tag, "自制", w.unitId(), w.unitLegacy());
         fixture.insertBom(parent, child, "1");
+        UUID raw=UUID.randomUUID();fixture.insertGoods(raw,"RAW-"+tag,"直送实际原料","采购",w.unitId(),w.unitLegacy());fixture.insertBom(child,raw,"1");
         if (withBuyMaterial) {
             fixture.insertGoods(secondMaterial, "MAT-" + tag, "仓库子件-" + tag, "采购", w.unitId(), w.unitLegacy());
             fixture.insertBom(parent, secondMaterial, "1");
@@ -689,6 +685,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
                         .map(row -> new RouteDecision(row.materialLineId(), row.actionGroupKey(),
                                 row.goodsId().equals(parent) || row.goodsId().equals(child) ? "MAKE" : "BUY", null))
                         .toList()));
+        WorkshopMaterialFlowTestSupport.receiveFreeInput(stock,w,leaf,raw,new BigDecimal("100"));
         view = analyses.detail(view.analysisId());
         UUID childLineId = view.flatMaterials().stream()
                 .filter(row -> row.goodsId().equals(child)).findFirst().orElseThrow().materialLineId();
@@ -701,7 +698,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
                         workshop, null, worker, null, null))));
         UUID childPlan = childResult.plans().getFirst().planId();
         UUID childSegment = childResult.plans().getFirst().segmentIds().getFirst();
-        assertEquals("READY", status(childSegment), "零料直制子件任务应直接可开工");
+        assertEquals("READY", status(childSegment), "真实原料已预留，仍须发料才能开工");
         view = analyses.detail(view.analysisId());
         var rootResult = commands.issueWorkshopPlans(view.analysisId(), new IssueWorkshopPlansRequest(
                 view.version(), view.fingerprint(), "root-" + tag, w.warehouseId(),
@@ -713,10 +710,10 @@ class WorkshopSupplyAdversarialEndToEndTest {
         UUID plan = rootResult.plans().getFirst().planId();
         UUID segment = db.queryForObject(
                 "SELECT id FROM production_execution_segments WHERE plan_id=? AND status='WAITING'", UUID.class, plan);
-        // 子件开工后才能报工直送。
-        fixture.loginAs(workerUser);
-        // V599：零料直制子件开工前先确认齐套路线。
+        confirmRoute(plan,segment,"FULL_KIT");
         confirmRoute(childPlan, childSegment, "FULL_KIT");
+        WorkshopMaterialFlowTestSupport.issue(db,drawRequests,stock,childSegment);
+        fixture.loginAs(workerUser);
         segments.start(childPlan, childSegment,
                 new SegmentTransitionRequest(version(childSegment), "dt-child-start-" + childSegment));
         return new Case(w, parent, child, secondMaterial, plan, segment, childPlan, childSegment,
@@ -746,6 +743,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
         item.setDestination("WORKSHOP");
         item.setDirectTransferDemandId(parentDemand(c));
         report.setItems(List.of(item));
+        report.setMaterialLines(WorkshopMaterialFlowTestSupport.materialUse(db,c.childSegment(),item.getQty()));
         reports.approve(reports.create(report).getId(), DailyReportApproveRequests.freshKey());
     }
 

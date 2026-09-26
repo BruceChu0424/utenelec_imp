@@ -238,7 +238,9 @@ public class ClientService {
     /**
      * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限 1000 页=10万行防 OOM。
      * 列定义服务端权威；过滤/排序走 list 已接的 TableSort 白名单（tday/credit）。
-     * 覆盖前端表格的业务列；默认结账方式按 UUID 批量解析名称，总监无对应列。
+     * 2026-09-25 口径「表格显示啥导出啥」：列集与前端表格一致——「负责人」导解析人名
+     * （空显「未分配」，与表格同兜底），不再导旧库 empId 数字串；表格没有「状态」列
+     * （启停走前导分组/行菜单），导出同步不带。
      */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ExportPayload export(ClientQueryFilter f, String sort, String order, int maxRows) {
@@ -251,7 +253,7 @@ public class ClientService {
                 new ExportColumn("tday", "信用天数", ExportColumn.NUMBER),
                 new ExportColumn("region", "区域", ExportColumn.TEXT),
                 new ExportColumn("placeId", "所属地区", ExportColumn.TEXT),
-                new ExportColumn("empId", "业务员", ExportColumn.TEXT),
+                new ExportColumn("ownerEmployeeName", "负责人", ExportColumn.TEXT),
                 new ExportColumn("legalPerson", "法人代表", ExportColumn.TEXT),
                 new ExportColumn("linkman", "联系人", ExportColumn.TEXT),
                 new ExportColumn("mobile", "手机", ExportColumn.TEXT),
@@ -263,10 +265,9 @@ public class ClientService {
                 new ExportColumn("bank", "开户银行", ExportColumn.TEXT),
                 new ExportColumn("bankAccount", "银行账号", ExportColumn.TEXT),
                 new ExportColumn("taxId", "纳税号", ExportColumn.TEXT),
-                new ExportColumn("credit", "信誉额度", ExportColumn.MONEY),
+                new ExportColumn("credit", "信用额度 / 旧库 Credit 快照", ExportColumn.MONEY),
                 new ExportColumn("creditFloor", "铺底额", ExportColumn.MONEY),
-                new ExportColumn("website", "网址", ExportColumn.TEXT),
-                new ExportColumn("status", "状态", ExportColumn.TEXT));
+                new ExportColumn("website", "网址", ExportColumn.TEXT));
         // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
         List<Map<String, Object>> rows = ReportQueryKit.collectPages(
                 maxRows, (p, size) -> list(f, p, size, sort, order), m -> {
@@ -279,7 +280,9 @@ public class ClientService {
                     row.put("tday", m.getTday());
                     row.put("region", m.getRegion());
                     row.put("placeId", m.getPlaceId());
-                    row.put("empId", m.getEmpId());
+                    row.put("ownerEmployeeName",
+                            m.getOwnerEmployeeName() == null || m.getOwnerEmployeeName().isBlank()
+                                    ? "未分配" : m.getOwnerEmployeeName());
                     row.put("legalPerson", m.getLegalPerson());
                     row.put("linkman", m.getLinkman());
                     row.put("mobile", m.getMobile());
@@ -294,7 +297,6 @@ public class ClientService {
                     row.put("credit", m.getCredit());
                     row.put("creditFloor", m.getCreditFloor());
                     row.put("website", m.getWebsite());
-                    row.put("status", m.getStatus());
                     return row;
                 });
         return new ExportPayload(cols, rows, rows.size());

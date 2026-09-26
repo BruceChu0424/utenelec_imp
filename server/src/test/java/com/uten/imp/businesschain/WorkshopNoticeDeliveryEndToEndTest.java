@@ -102,6 +102,10 @@ class WorkshopNoticeDeliveryEndToEndTest {
         assertThat(startReady(scenario.segment())).isTrue();
         assertThat(jdbc.queryForObject("SELECT status FROM production_execution_segments WHERE id=?", String.class,
                 scenario.segment())).isEqualTo("READY");
+        assertThat(jdbc.queryForObject("SELECT start_route FROM production_execution_segments WHERE id=?", String.class,
+                scenario.segment())).isEqualTo("FULL_KIT");
+        assertThat(jdbc.queryForObject("SELECT continuous_supply FROM production_execution_segments WHERE id=?", Boolean.class,
+                scenario.segment())).isTrue(); // Existing incremental preparation is not the production route.
         chain(notices, users, permissions).deliverOutboxEvent("PRODUCTION_SEGMENT_WORKSHOP_ASSIGNED",
                 scenario.segment(), json.createObjectNode());
         var content = ArgumentCaptor.forClass(String.class);

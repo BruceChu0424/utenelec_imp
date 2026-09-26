@@ -5,9 +5,13 @@
 // 现在面板只有这一份，[showUtenClientPicker] / [showUtenSupplierPicker] 只提供
 // [UtenMasterPickerSpec]；表单字段 [UtenMasterPickerField] 同理。
 //
-// 形态：compact 底部抽屉 / medium+ 右侧滑入 720 宽面板。列表始终请求服务端
+// 形态：compact 底部抽屉 / medium+ 右侧滑入面板，宽 = max(720, 屏宽 50%)（2026-09-24
+// 与货品选择滑窗同步改版：左树无缩进层级色 + 单根提升 + UtenSplitView 可拖分割线，
+// 默认左栏宽 = 最长一行实测宽）。列表始终请求服务端
 // selectableOnly(只含「使用」状态)，total/totalPages 与 items 是同一数据库谓词下的
 // 权威结果，前端不再二次过滤。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -17,6 +21,9 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
+import '../../../components/layout/uten_split_view.dart';
+import '../../../components/layout/uten_table_column_kit.dart'
+    show utenTableSelectedRowColor;
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
@@ -83,9 +90,13 @@ Future<TItem?> showUtenMasterPicker<TItem>(
     return null;
   }
   if (!context.mounted) return null;
+  // 单根提升：与货品选择滑窗同口径（2026-09-24），单包装根不占一层。
+  tree = hoistSingleRootTree(tree);
+  // 滑窗宽度跟屏幕自适应：约占屏宽 50%，下限保持旧款 720。
+  final screenWidth = MediaQuery.sizeOf(context).width;
   return showUtenAdaptivePanel<TItem>(
     context: context,
-    drawerWidth: 720,
+    drawerWidth: math.max(720.0, screenWidth * 0.5),
     builder: (_) => _MasterPickerSheet<TItem>(spec: spec, tree: tree),
   );
 }
@@ -123,6 +134,9 @@ class _MasterPickerSheetState<TItem>
 
   /// 已点选(高亮)的记录；点底部「确定」才 pop 返回，取消/关闭则放弃(二次操作契约)。
   TItem? _picked;
+
+  /// 左树自然宽度缓存（与货品选择滑窗同款量宽）。
+  double? _naturalTreeWidth;
 
   UtenMasterPickerSpec<TItem> get _spec => widget.spec;
 
@@ -369,11 +383,56 @@ class _MasterPickerSheetState<TItem>
     setState(() => _picked = created);
   }
 
+  double _treeNaturalWidth(ThemeData theme) {
+    return _naturalTreeWidth ??= measureCategoryTreeNaturalWidth(
+      widget.tree,
+      theme.textTheme.bodyMedium,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final treeWidth = context.breakpoint.isCompact ? 176.0 : 240.0;
     final picked = _picked;
+    final treePane = UtenCategoryTreeView<ProductCategoryNode>(
+      nodes: widget.tree,
+      mode: UtenCategoryTreeMode.single,
+      selectedIds: _selectedCategoryId == null
+          ? const <String>{}
+          : {_selectedCategoryId!},
+      expandOnRowTap: true,
+      // 左树默认全部收起（2026-09-24 用户口径，与货品选择滑窗同款）。
+      initiallyExpandDepth: 0,
+      showSearch: false,
+      visibleFilterIds: _visibleFilterIds,
+      externalSearchQuery: _globalQuery,
+      externalSearchLoading: _searchLocationLoading,
+      externalSearchError: _searchLocationError,
+      header: _buildUnifiedSearch(),
+      flatLevelColors: true,
+      onToggleSelect: _onCategoryTap,
+    );
+    Widget body;
+    if (context.breakpoint.isCompact) {
+      body = Row(
+        children: [
+          SizedBox(width: 176, child: treePane),
+          const VerticalDivider(width: 1),
+          Expanded(child: _buildRightPane(theme)),
+        ],
+      );
+    } else {
+      // medium+：可拖分割线（与货品选择滑窗/货品资料页同款），
+      // 默认左栏宽 = 最长一行实测宽。
+      body = UtenSplitView(
+        persistenceKey: 'masterPicker.categoryTree',
+        initialLeadingWidth: _treeNaturalWidth(theme),
+        minLeadingWidth: 200,
+        maxLeadingWidth: 560,
+        leading: treePane,
+        trailing: _buildRightPane(theme),
+      );
+    }
     return Column(
       children: [
         Padding(
@@ -405,32 +464,7 @@ class _MasterPickerSheetState<TItem>
           ),
         ),
         const Divider(height: 1),
-        Expanded(
-          child: Row(
-            children: [
-              SizedBox(
-                width: treeWidth,
-                child: UtenCategoryTreeView<ProductCategoryNode>(
-                  nodes: widget.tree,
-                  mode: UtenCategoryTreeMode.single,
-                  selectedIds: _selectedCategoryId == null
-                      ? const <String>{}
-                      : {_selectedCategoryId!},
-                  expandOnRowTap: true,
-                  showSearch: false,
-                  visibleFilterIds: _visibleFilterIds,
-                  externalSearchQuery: _globalQuery,
-                  externalSearchLoading: _searchLocationLoading,
-                  externalSearchError: _searchLocationError,
-                  header: _buildUnifiedSearch(),
-                  onToggleSelect: _onCategoryTap,
-                ),
-              ),
-              const VerticalDivider(width: 1),
-              Expanded(child: _buildRightPane(theme)),
-            ],
-          ),
-        ),
+        Expanded(child: body),
         UtenPickerConfirmBar(
           selectedCount: picked == null ? 0 : 1,
           selectedLabel: picked == null ? null : _spec.labelOf(picked),
@@ -504,6 +538,8 @@ class _MasterPickerSheetState<TItem>
             current != null && _spec.idOf(current) == _spec.idOf(item);
         return ListTile(
           selected: picked,
+          // 选中行淡绿背景（全站表格统一口径，与货品选择滑窗同款）。
+          selectedTileColor: utenTableSelectedRowColor(theme),
           title: Text(_spec.labelOf(item)),
           subtitle: sub.isEmpty
               ? null

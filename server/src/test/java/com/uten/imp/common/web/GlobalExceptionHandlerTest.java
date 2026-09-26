@@ -12,6 +12,27 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class GlobalExceptionHandlerTest {
+    @Test
+    void finalReportShowsOnlyReviewedBusinessMessageAndNeverDriverDetails() {
+        String message="该工单还有未审核报工单(SR20260924000001)，请先审核或删除这些草稿，再提前完结";
+        var server = new org.postgresql.util.ServerErrorMessage(
+                "SERROR\u0000C23514\u0000M"+message+"\u0000Dsecret SQL details\u0000Wprivate function stack\u0000nfinal_report_pending_drafts\u0000\u0000");
+        var sql = new org.postgresql.util.PSQLException(server);
+        var handler=new GlobalExceptionHandler();
+        for(var response:java.util.List.of(
+                handler.handleDataIntegrity(new DataIntegrityViolationException("failed",sql)),
+                handler.handleHibernateConstraint(new org.hibernate.exception.ConstraintViolationException("failed",sql,"final_report_pending_drafts")),
+                handler.handleOther(new org.springframework.transaction.TransactionSystemException("commit failed",
+                        new jakarta.persistence.PersistenceException("wrapped",sql))))) {
+            assertEquals(409,response.getStatusCode().value());
+            assertEquals(message,response.getBody().getMessage());
+            assertFalse(response.getBody().getMessage().contains("secret"));
+            assertFalse(response.getBody().getMessage().contains("private"));
+        }
+        var unknown=new org.postgresql.util.PSQLException(new org.postgresql.util.ServerErrorMessage(
+                "SERROR\u0000C23514\u0000Msecret business SQL\u0000nunknown_constraint\u0000\u0000"));
+        assertFalse(handler.handleDataIntegrity(new DataIntegrityViolationException("failed",unknown)).getBody().getMessage().contains("secret"));
+    }
 
     @Test
     void downstreamMaterialIssueIsAConsistentActionableConflictForBothDatabaseAdapters() {

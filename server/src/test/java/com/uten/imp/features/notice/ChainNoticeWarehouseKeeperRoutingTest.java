@@ -91,9 +91,9 @@ class ChainNoticeWarehouseKeeperRoutingTest {
                 StandardCharsets.UTF_8);
         int routed = source.split("warehouseRecipients\\(departmentUserIdsWithAuthorit", -1).length - 1;
         int warehousePools = source.split("\"SUB_WH\"", -1).length - 1;
-        // 12 处仓库通知池全部按仓分发(成品入库待审、成品待登记、领料待出库、IQC 待入库、IQC 结案、
+        // 13 处仓库通知池全部按仓分发(新增最底层自制件实际物料待登记；成品入库待审、成品待登记、领料待出库、IQC 待入库、IQC 结案、
         // 销售待拣货与撤回放行、委外出仓、委外预计回厂与撤回、采购预计到货、到货异常定案)。
-        assertThat(routed).isEqualTo(12);
+        assertThat(routed).isEqualTo(13);
         assertThat(warehousePools).isEqualTo(routed);
     }
 

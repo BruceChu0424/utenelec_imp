@@ -400,7 +400,15 @@ class ProductionExecutionBatchEndToEndTest {
         fixture.loginAs(c.world().superAdminUserId());
         var allocation=db.queryForMap("SELECT id,sales_order_item_id FROM execution_segment_sales_allocations WHERE execution_segment_id=?",batch.batchSegmentId());
         UUID planItem=db.queryForObject("SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",UUID.class,batch.batchSegmentId());
-        UUID report=fixture.reportAndApproveExecutionSegment(c.world(),planItem,(UUID)allocation.get("sales_order_item_id"),c.root(),batch.batchSegmentId(),(UUID)allocation.get("id"),quantity,false,"0",null,null);
+        // This scenario's two seeded recipes consume 2 and 3 base units per
+        // finished product. A split freezes EXACT_SNAPSHOT demands, so declare
+        // the physical batch use explicitly instead of treating it as LINEAR.
+        var actualUse=db.query("SELECT id,goods_id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted ORDER BY id",(rs,index)->{
+            var use=new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();use.setDemandId(rs.getObject(1,UUID.class));
+            use.setQtyBase(new BigDecimal(quantity).multiply(rs.getObject(2,UUID.class).equals(c.material())?new BigDecimal("2"):new BigDecimal("3")));return use;
+        },batch.batchSegmentId());
+        assertEquals(2,actualUse.size());
+        UUID report=fixture.reportAndApproveExecutionSegment(c.world(),planItem,(UUID)allocation.get("sales_order_item_id"),c.root(),batch.batchSegmentId(),(UUID)allocation.get("id"),quantity,false,"0",null,null,actualUse);
         fixture.confirmFinishedInboundFully(fixture.finishedInDocForReport(report));
     }
     private void issueAndReport(Case c,ProductionExecutionBatch.Result batch,String quantity) {

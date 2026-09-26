@@ -37,8 +37,6 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../warehouse/pages/procurement_return_task_pages.dart';
 import '../../warehouse/widgets/procurement_inbound_badges.dart';
-import '../../../components/feedback/uten_draft_badge.dart';
-import '../../../shared/providers/draft_counts_provider.dart';
 import '../config/subcontract_doc_config.dart';
 import '../config/subcontract_report_config.dart';
 import '../widgets/subcontract_short_delivery_badge.dart';
@@ -105,48 +103,40 @@ class SubcontractHubPage extends ConsumerWidget {
     // 2026-09-06 收口：计划委外申请卡并入「委外任务中心」（待处理段含待生产
     // 合成行+进度弹窗）；回厂与品质跟踪卡退役（进度在任务中心/订货详情查看）。
     // 委外页不放仓库/品质动作入口——登记回厂在仓储模块预计到货办理。
+    // 2026-09-24 三段式：本区改「新建单据」——creator-only 直达 /new，
+    // 新建入口一律不挂徽章（草稿仍在新页「草稿(N)」按钮与列表草稿分段可见）。
     final docEntries = visible([
       _Entry(
         icon: Icons.shopping_bag_outlined,
-        label: '委外订货',
+        label: '新建委外订货',
         description: '订货、财务审批与全链路进度（含回厂 IQC）',
-        location: SubcontractRoute.list(SubcontractDocConfig.order.pathSegment),
-        // 本人待自审草稿数（与新建页「草稿」按钮同源）。本卡没有别的待办
-        // 徽章，草稿就占右上角 badge 槽——用户要的正是这个位置。
-        // 草稿 + 财务已退回(列表页两段红徽章之和, 2026-09-21; 退回件的待办累加由
-        // 委外任务中心 FINANCE_REJECTED 承担, 卡面只是同数展示)。
-        badge: const UtenDraftBadge(
-          kind: DraftDocKind.subcontractOrder,
-          withFinanceRejected: true,
+        location: SubcontractRoute.newList(
+          SubcontractDocConfig.order.pathSegment,
         ),
       ),
       _Entry(
         icon: Icons.undo_outlined,
-        label: '成品退回',
+        label: '新建成品退回',
         description: '退回委外成品并反向应付',
-        location: SubcontractRoute.list(
+        location: SubcontractRoute.newList(
           SubcontractDocConfig.returnDoc.pathSegment,
         ),
-        // 同上：无其它待办徽章，草稿独占 badge 槽。
-        badge: const UtenDraftBadge(kind: DraftDocKind.subcontractReturn),
       ),
       _Entry(
         icon: Icons.assignment_return_outlined,
-        label: '余料退回',
+        label: '新建余料退回',
         description: '委外商处余料登记入库',
-        location: SubcontractRoute.list(
+        location: SubcontractRoute.newList(
           SubcontractDocConfig.materialReturn.pathSegment,
-        ),
-        badge: const UtenDraftBadge(
-          kind: DraftDocKind.subcontractMaterialReturn,
         ),
       ),
       _Entry(
         icon: Icons.gavel_outlined,
-        label: '损耗与责任',
+        label: '新建损耗与责任',
         description: '损耗、索赔与责任处理',
-        location: SubcontractRoute.list(SubcontractDocConfig.waste.pathSegment),
-        badge: const UtenDraftBadge(kind: DraftDocKind.subcontractWaste),
+        location: SubcontractRoute.newList(
+          SubcontractDocConfig.waste.pathSegment,
+        ),
       ),
     ]);
     final legacyEntries = visible([
@@ -206,16 +196,11 @@ class SubcontractHubPage extends ConsumerWidget {
             children: [
               _section(context, theme, l10n.hubSectionTaskCenter, taskEntries),
               const SizedBox(height: UtenSpacing.s16),
-              _section(context, theme, l10n.subcontractHubTitle, docEntries),
-              const SizedBox(height: UtenSpacing.s16),
-              _section(
-                context,
-                theme,
-                l10n.subcontractHubSectionReports,
-                reportEntries,
-              ),
+              _section(context, theme, '新建单据', docEntries),
               const SizedBox(height: UtenSpacing.s16),
               _section(context, theme, '历史兼容', legacyEntries),
+              const SizedBox(height: UtenSpacing.s16),
+              _section(context, theme, '报表中心', reportEntries),
             ],
           ),
         ),

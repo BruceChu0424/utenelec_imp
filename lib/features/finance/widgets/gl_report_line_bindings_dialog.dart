@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -236,85 +237,102 @@ class _GlReportLineBindingsDialogState
       child: SizedBox(
         width: 720,
         height: MediaQuery.sizeOf(context).height * 0.85,
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('附表取数设置', style: theme.textTheme.titleMedium),
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                '总账附表与经营损益表的每一行取哪些科目或部门的数。没有设置的行在报表上标注「未配置」，不计入合计。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Expanded(
-                child: _error != null
-                    ? Center(
-                        child: Text(
-                          _error!,
-                          style: TextStyle(color: theme.colorScheme.error),
-                        ),
-                      )
-                    : lines == null
-                    ? const Center(
-                        child: CircularProgressIndicator(strokeWidth: 2.5),
-                      )
-                    : ListView.separated(
-                        itemCount: lines.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (_, index) {
-                          final line = lines[index];
-                          final configured = line.targets.isNotEmpty;
-                          return ListTile(
-                            key: ValueKey('gl-line-${line.lineKey}'),
-                            dense: true,
-                            title: Text(line.label),
-                            subtitle: Text(
-                              configured
-                                  ? line.targets
-                                        .map((target) => target.display)
-                                        .join('、')
-                                  : line.notConfigured,
-                              style: configured
-                                  ? null
-                                  : TextStyle(color: theme.colorScheme.error),
-                            ),
-                            trailing: widget.canEdit
-                                ? TextButton(
-                                    key: ValueKey(
-                                      'gl-line-edit-${line.lineKey}',
-                                    ),
-                                    onPressed: _busy ? null : () => _edit(line),
-                                    child: const Text('修改'),
-                                  )
-                                : null,
-                          );
-                        },
-                      ),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(UtenSpacing.s16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (widget.canEdit) ...[
-                    OutlinedButton(
-                      key: const ValueKey('gl-line-seed-defaults'),
-                      onPressed: _busy || lines == null ? null : _seedDefaults,
-                      child: const Text('按默认名单补齐'),
+                  Text('附表取数设置', style: theme.textTheme.titleMedium),
+                  const SizedBox(height: UtenSpacing.s4),
+                  Text(
+                    '总账附表与经营损益表的每一行取哪些科目或部门的数。没有设置的行在报表上标注「未配置」，不计入合计。',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
-                    const SizedBox(width: UtenSpacing.s12),
-                  ],
-                  FilledButton(
-                    onPressed: () => Navigator.pop(context, _changed),
-                    child: const Text('关闭'),
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  Expanded(
+                    child: _error != null
+                        ? Center(
+                            child: Text(
+                              _error!,
+                              style: TextStyle(color: theme.colorScheme.error),
+                            ),
+                          )
+                        : lines == null
+                        ? const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2.5),
+                          )
+                        : ListView.separated(
+                            itemCount: lines.length,
+                            separatorBuilder: (_, _) =>
+                                const Divider(height: 1),
+                            itemBuilder: (_, index) {
+                              final line = lines[index];
+                              final configured = line.targets.isNotEmpty;
+                              return ListTile(
+                                key: ValueKey('gl-line-${line.lineKey}'),
+                                dense: true,
+                                title: Text(line.label),
+                                subtitle: Text(
+                                  configured
+                                      ? line.targets
+                                            .map((target) => target.display)
+                                            .join('、')
+                                      : line.notConfigured,
+                                  style: configured
+                                      ? null
+                                      : TextStyle(
+                                          color: theme.colorScheme.error,
+                                        ),
+                                ),
+                                trailing: widget.canEdit
+                                    ? TextButton(
+                                        key: ValueKey(
+                                          'gl-line-edit-${line.lineKey}',
+                                        ),
+                                        onPressed: _busy
+                                            ? null
+                                            : () => _edit(line),
+                                        child: const Text('修改'),
+                                      )
+                                    : null,
+                              );
+                            },
+                          ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (widget.canEdit) ...[
+                        OutlinedButton(
+                          key: const ValueKey('gl-line-seed-defaults'),
+                          onPressed: _busy || lines == null
+                              ? null
+                              : _seedDefaults,
+                          child: const Text('按默认名单补齐'),
+                        ),
+                        const SizedBox(width: UtenSpacing.s12),
+                      ],
+                      FilledButton(
+                        onPressed: () => Navigator.pop(context, _changed),
+                        child: const Text('关闭'),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+            // 补齐/保存网络段的全屏居中遮罩（2026-09-25 统一口径：不再只有
+            // 按钮置灰无反馈）。
+            if (_busy)
+              const Positioned.fill(
+                child: UtenBusyOverlay(title: '正在处理取数设置，请稍候'),
+              ),
+          ],
         ),
       ),
     );

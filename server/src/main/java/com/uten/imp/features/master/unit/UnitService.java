@@ -1,7 +1,10 @@
 package com.uten.imp.features.master.unit;
 
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -207,6 +210,40 @@ public class UnitService {
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Unit> root,
                               String field, String value) {
         if (value != null && !value.isBlank()) ps.add(cb.equal(root.get(field), value));
+    }
+
+    // ===== 加密 Excel 导出（2026-09-25「表格显示啥导出啥」，V717） =====
+
+    /** 计量维度代码 → 展示文字（与前端 unit_page 的 _dimensionOptions 同口径）。 */
+    private static final Map<String, String> DIMENSION_LABELS = Map.of(
+            "COUNT", "数量", "MASS", "重量", "LENGTH", "长度",
+            "AREA", "面积", "VOLUME", "体积", "OTHER", "其他");
+
+    /**
+     * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限防 OOM。
+     * 列集与前端单位表格一致：编号 / 单位名称 / 状态 / 计量维度。
+     */
+    @Transactional(readOnly = true)
+    public ExportPayload export(UnitQueryFilter f, int maxRows) {
+        List<ExportColumn> cols = List.of(
+                new ExportColumn("code", "编号", ExportColumn.TEXT),
+                new ExportColumn("name", "单位名称", ExportColumn.TEXT),
+                new ExportColumn("status", "状态", ExportColumn.TEXT),
+                new ExportColumn("dimension", "计量维度", ExportColumn.TEXT));
+        // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
+        List<Map<String, Object>> rows = ReportQueryKit.collectPages(
+                maxRows, (p, size) -> list(f, p, size), u -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("code", u.getCode());
+                    row.put("name", u.getName());
+                    row.put("status", u.getStatus());
+                    row.put("dimension", u.getMeasurementDimension() == null
+                            ? "未设置"
+                            : DIMENSION_LABELS.getOrDefault(u.getMeasurementDimension(),
+                                    u.getMeasurementDimension()));
+                    return row;
+                });
+        return new ExportPayload(cols, rows, rows.size());
     }
 
     // ===== facets（各字段 distinct + 空值计数） =====

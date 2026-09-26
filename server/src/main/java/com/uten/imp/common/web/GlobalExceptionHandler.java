@@ -25,6 +25,7 @@ import org.springframework.transaction.TransactionTimedOutException;
 
 import java.util.List;
 import java.sql.SQLException;
+import org.postgresql.util.PSQLException;
 
 /** 全局异常处理：统一转 ApiError，不向前端泄露堆栈/SQL/状态码细节。 */
 @Slf4j
@@ -225,6 +226,23 @@ public class GlobalExceptionHandler {
         int depth = 0;
         for (Throwable cause = root; cause != null && depth < 16; cause = cause.getCause(), depth++) {
             if (!(cause instanceof SQLException sql) || !"23514".equals(sql.getSQLState())) continue;
+            if (sql instanceof PSQLException postgres && postgres.getServerErrorMessage()!=null) {
+                var databaseError=postgres.getServerErrorMessage();
+                String constraint=databaseError.getConstraint();
+                if ("final_report_pending_drafts".equals(constraint)) {
+                    // Only this reviewed guard contains user-facing document numbers.
+                    // Never return the SQL, DETAIL, WHERE or stack portion of the exception.
+                    String message=databaseError.getMessage();
+                    if(message!=null && message.startsWith("该工单还有未审核报工单")) return message;
+                    return "该工单还有未审核报工草稿，请先审核或删除这些草稿，再提前完结";
+                }
+                if ("actual_output_effective_rate_limit".equals(constraint)) {
+                    return "本次实际产量超过已批准的允许超产范围，请先办理追加生产计划再报工";
+                }
+                if ("final_report_surplus_authorization_identity".equals(constraint)) {
+                    return "本次报工数量与提前完结时批准的实际产出不一致，请核对原报工记录";
+                }
+            }
             String detail = sql.getMessage();
             if (detail != null && (detail.contains("Custody has already been issued by its destination task")
                     || detail.contains("Returned source has already been consumed by its destination"))) {
@@ -303,6 +321,11 @@ public class GlobalExceptionHandler {
         // Hibernate/JPA 在 @Service 里抛出的原生异常类型各不相同, 按根因 SQLState 统一识别截止时间类。
         String deadline = deadlineMessage(ex);
         if (deadline != null) return retryableConflict(ex, deadline);
+        // Deferred constraints can surface only at COMMIT, wrapped by JPA's
+        // transaction exception. Keep the same response as the direct adapters.
+        if (sqlState(ex).startsWith("23")) {
+            return ResponseEntity.status(409).body(ApiError.of(ErrorCode.CONFLICT, integrityMessage(ex)));
+        }
         log.error("未处理异常", ex);
         return ResponseEntity.status(500).body(ApiError.of(ErrorCode.INTERNAL, null));
     }

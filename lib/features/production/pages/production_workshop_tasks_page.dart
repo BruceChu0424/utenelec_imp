@@ -60,6 +60,8 @@ import '../models/production_material_usage_source.dart';
 import '../providers/production_department_provider.dart';
 import '../providers/production_workshop_task_count_provider.dart';
 import '../repositories/production_execution_workbench_repository.dart';
+import 'production_material_discovery_request_page.dart';
+import '../repositories/production_material_discovery_request_repository.dart';
 import '../repositories/production_repository.dart';
 import '../repositories/production_overproduction_rate_repository.dart';
 import '../repositories/production_material_increment_repository.dart';
@@ -503,7 +505,17 @@ class _ProductionWorkshopTasksPageState
   ) {
     final busy = _navigating || _loading;
     return [
+      if (_canStart &&
+          task.materialDiscoveryStatus == 'PENDING' &&
+          task.materialDiscoveryRequestId != null)
+        UtenMenuItem(
+          label: AppLocalizations.of(context).materialDiscoveryCancel,
+          icon: Icons.undo,
+          enabled: !busy,
+          onTap: () => _cancelMaterialDiscovery(task),
+        ),
       if (_canRequestMaterialIncrement &&
+          !task.materialDiscoveryRequired &&
           task.segmentStatus != 'COMPLETED' &&
           task.segmentStatus != 'CANCELLED')
         UtenMenuItem(
@@ -822,15 +834,25 @@ class _ProductionWorkshopTasksPageState
 
   /// 服务端确认的续领包括持续到料和齐套开工后的真实退料补领，不依赖历史 issued 标志。
   bool _canRequestDrawTask(ProductionExecutionWorkbenchSegment task) =>
-      _routeAllowsKitActions(task) &&
-      task.canRequestDraw &&
-      !task.zeroMaterial &&
-      (task.segmentStatus == 'READY' ||
-          task.segmentStatus == 'DISPATCHED' ||
-          task.segmentStatus == 'IN_PROGRESS');
+      task.canRequestMaterialDiscovery ||
+      (_routeAllowsKitActions(task) &&
+          task.canRequestDraw &&
+          !task.zeroMaterial &&
+          (task.segmentStatus == 'READY' ||
+              task.segmentStatus == 'DISPATCHED' ||
+              task.segmentStatus == 'IN_PROGRESS'));
 
   /// 未开工行点击/勾选受限的明确原因（物料未入库、库存不足、备料未完成等）。
   String _blockedReasonOf(ProductionExecutionWorkbenchSegment task) {
+    if (task.materialDiscoveryRequired) {
+      final l10n = AppLocalizations.of(context);
+      if (task.startRoute == 'BATCH') {
+        return l10n.materialDiscoveryBatchHelp;
+      }
+      return task.materialDiscoveryStatus == 'PENDING'
+          ? l10n.materialDiscoveryPending
+          : l10n.materialDiscoveryRequestHelp;
+    }
     if (_isPreparing && !_canStart) {
       return '缺少开工权限（production_execution:view + start）：不能开工、领料或改选生产路线；'
           '可查看物料进度，办理请联系车间负责人';
@@ -1048,6 +1070,32 @@ class _ProductionWorkshopTasksPageState
       context.appWarning('一次领料只能包含同一生产车间；请用生产车间表头筛选后分别领料');
       return;
     }
+    final discovery = tasks
+        .where((task) => task.canRequestMaterialDiscovery)
+        .toList();
+    if (discovery.isNotEmpty) {
+      setState(() => _navigating = true);
+      try {
+        final submitted = await Navigator.of(context).push<bool>(
+          MaterialPageRoute(
+            builder: (_) =>
+                ProductionMaterialDiscoveryRequestPage(tasks: discovery),
+          ),
+        );
+        if (!mounted) return;
+        await _reloadAfterChange();
+        if (!mounted) return;
+        if (submitted != true) return;
+        _selected.removeAll(discovery.map((task) => task.segmentId));
+        tasks = tasks
+            .where((task) => !task.canRequestMaterialDiscovery)
+            .toList();
+        if (tasks.isEmpty) return;
+      } finally {
+        if (mounted) setState(() => _navigating = false);
+      }
+    }
+    if (!mounted) return;
     final path = Uri(
       path: RouteName.productionDrawRequest,
       queryParameters: {
@@ -1065,6 +1113,26 @@ class _ProductionWorkshopTasksPageState
         );
       }
       await _reloadAfterChange();
+    } finally {
+      if (mounted) setState(() => _navigating = false);
+    }
+  }
+
+  Future<void> _cancelMaterialDiscovery(
+    ProductionExecutionWorkbenchSegment task,
+  ) async {
+    if (!_canStart || _navigating || task.materialDiscoveryRequestId == null) {
+      return;
+    }
+    setState(() => _navigating = true);
+    try {
+      await ref
+          .read(productionMaterialDiscoveryRequestRepositoryProvider)
+          .cancel(task.materialDiscoveryRequestId!);
+      if (!mounted) return;
+      await _reloadAfterChange();
+    } catch (e) {
+      if (mounted) context.appApiError(e);
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
@@ -1702,34 +1770,47 @@ class _ProductionWorkshopTasksPageState
   /// 路线确认后 WAITING 的等待方式按路线区分（齐套等到齐/分批等部分到货/
   /// 持续等部分物料——物料分析「未下达按路线显示第一步」同款）。
   ProductionFlowStage _flowStageOf(ProductionExecutionWorkbenchSegment task) =>
-      ProductionFlowStage.forSegment(
-        segmentStatus: task.segmentStatus,
-        zeroMaterial: task.zeroMaterial,
-        materialIssued: task.issued,
-        drawRequested: task.drawRequested,
-        splitReplaced: task.splitReplaced,
-        continuousSupply: task.continuousSupply,
-        startRoute: task.startRoute,
-        routeConfirmationRequired: task.startRoute == null,
-        canStartNow: task.canStart,
-        canRequestDraw: task.canRequestDraw,
-        // 2026-09-20 用户口径「物料没有齐不能显示齐，车间内流转的要流转了才算」：
-        // 未开工段的文案只按服务端逐种物料事实生成（ADR-095）。
-        materials: _materialFactsOf(task),
-        reportedQty: (task.reportedQty - task.actualSurplusReportedQty).clamp(
-          0.0,
-          double.infinity,
-        ),
-        plannedQty: task.plannedQty,
-        remainingReportQty: task.remainingReportQty,
-        fqcPendingQty: task.fqcPendingQty,
-        fqcFailedQty: task.fqcFailedQty,
-        finishedInboundPendingQty: task.finishedInboundPendingQty,
-        inboundQty: task.plannedInboundQty,
-        hasUnregisteredMaterial: task.hasUnregisteredMaterial,
-        hasPendingReturn: task.hasPendingReturn,
-        hasAvailableMaterial: task.hasAvailableMaterial,
-      );
+      task.materialDiscoveryRequired
+      ? ProductionFlowStage(
+          route: ProductionFlowRoute.make,
+          key: 'MAKE_MATERIAL_DISCOVERY',
+          label: task.materialDiscoveryStatus == 'PENDING'
+              ? AppLocalizations.of(context).materialDiscoveryPending
+              : AppLocalizations.of(context).materialDiscoveryNeeded,
+          tone: task.materialDiscoveryStatus == 'PENDING'
+              ? ProductionFlowTone.waiting
+              : ProductionFlowTone.decide,
+          stepIndex: 0,
+          stepCount: 5,
+        )
+      : ProductionFlowStage.forSegment(
+          segmentStatus: task.segmentStatus,
+          zeroMaterial: task.zeroMaterial,
+          materialIssued: task.issued,
+          drawRequested: task.drawRequested,
+          splitReplaced: task.splitReplaced,
+          continuousSupply: task.continuousSupply,
+          startRoute: task.startRoute,
+          routeConfirmationRequired: task.startRoute == null,
+          canStartNow: task.canStart,
+          canRequestDraw: task.canRequestDraw,
+          // 2026-09-20 用户口径「物料没有齐不能显示齐，车间内流转的要流转了才算」：
+          // 未开工段的文案只按服务端逐种物料事实生成(ADR-095)。
+          materials: _materialFactsOf(task),
+          reportedQty: (task.reportedQty - task.actualSurplusReportedQty).clamp(
+            0.0,
+            double.infinity,
+          ),
+          plannedQty: task.plannedQty,
+          remainingReportQty: task.remainingReportQty,
+          fqcPendingQty: task.fqcPendingQty,
+          fqcFailedQty: task.fqcFailedQty,
+          finishedInboundPendingQty: task.finishedInboundPendingQty,
+          inboundQty: task.plannedInboundQty,
+          hasUnregisteredMaterial: task.hasUnregisteredMaterial,
+          hasPendingReturn: task.hasPendingReturn,
+          hasAvailableMaterial: task.hasAvailableMaterial,
+        );
 
   static ProductionMaterialFacts _materialFactsOf(
     ProductionExecutionWorkbenchSegment task,
@@ -1749,9 +1830,19 @@ class _ProductionWorkshopTasksPageState
   /// 「物料」列的分段摘要(ADR-095/096)：已领 a/n 种；缺 k 种(自制子件 j)红；
   /// 可领 m 种绿；待发 p 种灰(2026-09-20 用户口径「缺X种变红色、可领X种变绿色」)。
   /// 零料任务显示「无需物料」。数字只来自服务端逐种事实，不由页面猜。
-  static List<(String, _MaterialSummaryTone)> _materialSummaryParts(
+  List<(String, _MaterialSummaryTone)> _materialSummaryParts(
     ProductionExecutionWorkbenchSegment task,
   ) {
+    if (task.materialDiscoveryRequired) {
+      return [
+        (
+          task.materialDiscoveryStatus == 'PENDING'
+              ? AppLocalizations.of(context).materialDiscoveryPending
+              : AppLocalizations.of(context).materialDiscoveryNeeded,
+          _MaterialSummaryTone.muted,
+        ),
+      ];
+    }
     if (task.zeroMaterial || task.materialKindCount == 0) {
       return const [('无需物料', _MaterialSummaryTone.plain)];
     }
@@ -1792,14 +1883,14 @@ class _ProductionWorkshopTasksPageState
   }
 
   /// 纯文本摘要(列宽测算、排序键、无障碍标签)。
-  static String _materialSummaryText(
-    ProductionExecutionWorkbenchSegment task,
-  ) => _materialSummaryParts(task).map((part) => part.$1).join(' · ');
+  String _materialSummaryText(ProductionExecutionWorkbenchSegment task) =>
+      _materialSummaryParts(task).map((part) => part.$1).join(' · ');
 
   /// 「物料」列悬停：逐桶解释 + 已投料可产量。
-  static String _materialSummaryTooltip(
-    ProductionExecutionWorkbenchSegment task,
-  ) {
+  String _materialSummaryTooltip(ProductionExecutionWorkbenchSegment task) {
+    if (task.materialDiscoveryRequired) {
+      return AppLocalizations.of(context).materialDiscoveryRequestHelp;
+    }
     if (task.zeroMaterial || task.materialKindCount == 0) {
       return '本任务不需要领用物料，可直接开工';
     }
@@ -2298,6 +2389,15 @@ class _ProductionWorkshopTasksPageState
             : _routeOptionMeta[task.startRoute]?.$1 ?? task.startRouteLabel,
         cellBuilder: (_, task) => _nextStepCell(task),
       ),
+    // 来源计划（V719）：ANALYSIS 根的 WL 分析编号，与采购/委外「来源计划」同一
+    // 锚点；紧跟「下一步」/「生产路线」之后（2026-09-25 用户口径「显示在下一步的
+    // 后面，不要放在最后面」），历史计划根显示 —。
+    MasterColumnDef(
+      key: 'sourcePlan',
+      label: '来源计划',
+      width: 150,
+      value: (task) => task.analysisNo ?? '—',
+    ),
     // 「物料」列（ADR-095，2026-09-20 用户口径「车间内流转的货品数量怎么统计、
     // 显示在哪里」）：逐种事实的一行摘要，悬停逐桶解释，双击行看每种物料的数量。
     // 生产中也显示——持续生产在原任务继续领料/直送，仍要看还缺什么。

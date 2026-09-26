@@ -107,7 +107,7 @@ Local pages:
 
 ### Tests and checks
 
-- `node scripts/quality-gate.mjs` — the same complete gate used by Quality Gate and signed website release: locked install, lint, typecheck, all behavior tests, formal migration verification, dependency audit and an empty migrated database build. Requires Node 22; CI pins 22.13.1.
+- `node scripts/quality-gate.mjs` — the same complete gate used by Quality Gate and signed website release: locked install, lint, typecheck, all behavior tests, formal migration verification, dependency audit and an empty migrated database build. Requires Node >=22.13.1 <23; CI pins 22.13.1.
 - `npm run test:all`
 - `npm run test:prisma-migrations`
 - `npm run test:admin-guardrails`

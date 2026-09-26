@@ -246,9 +246,9 @@ class SubcontractMakeTaskNotificationPostgresTest {
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
                 org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
             try {
-                var method = MaterialAnalysisService.class.getDeclaredMethod("activeFutureCoverageByMaterial",UUID.class);
+                var method = MaterialAnalysisService.class.getDeclaredMethod("activeFutureCoverageByMaterial",UUID.class,boolean.class);
                 method.setAccessible(true);
-                Map<?,?> coverage = (Map<?,?>)method.invoke(service,f.analysis());
+                Map<?,?> coverage = (Map<?,?>)method.invoke(service,f.analysis(),false);
                 return (BigDecimal)coverage.get(material);
             } catch (ReflectiveOperationException ex) {
                 throw new AssertionError(ex);

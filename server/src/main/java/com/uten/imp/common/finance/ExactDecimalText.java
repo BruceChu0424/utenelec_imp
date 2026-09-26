@@ -19,6 +19,9 @@ public final class ExactDecimalText extends StdSerializer<BigDecimal> {
 
     @Override
     public void serialize(BigDecimal value, JsonGenerator generator, SerializerProvider provider) throws IOException {
-        generator.writeString(value.toPlainString());
+        // NUMERIC(18,4) 列与 setScale(4) 折扣天然带尾随零("1000.0000")，展示口径统一
+        // 去尾随零："1000"、"100.098"(2026-09-24 用户口径)。stripTrailingZeros 可能产生
+        // 科学计数法(1E+3)，必须再经 toPlainString 落回十进制原文。
+        generator.writeString(value.stripTrailingZeros().toPlainString());
     }
 }

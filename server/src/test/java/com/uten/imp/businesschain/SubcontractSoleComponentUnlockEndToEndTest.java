@@ -271,24 +271,10 @@ class SubcontractSoleComponentUnlockEndToEndTest {
         UUID segment=plan.segmentIds().getFirst();
         productionSegments.confirmRoute(plan.planId(),segment,new com.uten.imp.features.production.execution.SegmentRouteConfirmRequest(
                 segmentVersion(segment),"sc-child-route-"+segment,"FULL_KIT"));
-        var documents=db.queryForList("SELECT document_id FROM production_planning_package_documents WHERE execution_segment_id=? AND document_type='DRAW'",UUID.class,segment);
-        if(!documents.isEmpty()) {
-            var items=List.of(new com.uten.imp.features.production.execution.ProductionDrawRequest.Item(segment,segmentVersion(segment)));
-            var preview=productionDraws.preview(new com.uten.imp.features.production.execution.ProductionDrawRequest.PreviewRequest(items));
-            productionDraws.submit(new com.uten.imp.features.production.execution.ProductionDrawRequest.SubmitRequest(items,"sc-child-draw-"+segment,preview.fingerprint()));
-            var issue=new com.uten.imp.features.stock.dto.StockDocIssueBatchRequest();
-            issue.setIdempotencyKey("sc-child-issue-"+segment);issue.setDocIds(documents);stockDocs.issueFullBatch(issue);
-        }
+        WorkshopMaterialFlowTestSupport.issue(db,productionDraws,stockDocs,segment);
         productionSegments.start(plan.planId(),segment,new com.uten.imp.features.production.execution.SegmentTransitionRequest(segmentVersion(segment),"sc-child-start-"+segment));
-        var usage=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest();
-        usage.setExecutionSegmentId(segment);usage.setIdempotencyKey("sc-child-consumed-"+segment);usage.setReason("子件原料全部用于本批合格产出");
-        usage.setLines(db.queryForList("SELECT id,required_qty FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",segment).stream().map(demand->{
-            var line=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line();
-            line.setDemandId((UUID)demand.get("id"));line.setQtyBase((BigDecimal)demand.get("required_qty"));line.setSettlementType("CONSUMED");return line;
-        }).toList());
-        if(!usage.getLines().isEmpty())materialSettlements.post(plan.planId(),usage,w.superAdminUserId());
         UUID planItem=db.queryForObject("SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",UUID.class,segment);
-        UUID report=fixture.reportAndApproveExecutionSegment(w,planItem,null,w.goodsD(),segment,null,"10",false,"0",null,null);
+        UUID report=fixture.reportAndApproveExecutionSegment(w,planItem,null,w.goodsD(),segment,null,"10",false,"0",null,null,WorkshopMaterialFlowTestSupport.materialUse(db,segment,BigDecimal.TEN));
         fixture.confirmFinishedInboundFully(fixture.finishedInDocForReport(report));
         fixture.loginAs(w.superAdminUserId());
     }

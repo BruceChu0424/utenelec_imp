@@ -63,10 +63,16 @@ class _ReportablePlanLineSheetState
   /// （二次操作契约）。保序是因为调用方按这个顺序建行，用户点的顺序=行序。
   final List<ReportablePlanLine> _picked = [];
 
-  /// 行身份：同一执行段的同一计划行只能选一次。执行段为空（老数据）时
-  /// 退回计划行 id，仍然唯一。
-  String _lineKey(ReportablePlanLine item) =>
-      '${item.executionSegmentId ?? ''}|${item.planItemId}';
+  /// 一个计划行可同时包含多个销售分摊和品质恢复授权，必须分别选择并保留来源。
+  String _lineKey(ReportablePlanLine item) => [
+    item.planItemId,
+    item.executionSegmentId ?? '',
+    item.executionSegmentSalesAllocationId ?? '',
+    item.orderItemId ?? '',
+    item.fqcRecoveryAuthorizationId ?? '',
+    item.unitId ?? '',
+    item.unitRate?.toString() ?? '',
+  ].join('|');
 
   bool _isPicked(ReportablePlanLine item) =>
       _picked.any((picked) => _lineKey(picked) == _lineKey(item));

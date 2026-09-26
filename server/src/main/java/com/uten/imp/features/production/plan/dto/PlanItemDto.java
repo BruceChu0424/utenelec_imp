@@ -65,4 +65,5 @@ public class PlanItemDto {
     private String planAppNo;
     private String sourceDocNo;
     private String remark;
+    private BigDecimal allowedOverproductionRate;
 }

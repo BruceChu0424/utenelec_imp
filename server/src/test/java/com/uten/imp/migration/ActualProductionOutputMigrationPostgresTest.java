@@ -32,7 +32,7 @@ class ActualProductionOutputMigrationPostgresTest {
         for(String table:List.of("production_execution_segments","execution_segment_sales_allocations","production_daily_reports",
                 "production_daily_report_items","stock_documents","stock_document_items","production_planning_packages",
                 "production_plans","production_material_analysis_plan_links","plan_order_item_links"))
-            sql("CREATE TABLE "+schema+"."+table+" AS SELECT * FROM public."+table+" WITH NO DATA");
+            com.uten.imp.support.MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(db,table);
         for(String function:List.of("fn_execution_actual_surplus_qty(uuid,boolean)","fn_plan_actual_surplus_qty(uuid,boolean)",
                 "fn_daily_report_is_public_output(uuid)","fn_validate_daily_report_execution_segment()",
                 "fn_guard_daily_report_output_identity()","fn_assert_daily_report_output_batch()",

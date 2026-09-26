@@ -258,7 +258,6 @@ class _WarehouseSalesOutboundDetailPageState
       child: Scaffold(
         appBar: UtenAppBar(
           title: '销售出库详情',
-          subtitle: '仓库作业视图',
           leading: UtenBackButton(
             onPressed: _acting
                 ? null
@@ -320,62 +319,44 @@ class _WarehouseSalesOutboundDetailPageState
                             ],
                           ),
                         ),
-                        // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
-                        body: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '出库明细 (${detail.lines.length})',
-                              style: Theme.of(context).textTheme.titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.w700),
+                        // body：明细表占满内滚（primary 拾取联动控制器）。
+                        body:
+                            MasterDataTableView<WarehouseSalesOutboundTableRow>(
+                              key: const Key(
+                                'warehouse-sales-outbound-detail-table',
+                              ),
+                              primary: true,
+                              bottomContentPadding:
+                                  UtenFloatingActionGroup.scrollClearance,
+                              columns: warehouseSalesOutboundTableColumns(
+                                l10n:
+                                    Localizations.of<AppLocalizations>(
+                                      context,
+                                      AppLocalizations,
+                                    ) ??
+                                    AppLocalizationsZh(),
+                                rows: rows,
+                                // V631：发出仓按行在表格里选，预填建议仓。
+                                draftOf: (_) => _picking,
+                                onDraftChanged: () => setState(() {}),
+                                stockPlaceControllerOf:
+                                    detail.header.allows(
+                                      WarehouseSalesOutboundAction
+                                          .confirmShipment,
+                                    )
+                                    ? (row) => _picking?.places[row.line.id]
+                                    : null,
+                                editingEnabled:
+                                    !_acting && !_confirming && !_needsReview,
+                              ),
+                              items: rows,
+                              rowKeyOf: (row) => row.key,
+                              facets: const {},
+                              nullCounts: const {},
+                              filters: const {},
+                              onFilterChanged: (_, _) {},
+                              emptyMessage: '该任务暂无出库明细',
                             ),
-                            const SizedBox(height: UtenSpacing.s8),
-                            Expanded(
-                              child:
-                                  MasterDataTableView<
-                                    WarehouseSalesOutboundTableRow
-                                  >(
-                                    key: const Key(
-                                      'warehouse-sales-outbound-detail-table',
-                                    ),
-                                    primary: true,
-                                    bottomContentPadding:
-                                        UtenFloatingActionGroup.scrollClearance,
-                                    columns: warehouseSalesOutboundTableColumns(
-                                      l10n:
-                                          Localizations.of<AppLocalizations>(
-                                            context,
-                                            AppLocalizations,
-                                          ) ??
-                                          AppLocalizationsZh(),
-                                      rows: rows,
-                                      // V631：发出仓按行在表格里选，预填建议仓。
-                                      draftOf: (_) => _picking,
-                                      onDraftChanged: () => setState(() {}),
-                                      stockPlaceControllerOf:
-                                          detail.header.allows(
-                                            WarehouseSalesOutboundAction
-                                                .confirmShipment,
-                                          )
-                                          ? (row) =>
-                                                _picking?.places[row.line.id]
-                                          : null,
-                                      editingEnabled:
-                                          !_acting &&
-                                          !_confirming &&
-                                          !_needsReview,
-                                    ),
-                                    items: rows,
-                                    rowKeyOf: (row) => row.key,
-                                    facets: const {},
-                                    nullCounts: const {},
-                                    filters: const {},
-                                    onFilterChanged: (_, _) {},
-                                    emptyMessage: '该任务暂无出库明细',
-                                  ),
-                            ),
-                          ],
-                        ),
                       ),
                     ),
             ),
@@ -512,13 +493,6 @@ class _OutboundStatusBanner extends StatelessWidget {
                 detail.header.warehouseWorkStatus,
               ),
               style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              '仓库作业视图不包含商业与财务信息，也不提供销售业务编辑操作。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
             ),
           ],
         ),

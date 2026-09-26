@@ -18,7 +18,22 @@ import '../widgets/warehouse_task_center_scaffold.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 class WarehouseDrawTaskCenterPage extends ConsumerWidget {
-  const WarehouseDrawTaskCenterPage({super.key});
+  const WarehouseDrawTaskCenterPage({
+    super.key,
+    this.embedded = false,
+    this.externalKeyword,
+    this.externalRefreshTick,
+    this.externalHeader,
+  });
+
+  /// 嵌入态：作为合并页（/warehouse/tasks）「生产领料」大类的正文，见骨架注释。
+  final bool embedded;
+  final String? externalKeyword;
+  final int? externalRefreshTick;
+
+  /// 宿主（合并页）的大类行：嵌入态挂进分段视图折叠头随页滚走
+  /// （2026-09-24「表格完全置顶」）。
+  final Widget? externalHeader;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -38,7 +53,6 @@ class WarehouseDrawTaskCenterPage extends ConsumerWidget {
     return WarehouseTaskCenterScaffold(
       location: RouteName.warehouseDrawTasks,
       title: '生产领料任务中心',
-      subtitle: '待领任务 · 领料单 · 生产退料一站式办理',
       searchHint: '搜索单号 / 生产计划 / 货品 / 车间',
       segments: [
         WarehouseTaskSegmentSpec(
@@ -53,28 +67,36 @@ class WarehouseDrawTaskCenterPage extends ConsumerWidget {
           count: returnCount,
         ),
       ],
+      embedded: embedded,
+      externalKeyword: externalKeyword,
+      externalRefreshTick: externalRefreshTick,
+      externalHeader: externalHeader,
       onResume: () => invalidateWarehouseTaskCounts(ref),
-      bodyBuilder: (segment, keyword, refreshTick) => switch (segment) {
-        'pending' => WarehouseDrawTaskSegment(
-          keyword: keyword,
-          refreshTick: refreshTick,
-        ),
-        // 生产领料/退料由生产链自动生成（齐套建 DRAW、报工/退料闭环），
-        // 不提供手工新建入口——手工单没有计划包与执行段映射，出库链路会
-        // 被台账守卫拒绝，属死路；临时性出入库请用「其它入库/其它出库」。
-        'draw' => WarehouseStockDocSegment(
-          docType: StockDocType.draw,
-          keyword: keyword,
-          refreshTick: refreshTick,
-        ),
-        _ => WarehouseStockDocSegment(
-          docType: StockDocType.wdraw,
-          pendingReturnCount: returnCount,
-          productionReturnRequests: true,
-          keyword: keyword,
-          refreshTick: refreshTick,
-        ),
-      },
+      bodyBuilder: (segment, keyword, refreshTick, headerPrefix) =>
+          switch (segment) {
+            'pending' => WarehouseDrawTaskSegment(
+              keyword: keyword,
+              refreshTick: refreshTick,
+              externalHeader: headerPrefix,
+            ),
+            // 生产领料/退料由生产链自动生成（齐套建 DRAW、报工/退料闭环），
+            // 不提供手工新建入口——手工单没有计划包与执行段映射，出库链路会
+            // 被台账守卫拒绝，属死路；临时性出入库请用「其它入库/其它出库」。
+            'draw' => WarehouseStockDocSegment(
+              docType: StockDocType.draw,
+              keyword: keyword,
+              refreshTick: refreshTick,
+              externalHeader: headerPrefix,
+            ),
+            _ => WarehouseStockDocSegment(
+              docType: StockDocType.wdraw,
+              pendingReturnCount: returnCount,
+              productionReturnRequests: true,
+              keyword: keyword,
+              refreshTick: refreshTick,
+              externalHeader: headerPrefix,
+            ),
+          },
     );
   }
 }

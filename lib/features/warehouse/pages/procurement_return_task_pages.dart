@@ -9,19 +9,22 @@ import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
-import '../../../shared/widgets/metric_filter_cards.dart';
 import '../repositories/procurement_inbound_repository.dart';
 import '../../../shared/badges/badge_registry.dart';
 
@@ -42,6 +45,9 @@ class ProcurementReturnTasksPage extends ConsumerStatefulWidget {
       _ProcurementReturnTasksPageState();
 }
 
+/// 分段值：待退回队列 / 历史记录（已退回，时间门控）。null = 未选择引导态。
+enum _ReturnSeg { pending, history }
+
 class _ProcurementReturnTasksPageState
     extends ConsumerState<ProcurementReturnTasksPage> {
   PagedResult<ProcurementArrivalException>? _result;
@@ -51,17 +57,30 @@ class _ProcurementReturnTasksPageState
   final Set<String> _selected = {};
   bool _batchSaving = false;
 
+  /// 当前分段；null = 未选（2026-09-24 任务中心统一范式：未选不发请求）。
+  _ReturnSeg? _seg;
+
+  /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+
+  /// 页级搜索关键字（分段行搜索框，300ms 防抖后进请求）。
+  String _keyword = '';
+
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
   String? _myLocation;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
   }
 
+  bool get _shouldLoad =>
+      _seg != null && (_seg != _ReturnSeg.history || !_historyTime.isNone);
+
   Future<void> _load(int page) async {
+    if (!_shouldLoad) return;
     final requestVersion = ++_requestVersion;
+    final range = _seg == _ReturnSeg.history ? _historyTime.range : null;
     setState(() {
       _loading = true;
       _error = null;
@@ -69,7 +88,16 @@ class _ProcurementReturnTasksPageState
     try {
       final result = await ref
           .read(procurementInboundRepositoryProvider)
-          .ownerTasks(page: page, orderType: widget.orderType);
+          .ownerTasks(
+            page: page,
+            orderType: widget.orderType,
+            status: _seg == _ReturnSeg.history ? 'COMPLETED' : null,
+            dateFrom: range == null
+                ? null
+                : ChinaDateTime.formatDate(range.start),
+            dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+            keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
+          );
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _result = result;
@@ -227,7 +255,15 @@ class _ProcurementReturnTasksPageState
         ],
       ),
       body: SafeArea(
-        child: _loading && result == null
+        // 2026-09-24 任务中心统一范式：分段未选 / 历史段时间未选 → 引导占位不发请求。
+        child: _seg == null
+            ? const UtenFilterPlaceholder(
+                message: '在上方选择分类后开始办理',
+                description: '待退回 = 等您确认实物已退；历史记录 = 已退回的任务',
+              )
+            : _seg == _ReturnSeg.history && _historyTime.isNone
+            ? const UtenHistoryTimePlaceholder()
+            : _loading && result == null
             ? const UtenSkeletonList()
             : _error != null && result == null
             ? UtenEmpty.error(
@@ -315,20 +351,64 @@ class _ProcurementReturnTasksPageState
                 : UtenFloatingActionGroup.scrollClearance,
           ),
           children: [
-            // 顶部计数卡与任务工作台统一（MetricFilterCards 横幅式单卡，纯展示）。
-            MetricFilterCards(
-              itemWidth: double.infinity,
-              items: [
-                MetricFilterCardItem(
-                  key: 'pending-return',
-                  label: '待退供应商',
-                  value: result.total,
-                  tone: 'warning',
-                  icon: Icons.assignment_return_outlined,
-                  description: '仅原$_moduleLabel下单人确认实物已退回，不再决定入库数量。',
+            // 2026-09-24 任务中心统一：分段行（待退回红徽章 / 历史记录时间门控）
+            // + 页级搜索。红徽章与 hub「待退回供应商」卡同源（徽章汇总入口）。
+            UtenFilterToolbar<_ReturnSeg>(
+              segmentsKey: const Key('procurement-return-task-segments'),
+              segments: [
+                UtenFilterSegment(
+                  value: _ReturnSeg.pending,
+                  label: '待退回',
+                  count: ref.watch(
+                    badgeEntryTodoProvider(
+                      widget.orderType ==
+                              ProcurementInboundOrderType.subcontract
+                          ? BadgeEntry.subcontractSupplierReturn
+                          : BadgeEntry.purchaseSupplierReturn,
+                    ),
+                  ),
+                  countForm: UtenSegmentCountForm.actionable,
+                ),
+                const UtenFilterSegment(
+                  value: _ReturnSeg.history,
+                  label: '历史记录',
                 ),
               ],
+              selected: {_seg!},
+              onSelectionChanged: (value) {
+                if (value == _seg) return;
+                setState(() {
+                  _seg = value;
+                  _selected.clear();
+                  if (value != _ReturnSeg.history) {
+                    _historyTime = const UtenHistoryTimeValue.none();
+                  }
+                });
+                if (value != _ReturnSeg.history || !_historyTime.isNone) {
+                  _load(1);
+                }
+              },
+              searchHint: '搜索单号 / 货品 / 供应商',
+              initialSearchValue: _keyword,
+              onSearchChanged: (value) {
+                final normalized = value.trim();
+                if (normalized == _keyword) return;
+                _keyword = normalized;
+                if (_shouldLoad) _load(1);
+              },
             ),
+            if (_seg == _ReturnSeg.history) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              UtenHistoryTimeFilter(
+                key: const Key('procurement-return-task-history-time'),
+                value: _historyTime,
+                onChanged: (value) {
+                  if (value == _historyTime) return;
+                  setState(() => _historyTime = value);
+                  _load(1);
+                },
+              ),
+            ],
             if (_error != null) ...[
               const SizedBox(height: UtenSpacing.s12),
               Text(
@@ -342,8 +422,12 @@ class _ProcurementReturnTasksPageState
                 height: 380,
                 child: UtenEmpty(
                   icon: Icons.task_alt_rounded,
-                  message: '目前没有待退供应商任务',
-                  description: '只显示由您本人下单、且财务未批准入库的$_moduleLabel数量。',
+                  message: _seg == _ReturnSeg.history
+                      ? '该时间段内没有已退回的任务'
+                      : '目前没有待退供应商任务',
+                  description: _seg == _ReturnSeg.history
+                      ? '换一段时间或选「全部」再试'
+                      : '只显示由您本人下单、且财务未批准入库的$_moduleLabel数量。',
                 ),
               )
             else

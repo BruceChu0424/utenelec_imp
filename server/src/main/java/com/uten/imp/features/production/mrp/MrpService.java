@@ -503,6 +503,8 @@ public class MrpService {
             item.setLineNo(line);
             item.setProductNo(productNoAllocator.allocate(sub.getId(), Set.of()));
             item.setGoodsId(row.goodsId());
+            item.setAllowedOverproductionRate(com.uten.imp.features.production.plan.ProductionOverproductionAllowance
+                    .resolve(em, row.goodsId(), null));
             item.setColorId(row.colorId());
             item.setUnitId(row.unitId());
             item.setUnitRate(BigDecimal.ONE);

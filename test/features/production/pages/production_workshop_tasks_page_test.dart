@@ -19,10 +19,12 @@ import 'package:uten_imp/components/data_display/uten_status_badge.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
+import 'package:uten_imp/features/production/pages/production_material_discovery_request_page.dart';
 import 'package:uten_imp/features/production/models/production_execution_workbench.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_material_repository.dart';
+import 'package:uten_imp/features/production/repositories/production_material_discovery_request_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_material_increment_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
@@ -30,6 +32,7 @@ import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
+  discoveryMaterialTests();
   materialUsageEntryTests();
   routeConfirmationTests();
   batchBusyOverlayTests();
@@ -2085,6 +2088,7 @@ class _WorkshopLoadGate {
 }
 
 ProductionExecutionWorkbenchRepository _repository({
+  Map<String, dynamic> aDiscovery = const {},
   _WorkshopLoadGate? loadGate,
   bool mixedWorkshops = false,
   bool withWaitingRow = false,
@@ -2163,6 +2167,7 @@ ProductionExecutionWorkbenchRepository _repository({
                 'drawRequested': drawRequested,
                 'canRequestDraw': !readyIssued && !drawRequested,
                 'hasSharedMaterialActivity': sharedMaterial,
+                ...aDiscovery,
                 if (fullyReceived) ...{
                   'plannedQty': 10000,
                   'reportedQty': 10000,
@@ -2584,5 +2589,122 @@ class _CountingBadgeSummary extends BadgeSummaryNotifier {
   Future<void> refresh() async {
     refreshes++;
     state = next;
+  }
+}
+
+class _DiscoveryRequests extends ProductionMaterialDiscoveryRequestRepository {
+  _DiscoveryRequests() : super(ApiClient(Dio()));
+  final requested = <String>[];
+  final cancelled = <String>[];
+  @override
+  Future<void> request(String id, int version, String key) async {
+    requested.add(id);
+  }
+
+  @override
+  Future<void> cancel(String id) async {
+    cancelled.add(id);
+  }
+}
+
+void discoveryMaterialTests() {
+  for (final size in [const Size(390, 844), const Size(760, 900)]) {
+    testWidgets(
+      'material discovery request review adapts to $size with large text',
+      (tester) async {
+        await tester.binding.setSurfaceSize(size);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          ProviderScope(
+            child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: const Locale('zh'),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: const TextScaler.linear(1.4)),
+                child: child!,
+              ),
+              home: ProductionMaterialDiscoveryRequestPage(
+                tasks: [
+                  ProductionExecutionWorkbenchSegment.fromJson(
+                    _task('one', '塑料外壳', 'READY'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('discovery-request-submit')),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  for (final pending in [false, true]) {
+    testWidgets(
+      'unknown leaf material request preserves explicit warehouse step pending=$pending',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1600, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final router = _router();
+        addTearDown(router.dispose);
+        final requests = _DiscoveryRequests();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              currentPermissionsProvider.overrideWithValue(const {
+                Perm.productionExecutionView,
+                Perm.productionExecutionStart,
+              }),
+              productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+                _repository(
+                  aDiscovery: {
+                    'materialDiscoveryRequired': true,
+                    'canRequestMaterialDiscovery': !pending,
+                    'materialDiscoveryStatus': pending ? 'PENDING' : null,
+                    'materialDiscoveryRequestId': pending ? 'request-a' : null,
+                    'zeroMaterial': false,
+                    'canStart': false,
+                    'canRequestDraw': false,
+                  },
+                ),
+              ),
+              productionMaterialDiscoveryRequestRepositoryProvider
+                  .overrideWithValue(requests),
+            ],
+            child: MaterialApp.router(
+              routerConfig: router,
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: const Locale('zh'),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('等待物料'));
+        await tester.pumpAndSettle();
+        expect(find.text(pending ? '待仓库填写物料' : '需要登记领料物料'), findsWidgets);
+        await _rightClick(tester, find.text('产品 A'));
+        if (pending) {
+          await tester.tap(_menuEntry('撤回待登记领料申请'));
+          await tester.pumpAndSettle();
+          expect(requests.cancelled, ['request-a']);
+        } else {
+          await tester.tap(_menuEntry('去领料(查看领料汇总)'));
+          await tester.pumpAndSettle();
+          expect(requests.requested, isEmpty);
+          expect(find.text('确认领料申请'), findsOneWidget);
+          await tester.tap(find.byKey(const Key('discovery-request-submit')));
+          await tester.pumpAndSettle();
+          expect(requests.requested, ['segment-a']);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 }

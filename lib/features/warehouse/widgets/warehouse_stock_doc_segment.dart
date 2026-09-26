@@ -18,6 +18,7 @@ import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
@@ -62,6 +63,7 @@ class WarehouseStockDocSegment extends ConsumerStatefulWidget {
     this.refreshTick = 0,
     this.pendingReturnCount,
     this.productionReturnRequests = false,
+    this.externalHeader,
   });
 
   final StockDocType docType;
@@ -76,6 +78,10 @@ class WarehouseStockDocSegment extends ConsumerStatefulWidget {
 
   /// 父页面「返回即刷新」信号：变化时静默重拉当前页。
   final int refreshTick;
+
+  /// 宿主（任务中心大类行 + 小类行）：挂进折叠头随页滚走
+  /// （2026-09-24 用户口径「表格完全置顶」）。
+  final Widget? externalHeader;
 
   @override
   ConsumerState<WarehouseStockDocSegment> createState() =>
@@ -326,198 +332,202 @@ class _WarehouseStockDocSegmentState
       listenable: _list,
       builder: (context, _) {
         final total = _list.total;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 小类行 1：单据状态（无「全部」段；末尾历史单据时间门控段）。
-            // 进页面不预选（未选不发请求，显示引导占位）。
-            // 徽章口径：草稿不计入待办数，各段不挂。
-            Padding(
-              padding: const EdgeInsets.only(
-                bottom: UtenSpacing.s8,
-                left: UtenSpacing.s4,
-                right: UtenSpacing.s4,
-              ),
-              child: UtenFilterToolbar<_StockSegSeg>(
-                segmentsKey: Key(
-                  'stock-doc-segment-status-${widget.docType.code}',
-                ),
-                segments: [
-                  UtenFilterSegment(
-                    value: const _StockSegSeg.stage(0),
-                    label: isReturn ? '待仓库收料' : '草稿',
-                    count: isReturn ? widget.pendingReturnCount : null,
-                    countForm: UtenSegmentCountForm.actionable,
-                  ),
-                  UtenFilterSegment(
-                    value: const _StockSegSeg.stage(1),
-                    label: isReturn ? '仓库已收料' : '已审',
-                  ),
-                  const UtenFilterSegment(
-                    value: _StockSegSeg.stage(-1),
-                    label: '红冲',
-                  ),
-                  const UtenFilterSegment(
-                    value: _StockSegSeg.history(),
-                    label: '历史单据',
-                  ),
-                ],
-                selected: seg == null ? const {} : {seg},
-                onSelectionChanged: _selectSeg,
-              ),
-            ),
-            // 小类行 2（领退料）：出库进度——选中真实状态段后出现；
-            // 无「全部进度」段，默认不选 = 不附加过滤。
-            if (showIssueStatus && seg != null && !seg.history)
+        // 2026-09-24 用户口径「表格完全置顶」：小类行/时间行/总结行全部进
+        // 折叠头随页滚走，body 只剩表格（primary 拾取联动控制器）。
+        return UtenCollapsingHeaderScrollView(
+          collapsingHeader: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (widget.externalHeader != null) ...[
+                widget.externalHeader!,
+                const SizedBox(height: UtenSpacing.s12),
+              ],
+              // 小类行 1：单据状态（无「全部」段；末尾历史单据时间门控段）。
+              // 进页面不预选（未选不发请求，显示引导占位）。
+              // 徽章口径：草稿不计入待办数，各段不挂。
               Padding(
                 padding: const EdgeInsets.only(
                   bottom: UtenSpacing.s8,
                   left: UtenSpacing.s4,
                   right: UtenSpacing.s4,
                 ),
-                child: UtenFilterToolbar<int>(
+                child: UtenFilterToolbar<_StockSegSeg>(
                   segmentsKey: Key(
-                    'stock-doc-segment-issue-${widget.docType.code}',
+                    'stock-doc-segment-status-${widget.docType.code}',
                   ),
-                  segments: const [
-                    UtenFilterSegment(value: 0, label: '未出库'),
-                    UtenFilterSegment(value: 1, label: '部分出库'),
-                    UtenFilterSegment(value: 2, label: '已出完'),
+                  segments: [
+                    UtenFilterSegment(
+                      value: const _StockSegSeg.stage(0),
+                      label: isReturn ? '待仓库收料' : '草稿',
+                      count: isReturn ? widget.pendingReturnCount : null,
+                      countForm: UtenSegmentCountForm.actionable,
+                    ),
+                    UtenFilterSegment(
+                      value: const _StockSegSeg.stage(1),
+                      label: isReturn ? '仓库已收料' : '已审',
+                    ),
+                    const UtenFilterSegment(
+                      value: _StockSegSeg.stage(-1),
+                      label: '红冲',
+                    ),
+                    const UtenFilterSegment(
+                      value: _StockSegSeg.history(),
+                      label: '历史单据',
+                    ),
                   ],
-                  selected: _issueStatus == null
-                      ? const <int>{}
-                      : {_issueStatus!},
-                  onSelectionChanged: (value) {
-                    setState(() => _issueStatus = value);
-                    _reload(1);
-                  },
+                  selected: seg == null ? const {} : {seg},
+                  onSelectionChanged: _selectSeg,
                 ),
               ),
-            // 历史单据段时间行。
-            if (seg?.history == true)
+              // 小类行 2（领退料）：出库进度——选中真实状态段后出现；
+              // 无「全部进度」段，默认不选 = 不附加过滤。
+              if (showIssueStatus && seg != null && !seg.history)
+                Padding(
+                  padding: const EdgeInsets.only(
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
+                  child: UtenFilterToolbar<int>(
+                    segmentsKey: Key(
+                      'stock-doc-segment-issue-${widget.docType.code}',
+                    ),
+                    segments: const [
+                      UtenFilterSegment(value: 0, label: '未出库'),
+                      UtenFilterSegment(value: 1, label: '部分出库'),
+                      UtenFilterSegment(value: 2, label: '已出完'),
+                    ],
+                    selected: _issueStatus == null
+                        ? const <int>{}
+                        : {_issueStatus!},
+                    onSelectionChanged: (value) {
+                      setState(() => _issueStatus = value);
+                      _reload(1);
+                    },
+                  ),
+                ),
+              // 历史单据段时间行。
+              if (seg?.history == true)
+                Padding(
+                  padding: const EdgeInsets.only(
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
+                  child: UtenHistoryTimeFilter(
+                    key: Key(
+                      'stock-doc-segment-history-time-${widget.docType.code}',
+                    ),
+                    value: _historyTime,
+                    onChanged: _onHistoryTime,
+                  ),
+                ),
+              // 总结行：左「共 N 条」右「新建」。
               Padding(
                 padding: const EdgeInsets.only(
                   bottom: UtenSpacing.s8,
                   left: UtenSpacing.s4,
                   right: UtenSpacing.s4,
                 ),
-                child: UtenHistoryTimeFilter(
-                  key: Key(
-                    'stock-doc-segment-history-time-${widget.docType.code}',
-                  ),
-                  value: _historyTime,
-                  onChanged: _onHistoryTime,
-                ),
-              ),
-            // 总结行：左「共 N 条」右「新建」。
-            Padding(
-              padding: const EdgeInsets.only(
-                bottom: UtenSpacing.s8,
-                left: UtenSpacing.s4,
-                right: UtenSpacing.s4,
-              ),
-              child: Row(
-                children: [
-                  if (_shouldLoad)
-                    Semantics(
-                      liveRegion: true,
-                      label: '共 $total 张${widget.docType.label}',
-                      child: Text(
-                        '共 $total 条 · 双击办理',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                child: Row(
+                  children: [
+                    if (_shouldLoad)
+                      Semantics(
+                        liveRegion: true,
+                        label: '共 $total 张${widget.docType.label}',
+                        child: Text(
+                          '共 $total 条 · 双击办理',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
-                    ),
-                  const Spacer(),
-                  if (_canCreate)
-                    UtenButton(
-                      type: UtenButtonType.tonal,
-                      icon: Icons.add_rounded,
-                      onPressed: () => context.push(
-                        RoutePath.stockDocNew(widget.docType.code),
+                    const Spacer(),
+                    if (_canCreate)
+                      UtenButton(
+                        type: UtenButtonType.tonal,
+                        icon: Icons.add_rounded,
+                        onPressed: () => context.push(
+                          RoutePath.stockDocNew(widget.docType.code),
+                        ),
+                        child: Text(widget.createLabel!),
                       ),
-                      child: Text(widget.createLabel!),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Expanded(
-              child: seg == null
-                  ? const UtenFilterPlaceholder(
-                      message: '在上方选择分类后开始办理',
-                      description: '分类默认不选中；历史单据需先选时间段或「全部」',
-                    )
-                  : seg.history && _historyTime.isNone
-                  ? const UtenHistoryTimePlaceholder()
-                  : MasterDataTableView<StockDocListItem>(
-                      key: Key(
-                        'stock-doc-segment-table-${widget.docType.code}',
-                      ),
-                      selectable: _canBatchOutbound,
-                      rowKeyOf: (d) => d.id,
-                      idOf: (d) =>
-                          !_list.loading &&
-                              _list.error == null &&
-                              d.status == 0 &&
-                              !d.closed
-                          ? d.id
-                          : null,
-                      selectedIds: _selectedIds,
-                      onSelectedIdsChanged: (next) => setState(() {
-                        _selectedIds
-                          ..clear()
-                          ..addAll(next);
-                      }),
-                      batchActionsBuilder: !_canBatchOutbound
-                          ? null
-                          : (_, ids) => [
-                              UtenButton(
-                                key: Key(
-                                  'stock-doc-batch-outbound-${widget.docType.code}',
-                                ),
-                                type: UtenButtonType.danger,
-                                size: UtenButtonSize.large,
-                                icon: Icons.outbound_outlined,
-                                onPressed:
-                                    ids.isEmpty ||
-                                        _list.loading ||
-                                        _list.error != null
-                                    ? null
-                                    : _openBatch,
-                                child: Text(l10n.warehouseStockOutboundAction),
-                              ),
-                            ],
-                      bottomContentPadding: _canBatchOutbound
-                          ? UtenFloatingActionGroup.scrollClearance
-                          : 0,
-                      columns: _columns(),
-                      items: _list.page?.items ?? const [],
-                      facets: const {},
-                      nullCounts: const {},
-                      filters: const {},
-                      onFilterChanged: (_, _) {},
-                      sortColumn: _list.sortKey == 'total'
-                          ? null
-                          : _list.sortKey,
-                      sortAscending: _list.sortAsc,
-                      onSortChange: _onSortChange,
-                      onRowTap: (it) => context.push(
-                        RoutePath.stockDocDetail(widget.docType.code, it.id),
-                      ),
-                      isLoading: _list.isLoadingFirst,
-                      loadingMore: _list.isLoadingMore,
-                      error: _list.error,
-                      onRetry: () => _reload(),
-                      emptyMessage: seg.history
-                          ? '该时间段内暂无${widget.docType.label}'
-                          : '暂无${widget.docType.label}',
-                      currentPage: _list.currentPage,
-                      totalPages: _list.totalPages,
-                      onPageChange: (p) => _reload(p),
-                    ),
-            ),
-          ],
+            ],
+          ),
+          body: seg == null
+              ? const UtenFilterPlaceholder(
+                  message: '在上方选择分类后开始办理',
+                  description: '分类默认不选中；历史单据需先选时间段或「全部」',
+                )
+              : seg.history && _historyTime.isNone
+              ? const UtenHistoryTimePlaceholder()
+              : MasterDataTableView<StockDocListItem>(
+                  // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+                  primary: true,
+                  key: Key('stock-doc-segment-table-${widget.docType.code}'),
+                  selectable: _canBatchOutbound,
+                  rowKeyOf: (d) => d.id,
+                  idOf: (d) =>
+                      !_list.loading &&
+                          _list.error == null &&
+                          d.status == 0 &&
+                          !d.closed
+                      ? d.id
+                      : null,
+                  selectedIds: _selectedIds,
+                  onSelectedIdsChanged: (next) => setState(() {
+                    _selectedIds
+                      ..clear()
+                      ..addAll(next);
+                  }),
+                  batchActionsBuilder: !_canBatchOutbound
+                      ? null
+                      : (_, ids) => [
+                          UtenButton(
+                            key: Key(
+                              'stock-doc-batch-outbound-${widget.docType.code}',
+                            ),
+                            type: UtenButtonType.danger,
+                            size: UtenButtonSize.large,
+                            icon: Icons.outbound_outlined,
+                            onPressed:
+                                ids.isEmpty ||
+                                    _list.loading ||
+                                    _list.error != null
+                                ? null
+                                : _openBatch,
+                            child: Text(l10n.warehouseStockOutboundAction),
+                          ),
+                        ],
+                  bottomContentPadding: _canBatchOutbound
+                      ? UtenFloatingActionGroup.scrollClearance
+                      : 0,
+                  columns: _columns(),
+                  items: _list.page?.items ?? const [],
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  sortColumn: _list.sortKey == 'total' ? null : _list.sortKey,
+                  sortAscending: _list.sortAsc,
+                  onSortChange: _onSortChange,
+                  onRowTap: (it) => context.push(
+                    RoutePath.stockDocDetail(widget.docType.code, it.id),
+                  ),
+                  isLoading: _list.isLoadingFirst,
+                  loadingMore: _list.isLoadingMore,
+                  error: _list.error,
+                  onRetry: () => _reload(),
+                  emptyMessage: seg.history
+                      ? '该时间段内暂无${widget.docType.label}'
+                      : '暂无${widget.docType.label}',
+                  currentPage: _list.currentPage,
+                  totalPages: _list.totalPages,
+                  onPageChange: (p) => _reload(p),
+                ),
         );
       },
     );

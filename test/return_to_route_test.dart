@@ -58,15 +58,12 @@ void main() {
 
   group('encoded returnTo route builders', () {
     test(
-      'entry selection preserves the matching employee or visitor target',
+      'login builders preserve the matching portal target',
+      // 入口选择页已退役(2026-09-25)：登录/访客登录构建器各自保留对应门户的
+      // returnTo，跨门户目标照旧丢弃。
       () {
         const employeeTarget = '/finance/assets?status=pending&owner=me';
-        final employeeEntry = RoutePath.entry(returnTo: employeeTarget);
-        final carriedEmployee = returnToFromUri(
-          Uri.parse(employeeEntry),
-          scope: ReturnToScope.any,
-        );
-        final employeeLogin = RoutePath.login(returnTo: carriedEmployee);
+        final employeeLogin = RoutePath.login(returnTo: employeeTarget);
 
         expect(Uri.parse(employeeLogin).path, RouteName.login);
         expect(
@@ -79,12 +76,7 @@ void main() {
         expect(employeeLogin, contains('%2Ffinance%2Fassets'));
 
         const visitorTarget = '/visitor/apply/visitor-1?from=message';
-        final visitorEntry = RoutePath.entry(returnTo: visitorTarget);
-        final carriedVisitor = returnToFromUri(
-          Uri.parse(visitorEntry),
-          scope: ReturnToScope.any,
-        );
-        final visitorLogin = RoutePath.visitorLogin(returnTo: carriedVisitor);
+        final visitorLogin = RoutePath.visitorLogin(returnTo: visitorTarget);
 
         expect(Uri.parse(visitorLogin).path, RouteName.visitorLogin);
         expect(
@@ -121,7 +113,6 @@ void main() {
     });
 
     test('omitted or unsafe targets use the existing default route URLs', () {
-      expect(RoutePath.entry(), RouteName.entry);
       expect(RoutePath.login(), RouteName.login);
       expect(RoutePath.visitorLogin(), RouteName.visitorLogin);
       expect(RoutePath.changePassword(), RouteName.changePassword);

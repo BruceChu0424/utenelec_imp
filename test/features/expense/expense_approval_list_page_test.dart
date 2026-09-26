@@ -202,7 +202,11 @@ void main() {
     _table(tester).onSelectedIdsChanged!({'c-1', 'c-2'});
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('expense-batch-reject')));
+    // 2026-09-24 统计条移入折叠头后矮视口下浮动批量条略低于折沿，先滚入视野。
+    final reject = find.byKey(const Key('expense-batch-reject'));
+    await tester.ensureVisible(reject);
+    await tester.pumpAndSettle();
+    await tester.tap(reject);
     await tester.pumpAndSettle();
     expect(find.byType(UtenBatchRejectDialog), findsOneWidget);
     expect(

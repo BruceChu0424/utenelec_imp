@@ -67,11 +67,10 @@ Widget _app({
     home: WarehouseTaskCenterScaffold(
       location: '/warehouse/tasks/test',
       title: '测试任务中心',
-      subtitle: '范围',
       searchHint: '搜索',
       initialSegment: 'list',
       segments: const [WarehouseTaskSegmentSpec(value: 'list', label: '列表')],
-      bodyBuilder: (segment, keyword, refreshTick) =>
+      bodyBuilder: (segment, keyword, refreshTick, _) =>
           _ScopeProbe(refreshTick: refreshTick, seen: seen),
     ),
   ),

@@ -65,21 +65,21 @@ class SalesOrderProgressStageTest {
         // 参数尾部四项：出货草稿 / 等待财审 / 财务退回 / 财务已放行待出库 的在途数量（V631）。
         // 预留 10 全部开了出货单待财审：不再算「可分批发货」，而是出货待财审。
         assertEquals("SHIPMENT_PENDING",
-                SalesOrderService.progressStageOf(10, 10, 0, 10, 10, 0, false, false, false, 0, 10, 0, 0));
+                SalesOrderService.progressStageOf(10, 10, 0, 10, 10, 0, false, false, false, 0, 10, 0, 0, false));
         // 财务已放行、仓库未出库：等仓库出货。
         assertEquals("WAREHOUSE_PENDING",
-                SalesOrderService.progressStageOf(10, 10, 0, 10, 10, 0, false, false, false, 0, 0, 0, 10));
+                SalesOrderService.progressStageOf(10, 10, 0, 10, 10, 0, false, false, false, 0, 0, 0, 10, false));
         // 部分在途、剩余仍有预留：可分批发货优先——剩余量才是销售的待办。
         assertEquals("SHIPPABLE",
-                SalesOrderService.progressStageOf(10, 10, 0, 10, 10, 0, false, false, false, 0, 4, 0, 0));
+                SalesOrderService.progressStageOf(10, 10, 0, 10, 10, 0, false, false, false, 0, 4, 0, 0, false));
         // 出货草稿、财务退回同样是出货在途。
         assertEquals("SHIPMENT_PENDING",
-                SalesOrderService.progressStageOf(10, 10, 0, 10, 10, 0, false, false, false, 10, 0, 0, 0));
+                SalesOrderService.progressStageOf(10, 10, 0, 10, 10, 0, false, false, false, 10, 0, 0, 0, false));
         assertEquals("SHIPMENT_PENDING",
-                SalesOrderService.progressStageOf(10, 10, 0, 10, 10, 0, false, false, false, 0, 0, 10, 0));
+                SalesOrderService.progressStageOf(10, 10, 0, 10, 10, 0, false, false, false, 0, 0, 10, 0, false));
         // 已出库达订货量仍是终态。
         assertEquals("SHIPPED",
-                SalesOrderService.progressStageOf(10, 10, 10, 0, 10, 0, false, false, false, 0, 0, 0, 0));
+                SalesOrderService.progressStageOf(10, 10, 10, 0, 10, 0, false, false, false, 0, 0, 0, 0, false));
         String expression = SalesOrderService.progressStageExpr();
         org.junit.jupiter.api.Assertions.assertTrue(
                 expression.indexOf("'SHIPPED'") < expression.indexOf("'SHIPPABLE'"));
@@ -92,6 +92,30 @@ class SalesOrderProgressStageTest {
                         new com.uten.imp.security.DocumentAccessPolicy.NativeReadScope(
                                 "1=1", null, java.util.Set.of()))
                         .contains("AS shipment_approved_qty"));
+    }
+
+    @Test
+    void draftOrdersCarryTheirOwnStageAndOnlyEnterViaTheDraftStageParameter() {
+        // 草稿单（bill_status=0 且未驳回）即使数量像在途，也不派生生产阶段——
+        // 它是「本人开了头没交出去」的活，只进「草稿」段（红徽章）。
+        assertEquals("DRAFT",
+                SalesOrderService.progressStageOf(10, 5, 0, 5, 10, 0, false, false, false, 0, 0, 0, 0, true));
+        // 驳回优先于草稿：status=0 但 finance_rejected=true 的单仍是 REJECTED（驱回段口径不变）。
+        assertEquals("REJECTED",
+                SalesOrderService.progressStageOf(10, 5, 0, 5, 10, 0, true, false, false, 0, 0, 0, 0, true));
+        assertEquals("DRAFT", SalesOrderService.normalizeProgressStage("draft"));
+        // SQL 镜像同序：驳回 → 草稿 → 终态 → 生产阶段；草稿行只随 :stage='DRAFT' 放进子查询，
+        // 其余 stage（含历史 '' 与两个大类）草稿都不进——不污染既有段落与计数。
+        String expression = SalesOrderService.progressStageExpr();
+        org.junit.jupiter.api.Assertions.assertTrue(
+                expression.indexOf("finance_rejected") < expression.indexOf("bill_status"));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                expression.indexOf("bill_status") < expression.indexOf("is_stopped"));
+        String grouped = SalesOrderService.progressGroupedSql(
+                new com.uten.imp.security.DocumentAccessPolicy.NativeReadScope(
+                        "1=1", null, java.util.Set.of()));
+        org.junit.jupiter.api.Assertions.assertTrue(grouped.contains(":stage = 'DRAFT'"));
+        org.junit.jupiter.api.Assertions.assertTrue(grouped.contains("AS bill_status"));
     }
 
     @Test

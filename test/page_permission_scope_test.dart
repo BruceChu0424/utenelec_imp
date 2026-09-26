@@ -133,7 +133,6 @@ void main() {
       () {
         const excluded = <String>[
           '/',
-          '/entry',
           '/login',
           '/change-password',
           '/access-denied',

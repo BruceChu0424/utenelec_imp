@@ -26,7 +26,8 @@ import java.util.Map;
 public class FulfillmentWorkbenchAccessPolicy {
 
     private static final Map<String, PermissionPair> WAREHOUSE = Map.of(
-            "DRAW", pair("stock_doc:view", "stock_doc:edit"));
+            "DRAW", pair("stock_doc:view", "stock_doc:edit"),
+            "MATERIAL_DISCOVERY", pair("stock_doc:view", "stock_doc:issue"));
 
     private static final Map<String, PermissionPair> PURCHASE = Map.ofEntries(
             Map.entry("PURCHASE_REQUEST", pair("purchase_request:view", "purchase_order:decompose")),

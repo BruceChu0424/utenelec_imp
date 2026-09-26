@@ -40,6 +40,7 @@ final class MaterialAnalysisPreviewParity {
         MATERIAL_FIELDS.put("demandSupplyGapQty", MaterialView::demandSupplyGapQty);
         MATERIAL_FIELDS.put("additionalSupplyRecommendedQty", MaterialView::additionalSupplyRecommendedQty);
         MATERIAL_FIELDS.put("netShortageQty", MaterialView::netShortageQty);
+        MATERIAL_FIELDS.put("planningUncoveredQty", MaterialView::planningUncoveredQty);
         MATERIAL_FIELDS.put("plannedOutputQty", MaterialView::plannedOutputQty);
         MATERIAL_FIELDS.put("internalCommittedOutputQty", MaterialView::internalCommittedOutputQty);
         MATERIAL_FIELDS.put("externalFutureCoverageQty", MaterialView::externalFutureCoverageQty);

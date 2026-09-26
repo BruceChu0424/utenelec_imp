@@ -221,11 +221,14 @@ class BusinessDataResetServicePostgresTest {
         // V680 +2(服务端登录会话、再认证失败计数；清库后所有人重新登录)：300→302。
         // V698/V700 add six approval and immutable output-provenance tables.
         // V703 +1(车间催计划 production_planning_urges, ADR-117)：311→312。
-        assertThat(result.clearedTableCount()).isEqualTo(312);
+        // V710/V711 +4: discovery requests/lines and per-family learning samples/queue.
+        // V712/V715 retain source rights in four more business fact tables.
+        assertThat(result.clearedTableCount()).isEqualTo(320);
         // V617 preserves expense settings; V624/V626/V627 preserve original import-source evidence.
         // V686 保留总账附表行绑定(ADR-112) +1, V677 删除角色体系四张 PRESERVE 表(ADR-109) -4: 102→99。
         // V693 保留仓库负责人(ADR-115) +1: 99→100。
-        assertThat(result.preservedTableCount()).isEqualTo(100);
+        // V711 preserves both learned master profiles and cumulative material totals.
+        assertThat(result.preservedTableCount()).isEqualTo(102);
         // cleared_rows 只统计 CLEAR 表：2 条 outbox、1 条库存余额、1 条待核历史价值池。
         // refresh_tokens 属 PRESERVE，
         // 在终局校验后单独清空，不计入）

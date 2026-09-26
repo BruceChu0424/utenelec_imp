@@ -9,6 +9,128 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get bomLearningTitle => 'BOM learning';
+
+  @override
+  String get materialDiscoveryBatchHelp =>
+      'Select continuous or full-kit production to identify materials before arranging batches.';
+
+  @override
+  String get materialDiscoveryCancel => 'Withdraw material definition request';
+
+  @override
+  String get bomLearningHelp =>
+      'After production and material reconciliation, usage is updated from cumulative net consumption divided by actual output. Existing work orders keep their frozen requirements.';
+
+  @override
+  String get bomLearningInactive =>
+      'No learning record yet. Learning begins when a manufactured leaf item completes material issue and production.';
+
+  @override
+  String get bomLearningAuto => 'BOM updates automatically';
+
+  @override
+  String get bomLearningPaused =>
+      'Automatic updates are paused to protect a manual BOM or resolve material, unit or color conflicts. Accumulated records are retained. Review the component records.';
+
+  @override
+  String get bomLearningOutput => 'Cumulative actual output';
+
+  @override
+  String get bomLearningSamples => 'Valid production batches';
+
+  @override
+  String get bomLearningNet => 'Cumulative net consumption';
+
+  @override
+  String get bomLearningAverage => 'Average usage per unit';
+
+  @override
+  String get materialDiscoveryTitle => 'Record materials to issue';
+
+  @override
+  String get materialDiscoveryHelp =>
+      'Confirm with the workshop, add the materials, quantities and physical warehouses, then issue them from the generated draw documents.';
+
+  @override
+  String get materialDiscoveryRequestHelp =>
+      'These manufactured items have no material definition yet. Send the request, then confirm the materials with the warehouse. Actual issue is required before starting.';
+
+  @override
+  String get materialDiscoveryPending => 'Awaiting warehouse material entry';
+
+  @override
+  String get materialDiscoveryNeeded => 'Materials must be identified';
+
+  @override
+  String get materialDiscoverySend => 'Request materials';
+
+  @override
+  String get materialDiscoverySave => 'Create draw documents';
+
+  @override
+  String get materialDiscoverySaved =>
+      'Materials recorded. Review and issue them from the draw documents.';
+
+  @override
+  String get materialDiscoveryInvalid =>
+      'Choose a material and physical warehouse on each row, and enter a positive quantity with up to 4 decimal places. The goods base unit is used.';
+
+  @override
+  String get materialDiscoveryUncertain =>
+      'The result is uncertain. Your input is preserved. Check the result or retry the same request.';
+
+  @override
+  String get materialDiscoveryCheck => 'Check submitted result';
+
+  @override
+  String get materialDiscoveryPick => 'Choose material';
+
+  @override
+  String get materialDiscoveryWarehouse => 'Physical issue warehouse';
+
+  @override
+  String get materialDiscoveryQuantity => 'Quantity to issue';
+
+  @override
+  String get materialDiscoveryUnit => 'Unit';
+
+  @override
+  String get materialDiscoveryCode => 'Code';
+
+  @override
+  String get materialDiscoveryColor => 'Color';
+
+  @override
+  String get materialDiscoveryLoadFailed =>
+      'Could not load the material request. Try again.';
+
+  @override
+  String get materialDiscoveryNoPermission =>
+      'You do not have permission to define materials for this request.';
+
+  @override
+  String get materialDiscoveryDone =>
+      'This request has been processed. Open its draw documents.';
+
+  @override
+  String get materialDiscoveryOpenDraw => 'Open draw document';
+
+  @override
+  String get materialDiscoveryRetry => 'Retry';
+
+  @override
+  String get materialDiscoveryRequestSent =>
+      'Material request sent. Awaiting warehouse material entry.';
+
+  @override
+  String get materialDiscoveryMissingUnit =>
+      'This material has no base unit. Complete its goods record first.';
+
+  @override
+  String get materialDiscoveryRequestTitle => 'Review material request';
+
+  @override
   String get appTitle => 'Uten Integrated Management Platform';
 
   @override
@@ -146,12 +268,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileChangePassword => 'Change password';
-
-  @override
-  String get entryStaff => 'Staff Sign In';
-
-  @override
-  String get entryVisitor => 'Visitor Sign In';
 
   @override
   String get visitorLoginTitle => 'Visitor Sign In';
@@ -1940,10 +2056,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseHubSectionInventory => 'Inventory queries';
 
   @override
-  String get warehouseHubSectionInventoryDesc =>
-      'Live stock, balances, movements';
-
-  @override
   String get warehouseHubSectionReports => 'Warehouse reports';
 
   @override
@@ -2264,6 +2376,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialRequired => 'Qty needed';
 
   @override
+  String get materialPublicAvailable => 'Public available';
+
+  @override
   String get materialShortage => 'Still short';
 
   @override
@@ -2301,11 +2416,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String materialAggregateSources(int products, int paths) {
     return '$products products · $paths paths';
-  }
-
-  @override
-  String materialCreateRoutes(int count) {
-    return 'Confirm routes ($count)';
   }
 
   @override
@@ -2364,7 +2474,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String materialRoutesNext(int count) {
-    return 'Next: review $count routes, select them and confirm. Each row keeps its selected route.';
+    return 'Next: $count rows still need a supply route (red frame). Pick one in the route column to save it instantly; only then can they be ordered. Other routes were auto-confirmed from goods masters.';
   }
 
   @override
@@ -3336,9 +3446,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'The component has not been received yet; there is none in stock. The system adds a draft and notifies the warehouse automatically once the component is received.';
 
   @override
-  String get warehouseSubcontractOutboundWorkView => 'Warehouse work view';
-
-  @override
   String get warehouseSubcontractOutboundBannerScope =>
       'The warehouse work view has no prices or amounts and offers no subcontract business editing.';
 
@@ -3366,11 +3473,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String warehouseSubcontractOutboundHistoryTitle(int count) {
     return 'Outbound records ($count)';
-  }
-
-  @override
-  String warehouseSubcontractOutboundLinesTitle(int count) {
-    return 'Outbound lines ($count)';
   }
 
   @override
@@ -3637,14 +3739,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get securityBlacklistRemoveDone => 'Removed from blacklist';
-
-  @override
-  String get entryStaffSubtitle =>
-      'Sign in with your staff account to enter the workspace';
-
-  @override
-  String get entryVisitorSubtitle =>
-      'Visitors register with a phone code for quick entry';
 
   @override
   String get visitorColName => 'Name';

@@ -31,9 +31,9 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
 /**
  * 车间任务「计划还没下单」的缺料(ADR-117)与计划侧看到的车间催办，只读。
  *
- * <p>缺口判据只有一个数：物料分析那一行的「还缺数量」(netShortageQty，与主表同一列同一个数)。
- * 车间任务里某种物料缺(SHORT / SHORT_MAKE)，而它在分析里对应的行还缺，说明计划还没为它下够单；
- * 分析那一行不缺了(已下采购 / 委外、已排子件计划、仓库现货已分到)，就只是「等到货 / 等子件做完」。
+ * <p>缺口来自物料分析同一供给计算的 planningUncoveredQty：车间任务里某种物料缺
+ * (SHORT / SHORT_MAKE)，而分析里对应行尚未落实足量供给，计划就仍需办理下单或认领。
+ * 已下采购 / 委外、已排子件计划、仓库现货已分到才算落实；仅可认领的公共在途不算。
  *
  * <p>车间需求行到分析物料行的对应关系沿用 {@code fn_analysis_plan_material_matches}(计划明细所在
  * 分析行的直接下层) + 货品 / 颜色 / 单位三键——与分析详情里「计划覆盖」同一条连接，不另造口径。
@@ -118,8 +118,13 @@ public class MaterialAnalysisPlanningGapReader implements WorkshopPlanningGapRea
             UUID demandId = (UUID) row[1];
             UUID analysisId = (UUID) row[2];
             UUID materialLineId = (UUID) row[3];
-            Map<UUID, Node> nodes = nodesByAnalysis.computeIfAbsent(analysisId,
-                    id -> reuse ? cachedNodes(id, stamps.get(id)) : nodesOf(id));
+            // HashMap 允许 null：本轮读不出的分析也只读一次。computeIfAbsent 不保留 null，
+            // 会让同一分析的每条需求都重读完整视图并重复告警。
+            if (!nodesByAnalysis.containsKey(analysisId)) {
+                nodesByAnalysis.put(analysisId,
+                        reuse ? cachedNodes(analysisId, stamps.get(analysisId)) : nodesOf(analysisId));
+            }
+            Map<UUID, Node> nodes = nodesByAnalysis.get(analysisId);
             if (nodes == null) {
                 unknown.add(segmentId);
                 continue;
@@ -183,8 +188,9 @@ public class MaterialAnalysisPlanningGapReader implements WorkshopPlanningGapRea
             AnalysisView view = analyses.detailInternal(analysisId, false);
             Map<UUID, Node> byLine = new HashMap<>();
             for (MaterialView material : view.flatMaterials()) {
+                if (material.planningUncoveredQty() == null) return null;
                 byLine.put(material.materialLineId(), new Node(
-                        positive(material.netShortageQty()),
+                        positive(material.planningUncoveredQty()),
                         !isNonProductionStage(material.controlStage()),
                         material.routeConfirmed(),
                         material.sourceConfirmed() != null ? material.sourceConfirmed() : material.sourceSuggestion()));

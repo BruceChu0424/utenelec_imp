@@ -46,7 +46,7 @@ class ActualProductionSurplusStockCostMigrationPostgresTest {
                 "production_daily_reports","production_daily_report_items","stock_document_items","stock_documents",
                 "preplan_analysis_stock_exact_pegs","production_material_make_receipt_allocations",
                 "production_finished_arrival_registrations","production_finished_arrival_registration_items")) {
-            sql("CREATE TABLE "+schema+"."+table+" AS SELECT * FROM public."+table+" WITH NO DATA");
+            com.uten.imp.support.MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(db,table);
         }
         for (String function:List.of("fn_execution_actual_surplus_qty(uuid,boolean)",
                 "fn_plan_actual_surplus_qty(uuid,boolean)","fn_production_execution_cost_scope(uuid)",

@@ -127,5 +127,11 @@ public record ProductionExecutionWorkbenchSegment(
         /** 最早什么时候可以再催(30 分钟内不重复打扰计划员)；没催过为 null。 */
         java.time.OffsetDateTime planningNextUrgeAt,
         /** 当前用户能不能催：有计划还没下单的料，且本人是有效车间人员、有开工 / 领料权限。 */
-        boolean canUrgePlanning) {
+        boolean canUrgePlanning,
+        boolean materialDiscoveryRequired,
+        UUID materialDiscoveryRequestId,
+        String materialDiscoveryStatus,
+        boolean canRequestMaterialDiscovery,
+        /** 来源计划（V719）：ANALYSIS 根的 WL 分析编号；历史计划根为 null。 */
+        String analysisNo) {
 }

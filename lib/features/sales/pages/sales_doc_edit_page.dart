@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
+import '../../../shared/widgets/order_duplicate_goods_review.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -342,11 +343,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         _currencyId = d.currencyId;
         _settlementMethodId = d.settlementMethodId;
         _rate.text =
-            d.exactDecimals['exchangeRate'] ??
-            d.exchangeRate?.toString() ??
+            financeExactTrimmed(
+              d.exactDecimals['exchangeRate'] ?? d.exchangeRate?.toString(),
+            ) ??
             '1';
         _taxRate.text =
-            d.exactDecimals['taxRate'] ?? d.taxRate?.toString() ?? '';
+            financeExactTrimmed(
+              d.exactDecimals['taxRate'] ?? d.taxRate?.toString(),
+            ) ??
+            '';
         _sellerId = d.sellerId;
         _senderId = d.senderId;
         _validUntil = _parseDate(d.validUntil);
@@ -396,34 +401,60 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             ..unitRateExact = it.exactDecimals['unitRate']
             ..solution = it.solution
             ..responsible = it.responsible;
-          row.qty.text = it.exactDecimals['qty'] ?? it.qty?.toString() ?? '';
+          row.qty.text =
+              financeExactTrimmed(
+                it.exactDecimals['qty'] ?? it.qty?.toString(),
+              ) ??
+              '';
           row.weight.text =
-              it.exactDecimals['weight'] ?? it.weight?.toString() ?? '';
+              financeExactTrimmed(
+                it.exactDecimals['weight'] ?? it.weight?.toString(),
+              ) ??
+              '';
           row.price.text =
-              it.exactDecimals['price'] ?? it.price?.toString() ?? '';
+              financeExactTrimmed(
+                it.exactDecimals['price'] ?? it.price?.toString(),
+              ) ??
+              '';
           // 补列回填（按 docType 仅填该单据类型对应字段；其余保持空）。
           if (it.machiningPrice != null) {
             row.machiningPrice.text =
-                it.exactDecimals['machiningPrice'] ??
-                it.machiningPrice.toString();
+                financeExactTrimmed(
+                  it.exactDecimals['machiningPrice'] ??
+                      it.machiningPrice.toString(),
+                ) ??
+                '';
           }
           if (it.circumference != null) {
             row.circumference.text =
-                it.exactDecimals['circumference'] ??
-                it.circumference.toString();
+                financeExactTrimmed(
+                  it.exactDecimals['circumference'] ??
+                      it.circumference.toString(),
+                ) ??
+                '';
           }
           if (it.inboundQty != null) {
             row.inboundQty.text =
-                it.exactDecimals['inboundQty'] ?? it.inboundQty.toString();
+                financeExactTrimmed(
+                  it.exactDecimals['inboundQty'] ?? it.inboundQty.toString(),
+                ) ??
+                '';
           }
           if (it.materialPrice != null) {
             row.materialPrice.text =
-                it.exactDecimals['materialPrice'] ??
-                it.materialPrice.toString();
+                financeExactTrimmed(
+                  it.exactDecimals['materialPrice'] ??
+                      it.materialPrice.toString(),
+                ) ??
+                '';
           }
           if (it.dieCastPrice != null) {
             row.dieCastPrice.text =
-                it.exactDecimals['dieCastPrice'] ?? it.dieCastPrice.toString();
+                financeExactTrimmed(
+                  it.exactDecimals['dieCastPrice'] ??
+                      it.dieCastPrice.toString(),
+                ) ??
+                '';
           }
           if (it.discount != null) {
             // 旧订单用 null/0 表示不打折；编辑页统一展示为明确的 1 倍，金额语义不变。
@@ -434,7 +465,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             row.discount.text =
                 widget.docType == SalesDocType.order && it.discount == 0
                 ? '1'
-                : it.exactDecimals['discount'] ?? discount.toString();
+                : financeExactTrimmed(
+                        it.exactDecimals['discount'] ?? discount.toString(),
+                      ) ??
+                      '';
           }
           row.remark.text = it.remark ?? '';
           rows.add(row);
@@ -507,7 +541,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       );
       row.unitRateExact = item.exactDecimals['unitRate'];
       row.price.text =
-          item.exactDecimals['price'] ?? item.price?.toString() ?? '';
+          financeExactTrimmed(
+            item.exactDecimals['price'] ?? item.price?.toString(),
+          ) ??
+          '';
       rows.add(row);
     }
     _grid.replaceAll(rows);
@@ -571,7 +608,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       // 订单折扣：货品 zk 倍率仅作建议初值(1=原价；空/0→1)，销售可逐行调整。
       if (widget.docType == SalesDocType.order) {
         final disc = (g.discount == null || g.discount == 0) ? 1.0 : g.discount;
-        target.discount.text = disc.toString();
+        target.discount.text = financeExactTrimmed(disc.toString()) ?? '';
       }
     }
 
@@ -1040,6 +1077,74 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     if (_errors.contains(key)) setState(() => _errors.remove(key));
   }
 
+  /// 销售订货保存前查重：同「货品+颜色+单位+换算率」出现多行时弹窗让用户选
+  /// 汇总合并（数量相加）/删除重复行（各行完全一致时）/返回修改（重复行整行
+  /// 标红）。返回 false = 用户返回修改，本次不保存。
+  Future<bool> _reviewDuplicateGoods() async {
+    final gridRows = _grid.rows;
+    final names = ref.read(salesMasterNameServiceProvider);
+    final groups = collectDuplicateGoodsGroups<SalesGridRow>(
+      rows: gridRows.where((r) => r.goods != null),
+      rowNoOf: (r) => gridRows.indexOf(r) + 1,
+      groupKey: (r) =>
+          '${r.goods!.id}|${r.colorId ?? ''}|${r.unitId ?? ''}|'
+          '${r.unitRateExact ?? r.unitRate ?? 1}',
+      identityLabel: (r) {
+        final parts = <String>[
+          if ((r.goods!.name ?? '').isNotEmpty) r.goods!.name!,
+          if ((r.goods!.code ?? '').isNotEmpty) r.goods!.code!,
+          if ((names.colorEntries[r.colorId] ?? '').isNotEmpty)
+            names.colorEntries[r.colorId]!,
+          if ((names.unitEntries[r.unitId] ?? '').isNotEmpty)
+            names.unitEntries[r.unitId]!,
+        ];
+        return parts.isEmpty ? '该货品' : parts.join(' · ');
+      },
+      rowSummary: (r, rowNo) {
+        final qty = r.qty.text.trim();
+        final price = r.price.text.trim();
+        return '第 $rowNo 行 · 数量 ${qty.isEmpty ? '—' : qty}'
+            '${price.isEmpty ? '' : ' · 单价 $price'}';
+      },
+      identicalSignature: (r) => [
+        financeExactTrimmed(r.qty.text) ?? r.qty.text.trim(),
+        financeExactTrimmed(r.price.text) ?? r.price.text.trim(),
+        financeExactTrimmed(r.discount.text) ?? r.discount.text.trim(),
+        r.weight.text.trim(),
+        r.machiningPrice.text.trim(),
+        r.circumference.text.trim(),
+        r.inboundQty.text.trim(),
+        r.remark.text.trim(),
+      ].join('|'),
+    );
+    if (groups.isEmpty) return true;
+    final action = await showDuplicateGoodsReviewDialog<SalesGridRow>(
+      context,
+      groups: groups,
+    );
+    if (!mounted) return false;
+    if (action == null || action == DuplicateGoodsReviewAction.back) {
+      for (final g in groups) {
+        for (final r in g.rows) {
+          r.flagged = true;
+        }
+      }
+      return false;
+    }
+    for (final g in groups) {
+      if (action == DuplicateGoodsReviewAction.merge) {
+        final keep = g.rows.first;
+        keep.qty.text =
+            financeExactSumTexts(g.rows.map((r) => r.qty.text)) ??
+            keep.qty.text;
+      }
+      _grid.removeRows(g.rows.skip(1).toList());
+    }
+    _recalcQtyTotal();
+    if (mounted) setState(() {});
+    return true;
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     if (_createdShipments.isNotEmpty) {
@@ -1059,6 +1164,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     if (err != null) {
       context.appError(err);
       return;
+    }
+    // 销售订货保存前查重（2026-09-25）：同「货品+颜色+单位+换算率」多行时弹窗
+    // 汇总/去重/标红返回；出货/退货等带上游行引用的单据不查（合并会断链）。
+    if (widget.docType == SalesDocType.order) {
+      if (!await _reviewDuplicateGoods()) return;
+      if (!mounted) return;
     }
     final rows = _grid.rows;
     final parcelText = _parcelCount.text.trim();
@@ -1227,7 +1338,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         await _finishCreatedDocument(d.id);
         return;
       }
-      context.replace(SalesRoutePath.docDetail(_cfg.type.pathSegment, d.id));
+      // 编辑既有单：pop 回宿主详情/审核页（其「返回即刷新」会重取保存后数据），
+      // 深链直达才落新详情；此前 replace 把新详情叠在旧详情上，返回一次看到的
+      // 是保存前快照（2026-09-25 用户反馈）。新建单仍落新详情。
+      if (widget.id != null) {
+        popSavedEditOrReplace(
+          context,
+          SalesRoutePath.docDetail(_cfg.type.pathSegment, d.id),
+        );
+      } else {
+        context.replace(SalesRoutePath.docDetail(_cfg.type.pathSegment, d.id));
+      }
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
@@ -2173,8 +2294,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                     initialColumnOrder: columnPrefs?.order,
                                     initialHiddenColumnKeys:
                                         columnPrefs?.hidden,
-                                    onColumnSettingsChanged: (order, hidden) =>
-                                        ref
+                                    initialPinnedColumnKeys:
+                                        columnPrefs?.pinned,
+                                    onColumnSettingsChanged:
+                                        (order, hidden, pinned) => ref
                                             .read(
                                               salesDocGridColumnPrefsProvider
                                                   .notifier,
@@ -2183,6 +2306,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                               widget.docType.name,
                                               order,
                                               hidden,
+                                              pinned,
                                             ),
                                     // 网格底部合计条（全站统一 UtenTotalsSummaryBar 口径）：
                                     // 数量严格按单位 UUID 分组，绝不跨单位相加；

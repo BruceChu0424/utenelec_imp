@@ -14,6 +14,23 @@ import static org.mockito.Mockito.*;
 
 class ReviewNoticeAudienceTest {
     @Test
+    void productionChangesReachTheCurrentPlanningReviewPoolAndStopAfterPermissionOrMembershipRemoval() {
+        var events=Set.of("PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED", "PRODUCTION_MATERIAL_INCREMENT_SUBMITTED");
+        var permissions=Set.of("notice:read", "production_plan:approve");
+        for(String event:events) {
+            assertThat(ReviewNoticeCatalog.of(event)).isPresent();
+            assertThat(ReviewNoticeAudience.eligible(event, permissions, Set.of("SUB_PLAN"))).as(event).isTrue();
+            assertThat(ReviewNoticeAudience.eligible(event, Set.of("notice:read", "production_plan:view"), Set.of("SUB_PLAN"))).isFalse();
+            assertThat(ReviewNoticeAudience.eligible(event, permissions, Set.of("SUB_WH"))).isFalse();
+            assertThat(ReviewNoticeAudience.eligible(event, Set.of("production_plan:approve"), Set.of("SUB_PLAN"))).isFalse();
+        }
+        JdbcTemplate jdbc=mock(JdbcTemplate.class);
+        UUID employee=UUID.randomUUID();
+        var user=new AuthUser(UUID.randomUUID(),employee,"planner",permissions,false,true,false);
+        when(jdbc.queryForList(anyString(),eq(String.class),eq(employee),eq(employee))).thenReturn(List.of("SUB_PLAN"));
+        assertThat(new ReviewNoticeAudience(jdbc).eligibleEvents(user)).containsAll(events);
+    }
+    @Test
     void everyRegisteredEventRejectsViewOnlyAndDepartmentOnlyRecipients() {
         Set<String> views = Set.of("notice:read", "sales_order_finance:view",
                 "finance_order_approval:view", "procurement_inspection:view",

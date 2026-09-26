@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/layout/uten_split_view.dart';
+import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
@@ -36,16 +38,31 @@ void main() {
 
     expect(goodsRepository.searchQueries, ['G-']);
     expect(goodsRepository.searchCategoryIdQueries, ['G-']);
-    // sellable scope 已过滤原材料根；后端收到的是可见森林根，不是前端取前 20 条后再过滤。
-    expect(goodsRepository.searchRootScopes.single, {'finished-root'});
+    // sellable scope 已过滤原材料根，且单根「成品」被提升：后端收到的可见森林根
+    // 是提升后的子类（含长名分类），不是前端取前 20 条后再过滤。
+    expect(goodsRepository.searchRootScopes.single, {
+      'section-a',
+      'section-b',
+      'long-cat',
+    });
     expect(find.text('连接器甲(G-001)'), findsOneWidget);
-    expect(find.text('连接器乙(G-002)'), findsOneWidget);
+    expect(find.text('连接器乙(G-002) · 黑色'), findsOneWidget);
+    // 货品行一行显示（名字(编号) · 颜色），无单位/规格/库位副标题行。
+    final goodsRow = tester.widget<ListTile>(
+      find
+          .ancestor(
+            of: find.text('连接器乙(G-002) · 黑色'),
+            matching: find.byType(ListTile),
+          )
+          .first,
+    );
+    expect(goodsRow.subtitle, isNull);
 
     final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
       find.byType(UtenCategoryTreeView<ProductCategoryNode>),
     );
     expect(tree.showSearch, isFalse);
-    expect(tree.visibleFilterIds, {'finished-root', 'section-a', 'section-b'});
+    expect(tree.visibleFilterIds, {'section-a', 'section-b'});
     expect(tree.selectedIds, {'section-a'});
 
     // 搜索期间改点另一个命中分类，关键词保留，并切换为该分类内搜索。
@@ -123,7 +140,7 @@ void main() {
     final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
       find.byType(UtenCategoryTreeView<ProductCategoryNode>),
     );
-    expect(tree.visibleFilterIds, {'finished-root', 'section-a', 'section-b'});
+    expect(tree.visibleFilterIds, {'section-a', 'section-b'});
     expect(goodsRepository.searchPages, [1]);
     expect(goodsRepository.searchCategoryIdQueries, ['G-']);
 
@@ -134,11 +151,7 @@ void main() {
         .widget<UtenCategoryTreeView<ProductCategoryNode>>(
           find.byType(UtenCategoryTreeView<ProductCategoryNode>),
         );
-    expect(pageTwoTree.visibleFilterIds, {
-      'finished-root',
-      'section-a',
-      'section-b',
-    });
+    expect(pageTwoTree.visibleFilterIds, {'section-a', 'section-b'});
     expect(goodsRepository.searchPages, [1, 2]);
     expect(goodsRepository.searchCategoryIdQueries, [
       'G-',
@@ -167,6 +180,113 @@ void main() {
     expect(find.text('范围外原料(RAW-001)'), findsNothing);
     expect(find.text('搜索货品失败，请稍后重试'), findsNothing);
   });
+
+  testWidgets('单根提升 + 无缩进层级色 + 可拖分割线', (tester) async {
+    final goodsRepository = _FakeGoodsRepository();
+    await _pumpPicker(tester, goodsRepository);
+
+    await tester.tap(find.byKey(const Key('open-goods-picker')));
+    await tester.pumpAndSettle();
+
+    // sellable 过滤后只剩单根「成品」，自动提升：包装根不再显示，直接列子类。
+    expect(find.text('成品(FINISHED)'), findsNothing);
+    expect(find.text('分区甲(A)'), findsOneWidget);
+    expect(find.text('分区乙(B)'), findsOneWidget);
+
+    // medium+ 布局换成 UtenSplitView（可拖分割线，货品资料页同款）。
+    expect(find.byType(UtenSplitView), findsOneWidget);
+
+    // 一级行（提升后的三个根分类）：深绿实底 + 方角（无缩进层级色模式）。
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Material &&
+            widget.color == UtenColors.deepGreen &&
+            widget.borderRadius == BorderRadius.zero,
+      ),
+      findsNWidgets(3),
+    );
+    // flat 行间有 1px 分隔线：收起时整列同色（全是一级深绿行）也分得清一行一行。
+    expect(
+      find.descendant(
+        of: find.byType(UtenCategoryTreeView<ProductCategoryNode>),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is DecoratedBox &&
+              widget.decoration is BoxDecoration &&
+              ((widget.decoration as BoxDecoration).border?.bottom.width ??
+                      0) ==
+                  1,
+        ),
+      ),
+      findsWidgets,
+    );
+    // 左树默认宽度 = 最长一行内容的实测宽度（不取固定 240）。
+    final split = tester.widget<UtenSplitView>(find.byType(UtenSplitView));
+    expect(split.persistenceKey, 'goodsPicker.categoryTree');
+    expect(split.initialLeadingWidth, greaterThan(240));
+  });
+
+  testWidgets('多选：底部「已选 N 项」滑层可逐项取消选择', (tester) async {
+    final goodsRepository = _FakeGoodsRepository();
+    final results = <List<GoodsListItem>>[];
+    await _pumpMultiPicker(tester, goodsRepository, results);
+
+    await tester.tap(find.byKey(const Key('open-multi-picker')));
+    await tester.pumpAndSettle();
+
+    // 懒载：先点根分类（提升后 = 分区甲）加载货品列表，再点货品行勾选。
+    await tester.tap(find.text('分区甲(A)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('连接器甲(G-001)'));
+    await tester.pumpAndSettle();
+    // 选中行 = 全站统一淡绿背景（utenTableSelectedRowColor）。
+    final pickedTile = tester.widget<ListTile>(
+      find
+          .ancestor(
+            of: find.text('连接器甲(G-001)'),
+            matching: find.byType(ListTile),
+          )
+          .first,
+    );
+    expect(pickedTile.selected, isTrue);
+    expect(pickedTile.selectedTileColor, UtenColors.tableSelectedRow);
+    // 切到分区乙再勾一条。
+    await tester.tap(find.text('分区乙(B)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('连接器乙(G-002) · 黑色'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已选 2 项'), findsOneWidget);
+
+    // 点「已选 2 项」从底部滑出已选清单。
+    await tester.tap(find.byKey(const Key('goods-picker-selected-summary')));
+    await tester.pumpAndSettle();
+    expect(find.text('已选货品（2）'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('goods-picker-selected-row-goods-a')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('goods-picker-selected-row-goods-b')),
+      findsOneWidget,
+    );
+
+    // 清单内逐项取消一条，标题与外部胶囊计数同步。
+    await tester.tap(
+      find.byKey(const ValueKey('goods-picker-selected-remove-goods-a')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('已选货品（1）'), findsOneWidget);
+
+    // 收起滑层后确定，只返回剩余一条。
+    await tester.tap(find.byTooltip('收起'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('goods-picker-multi-confirm')));
+    await tester.pumpAndSettle();
+    expect(results, hasLength(1));
+    expect(results.single.map((goods) => goods.id), ['goods-b']);
+  });
 }
 
 Future<void> _pumpPicker(
@@ -188,6 +308,30 @@ Future<void> _pumpPicker(
         goodsRepositoryProvider.overrideWithValue(goodsRepository),
       ],
       child: const MaterialApp(home: _PickerHarness()),
+    ),
+  );
+}
+
+Future<void> _pumpMultiPicker(
+  WidgetTester tester,
+  GoodsRepository goodsRepository,
+  List<List<GoodsListItem>> results,
+) async {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = const Size(1200, 900);
+  addTearDown(() {
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
+  });
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        productCategoryRepositoryProvider.overrideWithValue(
+          _FakeCategoryRepository(),
+        ),
+        goodsRepositoryProvider.overrideWithValue(goodsRepository),
+      ],
+      child: MaterialApp(home: _MultiPickerHarness(results: results)),
     ),
   );
 }
@@ -220,6 +364,30 @@ class _PickerHarness extends ConsumerWidget {
         key: const Key('open-goods-picker'),
         onPressed: () => showUtenGoodsPicker(context, ref),
         child: const Text('打开货品选择'),
+      ),
+    );
+  }
+}
+
+class _MultiPickerHarness extends ConsumerWidget {
+  const _MultiPickerHarness({required this.results});
+
+  final List<List<GoodsListItem>> results;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Scaffold(
+      body: ElevatedButton(
+        key: const Key('open-multi-picker'),
+        onPressed: () async {
+          final picked = await showUtenGoodsPickerMulti(
+            context,
+            ref,
+            scope: UtenGoodsPickerScope.sellable,
+          );
+          results.add(picked);
+        },
+        child: const Text('打开多选货品选择'),
       ),
     );
   }
@@ -348,6 +516,7 @@ const _goodsB = GoodsListItem(
   code: 'G-002',
   name: '连接器乙',
   categoryId: 'section-b',
+  colorName: '黑色',
 );
 const _outOfScopeGoods = GoodsListItem(
   id: 'raw-goods',
@@ -375,6 +544,14 @@ final _tree = <ProductCategoryNode>[
         id: 'section-b',
         code: 'B',
         name: '分区乙',
+        level: 1,
+        parentId: 'finished-root',
+        children: const [],
+      ),
+      ProductCategoryNode(
+        id: 'long-cat',
+        code: 'LONG',
+        name: '名字特别特别特别特别特别特别长的分类',
         level: 1,
         parentId: 'finished-root',
         children: const [],

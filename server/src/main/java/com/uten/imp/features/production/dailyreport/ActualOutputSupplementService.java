@@ -329,8 +329,8 @@ public class ActualOutputSupplementService {
                         WHERE item.execution_segment_id=:segment AND NOT item.is_deleted AND NOT report.is_deleted AND report.status IN(0,1))
                     """,args("proof",proofId,"segment",segment),Boolean.class)))throw conflict("追加实产已有报工或下级追加责任，请先按原单据逐层删除草稿或红冲后取消");
             db.update("INSERT INTO production_actual_output_supplement_reversals(proof_id,reason,created_by) VALUES(:proof,:reason,:actor)",args("proof",proofId,"reason",command.reason(),"actor",user.requireId()));
-            db.update("UPDATE production_planning_packages SET status='CANCELLED',lifecycle_reason=:reason WHERE id=(SELECT package_id FROM production_execution_segments WHERE id=:segment)",args("reason",command.reason(),"segment",segment));
             db.update("UPDATE production_execution_segments SET status='CANCELLED' WHERE id=:segment",args("segment",segment));
+            db.update("UPDATE production_planning_packages SET status='CANCELLED',lifecycle_reason=:reason WHERE id=(SELECT package_id FROM production_execution_segments WHERE id=:segment)",args("reason",command.reason(),"segment",segment));
             db.update("UPDATE production_plans SET is_canceled=true WHERE id=:plan",args("plan",uuid(r,"supplement_plan_id")));
         } else {
             plans.delete(uuid(r,"supplement_plan_id"));

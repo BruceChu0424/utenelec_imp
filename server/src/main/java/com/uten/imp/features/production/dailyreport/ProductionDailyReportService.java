@@ -1194,6 +1194,8 @@ public class ProductionDailyReportService {
         ri.setLineNo(1);
         ri.setProductNo(productNoAllocator.allocate(rp.getId(), Set.of()));
         ri.setGoodsId((UUID) pi[4]);
+        ri.setAllowedOverproductionRate(com.uten.imp.features.production.plan.ProductionOverproductionAllowance
+                .resolve(em, (UUID) pi[4], null));
         ri.setColorId((UUID) pi[5]);
         ri.setUnitId((UUID) pi[6]);
         ri.setUnitRate((BigDecimal) pi[10]);
@@ -2170,7 +2172,7 @@ public class ProductionDailyReportService {
                 identity == null ? null : identity[3],
                 it.getOutputBatchId(), it.getOutputBatchQty(), it.isPublicOutput(), it.isActualSurplus(),
                 it.getExecutionSegmentId()!=null && it.getFqcRecoveryAuthorizationId()==null,
-                null,null,null,null,null,null,null,null,null);
+                it.getSupplementProofId(),null,null,null,null,null,null,null,null);
     }
 
     /** 直送行的接收方(父件产品名 编号 · 工单号)，详情页「转给工单」列用；非直送行不出现。 */

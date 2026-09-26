@@ -13,6 +13,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
@@ -36,6 +37,7 @@ class WarehouseSubcontractOutboundWorkbench extends ConsumerStatefulWidget {
     this.keyword = '',
     this.refreshTick = 0,
     this.embedded = false,
+    this.externalHeader,
     this.showHintBanner = true,
   });
 
@@ -47,6 +49,10 @@ class WarehouseSubcontractOutboundWorkbench extends ConsumerStatefulWidget {
 
   /// true = 嵌在出库任务中心分段内（表格，无搜索框）。
   final bool embedded;
+
+  /// 宿主（任务中心大类行 + 小类行/复合分段行）：挂进折叠头随页滚走
+  /// （2026-09-24 用户口径「表格完全置顶」）。
+  final Widget? externalHeader;
 
   /// 是否显示业务口径提示条。
   final bool showHintBanner;
@@ -217,119 +223,124 @@ class _WarehouseSubcontractOutboundWorkbenchState
           total: 0,
           totalPages: 1,
         );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (!widget.embedded) ...[
-          _buildStandaloneSearch(result),
-          const SizedBox(height: UtenSpacing.s8),
-        ],
-        if (widget.showHintBanner) _OutboundHintBanner(l10n: l10n),
-        if (!widget.embedded) const SizedBox(height: UtenSpacing.s12),
-        if (_error != null && result.items.isNotEmpty) ...[
-          const SizedBox(height: UtenSpacing.s12),
-          Semantics(
-            liveRegion: true,
-            child: Text(
-              _error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          ),
-        ],
-        const SizedBox(height: UtenSpacing.s12),
-        Expanded(
-          child: MasterDataTableView<OutboundTask>(
-            key: const Key('subcontract-outbound-task-table'),
-            columns: _columns,
-            items: result.items,
-            // 表头筛选桶（2026-09-16）：委外商走主档 dict；任务状态为派生三档
-            // （有草稿=待拣货 / 无草稿有可发=已备齐待出仓 / 无草稿可发 0=等子件到货），
-            // 与服务端 tasks() 的状态桶及行 stage 同口径(ADR-103 §2.4)。
-            facets: {
-              'supplierName': masterDictionaryFacets(
-                ref.watch(masterNameServiceProvider).supplierEntries,
+    // 2026-09-24 用户口径「表格完全置顶」：搜索/提示横幅/错误行全部进折叠头
+    // 随页滚走，body 只剩表格（primary 拾取联动控制器）。
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.externalHeader != null) ...[
+            widget.externalHeader!,
+            const SizedBox(height: UtenSpacing.s12),
+          ],
+          if (!widget.embedded) ...[
+            _buildStandaloneSearch(result),
+            const SizedBox(height: UtenSpacing.s8),
+          ],
+          if (widget.showHintBanner) _OutboundHintBanner(l10n: l10n),
+          if (!widget.embedded) const SizedBox(height: UtenSpacing.s12),
+          if (_error != null && result.items.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
-              'status': [
-                MasterFacetBucket(
-                  value: 'DRAFT_PICKING',
-                  count: 0,
-                  label: l10n.warehouseSubcontractOutboundStageDraftPicking,
-                ),
-                MasterFacetBucket(
-                  value: 'READY_OUTBOUND',
-                  count: 0,
-                  label: l10n.warehouseSubcontractOutboundStageReadyPlain,
-                ),
-                MasterFacetBucket(
-                  value: 'WAITING_COMPONENT',
-                  count: 0,
-                  label: l10n.warehouseSubcontractOutboundWaitingComponent,
+            ),
+          ],
+          const SizedBox(height: UtenSpacing.s12),
+        ],
+      ),
+      body: MasterDataTableView<OutboundTask>(
+        // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+        primary: true,
+        key: const Key('subcontract-outbound-task-table'),
+        columns: _columns,
+        items: result.items,
+        // 表头筛选桶（2026-09-16）：委外商走主档 dict；任务状态为派生三档
+        // （有草稿=待拣货 / 无草稿有可发=已备齐待出仓 / 无草稿可发 0=等子件到货），
+        // 与服务端 tasks() 的状态桶及行 stage 同口径(ADR-103 §2.4)。
+        facets: {
+          'supplierName': masterDictionaryFacets(
+            ref.watch(masterNameServiceProvider).supplierEntries,
+          ),
+          'status': [
+            MasterFacetBucket(
+              value: 'DRAFT_PICKING',
+              count: 0,
+              label: l10n.warehouseSubcontractOutboundStageDraftPicking,
+            ),
+            MasterFacetBucket(
+              value: 'READY_OUTBOUND',
+              count: 0,
+              label: l10n.warehouseSubcontractOutboundStageReadyPlain,
+            ),
+            MasterFacetBucket(
+              value: 'WAITING_COMPONENT',
+              count: 0,
+              label: l10n.warehouseSubcontractOutboundWaitingComponent,
+            ),
+          ],
+        },
+        nullCounts: const {},
+        filters: {'supplierName': _supplierIdFilter, 'status': _statusFilter},
+        onFilterChanged: (key, value) {
+          setState(() {
+            if (key == 'supplierName') {
+              _supplierIdFilter = value;
+            } else if (key == 'status') {
+              _statusFilter = value;
+            }
+          });
+          _load(1);
+        },
+        onRowTap: _openTask,
+        selectable: _canExecute,
+        idOf: (task) => _selectable(task) ? task.planId : null,
+        rowKeyOf: (task) => task.planId,
+        selectedIds: _selectedIds,
+        onSelectedIdsChanged: (ids) {
+          if (!_loading && !_openingBatch) {
+            setState(() => _selectedIds = ids);
+          }
+        },
+        preserveSelectionOnContextMenu: true,
+        batchActionsBuilder: !_canExecute
+            ? null
+            : (context, ids) => [
+                UtenButton(
+                  key: const Key('subcontract-outbound-batch-action'),
+                  type: UtenButtonType.danger,
+                  size: UtenButtonSize.large,
+                  icon: Icons.outbound_outlined,
+                  isLoading: _openingBatch,
+                  onPressed: ids.isEmpty || _loading || _openingBatch
+                      ? null
+                      : () => _openBatch(ids),
+                  child: Text(
+                    '${l10n.warehouseSubcontractOutboundBatchAction} (${ids.length})',
+                  ),
                 ),
               ],
-            },
-            nullCounts: const {},
-            filters: {
-              'supplierName': _supplierIdFilter,
-              'status': _statusFilter,
-            },
-            onFilterChanged: (key, value) {
-              setState(() {
-                if (key == 'supplierName') {
-                  _supplierIdFilter = value;
-                } else if (key == 'status') {
-                  _statusFilter = value;
-                }
-              });
-              _load(1);
-            },
-            onRowTap: _openTask,
-            selectable: _canExecute,
-            idOf: (task) => _selectable(task) ? task.planId : null,
-            rowKeyOf: (task) => task.planId,
-            selectedIds: _selectedIds,
-            onSelectedIdsChanged: (ids) {
-              if (!_loading && !_openingBatch) {
-                setState(() => _selectedIds = ids);
-              }
-            },
-            preserveSelectionOnContextMenu: true,
-            batchActionsBuilder: !_canExecute
-                ? null
-                : (context, ids) => [
-                    UtenButton(
-                      key: const Key('subcontract-outbound-batch-action'),
-                      type: UtenButtonType.danger,
-                      size: UtenButtonSize.large,
-                      icon: Icons.outbound_outlined,
-                      isLoading: _openingBatch,
-                      onPressed: ids.isEmpty || _loading || _openingBatch
-                          ? null
-                          : () => _openBatch(ids),
-                      child: Text(
-                        '${l10n.warehouseSubcontractOutboundBatchAction} (${ids.length})',
-                      ),
-                    ),
-                  ],
-            rowMenuBuilder: (item) => [
-              UtenMenuItem(
-                label: l10n.warehouseSubcontractOutboundOpenPicking,
-                icon: Icons.outbound_outlined,
-                onTap: () => _openTask(item),
-              ),
-            ],
-            isLoading: _loading,
-            loadingMore: _loading && _result != null,
-            error: result.items.isEmpty ? _error : null,
-            onRetry: () => _load(result.page),
-            emptyMessage: _keyword.isNotEmpty
-                ? '没有匹配「$_keyword」的出仓任务'
-                : '目前没有待出仓任务',
-            currentPage: result.page,
-            totalPages: result.totalPages,
-            onPageChange: _load,
+        rowMenuBuilder: (item) => [
+          UtenMenuItem(
+            label: l10n.warehouseSubcontractOutboundOpenPicking,
+            icon: Icons.outbound_outlined,
+            onTap: () => _openTask(item),
           ),
-        ),
-      ],
+        ],
+        isLoading: _loading,
+        loadingMore: _loading && _result != null,
+        error: result.items.isEmpty ? _error : null,
+        onRetry: () => _load(result.page),
+        emptyMessage: _keyword.isNotEmpty
+            ? '没有匹配「$_keyword」的出仓任务'
+            : '目前没有待出仓任务',
+        currentPage: result.page,
+        totalPages: result.totalPages,
+        onPageChange: _load,
+      ),
     );
   }
 

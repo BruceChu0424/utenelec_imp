@@ -81,7 +81,7 @@ public class ProductionQualityMutationFootprintService {
             // when it belongs to another analysis in the same workshop.
             for(var row:rows("""
                     SELECT item.id,demand.id,receiving.plan_id,demand.goods_id,demand.color_id,
-                           demand.xmin::text,receiving.xmin::text
+                           demand.xmin::text,receiving.xmin::text,fn_warehouse_main_id(demand.warehouse_id)
                     FROM production_daily_report_items item
                     JOIN production_material_demands demand ON demand.id=item.direct_transfer_demand_id
                     JOIN production_execution_segments receiving ON receiving.id=demand.execution_segment_id
@@ -90,6 +90,9 @@ public class ProductionQualityMutationFootprintService {
                     """,ids)) {
                 result.row("report-direct-receiver",row);
                 result.plan((UUID)row[2]); result.inventory((UUID)row[3],(UUID)row[4]);
+                // 直送会在线边仓(挂收料主仓下)就地入库并登记成本; 首笔入库的成本对象
+                // 只有写入时才存在, 预读发现看不到它, 收料主仓的协调锁必须在此预先声明。
+                result.mainWarehouse((UUID)row[7]);
             }
             // Reversing the source report cancels only its actual, still-live
             // recovery authorizations; do not expand unrelated matching SKUs.
@@ -153,7 +156,7 @@ public class ProductionQualityMutationFootprintService {
                     """,result.authorizations)) {result.row("recovery-analysis",row);result.analyses.add((UUID)row[1]);}
         }
         var parts=new ArrayList<FulfillmentMutationLockPlan>();
-        parts.add(new FulfillmentMutationLockPlan(Set.of(),result.inventory,Set.of(),Set.of(),CanonicalFingerprint.sha256(result.parts)));
+        parts.add(new FulfillmentMutationLockPlan(Set.of(),result.inventory,result.mainWarehouses,Set.of(),CanonicalFingerprint.sha256(result.parts)));
         if(!result.plans.isEmpty()) parts.add(plans.discoverPlans(result.plans));
         if(!result.analyses.isEmpty()) parts.add(production.forAnalyses(result.analyses));
         if(!result.manualRoots.isEmpty()) parts.add(production.forPreview(List.of(),List.of(),result.manualRoots,
@@ -176,12 +179,15 @@ public class ProductionQualityMutationFootprintService {
         final Set<UUID> plans=new LinkedHashSet<>(),authorizations=new LinkedHashSet<>(),analyses=new LinkedHashSet<>();
         final Set<InventoryDimension> inventory=new LinkedHashSet<>();
         final Set<WarehouseDimension> manualRoots=new LinkedHashSet<>();
+        /** 直送行收料主仓的协调锁: 线边仓入库/成本登记在其名下, 预读时对象尚不存在。 */
+        final Set<UUID> mainWarehouses=new LinkedHashSet<>();
         /** V597 先入库后质检行的落仓维度与计划行：合格自动点收的等价预锁前像。 */
         final Set<WarehouseDimension> preStocked=new LinkedHashSet<>();
         final Set<UUID> preStockedPlanItems=new LinkedHashSet<>();
         final List<String> parts=new ArrayList<>();
         void plan(UUID id){if(id!=null)plans.add(id);}
         void authorization(UUID id){if(id!=null)authorizations.add(id);}
+        void mainWarehouse(UUID id){if(id!=null)mainWarehouses.add(id);}
         void inventory(UUID goods,UUID color){if(goods!=null)inventory.add(new InventoryDimension(goods,color));}
         void row(String kind,Object[] row){parts.add(kind+":"+java.util.Arrays.toString(row));}
     }

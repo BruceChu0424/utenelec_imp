@@ -668,7 +668,10 @@ public class MaterialAnalysisSupplyProgressService {
                         JOIN production_material_analysis_items child
                           ON child.id = plan.material_analysis_item_id
                          AND child.analysis_id = plan.material_analysis_id
-                         AND child.source_type = :childSourceType
+                         AND (child.source_type = :childSourceType OR
+                             (child.source_type='AGGREGATE_MAKE' AND EXISTS(SELECT 1 FROM preplan_aggregate_batches batch
+                               WHERE batch.anchor_analysis_item_id=child.id AND batch.plan_id=plan.id
+                                 AND batch.analysis_id=child.analysis_id)))
                          AND child.is_deleted = FALSE
                         WHERE plan.material_analysis_id = :analysisId
                           AND plan.material_analysis_item_id = :makeChildAnalysisItemId

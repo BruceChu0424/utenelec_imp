@@ -1,37 +1,33 @@
-// 仓库管理入口页（hub）—— 2026-09-01 重组：
+// 仓库管理入口页（hub）—— 2026-09-24 模块三段式统一：
 //
-// 任务中心：出库任务中心 / 入库任务中心 / 生产领料任务中心 / 品质部检查结果
-//   （原「出入库单据」里的其它出库/产成品出库/其它入库/产成品进仓/领料/退料，
-//   以及销售出库、委外出仓、预计到货、到货异常、拣货、产成品入库任务全部按
-//   业务方向并入三张任务中心卡，卡上角标 = 各自分段待办之和）。
-// 出入库单据：保留无法按方向归并的仓库内部作业与特殊单据——仓库调拨、盘点、
-//   委外成品退货单、委外损耗单（采购/委外收货与出仓历史已并入对应任务中心）。
-// 库存查询：即时库存唯一入口（双击货品行进库存详情 = 各仓余额 + 出入库流水；
-//   原「库存余额」「出入库流水」两卡下线）+ 货架目视化清单。
+// 任务中心：仓库任务中心（合并页 /warehouse/tasks，出库 / 入库 / 生产领料 /
+//   品质检查结果 / 委外成品退货 / 委外损耗 六大类；原四张任务中心卡与两张
+//   历史只读卡收拢为一张卡，卡角标 = 模块待办累计，与顶栏药丸/工作台仓库卡同源）。
+// 新建单据：仓库原生单据的直达新建入口（其它出库 / 产成品出库 / 其它入库 /
+//   产成品进仓 / 调拨 / 盘点，按 stock_doc:create 门控只对能新建的人显示；
+//   2026-09-24 用户口径：新建入口一律不挂徽章）。
+//   领料单 / 生产退料刻意不在新建区——由生产链自动生成（齐套建 DRAW、报工/
+//   退料闭环），手工单没有计划包与执行段映射，出库链路会被台账守卫拒绝；
+//   临时性出入库用「其它入库/其它出库」。
+// 库存查询：即时库存唯一入口（双击货品行进库存详情）+ 货架目视化清单。
 // 仓库报表：明细 / 汇总（不变）。
 //
 // 卡片统一 UtenHubCard；显隐只走 hub_catalog 登记的落点 + 路由守卫同一份 any/all 契约
-// (hubCardAllowed，ADR-109)，页面里不再写 perms.contains。计数口径(准则 14-徽章与计数口径)：
-//   · 四张任务中心卡挂右上角红色待办徽章（卡面数字 = 卡内各分段之和）。
-//   · 黄色「进行中」徽章(ADR-100)只给「品质部检查结果」一张: 等待检查结果的收货单
-//     货已收进来、结论在品质部手上, 仓库这一档还没完结但也不用动手。三张方向任务中心
-//     与调拨/盘点没有这种在办态 —— 它们每一段要么等仓库动手(红), 要么已经结束(括号),
-//     所以刻意不挂, 免得为了凑颜色造出一个没人看得懂的数。
-//   · 出入库单据区的调拨 / 盘点挂本人草稿红徽章（2026-09-11 口径反转：草稿是
-//     必须由本人处理完的活，改红徽章并逐级累加）；委外成品退货单 / 委外损耗单
-//     是历史只读专页，不挂任何计数。
-//   · 顶栏右上角 = 本模块累计(任务中心 + 仓库草稿)，求和在服务端徽章目录
-//     (徽章汇总的 warehouse 容器, ADR-108)，与工作台「仓库管理」卡同源。
+// (hubCardAllowed，ADR-109)。计数口径(准则 14-徽章与计数口径)：
+//   · 任务中心卡红数 = BadgeModule.warehouse 待办累计（四任务中心 + 仓库草稿，
+//     服务端徽章目录求和，页面里不做加法）；黄数 = 同容器在办累计（等待检查结果）。
+//   · 新建区六张卡不挂数（新建入口不是待办；草稿仍在新页「草稿(N)」按钮与
+//     任务中心各草稿分段可见）。
 //   · 库存查询与报表区是浏览型入口，不挂任何计数。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_module_progress_chip.dart';
 import '../../../components/feedback/uten_module_todo_chip.dart';
+import '../../../components/feedback/uten_notification_badge.dart';
+import '../../../components/feedback/uten_in_progress_badge.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
-import '../../../components/feedback/uten_draft_badge.dart';
-import '../../../components/feedback/uten_in_progress_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -43,12 +39,9 @@ import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/providers/draft_counts_provider.dart';
 import '../config/warehouse_report_config.dart';
 import '../models/stock_doc.dart';
 import '../providers/warehouse_count_refresh.dart';
-import '../widgets/warehouse_quality_result_badge.dart';
-import '../widgets/warehouse_task_center_badges.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 class WarehouseHubPage extends ConsumerWidget {
@@ -69,7 +62,8 @@ class WarehouseHubPage extends ConsumerWidget {
     bool canOpen(String location) =>
         hubCardAllowed(RouteName.warehouse, location, perms, isSuperAdmin);
 
-    // 任务中心卡：三张方向任务中心 + 品质部检查结果（角标 = 内部分段待办之和）。
+    // 任务中心卡（2026-09-24 合并）：六大类一站式；角标 = 模块待办/在办累计
+    //（服务端徽章目录求和，与顶栏两枚药丸、工作台仓库卡同源同数）。
     final taskEntries =
         <
               ({
@@ -81,47 +75,22 @@ class WarehouseHubPage extends ConsumerWidget {
                 Widget? progressBadge,
               })
             >[
-              if (canOpen(RouteName.warehouseOutboundTasks))
+              if (canOpen(RouteName.warehouseTasks))
                 (
-                  icon: Icons.outbox_outlined,
-                  label: '出库任务中心',
-                  description: '销售出库（确认出库/历史）· 委外出仓 · 其它/产成品出库（新建+历史）',
-                  location: RouteName.warehouseOutboundTasks,
-                  badge: const WarehouseOutboundTaskBadge(showLabel: true),
-                  progressBadge: null,
-                ),
-              if (canOpen(RouteName.warehouseInboundTasks))
-                (
-                  icon: Icons.inbox_outlined,
-                  label: '入库任务中心',
-                  description: '采购/委外到货与异常 · 产成品点收 · 其它入库（新建+历史）',
-                  location: RouteName.warehouseInboundTasks,
-                  badge: const WarehouseInboundTaskBadge(showLabel: true),
-                  progressBadge: null,
-                ),
-              if (canOpen(RouteName.warehouseDrawTasks))
-                (
-                  icon: Icons.construction_outlined,
-                  label: '生产领料任务中心',
-                  description: '待领任务 · 领料单（新建/历史/出库进度）· 生产退料',
-                  location: RouteName.warehouseDrawTasks,
-                  badge: const WarehouseDrawTaskBadge(showLabel: true),
-                  progressBadge: null,
-                ),
-              if (canOpen(RouteName.warehouseQualityResults))
-                (
-                  icon: Icons.fact_check_outlined,
-                  label: '品质部检查结果',
-                  description: '跟踪等待检查、全部/部分合格待入库与不合格退回；可批量确认入库',
-                  location: RouteName.warehouseQualityResults,
-                  badge: const WarehouseQualityResultBadge(showLabel: true),
-                  // 等待检查结果: 货已收、结论在品质部手上, 仓库这一档还在跑但
-                  // 不用动手(注册表入口 warehouseQualityWaiting, 页内同名分段同数)。
+                  icon: Icons.task_alt_outlined,
+                  label: '仓库任务中心',
+                  description: '出库 · 入库 · 生产领料 · 品质检查结果 · 委外退回，一站式查看与办理',
+                  location: RouteName.warehouseTasks,
+                  badge: UtenNotificationBadge(
+                    count: ref.watch(
+                      badgeModuleTodoProvider(BadgeModule.warehouse),
+                    ),
+                    showLabel: true,
+                  ),
+                  // 黄 = 等待检查结果的收货单(货已收、结论在品质部手上)。
                   progressBadge: UtenInProgressBadge(
                     count: ref.watch(
-                      badgeEntryInProgressProvider(
-                        BadgeEntry.warehouseQualityResult,
-                      ),
+                      badgeModuleInProgressProvider(BadgeModule.warehouse),
                     ),
                     showLabel: true,
                   ),
@@ -129,18 +98,47 @@ class WarehouseHubPage extends ConsumerWidget {
             ]
             .toList();
 
-    // 出入库单据（仓库内部作业与特殊单据）：调拨/盘点 + 委外成品退货/损耗历史。
-    // 其它六类原生单据与采购/委外收货出仓历史已并入三张任务中心卡。
-    final stockDocumentTypes = StockDocType.values
-        .where(
-          (type) =>
-              (type == StockDocType.transfer || type == StockDocType.check) &&
-              canOpen(RoutePath.stockDocList(type.code)),
-        )
-        .toList(growable: false);
-    final linkedDocEntries = _warehouseLinkedDocEntries
-        .where((e) => canOpen(e.$4))
-        .toList();
+    // 新建单据区：仓库原生单据直达新建页（creator-only，路由守卫按
+    // /warehouse/:code/new 的 create 权限放行；不支持手工新建的类型不登记）。
+    final createEntries =
+        <({IconData icon, String label, String description, String location})>[
+          (
+            icon: Icons.outbox_outlined,
+            label: '新建其它出库',
+            description: '临时性、非销售/委外方向的出库',
+            location: RoutePath.stockDocNew(StockDocType.otherOut.code),
+          ),
+          (
+            icon: Icons.unarchive_outlined,
+            label: '新建产成品出库',
+            description: '产成品出仓单',
+            location: RoutePath.stockDocNew(StockDocType.finishedOut.code),
+          ),
+          (
+            icon: Icons.inbox_outlined,
+            label: '新建其它入库',
+            description: '临时性、无上游单据的入库',
+            location: RoutePath.stockDocNew(StockDocType.otherIn.code),
+          ),
+          (
+            icon: Icons.archive_outlined,
+            label: '新建产成品进仓',
+            description: '产成品进仓单',
+            location: RoutePath.stockDocNew(StockDocType.finishedIn.code),
+          ),
+          (
+            icon: Icons.swap_horiz_outlined,
+            label: '新建调拨单',
+            description: '仓与仓之间的库存调拨',
+            location: RoutePath.stockDocNew(StockDocType.transfer.code),
+          ),
+          (
+            icon: Icons.fact_check_outlined,
+            label: '新建盘点单',
+            description: '库存盘点与盈亏调整',
+            location: RoutePath.stockDocNew(StockDocType.check.code),
+          ),
+        ].where((e) => canOpen(e.location)).toList();
 
     final stockQueryEntries = <_StockQueryEntry>[
       _StockQueryEntry(
@@ -193,12 +191,7 @@ class WarehouseHubPage extends ConsumerWidget {
             children: [
               // 任务中心：整组按权限显隐（无任何任务权限时不露空组标题）。
               if (taskEntries.isNotEmpty) ...[
-                _sectionHeader(
-                  context,
-                  theme,
-                  l10n.hubSectionTaskCenter,
-                  '按业务方向归并的待办工作台；角标为各分段待办之和。',
-                ),
+                _sectionHeader(context, theme, l10n.hubSectionTaskCenter),
                 UtenResponsiveGrid(
                   itemCount: taskEntries.length,
                   spacing: UtenSpacing.s12,
@@ -217,50 +210,27 @@ class WarehouseHubPage extends ConsumerWidget {
                 ),
                 const SizedBox(height: UtenSpacing.s20),
               ],
-              _sectionHeader(
-                context,
-                theme,
-                l10n.warehouseHubSectionDocs,
-                '仓库内部作业与特殊单据：调拨、盘点、委外成品退货与损耗；'
-                '出入仓执行类单据已并入任务中心，历史在对应分段查看。',
-              ),
-              UtenResponsiveGrid(
-                itemCount: stockDocumentTypes.length + linkedDocEntries.length,
-                spacing: UtenSpacing.s12,
-                columns: const UtenResponsiveColumns(compact: 2, medium: 4),
-                itemBuilder: (context, i, _) {
-                  if (i < stockDocumentTypes.length) {
-                    final t = stockDocumentTypes[i];
-                    final draftKind = _stockDocDraftKind(t);
+              // 新建单据（2026-09-24 三段式）：只对能新建的人显示（无 create
+              // 权限时整组隐藏，浏览去任务中心）；新建入口一律不挂徽章。
+              if (createEntries.isNotEmpty) ...[
+                _sectionHeader(context, theme, '新建单据'),
+                UtenResponsiveGrid(
+                  itemCount: createEntries.length,
+                  spacing: UtenSpacing.s12,
+                  columns: const UtenResponsiveColumns(compact: 2, medium: 4),
+                  itemBuilder: (context, i, _) {
+                    final e = createEntries[i];
                     return UtenHubCard(
-                      icon: iconFor(t),
-                      label: _stockDocTitle(t, l10n),
-                      description: _stockDocSubtitle(t, l10n),
-                      // 调拨/盘点卡没有别的待办徽章，草稿徽章独占右上角 badge 槽
-                      // （用户要的就是这个位置）；一个槽塞两个红点会读不懂。
-                      badge: draftKind == null
-                          ? null
-                          : UtenDraftBadge(kind: draftKind),
-                      onTap: () =>
-                          goFrom(context, RoutePath.stockDocList(t.code)),
+                      icon: e.icon,
+                      label: e.label,
+                      description: e.description,
+                      onTap: () => goFrom(context, e.location),
                     );
-                  }
-                  final e = linkedDocEntries[i - stockDocumentTypes.length];
-                  return UtenHubCard(
-                    icon: e.$1,
-                    label: e.$2,
-                    description: e.$3,
-                    onTap: () => goFrom(context, e.$4),
-                  );
-                },
-              ),
-              const SizedBox(height: UtenSpacing.s20),
-              _sectionHeader(
-                context,
-                theme,
-                l10n.warehouseHubSectionInventory,
-                l10n.warehouseHubSectionInventoryDesc,
-              ),
+                  },
+                ),
+                const SizedBox(height: UtenSpacing.s20),
+              ],
+              _sectionHeader(context, theme, l10n.warehouseHubSectionInventory),
               UtenResponsiveGrid(
                 itemCount: stockQueryEntries.length,
                 spacing: UtenSpacing.s12,
@@ -276,12 +246,7 @@ class WarehouseHubPage extends ConsumerWidget {
                 },
               ),
               const SizedBox(height: UtenSpacing.s20),
-              _sectionHeader(
-                context,
-                theme,
-                l10n.warehouseHubSectionReports,
-                l10n.warehouseHubSectionReportsDesc,
-              ),
+              _sectionHeader(context, theme, '报表中心'),
               UtenResponsiveGrid(
                 itemCount: reportKinds.length,
                 spacing: UtenSpacing.s12,
@@ -303,34 +268,17 @@ class WarehouseHubPage extends ConsumerWidget {
     );
   }
 
-  Widget _sectionHeader(
-    BuildContext context,
-    ThemeData theme,
-    String title,
-    String description,
-  ) {
+  Widget _sectionHeader(BuildContext context, ThemeData theme, String title) {
     return Padding(
       padding: const EdgeInsets.only(
         left: UtenSpacing.s4,
         bottom: UtenSpacing.s8,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            description,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
+      child: Text(
+        title,
+        style: theme.textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -350,46 +298,9 @@ class _StockQueryEntry {
   final String location;
 }
 
-/// 仓库 hub 单据区保留的特殊单据入口(图标/标题/副标题/路由)；可见性按路由守卫。
-/// 采购/委外收货历史与出仓历史已并入任务中心，这里只留无法按方向归并的两类。
-const _warehouseLinkedDocEntries = <(IconData, String, String, String)>[
-  (
-    Icons.undo_outlined,
-    '委外成品退货单',
-    '回厂成品退回委外商的实物历史',
-    RouteName.warehouseSubcontractFinishedReturnHistory,
-  ),
-  (
-    Icons.delete_sweep_outlined,
-    '委外损耗单',
-    '实物损耗数量、重量与原因历史',
-    RouteName.warehouseSubcontractWasteHistory,
-  ),
-];
-
-/// 该仓库单据类型在跨模块草稿计数里的切片（无切片返回 null）。
-///
-/// stock_documents 一张表装 8 种单据，整表合计 [DraftDocKind.stockDocument] 只在
-/// 新建页「草稿(N)」按钮里用；hub 上两张卡各用自己的 doc_type 切片，
-/// 避免「调拨卡和盘点卡都显同一个合计数」的双计。
-DraftDocKind? _stockDocDraftKind(StockDocType type) => switch (type) {
-  StockDocType.transfer => DraftDocKind.stockTransfer,
-  StockDocType.check => DraftDocKind.stockCheck,
-  _ => null,
-};
-
-// 出入库单据卡标题/副标题本地化（StockDocType 枚举仍是中文 label，列表/编辑页在用）。
-String _stockDocTitle(StockDocType t, AppLocalizations l10n) => switch (t) {
-  StockDocType.transfer => l10n.warehouseHubDocTransfer,
-  StockDocType.check => l10n.warehouseHubDocCheck,
-  _ => t.label,
-};
-
-String _stockDocSubtitle(StockDocType t, AppLocalizations l10n) => switch (t) {
-  StockDocType.transfer => l10n.warehouseHubDocTransferSub,
-  StockDocType.check => l10n.warehouseHubDocCheckSub,
-  _ => '',
-};
+// 出入库单据区（调拨/盘点列表 + 委外历史专页）已于 2026-09-24 三段式统一时撤下：
+// 调拨/盘点改入「新建单据」区直达新建页，浏览在仓库任务中心对应大类；
+// 委外成品退货单/委外损耗单历史并入任务中心大类（路由保留）。
 
 // 仓库报表卡标题/副标题本地化（按 WarehouseReportKind 枚举查）。
 String _warehouseReportTitle(WarehouseReportKind k, AppLocalizations l10n) =>

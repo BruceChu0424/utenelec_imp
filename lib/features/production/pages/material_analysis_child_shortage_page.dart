@@ -475,7 +475,9 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
                 '其中 ${_host._qty(covered)}$unit 会先用别处的公共在途，只为剩下的开新单。'
           : '还要另外下单 ${_host._qty(shown.net)}$unit 才够。',
       child: Text(
-        '还缺 ${_host._qty(shown.net)}$unit',
+        shown.net > 0.0001
+            ? '还缺 ${_host._qty(shown.net)}$unit'
+            : '待认领 ${_host._qty(_host._childShortageUncovered(material))}$unit',
         key: ValueKey('child-shortage-net-${group.key}'),
         style: theme.textTheme.titleSmall?.copyWith(
           color: theme.colorScheme.error,
@@ -489,6 +491,28 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
           ? _host._materialTableAppendQtyCell(theme, row)
           : _host._materialTableOrderQtyCell(theme, row),
     );
+    final overproductionRate = _host._tableIssueTarget(group).viaWorkshop
+        ? SizedBox(
+            width: 152,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('允许超产比例', style: theme.textTheme.bodySmall),
+                const SizedBox(height: UtenSpacing.s4),
+                ProductionOverproductionRateField(
+                  key: ValueKey(
+                    'child-shortage-overproduction-rate-${group.key}',
+                  ),
+                  controller: _host._overproductionPercentController(
+                    materialLineId: material.materialLineId,
+                  ),
+                  enabled: _host._canGenerate && !_host._busy && !_submitting,
+                ),
+              ],
+            ),
+          )
+        : null;
     final checkbox = Checkbox(
       key: ValueKey('child-shortage-check-${group.key}'),
       value: checked,
@@ -573,13 +597,21 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
     final workshop = assignable
         ? SizedBox(
             width: 132,
-            child: _host._materialTableProductionWorkshopCell(theme, row),
+            child: _host._materialTableProductionWorkshopCell(
+              theme,
+              row,
+              revealKey: false,
+            ),
           )
         : null;
     final worker = assignable
         ? SizedBox(
             width: 116,
-            child: _host._materialTableResponsibleCell(theme, row),
+            child: _host._materialTableResponsibleCell(
+              theme,
+              row,
+              revealKey: false,
+            ),
           )
         : null;
     final indent = (line.depth - 1) * 20.0;
@@ -601,7 +633,8 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          if (constraints.maxWidth >= 980) {
+          if (constraints.maxWidth >=
+              (overproductionRate == null ? 980 : 1140)) {
             return Row(
               children: [
                 checkbox,
@@ -613,6 +646,10 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
                 route,
                 const SizedBox(width: UtenSpacing.s12),
                 quantity,
+                if (overproductionRate != null) ...[
+                  const SizedBox(width: UtenSpacing.s8),
+                  overproductionRate,
+                ],
                 if (workshop != null) ...[
                   const SizedBox(width: UtenSpacing.s8),
                   workshop,
@@ -645,6 +682,7 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
                         shortage,
                         route,
                         quantity,
+                        ?overproductionRate,
                         ?workshop,
                         ?worker,
                       ],

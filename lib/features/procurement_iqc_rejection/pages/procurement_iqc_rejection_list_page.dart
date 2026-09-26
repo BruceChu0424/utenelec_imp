@@ -9,6 +9,7 @@ import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
@@ -29,6 +30,7 @@ class ProcurementIqcRejectionListPage extends ConsumerStatefulWidget {
     this.source,
     this.repository,
     this.embedded = false,
+    this.externalHeader,
     this.refreshTick = 0,
   });
 
@@ -38,6 +40,10 @@ class ProcurementIqcRejectionListPage extends ConsumerStatefulWidget {
   /// 嵌入「业务审核中心」分段时为 true——去掉本页 AppBar 与内容容器
   /// （外层提供标题/刷新/容器）。
   final bool embedded;
+
+  /// 宿主（业务审核中心）的大类行：挂进本页折叠头，随页一起滚走
+  /// （2026-09-24 用户口径「表格滑到顶」，置顶后只剩表格自身工具条）。
+  final Widget? externalHeader;
 
   /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前页。
   final int refreshTick;
@@ -196,7 +202,6 @@ class _ProcurementIqcRejectionListPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: 'IQC 不合格退回与贷项',
-        subtitle: '品质冻结事实 · 实物退回 · 供应商贷项 · 可审计反向',
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: _defaultBackPath),
         ),
@@ -228,6 +233,11 @@ class _ProcurementIqcRejectionListPageState
       final header = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 宿主大类行随页滚走（2026-09-24「表格滑到顶」）。
+          if (widget.externalHeader != null) ...[
+            widget.externalHeader!,
+            const SizedBox(height: UtenSpacing.s12),
+          ],
           _buildResponsibilityBanner(),
           const SizedBox(height: UtenSpacing.s12),
           if (_counts != null) _buildCounts(_counts!),
@@ -257,12 +267,11 @@ class _ProcurementIqcRejectionListPageState
         ],
       );
       if (expanded) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            header,
-            Expanded(child: _buildTable(result)),
-          ],
+        // 2026-09-24 对齐物料分析页口径：责任横幅/计数卡/筛选行进折叠头
+        //（上滑先收走，表头顶到头再表内滚）；独立页与嵌入态同款。
+        return UtenCollapsingHeaderScrollView(
+          collapsingHeader: header,
+          body: _buildTable(result),
         );
       }
       return ListView(
@@ -461,6 +470,8 @@ class _ProcurementIqcRejectionListPageState
   Widget _buildTable(PagedResult<ProcurementIqcRejectionCase> result) {
     return MasterDataTableView<ProcurementIqcRejectionCase>(
       key: const Key('iqc-rejection-task-table'),
+      // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+      primary: true,
       columns: _columns,
       items: result.items,
       // 来源/状态是固定枚举（服务端 receiptType/status 参数均已在），前端

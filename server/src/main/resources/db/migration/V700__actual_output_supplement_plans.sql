@@ -70,9 +70,6 @@ CREATE TABLE production_actual_output_supplement_claims (
 ALTER TABLE production_daily_report_items ADD COLUMN supplement_proof_id UUID REFERENCES production_actual_output_supplement_proofs(id);
 ALTER TABLE production_plans ADD COLUMN actual_output_supplement_request_id UUID UNIQUE REFERENCES production_actual_output_supplement_requests(id);
 CREATE INDEX idx_actual_output_supplement_source ON production_actual_output_supplement_requests(source_execution_segment_id,status);
-CREATE UNIQUE INDEX uq_actual_supplement_active_captured_input
-    ON production_actual_output_supplement_requests(created_by,(report_context->>'idempotencyKey'),input_line_index)
-    WHERE status<>'CANCELLED' AND report_context->>'idempotencyKey' IS NOT NULL AND input_line_index IS NOT NULL;
 CREATE INDEX idx_actual_output_supplement_report ON production_daily_report_items(supplement_proof_id,report_id) WHERE supplement_proof_id IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION fn_execution_overproduction_policy_applies(p_segment UUID)
@@ -133,15 +130,6 @@ FOR EACH ROW EXECUTE FUNCTION fn_guard_supplement_target_report_identity();
 
 CREATE FUNCTION fn_guard_supplement_plan_approval_context() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-    IF OLD.actual_output_supplement_request_id IS NOT NULL
-       AND NEW.actual_output_supplement_request_id IS DISTINCT FROM OLD.actual_output_supplement_request_id THEN
-        RAISE EXCEPTION 'Supplemental production source identity is immutable' USING ERRCODE='23514';
-    END IF;
-    IF NEW.actual_output_supplement_request_id IS NOT NULL AND NOT EXISTS(
-        SELECT 1 FROM production_actual_output_supplement_requests
-        WHERE id=NEW.actual_output_supplement_request_id AND supplement_plan_id=NEW.id) THEN
-        RAISE EXCEPTION 'Supplemental plan identity must match its exact approved request' USING ERRCODE='23514';
-    END IF;
     IF NEW.actual_output_supplement_request_id IS NOT NULL AND NEW.status=1 AND OLD.status IS DISTINCT FROM NEW.status
        AND current_setting('app.actual_output_supplement_request',TRUE) IS DISTINCT FROM NEW.actual_output_supplement_request_id::text THEN
         RAISE EXCEPTION 'Supplemental plans require their complete dedicated approval command' USING ERRCODE='23514';
@@ -149,7 +137,7 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-CREATE TRIGGER trg_guard_supplement_plan_approval_context BEFORE UPDATE OF status,actual_output_supplement_request_id ON production_plans
+CREATE TRIGGER trg_guard_supplement_plan_approval_context BEFORE UPDATE OF status ON production_plans
 FOR EACH ROW EXECUTE FUNCTION fn_guard_supplement_plan_approval_context();
 
 CREATE FUNCTION fn_assert_supplement_plan_approval_complete() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -373,11 +361,6 @@ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fn_assert_actual_out
 
 CREATE FUNCTION fn_guard_actual_output_supplement_plan_lifecycle() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-    IF NEW.actual_output_supplement_request_id IS NOT NULL
-       AND (NEW.is_deleted OR NEW.is_canceled OR NEW.is_stopped)
-       AND current_setting('app.actual_output_supplement_request',TRUE) IS DISTINCT FROM NEW.actual_output_supplement_request_id::text THEN
-        RAISE EXCEPTION 'Cancel supplemental production through its exact source request' USING ERRCODE='23514';
-    END IF;
     IF (NEW.is_deleted OR NEW.is_canceled OR NEW.is_stopped) AND EXISTS(
         SELECT 1 FROM production_actual_output_supplement_proofs proof WHERE proof.supplement_plan_id=NEW.id
           AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_reversals reversed WHERE reversed.proof_id=proof.id)) THEN
@@ -389,22 +372,6 @@ END;
 $$;
 CREATE TRIGGER trg_guard_actual_supplement_plan_lifecycle BEFORE UPDATE OF is_deleted,is_canceled,is_stopped ON production_plans
 FOR EACH ROW EXECUTE FUNCTION fn_guard_actual_output_supplement_plan_lifecycle();
-
-CREATE FUNCTION fn_guard_actual_supplement_plan_item_snapshot() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE target_id UUID;
-BEGIN
-    target_id:=CASE WHEN TG_OP='DELETE' THEN OLD.id ELSE NEW.id END;
-    IF EXISTS(SELECT 1 FROM production_actual_output_supplement_requests WHERE supplement_plan_item_id=target_id) THEN
-        IF TG_OP='DELETE' OR (NEW.plan_id,NEW.goods_id,NEW.color_id,NEW.unit_id,NEW.unit_rate,NEW.qty,NEW.sales_order_item_id,NEW.is_deleted)
-            IS DISTINCT FROM (OLD.plan_id,OLD.goods_id,OLD.color_id,OLD.unit_id,OLD.unit_rate,OLD.qty,OLD.sales_order_item_id,OLD.is_deleted) THEN
-            RAISE EXCEPTION 'Supplemental plan products and quantities retain their reviewed physical-batch snapshot' USING ERRCODE='23514';
-        END IF;
-    END IF;
-    RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
-END;
-$$;
-CREATE TRIGGER trg_guard_actual_supplement_plan_item_snapshot BEFORE UPDATE OR DELETE ON production_plan_items
-FOR EACH ROW EXECUTE FUNCTION fn_guard_actual_supplement_plan_item_snapshot();
 
 SELECT public.fn_audit_track_table('production_actual_output_supplement_requests','FULL','data_change',false);
 SELECT public.fn_audit_track_table('production_actual_output_supplement_proofs','NONE','data_change',false);

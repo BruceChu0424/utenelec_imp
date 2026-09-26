@@ -56,17 +56,17 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         POSTGRES.start();
         jdbc = new JdbcTemplate(new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(jdbc,
+                "goods", "production_execution_segments", "production_fqc_recovery_authorizations",
+                "production_material_demands", "production_material_discovery_requests",
+                "production_overproduction_rate_requests", "v_production_fqc_recovery_balance");
+        jdbc.execute("ALTER TABLE production_execution_segments ALTER COLUMN start_route SET DEFAULT 'FULL_KIT', ALTER COLUMN continuous_supply SET DEFAULT FALSE");
+        jdbc.execute("ALTER TABLE v_production_fqc_recovery_balance ALTER COLUMN cancelled SET DEFAULT FALSE");
+        jdbc.execute("CREATE TABLE workbench_execution_policy_facts(segment_id uuid PRIMARY KEY, overproduction_policy_applies boolean DEFAULT TRUE, actual_supplement_material_ready boolean DEFAULT FALSE)");
         jdbc.execute("""
-                CREATE TABLE production_execution_segments(id uuid PRIMARY KEY, status text, auto_promote_when_ready boolean DEFAULT TRUE, is_deleted boolean DEFAULT FALSE,source_segment_id uuid,
-                    product_goods_id uuid,plan_id uuid,package_id uuid,workshop_department_id uuid,responsible_employee_id uuid,
-                    continuous_supply boolean DEFAULT FALSE, start_route text DEFAULT 'FULL_KIT', route_confirmed_at timestamptz,
-                    allowed_overproduction_rate numeric DEFAULT .10,overproduction_rate_version bigint DEFAULT 0,
-                    overproduction_policy_applies boolean DEFAULT TRUE, actual_supplement_material_ready boolean DEFAULT FALSE);
-                CREATE TABLE production_overproduction_rate_requests(id uuid,execution_segment_id uuid,status text,requested_rate numeric);
-                CREATE FUNCTION fn_execution_overproduction_policy_applies(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT COALESCE((SELECT overproduction_policy_applies FROM production_execution_segments WHERE id=$1),TRUE)';
-                CREATE FUNCTION fn_actual_supplement_material_ready(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT COALESCE((SELECT actual_supplement_material_ready FROM production_execution_segments WHERE id=$1),FALSE)';
-                CREATE TABLE v_production_fqc_recovery_balance(authorization_id uuid,execution_segment_id uuid,available_qty numeric,cancelled boolean DEFAULT FALSE);
-                CREATE TABLE production_fqc_recovery_authorizations(id uuid,disposition_code text);
+                CREATE FUNCTION fn_material_discovery_pending(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT COALESCE((SELECT material_discovery_required FROM production_execution_segments WHERE id=$1),FALSE)';
+                CREATE FUNCTION fn_execution_overproduction_policy_applies(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT COALESCE((SELECT overproduction_policy_applies FROM workbench_execution_policy_facts WHERE segment_id=$1),TRUE)';
+                CREATE FUNCTION fn_actual_supplement_material_ready(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT COALESCE((SELECT actual_supplement_material_ready FROM workbench_execution_policy_facts WHERE segment_id=$1),FALSE)';
                 CREATE FUNCTION fn_fqc_replenishment_material_ready(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
                 CREATE TABLE production_execution_segment_splits(source_segment_id uuid);
                 CREATE FUNCTION fn_split_batch_empty_issued(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
@@ -88,7 +88,6 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 CREATE TABLE production_plans(id uuid PRIMARY KEY, actual_output_supplement_request_id uuid, bill_no text, status integer, maker_id uuid,
                     material_analysis_id uuid, is_deleted boolean DEFAULT FALSE,is_closed boolean DEFAULT FALSE,is_canceled boolean DEFAULT FALSE,is_stopped boolean DEFAULT FALSE);
                 CREATE TABLE production_planning_packages(id uuid PRIMARY KEY,status text DEFAULT 'CONFIRMED',is_deleted boolean DEFAULT FALSE, cancel_idempotency_key text, created_at timestamp with time zone DEFAULT now(), created_by uuid, deleted_at timestamp with time zone, execution_model_version smallint DEFAULT 0, idempotency_key text, lifecycle_reason text, lock_version bigint DEFAULT 0, plan_id uuid, preview_fingerprint text, purchase_request_id uuid, request_hash text, reverse_idempotency_key text, updated_at timestamp with time zone DEFAULT now(), updated_by uuid, warehouse_id uuid);
-                CREATE TABLE goods(id uuid, code text, name text, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid);
                 CREATE TABLE production_material_analysis_items(analysis_id uuid, goods_id uuid,
                     sales_order_item_id uuid, is_deleted boolean, source_ref text);
                 CREATE TABLE sales_order_items(id uuid, order_id uuid, is_deleted boolean);
@@ -131,9 +130,6 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                     root_planned_qty numeric DEFAULT 0, root_inbound_qty numeric DEFAULT 0, root_progress_ratio numeric DEFAULT 0);
                 """);
         jdbc.execute("""
-                CREATE TABLE production_material_demands(id uuid PRIMARY KEY, plan_id uuid,
-                    execution_segment_id uuid, goods_id uuid, color_id uuid, required_qty numeric,
-                    status text DEFAULT 'ACTIVE', is_deleted boolean DEFAULT FALSE,split_root_demand_id uuid, consumption_snapshot jsonb);
                 CREATE TABLE production_material_stock_postings(id uuid PRIMARY KEY, demand_id uuid,
                     posting_type text, qty_base numeric, stock_document_item_id uuid, recorded_tx_id xid8);
                 CREATE TABLE production_planning_package_documents(document_id uuid, document_type text, execution_segment_id uuid);
@@ -342,6 +338,38 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 .getItems().stream().filter(row -> row.segmentId().equals(task)).findFirst().orElseThrow();
     }
 
+    @Test void unknownLeafMaterialsStayInDrawRequestFiltersAndNeverBecomeZeroMaterialStartable() {
+        UUID task = new UUID(0, 2), request = UUID.randomUUID();
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
+        jdbc.update("UPDATE production_execution_segments SET material_discovery_required=TRUE WHERE id=?", task);
+        jdbc.update("UPDATE v_production_execution_workbench_segments SET zero_material=TRUE WHERE segment_id=?", task);
+        try {
+            var before = row(task);
+            assertThat(before.materialDiscoveryRequired()).isTrue();
+            assertThat(before.zeroMaterial()).isFalse();
+            assertThat(before.canRequestMaterialDiscovery()).isTrue();
+            assertThat(before.canRequestDraw()).isFalse();
+            assertThat(before.canStart()).isFalse();
+            assertThat(service.workshopTasks(1, 50, null, "PREPARING", null, null, null, "DRAW_NOT_REQUESTED").getItems())
+                    .extracting(ProductionExecutionWorkbenchSegment::segmentId).contains(task);
+            assertThat(service.workshopTasks(1, 50, null, "PREPARING", null, null, null, "READY_TO_START").getItems())
+                    .extracting(ProductionExecutionWorkbenchSegment::segmentId).doesNotContain(task);
+            jdbc.update("INSERT INTO production_material_discovery_requests(id,execution_segment_id,status) VALUES (?,?,'PENDING')", request, task);
+            var pending = row(task);
+            assertThat(pending.materialDiscoveryRequestId()).isEqualTo(request);
+            assertThat(pending.materialDiscoveryStatus()).isEqualTo("PENDING");
+            assertThat(pending.canRequestMaterialDiscovery()).isFalse();
+            assertThat(service.workshopTasks(1, 50, null, "PREPARING", null, null, null, "DRAW_REQUESTED").getItems())
+                    .extracting(ProductionExecutionWorkbenchSegment::segmentId).contains(task);
+            assertThat(service.workshopTasks(1, 50, null, "PREPARING", null, null, null, "DRAW_NOT_REQUESTED").getItems())
+                    .extracting(ProductionExecutionWorkbenchSegment::segmentId).doesNotContain(task);
+        } finally {
+            jdbc.update("DELETE FROM production_material_discovery_requests WHERE id=?", request);
+            jdbc.update("UPDATE production_execution_segments SET material_discovery_required=FALSE WHERE id=?", task);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET zero_material=FALSE WHERE segment_id=?", task);
+        }
+    }
+
     @Test
     void materialEntryFlagsUseActualLedgerBalancesInOneScopedBatch() {
         factory.getStatistics().setStatisticsEnabled(true);
@@ -492,7 +520,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         var old = jdbc.queryForMap("SELECT issued,material_status,preparation_status FROM v_production_execution_workbench_segments WHERE segment_id=?", segment);
         try {
             jdbc.update("UPDATE production_plans SET actual_output_supplement_request_id=? WHERE id=?", request, PLAN);
-            jdbc.update("UPDATE production_execution_segments SET overproduction_policy_applies=FALSE,actual_supplement_material_ready=TRUE WHERE id=?", segment);
+            jdbc.update("INSERT INTO workbench_execution_policy_facts(segment_id,overproduction_policy_applies,actual_supplement_material_ready) VALUES(?,FALSE,TRUE)", segment);
             jdbc.update("UPDATE v_production_execution_workbench_segments SET issued=FALSE,material_status='KIT_SHORT',preparation_status='PREPARING' WHERE segment_id=?", segment);
             var fixed = service.workshopTasks(1,50,"P001","IN_PROGRESS",null,null,null).getItems().getFirst();
             assertThat(fixed.actualOutputSupplementRequestId()).isEqualTo(request);
@@ -500,13 +528,13 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
             assertThat(fixed.issued()).isTrue();
             assertThat(fixed.canReport()).isFalse();
             assertThat(fixed.canBatchReport()).isFalse();
-            jdbc.update("UPDATE production_execution_segments SET actual_supplement_material_ready=FALSE WHERE id=?", segment);
+            jdbc.update("UPDATE workbench_execution_policy_facts SET actual_supplement_material_ready=FALSE WHERE segment_id=?", segment);
             var missing = service.workshopTasks(1,50,"P001","IN_PROGRESS",null,null,null).getItems().getFirst();
             assertThat(missing.materialReady()).isFalse();
             assertThat(missing.issued()).isFalse();
             assertThat(missing.canReport()).isFalse();
-            jdbc.update("INSERT INTO production_fqc_recovery_authorizations VALUES(?,'REWORK')", recovery);
-            jdbc.update("INSERT INTO v_production_fqc_recovery_balance VALUES(?,?,2,FALSE)", recovery, segment);
+            jdbc.update("INSERT INTO production_fqc_recovery_authorizations(id,disposition_code) VALUES(?,'REWORK')", recovery);
+            jdbc.update("INSERT INTO v_production_fqc_recovery_balance(authorization_id,execution_segment_id,available_qty,cancelled) VALUES(?,?,2,FALSE)", recovery, segment);
             var rework = service.workshopTasks(1,50,"P001","IN_PROGRESS",null,null,null).getItems().getFirst();
             assertThat(rework.canReport()).isTrue();
             assertThat(rework.canBatchReport()).isFalse();
@@ -514,7 +542,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
             jdbc.update("DELETE FROM v_production_fqc_recovery_balance WHERE authorization_id=?", recovery);
             jdbc.update("DELETE FROM production_fqc_recovery_authorizations WHERE id=?", recovery);
             jdbc.update("UPDATE production_plans SET actual_output_supplement_request_id=NULL WHERE id=?", PLAN);
-            jdbc.update("UPDATE production_execution_segments SET overproduction_policy_applies=TRUE,actual_supplement_material_ready=FALSE WHERE id=?", segment);
+            jdbc.update("DELETE FROM workbench_execution_policy_facts WHERE segment_id=?", segment);
             jdbc.update("UPDATE v_production_execution_workbench_segments SET issued=?,material_status=?,preparation_status=? WHERE segment_id=?",
                     old.get("issued"),old.get("material_status"),old.get("preparation_status"),segment);
         }

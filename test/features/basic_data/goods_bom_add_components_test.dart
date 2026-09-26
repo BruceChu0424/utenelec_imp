@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 // 组装信息「添加组件」(ADR-111 评审修复)：勾选多个组件后只发一次服务端追加命令，
 // 整批原子；服务端逐行拒绝的原因留在弹窗里给人改，不再逐个新建、失败只报「N 个跳过」。
 import 'package:flutter/material.dart';
@@ -97,6 +98,9 @@ Future<void> _openAddDialog(WidgetTester tester, _RecordingBomRepo repo) async {
         isSuperAdminProvider.overrideWithValue(false),
       ],
       child: const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: Locale('zh'),
         home: Scaffold(
           body: GoodsBomTab(
             goodsId: 'goods-a',

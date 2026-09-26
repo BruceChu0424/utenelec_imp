@@ -108,7 +108,6 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
     return Scaffold(
       appBar: UtenAppBar(
         title: '工程研发部 · 任务中心',
-        subtitle: '维护 BOM / 设计 / 打样 / 试产 / ECN 等研发任务',
         leading: UtenBackButton(
           // 本页由工作台卡片 push 进入；无 returnTo 时回到工作台。
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),

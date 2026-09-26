@@ -28,6 +28,7 @@ class GridHeaderFilterCell extends StatefulWidget {
     required this.selected,
     required this.onChanged,
     this.requiredStar = false,
+    this.leading,
   });
 
   final String label;
@@ -36,6 +37,9 @@ class GridHeaderFilterCell extends StatefulWidget {
   final String? selected;
   final ValueChanged<String?> onChanged;
   final bool requiredStar;
+
+  /// 标签前缀（2026-09-25）：固定列传图钉图标，与标签同行垂直居中。
+  final Widget? leading;
 
   @override
   State<GridHeaderFilterCell> createState() => _GridHeaderFilterCellState();
@@ -111,6 +115,10 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
           color: highlighted ? theme.colorScheme.primaryContainer : null,
           child: Row(
             children: [
+              if (widget.leading != null) ...[
+                widget.leading!,
+                const SizedBox(width: UtenSpacing.s4),
+              ],
               Expanded(
                 child: Text.rich(
                   TextSpan(
@@ -164,21 +172,32 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
       constraints: const BoxConstraints(minHeight: 44),
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
       alignment: Alignment.centerLeft,
-      child: Text.rich(
-        TextSpan(
-          text: widget.label,
-          style: style,
-          children: widget.requiredStar
-              ? [
-                  TextSpan(
-                    text: ' *',
-                    style: style.copyWith(color: theme.colorScheme.error),
-                  ),
-                ]
-              : null,
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.leading != null) ...[
+            widget.leading!,
+            const SizedBox(width: UtenSpacing.s4),
+          ],
+          Flexible(
+            child: Text.rich(
+              TextSpan(
+                text: widget.label,
+                style: style,
+                children: widget.requiredStar
+                    ? [
+                        TextSpan(
+                          text: ' *',
+                          style: style.copyWith(color: theme.colorScheme.error),
+                        ),
+                      ]
+                    : null,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }

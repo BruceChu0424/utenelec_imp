@@ -271,7 +271,6 @@ class _SubcontractShortDeliveryPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: '委外回厂短交判定',
-        subtitle: '回厂数量少于订货量 · 判定分批到货继续等，或接受损耗结案',
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.subcontract),
         ),

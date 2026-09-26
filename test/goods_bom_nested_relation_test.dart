@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -101,6 +102,9 @@ Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
     ProviderScope(
       overrides: [goodsBomRepositoryProvider.overrideWithValue(repo)],
       child: const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: Locale('zh'),
         home: Scaffold(
           body: GoodsBomTab(
             goodsId: 'goods-a',
@@ -153,6 +157,9 @@ void main() {
             isSuperAdminProvider.overrideWithValue(false),
           ],
           child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: Locale('zh'),
             home: Scaffold(
               body: GoodsBomTab(
                 goodsId: 'goods-a',
@@ -168,7 +175,7 @@ void main() {
 
       final add = find.byKey(const Key('goods-bom-add-component'));
       expect(add, findsOneWidget);
-      expect(find.text('暂无组装信息，点上方「添加组件」录入'), findsOneWidget);
+      expect(find.text('暂无组装信息，点右下「添加组件」录入'), findsOneWidget);
       expect(find.text('编辑'), findsNothing);
       expect(find.text('删除'), findsNothing);
 
@@ -191,6 +198,9 @@ void main() {
       ProviderScope(
         overrides: [goodsBomRepositoryProvider.overrideWithValue(repo)],
         child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
           home: Scaffold(
             body: GoodsBomTab(
               goodsId: 'goods-a',
@@ -278,6 +288,9 @@ void main() {
         ],
         // canEdit=false：审计与编辑权限解耦（质检可只有审计权）。
         child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
           home: Scaffold(
             body: GoodsBomTab(
               goodsId: 'goods-a',
@@ -295,15 +308,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('退出审计'), findsOneWidget);
 
-    // 单击行即翻面审计标记（不必双击）。
-    final parentRow = find
-        .ancestor(
-          of: find.text('Parent component'),
-          matching: find.byType(InkWell),
-        )
-        .first;
-    await tester.ensureVisible(parentRow);
-    await tester.tap(parentRow);
+    // 2026-09-25 审计改版：单击行只管选中；标记走「已审」列的圆形对勾按钮
+    // (右键菜单是另一条等价路径)。首行即顶层组件 Parent component。
+    final auditCell = find.byIcon(Icons.radio_button_unchecked).first;
+    await tester.ensureVisible(auditCell);
+    await tester.tap(auditCell);
     await tester.pumpAndSettle();
 
     expect(repo.auditedParentId, 'goods-a');
@@ -325,6 +334,9 @@ void main() {
           isSuperAdminProvider.overrideWithValue(false),
         ],
         child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
           home: Scaffold(
             body: GoodsBomTab(
               goodsId: 'goods-a',

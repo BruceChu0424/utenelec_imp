@@ -177,6 +177,7 @@ public class ReportablePlanLineQueryService {
                  AND segment.responsible_employee_id IS NOT NULL
                  AND (
                      segment.material_requirement_mode = 'ZERO_MATERIAL'
+                     OR fn_actual_supplement_material_ready(segment.id)
                      OR (
                          EXISTS (
                              SELECT 1

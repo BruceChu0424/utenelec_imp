@@ -1,7 +1,8 @@
 // UtenSupplierPicker - 供应商选择器（单据选商用：采购/委外表头 + 明细行级供应商）。
 //
 // 面板本体是泛型的 showUtenMasterPicker(与客户选择器共用一份，ADR-111)：compact
-// 底部抽屉 / medium+ 右侧滑入 720 宽面板；左侧供应商分类树 + 右侧供应商列表(搜索+分页)。
+// 底部抽屉 / medium+ 右侧滑入面板（宽 = max(720, 屏宽 50%)）；左侧供应商分类树 +
+// 右侧供应商列表(搜索+分页)。
 // 数据请求 selectableOnly：仅「使用」状态的供应商进入分页。
 // 头部带「添加供应商」（supplier:create 权限）：快捷新建入主档后自动选中该新商。
 import 'package:flutter/material.dart';

@@ -78,7 +78,7 @@ class SubcontractMakeTaskReadAccessTest {
         when(count.getSingleResult()).thenReturn(1L);
         when(rows.setFirstResult(anyInt())).thenReturn(rows);
         when(rows.setMaxResults(anyInt())).thenReturn(rows);
-        Object[] row = new Object[32];
+        Object[] row = new Object[33];
         row[0] = UUID.randomUUID(); row[1] = UUID.randomUUID(); row[2] = "CONFIRMED";
         row[4] = UUID.randomUUID(); row[12] = BigDecimal.TEN; row[13] = BigDecimal.TEN;
         row[14] = BigDecimal.ZERO; row[15] = BigDecimal.TEN; row[16] = BigDecimal.TEN;
@@ -86,6 +86,7 @@ class SubcontractMakeTaskReadAccessTest {
         row[25] = UUID.randomUUID(); row[26] = "SALES_ORDER_ITEM"; row[27] = "SO-ORIGINAL";
         row[28] = 2; row[29] = "ORIGINAL-PRODUCT"; row[30] = "Original product";
         row[31] = new BigDecimal("4");
+        row[32] = "SUBCONTRACT_MAKE";
         when(rows.getResultList()).thenReturn(java.util.Collections.singletonList(row));
         return new Fixture(new SubcontractMakeTaskService(em, mock(MaterialAnalysisService.class),
                 access, null, null, current), em, count, rows);

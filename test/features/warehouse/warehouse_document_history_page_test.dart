@@ -31,14 +31,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // 2026-09-24 标题下说明小字/横幅全站删除：「仓库实物视图」提示条不再渲染。
       expect(
         find.byKey(
           const Key('warehouse-history-physical-banner-purchase-receipts'),
         ),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(find.textContaining('当前货品主档建议'), findsOneWidget);
-      expect(find.textContaining('不包含商业与财务信息'), findsOneWidget);
+      expect(find.textContaining('当前货品主档建议'), findsNothing);
 
       final table = tester
           .widget<MasterDataTableView<WarehouseDocumentHistorySummary>>(
@@ -101,11 +101,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // 2026-09-24 标题下说明小字/横幅全站删除：详情页「仓库实物视图」横幅不再渲染。
     expect(
       find.byKey(
         const Key('warehouse-history-detail-banner-purchase-receipts'),
       ),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text('G-001'), findsWidgets);
     expect(find.text('实物产品'), findsWidgets);

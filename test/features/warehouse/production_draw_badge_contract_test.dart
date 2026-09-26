@@ -21,8 +21,11 @@ void main() {
     final stockDetail = File(
       'lib/features/warehouse/pages/stock_doc_detail_page.dart',
     ).readAsStringSync();
-    final taskCenterBadges = File(
-      'lib/features/warehouse/widgets/warehouse_task_center_badges.dart',
+    // 2026-09-24 仓库任务中心合并：四张任务中心卡收拢为一张，hub 卡角标 =
+    // 模块待办累计（服务端目录对 BadgeModule.warehouse 求和）；领料大类的
+    // 分段红数在合并页直接读 warehouseDrawCenter 入口（同一次徽章汇总带回）。
+    final mergedTaskCenter = File(
+      'lib/features/warehouse/pages/warehouse_task_center_page.dart',
     ).readAsStringSync();
 
     expect(
@@ -45,7 +48,6 @@ void main() {
       reason:
           'approve/issue/reverse flows must refresh the warehouse draw badge',
     );
-    expect(warehouseHub, contains('WarehouseDrawTaskBadge'));
-    expect(taskCenterBadges, contains('BadgeEntry.warehouseDrawCenter'));
+    expect(mergedTaskCenter, contains('BadgeEntry.warehouseDrawCenter'));
   });
 }

@@ -443,19 +443,13 @@ class _ProductionDailyReportDetailPageState
 
   /// 明细区：统一表格样式（MasterDataTableView，与全站报表/主档同款），
   /// 不再是卡片式拼凑行；口径保留（颜色/单位并入货品列）。
-  /// 2026-09-11 起是折叠容器的 body：标题行钉住、表格 primary:true 参与联动内滚。
+  /// 2026-09-11 起是折叠容器的 body：表格 primary:true 参与联动内滚；
+  /// 2026-09-25 纯计数标题「明细 (N)」随全站退役。
   Widget _itemsCard(ThemeData theme) {
     final items = _detail!.items;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '明细 (${items.length})',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
         Expanded(
           child: MasterDataTableView<ProductionDailyReportItem>(
             primary: true,

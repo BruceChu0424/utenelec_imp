@@ -9,6 +9,7 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
@@ -37,7 +38,28 @@ import '../widgets/warehouse_quality_slice_table.dart'
 /// 「全部」段；两行默认都不选（不加载，引导占位），末尾新增「历史记录」段
 ///（时间段/全部时间门控，未选时间不请求）。
 class WarehouseQualityResultsPage extends ConsumerStatefulWidget {
-  const WarehouseQualityResultsPage({super.key});
+  const WarehouseQualityResultsPage({
+    super.key,
+    this.embedded = false,
+    this.externalHeader,
+    this.externalKeyword,
+    this.externalRefreshTick,
+  });
+
+  /// 嵌入态（2026-09-24 仓库任务中心合并）：作为合并页（/warehouse/tasks）
+  /// 「品质检查结果」大类的正文——不渲染 Scaffold/AppBar/页面容器与搜索框
+  /// （搜索与刷新由宿主页承担），页内来源行/状态行原样保留。
+  final bool embedded;
+
+  /// 宿主（合并页大类行）：挂进折叠头随页滚走（2026-09-24 用户口径
+  /// 「表格完全置顶」，置顶后只剩表格自身工具条）。
+  final Widget? externalHeader;
+
+  /// 宿主页搜索词（嵌入态非 null 时隐藏自身搜索框并直接采用）。
+  final String? externalKeyword;
+
+  /// 宿主页刷新信号（嵌入态变化时静默重拉当前页）。
+  final int? externalRefreshTick;
 
   @override
   ConsumerState<WarehouseQualityResultsPage> createState() =>
@@ -142,12 +164,26 @@ class _WarehouseQualityResultsPageState
     WidgetsBinding.instance.addPostFrameCallback((_) => _refreshStatusCounts());
   }
 
+  /// 生效搜索词：嵌入态由宿主页（合并页）传入，自身搜索框隐藏。
+  String get _effectiveKeyword => widget.externalKeyword ?? _keyword;
+
+  @override
+  void didUpdateWidget(covariant WarehouseQualityResultsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 嵌入态：宿主页搜索词/刷新信号变化 → 静默重拉当前页（与独立页搜索一致）。
+    if (widget.externalKeyword != oldWidget.externalKeyword ||
+        (widget.externalRefreshTick ?? 0) !=
+            (oldWidget.externalRefreshTick ?? 0)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    }
+  }
+
   /// 状态小类计数（后端全量口径；null = 尚未返回，分段按钮显示 '—'）。
   /// 独立于列表加载：进页面（全来源）/ 切换来源时主动刷新，列表加载时联动刷新。
   void _refreshStatusCounts() {
     final version = ++_statusCountRequestVersion;
     final receiptType = _receiptType;
-    final keyword = _keyword;
+    final keyword = _effectiveKeyword;
     ref
         .read(warehouseQualityResultRepositoryProvider)
         .statusCounts(
@@ -213,7 +249,7 @@ class _WarehouseQualityResultsPageState
         page: page,
         receiptType: _receiptType,
         workStatus: seg.history ? null : seg.status,
-        keyword: _keyword.isEmpty ? null : _keyword,
+        keyword: _effectiveKeyword.isEmpty ? null : _effectiveKeyword,
         dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
         dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
       );
@@ -328,10 +364,76 @@ class _WarehouseQualityResultsPageState
           total: 0,
           totalPages: 0,
         );
+    // 正文（来源/状态分段 + 表格）：独立页与嵌入态共用一份。
+    // 2026-09-24 用户口径「表格完全置顶」：分段行/错误行进折叠头随页滚走，
+    // body 只剩表格（primary 拾取联动控制器）。
+    final bodyContent = Padding(
+      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+      child: UtenCollapsingHeaderScrollView(
+        collapsingHeader: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (widget.externalHeader != null) ...[
+              widget.externalHeader!,
+              const SizedBox(height: UtenSpacing.s12),
+            ],
+            _buildToolbars(result),
+            if (_error != null && result.items.isNotEmpty) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  '刷新失败：$_error',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            ],
+            const SizedBox(height: UtenSpacing.s12),
+          ],
+        ),
+        body: !_shouldLoad
+            ? (_statusSeg != null && _statusSeg!.history
+                  ? const UtenHistoryTimePlaceholder()
+                  : const UtenFilterPlaceholder(
+                      message: '在上方选择来源和状态后开始办理',
+                      description: '来源与状态都默认不选中，选择后才加载对应任务',
+                    ))
+            : MasterDataTableView<WarehouseQualityResultTask>(
+                // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+                primary: true,
+                key: const Key('warehouse-quality-result-table'),
+                columns: _columns,
+                items: result.items,
+                facets: const {},
+                nullCounts: const {},
+                filters: const {},
+                onFilterChanged: (_, _) {},
+                selectable: true,
+                idOf: _taskId,
+                rowKeyOf: _taskId,
+                selectedIds: _selectedIds,
+                onSelectedIdsChanged: (next) =>
+                    setState(() => _selectedIds = next),
+                batchActionsBuilder: _batchActions,
+                rowColor: (task) => _statusRowColor(context, task.workStatus),
+                onRowTap: _openDetail,
+                rowMenuBuilder: _rowMenu,
+                isLoading: _loading && _result == null,
+                loadingMore: _loading && _result != null,
+                error: result.items.isEmpty ? _error : null,
+                onRetry: () => _load(result.page),
+                emptyMessage: _emptyMessage,
+                currentPage: result.page,
+                totalPages: result.totalPages,
+                onPageChange: _load,
+              ),
+      ),
+    );
+    // 嵌入态：宿主页（仓库任务中心合并页）负责 Scaffold/AppBar/搜索/刷新。
+    if (widget.embedded) return bodyContent;
     return Scaffold(
       appBar: UtenAppBar(
         title: '品质部检查结果',
-        subtitle: '检查结论 · 待入库与退回一站式办理',
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
         ),
@@ -345,76 +447,14 @@ class _WarehouseQualityResultsPageState
           ),
         ],
       ),
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const _QualityResultBoundaryBanner(),
-                const SizedBox(height: UtenSpacing.s12),
-                _buildToolbars(result),
-                if (_error != null && result.items.isNotEmpty) ...[
-                  const SizedBox(height: UtenSpacing.s8),
-                  Semantics(
-                    liveRegion: true,
-                    child: Text(
-                      '刷新失败：$_error',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: UtenSpacing.s12),
-                Expanded(
-                  child: !_shouldLoad
-                      ? (_statusSeg != null && _statusSeg!.history
-                            ? const UtenHistoryTimePlaceholder()
-                            : const UtenFilterPlaceholder(
-                                message: '在上方选择来源和状态后开始办理',
-                                description: '来源与状态都默认不选中，选择后才加载对应任务',
-                              ))
-                      : MasterDataTableView<WarehouseQualityResultTask>(
-                          key: const Key('warehouse-quality-result-table'),
-                          columns: _columns,
-                          items: result.items,
-                          facets: const {},
-                          nullCounts: const {},
-                          filters: const {},
-                          onFilterChanged: (_, _) {},
-                          selectable: true,
-                          idOf: _taskId,
-                          rowKeyOf: _taskId,
-                          selectedIds: _selectedIds,
-                          onSelectedIdsChanged: (next) =>
-                              setState(() => _selectedIds = next),
-                          batchActionsBuilder: _batchActions,
-                          rowColor: (task) =>
-                              _statusRowColor(context, task.workStatus),
-                          onRowTap: _openDetail,
-                          rowMenuBuilder: _rowMenu,
-                          isLoading: _loading && _result == null,
-                          loadingMore: _loading && _result != null,
-                          error: result.items.isEmpty ? _error : null,
-                          onRetry: () => _load(result.page),
-                          emptyMessage: _emptyMessage,
-                          currentPage: result.page,
-                          totalPages: result.totalPages,
-                          onPageChange: _load,
-                        ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      body: SafeArea(child: UtenContentContainer.wide(child: bodyContent)),
     );
   }
 
   String get _emptyMessage {
-    if (_keyword.isNotEmpty) return '没有匹配“$_keyword”的检查结果任务';
+    if (_effectiveKeyword.isNotEmpty) {
+      return '没有匹配“$_effectiveKeyword”的检查结果任务';
+    }
     if (_statusSeg?.history == true) return '该时间段内暂无检查结果记录';
     return switch (_statusSeg?.status) {
       WarehouseQualityWorkStatus.waitingInspection => '没有等待检查结果的收货单',
@@ -500,10 +540,13 @@ class _WarehouseQualityResultsPageState
           ],
           selected: _receiptType == null ? const {} : {_receiptType!},
           onSelectionChanged: _selectType,
-          searchHint: '搜索收货单 / 供应商 / 仓库 / 货品',
-          initialSearchValue: _keyword,
-          onSearchInputChanged: (_) => _requestVersion++,
-          onSearchChanged: _applyKeyword,
+          // 嵌入态：搜索由宿主页（合并页）承担，这里不重复出搜索框。
+          searchHint: widget.embedded ? null : '搜索收货单 / 供应商 / 仓库 / 货品',
+          initialSearchValue: widget.embedded ? null : _keyword,
+          onSearchInputChanged: widget.embedded
+              ? null
+              : (_) => _requestVersion++,
+          onSearchChanged: widget.embedded ? null : _applyKeyword,
           trailing: Semantics(
             liveRegion: true,
             label: '共 ${result.total} 项品质检查结果任务',
@@ -648,32 +691,4 @@ Color? _statusRowColor(
     WarehouseQualityWorkStatus.completed =>
       dark ? Colors.grey.withValues(alpha: 0.12) : UtenColors.slate100,
   };
-}
-
-class _QualityResultBoundaryBanner extends StatelessWidget {
-  const _QualityResultBoundaryBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      container: true,
-      label: '品质合格只形成待入库任务，仓库确认后才增加可用库存。',
-      child: Container(
-        key: const Key('warehouse-quality-result-boundary'),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Text(
-          '品质部检查结果 · 按收货单跟踪 等待检查结果 → 全部合格/部分合格（待入库）→ '
-          '全部不合格（需退回）→ 已完结。合格品由仓库核对实物数量与实际库位后确认入库；'
-          '不合格品登记真实退回凭证。本页不显示单价、金额、币种或结算信息。',
-          style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
-        ),
-      ),
-    );
-  }
 }

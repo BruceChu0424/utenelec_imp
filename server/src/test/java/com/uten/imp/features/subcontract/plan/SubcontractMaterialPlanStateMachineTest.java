@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.plan;
 
+import com.uten.imp.application.port.SubcontractShortDeliveryPort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.web.ApiException;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -88,7 +90,7 @@ class SubcontractMaterialPlanStateMachineTest {
                 em, jdbc, numbers, issueRepo, issueItemRepo, currentUser,
                 chainNotice, inventoryLock,
                 mock(com.uten.imp.application.port.SubcontractOrderPreparationPort.class),
-                mock(org.springframework.beans.factory.ObjectProvider.class));
+                new StaticListableBeanFactory().getBeanProvider(SubcontractShortDeliveryPort.class));
     }
 
     @Test

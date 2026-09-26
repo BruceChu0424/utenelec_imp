@@ -6,15 +6,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'uten_page_prefs_notifier.dart';
 
-/// 一个模式下的列设置快照：order=完整列顺序（含隐藏列），hidden=隐藏列 key。
+/// 一个模式下的列设置快照：order=完整列顺序（含隐藏列），hidden=隐藏列 key，
+/// pinned=「固定到左侧」的列 key（2026-09-25 表头右键菜单；旧数据无此字段
+/// 时解码为空集，向前兼容）。
 class EditableGridColumnsPrefs {
   const EditableGridColumnsPrefs({
     this.order = const [],
     this.hidden = const {},
+    this.pinned = const {},
   });
 
   final List<String> order;
   final Set<String> hidden;
+  final Set<String> pinned;
 }
 
 /// 全部订货编辑页共用的基类：state = {模式key: 列设置}。页面只读写自己模式
@@ -34,6 +38,7 @@ abstract class EditableGridColumnPrefsNotifierBase
       if (value is! Map) continue;
       final order = value['order'];
       final hidden = value['hidden'];
+      final pinned = value['pinned'];
       result[mode] = EditableGridColumnsPrefs(
         order: order is List
             ? List.unmodifiable(
@@ -43,6 +48,13 @@ abstract class EditableGridColumnPrefsNotifierBase
         hidden: hidden is List
             ? Set.unmodifiable(
                 hidden
+                    .map((item) => item.toString())
+                    .where((s) => s.isNotEmpty),
+              )
+            : const {},
+        pinned: pinned is List
+            ? Set.unmodifiable(
+                pinned
                     .map((item) => item.toString())
                     .where((s) => s.isNotEmpty),
               )
@@ -59,16 +71,23 @@ abstract class EditableGridColumnPrefsNotifierBase
         entry.key: {
           'order': entry.value.order,
           'hidden': entry.value.hidden.toList(growable: false),
+          'pinned': entry.value.pinned.toList(growable: false),
         },
     };
   }
 
-  void updateFor(String mode, List<String> order, Set<String> hidden) {
+  void updateFor(
+    String mode,
+    List<String> order,
+    Set<String> hidden,
+    Set<String> pinned,
+  ) {
     state = {
       ...state,
       mode: EditableGridColumnsPrefs(
         order: List.unmodifiable(order),
         hidden: Set.unmodifiable(hidden),
+        pinned: Set.unmodifiable(pinned),
       ),
     };
     persist();

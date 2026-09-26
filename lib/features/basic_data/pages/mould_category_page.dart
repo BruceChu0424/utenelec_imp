@@ -308,6 +308,14 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       canEdit: perms.contains(Perm.mouldEdit),
       canDelete: perms.contains(Perm.mouldDelete),
       canStatus: perms.contains(Perm.mouldStatus),
+      // 导出/打印（V717 mould:export）：列集与表格一致；配置挂上后 pane 自动出
+      // 打印预览 + 加密导出两个按钮（打印预览直接用本页列渲染，天然对齐表格）。
+      export: const MasterPaneExport(
+        title: '模具资料', // TODO(l10n): 补 arb
+        endpoint: '/master/moulds/export',
+        permission: Perm.mouldExport,
+        label: '导出模具', // TODO(l10n): 补 arb
+      ),
       onCreate: _showMouldCreate,
       onOpen: (pane, m) => _showMouldDetail(pane, m.id),
       loadDetail: moulds.detail,

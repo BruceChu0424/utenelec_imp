@@ -9,6 +9,118 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get bomLearningTitle => 'BOM 学习记录';
+
+  @override
+  String get materialDiscoveryBatchHelp => '请先选择持续生产或齐套生产，登记实际物料后再安排分批';
+
+  @override
+  String get materialDiscoveryCancel => '撤回待登记领料申请';
+
+  @override
+  String get bomLearningHelp => '完成生产并核清余料后，按累计净耗料除以累计实际产量更新单耗。已有任务仍按下达时的用料执行。';
+
+  @override
+  String get bomLearningInactive => '尚无学习记录。无底层材料的自制任务完成领料和生产后开始累计。';
+
+  @override
+  String get bomLearningAuto => '自动更新 BOM';
+
+  @override
+  String get bomLearningPaused =>
+      '已保留人工 BOM 或发现材料、单位、颜色冲突，自动更新已暂停；累计记录仍保留，请核对组件资料。';
+
+  @override
+  String get bomLearningOutput => '累计实际产量';
+
+  @override
+  String get bomLearningSamples => '有效生产批次';
+
+  @override
+  String get bomLearningNet => '累计净耗料';
+
+  @override
+  String get bomLearningAverage => '每件平均用量';
+
+  @override
+  String get materialDiscoveryTitle => '填写实际领料';
+
+  @override
+  String get materialDiscoveryHelp =>
+      '请与领料人核对，为本工单添加一种或多种材料，填写数量和实际发料仓。保存后进入领料单办理实际出库。';
+
+  @override
+  String get materialDiscoveryRequestHelp =>
+      '这些自制件尚未登记底层材料。提交领料后，请领料人与仓库对接，由仓库填写实际材料；实际发料后才能开工。';
+
+  @override
+  String get materialDiscoveryPending => '待仓库填写物料';
+
+  @override
+  String get materialDiscoveryNeeded => '需要登记领料物料';
+
+  @override
+  String get materialDiscoverySend => '提交领料申请';
+
+  @override
+  String get materialDiscoverySave => '保存并生成领料单';
+
+  @override
+  String get materialDiscoverySaved => '物料已登记，请在领料单核对并实际出库';
+
+  @override
+  String get materialDiscoveryInvalid =>
+      '请逐行选择材料和实际仓库，填写大于0且最多4位小数的数量；单位采用货品基本单位';
+
+  @override
+  String get materialDiscoveryUncertain => '回执尚未确认，输入已保留。请核对结果或使用相同内容重试';
+
+  @override
+  String get materialDiscoveryCheck => '核对提交结果';
+
+  @override
+  String get materialDiscoveryPick => '选择材料';
+
+  @override
+  String get materialDiscoveryWarehouse => '实际发料仓';
+
+  @override
+  String get materialDiscoveryQuantity => '本次领料数量';
+
+  @override
+  String get materialDiscoveryUnit => '单位';
+
+  @override
+  String get materialDiscoveryCode => '编号';
+
+  @override
+  String get materialDiscoveryColor => '颜色';
+
+  @override
+  String get materialDiscoveryLoadFailed => '领料申请加载失败，请重试';
+
+  @override
+  String get materialDiscoveryNoPermission => '当前账号没有填写领料物料的权限';
+
+  @override
+  String get materialDiscoveryDone => '该申请已办理，请查看对应领料单';
+
+  @override
+  String get materialDiscoveryOpenDraw => '打开领料单';
+
+  @override
+  String get materialDiscoveryRetry => '重试';
+
+  @override
+  String get materialDiscoveryRequestSent => '领料申请已提交，等待仓库填写物料';
+
+  @override
+  String get materialDiscoveryMissingUnit => '该材料没有基本单位，请先完善货品资料';
+
+  @override
+  String get materialDiscoveryRequestTitle => '确认领料申请';
+
+  @override
   String get appTitle => '优腾·综合管理平台';
 
   @override
@@ -141,12 +253,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get profileChangePassword => '修改密码';
-
-  @override
-  String get entryStaff => '内部人员登录';
-
-  @override
-  String get entryVisitor => '访客登录';
 
   @override
   String get visitorLoginTitle => '访客登录';
@@ -1895,9 +2001,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseHubSectionInventory => '库存查询';
 
   @override
-  String get warehouseHubSectionInventoryDesc => '即时库存·库存查询·出入库流水';
-
-  @override
   String get warehouseHubSectionReports => '仓库报表';
 
   @override
@@ -2204,6 +2307,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get materialRequired => '需要数量';
 
   @override
+  String get materialPublicAvailable => '可用数量';
+
+  @override
   String get materialShortage => '还缺数量';
 
   @override
@@ -2241,11 +2347,6 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String materialAggregateSources(int products, int paths) {
     return '$products 个产品 · $paths 条路径';
-  }
-
-  @override
-  String materialCreateRoutes(int count) {
-    return '确认路线($count)';
   }
 
   @override
@@ -2299,7 +2400,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String materialRoutesNext(int count) {
-    return '下一步：核对 $count 条待确认路线，勾选后点击“确认路线”。每条路线按当前选择保存。';
+    return '下一步：还有 $count 行没选供应方式（红框），在「供应方式」列选好后即自动保存，这些行才能下单。其余行的供应方式已按货品档案自动确认。';
   }
 
   @override
@@ -3203,9 +3304,6 @@ class AppLocalizationsZh extends AppLocalizations {
       '子件还没到货，仓里一件都没有；子件入库后系统会自动补草稿并通知仓库。';
 
   @override
-  String get warehouseSubcontractOutboundWorkView => '仓库作业视图';
-
-  @override
   String get warehouseSubcontractOutboundBannerScope =>
       '仓库作业视图不含价格与金额, 也不提供委外业务编辑操作。';
 
@@ -3232,11 +3330,6 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String warehouseSubcontractOutboundHistoryTitle(int count) {
     return '出仓记录 ($count)';
-  }
-
-  @override
-  String warehouseSubcontractOutboundLinesTitle(int count) {
-    return '出仓明细 ($count)';
   }
 
   @override
@@ -3486,12 +3579,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get securityBlacklistRemoveDone => '已解除拉黑';
-
-  @override
-  String get entryStaffSubtitle => '员工工号登录，进入工作台';
-
-  @override
-  String get entryVisitorSubtitle => '访客手机验证码登记，快速通行';
 
   @override
   String get visitorColName => '姓名';

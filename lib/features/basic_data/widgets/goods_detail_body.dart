@@ -41,6 +41,7 @@ import 'mould_picker_field.dart';
 import 'number_unit_field.dart';
 import 'packaging_picker_field.dart';
 import 'uten_goods_picker.dart';
+import 'uten_detail_tab_bar.dart';
 
 enum _GoodsDetailMode { create, edit, view }
 
@@ -627,15 +628,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
               ),
             _header(theme, title),
             const Divider(height: 1),
-            TabBar(
-              // 整页宽屏下三枚页签居中铺满会很稀疏，靠左流式排布。
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              labelColor: theme.colorScheme.primary,
-              unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
-              indicatorColor: theme.colorScheme.primary,
-              tabs: tabs,
-            ),
+            // 基础资料详情统一页签条（2026-09-25：选中指示条加高到 12px）。
+            buildUtenDetailTabBar(context, tabs: tabs),
             const Divider(height: 1),
             Flexible(
               child: TabBarView(

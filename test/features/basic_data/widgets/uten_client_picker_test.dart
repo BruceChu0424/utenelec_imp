@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/basic_data/models/client_node.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/client_category_repository.dart';
@@ -19,6 +20,11 @@ void main() {
     );
 
     await _openPicker(tester);
+
+    // 左树默认全部收起（2026-09-24 用户口径）：只显示一级分类，
+    // 二级「东南亚客户」须点父级行展开后才可见。
+    expect(find.text('海外客户(OVERSEAS)'), findsOneWidget);
+    expect(find.text('东南亚客户(SEA)'), findsNothing);
 
     final sheet = _widePickerSheet();
     expect(sheet, findsOneWidget);
@@ -52,6 +58,25 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.widget<TextField>(_searchTextField()).controller?.text, '远洋');
     expect(clientRepository.listKeywords.last, '远洋');
+    // 层级色梯度：展开后二级行用第二档色（与一级深绿拉开），四档内各不相同。
+    final rootRow = tester.widget<Material>(
+      find
+          .ancestor(
+            of: find.text('海外客户(OVERSEAS)'),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    final childRow = tester.widget<Material>(
+      find
+          .ancestor(
+            of: find.text('东南亚客户(SEA)'),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    expect(rootRow.color, UtenColors.treeLevel1);
+    expect(childRow.color, UtenColors.treeLevel2);
 
     await tester.tap(find.text('远洋电器(C-002)'));
     await tester.pumpAndSettle();

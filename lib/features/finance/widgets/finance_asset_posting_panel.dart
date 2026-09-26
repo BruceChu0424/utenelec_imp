@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_input.dart';
@@ -41,6 +42,19 @@ class _FinanceAssetPostingPanelState
   List<AssetPeriod> _periods = const [];
   bool _runsLoading = true;
   bool _periodsLoading = true;
+  bool _busy = false;
+
+  /// 过账/期间动作的网络段统一挂全屏遮罩（2026-09-25 统一口径）。确认弹窗
+  /// 等用户操作段不算在内——只在网络调用期间转。
+  Future<void> _runBusy(Future<void> Function() body) async {
+    setState(() => _busy = true);
+    try {
+      await body();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   String? _runsError;
   String? _periodsError;
 
@@ -118,29 +132,31 @@ class _FinanceAssetPostingPanelState
       _workflowVersion = null;
       _workflowAllowedActions = const <String>{};
     });
-    try {
-      final preview = await ref
-          .read(financeAssetWorkbenchRepositoryProvider)
-          .previewPosting(
-            runType: _runType,
-            period: _periodController.text.trim(),
-          );
-      if (!mounted) return;
-      setState(() {
-        _preview = preview;
-        _workflowStatus = preview.status.toUpperCase();
-        _workflowVersion = preview.version;
-        _workflowAllowedActions = preview.allowedActions;
-      });
-      if (preview.errors.isNotEmpty) {
-        context.appWarning('预览发现阻断异常，请先修正后重新预览');
-      } else {
-        context.appSuccess('计提预览已生成，请核对明细后提交');
+    await _runBusy(() async {
+      try {
+        final preview = await ref
+            .read(financeAssetWorkbenchRepositoryProvider)
+            .previewPosting(
+              runType: _runType,
+              period: _periodController.text.trim(),
+            );
+        if (!mounted) return;
+        setState(() {
+          _preview = preview;
+          _workflowStatus = preview.status.toUpperCase();
+          _workflowVersion = preview.version;
+          _workflowAllowedActions = preview.allowedActions;
+        });
+        if (preview.errors.isNotEmpty) {
+          context.appWarning('预览发现阻断异常，请先修正后重新预览');
+        } else {
+          context.appSuccess('计提预览已生成，请核对明细后提交');
+        }
+        await _loadRuns();
+      } catch (error) {
+        if (mounted) context.appApiError(error, fallback: '计提预览失败，请重试');
       }
-      await _loadRuns();
-    } catch (error) {
-      if (mounted) context.appApiError(error, fallback: '计提预览失败，请重试');
-    }
+    });
   }
 
   Future<void> _runPreviewAction(String action) async {
@@ -156,39 +172,41 @@ class _FinanceAssetPostingPanelState
       );
       if (!confirmed || !mounted) return;
     }
-    try {
-      final response = await ref
-          .read(financeAssetWorkbenchRepositoryProvider)
-          .postingAction(
-            preview.runId,
-            action,
-            token: preview.token,
-            expectedVersion: _workflowVersion,
-          );
-      if (!mounted) return;
-      setState(() {
-        _workflowVersion = response.version ?? _workflowVersion;
-        _workflowAllowedActions = response.allowedActions;
-        _workflowStatus = response.status.isEmpty
-            ? switch (action) {
-                'submit' => 'SUBMITTED',
-                'approve' => 'APPROVED',
-                'post' => 'POSTED',
-                _ => _workflowStatus,
-              }
-            : response.status.toUpperCase();
-      });
-      context.appSuccess(switch (action) {
-        'submit' => '过账批次已提交',
-        'approve' => '过账批次已审批',
-        'post' => '过账完成并已回查',
-        _ => '操作成功',
-      });
-      await _loadRuns();
-      await _loadPeriods();
-    } catch (error) {
-      if (mounted) context.appApiError(error, fallback: '批次操作失败，请刷新后重试');
-    }
+    await _runBusy(() async {
+      try {
+        final response = await ref
+            .read(financeAssetWorkbenchRepositoryProvider)
+            .postingAction(
+              preview.runId,
+              action,
+              token: preview.token,
+              expectedVersion: _workflowVersion,
+            );
+        if (!mounted) return;
+        setState(() {
+          _workflowVersion = response.version ?? _workflowVersion;
+          _workflowAllowedActions = response.allowedActions;
+          _workflowStatus = response.status.isEmpty
+              ? switch (action) {
+                  'submit' => 'SUBMITTED',
+                  'approve' => 'APPROVED',
+                  'post' => 'POSTED',
+                  _ => _workflowStatus,
+                }
+              : response.status.toUpperCase();
+        });
+        context.appSuccess(switch (action) {
+          'submit' => '过账批次已提交',
+          'approve' => '过账批次已审批',
+          'post' => '过账完成并已回查',
+          _ => '操作成功',
+        });
+        await _loadRuns();
+        await _loadPeriods();
+      } catch (error) {
+        if (mounted) context.appApiError(error, fallback: '批次操作失败，请刷新后重试');
+      }
+    });
   }
 
   Future<String?> _reasonDialog(String title) async {
@@ -238,23 +256,25 @@ class _FinanceAssetPostingPanelState
   Future<void> _reverse(AssetPostingRun run) async {
     final reason = await _reasonDialog('冲销过账批次');
     if (reason == null || !mounted) return;
-    try {
-      await ref
-          .read(financeAssetWorkbenchRepositoryProvider)
-          .postingAction(
-            run.id,
-            'reverse',
-            token: run.token,
-            expectedVersion: run.version,
-            reason: reason,
-          );
-      if (!mounted) return;
-      context.appSuccess('冲销申请已提交，待复核与过账');
-      await _loadRuns();
-      await _loadPeriods();
-    } catch (error) {
-      if (mounted) context.appApiError(error, fallback: '冲销失败，请重试');
-    }
+    await _runBusy(() async {
+      try {
+        await ref
+            .read(financeAssetWorkbenchRepositoryProvider)
+            .postingAction(
+              run.id,
+              'reverse',
+              token: run.token,
+              expectedVersion: run.version,
+              reason: reason,
+            );
+        if (!mounted) return;
+        context.appSuccess('冲销申请已提交，待复核与过账');
+        await _loadRuns();
+        await _loadPeriods();
+      } catch (error) {
+        if (mounted) context.appApiError(error, fallback: '冲销失败，请重试');
+      }
+    });
   }
 
   Future<void> _runHistoryAction(AssetPostingRun run, String action) async {
@@ -268,29 +288,31 @@ class _FinanceAssetPostingPanelState
       );
       if (!confirmed || !mounted) return;
     }
-    try {
-      await ref
-          .read(financeAssetWorkbenchRepositoryProvider)
-          .postingAction(
-            run.id,
-            action,
-            token: run.token,
-            expectedVersion: run.version,
-          );
-      if (!mounted) return;
-      context.appSuccess(switch (action) {
-        'submit' => '过账批次已提交',
-        'approve' => '过账批次已审批',
-        'post' => '过账完成并已回查',
-        _ => '批次操作成功',
-      });
-      await _loadRuns();
-      await _loadPeriods();
-    } catch (error) {
-      if (mounted) {
-        context.appApiError(error, fallback: '批次操作失败，请刷新后重试');
+    await _runBusy(() async {
+      try {
+        await ref
+            .read(financeAssetWorkbenchRepositoryProvider)
+            .postingAction(
+              run.id,
+              action,
+              token: run.token,
+              expectedVersion: run.version,
+            );
+        if (!mounted) return;
+        context.appSuccess(switch (action) {
+          'submit' => '过账批次已提交',
+          'approve' => '过账批次已审批',
+          'post' => '过账完成并已回查',
+          _ => '批次操作成功',
+        });
+        await _loadRuns();
+        await _loadPeriods();
+      } catch (error) {
+        if (mounted) {
+          context.appApiError(error, fallback: '批次操作失败，请刷新后重试');
+        }
       }
-    }
+    });
   }
 
   Future<void> _periodAction(AssetPeriod period, String action) async {
@@ -298,50 +320,60 @@ class _FinanceAssetPostingPanelState
       action == 'close' ? '关闭资产期间' : '重新开放资产期间',
     );
     if (reason == null || !mounted) return;
-    try {
-      await ref
-          .read(financeAssetWorkbenchRepositoryProvider)
-          .periodAction(
-            period.period,
-            action,
-            reason: reason,
-            expectedVersion: period.version,
-          );
-      if (!mounted) return;
-      context.appSuccess(action == 'close' ? '资产期间已关闭' : '资产期间已重新开放');
-      await _loadPeriods();
-    } catch (error) {
-      if (mounted) context.appApiError(error, fallback: '期间操作失败，请重试');
-    }
+    await _runBusy(() async {
+      try {
+        await ref
+            .read(financeAssetWorkbenchRepositoryProvider)
+            .periodAction(
+              period.period,
+              action,
+              reason: reason,
+              expectedVersion: period.version,
+            );
+        if (!mounted) return;
+        context.appSuccess(action == 'close' ? '资产期间已关闭' : '资产期间已重新开放');
+        await _loadPeriods();
+      } catch (error) {
+        if (mounted) context.appApiError(error, fallback: '期间操作失败，请重试');
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final padding = constraints.maxWidth < UtenBreakpoints.mediumStart
-            ? UtenSpacing.s12
-            : UtenSpacing.s20;
-        return ListView(
-          key: const PageStorageKey('finance-asset-posting-panel'),
-          // 无显式 controller 的竖向 ListView 自动拾取工作台页 NestedScrollView
-          // 注入的 PrimaryScrollController；AlwaysScrollable 保证内容不满屏时
-          // 也能拖动触发外层「横幅收起 → Tab 吸顶」联动。
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.all(padding),
-          children: [
-            _previewCard(),
-            if (_preview != null) ...[
-              const SizedBox(height: UtenSpacing.s16),
-              _previewResult(_preview!),
-            ],
-            const SizedBox(height: UtenSpacing.s20),
-            _periodSection(),
-            const SizedBox(height: UtenSpacing.s20),
-            _runHistory(),
-          ],
-        );
-      },
+    return Stack(
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final padding = constraints.maxWidth < UtenBreakpoints.mediumStart
+                ? UtenSpacing.s12
+                : UtenSpacing.s20;
+            return ListView(
+              key: const PageStorageKey('finance-asset-posting-panel'),
+              // 无显式 controller 的竖向 ListView 自动拾取工作台页 NestedScrollView
+              // 注入的 PrimaryScrollController；AlwaysScrollable 保证内容不满屏时
+              // 也能拖动触发外层「横幅收起 → Tab 吸顶」联动。
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.all(padding),
+              children: [
+                _previewCard(),
+                if (_preview != null) ...[
+                  const SizedBox(height: UtenSpacing.s16),
+                  _previewResult(_preview!),
+                ],
+                const SizedBox(height: UtenSpacing.s20),
+                _periodSection(),
+                const SizedBox(height: UtenSpacing.s20),
+                _runHistory(),
+              ],
+            );
+          },
+        ),
+        // 过账/期间动作网络段的全屏居中遮罩（2026-09-25 统一口径：不再
+        // 只有按钮内「处理中…」转圈）。
+        if (_busy)
+          const Positioned.fill(child: UtenBusyOverlay(title: '正在处理过账操作，请稍候')),
+      ],
     );
   }
 

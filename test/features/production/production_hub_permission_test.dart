@@ -99,35 +99,41 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('view-only user keeps a visible history entry', (tester) async {
-    await _setDesktopSize(tester);
-    await tester.pumpWidget(
-      _hubApp(const {Perm.productionPlanView}, preferences),
-    );
-    await tester.pumpAndSettle();
+  testWidgets(
+    'view-only user sees no create cards (browsing moved to task center)',
+    (tester) async {
+      await _setDesktopSize(tester);
+      await tester.pumpWidget(
+        _hubApp(const {Perm.productionPlanView}, preferences),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('生产计划历史'), findsOneWidget);
-    expect(find.text('新建生产计划单'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
+      // 2026-09-24 三段式：计划浏览收进生产任务中心（调度台历史记录段），
+      // hub 不再有「生产计划历史」回退卡；仅持计划查看权限的人看不到新建卡。
+      expect(find.text('生产计划历史'), findsNothing);
+      expect(find.text('新建生产计划单'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
-  testWidgets('legacy edit without analysis manage also stays on history', (
-    tester,
-  ) async {
-    await _setDesktopSize(tester);
-    await tester.pumpWidget(
-      _hubApp(const {
-        Perm.productionPlanView,
-        Perm.productionPlanEdit,
-      }, preferences),
-    );
-    await tester.pumpAndSettle();
+  testWidgets(
+    'legacy edit without analysis manage cannot see the create card',
+    (tester) async {
+      await _setDesktopSize(tester);
+      await tester.pumpWidget(
+        _hubApp(const {
+          Perm.productionPlanView,
+          Perm.productionPlanEdit,
+        }, preferences),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('生产计划历史'), findsOneWidget);
-    expect(find.text('新建生产计划单'), findsNothing);
-  });
+      expect(find.text('生产计划历史'), findsNothing);
+      expect(find.text('新建生产计划单'), findsNothing);
+    },
+  );
 
-  testWidgets('create without analysis view preserves permitted plan history', (
+  testWidgets('create without analysis view cannot see the create card', (
     tester,
   ) async {
     await _setDesktopSize(tester);
@@ -139,7 +145,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('生产计划历史'), findsOneWidget);
+    // 新建生产计划单落点 = 物料分析，守卫要求 analysis:view（creator-only）。
+    expect(find.text('生产计划历史'), findsNothing);
     expect(find.text('新建生产计划单'), findsNothing);
     expect(tester.takeException(), isNull);
   });

@@ -7,6 +7,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import com.uten.imp.application.port.PreplanAnalysisPegPort.PreviewPlanTransfer;
+import com.uten.imp.application.port.PreplanAnalysisPegPort.PreviewPublicReservation;
+import static com.uten.imp.features.production.analysis.MaterialAnalysisService.*;
 
 /**
  * 下达预览(ADR-116)的内存投影: 「真实下达之后」与当前库内快照之间的全部差异。
@@ -66,6 +69,17 @@ final class MaterialAnalysisIssuePreviewOverlay {
     private final Map<String, List<BigDecimal>> appendedBatches = new HashMap<>();
     private final Map<UUID, BigDecimal> grownPlanBatches = new HashMap<>();
     private final Map<UUID, BigDecimal> openPlanQtyBySource = new HashMap<>();
+    private final List<PreviewPlanTransfer> transfers = new ArrayList<>();
+    private final Map<UUID, MaterialDimension> transferDimensions = new HashMap<>();
+    private final List<PreviewPublicReservation> publicReservations = new ArrayList<>();
+    private final Map<WarehouseMaterialDimension, BigDecimal> formalReservations = new HashMap<>();
+    private final Map<WarehouseMaterialDimension, BigDecimal> transferredOwned = new HashMap<>();
+    private final Map<WarehouseMaterialDimension, BigDecimal> transferredQualified = new HashMap<>();
+    private final Map<UUID, BigDecimal> transferredByMaterial = new HashMap<>();
+    private final Map<UUID, BigDecimal> transferredByEntitlement = new HashMap<>();
+    private final List<FormalMaterialCoverage> formalCoverage = new ArrayList<>();
+    private final List<com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.PreviewReceipt> receipts = new ArrayList<>();
+    private final Map<UUID, BigDecimal> formalParentOutputs = new HashMap<>();
     private Map<String, NodeSnapshot> nodes = Map.of();
     private Map<UUID, RootSnapshot> roots = Map.of();
 
@@ -168,6 +182,57 @@ final class MaterialAnalysisIssuePreviewOverlay {
 
     Map<UUID, BigDecimal> openPlanQtyBySource() {
         return openPlanQtyBySource;
+    }
+
+    List<PreviewPlanTransfer> transfers() { return List.copyOf(transfers); }
+    MaterialDimension transferDimension(UUID demandId) { return transferDimensions.get(demandId); }
+    List<PreviewPublicReservation> publicReservations() { return List.copyOf(publicReservations); }
+    List<FormalMaterialCoverage> formalCoverage() { return List.copyOf(formalCoverage); }
+    List<com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.PreviewReceipt> receipts() { return List.copyOf(receipts); }
+    void addReceipt(MaterialDimension dimension,com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.PreviewReceipt receipt) {
+        requireMutable(); receipts.add(receipt); addReservation(dimension,receipt.warehouseId(),receipt.qty());
+    }
+    BigDecimal formalParentOutput(UUID demand) { return formalParentOutputs.get(demand); }
+    void updateFormalParentOutput(UUID demand,BigDecimal output) { requireMutable(); formalParentOutputs.put(demand,output); }
+    boolean hasFormalProjection() { return !formalCoverage.isEmpty() || !formalParentOutputs.isEmpty(); }
+    BigDecimal transferredMaterial(UUID material) { return transferredByMaterial.getOrDefault(material, BigDecimal.ZERO); }
+    BigDecimal transferredEntitlement(UUID event) { return transferredByEntitlement.getOrDefault(event, BigDecimal.ZERO); }
+    BigDecimal ownedTransferred(WarehouseMaterialDimension key) { return transferredOwned.getOrDefault(key, BigDecimal.ZERO); }
+    BigDecimal qualifiedTransferred(WarehouseMaterialDimension key) { return transferredQualified.getOrDefault(key, BigDecimal.ZERO); }
+    BigDecimal formalReserved(WarehouseMaterialDimension key) { return formalReservations.getOrDefault(key, BigDecimal.ZERO); }
+    BigDecimal publicReservationChange(WarehouseMaterialDimension key) {
+        return formalReserved(key).subtract(ownedTransferred(key));
+    }
+    BigDecimal publicReservationChange(UUID warehouse, UUID goods, UUID color) {
+        return publicReservations.stream().filter(value -> value.warehouseId().equals(warehouse)
+                        && value.goodsId().equals(goods) && java.util.Objects.equals(value.colorId(), color))
+                .map(PreviewPublicReservation::qty).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    void addReservation(MaterialDimension dimension, UUID warehouse, BigDecimal quantity) {
+        requireMutable();
+        formalReservations.merge(new WarehouseMaterialDimension(warehouse, dimension), quantity, BigDecimal::add);
+        publicReservations.add(new PreviewPublicReservation(warehouse, dimension.goodsId(), dimension.colorId(), quantity));
+    }
+
+    void addTransfer(MaterialDimension dimension, PreviewPlanTransfer transfer) {
+        requireMutable();
+        transfers.add(transfer);
+        transferDimensions.put(transfer.demandId(), dimension);
+        WarehouseMaterialDimension key = new WarehouseMaterialDimension(transfer.warehouseId(), dimension);
+        transferredOwned.merge(key, transfer.qty(), BigDecimal::add);
+        if (transfer.qualified()) transferredQualified.merge(key, transfer.qty(), BigDecimal::add);
+        if (transfer.beneficiaryMaterialId() != null) transferredByMaterial.merge(
+                transfer.beneficiaryMaterialId(), transfer.qty(), BigDecimal::add);
+        if (transfer.sourceEntitlementEventId() != null) transferredByEntitlement.merge(
+                transfer.sourceEntitlementEventId(), transfer.qty(), BigDecimal::add);
+        // A legacy untracked reservation can be released in one leaf and allocated in another.
+        publicReservations.add(new PreviewPublicReservation(transfer.warehouseId(), dimension.goodsId(),
+                dimension.colorId(), transfer.qty().negate()));
+    }
+
+    void addFormalCoverage(FormalMaterialCoverage coverage) {
+        requireMutable(); formalCoverage.add(coverage);
     }
 
     NodeSnapshot node(String nodeRef) {

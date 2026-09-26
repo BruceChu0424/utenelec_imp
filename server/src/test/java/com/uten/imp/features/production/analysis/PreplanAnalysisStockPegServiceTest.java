@@ -21,6 +21,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -29,6 +30,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 class PreplanAnalysisStockPegServiceTest {
 
@@ -455,6 +457,29 @@ class PreplanAnalysisStockPegServiceTest {
                         UUID.randomUUID(), false));
 
         verifyNoInteractions(hooks);
+    }
+
+    @Test
+    void allBatchSourcesFinishPriorityReallocationBeforeAnyTaskCanPrepareMaterial() {
+        ObjectProvider<PreplanOriginEntitlementHook> hooks = mock(OriginHooks.class);
+        PreplanOriginEntitlementHook priority = mock(PreplanOriginEntitlementHook.class);
+        PreplanOriginEntitlementHook readiness = mock(PreplanOriginEntitlementHook.class);
+        when(hooks.orderedStream()).thenReturn(java.util.stream.Stream.of(priority, readiness));
+        var service = new PreplanAnalysisStockPegService(mock(EntityManager.class), mock(TxSessionVars.class),
+                mock(SecurityContextCurrentUser.class), mock(InventoryMutationLock.class),
+                mock(PreplanStockEntitlementService.class), hooks);
+        UUID first = UUID.randomUUID(), second = UUID.randomUUID(), replay = UUID.randomUUID();
+        service.applyOriginPriority(List.of(
+                new PreplanStockEntitlementService.OriginAppendResult(first, true),
+                new PreplanStockEntitlementService.OriginAppendResult(replay, false),
+                new PreplanStockEntitlementService.OriginAppendResult(second, true)));
+        var order = inOrder(priority, readiness);
+        order.verify(priority).applyPriorityForOriginEvent(first);
+        order.verify(priority).applyPriorityForOriginEvent(second);
+        order.verify(readiness).applyPriorityForOriginEvent(first);
+        order.verify(readiness).applyPriorityForOriginEvent(second);
+        order.verifyNoMoreInteractions();
+        verifyNoMoreInteractions(priority, readiness);
     }
     @Test
     void exactAttributionUsesImmutablePegQtyWhileSourceRemainsValid() {

@@ -858,6 +858,37 @@ public class ProductionExecutionReadinessService
         tryPromote(segmentId,requestId,warehouseId,ReceiptKind.PLAN_GROWTH,null,true);
     }
 
+    /** A warehouse-selected discovery line owns exactly one real leaf reservation and DRAW. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<UUID> prepareDiscoveredMaterials(UUID segmentId, UUID requestId) {
+        Object[] context=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT segment.package_id,segment.plan_id,plan.bill_no,package.warehouse_id,
+                       segment.workshop_department_id,segment.responsible_employee_id
+                FROM production_execution_segments segment JOIN production_plans plan ON plan.id=segment.plan_id
+                JOIN production_planning_packages package ON package.id=segment.package_id
+                WHERE segment.id=:id AND segment.material_discovery_required
+                """).setParameter("id",segmentId)).getFirst();
+        List<Object[]> lines=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT demand.id,demand.goods_id,demand.color_id,demand.unit_id,line.qty,line.warehouse_id
+                FROM production_material_discovery_lines line JOIN production_material_demands demand ON demand.id=line.demand_id
+                WHERE line.request_id=:request ORDER BY demand.goods_id,demand.color_id NULLS FIRST,line.warehouse_id
+                """).setParameter("request",requestId));
+        PromotionActor actor=new PromotionActor(currentUser.requireId(),currentUser.requireEmployeeId());
+        Map<UUID,StockGoodsSnapshot> snapshots=StockGoodsSnapshot.fromMaster(em,lines.stream().map(row->uuid(row[1])).toList(),StockGoodsSnapshot.MASTER_AT_SAVE);
+        Map<UUID,StockDocument> documents=new LinkedHashMap<>();Map<UUID,Integer> numbers=new HashMap<>();
+        for(Object[] line:lines) {
+            DemandRow demand=new DemandRow(uuid(line[0]),uuid(line[1]),uuid(line[2]),uuid(line[3]),decimal(line[4]),false);
+            var request=new ProductionMaterialAllocationFacade.AllocationRequest(uuid(context[0]),demand.id(),demand.goodsId(),demand.colorId(),uuid(context[3]),demand.requiredQty(),"DISCOVERY:"+requestId+":"+demand.id()+":"+line[5],actor.userId());
+            var allocation=stockAllocation.allocateWithinLeaf(request,uuid(line[5]),List.of());
+            BigDecimal allocated=allocation.stream().map(ProductionMaterialAllocationFacade.AllocationResult::allocatedQty).reduce(BigDecimal.ZERO,BigDecimal::add);
+            if(allocated.compareTo(demand.requiredQty())!=0)throw conflict("所选实际仓库可用库存不足，请核对材料及数量");
+            StockDocument draw=documents.computeIfAbsent(uuid(line[5]),warehouse->createDraw(uuid(context[0]),segmentId,uuid(context[1]),(String)context[2],warehouse,uuid(context[4]),uuid(context[5]),actor));
+            addDrawItem(draw,uuid(context[0]),demand,demand.requiredQty(),nextDrawLine(draw,numbers),(String)context[2],"最底层自制件实际领料",StockGoodsSnapshot.require(snapshots,demand.goodsId(),"实际领料"),actor.userId());
+        }
+        ledger.refreshDemandStatuses(lines.stream().map(row->uuid(row[0])).toList());
+        return documents.values().stream().map(StockDocument::getId).toList();
+    }
+
     /** Quantity growth preserves the task's route and never submits or issues a DRAW. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void promoteAfterPlanGrowth(UUID segmentId, UUID warehouseId, UUID growthEventId) {
@@ -1612,8 +1643,14 @@ public class ProductionExecutionReadinessService
             List<UUID> demandIds,
             UUID analysisId,
             UUID analysisItemId) {
+        return availabilityRows(warehouseId, demandIds, analysisId, analysisItemId, List.of(), List.of());
+    }
+
+    private List<Object[]> availabilityRows(UUID warehouseId, List<UUID> demandIds, UUID analysisId,
+            UUID analysisItemId, List<PreviewDemand> previewDemands, List<UUID> previewMaterials) {
         if (demandIds.isEmpty()) return List.of();
-        List<?> anomalies=em.createNativeQuery("""
+        boolean preview = !previewDemands.isEmpty();
+        List<?> anomalies=preview ? List.of() : em.createNativeQuery("""
                 SELECT DISTINCT warehouse.name
                 FROM production_material_demands demand
                 JOIN production_workshop_direct_transfer_items direct
@@ -1627,8 +1664,7 @@ public class ProductionExecutionReadinessService
                 """).setParameter("demands",demandIds).getResultList();
         if (!anomalies.isEmpty()) throw conflict("车间流转位置存在历史非来源库存流水，需先核对原领退料和调拨记录，不能借用后续到货补平："
                 +String.join("、",anomalies.stream().map(Object::toString).toList()));
-        return NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
+        var query = em.createNativeQuery("""
                         SELECT demand.id, scope.id, COALESCE(balance.qty,0), COALESCE(reserved.qty,0),
                                COALESCE(own.qty,0), COALESCE(own.qualified_qty,0),
                                GREATEST(COALESCE(goods.min_qty,0),0)::numeric,
@@ -1641,7 +1677,7 @@ public class ProductionExecutionReadinessService
                                goods.code, goods.name, scope.name, scope.is_line_side,
                                CASE WHEN scope.is_line_side THEN fn_workshop_direct_source_available(scope.id,demand.id) ELSE NULL END,
                                COALESCE(custody.qty,0)
-                        FROM production_material_demands demand
+                        FROM %1$s
                         JOIN goods ON goods.id = demand.goods_id
                         JOIN warehouses scope ON scope.is_deleted = FALSE
                           AND scope.is_accountable = TRUE
@@ -1654,7 +1690,7 @@ public class ProductionExecutionReadinessService
                                    WHERE source.warehouse_id=scope.id AND source.goods_id=demand.goods_id
                                      AND source.color_id IS NOT DISTINCT FROM demand.color_id
                                      AND entitlement.beneficiary_analysis_id=:analysisId
-                                     AND fn_analysis_plan_material_matches(:analysisItemId,entitlement.beneficiary_analysis_material_id)
+                                     AND %2$s
                                      AND fn_preplan_reservation_has_qualified_origin(source.id)))
                         LEFT JOIN stock_balances balance
                           ON balance.goods_id = demand.goods_id
@@ -1698,8 +1734,7 @@ public class ProductionExecutionReadinessService
                                           preplan_reservation.id
                                       AND entitlement.beneficiary_analysis_id =
                                           :analysisId
-                                      AND fn_analysis_plan_material_matches(
-                                          :analysisItemId, material.id)
+                                      AND %3$s
                                 ), 0)
                                 WHEN preplan_reservation.owner_id = :analysisId
                                 THEN preplan_reservation.qty
@@ -1726,12 +1761,27 @@ public class ProductionExecutionReadinessService
                         WHERE demand.id IN (:demandIds)
                         ORDER BY demand.goods_id,
                                  demand.color_id NULLS FIRST, demand.id, scope.id
-                        """)
+                        """.formatted(
+                        preview ? "jsonb_to_recordset(CAST(:previewDemands AS jsonb)) demand(id uuid, goods_id uuid, color_id uuid, material_ids uuid[])"
+                                : "production_material_demands demand",
+                        preview ? "entitlement.beneficiary_analysis_material_id = ANY(demand.material_ids)"
+                                : "fn_analysis_plan_material_matches(:analysisItemId,entitlement.beneficiary_analysis_material_id)",
+                        preview ? "material.id = ANY(demand.material_ids)"
+                                : "fn_analysis_plan_material_matches( :analysisItemId, material.id)"))
                         .setParameter("warehouseId", warehouseId)
                         .setParameter("effective", RESERVATION_EFFECTIVE)
                         .setParameter("analysisId", analysisId)
-                        .setParameter("analysisItemId", analysisItemId)
-                        .setParameter("demandIds", demandIds));
+                        .setParameter("demandIds", demandIds);
+        if (preview) {
+            query.setParameter("previewDemands", new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(
+                    previewDemands.stream().map(value -> {
+                        Map<String,Object> row = new LinkedHashMap<>();
+                        row.put("id", value.id()); row.put("goods_id", value.goodsId()); row.put("color_id", value.colorId());
+                        row.put("material_ids", value.materialIds()==null?previewMaterials:value.materialIds());
+                        return row;
+                    }).toList()).toString());
+        } else query.setParameter("analysisItemId", analysisItemId);
+        return NativeQueryResults.objectArrayRows(query);
     }
 
     /** Same qualified-source/public-stock quantities used by the formal promotion command. */
@@ -1739,7 +1789,31 @@ public class ProductionExecutionReadinessService
     public List<BatchAvailability> batchAvailability(UUID warehouseId, List<UUID> demandIds,
                                                     UUID analysisId, UUID analysisItemId) {
         if (demandIds.isEmpty()) return List.of();
-        return availabilityRows(warehouseId, demandIds, analysisId, analysisItemId).stream().map(row -> {
+        return batchAvailabilityRows(availabilityRows(warehouseId, demandIds, analysisId, analysisItemId));
+    }
+
+    /** Memory-only identities for an authorized issue preview; no demand, plan or reservation is persisted. */
+    public record PreviewDemand(UUID id, UUID goodsId, UUID colorId, List<UUID> materialIds) {
+        public PreviewDemand(UUID id,UUID goodsId,UUID colorId){this(id,goodsId,colorId,null);}
+    }
+
+    @Transactional(readOnly = true)
+    public List<BatchAvailability> previewBatchAvailability(UUID warehouseId, UUID analysisId,
+            List<PreviewDemand> demands, List<UUID> matchingMaterialIds) {
+        if (demands.isEmpty()) return List.of();
+        if (analysisId == null) throw conflict("预览物料缺少已验证的分析路径");
+        if (matchingMaterialIds.isEmpty() && ((Number)em.createNativeQuery("""
+                SELECT COUNT(*) FROM production_material_demands demand JOIN production_plans plan ON plan.id=demand.plan_id
+                WHERE demand.id IN (:ids) AND NOT demand.is_deleted AND plan.material_analysis_id=:analysis
+                """).setParameter("ids",demands.stream().map(PreviewDemand::id).distinct().toList())
+                .setParameter("analysis",analysisId).getSingleResult()).intValue()!=demands.size())
+            throw conflict("预览物料缺少已验证的原始需求");
+        return batchAvailabilityRows(availabilityRows(warehouseId, demands.stream().map(PreviewDemand::id).toList(),
+                analysisId, null, demands, matchingMaterialIds));
+    }
+
+    private static List<BatchAvailability> batchAvailabilityRows(List<Object[]> rows) {
+        return rows.stream().map(row -> {
             boolean publicAllowed = Boolean.TRUE.equals(row[7]);
             BigDecimal owned = publicAllowed ? decimal(row[4]) : decimal(row[5]);
             BigDecimal physical = decimal(row[2]).subtract(decimal(row[3])).add(owned).max(BigDecimal.ZERO);
@@ -1800,27 +1874,31 @@ public class ProductionExecutionReadinessService
         List<Object[]> availableRows=availabilityRows(warehouseId,allDemands.stream().map(DemandRow::id).toList(),analysisId,analysisItemId);
         Map<UUID, BigDecimal> available = availabilityBudgets(availableRows);
         Map<UUID, BigDecimal> privateCustody=custodyBudgets(availableRows);
+        // Exact/foreign qualified stock and returned custody are already included above.
+        // With neither physical budget, every increment is necessarily zero; receipt
+        // lineage cannot manufacture stock. Avoid three receipt scans per empty demand.
+        if (available.values().stream().noneMatch(qty -> qty.signum() > 0)
+                && privateCustody.values().stream().noneMatch(qty -> qty.signum() > 0)) return List.of();
         Map<UUID, List<ReceiptContribution>> receipts = receiptContributions(allDemands, receiptId, kind, warehouseId,true);
         Map<ProductionMaterialAllocationFacade.MaterialDimension, BigDecimal> claimed = new HashMap<>();
         List<DemandRow> increments = new ArrayList<>();
         for (DemandRow demand : allDemands) {
             BigDecimal[] coverage = covered.get(demand.id());
-            BigDecimal remaining = demand.requiredQty().subtract(coverage[0]).max(BigDecimal.ZERO);
             BigDecimal received = receipts.getOrDefault(demand.id(), List.of()).stream().filter(part->part.custodyReservationId()==null)
                     .map(ReceiptContribution::qty).reduce(BigDecimal.ZERO, BigDecimal::add);
             BigDecimal privateReceipt=receipts.getOrDefault(demand.id(),List.of()).stream().filter(part->part.custodyReservationId()!=null)
                     .map(ReceiptContribution::qty).reduce(BigDecimal.ZERO,BigDecimal::add);
-            BigDecimal custody=privateCustody.getOrDefault(demand.id(),BigDecimal.ZERO).min(remaining);
-            BigDecimal otherFuture=coverage[1].subtract(privateReceipt).max(BigDecimal.ZERO);
-            BigDecimal privateTake=reclaimReturnedCustody?custody.min(remaining.subtract(otherFuture).max(BigDecimal.ZERO)):BigDecimal.ZERO;
-            BigDecimal budget = remaining.subtract(custody).subtract(otherFuture).add(received).max(BigDecimal.ZERO);
             var dimension = new ProductionMaterialAllocationFacade.MaterialDimension(demand.goodsId(), demand.colorId());
-            BigDecimal commonTake = remaining.subtract(privateTake).min(budget).min(available.getOrDefault(demand.id(), BigDecimal.ZERO)
-                    .subtract(claimed.getOrDefault(dimension, BigDecimal.ZERO)).max(BigDecimal.ZERO));
-            BigDecimal take=privateTake.add(commonTake);
+            ContinuousSupplyBudget.Increment decision = ContinuousSupplyBudget.calculate(
+                    demand.requiredQty(), coverage[0], coverage[1],
+                    available.getOrDefault(demand.id(), BigDecimal.ZERO),
+                    claimed.getOrDefault(dimension, BigDecimal.ZERO),
+                    privateCustody.getOrDefault(demand.id(), BigDecimal.ZERO),
+                    received, privateReceipt, reclaimReturnedCustody);
+            BigDecimal take = decision.quantity();
             if (take.signum() <= 0) continue;
             increments.add(new DemandRow(demand.id(), demand.goodsId(), demand.colorId(), demand.unitId(), take, demand.directSupply()));
-            claimed.merge(dimension, commonTake, BigDecimal::add);
+            claimed.merge(dimension, decision.sharedQuantity(), BigDecimal::add);
         }
         return increments;
     }
@@ -1923,12 +2001,50 @@ public class ProductionExecutionReadinessService
             UUID triggeringReceiptId,
             ReceiptKind triggeringKind,
             UUID warehouseId,boolean includeCustody) {
+        return receiptContributions(demands,triggeringReceiptId,triggeringKind,warehouseId,includeCustody,true,List.of(),List.of());
+    }
+
+    public record PreviewReceiptDemand(UUID id,UUID goodsId,UUID colorId,UUID unitId,BigDecimal quantity) {}
+    public record PreviewReceipt(UUID demandId,UUID receiptId,UUID receiptItemId,UUID pegId,BigDecimal qty,
+                                 ReceiptKind kind,UUID warehouseId,UUID custodyReservationId) {}
+
+    /** Same receipt/peg/physical-source selection as promotion, without row locks or postings. */
+    @Transactional(readOnly=true)
+    public List<PreviewReceipt> previewGrowthReceipts(UUID warehouseId,List<PreviewReceiptDemand> demands,
+            List<PreviewReceipt> priorReceipts,List<PreplanAnalysisPegPort.PreviewPublicReservation> priorReservations) {
+        if(demands.isEmpty())return List.of();
+        var rows=demands.stream().map(row->new DemandRow(row.id(),row.goodsId(),row.colorId(),row.unitId(),row.quantity())).toList();
+        List<PreviewReceipt> result=new ArrayList<>();
+        receiptContributions(rows,null,ReceiptKind.PLAN_GROWTH,warehouseId,false,false,priorReceipts,priorReservations)
+                .forEach((demand,parts)->parts.forEach(part->result.add(new PreviewReceipt(demand,part.receiptId(),part.receiptItemId(),
+                        part.pegId(),part.qty(),part.kind(),part.warehouseId(),part.custodyReservationId()))));
+        return List.copyOf(result);
+    }
+
+    private Map<UUID, List<ReceiptContribution>> receiptContributions(List<DemandRow> demands,
+            UUID triggeringReceiptId,ReceiptKind triggeringKind,UUID warehouseId,boolean includeCustody,boolean lockRows,
+            List<PreviewReceipt> priorReceipts,List<PreplanAnalysisPegPort.PreviewPublicReservation> priorReservations) {
         Map<UUID, List<ReceiptContribution>> result =
                 new LinkedHashMap<>();
+        if (demands.isEmpty()) return result;
+        // Every selector below requires an open execution peg, or returned custody.
+        // Determine that source set once; public and preplan-owned stock need no receipt scans.
+        Set<UUID> receiptDemandIds = Set.copyOf(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT demand.id AS receipt_demand_id FROM production_material_demands demand
+                WHERE demand.id IN (:ids) AND (
+                    EXISTS(SELECT 1 FROM production_material_supply_pegs peg WHERE peg.demand_id=demand.id
+                      AND peg.status<>'REVERSED' AND peg.allocated_qty>peg.consumed_qty+peg.released_qty)
+                    OR (:custody AND EXISTS(SELECT 1 FROM stock_reservations held
+                      WHERE held.owner_type='WORKSHOP_CUSTODY' AND held.owner_id=demand.id AND NOT held.is_deleted
+                        AND held.qty>held.consumed_qty+held.released_qty)))
+                """).setParameter("ids",demands.stream().map(DemandRow::id).toList())
+                .setParameter("custody",includeCustody),UUID.class));
+        if (receiptDemandIds.isEmpty()) return result;
         Map<ReceiptPhysicalKey,BigDecimal> physicalRemaining=new HashMap<>();
         Map<UUID,BigDecimal> custodyRemaining=new HashMap<>();
         Map<ReceiptSourceKey,BigDecimal> receiptRemaining=new HashMap<>();
         for (DemandRow demand : demands) {
+            if (!receiptDemandIds.contains(demand.id())) continue;
             BigDecimal remaining = demand.requiredQty();
             List<Object[]> rows = NativeQueryResults.objectArrayRows(
                     em.createNativeQuery("""
@@ -1989,8 +2105,8 @@ public class ProductionExecutionReadinessService
                                       AND receipt.status = 1
                                     ORDER BY receipt.bill_date,
                                              receipt.id, receipt_item.id
-                                    FOR UPDATE OF peg
-                                    """)
+                                    %s
+                                    """.formatted(lockRows?"FOR UPDATE OF peg":""))
                             .setParameter("warehouseId", warehouseId)
                             .setParameter("demandId", demand.id()));
             List<ReceiptContribution> values = new ArrayList<>();
@@ -2054,8 +2170,8 @@ public class ProductionExecutionReadinessService
                                       AND receipt.status = 1
                                     ORDER BY receipt.bill_date,
                                              receipt.id, receipt_item.id
-                                    FOR UPDATE OF peg
-                                    """)
+                                    %s
+                                    """.formatted(lockRows?"FOR UPDATE OF peg":""))
                             .setParameter("warehouseId", warehouseId)
                             .setParameter("demandId", demand.id())));
             rows.addAll(NativeQueryResults.objectArrayRows(
@@ -2126,8 +2242,8 @@ public class ProductionExecutionReadinessService
                                       AND receipt.status = 1
                                     ORDER BY receipt.bill_date,
                                              receipt.id, receipt_item.id
-                                    FOR UPDATE OF peg
-                                    """)
+                                    %s
+                                    """.formatted(lockRows?"FOR UPDATE OF peg":""))
                             .setParameter("warehouseId", warehouseId)
                             .setParameter("demandId", demand.id())
                             .setParameter("goodsId", demand.goodsId())
@@ -2155,8 +2271,8 @@ public class ProductionExecutionReadinessService
                       AND custody.qty>custody.consumed_qty+custody.released_qty
                       AND custody.goods_id=:goods AND custody.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
                       AND fn_warehouse_same_main(custody.warehouse_id,:warehouse)
-                    ORDER BY custody.id,receipt_item.id,peg.id FOR UPDATE OF peg
-                    """).setParameter("demand",demand.id()).setParameter("goods",demand.goodsId()).setParameter("color",demand.colorId())
+                    ORDER BY custody.id,receipt_item.id,peg.id %s
+                    """.formatted(lockRows?"FOR UPDATE OF peg":"")).setParameter("demand",demand.id()).setParameter("goods",demand.goodsId()).setParameter("color",demand.colorId())
                     .setParameter("warehouse",warehouseId)));
             rows.sort(Comparator.<Object[],Boolean>comparing(row->row[8]==null)
                     .thenComparing(
@@ -2172,7 +2288,8 @@ public class ProductionExecutionReadinessService
                 BigDecimal pegAvailable =
                         pegRemaining.computeIfAbsent(
                                 pegId,
-                                ignored -> decimal(row[4])
+                                ignored -> decimal(row[4]).subtract(priorReceipts.stream().filter(part->part.pegId().equals(pegId))
+                                                .map(PreviewReceipt::qty).reduce(BigDecimal.ZERO,BigDecimal::add))
                                         .max(BigDecimal.ZERO));
                 BigDecimal available = decimal(row[3])
                         .max(BigDecimal.ZERO)
@@ -2187,12 +2304,18 @@ public class ProductionExecutionReadinessService
                               AND (held.warehouse_id=:warehouse OR held.warehouse_id IS NULL) AND held.status=0 AND NOT held.is_deleted),0),0)
                         FROM stock_balances balance WHERE balance.warehouse_id=:warehouse AND balance.goods_id=:goods
                             AND balance.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
-                        """).setParameter("warehouse",key.warehouse()).setParameter("goods",key.goods()).setParameter("color",key.color()).getSingleResult()));
+                        """).setParameter("warehouse",key.warehouse()).setParameter("goods",key.goods()).setParameter("color",key.color()).getSingleResult())
+                                .subtract(priorReservations.stream().filter(part->part.warehouseId().equals(key.warehouse())
+                                        &&part.goodsId().equals(key.goods())&&Objects.equals(part.colorId(),key.color()))
+                                        .map(PreplanAnalysisPegPort.PreviewPublicReservation::qty).reduce(BigDecimal.ZERO,BigDecimal::add))
+                                .max(BigDecimal.ZERO));
                 available=available.min(physical);
                 ReceiptSourceKey receiptKey=new ReceiptSourceKey(ReceiptKind.valueOf((String)row[5]),uuid(row[1]));
                 BigDecimal receiptFree = receiptRemaining.computeIfAbsent(
                         receiptKey, key -> decimal(em.createNativeQuery(key.kind().remainingQuantitySql())
-                                .setParameter("id", key.itemId()).getSingleResult()));
+                                .setParameter("id", key.itemId()).getSingleResult()).subtract(priorReceipts.stream()
+                                        .filter(part->part.kind()==key.kind()&&part.receiptItemId().equals(key.itemId()))
+                                        .map(PreviewReceipt::qty).reduce(BigDecimal.ZERO,BigDecimal::add)));
                 available=available.min(receiptFree.max(BigDecimal.ZERO));
                 BigDecimal qty = available.min(remaining);
                 if (qty.signum() <= 0) continue;

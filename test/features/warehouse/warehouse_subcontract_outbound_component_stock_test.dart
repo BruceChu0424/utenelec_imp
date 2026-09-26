@@ -207,10 +207,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 骨架: 与销售出库详情同款——顶栏副标题 + 刷新, 折叠头里状态横幅 + 事实卡,
+    // 骨架: 与销售出库详情同款——顶栏刷新, 折叠头里状态横幅 + 事实卡,
     // 明细表放 body 内滚(primary), 动作在右下悬浮组。
+    // 2026-09-24 标题下说明小字全站删除：顶栏不再有「仓库作业视图」副标题。
     expect(find.text('委外拣货出仓'), findsOneWidget);
-    expect(find.text('仓库作业视图'), findsOneWidget);
+    expect(find.text('仓库作业视图'), findsNothing);
     expect(
       find.byKey(const Key('warehouse-subcontract-outbound-detail-refresh')),
       findsOneWidget,
@@ -226,7 +227,6 @@ void main() {
     expect(find.text('EO-C'), findsOneWidget);
     expect(find.text('委外商'), findsOneWidget);
     expect(find.text('Supplier C'), findsOneWidget);
-    expect(find.text('出仓明细 (2)'), findsOneWidget);
     final table = tester.widget<SubcontractOutboundDetailTable>(
       find.byType(SubcontractOutboundDetailTable),
     );

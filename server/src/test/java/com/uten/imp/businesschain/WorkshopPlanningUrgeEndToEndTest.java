@@ -27,14 +27,18 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
 import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.IssueWorkshopPlansRequest;
 import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.RouteDecision;
 import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.RouteRequest;
+import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.ClaimSharedFutureRequest;
+import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.SharedFutureClaimQuantity;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -42,8 +46,8 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>钉住四件事：
  * <ol>
- *   <li>「计划还没下单」与物料分析主表「还缺数量」是同一个数：没下单 = 缺口、下了一部分 = 剩余缺口、
- *       下够 = 0；仓库现货已分到的料不算计划缺口(只是等领料)；</li>
+ *   <li>「计划还未落实供给」由物料分析权威覆盖计算给出：下单/认领一部分 = 剩余缺口、
+ *       下够/认领够 = 0；仓库现货已分到的料不算计划缺口，未认领公共候选仍需办理；</li>
  *   <li>自制子件同样适用：子件还没排计划时父件任务在等计划，排了计划之后变成「等子件做完」；</li>
  *   <li>催计划只在真有计划缺口、本人车间、任务还在进行时成立；30 分钟内重复点不再打扰计划员；</li>
  *   <li>计划下够单后核对即办结在催记录，并撤回发给计划员的待办卡。</li>
@@ -161,6 +165,52 @@ class WorkshopPlanningUrgeEndToEndTest {
         assertFalse(row.canUrgePlanning());
         qty("0", childMaterial(c).planningGapQty());
         assertThrows(ApiException.class, () -> urges.urge(c.segment()));
+    }
+
+    @Test
+    void publicFutureCandidatesRequireActualClaimsBeforeAnUrgeCanBeResolved() {
+        Case c = create("pu-public", "采购", false);
+        fixture.loginAs(c.workerUser());
+        var urge = urges.urge(c.segment());
+        UUID publicSource = createPublicFuture(c);
+        fixture.loginAs(c.world().superAdminUserId());
+        MaterialView before = childView(c);
+        qty("100", before.sharedFutureClaimableQty());
+        qty("0", before.netShortageQty());
+        qty("100", before.planningUncoveredQty());
+        qty("100", planningSide.freshPlanningGaps(List.of(c.segment())).of(c.segment()).getFirst().gapQty());
+        assertEquals(0, urges.reconcileAnalysis(c.analysis()), "公共候选未认领，不得把催办办结");
+        assertEquals("OPEN|", urgeState(urge.urgeId()));
+
+        AnalysisView view = analyses.detail(c.analysis());
+        view = commands.claimSharedFuture(c.analysis(), new ClaimSharedFutureRequest(
+                view.version(), view.fingerprint(), "pu-claim-40-" + c.segment(),
+                List.of(before.actionGroupKey()),
+                List.of(new SharedFutureClaimQuantity(before.actionGroupKey(), new BigDecimal("40"), publicSource)), false));
+        MaterialView partial = view.flatMaterials().stream()
+                .filter(material -> material.materialLineId().equals(before.materialLineId())).findFirst().orElseThrow();
+        qty("60", partial.sharedFutureClaimableQty());
+        qty("0", partial.netShortageQty());
+        qty("60", partial.planningUncoveredQty());
+        qty("60", planningSide.freshPlanningGaps(List.of(c.segment())).of(c.segment()).getFirst().gapQty());
+        assertEquals(0, urges.reconcileAnalysis(c.analysis()), "认领 40 后剩余 60 仍需办理");
+
+        commands.claimSharedFuture(c.analysis(), new ClaimSharedFutureRequest(
+                view.version(), view.fingerprint(), "pu-claim-60-" + c.segment(),
+                List.of(before.actionGroupKey()),
+                List.of(new SharedFutureClaimQuantity(before.actionGroupKey(), new BigDecimal("60"), publicSource)), false));
+        qty("0", childView(c).planningUncoveredQty());
+        assertEquals(1, urges.reconcileAnalysis(c.analysis()));
+        assertEquals("RESOLVED|ARRANGED", urgeState(urge.urgeId()));
+        qty("100", db.queryForObject("SELECT SUM(requested_qty) FROM preplan_supply_actions "
+                + "WHERE analysis_id=? AND operation_type='SHARED_FUTURE_CLAIM'", BigDecimal.class, c.analysis()));
+        assertEquals(0, db.queryForObject("SELECT COUNT(*) FROM preplan_supply_actions "
+                + "WHERE analysis_id=? AND operation_type='SUPPLY'", Integer.class, c.analysis()), "只认领，无重复新采购");
+        qty("0", db.queryForObject("SELECT COALESCE(SUM(qty),0) FROM stock_balances WHERE goods_id=?",
+                BigDecimal.class, c.child()));
+        fixture.loginAs(c.workerUser());
+        assertEquals("SHORT", childMaterial(c).state(), "认领只是未来供给，并未到料或开工");
+        assertFalse(task(c).canUrgePlanning());
     }
 
     @Test
@@ -394,6 +444,55 @@ class WorkshopPlanningUrgeEndToEndTest {
                 SELECT id FROM production_material_analysis_materials
                 WHERE analysis_id=? AND goods_id=? AND active
                 """, UUID.class, c.analysis(), c.child());
+    }
+
+    /** 另一份分析采购需求 1，实际审批订货 101，形成真实且尚未认领的公共在途 100。 */
+    private UUID createPublicFuture(Case c) {
+        var w = c.world();
+        fixture.loginAs(w.superAdminUserId());
+        UUID sourceProduct = UUID.randomUUID();
+        fixture.insertGoods(sourceProduct, "PU-SOURCE-" + sourceProduct, "公共在途来源", "自制", w.unitId(), w.unitLegacy());
+        fixture.insertBom(sourceProduct, c.child(), "1");
+        db.update("UPDATE goods SET default_supplier_id=? WHERE id=?", w.supplierId(), c.child());
+        var view = analyses.preview(new PreviewRequest(null, null, null, w.warehouseId(),
+                "pu-source-preview-" + sourceProduct, List.of(new PreviewItem("OTHER", null, sourceProduct,
+                null, w.unitId(), "pu-source-" + sourceProduct, "公共在途来源", BusinessTime.today().plusDays(10), BigDecimal.ONE))));
+        view = analyses.saveRoutes(view.analysisId(), new RouteRequest(view.version(), view.fingerprint(),
+                "pu-source-route-" + sourceProduct, view.flatMaterials().stream().filter(MaterialView::actionable)
+                .map(row -> new RouteDecision(row.materialLineId(), row.actionGroupKey(),
+                        row.goodsId().equals(c.child()) ? "BUY" : "MAKE", null)).toList()));
+        MaterialView material = view.flatMaterials().stream().filter(row -> row.goodsId().equals(c.child()))
+                .findFirst().orElseThrow();
+        commands.notifySupply(view.analysisId(), new NotifyRequest(view.version(), view.fingerprint(),
+                "pu-source-notify-" + sourceProduct, "BUY", List.of(material.materialLineId()), List.of(),
+                List.of(new SupplyQuantityInput(null, material.materialLineId(), BigDecimal.ONE, BigDecimal.ZERO))));
+        var source = db.queryForMap("SELECT action.id,allocation.external_item_id FROM preplan_supply_actions action "
+                + "JOIN preplan_supply_action_allocations allocation ON allocation.action_id=action.id "
+                + "WHERE action.analysis_id=? AND action.route='BUY'", view.analysisId());
+        UUID requestItem = (UUID) source.get("external_item_id");
+        var request = new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
+        request.setSettlementMethodId(ReflectionTestUtils.invokeMethod(fixture, "activeSettlementMethodId"));
+        request.setBillDate(LocalDate.of(2026, 1, 15));
+        request.setSupplierId(w.supplierId());
+        request.setCurrencyId(w.currencyId());
+        request.setExchangeRate(BigDecimal.ONE);
+        request.setTaxRate(BigDecimal.ZERO);
+        com.uten.imp.features.purchase.order.dto.OrderItemLine line = ReflectionTestUtils.invokeMethod(
+                fixture, "ma65OrderLine", w, requestItem, c.child(), "101");
+        line.setDeliverDate(BusinessTime.today().plusDays(5));
+        request.setItems(List.of(line));
+        var orders = (com.uten.imp.features.purchase.order.PurchaseOrderService) ReflectionTestUtils.getField(fixture, "purchaseOrderService");
+        var finance = (com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService) ReflectionTestUtils.getField(fixture, "financeApproval");
+        orders.createBatch(request);
+        UUID order = db.queryForObject("SELECT item.order_id FROM purchase_order_items item "
+                + "JOIN purchase_order_item_sources source ON source.order_item_id=item.id "
+                + "WHERE source.request_item_id=? AND NOT item.is_deleted", UUID.class, requestItem);
+        UUID reviewer = ReflectionTestUtils.invokeMethod(fixture, "createApprover", w);
+        finance.submit("PURCHASE", order);
+        fixture.loginAs(reviewer);
+        ReflectionTestUtils.invokeMethod(fixture, "approvePendingFinance", "PURCHASE", order);
+        fixture.loginAs(w.superAdminUserId());
+        return (UUID) source.get("id");
     }
 
     /** 计划员给子料下达采购(登录身份由调用方负责，一般是超管)。 */

@@ -1,4 +1,40 @@
 {
+  "bomLearningTitle": "BOM 学习记录",
+  "materialDiscoveryBatchHelp": "请先选择持续生产或齐套生产，登记实际物料后再安排分批",
+  "materialDiscoveryCancel": "撤回待登记领料申请",
+  "bomLearningHelp": "完成生产并核清余料后，按累计净耗料除以累计实际产量更新单耗。已有任务仍按下达时的用料执行。",
+  "bomLearningInactive": "尚无学习记录。无底层材料的自制任务完成领料和生产后开始累计。",
+  "bomLearningAuto": "自动更新 BOM",
+  "bomLearningPaused": "已保留人工 BOM 或发现材料、单位、颜色冲突，自动更新已暂停；累计记录仍保留，请核对组件资料。",
+  "bomLearningOutput": "累计实际产量",
+  "bomLearningSamples": "有效生产批次",
+  "bomLearningNet": "累计净耗料",
+  "bomLearningAverage": "每件平均用量",
+  "materialDiscoveryTitle": "填写实际领料",
+  "materialDiscoveryHelp": "请与领料人核对，为本工单添加一种或多种材料，填写数量和实际发料仓。保存后进入领料单办理实际出库。",
+  "materialDiscoveryRequestHelp": "这些自制件尚未登记底层材料。提交领料后，请领料人与仓库对接，由仓库填写实际材料；实际发料后才能开工。",
+  "materialDiscoveryPending": "待仓库填写物料",
+  "materialDiscoveryNeeded": "需要登记领料物料",
+  "materialDiscoverySend": "提交领料申请",
+  "materialDiscoverySave": "保存并生成领料单",
+  "materialDiscoverySaved": "物料已登记，请在领料单核对并实际出库",
+  "materialDiscoveryInvalid": "请逐行选择材料和实际仓库，填写大于0且最多4位小数的数量；单位采用货品基本单位",
+  "materialDiscoveryUncertain": "回执尚未确认，输入已保留。请核对结果或使用相同内容重试",
+  "materialDiscoveryCheck": "核对提交结果",
+  "materialDiscoveryPick": "选择材料",
+  "materialDiscoveryWarehouse": "实际发料仓",
+  "materialDiscoveryQuantity": "本次领料数量",
+  "materialDiscoveryUnit": "单位",
+  "materialDiscoveryCode": "编号",
+  "materialDiscoveryColor": "颜色",
+  "materialDiscoveryLoadFailed": "领料申请加载失败，请重试",
+  "materialDiscoveryNoPermission": "当前账号没有填写领料物料的权限",
+  "materialDiscoveryDone": "该申请已办理，请查看对应领料单",
+  "materialDiscoveryOpenDraw": "打开领料单",
+  "materialDiscoveryRetry": "重试",
+  "materialDiscoveryRequestSent": "领料申请已提交，等待仓库填写物料",
+  "materialDiscoveryMissingUnit": "该材料没有基本单位，请先完善货品资料",
+  "materialDiscoveryRequestTitle": "确认领料申请",
   "@@locale": "zh",
   "appTitle": "优腾·综合管理平台",
   "@appTitle": {
@@ -54,8 +90,6 @@
   "settingsLogout": "退出登录",
   "settingsLogoutConfirm": "确定要退出登录吗？",
   "profileChangePassword": "修改密码",
-  "entryStaff": "内部人员登录",
-  "entryVisitor": "访客登录",
   "visitorLoginTitle": "访客登录",
   "visitorLoginSubtitle": "输入手机号获取验证码",
   "visitorPhoneLabel": "手机号",
@@ -814,7 +848,6 @@
   "warehouseHubTitle": "仓库管理",
   "warehouseHubSectionDocs": "出入库单据",
   "warehouseHubSectionInventory": "库存查询",
-  "warehouseHubSectionInventoryDesc": "即时库存·库存查询·出入库流水",
   "warehouseHubSectionReports": "仓库报表",
   "warehouseHubSectionReportsDesc": "明细(一行一货品)·汇总(一行一单)",
   "warehouseHubDocTransfer": "仓库调拨",
@@ -940,6 +973,7 @@
   "materialIdentityByProduct": "物料名称",
   "materialRoute": "供应方式",
   "materialRequired": "需要数量",
+  "materialPublicAvailable": "可用数量",
   "materialShortage": "还缺数量",
   "materialPhysicalShortageHint": "本批需求扣除已覆盖本批的合格物料后仍缺的数量。下达采购、委外或车间计划不会减少实物缺口；合格入库并归属本批后才减少。待补数量另外扣除在途，避免重复下达。",
   "materialSupplyProgressHint": "跟踪下单、财务审批、收货、检验与入库进度；双击行查看明细。下达后仍保留实物缺口，合格入库后更新。",
@@ -962,14 +996,6 @@
       }
     }
   },
-  "materialCreateRoutes": "确认路线({count})",
-  "@materialCreateRoutes": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
   "materialRouteChangedRetry": "分析已更新，请核对当前所选路线后重试",
   "materialWarehouseFacts": "仓库与供给明细",
   "materialExactStock": "本节点合格绑定",
@@ -986,7 +1012,7 @@
   "materialTaskWorkshopHint": "填写数量、车间和负责人后下达；缺料任务先进入待料，齐套并领料后才能开工。",
   "materialTaskSectionHint": "按供料路线集中处理，查看未下达、已下达与待处理任务。",
   "materialWarehouseLimit": "本次分析最多支持 100 个实际仓库，当前主仓范围超出限制，请调整仓库范围后再分析",
-  "materialRoutesNext": "下一步：核对 {count} 条待确认路线，勾选后点击“确认路线”。每条路线按当前选择保存。",
+  "materialRoutesNext": "下一步：还有 {count} 行没选供应方式（红框），在「供应方式」列选好后即自动保存，这些行才能下单。其余行的供应方式已按货品档案自动确认。",
   "materialIssueNext": "下一步：进入“下达采购 / 下达委外 / 下达车间”，按未下达余量办理并查看已下达进度。",
   "materialWorkshopNext": "下一步：{count} 个产品可先下达车间。填写数量、车间和负责人；缺料批次等待齐套和领料后开工。",
   "@materialRoutesNext": {
@@ -1477,7 +1503,6 @@
   "warehouseSubcontractOutboundSuggestedWarehouse": "建议发料仓",
   "warehouseSubcontractOutboundComponentEffects": "审核后，子件从所选仓库实际出库并交委外商加工；加工完回厂登记的是委外件，仍需品质检查，合格后才正式入仓。",
   "warehouseSubcontractOutboundComponentNotArrived": "子件还没到货，仓里一件都没有；子件入库后系统会自动补草稿并通知仓库。",
-  "warehouseSubcontractOutboundWorkView": "仓库作业视图",
   "warehouseSubcontractOutboundBannerScope": "仓库作业视图不含价格与金额, 也不提供委外业务编辑操作。",
   "warehouseSubcontractOutboundBannerDraftPending": "草稿 {billNo} 待拣货审核",
   "@warehouseSubcontractOutboundBannerDraftPending": {
@@ -1500,14 +1525,6 @@
   "warehouseSubcontractOutboundFactLatestIssue": "最近出仓单",
   "warehouseSubcontractOutboundHistoryTitle": "出仓记录 ({count})",
   "@warehouseSubcontractOutboundHistoryTitle": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "warehouseSubcontractOutboundLinesTitle": "出仓明细 ({count})",
-  "@warehouseSubcontractOutboundLinesTitle": {
     "placeholders": {
       "count": {
         "type": "int"
@@ -1666,8 +1683,6 @@
   "securityBlacklistRemove": "解除拉黑",
   "securityBlacklistRemoveConfirm": "确认解除拉黑？解除后该访客可重新登录与提交申请，历史申请状态不变。",
   "securityBlacklistRemoveDone": "已解除拉黑",
-  "entryStaffSubtitle": "员工工号登录，进入工作台",
-  "entryVisitorSubtitle": "访客手机验证码登记，快速通行",
   "visitorColName": "姓名",
   "visitorColPurpose": "事由",
   "visitorColHost": "接待人",

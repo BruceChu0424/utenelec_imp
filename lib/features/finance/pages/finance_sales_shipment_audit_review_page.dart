@@ -666,6 +666,18 @@ class _FinanceSalesShipmentAuditReviewPageState
                                 const SizedBox(height: UtenSpacing.s12),
                                 _rejectRecordCard(theme, _detail!),
                               ],
+                              // 2026-09-25 用户口径：纯计数标题「出货明细(N)」退役；
+                              // 修订对比态标题保留（表体看不出这是对比视图）。
+                              if (_itemsTitle(_detail!)
+                                  case final itemsTitle?) ...[
+                                const SizedBox(height: UtenSpacing.s12),
+                                Text(
+                                  itemsTitle,
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -1119,7 +1131,7 @@ class _FinanceSalesShipmentAuditReviewPageState
                       ? '不收费（货款 0）'
                       : d.priceMasked
                       ? '***'
-                      : '${d.exactDecimals['totalOriginal'] ?? d.totalOriginal ?? '—'}（所选币种）',
+                      : '${financeExactTrimmed(d.exactDecimals['totalOriginal'] ?? d.totalOriginal?.toString()) ?? '—'}（所选币种）',
                 ),
                 if ((d.sourceDocNo?.isNotEmpty ?? false))
                   kv('来源订单', d.sourceDocNo),
@@ -1167,119 +1179,111 @@ class _FinanceSalesShipmentAuditReviewPageState
     final hasComparison =
         readableShipmentReviewSnapshot(before) &&
         readableShipmentReviewSnapshot(after);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          hasComparison ? '出货明细 · 修改对比' : '出货明细(${items.length})',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        Expanded(
-          child: hasComparison
-              ? ShipmentFinanceChangeTable(
-                  previous: before!,
-                  current: after!,
-                  describe: _describeSnapshotValue,
-                  embedded: false,
-                  primary: true,
-                  priceMasked: masked,
-                  bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-                )
-              : MasterDataTableView<SalesDocItem>(
-                  primary: true,
-                  bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-                  columns: [
-                    MasterColumnDef(
-                      key: 'goods',
-                      // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
-                      label: '货品名称',
-                      width: 200,
-                      value: (it) =>
-                          salesGoodsNameLabel(it, names.goods(it.goodsId)),
-                    ),
-                    MasterColumnDef(
-                      key: 'goodsCode',
-                      label: '编号',
-                      width: 130,
-                      value: (it) => UtenGoodsAttributeCell.text(
-                        salesGoodsCodeLabel(
-                          it,
-                          fallbackCode: names.goodsInfo(it.goodsId)?.code,
-                        ),
-                      ),
-                      cellBuilder: (_, it) => UtenGoodsAttributeCell(
-                        salesGoodsCodeLabel(
-                          it,
-                          fallbackCode: names.goodsInfo(it.goodsId)?.code,
-                        ),
-                      ),
-                    ),
-                    MasterColumnDef(
-                      key: 'colorName',
-                      label: '颜色',
-                      width: 96,
-                      value: (it) => names.color(it.colorId),
-                    ),
-                    MasterColumnDef(
-                      key: 'unitName',
-                      label: '单位',
-                      width: 80,
-                      value: (it) => names.unit(it.unitId),
-                    ),
-                    MasterColumnDef(
-                      key: 'stockPlace',
-                      label: '库位号',
-                      width: 90,
-                      value: (it) =>
-                          names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
-                    ),
-                    MasterColumnDef(
-                      key: 'qty',
-                      label: '数量',
-                      width: 90,
-                      type: 'number',
-                      value: (it) => it.qty?.toStringAsFixed(2),
-                    ),
-                    MasterColumnDef(
-                      key: 'price',
-                      label: '单价',
-                      width: 120,
-                      type: 'money',
-                      value: (it) =>
-                          masked ? '***' : it.price?.toStringAsFixed(2),
-                    ),
-                    MasterColumnDef(
-                      key: 'amount',
-                      label: '金额',
-                      width: 100,
-                      type: 'money',
-                      value: (it) => masked
-                          ? '***'
-                          : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(
-                              2,
-                            ),
-                    ),
-                    MasterColumnDef(
-                      key: 'remark',
-                      label: '备注',
-                      width: 160,
-                      value: (it) =>
-                          (it.remark?.isNotEmpty ?? false) ? it.remark : null,
-                    ),
-                  ],
-                  items: items,
-                  facets: const {},
-                  nullCounts: const {},
-                  filters: const {},
-                  onFilterChanged: (_, _) {},
-                  emptyMessage: '(无明细)',
+    // 2026-09-24：明细标题已上移折叠头（见 _itemsTitle），body 只剩表格。
+    return hasComparison
+        ? ShipmentFinanceChangeTable(
+            previous: before!,
+            current: after!,
+            describe: _describeSnapshotValue,
+            embedded: false,
+            primary: true,
+            priceMasked: masked,
+            bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+          )
+        : MasterDataTableView<SalesDocItem>(
+            primary: true,
+            bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+            columns: [
+              MasterColumnDef(
+                key: 'goods',
+                // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+                label: '货品名称',
+                width: 200,
+                value: (it) => salesGoodsNameLabel(it, names.goods(it.goodsId)),
+              ),
+              MasterColumnDef(
+                key: 'goodsCode',
+                label: '编号',
+                width: 130,
+                value: (it) => UtenGoodsAttributeCell.text(
+                  salesGoodsCodeLabel(
+                    it,
+                    fallbackCode: names.goodsInfo(it.goodsId)?.code,
+                  ),
                 ),
-        ),
-      ],
-    );
+                cellBuilder: (_, it) => UtenGoodsAttributeCell(
+                  salesGoodsCodeLabel(
+                    it,
+                    fallbackCode: names.goodsInfo(it.goodsId)?.code,
+                  ),
+                ),
+              ),
+              MasterColumnDef(
+                key: 'colorName',
+                label: '颜色',
+                width: 96,
+                value: (it) => names.color(it.colorId),
+              ),
+              MasterColumnDef(
+                key: 'unitName',
+                label: '单位',
+                width: 80,
+                value: (it) => names.unit(it.unitId),
+              ),
+              MasterColumnDef(
+                key: 'stockPlace',
+                label: '库位号',
+                width: 90,
+                value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
+              ),
+              MasterColumnDef(
+                key: 'qty',
+                label: '数量',
+                width: 90,
+                type: 'number',
+                value: (it) => it.qty?.toStringAsFixed(2),
+              ),
+              MasterColumnDef(
+                key: 'price',
+                label: '单价',
+                width: 120,
+                type: 'money',
+                value: (it) => masked ? '***' : it.price?.toStringAsFixed(2),
+              ),
+              MasterColumnDef(
+                key: 'amount',
+                label: '金额',
+                width: 100,
+                type: 'money',
+                value: (it) => masked
+                    ? '***'
+                    : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
+              ),
+              MasterColumnDef(
+                key: 'remark',
+                label: '备注',
+                width: 160,
+                value: (it) =>
+                    (it.remark?.isNotEmpty ?? false) ? it.remark : null,
+              ),
+            ],
+            items: items,
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            emptyMessage: '(无明细)',
+          );
+  }
+
+  /// 明细标题——2026-09-25 起纯计数「出货明细(N)」退役，仅修订对比态返回标题。
+  String? _itemsTitle(SalesDocDetail d) {
+    final before = _info?.previousCommercialSnapshot;
+    final after = _info?.commercialSnapshot;
+    final hasComparison =
+        readableShipmentReviewSnapshot(before) &&
+        readableShipmentReviewSnapshot(after);
+    return hasComparison ? '出货明细 · 修改对比' : null;
   }
 
   Widget _attachments(ThemeData theme, SalesDocDetail d) {

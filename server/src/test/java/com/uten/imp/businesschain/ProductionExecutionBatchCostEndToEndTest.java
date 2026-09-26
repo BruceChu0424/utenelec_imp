@@ -57,8 +57,8 @@ class ProductionExecutionBatchCostEndToEndTest {
     @Test void fixedBatchCostRemainsForLaterOutputAndRepricesEarlySalesAfterAnActualConsumptionCorrection() {
         Case c=create("split-cost-cogs");
         var first=split(c,c.rootSegment(),"40");issueAndStart(c,first);
-        UUID posting=consume(c,first.batchSegmentId());
         finish(c,first.batchSegmentId(),"40",c.world());drain(c);
+        UUID posting=consumptionPosting(first.batchSegmentId());
         money("40",stockValue(c.world().warehouseId(),c.product()));money("60",costHeld(c));
         assertEquals(1,count("SELECT count(*) FROM stock_value_production_cost_objects WHERE execution_segment_id=?",c.rootSegment()));
         assertEquals(0,count("SELECT count(*) FROM stock_value_production_cost_objects object JOIN production_execution_segments segment ON segment.id=object.execution_segment_id WHERE segment.split_root_segment_id=?",c.rootSegment()));
@@ -85,7 +85,7 @@ class ProductionExecutionBatchCostEndToEndTest {
 
     @Test void reversingAndReceivingALaterChildOutputRetainsItsOriginalRootCostPoolAndPhysicalMovement() {
         Case c=create("split-cost-reverse");var first=split(c,c.rootSegment(),"40");issueAndStart(c,first);
-        consume(c,first.batchSegmentId());finish(c,first.batchSegmentId(),"40",c.world());drain(c);
+        finish(c,first.batchSegmentId(),"40",c.world());drain(c);
         var second=split(c,first.remainingSegmentId(),"60");issueAndStart(c,second);
         var other=withWarehouse(c.world(),newWarehouse("split-cost-reverse-second"));
         UUID secondDoc=finish(c,second.batchSegmentId(),"60",other);drain(c);
@@ -101,13 +101,17 @@ class ProductionExecutionBatchCostEndToEndTest {
 
     @Test void anEarlyFinalReportCannotDiscardTheRemainingApprovedBatchOrItsCostBasis() {
         Case c=create("split-cost-final-target");var first=split(c,c.rootSegment(),"40");issueAndStart(c,first);
-        consume(c,first.batchSegmentId());
-        assertThrows(RuntimeException.class,()->finish(c,first.batchSegmentId(),"35",c.world(),true));
+        var failure=assertThrows(com.uten.imp.common.web.ApiException.class,
+                ()->finish(c,first.batchSegmentId(),"35",c.world(),true));
+        assertTrue(failure.getMessage().contains("分批报工不调整原批准总量"));
         money("100",db.queryForObject("SELECT planned_qty FROM production_execution_segments WHERE id=?",BigDecimal.class,c.rootSegment()));
         money("40",db.queryForObject("SELECT planned_qty FROM production_execution_segments WHERE id=?",BigDecimal.class,first.batchSegmentId()));
         money("60",db.queryForObject("SELECT planned_qty FROM production_execution_segments WHERE id=?",BigDecimal.class,first.remainingSegmentId()));
         money("100",db.queryForObject("SELECT fn_production_execution_cost_target(?)",BigDecimal.class,c.rootSegment()));
-        money("0",stockValue(c.world().warehouseId(),c.product()));money("100",costHeld(c));
+        drain(c);
+        money("0",stockValue(c.world().warehouseId(),c.product()));money("0",costHeld(c));
+        money("100",db.queryForObject("SELECT COALESCE(sum(node.owned_value_local),0) FROM stock_value_nodes node JOIN stock_value_pools pool ON pool.id=node.pool_id WHERE pool.goods_id=? AND node.owner_kind='WIP'",BigDecimal.class,c.material()));
+        assertEquals(0,count("SELECT count(*) FROM production_material_settlement_postings posting JOIN production_material_demands demand ON demand.id=posting.demand_id WHERE demand.plan_id=?",c.plan()));
     }
 
     private Case create(String tag) {
@@ -137,9 +141,33 @@ class ProductionExecutionBatchCostEndToEndTest {
     }
     private ProductionExecutionBatch.Result split(Case c,UUID segment,String quantity){fixture.loginAs(c.world().superAdminUserId());segments.confirmRoute(c.plan(),segment,new com.uten.imp.features.production.execution.SegmentRouteConfirmRequest(version(segment),"route-BATCH-"+segment,"BATCH"));var preview=batches.preview(new ProductionExecutionBatch.PreviewRequest(segment,version(segment),new BigDecimal(quantity)));return batches.submit(new ProductionExecutionBatch.SubmitRequest(segment,preview.expectedVersion(),preview.quantity(),preview.fingerprint(),"split-cost-"+segment));}
     private void issueAndStart(Case c,ProductionExecutionBatch.Result batch){fixture.loginAs(c.world().superAdminUserId());if(!batch.documentIds().isEmpty()){var request=new StockDocIssueBatchRequest();request.setIdempotencyKey("issue-cost-"+batch.batchSegmentId());request.setDocIds(batch.documentIds());stock.issueFullBatch(request);}segments.start(c.plan(),batch.batchSegmentId(),new SegmentTransitionRequest(version(batch.batchSegmentId()),"start-cost-"+batch.batchSegmentId()));}
-    private UUID consume(Case c,UUID segment){var request=new ProductionMaterialSettlementRequest();request.setExecutionSegmentId(segment);request.setIdempotencyKey("consume-cost-"+segment);request.setReason("确认一份固定批耗材料用于原计划全部100件产出");var line=new ProductionMaterialSettlementRequest.Line();line.setDemandId(db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",UUID.class,segment));line.setSettlementType("CONSUMED");line.setQtyBase(BigDecimal.ONE);request.setLines(List.of(line));settlements.post(c.plan(),request,c.world().superAdminUserId());return db.queryForObject("SELECT id FROM production_material_settlement_postings WHERE demand_id=? AND source_posting_id IS NULL",UUID.class,line.getDemandId());}
+    private UUID consumptionPosting(UUID segment){
+        UUID posting=db.queryForObject("""
+                SELECT posting.id FROM production_material_settlement_postings posting
+                JOIN production_material_demands demand ON demand.id=posting.demand_id
+                JOIN production_material_settlement_events event ON event.id=posting.event_id
+                WHERE demand.execution_segment_id=? AND posting.source_posting_id IS NULL
+                  AND posting.settlement_type='CONSUMED' AND event.daily_report_id IS NOT NULL
+                """,UUID.class,segment);
+        money("1",db.queryForObject("SELECT qty_base FROM production_material_settlement_postings WHERE id=?",BigDecimal.class,posting));
+        return posting;
+    }
     private UUID finish(Case c,UUID segment,String quantity,FullChainEndToEndTest.World world){return finish(c,segment,quantity,world,false);}
-    private UUID finish(Case c,UUID segment,String quantity,FullChainEndToEndTest.World world,boolean finalReport){fixture.loginAs(c.world().superAdminUserId());UUID planItem=db.queryForObject("SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",UUID.class,segment);UUID allocation=db.queryForObject("SELECT id FROM execution_segment_sales_allocations WHERE execution_segment_id=?",UUID.class,segment);UUID report=fixture.reportAndApproveExecutionSegment(world,planItem,c.orderItem(),c.product(),segment,allocation,quantity,finalReport,"0",null,null);UUID document=fixture.finishedInDocForReport(report);fixture.confirmFinishedInboundFully(document);return document;}
+    private UUID finish(Case c,UUID segment,String quantity,FullChainEndToEndTest.World world,boolean finalReport){
+        fixture.loginAs(c.world().superAdminUserId());
+        UUID planItem=db.queryForObject("SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",UUID.class,segment);
+        UUID allocation=db.queryForObject("SELECT id FROM execution_segment_sales_allocations WHERE execution_segment_id=?",UUID.class,segment);
+        // The first split physically consumes the single fixed-batch input in its
+        // report; later splits have no new input and retain that original cost pool.
+        var uses=db.queryForList("SELECT id,required_qty FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",segment).stream().map(row->{
+            var use=new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();
+            use.setDemandId((UUID)row.get("id"));use.setQtyBase((BigDecimal)row.get("required_qty"));return use;
+        }).toList();
+        if(uses.isEmpty() || uses.stream().allMatch(use->use.getQtyBase().signum()==0))
+            assertEquals(Boolean.TRUE,db.queryForObject("SELECT fn_split_batch_empty_issued(?)",Boolean.class,segment));
+        UUID report=fixture.reportAndApproveExecutionSegment(world,planItem,c.orderItem(),c.product(),segment,allocation,quantity,finalReport,"0",null,null,uses);
+        UUID document=fixture.finishedInDocForReport(report);fixture.confirmFinishedInboundFully(document);return document;
+    }
     private void drain(Case c){InventoryValueWorkTestSupport.drain(worker,db,List.of(c.product(),c.material()));}
     private long version(UUID segment){return db.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segment);}
     private int count(String sql,Object... args){return db.queryForObject(sql,Integer.class,args);}

@@ -50,13 +50,13 @@ class ProductionDrawRequestPostgresTest {
         jdbc.execute("""
                 CREATE TABLE production_plans(id uuid PRIMARY KEY,bill_no text,status integer,
                   is_closed boolean DEFAULT false,is_canceled boolean DEFAULT false,is_stopped boolean DEFAULT false,
-                  maker_id uuid,is_deleted boolean DEFAULT false);
+                  maker_id uuid,is_deleted boolean DEFAULT false, actual_output_supplement_request_id uuid);
                 CREATE TABLE production_planning_packages(id uuid PRIMARY KEY,status text,is_deleted boolean DEFAULT false);
                 CREATE TABLE production_execution_segments(id uuid PRIMARY KEY,plan_id uuid,package_id uuid,status text,
                   lock_version bigint DEFAULT 1,workshop_department_id uuid,responsible_employee_id uuid,
                   material_requirement_mode text DEFAULT 'DEMANDED',segment_code text,product_goods_id uuid,planned_qty numeric,
                   updated_at timestamptz,updated_by uuid,is_deleted boolean DEFAULT false,
-                  start_route text DEFAULT 'FULL_KIT',continuous_supply boolean DEFAULT FALSE);
+                  start_route text DEFAULT 'FULL_KIT',continuous_supply boolean DEFAULT FALSE, allowed_overproduction_rate numeric(9,6) NOT NULL DEFAULT 0.10, material_discovery_required boolean NOT NULL DEFAULT FALSE, overproduction_rate_version bigint NOT NULL DEFAULT 0, route_defaulted_at timestamptz);
                 CREATE TABLE production_execution_segment_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                   execution_segment_id uuid NOT NULL,action text CONSTRAINT production_execution_segment_events_action_check
                   CHECK(action IN ('START')),idempotency_key text,request_hash text,expected_version bigint,
@@ -69,11 +69,11 @@ class ProductionDrawRequestPostgresTest {
                   unit_rate numeric DEFAULT 1,is_deleted boolean DEFAULT false);
                 CREATE TABLE production_planning_package_documents(document_id uuid,document_type text,execution_segment_id uuid);
                 CREATE TABLE production_planning_package_document_items(document_item_id uuid,document_type text,demand_id uuid);
-                CREATE TABLE production_material_demands(id uuid,execution_segment_id uuid,is_deleted boolean DEFAULT false, consumption_snapshot jsonb);
+                CREATE TABLE production_material_demands(id uuid,execution_segment_id uuid,is_deleted boolean DEFAULT false, consumption_snapshot jsonb, material_increment_request_id uuid);
                 CREATE TABLE production_material_stock_postings(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                   stock_document_item_id uuid,posting_type text, recorded_tx_id xid8);
                 CREATE TABLE departments(id uuid PRIMARY KEY,name text);
-                CREATE TABLE goods(id uuid PRIMARY KEY,code text,name text, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid);
+                CREATE TABLE goods(id uuid PRIMARY KEY,code text,name text, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6));
                 CREATE TABLE warehouses(id uuid PRIMARY KEY,name text,
                     is_line_side boolean NOT NULL DEFAULT FALSE);
                 CREATE TABLE units(id uuid PRIMARY KEY,name text);

@@ -68,3 +68,17 @@ String currentLocationOr(BuildContext context, String fallback) {
     return fallback;
   }
 }
+
+/// 编辑既有单保存成功后的落点（2026-09-25）：能 pop 就 pop 回宿主——详情/审核页
+/// 压在栈下，靠「返回即刷新」(ADR-108) 重取保存后的新数据；深链直达编辑页
+/// （栈空无宿主）才 replace 到 [detailPath]。此前一律 replace：列表→详情→编辑→
+/// 保存→返回，落在保存前的旧详情快照上（旧详情页压在栈里从不重取）。
+/// 新建单不要用本方法——栈下没有本单详情宿主，pop 会回列表看不见新单，
+/// 应直接 replace 到新详情。
+void popSavedEditOrReplace(BuildContext context, String detailPath) {
+  if (context.canPop()) {
+    context.pop();
+    return;
+  }
+  context.replace(detailPath);
+}

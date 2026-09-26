@@ -40,6 +40,8 @@ class ReportablePlanLinePostgresTest {
 
     private static final UUID GOODS_ID =
             UUID.fromString("10000000-0000-0000-0000-000000000001");
+    private static final UUID COMPONENT_ID =
+            UUID.fromString("10000000-0000-0000-0000-0000000009f2");
     private static final UUID UNIT_ID =
             UUID.fromString("10000000-0000-0000-0000-000000000002");
     private static final UUID CLIENT_ID =
@@ -109,6 +111,15 @@ class ReportablePlanLinePostgresTest {
                 "INSERT INTO goods(id, code, name, spec, code_sequence,unit_id) "
                         + "VALUES (?, 'HP900001', '成品灯', '300mm', 900001,?)",
                 GOODS_ID,UNIT_ID);
+        // V249 证据触发器: NO_PRODUCTION_HARD_GATE 零料段须有「全非硬门」的 BOM 行(REFERENCE 不参与生产)。
+        jdbc.update(
+                "INSERT INTO goods(id, code, name, spec, code_sequence,unit_id) "
+                        + "VALUES (?, 'HP900002', '参考件', '', 900002,?)",
+                COMPONENT_ID, UNIT_ID);
+        jdbc.update(
+                "INSERT INTO goods_bom_items(goods_id, component_goods_id, control_stage, hard_gate) "
+                        + "VALUES (?, ?, 'REFERENCE', FALSE)",
+                GOODS_ID, COMPONENT_ID);
         jdbc.update(
                 "INSERT INTO clients(id, code, name, status, code_sequence) "
                         + "VALUES (?, 'KH900001', '测试客户', '使用', 900001)",
@@ -247,10 +258,10 @@ class ReportablePlanLinePostgresTest {
                           'reportable-plan-line-segment', ?, ?, 1,
                           ?, 'READY', ?,
                           'reportable-plan-line-segment', 'ZERO_MATERIAL',
-                          'DIRECT_MAKE', ?, 'FULL_KIT', now())
+                          'NO_PRODUCTION_HARD_GATE', NULL, 'FULL_KIT', now())
                 """, SEGMENT_ID, PACKAGE_ID, PLAN_ID, PLAN_ITEM_ID,
                 canonicalSegmentCode(SEGMENT_ID), GOODS_ID, UNIT_ID,
-                publicOnlyBatch?1000:publicSurplus?2000:100, "c".repeat(64), ANALYSIS_ID);
+                publicOnlyBatch?1000:publicSurplus?2000:100, "c".repeat(64));
         jdbc.update("""
                 INSERT INTO execution_segment_sales_allocations(
                     id, execution_segment_id, plan_order_item_link_id,

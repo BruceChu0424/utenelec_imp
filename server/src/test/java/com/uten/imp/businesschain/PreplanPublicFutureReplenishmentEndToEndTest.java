@@ -165,6 +165,7 @@ class PreplanPublicFutureReplenishmentEndToEndTest {
         qty("0",db.queryForObject("SELECT COALESCE(SUM(reservation.qty-reservation.released_qty),0) FROM stock_reservations reservation JOIN production_material_demands demand ON demand.id=reservation.demand_id WHERE demand.plan_id=?",BigDecimal.class,plan));
         if(pending==null) receive(w,sourceOrder,goods,"900");else stockReceipt(w,pending,"900");
         fixture.loginAs(w.superAdminUserId());
+        assertAttributedStock(goods, plan, "900", "800", "100");
         var partly=analyses.detail(receiver);qty("200",material(partly,goods).shortageQty());
         qty("100",material(partly,goods).sharedFuturePendingQty());qty("900",material(partly,goods).sharedFutureClaimedQty());
         qty("0",material(partly,goods).additionalSupplyRecommendedQty());
@@ -179,12 +180,37 @@ class PreplanPublicFutureReplenishmentEndToEndTest {
         qty("100",db.queryForObject("SELECT COALESCE(SUM(public_surplus_qty),0) FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SUPPLY' AND status<>'CANCELLED'",BigDecimal.class,receiver));
         if(pending==null) receive(w,sourceOrder,goods,"100");else stockReceipt(w,pending,"100");
         fixture.loginAs(w.superAdminUserId());
+        assertAttributedStock(goods, plan, "1000", "900", "100");
         partly=analyses.detail(receiver);qty("100",material(partly,goods).shortageQty());
         qty("0",material(partly,goods).sharedFuturePendingQty());qty("900",material(partly,goods).sharedFutureClaimedQty());
         receive(w,ownOrder,goods,"100");fixture.loginAs(w.superAdminUserId());
+        assertAttributedStock(goods, plan, "1100", "1000", "100");
         qty("0",material(analyses.detail(receiver),goods).shortageQty());
         qty("1100",db.queryForObject("SELECT SUM(qty) FROM stock_balances WHERE goods_id=?",BigDecimal.class,goods));
         assertFalse(db.queryForObject("SELECT EXISTS(SELECT 1 FROM production_execution_segments WHERE plan_id=? AND status='IN_PROGRESS')",Boolean.class,plan),"arrival must never start production");
+    }
+
+    private void assertAttributedStock(UUID goods, UUID plan, String physical, String formal, String privateRemainder) {
+        qty(physical, db.queryForObject("SELECT COALESCE(SUM(qty),0) FROM stock_balances WHERE goods_id=?", BigDecimal.class, goods));
+        qty(formal, db.queryForObject("""
+                SELECT COALESCE(SUM(reservation.qty-reservation.consumed_qty-reservation.released_qty),0)
+                FROM stock_reservations reservation JOIN production_material_demands demand ON demand.id=reservation.demand_id
+                WHERE demand.plan_id=? AND NOT reservation.is_deleted AND reservation.status=0
+                """, BigDecimal.class, plan));
+        qty(formal, db.queryForObject("""
+                SELECT COALESCE(SUM(event.qty),0) FROM preplan_stock_entitlement_events event
+                JOIN stock_reservations target ON target.id=event.target_stock_reservation_id
+                JOIN production_material_demands demand ON demand.id=target.demand_id
+                WHERE event.event_type='FORMALIZE' AND demand.plan_id=?
+                """, BigDecimal.class, plan));
+        qty(privateRemainder, db.queryForObject("""
+                SELECT COALESCE(SUM(qty-consumed_qty-released_qty),0) FROM stock_reservations
+                WHERE goods_id=? AND owner_type='PREPLAN_ANALYSIS' AND NOT is_deleted AND status=0
+                """, BigDecimal.class, goods));
+        qty(physical, db.queryForObject("""
+                SELECT COALESCE(SUM(qty-consumed_qty-released_qty),0) FROM stock_reservations
+                WHERE goods_id=? AND NOT is_deleted AND status=0
+                """, BigDecimal.class, goods));
     }
     private AnalysisView preview(FullChainEndToEndTest.World w,UUID warehouse,UUID product,UUID goods,String label,String amount,LocalDate need) {
         fixture.loginAs(w.superAdminUserId());
@@ -241,7 +267,10 @@ class PreplanPublicFutureReplenishmentEndToEndTest {
         com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest request=ReflectionTestUtils.invokeMethod(
                 fixture,"latestIqcStockInRequest","PURCHASE",pending.receiptId(),pending.inspectionId(),new BigDecimal(qty),
                 "public-pending-stock-"+qty+"-"+pending.inspectionId(),"PUBLIC-A01");
-        service.confirm("PURCHASE",pending.receiptId(),request);
+        var first=service.confirm("PURCHASE",pending.receiptId(),request);
+        var replay=service.confirm("PURCHASE",pending.receiptId(),request);
+        assertFalse(first.replayed());assertTrue(replay.replayed());
+        assertEquals(first.batchId(),replay.batchId());
     }
     private static MaterialView material(AnalysisView view,UUID goods) { return view.flatMaterials().stream().filter(m->m.goodsId().equals(goods)).findFirst().orElseThrow(); }
     private static void qty(String expected,BigDecimal actual) { assertNotNull(actual);assertEquals(0,new BigDecimal(expected).compareTo(actual),"expected "+expected+", actual "+actual); }

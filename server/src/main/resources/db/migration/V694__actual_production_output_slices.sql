@@ -234,23 +234,6 @@ CREATE CONSTRAINT TRIGGER trg_assert_daily_report_output_ownership_capacity
 AFTER UPDATE OF is_actual_surplus,is_public_output ON production_daily_report_items
 DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fn_assert_execution_segment_public_surplus_row();
 
-CREATE FUNCTION fn_report_has_prior_same_segment_consumption(p_segment UUID,p_current_report UUID)
-RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
-    SELECT EXISTS(
-        SELECT 1 FROM production_daily_reports prior
-        JOIN production_material_settlement_events event ON event.daily_report_id=prior.id AND event.event_type='POST'
-        JOIN production_material_settlement_postings posting ON posting.event_id=event.id AND posting.settlement_type='CONSUMED'
-        JOIN production_material_demands demand ON demand.id=posting.demand_id
-        WHERE prior.status=1 AND NOT prior.is_deleted AND prior.id<>p_current_report
-          AND EXISTS(SELECT 1 FROM production_daily_report_items item WHERE item.report_id=prior.id
-              AND item.execution_segment_id=p_segment AND NOT item.is_deleted AND NOT item.is_actual_surplus
-              AND item.fqc_recovery_authorization_id IS NULL)
-          AND demand.execution_segment_id IN(SELECT segment_id FROM fn_production_material_usage_source_segments(p_segment))
-          AND posting.qty_base>COALESCE((SELECT SUM(reversed.qty_base) FROM production_material_settlement_postings reversed
-              JOIN production_material_settlement_events reversal ON reversal.id=reversed.event_id AND reversal.event_type='REVERSE'
-              WHERE reversed.source_posting_id=posting.id),0));
-$$;
-
 CREATE FUNCTION fn_assert_actual_report_material_posting(p_report UUID) RETURNS VOID LANGUAGE plpgsql AS $$
 BEGIN
     IF NOT EXISTS(SELECT 1 FROM production_daily_reports WHERE id=p_report AND status=1 AND NOT is_deleted) THEN RETURN; END IF;
@@ -259,8 +242,7 @@ BEGIN
         JOIN production_execution_segments segment ON segment.id=item.execution_segment_id
         WHERE item.report_id=p_report AND NOT item.is_deleted AND item.output_batch_id IS NOT NULL
           AND item.fqc_recovery_authorization_id IS NULL AND segment.material_requirement_mode<>'ZERO_MATERIAL'
-          AND NOT (NOT item.is_actual_surplus AND (fn_split_batch_empty_issued(segment.id)
-              OR fn_report_has_prior_same_segment_consumption(segment.id,p_report)))
+          AND NOT (NOT item.is_actual_surplus AND fn_split_batch_empty_issued(segment.id))
           AND NOT EXISTS(
               SELECT 1 FROM production_material_settlement_events event
               JOIN production_material_settlement_postings posting ON posting.event_id=event.id

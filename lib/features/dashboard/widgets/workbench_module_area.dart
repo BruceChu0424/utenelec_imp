@@ -407,7 +407,7 @@ const _allGroups = <_ModuleGroup>[
         badge: WorkbenchBadgeKind.productionWorkshop,
       ),
       // 旧流水线看板/产量录入/产量统计（mock 数据）已下线，收敛为生产管理 hub 单卡。
-      // 徽标 = 待排产订单行数（已审订单未排产缺口），与生产调度列表同源。
+      // 徽标 = BadgeModule.production 求和（待排产 + 超产/追加审批 + 车间在催）。
       _ModuleItem(
         icon: Icons.factory_outlined,
         label: '生产管理',
@@ -447,17 +447,18 @@ const _allGroups = <_ModuleGroup>[
     title: 'PMC运营部',
     color: UtenColors.teal600,
     items: [
-      // 仓库管理 → hub：任务中心(生产领料) / 出入库单据 / 库存查询(即时库存·库存查询·出入库流水) / 仓库报表。
-      // 库存查询、出入库流水已并入仓库管理 hub；仓库任务 = hub 内「生产领料任务中心」，本组不再单列。
+      // 仓库管理 → hub（2026-09-24 三段式）：任务中心一张卡(合并页 /warehouse/tasks) /
+      // 新建单据六卡(creator-only) / 库存查询 / 报表中心。
       _ModuleItem(
         icon: Icons.warehouse,
         label: '仓库管理',
         location: RouteName.warehouse,
-        // 角标 = 三张任务中心卡角标之和（出库+入库+领料+品质结果；
-        // 与仓库管理 hub 任务中心同源）。
+        // 角标 = BadgeModule.warehouse 求和（四任务中心入口 + 仓库草稿；
+        // 与仓库任务中心合并页/hub 卡同源）。
         badge: WorkbenchBadgeKind.warehouse,
       ),
-      // 采购管理 → hub：任务中心(采购任务) / 采购管理 4 单据 / 采购报表。采购任务 = hub 内入口，本组不再单列。
+      // 采购管理 → hub（2026-09-24 三段式）：任务中心(采购任务+待退回供应商) /
+      // 新建单据(订货/收货/退货+催料) / 报表中心。
       // 徽标 = 采购任务中心待办任务数（UNPEGGED + WAITING_SUPPLY），与任务中心同源。
       _ModuleItem(
         icon: Icons.shopping_cart_outlined,
@@ -465,9 +466,9 @@ const _allGroups = <_ModuleGroup>[
         location: RouteName.purchase,
         badge: WorkbenchBadgeKind.purchase,
       ),
-      // 委外管理 → hub：任务中心(生产委外需求) / 委外管理 8 单据 / 委外报表。
+      // 委外管理 → hub（2026-09-24 三段式）：任务中心(委外任务+短交判定+待退回) /
+      // 新建单据四卡(creator-only) / 历史兼容 / 报表中心。
       // 委外是生产能力的对外采购（发料+回货），属生产物料范畴，按部门归属归 PMC运营部。
-      // 委外任务 = hub 内「生产委外需求」，本组不再单列。
       _ModuleItem(
         icon: Icons.precision_manufacturing_outlined,
         label: '委外管理',
@@ -501,7 +502,7 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.point_of_sale_outlined,
         label: '销售管理',
         location: RouteName.sales,
-        // 角标 = 财务驳回待修正订单 + 未读完工提醒。
+        // 角标 = BadgeModule.sales 求和（驳回+可发货待办+草稿）。
         badge: WorkbenchBadgeKind.sales,
       ),
       // 官网客户留言统一收件箱（V253；webinquiry:view 部门授权）。

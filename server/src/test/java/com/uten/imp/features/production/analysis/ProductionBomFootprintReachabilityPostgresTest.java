@@ -97,12 +97,12 @@ class ProductionBomFootprintReachabilityPostgresTest {
         connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword());
         try (var sql = connection.createStatement()) {
             sql.execute("""
-                    CREATE TABLE goods(id uuid PRIMARY KEY,color_id uuid,is_deleted boolean NOT NULL DEFAULT FALSE, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid);
+                    CREATE TABLE goods(id uuid PRIMARY KEY,color_id uuid,is_deleted boolean NOT NULL DEFAULT FALSE, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6));
                     CREATE TABLE goods_bom_items(
                         id uuid PRIMARY KEY,goods_id uuid NOT NULL REFERENCES goods(id),
                         component_goods_id uuid NOT NULL REFERENCES goods(id),color_id uuid,
                         qty numeric(18,4) NOT NULL DEFAULT 1,summary text,
-                        updated_at timestamptz NOT NULL DEFAULT now(),is_deleted boolean NOT NULL DEFAULT FALSE);
+                        updated_at timestamptz NOT NULL DEFAULT now(),is_deleted boolean NOT NULL DEFAULT FALSE, learning_profile_goods_id uuid, learning_unit_id uuid);
                     CREATE UNIQUE INDEX uq_goods_bom_component ON goods_bom_items(goods_id,component_goods_id)
                         WHERE NOT is_deleted;
                     CREATE INDEX idx_goods_bom_goods ON goods_bom_items(goods_id);

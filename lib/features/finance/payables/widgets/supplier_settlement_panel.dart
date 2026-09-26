@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/inputs/uten_search_bar.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
@@ -229,79 +230,85 @@ class _SupplierSettlementPanelState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final total = _result?.total ?? 0;
-    return Column(
+    return Stack(
       children: [
-        Row(
+        Column(
           children: [
-            Icon(
-              Icons.calendar_month_outlined,
-              color: theme.colorScheme.primary,
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Text(
-                '供应商月结批次 ($total)',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
+            Row(
+              children: [
+                Icon(
+                  Icons.calendar_month_outlined,
+                  color: theme.colorScheme.primary,
                 ),
+                const SizedBox(width: UtenSpacing.s8),
+                Expanded(
+                  child: Text(
+                    '供应商月结批次 ($total)',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (_canCreate)
+                  UtenButton(
+                    key: const ValueKey('supplier-settlement-create'),
+                    icon: Icons.add_rounded,
+                    onPressed: _writing ? null : _create,
+                    child: const Text('生成月结批次'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            UtenSearchBar(
+              key: const ValueKey('supplier-settlement-search'),
+              hint: '搜索批次号、供应商编号或名称',
+              initialValue: _keyword,
+              onChanged: (value) {
+                setState(() => _keyword = value);
+                _load(1);
+              },
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _statusChip('全部', null),
+                  _statusChip('已冻结', 'FROZEN'),
+                  _statusChip('供应商确认', 'SUPPLIER_CONFIRMED'),
+                  _statusChip('公司确认', 'INTERNAL_CONFIRMED'),
+                  _statusChip('双方确认', 'BOTH_CONFIRMED'),
+                  _statusChip('争议', 'DISPUTED'),
+                  _statusChip('已反转', 'REVERSED'),
+                ],
               ),
             ),
-            if (_canCreate)
-              UtenButton(
-                key: const ValueKey('supplier-settlement-create'),
-                icon: Icons.add_rounded,
-                isLoading: _writing,
-                onPressed: _writing ? null : _create,
-                child: const Text('生成月结批次'),
+            const SizedBox(height: UtenSpacing.s8),
+            Expanded(
+              child: MasterDataTableView<SupplierSettlementSummary>(
+                primary: true,
+                columns: _columns,
+                items: _result?.items ?? const [],
+                facets: const {},
+                nullCounts: const {},
+                filters: const {},
+                onFilterChanged: (_, _) {},
+                onRowTap: _open,
+                isLoading: _loading && _result == null,
+                loadingMore: _loading && _result != null,
+                error: _error,
+                onRetry: () => _load(),
+                emptyMessage: '暂无供应商月结批次',
+                currentPage: _result?.page ?? 1,
+                totalPages: _result?.totalPages ?? 1,
+                onPageChange: (page) => _load(page),
               ),
+            ),
           ],
         ),
-        const SizedBox(height: UtenSpacing.s8),
-        UtenSearchBar(
-          key: const ValueKey('supplier-settlement-search'),
-          hint: '搜索批次号、供应商编号或名称',
-          initialValue: _keyword,
-          onChanged: (value) {
-            setState(() => _keyword = value);
-            _load(1);
-          },
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              _statusChip('全部', null),
-              _statusChip('已冻结', 'FROZEN'),
-              _statusChip('供应商确认', 'SUPPLIER_CONFIRMED'),
-              _statusChip('公司确认', 'INTERNAL_CONFIRMED'),
-              _statusChip('双方确认', 'BOTH_CONFIRMED'),
-              _statusChip('争议', 'DISPUTED'),
-              _statusChip('已反转', 'REVERSED'),
-            ],
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        Expanded(
-          child: MasterDataTableView<SupplierSettlementSummary>(
-            primary: true,
-            columns: _columns,
-            items: _result?.items ?? const [],
-            facets: const {},
-            nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
-            onRowTap: _open,
-            isLoading: _loading && _result == null,
-            loadingMore: _loading && _result != null,
-            error: _error,
-            onRetry: () => _load(),
-            emptyMessage: '暂无供应商月结批次',
-            currentPage: _result?.page ?? 1,
-            totalPages: _result?.totalPages ?? 1,
-            onPageChange: (page) => _load(page),
-          ),
-        ),
+        // 生成月结批次提交期间的全屏居中遮罩（2026-09-25 统一口径）。
+        if (_writing)
+          const Positioned.fill(child: UtenBusyOverlay(title: '正在生成月结批次，请稍候')),
       ],
     );
   }
@@ -462,11 +469,21 @@ class _SupplierSettlementDetailPanelState
           ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-          : _error != null
-          ? Center(child: Text(_error!))
-          : _body(),
+      body: Stack(
+        children: [
+          _loading
+              ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
+              : _error != null
+              ? Center(child: Text(_error!))
+              : _body(),
+          // 确认/争议/反转提交期间的全屏居中遮罩（2026-09-25 统一口径：
+          // 不再只有按钮内转圈）。
+          if (_writing)
+            const Positioned.fill(
+              child: UtenBusyOverlay(title: '正在处理月结批次，请稍候'),
+            ),
+        ],
+      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _detail == null ? null : _actions(),
@@ -598,7 +615,6 @@ class _SupplierSettlementDetailPanelState
           type: UtenButtonType.danger,
           size: UtenButtonSize.large,
           icon: Icons.undo_outlined,
-          isLoading: _writing,
           onPressed: _writing ? null : () => _reasonAction(reverse: true),
           child: const Text('反转批次'),
         ),
@@ -610,7 +626,6 @@ class _SupplierSettlementDetailPanelState
           type: UtenButtonType.tonal,
           size: UtenButtonSize.large,
           icon: Icons.report_problem_outlined,
-          isLoading: _writing,
           onPressed: _writing ? null : () => _reasonAction(reverse: false),
           child: const Text('登记争议'),
         ),
@@ -622,7 +637,6 @@ class _SupplierSettlementDetailPanelState
           type: UtenButtonType.secondary,
           size: UtenButtonSize.large,
           icon: Icons.handshake_outlined,
-          isLoading: _writing,
           onPressed: _writing ? null : () => _confirm(supplier: true),
           child: const Text('供应商确认'),
         ),
@@ -633,7 +647,6 @@ class _SupplierSettlementDetailPanelState
         UtenButton(
           size: UtenButtonSize.large,
           icon: Icons.fact_check_outlined,
-          isLoading: _writing,
           onPressed: _writing ? null : () => _confirm(supplier: false),
           child: const Text('公司确认'),
         ),

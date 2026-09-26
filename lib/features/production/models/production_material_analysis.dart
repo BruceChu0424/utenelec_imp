@@ -67,6 +67,7 @@ class MaterialAnalysisSourceInput {
     this.sourceReason,
     this.deliveryDate,
     this.initialProductNo,
+    this.initialAllowedOverproductionRate,
   });
 
   final String? salesOrderItemId;
@@ -83,6 +84,9 @@ class MaterialAnalysisSourceInput {
   /// material-analysis source field and therefore is intentionally omitted
   /// from [toJson].
   final String? initialProductNo;
+
+  /// Route-local input for the next plan, never an authorization of existing tasks.
+  final double? initialAllowedOverproductionRate;
 
   bool get isSalesSource => salesOrderItemId?.isNotEmpty == true;
   String get canonicalKey =>
@@ -133,11 +137,17 @@ class ProductionMaterialAnalysisSeed {
   /// Resolves the route-local product number seed back to the analysis product
   /// created from the same source. Sales lines use their immutable item UUID;
   /// manual demand uses the same composite source identity as the backend.
-  String? initialProductNoFor(ProductionMaterialAnalysisProduct product) {
-    for (final source in sources) {
-      final productNo = _trimmedOrNull(source.initialProductNo);
-      if (productNo == null) continue;
+  String? initialProductNoFor(ProductionMaterialAnalysisProduct product) =>
+      _trimmedOrNull(_sourceFor(product)?.initialProductNo);
 
+  double? initialAllowedOverproductionRateFor(
+    ProductionMaterialAnalysisProduct product,
+  ) => _sourceFor(product)?.initialAllowedOverproductionRate;
+
+  MaterialAnalysisSourceInput? _sourceFor(
+    ProductionMaterialAnalysisProduct product,
+  ) {
+    for (final source in sources) {
       final productSalesItemId = _trimmedOrNull(product.salesOrderItemId);
       final sourceSalesItemId = _trimmedOrNull(source.salesOrderItemId);
       if (productSalesItemId != null) {
@@ -146,7 +156,7 @@ class ProductionMaterialAnalysisSeed {
           productSalesItemId,
           foldCase: true,
         )) {
-          return productNo;
+          return source;
         }
         continue;
       }
@@ -165,7 +175,7 @@ class ProductionMaterialAnalysisSeed {
           _sameSourcePart(source.goodsId, product.goodsId, foldCase: true) &&
           _sameSourcePart(source.colorId, product.colorId, foldCase: true) &&
           _sameSourcePart(source.unitId, product.unitId, foldCase: true)) {
-        return productNo;
+        return source;
       }
     }
     return null;
@@ -230,6 +240,7 @@ class MaterialAnalysisListItem {
     this.remainingQty = 0,
     this.readyNowQty = 0,
     this.readyByDateQty = 0,
+    this.analysisNo,
   });
 
   final String analysisId;
@@ -254,6 +265,9 @@ class MaterialAnalysisListItem {
   final double readyNowQty;
   final double readyByDateQty;
 
+  /// 分析编号（WL+日期+日流水，V719）：各页「计划单号」的展示锚点。
+  final String? analysisNo;
+
   factory MaterialAnalysisListItem.fromJson(Map<String, dynamic> json) =>
       MaterialAnalysisListItem(
         analysisId: _string(json['analysisId'] ?? json['id']) ?? '',
@@ -277,6 +291,7 @@ class MaterialAnalysisListItem {
         remainingQty: _double(json['remainingQty']) ?? 0,
         readyNowQty: _double(json['readyNowQty']) ?? 0,
         readyByDateQty: _double(json['readyByDateQty']) ?? 0,
+        analysisNo: _string(json['analysisNo']),
       );
 }
 
@@ -566,6 +581,8 @@ class ProductionMaterialAnalysisView {
     this.fqcRecoveryAuthorizationId,
     this.planningBlockedReasons = const {},
     this.routeResetCount = 0,
+    this.overproductionDefaults = const {},
+    this.analysisNo,
   });
 
   final String analysisId;
@@ -583,6 +600,10 @@ class ProductionMaterialAnalysisView {
   final bool fqcReplenishmentOnly;
   final String? fqcRecoveryAuthorizationId;
   final Map<String, String> planningBlockedReasons;
+  final Map<String, double> overproductionDefaults;
+
+  /// 分析编号（WL+日期+日流水，V719）：页面顶部事实卡与「计划单号」同源。
+  final String? analysisNo;
 
   /// 本次刷新（POST /preview）因主档/BOM 事实变更而被服务端清空的人工确认
   /// 路线条数；只在刷新响应上非零，详情/命令响应恒为 0。页面据此提示
@@ -653,6 +674,13 @@ class ProductionMaterialAnalysisView {
       fqcReplenishmentOnly: json['fqcReplenishmentOnly'] == true,
       fqcRecoveryAuthorizationId: _string(json['fqcRecoveryAuthorizationId']),
       routeResetCount: _int(json['routeResetCount']) ?? 0,
+      overproductionDefaults: {
+        if (json['overproductionDefaults']
+            case final Map<Object?, Object?> rates)
+          for (final entry in rates.entries)
+            if (entry.value case final num rate)
+              entry.key.toString(): rate.toDouble(),
+      },
       planningBlockedReasons: {
         if (json['planningBlockedReasons']
             case final Map<Object?, Object?> reasons)
@@ -660,6 +688,7 @@ class ProductionMaterialAnalysisView {
             if (_string(entry.value) case final String reason)
               entry.key.toString(): reason,
       },
+      analysisNo: _string(json['analysisNo']),
     );
   }
 }
@@ -1086,6 +1115,7 @@ class ProductionMaterialAnalysisMaterial {
     this.additionalSupplyRecommendedQty = 0,
     this.sharedFutureClaimableQty = 0,
     this.netShortageQty = 0,
+    this.planningUncoveredQty,
     this.plannedOutputQty = 0,
     this.minOrderQty,
     this.orderMultipleQty,
@@ -1240,6 +1270,10 @@ class ProductionMaterialAnalysisMaterial {
   /// 入库齐套的口径，算法不动。自制、需先自制的委外等不会自动认领的行，这里与
   /// [additionalSupplyRecommendedQty] 相等。
   final double netShortageQty;
+
+  /// Still needs planning action, including public future supply awaiting a
+  /// real claim. Null means the server has not supplied this fact.
+  final double? planningUncoveredQty;
 
   /// 计划产出量（ADR-099）：顶层供给行 = 来源计划产出量换成基本单位；已建
   /// 自制 / 前置自制锚点的物料行 = 锚点已下达且仍有效的计划总量。
@@ -1396,6 +1430,7 @@ class ProductionMaterialAnalysisMaterial {
         _double(json['netShortageQty']) ??
         _double(json['additionalSupplyRecommendedQty']) ??
         0,
+    planningUncoveredQty: _double(json['planningUncoveredQty']),
     plannedOutputQty: _double(json['plannedOutputQty']) ?? 0,
     minOrderQty: _double(json['minOrderQty']),
     orderMultipleQty: _double(json['orderMultipleQty']),
@@ -2207,11 +2242,13 @@ class MaterialAnalysisIssueLine {
     this.workshopName,
     this.workerId,
     this.publicSurplusOnly = false,
+    this.allowedOverproductionRate,
   });
 
   final String? materialLineId;
   final String? analysisLineId;
   final double qty;
+  final double? allowedOverproductionRate;
   final String? departmentId;
   final String? workshopName;
   final String? workerId;
@@ -2224,6 +2261,8 @@ class MaterialAnalysisIssueLine {
     if (materialLineId != null) 'materialLineId': materialLineId,
     if (analysisLineId != null) 'analysisLineId': analysisLineId,
     'qty': qty,
+    if (allowedOverproductionRate != null)
+      'allowedOverproductionRate': allowedOverproductionRate,
     if (departmentId != null) 'departmentId': departmentId,
     if (workshopName?.trim().isNotEmpty == true)
       'workshopName': workshopName!.trim(),

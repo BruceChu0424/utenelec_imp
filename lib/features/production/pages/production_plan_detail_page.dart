@@ -17,6 +17,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../widgets/production_overproduction_rate_field.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -1955,6 +1956,7 @@ class _ProductionPlanDetailPageState
         : '${names.goods(first.goodsId)}'
               '${firstMeta.isEmpty ? '' : ' · ${firstMeta.join(' · ')}'}'
               ' · 计划 ${quantity(first.qty)}'
+              ' · 允许超产 ${productionOverproductionPercentText(first.allowedOverproductionRate)}%'
               '${first.outboundDate == null ? '' : ' · 交货 ${productionDateOnly(first.outboundDate)}'}';
     final multiSummary =
         '$namesPreview'
@@ -1998,6 +2000,11 @@ class _ProductionPlanDetailPageState
                     Text(singleSummary)
                   else
                     Text(multiSummary),
+                  if (items.length > 1)
+                    for (final item in items)
+                      Text(
+                        '${names.goods(item.goodsId)} · 允许超产 ${productionOverproductionPercentText(item.allowedOverproductionRate)}%',
+                      ),
                 ],
               ),
             ),

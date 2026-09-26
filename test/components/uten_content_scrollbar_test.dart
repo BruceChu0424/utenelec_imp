@@ -43,7 +43,7 @@ Widget _harness(
                 top: 0,
                 right: 0,
                 bottom: 0,
-                width: 14,
+                width: 16,
                 child: UtenContentScrollbar(
                   controller: controller,
                   visible: visible,
@@ -260,9 +260,10 @@ void main() {
       expect(
         tester.renderObject(paint),
         paints..rrect(
+          // 2026-09-25 thumb 加粗 6 → 10：x = 带宽 16 − gutter 3 − thumb 10 = 3。
           rrect: RRect.fromRectAndRadius(
-            const Rect.fromLTWH(5, 268.8, 6, 51.2),
-            const Radius.circular(3),
+            const Rect.fromLTWH(3, 268.8, 10, 51.2),
+            const Radius.circular(5),
           ),
         ),
       );

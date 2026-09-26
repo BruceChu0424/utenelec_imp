@@ -136,6 +136,9 @@ void main() {
     );
     expect(batchButton, findsOneWidget);
     // 2026-09-12 弹窗改页：进批量点收页 → 小结确认 → 整批提交。
+    // 2026-09-24 折叠联动改版后矮视口浮动条在折叠下方，先滚入视野再点。
+    await tester.ensureVisible(batchButton);
+    await tester.pump(const Duration(milliseconds: 100));
     await tester.tap(batchButton);
     await tester.pumpAndSettle();
     expect(

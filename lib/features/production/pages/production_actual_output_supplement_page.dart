@@ -9,9 +9,11 @@ import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
 import '../providers/production_execution_refresh.dart';
+import '../widgets/production_review_reason_dialog.dart';
 import '../repositories/production_actual_output_supplement_repository.dart';
 import '../repositories/production_material_increment_repository.dart';
 import '../repositories/production_repository.dart';
@@ -34,6 +36,7 @@ class _SupplementState
   ProductionOutputSupplementView? _detail;
   String? _error;
   bool _busy = false;
+  String _cancelReason = '';
   @override
   void initState() {
     super.initState();
@@ -69,6 +72,22 @@ class _SupplementState
       await ref
           .read(productionOutputSupplementRepositoryProvider)
           .approve(widget.id);
+    });
+  }
+
+  Future<void> _cancel() async {
+    if (_busy) return;
+    final reason = await showProductionReviewReasonDialog(
+      context,
+      title: '取消追加生产计划',
+      initialValue: _cancelReason,
+      onDraftChanged: (value) => _cancelReason = value,
+    );
+    if (reason == null || !mounted) return;
+    await _action(() async {
+      await ref
+          .read(productionOutputSupplementRepositoryProvider)
+          .cancel(widget.id, reason);
     });
   }
 
@@ -146,7 +165,17 @@ class _SupplementState
     if (widget.returnToReport && context.canPop()) {
       context.pop(_detail);
     } else {
-      popOrBackTo(context, defaultPath: RouteName.productionWorkshopTasks);
+      final canViewPlans = locationAllowedFor(
+        ref.read(currentPermissionsProvider),
+        ref.read(isSuperAdminProvider),
+        RouteName.productionPlanList,
+      );
+      popOrBackTo(
+        context,
+        defaultPath: canViewPlans
+            ? RouteName.productionPlanList
+            : RouteName.productionWorkshopTasks,
+      );
     }
   }
 
@@ -239,6 +268,16 @@ class _SupplementState
                                 widget.returnToReport ? '返回原报工表' : '返回车间任务',
                               ),
                             ),
+                            if ((d.status == 'DRAFT' ||
+                                    d.status == 'APPROVED') &&
+                                (admin ||
+                                    permissions.contains(
+                                      Perm.productionPlanApprove,
+                                    )))
+                              OutlinedButton(
+                                onPressed: _busy ? null : _cancel,
+                                child: const Text('取消追加计划'),
+                              ),
                             if (d.status == 'DRAFT' &&
                                 (admin ||
                                     permissions.contains(

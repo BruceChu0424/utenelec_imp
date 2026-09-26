@@ -78,49 +78,53 @@ class ExpenseListPage extends ConsumerWidget {
               // 三形态各就各位(ADR-100): 草稿 / 待修订是本人要动手的活 -> 红;
               // 「处理中」已经交出去、在审批人或出纳手上滚着 -> 黄;
               // 「全部」「已完成」是浏览型 -> 不挂 / 括号。
-              collapsingHeader: UtenFilterToolbar<ExpenseFilter>(
-                segmentsKey: const Key('expense-list-segments'),
-                segments: [
-                  const UtenFilterSegment(
-                    value: ExpenseFilter.all,
-                    label: '全部',
-                  ),
-                  UtenFilterSegment(
-                    value: ExpenseFilter.draft,
-                    label: '草稿',
-                    count: counts.draftCount,
-                    countForm: UtenSegmentCountForm.actionable,
-                  ),
-                  UtenFilterSegment(
-                    value: ExpenseFilter.rejected,
-                    label: '待修订',
-                    count: counts.rejectedCount,
-                    countForm: UtenSegmentCountForm.actionable,
-                  ),
-                  UtenFilterSegment(
-                    value: ExpenseFilter.processing,
-                    label: '处理中',
-                    count: processingCount,
-                    countForm: UtenSegmentCountForm.inProgress,
-                  ),
-                  const UtenFilterSegment(
-                    value: ExpenseFilter.finished,
-                    label: '已完成',
-                  ),
-                ],
-                selected: {filter},
-                onSelectionChanged: (value) {
-                  ref.read(expenseFilterProvider.notifier).state = value;
-                  // 分段换了口径，表头状态筛选随之失效。
-                  ref.read(expenseStatusFilterProvider.notifier).state = null;
-                },
-              ),
-              body: Column(
+              // 2026-09-24 对齐物料分析页：页面头移入滚走区，body 只剩表格。
+              collapsingHeader: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  UtenFilterToolbar<ExpenseFilter>(
+                    segmentsKey: const Key('expense-list-segments'),
+                    segments: [
+                      const UtenFilterSegment(
+                        value: ExpenseFilter.all,
+                        label: '全部',
+                      ),
+                      UtenFilterSegment(
+                        value: ExpenseFilter.draft,
+                        label: '草稿',
+                        count: counts.draftCount,
+                        countForm: UtenSegmentCountForm.actionable,
+                      ),
+                      UtenFilterSegment(
+                        value: ExpenseFilter.rejected,
+                        label: '待修订',
+                        count: counts.rejectedCount,
+                        countForm: UtenSegmentCountForm.actionable,
+                      ),
+                      UtenFilterSegment(
+                        value: ExpenseFilter.processing,
+                        label: '处理中',
+                        count: processingCount,
+                        countForm: UtenSegmentCountForm.inProgress,
+                      ),
+                      const UtenFilterSegment(
+                        value: ExpenseFilter.finished,
+                        label: '已完成',
+                      ),
+                    ],
+                    selected: {filter},
+                    onSelectionChanged: (value) {
+                      ref.read(expenseFilterProvider.notifier).state = value;
+                      // 分段换了口径，表头状态筛选随之失效。
+                      ref.read(expenseStatusFilterProvider.notifier).state =
+                          null;
+                    },
+                  ),
                   // 页面头：Icon + 标题 + 计数 + 新建按钮（唯一新建入口，
-                  // 空态由表格内置空态提示，不再出 FAB）。
+                  // 空态由表格内置空态提示，不再出 FAB；随页滚走）。
                   Padding(
                     padding: const EdgeInsets.only(
+                      top: UtenSpacing.s8,
                       bottom: UtenSpacing.s8,
                       left: UtenSpacing.s4,
                       right: UtenSpacing.s4,
@@ -149,51 +153,49 @@ class ExpenseListPage extends ConsumerWidget {
                       ],
                     ),
                   ),
-                  Expanded(
-                    child: list.when(
-                      loading: () => const UtenSkeletonList(itemCount: 6),
-                      error: (e, _) => MasterDataTableView<ExpenseClaim>(
-                        key: const Key('expense-list-table'),
-                        columns: _columns,
-                        items: const [],
-                        facets: const {},
-                        nullCounts: const {},
-                        filters: const {},
-                        onFilterChanged: (_, _) {},
-                        emptyMessage: '加载失败，请重试',
-                        error: '加载失败，请重试',
-                        onRetry: () => ref.invalidate(expenseListProvider),
-                      ),
-                      data: (page) => MasterDataTableView<ExpenseClaim>(
-                        key: const Key('expense-list-table'),
-                        // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
-                        primary: true,
-                        columns: _columns,
-                        items: page.items,
-                        facets: {
-                          'status': _statusFacets(filter),
-                          // 类别是固定枚举（明细项级别），前端硬编码桶；value=类别码。
-                          'category': _categoryFacets(),
-                        },
-                        nullCounts: const {},
-                        filters: {
-                          'status': statusFilter?.name,
-                          'category': categoryFilter,
-                        },
-                        onFilterChanged: (key, value) =>
-                            _onFilterChanged(ref, key, value),
-                        // 双击行进入报销详情。
-                        onRowTap: (claim) =>
-                            context.push(RoutePath.expenseDetail(claim.id)),
-                        emptyMessage: '暂无报销单',
-                        currentPage: page.page,
-                        totalPages: page.totalPages,
-                        onPageChange: (p) =>
-                            ref.read(expenseListProvider.notifier).goToPage(p),
-                      ),
-                    ),
-                  ),
                 ],
+              ),
+              body: list.when(
+                loading: () => const UtenSkeletonList(itemCount: 6),
+                error: (e, _) => MasterDataTableView<ExpenseClaim>(
+                  key: const Key('expense-list-table'),
+                  columns: _columns,
+                  items: const [],
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  emptyMessage: '加载失败，请重试',
+                  error: '加载失败，请重试',
+                  onRetry: () => ref.invalidate(expenseListProvider),
+                ),
+                data: (page) => MasterDataTableView<ExpenseClaim>(
+                  key: const Key('expense-list-table'),
+                  // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
+                  primary: true,
+                  columns: _columns,
+                  items: page.items,
+                  facets: {
+                    'status': _statusFacets(filter),
+                    // 类别是固定枚举（明细项级别），前端硬编码桶；value=类别码。
+                    'category': _categoryFacets(),
+                  },
+                  nullCounts: const {},
+                  filters: {
+                    'status': statusFilter?.name,
+                    'category': categoryFilter,
+                  },
+                  onFilterChanged: (key, value) =>
+                      _onFilterChanged(ref, key, value),
+                  // 双击行进入报销详情。
+                  onRowTap: (claim) =>
+                      context.push(RoutePath.expenseDetail(claim.id)),
+                  emptyMessage: '暂无报销单',
+                  currentPage: page.page,
+                  totalPages: page.totalPages,
+                  onPageChange: (p) =>
+                      ref.read(expenseListProvider.notifier).goToPage(p),
+                ),
               ),
             ),
           ),

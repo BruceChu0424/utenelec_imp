@@ -1,21 +1,12 @@
-// 生产管理入口页（hub）—— 两个分组卡片（与 basic_data / purchase / warehouse hub 对齐）：
-//  ① 生产管理（操作类 · 单据）：生产计划单 + 生产日报表
-//  ② 生产报表（分析类）：计划明细 / 计划汇总 / 物料反查产成品
+// 生产管理入口页（hub）—— 2026-09-24 模块三段式统一：
+//  ① 任务中心（置顶）：生产任务中心（调度台：待排产/进行中/历史记录）+
+//     超产比例审批 + 追加用料审批（都是等计划员动手的队列，红徽章）。
+//  ② 新建单据：新建生产计划单（→物料分析，creator-only）/ 新建生产日报
+//     （→/production/daily-reports/new），一律不挂数（草稿在新页「草稿(N)」按钮
+//     与记录页草稿分段可见）。
+//  ③ 报表中心（最底）：计划明细/汇总/物料反查/链路健康初筛。
+// 车间生产任务是另一个独立入口（我的车间任务页），红黄两条链都不算进本 hub。
 //
-// 点卡片进对应列表/查询/报表页。卡片统一用 UtenHubCard, 计数按三形态口径逐卡挑
-// (准则 14-徽章与计数口径 / ADR-100):
-//  · 生产调度与进度卡右上角并排两枚 —— 黄色「进行中」(在办的分析/根计划批次,
-//    已经排下去在跑, 此刻不用调度员动手)在左, 红色「待排产」(调度员必须清空的
-//    队列)在右;
-//  · 生产计划单 / 生产日报表卡只有本人草稿一种计数, 仍是红色(2026-09-11 口径反转:
-//    草稿是本人开了头没交出去的活, 逐级累加); 这两种单据没有「已提交还在跑」的
-//    中间态, 所以刻意不挂黄色;
-//  · 报表卡无计数。
-// 顶栏右上角两枚药丸同样黄左红右, 且都只汇总本页可见的这几张卡; 车间任务是另一个
-// 独立入口(我的车间任务页), 红黄两条链都不把它算进本 hub。
-// 路由统一使用 RouteName 常量；查看权限进入列表，新增动作由列表页按编辑权限控制。
-//
-// 注：原「BOM 成本展开」入口已下线（组装/BOM 数据并入 基础资料-货品资料「组装信息」页签）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -23,7 +14,6 @@ import '../../../components/feedback/uten_module_progress_chip.dart';
 import '../../../components/feedback/uten_module_todo_chip.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
-import '../../../components/feedback/uten_draft_badge.dart';
 import '../../../components/feedback/uten_in_progress_badge.dart';
 import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -36,7 +26,7 @@ import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/providers/draft_counts_provider.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../widgets/production_pending_badge.dart';
 import '../../../shared/badges/badge_registry.dart';
 
@@ -49,12 +39,8 @@ class ProductionHubPage extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
     final superAdmin = ref.watch(isSuperAdminProvider);
-    // 能新建计划的人落到物料分析(计划只能从分析生成)，否则落到计划记录。
-    final canCreatePlan = locationAllowedFor(
-      permissions,
-      superAdmin,
-      RoutePath.productionPlanNew(),
-    );
+    // 返回即刷新：办完审批/排产回到 hub 时按需重拉徽章汇总（与其它 hub 同款）。
+    ref.onPageResume(RouteName.production, () => refreshBadges(ref));
     // ADR-117：车间在催计划下单的任务数(只对能下单、能看到那些分析的计划员非零)。
     final planningUrges = ref.watch(
       badgeEntryTodoProvider(BadgeEntry.productionPlanningUrges),
@@ -93,15 +79,17 @@ class ProductionHubPage extends ConsumerWidget {
                   : UtenSpacing.s40,
             ),
             children: [
+              // ① 任务中心（2026-09-24 用户口径：置顶；调度台更名「生产任务中心」，
+              //    两个审批队列同属任务中心区——都是等计划员动手的待办）。
               _section(
                 context,
                 theme,
-                l10n.productionHubTitle,
+                l10n.hubSectionTaskCenter,
                 [
                   // 调度+进度已合并为一个三 Tab 页面（待排产/进行中/已完成）
                   _Entry(
                     icon: Icons.dashboard_customize_outlined,
-                    label: l10n.productionHubSchedule,
+                    label: '生产任务中心',
                     description: l10n.productionHubScheduleSub,
                     location: '/production/schedule',
                     badge: const ProductionPendingBadge(showLabel: true),
@@ -116,41 +104,11 @@ class ProductionHubPage extends ConsumerWidget {
                       ),
                       showLabel: true,
                     ),
-                  ),
-                  _Entry(
-                    icon: Icons.assignment_outlined,
-                    label: canCreatePlan
-                        ? l10n.productionHubPlan
-                        : l10n.productionHubPlanHistory,
-                    description: canCreatePlan
-                        ? l10n.productionHubPlanSub
-                        : l10n.productionHubPlanHistorySub,
-                    location: canCreatePlan
-                        ? RouteName.productionMaterialAnalysis
-                        : RouteName.productionPlanList,
-                    // ADR-117：车间在催计划下单时，在催任务数(红，待办)占 badge 槽，
-                    // 本人草稿按 UtenHubCard 口径退到标题右侧行内；没有在催时草稿
-                    // 徽章照旧独占 badge 槽(用户点名要的位置)。
-                    badge: planningUrges > 0
-                        ? UtenNotificationBadge(count: planningUrges)
-                        : const UtenDraftBadge(
-                            kind: DraftDocKind.productionPlan,
-                          ),
+                    // ADR-117 车间在催计划下单的任务数(红，行内)：等计划员动手的
+                    // 队列信号挂在任务中心卡上（2026-09-24 三段式：新建卡不挂数）。
                     labelSuffix: planningUrges > 0
-                        ? const UtenDraftBadge(
-                            kind: DraftDocKind.productionPlan,
-                          )
+                        ? UtenNotificationBadge(count: planningUrges)
                         : null,
-                  ),
-                  _Entry(
-                    icon: Icons.edit_calendar_outlined,
-                    label: l10n.productionHubDaily,
-                    description: l10n.productionHubDailySub,
-                    location: RouteName.productionDailyReportList,
-                    // 同上：日报卡也只有草稿一种计数，直接占 badge 槽。
-                    badge: const UtenDraftBadge(
-                      kind: DraftDocKind.productionDailyReport,
-                    ),
                   ),
                   _Entry(
                     icon: Icons.fact_check_outlined,
@@ -183,10 +141,34 @@ class ProductionHubPage extends ConsumerWidget {
                 superAdmin,
               ),
               const SizedBox(height: UtenSpacing.s16),
+              // ② 新建单据（creator-only 直达新建；无新建权限者浏览去任务中心）。
               _section(
                 context,
                 theme,
-                l10n.productionHubSectionReports,
+                '新建单据',
+                [
+                  _Entry(
+                    icon: Icons.assignment_outlined,
+                    label: '新建生产计划单',
+                    description: l10n.productionHubPlanSub,
+                    location: RouteName.productionMaterialAnalysis,
+                  ),
+                  _Entry(
+                    icon: Icons.edit_calendar_outlined,
+                    label: '新建生产日报',
+                    description: '进卡即新建，填本车间当日产量',
+                    location: RoutePath.productionDailyReportNew(),
+                  ),
+                ],
+                permissions,
+                superAdmin,
+              ),
+              const SizedBox(height: UtenSpacing.s16),
+              // ③ 报表中心（最下）。
+              _section(
+                context,
+                theme,
+                '报表中心',
                 [
                   _Entry(
                     icon: Icons.list_alt_outlined,
@@ -292,10 +274,10 @@ class _Entry {
   final String description;
   final String location;
 
-  /// 右上角红色徽章（待排产 / 本人草稿；>0 自动显示）。
+  /// 右上角红色徽章（待排产 / 在催任务数；>0 自动显示）。
   ///
-  /// 本页每张卡最多一种计数，故只留这一个槽——若将来某卡既有待办又有草稿，
-  /// 再把草稿挪到 UtenHubCard.labelSuffix（标题右侧行内），别往 badge 里塞两个。
+  /// 本页每张卡最多一种计数，故只留这一个槽。2026-09-24 三段式：新建类卡
+  /// （计划/日报）不再挂草稿徽章，草稿在新页「草稿(N)」按钮与记录页草稿分段可见。
   ///
   /// 「最多一种」说的是红色: 黄色的在办数另有 [progressBadge] 一个槽, 两者并存
   /// 不算往一个槽里塞两个红圆点。
@@ -307,7 +289,7 @@ class _Entry {
   /// 它们回答的是两个问题(我还欠多少活 / 我手上还有多少在跑), 不是双计。
   final Widget? progressBadge;
 
-  /// 标题右侧行内的次要计数(一张卡同时有待办和草稿时，草稿退到这里)。
+  /// 标题右侧行内的次要计数（任务中心卡挂「在催 N」等队列信号时用）。
   final Widget? labelSuffix;
 }
 

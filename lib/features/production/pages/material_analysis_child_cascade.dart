@@ -13,6 +13,13 @@ abstract class _MaterialAnalysisChildCascadeState
   bool _cascadeRowLimitHit = false;
   bool _cascadeDepthLimitHit = false;
 
+  TextEditingController _cascadeRateController(_ChildCascadeRow row) =>
+      _overproductionPercentController(
+        analysisLineId: row.seed?.analysisLineId ?? row.product?.analysisLineId,
+        materialLineId:
+            row.seed?.materialLineId ?? row.material?.materialLineId,
+      );
+
   // ===== 一、向服务端要「下达之后」的快照（ADR-099） =====
 
   /// 车间通道种子对应的 issue-plans 行（预览与真实下达同一份输入）。
@@ -22,13 +29,24 @@ abstract class _MaterialAnalysisChildCascadeState
     for (final seed in seeds)
       if (seed.channel == _CascadeParentChannel.workshop &&
           seed.batchQty > 0 &&
-          seed.batchQty.isFinite)
+          seed.batchQty.isFinite &&
+          parseProductionOverproductionPercent(
+                _overproductionPercentController(
+                  analysisLineId: seed.analysisLineId,
+                  materialLineId: seed.materialLineId,
+                ).text,
+              ) !=
+              null)
         MaterialAnalysisIssueLine(
           materialLineId: seed.materialLineId,
           analysisLineId: seed.materialLineId == null
               ? seed.analysisLineId
               : null,
           qty: seed.batchQty,
+          allowedOverproductionRate: _overproductionRate(
+            analysisLineId: seed.analysisLineId,
+            materialLineId: seed.materialLineId,
+          ),
           departmentId: seed.departmentId,
           workshopName: seed.departmentName,
           workerId: seed.workerId,
@@ -428,7 +446,8 @@ abstract class _MaterialAnalysisChildCascadeState
         ? null
         : indexes.productsById[analysisLineId];
     if (product == null) return null;
-    if (_isEmbeddedMakeChildProduct(product)) {
+    if (_isEmbeddedMakeChildProduct(product) &&
+        product.sourceType != 'AGGREGATE_MAKE') {
       // 锚点子件不展开自己的 BOM（ADR-071 §四）：它的料仍留在原树的来源
       // 节点下，展开起点必须回到那个节点。
       final source = indexes
@@ -492,9 +511,12 @@ abstract class _MaterialAnalysisChildCascadeState
       final submitKey = material.actionGroupKey ?? material.materialLineId;
       final group = indexes.groupsByLine[material.materialLineId];
       final ownsInput = !node.isSeed && ownerIndex[submitKey] == index;
+      // 级联页不改路线、只按路线分类展示与提交；REVIEW（主档空且无子层）行
+      // 由 _cascadeBlockedReason「请先在主表确认路线」拦截，不会真的按委外
+      // 提交——这里的兜底仅用于页面分类，不落库（2026-09-25 确认路线退役）。
       final route = group == null
           ? MaterialSupplyRoute.subcontract
-          : _draftRoute(group);
+          : _draftRoute(group) ?? MaterialSupplyRoute.subcontract;
       final kind = _cascadeKindOf(material, route, view);
       final submitGroup = group == null
           ? null
@@ -1112,6 +1134,9 @@ abstract class _MaterialAnalysisChildCascadeState
               _BucketCandidatePlanInput(
                 materialLineId: row.id,
                 qty: row.enteredQty,
+                allowedOverproductionRate: parseProductionOverproductionPercent(
+                  _cascadeRateController(row).text,
+                )!,
                 departmentId: row.departmentId.value,
                 workshopName: row.departmentName,
                 workerId: row.workerId.value,
@@ -1131,6 +1156,9 @@ abstract class _MaterialAnalysisChildCascadeState
               _BucketPlanDraft(
                 analysisLineId: row.anchorAnalysisLineId!,
                 qty: row.enteredQty,
+                allowedOverproductionRate: parseProductionOverproductionPercent(
+                  _cascadeRateController(row).text,
+                )!,
                 departmentId: row.departmentId.value,
                 workshopName: row.departmentName,
                 workerId: row.workerId.value,

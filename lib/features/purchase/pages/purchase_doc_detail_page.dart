@@ -47,6 +47,7 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../repositories/purchase_repository.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../widgets/purchase_status_badge.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
@@ -76,6 +77,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   String _busyTitle = '正在处理，请稍候';
   bool _openingOrder = false;
   final Set<String> _selectedRequestItemIds = {};
+  String? _myLocation;
 
   bool get _canGenerateRequestOrder =>
       widget.docType == PurchaseDocType.request &&
@@ -656,6 +658,13 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           );
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
+    // 返回即刷新(ADR-108)：编辑保存后的落点已改为 pop 回宿主，本页靠这里重取
+    // 保存后的新数据；从本页 push 出去的子页（关联单据/审核等）返回时同样生效。
+    _myLocation ??= currentLocationOr(
+      context,
+      RoutePath.purchaseDocDetail(_cfg.type.pathSegment, widget.id),
+    );
+    ref.onPageResume(_myLocation!, _load);
     return Scaffold(
       appBar: UtenAppBar(
         title: '${_cfg.label}详情',
@@ -922,41 +931,38 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                '明细 (${items.length})',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
+        // 2026-09-25 用户口径：纯计数标题「明细 (N)」退役；生成订货单提示与
+        // 数量修正入口保留（Spacer 维持原右对齐落位）。
+        if (_canGenerateRequestOrder || changedCount > 0) ...[
+          Row(
+            children: [
+              const Spacer(),
+              if (_canGenerateRequestOrder)
+                const UtenFieldHintIcon(
+                  info: '勾选这次需要采购的明细，再生成订货单；下一页可填写本批数量。剩余部分以后再选，不会带入未勾选的明细。',
                 ),
-              ),
-            ),
-            if (_canGenerateRequestOrder)
-              const UtenFieldHintIcon(
-                info: '勾选这次需要采购的明细，再生成订货单；下一页可填写本批数量。剩余部分以后再选，不会带入未勾选的明细。',
-              ),
-            // V477：分解前的数量修正（有改动才出现）。
-            if (changedCount > 0) ...[
-              Text(
-                '$changedCount 行待保存',
-                key: const Key('purchase-request-qty-dirty-count'),
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.w700,
+              // V477：分解前的数量修正（有改动才出现）。
+              if (changedCount > 0) ...[
+                Text(
+                  '$changedCount 行待保存',
+                  key: const Key('purchase-request-qty-dirty-count'),
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              UtenButton(
-                key: const Key('purchase-request-qty-save'),
-                type: UtenButtonType.danger,
-                onPressed: _busy ? null : _saveQtyAdjustments,
-                child: const Text('保存修改'),
-              ),
+                const SizedBox(width: UtenSpacing.s8),
+                UtenButton(
+                  key: const Key('purchase-request-qty-save'),
+                  type: UtenButtonType.danger,
+                  onPressed: _busy ? null : _saveQtyAdjustments,
+                  child: const Text('保存修改'),
+                ),
+              ],
             ],
-          ],
-        ),
-        const SizedBox(height: UtenSpacing.s8),
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+        ],
         // primary:true → 表体占满 body 并参与「头部折叠 → 表格内滚」联动。
         Expanded(
           child: MasterDataTableView<PurchaseDocItem>(

@@ -82,7 +82,8 @@ class SubcontractMakeTaskServiceLockTaskTest {
                 null, UUID.randomUUID(), UUID.randomUUID(),
                 new BigDecimal("10"), new BigDecimal("6"),
                 new BigDecimal("2"), status,
-                LocalDate.of(2026, 9, 8), Timestamp.from(Instant.now())
+                LocalDate.of(2026, 9, 8), Timestamp.from(Instant.now()),
+                "WL-E2E-LOCK"
         };
     }
 }

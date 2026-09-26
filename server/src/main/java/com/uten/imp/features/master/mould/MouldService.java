@@ -1,7 +1,10 @@
 package com.uten.imp.features.master.mould;
 
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.mastercode.CategoryCodeAllocation;
 import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
+import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.util.DepartmentNameResolver;
 import com.uten.imp.common.util.NativeQueryResults;
@@ -126,6 +129,37 @@ public class MouldService {
 
     private List<UUID> resolveSubtreeIds(UUID categoryId) {
         return categoryRepo.findSubtree(categoryId).stream().map(MouldCategory::getId).toList();
+    }
+
+    // ===== 加密 Excel 导出（2026-09-25「表格显示啥导出啥」） =====
+
+    /**
+     * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限防 OOM。
+     * 列集与前端模具表格一致——模数/套数/模具类型/制造商四列在表格里是老库占位
+     * （无 DB 列、恒空），导出不带；有数据的六列全给。
+     */
+    @Transactional(readOnly = true)
+    public ExportPayload export(MouldQueryFilter f, int maxRows) {
+        List<ExportColumn> cols = List.of(
+                new ExportColumn("code", "模具编号", ExportColumn.TEXT),
+                new ExportColumn("name", "模具名称", ExportColumn.TEXT),
+                new ExportColumn("place", "存放位置", ExportColumn.TEXT),
+                new ExportColumn("mstatus", "制造日期", ExportColumn.TEXT),
+                new ExportColumn("remark", "备注", ExportColumn.TEXT),
+                new ExportColumn("status", "状态", ExportColumn.TEXT));
+        // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
+        List<Map<String, Object>> rows = ReportQueryKit.collectPages(
+                maxRows, (p, size) -> list(f, p, size), m -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("code", m.getCode());
+                    row.put("name", m.getName());
+                    row.put("place", m.getPlace());
+                    row.put("mstatus", m.getMstatus());
+                    row.put("remark", m.getRemark());
+                    row.put("status", m.getStatus());
+                    return row;
+                });
+        return new ExportPayload(cols, rows, rows.size());
     }
 
     // ===== facets（子树范围内各字段 distinct + 空值计数） =====

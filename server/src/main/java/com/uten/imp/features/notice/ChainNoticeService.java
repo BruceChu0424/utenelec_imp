@@ -334,6 +334,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         OUTBOX_EVENT.set(eventType);
         try {
             switch (eventType) {
+                case "PRODUCTION_MATERIAL_DISCOVERY_PENDING",
+                     "PRODUCTION_MATERIAL_DISCOVERY_CONFIGURED",
+                     "PRODUCTION_MATERIAL_DISCOVERY_VISIBILITY",
+                     "PRODUCTION_MATERIAL_DISCOVERY_CANCELLED" -> deliverMaterialDiscovery(eventType,aggregateId);
                 case "PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED",
                      "PRODUCTION_OVERPRODUCTION_RATE_APPROVED",
                      "PRODUCTION_OVERPRODUCTION_RATE_RETURNED" ->
@@ -741,6 +745,32 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                                 : cancelled ? "本次追加用料授权已撤销，原定额与历史实发、退料记录保留。"
                                 : "计划部退回本次申请，原有用料额度未改变。原因：" + str(request.get("reason")),
                         route, event, "normal", requestId);
+            }
+        });
+    }
+
+    private void deliverMaterialDiscovery(String event,UUID requestId) {
+        deliverAtomically(()->{
+            Map<String,Object> request=one("""
+                    SELECT request.status,segment.segment_code,package.warehouse_id,goods.name AS goods_name,
+                           (NOT segment.is_deleted AND segment.status IN('READY','DISPATCHED') AND plan.status=1
+                            AND NOT plan.is_deleted AND NOT plan.is_closed AND NOT plan.is_canceled AND NOT plan.is_stopped) AS active
+                    FROM production_material_discovery_requests request
+                    JOIN production_execution_segments segment ON segment.id=request.execution_segment_id
+                    JOIN production_plans plan ON plan.id=segment.plan_id
+                    JOIN production_planning_packages package ON package.id=segment.package_id
+                    JOIN goods ON goods.id=segment.product_goods_id WHERE request.id=?
+                    """,requestId);
+            if(request==null)return;
+            if(!"PENDING".equals(request.get("status"))||!Boolean.TRUE.equals(request.get("active"))) {
+                noticeService.resolveReviewNotices("PRODUCTION_MATERIAL_DISCOVERY_REQUEST",requestId,"STATE_CHANGED");return;
+            }
+            if(!"PRODUCTION_MATERIAL_DISCOVERY_PENDING".equals(event)&&!"PRODUCTION_MATERIAL_DISCOVERY_VISIBILITY".equals(event))return;
+            if("PRODUCTION_MATERIAL_DISCOVERY_VISIBILITY".equals(event))noticeService.resolveReviewNotices("PRODUCTION_MATERIAL_DISCOVERY_REQUEST",requestId,"REFRESHED");
+            for(UUID user:warehouseRecipients(departmentUserIdsWithAuthorities("SUB_WH","stock_doc:view","stock_doc:approve","stock_doc:issue"),warehouseIdsOf(request.get("warehouse_id")))) {
+                sendToUser(user,TYPE_TASK,"待登记实际领料："+str(request.get("segment_code")),
+                        "车间申请生产「"+str(request.get("goods_name"))+"」。请与领料人核对材料，在生产领料任务中填写物料、数量和实际仓库。",
+                        "/warehouse/tasks/draw","PRODUCTION_MATERIAL_DISCOVERY_PENDING",null,requestId);
             }
         });
     }
@@ -3919,7 +3949,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             return;
         }
         String status = str(task.get("segment_status"));
-        boolean continuous = Boolean.TRUE.equals(task.get("continuous_supply"));
+        // continuous_supply is an incremental-material flag (ADR-095). It may
+        // remain true after switching a prepared task back to FULL_KIT; only
+        // the explicit route determines whether this is continuous production.
+        String route = str(task.get("start_route"));
+        boolean continuous = "CONTINUOUS".equals(route);
         if (!Set.of("WAITING", "READY", "DISPATCHED").contains(status)
                 && !(continuous && "IN_PROGRESS".equals(status))) {
             noticeService.resolveReviewNotices("PRODUCTION_EXECUTION_SEGMENT", segmentId, "STATE_CHANGED");
@@ -3930,7 +3964,6 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         if (workshopId == null) return;
 
         boolean issued = Boolean.TRUE.equals(task.get("issued"));
-        String route = str(task.get("start_route"));
         boolean canStart = workshopStartSupported(status, route, Boolean.TRUE.equals(task.get("start_material_ready")));
         String drawNo = str(task.get("draw_summary"));
         if (onlyFullyIssued && !canStart && !"IN_PROGRESS".equals(status)) return;
@@ -4112,6 +4145,15 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     segmentId,
                     reason == null || reason.isBlank()
                             ? "COMPLETED" : reason.strip());
+            for(UUID request:jdbc.queryForList("""
+                    SELECT request.id FROM production_material_discovery_requests request
+                    JOIN production_execution_segments segment ON segment.id=request.execution_segment_id
+                    JOIN production_plans plan ON plan.id=segment.plan_id
+                    WHERE segment.id=? AND (request.status<>'PENDING' OR segment.is_deleted
+                        OR segment.status IN('CANCELLED','REVERSED','COMPLETED') OR plan.is_deleted OR plan.is_canceled OR plan.is_closed OR plan.is_stopped)
+                    """,UUID.class,segmentId)) {
+                resolved+=noticeService.resolveReviewNotices("PRODUCTION_MATERIAL_DISCOVERY_REQUEST",request,"STATE_CHANGED");
+            }
         }
         return resolved;
     }

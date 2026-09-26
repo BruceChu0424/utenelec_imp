@@ -204,7 +204,17 @@ public final class MaterialAnalysisContracts {
                  * 产出」。不声明时需求已全部转入计划的行照旧 409——重复点击、过期候选
                  * 不能悄悄多建一张计划。
                  */
-                Boolean publicSurplusOnly) {
+                Boolean publicSurplusOnly,
+                @DecimalMin("0") @Digits(integer = 3, fraction = 6)
+                BigDecimal allowedOverproductionRate) {
+
+            public IssuePlanLine(UUID materialLineId, UUID analysisLineId, BigDecimal qty,
+                    LocalDate billDate, LocalDate deliveryDate, UUID departmentId,
+                    String workshopName, UUID workerId, UUID teamDepartmentId, String productNo,
+                    Boolean publicSurplusOnly) {
+                this(materialLineId, analysisLineId, qty, billDate, deliveryDate, departmentId,
+                        workshopName, workerId, teamDepartmentId, productNo, publicSurplusOnly, null);
+            }
 
             public IssuePlanLine(UUID materialLineId, UUID analysisLineId, BigDecimal qty,
                     LocalDate billDate, LocalDate deliveryDate, UUID departmentId,
@@ -269,7 +279,16 @@ public final class MaterialAnalysisContracts {
             @Size(max = 250) String workshopName,
             UUID workerId,
             UUID teamDepartmentId,
-            @Size(max = 200) String productNo) {
+            @Size(max = 200) String productNo,
+            @DecimalMin("0") @Digits(integer = 3, fraction = 6)
+            BigDecimal allowedOverproductionRate) {
+
+        public PlanQuantity(UUID analysisLineId, BigDecimal qty, LocalDate billDate,
+                LocalDate deliveryDate, UUID departmentId, String workshopName, UUID workerId,
+                UUID teamDepartmentId, String productNo) {
+            this(analysisLineId, qty, billDate, deliveryDate, departmentId, workshopName,
+                    workerId, teamDepartmentId, productNo, null);
+        }
 
         /** Backwards-compatible constructor for callers without per-sheet scheduling. */
         public PlanQuantity(UUID analysisLineId, BigDecimal qty) {
@@ -460,9 +479,27 @@ public final class MaterialAnalysisContracts {
              * 只在刷新响应上非零，详情/命令响应恒为 0。前端据此提示
              * 「N 条路线因主档变更需重新确认」，让静默清空可见。
              */
-            int routeResetCount) {
+            int routeResetCount,
+            Map<UUID, BigDecimal> overproductionDefaults,
+            /** 分析编号 WL+YYYYMMDD+6位日流水（V719）；历史夹具行可能为 null。 */
+            String analysisNo) {
         public AnalysisView {
             planningBlockedReasons = Map.copyOf(planningBlockedReasons);
+            overproductionDefaults = Map.copyOf(overproductionDefaults);
+        }
+
+        public AnalysisView(UUID analysisId, String status, long version,
+                String fingerprint, String analysisFingerprint, UUID warehouseId,
+                List<UUID> warehouseIds, OffsetDateTime analyzedAt,
+                List<ProductView> products, List<MaterialView> flatMaterials,
+                List<WarehouseView> warehouses, List<SupplyActionView> supplyActions,
+                List<String> allowedActions, boolean fqcReplenishmentOnly,
+                UUID fqcRecoveryAuthorizationId,
+                Map<UUID, String> planningBlockedReasons, int routeResetCount) {
+            this(analysisId, status, version, fingerprint, analysisFingerprint,
+                    warehouseId, warehouseIds, analyzedAt, products, flatMaterials,
+                    warehouses, supplyActions, allowedActions, fqcReplenishmentOnly,
+                    fqcRecoveryAuthorizationId, planningBlockedReasons, routeResetCount, Map.of(), null);
         }
 
         public AnalysisView(UUID analysisId, String status, long version,
@@ -498,7 +535,8 @@ public final class MaterialAnalysisContracts {
                     analysisId, status, version, fingerprint, analysisFingerprint,
                     warehouseId, warehouseIds, analyzedAt, products, flatMaterials,
                     warehouses, supplyActions, allowedActions, fqcReplenishmentOnly,
-                    fqcRecoveryAuthorizationId, planningBlockedReasons, count);
+                    fqcRecoveryAuthorizationId, planningBlockedReasons, count, overproductionDefaults,
+                    analysisNo);
         }
     }
 
@@ -637,7 +675,9 @@ public final class MaterialAnalysisContracts {
             BigDecimal approvedQty,
             BigDecimal remainingQty,
             BigDecimal readyNowQty,
-            BigDecimal readyByDateQty) {
+            BigDecimal readyByDateQty,
+            /** 分析编号 WL+YYYYMMDD+6位日流水（V719）：各页「计划单号」的展示锚点。 */
+            String analysisNo) {
     }
 
     public record MaterialView(
@@ -772,7 +812,13 @@ public final class MaterialAnalysisContracts {
              * 原始销售/计划汇总需求按本节点 BOM 规则展开的数量。
              * 不随下单、追加、到货、库存占用或车间执行变化；实际备料仍使用 requiredQty。
              */
-            BigDecimal sourceRequiredQty) {
+            BigDecimal sourceRequiredQty,
+            /**
+             * 尚未落实供给的计划缺口：扣除本需求已有现货、专属在途和已下达自制计划，
+             * 不扣仅可认领但尚未认领的公共在途。催计划、补下层物料和办结催办使用此量；
+             * netShortageQty 仍只表示采用当前公共候选后需要另外新下单的展示量。
+             */
+            BigDecimal planningUncoveredQty) {
         @JsonProperty("nodeRole")
         public String nodeRole() {
             return level == 0 ? "ROOT_SUPPLY" : "BOM_COMPONENT";

@@ -16,6 +16,19 @@ import static org.mockito.Mockito.when;
 
 class FulfillmentWorkbenchAccessPolicyTest {
 
+    @Test void definingUnknownMaterialsRequiresStockViewAndIssueRatherThanOrdinaryEdit() {
+        var readOnly = policyWith("stock_doc:view", "stock_doc:edit")
+                .documentAccess("WAREHOUSE", "MATERIAL_DISCOVERY");
+        assertTrue(readOnly.canView());
+        assertFalse(readOnly.canEdit());
+        assertTrue(policyWith("stock_doc:view", "stock_doc:issue")
+                .documentAccess("WAREHOUSE", "MATERIAL_DISCOVERY").canEdit());
+        assertFalse(policyWith("stock_doc:issue")
+                .documentAccess("WAREHOUSE", "MATERIAL_DISCOVERY").canView());
+        assertFalse(policyWith("stock_doc:view", "stock_doc:issue")
+                .documentAccess("PURCHASE", "MATERIAL_DISCOVERY").canView());
+    }
+
     @Test
     void requestPermissionDoesNotLeakLaterPurchaseDocuments() {
         FulfillmentWorkbenchAccessPolicy policy = policyWith(

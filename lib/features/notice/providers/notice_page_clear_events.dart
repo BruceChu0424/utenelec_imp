@@ -91,6 +91,17 @@ const Map<String, List<String>> noticePageClearEvents = {
   ],
   // 计划单列表（缺料提醒的 buyer/planner 副本指向 /production/plans/{id} 详情）
   '/production/plans': ['PRODUCTION_PLAN_SCHEDULED'],
+  '/production/overproduction-rate-requests': [
+    'PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED',
+    'PRODUCTION_OVERPRODUCTION_RATE_APPROVED',
+    'PRODUCTION_OVERPRODUCTION_RATE_RETURNED',
+  ],
+  '/production/material-increment-requests': [
+    'PRODUCTION_MATERIAL_INCREMENT_SUBMITTED',
+    'PRODUCTION_MATERIAL_INCREMENT_APPROVED',
+    'PRODUCTION_MATERIAL_INCREMENT_RETURNED',
+    'PRODUCTION_MATERIAL_INCREMENT_CANCELLED',
+  ],
   // 报工单列表（成品入库拒收/红冲指向 /production/daily-reports/{id} 详情）
   '/production/daily-reports': [
     'PRODUCTION_FINISHED_INBOUND_REJECTED',

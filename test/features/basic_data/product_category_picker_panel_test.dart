@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/widgets/product_category_picker_panel.dart';
+import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
 
 List<ProductCategoryNode> _tree() => [
   ProductCategoryNode(
@@ -82,8 +83,8 @@ void main() {
 
     expect(find.byKey(const Key('category-picker-all')), findsOneWidget);
     expect(find.byKey(const Key('category-picker-tree')), findsOneWidget);
-    // 默认展开一层：根与其子分类同屏（树行文案 = 名称(编码)）。
-    expect(find.text('货品资料(G)'), findsOneWidget);
+    // 单根「货品资料」被提升（2026-09-24）：包装根不再显示，直接列其子类。
+    expect(find.text('货品资料(G)'), findsNothing);
     expect(find.text('成品(FIN)'), findsOneWidget);
     expect(find.text('配件(PRT)'), findsOneWidget);
     // 每节点尾部显子树货品数。
@@ -102,7 +103,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('配件(PRT)'), findsOneWidget);
-    expect(find.text('货品资料(G)'), findsOneWidget); // 祖先留作层级上下文
+    // 提升后的森林里「配件」已是根：没有更高祖先可留，也不回到被提升的包装根。
+    expect(find.text('货品资料(G)'), findsNothing);
     expect(find.text('成品(FIN)'), findsNothing);
   });
 
@@ -210,5 +212,61 @@ void main() {
       ),
     ];
     expect(pruneCategoriesWithoutGoods(noCounts).single.id, 'x');
+  });
+
+  test('hoistSingleRootTree：单根逐层提升，多根与叶子根保持原样', () {
+    // 剪枝后只剩单根「货品资料」→ 提升为其子类（成品/配件）。
+    final hoisted = hoistSingleRootTree(pruneCategoriesWithoutGoods(_tree()));
+    expect(hoisted.map((n) => n.id), ['finished', 'parts']);
+
+    // 多根森林不提升（原样返回）。
+    expect(identical(hoistSingleRootTree(hoisted), hoisted), isTrue);
+
+    // 单根且为叶子（如 scope 过滤后仅剩一个叶子分类）保持可选，不提升成空。
+    final leafOnly = [
+      ProductCategoryNode(
+        id: 'leaf',
+        code: 'L',
+        name: '叶子根',
+        level: 0,
+        children: const <ProductCategoryNode>[],
+      ),
+    ];
+    expect(hoistSingleRootTree(leafOnly).single.id, 'leaf');
+
+    // 嵌套单根链：逐层提升到出现多个根为止。
+    final nested = [
+      ProductCategoryNode(
+        id: 'a',
+        code: 'A',
+        name: '外层包装',
+        level: 0,
+        children: [
+          ProductCategoryNode(
+            id: 'b',
+            code: 'B',
+            name: '内层包装',
+            level: 1,
+            children: [
+              ProductCategoryNode(
+                id: 'c1',
+                code: 'C1',
+                name: '分类一',
+                level: 2,
+                children: const <ProductCategoryNode>[],
+              ),
+              ProductCategoryNode(
+                id: 'c2',
+                code: 'C2',
+                name: '分类二',
+                level: 2,
+                children: const <ProductCategoryNode>[],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ];
+    expect(hoistSingleRootTree(nested).map((n) => n.id), ['c1', 'c2']);
   });
 }

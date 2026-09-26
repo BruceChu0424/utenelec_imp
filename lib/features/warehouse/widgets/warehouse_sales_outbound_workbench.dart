@@ -18,6 +18,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
@@ -76,7 +77,7 @@ class WarehouseSalesOutboundWorkbench extends ConsumerStatefulWidget {
     this.keyword = '',
     this.refreshTick = 0,
     this.embedded = false,
-    this.showBoundaryBanner = true,
+    this.externalHeader,
   });
 
   /// 任务中心页级搜索关键字（embedded 模式生效；300ms 防抖后的值）。
@@ -88,8 +89,9 @@ class WarehouseSalesOutboundWorkbench extends ConsumerStatefulWidget {
   /// true = 嵌在出库任务中心分段内（状态分段 + 表格，无搜索框）。
   final bool embedded;
 
-  /// 是否显示仓库作业边界提示条（任务中心分段内空间有限可关）。
-  final bool showBoundaryBanner;
+  /// 宿主（任务中心大类行 + 小类行）：挂进本视图折叠头，随页一起滚走
+  /// （2026-09-24 用户口径「表格完全置顶」，置顶后只剩表格自身工具条）。
+  final Widget? externalHeader;
 
   @override
   ConsumerState<WarehouseSalesOutboundWorkbench> createState() =>
@@ -311,79 +313,81 @@ class _WarehouseSalesOutboundWorkbenchState
           total: 0,
           totalPages: 1,
         );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (widget.showBoundaryBanner) ...[
-          const _WarehouseOutboundBoundaryBanner(),
+    // 2026-09-24 用户口径「表格完全置顶」（对齐物料分析页）：状态行/时间行/
+    // 错误行全部进折叠头随页滚走，body 只剩表格（primary 拾取联动控制器）。
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.externalHeader != null) ...[
+            widget.externalHeader!,
+            const SizedBox(height: UtenSpacing.s12),
+          ],
+          _toolbar(result),
+          if (_seg?.history == true) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+              child: UtenHistoryTimeFilter(
+                key: const Key('warehouse-sales-outbound-history-time'),
+                value: _historyTime,
+                onChanged: _onHistoryTime,
+              ),
+            ),
+          ],
+          if (_error != null && result.items.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          ],
           const SizedBox(height: UtenSpacing.s12),
         ],
-        _toolbar(result),
-        if (_seg?.history == true) ...[
-          const SizedBox(height: UtenSpacing.s8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
-            child: UtenHistoryTimeFilter(
-              key: const Key('warehouse-sales-outbound-history-time'),
-              value: _historyTime,
-              onChanged: _onHistoryTime,
+      ),
+      body: _seg == null
+          ? const UtenFilterPlaceholder(
+              message: '在上方选择分类后开始办理',
+              description: '分类默认不选中；历史单据需先选时间段或「全部」',
+            )
+          : _seg!.history && _historyTime.isNone
+          ? const UtenHistoryTimePlaceholder()
+          : MasterDataTableView<WarehouseSalesOutboundSummary>(
+              // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+              primary: true,
+              key: const Key('warehouse-sales-outbound-table'),
+              columns: _columns,
+              items: result.items,
+              facets: const {'warehouseWorkStatus': _workStatusFacets},
+              nullCounts: const {},
+              filters: {'warehouseWorkStatus': _workStatusColumnFilter},
+              onFilterChanged: _onColumnFilterChanged,
+              onRowTap: _openDetail,
+              selectable: _batchAction != null,
+              idOf: (item) => _canSelect(item) ? item.id : null,
+              rowKeyOf: (item) => item.id,
+              selectedIds: _selectedIds,
+              onSelectedIdsChanged: (ids) {
+                if (_loading || _searchPending || _error != null) return;
+                setState(
+                  () => _selectedIds
+                    ..clear()
+                    ..addAll(ids),
+                );
+              },
+              batchActionsBuilder: _batchAction == null ? null : _batchActions,
+              isLoading: _loading && _result == null,
+              loadingMore: _loading && _result != null,
+              error: result.items.isEmpty ? _error : null,
+              onRetry: () => _load(result.page),
+              emptyMessage: _emptyMessage,
+              currentPage: result.page,
+              totalPages: result.totalPages,
+              onPageChange: _load,
             ),
-          ),
-        ],
-        if (_error != null && result.items.isNotEmpty) ...[
-          const SizedBox(height: UtenSpacing.s8),
-          Semantics(
-            liveRegion: true,
-            child: Text(
-              _error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          ),
-        ],
-        const SizedBox(height: UtenSpacing.s12),
-        Expanded(
-          child: _seg == null
-              ? const UtenFilterPlaceholder(
-                  message: '在上方选择分类后开始办理',
-                  description: '分类默认不选中；历史单据需先选时间段或「全部」',
-                )
-              : _seg!.history && _historyTime.isNone
-              ? const UtenHistoryTimePlaceholder()
-              : MasterDataTableView<WarehouseSalesOutboundSummary>(
-                  key: const Key('warehouse-sales-outbound-table'),
-                  columns: _columns,
-                  items: result.items,
-                  facets: const {'warehouseWorkStatus': _workStatusFacets},
-                  nullCounts: const {},
-                  filters: {'warehouseWorkStatus': _workStatusColumnFilter},
-                  onFilterChanged: _onColumnFilterChanged,
-                  onRowTap: _openDetail,
-                  selectable: _batchAction != null,
-                  idOf: (item) => _canSelect(item) ? item.id : null,
-                  rowKeyOf: (item) => item.id,
-                  selectedIds: _selectedIds,
-                  onSelectedIdsChanged: (ids) {
-                    if (_loading || _searchPending || _error != null) return;
-                    setState(
-                      () => _selectedIds
-                        ..clear()
-                        ..addAll(ids),
-                    );
-                  },
-                  batchActionsBuilder: _batchAction == null
-                      ? null
-                      : _batchActions,
-                  isLoading: _loading && _result == null,
-                  loadingMore: _loading && _result != null,
-                  error: result.items.isEmpty ? _error : null,
-                  onRetry: () => _load(result.page),
-                  emptyMessage: _emptyMessage,
-                  currentPage: result.page,
-                  totalPages: result.totalPages,
-                  onPageChange: _load,
-                ),
-        ),
-      ],
     );
   }
 
@@ -495,31 +499,4 @@ class _WarehouseSalesOutboundWorkbenchState
           WarehouseSalesOutboundStatus.nextStep(item.warehouseWorkStatus),
     ),
   ];
-}
-
-class _WarehouseOutboundBoundaryBanner extends StatelessWidget {
-  const _WarehouseOutboundBoundaryBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      container: true,
-      label: '仓库销售出库作业视图，只处理实物出库。',
-      child: Container(
-        key: const Key('warehouse-sales-outbound-boundary'),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Text(
-          '仓库作业视图 · 财务放行后核对货品、数量与库位，一步确认出库。'
-          '本页不包含商业与财务信息，也不提供销售业务编辑操作。',
-          style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
-        ),
-      ),
-    );
-  }
 }

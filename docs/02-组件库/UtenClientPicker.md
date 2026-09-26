@@ -1,6 +1,6 @@
 # UtenClientPicker · 客户选择器
 
-> 源码：[`uten_client_picker.dart`](../../lib/features/basic_data/widgets/uten_client_picker.dart)(配置) + [`uten_master_picker.dart`](../../lib/features/basic_data/widgets/uten_master_picker.dart)(面板与字段本体) · 统一层级搜索契约：[UtenHierarchySearch](UtenHierarchySearch.md) · 最后核对：2026-09-23。
+> 源码：[`uten_client_picker.dart`](../../lib/features/basic_data/widgets/uten_client_picker.dart)(配置) + [`uten_master_picker.dart`](../../lib/features/basic_data/widgets/uten_master_picker.dart)(面板与字段本体) · 统一层级搜索契约：[UtenHierarchySearch](UtenHierarchySearch.md) · 最后核对：2026-09-24。
 >
 > 2026-09-23(ADR-111)：客户与供应商选择器原是两份 84% 相同的面板，现合为泛型 `showUtenMasterPicker<TItem>` / `UtenMasterPickerField<TItem>`；`showUtenClientPicker` 与 `ClientPickerField`(以及 `showUtenSupplierPicker` / `SupplierPickerField`)保留原函数名与构造参数，只提供仓储闭包、文案与供应商的「添加供应商」。下文行为对两者都成立。
 
@@ -14,9 +14,10 @@
 
 ## 二、响应式布局
 
-- compact：`showUtenAdaptivePanel` 底部抽屉。
-- medium/expanded：右侧滑入 720dp 面板。
-- 面板内部始终为“左客户分类树 + 右客户分页列表”；左栏宽 compact 176dp、其余 240dp。
+- compact：`showUtenAdaptivePanel` 底部抽屉，左栏固定 176dp。
+- medium/expanded：右侧滑入面板，**宽 = max(720, 屏宽 50%)**（2026-09-24 与货品选择滑窗同步改版）。
+- 面板内部始终为“左客户分类树 + 右客户分页列表”；medium+ 中间是 [UtenSplitView](UtenSplitView.md) 可拖分割线（持久化 key `masterPicker.categoryTree`），**默认左栏宽 = 全树最长一行「名称(编码)」实测宽**（夹在 200–560），双击复位。
+- 左树为无缩进层级色模式（`UtenCategoryTreeView(flatLevelColors: true)`，与货品选择滑窗同款）：一级深绿白字、二级浅灰、三级更浅，方角紧凑行；单根包装分类自动提升不占一层（`hoistSingleRootTree`）；**默认全部收起**（`initiallyExpandDepth: 0`，2026-09-24），搜索命中路径仍自动展开。
 - 搜索框始终在左树顶部，不因抽屉/侧滑形态退化成右侧独立搜索。
 - 底部固定 `UtenPickerConfirmBar` 确认栏（取消 / 确定；未选中时「确定」禁用）。
 

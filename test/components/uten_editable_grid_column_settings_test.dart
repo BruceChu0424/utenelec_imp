@@ -8,7 +8,8 @@ Widget _app({
   List<String> labels = const ['列A', '列B', '列C'],
   Set<String> requiredKeys = const {},
   Map<String, String> headerInfo = const {},
-  void Function(List<String> order, Set<String> hidden)? onChanged,
+  void Function(List<String> order, Set<String> hidden, Set<String> pinned)?
+  onChanged,
 }) {
   final controller = UtenEditableGridController<_Row>(initial: [_Row()]);
   return MaterialApp(
@@ -161,8 +162,10 @@ void main() {
         tester.view.resetPhysicalSize();
         tester.view.resetDevicePixelRatio();
       });
-      final changes = <(List<String>, Set<String>)>[];
-      await tester.pumpWidget(_app(onChanged: (o, h) => changes.add((o, h))));
+      final changes = <(List<String>, Set<String>, Set<String>)>[];
+      await tester.pumpWidget(
+        _app(onChanged: (o, h, p) => changes.add((o, h, p))),
+      );
       await tester.pumpAndSettle();
 
       // 长按列A 拎起（~500ms）→ 横拖过列B（120 宽）→ 松手落位到列B 之后。

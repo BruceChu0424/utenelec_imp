@@ -172,6 +172,7 @@ public class GoodsBomService {
     @Transactional
     public BomItemView setAudited(UUID goodsId, UUID itemId, boolean audited, UUID userId) {
         tx.bind();
+        goodsRepo.lockBomParents(List.of(goodsId));
         references.requireVisibleGoods(goodsId);
         GoodsBomItem r = requireItem(goodsId, itemId);
         if (audited) {
@@ -189,6 +190,7 @@ public class GoodsBomService {
     @Transactional
     public void delete(UUID goodsId, UUID itemId) {
         tx.bind();
+        goodsRepo.lockBomParents(List.of(goodsId));
         references.requireVisibleGoods(goodsId);
         GoodsBomItem r = requireItem(goodsId, itemId);
         Goods parent = r.getGoods();
@@ -232,6 +234,7 @@ public class GoodsBomService {
         }
         Set<UUID> parents = new java.util.LinkedHashSet<>();
         for (Object[] row : live) parents.add((UUID) row[1]);
+        goodsRepo.lockBomParents(parents);
         Set<UUID> tree = treeGoodsIds(goodsId, parents);
         for (UUID parent : parents) {
             if (!tree.contains(parent)) {
@@ -265,15 +268,22 @@ public class GoodsBomService {
         return visited;
     }
 
-    // ===== 配件清单导出（产品配件清单，对照老系统 003.jpg 列） =====
+    // ===== 配件清单导出（2026-09-25 口径：导出列 = 组装信息表格列） =====
 
     /** 树展开深度上限（防历史脏数据 A→B→A 环路死循环）。 */
     static final int MAX_DEPTH = 10;
 
+    /** 计量方式代码 → 展示文字（与前端 BomConsumptionBasis.label 同口径）。 */
+    private static final Map<String, String> CONSUMPTION_BASIS_LABELS = Map.of(
+            "PER_UNIT", "按每件",
+            "PER_PACKAGE", "按包装",
+            "FIXED_BATCH", "固定批耗");
+
     /**
-     * 整树展开导出：一级组件无标记，子级编号前加 {@code *}、孙级 {@code **}（星号数=深度）；
-     * 序号为级联序号并逐级缩进（1 / └ 3.1 / 　└ 3.1.1，每层一个全角空格 + └ 分支符），
-     * 名称列对齐不缩进，与前端 A4 预览/打印件完全一致。
+     * 整树展开导出。列集与前端组装信息表格一致（2026-09-25 用户口径「表格显示啥
+     * 导出啥」：需求阶段/缺料处理/单价/金额四列已从表格退役，导出同步不带；
+     * 已审是审计模式下的交互辅助列，不进导出）。层级只用级联序号表达
+     * （1 / 3.1 / 3.1.1），不再加缩进与子层星号标记。
      */
     @Transactional(readOnly = true)
     public ExportPayload exportPayload(UUID goodsId) {
@@ -281,10 +291,15 @@ public class GoodsBomService {
                 new ExportColumn("seq", "序号", ExportColumn.TEXT),
                 new ExportColumn("code", "物料编号", ExportColumn.TEXT),
                 new ExportColumn("name", "物料名称", ExportColumn.TEXT),
+                new ExportColumn("model", "型号", ExportColumn.TEXT),
                 new ExportColumn("spec", "规格", ExportColumn.TEXT),
+                new ExportColumn("unitName", "单位", ExportColumn.TEXT),
                 new ExportColumn("colorName", "颜色", ExportColumn.TEXT),
+                new ExportColumn("sourceType", "来源", ExportColumn.TEXT),
+                new ExportColumn("consumptionBasis", "计量方式", ExportColumn.TEXT),
+                new ExportColumn("basisOutputQty", "基准产量", ExportColumn.NUMBER),
+                new ExportColumn("allowPartialPackage", "尾包", ExportColumn.TEXT),
                 new ExportColumn("qty", "数量", ExportColumn.NUMBER),
-                new ExportColumn("material", "材质", ExportColumn.TEXT),
                 new ExportColumn("summary", "备注", ExportColumn.TEXT));
         List<Map<String, Object>> rows = new ArrayList<>();
         Set<UUID> path = new java.util.HashSet<>();
@@ -302,13 +317,21 @@ public class GoodsBomService {
             BomItemView v = items.get(i);
             String seq = prefix.isEmpty() ? String.valueOf(i + 1) : prefix + "." + (i + 1);
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("seq", depth == 0 ? seq : "　".repeat(depth) + "└ " + seq);
-            row.put("code", "*".repeat(depth) + (v.getComponentCode() == null ? "" : v.getComponentCode()));
+            row.put("seq", seq);
+            row.put("code", v.getComponentCode());
             row.put("name", v.getComponentName());
+            row.put("model", v.getComponentModel());
             row.put("spec", v.getComponentSpec());
+            row.put("unitName", v.getComponentUnitName());
             row.put("colorName", v.getComponentColorName());
+            row.put("sourceType", v.getComponentSourceType());
+            row.put("consumptionBasis",
+                    CONSUMPTION_BASIS_LABELS.getOrDefault(v.getConsumptionBasis(), v.getConsumptionBasis()));
+            row.put("basisOutputQty", v.getBasisOutputQty());
+            // 尾包只有「按包装」才有意义（与表格尾包列同口径），其余计量方式显示 —。
+            row.put("allowPartialPackage", "PER_PACKAGE".equals(v.getConsumptionBasis())
+                    ? (v.isAllowPartialPackage() ? "允许" : "整包") : "—");
             row.put("qty", v.getQty());
-            row.put("material", v.getComponentMaterial());
             row.put("summary", v.getSummary());
             rows.add(row);
             if (v.isHasChildren() && !path.contains(v.getComponentGoodsId())) {
@@ -542,6 +565,7 @@ public class GoodsBomService {
 
     /** 父件与组件先加 KEY SHARE 锁再读，与主档删除互斥(见 GoodsRepository.lockForReference)。 */
     private void lockReferencedGoods(UUID goodsId, UUID componentId) {
+        if (goodsId != null) goodsRepo.lockBomParents(List.of(goodsId));
         List<UUID> ids = new ArrayList<>(2);
         if (goodsId != null) ids.add(goodsId);
         if (componentId != null) ids.add(componentId);

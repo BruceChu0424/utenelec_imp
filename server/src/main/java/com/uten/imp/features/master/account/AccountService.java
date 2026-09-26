@@ -163,7 +163,10 @@ public class AccountService {
     /**
      * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限 1000 页=10万行防 OOM。
      * 列定义服务端权威；过滤/排序走 list 已接的 TableSort 白名单（balanceCurrent）。
-     * accountType 用枚举值（BANK/CASH/...），与 DB 列一致，便于二次处理；不解析为中文。
+     * 2026-09-25 口径「表格显示啥导出啥」：列集/列序对齐前端表格（编号/账户名称/类型/
+     * 币种/银行账号/当前余额[权限]/状态）——补「币种」，余额侧只留表格显示的「当前余额」
+     * （期初/累计收款/累计付款/调整累计/警戒线表格不显示，导出不再多给）；无余额权限者
+     * 整列不导出（与表格摘列同口径，不是空单元格）。accountType/币种按展示文字。
      */
     @Transactional(readOnly = true)
     public ExportPayload export(AccountQueryFilter f, String sort, String order, int maxRows) {
@@ -171,15 +174,11 @@ public class AccountService {
         List<ExportColumn> cols = new ArrayList<>();
         cols.add(new ExportColumn("code", "编号", ExportColumn.TEXT));
         cols.add(new ExportColumn("name", "账户名称", ExportColumn.TEXT));
+        cols.add(new ExportColumn("accountType", "类型", ExportColumn.TEXT));
+        cols.add(new ExportColumn("currencyName", "币种", ExportColumn.TEXT));
         cols.add(new ExportColumn("bankAccountNo", "银行账号", ExportColumn.TEXT));
-        cols.add(new ExportColumn("accountType", "账户类型", ExportColumn.TEXT));
         if (showBalance) {
-            cols.add(new ExportColumn("initBalance", "期初余额", ExportColumn.MONEY));
-            cols.add(new ExportColumn("receiptsTotal", "累计收款", ExportColumn.MONEY));
-            cols.add(new ExportColumn("paymentsTotal", "累计付款", ExportColumn.MONEY));
-            cols.add(new ExportColumn("adjustmentsTotal", "余额调整累计", ExportColumn.MONEY));
             cols.add(new ExportColumn("balanceCurrent", "当前余额", ExportColumn.MONEY));
-            cols.add(new ExportColumn("balanceFloor", "余额警戒线", ExportColumn.MONEY));
         }
         cols.add(new ExportColumn("status", "状态", ExportColumn.TEXT));
         // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
@@ -188,15 +187,14 @@ public class AccountService {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("code", a.getCode());
                     row.put("name", a.getName());
-                    row.put("bankAccountNo", a.getBankAccountNo());
                     row.put("accountType", accountTypeLabel(a.getAccountType()));
+                    String currency = a.getCurrencyName() != null && !a.getCurrencyName().isBlank()
+                            ? a.getCurrencyName() : a.getCurrencyCode();
+                    row.put("currencyName",
+                            currency == null || currency.isBlank() ? "未设置币种" : currency);
+                    row.put("bankAccountNo", a.getBankAccountNo());
                     if (showBalance) {
-                        row.put("initBalance", a.getInitBalance());
-                        row.put("receiptsTotal", a.getReceiptsTotal());
-                        row.put("paymentsTotal", a.getPaymentsTotal());
-                        row.put("adjustmentsTotal", a.getAdjustmentsTotal());
                         row.put("balanceCurrent", a.getBalanceCurrent());
-                        row.put("balanceFloor", a.getBalanceFloor());
                     }
                     row.put("status", a.getStatus());
                     return row;

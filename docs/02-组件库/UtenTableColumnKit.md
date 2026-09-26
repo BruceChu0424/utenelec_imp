@@ -3,7 +3,7 @@
 > 源码：[`lib/components/layout/uten_table_column_kit.dart`](../../lib/components/layout/uten_table_column_kit.dart)
 > 接入方：[`MasterDataTableView`](../../lib/features/basic_data/widgets/master_data_table_view.dart)（货品资料等主数据表）、
 > [`UtenEditableGrid`](../../lib/components/layout/uten_editable_grid.dart)（单据编辑明细表）
-> 最后核对：2026-09-11（换位改「按下即拖」、新增行首多选列横滚冻结 `UtenFrozenLeadingColumn`）
+> 最后核对：2026-09-25（新增表头右键菜单：固定到左侧/移动/隐藏 + 列序纯函数）
 
 ## 一、为什么有它
 
@@ -84,10 +84,60 @@ columnHeaderGestureArea(            // 横拖换位 + 竖拖移除识别器（�
 
 ## 四、已接入
 
-| 表格 | 表头设置 | 竖拖移除 | 横拖换位 | 行首列冻结 | 备注 |
-|---|---|---|---|---|---|
-| MasterDataTableView（货品资料等主数据表） | ✅（含弹窗拖拽排序） | ✅（末列不隐） | ✅（会话内列序） | ✅（selectable 时） | — |
-| UtenEditableGrid（单据编辑明细表） | ✅（+恢复默认+必填锁定） | ✅（+必填列不 arm） | ✅（走账号持久化回调） | ✅（有选择列时） | 三手势随 `showColumnSettings` 开关 |
+| 表格 | 表头设置 | 竖拖移除 | 横拖换位 | 行首列冻结 | 右键菜单+任意列固定 | 备注 |
+|---|---|---|---|---|---|---|
+| MasterDataTableView（货品资料等主数据表） | ✅（含弹窗拖拽排序） | ✅（末列不隐） | ✅（会话内列序） | ✅（selectable 时） | ✅（会话内固定集） | — |
+| UtenEditableGrid（单据编辑明细表） | ✅（+恢复默认+必填锁定） | ✅（+必填列不 arm） | ✅（走账号持久化回调） | ✅（有选择列时） | ✅（固定列随列设置账号持久化；副本=只读文本快照） | 三手势+菜单随 `showColumnSettings` 开关 |
+
+## 四之三、表头右键菜单 + 固定到左侧（2026-09-25）
+
+用户诉求：右击列头（如「货品名称」）要弹**列操作菜单**——固定到左侧、向左/右移一格、
+放到最前/最后、隐藏此列；此前右击表头弹的是页面级 `SelectionArea` 的系统「全选/复制」
+工具条（不是表格自己的代码），现已压制并替换为自家菜单。
+
+### API（三件套，均在 kit）
+
+- `UtenColumnHeaderMenuRegion(entriesBuilder:, child:)`：表头专用右键菜单区。与行级
+  [UtenContextMenuRegion](UtenContextMenu.md) 的关键差异：**不挂长按**——表头长按/按下
+  即拖已让给「横拖换位/竖拖移除」手势，挂长按会在竞技场里抢走拖拽。桌面右键走原始
+  Listener，并在指针抬键微任务里 `ContextMenuController.removeAny` 压制系统工具条；
+  条目为空时同样压制但不弹菜单。
+- `utenColumnHeaderMenuCapabilities({order, hiddenKeys, pinnedKeys, key, canHide})`：
+  纯函数算一列的可动性（能否固定/隐藏/四向移动）。
+- `utenColumnHeaderMenuEntries(spec)`：按统一文案与分组产出菜单条目。
+
+状态变更用纯函数完成：`utenToggleColumnPin`（固定=搬到固定块末尾；取消=原位留下）、
+`utenMoveVisibleColumn`（四向移动）、`utenNormalizePinnedPrefix`（拖拽/弹窗排序越过
+固定块边界后的兜底规范化）。全部只动**可见子序列**、隐藏列锚位不动。
+
+### 固定语义（不变量：固定列恒为可见序列的前缀）
+
+- **固定**：列搬到多选框列右侧、既有固定列之后；横滚时钉在视口左缘不滚走（复用
+  [UtenFrozenLeadingColumn] 的跟手副本机制，宽度=行首列+固定列总宽）。
+- **取消固定**：列放回**固定前的位置**（2026-09-25 用户口径「取消固定也要回到对应的地方」；
+  宿主在固定时记录其在完整列序中的下标，取消时插回；编辑表跨会话重放的固定没有记录，
+  按默认列序相对位次插回；落点撞进固定块由规范化收到块边界之后），不再钉左。
+- **移动**：固定列只在固定块内移动、普通列只在普通列区内移动——跨区用固定/取消固定
+  表达，不允许移动跨界。
+- **守卫**：固定后滚动区至少剩一列普通列；隐藏固定列自动解除固定；最后一列/必填列
+  不可隐藏（沿用既有口径）。
+- 已固定列表头**标签前**显图钉（18px、与标签行垂直居中，2026-09-25 用户口径
+  「icon 大一点、上下居中」；经 `_FilterCell.leading` / `GridHeaderFilterCell.leading`
+  / `_headerLabel` 前缀注入，主表列宽测算按 22px 计入占宽）；横滚后**冻结副本格**
+  保留筛选点按、右键菜单与列宽手柄
+  （只去掉换位/移除拖拽——kit 的 LayerLink 每 State 只能挂一个 target）。
+
+### 编辑明细表的差异：冻结副本 = 只读文本快照
+
+编辑表的单元控件绑定**行级** TextEditingController/ValueNotifier，同一份 `cellBuilder`
+不能挂载两次（控制器双挂）。因此横滚时固定列的副本渲染只读文本，取值链
+`textOf → frozenTextOf → filterValueOf`；三级全无的列「固定到左侧」置灰。数量/单价这类
+只有输入框的列须在列定义补 `frozenTextOf: (r) => r.qty.text`（采购/销售/委外/级联
+四处的输入列已补齐）。未滚动时原格仍是可编辑控件，快照只在横滚时出现。
+
+测试锚点：菜单文案（`固定到左侧`/`取消固定`/`向左移一格`/`向右移一格`/`放到最前`/
+`放到最后`/`隐藏此列`）、图钉 `Icons.push_pin_rounded`。横滚后固定列有原件+副本两份，
+按文本定位要用 `.hitTestable()` 取视口内那份。
 
 ## 四之二、UtenFrozenLeadingColumn（行首多选列横滚冻结，2026-09-11）
 
@@ -116,11 +166,17 @@ columnHeaderGestureArea(            // 横拖换位 + 竖拖移除识别器（�
 
 - [`test/master_data_table_view_drag_hide_test.dart`](../../test/master_data_table_view_drag_hide_test.dart)
   （拖出隐藏全套行为 + 浮层最顶层/原格大小回归 + 长按排序）
+- [`test/master_data_table_view_header_menu_test.dart`](../../test/master_data_table_view_header_menu_test.dart)
+  （右键菜单条目/固定悬浮左缘/取消固定/分区移动/越界置灰/隐藏解除固定/非多选表）
+- [`test/components/uten_table_column_kit_header_menu_test.dart`](../../test/components/uten_table_column_kit_header_menu_test.dart)
+  （列序纯函数单元测试：能力判定/固定取反/四向移动/前缀规范化）
 - [`test/master_data_table_view_column_chooser_test.dart`](../../test/master_data_table_view_column_chooser_test.dart)
 - [`test/components/uten_editable_grid_column_settings_test.dart`](../../test/components/uten_editable_grid_column_settings_test.dart)
   （锚定弹窗 + 排序 + 必填锁定 + 跟手浮层统一性 + **长按排序直接落位与持久化**）
 - [`test/components/uten_editable_grid_column_prefs_test.dart`](../../test/components/uten_editable_grid_column_prefs_test.dart)
-  （持久化重放/迟到偏好/恢复默认）
+  （持久化重放/迟到偏好/恢复默认 + pinned 编解码向前兼容）
+- [`test/components/uten_editable_grid_column_pin_test.dart`](../../test/components/uten_editable_grid_column_pin_test.dart)
+  （编辑表固定列：快照渲染/持久化上报/无快照源置灰/未开启设置不出菜单）
 - [`test/components/uten_editable_grid_perf_test.dart`](../../test/components/uten_editable_grid_perf_test.dart)
   （300 行构建计数契约：初建 ≤2 次/敲字零蔓延）
 

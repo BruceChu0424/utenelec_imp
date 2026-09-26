@@ -429,7 +429,10 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     final theme = Theme.of(context);
     final canDelete = shellCanDelete;
     return UtenCategoryTreeView(
-      nodes: _tree ?? const <ProductCategoryNode>[],
+      // 左树视觉与「销售新建订货 → 选货品」滑窗同款（2026-09-25 用户口径，公共
+      // 组件只是参数差异）：单根提升（唯一的包装根不再占一层）+ 无缩进层级色。
+      nodes: hoistSingleRootTree(_tree ?? const <ProductCategoryNode>[]),
+      flatLevelColors: true,
       nodeEnabledPredicate: (_) => true,
       selectedIds: {?_selectedId},
       expandOnRowTap: true,

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter/material.dart';
@@ -13,7 +14,6 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -61,6 +61,7 @@ import '../../employee/repositories/employee_repository.dart';
 import '../models/material_cascade_math.dart';
 import '../models/production_material_analysis.dart';
 import '../models/material_future_transfer.dart';
+import '../models/material_aggregate_order.dart';
 import '../models/material_future_transfer_progress.dart';
 import '../models/production_flow_stage.dart';
 import '../models/production_work_card.dart';
@@ -80,6 +81,7 @@ import '../widgets/material_required_reason_dialog.dart';
 import '../widgets/material_supply_progress_dialog.dart';
 import '../widgets/material_supply_submit_confirm.dart';
 import '../widgets/material_preparation_route_card.dart';
+import '../widgets/production_overproduction_rate_field.dart';
 
 part 'material_analysis_bom_tree.dart';
 part 'material_analysis_borrow.dart';
@@ -93,6 +95,8 @@ part 'material_analysis_child_shortage_page.dart';
 part 'material_analysis_plan_actions.dart';
 part 'material_analysis_product_tasks.dart';
 part 'material_analysis_material_table.dart';
+part 'material_analysis_aggregate_table.dart';
+part 'material_analysis_aggregate_submission.dart';
 part 'material_analysis_supply_actions.dart';
 part 'material_analysis_view_models.dart';
 
@@ -311,6 +315,62 @@ abstract class _MaterialAnalysisPageBase
     _systemSeededBatchQtyTexts[id] = text;
   }
 
+  // Shared by preparation and bucket detail. Recalculation only changes quantities,
+  // never a planner's per-line tolerance. These are next-issue inputs, not edits of
+  // any previously approved execution segment.
+  final Map<String, TextEditingController> _overproductionPercentInputs = {};
+
+  TextEditingController _overproductionPercentController({
+    String? analysisLineId,
+    String? materialLineId,
+  }) {
+    final analysis = _analysis;
+    final indexes = analysis == null ? null : _analysisIndexes(analysis);
+    final product = indexes?.productsById[analysisLineId];
+    final material = indexes?.groupsByLine[materialLineId]?.representative;
+    final sourceProduct =
+        product ??
+        (material?.isRootSupply == true
+            ? indexes?.productsById[material?.analysisLineId]
+            : null);
+    final exactMaterialId =
+        product?.rootMaterialLineId ??
+        materialLineId ??
+        indexes?.materialsByProduct[analysisLineId]
+            ?.where((m) => m.isRootSupply)
+            .firstOrNull
+            ?.materialLineId;
+    final identity = exactMaterialId != null
+        ? 'M:$exactMaterialId'
+        : 'P:$analysisLineId';
+    final key = '${_sessionScopeKey()}|${analysis?.analysisId}|$identity';
+    return _overproductionPercentInputs.putIfAbsent(
+      key,
+      () => TextEditingController(
+        text: productionOverproductionPercentText(
+          (sourceProduct == null
+                  ? null
+                  : widget.seed.initialAllowedOverproductionRateFor(
+                      sourceProduct,
+                    )) ??
+              analysis?.overproductionDefaults[product?.goodsId ??
+                  material?.goodsId] ??
+              0,
+        ),
+      ),
+    );
+  }
+
+  double _overproductionRate({
+    String? analysisLineId,
+    String? materialLineId,
+  }) => parseProductionOverproductionPercent(
+    _overproductionPercentController(
+      analysisLineId: analysisLineId,
+      materialLineId: materialLineId,
+    ).text,
+  )!;
+
   final Set<String> _selectedPlanLineIds = {};
   final Map<String, MaterialSupplyRoute> _routeDraft = {};
   // 2026-09-16：「按历史分析推导上次确认路线」的前端记忆整套退役——供应方式的
@@ -322,6 +382,10 @@ abstract class _MaterialAnalysisPageBase
   String? _sessionComputedScope;
 
   final Set<String> _dirtyRouteGroups = {};
+  // 进页自动确认（2026-09-25 用户口径「供应方式有就自动确认，没有的红框」）的
+  // 防环守卫：每个 (analysisId|version|fingerprint) 纪元只自动尝试一次——轮询、
+  // 保存回包、409 恢复都会重走 _applyAnalysis，靠它挡住重复提交。
+  String? _autoRouteConfirmEpoch;
   final Set<String> _selectedMaterialGroupKeys = {};
   final Set<String> _collapsedBomProducts = {};
   final Set<String> _collapsedBomBranches = {};
@@ -389,7 +453,8 @@ abstract class _MaterialAnalysisPageBase
       _permissions.contains(Perm.productionMaterialAnalysisCancel) &&
       _serverAllows('CANCEL_ANALYSIS');
   bool get _canCancelAction =>
-      (_permissions.contains(Perm.productionMaterialAnalysisNotify) ||
+      (_permissions.contains(Perm.productionMaterialAnalysisGenerate) ||
+          _permissions.contains(Perm.productionMaterialAnalysisNotify) ||
           _permissions.contains(
             Perm.productionMaterialAnalysisClaimSharedFuture,
           )) &&
@@ -501,14 +566,6 @@ abstract class _MaterialAnalysisPageBase
     return product != null && product.issuedPlanQty > 0.0001 ? product : null;
   }
 
-  /// 首列复选框的勾选门（2026-09-10 F2d）：与「确认路线(N)」计数/提交门同一谓词——
-  /// 已确认且未改动的行没有可提交的决定，不给勾选框；改了下拉（脏组）才恢复。
-  /// 下拉本身仍按 [_canEditMaterialRoute] 可改（§3.4 手动草稿优先）。撤回下达 /
-  /// 根产出红冲后服务端不清 confirmed_route，这类行同样要先改下拉才可勾选。
-  bool _routeGroupSelectable(_MaterialGroup group) =>
-      group.representative.confirmedRoute == null ||
-      _dirtyRouteGroups.contains(group.key);
-
   String? _planningBlockForGroup(_MaterialGroup group) {
     for (final path in group.paths) {
       final reason = _analysis?.planningBlockedReason(path.analysisLineId);
@@ -522,7 +579,14 @@ abstract class _MaterialAnalysisPageBase
       product.submittedQty > 0 ||
       product.approvedQty > 0;
 
-  MaterialSupplyRoute _draftRoute(_MaterialGroup group) {
+  /// 这一行的供应方式当前取值（显示与提交共用）。
+  ///
+  /// 2026-09-25 确认路线退役：优先级 = 本地草稿 > 已确认 > 根行历史计划证明的
+  /// MAKE > 主档/BOM 推导建议(sourceSuggestion)。**服务端 REVIEW（主档来源为空
+  /// 且无 BOM 子层）解析成 null**——这类行红框空选、不能下单，由人补选后
+  /// 直改即存；不再有「兜底委外」的假预填（缺省值看着像已决定，还卡住了
+  /// 「选同一个值不算改动」的确认路径）。
+  MaterialSupplyRoute? _draftRoute(_MaterialGroup group) {
     final material = group.representative;
     final explicit = _routeDraft[group.key] ?? material.confirmedRoute;
     if (explicit != null) return explicit;
@@ -536,10 +600,7 @@ abstract class _MaterialAnalysisPageBase
         _hasExistingRootPlan(product)) {
       return MaterialSupplyRoute.make;
     }
-    // 建议路线来自货品主档 (服务端按 goods.source_type 算出 sourceSuggestion)；
-    // 主档来源为空且该件没有 BOM 子层时服务端给 REVIEW，前端解析成 null，
-    // 只能兜底委外——那是缺省值不是决定，路线格旁有黄标提醒核对。
-    return material.sourceSuggestion ?? MaterialSupplyRoute.subcontract;
+    return material.sourceSuggestion;
   }
 
   /// 会话作用域键（账号 / 模拟身份 / 权限集）：跨账号切换时用它丢弃迟到的
@@ -561,21 +622,12 @@ abstract class _MaterialAnalysisPageBase
     return _sessionComputedScope = '$identity|${ordered.join(',')}';
   }
 
-  int get _selectedRouteCount {
-    final analysis = _analysis;
-    if (analysis == null) return 0;
-    return _materialGroups(analysis)
-        .where(
-          (group) =>
-              _selectedMaterialGroupKeys.contains(group.key) &&
-              _canEditMaterialRoute(group) &&
-              _routeGroupSelectable(group),
-        )
-        .length;
-  }
-
   // ===== 继承链协作契约：实现在后段 part，基类生命周期按虚调用分发 =====
   Future<void> _previewAnalysis();
+
+  /// 进页自动确认供应方式（2026-09-25 确认路线退役）：实现在 material_table
+  /// 层——那里才有汇总草稿控制器与占用判据。见 [_maybeAutoConfirmRoutes]。
+  Future<void> _maybeAutoConfirmRoutes();
 
   /// 表头筛选值只在当前桶里仍存在时保留（刷新/轮询/切视图后失效值自动移除，
   /// 仍有效的用户筛选不清）；实现见 material_analysis_material_table.dart。
@@ -583,7 +635,14 @@ abstract class _MaterialAnalysisPageBase
 
   /// 主表「这一行此刻能不能下单」的判据，不能时返回人话原因(ADR-102)。
   /// 实现见 material_analysis_material_table.dart。
-  String? _tableIssueBlockedReason(_MaterialGroup group);
+  String? _tableIssueBlockedReason(
+    _MaterialGroup group, {
+    bool forAggregate = false,
+  });
+  Widget? _materialAggregateToolbarAction() => null;
+  void _materialAggregateAnalysisChanged() {}
+  bool _materialAggregateOwnsLine(String lineId) => false;
+  bool _materialAggregateOwnsProductLine(String lineId) => false;
 
   /// 主表里还有用户手填未提交的数量，或还勾着待下单的行(ADR-102)。
   /// 轮询期间必须让路，否则整树换快照会把人填了一屏的数与勾选一起吃掉。
@@ -592,6 +651,10 @@ abstract class _MaterialAnalysisPageBase
   /// 主表勾选集里此刻真能下单的那些行，以及被折叠/表头筛选藏起来的行数
   /// (ADR-102)。实现见 material_analysis_material_table.dart。
   ({List<_MaterialGroup> visible, int hidden}) _selectedIssuableGroups();
+
+  int _materialOrderSelectionCount(List<_MaterialGroup> groups) =>
+      groups.length;
+  bool get _materialAggregateWorking => false;
 
   /// 把这些行按「车间逐层 → 采购 → 委外」分段下达(ADR-102)。全部段都成功返回 true。
   Future<bool> _submitMaterialTableRows(List<_MaterialGroup> groups);
@@ -780,6 +843,9 @@ abstract class _MaterialAnalysisPageBase
 
   @override
   void dispose() {
+    for (final controller in _overproductionPercentInputs.values) {
+      controller.dispose();
+    }
     materialDetailRevision.dispose();
     bucketActionBusyMessage.dispose();
     _analysisPollTimer?.cancel();
@@ -874,6 +940,7 @@ abstract class _MaterialAnalysisPageBase
       _resetMaterialTableInputsForNewAnalysis();
     }
     _analysis = view;
+    _materialAggregateAnalysisChanged();
     // 权威快照优先：先让父子联动的模拟快照作废，再按新快照刷系统预填值
     // (只覆盖用户没动过的格子)。顺序不能反——反了就是拿模拟值去回填。
     _invalidateMaterialTableCascadePreview();
@@ -921,17 +988,16 @@ abstract class _MaterialAnalysisPageBase
     // 刷新后草稿已清空，只有仍可勾的组才留在选中集：轮询期间被同事确认的行
     // 自动脱选（否则「勾着但不计数」）。
     //
-    // ADR-102：这里的谓词必须与主表的可勾判据同源(路线可提交 ∪ 此刻能下单)。
-    // 原先只写了路线那一支，而上面刚 _dirtyRouteGroups.clear()，于是它退化成
-    // 「confirmedRoute == null」——为下单勾的行按定义路线已确认，**每次刷新都会
-    // 被 100% 清空**：45 秒轮询、确认路线、任何一次下达成功、409 恢复都会触发，
-    // 用户勾好 20 行填好数一转眼全没了，混合批次中途失败时「未完成的行仍然勾着」
-    // 这句承诺也是假的。2026-09-22 对抗复查抓出来的真缺陷。
+    // ADR-102（2026-09-25 确认路线退役修订）：勾选只服务「下单」，谓词与
+    // [_selectedIssuableGroups] 同源——能下单，或只差「车间/负责人」这种当场
+    // 能修好的拦截。原先「路线可提交」那一支随确认路线按钮一起退役。
     final selectableKeys = groups
         .where(
-          (g) =>
-              (_canEditMaterialRoute(g) && _routeGroupSelectable(g)) ||
-              _tableIssueBlockedReason(g) == null,
+          (g) => const [
+            null,
+            '先在「生产车间」列里指定本次交给哪个车间',
+            '先在「负责人」列里指定本次谁负责',
+          ].contains(_tableIssueBlockedReason(g, forAggregate: true)),
         )
         .map((g) => g.key)
         .toSet();
@@ -978,6 +1044,11 @@ abstract class _MaterialAnalysisPageBase
     // 即典型）：只移除失效值，避免不可见的激活筛选把表过滤成空。
     _pruneMaterialTableFilters();
     materialDetailRevision.value++;
+    // 新快照落地后的下一帧尝试进页自动确认（boot/轮询/保存回包/409 恢复都走
+    // 这里；[_maybeAutoConfirmRoutes] 自带纪元守卫，确认后回包不会引发连环写）。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_maybeAutoConfirmRoutes());
+    });
   }
 
   /// 服务端刷新会重建节点视图；只把相对最新快照仍合法的未保存路线覆盖回去。
@@ -1104,7 +1175,8 @@ abstract class _MaterialAnalysisPageBase
       // MAKE_COMPONENT / SUBCONTRACT_MAKE 都是系统生成的子件任务行，
       // 与服务端 requireSameSources 排除口径一致，不能回填为用户来源。
       if (product.sourceType != 'MAKE_COMPONENT' &&
-          product.sourceType != 'SUBCONTRACT_MAKE')
+          product.sourceType != 'SUBCONTRACT_MAKE' &&
+          product.sourceType != 'AGGREGATE_MAKE')
         (product.salesOrderItemId?.isNotEmpty ?? false)
             ? MaterialAnalysisSourceInput(
                 salesOrderItemId: product.salesOrderItemId,
@@ -1967,6 +2039,16 @@ class _ProductionMaterialAnalysisPageState
                   child: _warehouseField(),
                 ),
               ),
+              if (analysis.analysisNo != null)
+                Tooltip(
+                  message: '分析编号（计划单号）${analysis.analysisNo}',
+                  child: _factChip(
+                    theme,
+                    Icons.tag_outlined,
+                    analysis.analysisNo!,
+                    height: _factChipHeight,
+                  ),
+                ),
               Tooltip(
                 message:
                     '分析版本 ${analysis.version} · '
@@ -2138,7 +2220,11 @@ class _ProductionMaterialAnalysisPageState
   /// 来源行去重出的订单列表(按单号升序，稳定顺序)。
   List<({String orderId, String billNo, String? clientName})>
   _linkedSalesOrders(ProductionMaterialAnalysisView analysis) {
-    const childSourceTypes = {'MAKE_COMPONENT', 'SUBCONTRACT_MAKE'};
+    const childSourceTypes = {
+      'MAKE_COMPONENT',
+      'SUBCONTRACT_MAKE',
+      'AGGREGATE_MAKE',
+    };
     final byId =
         <String, ({String orderId, String billNo, String? clientName})>{};
     for (final product in analysis.products) {

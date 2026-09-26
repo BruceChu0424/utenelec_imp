@@ -56,11 +56,16 @@ class SalesShipmentTaskWorkbench extends ConsumerStatefulWidget {
     super.key,
     required this.mode,
     this.embedded = false,
+    this.externalHeader,
     this.refreshTick = 0,
   });
 
   final SalesShipmentTaskWorkbenchMode mode;
   final bool embedded;
+
+  /// 宿主（业务审核中心）的大类行：挂进本页折叠头，随页一起滚走
+  /// （2026-09-24 用户口径「表格滑到顶」，置顶后只剩表格自身工具条）。
+  final Widget? externalHeader;
 
   /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前页。
   final int refreshTick;
@@ -614,7 +619,7 @@ class _SalesShipmentTaskWorkbenchState
       // 仓库模式保持 桌面表格 / 窄屏卡片 的既有形态。
       final desktop = breakpointForWidth(constraints.maxWidth).isExpanded;
       return _isFinance || desktop
-          ? _table(result, names, standalone: !widget.embedded)
+          ? _table(result, names)
           : _compact(result, names);
     }
 
@@ -636,15 +641,14 @@ class _SalesShipmentTaskWorkbenchState
 
   /// 财务+桌面共用的表格形态（财务含多选与批量动作；仓库纯只读）。
   ///
-  /// [standalone]（独立路由页）：摘要卡/筛选行进折叠头——上滑先收它们（表头
-  /// 随之顶到视口顶），继续滚动才滚表格内容，竖向滚动条由联动门控（全站表格
-  /// 滚动口径 2026-09-22）；嵌入形态（业务审核中心分段，有界 Tab 面板）保持
-  /// 常驻头 + 默认内滚。
+  /// 摘要卡/筛选行进折叠头——上滑先收它们（表头随之顶到视口顶），继续滚动才滚
+  /// 表格内容，竖向滚动条由联动门控（全站表格滚动口径 2026-09-22）。独立路由与
+  /// 业务审核中心嵌入态统一走这套（2026-09-24 用户口径「都要能表格置顶到头」，
+  /// 此前嵌入态保持常驻头 + 默认内滚，大字号下固定头挤压表格）。
   Widget _table(
     PagedResult<SalesDocListItem> result,
-    SalesMasterNameService names, {
-    bool standalone = false,
-  }) {
+    SalesMasterNameService names,
+  ) {
     final selectable =
         _isFinance &&
         ((result.items.any(_canSelectItem)) || _selectedItems.isNotEmpty);
@@ -652,6 +656,11 @@ class _SalesShipmentTaskWorkbenchState
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
+        // 宿主大类行随页滚走（2026-09-24「表格滑到顶」）。
+        if (widget.externalHeader != null) ...[
+          widget.externalHeader!,
+          const SizedBox(height: UtenSpacing.s12),
+        ],
         _summary(result.total),
         const SizedBox(height: UtenSpacing.s12),
         _filters(),
@@ -665,8 +674,8 @@ class _SalesShipmentTaskWorkbenchState
     final table = AbsorbPointer(
       absorbing: _busyDecision,
       child: MasterDataTableView<SalesDocListItem>(
-        // 独立页：primary 联动（折叠头收完 → 表格内滚）；嵌入形态默认内滚。
-        primary: standalone,
+        // primary 联动（折叠头收完 → 表格内滚），独立/嵌入两态同款。
+        primary: true,
         key: Key(
           _isFinance
               ? 'finance-shipment-audit-table'
@@ -705,18 +714,11 @@ class _SalesShipmentTaskWorkbenchState
         onPageChange: _load,
       ),
     );
-    if (standalone) {
-      return UtenCollapsingHeaderScrollView(
-        collapsingHeader: header,
-        body: table,
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        header,
-        Expanded(child: table),
-      ],
+    // 独立页与嵌入态（业务审核中心分段）统一折叠联动：上滑先收摘要/筛选，
+    // 表头顶到头再表内滚（2026-09-24，对齐物料分析页口径）。
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: header,
+      body: table,
     );
   }
 

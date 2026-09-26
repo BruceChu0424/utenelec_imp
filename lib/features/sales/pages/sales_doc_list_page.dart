@@ -91,6 +91,7 @@ class SalesDocListPage extends ConsumerStatefulWidget {
     this.initialStatus,
     this.initialHistory = false,
     this.embedded = false,
+    this.externalHeader,
   });
   final SalesDocType docType;
 
@@ -105,6 +106,10 @@ class SalesDocListPage extends ConsumerStatefulWidget {
   /// 嵌入态（2026-09-24 销售任务中心）：作为 /sales/tasks 对应单据大类的正文，
   /// 不渲染 Scaffold/AppBar；分段行、搜索、表格与独立列表页完全一致。
   final bool embedded;
+
+  /// 宿主（销售任务中心）的大类行：挂进本页折叠头，随页一起滚走
+  /// （2026-09-24 用户口径「表格滑到顶」，置顶后只剩表格自身工具条）。
+  final Widget? externalHeader;
 
   @override
   ConsumerState<SalesDocListPage> createState() => _SalesDocListPageState();
@@ -660,221 +665,231 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
           // 「顶部折叠 + 表格吸顶内滚」：分类工具条随上滑收起腾出空间，
           // 标题行钉在表格上方常驻，表格占满剩余空间内部滚动。
           return UtenCollapsingHeaderScrollView(
-            collapsingHeader: Padding(
-              padding: const EdgeInsets.only(
-                bottom: UtenSpacing.s8,
-                left: UtenSpacing.s4,
-                right: UtenSpacing.s4,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_isOrder) ...[
-                    // 大类行（仅订货单）：待生产/生产中/待发货/本月完成 + 搜索。
-                    // 原统计卡钻取口径不变（chain/closed/本月月初）。
-                    // 计数形态(三形态口径 ADR-100)：待生产/生产中的球在生产手上,
-                    // 单子还在流程里跑着、销售不用动手 → 黄色进行中徽章;
-                    // 「待发货」= 有可发量等销售去开出货单, 是销售自己的活 → 红徽章。
-                    // 它和「订单进度查询」的「可分批发货」是同一批订单, 两处都红
-                    // 是**对的**: 准则 §一 要求「同一语义的入口全平台必须用同一种
-                    // 形态」, 而分段计数从不进累加, 红两处也不会把总数数两遍;
-                    // 反过来在本页压成中性括号, 才会让人在订货单列表里漏掉要开的单。
-                    // 「本月完成」是终态, 中性括号; 「草稿」是本人没提交的活,
-                    // 与 hub 卡草稿红徽章同源同形(2026-09-21 父有红徽章子也要红)。
-                    UtenFilterToolbar<String>(
-                      segmentsKey: const Key('sales-doc-order-stages'),
-                      segments: [
-                        UtenFilterSegment(
-                          value: 'pending',
-                          label: '待生产',
-                          count: _stats?.pendingProduction,
-                          countForm: UtenSegmentCountForm.inProgress,
-                        ),
-                        UtenFilterSegment(
-                          value: 'production',
-                          label: '生产中',
-                          count: _stats?.inProduction,
-                          countForm: UtenSegmentCountForm.inProgress,
-                        ),
-                        UtenFilterSegment(
-                          value: 'shippable',
-                          label: '待发货',
-                          count: _stats?.shippable,
-                          countForm: UtenSegmentCountForm.actionable,
-                        ),
-                        UtenFilterSegment(
-                          value: 'monthDone',
-                          label: '本月完成',
-                          count: _stats?.monthDone,
-                        ),
-                        // 第 5 段「草稿」：草稿的 chain_status 恒为 0，落不进
-                        // 任何链路大类，此前在订货单列表里根本看不到。计数与
-                        // 新建页「草稿(N)」按钮同源（drafts/count）。
-                        UtenFilterSegment(
-                          value: _kDraftStage,
-                          label: '草稿',
-                          count: _draftCount,
-                          countForm: UtenSegmentCountForm.actionable,
-                        ),
-                      ],
-                      selected: _stage == null ? const {} : {_stage!},
-                      onSelectionChanged: _selectStage,
-                      searchHint: '搜索单据号 / 客户',
-                      initialSearchValue: _list.keyword,
-                      onSearchChanged: (v) {
-                        _list.keyword = v;
-                        _reload(1);
-                      },
-                    ),
-                    // 小类行：选中大类后出现（无「全部」段）。
-                    // 草稿段本身就是状态口径，再叠状态小类没有意义，隐藏。
-                    if (_stage != null && !_isDraftStage) ...[
-                      const SizedBox(height: UtenSpacing.s8),
-                      statusRow,
-                    ],
-                  ] else
-                    // 其他单据：单行范式（状态 + 末尾历史记录 + 搜索）。
-                    UtenFilterToolbar<_SalesDocSeg>(
-                      segmentsKey: Key(
-                        'sales-doc-status-${_cfg.type.pathSegment}',
-                      ),
-                      segments: [
-                        // 2026-09-21 用户口径: 父分类(hub 卡)有红徽章, 子分类也要
-                        // 有数——出货六阶段全部带数, 草稿 / 财务已退回红徽章
-                        // (财务退回件不再混在草稿里), 等待财务审核 / 已审待出库
-                        // 黄色进行中徽章(ADR-100), 已出库 / 红冲中性括号;
-                        // 报价/退货三状态只有草稿是活(红), 已审/红冲是终态(括号)。
-                        if (_shipmentStaged)
-                          for (final stage in SalesShipmentStage.segments)
-                            UtenFilterSegment(
-                              value: _SalesDocSeg.shipment(stage),
-                              label: salesShipmentStageLabel(stage),
-                              count: statusCounts?[stage],
-                              countForm: _shipmentStageCountForm(stage),
-                            )
-                        else
-                          for (final status in [
-                            kSalesStatusDraft,
-                            kSalesStatusApproved,
-                            kSalesStatusReversed,
-                          ])
-                            UtenFilterSegment(
-                              value: _SalesDocSeg.stage(status),
-                              label: salesStatusLabel(status),
-                              count: statusCounts?[_bucketOfStatus(status)],
-                              countForm: status == kSalesStatusDraft
-                                  ? UtenSegmentCountForm.actionable
-                                  : UtenSegmentCountForm.browsing,
-                            ),
-                        const UtenFilterSegment(
-                          value: _SalesDocSeg.history(),
-                          label: '历史记录',
-                        ),
-                      ],
-                      selected: seg == null ? const {} : {seg},
-                      onSelectionChanged: _selectStatusSeg,
-                      searchHint: '搜索单据号 / 客户',
-                      initialSearchValue: _list.keyword,
-                      onSearchChanged: (v) {
-                        _list.keyword = v;
-                        _reload(1);
-                      },
-                    ),
-                  // 历史记录段时间行。
-                  if (_isHistory) ...[
-                    const SizedBox(height: UtenSpacing.s8),
-                    UtenHistoryTimeFilter(
-                      key: Key(
-                        'sales-doc-history-time-${_cfg.type.pathSegment}',
-                      ),
-                      value: _historyTime,
-                      onChanged: _onHistoryTime,
-                    ),
-                  ],
-                  // 可发货置顶（订货单工作台小项）：有预留单排前 + 交货日升序。
-                  if (_isOrder &&
-                      !_isHistory &&
-                      _stage != null &&
-                      seg != null &&
-                      !seg.history) ...[
-                    const SizedBox(height: UtenSpacing.s8),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: ChoiceChip(
-                        label: const Text('可发货置顶'),
-                        avatar: Icon(
-                          Icons.vertical_align_top_rounded,
-                          size: 16,
-                          color: _shippableFirst
-                              ? theme.colorScheme.primary
-                              : null,
-                        ),
-                        selected: _shippableFirst,
-                        onSelected: (v) {
-                          setState(() => _shippableFirst = v);
-                          _reload(1);
-                        },
-                      ),
-                    ),
-                  ],
-                  // 页面头：Icon + 标题 + 计数 + 动作按钮（2026-09-24 移入滚走区，
-                  // 对齐物料分析页：上滑后表格直抵页顶，页头不再钉在表格上方）。
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      top: UtenSpacing.s8,
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _cfg.icon,
-                          size: 18,
-                          color: theme.colorScheme.primary,
-                        ),
-                        const SizedBox(width: UtenSpacing.s8),
-                        Text(
-                          '${_cfg.shortLabel} ($total)',
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const Spacer(),
-                        // 批量发货（SOP §一9，仅订货单）：面板勾选可发行 → 同客户合并出货草稿
-                        if (_canShip) ...[
-                          UtenButton(
-                            type: UtenButtonType.secondary,
-                            icon: Icons.local_shipping_outlined,
-                            onPressed: _batchShip,
-                            child: const Text('批量发货'),
-                          ),
-                          const SizedBox(width: UtenSpacing.s8),
-                        ],
-                        // 报价引入（SOP §三1，仅订货单）：弹窗选已审报价 → 一键转订货草稿
-                        if (_canConvertQuote) ...[
-                          UtenButton(
-                            type: UtenButtonType.secondary,
-                            icon: Icons.transform_outlined,
-                            onPressed: _importFromQuote,
-                            child: const Text('从报价引入'),
-                          ),
-                          const SizedBox(width: UtenSpacing.s8),
-                        ],
-                        if (_canCreate)
-                          UtenButton(
-                            type: UtenButtonType.tonal,
-                            icon: Icons.add_rounded,
-                            onPressed: () => context.push(
-                              SalesRoutePath.docNew(_cfg.type.pathSegment),
-                            ),
-                            child: const Text('新建'),
-                          ),
-                      ],
-                    ),
-                  ),
+            collapsingHeader: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 宿主大类行随页滚走（2026-09-24「表格滑到顶」）。
+                if (widget.externalHeader != null) ...[
+                  widget.externalHeader!,
+                  const SizedBox(height: UtenSpacing.s12),
                 ],
-              ),
+                Padding(
+                  padding: const EdgeInsets.only(
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_isOrder) ...[
+                        // 大类行（仅订货单）：待生产/生产中/待发货/本月完成 + 搜索。
+                        // 原统计卡钻取口径不变（chain/closed/本月月初）。
+                        // 计数形态(三形态口径 ADR-100)：待生产/生产中的球在生产手上,
+                        // 单子还在流程里跑着、销售不用动手 → 黄色进行中徽章;
+                        // 「待发货」= 有可发量等销售去开出货单, 是销售自己的活 → 红徽章。
+                        // 它和「订单进度查询」的「可分批发货」是同一批订单, 两处都红
+                        // 是**对的**: 准则 §一 要求「同一语义的入口全平台必须用同一种
+                        // 形态」, 而分段计数从不进累加, 红两处也不会把总数数两遍;
+                        // 反过来在本页压成中性括号, 才会让人在订货单列表里漏掉要开的单。
+                        // 「本月完成」是终态, 中性括号; 「草稿」是本人没提交的活,
+                        // 与 hub 卡草稿红徽章同源同形(2026-09-21 父有红徽章子也要红)。
+                        UtenFilterToolbar<String>(
+                          segmentsKey: const Key('sales-doc-order-stages'),
+                          segments: [
+                            UtenFilterSegment(
+                              value: 'pending',
+                              label: '待生产',
+                              count: _stats?.pendingProduction,
+                              countForm: UtenSegmentCountForm.inProgress,
+                            ),
+                            UtenFilterSegment(
+                              value: 'production',
+                              label: '生产中',
+                              count: _stats?.inProduction,
+                              countForm: UtenSegmentCountForm.inProgress,
+                            ),
+                            UtenFilterSegment(
+                              value: 'shippable',
+                              label: '待发货',
+                              count: _stats?.shippable,
+                              countForm: UtenSegmentCountForm.actionable,
+                            ),
+                            UtenFilterSegment(
+                              value: 'monthDone',
+                              label: '本月完成',
+                              count: _stats?.monthDone,
+                            ),
+                            // 第 5 段「草稿」：草稿的 chain_status 恒为 0，落不进
+                            // 任何链路大类，此前在订货单列表里根本看不到。计数与
+                            // 新建页「草稿(N)」按钮同源（drafts/count）。
+                            UtenFilterSegment(
+                              value: _kDraftStage,
+                              label: '草稿',
+                              count: _draftCount,
+                              countForm: UtenSegmentCountForm.actionable,
+                            ),
+                          ],
+                          selected: _stage == null ? const {} : {_stage!},
+                          onSelectionChanged: _selectStage,
+                          searchHint: '搜索单据号 / 客户',
+                          initialSearchValue: _list.keyword,
+                          onSearchChanged: (v) {
+                            _list.keyword = v;
+                            _reload(1);
+                          },
+                        ),
+                        // 小类行：选中大类后出现（无「全部」段）。
+                        // 草稿段本身就是状态口径，再叠状态小类没有意义，隐藏。
+                        if (_stage != null && !_isDraftStage) ...[
+                          const SizedBox(height: UtenSpacing.s8),
+                          statusRow,
+                        ],
+                      ] else
+                        // 其他单据：单行范式（状态 + 末尾历史记录 + 搜索）。
+                        UtenFilterToolbar<_SalesDocSeg>(
+                          segmentsKey: Key(
+                            'sales-doc-status-${_cfg.type.pathSegment}',
+                          ),
+                          segments: [
+                            // 2026-09-21 用户口径: 父分类(hub 卡)有红徽章, 子分类也要
+                            // 有数——出货六阶段全部带数, 草稿 / 财务已退回红徽章
+                            // (财务退回件不再混在草稿里), 等待财务审核 / 已审待出库
+                            // 黄色进行中徽章(ADR-100), 已出库 / 红冲中性括号;
+                            // 报价/退货三状态只有草稿是活(红), 已审/红冲是终态(括号)。
+                            if (_shipmentStaged)
+                              for (final stage in SalesShipmentStage.segments)
+                                UtenFilterSegment(
+                                  value: _SalesDocSeg.shipment(stage),
+                                  label: salesShipmentStageLabel(stage),
+                                  count: statusCounts?[stage],
+                                  countForm: _shipmentStageCountForm(stage),
+                                )
+                            else
+                              for (final status in [
+                                kSalesStatusDraft,
+                                kSalesStatusApproved,
+                                kSalesStatusReversed,
+                              ])
+                                UtenFilterSegment(
+                                  value: _SalesDocSeg.stage(status),
+                                  label: salesStatusLabel(status),
+                                  count: statusCounts?[_bucketOfStatus(status)],
+                                  countForm: status == kSalesStatusDraft
+                                      ? UtenSegmentCountForm.actionable
+                                      : UtenSegmentCountForm.browsing,
+                                ),
+                            const UtenFilterSegment(
+                              value: _SalesDocSeg.history(),
+                              label: '历史记录',
+                            ),
+                          ],
+                          selected: seg == null ? const {} : {seg},
+                          onSelectionChanged: _selectStatusSeg,
+                          searchHint: '搜索单据号 / 客户',
+                          initialSearchValue: _list.keyword,
+                          onSearchChanged: (v) {
+                            _list.keyword = v;
+                            _reload(1);
+                          },
+                        ),
+                      // 历史记录段时间行。
+                      if (_isHistory) ...[
+                        const SizedBox(height: UtenSpacing.s8),
+                        UtenHistoryTimeFilter(
+                          key: Key(
+                            'sales-doc-history-time-${_cfg.type.pathSegment}',
+                          ),
+                          value: _historyTime,
+                          onChanged: _onHistoryTime,
+                        ),
+                      ],
+                      // 可发货置顶（订货单工作台小项）：有预留单排前 + 交货日升序。
+                      if (_isOrder &&
+                          !_isHistory &&
+                          _stage != null &&
+                          seg != null &&
+                          !seg.history) ...[
+                        const SizedBox(height: UtenSpacing.s8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: ChoiceChip(
+                            label: const Text('可发货置顶'),
+                            avatar: Icon(
+                              Icons.vertical_align_top_rounded,
+                              size: 16,
+                              color: _shippableFirst
+                                  ? theme.colorScheme.primary
+                                  : null,
+                            ),
+                            selected: _shippableFirst,
+                            onSelected: (v) {
+                              setState(() => _shippableFirst = v);
+                              _reload(1);
+                            },
+                          ),
+                        ),
+                      ],
+                      // 页面头：Icon + 标题 + 计数 + 动作按钮（2026-09-24 移入滚走区，
+                      // 对齐物料分析页：上滑后表格直抵页顶，页头不再钉在表格上方）。
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          top: UtenSpacing.s8,
+                          bottom: UtenSpacing.s8,
+                          left: UtenSpacing.s4,
+                          right: UtenSpacing.s4,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _cfg.icon,
+                              size: 18,
+                              color: theme.colorScheme.primary,
+                            ),
+                            const SizedBox(width: UtenSpacing.s8),
+                            Text(
+                              '${_cfg.shortLabel} ($total)',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const Spacer(),
+                            // 批量发货（SOP §一9，仅订货单）：面板勾选可发行 → 同客户合并出货草稿
+                            if (_canShip) ...[
+                              UtenButton(
+                                type: UtenButtonType.secondary,
+                                icon: Icons.local_shipping_outlined,
+                                onPressed: _batchShip,
+                                child: const Text('批量发货'),
+                              ),
+                              const SizedBox(width: UtenSpacing.s8),
+                            ],
+                            // 报价引入（SOP §三1，仅订货单）：弹窗选已审报价 → 一键转订货草稿
+                            if (_canConvertQuote) ...[
+                              UtenButton(
+                                type: UtenButtonType.secondary,
+                                icon: Icons.transform_outlined,
+                                onPressed: _importFromQuote,
+                                child: const Text('从报价引入'),
+                              ),
+                              const SizedBox(width: UtenSpacing.s8),
+                            ],
+                            if (_canCreate)
+                              UtenButton(
+                                type: UtenButtonType.tonal,
+                                icon: Icons.add_rounded,
+                                onPressed: () => context.push(
+                                  SalesRoutePath.docNew(_cfg.type.pathSegment),
+                                ),
+                                child: const Text('新建'),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             body: !_shouldLoad
                 ? (_isHistory

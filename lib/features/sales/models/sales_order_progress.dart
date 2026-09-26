@@ -51,6 +51,8 @@ class SalesOrderProgressRow {
 
   /// PENDING 待排产（含部分排产：unplannedQty>0）/ PRODUCING 生产中 /
   /// SHIPPABLE 可分批发货 / SHIPPED 已发货；
+  /// DRAFT 草稿（status=0 未提交且未被财务驳回——本人开了头没交出去的单，
+  /// 只在进度页「草稿」段可见，不参与链路阶段派生）；
   /// 终态：CANCELED 已中止（整单取消）/ CLOSED 已结案——不占活跃阶段段，
   /// 只在「历史记录」（全部订单）中可见。
   final String stage;
@@ -131,6 +133,7 @@ class SalesOrderProgressRow {
 
 /// 进度阶段标签。
 String salesProgressStageLabel(String stage) => switch (stage) {
+  'DRAFT' => '草稿',
   'REJECTED' => '财务驳回',
   'PENDING' => '待排产',
   'PRODUCING' => '生产中',
@@ -196,6 +199,7 @@ String? salesProgressShipmentInFlightText(SalesOrderProgressRow row) {
 /// 同样是球在财务手上，共用一色是有意的，不是撞色。
 UtenStatusBadgeType salesProgressStageBadgeType(String stage) =>
     switch (stage) {
+      'DRAFT' => UtenStatusBadgeType.neutral,
       'REJECTED' => UtenStatusBadgeType.danger,
       'PENDING' => UtenStatusBadgeType.warning,
       'PRODUCING' => UtenStatusBadgeType.accent,

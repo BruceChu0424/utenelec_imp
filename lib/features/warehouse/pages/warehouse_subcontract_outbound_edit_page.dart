@@ -780,8 +780,8 @@ class _WarehouseSubcontractOutboundEditPageState
     );
   }
 
-  /// 折叠头(状态横幅 / 事实卡 / 出仓记录 / 表单卡) + 「出仓明细 (N)」吸顶 +
-  /// 明细表内滚——与销售出库详情同骨架。
+  /// 折叠头(状态横幅 / 事实卡 / 出仓记录 / 表单卡) + 明细表内滚——与销售出库
+  /// 详情同骨架（2026-09-25 起纯计数「出仓明细 (N)」标题随全站退役）。
   Widget _buildBody(OutboundTaskDetail detail, _PlanGate gate) {
     final names = ref.watch(mn.masterNameServiceProvider);
     return UtenContentContainer.wide(
@@ -806,33 +806,19 @@ class _WarehouseSubcontractOutboundEditPageState
             ],
           ),
         ),
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _l10n.warehouseSubcontractOutboundLinesTitle(_lines.length),
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            // —— 目标件(服务端已放行数量/已出仓/本次出仓; 无价格字段) ——
-            Expanded(
-              child: SubcontractOutboundDetailTable(
-                primary: true,
-                bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-                rows: [
-                  for (final line in _lines)
-                    SubcontractOutboundTableRow(
-                      draft: line,
-                      warehouse: names.warehouse(_warehouseId),
-                    ),
-                ],
-                editable: gate.canEdit && !_saving,
-                onChanged: () => setState(() {}),
+        // body：目标件明细表占满内滚（primary 拾取联动控制器）。
+        body: SubcontractOutboundDetailTable(
+          primary: true,
+          bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+          rows: [
+            for (final line in _lines)
+              SubcontractOutboundTableRow(
+                draft: line,
+                warehouse: names.warehouse(_warehouseId),
               ),
-            ),
           ],
+          editable: gate.canEdit && !_saving,
+          onChanged: () => setState(() {}),
         ),
       ),
     );

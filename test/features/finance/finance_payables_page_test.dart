@@ -353,6 +353,12 @@ void main() {
     expect(outer.position.pixels, closeTo(outer.position.maxScrollExtent, 0.5));
     expect(nestedState.innerController.offset, closeTo(0, 0.5));
 
+    // 停顿窗（2026-09-25）：置顶截停后的同一滚势被整格吞掉；停住后再滚才进表内。
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, 120)));
+    await tester.pumpAndSettle();
+    expect(nestedState.innerController.offset, closeTo(0, 0.5));
+    await tester.pump(const Duration(milliseconds: 400));
+
     await tester.sendEventToBinding(pointer.scroll(const Offset(0, 120)));
     await tester.pumpAndSettle();
 
@@ -364,6 +370,12 @@ void main() {
 
     expect(nestedState.innerController.offset, closeTo(0, 0.5));
     expect(outer.position.pixels, closeTo(outer.position.maxScrollExtent, 0.5));
+
+    // 回顶截停同样有停顿窗：窗内被吞；停住后头部才放出。
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, -80)));
+    await tester.pumpAndSettle();
+    expect(outer.position.pixels, closeTo(outer.position.maxScrollExtent, 0.5));
+    await tester.pump(const Duration(milliseconds: 400));
 
     await tester.sendEventToBinding(pointer.scroll(const Offset(0, -80)));
     await tester.pumpAndSettle();

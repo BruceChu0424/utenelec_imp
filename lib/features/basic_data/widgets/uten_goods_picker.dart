@@ -26,6 +26,8 @@ import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_split_view.dart';
+import '../../../components/layout/uten_table_column_kit.dart'
+    show utenTableSelectedRowColor;
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
@@ -1030,6 +1032,9 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
             (widget.multiSelect || widget.requireConfirm) && picked;
         return ListTile(
           selected: showPicked,
+          // 选中行淡绿背景（全站表格统一口径 utenTableSelectedRowColor，
+          // 2026-09-13 起全站统一、2026-09-22 加深后的同一份色值）。
+          selectedTileColor: utenTableSelectedRowColor(theme),
           // 一行显示：名字(编号) · 颜色（不显单位/规格/库位，见 _goodsLabel 注释）。
           title: Text(
             _goodsLabel(g),

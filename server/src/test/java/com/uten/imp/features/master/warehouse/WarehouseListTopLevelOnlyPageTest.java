@@ -49,7 +49,8 @@ class WarehouseListTopLevelOnlyPageTest {
                 mock(TxSessionVars.class),
                 mock(EntityManager.class),
                 mock(MasterCodeService.class),
-                organizations);
+                organizations,
+                mock(WarehouseKeeperService.class));
 
         PageResponse<WarehouseListItem> page = service.list(
                 new WarehouseQueryFilter(null, null, null, null, null, null, null, null), 1, 20);

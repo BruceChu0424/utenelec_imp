@@ -92,7 +92,8 @@ class LowSensitivityDetailViewAuditControllerTest {
         when(mould.getName()).thenReturn("模具A");
         when(mould.getLegacyId()).thenReturn(2);
         when(mouldService.detail(mouldId)).thenReturn(mould);
-        assertSame(mould, new MouldController(mouldService, recorder).detail(mouldId));
+        assertSame(mould, new MouldController(mouldService, recorder,
+                null, null, null, null, null).detail(mouldId));
         verify(recorder).record(
                 "view_mould_detail", "moulds", mouldId, "模具A", 2, "模具");
 
@@ -125,7 +126,8 @@ class LowSensitivityDetailViewAuditControllerTest {
         when(warehouse.getLegacyId()).thenReturn(5);
         when(warehouseService.detail(warehouseId)).thenReturn(warehouse);
         assertSame(warehouse,
-                new WarehouseController(warehouseService, null, recorder).detail(warehouseId));
+                new WarehouseController(warehouseService, null, recorder,
+                        null, null, null, null, null).detail(warehouseId));
         verify(recorder).record(
                 "view_warehouse_detail", "warehouses", warehouseId, "WH-01", 5, "仓库");
 
@@ -135,7 +137,8 @@ class LowSensitivityDetailViewAuditControllerTest {
         when(color.getCode()).thenReturn("RED");
         when(color.getLegacyId()).thenReturn(6);
         when(colorService.detail(colorId)).thenReturn(color);
-        assertSame(color, new ColorController(colorService, recorder).detail(colorId));
+        assertSame(color, new ColorController(colorService, recorder,
+                null, null, null, null, null).detail(colorId));
         verify(recorder).record(
                 "view_color_detail", "colors", colorId, "RED", 6, "颜色");
 
@@ -145,7 +148,8 @@ class LowSensitivityDetailViewAuditControllerTest {
         when(unit.getCode()).thenReturn("PCS");
         when(unit.getLegacyId()).thenReturn(7);
         when(unitService.detail(unitId)).thenReturn(unit);
-        assertSame(unit, new UnitController(unitService, recorder).detail(unitId));
+        assertSame(unit, new UnitController(unitService, recorder,
+                null, null, null, null, null).detail(unitId));
         verify(recorder).record(
                 "view_unit_detail", "units", unitId, "PCS", 7, "计量单位");
     }

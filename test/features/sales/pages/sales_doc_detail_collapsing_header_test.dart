@@ -88,14 +88,15 @@ void main() {
     await _pump(tester, size: const Size(1280, 900));
 
     expect(find.byType(UtenCollapsingHeaderScrollView), findsOneWidget);
-    expect(find.text('明细 (20)'), findsOneWidget);
+    // 2026-09-25 起纯计数「明细 (N)」标题退役，明细表本体即 body 锚点。
+    expect(find.byType(MasterDataTableView<SalesDocItem>), findsOneWidget);
     await expectUtenHeaderCollapses(
       tester,
       headerAnchor: find.text('单据号'),
       bodyAnchor: find.byType(MasterDataTableView<SalesDocItem>),
     );
-    // 明细标题行是 body 里表格的兄弟：头部收起后仍钉在 body 顶。
-    expect(find.text('明细 (20)'), findsOneWidget);
+    // 明细表在 body 里：头部收起后仍在原位可内滚。
+    expect(find.byType(MasterDataTableView<SalesDocItem>), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

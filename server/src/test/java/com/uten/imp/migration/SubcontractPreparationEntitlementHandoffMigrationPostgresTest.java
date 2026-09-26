@@ -363,8 +363,8 @@ class SubcontractPreparationEntitlementHandoffMigrationPostgresTest {
                 INSERT INTO production_plans(id,bill_no,bill_date,status) VALUES(?,'SJ20260831000001',DATE '2026-08-31',1)
                 """,makePlanId);
         execute(connection,"""
-                INSERT INTO production_plan_items(id,plan_id,bill_no,bill_date,product_no,goods_id,unit_id,unit_rate,qty,fqty,iqty)
-                VALUES(?,?,'SJ20260831000001',DATE '2026-08-31',?,?,?,1,10,10,10)
+                INSERT INTO production_plan_items(id,plan_id,bill_no,bill_date,product_no,goods_id,unit_id,unit_rate,qty,fqty,iqty,allowed_overproduction_rate)
+                VALUES(?,?,'SJ20260831000001',DATE '2026-08-31',?,?,?,1,10,10,10,0.10)
                 """,makePlanItemId,makePlanId,"V447-MAKE-"+makePlanItemId,goodsId,unitId);
         execute(connection,"""
                 INSERT INTO stock_documents(id,doc_type,bill_no,bill_date,warehouse_id,status)

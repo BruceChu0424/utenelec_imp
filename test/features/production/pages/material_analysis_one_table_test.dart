@@ -59,22 +59,29 @@ bool _enabled(WidgetTester tester, Finder finder) =>
     tester.widget<InkWell>(finder).onTap != null;
 
 /// 这一行的勾选框此刻勾没勾(行必须有勾选框, 没有就直接失败)。
-bool _rowChecked(WidgetTester tester, String line) =>
-    tester
-        .widget<Checkbox>(
-          find.descendant(
-            of: find.byKey(ValueKey('material-table-row-$line')),
-            matching: find.byType(Checkbox),
-          ),
-        )
-        .value ==
-    true;
+///
+/// 横滚时行首勾选框会有一份「钉在视口左缘」的冻结副本(UtenFrozenLeadingColumn
+/// 复用同一个 selectionCell，设计如此)：加了「可用数量」列后测试里第一次出现
+/// 横向滚动，同一行能找到两份 Checkbox——值必然一致，逐份断言而不是强求唯一。
+bool _rowChecked(WidgetTester tester, String line) {
+  final boxes = find
+      .descendant(
+        of: find.byKey(ValueKey('material-table-row-$line')),
+        matching: find.byType(Checkbox),
+      )
+      .evaluate();
+  expect(boxes, isNotEmpty, reason: '行 $line 没有勾选框');
+  return boxes.every((box) => (box.widget as Checkbox).value == true);
+}
 
 /// 物料行首列的勾选框(顶层产品行的 key 是 material-bom-product-<产品行 id>)。
-Finder _rowCheckbox(String line) => find.descendant(
-  of: find.byKey(ValueKey('material-table-row-$line')),
-  matching: find.byType(Checkbox),
-);
+/// 取最后一份：横滚出现冻结副本时原件已滚出视口，钉在左缘的副本才是可点的。
+Finder _rowCheckbox(String line) => find
+    .descendant(
+      of: find.byKey(ValueKey('material-table-row-$line')),
+      matching: find.byType(Checkbox),
+    )
+    .last;
 
 /// 敲键后停手 200ms 那次整页刷新(勾选框 / 底部按钮 / 底色都在那一拍才变)。
 /// pumpAndSettle 只等有帧要画, 不等定时器, 所以要明确推过 200ms; 悬浮的批量
@@ -90,20 +97,23 @@ Future<void> _settlePreview(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Finder _productCheckbox(String product) => find.descendant(
-  of: find.byKey(ValueKey('material-bom-product-$product')),
-  matching: find.byType(Checkbox),
-);
+Finder _productCheckbox(String product) => find
+    .descendant(
+      of: find.byKey(ValueKey('material-bom-product-$product')),
+      matching: find.byType(Checkbox),
+    )
+    .last;
 
 /// 勾上一行：直接拨勾选框的 onChanged——吸顶表头与视口高度会让个别行的勾选框在
 /// 测试里点不着，而这里要验的是勾选之后的编排，不是点击命中。
+/// 横滚时同一行有两份 Checkbox(冻结副本，见 [_rowCheckbox])，取最后一份。
 Future<void> _check(WidgetTester tester, Finder checkbox) async {
-  if (tester.widget<Checkbox>(checkbox).value == true) return;
+  if (tester.widget<Checkbox>(checkbox.last).value == true) return;
   await _toggle(tester, checkbox);
 }
 
 Future<void> _toggle(WidgetTester tester, Finder checkbox) async {
-  tester.widget<Checkbox>(checkbox).onChanged!(true);
+  tester.widget<Checkbox>(checkbox.last).onChanged!(true);
   // 拨完先出一帧：勾选框的回调捕获的是各自构建时的选中集，连拨两下不出帧，
   // 第二下会拿旧集合把第一下撤掉——那是测试写法的坑，不是页面的。
   await tester.pump();
@@ -370,6 +380,24 @@ void main() {
     );
   });
 
+  testWidgets('已下单的汇总物料行：下单数量锁成🔒累计已下单，不再是无锁裸文本(2026-09-25)', (tester) async {
+    await _pump(tester);
+    // m-3 已有下游申请（allocated 800）：切到「按物料汇总」视图，这一物料的
+    // 下单数量必须是锁定样式（锁图标 + 累计已下单），裸文本会被读成「没锁
+    // 住、还能改」（2026-09-25 用户实机误读）。
+    await tester.tap(find.byKey(const ValueKey('material-bom-layout-material')));
+    await tester.pumpAndSettle();
+    final orderText = find.byKey(
+      const ValueKey('material-aggregate-order-g-m-3|本色|unit-1'),
+    );
+    expect(orderText, findsOneWidget);
+    expect(
+      find.byIcon(Icons.lock_outline_rounded),
+      findsWidgets,
+      reason: '已下单的汇总行下单数量必须带锁图标',
+    );
+  });
+
   testWidgets('提交返回和重新打开的快照备料量增长时，原始需要数量保持不变', (tester) async {
     Map<String, dynamic>? persisted;
     await _pump(
@@ -407,7 +435,9 @@ void main() {
     await tester.enterText(field, '3100');
     await tester.pump(const Duration(milliseconds: 350));
     await tester.pumpAndSettle();
-    expect(find.text('其中公共备货 100'), findsOneWidget);
+    // 2026-09-25 用户口径：下单数量格下面不再显示任何提示（含公共备货分解）。
+    expect(find.textContaining('公共备货'), findsNothing);
+    expect(find.text('待核对来源分配'), findsNothing);
     final sent = requests
         .lastWhere(
           (request) => request.path.endsWith('/aggregate-orders/preview'),
@@ -467,7 +497,9 @@ void main() {
     live['fingerprint'] = 'concurrent-refresh';
     await _submitSelected(tester);
     expect(tester.widget<TextField>(field).controller!.text, '3100');
-    expect(find.textContaining('本次保留 3 个来源'), findsOneWidget);
+    // 来源被删后草稿仍保留全部三个来源：提示小字已按 2026-09-25 口径退役，
+    // 改从下一趟预览请求断言来源集合没丢。
+    expect(find.textContaining('本次保留'), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.tap(find.byKey(const Key('material-aggregate-cancel-drafts')));
     await tester.pumpAndSettle();
@@ -530,6 +562,127 @@ void main() {
           .data,
       '3100',
     );
+  });
+
+  testWidgets('按产品视图全选下单：跨产品同料自动改走汇总通道合并，顶层照常逐产品', (tester) async {
+    await _pump(
+      tester,
+      overSupply: true,
+      permissions: {
+        ..._overSupplyPermissions,
+        Perm.productionMaterialAnalysisGenerate,
+      },
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        return _threeSharedBuySources(data);
+      },
+      defaultWorkshops: _workshopDefaultsFor(const [
+        'parent-0',
+        'parent-1',
+        'parent-2',
+      ]),
+      aggregatePreview: _sharedAggregatePreview,
+      aggregateSubmit: _sharedAggregateSubmit,
+    );
+    // 默认按产品视图全选：3 个顶层产品 + 各自一条同料采购行(同货品/颜色/单位/BUY)。
+    for (var i = 0; i < 3; i++) {
+      await _check(tester, _productCheckbox('product-$i'));
+    }
+    await tester.pumpAndSettle();
+    requests.clear();
+    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+    await tester.pumpAndSettle();
+    // 主确认框要说明同料将合并，不再各下各的。
+    expect(find.textContaining('1 种物料在多个产品'), findsOneWidget);
+    expect(find.textContaining('本次跳过'), findsNothing);
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
+    );
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpAndSettle();
+    // 一次确认全部下达(用户口径 2026-09-25「直接弹一次是否确认」)：汇总段不再
+    // 逐轮弹自己的确认框——主确认框之后不应再出现任何 AlertDialog。
+    expect(find.byType(AlertDialog), findsNothing);
+
+    // 顶层照常走按产品通道：一次 issue-plans 带 3 条顶层 planDrafts。
+    final plans = _submits()
+        .where((request) => request.path.endsWith('/issue-plans'))
+        .toList();
+    expect(plans, hasLength(1));
+    final lines = plans.single.body?['lines'] as List;
+    expect(
+      lines.map((line) => (line as Map)['analysisLineId']),
+      unorderedEquals(['product-0', 'product-1', 'product-2']),
+    );
+    // 同料采购行不再逐行走 notify。
+    expect(
+      _submits().where((request) => request.path.endsWith('/notify')),
+      isEmpty,
+    );
+    // 汇总通道一次提交一组三来源、总量 3000。
+    final writes = requests
+        .where((request) => request.path.endsWith('/aggregate-orders/submit'))
+        .toList();
+    expect(writes, hasLength(1));
+    final group = _records(writes.single.body!['groups']).single;
+    expect((group['materialLineIds'] as List), hasLength(3));
+    expect(
+      group['materialLineIds'],
+      containsAll(<String>['shared-0', 'shared-1', 'shared-2']),
+    );
+    expect(group['qty'], '3000');
+    expect(group['route'], 'BUY');
+    expect(find.text('下单(0)'), findsOneWidget);
+  });
+
+  testWidgets('只缺生产车间/负责人的行：必填格实时红框，下单拦下滚动定位，不给提交', (tester) async {
+    await _pump(
+      tester,
+      overSupply: true,
+      permissions: {
+        ..._overSupplyPermissions,
+        Perm.productionMaterialAnalysisGenerate,
+      },
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        return _threeSharedBuySources(data);
+      },
+      // 顶层(自制)两格必填且没有任何默认：格子必须实时描红。
+      aggregatePreview: _sharedAggregatePreview,
+      aggregateSubmit: _sharedAggregateSubmit,
+    );
+    // 必填红框：生产车间/负责人格为空即描红(RequiredCellFrame 同款主题红边)。
+    final rootWorkshop = find.byKey(
+      ValueKey('material-analysis-workshop-${_groupKey('root-0')}'),
+    );
+    final rootWorker = find.byKey(
+      ValueKey('material-analysis-worker-${_groupKey('root-0')}'),
+    );
+    expect(_framedRed(tester, rootWorkshop), isTrue);
+    expect(_framedRed(tester, rootWorker), isTrue);
+    for (var i = 0; i < 3; i++) {
+      await _check(tester, _productCheckbox('product-$i'));
+    }
+    await tester.pumpAndSettle();
+    requests.clear();
+    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    // 必填没填完不给下单：不弹任何确认框(与上一个用例「带默认车间即放行」对照)，
+    // 一个写请求都不发；红框格原样留着让人填。
+    expect(tester.takeException(), isNull);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(_submits(), isEmpty);
+    expect(
+      requests.where(
+        (request) => request.path.endsWith('/aggregate-orders/submit'),
+      ),
+      isEmpty,
+    );
+    expect(_framedRed(tester, rootWorkshop), isTrue);
   });
 
   for (final scenario in [
@@ -1088,9 +1241,9 @@ void main() {
     });
   }
 
-  testWidgets('列定稿为 16 列，四列新增列都在表头里', (tester) async {
+  testWidgets('列定稿为 17 列，可用数量回到需要数量与还缺数量之间', (tester) async {
     await _pump(tester);
-    expect(find.text('表头设置 16/16'), findsOneWidget);
+    expect(find.text('表头设置 17/17'), findsOneWidget);
     for (final label in const [
       '物料办理',
       '物料名称',
@@ -1099,6 +1252,7 @@ void main() {
       '单位',
       '供应方式',
       '需要数量',
+      '可用数量',
       '还缺数量',
       '下单数量',
       '允许超产比例',
@@ -1111,8 +1265,8 @@ void main() {
     ]) {
       expect(find.text(label), findsWidgets, reason: '表头缺少「$label」列');
     }
-    // 退役的四列不能再出现。
-    for (final retired in const ['可用数量', '在途未到', '公共认领未实收', '在途调拨']) {
+    // 退役的三列不能再出现（「可用数量」2026-09-25 起按公共口径回归）。
+    for (final retired in const ['在途未到', '公共认领未实收', '在途调拨']) {
       expect(find.text(retired), findsNothing, reason: '「$retired」列应已退役');
     }
   });
@@ -1161,6 +1315,24 @@ void main() {
     expect(append.controller!.text, '0');
     // 「追加」这个语义现在只由追加下单格承载, 办理列不再有下达/追加按钮。
     expect(_issueButton('m-3'), findsNothing);
+  });
+
+  testWidgets('没有量可下的行：下单格只读 0，不再渲染成可编辑的红 0(2026-09-26)', (tester) async {
+    await _pump(tester);
+    // 同料兄弟行(需要数量 0)与现货盖住的行(缺口 0)都不给输入框——
+    // 全选下单结束后满屏「可编辑的红 0」会让人以为中间很多行没下成。
+    expect(_orderQty('m-sibling'), findsNothing);
+    expect(_orderQty('m-covered'), findsNothing);
+    final readonly = find.byWidgetPredicate(
+      (widget) =>
+          widget is Tooltip &&
+          (widget.message ?? '').contains('没有要下单的量'),
+    );
+    expect(readonly, findsNWidgets(2));
+    // 追加格照旧是「还没下达过」的纯文本 0。
+    expect(_appendQty('m-sibling'), findsNothing);
+    // 有缺口的行不受影响，照旧可填。
+    expect(_orderQty('m-pc'), findsOneWidget);
   });
 
   testWidgets('主表追加格也带动子层：在已下达父件的追加格填数，子件按新数量重算', (tester) async {
@@ -1601,8 +1773,11 @@ void main() {
     await tester.tap(find.descendant(of: row, matching: find.byType(Checkbox)));
     await tester.pumpAndSettle();
     expect(find.text('下单(1)'), findsOneWidget);
-    // 路线按钮仍在，两个动作各算各的数：m-2 已确认，不计进确认路线。
-    expect(find.text('确认路线(0)'), findsOneWidget);
+    // 2026-09-25 确认路线退役：悬浮区只剩「下单」，确认路线按钮不再渲染。
+    expect(
+      find.byKey(const Key('material-analysis-create-routes')),
+      findsNothing,
+    );
   });
 
   testWidgets('自制行的下单数量可填：预填毛量, 不再是只读的整批接管', (tester) async {
@@ -2403,7 +2578,25 @@ Future<void> _pump(
           result = data;
         } else if (request.path.endsWith('/routes') &&
             request.method == 'PUT') {
+          // 2026-09-25 确认路线退役：进页自动确认会打这条通道——夹具对齐
+          // 真实服务端，回写 confirmed（否则脏组永存，拖死后续下单拦截）。
           data = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
+          for (final decision
+              in (request.data as Map<String, dynamic>)['decisions']
+                  as List) {
+            final decisionMap = decision as Map<String, dynamic>;
+            for (final row
+                in (data['flatMaterials'] as List)
+                    .cast<Map<String, dynamic>>()) {
+              final matches = row['actionGroupKey'] ==
+                      decisionMap['actionGroupKey'] ||
+                  row['materialLineId'] == decisionMap['materialLineId'];
+              if (!matches) continue;
+              row['sourceConfirmed'] = decisionMap['route'];
+              row['sourceSuggestion'] = decisionMap['route'];
+              row['routeConfirmed'] = true;
+            }
+          }
           result = data;
         } else if (request.path.endsWith('/sales-candidates')) {
           result = {
@@ -2847,7 +3040,13 @@ Map<String, dynamic> _analysis({bool overSupply = false}) => {
       confirmed: 'MAKE',
       netShortageQty: 400,
     ),
-    _material(line: 'm-1', name: '未定路线件', confirmed: null, netShortageQty: 800),
+    _material(
+      line: 'm-1',
+      name: '未定路线件',
+      confirmed: null,
+      suggestion: null,
+      netShortageQty: 800,
+    ),
     // 已下达的自制父件 + 它的采购子件：主表上「父改子跟」与「追加也要带动子层」
     // 两条口径都落在这一对上(父件只能在追加格填数)。
     _material(
@@ -2994,6 +3193,25 @@ Map<String, dynamic> _analysis({bool overSupply = false}) => {
           'allocatedQty': 50,
         },
       ],
+    ),
+    // 同料兄弟行：同一物料挂在别棵产品树上的 0 需求实例(需求量记在需求行上)。
+    // 2026-09-26 用户实机：全选下单后这种行渲染成「可编辑的红 0」+「还没下达过」，
+    // 看起来就是「中间很多行没下成」——现在下单格只读。
+    _material(
+      line: 'm-sibling',
+      name: '同料兄弟行',
+      confirmed: 'BUY',
+      netShortageQty: 0,
+      stockQty: 0,
+      requiredQty: 0,
+    ),
+    // 缺口已由现货盖住、从未下过单的行：同样没有量可下。
+    _material(
+      line: 'm-covered',
+      name: '现货盖住的行',
+      confirmed: 'BUY',
+      netShortageQty: 0,
+      stockQty: 1000,
     ),
   ],
   // 客户端按 operationType 区分「真下过单」与「只是把别处的在途搬过来」。
@@ -3417,6 +3635,11 @@ Map<String, dynamic> _material({
   String? planAnchorAnalysisLineId,
   // 本批分到的合格现货(默认 200)；已下达的父件给 0 = 「下了 1000 刚好覆盖需求 1000」。
   double stockQty = 200,
+  // 同一物料挂在别棵产品树上的兄弟行：需求量记在需求行上，这里整个是 0。
+  double requiredQty = 1000,
+  // 2026-09-25 确认路线退役：夹具默认主档建议=采购（有建议的行进页自动确认）；
+  // 要测「红框待选」形态的行传 null（服务端 REVIEW）。
+  String? suggestion = 'BUY',
 }) => {
   'subcontractOutboundForm': ?subcontractOutboundForm,
   'planAnchorAnalysisLineId': ?planAnchorAnalysisLineId,
@@ -3434,17 +3657,17 @@ Map<String, dynamic> _material({
   'unitId': 'unit-1',
   'level': level,
   'path': ['智能多功能插座', name],
-  'requiredQty': 1000,
-  'sourceRequiredQty': 1000,
+  'requiredQty': requiredQty,
+  'sourceRequiredQty': requiredQty,
   'allocatedAvailableQty': stockQty,
   'availableQty': stockQty,
-  'shortageQty': 1000 - stockQty,
-  'demandSupplyGapQty': 1000 - stockQty,
+  'shortageQty': requiredQty - stockQty > 0 ? requiredQty - stockQty : 0,
+  'demandSupplyGapQty': requiredQty - stockQty > 0 ? requiredQty - stockQty : 0,
   'inboundQty': inboundQty,
   'additionalSupplyRecommendedQty': grossQty ?? netShortageQty,
   'netShortageQty': netShortageQty,
   'sharedFutureAvailableQty': sharedFutureAvailableQty,
-  'sourceSuggestion': 'BUY',
+  'sourceSuggestion': suggestion,
   'sourceConfirmed': confirmed,
   'routeConfirmed': confirmed != null,
   'controlStage': 'START',

@@ -281,6 +281,11 @@ abstract final class ApiEndpoints {
       '/master/goods/$id/bom/batch-delete';
   static String goodsBomExport(String id) => '/master/goods/$id/bom/export';
   // 货品批量导入：detect 只读检测 / commit 原子导入 / latest 最近批次 / undo 撤回。
+  // 组装信息导入（2026-09-25）：格式 = 配件清单导出 13 列，序号级联段表达层级。
+  static String goodsBomImportDetect(String goodsId) =>
+      '/master/goods/$goodsId/bom/import/detect';
+  static String goodsBomImportCommit(String goodsId) =>
+      '/master/goods/$goodsId/bom/import/commit';
   static const goodsImportDetect = '/master/goods/import/detect';
   static const goodsImportCommit = '/master/goods/import/commit';
   static const goodsImportLatest = '/master/goods/import/latest';

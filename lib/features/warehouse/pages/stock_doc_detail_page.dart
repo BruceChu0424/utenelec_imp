@@ -2,7 +2,7 @@
 //
 // 2026-09-11 折叠头+表内滚改版（对齐采购/货品资料页）：整页 ListView 改
 // UtenCollapsingHeaderScrollView——上滑先折叠头部（提示条/生产链横幅/表头卡/出库凭证），
-// 「明细 (N)」标题顶到页面顶部后再滚明细表内部。
+// 之后滚明细表内部（2026-09-25 起「明细 (N)」计数标题随全站退役）。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -1053,20 +1053,13 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                             ),
                           ),
                         ),
-                        // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
+                        // body：表格占满内滚（primary 拾取联动控制器）。
                         body: Padding(
                           padding: const EdgeInsets.all(UtenSpacing.s12),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               // 明细区：统一表格样式（与全站报表/主档同款），不再是卡片 ListTile。
-                              Text(
-                                '明细 (${_d!.items.length})',
-                                style: theme.textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: UtenSpacing.s8),
                               // 2026-09-12 用户口径「备注上面一个总的，下面每行
                               // 一个小的」：总备注在这里，行备注在表格「行备注」列。
                               if (widget.docType == StockDocType.draw &&

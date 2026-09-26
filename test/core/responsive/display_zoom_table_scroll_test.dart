@@ -133,6 +133,10 @@ void main() {
       await _wheel(tester, distance: 1000);
       expect(outer.offset, closeTo(outer.position.maxScrollExtent, 0.01));
       expect(inner.pixels, 0);
+      // 停顿窗（2026-09-25）：截停后的同一滚势被整格吞掉。
+      await _wheel(tester, distance: _gateDistance * zoom);
+      expect(inner.pixels, 0);
+      await tester.pump(const Duration(milliseconds: 400));
       // 交接门仍按画布距离计算，恰好吃完门不会提前滚入表体。
       await _wheel(tester, distance: _gateDistance * zoom);
       expect(inner.pixels, 0);
@@ -384,7 +388,11 @@ void main() {
     expect(outer.offset, closeTo(outer.position.maxScrollExtent, 0.01));
     expect(inner.pixels, 0);
 
-    // 吃完交接门的空行程后，表内开始滚。
+    // 停顿窗内的同方向格被吞（同一滚势到点即停）；停住后…
+    await _wheel(tester, distance: _gateDistance * 1.5 + _wheelDistance);
+    expect(inner.pixels, 0);
+    await tester.pump(const Duration(milliseconds: 400));
+    // …吃完交接门的空行程后，表内开始滚。
     await _wheel(tester, distance: _gateDistance * 1.5 + _wheelDistance);
     expect(inner.pixels, greaterThan(0));
 
@@ -393,6 +401,12 @@ void main() {
     await _wheel(tester, distance: -(inner.pixels + _gateDistance * 2 + 200));
     expect(inner.pixels, closeTo(0, 0.01));
     expect(outer.offset, closeTo(pageTop, 0.01));
+    // 回顶截停同样有停顿窗：窗内的小格被吞；停住后头部才放出。
+    //（单格 ≥ 距离放行线 250 逻辑像素会直接放行——那是「滚不停=明确要继续」
+    // 的新口径，别用大格模拟窗内余势。）
+    await _wheel(tester, distance: -150);
+    expect(outer.offset, closeTo(pageTop, 0.01));
+    await tester.pump(const Duration(milliseconds: 400));
     await _wheel(tester, distance: -500);
     expect(outer.offset, lessThan(pageTop));
     expect(tester.takeException(), isNull);

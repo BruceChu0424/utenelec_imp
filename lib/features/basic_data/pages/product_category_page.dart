@@ -510,7 +510,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       ],
       onCreate: (pane) async {
         await context.push(RoutePath.basicinfoGoodsNew(pane.categoryId));
-        if (mounted) await pane.reload();
+        // 新建货品编号最大，按编号正序落在列表最下面——跳到最后一页能看到它。
+        if (mounted) await _reloadToLastPage(pane);
       },
       onOpen: _showGoodsDetail,
       rowMenuOverride: _goodsMenuItems,
@@ -680,38 +681,55 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     if (it.defaultSupplierId != null) 'defaultSupplierId': it.defaultSupplierId,
   };
 
-  /// 「复制货品」：整份详情快照进 App 内剪贴板。
+  /// 「复制货品」：整份详情 + 全部组件行一起快照进 App 内剪贴板（全量复制）。
   Future<void> _copyGoods(
     MasterEntityPaneController<GoodsListItem, GoodsDetail> pane,
     GoodsListItem g,
   ) async {
-    final d = await pane.runExclusive(
-      () => context.guardLoad(
+    final clip = await pane.runExclusive(() async {
+      final d = await context.guardLoad(
         () => ref.read(goodsRepositoryProvider).detail(g.id),
         errorFallback: '加载货品详情失败', // TODO(l10n): 补 arb
-      ),
-    );
-    if (d == null || !mounted) return;
-    ref.read(goodsClipboardProvider.notifier).copyGoods(d);
+      );
+      if (d == null) return null;
+      // 组件行读取失败不打断复制：货品字段照常复制，组件留空并说明原因。
+      List<GoodsBomItem> bom = const [];
+      try {
+        bom = await ref.read(goodsBomRepositoryProvider).list(g.id);
+      } on ApiException catch (e) {
+        if (mounted) {
+          context.appError('组件信息没有复制成功：${e.message}'); // TODO(l10n): 补 arb
+        }
+      }
+      return GoodsCopyClip(detail: d, bomItems: bom);
+    });
+    if (clip == null || !mounted) return;
+    ref.read(goodsClipboardProvider.notifier).copyGoods(clip);
+    final d = clip.detail;
     context.appSuccess(
-      '已复制货品「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '')}」，可在目标分类下粘贴',
+      '已复制货品「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '')}」'
+      '${clip.bomItems.isEmpty ? '' : '(含 ${clip.bomItems.length} 个组件)'}，可在目标分类下粘贴',
     );
   }
 
-  /// 按剪贴板快照在当前分类下新建货品(编号自动生成，名称加「(n)」副本标记)。
-  /// 每个新货品一次保存请求；失败的逐条说明原因，不吞掉。
+  /// 按剪贴板快照在当前分类下新建货品(编号自动生成，名称加「(n)」副本标记)，
+  /// 随后把快照里的组件行原样粘到新货品上(全量复制)。每个新货品两次请求
+  /// (新建货品 + 服务端原子粘组件)；失败的逐条说明原因，不吞掉。
+  /// 完成后跳到列表最后一页——列表按编号正序，新副本编号最大，落在最下面。
   Future<void> _pasteGoodsCopies(
     MasterEntityPaneController<GoodsListItem, GoodsDetail> pane, {
     required int copies,
   }) async {
     final clips = ref.read(goodsClipboardProvider).goodsList;
     if (clips.isEmpty) return;
+    final bomRepo = ref.read(goodsBomRepositoryProvider);
     final outcome = await pane.runExclusive(() async {
       final repo = ref.read(goodsRepositoryProvider);
       final taken = _loadedGoodsNames(pane);
       final results = <MasterBatchItemResult>[];
       var seq = 0;
-      for (final d in clips) {
+      for (final clip in clips) {
+        final d = clip.detail;
         for (var i = 0; i < copies; i++) {
           final body = _goodsSaveBody(
             d,
@@ -725,10 +743,30 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
           }
           final label = newName.isNotEmpty ? newName : (d.name ?? '货品');
           try {
-            await repo.create(body);
+            final created = await repo.create(body);
             results.add(
               MasterBatchItemResult(id: '${seq++}', label: label, ok: true),
             );
+            // 全量复制：把源货品组件行粘到新货品(新货品没有组件，追加=替换等价)。
+            // 组件粘失败单独成行报原因——货品本体已建成功，不并在一起误报整条失败。
+            if (clip.bomItems.isNotEmpty) {
+              try {
+                await bomRepo.paste(
+                  mode: BomPasteMode.append,
+                  targets: [BomPasteTarget(created.id)],
+                  items: [for (final it in clip.bomItems) _bomSaveBody(it)],
+                );
+              } on ApiException catch (e) {
+                results.add(
+                  MasterBatchItemResult(
+                    id: '${seq++}',
+                    label: '「$label」的组件',
+                    ok: false,
+                    reason: e.message,
+                  ),
+                );
+              }
+            }
           } on ApiException catch (e) {
             results.add(
               MasterBatchItemResult(
@@ -750,7 +788,16 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     });
     if (outcome == null || !mounted) return;
     await showMasterBatchOutcome(context, outcome, action: '粘贴', noun: '货品');
-    if (mounted && outcome.succeeded > 0) await pane.reload();
+    if (mounted && outcome.succeeded > 0) await _reloadToLastPage(pane);
+  }
+
+  /// 重载并跳到最后一页：新建/粘贴的货品编号最大，按编号正序排在列表最下面。
+  Future<void> _reloadToLastPage(
+    MasterEntityPaneController<GoodsListItem, GoodsDetail> pane,
+  ) async {
+    await pane.reload();
+    final last = pane.page?.totalPages ?? 1;
+    if (last > 1) await pane.reload(page: last);
   }
 
   /// 批量粘贴：弹窗选每个货品粘贴份数，再逐个新建(编号自动生成)。
@@ -815,36 +862,57 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     await _pasteGoodsCopies(pane, copies: copies);
   }
 
-  /// 批量复制：逐个拉详情快照进剪贴板货品槽(整批替换)；读失败的逐条说明。
+  /// 批量复制：逐个拉「详情 + 组件行」快照进剪贴板货品槽(整批替换，全量复制)；
+  /// 读失败的逐条说明。
   Future<void> _batchCopyGoods(
     MasterEntityPaneController<GoodsListItem, GoodsDetail> pane,
     Set<String> ids,
   ) async {
     if (ids.isEmpty) return;
-    final details = await pane.runExclusive(() async {
-      final repo = ref.read(goodsRepositoryProvider);
-      final out = <GoodsDetail>[];
+    final clips = await pane.runExclusive(() async {
+      final goodsRepo = ref.read(goodsRepositoryProvider);
+      final bomRepo = ref.read(goodsBomRepositoryProvider);
+      final out = <GoodsCopyClip>[];
       final failed = <String>[];
       for (final id in ids) {
         try {
-          out.add(await repo.detail(id));
+          final d = await goodsRepo.detail(id);
+          // 组件行读取失败不打断该货品的复制：字段照常复制，组件留空并说明。
+          List<GoodsBomItem> bom = const [];
+          try {
+            bom = await bomRepo.list(id);
+          } on ApiException catch (e) {
+            failed.add('「${_goodsLabelById(pane, id)}」的组件没有复制：${e.message}');
+          }
+          out.add(GoodsCopyClip(detail: d, bomItems: bom));
         } on ApiException catch (e) {
           failed.add(e.message);
         }
       }
       if (failed.isNotEmpty && mounted) {
         context.appError(
-          '有 ${failed.length} 个货品没有复制：${failed.toSet().join('；')}', // TODO(l10n): 补 arb
+          '有 ${failed.length} 项没有复制：${failed.toSet().join('；')}', // TODO(l10n): 补 arb
         );
       }
       return out;
     });
-    if (details == null || !mounted || details.isEmpty) return;
-    ref.read(goodsClipboardProvider.notifier).copyGoodsList(details);
+    if (clips == null || !mounted || clips.isEmpty) return;
+    ref.read(goodsClipboardProvider.notifier).copyGoodsList(clips);
     pane.clearSelection();
     context.appSuccess(
-      '已复制 ${details.length} 个货品，可在目标分类下粘贴', // TODO(l10n): 补 arb
+      '已复制 ${clips.length} 个货品(含组件)，可在目标分类下粘贴', // TODO(l10n): 补 arb
     );
+  }
+
+  /// 按列表行 id 取展示名（批量复制失败提示用）。
+  String _goodsLabelById(
+    MasterEntityPaneController<GoodsListItem, GoodsDetail> pane,
+    String id,
+  ) {
+    for (final g in pane.page?.items ?? const <GoodsListItem>[]) {
+      if (g.id == id) return _goodsLabel(g);
+    }
+    return '货品';
   }
 
   /// 「复制组件信息」：把该货品的 BOM 行快照进剪贴板。

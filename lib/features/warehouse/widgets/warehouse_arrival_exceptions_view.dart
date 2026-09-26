@@ -15,6 +15,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -36,6 +37,7 @@ class WarehouseArrivalExceptionsView extends ConsumerStatefulWidget {
     this.keyword = '',
     this.refreshTick = 0,
     this.embedded = false,
+    this.externalHeader,
   });
 
   /// 任务中心页级搜索关键字（embedded 模式生效）。
@@ -46,6 +48,10 @@ class WarehouseArrivalExceptionsView extends ConsumerStatefulWidget {
 
   /// true = 嵌在入库任务中心分段内（进行中/历史分段保留，搜索框由页级工具条接管）。
   final bool embedded;
+
+  /// 宿主（任务中心大类行 + 小类行/复合分段行）：挂进折叠头随页滚走
+  /// （2026-09-24 用户口径「表格完全置顶」）。
+  final Widget? externalHeader;
 
   @override
   ConsumerState<WarehouseArrivalExceptionsView> createState() =>
@@ -381,129 +387,133 @@ class _WarehouseArrivalExceptionsViewState
           total: 0,
           totalPages: 1,
         );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildToolbar(result),
-        if (_error != null) ...[
-          const SizedBox(height: UtenSpacing.s12),
-          Semantics(
-            liveRegion: true,
-            child: Text(
-              '刷新失败：${_error!}',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+    // 2026-09-24 用户口径「表格完全置顶」：工具行/错误行进折叠头随页滚走，
+    // body 只剩表格（primary 拾取联动控制器）。
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.externalHeader != null) ...[
+            widget.externalHeader!,
+            const SizedBox(height: UtenSpacing.s12),
+          ],
+          _buildToolbar(result),
+          if (_error != null) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                '刷新失败：${_error!}',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             ),
-          ),
+          ],
+          const SizedBox(height: UtenSpacing.s12),
         ],
-        const SizedBox(height: UtenSpacing.s12),
-        Expanded(
-          child: MasterDataTableView<ProcurementArrivalException>(
-            key: const Key('warehouse-arrival-exception-task-table'),
-            columns: _columns,
-            items: result.items,
-            // 表头筛选桶（2026-09-16）：供应商/仓库走主档 dict；状态固定枚举六档。
-            facets: {
-              'supplierName': masterDictionaryFacets(
-                ref.watch(masterNameServiceProvider).supplierEntries,
-              ),
-              'warehouseName': masterDictionaryFacets(
-                ref.watch(masterNameServiceProvider).warehouseEntries,
-              ),
-              'status': const [
-                MasterFacetBucket(
-                  value: 'PENDING_FINANCE',
-                  count: 0,
-                  label: '未入库，等待财务审批超量',
-                ),
-                MasterFacetBucket(
-                  value: 'RECEIPT_ADJUSTED',
-                  count: 0,
-                  label: '已调整收货草稿，等待仓库重新审核',
-                ),
-                MasterFacetBucket(
-                  value: 'RETURN_REQUIRED',
-                  count: 0,
-                  label: '部分接收，余量待退供应商',
-                ),
-                MasterFacetBucket(
-                  value: 'RECEIPT_POSTED',
-                  count: 0,
-                  label: '已按批准数量入库',
-                ),
-                MasterFacetBucket(value: 'CLOSED', count: 0, label: '到货异常已完成'),
-                MasterFacetBucket(
-                  value: 'CANCELED',
-                  count: 0,
-                  label: '到货异常已取消',
-                ),
-              ],
-            },
-            nullCounts: const {},
-            filters: {
-              'supplierName': _supplierIdFilter,
-              'warehouseName': _warehouseIdFilter,
-              'status': _statusFilter,
-            },
-            onFilterChanged: (key, value) {
-              setState(() {
-                switch (key) {
-                  case 'supplierName':
-                    _supplierIdFilter = value;
-                  case 'warehouseName':
-                    _warehouseIdFilter = value;
-                  case 'status':
-                    _statusFilter = value;
-                }
-              });
-              _load(1);
-            },
-            selectable: canBatchStockIn,
-            idOf: (task) => task.canStockIn ? task.id : null,
-            selectedIds: _selectedIds,
-            onSelectedIdsChanged: _setSelectedIds,
-            batchActionsBuilder: canBatchStockIn ? _batchActions : null,
-            onRowTap: (task) => _openDetail(task, canStockIn: canBatchStockIn),
-            rowMenuBuilder: (task) => [
-              UtenMenuItem(
-                label: '查看异常详情',
-                icon: Icons.open_in_new_rounded,
-                onTap: () => _openDetail(task, canStockIn: canBatchStockIn),
-              ),
-              if (canBatchStockIn && task.canStockIn && _stockingId == null)
-                UtenMenuItem(
-                  label: '按财务批准量处理',
-                  icon: Icons.inbox_outlined,
-                  onTap: () => _stockIn(task),
-                ),
-            ],
-            rowColor: (task) {
-              if (task.status == 'PENDING_FINANCE') {
-                return Theme.of(
-                  context,
-                ).colorScheme.errorContainer.withValues(alpha: 0.30);
-              }
-              if (task.canStockIn) {
-                return Theme.of(
-                  context,
-                ).colorScheme.secondaryContainer.withValues(alpha: 0.28);
-              }
-              return null;
-            },
-            isLoading: _loading,
-            loadingMore: _loading && _result != null,
-            error: result.items.isEmpty ? _error : null,
-            onRetry: () => _load(result.page),
-            emptyMessage: _history
-                ? '历史中没有已完成的到货异常'
-                : _keyword.isNotEmpty
-                ? '没有匹配的到货异常'
-                : '目前没有到货异常',
-            currentPage: result.page,
-            totalPages: result.totalPages,
-            onPageChange: _load,
+      ),
+      body: MasterDataTableView<ProcurementArrivalException>(
+        // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+        primary: true,
+        key: const Key('warehouse-arrival-exception-task-table'),
+        columns: _columns,
+        items: result.items,
+        // 表头筛选桶（2026-09-16）：供应商/仓库走主档 dict；状态固定枚举六档。
+        facets: {
+          'supplierName': masterDictionaryFacets(
+            ref.watch(masterNameServiceProvider).supplierEntries,
           ),
-        ),
-      ],
+          'warehouseName': masterDictionaryFacets(
+            ref.watch(masterNameServiceProvider).warehouseEntries,
+          ),
+          'status': const [
+            MasterFacetBucket(
+              value: 'PENDING_FINANCE',
+              count: 0,
+              label: '未入库，等待财务审批超量',
+            ),
+            MasterFacetBucket(
+              value: 'RECEIPT_ADJUSTED',
+              count: 0,
+              label: '已调整收货草稿，等待仓库重新审核',
+            ),
+            MasterFacetBucket(
+              value: 'RETURN_REQUIRED',
+              count: 0,
+              label: '部分接收，余量待退供应商',
+            ),
+            MasterFacetBucket(
+              value: 'RECEIPT_POSTED',
+              count: 0,
+              label: '已按批准数量入库',
+            ),
+            MasterFacetBucket(value: 'CLOSED', count: 0, label: '到货异常已完成'),
+            MasterFacetBucket(value: 'CANCELED', count: 0, label: '到货异常已取消'),
+          ],
+        },
+        nullCounts: const {},
+        filters: {
+          'supplierName': _supplierIdFilter,
+          'warehouseName': _warehouseIdFilter,
+          'status': _statusFilter,
+        },
+        onFilterChanged: (key, value) {
+          setState(() {
+            switch (key) {
+              case 'supplierName':
+                _supplierIdFilter = value;
+              case 'warehouseName':
+                _warehouseIdFilter = value;
+              case 'status':
+                _statusFilter = value;
+            }
+          });
+          _load(1);
+        },
+        selectable: canBatchStockIn,
+        idOf: (task) => task.canStockIn ? task.id : null,
+        selectedIds: _selectedIds,
+        onSelectedIdsChanged: _setSelectedIds,
+        batchActionsBuilder: canBatchStockIn ? _batchActions : null,
+        onRowTap: (task) => _openDetail(task, canStockIn: canBatchStockIn),
+        rowMenuBuilder: (task) => [
+          UtenMenuItem(
+            label: '查看异常详情',
+            icon: Icons.open_in_new_rounded,
+            onTap: () => _openDetail(task, canStockIn: canBatchStockIn),
+          ),
+          if (canBatchStockIn && task.canStockIn && _stockingId == null)
+            UtenMenuItem(
+              label: '按财务批准量处理',
+              icon: Icons.inbox_outlined,
+              onTap: () => _stockIn(task),
+            ),
+        ],
+        rowColor: (task) {
+          if (task.status == 'PENDING_FINANCE') {
+            return Theme.of(
+              context,
+            ).colorScheme.errorContainer.withValues(alpha: 0.30);
+          }
+          if (task.canStockIn) {
+            return Theme.of(
+              context,
+            ).colorScheme.secondaryContainer.withValues(alpha: 0.28);
+          }
+          return null;
+        },
+        isLoading: _loading,
+        loadingMore: _loading && _result != null,
+        error: result.items.isEmpty ? _error : null,
+        onRetry: () => _load(result.page),
+        emptyMessage: _history
+            ? '历史中没有已完成的到货异常'
+            : _keyword.isNotEmpty
+            ? '没有匹配的到货异常'
+            : '目前没有到货异常',
+        currentPage: result.page,
+        totalPages: result.totalPages,
+        onPageChange: _load,
+      ),
     );
   }
 

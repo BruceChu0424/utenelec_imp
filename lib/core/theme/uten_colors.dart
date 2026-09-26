@@ -134,6 +134,44 @@ abstract final class UtenColors {
   static const Color tableSelectedRow = Color(0xFFCFE4E2);
   static const Color tableSelectedRowDark = teal900;
 
+  // ===== 分类树层级行底色（选择器滑窗 flatLevelColors 模式，2026-09-24）=====
+  // 左树行按深度铺色的五档梯度：一级品牌深绿实底白字，往下逐档降饱和降明度，
+  // 四档起转中性灰——「越深越淡出品牌色」。相邻档保持一眼可分辨的色差
+  // （用户口径：至少 5 个层级色差、最深层固定一色、色差不要太接近、整体协调）。
+  // 浅色五档：深绿 → 中青灰绿 → 浅青绿 → 中性灰 → 近白（最底层固定）。
+  static const Color treeLevel1 = teal800;
+  static const Color treeLevel2 = Color(0xFFBCDED8);
+  static const Color treeLevel3 = Color(0xFFDDEEEA);
+  static const Color treeLevel4 = Color(0xFFE3E8EF);
+  static const Color treeLevel5 = Color(0xFFF8FAFC);
+
+  /// 深色五档：深青绿三档渐沉，再转深 slate 两档（最深档融回面板底色）。
+  static const Color treeLevel1Dark = teal800;
+  static const Color treeLevel2Dark = teal900;
+  static const Color treeLevel3Dark = teal950;
+  static const Color treeLevel4Dark = Color(0xFF1E293B);
+  static const Color treeLevel5Dark = Color(0xFF141C2B);
+
+  /// 按深度取层级行底色：0–3 档各一色，4 及更深固定第五档。
+  static Color treeLevelRow(int depth, {required bool dark}) {
+    if (dark) {
+      return switch (depth) {
+        0 => treeLevel1Dark,
+        1 => treeLevel2Dark,
+        2 => treeLevel3Dark,
+        3 => treeLevel4Dark,
+        _ => treeLevel5Dark,
+      };
+    }
+    return switch (depth) {
+      0 => treeLevel1,
+      1 => treeLevel2,
+      2 => treeLevel3,
+      3 => treeLevel4,
+      _ => treeLevel5,
+    };
+  }
+
   /// 语义色深档文字色（配合 *Bg 底色使用，保证对比度）
   static const Color successText = Color(0xFF047857);
   static const Color warningText = Color(0xFFB45309);

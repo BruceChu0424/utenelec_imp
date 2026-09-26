@@ -22,6 +22,8 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_split_view.dart';
+import '../../../components/layout/uten_table_column_kit.dart'
+    show utenTableSelectedRowColor;
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
@@ -536,6 +538,8 @@ class _MasterPickerSheetState<TItem>
             current != null && _spec.idOf(current) == _spec.idOf(item);
         return ListTile(
           selected: picked,
+          // 选中行淡绿背景（全站表格统一口径，与货品选择滑窗同款）。
+          selectedTileColor: utenTableSelectedRowColor(theme),
           title: Text(_spec.labelOf(item)),
           subtitle: sub.isEmpty
               ? null

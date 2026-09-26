@@ -36,6 +36,10 @@ requests = [];
 
 String _groupKey(String line) => 'NODE|a-$line|$line';
 
+// 横滚时行首勾选框会有一份「钉在视口左缘」的冻结副本(UtenFrozenLeadingColumn
+// 复用同一个 selectionCell)：加了「可用数量」列后测试里出现横向滚动，同一行能
+// 找到两份 Checkbox——取值一律用 `.last`(原件滚出视口时它才是可点的)，判空
+// 用原始 finder 的 evaluate()(`.last` 求值器空集会抛 No element)。
 Finder _productCheckbox(String product) => find.descendant(
   of: find.byKey(ValueKey('material-bom-product-$product')),
   matching: find.byType(Checkbox),
@@ -53,7 +57,7 @@ Finder _pageLine(String line) =>
     find.byKey(ValueKey('child-shortage-line-${_groupKey(line)}'));
 
 Future<void> _check(WidgetTester tester, Finder checkbox) async {
-  tester.widget<Checkbox>(checkbox).onChanged!(true);
+  tester.widget<Checkbox>(checkbox.last).onChanged!(true);
   await tester.pump();
 }
 
@@ -61,13 +65,13 @@ Future<void> _check(WidgetTester tester, Finder checkbox) async {
 /// issuing only the parent, then the established child-shortage workflow.
 Future<void> _selectParentOnly(WidgetTester tester) async {
   final parent = _productCheckbox('product-1');
-  if (tester.widget<Checkbox>(parent).value != true) {
+  if (tester.widget<Checkbox>(parent.last).value != true) {
     await _check(tester, parent);
   }
   for (final id in ['m-c1', 'm-c2', 'm-c3', 'm-g1', 'm-ok', 'm-c4']) {
     final checkbox = _rowCheckbox(id);
     if (checkbox.evaluate().isNotEmpty &&
-        tester.widget<Checkbox>(checkbox).value == true) {
+        tester.widget<Checkbox>(checkbox.last).value == true) {
       await _check(tester, checkbox);
     }
   }

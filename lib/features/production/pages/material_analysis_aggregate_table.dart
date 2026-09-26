@@ -187,16 +187,36 @@ final class _MaterialAggregateTableController {
       'material-aggregate-${append ? 'append' : 'order'}-${aggregate.key}',
     );
     if (append != ordered) {
-      return Text(
-        append ? '0' : owner._qty(orderedQty(aggregate)),
-        key: cellKey,
+      if (append) {
+        return Text('0', key: cellKey);
+      }
+      // 已下达：与按产品视图的下单数量格同一锁定样式(锁图标 + 累计已下单)，
+      // 裸文本会被读成「没锁住、还能改」(2026-09-25 用户实机误读)。
+      return Tooltip(
+        message:
+            '累计已下单 ${owner._qty(orderedQty(aggregate))}。'
+            '下达之后这一格不可改，要再下请填「追加下单」。',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.lock_outline_rounded,
+              size: 13,
+              color: Theme.of(owner.context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: UtenSpacing.s4),
+            Text(
+              owner._qty(orderedQty(aggregate)),
+              key: cellKey,
+              style: Theme.of(owner.context).textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
       );
     }
     final controller = editor(aggregate);
-    final draft = drafts[aggregate.key];
-    final pendingParentQty = draft == null
-        ? null
-        : submission.pendingParentRequirement(draft);
     final editableGroups = groupsOf(
       aggregate,
     ).where((group) => !inactiveSourceContext(group)).toList();
@@ -207,61 +227,25 @@ final class _MaterialAggregateTableController {
               group.representative.confirmedRoute != null &&
               !owner._dirtyRouteGroups.contains(group.key),
         );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          height: 40 * MediaQuery.textScalerOf(owner.context).scale(1),
-          child: owner._materialTableQtyField(
-            theme,
-            key: 'material-aggregate-qty-${aggregate.key}',
-            controller: controller,
-            enabled:
-                !owner._busy &&
-                !uncertain &&
-                canEdit &&
-                (owner._canNotify || owner._canGenerate),
-            hintText: owner._qty(pendingQty(aggregate)),
-            onTyped: (value) => changed(aggregate, value),
-            invalid: () => !validText(controller.text),
-          ),
-        ),
-        if (draft != null)
-          Text(
-            draft.previewGroups.isEmpty
-                ? '待核对来源分配'
-                : '其中公共备货 ${owner._qty(draft.publicQty)}',
-            key: ValueKey('material-aggregate-public-${aggregate.key}'),
-            style: theme.textTheme.bodySmall,
-          ),
-        if (pendingParentQty != null)
-          Text(
-            '共享父批次新增用料 ${owner._qty(pendingParentQty)}，父批次下达后再核对来源',
-            style: theme.textTheme.bodySmall,
-          ),
-        if (draft != null && draft.lineIds.length != groupsOf(aggregate).length)
-          Text(
-            '本次保留 ${draft.lineIds.length} 个来源（含当前筛选外）',
-            style: theme.textTheme.bodySmall,
-          ),
-        if (draft != null)
-          for (final group in draft.previewGroups)
-            if (group.blockedReason?.isNotEmpty == true)
-              Text(
-                group.blockedReason!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
-              ),
-        if (draft != null && error != null)
-          Text(
-            error!,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.error,
-            ),
-          ),
-      ],
+    // 2026-09-25 用户口径「下单数量下面不要显示任何的」：原先挂在输入框下面的
+    // 六段小字(待核对来源分配 / 其中公共备货 / 共享父批次新增用料 / 本次保留
+    // N 个来源 / 预览 blockedReason / 预览错误)全部退役。被服务端拒绝的原因在
+    // 点「下单」时由汇总提交流程统一说明，不在格子里常驻。
+    return SizedBox(
+      height: 40 * MediaQuery.textScalerOf(owner.context).scale(1),
+      child: owner._materialTableQtyField(
+        theme,
+        key: 'material-aggregate-qty-${aggregate.key}',
+        controller: controller,
+        enabled:
+            !owner._busy &&
+            !uncertain &&
+            canEdit &&
+            (owner._canNotify || owner._canGenerate),
+        hintText: owner._qty(pendingQty(aggregate)),
+        onTyped: (value) => changed(aggregate, value),
+        invalid: () => !validText(controller.text),
+      ),
     );
   }
 
@@ -459,17 +443,22 @@ final class _MaterialAggregateTableController {
       if (routes.length != 1) {
         throw FormatException('「${draft.label}」各来源供应方式不同，请先统一设置');
       }
-      final route = routes.single;
-      if (route == MaterialSupplyRoute.make && !owner._canGenerate ||
-          route != MaterialSupplyRoute.make && !owner._canNotify) {
+      // 上方已拒绝「confirmedRoute 为空」的来源，这里必有已确认路线。
+      final route = routes.single!;
+      // 服务端对 manufacture 组(MAKE + 要先自制目标件的委外)一律要求车间 /
+      // 负责人 / 超产比例，权限也只看「下达车间」——与 [workshopGroups] 同一
+      // 口径，别让前置自制委外漏带车间再次被拒(2026-09-25 对齐修正)。
+      final workshop =
+          route == MaterialSupplyRoute.make ||
+          owner._tableIssueTarget(groups.first).viaWorkshop;
+      if (workshop && !owner._canGenerate || !workshop && !owner._canNotify) {
         throw FormatException('没有下达「${draft.label}」的权限');
       }
-      final make = route == MaterialSupplyRoute.make;
-      if (make &&
+      if (workshop &&
           (draft.mixedWorkshop || draft.mixedWorker || draft.mixedRate)) {
         throw FormatException('「${draft.label}」原来源生产参数不同，请明确统一本次车间、负责人和比例');
       }
-      final rateTexts = make
+      final rateTexts = workshop
           ? groups
                 .map(
                   (group) => owner
@@ -486,7 +475,7 @@ final class _MaterialAggregateTableController {
       final rate = rateTexts.isEmpty
           ? null
           : parseProductionOverproductionPercent(rateTexts.single);
-      if (make && rate == null) {
+      if (workshop && rate == null) {
         throw FormatException('「${draft.label}」允许超产比例无效');
       }
       inputs.add(
@@ -495,14 +484,14 @@ final class _MaterialAggregateTableController {
           materialLineIds: draft.lineIds.toList()..sort(),
           route: route,
           qty: draft.totalText,
-          allowPublicExtra: make || owner._canOverSupply,
-          departmentId: make
+          allowPublicExtra: workshop || owner._canOverSupply,
+          departmentId: workshop
               ? uniformId(
                   groups.map((group) => owner._tableWorkshopFor(group).id),
                   '生产车间',
                 )
               : null,
-          workerId: make
+          workerId: workshop
               ? uniformId(
                   groups.map((group) => owner._tableWorkerFor(group).id),
                   '负责人',
@@ -690,10 +679,18 @@ final class _MaterialAggregateTableController {
     }
   }
 
-  Future<bool> submit(List<_MaterialGroup> selectedGroups) =>
-      submission.submit(selectedGroups);
+  /// [confirmed] = 调用方已经确认过一次(产品视图全选下单的主确认框说了
+  /// 「合并成共享批次一次下达」)，各轮不再逐轮弹确认——用户口径 2026-09-25
+  /// 「直接弹一次是否确认，确认后全部下达」。汇总视图直接下单仍逐轮核对。
+  Future<bool> submit(
+    List<_MaterialGroup> selectedGroups, {
+    bool confirmed = false,
+  }) => submission.submit(selectedGroups, confirmed: confirmed);
 
-  Future<bool> submitStage(List<_MaterialGroup> selectedGroups) async {
+  Future<bool> submitStage(
+    List<_MaterialGroup> selectedGroups, {
+    bool confirmed = false,
+  }) async {
     if (saving || selectedGroups.isEmpty) return false;
     final keys = selectedGroups
         .map((group) => owner._aggregateKeyOf(group.representative))
@@ -715,7 +712,15 @@ final class _MaterialAggregateTableController {
           );
         }
       });
-      await refreshPreview(keys: keys);
+      // 2026-09-25 用户口径「按物料汇总点击下单没有加载弹窗」：核对与提交两段
+      // 纯网络等待挂全页遮罩(与产品视图 notify 同一通道 bucketActionBusyMessage)；
+      // 确认弹窗之前必须撤掉，否则会把弹窗盖在背后转圈。
+      owner.bucketActionBusyMessage.value = '正在核对汇总下达内容';
+      try {
+        await refreshPreview(keys: keys);
+      } finally {
+        owner.bucketActionBusyMessage.value = null;
+      }
       if (!owner.mounted) return false;
       if (_preview == null || _previewRequest == null) {
         owner.context.appWarning(error ?? '请先核对汇总预览');
@@ -725,36 +730,66 @@ final class _MaterialAggregateTableController {
           .where((group) => group.blockedReason?.isNotEmpty == true)
           .toList();
       if (blocked.isNotEmpty) {
-        owner.context.appWarning(blocked.first.blockedReason!);
-        return false;
+        final blockedKeys = blocked
+            .map((group) => group.clientGroupKey)
+            .toSet();
+        if (keys.difference(blockedKeys).isEmpty) {
+          owner.context.appWarning(blocked.first.blockedReason!);
+          return false;
+        }
+        // 一个组被服务端拒绝不再拖停整批(对齐产品视图「blocked 列出、其余照下」
+        // 的口径)：释放被拒的草稿、把原因说一次，剩下的按原流程继续核对下达。
+        // 2026-09-25 用户实机：全选下单时一种物料缺车间被拒，整批全部停在第一
+        // 步，看起来就是「很多物料不能成功下单」。
+        owner._mutateAggregateTable(() {
+          for (final key in blockedKeys) {
+            submission._releaseZero(key);
+          }
+        });
+        owner.context.appInfo(
+          '已跳过 ${blockedKeys.length} 种暂不能下达的物料'
+          '（${blocked.first.blockedReason}），其余继续核对',
+        );
+        return submitStage(
+          selectedGroups
+              .where(
+                (group) => !blockedKeys.contains(
+                  owner._aggregateKeyOf(group.representative),
+                ),
+              )
+              .toList(),
+        );
       }
       final request = _previewRequest!, preview = _preview!;
-      final confirmed = await UtenDialog.show(
-        owner.context,
-        title: '确认下达 ${keys.length} 种物料？',
-        content: SingleChildScrollView(
-          child: Text(
-            [
-              for (final group in preview.groups) ...[
-                '${group.goodsName}：本次 ${owner._qty(group.requestedQty)} ${group.unitName}',
-                if (group.existingBatchId != null)
-                  '追加原批次，原产出 ${owner._qty(group.priorOutputQty)}；下层只办理本次净增量。',
-                '来源分配 ${owner._qty(group.sources.fold<double>(0.0, (sum, source) => sum + source.allocatedQty))}，公共备货 ${owner._qty(group.publicExtraQty)}',
-                for (final source in group.sources.take(6))
-                  '${source.sourceLabel}：${owner._qty(source.allocatedQty)}',
-                if (group.sources.length > 6)
-                  '另有 ${group.sources.length - 6} 个来源，详见汇总展开明细',
-                for (final child in group.sharedBomChildren.take(8))
-                  '下层本批需 ${child.goodsName} ${owner._qty(child.requiredQty)} ${child.unitName}',
-                '',
-              ],
-              '按以上总量和来源分配一次下达；库存与生产开工条件仍按真实业务状态核对。',
-            ].join('\n'),
-          ),
-        ),
-        confirmLabel: '下达',
-      );
-      if (confirmed != true || !owner.mounted) return false;
+      final userConfirmed =
+          confirmed ||
+          (await UtenDialog.show(
+                owner.context,
+                title: '确认下达 ${keys.length} 种物料？',
+                content: SingleChildScrollView(
+                  child: Text(
+                    [
+                      for (final group in preview.groups) ...[
+                        '${group.goodsName}：本次 ${owner._qty(group.requestedQty)} ${group.unitName}',
+                        if (group.existingBatchId != null)
+                          '追加原批次，原产出 ${owner._qty(group.priorOutputQty)}；下层只办理本次净增量。',
+                        '来源分配 ${owner._qty(group.sources.fold<double>(0.0, (sum, source) => sum + source.allocatedQty))}，公共备货 ${owner._qty(group.publicExtraQty)}',
+                        for (final source in group.sources.take(6))
+                          '${source.sourceLabel}：${owner._qty(source.allocatedQty)}',
+                        if (group.sources.length > 6)
+                          '另有 ${group.sources.length - 6} 个来源，详见汇总展开明细',
+                        for (final child in group.sharedBomChildren.take(8))
+                          '下层本批需 ${child.goodsName} ${owner._qty(child.requiredQty)} ${child.unitName}',
+                        '',
+                      ],
+                      '按以上总量和来源分配一次下达；库存与生产开工条件仍按真实业务状态核对。',
+                    ].join('\n'),
+                  ),
+                ),
+                confirmLabel: '下达',
+              )) ==
+              true;
+      if (!userConfirmed || !owner.mounted) return false;
       if (!identical(request, _previewRequest) ||
           !identical(preview, _preview)) {
         owner.context.appWarning('汇总内容已变化，请核对新的预览后再下达');
@@ -770,6 +805,8 @@ final class _MaterialAggregateTableController {
       owner._tableSubmitting = true;
     });
     try {
+      // 确认弹窗已收口，这里起是纯网络段：挂遮罩(见上，同一次用户口径)。
+      owner.bucketActionBusyMessage.value = '正在下达汇总物料';
       final result = await owner.ref
           .read(productionPlanRepositoryProvider)
           .submitAggregateOrders(
@@ -838,6 +875,9 @@ final class _MaterialAggregateTableController {
       if (owner.mounted) owner.context.appWarning(error!);
       return false;
     } finally {
+      // 遮罩随本段收口(2026-09-14 教训：忙标志/遮罩漏一条 return 分支没清，
+      // 整页就被 Positioned.fill 遮罩吃掉所有点击)。
+      owner.bucketActionBusyMessage.value = null;
       if (owner.mounted) {
         owner._mutateAggregateTable(() {
           saving = false;
@@ -932,16 +972,19 @@ final class _MaterialAggregateTableController {
     return result.values.toList(growable: false);
   }
 
-  List<_MaterialGroup> makeGroups(_MaterialAggregate aggregate) =>
-      groupsOf(aggregate)
-          .where(
-            (group) => owner._draftRoute(group) == MaterialSupplyRoute.make,
-          )
-          .toList();
+  /// 走车间通道的来源组：自制，以及**要先自制目标件的委外**。
+  ///
+  /// 2026-09-25 对齐修正：服务端 aggregate-orders 对这两类(manufacture)一律要求
+  /// 生产车间+负责人，原来这里只认自制，导致「前置自制委外」的聚合行车间/负责人
+  /// 两列显示「—」没处填、预览永远被拒——用户实机「按物料汇总很多物料下不了单」
+  /// 的死结。判定与主表 [_tableIssueTarget].viaWorkshop 同源。
+  List<_MaterialGroup> workshopGroups(_MaterialAggregate aggregate) => groupsOf(
+    aggregate,
+  ).where((group) => owner._tableIssueTarget(group).viaWorkshop).toList();
 
   String workshopText(_MaterialAggregate aggregate) {
     if (drafts[aggregate.key]?.mixedWorkshop == true) return '多个车间';
-    final groups = makeGroups(aggregate);
+    final groups = workshopGroups(aggregate);
     if (groups.isEmpty) return '—';
     final values = groups.map(owner._tableWorkshopFor).toList();
     if (values.map((value) => value.id).toSet().length > 1) return '多个车间';
@@ -950,7 +993,7 @@ final class _MaterialAggregateTableController {
 
   String workerText(_MaterialAggregate aggregate) {
     if (drafts[aggregate.key]?.mixedWorker == true) return '多位负责人';
-    final groups = makeGroups(aggregate);
+    final groups = workshopGroups(aggregate);
     if (groups.isEmpty) return '—';
     final values = groups.map(owner._tableWorkerFor).toList();
     if (values.map((value) => value.id).toSet().length > 1) return '多位负责人';
@@ -962,7 +1005,7 @@ final class _MaterialAggregateTableController {
     _MaterialAggregate aggregate, {
     required bool worker,
   }) {
-    if (makeGroups(aggregate).isEmpty) return const Text('—');
+    if (workshopGroups(aggregate).isEmpty) return const Text('—');
     final value = worker ? workerText(aggregate) : workshopText(aggregate);
     return owner._materialTableAssignmentCell(
       theme,
@@ -994,7 +1037,7 @@ final class _MaterialAggregateTableController {
   }
 
   Future<void> pickWorkshop(_MaterialAggregate aggregate) async {
-    final groups = makeGroups(aggregate);
+    final groups = workshopGroups(aggregate);
     if (groups.isEmpty) return;
     final tree = owner._tableWorkshopTree.isNotEmpty
         ? owner._tableWorkshopTree
@@ -1023,7 +1066,7 @@ final class _MaterialAggregateTableController {
   }
 
   Future<void> pickWorker(_MaterialAggregate aggregate) async {
-    final groups = makeGroups(aggregate);
+    final groups = workshopGroups(aggregate);
     if (groups.isEmpty) return;
     final workshops = groups.map(owner._tableWorkshopFor).toList();
     if (workshops.map((item) => item.id).toSet().length != 1 ||
@@ -1071,7 +1114,7 @@ final class _MaterialAggregateTableController {
 
   String rateText(_MaterialAggregate aggregate) {
     if (drafts[aggregate.key]?.mixedRate == true) return '多个比例';
-    final groups = makeGroups(aggregate);
+    final groups = workshopGroups(aggregate);
     if (groups.isEmpty) return '—';
     final rates = groups
         .map(
@@ -1086,7 +1129,7 @@ final class _MaterialAggregateTableController {
   }
 
   Widget rateCell(_MaterialAggregate aggregate) {
-    final groups = makeGroups(aggregate);
+    final groups = workshopGroups(aggregate);
     if (groups.isEmpty) return const Text('—');
     final rates = groups
         .map(
@@ -1182,8 +1225,9 @@ final class _MaterialAggregateTableController {
     if (inactiveSourceContext(group)) return false;
     final reason = owner._tableIssueBlockedReason(group, forAggregate: true);
     return reason == null ||
-        reason == '先在「生产车间」列里指定本次交给哪个车间' ||
-        reason == '先在「负责人」列里指定本次谁负责';
+        reason ==
+            _MaterialAnalysisMaterialTableState._tableMissingWorkshopReason ||
+        reason == _MaterialAnalysisMaterialTableState._tableMissingWorkerReason;
   }
 
   bool inactiveSourceContext(_MaterialGroup group) {
@@ -1269,10 +1313,9 @@ final class _MaterialAggregateTableController {
             (group) =>
                 (row.aggregate != null ||
                     !ownsLine(group.representative.materialLineId)) &&
-                ((owner._canRoute &&
-                        owner._canEditMaterialRoute(group) &&
-                        owner._routeGroupSelectable(group)) ||
-                    selectableForOrder(group)),
+                // 2026-09-25 确认路线退役：复选框只服务「下单」，不再有
+                // 「选行去确认路线」语义（进页自动确认 + 直改即存接管）。
+                selectableForOrder(group),
           )
           .toList(growable: false);
 

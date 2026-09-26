@@ -146,6 +146,7 @@ abstract final class Perm {
   /// 模具主档（基础资料；已将 mould:view 授予全部部门）
   static const mouldView = 'mould:view';
   static const mouldEdit = 'mould:edit';
+  static const mouldExport = 'mould:export';
 
   /// 客户资料分类（基础资料）
   static const clientCategoryView = 'client_category:view';
@@ -169,10 +170,12 @@ abstract final class Perm {
   /// 颜色主档（基础资料；扁平结构，无分类树）
   static const colorView = 'color:view';
   static const colorEdit = 'color:edit';
+  static const colorExport = 'color:export';
 
   /// 基本单位主档（基础资料；扁平结构，无分类树）
   static const unitView = 'unit:view';
   static const unitEdit = 'unit:edit';
+  static const unitExport = 'unit:export';
 
   /// 币种主档（基础资料；扁平结构，view 全员 / edit 归 PMC）
   static const currencyView = 'currency:view';
@@ -182,6 +185,7 @@ abstract final class Perm {
   /// 仓库主档（基础资料；扁平结构，view 全员 / edit 归 PMC）
   static const warehouseView = 'warehouse:view';
   static const warehouseEdit = 'warehouse:edit';
+  static const warehouseExport = 'warehouse:export';
 
   /// 库存查看（全员；本轮采购审核联动库存，库存页未接入）
   static const stockView = 'stock:view';
@@ -484,6 +488,7 @@ abstract final class Perm {
   static const settlementMethodCreate = 'settlement_method:create';
   static const settlementMethodView = 'settlement_method:view';
   static const settlementMethodEdit = 'settlement_method:edit';
+  static const settlementMethodExport = 'settlement_method:export';
   static const salesQuoteCreate = 'sales_quote:create';
   static const salesQuoteDelete = 'sales_quote:delete';
   static const salesQuoteApprove = 'sales_quote:approve';

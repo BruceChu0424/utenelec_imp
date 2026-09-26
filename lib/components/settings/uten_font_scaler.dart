@@ -4,6 +4,8 @@
 // 2026-09-24 起档位按屏幕容量动态列出（像 Windows「缩放」下拉框，每台机器选项数不同）：
 // 「自动」+ 当前窗口放得下的档；所选手动档超出窗口上限（窗口临时变小/分屏）时仍保留选中，
 // 并提示实际按多少生效。上限与推荐值由根部 UtenDisplayZoomBox 经 UtenDisplayScale 发布。
+// 2026-09-25 起选择器 = 灰底轨道内的胶囊组（选中 teal 实心，沿用全站「选中只变
+// 背景色、不打勾」范式），预览卡退役——档位即整体缩放，整页本身就是实时预览。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,7 +32,6 @@ class UtenFontScaler extends ConsumerWidget {
     // 不在缩放容器之下（单测/独立预览）：不限上限，推荐标准档。
     final maxFactor = scale?.maxFontFactor ?? double.infinity;
     final recommended = scale?.recommendedFontFactor ?? 1.0;
-    final effective = scale?.effectiveFontFactor ?? choice.factor ?? 1.0;
     final levels = [
       for (final s in FontScale.values)
         if (s.factor <= maxFactor + 1e-6 || s == choice.manual) s,
@@ -41,24 +42,33 @@ class UtenFontScaler extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            ChoiceChip(
-              label: Text('自动（${_pct(recommended)}）'),
-              tooltip: '按屏幕大小与系统缩放自动选择',
-              selected: choice.isAuto,
-              onSelected: (_) => notifier.set(const FontScaleChoice.auto()),
-            ),
-            for (final s in levels)
-              ChoiceChip(
-                label: Text('${s.label} ${_pct(s.factor)}'),
-                tooltip: s == recommendedLevel ? '推荐' : null,
-                selected: choice.manual == s,
-                onSelected: (_) => notifier.set(FontScaleChoice.manual(s)),
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: [
+              _pill(
+                theme: theme,
+                label: '自动（${_pct(recommended)}）',
+                tooltip: '按屏幕大小与系统缩放自动选择',
+                selected: choice.isAuto,
+                onTap: () => notifier.set(const FontScaleChoice.auto()),
               ),
-          ],
+              for (final s in levels)
+                _pill(
+                  theme: theme,
+                  label: '${s.label} ${_pct(s.factor)}',
+                  tooltip: s == recommendedLevel ? '推荐' : null,
+                  selected: choice.manual == s,
+                  onTap: () => notifier.set(FontScaleChoice.manual(s)),
+                ),
+            ],
+          ),
         ),
         if (scale != null) ...[
           const SizedBox(height: 8),
@@ -67,38 +77,47 @@ class UtenFontScaler extends ConsumerWidget {
             const SizedBox(height: 4),
             Text(
               '所选「${choice.manual!.label}」超出当前窗口能容纳的大小，'
-              '暂按 ${_pct(effective)} 显示；窗口放大后自动恢复。',
+              '暂按 ${_pct(scale.effectiveFontFactor)} 显示；窗口放大后自动恢复。',
               style: muted?.copyWith(color: theme.colorScheme.tertiary),
             ),
           ],
         ],
-        const SizedBox(height: 16),
-        // 预览
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('预览 Preview', style: theme.textTheme.headlineSmall),
-              const SizedBox(height: 8),
-              Text('优腾综合管理平台 · Uten IMP', style: theme.textTheme.bodyLarge),
-              const SizedBox(height: 4),
-              Text(
-                '当前生效：${_pct(effective)}'
-                '${choice.isAuto ? '（自动）' : ''}',
-                style: theme.textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 4),
-              // 2026-09-20 起档位 = 整体缩放（display_zoom.dart）：预览卡本身也随之变大。
-              Text('文字、图标、卡片与间距一起等比变化', style: muted),
-            ],
+      ],
+    );
+  }
+
+  /// 轨道里的一颗档位胶囊：未选 = 透明底灰字，选中 = 主色实心白字（不加勾）。
+  static Widget _pill({
+    required ThemeData theme,
+    required String label,
+    required String? tooltip,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final pill = Material(
+      color: selected ? theme.colorScheme.primary : Colors.transparent,
+      borderRadius: BorderRadius.circular(7),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(7),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: selected
+                  ? theme.colorScheme.onPrimary
+                  : theme.colorScheme.onSurfaceVariant,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            ),
           ),
         ),
-      ],
+      ),
+    );
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: tooltip == null ? pill : Tooltip(message: tooltip, child: pill),
     );
   }
 

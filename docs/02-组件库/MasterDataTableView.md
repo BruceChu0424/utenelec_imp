@@ -44,6 +44,12 @@
   ~500ms 拎起横拖 = 直接排序列**（跟手浮层 + 插入位指示线 + 松手落位，会话内列序）。实现与编辑明细表
   `UtenEditableGrid` 同一份（`UtenColumnChooserButton` / `UtenColumnHeaderDragHost`），见
   [UtenTableColumnKit.md](UtenTableColumnKit.md)。
+- **表头右键菜单 + 固定到左侧（2026-09-25）**：右击任一列头弹「固定到左侧/取消固定、向左·右移一格、
+  放到最前·最后、隐藏此列」菜单（共用 kit 实现，见
+  [UtenTableColumnKit.md](UtenTableColumnKit.md) §四之三）。固定的列搬到多选框列右侧、横滚时
+  钉在视口左缘不滚走（跟行首勾选框列同一机制），表头标签前显图钉（18px、与标签
+  垂直居中）；固定集为会话态
+  （与 `_hiddenKeys`/列序同生命周期）。右击表头不再弹页面级 SelectionArea 的系统「全选/复制」工具条。
 - **工具条控件统一高度 48（2026-09-05 起）**：表头上方工具条内的全部组件级控件——「表头设置」「全屏」
   「已选 N 项」摘要条——统一为 `UtenTableToolbar.controlHeight = 48`，与调用方挂进
   `toolbarActions` 的筛选 chip（如物料分析「全部 BOM」minHeight:48）等高对齐；`UtenButton`
@@ -191,6 +197,10 @@ MasterDataTableView<T>(
   primary: false,            // 联动折叠：包在 UtenCollapsingHeaderScrollView 的 body 里时传 true，
                              // 表体拾取注入的 PrimaryScrollController 参与「顶部折叠 → 表格内滚」联动；
                              // 不能与 embedded 同用。详见 UtenCollapsingHeaderScrollView.md
+  stickyHeaderPinned: pin,   // embedded 吸顶表专用：单滚动页（详情/审核页 ListView 流内明细表）
+                             // 的表头吸顶信号 + 滚轮截停门（UtenStickyWheelGate）：一格越置顶点即止、
+                             // 停顿窗（350ms 时间 / 250px 距离双放行线）吞同一滚势的后续格、
+                             // 短表够不着顶时按需撑高表体（2026-09-25）
 )
 ```
 
@@ -331,7 +341,9 @@ return MasterDataTableView<Map<String, dynamic>>(
   换关键字后剪掉已失效的筛选值（`_pruneMaterialTableFilters` 同款），否则列头 sanitize 回
   列名、表体仍在过滤，用户会面对一张没有出口的空表（空态「清除筛选」是最后兜底）。
 
-**最后更新**：2026-09-22 · 表体舞台只按宽度重建（§七「只按宽度重建」）：联动折叠收 / 放头部时 body 每格变高，原来表体 `LayoutBuilder` 整树重建致「表格一步步往置顶移动时一卡一卡」；现在高度只变时交回同一实例，`ConstrainedBox(maxHeight)` 随之删除。滚轮交接门在 [UtenCollapsingHeaderScrollView §八](UtenCollapsingHeaderScrollView.md)。
+**最后更新**：2026-09-25 · 短表垫高从「公式撑满」改为「实测缺口、垫在表体下方」：旧版按 `视口 − 表头 − 24` 公式把表体 minHeight 撑满（Excel 式空白表格区），短表吸顶后表后内容被整屏空白隔开（与编辑网格「添加行/汇总不跟着表格上移」同根）。现改为量「置顶点 − 页面可滚余量」的实际缺口，够得着就一点不垫、够不着才垫足差值；余量被钳制（页面不足一屏 maxScrollExtent=0）时首跳会低估，靠「缺口>0 就累加」逐跳收敛到正好置顶。滚轮门行为不变（一格到点即止 / 350ms 停顿窗 / 表内空白区命中链）。回归：`test/uten_sticky_wheel_gate_test.dart`（8 例，含「垫高只补缺口」回归锁）。
+此前：2026-09-25 · embedded 吸顶表（`stickyHeaderPinned`）接入 `UtenStickyWheelGate` + 短表撑高：①滚轮一格越过置顶点 → 正好停在点上、余量丢弃；②停顿窗（350ms 滑动续窗）内同方向后续格属同一滚势整格吞掉——「滚一下没停就置顶了 → 停住，重新开始滚才继续」；③短表按需撑高——修「一直滚不到置顶，总是差点」。门挂在表格子树内（resolver 先注册先得，更深的独立滚动件天然优先），Listener `opaque` 保证短表空白区也在命中链。
+此前：2026-09-22 · 表体舞台只按宽度重建（§七「只按宽度重建」）：联动折叠收 / 放头部时 body 每格变高，原来表体 `LayoutBuilder` 整树重建致「表格一步步往置顶移动时一卡一卡」；现在高度只变时交回同一实例，`ConstrainedBox(maxHeight)` 随之删除。滚轮交接门在 [UtenCollapsingHeaderScrollView §八](UtenCollapsingHeaderScrollView.md)。
 此前：2026-09-21 · 受控多选的适用范围从「列表页」扩到**详情页里的树表**——货品
 「组装信息」页签接入 `selectable` 开勾选列，**批量删除的 danger「删除」按钮挂宿主的
 `toolbarActions`(表头工具条)、不传 `batchActionsBuilder`**，所以「已选 N 项 + 清除」胶囊仍由

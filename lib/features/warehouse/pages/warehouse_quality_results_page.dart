@@ -9,6 +9,7 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
@@ -40,6 +41,7 @@ class WarehouseQualityResultsPage extends ConsumerStatefulWidget {
   const WarehouseQualityResultsPage({
     super.key,
     this.embedded = false,
+    this.externalHeader,
     this.externalKeyword,
     this.externalRefreshTick,
   });
@@ -48,6 +50,10 @@ class WarehouseQualityResultsPage extends ConsumerStatefulWidget {
   /// 「品质检查结果」大类的正文——不渲染 Scaffold/AppBar/页面容器与搜索框
   /// （搜索与刷新由宿主页承担），页内来源行/状态行原样保留。
   final bool embedded;
+
+  /// 宿主（合并页大类行）：挂进折叠头随页滚走（2026-09-24 用户口径
+  /// 「表格完全置顶」，置顶后只剩表格自身工具条）。
+  final Widget? externalHeader;
 
   /// 宿主页搜索词（嵌入态非 null 时隐藏自身搜索框并直接采用）。
   final String? externalKeyword;
@@ -359,61 +365,68 @@ class _WarehouseQualityResultsPageState
           totalPages: 0,
         );
     // 正文（来源/状态分段 + 表格）：独立页与嵌入态共用一份。
+    // 2026-09-24 用户口径「表格完全置顶」：分段行/错误行进折叠头随页滚走，
+    // body 只剩表格（primary 拾取联动控制器）。
     final bodyContent = Padding(
       padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildToolbars(result),
-          if (_error != null && result.items.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Semantics(
-              liveRegion: true,
-              child: Text(
-                '刷新失败：$_error',
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+      child: UtenCollapsingHeaderScrollView(
+        collapsingHeader: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (widget.externalHeader != null) ...[
+              widget.externalHeader!,
+              const SizedBox(height: UtenSpacing.s12),
+            ],
+            _buildToolbars(result),
+            if (_error != null && result.items.isNotEmpty) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  '刷新失败：$_error',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
               ),
-            ),
+            ],
+            const SizedBox(height: UtenSpacing.s12),
           ],
-          const SizedBox(height: UtenSpacing.s12),
-          Expanded(
-            child: !_shouldLoad
-                ? (_statusSeg != null && _statusSeg!.history
-                      ? const UtenHistoryTimePlaceholder()
-                      : const UtenFilterPlaceholder(
-                          message: '在上方选择来源和状态后开始办理',
-                          description: '来源与状态都默认不选中，选择后才加载对应任务',
-                        ))
-                : MasterDataTableView<WarehouseQualityResultTask>(
-                    key: const Key('warehouse-quality-result-table'),
-                    columns: _columns,
-                    items: result.items,
-                    facets: const {},
-                    nullCounts: const {},
-                    filters: const {},
-                    onFilterChanged: (_, _) {},
-                    selectable: true,
-                    idOf: _taskId,
-                    rowKeyOf: _taskId,
-                    selectedIds: _selectedIds,
-                    onSelectedIdsChanged: (next) =>
-                        setState(() => _selectedIds = next),
-                    batchActionsBuilder: _batchActions,
-                    rowColor: (task) =>
-                        _statusRowColor(context, task.workStatus),
-                    onRowTap: _openDetail,
-                    rowMenuBuilder: _rowMenu,
-                    isLoading: _loading && _result == null,
-                    loadingMore: _loading && _result != null,
-                    error: result.items.isEmpty ? _error : null,
-                    onRetry: () => _load(result.page),
-                    emptyMessage: _emptyMessage,
-                    currentPage: result.page,
-                    totalPages: result.totalPages,
-                    onPageChange: _load,
-                  ),
-          ),
-        ],
+        ),
+        body: !_shouldLoad
+            ? (_statusSeg != null && _statusSeg!.history
+                  ? const UtenHistoryTimePlaceholder()
+                  : const UtenFilterPlaceholder(
+                      message: '在上方选择来源和状态后开始办理',
+                      description: '来源与状态都默认不选中，选择后才加载对应任务',
+                    ))
+            : MasterDataTableView<WarehouseQualityResultTask>(
+                // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+                primary: true,
+                key: const Key('warehouse-quality-result-table'),
+                columns: _columns,
+                items: result.items,
+                facets: const {},
+                nullCounts: const {},
+                filters: const {},
+                onFilterChanged: (_, _) {},
+                selectable: true,
+                idOf: _taskId,
+                rowKeyOf: _taskId,
+                selectedIds: _selectedIds,
+                onSelectedIdsChanged: (next) =>
+                    setState(() => _selectedIds = next),
+                batchActionsBuilder: _batchActions,
+                rowColor: (task) => _statusRowColor(context, task.workStatus),
+                onRowTap: _openDetail,
+                rowMenuBuilder: _rowMenu,
+                isLoading: _loading && _result == null,
+                loadingMore: _loading && _result != null,
+                error: result.items.isEmpty ? _error : null,
+                onRetry: () => _load(result.page),
+                emptyMessage: _emptyMessage,
+                currentPage: result.page,
+                totalPages: result.totalPages,
+                onPageChange: _load,
+              ),
       ),
     );
     // 嵌入态：宿主页（仓库任务中心合并页）负责 Scaffold/AppBar/搜索/刷新。

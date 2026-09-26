@@ -15,7 +15,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -291,6 +293,26 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
     ),
   ];
 
+  // ---- 导出 / 打印（V717 settlement_method:export） --------------------------
+
+  /// 导出查询参数（与 _load 一致；字典不分页无 page/size）。
+  Map<String, dynamic> get _exportQuery =>
+      masterFilterQueryParams(_filters);
+
+  /// 打印预览数据：按当前筛选口径拉全量，列/格式化与页面表格一致。
+  Future<UtenPrintTable> _printLoader() async {
+    final items = await ref
+        .read(referenceMethodRepositoryProvider)
+        .settlementAdminList(filters: _filters);
+    return UtenPrintTable(
+      headers: [for (final c in _columns) c.label],
+      rows: [
+        for (final item in items)
+          [for (final c in _columns) c.value(item) ?? ''],
+      ],
+    );
+  }
+
   // ---- 列定义 -----------------------------------------------------------
 
   static final _columns = <MasterColumnDef<SettlementMethodAdminItem>>[
@@ -422,6 +444,34 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
                   child: MasterDataTableView<SettlementMethodAdminItem>(
                     columns: _columns,
                     items: items,
+                    // 导出/打印（V717 settlement_method:export）：打印预览用本页列
+                    // 渲染，导出列集服务端与表格对齐——「表格显示啥导出啥」。
+                    toolbarActions: [
+                      UtenPrintPreviewButton(
+                        title: '结算方式', // TODO(l10n): 补 arb
+                        subtitle: '全部行', // TODO(l10n): 补 arb
+                        loader: _printLoader,
+                        exportEndpoint:
+                            '/master/reference-methods/settlement-admin/export',
+                        exportPermission: Perm.settlementMethodExport,
+                        exportReport: '',
+                        exportQuery: _exportQuery,
+                        exportFilename: '结算方式', // TODO(l10n): 补 arb
+                        type: UtenButtonType.primary,
+                        size: UtenButtonSize.large,
+                      ),
+                      UtenExportButton(
+                        endpoint:
+                            '/master/reference-methods/settlement-admin/export',
+                        requiredPermission: Perm.settlementMethodExport,
+                        report: '',
+                        queryParams: _exportQuery,
+                        filename: '结算方式', // TODO(l10n): 补 arb
+                        label: '导出结算方式', // TODO(l10n): 补 arb
+                        type: UtenButtonType.primary,
+                        size: UtenButtonSize.large,
+                      ),
+                    ],
                     facets: _labeledFacets,
                     nullCounts: _facets?.nullCounts ?? const {},
                     filters: _filters,

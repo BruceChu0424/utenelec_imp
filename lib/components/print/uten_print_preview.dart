@@ -99,6 +99,9 @@ class UtenPrintPreviewButton extends StatelessWidget {
     return UtenButton(
       type: type,
       size: size,
+      // 工具条 large 档高度统一到 UtenTableToolbar.controlHeight（2026-09-25
+      // 平台统一口径：顶部按钮稍矮一档；全站 16+ 调用点随组件一次收口）。
+      height: size == UtenButtonSize.large ? UtenTableToolbar.controlHeight : null,
       icon: Icons.print_outlined,
       onPressed: () => showUtenPrintPreview(
         context: context,

@@ -44,6 +44,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/widgets/editable_grid_totals_bar.dart';
+import '../../../shared/widgets/order_duplicate_goods_review.dart';
 import '../../basic_data/models/reference_method_option.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
@@ -887,6 +888,104 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
         '${rate.toStringAsFixed(6)}|${tax.toStringAsFixed(4)}';
   }
 
+  /// 保存前查重：同「供应商+条款+货品+颜色+单位+换算率」多行 → 弹窗汇总/去重/
+  /// 标红返回。返回 null = 用户返回修改（不保存）；否则返回复查后应提交的行
+  /// （查重可能已合并/删行，须重新取行集）。
+  Future<List<PurchaseGridRow>?> _reviewDuplicateGoods(
+    List<PurchaseGridRow> rows,
+  ) async {
+    final names = ref.read(masterNameServiceProvider);
+    final gridRows = _grid.rows;
+    final rowNoOf = <PurchaseGridRow, int>{};
+    for (var i = 0; i < gridRows.length; i++) {
+      rowNoOf[gridRows[i]] = i + 1;
+    }
+    final groups = collectDuplicateGoodsGroups<PurchaseGridRow>(
+      rows: rows,
+      rowNoOf: (r) => rowNoOf[r] ?? 0,
+      groupKey: (r) =>
+          '${_comboKey(r)}|${r.goods?.id ?? ''}|${r.colorId ?? ''}|'
+          '${r.unitId ?? ''}|${r.unitRate ?? 1}',
+      identityLabel: (r) {
+        final parts = <String>[
+          if ((r.goods?.name ?? '').isNotEmpty) r.goods!.name!,
+          if ((r.goods?.code ?? '').isNotEmpty) r.goods!.code!,
+          if ((names.colorEntries[r.colorId] ?? '').isNotEmpty)
+            names.colorEntries[r.colorId]!,
+          if ((names.unitEntries[r.unitId] ?? '').isNotEmpty)
+            names.unitEntries[r.unitId]!,
+          if ((names.supplierEntries[r.supplierId] ?? '').isNotEmpty)
+            '供应商：${names.supplierEntries[r.supplierId]}',
+        ];
+        return parts.isEmpty ? '该货品' : parts.join(' · ');
+      },
+      rowSummary: (r, rowNo) {
+        final qty = r.qty.text.trim();
+        final price = r.price.text.trim();
+        return '第 $rowNo 行 · 数量 ${qty.isEmpty ? '—' : qty}'
+            '${price.isEmpty ? '' : ' · 单价 $price'}';
+      },
+      identicalSignature: (r) => [
+        financeExactTrimmed(r.qty.text) ?? r.qty.text.trim(),
+        financeExactTrimmed(r.price.text) ?? r.price.text.trim(),
+        r.weight.text.trim(),
+        r.remark.text.trim(),
+      ].join('|'),
+    );
+    if (groups.isEmpty) return rows;
+    final action = await showDuplicateGoodsReviewDialog<PurchaseGridRow>(
+      context,
+      groups: groups,
+    );
+    if (!mounted) return null;
+    if (action == null || action == DuplicateGoodsReviewAction.back) {
+      for (final g in groups) {
+        for (final r in g.rows) {
+          r.flagged = true;
+        }
+      }
+      return null;
+    }
+    for (final g in groups) {
+      final keep = g.rows.first;
+      if (action == DuplicateGoodsReviewAction.merge) {
+        // 汇总口径与「从上游引入」的 V463 合并一致：数量/maxQty 相加、来源聚合。
+        keep.qty.text =
+            financeExactSumTexts(g.rows.map((r) => r.qty.text)) ??
+            keep.qty.text;
+        keep.maxQty = g.rows.fold<double>(0, (sum, r) => sum + (r.maxQty ?? 0));
+        keep.upstreamItemIds = [
+          for (final r in g.rows) ...r.upstreamItemIds,
+        ];
+        keep.sourceDocs = [for (final r in g.rows) ...r.sourceDocs];
+        String? pickNonEmpty(Iterable<String?> values) {
+          for (final v in values) {
+            if (v != null && v.isNotEmpty) return v;
+          }
+          return null;
+        }
+
+        if ((keep.upstreamItemId ?? '').isEmpty) {
+          keep.upstreamItemId = pickNonEmpty(
+            g.rows.map((r) => r.upstreamItemId),
+          );
+        }
+        keep.sourceRequestId ??= pickNonEmpty(
+          g.rows.map((r) => r.sourceRequestId),
+        );
+        keep.sourceRequestNo ??= pickNonEmpty(
+          g.rows.map((r) => r.sourceRequestNo),
+        );
+        keep.sourceDocNo ??= pickNonEmpty(g.rows.map((r) => r.sourceDocNo));
+      }
+      _grid.removeRows(g.rows.skip(1).toList());
+    }
+    // 合并/去重后行集变了：按原口径（新建=勾选行，编辑=全部行）重新取。
+    return (_isCreate ? _grid.selectedRows : _grid.rows)
+        .where((r) => r.goods != null)
+        .toList();
+  }
+
   Future<void> _save() async {
     if (_createdOrders case final created?) {
       // 订货单已生成、附件未全部上传：只补传附件，成功后再提交财务/进入详情。
@@ -901,7 +1000,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
     // 新建态只提交勾选行（2026-09-17 用户口径：勾选=本次要生成订货的行）；
     // 编辑既有单保持整单保存（行选择只是批量条款的助手，不能悄悄丢行）。
     final candidate = _isCreate ? _grid.selectedRows : _grid.rows;
-    final rows = candidate.where((r) => r.goods != null).toList();
+    var rows = candidate.where((r) => r.goods != null).toList();
     if (rows.isEmpty) {
       context.appError(_isCreate ? '请先勾选要生成订货的明细行' : '请至少添加一条明细');
       return;
@@ -1015,6 +1114,12 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
       );
       return;
     }
+    // 保存前查重（2026-09-25）：同「供应商+条款+货品+颜色+单位+换算率」多行时弹窗
+    // 汇总/去重/标红返回。采购订货按供应商+条款拆单——不同供应商或条款的同货品
+    // 行会落进不同订货单，不属于重复。
+    final reviewed = await _reviewDuplicateGoods(rows);
+    if (reviewed == null) return;
+    rows = reviewed;
     // 逐行校验已全部通过，这里只组装提交体。
     final itemsBody = <Map<String, dynamic>>[];
     for (final r in rows) {
@@ -1078,7 +1183,10 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
           if (!mounted) return;
           context.appWarning('订货单已保存，但未能提交财务审核组：${e.message}。请在订货详情重新提交。');
           bumpListRefresh(ref, _cfg.refreshKey);
-          context.replace(
+          // 编辑既有单：pop 回宿主详情（其「返回即刷新」重取保存后数据），深链
+          // 直达才落新详情；replace 会把新详情叠在旧详情上，返回一次看到旧快照。
+          popSavedEditOrReplace(
+            context,
             RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id),
           );
           return;
@@ -1097,7 +1205,10 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
           [RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id)],
         ),
       );
-      context.replace(RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id));
+      popSavedEditOrReplace(
+        context,
+        RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id),
+      );
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
@@ -1413,12 +1524,19 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
                                 showColumnSettings: true,
                                 initialColumnOrder: columnPrefs?.order,
                                 initialHiddenColumnKeys: columnPrefs?.hidden,
-                                onColumnSettingsChanged: (order, hidden) => ref
-                                    .read(
-                                      purchaseOrderGridColumnPrefsProvider
-                                          .notifier,
-                                    )
-                                    .updateFor('order', order, hidden),
+                                initialPinnedColumnKeys: columnPrefs?.pinned,
+                                onColumnSettingsChanged:
+                                    (order, hidden, pinned) => ref
+                                        .read(
+                                          purchaseOrderGridColumnPrefsProvider
+                                              .notifier,
+                                        )
+                                        .updateFor(
+                                          'order',
+                                          order,
+                                          hidden,
+                                          pinned,
+                                        ),
                                 toolbarActions: [
                                   UtenImportButton(
                                     label: '从上游引入',

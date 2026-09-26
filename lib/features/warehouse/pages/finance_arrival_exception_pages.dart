@@ -34,6 +34,7 @@ class FinanceArrivalExceptionTasksPage extends ConsumerStatefulWidget {
     super.key,
     this.embedded = false,
     this.refreshTick = 0,
+    this.externalHeader,
   });
 
   /// 嵌入「业务审核中心」分段时为 true——去掉本页 AppBar 与内容容器
@@ -42,6 +43,10 @@ class FinanceArrivalExceptionTasksPage extends ConsumerStatefulWidget {
 
   /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前页。
   final int refreshTick;
+
+  /// 宿主（业务审核中心）的大类行：挂在列表顶部随页一起滚走
+  /// （2026-09-24 用户口径「表格滑到顶」）。
+  final Widget? externalHeader;
 
   @override
   ConsumerState<FinanceArrivalExceptionTasksPage> createState() =>
@@ -164,6 +169,11 @@ class _FinanceArrivalExceptionTasksPageState
             ? const EdgeInsets.only(bottom: UtenSpacing.s16)
             : const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
         children: [
+          // 宿主大类行随页滚走（2026-09-24「表格滑到顶」）。
+          if (widget.externalHeader != null) ...[
+            widget.externalHeader!,
+            const SizedBox(height: UtenSpacing.s12),
+          ],
           _FinanceTaskSummary(total: result.total),
           if (_error != null) ...[
             const SizedBox(height: UtenSpacing.s12),

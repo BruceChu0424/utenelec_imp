@@ -1,14 +1,23 @@
 package com.uten.imp.features.master.mould;
 
+import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
+import com.uten.imp.audit.AuditService;
+import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.export.ExportPasswordRequest;
+import com.uten.imp.common.export.WorkbookDownloadService;
+import com.uten.imp.common.export.XlsxExportService;
+import com.uten.imp.common.web.DownloadContentDisposition;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.mould.dto.MouldDetail;
 import com.uten.imp.features.master.mould.dto.MouldFacets;
 import com.uten.imp.features.master.mould.dto.MouldListItem;
 import com.uten.imp.features.master.mould.dto.MouldQueryFilter;
 import com.uten.imp.features.master.mould.dto.MouldSaveRequest;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,6 +38,7 @@ import java.util.UUID;
  *
  * - GET  /api/master/moulds?categoryId=&keyword=&nullFields=&code=...&page=1&size=20 → 分页
  * - GET  /api/master/moulds/facets?categoryId=                                       → 各字段可选值 + 空值计数
+ * - POST /api/master/moulds/export                                                    → 加密 Excel 导出（mould:export，V717）
  * - GET  /api/master/moulds/{id}                                                     → 详情
  * - POST /api/master/moulds                                                          → 新建（mould:edit）
  * - PUT  /api/master/moulds/{id}                                                     → 编辑（mould:edit）
@@ -43,6 +53,11 @@ public class MouldController {
 
     private final MouldService service;
     private final AuditDetailViewRecorder detailViewAudit;
+    private final XlsxExportService xlsxExport;
+    private final WorkbookDownloadService workbookDownload;
+    private final AuditService audit;
+    private final SecurityContextCurrentUser currentUser;
+    private final ExportLimitPort exportLimits;
 
     @GetMapping
     @PreAuthorize("hasAuthority('mould:view')")
@@ -60,6 +75,35 @@ public class MouldController {
             @RequestParam(defaultValue = "20") int size) {
         return service.list(new MouldQueryFilter(categoryId, keyword, nullFields,
                 code, name, place, mstatus, remark, status), page, size);
+    }
+
+    // ---------- 加密 Excel 导出（POST，密码走 body；过滤参数与 GET /list 一致） ----------
+
+    @PostMapping("/export")
+    @PreAuthorize("hasAuthority('mould:export')")
+    public ResponseEntity<byte[]> export(
+            @RequestParam(required = false) UUID categoryId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Set<String> nullFields,
+            @RequestParam(required = false) String code,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String place,
+            @RequestParam(required = false) String mstatus,
+            @RequestParam(required = false) String remark,
+            @RequestParam(required = false) String status,
+            @Valid @RequestBody ExportPasswordRequest body) {
+        ExportPayload payload = service.export(new MouldQueryFilter(categoryId, keyword,
+                nullFields, code, name, place, mstatus, remark, status),
+                exportLimits.exportMaxRows());
+        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
+        byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
+        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
+                "export_mould", "master_data", String.valueOf(payload.total()), "success"));
+        return ResponseEntity.ok()
+                .header("Content-Disposition", DownloadContentDisposition.attachment("moulds.xlsx"))
+                .header("Content-Type",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .body(downloadBytes);
     }
 
     @GetMapping("/facets")

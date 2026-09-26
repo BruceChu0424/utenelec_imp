@@ -118,9 +118,11 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
 
   /// 无缩进层级色模式（选择器滑窗窄左栏用，2026-09-24 用户口径：层级多或名字长
   /// 时缩进吃掉宽度，名字几乎看不到）。行不按深度缩进，改为整行按深度铺色：
-  /// 一级深绿白字（对齐权限目录分组的一级模块头）、二级 surfaceContainerHigh、
-  /// 三级及更深 surfaceContainerLow；方角、行距收紧；选中 = 左缘 3px 强调条 +
-  /// 加粗 + 勾选图标（深绿行上反白）。层级语义只靠颜色与勾选图标表达。
+  /// 五档梯度（UtenColors.treeLevelRow）——一级深绿实底白字、往下逐档降饱和降
+  /// 明度、四档起转中性灰，4 及更深固定第五档（至少 5 个层级色差、最深层固定
+  /// 一色、色差拉开且协调，2026-09-24 第二轮口径）；方角、行距收紧、行间 1px
+  /// 分隔线；选中 = 左缘 3px 强调条 + 加粗 + 勾选图标（深绿行上反白）。
+  /// 层级语义只靠颜色与勾选图标表达。
   final bool flatLevelColors;
 
   @override
@@ -140,13 +142,10 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
 
   bool _passes(T node) => widget.passThrough?.call(node) ?? false;
 
-  /// flat 模式按深度铺色：一级深绿实底（白字）、二级 surfaceContainerHigh、
-  /// 三级及更深 surfaceContainerLow（三级往上只分三档，再深的层级同三档色）。
-  Color? _flatRowBackground(ThemeData theme, int depth) => switch (depth) {
-    0 => UtenColors.deepGreen,
-    1 => theme.colorScheme.surfaceContainerHigh,
-    _ => theme.colorScheme.surfaceContainerLow,
-  };
+  /// flat 模式按深度铺色：五档梯度（UtenColors.treeLevelRow）——一级深绿实底白字，
+  /// 往下逐档降饱和降明度、四档起转中性灰，4 及更深固定第五档；相邻档色差一眼可分。
+  Color? _flatRowBackground(ThemeData theme, int depth) =>
+      UtenColors.treeLevelRow(depth, dark: theme.brightness == Brightness.dark);
 
   @override
   void initState() {
@@ -298,13 +297,21 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
       child: InkWell(
         onTap: () => _onRowTap(node),
         child: DecoratedBox(
-          // flat 模式选中强调条：常驻 3px 透明边占位，行文字左缘对各层级恒对齐。
+          // flat 模式：左缘 3px 常驻透明边占位（行文字左缘对各层级恒对齐），
+          // 底部 1px 行间分隔线——同色行堆叠时分不清一行一行（2026-09-24 用户
+          // 口径）。深绿行上用 surface 色（浅色主题即细白线）；浅色行上白线
+          // 看不见，换 outlineVariant 细灰线。
           decoration: flat
               ? BoxDecoration(
                   border: Border(
                     left: BorderSide(
                       width: 3,
                       color: isSelected ? rowAccent : Colors.transparent,
+                    ),
+                    bottom: BorderSide(
+                      color: onDarkRow
+                          ? theme.colorScheme.surface
+                          : theme.colorScheme.outlineVariant,
                     ),
                   ),
                 )

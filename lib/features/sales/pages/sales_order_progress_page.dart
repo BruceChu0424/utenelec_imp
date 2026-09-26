@@ -6,8 +6,12 @@
 // 取消订单（财务驳回单的终止处置，避免一直挂在驳回段）/去发货。
 //
 // 2026-09-21(ADR-100 + 用户口径「就分三种，也可以有子分类」) 分段两层化：
-//  · 大类行三段：进行中 / 可发货 / 历史记录。原来六个阶段一字排开，看起来六个
+//  · 大类行四段：草稿 / 进行中 / 可发货 / 历史记录。原来六个阶段一字排开，看起来六个
 //    按钮一样重，分不出「还没能发货」和「已经能发货了」这条主线;
+//  · 2026-09-25 大类行最前加「草稿」（用户口径「进行中前面加个草稿」）：本人新建
+//    订货单中途退出后，单据只存在于草稿态（chain_status 恒为 0，落不进任何链路大类），
+//    此前在本页与任务中心都找不到。草稿走红徽章（待自审口径与 drafts.salesOrder
+//    一致），行点击/「打开编辑」直达编辑页继续办单；
 //  · 小类行（选中大类后出现）：进行中 = 财务驳回 / 待排产 / 生产中，
 //    可发货 = 可分批发货 / 出货待财审 / 等仓库出货（用户原话「可发货里面就包含
 //    财务啥的」）。没有「全部」段——大类本身就是全部;
@@ -93,6 +97,12 @@ const _groupLabels = <String, String>{
   'READY_TO_SHIP': '可发货',
 };
 
+/// 「草稿」段值（2026-09-25 用户口径「进行中前面加个草稿」）：不是链路阶段，
+/// 是 status=0 未提交且未被财务驳回的订货单（与 drafts.salesOrder 徽章同口径）。
+/// 草稿的 chain_status 恒为 0，落不进任何链路大类——此前新建订货单中途退出后，
+/// 在任务中心订货进度里根本找不到这张单。后端 stage='DRAFT' 专查这批单。
+const String _kDraftStage = 'DRAFT';
+
 /// 该阶段是不是「轮到销售动手」——决定小类行挂红徽章还是黄徽章。
 ///
 /// 财务驳回要销售改单重报、可分批发货要销售去开出货单，这两档不动会卡住整条链；
@@ -101,11 +111,19 @@ bool _stageNeedsSales(String stage) =>
     stage == 'REJECTED' || stage == 'SHIPPABLE';
 
 class SalesOrderProgressPage extends ConsumerStatefulWidget {
-  const SalesOrderProgressPage({super.key, this.embedded = false});
+  const SalesOrderProgressPage({
+    super.key,
+    this.embedded = false,
+    this.externalHeader,
+  });
 
   /// 嵌入态（2026-09-24 销售任务中心）：作为 /sales/tasks「订货进度」大类的正文，
   /// 不渲染 Scaffold/AppBar；大类/小类分段、搜索、表格与独立页完全一致。
   final bool embedded;
+
+  /// 宿主（销售任务中心）的大类行：挂进本页折叠头，随页一起滚走
+  /// （2026-09-24 用户口径「表格滑到顶」，置顶后只剩表格自身工具条）。
+  final Widget? externalHeader;
 
   @override
   ConsumerState<SalesOrderProgressPage> createState() =>
@@ -294,8 +312,12 @@ class _SalesOrderProgressPageState
   }
 
   /// 行菜单条目（右击/长按弹出）。可用性按权限 + 行状态实时决定。
+  /// 草稿行没有进度可看：首项换成「打开编辑」（继续把单办完），也不提供
+  /// 修改订单/取消订单（那是财务驳回单的处置）/去发货（草稿未审不可发）。
   List<UtenContextMenuEntry> _rowMenuItems(SalesOrderProgressRow r) {
+    final draft = r.stage == _kDraftStage;
     final canShip =
+        !draft &&
         r.shippable &&
         !r.financeRejected &&
         !r.stopped &&
@@ -303,12 +325,21 @@ class _SalesOrderProgressPageState
         r.stage != 'SHIPPED' &&
         _hasPerm(Perm.salesShipmentCreate);
     return [
-      UtenMenuItem(
-        label: '打开进度详情',
-        icon: Icons.open_in_full_rounded,
-        onTap: () =>
-            context.push(RoutePath.salesOrderProgressDetail(r.orderId)),
-      ),
+      if (draft)
+        UtenMenuItem(
+          label: '打开编辑',
+          icon: Icons.edit_outlined,
+          enabled: _hasPerm(Perm.salesOrderEdit),
+          onTap: () =>
+              context.push(RoutePath.salesDocEdit('orders', r.orderId)),
+        )
+      else
+        UtenMenuItem(
+          label: '打开进度详情',
+          icon: Icons.open_in_full_rounded,
+          onTap: () =>
+              context.push(RoutePath.salesOrderProgressDetail(r.orderId)),
+        ),
       if (r.financeRejected) ...[
         const UtenMenuDivider(),
         UtenMenuItem(
@@ -388,91 +419,110 @@ class _SalesOrderProgressPageState
     // 嵌入态不再自套 SafeArea/容器（宿主页已有容器，双重边距会把小类行
     // 推离父分类行与左缘，2026-09-24 用户走查修正），头部空行程也只在独立页留。
     final bodyContent = UtenCollapsingHeaderScrollView(
-      collapsingHeader: Padding(
-        padding: widget.embedded
-            ? const EdgeInsets.only(
-                left: UtenSpacing.s4,
-                right: UtenSpacing.s4,
-                bottom: UtenSpacing.s8,
-              )
-            : const EdgeInsets.fromLTRB(
-                UtenSpacing.s12,
-                UtenSpacing.s12,
-                UtenSpacing.s12,
-                UtenSpacing.s8,
-              ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 大类行（ADR-100，用户口径「就分三种」）：进行中 / 可发货 /
-            // 历史记录 + 搜索。每个大类同时挂两枚徽章——黄色 = 这一类里
-            // 还在别人手上跑的单，红色 = 这一类里等销售动手的单；
-            // 两枚都是「本大类各小类之和」，所以大类数与小类行对得上。
-            UtenFilterToolbar<_ProgressSeg>(
-              segmentsKey: const Key('sales-order-progress-stages'),
-              segments: [
-                for (final group in _stageGroups.keys)
-                  UtenFilterSegment(
-                    value: _ProgressSeg.stage(group),
-                    label: _groupLabels[group]!,
-                    count: _groupCount(group, _stageNeedsSales),
-                    countForm: UtenSegmentCountForm.actionable,
-                    inProgressCount: _groupCount(
-                      group,
-                      (stage) => !_stageNeedsSales(stage),
-                    ),
-                  ),
-                const UtenFilterSegment(
-                  value: _ProgressSeg.history(),
-                  label: '历史记录',
-                ),
-              ],
-              selected: seg == null
-                  ? const {}
-                  : {
-                      // 选中小类时大类保持高亮：大类段的值是大类码，
-                      // 直接拿 seg 去比会让整行看起来一个都没选。
-                      if (_selectedGroup != null)
-                        _ProgressSeg.stage(_selectedGroup!)
-                      else
-                        seg,
-                    },
-              onSelectionChanged: _selectSeg,
-              searchHint: '搜索订单号 / 客户',
-              onSearchChanged: _applyKeyword,
-            ),
-            // 小类行：选中大类后才解锁（与采购/委外任务中心的异常小类行同构）。
-            // 没有「全部」段——大类本身就是全部；要看全量就点回大类。
-            if (_selectedGroup != null) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              UtenFilterToolbar<_ProgressSeg>(
-                segmentsKey: const Key('sales-order-progress-substages'),
-                segments: [
-                  for (final stage in _stageGroups[_selectedGroup]!)
-                    UtenFilterSegment(
-                      value: _ProgressSeg.stage(stage),
-                      label: salesProgressStageLabel(stage),
-                      count: _stageCounts?[stage],
-                      countForm: _stageCountForm(stage),
-                    ),
-                ],
-                // 停在大类上时小类一个都不选（看的是整个大类）。
-                selected: _stageGroups.containsKey(seg?.stage)
-                    ? const {}
-                    : {seg!},
-                onSelectionChanged: _selectSeg,
-              ),
-            ],
-            if (seg?.history == true) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              UtenHistoryTimeFilter(
-                key: const Key('sales-order-progress-history-time'),
-                value: _historyTime,
-                onChanged: _onHistoryTime,
-              ),
-            ],
+      collapsingHeader: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 宿主大类行随页滚走（2026-09-24「表格滑到顶」）。
+          if (widget.externalHeader != null) ...[
+            widget.externalHeader!,
+            const SizedBox(height: UtenSpacing.s12),
           ],
-        ),
+          Padding(
+            padding: widget.embedded
+                ? const EdgeInsets.only(
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                    bottom: UtenSpacing.s8,
+                  )
+                : const EdgeInsets.fromLTRB(
+                    UtenSpacing.s12,
+                    UtenSpacing.s12,
+                    UtenSpacing.s12,
+                    UtenSpacing.s8,
+                  ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 大类行（ADR-100，用户口径「就分三种」）：草稿 / 进行中 / 可发货 /
+                // 历史记录 + 搜索。「草稿」排在最前（2026-09-25 用户口径「进行中前面
+                // 加个草稿」）：本人开了头没交出去的活，红徽章提醒（与 hub 卡草稿
+                // 徽章、新建页「草稿(N)」按钮同口径），选中后行点击直达编辑页
+                // 继续把单办完。每个大类同时挂两枚徽章——黄色 = 这一类里还在别人
+                // 手上跑的单，红色 = 这一类里等销售动手的单；两枚都是「本大类各小类
+                // 之和」，所以大类数与小类行对得上。
+                UtenFilterToolbar<_ProgressSeg>(
+                  segmentsKey: const Key('sales-order-progress-stages'),
+                  segments: [
+                    UtenFilterSegment(
+                      value: const _ProgressSeg.stage(_kDraftStage),
+                      label: '草稿',
+                      count: _stageCounts?[_kDraftStage],
+                      countForm: UtenSegmentCountForm.actionable,
+                    ),
+                    for (final group in _stageGroups.keys)
+                      UtenFilterSegment(
+                        value: _ProgressSeg.stage(group),
+                        label: _groupLabels[group]!,
+                        count: _groupCount(group, _stageNeedsSales),
+                        countForm: UtenSegmentCountForm.actionable,
+                        inProgressCount: _groupCount(
+                          group,
+                          (stage) => !_stageNeedsSales(stage),
+                        ),
+                      ),
+                    const UtenFilterSegment(
+                      value: _ProgressSeg.history(),
+                      label: '历史记录',
+                    ),
+                  ],
+                  selected: seg == null
+                      ? const {}
+                      : {
+                          // 选中小类时大类保持高亮：大类段的值是大类码，
+                          // 直接拿 seg 去比会让整行看起来一个都没选。
+                          if (_selectedGroup != null)
+                            _ProgressSeg.stage(_selectedGroup!)
+                          else
+                            seg,
+                        },
+                  onSelectionChanged: _selectSeg,
+                  searchHint: '搜索订单号 / 客户',
+                  onSearchChanged: _applyKeyword,
+                ),
+                // 小类行：选中大类后才解锁（与采购/委外任务中心的异常小类行同构）。
+                // 没有「全部」段——大类本身就是全部；要看全量就点回大类。
+                if (_selectedGroup != null) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  UtenFilterToolbar<_ProgressSeg>(
+                    segmentsKey: const Key('sales-order-progress-substages'),
+                    segments: [
+                      for (final stage in _stageGroups[_selectedGroup]!)
+                        UtenFilterSegment(
+                          value: _ProgressSeg.stage(stage),
+                          label: salesProgressStageLabel(stage),
+                          count: _stageCounts?[stage],
+                          countForm: _stageCountForm(stage),
+                        ),
+                    ],
+                    // 停在大类上时小类一个都不选（看的是整个大类）。
+                    selected: _stageGroups.containsKey(seg?.stage)
+                        ? const {}
+                        : {seg!},
+                    onSelectionChanged: _selectSeg,
+                  ),
+                ],
+                if (seg?.history == true) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  UtenHistoryTimeFilter(
+                    key: const Key('sales-order-progress-history-time'),
+                    value: _historyTime,
+                    onChanged: _onHistoryTime,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
       body: _body(theme),
     );
@@ -522,8 +572,9 @@ class _SalesOrderProgressPageState
       rowColor: (r) => r.financeRejected
           ? theme.colorScheme.errorContainer.withValues(alpha: 0.30)
           : null,
-      onRowTap: (r) =>
-          context.push(RoutePath.salesOrderProgressDetail(r.orderId)),
+      onRowTap: (r) => r.stage == _kDraftStage
+          ? context.push(RoutePath.salesDocEdit('orders', r.orderId))
+          : context.push(RoutePath.salesOrderProgressDetail(r.orderId)),
       rowMenuBuilder: _rowMenuItems,
       isLoading: _loading && _result == null,
       loadingMore: _loading && _result != null,
@@ -652,25 +703,30 @@ class _SalesOrderProgressPageState
     ];
   }
 
-  /// 阶段列文本。优先级：终态（已中止/已结案）> 财务驳回 > 等待财务审核 > 生产阶段
+  /// 阶段列文本。优先级：终态（已中止/已结案）> 财务驳回 > 草稿 > 等待财务审核 > 生产阶段
   /// （V300 闸门只作用于在途订单）。终态必须最先判：整单取消不清 finance_confirmed，
   /// 已取消的订单该位仍为 false——若闸门优先，取消单会错显「等待财务审核」。
+  /// 草稿同理排在闸门前：草稿 finance_confirmed 恒为 false，闸门先判会把草稿
+  /// 错显成「等待财务审核」。
   String _stageText(SalesOrderProgressRow r) {
     if (r.stopped || r.stage == 'CANCELED') return '已中止';
     if (r.closed || r.stage == 'CLOSED') return '已结案';
     if (r.financeRejected) return '财务驳回';
+    if (r.stage == _kDraftStage) return '草稿';
     if (!r.financeConfirmed) return '等待财务审核';
     return salesProgressStageText(r);
   }
 
-  /// 状态列配色：与 [_stageText] 同优先级（终态 > 财务驳回 > 财务闸门 > 生产阶段）。
+  /// 状态列配色：与 [_stageText] 同优先级（终态 > 财务驳回 > 草稿 > 财务闸门 > 生产阶段）。
   ///
   /// 「等待财务审核」是订单级财务闸门、不是 stage，取 info 蓝——与「出货待财审」
   /// 同色是有意的：两者都是「球在财务手上」。已中止走中性灰，终态不抢红色警示。
+  /// 草稿也是中性灰（与单据列表草稿状态徽章同形）；红提醒在分段徽章上。
   UtenStatusBadgeType _stageBadgeType(SalesOrderProgressRow r) {
     if (r.stopped || r.stage == 'CANCELED') return UtenStatusBadgeType.neutral;
     if (r.closed || r.stage == 'CLOSED') return UtenStatusBadgeType.success;
     if (r.financeRejected) return UtenStatusBadgeType.danger;
+    if (r.stage == _kDraftStage) return UtenStatusBadgeType.neutral;
     if (!r.financeConfirmed) return UtenStatusBadgeType.info;
     return salesProgressStageBadgeType(r.stage);
   }

@@ -286,11 +286,10 @@ void main() {
     );
     expect(route, findsOneWidget);
     expect(tester.widget<UtenDropdownField>(route).enabled, isTrue);
+    // 2026-09-25 确认路线退役：选好即写，不再有「确认并换桶」中间确认。
     await tester.tap(route);
     await tester.pumpAndSettle();
     await tester.tap(find.text('自制').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('确认并换桶'));
     await tester.pumpAndSettle();
     final request = harness.requests.singleWhere(
       (request) => request.method == 'PUT',

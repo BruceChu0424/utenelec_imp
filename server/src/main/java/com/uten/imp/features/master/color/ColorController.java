@@ -1,14 +1,23 @@
 package com.uten.imp.features.master.color;
 
+import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
+import com.uten.imp.audit.AuditService;
+import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.export.ExportPasswordRequest;
+import com.uten.imp.common.export.WorkbookDownloadService;
+import com.uten.imp.common.export.XlsxExportService;
+import com.uten.imp.common.web.DownloadContentDisposition;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.color.dto.ColorDetail;
 import com.uten.imp.features.master.color.dto.ColorFacets;
 import com.uten.imp.features.master.color.dto.ColorListItem;
 import com.uten.imp.features.master.color.dto.ColorQueryFilter;
 import com.uten.imp.features.master.color.dto.ColorSaveRequest;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -43,6 +52,11 @@ public class ColorController {
 
     private final ColorService service;
     private final AuditDetailViewRecorder detailViewAudit;
+    private final XlsxExportService xlsxExport;
+    private final WorkbookDownloadService workbookDownload;
+    private final AuditService audit;
+    private final SecurityContextCurrentUser currentUser;
+    private final ExportLimitPort exportLimits;
 
     @GetMapping
     @PreAuthorize("hasAuthority('color:view')")
@@ -55,6 +69,31 @@ public class ColorController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         return service.list(new ColorQueryFilter(keyword, nullFields, code, name, status), page, size);
+    }
+
+    // ---------- 加密 Excel 导出（POST，密码走 body；过滤参数与 GET /list 一致；V717） ----------
+
+    @PostMapping("/export")
+    @PreAuthorize("hasAuthority('color:export')")
+    public ResponseEntity<byte[]> export(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Set<String> nullFields,
+            @RequestParam(required = false) String code,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String status,
+            @Valid @RequestBody ExportPasswordRequest body) {
+        ExportPayload payload = service.export(
+                new ColorQueryFilter(keyword, nullFields, code, name, status),
+                exportLimits.exportMaxRows());
+        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
+        byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
+        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
+                "export_color", "master_data", String.valueOf(payload.total()), "success"));
+        return ResponseEntity.ok()
+                .header("Content-Disposition", DownloadContentDisposition.attachment("colors.xlsx"))
+                .header("Content-Type",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .body(downloadBytes);
     }
 
     @GetMapping("/facets")

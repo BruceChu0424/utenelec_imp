@@ -42,12 +42,17 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
     this.embedded = false,
     this.externalKeyword,
     this.externalRefreshTick,
+    this.externalHeader,
   });
 
   /// 嵌入态：作为合并页（/warehouse/tasks）「入库」大类的正文，见骨架注释。
   final bool embedded;
   final String? externalKeyword;
   final int? externalRefreshTick;
+
+  /// 宿主（合并页）的大类行：嵌入态挂进分段视图折叠头随页滚走
+  /// （2026-09-24「表格完全置顶」）。
+  final Widget? externalHeader;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -111,37 +116,43 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
       embedded: embedded,
       externalKeyword: externalKeyword,
       externalRefreshTick: externalRefreshTick,
+      externalHeader: externalHeader,
       onResume: () => invalidateWarehouseTaskCounts(ref),
-      bodyBuilder: (segment, keyword, refreshTick) => switch (segment) {
-        'purchase' => _PurchaseInboundSegment(
-          keyword: keyword,
-          refreshTick: refreshTick,
-          canExpectations: canInbound,
-          canExceptions: canInbound,
-          canHistory: canPurchaseHistory,
-          expectationCount: purchaseExpectation,
-          exceptionCount: exceptionCount,
-        ),
-        'subcontract' => _SubcontractInboundSegment(
-          keyword: keyword,
-          refreshTick: refreshTick,
-          canExpectations: canInbound,
-          canHistory: canSubcontractHistory,
-          expectationCount: subcontractExpectation,
-        ),
-        'finishedIn' => _FinishedInSegment(
-          keyword: keyword,
-          refreshTick: refreshTick,
-          canTasks: canStockDocs,
-          taskCount: finishedCount,
-        ),
-        _ => WarehouseStockDocSegment(
-          docType: StockDocType.otherIn,
-          keyword: keyword,
-          refreshTick: refreshTick,
-          createLabel: '新建其它入库',
-        ),
-      },
+      bodyBuilder: (segment, keyword, refreshTick, headerPrefix) =>
+          switch (segment) {
+            'purchase' => _PurchaseInboundSegment(
+              keyword: keyword,
+              refreshTick: refreshTick,
+              canExpectations: canInbound,
+              canExceptions: canInbound,
+              canHistory: canPurchaseHistory,
+              expectationCount: purchaseExpectation,
+              exceptionCount: exceptionCount,
+              externalHeader: headerPrefix,
+            ),
+            'subcontract' => _SubcontractInboundSegment(
+              keyword: keyword,
+              refreshTick: refreshTick,
+              canExpectations: canInbound,
+              canHistory: canSubcontractHistory,
+              expectationCount: subcontractExpectation,
+              externalHeader: headerPrefix,
+            ),
+            'finishedIn' => _FinishedInSegment(
+              keyword: keyword,
+              refreshTick: refreshTick,
+              canTasks: canStockDocs,
+              taskCount: finishedCount,
+              externalHeader: headerPrefix,
+            ),
+            _ => WarehouseStockDocSegment(
+              docType: StockDocType.otherIn,
+              keyword: keyword,
+              refreshTick: refreshTick,
+              createLabel: '新建其它入库',
+              externalHeader: headerPrefix,
+            ),
+          },
     );
   }
 }
@@ -158,6 +169,7 @@ class _PurchaseInboundSegment extends StatefulWidget {
     required this.canHistory,
     this.expectationCount,
     this.exceptionCount,
+    this.externalHeader,
   });
 
   final String keyword;
@@ -172,6 +184,10 @@ class _PurchaseInboundSegment extends StatefulWidget {
   /// 「到货异常」段徽章；null = 加载中不显示。
   final int? exceptionCount;
 
+  /// 宿主（任务中心大类行 + 小类行）：与本分段自身小类行合并后挂进
+  /// 叶子视图折叠头随页滚走（2026-09-24「表格完全置顶」）。
+  final Widget? externalHeader;
+
   @override
   State<_PurchaseInboundSegment> createState() =>
       _PurchaseInboundSegmentState();
@@ -183,77 +199,91 @@ class _PurchaseInboundSegmentState extends State<_PurchaseInboundSegment> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(
-            bottom: UtenSpacing.s8,
-            left: UtenSpacing.s4,
-            right: UtenSpacing.s4,
-          ),
-          child: UtenFilterToolbar<int>(
-            segmentsKey: const Key('purchase-inbound-mode'),
-            segments: [
-              // 两段都是仓库必须清空的队列（待收货 / 异常）→ 红徽章。
-              if (widget.canExpectations)
-                UtenFilterSegment(
-                  value: 0,
-                  label: '预计到货',
-                  count: widget.expectationCount,
-                  countForm: UtenSegmentCountForm.actionable,
-                ),
-              if (widget.canExceptions)
-                UtenFilterSegment(
-                  value: 1,
-                  label: '到货异常',
-                  count: widget.exceptionCount,
-                  countForm: UtenSegmentCountForm.actionable,
-                ),
-              if (widget.canHistory)
-                const UtenFilterSegment(value: 2, label: '历史单据'),
-            ],
-            selected: _mode == null ? const {} : {_mode!},
-            onSelectionChanged: (value) => setState(() => _mode = value),
-          ),
+    final mode = _mode;
+    // 本分段小类行；与宿主前缀合并后挂进叶子视图折叠头随页滚走
+    // （2026-09-24「表格完全置顶」），未选小类时钉在占位区上方。
+    final modeRow = Padding(
+      padding: const EdgeInsets.only(
+        bottom: UtenSpacing.s8,
+        left: UtenSpacing.s4,
+        right: UtenSpacing.s4,
+      ),
+      child: UtenFilterToolbar<int>(
+        segmentsKey: const Key('purchase-inbound-mode'),
+        segments: [
+          // 两段都是仓库必须清空的队列（待收货 / 异常）→ 红徽章。
+          if (widget.canExpectations)
+            UtenFilterSegment(
+              value: 0,
+              label: '预计到货',
+              count: widget.expectationCount,
+              countForm: UtenSegmentCountForm.actionable,
+            ),
+          if (widget.canExceptions)
+            UtenFilterSegment(
+              value: 1,
+              label: '到货异常',
+              count: widget.exceptionCount,
+              countForm: UtenSegmentCountForm.actionable,
+            ),
+          if (widget.canHistory)
+            const UtenFilterSegment(value: 2, label: '历史单据'),
+        ],
+        selected: mode == null ? const {} : {mode},
+        onSelectionChanged: (value) => setState(() => _mode = value),
+      ),
+    );
+    final Widget? combined = widget.externalHeader == null
+        ? null
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [widget.externalHeader!, modeRow],
+          );
+    return switch (mode) {
+      0 => WarehouseInboundExpectationsView(
+        fixedOrderType: ProcurementInboundOrderType.purchase,
+        keyword: widget.keyword,
+        refreshTick: widget.refreshTick,
+        embedded: true,
+        externalHeader: combined,
+      ),
+      1 => WarehouseArrivalExceptionsView(
+        keyword: widget.keyword,
+        refreshTick: widget.refreshTick,
+        embedded: true,
+        externalHeader: combined,
+      ),
+      2 => WarehouseHistoryGate(
+        timeKey: const Key('purchase-inbound-history-time'),
+        builder: (time) => WarehouseDocumentHistoryView(
+          type: WarehouseDocumentHistoryType.purchaseReceipt,
+          keyword: widget.keyword,
+          refreshTick: widget.refreshTick,
+          embedded: true,
+          externalHeader: combined,
+          dateFrom: time.range == null
+              ? null
+              : ChinaDateTime.formatDate(time.range!.start),
+          dateTo: time.range == null
+              ? null
+              : ChinaDateTime.formatDate(time.range!.end),
         ),
-        const SizedBox(height: UtenSpacing.s8),
-        Expanded(
-          child: switch (_mode) {
-            0 => WarehouseInboundExpectationsView(
-              fixedOrderType: ProcurementInboundOrderType.purchase,
-              keyword: widget.keyword,
-              refreshTick: widget.refreshTick,
-              embedded: true,
-            ),
-            1 => WarehouseArrivalExceptionsView(
-              keyword: widget.keyword,
-              refreshTick: widget.refreshTick,
-              embedded: true,
-            ),
-            2 => WarehouseHistoryGate(
-              timeKey: const Key('purchase-inbound-history-time'),
-              builder: (time) => WarehouseDocumentHistoryView(
-                type: WarehouseDocumentHistoryType.purchaseReceipt,
-                keyword: widget.keyword,
-                refreshTick: widget.refreshTick,
-                embedded: true,
-                dateFrom: time.range == null
-                    ? null
-                    : ChinaDateTime.formatDate(time.range!.start),
-                dateTo: time.range == null
-                    ? null
-                    : ChinaDateTime.formatDate(time.range!.end),
-              ),
-            ),
-            _ => const UtenFilterPlaceholder(
+      ),
+      _ => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.externalHeader != null) widget.externalHeader!,
+          modeRow,
+          const SizedBox(height: UtenSpacing.s8),
+          const Expanded(
+            child: UtenFilterPlaceholder(
               message: '在上方选择分类后开始办理',
               description: '小类默认不选中；历史单据需先选时间段或「全部」',
             ),
-          },
-        ),
-      ],
-    );
+          ),
+        ],
+      ),
+    };
   }
 }
 
@@ -265,6 +295,7 @@ class _SubcontractInboundSegment extends StatefulWidget {
     required this.canExpectations,
     required this.canHistory,
     this.expectationCount,
+    this.externalHeader,
   });
 
   final String keyword;
@@ -274,6 +305,10 @@ class _SubcontractInboundSegment extends StatefulWidget {
 
   /// 「预计到货」段徽章 = 委外来源预计到货数；null = 加载中不显示。
   final int? expectationCount;
+
+  /// 宿主（任务中心大类行 + 小类行）：与本分段自身小类行合并后挂进
+  /// 叶子视图折叠头随页滚走（2026-09-24「表格完全置顶」）。
+  final Widget? externalHeader;
 
   @override
   State<_SubcontractInboundSegment> createState() =>
@@ -287,65 +322,78 @@ class _SubcontractInboundSegmentState
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(
-            bottom: UtenSpacing.s8,
-            left: UtenSpacing.s4,
-            right: UtenSpacing.s4,
-          ),
-          child: UtenFilterToolbar<int>(
-            segmentsKey: const Key('subcontract-inbound-mode'),
-            segments: [
-              // 待收货队列 → 红徽章；历史单据无待办语义不传 count。
-              if (widget.canExpectations)
-                UtenFilterSegment(
-                  value: 0,
-                  label: '预计到货',
-                  count: widget.expectationCount,
-                  countForm: UtenSegmentCountForm.actionable,
-                ),
-              if (widget.canHistory)
-                const UtenFilterSegment(value: 1, label: '历史单据'),
-            ],
-            selected: _mode == null ? const {} : {_mode!},
-            onSelectionChanged: (value) => setState(() => _mode = value),
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        Expanded(
-          child: _mode == 0
-              ? WarehouseInboundExpectationsView(
-                  fixedOrderType: ProcurementInboundOrderType.subcontract,
-                  keyword: widget.keyword,
-                  refreshTick: widget.refreshTick,
-                  embedded: true,
-                )
-              : _mode == 1
-              ? WarehouseHistoryGate(
-                  timeKey: const Key('subcontract-inbound-history-time'),
-                  builder: (time) => WarehouseDocumentHistoryView(
-                    type: WarehouseDocumentHistoryType.subcontractReceipt,
-                    keyword: widget.keyword,
-                    refreshTick: widget.refreshTick,
-                    embedded: true,
-                    dateFrom: time.range == null
-                        ? null
-                        : ChinaDateTime.formatDate(time.range!.start),
-                    dateTo: time.range == null
-                        ? null
-                        : ChinaDateTime.formatDate(time.range!.end),
-                  ),
-                )
-              : const UtenFilterPlaceholder(
-                  message: '在上方选择分类后开始办理',
-                  description: '小类默认不选中；历史单据需先选时间段或「全部」',
-                ),
-        ),
-      ],
+    final mode = _mode;
+    // 本分段小类行；与宿主前缀合并后挂进叶子视图折叠头随页滚走
+    // （2026-09-24「表格完全置顶」），未选小类时钉在占位区上方。
+    final modeRow = Padding(
+      padding: const EdgeInsets.only(
+        bottom: UtenSpacing.s8,
+        left: UtenSpacing.s4,
+        right: UtenSpacing.s4,
+      ),
+      child: UtenFilterToolbar<int>(
+        segmentsKey: const Key('subcontract-inbound-mode'),
+        segments: [
+          // 待收货队列 → 红徽章；历史单据无待办语义不传 count。
+          if (widget.canExpectations)
+            UtenFilterSegment(
+              value: 0,
+              label: '预计到货',
+              count: widget.expectationCount,
+              countForm: UtenSegmentCountForm.actionable,
+            ),
+          if (widget.canHistory)
+            const UtenFilterSegment(value: 1, label: '历史单据'),
+        ],
+        selected: mode == null ? const {} : {mode},
+        onSelectionChanged: (value) => setState(() => _mode = value),
+      ),
     );
+    final Widget? combined = widget.externalHeader == null
+        ? null
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [widget.externalHeader!, modeRow],
+          );
+    return switch (mode) {
+      0 => WarehouseInboundExpectationsView(
+        fixedOrderType: ProcurementInboundOrderType.subcontract,
+        keyword: widget.keyword,
+        refreshTick: widget.refreshTick,
+        embedded: true,
+        externalHeader: combined,
+      ),
+      1 => WarehouseHistoryGate(
+        timeKey: const Key('subcontract-inbound-history-time'),
+        builder: (time) => WarehouseDocumentHistoryView(
+          type: WarehouseDocumentHistoryType.subcontractReceipt,
+          keyword: widget.keyword,
+          refreshTick: widget.refreshTick,
+          embedded: true,
+          externalHeader: combined,
+          dateFrom: time.range == null
+              ? null
+              : ChinaDateTime.formatDate(time.range!.start),
+          dateTo: time.range == null
+              ? null
+              : ChinaDateTime.formatDate(time.range!.end),
+        ),
+      ),
+      _ => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.externalHeader != null) widget.externalHeader!,
+          modeRow,
+          const SizedBox(height: UtenSpacing.s8),
+          const Expanded(
+            child: UtenFilterPlaceholder(
+              message: '在上方选择分类后开始办理',
+              description: '小类默认不选中；历史单据需先选时间段或「全部」',
+            ),
+          ),
+        ],
+      ),
+    };
   }
 }
 
@@ -358,6 +406,7 @@ class _FinishedInSegment extends StatefulWidget {
     required this.refreshTick,
     required this.canTasks,
     this.taskCount,
+    this.externalHeader,
   });
 
   final String keyword;
@@ -366,6 +415,10 @@ class _FinishedInSegment extends StatefulWidget {
 
   /// 「待点收任务」段徽章；null = 加载中不显示。
   final int? taskCount;
+
+  /// 宿主（任务中心大类行 + 小类行）：与本分段自身小类行合并后挂进
+  /// 叶子视图折叠头随页滚走（2026-09-24「表格完全置顶」）。
+  final Widget? externalHeader;
 
   @override
   State<_FinishedInSegment> createState() => _FinishedInSegmentState();
@@ -377,53 +430,66 @@ class _FinishedInSegmentState extends State<_FinishedInSegment> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(
-            bottom: UtenSpacing.s8,
-            left: UtenSpacing.s4,
-            right: UtenSpacing.s4,
+    final mode = _mode;
+    // 本分段小类行；与宿主前缀合并后挂进叶子视图折叠头随页滚走
+    // （2026-09-24「表格完全置顶」），未选小类时钉在占位区上方。
+    final modeRow = Padding(
+      padding: const EdgeInsets.only(
+        bottom: UtenSpacing.s8,
+        left: UtenSpacing.s4,
+        right: UtenSpacing.s4,
+      ),
+      child: UtenFilterToolbar<int>(
+        segmentsKey: const Key('finished-in-mode'),
+        segments: [
+          // 待点收 = 仓库必须清空的队列 → 红徽章。
+          UtenFilterSegment(
+            value: 0,
+            label: '待点收任务',
+            count: widget.taskCount,
+            countForm: UtenSegmentCountForm.actionable,
           ),
-          child: UtenFilterToolbar<int>(
-            segmentsKey: const Key('finished-in-mode'),
-            segments: [
-              // 待点收 = 仓库必须清空的队列 → 红徽章。
-              UtenFilterSegment(
-                value: 0,
-                label: '待点收任务',
-                count: widget.taskCount,
-                countForm: UtenSegmentCountForm.actionable,
-              ),
-              const UtenFilterSegment(value: 1, label: '产成品进仓单'),
-            ],
-            selected: _mode == null ? const {} : {_mode!},
-            onSelectionChanged: (value) => setState(() => _mode = value),
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        Expanded(
-          child: _mode == null
-              ? const UtenFilterPlaceholder(
-                  message: '在上方选择分类后开始办理',
-                  description: '小类默认不选中；「产成品进仓单」内再选状态或历史单据',
-                )
-              : _mode == 0
-              ? ProductionFinishedInboundTasksView(
-                  keyword: widget.keyword,
-                  refreshTick: widget.refreshTick,
-                  embedded: true,
-                )
-              : WarehouseStockDocSegment(
-                  docType: StockDocType.finishedIn,
-                  keyword: widget.keyword,
-                  refreshTick: widget.refreshTick,
-                  createLabel: '新建产成品入库',
-                ),
-        ),
-      ],
+          const UtenFilterSegment(value: 1, label: '产成品进仓单'),
+        ],
+        selected: mode == null ? const {} : {mode},
+        onSelectionChanged: (value) => setState(() => _mode = value),
+      ),
     );
+    final Widget? combined = widget.externalHeader == null
+        ? null
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [widget.externalHeader!, modeRow],
+          );
+    return switch (mode) {
+      0 => ProductionFinishedInboundTasksView(
+        keyword: widget.keyword,
+        refreshTick: widget.refreshTick,
+        embedded: true,
+        externalHeader: combined,
+      ),
+      1 => WarehouseStockDocSegment(
+        docType: StockDocType.finishedIn,
+        keyword: widget.keyword,
+        refreshTick: widget.refreshTick,
+        createLabel: '新建产成品入库',
+        externalHeader: combined,
+      ),
+      _ => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.externalHeader != null) widget.externalHeader!,
+          modeRow,
+          const SizedBox(height: UtenSpacing.s8),
+          const Expanded(
+            child: UtenFilterPlaceholder(
+              message: '在上方选择分类后开始办理',
+              description: '小类默认不选中；「产成品进仓单」内再选状态或历史单据',
+            ),
+          ),
+        ],
+      ),
+    };
   }
 }
 

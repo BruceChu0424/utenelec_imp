@@ -107,13 +107,14 @@ void main() {
     await _pump(tester, size: const Size(1280, 900));
 
     expect(find.byType(UtenCollapsingHeaderScrollView), findsOneWidget);
-    expect(find.text('明细 (16)'), findsOneWidget);
+    // 2026-09-25 起纯计数「明细 (N)」标题退役，明细表本体即 body 锚点。
+    expect(find.byType(MasterDataTableView<FinanceDocItem>), findsOneWidget);
     await expectUtenHeaderCollapses(
       tester,
       headerAnchor: find.text('单据号'),
       bodyAnchor: find.byType(MasterDataTableView<FinanceDocItem>),
     );
-    expect(find.text('明细 (16)'), findsOneWidget);
+    expect(find.byType(MasterDataTableView<FinanceDocItem>), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

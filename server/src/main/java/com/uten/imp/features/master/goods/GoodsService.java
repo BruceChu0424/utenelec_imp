@@ -506,59 +506,65 @@ public class GoodsService {
     /**
      * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限 1000 页=10万行防 OOM。
      * 列定义服务端权威（不信任前端传列）；过滤/排序走 TableSort 白名单（list 已接 sort/order）。
+     * 2026-09-25 口径「表格显示啥导出啥，权限列看不到导出也不给」：列集/列序对齐前端
+     * 货品表格——「价格」「折扣」按权限**整列增减**（无 goods:price:view|edit 者没有价格列、
+     * 无 goods:discount:view 者没有折扣列，不再是空单元格），补「库存量」，去表格没有的
+     * 「状态」（导出口径本就排除禁用品，该列恒「使用」）。例外保留「类别」：表格里分类由
+     * 左侧树表达，平铺导出需要它携带树上下文，且货品导入必填类别列（导出改完可直接导回）。
      */
     @Transactional(readOnly = true)
     public ExportPayload export(GoodsQueryFilter f, String sort, String order, int maxRows) {
         Map<UUID, String> categoryPath = categoryPathMap();
-        List<ExportColumn> cols = List.of(
-                new ExportColumn("code", "编号", ExportColumn.TEXT),
-                new ExportColumn("categoryPath", "类别", ExportColumn.TEXT),
-                new ExportColumn("series", "系列", ExportColumn.TEXT),
-                new ExportColumn("model", "型号", ExportColumn.TEXT),
-                new ExportColumn("name", "货品名称", ExportColumn.TEXT),
-                new ExportColumn("spec", "规格", ExportColumn.TEXT),
-                new ExportColumn("material", "材质", ExportColumn.TEXT),
-                new ExportColumn("cNumber", "客户型号", ExportColumn.TEXT),
-                new ExportColumn("mouldCode", "模具编号", ExportColumn.TEXT),
-                new ExportColumn("rearInsertCode", "后模镶件编号", ExportColumn.TEXT),
-                new ExportColumn("paper", "备注", ExportColumn.TEXT),
-                new ExportColumn("colorName", "主颜色", ExportColumn.TEXT),
-                new ExportColumn("unitName", "单位", ExportColumn.TEXT),
-                new ExportColumn("sourceType", "来源", ExportColumn.TEXT),
-                new ExportColumn("price", "价格", ExportColumn.MONEY),
-                // 采购批量口径（V575）：供应商 MOQ / 整箱倍数，采购据此抬量、取整。
-                new ExportColumn("minOrderQty", "最小起订量", ExportColumn.NUMBER),
-                new ExportColumn("orderMultipleQty", "订货倍数", ExportColumn.NUMBER),
-                // 所属仓库 (V587)：主档归属仓，不是单据落点仓。与下方 row.put 必须成对，
-                // 只加一处会导出一个空列。表头同时登记进 GoodsImportService 的别名表。
-                new ExportColumn("owningWarehouseName", "所属仓库", ExportColumn.TEXT),
-                // 归属生产车间 (V590)：与下方 row.put 必须成对，只加一处会导出空列。
-                new ExportColumn("owningWorkshopName", "归属车间", ExportColumn.TEXT),
-                new ExportColumn("status", "状态", ExportColumn.TEXT));
+        boolean showPrice = canViewPrice();
+        boolean showDiscount = canViewDiscount();
+        List<ExportColumn> cols = new ArrayList<>();
+        cols.add(new ExportColumn("name", "货品名称", ExportColumn.TEXT));
+        cols.add(new ExportColumn("code", "编号", ExportColumn.TEXT));
+        cols.add(new ExportColumn("categoryPath", "类别", ExportColumn.TEXT));
+        cols.add(new ExportColumn("colorName", "主颜色", ExportColumn.TEXT));
+        cols.add(new ExportColumn("series", "系列", ExportColumn.TEXT));
+        cols.add(new ExportColumn("owningWarehouseName", "所属仓库", ExportColumn.TEXT));
+        cols.add(new ExportColumn("owningWorkshopName", "归属车间", ExportColumn.TEXT));
+        cols.add(new ExportColumn("model", "型号", ExportColumn.TEXT));
+        cols.add(new ExportColumn("spec", "规格", ExportColumn.TEXT));
+        cols.add(new ExportColumn("paper", "备注", ExportColumn.TEXT));
+        cols.add(new ExportColumn("cNumber", "客户型号", ExportColumn.TEXT));
+        cols.add(new ExportColumn("mouldCode", "模具编号", ExportColumn.TEXT));
+        cols.add(new ExportColumn("rearInsertCode", "后模镶件编号", ExportColumn.TEXT));
+        cols.add(new ExportColumn("unitName", "单位", ExportColumn.TEXT));
+        cols.add(new ExportColumn("material", "材质", ExportColumn.TEXT));
+        cols.add(new ExportColumn("sourceType", "来源", ExportColumn.TEXT));
+        if (showPrice) cols.add(new ExportColumn("price", "价格", ExportColumn.MONEY));
+        if (showDiscount) cols.add(new ExportColumn("discount", "折扣", ExportColumn.TEXT));
+        cols.add(new ExportColumn("stockQty", "库存量", ExportColumn.NUMBER));
+        // 采购批量口径（V575）：供应商 MOQ / 整箱倍数，采购据此抬量、取整。
+        cols.add(new ExportColumn("minOrderQty", "最小起订量", ExportColumn.NUMBER));
+        cols.add(new ExportColumn("orderMultipleQty", "订货倍数", ExportColumn.NUMBER));
         // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
         List<Map<String, Object>> rows = ReportQueryKit.collectPages(
                 maxRows, (p, size) -> list(f, p, size, sort, order), g -> {
                     Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("name", g.getName());
                     row.put("code", g.getCode());
                     row.put("categoryPath", categoryPath.get(g.getCategoryId()));
+                    row.put("colorName", g.getColorName());
                     row.put("series", g.getSeries());
+                    row.put("owningWarehouseName", g.getOwningWarehouseName());
+                    row.put("owningWorkshopName", g.getOwningWorkshopName());
                     row.put("model", g.getModel());
-                    row.put("name", g.getName());
                     row.put("spec", g.getSpec());
-                    row.put("material", g.getMaterial());
+                    row.put("paper", g.getPaper());
                     row.put("cNumber", g.getCNumber());
                     row.put("mouldCode", g.getMouldCode());
                     row.put("rearInsertCode", g.getRearInsertCode());
-                    row.put("paper", g.getPaper());
-                    row.put("colorName", g.getColorName());
                     row.put("unitName", g.getUnitName());
+                    row.put("material", g.getMaterial());
                     row.put("sourceType", g.getSourceType());
-                    row.put("price", g.getPrice());
+                    if (showPrice) row.put("price", g.getPrice());
+                    if (showDiscount) row.put("discount", g.getDiscount());
+                    row.put("stockQty", g.getStockQty());
                     row.put("minOrderQty", g.getMinOrderQty());
                     row.put("orderMultipleQty", g.getOrderMultipleQty());
-                    row.put("owningWarehouseName", g.getOwningWarehouseName());
-                    row.put("owningWorkshopName", g.getOwningWorkshopName());
-                    row.put("status", g.getStatus());
                     return row;
                 });
         return new ExportPayload(cols, rows, rows.size());

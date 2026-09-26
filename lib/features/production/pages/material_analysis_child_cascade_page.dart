@@ -1820,9 +1820,10 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
     showColumnSettings: true,
     initialColumnOrder: _columnPrefs?.order,
     initialHiddenColumnKeys: _columnPrefs?.hidden,
-    onColumnSettingsChanged: (order, hidden) => _host.ref
+    initialPinnedColumnKeys: _columnPrefs?.pinned,
+    onColumnSettingsChanged: (order, hidden, pinned) => _host.ref
         .read(materialAnalysisCascadeGridColumnPrefsProvider.notifier)
-        .updateFor(_columnPrefsBucket, order, hidden),
+        .updateFor(_columnPrefsBucket, order, hidden, pinned),
     emptyMessage: '下层没有需要下单的物料',
     columns: [
       EditableGridColumn<_ChildCascadeRow>(
@@ -1945,6 +1946,8 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         key: 'bomPath',
         label: 'BOM 路径',
         width: 260,
+        frozenTextOf: (row) =>
+            row.material == null ? '' : _host._pathLabel(row.material!),
         cellBuilder: (context, row) {
           final material = row.material;
           final path = material == null ? '—' : _host._pathLabel(material);
@@ -1967,6 +1970,8 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         width: 100,
         numeric: true,
         headerInfo: '仓库里该物料当前还可用的现货量(不含在途)。',
+        frozenTextOf: (row) =>
+            row.material == null ? '' : _host._qty(row.material!.availableQty),
         cellBuilder: (context, row) => Align(
           alignment: Alignment.centerRight,
           child: Text(
@@ -2010,6 +2015,8 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
           width: 130,
           numeric: true,
           headerInfo: '从公共余量认领的未实收供给；实际合格入库前不增加现货。',
+          frozenTextOf: (row) =>
+              _host._qty(row.material?.sharedFuturePendingQty),
           cellBuilder: (context, row) => Align(
             alignment: Alignment.centerRight,
             child: Text(_host._qty(row.material?.sharedFuturePendingQty)),
@@ -2021,6 +2028,11 @@ class _ChildCascadePageState extends State<_ChildCascadePage> {
         width: 110,
         numeric: true,
         headerInfo: '按本批产量计算的实际备料需求，包含追加和超量产出所需物料；不同于主表固定的原始需要数量。树顶显示本次可下达上限。',
+        frozenTextOf: (row) => row.isSeed
+            ? (row.seed?.maxQty == null
+                  ? ''
+                  : _qtyWithUnit(row, row.seed!.maxQty!))
+            : _qtyWithUnit(row, row.requiredQty),
         cellBuilder: (context, row) => Align(
           alignment: Alignment.centerRight,
           child: Text(

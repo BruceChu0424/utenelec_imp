@@ -1,7 +1,10 @@
 package com.uten.imp.features.master.color;
 
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -98,6 +101,30 @@ public class ColorService {
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Color> root,
                               String field, String value) {
         if (value != null && !value.isBlank()) ps.add(cb.equal(root.get(field), value));
+    }
+
+    // ===== 加密 Excel 导出（2026-09-25「表格显示啥导出啥」，V717） =====
+
+    /**
+     * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限防 OOM。
+     * 列集与前端颜色表格一致：编号 / 颜色名称 / 状态。
+     */
+    @Transactional(readOnly = true)
+    public ExportPayload export(ColorQueryFilter f, int maxRows) {
+        List<ExportColumn> cols = List.of(
+                new ExportColumn("code", "编号", ExportColumn.TEXT),
+                new ExportColumn("name", "颜色名称", ExportColumn.TEXT),
+                new ExportColumn("status", "状态", ExportColumn.TEXT));
+        // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
+        List<Map<String, Object>> rows = ReportQueryKit.collectPages(
+                maxRows, (p, size) -> list(f, p, size), c -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("code", c.getCode());
+                    row.put("name", c.getName());
+                    row.put("status", c.getStatus());
+                    return row;
+                });
+        return new ExportPayload(cols, rows, rows.size());
     }
 
     // ===== facets（各字段 distinct + 空值计数） =====

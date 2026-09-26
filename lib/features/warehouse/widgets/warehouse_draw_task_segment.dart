@@ -23,6 +23,7 @@ import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/router/route_names.dart';
@@ -54,6 +55,7 @@ class WarehouseDrawTaskSegment extends ConsumerStatefulWidget {
     super.key,
     this.keyword = '',
     this.refreshTick = 0,
+    this.externalHeader,
   });
 
   /// 任务中心页级搜索关键字（300ms 防抖后的值）。
@@ -61,6 +63,10 @@ class WarehouseDrawTaskSegment extends ConsumerStatefulWidget {
 
   /// 父页面「返回即刷新」信号。
   final int refreshTick;
+
+  /// 宿主（任务中心大类行 + 小类行）：挂进折叠头随页滚走
+  /// （2026-09-24 用户口径「表格完全置顶」）。
+  final Widget? externalHeader;
 
   @override
   ConsumerState<WarehouseDrawTaskSegment> createState() =>
@@ -291,110 +297,115 @@ class _WarehouseDrawTaskSegmentState
     final permissions = ref.watch(currentPermissionsProvider);
     final canIssue = permissions.contains(Perm.stockDocIssue);
     final canApprove = permissions.contains(Perm.stockDocApprove);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(
-            bottom: UtenSpacing.s8,
-            left: UtenSpacing.s4,
-            right: UtenSpacing.s4,
-          ),
-          child: UtenFilterToolbar<String>(
-            segmentsKey: const Key('warehouse-draw-task-status'),
-            // 子分类计数：与列表同源的单据归组口径（待完成=READY+PARTIAL；
-            // 已领取为终态不传 count)。未领与部分领取统一归入待完成。
-            segments: [
-              UtenFilterSegment(
-                value: _kOpenAnyStatus,
-                label: '待完成',
-                count: _statusCounts['OPEN_ANY'],
-                countForm: UtenSegmentCountForm.actionable,
-              ),
-              const UtenFilterSegment(value: 'DONE', label: '已领取'),
-            ],
-            selected: {_status},
-            onSelectionChanged: (value) {
-              setState(() {
-                _status = value;
-                _selectedIds.clear();
-              });
-              _load(1);
-            },
-            trailing: Text(
-              '共 ${_result?.total ?? 0} 项 · 勾选跨页保留 · 双击进入领料单',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+    // 2026-09-24 用户口径「表格完全置顶」：状态行/错误行进折叠头随页滚走，
+    // body 只剩表格（primary 拾取联动控制器）。
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.externalHeader != null) ...[
+            widget.externalHeader!,
+            const SizedBox(height: UtenSpacing.s12),
+          ],
+          Padding(
+            padding: const EdgeInsets.only(
+              bottom: UtenSpacing.s8,
+              left: UtenSpacing.s4,
+              right: UtenSpacing.s4,
+            ),
+            child: UtenFilterToolbar<String>(
+              segmentsKey: const Key('warehouse-draw-task-status'),
+              // 子分类计数：与列表同源的单据归组口径（待完成=READY+PARTIAL；
+              // 已领取为终态不传 count)。未领与部分领取统一归入待完成。
+              segments: [
+                UtenFilterSegment(
+                  value: _kOpenAnyStatus,
+                  label: '待完成',
+                  count: _statusCounts['OPEN_ANY'],
+                  countForm: UtenSegmentCountForm.actionable,
+                ),
+                const UtenFilterSegment(value: 'DONE', label: '已领取'),
+              ],
+              selected: {_status},
+              onSelectionChanged: (value) {
+                setState(() {
+                  _status = value;
+                  _selectedIds.clear();
+                });
+                _load(1);
+              },
+              trailing: Text(
+                '共 ${_result?.total ?? 0} 项 · 勾选跨页保留 · 双击进入领料单',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ),
-        ),
-        if (_error != null && tasks.isNotEmpty) ...[
+          if (_error != null && tasks.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                _error!,
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ),
+          ],
           const SizedBox(height: UtenSpacing.s8),
-          Semantics(
-            liveRegion: true,
-            child: Text(
-              _error!,
-              style: TextStyle(color: theme.colorScheme.error),
-            ),
-          ),
         ],
-        const SizedBox(height: UtenSpacing.s8),
-        Expanded(
-          child: MasterDataTableView<WarehouseDrawTask>(
-            key: const Key('warehouse-draw-task-table'),
-            columns: _columns,
-            items: tasks,
-            facets: const {},
-            nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
-            sortColumn: _sortColumn,
-            sortAscending: _sortAscending,
-            onSortChange: _onSortChange,
-            // 批量出库：表头复选框多选 + 右下角悬浮批量按钮，
-            // 与检验处置/成品入库任务中心同款范式。
-            selectable: true,
-            idOf: _idOf,
-            selectedIds: _selectedIds,
-            onSelectedIdsChanged: (next) => setState(() {
-              _selectedIds
-                ..clear()
-                ..addAll(next);
-            }),
-            batchActionsBuilder: _status != 'DONE' && canIssue
-                ? (context, selectedIds) => _batchActions(
-                    context,
-                    selectedIds,
-                    canApprove: canApprove,
-                  )
-                : null,
-            onRowTap: _openTask,
-            canOpenRow: (task) => task.canOpen,
-            rowMenuBuilder: (task) => !task.canOpen
-                ? const <UtenMenuItem>[]
-                : [
-                    UtenMenuItem(
-                      label: task.isMaterialDiscovery
-                          ? AppLocalizations.of(context).materialDiscoveryTitle
-                          : '进入领料单办理出库',
-                      icon: Icons.outbound_outlined,
-                      onTap: () => _openTask(task),
-                    ),
-                  ],
-            isLoading: _loading && _result == null,
-            loadingMore: _loading && _result != null,
-            error: tasks.isEmpty ? _error : null,
-            onRetry: () => _load(_result?.page ?? 1),
-            emptyMessage: widget.keyword.trim().isEmpty
-                ? (_status == _kOpenAnyStatus ? '目前没有待领任务' : '当前状态下暂无任务')
-                : '没有匹配的待领任务',
-            currentPage: _result?.page ?? 1,
-            totalPages: _result?.totalPages ?? 1,
-            onPageChange: _load,
-          ),
-        ),
-      ],
+      ),
+      body: MasterDataTableView<WarehouseDrawTask>(
+        // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+        primary: true,
+        key: const Key('warehouse-draw-task-table'),
+        columns: _columns,
+        items: tasks,
+        facets: const {},
+        nullCounts: const {},
+        filters: const {},
+        onFilterChanged: (_, _) {},
+        sortColumn: _sortColumn,
+        sortAscending: _sortAscending,
+        onSortChange: _onSortChange,
+        // 批量出库：表头复选框多选 + 右下角悬浮批量按钮，
+        // 与检验处置/成品入库任务中心同款范式。
+        selectable: true,
+        idOf: _idOf,
+        selectedIds: _selectedIds,
+        onSelectedIdsChanged: (next) => setState(() {
+          _selectedIds
+            ..clear()
+            ..addAll(next);
+        }),
+        batchActionsBuilder: _status != 'DONE' && canIssue
+            ? (context, selectedIds) =>
+                  _batchActions(context, selectedIds, canApprove: canApprove)
+            : null,
+        onRowTap: _openTask,
+        canOpenRow: (task) => task.canOpen,
+        rowMenuBuilder: (task) => !task.canOpen
+            ? const <UtenMenuItem>[]
+            : [
+                UtenMenuItem(
+                  label: task.isMaterialDiscovery
+                      ? AppLocalizations.of(context).materialDiscoveryTitle
+                      : '进入领料单办理出库',
+                  icon: Icons.outbound_outlined,
+                  onTap: () => _openTask(task),
+                ),
+              ],
+        isLoading: _loading && _result == null,
+        loadingMore: _loading && _result != null,
+        error: tasks.isEmpty ? _error : null,
+        onRetry: () => _load(_result?.page ?? 1),
+        emptyMessage: widget.keyword.trim().isEmpty
+            ? (_status == _kOpenAnyStatus ? '目前没有待领任务' : '当前状态下暂无任务')
+            : '没有匹配的待领任务',
+        currentPage: _result?.page ?? 1,
+        totalPages: _result?.totalPages ?? 1,
+        onPageChange: _load,
+      ),
     );
   }
 

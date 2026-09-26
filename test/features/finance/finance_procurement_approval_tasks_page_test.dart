@@ -386,6 +386,10 @@ void main() {
     expect(find.text('单击选择，双击或长按打开审核详情'), findsOneWidget);
     final approve = find.byKey(const Key('finance-approval-batch-approve'));
     final reject = find.byKey(const Key('finance-approval-batch-reject'));
+    // 2026-09-24 折叠联动改版（对齐物料分析页）后，窄屏走整页滚动回退：
+    // 批量条在折叠下方，先滚到可见再断言可达。
+    await tester.ensureVisible(approve);
+    await tester.pump(const Duration(milliseconds: 100));
     expect(approve.hitTestable(), findsOneWidget);
     expect(reject.hitTestable(), findsOneWidget);
     expect(tester.getRect(approve).bottom, lessThanOrEqualTo(812));

@@ -321,16 +321,19 @@ class ProductionQuantityAdversarialEndToEndTest {
         UUID childItem=db.queryForObject("SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",UUID.class,c.childSegment());
         item.setPlanItemId(childItem); item.setGoodsId(c.material()); item.setUnitId(c.world().unitId());
         item.setUnitRate(BigDecimal.ONE); item.setQty(new BigDecimal("4")); item.setIsFinal(true); request.setItems(List.of(item));
+        request.setMaterialLines(WorkshopMaterialFlowTestSupport.materialUse(db, c.childSegment(), item.getQty()));
         ApiException blocked=assertThrows(ApiException.class,()->reports().create(request));
         assertEquals(com.uten.imp.common.web.ErrorCode.CONFLICT,blocked.getCode());
         assertTrue(blocked.getMessage().contains("尚差 6"),blocked.getMessage());
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_daily_report_items WHERE execution_segment_id=?",Integer.class,c.childSegment()));
         item.setIsFinal(false);
+        request.setMaterialLines(WorkshopMaterialFlowTestSupport.materialUse(db, c.childSegment(), item.getQty()));
         reports().approve(reports().create(request).getId(), DailyReportApproveRequests.freshKey());
         qty("10",db.queryForObject("SELECT planned_qty FROM production_execution_segments WHERE id=?",BigDecimal.class,c.childSegment()));
         qty("10",db.queryForObject("SELECT required_qty FROM production_material_demands WHERE id=?",BigDecimal.class,parentDemand(c)));
         request.setIdempotencyKey("aq-internal-complete-"+UUID.randomUUID());
         item.setQty(new BigDecimal("6")); item.setIsFinal(true);
+        request.setMaterialLines(WorkshopMaterialFlowTestSupport.materialUse(db, c.childSegment(), item.getQty()));
         reports().approve(reports().create(request).getId(), DailyReportApproveRequests.freshKey());
         qty("10",db.queryForObject("SELECT fqty FROM production_plan_items WHERE id=?",BigDecimal.class,childItem));
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_daily_report_target_events WHERE plan_item_id=?",Integer.class,childItem));
@@ -522,6 +525,45 @@ class ProductionQuantityAdversarialEndToEndTest {
             // The zero-material child still confirms its route before explicit start.
             fixture.loginAs(workerUser);
             segments.confirmRoute(childPlan, childSegment,new SegmentRouteConfirmRequest(version(childSegment),"rg-child-route-"+childSegment,"FULL_KIT"));
+            // V710 起 DIRECT_MAKE 零料叶段开工前须声明真实物料: 零价自投(净库存不变, 价值前提不变)。
+            var discovery = beans.getBean(com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryService.class);
+            var pendingMaterials = discovery.request(childSegment, new com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryContracts.Request(
+                    version(childSegment), "rg-child-discovery-" + childSegment));
+            fixture.loginAs(w.superAdminUserId());
+            var selfInput = new com.uten.imp.features.stock.dto.StockDocSaveRequest();
+            selfInput.setDocType("OTHER_IN");
+            selfInput.setWarehouseId(leaf);
+            selfInput.setBillDate(BusinessTime.today());
+            // 申报物料不能是本段产出也不能成环: 就地新建无 BOM 中性采购料。
+            UUID neutralInput = UUID.randomUUID();
+            fixture.insertGoods(neutralInput, "RG-DISC-" + neutralInput, "发现自投料-" + neutralInput, "采购", w.unitId(), w.unitLegacy());
+            var selfLine = new com.uten.imp.features.stock.dto.StockDocItemLine();
+            selfLine.setGoodsId(neutralInput);
+            selfLine.setUnitId(w.unitId());
+            selfLine.setUnitRate(BigDecimal.ONE);
+            selfLine.setQty(new BigDecimal(total));
+            selfLine.setPrice(BigDecimal.ZERO);
+            selfLine.setAmountOriginal(BigDecimal.ZERO);
+            selfLine.setAmountLocal(BigDecimal.ZERO);
+            selfInput.setItems(List.of(selfLine));
+            stock.approve(stock.create(selfInput).getId());
+            fixture.loginAs(w.superAdminUserId());
+            var configured = discovery.configure(pendingMaterials.requestId(),
+                    new com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryContracts.Configure(
+                            pendingMaterials.version(), "rg-child-configure-" + childSegment,
+                            List.of(new com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryContracts.Material(
+                                    neutralInput, null, w.unitId(), leaf, new BigDecimal(total)))));
+            for (UUID materialDraw : configured.drawDocIds()) {
+                var issue = new com.uten.imp.features.stock.dto.StockDocIssueRequest();
+                issue.setIdempotencyKey("rg-child-issue-" + materialDraw);
+                issue.setLines(db.query("SELECT id,qty FROM stock_document_items WHERE doc_id=? AND NOT is_deleted", (row, index) -> {
+                    var line = new com.uten.imp.features.stock.dto.StockDocIssueRequest.Line();
+                    line.setItemId(row.getObject(1, UUID.class));
+                    line.setQty(row.getBigDecimal(2));
+                    return line;
+                }, materialDraw));
+                stock.approveAndIssue(materialDraw, issue);
+            }
             segments.start(childPlan, childSegment,
                     new SegmentTransitionRequest(version(childSegment), "rg-child-open-start-" + childSegment));
             fixture.loginAs(w.superAdminUserId());

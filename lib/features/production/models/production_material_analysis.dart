@@ -240,6 +240,7 @@ class MaterialAnalysisListItem {
     this.remainingQty = 0,
     this.readyNowQty = 0,
     this.readyByDateQty = 0,
+    this.analysisNo,
   });
 
   final String analysisId;
@@ -264,6 +265,9 @@ class MaterialAnalysisListItem {
   final double readyNowQty;
   final double readyByDateQty;
 
+  /// 分析编号（WL+日期+日流水，V719）：各页「计划单号」的展示锚点。
+  final String? analysisNo;
+
   factory MaterialAnalysisListItem.fromJson(Map<String, dynamic> json) =>
       MaterialAnalysisListItem(
         analysisId: _string(json['analysisId'] ?? json['id']) ?? '',
@@ -287,6 +291,7 @@ class MaterialAnalysisListItem {
         remainingQty: _double(json['remainingQty']) ?? 0,
         readyNowQty: _double(json['readyNowQty']) ?? 0,
         readyByDateQty: _double(json['readyByDateQty']) ?? 0,
+        analysisNo: _string(json['analysisNo']),
       );
 }
 
@@ -577,6 +582,7 @@ class ProductionMaterialAnalysisView {
     this.planningBlockedReasons = const {},
     this.routeResetCount = 0,
     this.overproductionDefaults = const {},
+    this.analysisNo,
   });
 
   final String analysisId;
@@ -595,6 +601,9 @@ class ProductionMaterialAnalysisView {
   final String? fqcRecoveryAuthorizationId;
   final Map<String, String> planningBlockedReasons;
   final Map<String, double> overproductionDefaults;
+
+  /// 分析编号（WL+日期+日流水，V719）：页面顶部事实卡与「计划单号」同源。
+  final String? analysisNo;
 
   /// 本次刷新（POST /preview）因主档/BOM 事实变更而被服务端清空的人工确认
   /// 路线条数；只在刷新响应上非零，详情/命令响应恒为 0。页面据此提示
@@ -679,6 +688,7 @@ class ProductionMaterialAnalysisView {
             if (_string(entry.value) case final String reason)
               entry.key.toString(): reason,
       },
+      analysisNo: _string(json['analysisNo']),
     );
   }
 }

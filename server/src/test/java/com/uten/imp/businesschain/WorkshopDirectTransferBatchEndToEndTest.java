@@ -1094,7 +1094,18 @@ class WorkshopDirectTransferBatchEndToEndTest {
     private List<com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine> directInputUse(Case c,BigDecimal output){
         var use=new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();
         use.setDemandId(db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",UUID.class,c.childSegment()));
-        use.setQtyBase(output.divide(new BigDecimal("100"),4,java.math.RoundingMode.UP));return List.of(use);
+        // 超产部分的物料清账封顶到该需求真实未耗的 ISSUE 数量(差额走公共超产口径),
+        // 否则清账引擎按「申报必须与真实领料精确对齐」拒绝。
+        var unconsumed=db.queryForObject("""
+                SELECT COALESCE(SUM(CASE WHEN posting_type='ISSUE' THEN qty_base WHEN posting_type='ISSUE_REVERSE' THEN -qty_base ELSE 0 END),0)
+                FROM production_material_stock_postings WHERE demand_id=?
+                """,BigDecimal.class,use.getDemandId());
+        var proportional=output.divide(new BigDecimal("100"),4,java.math.RoundingMode.UP);
+        use.setQtyBase(producibleInput(proportional,unconsumed));return List.of(use);
+    }
+
+    private static BigDecimal producibleInput(BigDecimal proportional, BigDecimal unconsumed) {
+        return proportional.min(unconsumed).max(BigDecimal.ZERO);
     }
 
     private void receive(Case c, UUID goods, UUID warehouse, String quantity) {

@@ -426,13 +426,16 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          revision == null ? '报销明细 (${claim.items.length})' : '报销明细 · 修改对比',
-          style: Theme.of(
-            context,
-          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
+        // 2026-09-25 用户口径：纯计数标题「报销明细 (N)」退役；修改对比态标题保留。
+        if (revision != null) ...[
+          Text(
+            '报销明细 · 修改对比',
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+        ],
         if (revision != null)
           ExpenseSubmissionItemTable(
             key: const Key('expense-detail-items-revision'),

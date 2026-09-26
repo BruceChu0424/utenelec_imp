@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/shared/providers/editable_grid_column_prefs.dart';
 
 class _Row extends EditableGridRow {}
 
@@ -10,7 +11,9 @@ Widget _app({
   List<String> keys = const ['列A', '列B', '列C'],
   List<String>? initialOrder,
   Set<String>? initialHidden,
-  void Function(List<String> order, Set<String> hidden)? onChanged,
+  Set<String>? initialPinned,
+  void Function(List<String> order, Set<String> hidden, Set<String> pinned)?
+  onChanged,
 }) {
   final controller = UtenEditableGridController<_Row>(initial: [_Row()]);
   return MaterialApp(
@@ -33,6 +36,7 @@ Widget _app({
             showColumnSettings: true,
             initialColumnOrder: initialOrder,
             initialHiddenColumnKeys: initialHidden,
+            initialPinnedColumnKeys: initialPinned,
             onColumnSettingsChanged: onChanged,
           ),
         ],
@@ -43,6 +47,11 @@ Widget _app({
 
 Finder _option(String key) => find.byKey(ValueKey('uten-column-option-$key'));
 
+class _TestPrefsNotifier extends EditableGridColumnPrefsNotifierBase {
+  @override
+  String get prefKey => 'test.gridColumns';
+}
+
 /// 点弹层外空白关闭（锚定浮层与货品资料同款：无关闭钮，点外部即关）。
 Future<void> _closeSheet(WidgetTester tester) async {
   await tester.tapAt(const Offset(10, 10));
@@ -50,6 +59,37 @@ Future<void> _closeSheet(WidgetTester tester) async {
 }
 
 void main() {
+  // —— 持久化编解码（pinned 字段 2026-09-25 加入；旧数据无此字段须向前兼容）——
+  group('EditableGridColumnsPrefs 编解码', () {
+    test('旧格式（无 pinned）解码为空固定集', () {
+      final n = _TestPrefsNotifier();
+      final decoded = n.decode({
+        'order': {
+          'order': ['列B', '列A'],
+          'hidden': ['列A'],
+        },
+      });
+      expect(decoded, isNotNull);
+      expect(decoded!['order']!.order, ['列B', '列A']);
+      expect(decoded['order']!.hidden, {'列A'});
+      expect(decoded['order']!.pinned, isEmpty);
+    });
+
+    test('带 pinned 的新格式往返一致', () {
+      final n = _TestPrefsNotifier();
+      final encoded = n.encode({
+        'order': const EditableGridColumnsPrefs(
+          order: ['列B', '列A'],
+          hidden: {'列A'},
+          pinned: {'列B'},
+        ),
+      });
+      final decoded = n.decode(encoded);
+      expect(decoded!['order']!.pinned, {'列B'});
+      expect(decoded['order']!.order, ['列B', '列A']);
+    });
+  });
+
   testWidgets('persisted order and hidden keys replay on first build', (
     tester,
   ) async {
@@ -110,11 +150,11 @@ void main() {
     tester.view.physicalSize = const Size(1200, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    final changes = <(List<String>, Set<String>)>[];
+    final changes = <(List<String>, Set<String>, Set<String>)>[];
     await tester.pumpWidget(
       _app(
-        onChanged: (order, hidden) {
-          changes.add((order, hidden));
+        onChanged: (order, hidden, pinned) {
+          changes.add((order, hidden, pinned));
         },
       ),
     );
@@ -127,6 +167,7 @@ void main() {
     expect(changes, hasLength(1));
     expect(changes.single.$1, const ['列A', '列B', '列C']);
     expect(changes.single.$2, const {'列A'});
+    expect(changes.single.$3, isEmpty);
     // 回调交出的是不可变快照。
     expect(() => changes.single.$1.add('x'), throwsA(isA<UnsupportedError>()));
 

@@ -3,8 +3,11 @@ package com.uten.imp.features.master.warehouse;
 import com.uten.imp.application.port.OrganizationReferencePort;
 import com.uten.imp.application.port.OrganizationReferencePort.DepartmentReference;
 
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -13,6 +16,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.master.warehouse.dto.FacetBucket;
 import com.uten.imp.features.master.warehouse.dto.WarehouseDetail;
 import com.uten.imp.features.master.warehouse.dto.WarehouseFacets;
+import com.uten.imp.features.master.warehouse.dto.WarehouseKeeperAssignment;
 import com.uten.imp.features.master.warehouse.dto.WarehouseListItem;
 import com.uten.imp.features.master.warehouse.dto.WarehouseQueryFilter;
 import com.uten.imp.features.master.warehouse.dto.WarehouseSaveRequest;
@@ -67,6 +71,46 @@ public class WarehouseService {
     private final EntityManager em;
     private final MasterCodeService masterCodeService;
     private final OrganizationReferencePort organizationReferences;
+    private final WarehouseKeeperService keeperService;
+
+    // ===== 加密 Excel 导出（2026-09-25「表格显示啥导出啥」，V717） =====
+
+    /**
+     * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限防 OOM。
+     * 列集与前端仓库表格一致：编号 / 仓库名称 / 上级仓库 / 位置 / 核算 / 负责人 / 状态。
+     * 负责人来自 warehouse_keepers（ADR-115，与列表「负责人」列同一 assignments 查询，
+     * 仓库量级个位数，一次带回按仓库分组、「、」连接，无负责人显示「—」）。
+     */
+    @Transactional(readOnly = true)
+    public ExportPayload export(WarehouseQueryFilter f, int maxRows) {
+        Map<UUID, String> keepersByWarehouse = new LinkedHashMap<>();
+        for (WarehouseKeeperAssignment a : keeperService.assignments()) {
+            keepersByWarehouse.merge(a.warehouseId(), a.name(),
+                    (left, right) -> left + "、" + right);
+        }
+        List<ExportColumn> cols = List.of(
+                new ExportColumn("code", "编号", ExportColumn.TEXT),
+                new ExportColumn("name", "仓库名称", ExportColumn.TEXT),
+                new ExportColumn("parentName", "上级仓库", ExportColumn.TEXT),
+                new ExportColumn("location", "位置", ExportColumn.TEXT),
+                new ExportColumn("accountable", "核算", ExportColumn.TEXT),
+                new ExportColumn("keepers", "负责人", ExportColumn.TEXT),
+                new ExportColumn("status", "状态", ExportColumn.TEXT));
+        // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
+        List<Map<String, Object>> rows = ReportQueryKit.collectPages(
+                maxRows, (p, size) -> list(f, p, size), w -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("code", w.getCode());
+                    row.put("name", w.getName());
+                    row.put("parentName", w.getParentName() == null ? "—" : w.getParentName());
+                    row.put("location", w.getLocation());
+                    row.put("accountable", w.isAccountable() ? "是" : "否");
+                    row.put("keepers", keepersByWarehouse.getOrDefault(w.getId(), "—"));
+                    row.put("status", w.getStatus());
+                    return row;
+                });
+        return new ExportPayload(cols, rows, rows.size());
+    }
 
     @Transactional(readOnly = true)
     public PageResponse<WarehouseListItem> list(WarehouseQueryFilter f, int page, int size) {

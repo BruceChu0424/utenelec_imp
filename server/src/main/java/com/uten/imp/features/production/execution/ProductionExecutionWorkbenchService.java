@@ -954,7 +954,11 @@ public class ProductionExecutionWorkbenchService {
                        discovery.id, discovery.status,
                        (:allowRequestDraw AND fn_material_discovery_pending(task.segment_id)
                          AND rate_segment.start_route IN ('FULL_KIT','CONTINUOUS')
-                         AND discovery.id IS NULL AND task.segment_status IN ('WAITING','READY','DISPATCHED'))
+                         AND discovery.id IS NULL AND task.segment_status IN ('WAITING','READY','DISPATCHED')),
+                       (SELECT root_analysis.analysis_no
+                          FROM production_material_analyses root_analysis
+                         WHERE task.root_type = 'ANALYSIS'
+                           AND root_analysis.id = task.root_id)
                 """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), drawRequestedPredicate(), pendingDrawItemSql());
     }
 
@@ -1181,7 +1185,8 @@ public class ProductionExecutionWorkbenchService {
                 ((Number)row[64]).longValue(),uuid(row[65]),row[66]==null?null:decimal(row[66]),bool(row[67]),uuid(row[68]),
                 planning.gapKindCount(), planning.gapSummary(), planning.urgeCount(), planning.urgedAt(),
                 planning.urgedByName(), planning.nextUrgeAt(), planning.canUrge(),
-                bool(row[69]), uuid(row[70]), text(row[71]), executable && bool(row[72]));
+                bool(row[69]), uuid(row[70]), text(row[71]), executable && bool(row[72]),
+                text(row[73]));
     }
 
     private static int boundedSize(int requested) {

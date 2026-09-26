@@ -984,13 +984,6 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '明细 (${items.length})',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
         // primary:true → 表体占满 body 并参与「头部折叠 → 表格内滚」联动；
         // 合计条收进 summaryBar 槽位（表体下方，全站统一挂点）。
         Expanded(

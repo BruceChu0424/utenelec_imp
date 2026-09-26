@@ -13,9 +13,17 @@
 //      留原位；拖回阈值内取消，松开不隐藏。
 //    两种跟手浮层都挂 root Overlay **最顶层**（拖出表头范围也始终可见、压在整表
 //    之上、不被表体裁切）。单指契约：并发第二指的 start/update/end 因 index 不匹配 no-op。
+// 3. 表头右键菜单（2026-09-25）—— [UtenColumnHeaderMenuRegion]（桌面右击专用，
+//    压制系统「全选/复制」工具条、不与拖拽手势抢竞技场）+ [utenColumnHeaderMenuEntries]
+//    （固定到左侧/向左·右移一格/放到最前·最后/隐藏此列）+ 列序纯函数组
+//    （[utenColumnHeaderMenuCapabilities] / [utenToggleColumnPin] /
+//    [utenMoveVisibleColumn] / [utenNormalizePinnedPrefix]，维护「固定列 = 可见前缀」
+//    不变量）。
 //
 // 两张表只各自提供：列链接（LayerLink）、列宽/列名取值、「该列可否隐藏」判定
 // （如「至少留一列」「必填列锁定」）与「松手隐藏」回调。
+
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -24,6 +32,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../buttons/uten_button.dart';
+import '../feedback/uten_context_menu.dart';
 import '../inputs/uten_field_hint_icon.dart';
 import 'uten_drag_reorder_list.dart';
 
@@ -721,6 +730,360 @@ class _UtenColumnChooserButtonState extends State<UtenColumnChooserButton> {
         ),
       ),
     );
+  }
+}
+
+/// 表头右键菜单的移动方向（[utenColumnHeaderMenuEntries] 配套）。
+enum UtenColumnHeaderMove { left, right, front, back }
+
+/// 一列在「表头右键菜单弹出那一刻」的可动性快照（全 bool + 动作回调）。
+///
+/// 由 [utenColumnHeaderMenuCapabilities] 从 (order, hidden, pinned, key) 纯函数算出，
+/// 两张表只需补上各自的状态变更回调；[UtenMenuItem] 的禁用态即由这些 bool 驱动。
+class UtenColumnHeaderMenuSpec {
+  const UtenColumnHeaderMenuSpec({
+    required this.pinned,
+    required this.canPin,
+    required this.canHide,
+    required this.canMoveLeft,
+    required this.canMoveRight,
+    required this.canMoveToFront,
+    required this.canMoveToBack,
+    this.onTogglePin,
+    this.onHide,
+    this.onMoveLeft,
+    this.onMoveRight,
+    this.onMoveToFront,
+    this.onMoveToBack,
+  });
+
+  /// 该列当前是否已固定在左侧。
+  final bool pinned;
+
+  /// 能否固定（固定后须至少剩一列普通列在滚动区；取消固定恒可）。
+  final bool canPin;
+
+  /// 能否隐藏（宿主的「最后一列/必填列锁定」守卫折叠进来）。
+  final bool canHide;
+
+  final bool canMoveLeft;
+  final bool canMoveRight;
+  final bool canMoveToFront;
+  final bool canMoveToBack;
+
+  /// 动作回调；null 视同不可用（条目置灰）。
+  final VoidCallback? onTogglePin;
+  final VoidCallback? onHide;
+  final VoidCallback? onMoveLeft;
+  final VoidCallback? onMoveRight;
+  final VoidCallback? onMoveToFront;
+  final VoidCallback? onMoveToBack;
+}
+
+/// 表头右键菜单条目里禁用态条目的占位回调（UtenMenuItem.onTap 必填）。
+void _utenNoopMenuTap() {}
+
+/// 表头右键菜单条目：固定到左侧/取消固定、向左/右移一格、放到最前/最后、隐藏此列
+///（MasterDataTableView / UtenEditableGrid 共用同一份文案与分组，2026-09-25）。
+///
+/// 移动语义按「固定块 / 普通列区」分区：固定列只在固定块内移动、普通列只在普通列
+/// 区内移动；跨区用固定/取消固定表达，不允许移动跨界（否则固定块前缀被打破）。
+List<UtenContextMenuEntry> utenColumnHeaderMenuEntries(
+  UtenColumnHeaderMenuSpec spec,
+) {
+  const disabledTap = _utenNoopMenuTap;
+  return [
+    UtenMenuItem(
+      label: spec.pinned ? '取消固定' : '固定到左侧',
+      icon: spec.pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+      enabled: spec.canPin && spec.onTogglePin != null,
+      onTap: spec.onTogglePin ?? disabledTap,
+    ),
+    const UtenMenuDivider(),
+    UtenMenuItem(
+      label: '向左移一格',
+      icon: Icons.chevron_left_rounded,
+      enabled: spec.canMoveLeft && spec.onMoveLeft != null,
+      onTap: spec.onMoveLeft ?? disabledTap,
+    ),
+    UtenMenuItem(
+      label: '向右移一格',
+      icon: Icons.chevron_right_rounded,
+      enabled: spec.canMoveRight && spec.onMoveRight != null,
+      onTap: spec.onMoveRight ?? disabledTap,
+    ),
+    UtenMenuItem(
+      label: '放到最前',
+      icon: Icons.first_page_rounded,
+      enabled: spec.canMoveToFront && spec.onMoveToFront != null,
+      onTap: spec.onMoveToFront ?? disabledTap,
+    ),
+    UtenMenuItem(
+      label: '放到最后',
+      icon: Icons.last_page_rounded,
+      enabled: spec.canMoveToBack && spec.onMoveToBack != null,
+      onTap: spec.onMoveToBack ?? disabledTap,
+    ),
+    const UtenMenuDivider(),
+    UtenMenuItem(
+      label: '隐藏此列',
+      icon: Icons.visibility_off_outlined,
+      enabled: spec.canHide && spec.onHide != null,
+      onTap: spec.onHide ?? disabledTap,
+    ),
+  ];
+}
+
+/// 表头右键菜单的可动性判定（纯函数）。
+///
+/// 约定：[pinnedKeys] 里的可见列在可见序列中恒为前缀（[utenNormalizePinnedPrefix]
+/// 维护）；非前缀输入也能算——按「首个非固定可见列」截断固定块长度。
+UtenColumnHeaderMenuSpec utenColumnHeaderMenuCapabilities({
+  required List<String> order,
+  required Set<String> hiddenKeys,
+  required Set<String> pinnedKeys,
+  required String key,
+  required bool canHide,
+}) {
+  final visible = _visibleColumnKeysOf(order, hiddenKeys);
+  final idx = visible.indexOf(key);
+  if (idx < 0) {
+    return const UtenColumnHeaderMenuSpec(
+      pinned: false,
+      canPin: false,
+      canHide: false,
+      canMoveLeft: false,
+      canMoveRight: false,
+      canMoveToFront: false,
+      canMoveToBack: false,
+    );
+  }
+  final pinned = pinnedKeys.contains(key);
+  var prefixLen = 0;
+  for (final k in visible) {
+    if (!pinnedKeys.contains(k)) break;
+    prefixLen++;
+  }
+  bool sameZone(String other) => pinnedKeys.contains(other) == pinned;
+  final unpinnedOthers = visible
+      .where((k) => k != key && !pinnedKeys.contains(k))
+      .length;
+  return UtenColumnHeaderMenuSpec(
+    pinned: pinned,
+    // 固定本列后滚动区至少还要剩一列普通列；已固定的（取消）恒可用。
+    canPin: pinned || unpinnedOthers >= 1,
+    canHide: canHide,
+    canMoveLeft: idx > 0 && sameZone(visible[idx - 1]),
+    canMoveRight: idx < visible.length - 1 && sameZone(visible[idx + 1]),
+    // 普通列的「最前」= 固定块之后第一位（不进固定块）。
+    canMoveToFront: pinned ? idx > 0 : idx > prefixLen,
+    canMoveToBack: pinned ? idx < prefixLen - 1 : idx < visible.length - 1,
+  );
+}
+
+/// 固定/取消固定一列，返回新的（列序, 固定集）。
+///
+/// 固定：把该列搬到固定块末尾（既有固定列之后、首个普通列之前）。
+/// 取消固定（2026-09-25 用户口径「取消固定也要回到对应的地方」）：把该列放回
+/// **固定前的位置**——[originIndex] 是固定那一刻它在完整列序中的下标（宿主记录）；
+/// 无记录（编辑表跨会话重放的固定）时按 [defaultOrder] 的相对位次插回。落点可能
+/// 撞进固定块，末尾统一 normalize 维持「固定列 = 可见前缀」不变量。
+({List<String> order, Set<String> pinned}) utenToggleColumnPin({
+  required List<String> order,
+  required Set<String> hiddenKeys,
+  required Set<String> pinnedKeys,
+  required String key,
+  int? originIndex,
+  List<String>? defaultOrder,
+}) {
+  final visible = _visibleColumnKeysOf(order, hiddenKeys);
+  if (!visible.contains(key)) return (order: order, pinned: pinnedKeys);
+  final pinned = {...pinnedKeys};
+  if (pinned.contains(key)) {
+    pinned.remove(key);
+    final restored = utenRestoreColumnPosition(
+      order: order,
+      key: key,
+      originIndex: originIndex,
+      defaultOrder: defaultOrder,
+    );
+    return (
+      order: utenNormalizePinnedPrefix(
+        order: restored,
+        hiddenKeys: hiddenKeys,
+        pinnedKeys: pinned,
+      ),
+      pinned: pinned,
+    );
+  }
+  pinned.add(key);
+  final pinnedVisible = visible.where(pinnedKeys.contains).toList();
+  final rest = visible
+      .where((k) => !pinnedKeys.contains(k) && k != key)
+      .toList();
+  return (
+    order: _spliceVisibleIntoOrder(order, [...pinnedVisible, key, ...rest]),
+    pinned: pinned,
+  );
+}
+
+/// 把 [key] 从列序里取出后插回「它该在的位置」：
+/// - [originIndex] 非空：固定前记录的下标（clamp 到当前长度）；
+/// - 否则 [defaultOrder] 含该 key：按默认序相对位次——插在默认序中排在它之后
+///   的第一个现存列之前，都在前面则追加末尾；
+/// - 两者皆无：原位插回（取出前下标 = 取出后插入位）。
+List<String> utenRestoreColumnPosition({
+  required List<String> order,
+  required String key,
+  int? originIndex,
+  List<String>? defaultOrder,
+}) {
+  if (!order.contains(key)) return order;
+  final rest = [...order]..remove(key);
+  var target = rest.length;
+  if (originIndex != null) {
+    target = originIndex.clamp(0, rest.length);
+  } else if (defaultOrder != null && defaultOrder.contains(key)) {
+    final rank = defaultOrder.indexOf(key);
+    for (var i = 0; i < rest.length; i++) {
+      if (defaultOrder.indexOf(rest[i]) > rank) {
+        target = i;
+        break;
+      }
+    }
+  } else {
+    target = order.indexOf(key); // 原位：取出前位置即取出后的插入位。
+  }
+  rest.insert(target, key);
+  return rest;
+}
+
+/// 表头右键菜单的移动动作（向左/右一格、最前、最后；纯函数，固定块前缀不破坏）。
+List<String> utenMoveVisibleColumn({
+  required List<String> order,
+  required Set<String> hiddenKeys,
+  required Set<String> pinnedKeys,
+  required String key,
+  required UtenColumnHeaderMove move,
+}) {
+  final visible = _visibleColumnKeysOf(order, hiddenKeys);
+  final idx = visible.indexOf(key);
+  if (idx < 0) return order;
+  final pinned = pinnedKeys.contains(key);
+  var prefixLen = 0;
+  for (final k in visible) {
+    if (!pinnedKeys.contains(k)) break;
+    prefixLen++;
+  }
+  final seq = [...visible]..removeAt(idx);
+  switch (move) {
+    case UtenColumnHeaderMove.left:
+      if (idx == 0) return order;
+      final target = idx - 1;
+      if (pinnedKeys.contains(visible[target]) != pinned) return order;
+      seq.insert(target, key);
+    case UtenColumnHeaderMove.right:
+      if (idx >= visible.length - 1) return order;
+      final target = idx + 1;
+      if (pinnedKeys.contains(visible[target]) != pinned) return order;
+      seq.insert(target, key);
+    case UtenColumnHeaderMove.front:
+      // 固定列的「最前」= 全局第一位；普通列的「最前」= 固定块之后。
+      seq.insert(pinned ? 0 : prefixLen, key);
+    case UtenColumnHeaderMove.back:
+      // 固定列的「最后」= 固定块末位；普通列的「最后」= 全局末位。
+      seq.insert(pinned ? prefixLen - 1 : seq.length, key);
+  }
+  return _spliceVisibleIntoOrder(order, seq);
+}
+
+/// 规范化：把可见序列里的固定列稳定搬到最前（拖拽换位/表头设置排序越过固定块
+/// 边界后的兜底，保证「固定块 = 可见前缀」恒成立）。隐藏列锚位不动。
+List<String> utenNormalizePinnedPrefix({
+  required List<String> order,
+  required Set<String> hiddenKeys,
+  required Set<String> pinnedKeys,
+}) {
+  final visible = _visibleColumnKeysOf(order, hiddenKeys);
+  final pinnedVisible = [
+    for (final k in visible)
+      if (pinnedKeys.contains(k)) k,
+  ];
+  if (pinnedVisible.isEmpty) return order;
+  final prefix = visible.takeWhile(pinnedKeys.contains).toList();
+  if (prefix.length == pinnedVisible.length) return order; // 已是前缀
+  return _spliceVisibleIntoOrder(order, [
+    ...pinnedVisible,
+    ...visible.where((k) => !pinnedKeys.contains(k)),
+  ]);
+}
+
+/// 可见列 key 序列（按 order 顺序、跳过隐藏列）。
+List<String> _visibleColumnKeysOf(List<String> order, Set<String> hiddenKeys) =>
+    [
+      for (final k in order)
+        if (!hiddenKeys.contains(k)) k,
+    ];
+
+/// 把新的可见 key 序列按原 order 的可见槽位 splice 回去（隐藏列保持原锚位）。
+List<String> _spliceVisibleIntoOrder(List<String> order, List<String> seq) {
+  final set = seq.toSet();
+  final queue = [...seq];
+  return [for (final k in order) set.contains(k) ? queue.removeAt(0) : k];
+}
+
+/// 表头右键菜单区（桌面右击专用，2026-09-25）。
+///
+/// 与行级 [UtenContextMenuRegion] 的关键差异：**不给触屏挂长按**。表头已把长按/
+/// 按下即拖让给「横拖换位 / 竖拖移除列」手势（本套件口径），再挂长按识别器会在
+/// 竞技场里抢走拖拽——触屏换位/隐藏直接失效。触屏用户仍有拖拽手势与「表头设置」
+/// 弹层两个入口，右键菜单是桌面增强。
+///
+/// 桌面右键走原始 Listener（不进竞技场，压过祖先 SelectionArea 的次级点击），
+/// 并在该指针抬键的微任务里 removeAny 掉系统「全选/复制」工具条——此前右击表头
+/// 弹的就是那个工具条。条目为空时同样压制系统工具条但不弹自家菜单（未开启表头
+/// 设置的编辑表头右键 = 无菜单、也无系统工具条）。
+class UtenColumnHeaderMenuRegion extends StatelessWidget {
+  const UtenColumnHeaderMenuRegion({
+    super.key,
+    required this.entriesBuilder,
+    required this.child,
+  });
+
+  final List<UtenContextMenuEntry> Function() entriesBuilder;
+  final Widget child;
+
+  /// 本次右键手势的指针 id（静态：开菜单会触发宿主 setState 重建换掉闭包；
+  /// 同一时刻只有一路右键手势，单值即可）。
+  static int? _secondaryPointerInFlight;
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (event) {
+        if (event.buttons & kSecondaryButton == 0) return;
+        _secondaryPointerInFlight = event.pointer;
+        final entries = entriesBuilder();
+        if (entries.isEmpty) return;
+        unawaited(
+          showUtenContextMenu(
+            context,
+            globalPosition: event.position,
+            entries: entries,
+          ),
+        );
+      },
+      onPointerUp: (event) => _dismissSystemContextMenu(event.pointer),
+      onPointerCancel: (event) => _dismissSystemContextMenu(event.pointer),
+      child: child,
+    );
+  }
+
+  static void _dismissSystemContextMenu(int pointer) {
+    if (_secondaryPointerInFlight != pointer) return;
+    _secondaryPointerInFlight = null;
+    scheduleMicrotask(ContextMenuController.removeAny);
   }
 }
 

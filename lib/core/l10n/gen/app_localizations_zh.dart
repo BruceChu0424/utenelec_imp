@@ -255,12 +255,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileChangePassword => '修改密码';
 
   @override
-  String get entryStaff => '内部人员登录';
-
-  @override
-  String get entryVisitor => '访客登录';
-
-  @override
   String get visitorLoginTitle => '访客登录';
 
   @override
@@ -2313,6 +2307,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get materialRequired => '需要数量';
 
   @override
+  String get materialPublicAvailable => '可用数量';
+
+  @override
   String get materialShortage => '还缺数量';
 
   @override
@@ -2350,11 +2347,6 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String materialAggregateSources(int products, int paths) {
     return '$products 个产品 · $paths 条路径';
-  }
-
-  @override
-  String materialCreateRoutes(int count) {
-    return '确认路线($count)';
   }
 
   @override
@@ -2408,7 +2400,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String materialRoutesNext(int count) {
-    return '下一步：核对 $count 条待确认路线，勾选后点击“确认路线”。每条路线按当前选择保存。';
+    return '下一步：还有 $count 行没选供应方式（红框），在「供应方式」列选好后即自动保存，这些行才能下单。其余行的供应方式已按货品档案自动确认。';
   }
 
   @override
@@ -3341,11 +3333,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String warehouseSubcontractOutboundLinesTitle(int count) {
-    return '出仓明细 ($count)';
-  }
-
-  @override
   String get warehouseSubcontractOutboundSaveDraft => '保存草稿';
 
   @override
@@ -3592,12 +3579,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get securityBlacklistRemoveDone => '已解除拉黑';
-
-  @override
-  String get entryStaffSubtitle => '员工工号登录，进入工作台';
-
-  @override
-  String get entryVisitorSubtitle => '访客手机验证码登记，快速通行';
 
   @override
   String get visitorColName => '姓名';

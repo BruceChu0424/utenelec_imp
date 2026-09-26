@@ -620,7 +620,16 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
           [RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id)],
         ),
       );
-      context.replace(RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id));
+      // 编辑既有单：pop 回宿主详情（其「返回即刷新」重取保存后数据），深链直达
+      // 才落新详情；replace 会把新详情叠在旧详情上，返回一次看到旧快照。
+      if (widget.id != null) {
+        popSavedEditOrReplace(
+          context,
+          RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id),
+        );
+      } else {
+        context.replace(RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id));
+      }
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
@@ -926,16 +935,19 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                 showColumnSettings: true,
                                 initialColumnOrder: columnPrefs?.order,
                                 initialHiddenColumnKeys: columnPrefs?.hidden,
-                                onColumnSettingsChanged: (order, hidden) => ref
-                                    .read(
-                                      purchaseDocGridColumnPrefsProvider
-                                          .notifier,
-                                    )
-                                    .updateFor(
-                                      widget.docType.name,
-                                      order,
-                                      hidden,
-                                    ),
+                                initialPinnedColumnKeys: columnPrefs?.pinned,
+                                onColumnSettingsChanged:
+                                    (order, hidden, pinned) => ref
+                                        .read(
+                                          purchaseDocGridColumnPrefsProvider
+                                              .notifier,
+                                        )
+                                        .updateFor(
+                                          widget.docType.name,
+                                          order,
+                                          hidden,
+                                          pinned,
+                                        ),
                                 columns: purchaseGridColumns(
                                   _pickGoods,
                                   context: context,

@@ -94,7 +94,7 @@ void main() {
               WarehouseTaskSegmentSpec(value: 'subcontract', label: '委外出库'),
             ],
             initialSegment: 'subcontract',
-            bodyBuilder: (_, _, tick) => Text('revision:$tick'),
+            bodyBuilder: (_, _, tick, _) => Text('revision:$tick'),
           ),
         ),
       ),

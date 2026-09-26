@@ -868,6 +868,9 @@ class _DesktopTaskTable extends StatelessWidget {
       columns: [
         MasterColumnDef(
           key: 'planNo',
+          // 与委外任务中心同款（V719）：来源计划可排序——值是 WL 分析编号
+          // 或旧日期标签，服务端 orderSql 按 plan_no 文本排序。
+          sortable: true,
           label: '计划号',
           width: 148,
           value: (item) => item.planNo,

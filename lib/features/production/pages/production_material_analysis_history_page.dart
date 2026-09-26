@@ -321,6 +321,12 @@ class _ProductionMaterialAnalysisHistoryPageState
 
   List<MasterColumnDef<MaterialAnalysisListItem>> get _columns => [
     MasterColumnDef(
+      key: 'analysisNo',
+      label: '编号',
+      width: 150,
+      value: (item) => item.analysisNo ?? '—',
+    ),
+    MasterColumnDef(
       key: 'status',
       label: '状态',
       width: 120,
@@ -440,6 +446,8 @@ class _ProductionMaterialAnalysisHistoryPageState
               ],
             ),
             const SizedBox(height: UtenSpacing.s8),
+            if (item.analysisNo != null)
+              _infoLine(Icons.tag_outlined, '编号 ${item.analysisNo}'),
             _infoLine(Icons.link_outlined, _sourceSummary(item)),
             _infoLine(
               Icons.person_outline_rounded,

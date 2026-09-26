@@ -168,7 +168,6 @@ import '../../features/security/pages/security_scan_page.dart';
 import '../../features/visitor_approval/pages/my_visitors_page.dart';
 import '../../features/visitor_approval/pages/visitor_approval_detail_page.dart';
 import '../../features/visitor_approval/pages/visitor_approval_list_page.dart';
-import '../../features/entry/pages/entry_selection_page.dart';
 import '../../features/visitor/pages/visitor_apply_page.dart';
 import '../../features/visitor/pages/visitor_application_detail_page.dart';
 import '../../features/visitor/pages/visitor_home_page.dart';
@@ -244,23 +243,18 @@ final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>(
 final appRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
     navigatorKey: appNavigatorKey,
-    initialLocation: RouteName.entry,
+    // 2026-09-25 入口选择页退役：平台定位公司内部，应用直接落在员工登录页；
+    // 访客门户前端同步下线（后端能力保留，将来另做独立入口）。
+    initialLocation: RouteName.login,
     redirect: (context, state) {
       final session = ref.read(sessionProvider);
-      final vSession = ref.read(visitorSessionProvider);
       final loc = state.matchedLocation;
-      final requestedLocation = state.uri.toString();
       final isEntry = loc == RouteName.entry;
       final isLogin = loc == RouteName.login;
       final isChangePw = loc == RouteName.changePassword;
-      final isVisitorPath = isVisitorPortalLocation(loc);
       final employeeReturnTo = returnToFromUri(
         state.uri,
         scope: ReturnToScope.employee,
-      );
-      final visitorReturnTo = returnToFromUri(
-        state.uri,
-        scope: ReturnToScope.visitor,
       );
       final employeeIntent = intendedReturnTo(
         state.uri,
@@ -274,36 +268,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             : RoutePath.changePassword(forced: true, returnTo: employeeIntent);
       }
 
-      // Visitor pages use the visitor session and never accept employee paths.
-      if (isVisitorPath) {
-        if (session.status == AuthStatus.authenticated) {
-          return RouteName.dashboard;
-        }
-        if (vSession.isLoggedIn) {
-          return loc == RouteName.visitorLogin
-              ? visitorReturnTo ?? RouteName.visitorHome
-              : null;
-        }
-        if (loc == RouteName.visitorLogin) return null;
-        return RoutePath.entry(returnTo: requestedLocation);
+      // 访客门户前端已下线(2026-09-25)：访客路径不再进入访客流程，
+      // 员工已登录回工作台，其余一律落到员工登录页（访客页面代码保留但不可达）。
+      if (isVisitorPortalLocation(loc)) {
+        return session.status == AuthStatus.authenticated
+            ? RouteName.dashboard
+            : RouteName.login;
       }
 
-      // The entry page preserves the deep link until a portal is selected.
+      // 旧 /entry 深链兼容重定向到登录页（保留员工侧 returnTo）。
       if (isEntry) {
         if (session.status == AuthStatus.authenticated) {
           return employeeReturnTo ?? RouteName.dashboard;
         }
-        if (vSession.isLoggedIn) {
-          return visitorReturnTo ?? RouteName.visitorHome;
-        }
-        return null;
+        return RoutePath.login(returnTo: employeeReturnTo);
       }
 
       switch (session.status) {
         case AuthStatus.unauthenticated:
-          if (vSession.isLoggedIn) return RouteName.visitorHome;
           if (isLogin) return null;
-          return RoutePath.entry(returnTo: requestedLocation);
+          return RoutePath.login(returnTo: employeeIntent);
         case AuthStatus.mustChangePassword:
           return isChangePw
               ? null
@@ -343,16 +327,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (_, _) => const _ErrorPage(),
       ),
 
-      // —— 入口选择（登录前）——
-      GoRoute(
-        path: RouteName.entry,
-        name: 'entry',
-        builder: (_, state) => EntrySelectionPage(
-          returnTo: returnToFromUri(state.uri, scope: ReturnToScope.any),
-        ),
-      ),
+      // —— 入口选择页已退役(2026-09-25)：/entry 由 redirect 兼容重定向到 /login ——
 
       // —— 访客自助流程（不进 ShellRoute）——
+      // 2026-09-25 前端下线：redirect 把全部 /visitor* 路径拦到员工登录页，
+      // 以下路由与页面代码保留（后端访客能力不动），将来另做独立入口时恢复。
       GoRoute(
         path: RouteName.visitorLogin,
         name: 'visitor-login',

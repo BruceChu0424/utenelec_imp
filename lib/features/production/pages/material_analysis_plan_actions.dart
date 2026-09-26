@@ -359,25 +359,16 @@ abstract class _MaterialAnalysisPlanActionsState
   /// The table owns its floating action in both normal and fullscreen views.
   /// 悬浮区动作 = 选择三件套（见 material_table 的
   /// [_MaterialAnalysisMaterialTableState._materialTableSelectionActions]：
-  /// 全选筛选结果 + 路线说明）+ 确认路线(N)。
+  /// 全选筛选结果 + 路线说明）+ 下单(N)。
+  ///
+  /// 「确认路线(N)」按钮已退役（2026-09-25 ADR-102 修订）：进页对货品档案能
+  /// 定路线的行自动确认，缺路线的行红框、在「供应方式」列选好即自动保存，
+  /// 不再需要批量确认入口。
   List<Widget> _bottomActionButtons() {
     if (_isFqcReplenishmentOnly) return const [];
-    // ADR-102：一个选中集，两个按钮。各自只对自己够格的子集动手，缺哪把权限
-    // 就少哪个按钮——不是整个悬浮区消失。
+    // ADR-102：勾选只服务「下单」。缺权限就少按钮，不是整个悬浮区消失。
     final issuable = _selectedIssuableGroups();
     return [
-      if (_canRoute)
-        UtenButton(
-          key: const Key('material-analysis-create-routes'),
-          size: UtenButtonSize.large,
-          type: UtenButtonType.danger,
-          icon: Icons.alt_route_rounded,
-          isLoading: _savingRoutes,
-          onPressed: _busy || _selectedRouteCount == 0
-              ? null
-              : _createSelectedRoutes,
-          child: Text(_l10n.materialCreateRoutes(_selectedRouteCount)),
-        ),
       if (_canNotify || _canGenerate)
         UtenButton(
           key: const Key('material-analysis-submit-orders'),

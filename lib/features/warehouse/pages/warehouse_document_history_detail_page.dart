@@ -142,34 +142,20 @@ class _WarehouseDocumentHistoryDetailPageState
                       ],
                     ),
                   ),
-                  // body：明细标题（钉住）+ 表格占满内滚（primary 拾取联动控制器）。
-                  body: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '实物明细 (${detail.items.length})',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s8),
-                      Expanded(
-                        child: MasterDataTableView<WarehouseDocumentPhysicalItem>(
-                          key: Key(
-                            'warehouse-history-detail-table-${widget.type.segment}',
-                          ),
-                          primary: true,
-                          columns: _physicalColumns(detail.items),
-                          items: detail.items,
-                          facets: const {},
-                          nullCounts: const {},
-                          filters: const {},
-                          onFilterChanged: (_, _) {},
-                          emptyMessage: '该记录暂无实物明细',
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s16),
-                    ],
+                  // body：明细表占满内滚（primary 拾取联动控制器）。
+                  body: MasterDataTableView<WarehouseDocumentPhysicalItem>(
+                    key: Key(
+                      'warehouse-history-detail-table-${widget.type.segment}',
+                    ),
+                    primary: true,
+                    columns: _physicalColumns(detail.items),
+                    items: detail.items,
+                    facets: const {},
+                    nullCounts: const {},
+                    filters: const {},
+                    onFilterChanged: (_, _) {},
+                    emptyMessage: '该记录暂无实物明细',
+                    bottomContentPadding: UtenSpacing.s16,
                   ),
                 ),
               ),

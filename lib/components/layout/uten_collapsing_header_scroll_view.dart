@@ -48,6 +48,11 @@
 //  - 一格滚到「刚好置顶」/「刚好回顶」即止，余量丢弃；
 //  - 越过交接点之后，同方向还要再滚 [wheelGateDistance] 的空行程才开始动另一段，
 //    掉头即撤门（反向是明确意图，不吃空行程）；
+//  - 停顿窗（2026-09-25 用户口径「滚一下没停就置顶了 → 停住，重新开始滚才继续」）：
+//    截停在交接点后，[wheelHoldWindow] 内同方向的后续格（同一滚势的连续快滚/惯性）
+//    整格吞掉并续窗——连续快滚不再「置顶后马上冲进表内」；两条放行线先到先放：
+//    滚势停住（窗口内无新格），或没停但同方向累计推过量达到 [wheelHoldDistance]
+//    （滚不停的人 = 明确要继续）——放行后恢复空行程门的原有行为；
 //  - 命中点下若有**独立**（非联动）的竖向滚动件且还能滚（页内侧栏、嵌套面板），
 //    让给框架原样处理，不抢；shift+滚轮（横滚修饰键）也不接管；
 //  - 只管滚轮 / 触控板；触屏拖动仍由 NestedScrollView 原生协调。
@@ -55,6 +60,7 @@
 // 卡顿本身（「表格一步步往置顶移动时一卡一卡」）的根因在 NestedScrollView 的 body
 // 每格都在变高，见 MasterDataTableView 表体 LayoutBuilder 的「只按宽度重建」。
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
@@ -81,6 +87,8 @@ class UtenCollapsingHeaderScrollView extends StatefulWidget {
     this.pinnedHeaderExtent,
     this.controller,
     this.wheelGateDistance = 50,
+    this.wheelHoldWindow = const Duration(milliseconds: 350),
+    this.wheelHoldDistance = 250,
     this.compactBreakpoint = UtenBreakpoints.mediumStart,
     this.compactHeightBreakpoint = UtenBreakpoints.mediumStart,
     this.compactBodyMinHeight = 360,
@@ -111,6 +119,18 @@ class UtenCollapsingHeaderScrollView extends StatefulWidget {
   /// 才开始动另一段（见文件头「滚轮交接手感」）。0 = 只丢弃交接那一格的余量，
   /// 不加空行程。默认 50 ≈ 网页端半格滚轮（Chrome 一格 100）。
   final double wheelGateDistance;
+
+  /// 滚轮停顿窗：截停在交接点（置顶/回顶）之后，距上一格滚轮不超过该窗口的
+  /// 同方向格视为**同一滚势**，整格吞掉并续窗——连续快滚一口气冲过置顶点、
+  /// 「置顶后马上继续往下滑」即此截断；滚势停住（窗口内无新格）后恢复空行程门
+  /// 的原有行为（见文件头「滚轮交接手感」2026-09-25 段）。
+  final Duration wheelHoldWindow;
+
+  /// 停顿窗的距离放行线（逻辑像素）：没停但一直同方向滚 = 明确要继续，截停后
+  /// 同方向累计推过量达到该值即放行（放行那格走正常门逻辑）。默认 250 ≈ 两格半
+  /// 滚轮（一格 ≈100 的同一标定）：典型一甩的余势（1-2 格）整段吞掉，持续连滚
+  /// 第 2-3 格恢复跟手。
+  final double wheelHoldDistance;
 
   /// 紧凑视口回退阈值（默认 [UtenBreakpoints.mediumStart] = 600，即手机竖屏）：视口宽
   /// 小于该值时不再用 NestedScrollView——其 body 高度 = 视口高 − 顶部内容高，手机上
@@ -200,6 +220,12 @@ class _UtenCollapsingHeaderScrollViewState
   int _gateDirection = 0;
   double _gateBudget = 0;
 
+  /// 停顿窗状态：被吞滚势的方向（0=窗关）、同方向累计已吞量（达到
+  /// [widget.wheelHoldDistance] 放行）与计时器。
+  int _holdDirection = 0;
+  double _holdConsumed = 0;
+  Timer? _holdTimer;
+
   static const double _epsilon = 0.5;
 
   @override
@@ -222,6 +248,7 @@ class _UtenCollapsingHeaderScrollViewState
   @override
   void dispose() {
     widget.controller?.removeListener(_evaluateOuterPhase);
+    _holdTimer?.cancel();
     _innerActive.dispose();
     _ownedOuter.dispose();
     super.dispose();
@@ -261,6 +288,11 @@ class _UtenCollapsingHeaderScrollViewState
   // ------------------------- 滚轮交接门 -------------------------
 
   void _onPointerSignal(PointerSignalEvent event) {
+    // 用户重新触碰滚轮/触控板（原生惯性被打断）：上一滚势作废，立即关停顿窗。
+    if (event is PointerScrollInertiaCancelEvent) {
+      _dropHold();
+      return;
+    }
     if (event is! PointerScrollEvent || !_outer.hasClients) return;
     final dy = event.scrollDelta.dy;
     if (dy == 0) return;
@@ -339,16 +371,32 @@ class _UtenCollapsingHeaderScrollViewState
     if (!_outer.hasClients) return;
     final outer = _outer.position;
     final direction = delta > 0 ? 1 : -1;
-    // 掉头是明确意图：撤门，不吃空行程。
+    // 停顿窗（见文件头 2026-09-25 段）：截停后同一滚势的后续格吞掉并续窗；
+    // 累计推过量达到距离放行线（wheelHoldDistance）或掉头即关窗——掉头是明确
+    // 意图（空行程门的原有撤门逻辑照旧），推够距离=滚不停的人明确要继续，
+    // 放行那格落到下方正常门逻辑（先吃空行程再动另一段）。
+    if (_holdDirection != 0) {
+      if (_holdDirection != direction) {
+        _dropHold();
+      } else {
+        _holdConsumed += delta.abs();
+        if (_holdConsumed < widget.wheelHoldDistance) {
+          _keepHold();
+          return;
+        }
+        _dropHold();
+      }
+    }
     if (_gateDirection != 0 && _gateDirection != direction) _disarm();
     final outerRoom = outer.maxScrollExtent - outer.pixels;
     final innerRoom = _innerScrolledExtent();
     if (direction > 0) {
       if (outerRoom > _epsilon) {
-        // 收头部段：这一格最多滚到「刚好置顶」，余量丢弃并上门。
+        // 收头部段：这一格最多滚到「刚好置顶」，余量丢弃并上门、开停顿窗。
         if (delta >= outerRoom - _epsilon) {
           _outer.jumpTo(outer.maxScrollExtent);
           _arm(direction);
+          _armHold(direction);
           return;
         }
         outer.pointerScroll(delta);
@@ -375,12 +423,13 @@ class _UtenCollapsingHeaderScrollViewState
       return;
     }
     if (innerRoom > _epsilon) {
-      // 表内回顶段：这一格最多滚到「刚好回顶」，余量丢弃并上门。
+      // 表内回顶段：这一格最多滚到「刚好回顶」，余量丢弃并上门、开停顿窗。
       if (-delta >= innerRoom - _epsilon) {
         for (final position in _innerController!.positions) {
           position.jumpTo(position.minScrollExtent);
         }
         _arm(direction);
+        _armHold(direction);
         return;
       }
       if (_compactMode) {
@@ -424,6 +473,26 @@ class _UtenCollapsingHeaderScrollViewState
   void _disarm() {
     _gateDirection = 0;
     _gateBudget = 0;
+  }
+
+  /// 开/续停顿窗。截停点上开新窗时距离计量从零起算（[widget.wheelHoldDistance]）。
+  void _armHold(int direction) {
+    _holdDirection = direction;
+    _holdConsumed = 0;
+    _keepHold();
+  }
+
+  /// 续窗（只刷新计时，不动距离计量）。
+  void _keepHold() {
+    _holdTimer?.cancel();
+    _holdTimer = Timer(widget.wheelHoldWindow, _dropHold);
+  }
+
+  void _dropHold() {
+    _holdDirection = 0;
+    _holdConsumed = 0;
+    _holdTimer?.cancel();
+    _holdTimer = null;
   }
 
   /// 门上着且同方向：先吃空行程，返回吃剩的（0 = 这格全吃掉）。

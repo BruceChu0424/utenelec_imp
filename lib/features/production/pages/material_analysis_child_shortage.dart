@@ -192,7 +192,7 @@ abstract class _MaterialAnalysisChildShortageState
   }
 
   String _issuedSnapshotKey(_MaterialGroup group) =>
-      '${group.key}@${_draftRoute(group).name}';
+      '${group.key}@${_draftRoute(group)?.name ?? 'PENDING'}';
 
   double _childShortageUncovered(ProductionMaterialAnalysisMaterial material) =>
       material.planningUncoveredQty ??
@@ -730,7 +730,7 @@ class _ChildShortageRootSummary extends StatelessWidget {
 
   final String title;
   final String orderedLabel;
-  final List<({String name, MaterialSupplyRoute route, String short})> lines;
+  final List<({String name, MaterialSupplyRoute? route, String short})> lines;
   final int more;
 
   @override
@@ -815,25 +815,37 @@ class _ChildShortageRootSummary extends StatelessWidget {
   }
 }
 
-/// 供应方式小标签：采购蓝、委外紫、自制青，一眼分得开。
+/// 供应方式小标签：采购蓝、委外紫、自制青，一眼分得开；没解析出路线的行
+/// 显示待选（2026-09-25 确认路线退役后红框行补选前的形态）。
 class _RouteChip extends StatelessWidget {
   const _RouteChip({required this.route});
 
-  final MaterialSupplyRoute route;
+  final MaterialSupplyRoute? route;
 
   @override
-  Widget build(BuildContext context) => UtenStatusBadge(
-    label: route.label,
-    size: UtenStatusBadgeSize.small,
-    type: switch (route) {
-      MaterialSupplyRoute.buy => UtenStatusBadgeType.info,
-      MaterialSupplyRoute.subcontract => UtenStatusBadgeType.violet,
-      MaterialSupplyRoute.make => UtenStatusBadgeType.success,
-    },
-    icon: switch (route) {
-      MaterialSupplyRoute.buy => Icons.shopping_cart_outlined,
-      MaterialSupplyRoute.subcontract => Icons.local_shipping_outlined,
-      MaterialSupplyRoute.make => Icons.precision_manufacturing_outlined,
-    },
-  );
+  Widget build(BuildContext context) {
+    final resolved = route;
+    if (resolved == null) {
+      return const UtenStatusBadge(
+        label: '待选供应方式',
+        size: UtenStatusBadgeSize.small,
+        type: UtenStatusBadgeType.danger,
+        icon: Icons.help_outline_rounded,
+      );
+    }
+    return UtenStatusBadge(
+      label: resolved.label,
+      size: UtenStatusBadgeSize.small,
+      type: switch (resolved) {
+        MaterialSupplyRoute.buy => UtenStatusBadgeType.info,
+        MaterialSupplyRoute.subcontract => UtenStatusBadgeType.violet,
+        MaterialSupplyRoute.make => UtenStatusBadgeType.success,
+      },
+      icon: switch (resolved) {
+        MaterialSupplyRoute.buy => Icons.shopping_cart_outlined,
+        MaterialSupplyRoute.subcontract => Icons.local_shipping_outlined,
+        MaterialSupplyRoute.make => Icons.precision_manufacturing_outlined,
+      },
+    );
+  }
 }

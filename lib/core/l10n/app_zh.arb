@@ -90,8 +90,6 @@
   "settingsLogout": "退出登录",
   "settingsLogoutConfirm": "确定要退出登录吗？",
   "profileChangePassword": "修改密码",
-  "entryStaff": "内部人员登录",
-  "entryVisitor": "访客登录",
   "visitorLoginTitle": "访客登录",
   "visitorLoginSubtitle": "输入手机号获取验证码",
   "visitorPhoneLabel": "手机号",
@@ -975,6 +973,7 @@
   "materialIdentityByProduct": "物料名称",
   "materialRoute": "供应方式",
   "materialRequired": "需要数量",
+  "materialPublicAvailable": "可用数量",
   "materialShortage": "还缺数量",
   "materialPhysicalShortageHint": "本批需求扣除已覆盖本批的合格物料后仍缺的数量。下达采购、委外或车间计划不会减少实物缺口；合格入库并归属本批后才减少。待补数量另外扣除在途，避免重复下达。",
   "materialSupplyProgressHint": "跟踪下单、财务审批、收货、检验与入库进度；双击行查看明细。下达后仍保留实物缺口，合格入库后更新。",
@@ -997,14 +996,6 @@
       }
     }
   },
-  "materialCreateRoutes": "确认路线({count})",
-  "@materialCreateRoutes": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
   "materialRouteChangedRetry": "分析已更新，请核对当前所选路线后重试",
   "materialWarehouseFacts": "仓库与供给明细",
   "materialExactStock": "本节点合格绑定",
@@ -1021,7 +1012,7 @@
   "materialTaskWorkshopHint": "填写数量、车间和负责人后下达；缺料任务先进入待料，齐套并领料后才能开工。",
   "materialTaskSectionHint": "按供料路线集中处理，查看未下达、已下达与待处理任务。",
   "materialWarehouseLimit": "本次分析最多支持 100 个实际仓库，当前主仓范围超出限制，请调整仓库范围后再分析",
-  "materialRoutesNext": "下一步：核对 {count} 条待确认路线，勾选后点击“确认路线”。每条路线按当前选择保存。",
+  "materialRoutesNext": "下一步：还有 {count} 行没选供应方式（红框），在「供应方式」列选好后即自动保存，这些行才能下单。其余行的供应方式已按货品档案自动确认。",
   "materialIssueNext": "下一步：进入“下达采购 / 下达委外 / 下达车间”，按未下达余量办理并查看已下达进度。",
   "materialWorkshopNext": "下一步：{count} 个产品可先下达车间。填写数量、车间和负责人；缺料批次等待齐套和领料后开工。",
   "@materialRoutesNext": {
@@ -1540,14 +1531,6 @@
       }
     }
   },
-  "warehouseSubcontractOutboundLinesTitle": "出仓明细 ({count})",
-  "@warehouseSubcontractOutboundLinesTitle": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
   "warehouseSubcontractOutboundSaveDraft": "保存草稿",
   "warehouseSubcontractOutboundApprove": "审核出仓",
   "warehouseSubcontractOutboundClosePlan": "不再出仓",
@@ -1700,8 +1683,6 @@
   "securityBlacklistRemove": "解除拉黑",
   "securityBlacklistRemoveConfirm": "确认解除拉黑？解除后该访客可重新登录与提交申请，历史申请状态不变。",
   "securityBlacklistRemoveDone": "已解除拉黑",
-  "entryStaffSubtitle": "员工工号登录，进入工作台",
-  "entryVisitorSubtitle": "访客手机验证码登记，快速通行",
   "visitorColName": "姓名",
   "visitorColPurpose": "事由",
   "visitorColHost": "接待人",

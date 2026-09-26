@@ -1,7 +1,16 @@
 package com.uten.imp.features.master.referencemethod;
 
+import com.uten.imp.application.port.ExportLimitPort;
+import com.uten.imp.audit.AuditService;
+import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.export.ExportPasswordRequest;
+import com.uten.imp.common.export.WorkbookDownloadService;
+import com.uten.imp.common.export.XlsxExportService;
+import com.uten.imp.common.web.DownloadContentDisposition;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,12 +30,18 @@ import java.util.UUID;
  * <p>结算方式管理页（settlement-admin）支持表头字段筛选与 facets：
  * - GET  /settlement-admin?status=&systemRole=&termsBase=&dueRule=&nullFields= → 全量（含禁用行）
  * - GET  /settlement-admin/facets                                             → 各可筛字段桶 + 空值计数
+ * - POST /settlement-admin/export                                             → 加密 Excel 导出（settlement_method:export，V717）
  */
 @RestController
 @RequestMapping("/api/master/reference-methods")
 @RequiredArgsConstructor
 public class ReferenceMethodController {
     private final ReferenceMethodService service;
+    private final XlsxExportService xlsxExport;
+    private final WorkbookDownloadService workbookDownload;
+    private final AuditService audit;
+    private final SecurityContextCurrentUser currentUser;
+    private final ExportLimitPort exportLimits;
 
     @GetMapping("/settlement")
     @PreAuthorize("hasAuthority('payment_style:view')")
@@ -59,6 +74,32 @@ public class ReferenceMethodController {
     @PreAuthorize("hasAuthority('settlement_method:view')")
     public SettlementMethodFacets settlementAdminFacets() {
         return service.settlementAdminFacets();
+    }
+
+    // ---------- 加密 Excel 导出（POST，密码走 body；过滤参数与 GET /settlement-admin 一致；V717） ----------
+
+    @PostMapping("/settlement-admin/export")
+    @PreAuthorize("hasAuthority('settlement_method:export')")
+    public ResponseEntity<byte[]> exportSettlementAdmin(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String systemRole,
+            @RequestParam(required = false) String termsBase,
+            @RequestParam(required = false) String dueRule,
+            @RequestParam(required = false) Set<String> nullFields,
+            @Valid @RequestBody ExportPasswordRequest body) {
+        ExportPayload payload = service.exportSettlementAdmin(
+                new SettlementMethodAdminQueryFilter(status, systemRole, termsBase, dueRule, nullFields),
+                exportLimits.exportMaxRows());
+        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
+        byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
+        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
+                "export_settlement_method", "master_data", String.valueOf(payload.total()), "success"));
+        return ResponseEntity.ok()
+                .header("Content-Disposition",
+                        DownloadContentDisposition.attachment("settlement-methods.xlsx"))
+                .header("Content-Type",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .body(downloadBytes);
     }
 
     /** 维护账期策略与可选改名（系统角色 CASH/MONTHLY 锁定拒绝；V453）。 */

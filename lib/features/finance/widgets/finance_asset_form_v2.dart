@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -116,6 +117,7 @@ class _FinanceAssetFormSurfaceState
   DateTime? _sourceDocumentDate;
   String? _dateError;
   bool _dirty = false;
+  bool _saving = false;
 
   bool get _isNew => widget.existing == null;
   bool get _fixed => widget.ledger == FinanceAssetLedger.fixedAsset;
@@ -354,6 +356,7 @@ class _FinanceAssetFormSurfaceState
       expectedVersion: existing?.version,
     );
     try {
+      setState(() => _saving = true);
       final repository = ref.read(financeAssetWorkbenchRepositoryProvider);
       if (_isNew) {
         await repository.createDraft(widget.ledger, input);
@@ -368,6 +371,8 @@ class _FinanceAssetFormSurfaceState
       if (mounted) {
         context.appApiError(error, fallback: '保存失败，表单内容已保留，请检查后重试');
       }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -398,225 +403,241 @@ class _FinanceAssetFormSurfaceState
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _requestClose();
       },
-      child: Material(
-        color: theme.colorScheme.surface,
-        child: Column(
-          children: [
-            _header(theme),
-            const Divider(height: 1),
-            Expanded(
-              child: Form(
-                key: _formKey,
-                autovalidateMode: AutovalidateMode.onUserInteraction,
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(
-                    context.breakpoint.isCompact
-                        ? UtenSpacing.s16
-                        : UtenSpacing.s24,
-                    UtenSpacing.s20,
-                    context.breakpoint.isCompact
-                        ? UtenSpacing.s16
-                        : UtenSpacing.s24,
-                    UtenSpacing.s32,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _identifierNotice(theme),
-                      const SizedBox(height: UtenSpacing.s20),
-                      Text(
-                        '基础与计量',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+      child: Stack(
+        children: [
+          Material(
+            color: theme.colorScheme.surface,
+            child: Column(
+              children: [
+                _header(theme),
+                const Divider(height: 1),
+                Expanded(
+                  child: Form(
+                    key: _formKey,
+                    autovalidateMode: AutovalidateMode.onUserInteraction,
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(
+                        context.breakpoint.isCompact
+                            ? UtenSpacing.s16
+                            : UtenSpacing.s24,
+                        UtenSpacing.s20,
+                        context.breakpoint.isCompact
+                            ? UtenSpacing.s16
+                            : UtenSpacing.s24,
+                        UtenSpacing.s32,
                       ),
-                      const SizedBox(height: UtenSpacing.s16),
-                      UtenFormGrid(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _categoryField(),
-                          UtenInput(
-                            label: '名称 *',
-                            controller: _name,
-                            validator: (value) => validateRequired(value, '名称'),
-                          ),
-                          UtenInput(
-                            key: const Key('finance-asset-amount'),
-                            label: '${widget.ledger.amountLabel} *',
-                            hint: '最多 2 位小数',
-                            controller: _amount,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            validator: (value) => validateFinanceAmount(
-                              value,
-                              label: widget.ledger.amountLabel,
+                          _identifierNotice(theme),
+                          const SizedBox(height: UtenSpacing.s20),
+                          Text(
+                            '基础与计量',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                          UtenInput(
-                            label: '${_fixed ? '使用' : '摊销'}月份 *',
-                            hint: '1 - 1200；选择分类后可带入政策值',
-                            controller: _months,
-                            keyboardType: TextInputType.number,
-                            validator: validateUsefulMonths,
-                          ),
-                          if (_fixed)
-                            UtenInput(
-                              label: '残值率',
-                              hint: '选择分类后可带入政策值',
-                              controller: _salvageRate,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              validator: validateSalvageRate,
-                            ),
-                          if (_fixed)
-                            UtenInput(
-                              label: '设备序列号',
-                              controller: _serialNumber,
-                              validator: (value) =>
-                                  validateMaxLength(value, 160, '设备序列号'),
-                            ),
-                          if (_fixed)
-                            UtenInput(label: '资产标签', controller: _assetTag),
-                          UtenInput(
-                            label: '成本中心代码',
-                            controller: _costCenterCode,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: UtenSpacing.s24),
-                      Text(
-                        _fixed ? '关键日期与启折' : '受益期与摊销计划',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s16),
-                      _dateFields(),
-                      if (_dateError != null) ...[
-                        const SizedBox(height: UtenSpacing.s8),
-                        Text(
-                          _dateError!,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.error,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: UtenSpacing.s12),
-                      _startPeriodNotice(theme),
-                      const SizedBox(height: UtenSpacing.s24),
-                      Text(
-                        '归属与来源',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s16),
-                      UtenFormGrid(
-                        children: [
-                          _departmentField(),
-                          UtenEmployeePicker(
-                            key: ValueKey(
-                              'asset-responsible-${widget.ledger.apiValue}-$_custodianId',
-                            ),
-                            label: _fixed ? '保管人' : '责任人',
-                            hint: _fixed ? '请选择保管人' : '请选择责任人',
-                            sheetTitle: _fixed ? '选择资产保管人' : '选择待摊责任人',
-                            initial: _custodian,
-                            departmentName: _departmentName,
-                            loader: _loadEmployees,
-                            onChanged: (item) {
-                              setState(() {
-                                _custodian = item;
-                                _custodianId = item?.id;
-                                _dirty = true;
-                              });
-                            },
-                          ),
-                          UtenInput(
-                            label: _fixed ? '存放地点' : '受益地点',
-                            controller: _location,
-                            validator: (value) =>
-                                validateMaxLength(value, 300, '地点'),
-                          ),
-                          UtenDropdownField(
-                            key: ValueKey('asset-source-type-$_sourceType'),
-                            label: '来源类型',
-                            value: _sourceType,
-                            hintText: '请选择来源类型',
-                            items: [
-                              if (_sourceType != null &&
-                                  !const {
-                                    'PURCHASE',
-                                    'AP',
-                                    'CONTRACT',
-                                    'MANUAL',
-                                    'OTHER',
-                                  }.contains(_sourceType))
-                                UtenDropdownItem(
-                                  value: _sourceType!,
-                                  label: '现有类型 · $_sourceType',
+                          const SizedBox(height: UtenSpacing.s16),
+                          UtenFormGrid(
+                            children: [
+                              _categoryField(),
+                              UtenInput(
+                                label: '名称 *',
+                                controller: _name,
+                                validator: (value) =>
+                                    validateRequired(value, '名称'),
+                              ),
+                              UtenInput(
+                                key: const Key('finance-asset-amount'),
+                                label: '${widget.ledger.amountLabel} *',
+                                hint: '最多 2 位小数',
+                                controller: _amount,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                validator: (value) => validateFinanceAmount(
+                                  value,
+                                  label: widget.ledger.amountLabel,
                                 ),
-                              const UtenDropdownItem(
-                                value: 'PURCHASE',
-                                label: '采购入账',
                               ),
-                              const UtenDropdownItem(
-                                value: 'AP',
-                                label: '应付单据',
+                              UtenInput(
+                                label: '${_fixed ? '使用' : '摊销'}月份 *',
+                                hint: '1 - 1200；选择分类后可带入政策值',
+                                controller: _months,
+                                keyboardType: TextInputType.number,
+                                validator: validateUsefulMonths,
                               ),
-                              const UtenDropdownItem(
-                                value: 'CONTRACT',
-                                label: '合同',
-                              ),
-                              const UtenDropdownItem(
-                                value: 'MANUAL',
-                                label: '手工录入',
-                              ),
-                              const UtenDropdownItem(
-                                value: 'OTHER',
-                                label: '其他来源',
+                              if (_fixed)
+                                UtenInput(
+                                  label: '残值率',
+                                  hint: '选择分类后可带入政策值',
+                                  controller: _salvageRate,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  validator: validateSalvageRate,
+                                ),
+                              if (_fixed)
+                                UtenInput(
+                                  label: '设备序列号',
+                                  controller: _serialNumber,
+                                  validator: (value) =>
+                                      validateMaxLength(value, 160, '设备序列号'),
+                                ),
+                              if (_fixed)
+                                UtenInput(label: '资产标签', controller: _assetTag),
+                              UtenInput(
+                                label: '成本中心代码',
+                                controller: _costCenterCode,
                               ),
                             ],
-                            onChanged: (value) => setState(() {
-                              _sourceType = value;
-                              _dirty = true;
-                            }),
                           ),
+                          const SizedBox(height: UtenSpacing.s24),
+                          Text(
+                            _fixed ? '关键日期与启折' : '受益期与摊销计划',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: UtenSpacing.s16),
+                          _dateFields(),
+                          if (_dateError != null) ...[
+                            const SizedBox(height: UtenSpacing.s8),
+                            Text(
+                              _dateError!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.error,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: UtenSpacing.s12),
+                          _startPeriodNotice(theme),
+                          const SizedBox(height: UtenSpacing.s24),
+                          Text(
+                            '归属与来源',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: UtenSpacing.s16),
+                          UtenFormGrid(
+                            children: [
+                              _departmentField(),
+                              UtenEmployeePicker(
+                                key: ValueKey(
+                                  'asset-responsible-${widget.ledger.apiValue}-$_custodianId',
+                                ),
+                                label: _fixed ? '保管人' : '责任人',
+                                hint: _fixed ? '请选择保管人' : '请选择责任人',
+                                sheetTitle: _fixed ? '选择资产保管人' : '选择待摊责任人',
+                                initial: _custodian,
+                                departmentName: _departmentName,
+                                loader: _loadEmployees,
+                                onChanged: (item) {
+                                  setState(() {
+                                    _custodian = item;
+                                    _custodianId = item?.id;
+                                    _dirty = true;
+                                  });
+                                },
+                              ),
+                              UtenInput(
+                                label: _fixed ? '存放地点' : '受益地点',
+                                controller: _location,
+                                validator: (value) =>
+                                    validateMaxLength(value, 300, '地点'),
+                              ),
+                              UtenDropdownField(
+                                key: ValueKey('asset-source-type-$_sourceType'),
+                                label: '来源类型',
+                                value: _sourceType,
+                                hintText: '请选择来源类型',
+                                items: [
+                                  if (_sourceType != null &&
+                                      !const {
+                                        'PURCHASE',
+                                        'AP',
+                                        'CONTRACT',
+                                        'MANUAL',
+                                        'OTHER',
+                                      }.contains(_sourceType))
+                                    UtenDropdownItem(
+                                      value: _sourceType!,
+                                      label: '现有类型 · $_sourceType',
+                                    ),
+                                  const UtenDropdownItem(
+                                    value: 'PURCHASE',
+                                    label: '采购入账',
+                                  ),
+                                  const UtenDropdownItem(
+                                    value: 'AP',
+                                    label: '应付单据',
+                                  ),
+                                  const UtenDropdownItem(
+                                    value: 'CONTRACT',
+                                    label: '合同',
+                                  ),
+                                  const UtenDropdownItem(
+                                    value: 'MANUAL',
+                                    label: '手工录入',
+                                  ),
+                                  const UtenDropdownItem(
+                                    value: 'OTHER',
+                                    label: '其他来源',
+                                  ),
+                                ],
+                                onChanged: (value) => setState(() {
+                                  _sourceType = value;
+                                  _dirty = true;
+                                }),
+                              ),
+                              UtenInput(
+                                label: '来源单据引用(提交前必填)',
+                                hint: '合同号、发票号或业务单据号；草稿阶段可稍后补',
+                                controller: _sourceRef,
+                              ),
+                              UtenInput(
+                                label: '来源单据行引用(提交前必填)',
+                                hint: '填写稳定行号；头级来源请明确填写 HEADER',
+                                controller: _sourceLineRef,
+                              ),
+                              UtenDateField(
+                                label: '来源单据日期',
+                                value: _sourceDocumentDate,
+                                onChanged: (date) => setState(() {
+                                  _sourceDocumentDate = date;
+                                  _dirty = true;
+                                }),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: UtenSpacing.s16),
                           UtenInput(
-                            label: '来源单据引用(提交前必填)',
-                            hint: '合同号、发票号或业务单据号；草稿阶段可稍后补',
-                            controller: _sourceRef,
+                            label: '备注',
+                            controller: _remark,
+                            maxLines: 3,
                           ),
-                          UtenInput(
-                            label: '来源单据行引用(提交前必填)',
-                            hint: '填写稳定行号；头级来源请明确填写 HEADER',
-                            controller: _sourceLineRef,
-                          ),
-                          UtenDateField(
-                            label: '来源单据日期',
-                            value: _sourceDocumentDate,
-                            onChanged: (date) => setState(() {
-                              _sourceDocumentDate = date;
-                              _dirty = true;
-                            }),
-                          ),
+                          const SizedBox(height: UtenSpacing.s24),
+                          _documentNotice(theme),
                         ],
                       ),
-                      const SizedBox(height: UtenSpacing.s16),
-                      UtenInput(label: '备注', controller: _remark, maxLines: 3),
-                      const SizedBox(height: UtenSpacing.s24),
-                      _documentNotice(theme),
-                    ],
+                    ),
                   ),
                 ),
-              ),
+                const Divider(height: 1),
+                _footer(),
+              ],
             ),
-            const Divider(height: 1),
-            _footer(),
-          ],
-        ),
+          ),
+          // 保存提交期间的全屏居中遮罩（2026-09-25 统一口径：点按钮跑网络
+          // 一律 UtenBusyOverlay，按钮内「保存中…」转圈只作防抖兜底）。
+          if (_saving)
+            const Positioned.fill(
+              child: UtenBusyOverlay(title: '正在保存资产草稿，请稍候'),
+            ),
+        ],
       ),
     );
   }
@@ -893,7 +914,6 @@ class _FinanceAssetFormSurfaceState
               onAction: _save,
               icon: Icons.save_outlined,
               isExpanded: compact,
-              loadingLabel: const Text('保存中…'),
               label: Text(_isNew ? '创建草稿' : '保存草稿'),
             ),
           ],

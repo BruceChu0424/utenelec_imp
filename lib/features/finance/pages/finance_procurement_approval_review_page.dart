@@ -903,22 +903,24 @@ class _FinanceProcurementApprovalReviewPageState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          comparing
-              ? '明细对比 · 修改 $modified 行 · 删除 $removed 行 · 新增 $added 行${unknownCount > 0 ? ' · 待核对 $unknownCount 行' : ''}'
-              : '订货明细(${r.items.length})',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        if (comparing && hasUnknown)
+        // 2026-09-25 用户口径：纯计数标题「订货明细(N)」退役；修订对比统计行是
+        // 表体看不出的信息，保留。
+        if (comparing) ...[
           Text(
-            '历史记录部分字段未留存，未知不代表未修改；历史名称按现有档案显示。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+            '明细对比 · 修改 $modified 行 · 删除 $removed 行 · 新增 $added 行${unknownCount > 0 ? ' · 待核对 $unknownCount 行' : ''}',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
             ),
           ),
-        const SizedBox(height: UtenSpacing.s8),
+          if (hasUnknown)
+            Text(
+              '历史记录部分字段未留存，未知不代表未修改；历史名称按现有档案显示。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          const SizedBox(height: UtenSpacing.s8),
+        ],
         UtenRevisionTable<FinanceProcurementReviewLine>(
           key: const Key('procurement-approval-revision-table'),
           embedded: true,
@@ -953,6 +955,14 @@ class _FinanceProcurementApprovalReviewPageState
               value: (it) => UtenGoodsAttributeCell.text(it.colorName),
               cellBuilder: (_, it) => UtenGoodsAttributeCell(it.colorName),
             ),
+            // 2026-09-25 用户口径：与编辑页列序对齐——数量后紧跟单位。
+            MasterColumnDef(
+              key: 'qty',
+              label: '数量',
+              width: 90,
+              type: 'number',
+              value: (it) => _trimNum(it.qty),
+            ),
             MasterColumnDef(
               key: 'unitName',
               label: '单位',
@@ -966,13 +976,6 @@ class _FinanceProcurementApprovalReviewPageState
               width: 90,
               type: 'number',
               value: (it) => _trimNum(it.unitRate),
-            ),
-            MasterColumnDef(
-              key: 'qty',
-              label: '数量',
-              width: 90,
-              type: 'number',
-              value: (it) => _trimNum(it.qty),
             ),
             MasterColumnDef(
               key: 'price',
@@ -1021,12 +1024,8 @@ class _FinanceProcurementApprovalReviewPageState
               width: 280,
               value: (it) => extra(it, it.sourceApplicationNos),
             ),
-            MasterColumnDef(
-              key: 'weight',
-              label: '实际重量',
-              width: 110,
-              value: (it) => extra(it, it.weight, numeric: true),
-            ),
+            // 实际重量列退役（2026-09-25）：单位已表达重量，全部编辑/详情页
+            // 2026-09-04 起不再录入，本表是最后一处残留。
             if (r.orderType == FinanceProcurementOrderType.subcontract)
               MasterColumnDef(
                 key: 'allowedLossPct',

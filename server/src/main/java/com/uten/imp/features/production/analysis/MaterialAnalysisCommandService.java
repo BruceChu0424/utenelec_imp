@@ -2059,29 +2059,39 @@ public class MaterialAnalysisCommandService {
             UUID analysisId, List<ActionDraft> created,
             Set<UUID> subcontractMakeFirst) {
         UUID employeeId = currentUser.requireEmployeeId();
-        // 来源单据展示可读标签（计划前物料分析 + 分析日期），不再把分析 UUID 暴露给单据号/备注；
-        // 谱系回溯改走 materialAnalysisId，与展示解耦。analyzed_at 实时查（refreshLocked 会推进）。
-        // analyzed_at 是 TIMESTAMPTZ：Hibernate 6 原生查询按配置可能返回
+        // 来源单据展示标签（V719）：优先分析编号 WL…，采购/委外「来源计划」列可排序；
+        // 谱系回溯仍走 materialAnalysisId，与展示解耦。analyzed_at 实时查（refreshLocked
+        // 会推进）。analyzed_at 是 TIMESTAMPTZ：Hibernate 6 原生查询按配置可能返回
         // Timestamp/OffsetDateTime/Instant（Testcontainers 下实测返回 Instant），
         // 强转 java.sql.Timestamp 会 CCE——逐类型归一到 Instant 再转上海日期。
-        Object rawAnalyzedAt = em.createNativeQuery("""
-                SELECT analyzed_at FROM production_material_analyses WHERE id = :id
+        // 无编号的夹具行回退旧的「计划前物料分析 <日期>」标签。
+        Object[] labelRow = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT analyzed_at, analysis_no
+                FROM production_material_analyses WHERE id = :id
                 """)
-                .setParameter("id", analysisId)
-                .getSingleResult();
-        java.time.Instant analyzedInstant;
-        if (rawAnalyzedAt instanceof java.sql.Timestamp t) {
-            analyzedInstant = t.toInstant();
-        } else if (rawAnalyzedAt instanceof java.time.OffsetDateTime o) {
-            analyzedInstant = o.toInstant();
-        } else if (rawAnalyzedAt instanceof java.time.Instant i) {
-            analyzedInstant = i;
-        } else {
-            throw new IllegalStateException(
-                    "analyzed_at 返回了未支持的类型：" + rawAnalyzedAt.getClass().getName());
+                .setParameter("id", analysisId)).stream().findFirst().orElse(null);
+        if (labelRow == null) {
+            throw new IllegalStateException("物料分析不存在：" + analysisId);
         }
-        String sourceLabel = "计划前物料分析 "
-                + analyzedInstant.atZone(BusinessTime.ZONE).toLocalDate();
+        String analysisNo = labelRow[1] == null ? "" : labelRow[1].toString().strip();
+        String sourceLabel;
+        if (!analysisNo.isEmpty()) {
+            sourceLabel = analysisNo;
+        } else {
+            java.time.Instant analyzedInstant;
+            if (labelRow[0] instanceof java.sql.Timestamp t) {
+                analyzedInstant = t.toInstant();
+            } else if (labelRow[0] instanceof java.time.OffsetDateTime o) {
+                analyzedInstant = o.toInstant();
+            } else if (labelRow[0] instanceof java.time.Instant i) {
+                analyzedInstant = i;
+            } else {
+                throw new IllegalStateException(
+                        "analyzed_at 返回了未支持的类型：" + labelRow[0].getClass().getName());
+            }
+            sourceLabel = "计划前物料分析 "
+                    + analyzedInstant.atZone(BusinessTime.ZONE).toLocalDate();
+        }
 
         List<ProductionPurchaseRequestFacade.DraftLine> buyLines = new ArrayList<>();
         LocalDate purchaseNeedDate = null;

@@ -35,8 +35,10 @@ public class SystemMasterCategoryRegistry {
         return Objects.equals(categoryId, clientCategoryId());
     }
 
+    /** V718 起货品未分类根已脱钩（列为空）：列空 = 没有受保护的货品系统根。 */
     public boolean isMaterialCategory(UUID categoryId) {
-        return Objects.equals(categoryId, materialCategoryId());
+        UUID root = materialCategoryId();
+        return root != null && Objects.equals(categoryId, root);
     }
 
     public boolean isMouldCategory(UUID categoryId) {

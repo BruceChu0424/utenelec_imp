@@ -513,9 +513,15 @@ class BusinessDataResetSqlContractTest {
                 .contains("(691, 620)")
                 .contains("(692, 621)")
                 .contains("(693, 622)").contains("(694, 623)").contains("(695, 624)").contains("(696, 625)").contains("(697, 626)").contains("(698, 627)").contains("(699, 628)").contains("(700, 629)").contains("(701, 630), (702, 631), (703, 632), (704, 633), (705, 634), (706, 635), (707, 636),")
-                .contains("(708, 637)")
-                // 迁移头 V715 / 644 条 (V648至V669 跳号)。
-                .contains("V507/469、V508/470及V511至V715完整目录");
+                .contains("(708, 637),")
+                .contains("(709, 638), (710, 639), (711, 640), (712, 641), (713, 642), (714, 643), (715, 644),")
+                .contains("(716, 645),")
+                .contains("(717, 646),")
+                .contains("(718, 647),")
+                .contains("(719, 648),")
+                .contains("(720, 649)")
+                // 迁移头 V720 / 649 条 (V648至V669 跳号)。
+                .contains("V507/469、V508/470及V511至V720完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);

@@ -131,5 +131,7 @@ public record ProductionExecutionWorkbenchSegment(
         boolean materialDiscoveryRequired,
         UUID materialDiscoveryRequestId,
         String materialDiscoveryStatus,
-        boolean canRequestMaterialDiscovery) {
+        boolean canRequestMaterialDiscovery,
+        /** 来源计划（V719）：ANALYSIS 根的 WL 分析编号；历史计划根为 null。 */
+        String analysisNo) {
 }

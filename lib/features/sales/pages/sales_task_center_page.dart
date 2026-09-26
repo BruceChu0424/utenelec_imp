@@ -9,9 +9,12 @@
 //   历史其它出货（只读历史）
 //
 // 徽章口径（准则 14）：
-//   · 订货进度大类红数 = salesAttention（财务驳回 + 可分批发货，注册表入口），
-//     黄数 = salesOrderInFlight（在途订单，注册表入口）——与 hub「销售任务中心」
-//     卡角标同源同数。
+//   · 订货进度大类红数 = salesAttention（财务驳回 + 可分批发货，注册表入口）
+//     + 订货草稿（drafts.salesOrder，2026-09-25 用户口径「草稿也要红色通知数量
+//     徽章」——本人开了头没交出去的单也是待办），黄数 = salesOrderInFlight
+//     （在途订单，注册表入口）——黄数与 hub「销售任务中心」卡角标同源同数。
+//   · 进度页大类行（订货进度正文内）另有独立的「草稿」分段：草稿/进行中/可发货/
+//     历史记录，草稿段红徽章与阶段计数同源（progress/stage-counts 的 DRAFT 桶）。
 //   · 出货/退货/报价大类红数 = 草稿 + 财务已退回（分段计数，读
 //     documentStatusCountsProvider，**不进注册表**）；草稿是本人开了头没交出去的活
 //     （红），财务已退回要本人改单重报（红）。客户零星发货刻意不挂——其草稿与
@@ -119,12 +122,22 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
       return total;
     }
 
+    // 订货进度红数 = 财务驳回 + 可分批发货（salesAttention 注册表入口，未到按 0）
+    // + 订货草稿（2026-09-25 用户口径「草稿也要红色通知数量徽章」：本人开了头
+    // 没交出去的活也是待办；drafts.salesOrder 与进度页「草稿」分段徽章同口径）。
+    final salesAttention = ref.watch(
+      badgeEntryTodoProvider(BadgeEntry.salesAttention),
+    );
+    final orderDraftCount = ref.watch(
+      draftCountsProvider.select((d) => d.salesOrder),
+    );
+
     final groups = <_GroupSpec>[
       if (canOpen(RouteName.salesOrderProgress))
         _GroupSpec(
           value: 'progress',
           label: '订货进度',
-          count: ref.watch(badgeEntryTodoProvider(BadgeEntry.salesAttention)),
+          count: salesAttention + orderDraftCount,
           inProgressCount: ref.watch(
             badgeEntryInProgressProvider(BadgeEntry.salesOrderInFlight),
           ),
@@ -166,6 +179,25 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
       );
     }
 
+    // 大类行（2026-09-24 用户口径「表格滑到顶」）：选中大类后它随正文一起进
+    // 折叠头滚走——滑到头后只剩表格自身工具条；未选大类时仍钉在占位区上方。
+    final categoryBar = UtenFilterToolbar<String>(
+      segmentsKey: const Key('sales-task-center-groups'),
+      segments: [
+        for (final g in groups)
+          UtenFilterSegment(
+            value: g.value,
+            label: g.label,
+            count: g.count,
+            // 大类红数 = 该类等本人动手的单（草稿/财务退回/驳回/可发货）；
+            // 浏览型大类（客户零星发货/历史其它出货）传 null。
+            countForm: UtenSegmentCountForm.actionable,
+            inProgressCount: g.inProgressCount,
+          ),
+      ],
+      selected: _group == null ? const <String>{} : {_group!},
+      onSelectionChanged: (value) => setState(() => _group = value),
+    );
     return Scaffold(
       appBar: UtenAppBar(
         title: '销售任务中心',
@@ -179,34 +211,16 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
           selectable: false,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                UtenFilterToolbar<String>(
-                  segmentsKey: const Key('sales-task-center-groups'),
-                  segments: [
-                    for (final g in groups)
-                      UtenFilterSegment(
-                        value: g.value,
-                        label: g.label,
-                        count: g.count,
-                        // 大类红数 = 该类等本人动手的单（草稿/财务退回/驳回/可发货）；
-                        // 浏览型大类（客户零星发货/历史其它出货）传 null。
-                        countForm: UtenSegmentCountForm.actionable,
-                        inProgressCount: g.inProgressCount,
-                      ),
-                  ],
-                  selected: _group == null ? const <String>{} : {_group!},
-                  onSelectionChanged: (value) => setState(() => _group = value),
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                Expanded(
-                  child: _group == null
-                      ? const _GroupPlaceholder()
-                      : _buildGroupBody(_group!),
-                ),
-              ],
-            ),
+            child: _group == null
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      categoryBar,
+                      const SizedBox(height: UtenSpacing.s12),
+                      const Expanded(child: _GroupPlaceholder()),
+                    ],
+                  )
+                : _buildGroupBody(_group!, externalHeader: categoryBar),
           ),
         ),
       ),
@@ -214,30 +228,41 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
   }
 
   /// 当前大类的正文：进度页与各单据列表页以嵌入态整体复用（小类行、搜索、
-  /// 表格、行级办理动作与独立页完全一致）。
-  Widget _buildGroupBody(String group) => switch (group) {
-    'progress' => const SalesOrderProgressPage(embedded: true),
-    'shipments' => const SalesDocListPage(
+  /// 表格、行级办理动作与独立页完全一致）。[externalHeader] = 宿主大类行，
+  /// 由嵌入页挂进自己的折叠头一起随页滚走。
+  Widget _buildGroupBody(String group, {Widget? externalHeader}) => switch (
+        group
+      ) {
+    'progress' => SalesOrderProgressPage(
+      embedded: true,
+      externalHeader: externalHeader,
+    ),
+    'shipments' => SalesDocListPage(
       docType: SalesDocType.shipment,
       embedded: true,
+      externalHeader: externalHeader,
     ),
-    'customerShipments' => const SalesDocListPage(
+    'customerShipments' => SalesDocListPage(
       docType: SalesDocType.customerShipment,
       embedded: true,
+      externalHeader: externalHeader,
     ),
-    'returns' => const SalesDocListPage(
+    'returns' => SalesDocListPage(
       docType: SalesDocType.returnDoc,
       embedded: true,
+      externalHeader: externalHeader,
     ),
-    'quotes' => const SalesDocListPage(
+    'quotes' => SalesDocListPage(
       docType: SalesDocType.quote,
       embedded: true,
+      externalHeader: externalHeader,
     ),
     // 历史其它出货：只读历史（进入即预选「历史记录」段，时间门控在段内）。
-    _ => const SalesDocListPage(
+    _ => SalesDocListPage(
       docType: SalesDocType.otherShipment,
       embedded: true,
       initialHistory: true,
+      externalHeader: externalHeader,
     ),
   };
 }

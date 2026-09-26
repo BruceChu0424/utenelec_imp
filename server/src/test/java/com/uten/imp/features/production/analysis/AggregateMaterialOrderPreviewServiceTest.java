@@ -53,7 +53,7 @@ class AggregateMaterialOrderPreviewServiceTest {
     }
     private static AnalysisView view(List<ProductView> products,List<MaterialView> materials,List<SupplyActionView> actions) {
         return new AnalysisView(ANALYSIS,"PARTIALLY_PLANNED",13,FINGERPRINT,FINGERPRINT,WAREHOUSE,List.of(WAREHOUSE),null,
-                products,materials,List.of(),actions,List.of(),false,null,Map.of(),0,Map.of(GOODS,qty("0.1")));
+                products,materials,List.of(),actions,List.of(),false,null,Map.of(),0,Map.of(GOODS,qty("0.1")),null);
     }
     private static GroupInput group(List<MaterialView> materials,String quantity,boolean extra) {
         return new GroupInput("material-group",materials.stream().map(MaterialView::materialLineId).toList(),"MAKE",qty(quantity),extra,

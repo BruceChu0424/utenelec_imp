@@ -19,7 +19,7 @@
 **何时用**：页面是「上方有一块固定顶部（卡 / 统计 / 工具条）+ 下方 `Expanded(MasterDataTableView)`」的结构，顶部又较高、挤压了表格。已接入：
 
 - **主档 / 列表 / 报表**：货品 / 模具 / 客户 / 供应商 分类详情页；任务工作台（采购 / 委外 / 仓库，expanded 断点）；订单进度查询；采购 / 仓库 / 销售（订货单）单据列表页（2026-08-17）；生产物料分析准备页（2026-09-04——分析头/横幅/生产准备任务入口条收起，BOM 工具条+表格吸顶内滚）。
-- **单据详情页**（头部=表头卡/横幅/附件等，body=「明细 (N)」标题行 + `Expanded(MasterDataTableView(primary:true))`）：
+- **单据详情页**（头部=表头卡/横幅/附件等，body=`Expanded(MasterDataTableView(primary:true))`；2026-09-25 起纯计数「明细 (N)」标题随全站退役，body 只剩表格）：
   - 采购单据详情（2026-09-09，参考实现）；
   - 销售 / 委外 / 钱流 / 仓库单据详情、生产日报详情、仓库实物单据历史详情、仓库销售出库作业详情（2026-09-11）。
   - 口径：底部操作栏留在 `Scaffold.bottomNavigationBar`（不进滚动区）；附件等「备注类小卡」并入折叠头尾部随头部一起收起；明细下的合计条（`UtenTotalsSummaryBar`）留在表格下方常驻可见——**合计条从此一直可见，页面若原先靠「滚不到就看不见」隐藏某项，必须改成显式门控**（2026-09-11 销售订单「合计(本币)」按单据类型显式隐藏即此类）。
@@ -39,6 +39,8 @@
 | `collapsingHeader` | `Widget?` | `null` | 随滚动收起 / 拉回的顶部内容（分类信息卡等）。为空则只有 `body` |
 | `controller` | `ScrollController?` | `null` | 可选外层 `ScrollController`（一般无需传） |
 | `wheelGateDistance` | `double` | `50` | 滚轮交接空行程（逻辑像素，§八）：表格刚置顶 / 表内刚回顶之后，同方向再滚这么多才开始动另一段；`0` = 只丢弃交接那一格的余量。默认 50 ≈ 网页端半格滚轮（Chrome 一格 100） |
+| `wheelHoldWindow` | `Duration` | `350ms` | 滚轮停顿窗（§八）：截停在交接点后，距上一格不超过该窗口的同方向格视为同一滚势，整格吞掉并续窗（2026-09-25）。 |
+| `wheelHoldDistance` | `double` | `250` | 停顿窗的距离放行线（逻辑像素，§八）：没停但同方向累计推过量达到该值即放行——滚不停的用户不卡死在置顶点（2026-09-25）。 |
 | `compactBreakpoint` | `double` | `UtenBreakpoints.mediumStart`(600) | 视口**宽**小于该值时走**紧凑回退**（整页滚动 + body 定高内滚），见 §四 |
 | `compactHeightBreakpoint` | `double` | `UtenBreakpoints.mediumStart`(600) | 视口**高**小于该值时同样走紧凑回退（2026-09-11 手机横屏 844x390） |
 | `compactBodyMinHeight` | `double` | `360` | 紧凑回退时 body 的最小高度；同时是「body 被头部挤扁」的判定线（body 实得高 < 该值 → 下一帧切紧凑回退） |
@@ -168,6 +170,7 @@ return Padding(
 **滚轮交接门**（本组件）：在 `NestedScrollView` 上盖一层透明 `Listener`，命中序先于内外 `Scrollable` 拿到滚轮，自己决定怎么给：
 
 - 一格滚到「刚好置顶」/「刚好回顶」即止，余量丢弃（原生会把余量当场滚进另一段）；
+- **停顿窗（2026-09-25）**：截停在交接点后，`wheelHoldWindow`（默认 350ms，滑动续窗）内同方向的后续格属**同一滚势**，整格吞掉——连续快滚一口气冲过置顶点后不再「马上继续往下滑」。两条放行线**先到先放**：①滚势停住（窗口内无新格）；②没停但同方向累计推过量达到 `wheelHoldDistance`（默认 250 逻辑像素 ≈ 两格半滚轮）——滚不停的人 = 明确要继续，放行那格走正常门逻辑。掉头 / `PointerScrollInertiaCancelEvent`（用户重新触碰滚轮）立即关窗；
 - 越过交接点之后，同方向还要再滚 `wheelGateDistance`（默认 50）的空行程才开始动另一段；
 - 掉头即撤门：反向是明确意图，不吃空行程；触屏拖过 / 拖过滚动条离开交接点后门自动失效；
 - 头部没收完之前的上滚一律归联动（鼠标在表格内 / 表格外 / 页内侧栏上都先把表格置顶）；置顶之后沿命中路径由内向外找竖向滚动件——先碰到联动的（外层 / inner）就接管，先碰到**独立**的（`primary:false` / 自带 controller 的侧栏、嵌套面板、多行文本框）且它还能往这个方向滚，就让给框架原样处理；
@@ -177,7 +180,8 @@ return Padding(
 
 ---
 
-**最后更新**：2026-09-22 · 新增 §八：滚轮交接门（`wheelGateDistance`，到点即止 + 空行程 + 掉头撤门 + 先置顶再表内 + 不抢独立滚动件）；卡顿根因定位到 body 每格变高 + 表格整树重建，表格侧只按宽度重建；`floatHeaderSlivers` 参数删除（无调用方，且门依赖非 floating 顺序）。回归：`test/uten_collapsing_header_scroll_relayout_test.dart`（6 例）。
+**最后更新**：2026-09-25（二）· 停顿窗加**距离放行线**（`wheelHoldDistance` 默认 250）：滚不停的用户同方向累计推够距离即放行，不卡死在置顶点——与时间放行线（350ms 停顿）先到先放；此前同日：§八新增停顿窗（`wheelHoldWindow`），截停后同一滚势的连续快滚整格吞掉，「滚一下没停就置顶了 → 停住，重新开始滚才继续」；同批在 `uten_sticky_header.dart` 落地单滚动页（embedded 表/编辑网格）共用的 `UtenStickyWheelGate`（截停 + 停顿窗双放行线 + 短表按需撑高）。回归：`test/uten_collapsing_header_scroll_relayout_test.dart` + `test/uten_sticky_wheel_gate_test.dart`。
+此前：2026-09-22 · 新增 §八：滚轮交接门（`wheelGateDistance`，到点即止 + 空行程 + 掉头撤门 + 先置顶再表内 + 不抢独立滚动件）；卡顿根因定位到 body 每格变高 + 表格整树重建，表格侧只按宽度重建；`floatHeaderSlivers` 参数删除（无调用方，且门依赖非 floating 顺序）。回归：`test/uten_collapsing_header_scroll_relayout_test.dart`（6 例）。
 此前：2026-09-14 · 新增滚动条口径（§五）：外层收头部阶段不显示上下滚动条，进入表体内滚后再显示表内滚动条（`UtenInnerScrollActiveScope` 注入 + `MasterDataTableView` 门控）。
 此前：2026-09-11 · 接入范围扩大到单据详情页（销售 / 委外 / 钱流 / 仓库单据、生产日报、仓库实物历史、仓库销售出库作业）；组件新增「矮视口」与「被头部挤扁」两条紧凑回退触发线 + body 挤扁哨兵（`compactHeightBreakpoint`）。回归测试夹具见 `test/support/collapsing_header_harness.dart`（折叠断言 + 1280x900 / 390x844 / 844x390 三视口 × textScale 1.5 不溢出）。
 此前：2026-08-17 · 接入范围扩大到任务/单据页：任务工作台（采购 / 委外 / 仓库，expanded 断点——概览卡收起、筛选行 + 选中操作条吸顶）、订单进度查询（指标卡收起、`ListView(primary: true)` 内滚、分页条常驻底部）、采购 / 仓库 / 销售（订货单）单据列表页（KPI / 统计卡条收起，标题行吸顶，表格 `primary: true` 经 `UtenListTwoPane` 内滚）。

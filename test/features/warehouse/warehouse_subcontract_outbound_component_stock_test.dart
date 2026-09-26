@@ -227,7 +227,6 @@ void main() {
     expect(find.text('EO-C'), findsOneWidget);
     expect(find.text('委外商'), findsOneWidget);
     expect(find.text('Supplier C'), findsOneWidget);
-    expect(find.text('出仓明细 (2)'), findsOneWidget);
     final table = tester.widget<SubcontractOutboundDetailTable>(
       find.byType(SubcontractOutboundDetailTable),
     );

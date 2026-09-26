@@ -480,7 +480,9 @@ public final class MaterialAnalysisContracts {
              * 「N 条路线因主档变更需重新确认」，让静默清空可见。
              */
             int routeResetCount,
-            Map<UUID, BigDecimal> overproductionDefaults) {
+            Map<UUID, BigDecimal> overproductionDefaults,
+            /** 分析编号 WL+YYYYMMDD+6位日流水（V719）；历史夹具行可能为 null。 */
+            String analysisNo) {
         public AnalysisView {
             planningBlockedReasons = Map.copyOf(planningBlockedReasons);
             overproductionDefaults = Map.copyOf(overproductionDefaults);
@@ -497,7 +499,7 @@ public final class MaterialAnalysisContracts {
             this(analysisId, status, version, fingerprint, analysisFingerprint,
                     warehouseId, warehouseIds, analyzedAt, products, flatMaterials,
                     warehouses, supplyActions, allowedActions, fqcReplenishmentOnly,
-                    fqcRecoveryAuthorizationId, planningBlockedReasons, routeResetCount, Map.of());
+                    fqcRecoveryAuthorizationId, planningBlockedReasons, routeResetCount, Map.of(), null);
         }
 
         public AnalysisView(UUID analysisId, String status, long version,
@@ -533,7 +535,8 @@ public final class MaterialAnalysisContracts {
                     analysisId, status, version, fingerprint, analysisFingerprint,
                     warehouseId, warehouseIds, analyzedAt, products, flatMaterials,
                     warehouses, supplyActions, allowedActions, fqcReplenishmentOnly,
-                    fqcRecoveryAuthorizationId, planningBlockedReasons, count, overproductionDefaults);
+                    fqcRecoveryAuthorizationId, planningBlockedReasons, count, overproductionDefaults,
+                    analysisNo);
         }
     }
 
@@ -672,7 +675,9 @@ public final class MaterialAnalysisContracts {
             BigDecimal approvedQty,
             BigDecimal remainingQty,
             BigDecimal readyNowQty,
-            BigDecimal readyByDateQty) {
+            BigDecimal readyByDateQty,
+            /** 分析编号 WL+YYYYMMDD+6位日流水（V719）：各页「计划单号」的展示锚点。 */
+            String analysisNo) {
     }
 
     public record MaterialView(

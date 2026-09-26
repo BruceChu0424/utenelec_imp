@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../components/layout/uten_h_scroll_area.dart';
 import '../../../../core/network/api_exception.dart';
@@ -273,11 +274,21 @@ class _SubcontractLossClaimDetailPanelState
           ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-          : _error != null
-          ? _errorBody()
-          : _detailBody(),
+      body: Stack(
+        children: [
+          _loading
+              ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
+              : _error != null
+              ? _errorBody()
+              : _detailBody(),
+          // 履约登记/反转/责任判定提交期间的全屏居中遮罩（2026-09-25 统一
+          // 口径：不再只有按钮内转圈）。
+          if (_writing)
+            const Positioned.fill(
+              child: UtenBusyOverlay(title: '正在处理责任判定，请稍候'),
+            ),
+        ],
+      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _detail == null ? null : _actions(),
@@ -499,7 +510,6 @@ class _SubcontractLossClaimDetailPanelState
                   child: UtenButton(
                     type: UtenButtonType.tonal,
                     icon: Icons.verified_outlined,
-                    isLoading: _writing,
                     onPressed: _writing ? null : () => _fulfill(resolution),
                     child: const Text('登记履约'),
                   ),
@@ -512,7 +522,6 @@ class _SubcontractLossClaimDetailPanelState
                 child: UtenButton(
                   type: UtenButtonType.danger,
                   icon: Icons.undo_outlined,
-                  isLoading: _writing,
                   onPressed: _writing
                       ? null
                       : () => _reverseFulfillment(resolution),
@@ -584,7 +593,6 @@ class _SubcontractLossClaimDetailPanelState
             type: UtenButtonType.danger,
             size: UtenButtonSize.large,
             icon: Icons.undo_outlined,
-            isLoading: _writing,
             onPressed: _writing ? null : _reverse,
             child: const Text('反转责任决定'),
           ),
@@ -592,7 +600,6 @@ class _SubcontractLossClaimDetailPanelState
           UtenButton(
             size: UtenButtonSize.large,
             icon: Icons.fact_check_outlined,
-            isLoading: _writing,
             onPressed: _writing ? null : _decide,
             child: const Text('责任决定'),
           ),

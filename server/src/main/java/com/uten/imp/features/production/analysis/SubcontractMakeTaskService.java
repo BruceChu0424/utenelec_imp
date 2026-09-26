@@ -670,7 +670,8 @@ public class SubcontractMakeTaskService {
                        task.goods_id, task.color_id, task.unit_id,
                        task.warehouse_id, task.required_qty, task.produced_qty,
                        task.notified_qty, task.status,
-                       item.delivery_date, analysis.analyzed_at
+                       item.delivery_date, analysis.analyzed_at,
+                       analysis.analysis_no
                 FROM preplan_subcontract_make_tasks task
                 LEFT JOIN production_material_analysis_items item
                   ON item.id = task.preparation_item_id
@@ -690,9 +691,11 @@ public class SubcontractMakeTaskService {
         }
         BigDecimal available = decimal(row[9]).min(decimal(row[10]))
                 .subtract(decimal(row[11])).max(BigDecimal.ZERO);
-        String sourceLabel = "计划前物料分析 " + (row[14] == null ? ""
-                : toInstant(row[14]).atZone(com.uten.imp.common.time.BusinessTime.ZONE)
-                        .toLocalDate());
+        String sourceLabel = Objects.toString(row[15], "").isBlank()
+                ? "计划前物料分析 " + (row[14] == null ? ""
+                        : toInstant(row[14]).atZone(com.uten.imp.common.time.BusinessTime.ZONE)
+                                .toLocalDate())
+                : row[15].toString();
         return new LockedTask((UUID) row[0], (UUID) row[1], (UUID) row[2],
                 (UUID) row[3], (UUID) row[4], (UUID) row[5], (UUID) row[6],
                 (UUID) row[7], (UUID) row[8], decimal(row[9]), decimal(row[10]),
@@ -859,7 +862,8 @@ public class SubcontractMakeTaskService {
                        task.notified_qty,
                        item.delivery_date, analysis.analyzed_at,
                        LEAST(task.required_qty, task.produced_qty)
-                           - task.notified_qty AS available_qty
+                           - task.notified_qty AS available_qty,
+                       analysis.analysis_no
                 FROM preplan_subcontract_make_tasks task
                 LEFT JOIN production_material_analysis_items item
                   ON item.id = task.preparation_item_id
@@ -880,10 +884,12 @@ public class SubcontractMakeTaskService {
                 row[12] == null ? null
                         : com.uten.imp.common.util.NativeValueConverters
                                 .toLocalDate(row[12]),
-                "计划前物料分析 " + (row[13] == null ? ""
-                        : toInstant(row[13]).atZone(
-                                com.uten.imp.common.time.BusinessTime.ZONE)
-                                .toLocalDate()));
+                Objects.toString(row[15], "").isBlank()
+                        ? "计划前物料分析 " + (row[13] == null ? ""
+                                : toInstant(row[13]).atZone(
+                                        com.uten.imp.common.time.BusinessTime.ZONE)
+                                        .toLocalDate())
+                        : row[15].toString());
         Number batchCount = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM preplan_subcontract_make_task_batches WHERE task_id=:taskId
                 """).setParameter("taskId",taskId).getSingleResult();

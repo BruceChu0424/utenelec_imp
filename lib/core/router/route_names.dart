@@ -138,10 +138,12 @@ abstract final class RouteName {
   static const String hrTaskCenter = '/hr/tasks';
   static String hrTaskList(String type) => '/hr/tasks/$type';
 
-  // 入口选择（登录前：内部人员 / 访客）
+  // 入口选择页已退役(2026-09-25)：/entry 仅作旧深链兼容，由 redirect 落到 /login。
   static const String entry = '/entry';
 
-  // 访客端（独立流程，不进 ShellRoute）
+  // 访客端（独立流程，不进 ShellRoute）。
+  // 2026-09-25 访客门户前端下线：redirect 把 /visitor* 全部拦到员工登录页，
+  // 常量与页面代码保留（后端访客能力不动），将来另做独立入口时恢复。
   static const String visitorLogin = '/visitor/login';
   static const String visitorHome = '/visitor/home';
   static const String visitorSettings = '/visitor/settings';
@@ -463,6 +465,9 @@ abstract final class RouteName {
 /// 路径拼接工具（带参数的路由）
 abstract final class RoutePath {
   /// Entry page with an optional route preserved for portal selection.
+  ///
+  /// 入口选择页已退役(2026-09-25)：/entry 由 redirect 兼容重定向到 /login，
+  /// 此助手仅供旧深链/测试沿用。
   static String entry({String? returnTo}) => _withReturnTo(
     RouteName.entry,
     returnTo: returnTo,

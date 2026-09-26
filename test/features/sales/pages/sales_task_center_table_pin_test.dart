@@ -105,12 +105,14 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
     }
 
-    // 表头在场且贴近顶部（1.5 倍字号下只剩 AppBar + 大类行 + 表格工具条）。
+    // 表头在场且贴近顶部（1.5 倍字号下只剩 AppBar + 表格自身工具条）。
     final header = tester.getRect(find.text('单据号'));
-    expect(header.top, lessThan(200));
+    expect(header.top, lessThan(160));
     // 页面头（计数行）已随页滚走，不再占据表头上方。
     expect(find.textContaining('出货 (60)'), findsNothing);
     // 小类行同样收走。
     expect(find.text('历史记录'), findsNothing);
+    // 2026-09-24 第三批：宿主大类行也进折叠头——滑到头后一并收走。
+    expect(find.text('订货进度'), findsNothing);
   });
 }

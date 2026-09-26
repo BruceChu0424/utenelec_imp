@@ -19,6 +19,7 @@ import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
@@ -45,6 +46,7 @@ class WarehouseInboundExpectationsView extends ConsumerStatefulWidget {
     this.keyword = '',
     this.refreshTick = 0,
     this.embedded = false,
+    this.externalHeader,
   });
 
   /// 任务中心分段固定的订货来源（采购入库=PURCHASE / 委外入库=SUBCONTRACT）；
@@ -59,6 +61,10 @@ class WarehouseInboundExpectationsView extends ConsumerStatefulWidget {
 
   /// true = 嵌在任务中心分段内（无类型分段与搜索框，仅提示行 + 表格）。
   final bool embedded;
+
+  /// 宿主（任务中心大类行 + 小类行/复合分段行）：挂进折叠头随页滚走
+  /// （2026-09-24 用户口径「表格完全置顶」）。
+  final Widget? externalHeader;
 
   @override
   ConsumerState<WarehouseInboundExpectationsView> createState() =>
@@ -641,111 +647,118 @@ class _WarehouseInboundExpectationsViewState
           total: 0,
           totalPages: 1,
         );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (!widget.embedded) ..._buildToolbar(result),
-        if (widget.embedded) _scopeHintRow(),
-        if (_error != null) ...[
+    // 2026-09-24 用户口径「表格完全置顶」：工具行/范围提示/错误行进折叠头
+    // 随页滚走，body 只剩表格（primary 拾取联动控制器）。
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.externalHeader != null) ...[
+            widget.externalHeader!,
+            const SizedBox(height: UtenSpacing.s12),
+          ],
+          if (!widget.embedded) ..._buildToolbar(result),
+          if (widget.embedded) _scopeHintRow(),
+          if (_error != null) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            _InlineError(message: _error!, onRetry: () => _load(result.page)),
+          ],
           const SizedBox(height: UtenSpacing.s12),
-          _InlineError(message: _error!, onRetry: () => _load(result.page)),
         ],
-        const SizedBox(height: UtenSpacing.s12),
-        Expanded(
-          child: MasterDataTableView<InboundExpectation>(
-            key: const Key('inbound-expectation-task-table'),
-            columns: _columns,
-            items: result.items,
-            facets: {
-              'orderType': [
-                MasterFacetBucket(
-                  value: 'PURCHASE',
-                  count: _typeCount(ProcurementInboundOrderType.purchase) ?? 0,
-                  label: '采购订货',
-                ),
-                MasterFacetBucket(
-                  value: 'SUBCONTRACT',
-                  count:
-                      _typeCount(ProcurementInboundOrderType.subcontract) ?? 0,
-                  label: '委外订货',
-                ),
-              ],
-              // 供应商表头筛选（2026-09-16）：主档 dict 桶（不强调计数）。
-              'supplierName': masterDictionaryFacets(
-                ref.watch(masterNameServiceProvider).supplierEntries,
-              ),
-            },
-            nullCounts: const {},
-            filters: {
-              'orderType': _orderType?.name.toUpperCase(),
-              'supplierName': _supplierIdFilter,
-            },
-            // 分段子页把类型钉死时，下面的 onFilterChanged 会直接 return——
-            // 空态再给「清除筛选」就是个点了没反应的死按钮。
-            externalFilterKeys: widget.fixedOrderType != null
-                ? const {'orderType'}
-                : const {},
-            onFilterChanged: (key, value) {
-              if (key == 'supplierName') {
-                setState(() => _supplierIdFilter = value);
-                _load(1);
-                return;
-              }
-              if (key != 'orderType' || widget.fixedOrderType != null) return;
-              _selectType(switch (value) {
-                'PURCHASE' => ProcurementInboundOrderType.purchase,
-                'SUBCONTRACT' => ProcurementInboundOrderType.subcontract,
-                _ => null,
-              });
-            },
-            selectable: _canBatchSendAny,
-            idOf: (expectation) =>
-                _canBatchOperate(expectation) ? expectation.id : null,
-            selectedIds: _selectedIds,
-            onSelectedIdsChanged: _setSelectedIds,
-            batchActionsBuilder: _canBatchSendAny ? _batchActions : null,
-            onRowTap: _openTask,
-            rowMenuBuilder: (expectation) => [
-              if (expectation.arrivalStep == InboundArrivalStep.readyToRegister)
-                UtenMenuItem(
-                  label: '登记实际到货',
-                  icon: Icons.inventory_2_outlined,
-                  onTap: () => _createReceipt(expectation),
-                ),
-              if (expectation.arrivalStep ==
-                  InboundArrivalStep.draftPendingInspection)
-                UtenMenuItem(
-                  label: '继续送检',
-                  icon: Icons.fact_check_outlined,
-                  onTap: () => _completeRegistration(expectation),
-                ),
-              if (expectation.arrivalStep == InboundArrivalStep.awaitingQuality)
-                UtenMenuItem(
-                  label: '查看品质检查结果',
-                  icon: Icons.plagiarism_outlined,
-                  onTap: () => context.push(RouteName.warehouseQualityResults),
-                ),
-              if (expectation.arrivalStep ==
-                  InboundArrivalStep.excessPendingFinance)
-                UtenMenuItem(
-                  label: '前往到货异常任务中心',
-                  icon: Icons.account_balance_outlined,
-                  onTap: () => context.go(RouteName.warehouseArrivalExceptions),
-                ),
-            ],
-            isLoading: _loading,
-            loadingMore: _loading && _result != null,
-            error: result.items.isEmpty ? _error : null,
-            onRetry: () => _load(result.page),
-            emptyMessage: _keyword.isNotEmpty || _orderType != null
-                ? '没有匹配的预计到货'
-                : '目前没有预计到货',
-            currentPage: result.page,
-            totalPages: result.totalPages,
-            onPageChange: _load,
+      ),
+      body: MasterDataTableView<InboundExpectation>(
+        // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+        primary: true,
+        key: const Key('inbound-expectation-task-table'),
+        columns: _columns,
+        items: result.items,
+        facets: {
+          'orderType': [
+            MasterFacetBucket(
+              value: 'PURCHASE',
+              count: _typeCount(ProcurementInboundOrderType.purchase) ?? 0,
+              label: '采购订货',
+            ),
+            MasterFacetBucket(
+              value: 'SUBCONTRACT',
+              count: _typeCount(ProcurementInboundOrderType.subcontract) ?? 0,
+              label: '委外订货',
+            ),
+          ],
+          // 供应商表头筛选（2026-09-16）：主档 dict 桶（不强调计数）。
+          'supplierName': masterDictionaryFacets(
+            ref.watch(masterNameServiceProvider).supplierEntries,
           ),
-        ),
-      ],
+        },
+        nullCounts: const {},
+        filters: {
+          'orderType': _orderType?.name.toUpperCase(),
+          'supplierName': _supplierIdFilter,
+        },
+        // 分段子页把类型钉死时，下面的 onFilterChanged 会直接 return——
+        // 空态再给「清除筛选」就是个点了没反应的死按钮。
+        externalFilterKeys: widget.fixedOrderType != null
+            ? const {'orderType'}
+            : const {},
+        onFilterChanged: (key, value) {
+          if (key == 'supplierName') {
+            setState(() => _supplierIdFilter = value);
+            _load(1);
+            return;
+          }
+          if (key != 'orderType' || widget.fixedOrderType != null) return;
+          _selectType(switch (value) {
+            'PURCHASE' => ProcurementInboundOrderType.purchase,
+            'SUBCONTRACT' => ProcurementInboundOrderType.subcontract,
+            _ => null,
+          });
+        },
+        selectable: _canBatchSendAny,
+        idOf: (expectation) =>
+            _canBatchOperate(expectation) ? expectation.id : null,
+        selectedIds: _selectedIds,
+        onSelectedIdsChanged: _setSelectedIds,
+        batchActionsBuilder: _canBatchSendAny ? _batchActions : null,
+        onRowTap: _openTask,
+        rowMenuBuilder: (expectation) => [
+          if (expectation.arrivalStep == InboundArrivalStep.readyToRegister)
+            UtenMenuItem(
+              label: '登记实际到货',
+              icon: Icons.inventory_2_outlined,
+              onTap: () => _createReceipt(expectation),
+            ),
+          if (expectation.arrivalStep ==
+              InboundArrivalStep.draftPendingInspection)
+            UtenMenuItem(
+              label: '继续送检',
+              icon: Icons.fact_check_outlined,
+              onTap: () => _completeRegistration(expectation),
+            ),
+          if (expectation.arrivalStep == InboundArrivalStep.awaitingQuality)
+            UtenMenuItem(
+              label: '查看品质检查结果',
+              icon: Icons.plagiarism_outlined,
+              onTap: () => context.push(RouteName.warehouseQualityResults),
+            ),
+          if (expectation.arrivalStep ==
+              InboundArrivalStep.excessPendingFinance)
+            UtenMenuItem(
+              label: '前往到货异常任务中心',
+              icon: Icons.account_balance_outlined,
+              onTap: () => context.go(RouteName.warehouseArrivalExceptions),
+            ),
+        ],
+        isLoading: _loading,
+        loadingMore: _loading && _result != null,
+        error: result.items.isEmpty ? _error : null,
+        onRetry: () => _load(result.page),
+        emptyMessage: _keyword.isNotEmpty || _orderType != null
+            ? '没有匹配的预计到货'
+            : '目前没有预计到货',
+        currentPage: result.page,
+        totalPages: result.totalPages,
+        onPageChange: _load,
+      ),
     );
   }
 

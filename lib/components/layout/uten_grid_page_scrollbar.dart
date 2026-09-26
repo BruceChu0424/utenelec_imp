@@ -83,7 +83,7 @@ class _UtenGridPageScrollbarState extends State<UtenGridPageScrollbar> {
               top: 0,
               right: 0,
               bottom: 0,
-              width: 14,
+              width: 16,
               child: UtenContentScrollbar(
                 controller: widget.controller,
                 bottomInset:

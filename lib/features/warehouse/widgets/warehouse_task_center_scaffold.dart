@@ -68,6 +68,7 @@ class WarehouseTaskCenterScaffold extends ConsumerStatefulWidget {
     this.embedded = false,
     this.externalKeyword,
     this.externalRefreshTick,
+    this.externalHeader,
   });
 
   /// 本页路由常量（onPageResume 注册用；无路由上下文时同样安全）。
@@ -79,8 +80,15 @@ class WarehouseTaskCenterScaffold extends ConsumerStatefulWidget {
   /// 大类分段（调用方已按权限过滤；至少一段）。
   final List<WarehouseTaskSegmentSpec> segments;
 
-  /// 当前选中分段的内容（小类行 + 表格）。
-  final Widget Function(String segmentValue, String keyword, int refreshTick)
+  /// 当前选中分段的内容（表格 + 折叠联动）。[headerPrefix] = 大类行(嵌入态)
+  /// + 本骨架小类行——由分段视图挂进自己的折叠头随页滚走（2026-09-24
+  /// 用户口径「表格完全置顶」，置顶后只剩表格自身工具条）。
+  final Widget Function(
+    String segmentValue,
+    String keyword,
+    int refreshTick,
+    Widget headerPrefix,
+  )
   bodyBuilder;
 
   /// 工具条尾挂（如「共 N 项」由各分段自带，一般不传）。
@@ -100,6 +108,10 @@ class WarehouseTaskCenterScaffold extends ConsumerStatefulWidget {
 
   /// 宿主页刷新信号（嵌入态与自身 resume 计数叠加传导给分段）。
   final int? externalRefreshTick;
+
+  /// 宿主（合并页）的大类行：嵌入态挂进分段视图折叠头随页滚走
+  /// （2026-09-24 用户口径「表格完全置顶」；未选小类时仍钉在占位区上方）。
+  final Widget? externalHeader;
 
   @override
   ConsumerState<WarehouseTaskCenterScaffold> createState() =>
@@ -188,27 +200,45 @@ class _WarehouseTaskCenterScaffoldState
             },
       trailing: widget.trailingBuilder?.call(_segment ?? ''),
     );
+    // 大类行(嵌入态宿主传) + 小类行(本骨架)组合头：选中分段后由分段视图
+    // 挂进自己的折叠头，随页一起滚走；未选小类时钉在占位区上方。
+    Widget combinedHeader() => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.externalHeader != null) ...[
+          widget.externalHeader!,
+          const SizedBox(height: UtenSpacing.s12),
+        ],
+        Padding(
+          padding: const EdgeInsets.only(
+            bottom: UtenSpacing.s12,
+            left: UtenSpacing.s4,
+            right: UtenSpacing.s4,
+          ),
+          child: toolbar,
+        ),
+      ],
+    );
     final body = _segment == null
-        ? const _SegmentPlaceholder()
+        ? null
         : WarehouseListScope(
             scope: warehouseScope,
-            child: widget.bodyBuilder(_segment!, keyword, refreshTick),
+            child: widget.bodyBuilder(
+              _segment!,
+              keyword,
+              refreshTick,
+              combinedHeader(),
+            ),
           );
     if (widget.embedded) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(
-              bottom: UtenSpacing.s12,
-              left: UtenSpacing.s4,
-              right: UtenSpacing.s4,
-            ),
-            child: toolbar,
-          ),
-          Expanded(child: body),
-        ],
-      );
+      return body ??
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              combinedHeader(),
+              const Expanded(child: _SegmentPlaceholder()),
+            ],
+          );
     }
     return Scaffold(
       appBar: UtenAppBar(
@@ -232,14 +262,16 @@ class _WarehouseTaskCenterScaffoldState
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                toolbar,
-                const SizedBox(height: UtenSpacing.s12),
-                Expanded(child: body),
-              ],
-            ),
+            child:
+                body ??
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    toolbar,
+                    const SizedBox(height: UtenSpacing.s12),
+                    const Expanded(child: _SegmentPlaceholder()),
+                  ],
+                ),
           ),
         ),
       ),

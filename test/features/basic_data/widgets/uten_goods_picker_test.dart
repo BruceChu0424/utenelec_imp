@@ -206,6 +206,21 @@ void main() {
       ),
       findsNWidgets(3),
     );
+    // flat 行间有 1px 分隔线：收起时整列同色（全是一级深绿行）也分得清一行一行。
+    expect(
+      find.descendant(
+        of: find.byType(UtenCategoryTreeView<ProductCategoryNode>),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is DecoratedBox &&
+              widget.decoration is BoxDecoration &&
+              ((widget.decoration as BoxDecoration).border?.bottom.width ??
+                      0) ==
+                  1,
+        ),
+      ),
+      findsWidgets,
+    );
     // 左树默认宽度 = 最长一行内容的实测宽度（不取固定 240）。
     final split = tester.widget<UtenSplitView>(find.byType(UtenSplitView));
     expect(split.persistenceKey, 'goodsPicker.categoryTree');
@@ -225,6 +240,17 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('连接器甲(G-001)'));
     await tester.pumpAndSettle();
+    // 选中行 = 全站统一淡绿背景（utenTableSelectedRowColor）。
+    final pickedTile = tester.widget<ListTile>(
+      find
+          .ancestor(
+            of: find.text('连接器甲(G-001)'),
+            matching: find.byType(ListTile),
+          )
+          .first,
+    );
+    expect(pickedTile.selected, isTrue);
+    expect(pickedTile.selectedTileColor, UtenColors.tableSelectedRow);
     // 切到分区乙再勾一条。
     await tester.tap(find.text('分区乙(B)'));
     await tester.pumpAndSettle();

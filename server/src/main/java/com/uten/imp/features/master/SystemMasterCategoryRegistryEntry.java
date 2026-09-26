@@ -18,7 +18,8 @@ import java.util.UUID;
 @Table(name = "system_master_category_registry")
 public class SystemMasterCategoryRegistryEntry extends BaseEntity {
 
-    @Column(name = "material_category_id", nullable = false, updatable = false)
+    /** V718 起可为空：货品未分类根已放开为普通分类，注册表与它脱钩。 */
+    @Column(name = "material_category_id", updatable = false)
     private UUID materialCategoryId;
 
     @Column(name = "client_category_id", nullable = false, updatable = false)

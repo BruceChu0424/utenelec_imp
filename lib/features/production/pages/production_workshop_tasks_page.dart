@@ -2389,6 +2389,15 @@ class _ProductionWorkshopTasksPageState
             : _routeOptionMeta[task.startRoute]?.$1 ?? task.startRouteLabel,
         cellBuilder: (_, task) => _nextStepCell(task),
       ),
+    // 来源计划（V719）：ANALYSIS 根的 WL 分析编号，与采购/委外「来源计划」同一
+    // 锚点；紧跟「下一步」/「生产路线」之后（2026-09-25 用户口径「显示在下一步的
+    // 后面，不要放在最后面」），历史计划根显示 —。
+    MasterColumnDef(
+      key: 'sourcePlan',
+      label: '来源计划',
+      width: 150,
+      value: (task) => task.analysisNo ?? '—',
+    ),
     // 「物料」列（ADR-095，2026-09-20 用户口径「车间内流转的货品数量怎么统计、
     // 显示在哪里」）：逐种事实的一行摘要，悬停逐桶解释，双击行看每种物料的数量。
     // 生产中也显示——持续生产在原任务继续领料/直送，仍要看还缺什么。

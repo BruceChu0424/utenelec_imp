@@ -157,76 +157,82 @@ class _FinanceAuditCenterPageState
                   padding: const EdgeInsets.symmetric(
                     vertical: UtenSpacing.s16,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      UtenFilterToolbar<String>(
-                        segmentsKey: const Key('finance-audit-center-segments'),
-                        segments: [
-                          // 大类计数只有待办语义：各队列「等我审」之和 = hub 卡角标。
-                          for (final segment in segments)
-                            UtenFilterSegment(
-                              value: segment.value,
-                              label: segment.label,
-                              count: segment.count,
-                              countForm: UtenSegmentCountForm.actionable,
-                            ),
-                        ],
-                        selected: _segment == null
-                            ? const <String>{}
-                            : {_segment!},
-                        onSelectionChanged: (value) =>
-                            setState(() => _segment = value),
-                      ),
-                      const SizedBox(height: UtenSpacing.s12),
-                      Expanded(
-                        // 权限变化导致当前分段被移除时，回到未选择引导态
-                        //（保持「不预选」范式）。
-                        child:
-                            _segment == null ||
-                                !segments.any(
-                                  (segment) => segment.value == _segment,
-                                )
-                            ? const _SegmentPlaceholder()
-                            : _buildSegment(_segment!),
-                      ),
-                    ],
-                  ),
+                  // 大类行（2026-09-24 用户口径「表格滑到顶」）：选中分段后它随
+                  // 正文一起进折叠头滚走；未选分段时仍钉在占位区上方。
+                  child:
+                      _segment == null ||
+                          !segments.any((segment) => segment.value == _segment)
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _categoryBar(segments),
+                            const SizedBox(height: UtenSpacing.s12),
+                            const Expanded(child: _SegmentPlaceholder()),
+                          ],
+                        )
+                      : _buildSegment(
+                          _segment!,
+                          externalHeader: _categoryBar(segments),
+                        ),
                 ),
               ),
       ),
     );
   }
 
-  Widget _buildSegment(String value) => switch (value) {
-    'salesConfirm' => FinanceSalesOrderConfirmationPage(
-      embedded: true,
-      refreshTick: _refreshTick,
-    ),
-    'salesChanges' => FinanceSalesOrderConfirmationPage(
-      changesOnly: true,
-      embedded: true,
-      refreshTick: _refreshTick,
-    ),
-    'shipment' => SalesShipmentTaskWorkbench(
-      mode: SalesShipmentTaskWorkbenchMode.financeAudit,
-      embedded: true,
-      refreshTick: _refreshTick,
-    ),
-    'procurement' => FinanceProcurementApprovalTasksPage(
-      embedded: true,
-      refreshTick: _refreshTick,
-    ),
-    'arrival' => FinanceArrivalExceptionTasksPage(
-      embedded: true,
-      refreshTick: _refreshTick,
-    ),
-    _ => ProcurementIqcRejectionListPage(
-      source: 'finance',
-      embedded: true,
-      refreshTick: _refreshTick,
-    ),
-  };
+  Widget _categoryBar(List<_AuditSegment> segments) =>
+      UtenFilterToolbar<String>(
+        segmentsKey: const Key('finance-audit-center-segments'),
+        segments: [
+          // 大类计数只有待办语义：各队列「等我审」之和 = hub 卡角标。
+          for (final segment in segments)
+            UtenFilterSegment(
+              value: segment.value,
+              label: segment.label,
+              count: segment.count,
+              countForm: UtenSegmentCountForm.actionable,
+            ),
+        ],
+        selected: _segment == null ? const <String>{} : {_segment!},
+        onSelectionChanged: (value) => setState(() => _segment = value),
+      );
+
+  Widget _buildSegment(String value, {Widget? externalHeader}) =>
+      switch (value) {
+        'salesConfirm' => FinanceSalesOrderConfirmationPage(
+          embedded: true,
+          refreshTick: _refreshTick,
+          externalHeader: externalHeader,
+        ),
+        'salesChanges' => FinanceSalesOrderConfirmationPage(
+          changesOnly: true,
+          embedded: true,
+          refreshTick: _refreshTick,
+          externalHeader: externalHeader,
+        ),
+        'shipment' => SalesShipmentTaskWorkbench(
+          mode: SalesShipmentTaskWorkbenchMode.financeAudit,
+          embedded: true,
+          refreshTick: _refreshTick,
+          externalHeader: externalHeader,
+        ),
+        'procurement' => FinanceProcurementApprovalTasksPage(
+          embedded: true,
+          refreshTick: _refreshTick,
+          externalHeader: externalHeader,
+        ),
+        'arrival' => FinanceArrivalExceptionTasksPage(
+          embedded: true,
+          refreshTick: _refreshTick,
+          externalHeader: externalHeader,
+        ),
+        _ => ProcurementIqcRejectionListPage(
+          source: 'finance',
+          embedded: true,
+          refreshTick: _refreshTick,
+          externalHeader: externalHeader,
+        ),
+      };
 }
 
 /// 大类未选时的内容区占位：进页面不预选，引导先选分类。

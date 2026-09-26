@@ -5,8 +5,8 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 // 钉住五件容易回归的事：
 //  1. 勾两行后「删除」可用、「编辑」反而要灰掉(目标不唯一)，确认框列出两个组件名；
 //  2. 勾到子级行时确认框必须出跨层级警告(删的是那个子件自己的组装清单)；
-//  3. 审计模式下整列勾选框消失(那时单击行是翻「已核对无误」，两种语义打架)，
-//     且切换模式会清空勾选，不留看不见的残留；
+//  3. 审计模式下勾选框照常在（2026-09-25 起审计模式也要能多选批量删除，
+//     「标记已核对」改走右键菜单），退出审计清空勾选不留残留；
 //  4. 折叠父级后子级行的勾选被剪掉——看到的勾选 = 提交的内容；
 //  5. 勾选横跨多层时按所属父货品分组提交，删完的行自动退出勾选。
 //
@@ -218,12 +218,11 @@ void main() {
     // 接不上 —— 按准则「隐藏而非禁用」整列不渲染，而不是让人勾完无处可去。
     expect(find.byType(Checkbox), findsNothing);
     expect(_deleteFinder, findsNothing);
-    // 说明条也不能再承诺这些做不到的操作。
-    expect(find.textContaining('可勾多行一起删除'), findsNothing);
-    expect(find.textContaining('层级列箭头可展开'), findsOneWidget);
+    // 2026-09-25 起工具条下的说明行（共 X 个顶层组件…）已整体退役。
+    expect(find.textContaining('顶层组件'), findsNothing);
   });
 
-  testWidgets('审计模式下没有勾选框，切换模式清空勾选', (tester) async {
+  testWidgets('审计模式下仍可多选批量删除，退出审计清空勾选', (tester) async {
     final repo = _FakeBomRepo();
     await _pumpTab(tester, repo, permissions: {Perm.goodsBomAudit});
 
@@ -234,14 +233,17 @@ void main() {
     await tester.tap(find.text('审计模式'));
     await tester.pumpAndSettle();
     expect(find.text('退出审计'), findsOneWidget);
-    // 审计模式单击行 = 翻「已核对无误」，与「单击切换勾选」直接打架，
-    // 所以那时整列勾选框不出现。
-    expect(find.byType(Checkbox), findsNothing);
+    // 2026-09-25 起：审计模式下勾选框照常在（多选批量删除可用），
+    // 「标记已核对」改由右键菜单触发，单击行不再兼任审计开关。
+    expect(find.byType(Checkbox), findsWidgets);
+    expect(find.text('已审'), findsOneWidget);
+    // 进审计不清勾选：已勾的行在审计模式下照样能删。
+    expect(_deleteButton(tester).onPressed, isNotNull);
 
     await tester.tap(find.text('退出审计'));
     await tester.pumpAndSettle();
     expect(find.byType(Checkbox), findsWidgets);
-    // 切模式必须清空勾选：否则退出审计后一点「删除」，删的是用户压根没勾过的行。
+    // 退出审计清空勾选：避免带着勾选进普通编辑流。
     expect(_deleteButton(tester).onPressed, isNull);
   });
 

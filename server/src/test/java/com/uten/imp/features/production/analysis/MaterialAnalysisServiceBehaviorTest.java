@@ -315,7 +315,9 @@ class MaterialAnalysisServiceBehaviorTest {
                 analysisId, "ACTIVE", 7L, "a".repeat(64), warehouseId,
                 "W-01", "Main warehouse", analyzedAt, updatedAt, ownerId, "Owner",
                 1, "SALES_ORDER_ITEM", "SO-2026-001", "FG-01 Finished good",
-                bd("100"), bd("10"), bd("20"), bd("70"), bd("10"), bd("15")
+                bd("100"), bd("10"), bd("20"), bd("70"), bd("10"), bd("15"),
+                // row[21]：analysis_no（V719 编号列）
+                "WL20260808000001"
         };
         Query data = query(Collections.singletonList(row));
         List<String> sql = new ArrayList<>();
@@ -2009,7 +2011,9 @@ class MaterialAnalysisServiceBehaviorTest {
                         "SRC-B", "P-B", "产品B",
                         false, currentEffective,
                         // row[21]/row[22]：让料记录的经办人与办理时间（只读展示列）
-                        "张三", java.time.OffsetDateTime.parse("2026-09-13T08:00:00Z")
+                        "张三", java.time.OffsetDateTime.parse("2026-09-13T08:00:00Z"),
+                        // row[23]/row[24]：来源/目标分析的编号（V719；夹具用 null 走短号回退）
+                        null, null
                 };
         Object[] formalized = row.apply(
                 formalizedMaterialId, new BigDecimal("4"));

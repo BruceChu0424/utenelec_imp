@@ -52,6 +52,7 @@ import '../widgets/subcontract_order_progress.dart';
 import '../widgets/subcontract_status_badge.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../../shared/auth/session_snapshot_provider.dart';
@@ -84,6 +85,7 @@ class _SubcontractDocDetailPageState
   bool _busy = false;
   // 处理中遮罩标题（跟随动作，如「正在审核…」「正在删除…」）。
   String _busyTitle = '正在处理，请稍候';
+  String? _myLocation;
 
   bool get _canViewCommercialAmounts {
     return _cfg.canViewCommercial(ref.read(currentPermissionsProvider)) &&
@@ -503,6 +505,13 @@ class _SubcontractDocDetailPageState
 
   @override
   Widget build(BuildContext context) {
+    // 返回即刷新(ADR-108)：编辑保存后的落点已改为 pop 回宿主，本页靠这里重取
+    // 保存后的新数据；从本页 push 出去的子页（关联单据/审核等）返回时同样生效。
+    _myLocation ??= currentLocationOr(
+      context,
+      SubcontractRoute.detail(_cfg.pathSegment, widget.id),
+    );
+    ref.onPageResume(_myLocation!, _load);
     final canViewOrderProgress = ref
         .watch(currentPermissionsProvider)
         .contains(Perm.subcontractOrderView);
@@ -838,7 +847,8 @@ class _SubcontractDocDetailPageState
 
   /// 明细区：统一表格样式（MasterDataTableView，与全站报表/主档同款），
   /// 不再是卡片式拼凑行；口径保留（价格/重量/已收/已退/损耗按 config 显隐）。
-  /// 2026-09-11 起是折叠容器的 body：标题行钉住、表格 primary:true 内滚、合计条常驻底部。
+  /// 2026-09-11 起是折叠容器的 body：表格 primary:true 内滚、合计条常驻底部；
+  /// 2026-09-25 纯计数标题「明细 (N)」随全站退役。
   Widget _itemsCard(ThemeData theme) {
     final d = _detail!;
     final items = d.items;
@@ -847,13 +857,6 @@ class _SubcontractDocDetailPageState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '明细 (${items.length})',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
         Expanded(
           child: MasterDataTableView<SubcontractDocItem>(
             primary: true,

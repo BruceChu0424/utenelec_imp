@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/io/file_saver.dart';
 import '../../core/l10n/gen/app_localizations.dart';
+import '../../core/theme/uten_tokens.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/ui/app_notification.dart';
@@ -32,6 +33,8 @@ class UtenExportButton extends ConsumerStatefulWidget {
     this.label = '下载表格',
     this.type = UtenButtonType.tonal,
     this.size = UtenButtonSize.small,
+    this.height,
+    this.icon = Icons.download_rounded,
   });
 
   final String endpoint;
@@ -53,6 +56,13 @@ class UtenExportButton extends ConsumerStatefulWidget {
   /// 表格工具条场景传 primary/large（实心深绿 + 白字白 icon 大按钮）。
   final UtenButtonType type;
   final UtenButtonSize size;
+
+  /// 高度覆盖（透传给 UtenButton.height）：表格工具条统一高度
+  /// UtenTableToolbar.controlHeight 的场景用（2026-09-25 平台统一口径）。
+  final double? height;
+
+  /// 按钮图标；表格工具条统一「无 icon」口径时传 null。
+  final IconData? icon;
 
   @override
   ConsumerState<UtenExportButton> createState() => _UtenExportButtonState();
@@ -113,7 +123,9 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
     return UtenButton(
       type: widget.type,
       size: widget.size,
-      icon: Icons.download_rounded,
+      height: widget.height
+          ?? (widget.size == UtenButtonSize.large ? UtenTableToolbar.controlHeight : null),
+      icon: widget.icon,
       isLoading: _loading,
       onPressed: widget.enabled ? _onTap : null,
       child: Text(widget.label),

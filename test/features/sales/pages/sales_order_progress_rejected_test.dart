@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -82,13 +83,14 @@ void main() {
 
   // 两层分类 + 三形态计数(ADR-100 / docs/00-项目准则/14-徽章与计数口径.md)。
   //
-  // 大类行只有三段(进行中 / 可发货 / 历史记录)，每个大类同时挂两枚徽章：
+  // 大类行四段(草稿 / 进行中 / 可发货 / 历史记录，2026-09-25 草稿置顶)：
+  // 「草稿」红 = 本人开了头没交出去的单；其余每个大类同时挂两枚徽章：
   // 黄 = 本类里还在别人手上跑的单，红 = 本类里等销售动手的单，两枚都是各小类之和。
   // 小类行要等大类选中后才出现；里面「财务驳回」「可分批发货」红(销售要改单/要开单)，
   // 其余四档黄(球在生产/财务/仓库手上)。
   // 黄徽章与红徽章同规矩：归零整枚不渲染，不留 `(0)` 占位。
   testWidgets(
-    'top row is three groups with paired badges; sub-row splits red and yellow',
+    'top row is draft plus three groups with paired badges; sub-row splits red and yellow',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1200, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -111,11 +113,23 @@ void main() {
         (widget) => widget is UtenSegmentBadgeLabel && widget.label == label,
       );
 
-      // 大类行就三段，六个阶段不再一字排开。
+      // 大类行四段：草稿置顶(红) + 三个链路大类，六个阶段不再一字排开。
+      expect(segment('草稿'), findsOneWidget);
+      final draftSeg = tester.widget<UtenSegmentBadgeLabel>(segment('草稿'));
+      expect(draftSeg.count, 2, reason: '草稿红数 = stage-counts 的 DRAFT 桶');
+      expect(draftSeg.countForm, UtenSegmentCountForm.actionable);
+      expect(
+        find.descendant(
+          of: segment('草稿'),
+          matching: find.byType(UtenNotificationBadge),
+        ),
+        findsOneWidget,
+        reason: '草稿是本人待办，走红通知徽章',
+      );
       expect(segment('进行中'), findsOneWidget);
       expect(segment('可发货'), findsOneWidget);
       expect(segment('历史记录'), findsOneWidget);
-      // 小类要等大类选中后才出现。
+      // 小类要等大类选中后才出现（草稿段无小类）。
       expect(segment('财务驳回'), findsNothing);
       expect(segment('生产中'), findsNothing);
 
@@ -260,6 +274,74 @@ void main() {
       expect(find.text('等待财务审核'), findsNothing);
     },
   );
+
+  // 2026-09-25 用户口径「进行中前面加个草稿」：新建订货单中途退出后，单据只存在于
+  // 草稿态（chain_status 恒为 0，落不进任何链路大类），此前在本页找不到。
+  // 草稿段按 stage='DRAFT' 直查；草稿行没有进度可看，行点击直达编辑页继续办单。
+  testWidgets('draft segment queries stage=DRAFT and routes rows to the edit page', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _ProgressApi();
+
+    String? editRouteId;
+    final router = GoRouter(
+      initialLocation: '/sales/progress',
+      routes: [
+        GoRoute(
+          path: '/sales/progress',
+          builder: (_, _) => const SalesOrderProgressPage(),
+        ),
+        GoRoute(
+          path: '/sales/orders/:id/edit',
+          builder: (_, state) {
+            editRouteId = state.pathParameters['id'];
+            return const Scaffold(body: Center(child: Text('EDIT-STUB')));
+          },
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.salesOrderView,
+          }),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Finder segment(String label) => find.byWidgetPredicate(
+      (widget) => widget is UtenSegmentBadgeLabel && widget.label == label,
+    );
+
+    // 选中草稿段：按 stage='DRAFT' 直查，不叠加链路大类过滤。
+    await tester.tap(segment('草稿'));
+    await tester.pumpAndSettle();
+    expect(api.progressQueries.single['stage'], 'DRAFT');
+
+    // 草稿段没有小类行（草稿不是链路阶段，无子档可分）。
+    expect(segment('待排产'), findsNothing);
+    expect(segment('财务驳回'), findsNothing);
+
+    // 草稿行状态列显示「草稿」，不因 finance_confirmed=false 错显「等待财务审核」。
+    expect(find.text('SO-DRAFT'), findsOneWidget);
+    expect(find.text('草稿'), findsWidgets);
+    expect(find.text('等待财务审核'), findsNothing);
+
+    // 双击行直达编辑页（表格单击选中、双击打开；草稿没有进度详情可看）。
+    await tester.tap(find.text('SO-DRAFT'));
+    await tester.pump(kDoubleTapMinTime);
+    await tester.tap(find.text('SO-DRAFT'));
+    await tester.pumpAndSettle();
+    expect(editRouteId, 'order-draft');
+    expect(find.text('EDIT-STUB'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _ProgressApi extends ApiClient {
@@ -326,6 +408,14 @@ class _ProgressApi extends ApiClient {
         ),
         _row('order-closed', 'SO-CLOSED', stage: 'CLOSED', closed: true),
       ];
+      // 草稿单只在 stage='DRAFT' 可见（与后端 :stage='DRAFT' 门控同口径）：
+      // 历史记录与其余阶段都不含草稿。草稿 finance_confirmed=false——若阶段列
+      // 不先判草稿再判财务闸门，会错显「等待财务审核」。
+      if (stage == 'DRAFT') {
+        allRows.add(
+          _row('order-draft', 'SO-DRAFT', stage: 'DRAFT', financeConfirmed: false),
+        );
+      }
       // 大类码展开成一组阶段(与后端 progressStagePredicate 同口径)；
       // stage 非空且非大类 = 单阶段精确匹配；'' = 历史记录全量(含终态)。
       const groups = <String, List<String>>{
@@ -352,8 +442,10 @@ class _ProgressApi extends ApiClient {
     }
     if (path == '/sales/orders/progress/stage-counts') {
       // PRODUCING 特意非零、PENDING 特意为零: 同一条分段行里同时钉住
-      // 「有数亮黄徽章」与「归零整枚缩回」两半口径。
+      // 「有数亮黄徽章」与「归零整枚缩回」两半口径。DRAFT = 草稿段红徽章
+      // （progressStageCounts 随 :stage='DRAFT' 一并带回草稿桶）。
       return const {
+        'DRAFT': 2,
         'REJECTED': 1,
         'PENDING': 0,
         'PRODUCING': 3,

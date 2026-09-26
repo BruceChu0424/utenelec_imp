@@ -20,7 +20,10 @@ import 'package:flutter_test/flutter_test.dart';
 // 与服务端 @PreAuthorize 组合一一对应地本地预演，非新增裁决逻辑。
 // 2026-09-25 +8：物料聚合单(聚合明细表 +3/物料表 +2/分析页 +1)与叶层物料发现页(+2)
 // 的按钮显隐与服务端 @PreAuthorize 一一对应地本地预演，非新增裁决逻辑。
-const _baseline = 613;
+// 2026-09-25 +7：基础资料五个主档(模具/颜色/单位/结算方式/仓库)补齐导出/打印按钮(+9，
+// 与币种/账户页同款 UtenExportButton 本地权限引用)；组装信息页单价/金额列退役顺手
+// 移除 2 处价格权限引用，净 +7。
+const _baseline = 620;
 
 final _permReference = RegExp(r'\bPerm\.[a-zA-Z]');
 

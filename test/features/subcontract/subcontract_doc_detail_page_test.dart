@@ -178,8 +178,7 @@ void main() {
     // 财务审批横幅
     expect(find.text('等待财务审核组处理'), findsOneWidget);
 
-    // 明细表
-    expect(find.text('明细 (1)'), findsOneWidget);
+    // 明细表（2026-09-25 起纯计数「明细 (N)」标题退役）
     expect(find.text('10.00'), findsOneWidget);
 
     // 即使详情投影带有 APPROVE/REJECT，委外侧也只能只读核单；财务审批

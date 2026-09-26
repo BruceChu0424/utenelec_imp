@@ -650,13 +650,29 @@ class _SubcontractDocEditPageState
       if (outcome.financeSubmitError case final error?) {
         context.appWarning('单据已保存，但未提交财务：$error。可在详情页重新提交。');
         bumpListRefresh(ref, _cfg.refreshKey);
-        context.replace(SubcontractRoute.detail(_cfg.pathSegment, d.id));
+        // 编辑既有单：pop 回宿主详情（其「返回即刷新」重取保存后数据），深链直达
+        // 才落新详情；replace 会把新详情叠在旧详情上，返回一次看到旧快照。
+        if (widget.id != null) {
+          popSavedEditOrReplace(
+            context,
+            SubcontractRoute.detail(_cfg.pathSegment, d.id),
+          );
+        } else {
+          context.replace(SubcontractRoute.detail(_cfg.pathSegment, d.id));
+        }
         return;
       }
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
       bumpListRefresh(ref, _cfg.refreshKey);
-      context.replace(SubcontractRoute.detail(_cfg.pathSegment, d.id));
+      if (widget.id != null) {
+        popSavedEditOrReplace(
+          context,
+          SubcontractRoute.detail(_cfg.pathSegment, d.id),
+        );
+      } else {
+        context.replace(SubcontractRoute.detail(_cfg.pathSegment, d.id));
+      }
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
@@ -758,16 +774,19 @@ class _SubcontractDocEditPageState
                                 showColumnSettings: true,
                                 initialColumnOrder: columnPrefs?.order,
                                 initialHiddenColumnKeys: columnPrefs?.hidden,
-                                onColumnSettingsChanged: (order, hidden) => ref
-                                    .read(
-                                      subcontractApplicationGridColumnPrefsProvider
-                                          .notifier,
-                                    )
-                                    .updateFor(
-                                      widget.docType.name,
-                                      order,
-                                      hidden,
-                                    ),
+                                initialPinnedColumnKeys: columnPrefs?.pinned,
+                                onColumnSettingsChanged:
+                                    (order, hidden, pinned) => ref
+                                        .read(
+                                          subcontractApplicationGridColumnPrefsProvider
+                                              .notifier,
+                                        )
+                                        .updateFor(
+                                          widget.docType.name,
+                                          order,
+                                          hidden,
+                                          pinned,
+                                        ),
                                 columns: subcontractGridColumns(
                                   _pickGoods,
                                   _cfg,

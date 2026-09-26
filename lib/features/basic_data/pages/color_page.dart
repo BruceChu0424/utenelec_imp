@@ -11,9 +11,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_endpoints.dart';
@@ -27,6 +29,7 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/color_node.dart';
+import '../models/master_facet.dart';
 import '../models/master_batch.dart';
 import '../repositories/color_repository.dart';
 import '../repositories/master_batch_repository.dart';
@@ -515,6 +518,30 @@ class _ColorPageState extends ConsumerState<ColorPage> {
     await Future.wait([_loadColors(1), _loadFacets()]);
   }
 
+  /// 导出查询参数（与 _loadColors 一致，不含 page/size；V717）。
+  Map<String, dynamic> get _exportQuery => <String, dynamic>{
+    if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+    ...masterFilterQueryParams(_filters),
+  };
+
+  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  Future<UtenPrintTable> _printLoader() async {
+    final result = await ref
+        .read(colorRepositoryProvider)
+        .list(
+          size: 2000,
+          keyword: _keyword.trim().isEmpty ? null : _keyword,
+          filters: _filters,
+        );
+    return UtenPrintTable(
+      headers: [for (final c in _columns) c.label],
+      rows: [
+        for (final item in result.items)
+          [for (final c in _columns) c.value(item) ?? ''],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -583,6 +610,32 @@ class _ColorPageState extends ConsumerState<ColorPage> {
                   child: MasterDataTableView<ColorListItem>(
                     columns: _columns,
                     items: _page?.items ?? const [],
+                    // 导出/打印（V717 color:export）：打印预览用本页列渲染，
+                    // 导出列集服务端与表格对齐——「表格显示啥导出啥」。
+                    toolbarActions: [
+                      UtenPrintPreviewButton(
+                        title: '颜色资料', // TODO(l10n): 补 arb
+                        subtitle: '最多前 2000 行', // TODO(l10n): 补 arb
+                        loader: _printLoader,
+                        exportEndpoint: '/master/colors/export',
+                        exportPermission: Perm.colorExport,
+                        exportReport: '',
+                        exportQuery: _exportQuery,
+                        exportFilename: '颜色资料', // TODO(l10n): 补 arb
+                        type: UtenButtonType.primary,
+                        size: UtenButtonSize.large,
+                      ),
+                      UtenExportButton(
+                        endpoint: '/master/colors/export',
+                        requiredPermission: Perm.colorExport,
+                        report: '',
+                        queryParams: _exportQuery,
+                        filename: '颜色资料', // TODO(l10n): 补 arb
+                        label: '导出颜色', // TODO(l10n): 补 arb
+                        type: UtenButtonType.primary,
+                        size: UtenButtonSize.large,
+                      ),
+                    ],
                     // 多选：最前列勾选框 + 表头三态全选；选中非空时工具条出批量操作区。
                     selectable: true,
                     idOf: (c) => c.id,

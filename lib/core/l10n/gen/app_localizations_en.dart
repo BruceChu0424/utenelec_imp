@@ -270,12 +270,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileChangePassword => 'Change password';
 
   @override
-  String get entryStaff => 'Staff Sign In';
-
-  @override
-  String get entryVisitor => 'Visitor Sign In';
-
-  @override
   String get visitorLoginTitle => 'Visitor Sign In';
 
   @override
@@ -2382,6 +2376,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialRequired => 'Qty needed';
 
   @override
+  String get materialPublicAvailable => 'Public available';
+
+  @override
   String get materialShortage => 'Still short';
 
   @override
@@ -2419,11 +2416,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String materialAggregateSources(int products, int paths) {
     return '$products products · $paths paths';
-  }
-
-  @override
-  String materialCreateRoutes(int count) {
-    return 'Confirm routes ($count)';
   }
 
   @override
@@ -2482,7 +2474,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String materialRoutesNext(int count) {
-    return 'Next: review $count routes, select them and confirm. Each row keeps its selected route.';
+    return 'Next: $count rows still need a supply route (red frame). Pick one in the route column to save it instantly; only then can they be ordered. Other routes were auto-confirmed from goods masters.';
   }
 
   @override
@@ -3484,11 +3476,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String warehouseSubcontractOutboundLinesTitle(int count) {
-    return 'Outbound lines ($count)';
-  }
-
-  @override
   String get warehouseSubcontractOutboundSaveDraft => 'Save draft';
 
   @override
@@ -3752,14 +3739,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get securityBlacklistRemoveDone => 'Removed from blacklist';
-
-  @override
-  String get entryStaffSubtitle =>
-      'Sign in with your staff account to enter the workspace';
-
-  @override
-  String get entryVisitorSubtitle =>
-      'Visitors register with a phone code for quick entry';
 
   @override
   String get visitorColName => 'Name';

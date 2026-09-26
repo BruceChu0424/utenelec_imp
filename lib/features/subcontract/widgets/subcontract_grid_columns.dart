@@ -35,6 +35,18 @@ class SubcontractGridRow extends EditableGridRow
   SubcontractGridRow({this.sourceLocked = false}) {
     qty.addListener(_recalc);
     price.addListener(_recalc);
+    // 查重标红（保存前查重被拦回时标记）：改动货品/数量/单价/委外商即消除，
+    // 下次保存重新判定。
+    goodsNotifier.addListener(_clearFlagged);
+    qty.addListener(_clearFlagged);
+    price.addListener(_clearFlagged);
+    supplierIdNotifier.addListener(_clearFlagged);
+    remark.addListener(_clearFlagged);
+  }
+
+  /// 清除整行查重标红（[EditableGridRow.flagged]）。
+  void _clearFlagged() {
+    if (flaggedNotifier.value) flaggedNotifier.value = false;
   }
 
   final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
@@ -360,6 +372,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
       numeric: true,
       required: true,
       headerInfo: l10n.workflowQuantityHint,
+      frozenTextOf: (r) => r.qty.text,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.qty,
         isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
@@ -396,6 +409,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         numeric: true,
         required: true,
         headerInfo: l10n.workflowPriceHint,
+        frozenTextOf: (r) => r.price.text,
         cellBuilder: (context, row) => RequiredCellFrame(
           listenable: row.price,
           isEmpty: () =>
@@ -419,6 +433,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         label: '金额',
         width: 110,
         numeric: true,
+        frozenTextOf: (r) => r.amountExactNotifier.value == null
+            ? ''
+            : '¥${financeExactMoneyDisplay(r.amountExactNotifier.value!)}',
         cellBuilder: (context, row) => ValueListenableBuilder<String?>(
           valueListenable: row.amountExactNotifier,
           builder: (_, v, _) =>
@@ -431,6 +448,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         label: '围数',
         width: 96,
         numeric: true,
+        frozenTextOf: (r) => r.girth.text,
         cellBuilder: (context, row) => TextField(
           controller: row.girth,
           textAlign: TextAlign.right,
@@ -444,6 +462,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         label: '胶箱数',
         width: 96,
         numeric: true,
+        frozenTextOf: (r) => r.boxQty.text,
         cellBuilder: (context, row) => TextField(
           controller: row.boxQty,
           textAlign: TextAlign.right,
@@ -457,6 +476,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         label: '标准用量',
         width: 110,
         numeric: true,
+        frozenTextOf: (r) => r.standardQty.text,
         cellBuilder: (context, row) => TextField(
           controller: row.standardQty,
           textAlign: TextAlign.right,
@@ -469,6 +489,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         label: '结存数',
         width: 100,
         numeric: true,
+        frozenTextOf: (r) => r.endingQty.text,
         cellBuilder: (context, row) => TextField(
           controller: row.endingQty,
           textAlign: TextAlign.right,
@@ -481,6 +502,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         label: '损耗率%',
         width: 100,
         numeric: true,
+        frozenTextOf: (r) => r.wasteRate.text,
         cellBuilder: (context, row) => TextField(
           controller: row.wasteRate,
           textAlign: TextAlign.right,
@@ -492,6 +514,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         key: 'cause',
         label: '损耗原因',
         width: 200,
+        frozenTextOf: (r) => r.cause.text,
         cellBuilder: (context, row) => TextField(
           controller: row.cause,
           // 单行（2026-09-09 统一口径）：双行把整行撑高，与数量/单价格不同高。

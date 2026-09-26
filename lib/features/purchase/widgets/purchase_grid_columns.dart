@@ -29,6 +29,18 @@ class PurchaseGridRow extends EditableGridRow
   PurchaseGridRow({this.sourceLocked = false}) {
     qty.addListener(_recalc);
     price.addListener(_recalc);
+    // 查重标红（保存前查重被拦回时标记）：改动货品/数量/单价/供应商即消除，
+    // 下次保存重新判定。
+    goodsNotifier.addListener(_clearFlagged);
+    qty.addListener(_clearFlagged);
+    price.addListener(_clearFlagged);
+    supplierIdNotifier.addListener(_clearFlagged);
+    remark.addListener(_clearFlagged);
+  }
+
+  /// 清除整行查重标红（[EditableGridRow.flagged]）。
+  void _clearFlagged() {
+    if (flaggedNotifier.value) flaggedNotifier.value = false;
   }
 
   final bool sourceLocked;
@@ -400,6 +412,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       numeric: true,
       required: true,
       headerInfo: l10n.workflowQuantityHint,
+      frozenTextOf: (r) => r.qty.text,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.qty,
         isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
@@ -435,6 +448,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       numeric: true,
       required: true,
       headerInfo: l10n.workflowPriceHint,
+      frozenTextOf: (r) => r.price.text,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.price,
         isEmpty: () =>
@@ -457,6 +471,9 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       label: '金额',
       width: 110,
       numeric: true,
+      frozenTextOf: (r) => r.amountExactNotifier.value == null
+          ? ''
+          : '¥${financeExactMoneyDisplay(r.amountExactNotifier.value!)}',
       cellBuilder: (context, row) => ValueListenableBuilder<String?>(
         valueListenable: row.amountExactNotifier,
         builder: (_, v, _) =>

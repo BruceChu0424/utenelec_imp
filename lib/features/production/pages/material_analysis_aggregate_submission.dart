@@ -35,31 +35,10 @@ final class _MaterialAggregateSubmission {
     return materialAggregateRequestWindow(sources).toSet();
   }
 
-  double? pendingParentRequirement(_MaterialAggregateDraft draft) {
-    final parents =
-        _dependencies(table.drafts.keys.toSet())[draft.key] ?? const <String>{};
-    if (parents.isEmpty) return null;
-    final source = table.draftGroups(draft).firstOrNull?.representative;
-    if (source == null) return null;
-    var known = false, quantity = 0.0;
-    for (final parent in parents) {
-      for (final batch
-          in table.drafts[parent]?.previewGroups ??
-              const <MaterialAggregateOrderGroupPreview>[]) {
-        for (final child in batch.sharedBomChildren) {
-          if (child.goodsId == source.goodsId &&
-              child.colorId == source.colorId &&
-              child.unitId == source.unitId) {
-            known = true;
-            quantity += child.requiredQty;
-          }
-        }
-      }
-    }
-    return known ? quantity : null;
-  }
-
-  Future<bool> submit(List<_MaterialGroup> selected) async {
+  Future<bool> submit(
+    List<_MaterialGroup> selected, {
+    bool confirmed = false,
+  }) async {
     if (running || table.saving || selected.isEmpty) return false;
     final keys = selected
         .map((group) => owner._aggregateKeyOf(group.representative))
@@ -123,7 +102,7 @@ final class _MaterialAggregateSubmission {
         final sources = [
           for (final key in active) ...table.draftGroups(table.drafts[key]!),
         ];
-        final success = await table.submitStage(sources);
+        final success = await table.submitStage(sources, confirmed: confirmed);
         if (!owner.mounted) return false;
         if (!success) {
           if (completed.isNotEmpty) {

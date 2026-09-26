@@ -172,7 +172,7 @@ class ProductionFlowStage {
           ProductionFlowRoute.buy => _buyStepCount,
           ProductionFlowRoute.subcontract => _subcontractStepCount,
         },
-        detail: '先在「供应方式」里选好采购 / 委外 / 自制，这一行才能下单。',
+        detail: '先在「供应方式」里选好采购 / 委外 / 自制，选好即自动保存，这一行才能下单。',
       );
     }
     final isSubcontractPrefix =

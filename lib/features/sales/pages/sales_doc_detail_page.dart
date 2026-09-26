@@ -37,6 +37,7 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -85,6 +86,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   List<SalesReturnQualityItem>? _returnQualitySnapshot;
   // 销售订单审核并发认领（SALES_ORDER_APPROVE；page-state 持有，跨 _busy 底栏切换不丢）。
   TaskClaimSession? _approveClaim;
+  String? _myLocation;
 
   @override
   void initState() {
@@ -327,9 +329,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       unawaited(_resolveDisplayNames(names, d, dictionaries));
       // 销售订单（草稿可审核）认领 SALES_ORDER_APPROVE：他人审核中则禁用审核按钮。
       // 仅 UX/防碰撞层；后端 SalesOrderService.approve 守卫是正确性底线。认领失败 fail-open。
+      // 返回即刷新会重走本方法：旧认领先释放再重申，不留悬挂会话。
       if (_cfg.type == SalesDocType.order &&
           d.status == kSalesStatusDraft &&
           !d.rejected) {
+        await _approveClaim?.releaseAll();
         _approveClaim = TaskClaimSession(ref.read(taskClaimRepositoryProvider));
         await _approveClaim!.claimAll('SALES_ORDER_APPROVE', [widget.id]);
         if (mounted) setState(() {});
@@ -828,6 +832,13 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(salesMasterNameServiceProvider);
+    // 返回即刷新(ADR-108)：编辑保存后的落点已改为 pop 回宿主，本页靠这里重取
+    // 保存后的新数据；从本页 push 出去的子页（关联单据/审核等）返回时同样生效。
+    _myLocation ??= currentLocationOr(
+      context,
+      SalesRoutePath.docDetail(_cfg.type.pathSegment, widget.id),
+    );
+    ref.onPageResume(_myLocation!, _load);
     final permissions = ref.watch(currentPermissionsProvider);
     final canViewMoneySummary =
         permissions.contains(Perm.financeViewAll) &&
@@ -1397,7 +1408,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   /// 口径保留：价格脱敏（无权限订单单价/金额 = ***）；报价来源行「单价（报价 X）」对比；
   /// 订单行含可发/已排/已产；链路状态并入货品列文本。
-  /// 2026-09-11 起是折叠容器的 body：标题行钉住、表格 primary:true 内滚；
+  /// 2026-09-11 起是折叠容器的 body：表格 primary:true 内滚；
   /// 2026-09-14 合计条收进表格 summaryBar 槽位；2026-09-15 改随表体滚动
   ///（summaryBarInline：表内脚注，跟在最后一行数据之下）。
   Widget _itemsCard(ThemeData theme, SalesMasterNameService names) {
@@ -1408,13 +1419,6 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '明细 (${items.length})',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
         Expanded(
           child: MasterDataTableView<SalesDocItem>(
             primary: true,
@@ -1451,31 +1455,21 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                 width: 96,
                 value: (it) => names.color(it.colorId),
               ),
-              MasterColumnDef(
-                key: 'unitName',
-                label: '单位',
-                width: 80,
-                value: (it) => names.unit(it.unitId),
-              ),
-              if (isOrder)
-                MasterColumnDef(
-                  key: 'chainStatus',
-                  label: '业务链',
-                  width: 130,
-                  value: (it) => it.chainStatus == null || it.chainStatus == 0
-                      ? '—'
-                      : chainStatusLabel(
-                          it.chainStatus,
-                          plannedQty: it.plannedQty,
-                          qty: it.qty,
-                        ),
-                ),
+              // 2026-09-25 用户口径：订货单明细列与编辑页对齐（数量后紧跟单位，
+              // 补折扣/机加价/围数/进仓数量）；履约进度列（业务链/已发/已退/可发/
+              // 已排/已产/优先级）不再挤在本表，进度看「订单进度」专页。
               MasterColumnDef(
                 key: 'qty',
                 label: '数量',
                 width: 90,
                 type: 'number',
                 value: (it) => it.qty?.toStringAsFixed(2),
+              ),
+              MasterColumnDef(
+                key: 'unitName',
+                label: '单位',
+                width: 80,
+                value: (it) => names.unit(it.unitId),
               ),
               // 实际重量列已下线（2026-09-04：单位已表达重量，编辑页不再录入）。
               // 实物出入库单据（出货/其它出货/退货）：库位号（主档带出，拣货/上架指引）。
@@ -1499,6 +1493,17 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                       : p;
                 },
               ),
+              if (isOrder)
+                MasterColumnDef(
+                  key: 'discount',
+                  label: '折扣',
+                  width: 80,
+                  value: (it) => masked
+                      ? '***'
+                      : (it.discount == null
+                            ? null
+                            : financeExactTrimmed(it.discount.toString())),
+                ),
               MasterColumnDef(
                 key: 'amount',
                 label: isOrder ? '金额(订单币种)' : '金额',
@@ -1511,7 +1516,32 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                               : (it.qty ?? 0) * (it.price ?? 0))
                           ?.toStringAsFixed(2),
               ),
-              if (_cfg.showShipped)
+              if (isOrder) ...[
+                MasterColumnDef(
+                  key: 'machiningPrice',
+                  label: '机加价',
+                  width: 90,
+                  type: 'money',
+                  value: (it) =>
+                      masked ? '***' : it.machiningPrice?.toStringAsFixed(2),
+                ),
+                MasterColumnDef(
+                  key: 'circumference',
+                  label: '围数',
+                  width: 80,
+                  type: 'number',
+                  value: (it) => it.circumference?.toStringAsFixed(2),
+                ),
+                MasterColumnDef(
+                  key: 'inboundQty',
+                  label: '进仓数量',
+                  width: 100,
+                  type: 'number',
+                  value: (it) => it.inboundQty?.toStringAsFixed(2),
+                ),
+              ],
+              // 已发/已退只保留给实物单据（出货/退货）——订货单进度看专页。
+              if (!isOrder && _cfg.showShipped)
                 MasterColumnDef(
                   key: 'shipped',
                   label: '已发',
@@ -1519,7 +1549,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                   type: 'number',
                   value: (it) => it.shippedQty?.toStringAsFixed(2),
                 ),
-              if (_cfg.showReturned)
+              if (!isOrder && _cfg.showReturned)
                 MasterColumnDef(
                   key: 'returned',
                   label: '已退',
@@ -1527,35 +1557,6 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                   type: 'number',
                   value: (it) => it.returnedQty?.toStringAsFixed(2),
                 ),
-              if (isOrder) ...[
-                MasterColumnDef(
-                  key: 'reserved',
-                  label: '可发',
-                  width: 90,
-                  type: 'number',
-                  value: (it) => it.reservedQty?.toStringAsFixed(2),
-                ),
-                MasterColumnDef(
-                  key: 'planned',
-                  label: '已排',
-                  width: 90,
-                  type: 'number',
-                  value: (it) => it.plannedQty?.toStringAsFixed(2),
-                ),
-                MasterColumnDef(
-                  key: 'produced',
-                  label: '已产',
-                  width: 90,
-                  type: 'number',
-                  value: (it) => it.producedQty?.toStringAsFixed(2),
-                ),
-                MasterColumnDef(
-                  key: 'priority',
-                  label: '优先级',
-                  width: 80,
-                  value: (it) => priorityLabel(it.priority),
-                ),
-              ],
               if (_cfg.type == SalesDocType.returnDoc) ...[
                 MasterColumnDef(
                   key: 'solution',

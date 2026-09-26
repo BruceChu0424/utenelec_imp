@@ -10,7 +10,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_endpoints.dart';
@@ -355,6 +357,30 @@ class _UnitPageState extends ConsumerState<UnitPage> {
 
   // ---- 列定义 -----------------------------------------------------------
 
+  /// 导出查询参数（与 _loadUnits 一致，不含 page/size；V717）。
+  Map<String, dynamic> get _exportQuery => <String, dynamic>{
+    if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+    ...masterFilterQueryParams(_filters),
+  };
+
+  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  Future<UtenPrintTable> _printLoader() async {
+    final result = await ref
+        .read(unitRepositoryProvider)
+        .list(
+          size: 2000,
+          keyword: _keyword.trim().isEmpty ? null : _keyword,
+          filters: _filters,
+        );
+    return UtenPrintTable(
+      headers: [for (final c in _columns) c.label],
+      rows: [
+        for (final item in result.items)
+          [for (final c in _columns) c.value(item) ?? ''],
+      ],
+    );
+  }
+
   static final _columns = <MasterColumnDef<UnitListItem>>[
     MasterColumnDef(key: 'code', label: '编号', width: 120, value: (u) => u.code),
     MasterColumnDef(
@@ -449,6 +475,32 @@ class _UnitPageState extends ConsumerState<UnitPage> {
                   child: MasterDataTableView<UnitListItem>(
                     columns: _columns,
                     items: _page?.items ?? const [],
+                    // 导出/打印（V717 unit:export）：打印预览用本页列渲染，
+                    // 导出列集服务端与表格对齐——「表格显示啥导出啥」。
+                    toolbarActions: [
+                      UtenPrintPreviewButton(
+                        title: '单位资料', // TODO(l10n): 补 arb
+                        subtitle: '最多前 2000 行', // TODO(l10n): 补 arb
+                        loader: _printLoader,
+                        exportEndpoint: '/master/units/export',
+                        exportPermission: Perm.unitExport,
+                        exportReport: '',
+                        exportQuery: _exportQuery,
+                        exportFilename: '单位资料', // TODO(l10n): 补 arb
+                        type: UtenButtonType.primary,
+                        size: UtenButtonSize.large,
+                      ),
+                      UtenExportButton(
+                        endpoint: '/master/units/export',
+                        requiredPermission: Perm.unitExport,
+                        report: '',
+                        queryParams: _exportQuery,
+                        filename: '单位资料', // TODO(l10n): 补 arb
+                        label: '导出单位', // TODO(l10n): 补 arb
+                        type: UtenButtonType.primary,
+                        size: UtenButtonSize.large,
+                      ),
+                    ],
                     facets: _columnFacets,
                     nullCounts: _facets?.nullCounts ?? const {},
                     filters: _filters,

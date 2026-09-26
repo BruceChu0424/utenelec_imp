@@ -182,6 +182,29 @@ class _WarehouseTaskCenterPageState
       if (canScWaste) const _GroupSpec(value: 'scWaste', label: '委外损耗'),
     ];
 
+    // 大类行组件：选中大类后作为 externalHeader 传入正文，由分段视图挂进
+    // 自己的折叠头一起随页滚走（2026-09-24「表格完全置顶」）。
+    final categoryBar = UtenFilterToolbar<String>(
+      segmentsKey: const Key('warehouse-task-center-groups'),
+      searchKey: const Key('warehouse-task-center-search'),
+      segments: [
+        for (final g in groups)
+          UtenFilterSegment(
+            value: g.value,
+            label: g.label,
+            count: g.count,
+            // 大类计数只有待办语义（与合并前三张卡角标同口径）；
+            // 浏览型大类传 null。
+            countForm: UtenSegmentCountForm.actionable,
+            inProgressCount: g.inProgressCount,
+          ),
+      ],
+      selected: _group == null ? const <String>{} : {_group!},
+      onSelectionChanged: (value) => setState(() => _group = value),
+      searchHint: '搜索单号 / 客户 / 供应商 / 委外商 / 货品',
+      onSearchChanged: (value) => setState(() => _keyword = value.trim()),
+    );
+
     if (groups.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: const Text('仓库任务中心')),
@@ -216,38 +239,18 @@ class _WarehouseTaskCenterPageState
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                UtenFilterToolbar<String>(
-                  segmentsKey: const Key('warehouse-task-center-groups'),
-                  searchKey: const Key('warehouse-task-center-search'),
-                  segments: [
-                    for (final g in groups)
-                      UtenFilterSegment(
-                        value: g.value,
-                        label: g.label,
-                        count: g.count,
-                        // 大类计数只有待办语义（与合并前三张卡角标同口径）；
-                        // 浏览型大类传 null。
-                        countForm: UtenSegmentCountForm.actionable,
-                        inProgressCount: g.inProgressCount,
-                      ),
-                  ],
-                  selected: _group == null ? const <String>{} : {_group!},
-                  onSelectionChanged: (value) => setState(() => _group = value),
-                  searchHint: '搜索单号 / 客户 / 供应商 / 委外商 / 货品',
-                  onSearchChanged: (value) =>
-                      setState(() => _keyword = value.trim()),
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                Expanded(
-                  child: _group == null
-                      ? const _GroupPlaceholder()
-                      : _buildGroupBody(_group!),
-                ),
-              ],
-            ),
+            // 选中大类：大类行随正文进分段视图折叠头（滑到头只剩表格工具条）；
+            // 未选大类：大类行钉在占位区上方。
+            child: _group == null
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      categoryBar,
+                      const SizedBox(height: UtenSpacing.s12),
+                      const Expanded(child: _GroupPlaceholder()),
+                    ],
+                  )
+                : _buildGroupBody(_group!, categoryBar),
           ),
         ),
       ),
@@ -256,28 +259,32 @@ class _WarehouseTaskCenterPageState
 
   /// 当前大类的正文：三张方向任务中心与品质结果页以嵌入态整体复用
   ///（小类行、表格、办理动作与独立页完全一致）；委外两类为时间门控历史视图。
-  Widget _buildGroupBody(String group) => switch (group) {
+  Widget _buildGroupBody(String group, Widget categoryBar) => switch (group) {
     'outbound' => WarehouseOutboundTaskCenterPage(
       embedded: true,
       externalKeyword: _keyword,
       externalRefreshTick: _refreshTick,
       initialSection: widget.initialSection,
       initialView: widget.initialView,
+      externalHeader: categoryBar,
     ),
     'inbound' => WarehouseInboundTaskCenterPage(
       embedded: true,
       externalKeyword: _keyword,
       externalRefreshTick: _refreshTick,
+      externalHeader: categoryBar,
     ),
     'draw' => WarehouseDrawTaskCenterPage(
       embedded: true,
       externalKeyword: _keyword,
       externalRefreshTick: _refreshTick,
+      externalHeader: categoryBar,
     ),
     'quality' => WarehouseQualityResultsPage(
       embedded: true,
       externalKeyword: _keyword,
       externalRefreshTick: _refreshTick,
+      externalHeader: categoryBar,
     ),
     'scReturn' => WarehouseHistoryGate(
       timeKey: const Key('warehouse-task-center-sc-return-time'),
@@ -286,6 +293,7 @@ class _WarehouseTaskCenterPageState
         keyword: _keyword,
         refreshTick: _refreshTick,
         embedded: true,
+        externalHeader: categoryBar,
         dateFrom: time.range == null
             ? null
             : ChinaDateTime.formatDate(time.range!.start),
@@ -301,6 +309,7 @@ class _WarehouseTaskCenterPageState
         keyword: _keyword,
         refreshTick: _refreshTick,
         embedded: true,
+        externalHeader: categoryBar,
         dateFrom: time.range == null
             ? null
             : ChinaDateTime.formatDate(time.range!.start),

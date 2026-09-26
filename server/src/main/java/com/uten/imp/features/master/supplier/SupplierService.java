@@ -185,7 +185,9 @@ public class SupplierService {
     /**
      * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限 1000 页=10万行防 OOM。
      * 列定义服务端权威；过滤/排序走 list 已接的 TableSort 白名单（tday）。
-     * 覆盖前端表格 21 列里 19 个有 DB 列的字段（主结账方式/损耗率无对应列，导出也省略）。
+     * 2026-09-25 口径「表格显示啥导出啥」：补「损耗率(%)」（ADR-098 汇总视图，表格已有）；
+     * 「业务员」导解析人名（空显「未分配」，与表格同兜底），不再导旧库 empId 数字串。
+     * 主结账方式前端为恒「—」占位列（无物理数据），导出不带。
      */
     @Transactional(readOnly = true)
     public ExportPayload export(SupplierQueryFilter f, String sort, String order, int maxRows) {
@@ -193,8 +195,9 @@ public class SupplierService {
                 new ExportColumn("name", "供应商简称", ExportColumn.TEXT),
                 new ExportColumn("description", "全称", ExportColumn.TEXT),
                 new ExportColumn("tday", "信用天数", ExportColumn.NUMBER),
+                new ExportColumn("lossRate", "损耗率(%)", ExportColumn.NUMBER),
                 new ExportColumn("place", "所属地区", ExportColumn.TEXT),
-                new ExportColumn("empId", "业务员", ExportColumn.TEXT),
+                new ExportColumn("ownerEmployeeName", "业务员", ExportColumn.TEXT),
                 new ExportColumn("legalPerson", "法人代表", ExportColumn.TEXT),
                 new ExportColumn("linkman", "联系人", ExportColumn.TEXT),
                 new ExportColumn("mobile", "手机", ExportColumn.TEXT),
@@ -216,8 +219,11 @@ public class SupplierService {
                     row.put("name", m.getName());
                     row.put("description", m.getDescription());
                     row.put("tday", m.getTday());
+                    row.put("lossRate", m.getLossRate());
                     row.put("place", m.getPlace());
-                    row.put("empId", m.getEmpId());
+                    row.put("ownerEmployeeName",
+                            m.getOwnerEmployeeName() == null || m.getOwnerEmployeeName().isBlank()
+                                    ? "未分配" : m.getOwnerEmployeeName());
                     row.put("legalPerson", m.getLegalPerson());
                     row.put("linkman", m.getLinkman());
                     row.put("mobile", m.getMobile());

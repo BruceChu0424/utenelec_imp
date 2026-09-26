@@ -28,6 +28,16 @@ List<T> hoistSingleRootTree<T extends UtenTreeNode<T>>(List<T> nodes) {
   return current;
 }
 
+/// 分类树节点标签：普通分类「名称(编码)」；未分类系统根（LEGACY_ORPHAN /
+/// SYS_UNCATEGORIZED_*）只显示名称，不带括号英文快照（2026-09-25 用户口径）。
+String categoryNodeLabel<T extends UtenTreeNode<T>>(T node) {
+  if (node.code.isEmpty) return node.name;
+  if (node.code == 'LEGACY_ORPHAN' || node.code.startsWith('SYS_UNCATEGORIZED')) {
+    return node.name;
+  }
+  return '${node.name}(${node.code})';
+}
+
 /// 量测分类树最长一行「名称(编码)」的自然文字宽（TextPainter 实测，2026-09-24），
 /// 加行内装具余量（8 左缘 + 3 选中强调条 + 24 展开位 + 4 间隙 + 8 右缘 + 12 滚动
 /// 余量 + 一级加粗增量）后夹在 [min]–[max]。选择器滑窗把它作为 UtenSplitView 的
@@ -42,7 +52,7 @@ double measureCategoryTreeNaturalWidth(
   var widest = 0.0;
   void walk(List<ProductCategoryNode> nodes) {
     for (final n in nodes) {
-      final label = n.code.isEmpty ? n.name : '${n.name}(${n.code})';
+      final label = categoryNodeLabel(n);
       painter.text = TextSpan(text: label, style: style);
       painter.layout();
       if (painter.width > widest) widest = painter.width;
@@ -131,8 +141,7 @@ class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatelessWidget {
     initiallyExpandDepth: initiallyExpandDepth,
     initiallyCollapsedNames: initiallyCollapsedNames,
     trailingBuilder: trailingBuilder,
-    labelOf: (node) =>
-        node.code.isEmpty ? node.name : '${node.name}(${node.code})',
+    labelOf: (node) => categoryNodeLabel(node),
     header: header,
     searchHint: searchHint,
     searchFieldKey: searchFieldKey,

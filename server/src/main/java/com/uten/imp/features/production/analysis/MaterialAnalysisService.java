@@ -90,6 +90,9 @@ public class MaterialAnalysisService {
     private org.springframework.beans.factory.ObjectProvider<com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService> reservationPreviewReadiness;
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.PreplanAnalysisPegPort> reservationPreviewSources;
+    /** V719 分析编号 WL+日期+日流水；字段注入与上面的可选依赖同款，不动构造器签名。 */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.common.docnumber.DocNumberService docNumbers;
 
     OwnerVisibility.OwnerScope scopeForAnalysis(AnalysisHeader header){
         var normal=access.scope();
@@ -200,21 +203,24 @@ public class MaterialAnalysisService {
         Map<UUID, BigDecimal> previousMakeAnchorRequirements = Map.of();
         if (analysisId == null) {
             analysisId = UUID.randomUUID();
+            String analysisNo = docNumbers.nextNumber(
+                    com.uten.imp.common.docnumber.DocNumberPrefix.MATERIAL_ANALYSIS);
             mutationLocks.expectCreatedAnalysis(analysisId);
             em.createNativeQuery("""
                     INSERT INTO production_material_analyses (
-                        id, warehouse_id, participating_warehouse_ids,
+                        id, analysis_no, warehouse_id, participating_warehouse_ids,
                         status, version, fingerprint,
                         initial_idempotency_key, analyzed_at, maker_id,
                         created_by, updated_by
                     ) VALUES (
-                        :id, :warehouseId,
+                        :id, :analysisNo, :warehouseId,
                         CAST(string_to_array(:warehouseIds, ',') AS uuid[]),
                         'ACTIVE', 0, :fingerprint,
                         :idempotencyKey, now(), :makerId, :actorId, :actorId
                     )
                     """)
                     .setParameter("id", analysisId)
+                    .setParameter("analysisNo", analysisNo)
                     .setParameter("warehouseId", request.warehouseId())
                     .setParameter("warehouseIds", warehouseIdsParameter(
                             participatingWarehouses))
@@ -328,6 +334,8 @@ public class MaterialAnalysisService {
                 FROM production_material_analyses analysis
                 WHERE analysis.is_deleted = FALSE
                   AND (:status = '' OR analysis.status = :status)
+                  AND (:keyword = ''
+                       OR lower(COALESCE(analysis.analysis_no, '')) LIKE :keywordLike)
                   AND (%s)
 
                   AND EXISTS (
@@ -373,7 +381,8 @@ public class MaterialAnalysisService {
                        summary.source_count, summary.source_types, summary.source_refs,
                        summary.product_labels, summary.requested_qty, summary.submitted_qty,
                        summary.approved_qty, summary.remaining_qty,
-                       summary.ready_now_qty, summary.ready_by_date_qty
+                       summary.ready_now_qty, summary.ready_by_date_qty,
+                       analysis.analysis_no
                 FROM analysis_page analysis
                 JOIN warehouses warehouse ON warehouse.id = analysis.warehouse_id
                 LEFT JOIN employees maker ON maker.id = analysis.maker_id
@@ -425,7 +434,8 @@ public class MaterialAnalysisService {
                         string(row[10]), integer(row[11]), splitAggregate(string(row[12])),
                         splitAggregate(string(row[13])), splitAggregate(string(row[14])),
                         decimal(row[15]), decimal(row[16]), decimal(row[17]),
-                        decimal(row[18]), decimal(row[19]), decimal(row[20])))
+                        decimal(row[18]), decimal(row[19]), decimal(row[20]),
+                        string(row[21])))
                 .toList();
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
     }
@@ -1230,7 +1240,7 @@ public class MaterialAnalysisService {
     private AnalysisHeader readHeader(UUID analysisId,boolean forUpdate) {
         Object[] row = oneRow(em.createNativeQuery("""
                 SELECT id, warehouse_id, status, version, fingerprint,
-                       analyzed_at, maker_id, is_deleted
+                       analyzed_at, maker_id, is_deleted, analysis_no
                 FROM production_material_analyses
                 WHERE id = :id
                 """ + (forUpdate ? " FOR UPDATE" : "")).setParameter("id", analysisId), "物料分析不存在");
@@ -1239,7 +1249,7 @@ public class MaterialAnalysisService {
         }
         return new AnalysisHeader(uuid(row[0]), uuid(row[1]), string(row[2]),
                 ((Number) row[3]).longValue(), string(row[4]), offsetDateTime(row[5]),
-                uuid(row[6]));
+                uuid(row[6]), string(row[8]));
     }
 
     private boolean isOpenForFulfillment(AnalysisHeader header) {
@@ -4473,7 +4483,8 @@ public class MaterialAnalysisService {
                 warehouses, supplyActions(analysisId),
                 allowedActions(analysisId, header, fqcReplenishmentOnly),
                 fqcReplenishmentOnly, fqcRecoveryAuthorizationId, planningBlocks, 0,
-                com.uten.imp.features.production.plan.ProductionOverproductionAllowance.defaults(em, rateGoodsIds));
+                com.uten.imp.features.production.plan.ProductionOverproductionAllowance.defaults(em, rateGoodsIds),
+                header.analysisNo());
     }
 
     static BigDecimal authoritativeReadyQty(
@@ -7195,7 +7206,9 @@ public class MaterialAnalysisService {
                        ), 0), 0) AS current_effective_qty,
                        COALESCE(reallocation_creator_employee.full_name,
                                 reallocation_creator.login_account) AS created_by_name,
-                       reallocation.created_at
+                       reallocation.created_at,
+                       source_analysis.analysis_no,
+                       target_analysis.analysis_no
                 FROM preplan_material_reallocations reallocation
                 JOIN production_material_analyses source_analysis
                   ON source_analysis.id = reallocation.from_analysis_id
@@ -7248,12 +7261,16 @@ public class MaterialAnalysisService {
                         displayLabel(string(row[17]), string(row[18])))
                     : firstNonBlank(string(row[13]),
                         displayLabel(string(row[14]), string(row[15])));
+            // 对端分析标签（V719）：优先编号；无编号的夹具行回退 id 前 8 位短号。
+            String counterpartLabel = firstNonBlank(
+                    string(outgoing ? row[24] : row[23]),
+                    "物料分析 " + counterpartAnalysisId.toString()
+                            .substring(0, 8).toUpperCase(Locale.ROOT));
             CrossReallocationRef ref = new CrossReallocationRef(
                     id, outgoing ? "OUT" : "IN", status,
                     counterpartAnalysisId, counterpartVersion,
                     counterpartFingerprint, counterpartMaterialId,
-                    "物料分析 " + counterpartAnalysisId.toString()
-                            .substring(0, 8).toUpperCase(Locale.ROOT),
+                    counterpartLabel,
                     counterpartProduct, qty, currentEffective,
                     fulfilled, open, string(row[8]),
                     canRevoke, blocked,
@@ -7835,13 +7852,13 @@ public class MaterialAnalysisService {
                            AND item.qty>COALESCE(item.iqty,0))
                          THEN 'PARTIALLY_PLANNED' ELSE status END,
                        version, fingerprint,
-                       analyzed_at, maker_id, is_deleted
+                       analyzed_at, maker_id, is_deleted, analysis_no
                 FROM production_material_analyses WHERE id = :id
                 """).setParameter("id", analysisId), "物料分析不存在");
         if (Boolean.TRUE.equals(row[7])) throw notFound("物料分析不存在");
         return new AnalysisHeader(uuid(row[0]), uuid(row[1]), string(row[2]),
                 ((Number) row[3]).longValue(), string(row[4]), offsetDateTime(row[5]),
-                uuid(row[6]));
+                uuid(row[6]), string(row[8]));
     }
 
     /** Historical leaf selections and their real parent represent the same planning stock scope. */
@@ -8265,7 +8282,13 @@ public class MaterialAnalysisService {
     }
 
     record AnalysisHeader(UUID id, UUID warehouseId, String status, long version,
-                          String fingerprint, OffsetDateTime analyzedAt, UUID makerId) {
+                          String fingerprint, OffsetDateTime analyzedAt, UUID makerId,
+                          String analysisNo) {
+        /** 兼容旧签名（在途归属调整等只读用途不关心编号）。 */
+        AnalysisHeader(UUID id, UUID warehouseId, String status, long version,
+                       String fingerprint, OffsetDateTime analyzedAt, UUID makerId) {
+            this(id, warehouseId, status, version, fingerprint, analyzedAt, makerId, null);
+        }
     }
 
     record MaterialDimension(UUID goodsId, UUID colorId, UUID unitId) {

@@ -580,18 +580,6 @@ abstract class AppLocalizations {
   /// **'修改密码'**
   String get profileChangePassword;
 
-  /// No description provided for @entryStaff.
-  ///
-  /// In zh, this message translates to:
-  /// **'内部人员登录'**
-  String get entryStaff;
-
-  /// No description provided for @entryVisitor.
-  ///
-  /// In zh, this message translates to:
-  /// **'访客登录'**
-  String get entryVisitor;
-
   /// No description provided for @visitorLoginTitle.
   ///
   /// In zh, this message translates to:
@@ -4489,6 +4477,12 @@ abstract class AppLocalizations {
   /// **'需要数量'**
   String get materialRequired;
 
+  /// No description provided for @materialPublicAvailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'可用数量'**
+  String get materialPublicAvailable;
+
   /// No description provided for @materialShortage.
   ///
   /// In zh, this message translates to:
@@ -4560,12 +4554,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'{products} 个产品 · {paths} 条路径'**
   String materialAggregateSources(int products, int paths);
-
-  /// No description provided for @materialCreateRoutes.
-  ///
-  /// In zh, this message translates to:
-  /// **'确认路线({count})'**
-  String materialCreateRoutes(int count);
 
   /// No description provided for @materialRouteChangedRetry.
   ///
@@ -4666,7 +4654,7 @@ abstract class AppLocalizations {
   /// No description provided for @materialRoutesNext.
   ///
   /// In zh, this message translates to:
-  /// **'下一步：核对 {count} 条待确认路线，勾选后点击“确认路线”。每条路线按当前选择保存。'**
+  /// **'下一步：还有 {count} 行没选供应方式（红框），在「供应方式」列选好后即自动保存，这些行才能下单。其余行的供应方式已按货品档案自动确认。'**
   String materialRoutesNext(int count);
 
   /// No description provided for @materialIssueNext.
@@ -6343,12 +6331,6 @@ abstract class AppLocalizations {
   /// **'出仓记录 ({count})'**
   String warehouseSubcontractOutboundHistoryTitle(int count);
 
-  /// No description provided for @warehouseSubcontractOutboundLinesTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'出仓明细 ({count})'**
-  String warehouseSubcontractOutboundLinesTitle(int count);
-
   /// No description provided for @warehouseSubcontractOutboundSaveDraft.
   ///
   /// In zh, this message translates to:
@@ -6802,18 +6784,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已解除拉黑'**
   String get securityBlacklistRemoveDone;
-
-  /// No description provided for @entryStaffSubtitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'员工工号登录，进入工作台'**
-  String get entryStaffSubtitle;
-
-  /// No description provided for @entryVisitorSubtitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'访客手机验证码登记，快速通行'**
-  String get entryVisitorSubtitle;
 
   /// No description provided for @visitorColName.
   ///

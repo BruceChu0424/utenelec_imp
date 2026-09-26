@@ -511,9 +511,12 @@ abstract class _MaterialAnalysisChildCascadeState
       final submitKey = material.actionGroupKey ?? material.materialLineId;
       final group = indexes.groupsByLine[material.materialLineId];
       final ownsInput = !node.isSeed && ownerIndex[submitKey] == index;
+      // 级联页不改路线、只按路线分类展示与提交；REVIEW（主档空且无子层）行
+      // 由 _cascadeBlockedReason「请先在主表确认路线」拦截，不会真的按委外
+      // 提交——这里的兜底仅用于页面分类，不落库（2026-09-25 确认路线退役）。
       final route = group == null
           ? MaterialSupplyRoute.subcontract
-          : _draftRoute(group);
+          : _draftRoute(group) ?? MaterialSupplyRoute.subcontract;
       final kind = _cascadeKindOf(material, route, view);
       final submitGroup = group == null
           ? null

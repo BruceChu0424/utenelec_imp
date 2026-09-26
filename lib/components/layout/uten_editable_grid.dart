@@ -10,6 +10,9 @@
 // - sticky 表头（页面上滑把表头顶到视口顶才吸附，随表体尾部推出，不原地固定）+ 横向滚动；
 //   表体 content-tall：横滚条走共用 UtenHScrollArea——内容不超高时在最后一行下方、
 //   紧贴末行下方（约 1px 空隙）；超高时钉视口底，随拖随用（与散装表同一份实现，改一处全部生效）。
+//   短表置顶所需的滚动余量按实测缺口垫在表尾条**下方**（[_stickyTrailingSpace]）：
+//   「添加行/合计」紧贴末行随表体上移，空白只落页面尾部，不插在末行与表尾条中间
+//   （2026-09-25 用户口径「添加行/汇总要跟着表格一起上移」）。
 // - Excel 交互：表头全左对齐；每个单元格右竖线分隔；按住列右边界竖线左右拖拽调宽窄
 //   （复用 MasterDataTableView 的 grip 范式，下限 48 防拖没）。
 // - 列宽随内容自动加宽（2026-08-27）：列定义提供 textOf（+listenableOf）的列，输入/换值
@@ -28,8 +31,6 @@
 //   编辑模式操作条（2026-09-05 起精简）只保留「表头设置」与宿主注入的批量动作
 //   （batchActionsBuilder）；全选走表头复选框、复制/粘贴/删除走行菜单。
 // - 全尺寸 Excel(手机横向滚动，与报表一致)；列隐藏只改变呈现，不销毁行控制器或数据。
-
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -52,8 +53,18 @@ abstract class EditableGridRow {
   /// 返回取消订阅的回调。controller 在增删行时重连所有行。
   VoidCallback listenAmount(VoidCallback cb) => () {};
 
+  /// 行级检查标红（如保存前查重被拦回后标出重复行，2026-09-25）：true = 整行
+  /// errorContainer 半透明红底（与只读表 rowColor 同款语义；选中色仍优先生效）。
+  /// 值变化时表格按通知器局部重绘该行，宿主无需 setState；行内容被用户改动后
+  /// 由行模型自行清除（下次保存重新判定）。
+  final ValueNotifier<bool> flaggedNotifier = ValueNotifier<bool>(false);
+  bool get flagged => flaggedNotifier.value;
+  set flagged(bool v) => flaggedNotifier.value = v;
+
   /// 释放行持有的控制器/通知器。子类覆盖时先释己方资源再 super.dispose()。
-  void dispose() {}
+  void dispose() {
+    flaggedNotifier.dispose();
+  }
 }
 
 /// 带金额自动计算的行 mixin：暴露 [amountNotifier]，金额单元与表尾合计订阅它。
@@ -98,6 +109,7 @@ class EditableGridColumn<T extends EditableGridRow> {
     this.textOf,
     this.listenableOf,
     this.filterValueOf,
+    this.frozenTextOf,
     this.chromeWidth = 0,
     this.fillsCellHeight = false,
   });
@@ -143,6 +155,16 @@ class EditableGridColumn<T extends EditableGridRow> {
   /// 纯视图级过滤——行数据与勾选（按行身份持有）都不动，清除筛选即全部恢复。
   /// null（默认）= 普通表头。
   final String? Function(T row)? filterValueOf;
+
+  /// 「固定到左侧」列在横滚冻结副本里的只读快照文本（2026-09-25）。
+  ///
+  /// 编辑表的单元控件绑定行级 TextEditingController / ValueNotifier——同一份
+  /// cellBuilder 不能挂载两次（控制器双挂），因此横滚时钉在视口左缘的固定列副本
+  /// 只渲染只读文本快照，取值链为 [textOf] → 本字段 → [filterValueOf]。
+  /// 数量/单价这类只有输入框、没写 [textOf] 的列必须补本字段（如
+  /// `(r) => r.qty.text`），否则该列不支持固定（右键菜单「固定到左侧」置灰）。
+  /// 未固定/未横滚时单元仍是原汁原味的可编辑控件，本字段不影响。
+  final String Function(T row)? frozenTextOf;
 
   /// 单元内部后缀装饰占宽（2026-09-09）：格内 ⓘ（UtenFieldHintIcon 44）或
   /// 下拉箭头（20）这类排在文本之后的固定装饰宽度。自动加宽量宽时叠加在
@@ -644,6 +666,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.toolbarActions = const <Widget>[],
     this.initialColumnOrder,
     this.initialHiddenColumnKeys,
+    this.initialPinnedColumnKeys,
     this.onColumnSettingsChanged,
     this.showSelectAllToggle = true,
     this.showRemoveRowsAction = true,
@@ -776,7 +799,18 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   /// 不会形成通知回环。
   final List<String>? initialColumnOrder;
   final Set<String>? initialHiddenColumnKeys;
-  final void Function(List<String> order, Set<String> hidden)?
+
+  /// 「固定到左侧」的列 key（2026-09-25）：横滚时这些列钉在行首勾选框列右侧
+  /// 不随表体滚走（表头右键菜单「固定到左侧」维护）。持久化口径与 order/hidden
+  /// 相同；隐藏列上的固定在重放时自动解除。
+  final Set<String>? initialPinnedColumnKeys;
+
+  /// 列设置变化回调（列序 + 隐藏列 + 固定列），宿主持久化用。
+  final void Function(
+    List<String> order,
+    Set<String> hidden,
+    Set<String> pinned,
+  )?
   onColumnSettingsChanged;
 
   /// 操作条是否渲染「全选/取消全选」按钮（默认 true）。批量下达类页面（表头
@@ -832,25 +866,35 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 硬挤在一行会把金额压成省略号。
   static const double _footerSingleRowMinWidth = 560;
 
-  /// 表尾条(添加行/合计)纵向预留：padding 8×2 + 内容行高。表体最小高度里扣掉，
-  /// 保证表头吸顶时表尾条也在视口内(再留 8 的呼吸间距)。
-  static const double _footerExtentReserve = 64 + 8;
-
-  /// 短表/空表的表体最小高度(仅传了 [UtenEditableGrid.stickyHeaderPinned] 的
-  /// 页面 sticky 网格生效)：视口高 − 表头高 − 表尾预留。量不到视口(弹窗/首帧前)
-  /// 返回 0 = 自然高度不受影响。
+  /// 短表/空表置顶所需的额外滚动余量（仅传了 [UtenEditableGrid.stickyHeaderPinned]
+  /// 的页面 sticky 网格生效），垫在表尾条**下方**（见 [_stickyTrailingSpace]）：
+  /// 表头要顶到视口顶，页面滚动余量得够——短表内容不够就把缺口补在这里。
+  /// 历史版本按「视口高−表头−表尾预留」公式把表体撑满（Excel 式空白表格区），
+  /// 结果表尾条被推到视口底缘、与末行之间隔出一大段空白（用户口径
+  /// 「添加行/汇总不跟着表格上移，中间像加了间隔」）。2026-09-25 起改按实测缺口：
+  /// 置顶点够得着（页面下方本就有内容）就一点不垫，够不着才垫足差值。
   ///
-  /// 只在 [_stickyEngaged](表格被滚到置顶过)后启用：首屏保持自然高度，
-  /// 「添加行/合计」表尾条不被推出视口(新建单先点添加行的主流程)；
-  /// 用户开始滚动浏览表格后再撑满且不缩回(内容总高稳定，反向滚动不跳动)。
-  double get _bodyMinHeight {
-    if (!_stickyEngaged) return 0;
-    final viewport = _viewportHeight;
-    if (widget.stickyHeaderPinned == null || viewport == null) return 0;
-    final footerReserve = widget.showAddRow || widget.footer != null
-        ? _footerExtentReserve
-        : 0.0;
-    return math.max(0, viewport - _headerHeight - footerReserve);
+  /// 只在 [_stickyEngaged] 后启用且只增不减（不缩回）：首屏保持自然高度，
+  /// 「添加行/合计」表尾条不被推出视口（新建单先点添加行的主流程）；
+  /// 滚动浏览/撑高后内容总高稳定，反向滚动不跳动。
+  double get _stickyTrailingSpace =>
+      _stickyEngaged ? _stickyStretch + _stickyReachExtra : 0;
+
+  /// 实测缺口累计的垫高量（见 [_stickyTrailingSpace]；0=还不需要垫）。
+  double _stickyStretch = 0;
+
+  /// 实测置顶缺口：置顶点（[UtenStickyHeaderTracker.pinOffset]）减页面当前
+  /// 滚动余量（maxScrollExtent）。>0 = 怎么滚表头都到不了视口顶，需要垫高
+  /// 这么多才够。页面总高不足视口时 maxScrollExtent 被钳成 0，本值会低估
+  /// 一截——靠 [_onStickyEngage] 的「缺口>0 就累加」逐跳收敛：第一跳垫完
+  /// 总高即超视口，余量回到未钳制区间，下一跳算出的缺口就是精确值。
+  /// 锚点未建/量不到时返回 0（按不需要垫处理，滚轮门会再触发）。
+  double _measureReachDeficit() {
+    final pin = _sticky.pinOffset;
+    final pos = _sticky.pagePosition;
+    if (pin == null || pos == null || !pos.hasContentDimensions) return 0;
+    final deficit = pin - pos.maxScrollExtent;
+    return deficit > 0 ? deficit : 0;
   }
 
   // —— sticky 表头 测量与位置状态 ——
@@ -873,14 +917,31 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 表头实测高度（流内占位用；首帧用兜底值，post-frame 实测修正）。
   double _headerHeight = 40;
 
-  /// 页面滚动视口高度(sticky 量测时记录；无外层页面滚动=null，如弹窗内网格)。
-  /// 用于短表/空表的表体最小高度——否则表体只有一两行高，表头吸顶后立即被
-  /// 表体尾部推走(用户「表头拉不到顶部」)，页面滚动条门控也随之失真。
-  double? _viewportHeight;
-
-  /// 表格是否已被滚到置顶过(表头至少吸附过一次视口顶)。
-  /// 见 [_bodyMinHeight]：短表撑高的启用门槛。
+  /// 表格是否已被滚到置顶过(表头至少吸附过一次视口顶，或滚轮门请求过垫高)。
+  /// 见 [_stickyTrailingSpace]：短表垫高的启用门槛。
   bool _stickyEngaged = false;
+
+  /// 滚轮门按需补差累计的撑高量（置顶点仍够不着时按实测量追加；0=只按公式）。
+  /// 见 UtenStickyWheelGate：短表页面余量不足时请求撑高。
+  double _stickyReachExtra = 0;
+
+  /// 滚轮门请求垫高。extra>0 = 门 post-frame 复测后的精确补差（新于本帧读数，
+  /// 优先采信，避免与自算缺口双计）；extra=0 = 自算实测缺口，缺口>0 就累加
+  /// （见 [_measureReachDeficit] 的钳制收敛说明）。垫足后缺口归 0 自然停。
+  void _onStickyEngage(double extra) {
+    if (!mounted) return;
+    final deficit = extra > 0 ? 0.0 : _measureReachDeficit();
+    if (!_stickyEngaged || extra > 0 || deficit > 0) {
+      setState(() {
+        _stickyEngaged = true;
+        if (extra > 0) {
+          _stickyReachExtra += extra;
+        } else {
+          _stickyStretch += deficit;
+        }
+      });
+    }
+  }
 
   /// 页面滚动监听（最近的祖先 Scrollable 的 position，单据编辑页的页面 ListView）。
   ScrollPosition? _pagePos;
@@ -892,6 +953,14 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 等持久化参数后跨会话保留。key 是稳定真值，宽度仍按原 columns 下标保存。
   List<String> _columnOrder = const [];
   final Set<String> _hiddenColumnKeys = <String>{};
+
+  /// 「固定到左侧」的列 key（可见序列前缀；表头右键菜单维护，随列设置持久化）。
+  final Set<String> _pinnedColumnKeys = <String>{};
+
+  /// 各固定列「固定前」在完整列序中的下标：取消固定时据此放回原位
+  /// （2026-09-25 用户口径「取消固定也要回到对应的地方」）。跨会话重放的固定
+  /// 没有记录，回退按默认列序插回。
+  final Map<String, int> _pinOriginIndex = <String, int>{};
 
   /// 本次会话内用户是否已手动改过列设置：改过之后迟到抵达的服务端偏好不再
   /// 覆盖本地（详见 [_applyInitialColumnSettings]）。
@@ -939,6 +1008,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
 
   /// 横拖换位落位：在**可见列序列**内搬移；隐藏列保持原相对锚位（对 _columnOrder
   /// 做可见子序列替换），随后走既有持久化回调（与表头设置弹窗拖拽同一出口）。
+  /// 越过固定块边界的落位由规范化收回（固定列恒为可见前缀）。
   @override
   void onColumnsReordered(int fromOriginalIndex, int slot) {
     final visible = _visibleColumnIndices;
@@ -951,10 +1021,14 @@ class _UtenEditableGridState<T extends EditableGridRow>
     final newVisibleKeys = <String>{for (final i in seq) widget.columns[i].key};
     final queue = <String>[for (final i in seq) widget.columns[i].key];
     setState(() {
-      _columnOrder = [
-        for (final key in _columnOrder)
-          newVisibleKeys.contains(key) ? queue.removeAt(0) : key,
-      ];
+      _columnOrder = utenNormalizePinnedPrefix(
+        order: [
+          for (final key in _columnOrder)
+            newVisibleKeys.contains(key) ? queue.removeAt(0) : key,
+        ],
+        hiddenKeys: _hiddenColumnKeys,
+        pinnedKeys: _pinnedColumnKeys,
+      );
     });
     _notifyColumnSettingsChanged();
   }
@@ -1053,6 +1127,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
       _manualResized.clear();
       _columnOrder = widget.columns.map((column) => column.key).toList();
       _hiddenColumnKeys.clear();
+      _pinnedColumnKeys.clear();
+      _pinOriginIndex.clear();
       _applyInitialColumnSettings();
       // 列集合换了（切 docType/换段）→ 旧列 key 上的表头筛选一并作废，避免
       // 「看不见的筛选」把新列集合下的行全滤掉。
@@ -1067,6 +1143,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
       if (!_userTouchedColumns) {
         _columnOrder = widget.columns.map((column) => column.key).toList();
         _hiddenColumnKeys.clear();
+        _pinnedColumnKeys.clear();
+        _pinOriginIndex.clear();
         _applyInitialColumnSettings();
       }
     }
@@ -1115,12 +1193,22 @@ class _UtenEditableGridState<T extends EditableGridRow>
         identical(
           oldWidget.initialHiddenColumnKeys,
           widget.initialHiddenColumnKeys,
+        ) &&
+        identical(
+          oldWidget.initialPinnedColumnKeys,
+          widget.initialPinnedColumnKeys,
         )) {
       return true;
     }
     if (!setEquals(
       oldWidget.initialHiddenColumnKeys ?? const <String>{},
       widget.initialHiddenColumnKeys ?? const <String>{},
+    )) {
+      return false;
+    }
+    if (!setEquals(
+      oldWidget.initialPinnedColumnKeys ?? const <String>{},
+      widget.initialPinnedColumnKeys ?? const <String>{},
     )) {
       return false;
     }
@@ -1133,11 +1221,12 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 应用宿主注入的持久化列设置：未知 key 忽略、缺失列按默认序追加；若持久化
   /// 状态把所有列都隐藏了则回落为全显示（与「至少保留一列」兜底同口径）。
   /// 只重放不回写——宿主回调更新 prefs 后传回的新 initial 值走到这里时，
-  /// 值与当前一致，不会形成通知回环。
+  /// 值与当前一致，不会形成通知回环。固定列在隐藏列上的条目自动解除。
   void _applyInitialColumnSettings() {
     final order = widget.initialColumnOrder;
     final hidden = widget.initialHiddenColumnKeys;
-    if (order == null && hidden == null) return;
+    final pinned = widget.initialPinnedColumnKeys;
+    if (order == null && hidden == null && pinned == null) return;
     final known = widget.columns.map((column) => column.key).toList();
     final knownSet = known.toSet();
     final seen = <String>{};
@@ -1152,10 +1241,21 @@ class _UtenEditableGridState<T extends EditableGridRow>
         if (knownSet.contains(key)) key,
     };
     if (hiddenKeys.containsAll(merged)) hiddenKeys.clear();
-    _columnOrder = merged;
+    final pinnedKeys = <String>{
+      for (final key in pinned ?? const <String>[])
+        if (knownSet.contains(key) && !hiddenKeys.contains(key)) key,
+    };
+    _columnOrder = utenNormalizePinnedPrefix(
+      order: merged,
+      hiddenKeys: hiddenKeys,
+      pinnedKeys: pinnedKeys,
+    );
     _hiddenColumnKeys
       ..clear()
       ..addAll(hiddenKeys);
+    _pinnedColumnKeys
+      ..clear()
+      ..addAll(pinnedKeys);
   }
 
   void _notifyColumnSettingsChanged() {
@@ -1163,6 +1263,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
     widget.onColumnSettingsChanged?.call(
       List.unmodifiable(_columnOrder),
       Set.unmodifiable(_hiddenColumnKeys),
+      Set.unmodifiable(_pinnedColumnKeys),
     );
   }
 
@@ -1189,6 +1290,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
         changed = true;
       } else if (_visibleColumnCount > 1) {
         _hiddenColumnKeys.add(key);
+        _pinnedColumnKeys.remove(key); // 隐藏固定列 = 同时解除固定。
+        _pinOriginIndex.remove(key);
         changed = true;
       }
     });
@@ -1196,6 +1299,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   }
 
   /// 全选(true)=全部显示；取消全选(false)=仅留首列（必填列始终保留）。
+  /// 被隐藏的固定列一并解除固定。
   void _toggleAllColumns(bool showAll) {
     setState(() {
       _hiddenColumnKeys.clear();
@@ -1208,26 +1312,142 @@ class _UtenEditableGridState<T extends EditableGridRow>
           widget.columns.where((c) => !keep.contains(c.key)).map((c) => c.key),
         );
       }
+      _pinnedColumnKeys.removeWhere(_hiddenColumnKeys.contains);
+      _pinOriginIndex.removeWhere((k, _) => _hiddenColumnKeys.contains(k));
     });
     _notifyColumnSettingsChanged();
   }
 
   /// 拖拽排序：[newIndex] 为 removeAt 后的最终插入位（onReorderItem 口径）。
+  /// 越过固定块边界的搬移由规范化收回（固定列恒为可见前缀）。
   void _reorderColumns(int oldIndex, int newIndex) {
     setState(() {
       final key = _columnOrder.removeAt(oldIndex);
       _columnOrder.insert(newIndex, key);
+      _columnOrder = utenNormalizePinnedPrefix(
+        order: _columnOrder,
+        hiddenKeys: _hiddenColumnKeys,
+        pinnedKeys: _pinnedColumnKeys,
+      );
     });
     _notifyColumnSettingsChanged();
   }
 
-  /// 恢复默认：清隐藏 + 回默认列序。
+  /// 恢复默认：清隐藏 + 清固定 + 回默认列序。
   void _resetColumnSettings() {
     setState(() {
       _columnOrder = widget.columns.map((column) => column.key).toList();
       _hiddenColumnKeys.clear();
+      _pinnedColumnKeys.clear();
+      _pinOriginIndex.clear();
     });
     _notifyColumnSettingsChanged();
+  }
+
+  // —— 表头右键菜单（固定/移动/隐藏，2026-09-25；跟随 showColumnSettings 门控）——
+
+  /// 固定在左侧的可见列下标（前缀不变量下即可见序列开头的连续固定列）。
+  List<int> get _pinnedVisibleColumnIndices {
+    final result = <int>[];
+    for (final i in _visibleColumnIndices) {
+      if (!_pinnedColumnKeys.contains(widget.columns[i].key)) break;
+      result.add(i);
+    }
+    return result;
+  }
+
+  /// 固定区总宽（含行首选选列）。
+  double _pinnedLeadingWidth(List<int> pinnedIndices) =>
+      (widget._showSelect ? _selectColWidth : 0) +
+      pinnedIndices.fold(0.0, (sum, i) => sum + _widths[i]);
+
+  /// 固定/取消固定一列：固定 = 记录当前下标后搬到固定块末尾；取消固定 =
+  /// 放回固定前的位置（2026-09-25 用户口径）。跨会话重放的固定没有记录，
+  /// 回退按默认列序（widget.columns 原序）的相对位次插回。
+  void _toggleColumnPin(String key) {
+    setState(() {
+      final origin = _pinOriginIndex[key];
+      final wasPinned = _pinnedColumnKeys.contains(key);
+      if (!wasPinned) {
+        _pinOriginIndex[key] = _columnOrder.indexOf(key);
+      } else {
+        _pinOriginIndex.remove(key);
+      }
+      final r = utenToggleColumnPin(
+        order: _columnOrder,
+        hiddenKeys: _hiddenColumnKeys,
+        pinnedKeys: _pinnedColumnKeys,
+        key: key,
+        originIndex: origin,
+        defaultOrder: widget.columns.map((column) => column.key).toList(),
+      );
+      _columnOrder = r.order;
+      _pinnedColumnKeys
+        ..clear()
+        ..addAll(r.pinned);
+    });
+    _notifyColumnSettingsChanged();
+  }
+
+  /// 表头右键菜单的移动动作（向左/右一格、放到最前/最后）。
+  void _moveColumnTo(String key, UtenColumnHeaderMove move) {
+    setState(() {
+      _columnOrder = utenMoveVisibleColumn(
+        order: _columnOrder,
+        hiddenKeys: _hiddenColumnKeys,
+        pinnedKeys: _pinnedColumnKeys,
+        key: key,
+        move: move,
+      );
+    });
+    _notifyColumnSettingsChanged();
+  }
+
+  /// 表头右键菜单条目。仅 [UtenEditableGrid.showColumnSettings] 开启的页面提供
+  ///（未开启的页面保持固定布局，无恢复入口不该被改）；固定还要求该列有快照
+  /// 文本源（textOf/frozenTextOf/filterValueOf 之一——编辑单元不能双挂载，
+  /// 冻结副本只能渲染只读文本）。
+  List<UtenContextMenuEntry> _headerMenuEntries(int i) {
+    if (!widget.showColumnSettings) return const [];
+    final column = widget.columns[i];
+    final key = column.key;
+    final hasSnapshotSource =
+        column.textOf != null ||
+        column.frozenTextOf != null ||
+        column.filterValueOf != null;
+    final cap = utenColumnHeaderMenuCapabilities(
+      order: _columnOrder,
+      hiddenKeys: _hiddenColumnKeys,
+      pinnedKeys: _pinnedColumnKeys,
+      key: key,
+      canHide: columnCanDragHide(i),
+    );
+    final pinAllowed = cap.canPin && (cap.pinned || hasSnapshotSource);
+    return utenColumnHeaderMenuEntries(
+      UtenColumnHeaderMenuSpec(
+        pinned: cap.pinned,
+        canPin: pinAllowed,
+        canHide: cap.canHide,
+        canMoveLeft: cap.canMoveLeft,
+        canMoveRight: cap.canMoveRight,
+        canMoveToFront: cap.canMoveToFront,
+        canMoveToBack: cap.canMoveToBack,
+        onTogglePin: pinAllowed ? () => _toggleColumnPin(key) : null,
+        onHide: cap.canHide ? () => _toggleColumn(key) : null,
+        onMoveLeft: cap.canMoveLeft
+            ? () => _moveColumnTo(key, UtenColumnHeaderMove.left)
+            : null,
+        onMoveRight: cap.canMoveRight
+            ? () => _moveColumnTo(key, UtenColumnHeaderMove.right)
+            : null,
+        onMoveToFront: cap.canMoveToFront
+            ? () => _moveColumnTo(key, UtenColumnHeaderMove.front)
+            : null,
+        onMoveToBack: cap.canMoveToBack
+            ? () => _moveColumnTo(key, UtenColumnHeaderMove.back)
+            : null,
+      ),
+    );
   }
 
   /// 双向横滚同步：表头 / 表体 任一滚动 → 另一个 jumpTo 跟随（[_syncing] 防回环；
@@ -1271,21 +1491,14 @@ class _UtenEditableGridState<T extends EditableGridRow>
   void _updateSticky() {
     if (!mounted) return;
     _sticky.measure();
-    // 短表/空表撑高依据(见 _viewportHeight 文档)：视口高度变化(窗口缩放)也要刷新。
-    final vh = _sticky.viewportHeight;
-    if (widget.stickyHeaderPinned != null &&
-        vh != null &&
-        _viewportHeight != vh) {
-      _viewportHeight = vh;
-      setState(() {});
-    }
     // 表头实测高度变化（字体缩放/主题切换）→ 修正流内占位高度。
     final headerH = _sticky.headerHeight;
     if (headerH > 0 && (headerH - _headerHeight).abs() > 0.5) {
       setState(() => _headerHeight = headerH);
     }
-    // 首次置顶 → 启用短表撑高([_bodyMinHeight])。撑高发生在「表头已在视口顶」
-    // 之后，网格顶之上只有表头占位，内容高度变化不影响视口内的表头位置。
+    // 首次置顶 → 启用短表垫高([_stickyTrailingSpace])。能自然置顶说明余量够，
+    // 实测缺口为 0、一点不垫；垫高发生在「表头已在视口顶」之后，网格顶之上
+    // 只有表头占位，内容高度变化不影响视口内的表头位置。
     if (_sticky.isPinned && !_stickyEngaged) {
       _stickyEngaged = true;
       setState(() {});
@@ -1463,17 +1676,6 @@ class _UtenEditableGridState<T extends EditableGridRow>
     _headerH.dispose();
     _bodyH.dispose();
     super.dispose();
-  }
-
-  /// 表头首格的冻结包裹：无选择列时原样返回（零开销）。
-  Widget _withFrozenSelectAll(ThemeData theme, Widget row) {
-    if (!widget._showSelect) return row;
-    return UtenFrozenLeadingColumn(
-      horizontal: _headerH,
-      width: _selectColWidth,
-      cell: _selectAllHeaderCell(theme),
-      row: row,
-    );
   }
 
   /// 表头行尾操作列的冻结包裹：无行尾操作列时原样返回。占位格与行内同款
@@ -1721,48 +1923,42 @@ class _UtenEditableGridState<T extends EditableGridRow>
             SizedBox(height: _headerHeight),
             // 表体：content-tall（shrinkWrap），横滚条走共用 UtenHScrollArea——
             // 内容不超高 → 末行下方紧贴的自然滚动条；超高 → 钉视口底。
-            // 参与页面 sticky 联动的编辑网格(传了 stickyHeaderPinned)另给最小高度
-            // =视口高−表头−表尾预留：空表/一两行的短表也能把表头拉到视口顶并钉住
-            // (Excel 式空白表格区)，页面滚动条门控信号随之真实。
             KeyedSubtree(
               key: _bodyKey,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: _bodyMinHeight),
-                child: UtenHScrollArea(
-                  controller: _bodyH,
-                  child: SizedBox(
-                    width: total,
-                    child: ListenableBuilder(
-                      // 只随行集变化重建；勾选由各行自己订阅(见 _RowSelectionListener)。
-                      listenable: widget.controller.rowsListenable,
-                      builder: (context, _) {
-                        final all = _allRows();
-                        if (all.isEmpty) {
-                          return _EmptyRows(message: widget.emptyMessage);
-                        }
-                        // 表头筛选为视图级过滤：只影响可见行集，不动数据与选中。
-                        final rows = _visibleRows();
-                        _publishHiddenByFilter(all, rows);
-                        if (rows.isEmpty) {
-                          return const _EmptyRows(message: '没有符合表头筛选条件的行');
-                        }
-                        return ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          padding: EdgeInsets.zero,
-                          itemCount: rows.length,
-                          itemBuilder: (context, i) => RepaintBoundary(
-                            // 隔离行重绘：列宽拖拽/选中/粘性头重排时只绘本行，不蔓延整表与外层页面。
-                            child: _rowCellOrMenuRegion(
-                              rows[i],
-                              i,
-                              divider,
-                              visibleColumnIndices,
-                            ),
+              child: UtenHScrollArea(
+                controller: _bodyH,
+                child: SizedBox(
+                  width: total,
+                  child: ListenableBuilder(
+                    // 只随行集变化重建；勾选由各行自己订阅(见 _RowSelectionListener)。
+                    listenable: widget.controller.rowsListenable,
+                    builder: (context, _) {
+                      final all = _allRows();
+                      if (all.isEmpty) {
+                        return _EmptyRows(message: widget.emptyMessage);
+                      }
+                      // 表头筛选为视图级过滤：只影响可见行集，不动数据与选中。
+                      final rows = _visibleRows();
+                      _publishHiddenByFilter(all, rows);
+                      if (rows.isEmpty) {
+                        return const _EmptyRows(message: '没有符合表头筛选条件的行');
+                      }
+                      return ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: EdgeInsets.zero,
+                        itemCount: rows.length,
+                        itemBuilder: (context, i) => RepaintBoundary(
+                          // 隔离行重绘：列宽拖拽/选中/粘性头重排时只绘本行，不蔓延整表与外层页面。
+                          child: _rowCellOrMenuRegion(
+                            rows[i],
+                            i,
+                            divider,
+                            visibleColumnIndices,
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
@@ -1833,6 +2029,12 @@ class _UtenEditableGridState<T extends EditableGridRow>
                   );
                 },
               ),
+            // 短表置顶垫高（[_stickyTrailingSpace]）：垫在表尾条**下方**——表头吸顶后
+            // 「添加行/合计」紧贴末行随表体一起上移，空白只落页面尾部（在滚轮门
+            // 覆盖区内，用户对着表格下方空白滚向置顶依旧截停）。无表尾条时同样
+            // 垫在表体之后，语义一致。
+            if (_stickyTrailingSpace > 0)
+              SizedBox(height: _stickyTrailingSpace),
           ],
         ),
         // sticky 表头覆盖层：top 由吸顶核心驱动——0=自然位（表头在网格顶）；
@@ -1851,11 +2053,26 @@ class _UtenEditableGridState<T extends EditableGridRow>
     // 不受 disabled 影响），而行级长按菜单/列宽拖拽把手与区域文字拖选手势打架，
     // 故编辑网格整体不参与页面级 SelectionArea（准则 §3.4）。
     final actionsBar = _actionsBar(theme);
-    if (actionsBar == null) {
-      return SelectionContainer.disabled(child: body);
+    Widget resolve(Widget child) {
+      // 吸顶网格（stickyHeaderPinned）外包滚轮截停门：一格越置顶点即止 + 停顿窗
+      // 吞同一滚势的后续格 + 短表够不着顶时按需撑高（见 UtenStickyWheelGate）。
+      if (widget.stickyHeaderPinned == null) {
+        return SelectionContainer.disabled(child: child);
+      }
+      return SelectionContainer.disabled(
+        child: UtenStickyWheelGate(
+          tracker: _sticky,
+          onEngage: _onStickyEngage,
+          child: child,
+        ),
+      );
     }
-    return SelectionContainer.disabled(
-      child: Column(
+
+    if (actionsBar == null) {
+      return resolve(body);
+    }
+    return resolve(
+      Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [actionsBar, body],
@@ -1881,41 +2098,50 @@ class _UtenEditableGridState<T extends EditableGridRow>
     final cell = _RowSelectionListener(
       listenable: widget.controller.selectionListenable,
       isSelected: () => _rowIsSelected(row),
-      builder: (isSelected) => _DataRow<T>(
-        index: i,
-        row: row,
-        columns: widget.columns,
-        columnIndices: visibleColumnIndices,
-        widths: _widths,
-        showSelect: widget._showSelect,
-        // 门控为 false 时整格不画方框(只留空位对齐)，不是画一个灰框。
-        renderSelectionBox: widget.showRowSelection?.call(row) ?? true,
-        isSelected: isSelected,
-        onSelect: _rowOnSelect(row),
-        rowTint: widget.rowColor?.call(row),
-        showDelete: widget._showRowActionColumn,
-        deleteColWidth: _deleteColWidth,
-        divider: divider,
-        // 行内移出的确认框由 _confirmBatchDelete 统一弹(文案与批量一致)，
-        // 这里不再叠一层「删除后不可撤销」。
-        confirmDelete: inlineRemove ? false : widget.confirmDelete,
-        deleteConfirmLabel: widget.deleteConfirmLabel,
-        deleteIcon: inlineRemove
-            ? Icons.remove_circle_outline_rounded
-            : Icons.close_rounded,
-        deleteTooltip: inlineRemove ? widget.removeRowsActionLabel : '删除该行',
-        onDelete:
-            widget.showRowDelete &&
-                !inlineRemove &&
-                (widget.canDeleteRow?.call(row) ?? true)
-            ? () => widget.onDeleteRow == null
-                  ? widget.controller.removeAt(i)
-                  : widget.onDeleteRow!(row, i)
-            : (inlineRemove
-                  ? () => _confirmBatchDelete(context, victims: [row])
-                  : null),
-        // 行首勾选列横滚时钉在视口左缘(与表头全选格同款)。
-        frozenSelectionScroll: _bodyH,
+      builder: (isSelected) => ValueListenableBuilder<bool>(
+        // 查重标红单行订阅：flagged 置位/清除只重绘该行底色（2026-09-25）。
+        valueListenable: row.flaggedNotifier,
+        builder: (context, flagged, _) => _DataRow<T>(
+          index: i,
+          row: row,
+          columns: widget.columns,
+          columnIndices: visibleColumnIndices,
+          widths: _widths,
+          showSelect: widget._showSelect,
+          // 门控为 false 时整格不画方框(只留空位对齐)，不是画一个灰框。
+          renderSelectionBox: widget.showRowSelection?.call(row) ?? true,
+          isSelected: isSelected,
+          onSelect: _rowOnSelect(row),
+          rowTint: flagged
+              ? Theme.of(
+                  context,
+                ).colorScheme.errorContainer.withValues(alpha: 0.42)
+              : widget.rowColor?.call(row),
+          showDelete: widget._showRowActionColumn,
+          deleteColWidth: _deleteColWidth,
+          divider: divider,
+          // 行内移出的确认框由 _confirmBatchDelete 统一弹(文案与批量一致)，
+          // 这里不再叠一层「删除后不可撤销」。
+          confirmDelete: inlineRemove ? false : widget.confirmDelete,
+          deleteConfirmLabel: widget.deleteConfirmLabel,
+          deleteIcon: inlineRemove
+              ? Icons.remove_circle_outline_rounded
+              : Icons.close_rounded,
+          deleteTooltip: inlineRemove ? widget.removeRowsActionLabel : '删除该行',
+          onDelete:
+              widget.showRowDelete &&
+                  !inlineRemove &&
+                  (widget.canDeleteRow?.call(row) ?? true)
+              ? () => widget.onDeleteRow == null
+                    ? widget.controller.removeAt(i)
+                    : widget.onDeleteRow!(row, i)
+              : (inlineRemove
+                    ? () => _confirmBatchDelete(context, victims: [row])
+                    : null),
+          // 行首勾选列横滚时钉在视口左缘(与表头全选格同款)；已固定列一并进冻结区。
+          frozenSelectionScroll: _bodyH,
+          pinnedColumnIndices: _pinnedVisibleColumnIndices,
+        ),
       ),
     );
     // 纯勾选模式（selectable 且非编辑）：点行身任意非输入区 = 切换选中，与
@@ -2267,6 +2493,15 @@ class _UtenEditableGridState<T extends EditableGridRow>
     double total,
     List<int> visibleColumnIndices,
   ) {
+    final pinnedIndices = _pinnedVisibleColumnIndices;
+    // 横滚时钉在视口左缘的冻结区副本：全选格 + 已固定列的表头格。副本格不挂
+    // 换位/移除拖拽（避免同一 LayerLink 双挂载），但保留表头筛选点按、右键
+    // 菜单与列宽手柄。
+    final frozenHeaderRegion = _withSelectHeaderRegion(
+      theme,
+      pinnedIndices: pinnedIndices,
+      cell: (i) => _headerColumnCell(theme, i, frozen: true),
+    );
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2283,9 +2518,11 @@ class _UtenEditableGridState<T extends EditableGridRow>
                 leadingInset: widget._showSelect ? _selectColWidth : 0,
                 child: _withFrozenTrailingAction(
                   theme,
-                  _withFrozenSelectAll(
+                  _withFrozenLeadingRegion(
                     theme,
-                    Row(
+                    pinnedIndices: pinnedIndices,
+                    cell: frozenHeaderRegion,
+                    row: Row(
                       children: [
                         if (widget._showSelect)
                           SizedBox(
@@ -2293,47 +2530,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
                             child: _selectAllHeaderCell(theme),
                           ),
                         for (final i in visibleColumnIndices)
-                          SizedBox(
-                            width: _widths[i],
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.surfaceContainerHigh,
-                                border: Border(
-                                  right: BorderSide(
-                                    color: theme.colorScheme.outline,
-                                  ),
-                                ),
-                              ),
-                              child: Stack(
-                                children: [
-                                  // 表头标签区（共用 UtenColumnHeaderDragHost）：
-                                  // 竖滑拖出隐藏 + 长按拎起横拖排序。手势识别器在视觉
-                                  // 包裹外层，拖拽更新只重建内层视觉，不打断进行中的手势；
-                                  // 仅开启表头设置时启用。
-                                  columnHeaderGestureArea(
-                                    i,
-                                    columnHeaderCell(i, _headerLabel(theme, i)),
-                                  ),
-                                  // 列宽拖拽手柄：贴列右边界、半溢出到相邻列的命中区。
-                                  Positioned(
-                                    right: -_gripHalf,
-                                    top: 0,
-                                    bottom: 0,
-                                    width: _gripHalf * 2,
-                                    child: GestureDetector(
-                                      behavior: HitTestBehavior.opaque,
-                                      onHorizontalDragUpdate: (d) =>
-                                          _resizeColumn(i, d.delta.dx),
-                                      child: const MouseRegion(
-                                        cursor: SystemMouseCursors.resizeColumn,
-                                        child: SizedBox.expand(),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
+                          _headerColumnCell(theme, i, frozen: false),
                         if (widget._showRowActionColumn)
                           SizedBox(
                             width: _deleteColWidth,
@@ -2365,12 +2562,101 @@ class _UtenEditableGridState<T extends EditableGridRow>
     );
   }
 
+  /// 单个表头列格：列宽 + 底色 + 右竖线 + 标签 + 列宽手柄。
+  ///
+  /// [frozen]=true 时构建的是「钉在视口左缘的冻结副本」格：内容不带换位/移除
+  /// 拖拽手势（kit 的 LayerLink 每 State 只挂一个 target，双挂载会让跟手浮层
+  /// 锚定错乱），但保留筛选点按、右键菜单（固定/移动/隐藏）与列宽手柄。
+  /// 已固定的列表头标签前显图钉（[_headerLabel] 内渲染，18px、与标签行垂直
+  /// 居中，2026-09-25 用户口径「icon 大一点、上下居中」）。
+  Widget _headerColumnCell(ThemeData theme, int i, {required bool frozen}) {
+    Widget content = _headerLabel(theme, i);
+    if (!frozen) {
+      content = columnHeaderGestureArea(i, columnHeaderCell(i, content));
+    }
+    content = UtenColumnHeaderMenuRegion(
+      entriesBuilder: () => _headerMenuEntries(i),
+      child: content,
+    );
+    return SizedBox(
+      width: _widths[i],
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHigh,
+          border: Border(right: BorderSide(color: theme.colorScheme.outline)),
+        ),
+        child: Stack(
+          children: [
+            content,
+            // 列宽拖拽手柄：贴列右边界、半溢出到相邻列的命中区。
+            Positioned(
+              right: -_gripHalf,
+              top: 0,
+              bottom: 0,
+              width: _gripHalf * 2,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragUpdate: (d) => _resizeColumn(i, d.delta.dx),
+                child: const MouseRegion(
+                  cursor: SystemMouseCursors.resizeColumn,
+                  child: SizedBox.expand(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 表头行首冻结区（全选格 + 已固定列表头格）的内容行。
+  Widget _withSelectHeaderRegion(
+    ThemeData theme, {
+    required List<int> pinnedIndices,
+    required Widget Function(int i) cell,
+  }) {
+    return Row(
+      children: [
+        if (widget._showSelect)
+          SizedBox(width: _selectColWidth, child: _selectAllHeaderCell(theme)),
+        for (final i in pinnedIndices) cell(i),
+      ],
+    );
+  }
+
+  /// 表头行首冻结区的通用包裹：宽度为 0（既无选择列也无固定列）时原样返回，
+  /// 无选择列且无固定列的表零开销、行为与从前一致。
+  Widget _withFrozenLeadingRegion(
+    ThemeData theme, {
+    required List<int> pinnedIndices,
+    required Widget cell,
+    required Widget row,
+  }) {
+    final width = _pinnedLeadingWidth(pinnedIndices);
+    if (width <= 0) return row;
+    return UtenFrozenLeadingColumn(
+      horizontal: _headerH,
+      width: width,
+      cell: cell,
+      row: row,
+    );
+  }
+
   Widget _headerLabel(ThemeData theme, int index) {
     final column = widget.columns[index];
+    // 固定列标签前缀：图钉（18px、与标签行垂直居中，2026-09-25 用户口径）。
+    final Widget? pinLeading = _pinnedColumnKeys.contains(column.key)
+        ? Icon(
+            Icons.push_pin_rounded,
+            size: 18,
+            color: theme.colorScheme.primary,
+          )
+        : null;
     if (column.filterValueOf != null) {
       return GridHeaderFilterCell(
         label: column.label,
         requiredStar: column.required,
+        leading: pinLeading,
         buckets: [
           for (final bucket in _filterBuckets(column))
             GridHeaderFilterBucket(
@@ -2410,6 +2696,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
     // Tooltip 的长按弹提示会与之打架；锁定/兜底说明在表头设置弹层的行内副标题。
     // [headerInfo] 走共用 UtenColumnHeaderInfo（UtenFieldHintIcon：悬停/点按/键盘，
     // 吞长按），与 MasterDataTableView 列头、输入框内 ⓘ 同一份实现（2026-09-10）。
+    final Widget labelContent = column.headerInfo == null
+        ? label
+        : UtenColumnHeaderInfo(label: label, message: column.headerInfo!);
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: UtenSpacing.s12,
@@ -2417,9 +2706,16 @@ class _UtenEditableGridState<T extends EditableGridRow>
       ),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: column.headerInfo == null
-            ? label
-            : UtenColumnHeaderInfo(label: label, message: column.headerInfo!),
+        child: pinLeading == null
+            ? labelContent
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  pinLeading,
+                  const SizedBox(width: UtenSpacing.s4),
+                  Flexible(child: labelContent),
+                ],
+              ),
       ),
     );
   }
@@ -2483,6 +2779,7 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
     this.confirmDelete = true,
     this.deleteConfirmLabel = '确认删除该行明细？',
     this.frozenSelectionScroll,
+    this.pinnedColumnIndices = const [],
   });
   final int index;
   final T row;
@@ -2492,6 +2789,9 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
   final bool showDelete;
   final double deleteColWidth;
   final BorderSide divider;
+
+  /// 固定在左侧的列下标（可见序列前缀；表头右键菜单维护）。
+  final List<int> pinnedColumnIndices;
 
   /// null = 该行不提供行末动作（只占位，保持列宽对齐）。
   final VoidCallback? onDelete;
@@ -2554,20 +2854,81 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
       decoration: BoxDecoration(border: Border(right: divider)),
       child: selectionCheckbox,
     );
-    // 横滚时钉在视口左缘的副本浮在数据格之上：必须自带同色不透明底 + 右线 + 行底线，
-    // 否则下面的数据格会透上来、行线也会在这一段断开。
-    final frozenSelectionCell = ColoredBox(
-      color: Color.alphaBlend(
-        rowBg ?? Colors.transparent,
-        theme.colorScheme.surface,
-      ),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(right: divider, bottom: divider),
-        ),
-        child: selectionCheckbox,
-      ),
+    // 横滚时钉在视口左缘的冻结区副本（勾选格 + 已固定列）：浮在数据格之上，必须
+    // 自带同色不透明底 + 行底线，否则下面的数据格会透上来、行线也会在这一段断开。
+    // 固定列的副本格是**只读文本快照**（textOf → frozenTextOf → filterValueOf）——
+    // 编辑单元绑定行级 TextEditingController/ValueNotifier，同一份 cellBuilder
+    // 不能挂载两次；未滚动时原格仍是可编辑控件。
+    final pinnedWidth = pinnedColumnIndices.fold(
+      0.0,
+      (sum, i) => sum + widths[i],
     );
+    final frozenLeadingWidth = (showSelect ? selectColWidth : 0) + pinnedWidth;
+    final Widget? frozenLeadingCell = frozenLeadingWidth <= 0
+        ? null
+        : ColoredBox(
+            color: Color.alphaBlend(
+              rowBg ?? Colors.transparent,
+              theme.colorScheme.surface,
+            ),
+            child: DecoratedBox(
+              decoration: BoxDecoration(border: Border(bottom: divider)),
+              child: _boundStretchRow(
+                stretch: stretchCells,
+                row: Row(
+                  crossAxisAlignment: stretchCells
+                      ? CrossAxisAlignment.stretch
+                      : CrossAxisAlignment.center,
+                  children: [
+                    if (showSelect)
+                      SizedBox(
+                        width: selectColWidth,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: Border(right: divider),
+                          ),
+                          child: selectionCheckbox,
+                        ),
+                      ),
+                    for (final i in pinnedColumnIndices)
+                      SizedBox(
+                        width: widths[i],
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: Border(right: divider),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: UtenSpacing.s8,
+                              vertical: UtenEditableGrid.cellVerticalPadding,
+                            ),
+                            child: Align(
+                              alignment: columns[i].numeric
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
+                              child: Text(
+                                columns[i].textOf?.call(row) ??
+                                    columns[i].frozenTextOf?.call(row) ??
+                                    columns[i].filterValueOf?.call(row) ??
+                                    '',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurface,
+                                  fontFeatures: columns[i].numeric
+                                      ? const [FontFeature.tabularFigures()]
+                                      : null,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          );
     final horizontal = frozenSelectionScroll;
     // 行尾删除/移出按钮与行首勾选框同款双份：行内一份跟整行同底（斑马纹/选中
     // 高亮由外层 DecoratedBox 给），横滚时钉在视口右缘的冻结副本自带不透明底
@@ -2612,11 +2973,11 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
     );
     Widget wrapFrozen(Widget rowBody) {
       var wrapped = rowBody;
-      if (showSelect && horizontal != null) {
+      if (frozenLeadingCell != null && horizontal != null) {
         wrapped = UtenFrozenLeadingColumn(
           horizontal: horizontal,
-          width: selectColWidth,
-          cell: frozenSelectionCell,
+          width: frozenLeadingWidth,
+          cell: frozenLeadingCell,
           row: wrapped,
         );
       }

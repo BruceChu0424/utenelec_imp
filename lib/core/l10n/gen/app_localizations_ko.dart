@@ -263,12 +263,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileChangePassword => '비밀번호 변경';
 
   @override
-  String get entryStaff => '임직원 로그인';
-
-  @override
-  String get entryVisitor => '방문자 로그인';
-
-  @override
   String get visitorLoginTitle => '방문자 로그인';
 
   @override
@@ -2330,6 +2324,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get materialRequired => 'Demand';
 
   @override
+  String get materialPublicAvailable => '공용 가용수량';
+
+  @override
   String get materialShortage => 'Kit shortage';
 
   @override
@@ -2367,11 +2364,6 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String materialAggregateSources(int products, int paths) {
     return '$products products · $paths paths';
-  }
-
-  @override
-  String materialCreateRoutes(int count) {
-    return 'Confirm routes ($count)';
   }
 
   @override
@@ -2430,7 +2422,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String materialRoutesNext(int count) {
-    return 'Next: review $count routes, select them and confirm. Each row keeps its selected route.';
+    return 'Next: $count rows still need a supply route (red frame). Pick one in the route column to save it instantly; only then can they be ordered. Other routes were auto-confirmed from goods masters.';
   }
 
   @override
@@ -3406,11 +3398,6 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String warehouseSubcontractOutboundLinesTitle(int count) {
-    return '출고 명세 ($count)';
-  }
-
-  @override
   String get warehouseSubcontractOutboundSaveDraft => '초안 저장';
 
   @override
@@ -3674,12 +3661,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get securityBlacklistRemoveDone => '차단이 해제되었습니다';
-
-  @override
-  String get entryStaffSubtitle => '직원 계정으로 로그인하여 작업 공간에 들어갑니다';
-
-  @override
-  String get entryVisitorSubtitle => '방문자는 휴대폰 인증번호로 등록하여 신속히 출입합니다';
 
   @override
   String get visitorColName => '이름';

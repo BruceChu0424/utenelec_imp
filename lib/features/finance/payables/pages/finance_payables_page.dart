@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../../components/inputs/uten_search_bar.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
@@ -703,7 +704,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
             : const ValueKey('finance-payables-create-payment'),
         size: UtenButtonSize.small,
         icon: useCreditAction ? Icons.link_rounded : Icons.add_card_rounded,
-        isLoading: useCreditAction && _applyingOffset,
         onPressed: enabled
             ? (useCreditAction ? _applySelectedCredit : _createPayment)
             : null,
@@ -752,108 +752,118 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
         ],
       ),
       body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-            child: Column(
-              children: [
-                if (availableWorkspaces.length > 1) ...[
-                  // 全平台统一筛选工具条：工作区分段（无搜索框的纯分段形态）。
-                  // 委外超耗责任挂红圆计数徽章（pendingLossCases，0/null 不显示）。
-                  UtenFilterToolbar<_PayablesWorkspaceView>(
-                    segments: [
-                      if (_canViewPayables)
-                        const UtenFilterSegment(
-                          value: _PayablesWorkspaceView.payables,
-                          label: '应付台账',
-                        ),
-                      if (_canViewLossClaims)
-                        UtenFilterSegment(
-                          value: _PayablesWorkspaceView.lossClaims,
-                          label: '委外超耗责任',
-                          count: _result?.summary.pendingLossCases,
-                          // 未判定的超耗案件在等财务定责，是待办不是浏览数。
-                          countForm: UtenSegmentCountForm.actionable,
-                        ),
-                      if (_canViewSupplierSettlements)
-                        const UtenFilterSegment(
-                          value: _PayablesWorkspaceView.supplierSettlements,
-                          label: '月结批次',
-                        ),
-                    ],
-                    selected: {_workspace},
-                    onSelectionChanged: (value) => setState(() {
-                      _workspace = value;
-                      _selectedIds = <String>{};
-                      _selectedItemsById.clear();
-                    }),
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                ],
-                if (_workspace == _PayablesWorkspaceView.payables &&
-                    _canViewPayables)
-                  Expanded(
-                    child: UtenCollapsingHeaderScrollView(
-                      collapsingHeader: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          FinancePayablesKpiStrip(
-                            summary: _result?.summary,
-                            loading: _loading && _result == null,
-                          ),
-                          if (!isExpanded) ...[
-                            const SizedBox(height: UtenSpacing.s12),
-                            _compactFilterBar(theme),
-                          ],
-                          const SizedBox(height: UtenSpacing.s12),
-                        ],
-                      ),
-                      body: isExpanded
-                          ? UtenListTwoPane(
-                              filterPane: _buildFilters(),
-                              tablePane: _buildPayablesTablePane(
-                                theme: theme,
-                                names: names.supplierEntries,
-                                currencyNames: names.currencyEntries,
-                                settlementMethods: settlementMethods,
-                                total: total,
-                                canCreatePayment: canCreatePayment,
-                                canApplyOffset: canApplyOffset,
-                              ),
-                            )
-                          : _buildPayablesTablePane(
-                              theme: theme,
-                              names: names.supplierEntries,
-                              currencyNames: names.currencyEntries,
-                              settlementMethods: settlementMethods,
-                              total: total,
-                              canCreatePayment: canCreatePayment,
-                              canApplyOffset: canApplyOffset,
+        child: Stack(
+          children: [
+            UtenContentContainer.wide(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+                child: Column(
+                  children: [
+                    if (availableWorkspaces.length > 1) ...[
+                      // 全平台统一筛选工具条：工作区分段（无搜索框的纯分段形态）。
+                      // 委外超耗责任挂红圆计数徽章（pendingLossCases，0/null 不显示）。
+                      UtenFilterToolbar<_PayablesWorkspaceView>(
+                        segments: [
+                          if (_canViewPayables)
+                            const UtenFilterSegment(
+                              value: _PayablesWorkspaceView.payables,
+                              label: '应付台账',
                             ),
-                    ),
-                  )
-                else if (_workspace == _PayablesWorkspaceView.lossClaims &&
-                    _canViewLossClaims)
-                  Expanded(
-                    child: SubcontractLossClaimPanel(
-                      refreshTick: _panelRefreshTick,
-                    ),
-                  )
-                else if (_workspace ==
-                        _PayablesWorkspaceView.supplierSettlements &&
-                    _canViewSupplierSettlements)
-                  Expanded(
-                    child: SupplierSettlementPanel(
-                      refreshTick: _panelRefreshTick,
-                    ),
-                  )
-                else
-                  const Expanded(
-                    child: Center(child: Text('缺少应付、委外超耗责任或月结批次查看权限')),
-                  ),
-              ],
+                          if (_canViewLossClaims)
+                            UtenFilterSegment(
+                              value: _PayablesWorkspaceView.lossClaims,
+                              label: '委外超耗责任',
+                              count: _result?.summary.pendingLossCases,
+                              // 未判定的超耗案件在等财务定责，是待办不是浏览数。
+                              countForm: UtenSegmentCountForm.actionable,
+                            ),
+                          if (_canViewSupplierSettlements)
+                            const UtenFilterSegment(
+                              value: _PayablesWorkspaceView.supplierSettlements,
+                              label: '月结批次',
+                            ),
+                        ],
+                        selected: {_workspace},
+                        onSelectionChanged: (value) => setState(() {
+                          _workspace = value;
+                          _selectedIds = <String>{};
+                          _selectedItemsById.clear();
+                        }),
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                    ],
+                    if (_workspace == _PayablesWorkspaceView.payables &&
+                        _canViewPayables)
+                      Expanded(
+                        child: UtenCollapsingHeaderScrollView(
+                          collapsingHeader: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              FinancePayablesKpiStrip(
+                                summary: _result?.summary,
+                                loading: _loading && _result == null,
+                              ),
+                              if (!isExpanded) ...[
+                                const SizedBox(height: UtenSpacing.s12),
+                                _compactFilterBar(theme),
+                              ],
+                              const SizedBox(height: UtenSpacing.s12),
+                            ],
+                          ),
+                          body: isExpanded
+                              ? UtenListTwoPane(
+                                  filterPane: _buildFilters(),
+                                  tablePane: _buildPayablesTablePane(
+                                    theme: theme,
+                                    names: names.supplierEntries,
+                                    currencyNames: names.currencyEntries,
+                                    settlementMethods: settlementMethods,
+                                    total: total,
+                                    canCreatePayment: canCreatePayment,
+                                    canApplyOffset: canApplyOffset,
+                                  ),
+                                )
+                              : _buildPayablesTablePane(
+                                  theme: theme,
+                                  names: names.supplierEntries,
+                                  currencyNames: names.currencyEntries,
+                                  settlementMethods: settlementMethods,
+                                  total: total,
+                                  canCreatePayment: canCreatePayment,
+                                  canApplyOffset: canApplyOffset,
+                                ),
+                        ),
+                      )
+                    else if (_workspace == _PayablesWorkspaceView.lossClaims &&
+                        _canViewLossClaims)
+                      Expanded(
+                        child: SubcontractLossClaimPanel(
+                          refreshTick: _panelRefreshTick,
+                        ),
+                      )
+                    else if (_workspace ==
+                            _PayablesWorkspaceView.supplierSettlements &&
+                        _canViewSupplierSettlements)
+                      Expanded(
+                        child: SupplierSettlementPanel(
+                          refreshTick: _panelRefreshTick,
+                        ),
+                      )
+                    else
+                      const Expanded(
+                        child: Center(child: Text('缺少应付、委外超耗责任或月结批次查看权限')),
+                      ),
+                  ],
+                ),
+              ),
             ),
-          ),
+            // 应用贷项提交期间的全屏居中遮罩（2026-09-25 统一口径：点按钮跑
+            // 网络一律 UtenBusyOverlay，不再只有按钮内转圈）。
+            if (_applyingOffset)
+              const Positioned.fill(
+                child: UtenBusyOverlay(title: '正在应用贷项，请稍候'),
+              ),
+          ],
         ),
       ),
     );

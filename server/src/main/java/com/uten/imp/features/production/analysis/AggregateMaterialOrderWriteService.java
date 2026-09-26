@@ -257,7 +257,13 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         em.createNativeQuery("UPDATE preplan_aggregate_batches SET row_version=row_version+1 WHERE id=:id AND row_version=:version").setParameter("id",batch.id()).setParameter("version",batch.version()).executeUpdate();
     }
     private External createExternal(Batch batch,GroupPreview group,UUID warehouse) {
-        UUID publicSlice=UUID.randomUUID(),safetySlice=UUID.randomUUID();BigDecimal regular=group.requestedQty();String source="物料分析汇总 "+BusinessTime.today();
+        UUID publicSlice=UUID.randomUUID(),safetySlice=UUID.randomUUID();BigDecimal regular=group.requestedQty();
+        // 来源标签（V719/V720）：汇总批次锚定单一分析，直接用其 WL 编号——采购/委外
+        // 「计划号/来源计划」列与经典通道同值可排序；无编号的夹具行回退旧日期标签。
+        Object noRow=em.createNativeQuery("SELECT analysis_no FROM production_material_analyses WHERE id=:id")
+                .setParameter("id",batch.analysis()).getSingleResult();
+        String source=noRow==null||noRow.toString().isBlank()
+                ?"物料分析汇总 "+BusinessTime.today():noRow.toString();
         UUID item=null,safetyItem=null;External result;
         if("BUY".equals(group.route())) {
             List<ProductionPurchaseRequestFacade.DraftLine> lines=new ArrayList<>();

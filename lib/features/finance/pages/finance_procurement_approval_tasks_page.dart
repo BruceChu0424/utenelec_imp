@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
@@ -12,6 +13,7 @@ import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -38,10 +40,15 @@ class FinanceProcurementApprovalTasksPage extends ConsumerStatefulWidget {
   const FinanceProcurementApprovalTasksPage({
     super.key,
     this.embedded = false,
+    this.externalHeader,
     this.refreshTick = 0,
   });
 
   final bool embedded;
+
+  /// 宿主（业务审核中心）的大类行：挂进本页折叠头，随页一起滚走
+  /// （2026-09-24 用户口径「表格滑到顶」，置顶后只剩表格自身工具条）。
+  final Widget? externalHeader;
 
   /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前页。
   final int refreshTick;
@@ -509,20 +516,30 @@ class _FinanceProcurementApprovalTasksPageState
         ref.watch(isSuperAdminProvider) ||
         permissions.contains(Perm.financeOrderApprovalView);
     final body = SafeArea(
-      child: !allowed
-          ? UtenEmpty.error(
-              message: '无权查看订货审批任务',
-              description: '只有被授权的财务审核人员可以进入。',
-            )
-          : _loading && _result == null
-          ? const UtenSkeletonList()
-          : _error != null && _result == null
-          ? UtenEmpty.error(
-              message: _error,
-              actionLabel: '重新加载',
-              onAction: () => _load(1),
-            )
-          : _buildList(context),
+      child: Stack(
+        children: [
+          !allowed
+              ? UtenEmpty.error(
+                  message: '无权查看订货审批任务',
+                  description: '只有被授权的财务审核人员可以进入。',
+                )
+              : _loading && _result == null
+              ? const UtenSkeletonList()
+              : _error != null && _result == null
+              ? UtenEmpty.error(
+                  message: _error,
+                  actionLabel: '重新加载',
+                  onAction: () => _load(1),
+                )
+              : _buildList(context),
+          // 批量审批提交期间的全屏居中遮罩（2026-09-25 统一口径：点按钮跑
+          // 网络一律 UtenBusyOverlay，弃折叠头里的 LinearProgressIndicator）。
+          if (_busyDecision)
+            const Positioned.fill(
+              child: UtenBusyOverlay(title: '正在处理批量审批，请稍候'),
+            ),
+        ],
+      ),
     );
     if (widget.embedded) return body;
     return Scaffold(
@@ -543,7 +560,7 @@ class _FinanceProcurementApprovalTasksPageState
                   key: const Key('finance-approval-refresh'),
                   label: '刷新',
                   icon: Icons.refresh_rounded,
-                  isLoading: (_loading && _result != null) || _busyDecision,
+                  isLoading: _loading && _result != null,
                   onPressed: _loading || _busyDecision ? null : _refreshCurrent,
                 ),
               ]
@@ -571,89 +588,79 @@ class _FinanceProcurementApprovalTasksPageState
         _selectedTasks.any((task) => task.allowedActions.contains('REJECT'));
     final selectable = canApprove || canReject;
 
-    final content = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        AbsorbPointer(
-          absorbing: _busyDecision,
-          child: Opacity(
-            opacity: _busyDecision ? 0.65 : 1,
-            child: _buildToolbar(result),
-          ),
-        ),
-        if (_error != null) ...[
+    // 2026-09-24 对齐物料分析页口径：工具条/提示行进折叠头（上滑先收走，
+    // 表头顶到头再表内滚），body 只剩表格；独立页与业务审核中心嵌入态同款。
+    final content = UtenCollapsingHeaderScrollView(
+      collapsingHeader: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 宿主大类行随页滚走（2026-09-24「表格滑到顶」）。
+          if (widget.externalHeader != null) ...[
+            widget.externalHeader!,
+            const SizedBox(height: UtenSpacing.s12),
+          ],
+          _buildToolbar(result),
+          if (_error != null) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            _InlineError(message: _error!, onRetry: () => _load(result.page)),
+          ],
           const SizedBox(height: UtenSpacing.s12),
-          _InlineError(message: _error!, onRetry: () => _load(result.page)),
         ],
-        if (_busyDecision) ...[
-          const SizedBox(height: UtenSpacing.s8),
-          const LinearProgressIndicator(
-            key: Key('finance-approval-batch-progress'),
+      ),
+      body: MasterDataTableView<FinanceProcurementApprovalTask>(
+        // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+        primary: true,
+        key: const Key('finance-approval-task-table'),
+        columns: _columns(context),
+        items: result.items,
+        facets: const {
+          'orderType': [
+            MasterFacetBucket(value: 'PURCHASE', count: 0, label: '采购订货'),
+            MasterFacetBucket(value: 'SUBCONTRACT', count: 0, label: '委外订货'),
+          ],
+        },
+        nullCounts: const {},
+        filters: {'orderType': _orderType?.name.toUpperCase()},
+        onFilterChanged: (key, value) {
+          if (key != 'orderType') return;
+          _selectType(switch (value) {
+            'PURCHASE' => FinanceProcurementOrderType.purchase,
+            'SUBCONTRACT' => FinanceProcurementOrderType.subcontract,
+            _ => null,
+          });
+        },
+        selectable: selectable,
+        idOf: (task) => _canSelectTask(task) ? task.caseId : null,
+        selectedIds: _selectedIds,
+        onSelectedIdsChanged: _setSelectedIds,
+        batchActionsBuilder: selectable ? _batchActions : null,
+        onRowTap: _open,
+        canOpenRow: (task) => task.canOpen,
+        rowMenuBuilder: (task) => [
+          UtenMenuItem(
+            label: '打开审核详情',
+            icon: Icons.fact_check_outlined,
+            onTap: () => _open(task),
           ),
-        ],
-        const SizedBox(height: UtenSpacing.s12),
-        Expanded(
-          child: AbsorbPointer(
-            absorbing: _busyDecision,
-            child: MasterDataTableView<FinanceProcurementApprovalTask>(
-              key: const Key('finance-approval-task-table'),
-              columns: _columns(context),
-              items: result.items,
-              facets: const {
-                'orderType': [
-                  MasterFacetBucket(value: 'PURCHASE', count: 0, label: '采购订货'),
-                  MasterFacetBucket(
-                    value: 'SUBCONTRACT',
-                    count: 0,
-                    label: '委外订货',
-                  ),
-                ],
-              },
-              nullCounts: const {},
-              filters: {'orderType': _orderType?.name.toUpperCase()},
-              onFilterChanged: (key, value) {
-                if (key != 'orderType') return;
-                _selectType(switch (value) {
-                  'PURCHASE' => FinanceProcurementOrderType.purchase,
-                  'SUBCONTRACT' => FinanceProcurementOrderType.subcontract,
-                  _ => null,
-                });
-              },
-              selectable: selectable,
-              idOf: (task) => _canSelectTask(task) ? task.caseId : null,
-              selectedIds: _selectedIds,
-              onSelectedIdsChanged: _setSelectedIds,
-              batchActionsBuilder: selectable ? _batchActions : null,
-              onRowTap: _open,
-              canOpenRow: (task) => task.canOpen,
-              rowMenuBuilder: (task) => [
-                UtenMenuItem(
-                  label: '打开审核详情',
-                  icon: Icons.fact_check_outlined,
-                  onTap: () => _open(task),
-                ),
-                if (task.detailRoute != null)
-                  UtenMenuItem(
-                    label: '查看原订货单详情',
-                    icon: Icons.open_in_new_rounded,
-                    onTap: () => _openSourceOrder(task),
-                  ),
-              ],
-              canShowRowMenu: (task) => task.canOpen,
-              isLoading: _loading,
-              loadingMore: _loading && _result != null,
-              error: result.items.isEmpty ? _error : null,
-              onRetry: () => _load(result.page),
-              emptyMessage: _keyword.isNotEmpty || _orderType != null
-                  ? '没有匹配的待审订货单'
-                  : '目前没有待审核的订货单',
-              currentPage: result.page,
-              totalPages: result.totalPages,
-              onPageChange: _load,
+          if (task.detailRoute != null)
+            UtenMenuItem(
+              label: '查看原订货单详情',
+              icon: Icons.open_in_new_rounded,
+              onTap: () => _openSourceOrder(task),
             ),
-          ),
-        ),
-      ],
+        ],
+        canShowRowMenu: (task) => task.canOpen,
+        isLoading: _loading,
+        loadingMore: _loading && _result != null,
+        error: result.items.isEmpty ? _error : null,
+        onRetry: () => _load(result.page),
+        emptyMessage: _keyword.isNotEmpty || _orderType != null
+            ? '没有匹配的待审订货单'
+            : '目前没有待审核的订货单',
+        currentPage: result.page,
+        totalPages: result.totalPages,
+        onPageChange: _load,
+      ),
     );
     // 嵌入形态不复套容器与内边距（业务审核中心已提供），避免双重 gutter。
     if (widget.embedded) return content;
@@ -845,7 +852,6 @@ class _FinanceProcurementApprovalTasksPageState
           type: UtenButtonType.danger,
           size: UtenButtonSize.large,
           icon: Icons.reply_rounded,
-          isLoading: _busyDecision,
           onPressed: rejectIssue == null && !_busyDecision
               ? _rejectSelected
               : null,
@@ -860,7 +866,6 @@ class _FinanceProcurementApprovalTasksPageState
           type: UtenButtonType.success,
           size: UtenButtonSize.large,
           icon: Icons.check_circle_outline_rounded,
-          isLoading: _busyDecision,
           onPressed: approveIssue == null && !_busyDecision
               ? _approveSelected
               : null,

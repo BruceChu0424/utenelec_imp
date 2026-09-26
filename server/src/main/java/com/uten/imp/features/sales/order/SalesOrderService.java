@@ -333,6 +333,9 @@ public class SalesOrderService {
             boolean financeRejected = Boolean.TRUE.equals(row[11]);
             boolean stopped = Boolean.TRUE.equals(row[15]);
             boolean closed = Boolean.TRUE.equals(row[16]);
+            // 草稿单（bill_status=0 且未驳回）：只有 stage='DRAFT' 才会进本查询。
+            boolean draft = !financeRejected && row[22] != null
+                    && ((Number) row[22]).intValue() == 0;
             double pct = orderQty > 0 ? Math.min(1.0, producedQty / orderQty) : 0.0;
             return new OrderProgressRow(
                     pgStr(row, 0), pgStr(row, 1), pgStr(row, 2), pgStr(row, 3), pgStr(row, 4),
@@ -342,7 +345,7 @@ public class SalesOrderService {
                             reservedQty, plannedQty, unplannedQty,
                             financeRejected, stopped, closed,
                             shipmentDraftQty, shipmentPendingFinanceQty,
-                            shipmentFinanceRejectedQty, shipmentApprovedQty),
+                            shipmentFinanceRejectedQty, shipmentApprovedQty, draft),
                     financeConfirmed,
                     financeRejected,
                     pgStr(row, 12),
@@ -397,6 +400,9 @@ public class SalesOrderService {
                 "SELECT (" + progressStageExpr() + "), COUNT(*) FROM ("
                         + progressGroupedSql(ownerScope) + ") t GROUP BY 1");
         ownerScope.bind(q);
+        // :stage='DRAFT' 打开子查询里的草稿行（其余 stage 值草稿不进查询）——
+        // 计数随列表一次带回 DRAFT 桶，「草稿」分段徽章与其余阶段同源。
+        q.setParameter("stage", "DRAFT");
         Map<String, Long> counts = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(q)) {
             counts.put((String) row[0], ((Number) row[1]).longValue());
@@ -468,6 +474,9 @@ public class SalesOrderService {
                     OR (o.status = 0
                         AND o.finance_confirmed = false
                         AND o.finance_rejected = true)
+                    OR (:stage = 'DRAFT'
+                        AND o.status = 0
+                        AND o.finance_rejected = false)
                   )
                 """ + " AND " + ownerScope.predicate();
         return """
@@ -486,14 +495,15 @@ public class SalesOrderService {
                        ship.draft_qty AS shipment_draft_qty,
                        ship.pending_finance_qty AS shipment_pending_finance_qty,
                        ship.finance_rejected_qty AS shipment_finance_rejected_qty,
-                       ship.approved_qty AS shipment_approved_qty
+                       ship.approved_qty AS shipment_approved_qty,
+                       o.status AS bill_status
                 """.formatted(SalesOrderChainSql.unplannedQtySql("i")) + base + "\n" + """
                 GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name,
                          o.finance_confirmed, o.finance_rejected,
                          o.finance_rejected_reason, finance_reviewer.full_name,
                          o.finance_rejected_at, o.is_stopped, o.is_closed,
                          ship.draft_qty, ship.pending_finance_qty,
-                         ship.finance_rejected_qty, ship.approved_qty
+                         ship.finance_rejected_qty, ship.approved_qty, o.status
                 """;
     }
 
@@ -508,6 +518,7 @@ public class SalesOrderService {
         return """
                 CASE
                   WHEN t.finance_rejected THEN 'REJECTED'
+                  WHEN t.bill_status = 0 THEN 'DRAFT'
                   WHEN t.is_stopped THEN 'CANCELED'
                   WHEN t.is_closed THEN 'CLOSED'
                   WHEN t.order_qty <= 0 THEN 'PENDING'
@@ -554,7 +565,7 @@ public class SalesOrderService {
     static String normalizeProgressStage(String stage) {
         String normalized = stage == null ? "" : stage.strip().toUpperCase();
         return switch (normalized) {
-            case "", "OPEN", "IN_PROGRESS", "READY_TO_SHIP", "REJECTED", "PENDING",
+            case "", "OPEN", "IN_PROGRESS", "READY_TO_SHIP", "DRAFT", "REJECTED", "PENDING",
                     "PRODUCING", "SHIPPABLE", "SHIPMENT_PENDING", "WAREHOUSE_PENDING",
                     "SHIPPED", "CANCELED", "CLOSED" -> normalized;
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订单进度阶段无效");
@@ -605,13 +616,15 @@ public class SalesOrderService {
             boolean closed) {
         return progressStageOf(
                 orderQty, producedQty, shippedQty, reservedQty, plannedQty, unplannedQty,
-                financeRejected, stopped, closed, 0, 0, 0, 0);
+                financeRejected, stopped, closed, 0, 0, 0, 0, false);
     }
 
     /**
      * Java 镜像：unplannedQty = Σ行剩余未排量；四个 shipment*Qty 是本单在途出货（status=0）
      * 按阶段的数量（与 {@link #progressStageExpr} 同序，V631）。剩余预留 = 预留 − 在途出货，
      * 仍大于零就还是可分批发货；在途出货占满预留后，才按仓库待出库 / 出货待财审展示。
+     * [draft] = 单据本身还是草稿（bill_status=0 且未被财务驳回）：草稿不参与生产阶段派生
+     * （与 SQL 镜像同序：驳回优先，其次草稿）。
      */
     static String progressStageOf(
             double orderQty,
@@ -626,8 +639,10 @@ public class SalesOrderService {
             double shipmentDraftQty,
             double shipmentPendingFinanceQty,
             double shipmentFinanceRejectedQty,
-            double shipmentApprovedQty) {
+            double shipmentApprovedQty,
+            boolean draft) {
         if (financeRejected) return "REJECTED";
+        if (draft) return "DRAFT";
         if (stopped) return "CANCELED";
         if (closed) return "CLOSED";
         if (orderQty <= 0) return "PENDING";

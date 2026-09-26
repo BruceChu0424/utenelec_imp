@@ -1,11 +1,22 @@
 // 货品详情「组装信息」页签：BOM 组件树（懒加载子级）+ 增删改（goods:edit）
 // + 审计模式（goods:bom:audit，V256）。
 //
-// 审计模式：工具条「审计模式」按钮进入后，单击行把该组件标记为「已核对无误」
-// （再点取消），已审行浅绿底 + 「已审」列 ✓。标记持久化在服务端
-// （goods_bom_items.audited_at/_by），多人/跨天/换机器不丢；编辑组件行内容后
-// 服务端自动清除该行的审计标记（内容变了需重新核对）。已审绿色对所有人可见，
+// 审计模式：工具条「审计模式」按钮进入后（进行中按钮转红色「退出审计」），
+// 已审行浅绿底 + 「已审」列（实心圆对勾/空心圆，点这一格即翻状态）——都只在
+// 该模式出现，关闭审计模式就是普通清单视图。右键菜单也提供「标记/取消已核对
+// 无误」；单击行本身始终是选中，审计模式下照样可以勾多行批量删除。
+// 标记持久化在服务端（goods_bom_items.audited_at/_by），多人/跨天/换机器不丢；
+// 编辑组件行内容后服务端自动清除该行的审计标记（内容变了需重新核对）。
 // 「审计模式」按钮仅 goods:bom:audit 持有者可见。
+//
+// 工具条（2026-09-25 口径）：顶部按钮全部靠左（表头设置/全屏 + BOM学习记录/
+// 预览/导出组件/导入组件/审计模式），统一高度 UtenTableToolbar.controlHeight、
+// 同色（primary）、不带 icon；「已选 N 项 + 添加组件/编辑/删除」驻右下悬浮组
+// （batchActionsBuilder，普通视图与全屏路由同款）。
+//
+// 右键（2026-09-25 统一口径）：右键 = 选中当前行 + UtenContextMenu 自绘小框
+// （编辑/添加子组件/删除/审计标记），与货品资料列表同款；此前没挂菜单时右键
+// 命中文本会弹框架默认的「全选/复制」工具条，看着像一整屏遮罩。
 //
 // 树结构：一级 = 当前货品的组件清单；组件自身有 BOM（hasChildren）可展开，
 // 展开时对组件 id 再调 list 接口懒加载（对照老系统 001.jpg 的 +/- 树）。
@@ -35,6 +46,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_error.dart';
@@ -47,6 +59,7 @@ import '../../../shared/widgets/uten_tree_table_cell.dart';
 import '../models/goods_bom_item.dart';
 import '../models/goods_node.dart';
 import '../repositories/goods_bom_repository.dart';
+import 'goods_bom_import_dialog.dart';
 import 'master_data_table_view.dart';
 import 'uten_goods_picker.dart';
 import 'goods_bom_learning_panel.dart';
@@ -177,8 +190,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   /// 审计标记请求防并发（连点同一行导致标记状态来回翻转）。
   bool _auditBusy = false;
 
-  /// 「审计模式」按钮可见性：goods:bom:audit 或超管（已审绿色对所有人可见，
-  /// 只有持有权限者能改标记）。
+  /// 「审计模式」按钮可见性：goods:bom:audit 或超管（已审绿色/已审列只在该模式
+  /// 下出现，只有持有权限者能改标记）。
   bool get _canAudit =>
       ref.watch(isSuperAdminProvider) ||
       ref.watch(currentPermissionsProvider).contains(Perm.goodsBomAudit);
@@ -597,10 +610,47 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   /// 单次批量删除请求的条数上限(与服务端 itemIds 上限一致)。
   static const int _batchDeleteLimit = 500;
 
+  // ---- 右键菜单（2026-09-25 统一口径：右键=选中当前行+自绘小框弹窗） ---------
+  //
+  // 与货品资料列表同款：MasterDataTableView 先把右键命中的行纳入选择集，再弹
+  // UtenContextMenu（锚定指针、无遮罩）；菜单动作直接复用悬浮组的编辑/删除/添加。
+  // 审计模式的「标记/取消已核对」也走这里（单击行不再兼任审计开关，勾选与审计
+  // 两种语义从此不打架）。
+
+  List<UtenContextMenuEntry> _rowMenuItems(_BomRow row) {
+    final single = _selectedRowIds.length == 1;
+    return [
+      UtenMenuItem(
+        label: '编辑', // TODO(l10n): 补 arb
+        enabled: widget.canEdit && single,
+        onTap: _editSelected,
+      ),
+      UtenMenuItem(
+        label: '添加子组件', // TODO(l10n): 补 arb
+        enabled: widget.canCreate,
+        onTap: _addItem,
+      ),
+      UtenMenuItem(
+        label: '删除', // TODO(l10n): 补 arb
+        enabled: widget.canDelete && _selectedRowIds.isNotEmpty,
+        destructive: true,
+        onTap: _deleteSelected,
+      ),
+      if (_auditMode) ...[
+        const UtenMenuDivider(),
+        UtenMenuItem(
+          label: row.node.item.audited ? '取消已核对' : '标记已核对无误', // TODO(l10n)
+          onTap: () => _toggleAudited(row),
+        ),
+      ],
+    ];
+  }
+
   // ---- 审计标记（V256） ---------------------------------------------------
   //
-  // 审计模式下单击行 = 标记/取消「已核对无误」（已审行绿色 + 「已审」列 ✓）。
-  // 标记写服务端 goods_bom_items.audited_at/_by：多人协作、跨天核对不丢。
+  // 审计模式下单击行 = 标记/取消「已核对无误」（已审行绿色 + 「已审」列 ✓，两者都
+  // 只在审计模式出现；关闭审计模式就是普通清单视图）。标记写服务端
+  // goods_bom_items.audited_at/_by：多人协作、跨天核对不丢。
   // 双击仍展开/收起子级（第一击已翻面标记属预期，展开后子组件才可逐行审）。
 
   Future<void> _toggleAudited(_BomRow row) async {
@@ -627,13 +677,10 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   // ---- 渲染 ---------------------------------------------------------------
 
   /// 表格列（与 MasterDataTableView 对齐：key 仅标识用，本页不接筛选/排序）。
-  /// 售价可见性（goods:price:view，V570）：无授权者「单价/金额」两列整列移除
-  ///（服务端 BOM 行 price/total 已同步置 null）。
+  /// 2026-09-25 口径「表格显示啥导出啥」：需求阶段/缺料处理/单价/金额四列从展示
+  /// 退役（数据仍在行上，编辑弹窗/复制粘贴/成本聚合不受影响）；后端导出同列集。
+  /// 「已审」列只在审计模式下出现（点该格翻已核对状态），关闭即普通清单视图。
   List<MasterColumnDef<_BomRow>> get _columns {
-    final canViewPrice =
-        ref.watch(isSuperAdminProvider) ||
-        ref.watch(currentPermissionsProvider).contains(Perm.goodsPriceView) ||
-        ref.watch(currentPermissionsProvider).contains(Perm.goodsPriceEdit);
     return [
       // 层级身份集中在首列：级联号 + 明确层级文字 + 连续树轨 + 48dp
       // 单击展开按钮。行单击只负责选中，不再让“双击整行”兼任树导航。
@@ -667,14 +714,38 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
           isLastChild: r.isLastChild,
         ),
       ),
-      // 已审列（V256）：审计标记为服务端持久数据，对所有人可见（✓ + 行变绿）；
-      // 改标记要 goods:bom:audit，进「审计模式」点行翻面。
-      MasterColumnDef(
-        key: 'audited',
-        label: '已审',
-        width: 56,
-        value: (r) => r.node.item.audited ? '✓' : '',
-      ),
+      // 已审列（V256）：审计标记持久在服务端，但只在做核对的人眼前出现——
+      // 进「审计模式」才显示 ✓ 列（改标记要 goods:bom:audit），关闭即正常清单。
+      if (_auditMode)
+        MasterColumnDef(
+          key: 'audited',
+          label: '已审',
+          width: 64,
+          value: (r) => r.node.item.audited ? '已核对' : '',
+          // 点这一格 = 翻「已核对无误」（2026-09-25：右键菜单之外的快捷路径）；
+          // 图标弃用细体 ✓ 文本，换实心圆形对勾（已核对，绿色）/ 空心圆（未核对，
+          // 待点选），年长用户隔着屏幕也认得出状态。
+          cellBuilder: (context, r) => Tooltip(
+            message: r.node.item.audited ? '已核对，点击取消' : '点击标记已核对',
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              visualDensity: VisualDensity.compact,
+              iconSize: 22,
+              icon: Icon(
+                r.node.item.audited
+                    ? Icons.check_circle
+                    : Icons.radio_button_unchecked,
+                color: r.node.item.audited
+                    ? Colors.green.shade700
+                    : Theme.of(
+                        context,
+                      ).colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
+              ),
+              onPressed: () => _toggleAudited(r),
+            ),
+          ),
+        ),
       MasterColumnDef(
         key: 'code',
         label: '编号',
@@ -712,12 +783,6 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         value: (r) => r.node.item.componentSourceType,
       ),
       MasterColumnDef(
-        key: 'controlStage',
-        label: '需求阶段',
-        width: 112,
-        value: (r) => r.node.item.controlStage.label,
-      ),
-      MasterColumnDef(
         key: 'consumptionBasis',
         label: '计量方式',
         width: 92,
@@ -740,34 +805,12 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             : '—',
       ),
       MasterColumnDef(
-        key: 'hardGate',
-        label: '缺料处理',
-        width: 88,
-        value: (r) => r.node.item.hardGate ? '阻止进入' : '只提醒',
-      ),
-      MasterColumnDef(
         key: 'qty',
         label: '数量',
         width: 72,
         type: 'number',
         value: (r) => _num(r.node.item.qty),
       ),
-      if (canViewPrice) ...[
-        MasterColumnDef(
-          key: 'price',
-          label: '单价',
-          width: 90,
-          type: 'money',
-          value: (r) => _money(r.node.item.price),
-        ),
-        MasterColumnDef(
-          key: 'total',
-          label: '金额',
-          width: 90,
-          type: 'money',
-          value: (r) => _money(r.node.item.total),
-        ),
-      ],
       MasterColumnDef(
         key: 'summary',
         label: '备注',
@@ -780,133 +823,119 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   @override
   Widget build(BuildContext context) {
     super.build(context); // AutomaticKeepAliveClientMixin
-    final roots = _roots ?? const <_BomNode>[];
     final visible = _visibleRows;
-    final auditedCount = visible.where((r) => r.node.item.audited).length;
-    // 勾中条数决定工具条两个按钮的可用性：编辑只认 1 条，删除 >=1 条即可。
+    // 勾中条数决定悬浮组「编辑」的可用性：编辑只认 1 条，删除 >=1 条即可。
     final selectedCount = _selectedRowIds.length;
-    // 勾选框要不要给：审计模式下单击行是「翻已核对」，与勾选打架，一律关掉；
-    // 三个动作(批量删除/编辑/添加组件定位)一个都没权限时也关掉——只读账号看到
-    // 一整列勾选框却没有任何按钮可接，勾了等于白勾，按准则「隐藏而非禁用」。
+    // 勾选框要不要给：三个动作(批量删除/编辑/添加组件定位)一个都没权限时不给——
+    // 只读账号看到一整列勾选框却没有任何按钮可接，按准则「隐藏而非禁用」。
+    // 2026-09-25 起审计模式不再关掉勾选：审计模式下也要能多选批量删除，
+    // 「标记已核对」改由右键菜单触发（单击行与勾选不再打架）。
     final canActOnSelection =
         widget.canDelete || widget.canEdit || widget.canCreate;
-    final selectable = !_auditMode && canActOnSelection;
-    // 说明条只讲这个账号真能做的事：没有删除权还写着「可勾多行一起删除」，
-    // 等于教用户去点一个不存在的按钮。
-    // TODO(l10n): 本段提示待进 arb。
-    final hints = <String>[
-      '层级列箭头可展开',
-      if (selectable && widget.canDelete) '最前面的方框可勾多行一起删除',
-      if (selectable && widget.canEdit) '只勾一行时「编辑」可用',
-      if (selectable && widget.canCreate) '只勾一行时「添加组件」默认加在它下面',
-    ];
-    return Column(
+    final selectable = canActOnSelection;
+    return Stack(
       children: [
-        // 批量删除网络段的全屏加载遮罩(root Overlay 传送门，不占布局)。
-        // 确认框已经关掉才会挂上来，否则它会盖住确认框(见 _deleteSelected)。
-        if (_deleting)
-          const UtenBusyOverlay(
-            title: '正在删除组件',
-            description: '正在把所选组件从组装清单中移除，请勿重复提交或关闭页面。',
-          ),
-        // 说明条：组件数 / 操作提示；审计模式下显示核对进度。
-        // 编辑/删除/添加组件/审计模式按钮已挪进表格工具条
-        // （toolbarActions），全屏表格路由里也带同一组按钮与逻辑。
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            UtenSpacing.s16,
-            UtenSpacing.s12,
-            UtenSpacing.s16,
-            UtenSpacing.s8,
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _loading
-                      ? '加载中…'
-                      : _auditMode
-                      ? '审计模式：点击行标记/取消「已核对无误」(已审 $auditedCount/${visible.length}；编辑组件后需重新核对)' // TODO(l10n)
-                      : (roots.isEmpty
-                            ? '该货品暂无组装信息'
-                            : '共 ${roots.length} 个顶层组件(${hints.join('；')})'),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: _auditMode
-                        ? Colors.green.shade700
-                        : Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontWeight: _auditMode ? FontWeight.w600 : null,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
         // 统一表格（与货品资料列表同款）：Excel 表头分隔线 + 拖拽列宽 + 底部横滑条。
-        Expanded(
+        Positioned.fill(
           child: MasterDataTableView<_BomRow>(
-            // 按 selectable 分键，进出审计模式时整棵表重建而不是原地重排。
-            // 勾选列的出现/消失会把行子树换一个父级，SelectionArea 的
-            // SelectionKeepAlive 带着 GlobalKey 一起被搬走，于是同一帧里
-            // 「Duplicate GlobalKeys detected」+ 释放时 null check 崩(widget 树
-            // finalize 阶段)。代价是切模式会丢掉列宽与滚动位置，可以接受：那本来
-            // 就是一次模式切换，不是刷新。
-            key: ValueKey('goods-bom-table-$selectable'),
+            // 按 selectable/审计模式分键，进出审计模式时整棵表重建而不是原地重排
+            // （「已审」列的出现/消失会把行子树换父级，SelectionArea 的
+            // SelectionKeepAlive 带着 GlobalKey 一起被搬走，同一帧里
+            // 「Duplicate GlobalKeys detected」崩）。代价是切模式会丢掉列宽与
+            // 滚动位置，可以接受：那本来就是一次模式切换，不是刷新。
+            key: ValueKey('goods-bom-table-$selectable-$_auditMode'),
             columns: _columns,
             items: visible,
             facets: const {},
             nullCounts: const {},
             filters: const {},
             onFilterChanged: (_, _) {},
-            // 多选：最前列勾选框 + 表头三态全选，工具条驻「已选 N 项 + 清除」。
-            // **审计模式下必须关掉**——那时单击行的语义是翻「已核对无误」，与
-            // 「单击切换勾选」直接打架；审计模式因此退回原来的单选点击。
-            // 只读账号(三个动作都没权限)同样不给勾选框，见 [canActOnSelection]。
+            // 多选：最前列勾选框 + 表头三态全选；「已选 N 项 + 清除」胶囊与
+            // 添加组件/编辑/删除一起驻右下悬浮组（batchActionsBuilder），
+            // 普通视图与全屏路由同款渲染。
             selectable: selectable,
             // _BomRow 无天然唯一 id，用复合键(见 _rowId)。
             idOf: _rowId,
             selectedIds: _selectedRowIds,
             onSelectedIdsChanged: (next) =>
                 setState(() => _selectedRowIds = next),
-            // 下面两个回调只在审计模式(selectable=false)生效：多选态下表格会
-            // 忽略它们(master_data_table_view.dart 的硬契约)。两种模式都写同一个
-            // _selectedRowIds，页面里不存在第二份「当前选中」。
-            onSelectionChanged: (row) {
-              setState(() => _selectedRowIds = {_rowId(row)});
-              if (_auditMode) _toggleAudited(row);
-            },
             // _BomRow 每次 build 重建(引用变)，故按行键比较而非引用相等。
             isSelected: (row) => _selectedRowIds.contains(_rowId(row)),
-            // 已审行浅绿底（审计标记持久在服务端，对所有人可见）；
-            // 单击选中时表格组件自动加深加亮。
-            rowColor: (r) => r.node.item.audited
+            // 右键菜单：组件先选中当前行再弹自绘小框（与货品资料列表同款）。
+            rowMenuBuilder: _rowMenuItems,
+            // 已审行浅绿底也只在审计模式出现（与「已审」列同进退）——审计标记是
+            // 核对工作态，普通视图不该有无从解释的绿色行；单击选中时表格组件
+            // 自动加深加亮。
+            rowColor: (r) => _auditMode && r.node.item.audited
                 ? Colors.green.withValues(alpha: 0.15)
                 : null,
-            // 编辑/删除/添加组件：挂进表格工具条——普通态显示在「全屏」按钮旁，
-            // 进全屏后由全屏路由同位置渲染，按钮逻辑（本 State 的增删改方法）
-            // 与选中态（didUpdateWidget → _fsTick 驱动全屏重建）全部生效。
-            // 「预览」（A4 产品配件清单）2026-09-12 从详情头部迁入：走
-            // toolbarLeadingActions 紧挨「全屏」按钮，样式同款（48 高、primary），
-            // 全屏路由与空态工具条同位置渲染。
+            // 工具条驻左：表头设置/全屏为内建按钮，其余业务按钮走
+            // toolbarLeadingActions 紧随其后（2026-09-25 口径：顶部按钮全部靠左、
+            // 统一高度/同色、不带 icon——大动作在右下悬浮组）。
             toolbarLeadingActions: [
               UtenButton(
                 key: const Key('goods-bom-learning'),
-                icon: Icons.history_outlined,
+                height: UtenTableToolbar.controlHeight,
                 onPressed: () => showGoodsBomLearning(context, widget.goodsId),
                 child: const Text('BOM 学习记录'), // TODO(l10n): 补 arb
               ),
               if (widget.onPreview != null)
                 UtenButton(
                   key: const ValueKey('goods-bom-preview'),
-                  size: UtenButtonSize.large,
                   height: UtenTableToolbar.controlHeight,
-                  icon: Icons.preview_outlined,
                   onPressed: widget.onPreview,
                   child: const Text('预览'), // TODO(l10n): 补 arb
                 ),
+              // 导出组件（goods:export）：与「预览」弹窗里的下载Excel 同一端点
+              // （整树展开的加密 xlsx），列集与本表一致。
+              UtenExportButton(
+                endpoint: ApiEndpoints.goodsBomExport(widget.goodsId),
+                requiredPermission: Perm.goodsExport,
+                report: '',
+                queryParams: const {},
+                height: UtenTableToolbar.controlHeight,
+                icon: null,
+                filename:
+                    '产品配件清单_${widget.productCode ?? widget.productName ?? widget.goodsId}',
+                label: '导出组件', // TODO(l10n): 补 arb
+              ),
+              // 导入组件（goods:bom:create，与粘贴组件同权）：格式 = 导出格式，
+              // 序号列(1/2.1)表达层级，检测报告确认后再提交。
+              if (widget.canCreate)
+                UtenButton(
+                  key: const Key('goods-bom-import'),
+                  height: UtenTableToolbar.controlHeight,
+                  onPressed: () => showGoodsBomImport(
+                    context,
+                    ref,
+                    goodsId: widget.goodsId,
+                    onImported: () {
+                      widget.onDataChanged?.call();
+                      _load();
+                    },
+                  ),
+                  child: const Text('导入组件'), // TODO(l10n): 补 arb
+                ),
+              // 审计模式（V256，goods:bom:audit）：开=右键行「标记/取消已核对无误」
+              // （已审行绿色 + 已审列 ✓，都只在该模式出现）；勾选与批量删除照常可用。
+              if (_canAudit)
+                UtenButton(
+                  height: UtenTableToolbar.controlHeight,
+                  // 审计进行中 = 红色「退出审计」，一眼看出当前处于特殊工作态。
+                  type: _auditMode
+                      ? UtenButtonType.danger
+                      : UtenButtonType.primary,
+                  onPressed: () => setState(() {
+                    _auditMode = !_auditMode;
+                    // 模式切换后「选中」的语义不再变化(都是勾选)，但切走审计时
+                    // 清一下残留更干净，避免带着勾选进编辑流。
+                    if (!_auditMode) _selectedRowIds = <String>{};
+                  }),
+                  child: Text(_auditMode ? '退出审计' : '审计模式'), // TODO(l10n)
+                ),
             ],
-            toolbarActions: [
-              // 页面主动作置于业务工具条最前：持有独立 goods:bom:create 即显示，
-              // 不依赖 goods:edit，窄屏换行时也不会被次要导出/编辑动作挤到末尾。
+            // 右下悬浮组：已选 N 项胶囊 + 添加组件/编辑/删除（全屏路由同款）。
+            batchActionsBuilder: (context, ids) => [
               if (widget.canCreate)
                 UtenButton(
                   key: const Key('goods-bom-add-component'),
@@ -915,29 +944,15 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   onPressed: _addItem,
                   child: const Text('添加组件'), // TODO(l10n): 补 arb
                 ),
-              // 导出组件（goods:export）：与「预览」弹窗里的下载Excel 同一端点
-              // （整树展开的加密 xlsx），此处是组装信息页签的直接入口。
-              UtenExportButton(
-                endpoint: ApiEndpoints.goodsBomExport(widget.goodsId),
-                requiredPermission: Perm.goodsExport,
-                report: '',
-                queryParams: const {},
-                filename:
-                    '产品配件清单_${widget.productCode ?? widget.productName ?? widget.goodsId}',
-                label: '导出组件', // TODO(l10n): 补 arb
-                size: UtenButtonSize.large,
-              ),
               // 编辑只对一条生效：勾了多条时目标不明确，宁可灰掉也不替用户猜。
               if (widget.canEdit)
                 UtenButton(
-                  type: UtenButtonType.secondary,
                   size: UtenButtonSize.large,
                   icon: Icons.edit_outlined,
                   onPressed: selectedCount == 1 ? _editSelected : null,
                   child: const Text('编辑'), // TODO(l10n): 补 arb
                 ),
               // 删除：勾一条起可用，一律走批量路径(条数在确认框里报)。
-              // 按钮文字不带条数——已选数由工具条的「已选 N 项」胶囊负责。
               if (widget.canDelete)
                 UtenButton(
                   key: const Key('goods-bom-delete-selected'),
@@ -947,39 +962,26 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   onPressed: selectedCount == 0 ? null : _deleteSelected,
                   child: const Text('删除'), // TODO(l10n): 补 arb
                 ),
-              // 审计模式（V256，goods:bom:audit）：开=点行标记/取消「已核对无误」
-              // （已审行绿色）。与编辑权限解耦——质检可以只有审计权没有编辑权。
-              if (_canAudit)
-                UtenButton(
-                  type: _auditMode
-                      ? UtenButtonType.primary
-                      : UtenButtonType.tonal,
-                  size: UtenButtonSize.large,
-                  icon: Icons.fact_check_outlined,
-                  onPressed: () => setState(() {
-                    _auditMode = !_auditMode;
-                    // 两种模式的「选中」语义不同(勾选集 vs 单选高亮)，切换时
-                    // 不清空就会留下看不见的残留勾选：退出审计后一点「删除」，
-                    // 删的是用户压根没勾过的行。
-                    _selectedRowIds = <String>{};
-                  }),
-                  child: Text(_auditMode ? '退出审计' : '审计模式'), // TODO(l10n)
-                ),
             ],
             isLoading: _loading && _roots == null,
             error: _error,
             onRetry: _load,
-            emptyMessage: '暂无组装信息，点上方「添加组件」录入', // TODO(l10n): 补 arb
+            emptyMessage: '暂无组装信息，点右下「添加组件」录入', // TODO(l10n): 补 arb
           ),
         ),
+        // 批量删除网络段的全屏加载遮罩(root Overlay 传送门，不占布局)。
+        // 确认框已经关掉才会挂上来，否则它会盖住确认框(见 _deleteSelected)。
+        if (_deleting)
+          const UtenBusyOverlay(
+            title: '正在删除组件',
+            description: '正在把所选组件从组装清单中移除，请勿重复提交或关闭页面。',
+          ),
       ],
     );
   }
 
   static String _num(double? v) =>
       v == null ? '' : (v == v.roundToDouble() ? v.toStringAsFixed(0) : '$v');
-
-  static String _money(double? v) => v == null ? '' : v.toStringAsFixed(2);
 }
 
 /// 添加组件弹窗的返回：是否保存 + 实际写入的父级 goodsId（供父级恢复展开）。

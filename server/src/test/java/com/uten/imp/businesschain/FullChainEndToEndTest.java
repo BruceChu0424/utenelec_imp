@@ -12398,7 +12398,106 @@ class FullChainEndToEndTest {
      * materials are fixture errors: this helper never creates a package, changes a BOM, or seeds stock.
      * A complete saved assignment is retained; repeated reporting reuses the started segment.
      */
+    /** 单据仓必须是具体子仓: 世界主仓带有子仓时, 取/建一个普通实际叶仓(保持其它叶仓世界的原行为)。 */
+    private UUID reportWarehouse(World w) {
+        Boolean isMain = jdbc.query("""
+                select exists(select 1 from warehouses child
+                              where child.parent_id = ? and not child.is_deleted)
+                """, (rs, i) -> rs.getBoolean(1), w.warehouseId()).getFirst();
+        if (!Boolean.TRUE.equals(isMain)) return w.warehouseId();
+        UUID leaf = jdbc.query("""
+                select warehouse.id from warehouses warehouse
+                where warehouse.parent_id = ? and warehouse.status = '使用'
+                  and coalesce(warehouse.is_line_side, false) = false and warehouse.is_deleted = false
+                  and not exists(select 1 from warehouses child
+                                 where child.parent_id = warehouse.id and not child.is_deleted)
+                order by warehouse.id limit 1
+                """, (rs, i) -> rs.getObject("id", UUID.class), w.warehouseId())
+                .stream().findFirst().orElse(null);
+        if (leaf == null) {
+            leaf = UUID.randomUUID();
+            jdbc.update("""
+                    insert into warehouses(id, code, name, parent_id, status, is_accountable)
+                    values (?, ?, ?, ?, '使用', true)
+                    """, leaf, "E2E-RPT-" + leaf, "报工叶仓-" + leaf, w.warehouseId());
+        }
+        return leaf;
+    }
+
     private StartedSegment startedSegmentFor(World w, UUID planId, UUID planItemId, UUID orderItemId) {
+        return startedSegmentFor(w, planId, planItemId, orderItemId, null);
+    }
+
+    /** V710 起 ZERO_MATERIAL+DIRECT_MAKE 叶段开工前须声明真实物料来源: 申报物料既不能是
+     * 本段产出也不能成环, 就地新建无 BOM 的中性采购料; 零价自投保持老夹具「零成本产出」
+     * 的价值前提(OTHER_IN +qty 零价 → 领料出库 -qty → 净库存不变)。 */
+    private void declareAndIssueSelfInput(World w, UUID segmentId, UUID goodsId) {
+        BigDecimal planned = jdbc.queryForObject(
+                "SELECT planned_qty FROM production_execution_segments WHERE id=?", BigDecimal.class, segmentId);
+        UUID neutral = UUID.randomUUID();
+        insertGoods(neutral, "E2E-DISC-" + neutral, "发现自投料-" + neutral, "采购", w.unitId(), w.unitLegacy());
+        // 物料发现配置只接受「与该任务同主仓」的普通实际叶仓; 按任务计划仓解析主仓, 缺叶仓时就地补建。
+        UUID main = jdbc.queryForObject(
+                "SELECT fn_warehouse_main_id(package.warehouse_id) FROM production_execution_segments segment"
+                        + " JOIN production_planning_packages package ON package.id=segment.package_id"
+                        + " WHERE segment.id=?",
+                UUID.class, segmentId);
+        UUID leafForInput = jdbc.query("""
+                select warehouse.id from warehouses warehouse
+                where warehouse.parent_id = ? and warehouse.status = '使用'
+                  and coalesce(warehouse.is_line_side, false) = false and warehouse.is_deleted = false
+                  and not exists(select 1 from warehouses child
+                                 where child.parent_id = warehouse.id and not child.is_deleted)
+                order by warehouse.id limit 1
+                """, (rs, i) -> rs.getObject("id", UUID.class), main).stream().findFirst().orElse(null);
+        if (leafForInput == null) {
+            leafForInput = UUID.randomUUID();
+            jdbc.update("""
+                    insert into warehouses(id, code, name, parent_id, status, is_accountable)
+                    values (?, ?, ?, ?, '使用', true)
+                    """, leafForInput, "E2E-SELF-" + leafForInput, "自投叶仓-" + leafForInput, main);
+        }
+        var pendingMaterials = materialDiscoveryService.request(segmentId, new ProductionMaterialDiscoveryContracts.Request(
+                jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segmentId),
+                "e2e-discovery-" + segmentId));
+        putDirectTargetStockZeroPriceAt(w, neutral, planned, leafForInput);
+        var configured = materialDiscoveryService.configure(pendingMaterials.requestId(),
+                new ProductionMaterialDiscoveryContracts.Configure(
+                        pendingMaterials.version(), "e2e-discovery-configure-" + segmentId,
+                        List.of(new ProductionMaterialDiscoveryContracts.Material(
+                                neutral, null, w.unitId(), leafForInput, planned))));
+        for (UUID materialDraw : configured.drawDocIds()) {
+            var materialIssue = new com.uten.imp.features.stock.dto.StockDocIssueRequest();
+            materialIssue.setIdempotencyKey("e2e-discovery-issue-" + materialDraw);
+            materialIssue.setLines(jdbc.query("SELECT id,qty FROM stock_document_items WHERE doc_id=? AND NOT is_deleted", (row, index) -> {
+                var line = new com.uten.imp.features.stock.dto.StockDocIssueRequest.Line();
+                line.setItemId(row.getObject(1, UUID.class));
+                line.setQty(row.getBigDecimal(2));
+                return line;
+            }, materialDraw));
+            stockDocService.approveAndIssue(materialDraw, materialIssue);
+        }
+    }
+
+    private void putDirectTargetStockZeroPriceAt(World w, UUID goods, java.math.BigDecimal qty, UUID warehouseId) {
+        loginAs(w.superAdminUserId());
+        var request = new com.uten.imp.features.stock.dto.StockDocSaveRequest();
+        request.setDocType("OTHER_IN");
+        request.setWarehouseId(warehouseId);
+        request.setBillDate(BusinessTime.today());
+        var line = new com.uten.imp.features.stock.dto.StockDocItemLine();
+        line.setGoodsId(goods);
+        line.setUnitId(w.unitId());
+        line.setUnitRate(BigDecimal.ONE);
+        line.setQty(qty);
+        line.setPrice(BigDecimal.ZERO);
+        line.setAmountOriginal(BigDecimal.ZERO);
+        line.setAmountLocal(BigDecimal.ZERO);
+        request.setItems(List.of(line));
+        stockDocService.approve(stockDocService.create(request).getId());
+    }
+
+    private StartedSegment startedSegmentFor(World w, UUID planId, UUID planItemId, UUID orderItemId, UUID selfInputGoodsId) {
         UUID segmentId = jdbc.query("""
                 select id from production_execution_segments
                 where plan_id = ? and source_plan_item_id = ? and is_deleted = false
@@ -12429,6 +12528,12 @@ class FullChainEndToEndTest {
                                 current.planBeginDate(),current.planEndDate()));
             }
             confirmFullKitRoute(planId, startedSegmentId);
+            if (Boolean.TRUE.equals(jdbc.queryForObject(
+                    "SELECT fn_material_discovery_pending(?)", Boolean.class, startedSegmentId))) {
+                assertNotNull(selfInputGoodsId,
+                        "discovery-pending leaf fixture must declare its real material");
+                declareAndIssueSelfInput(w, startedSegmentId, selfInputGoodsId);
+            }
             executionSegmentService.start(
                     planId, startedSegmentId,
                     new SegmentTransitionRequest(
@@ -12502,7 +12607,7 @@ class FullChainEndToEndTest {
         DailyReportSaveRequest req = new DailyReportSaveRequest();
         req.setIdempotencyKey("e2e-report-" + UUID.randomUUID());
         req.setBillDate(LocalDate.of(2026, 1, 25));
-        req.setWarehouseId(w.warehouseId());
+        req.setWarehouseId(reportWarehouse(w));
         req.setDepartmentId(workshopDepartmentId);
         req.setWorkerId(responsibleEmployeeId);
         req.setWorkerIds(List.of(responsibleEmployeeId));
@@ -12897,8 +13002,10 @@ class FullChainEndToEndTest {
                 """,segmentId)) {
             // This harness manufactures the declared quantity with its seeded
             // linear recipe; only genuine issued material is consumed.
-            assertEquals("LINEAR",demand.get("requirement_mode"),
-                    "fixed/absolute batch recipes must explicitly declare their real use through the material-use overload");
+            assertTrue(java.util.List.of("LINEAR", "EXACT_SNAPSHOT")
+                            .contains((String) demand.get("requirement_mode")),
+                    "fixed/absolute batch recipes must explicitly declare their real use through the material-use overload;"
+                            + " discovery-created snapshot demands carry per_product_qty and use the same proportional math");
             BigDecimal used=((BigDecimal)demand.get("per_product_qty")).multiply(actualOutput)
                     .setScale(4,java.math.RoundingMode.HALF_UP);
             assertTrue(used.compareTo((BigDecimal)demand.get("available"))<=0,"fixture consumption must have a real ISSUE source");
@@ -13462,7 +13569,7 @@ class FullChainEndToEndTest {
         UUID planId = jdbc.queryForObject(
                 "select plan_id from production_plan_items where id = ?", UUID.class, planItemId);
         // V414 后内部件报工同样必须引用已开工执行段（无销售关联 → 分摊为空）
-        StartedSegment segment = startedSegmentFor(w, planId, planItemId, null);
+        StartedSegment segment = startedSegmentFor(w, planId, planItemId, null, goodsId);
         UUID reportId = reportAndApproveExecutionSegment(
                 w, planItemId, null, goodsId,
                 segment.segmentId(), null, qty);

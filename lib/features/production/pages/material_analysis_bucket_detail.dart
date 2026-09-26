@@ -733,7 +733,7 @@ class _MaterialAnalysisBucketPageState
         '同时记为该货品下次的默认供料方式。',
     value: (row) {
       final group = _rowRouteGroup(row);
-      return group == null ? null : _host._draftRoute(group).label;
+      return group == null ? null : _host._draftRoute(group)?.label;
     },
     cellBuilderHandlesSemantics: true,
     cellBuilder: (context, row) => _routeCell(context, row),
@@ -750,7 +750,7 @@ class _MaterialAnalysisBucketPageState
         _host._canEditMaterialRoute(group);
     if (!editable) {
       return Text(
-        current.label,
+        current?.label ?? '—',
         style: theme.textTheme.bodyMedium?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
         ),
@@ -761,7 +761,8 @@ class _MaterialAnalysisBucketPageState
     return UtenDropdownField(
       key: ValueKey('material-bucket-route-${row.id}'),
       dense: true,
-      value: current.name,
+      value: current?.name,
+      hintText: '请选择供应方式',
       items: [
         for (final option in MaterialSupplyRoute.values)
           UtenDropdownItem(value: option.name, label: option.label),

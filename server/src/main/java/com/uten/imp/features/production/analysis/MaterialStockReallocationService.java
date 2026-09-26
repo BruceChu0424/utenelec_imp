@@ -90,6 +90,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                     OR LOWER(COALESCE(product.code, '')) LIKE :keyword
                     OR LOWER(COALESCE(product.name, '')) LIKE :keyword
                     OR LOWER(analysis.id::text) LIKE :keyword
+                    OR LOWER(COALESCE(analysis.analysis_no, '')) LIKE :keyword
                 )
                 """;
         String fromAndWhere = """
@@ -135,7 +136,8 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 SELECT analysis.id, analysis.version, analysis.fingerprint,
                        material.id, analysis.warehouse_id, warehouse.name,
                        item.delivery_date, material.shortage_qty,
-                       item.source_ref, product.code, product.name
+                       item.source_ref, product.code, product.name,
+                       analysis.analysis_no
                 """ + fromAndWhere + """
                 ORDER BY item.delivery_date ASC NULLS LAST,
                          analysis.updated_at, analysis.id, material.id
@@ -153,7 +155,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 .map(row -> new CrossReallocationCandidate(
                         uuid(row[0]), ((Number) row[1]).longValue(), string(row[2]),
                         uuid(row[3]), uuid(row[4]), string(row[5]),
-                        analysisLabel(uuid(row[0])),
+                        analysisLabel(uuid(row[0]), string(row[11])),
                         firstNonBlank(string(row[8]),
                                 displayLabel(string(row[9]), string(row[10]))),
                         localDate(row[6]), sourceQty, decimal(row[7])))
@@ -185,7 +187,8 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 AND (LOWER(COALESCE(item.source_ref, '')) LIKE :keyword
                      OR LOWER(COALESCE(product.code, '')) LIKE :keyword
                      OR LOWER(COALESCE(product.name, '')) LIKE :keyword
-                     OR LOWER(analysis.id::text) LIKE :keyword)
+                     OR LOWER(analysis.id::text) LIKE :keyword
+                     OR LOWER(COALESCE(analysis.analysis_no, '')) LIKE :keyword)
                 """;
         // Correlate the exact same origin/RESTORE ancestry used by create(). No
         // formal reservation, received reallocation or claimed future supply qualifies.
@@ -236,7 +239,8 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                        material.id, analysis.warehouse_id, warehouse.name,
                        item.delivery_date,
                        LEAST(lendable.qty, material.allocated_available_qty),
-                       item.source_ref, product.code, product.name
+                       item.source_ref, product.code, product.name,
+                       analysis.analysis_no
                 """ + fromAndWhere + """
                 ORDER BY item.delivery_date DESC NULLS LAST, analysis.updated_at,
                          analysis.id, material.id
@@ -246,7 +250,8 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
         List<CrossReallocationSourceCandidate> items = NativeQueryResults.objectArrayRows(rowsQuery)
                 .stream().map(row -> new CrossReallocationSourceCandidate(
                         uuid(row[0]), ((Number) row[1]).longValue(), string(row[2]),
-                        uuid(row[3]), uuid(row[4]), string(row[5]), analysisLabel(uuid(row[0])),
+                        uuid(row[3]), uuid(row[4]), string(row[5]),
+                        analysisLabel(uuid(row[0]), string(row[11])),
                         firstNonBlank(string(row[8]), displayLabel(string(row[9]), string(row[10]))),
                         localDate(row[6]), decimal(row[7]), target.shortageQty())).toList();
         return new PageResponse<>(items, safePage, safeSize, total,
@@ -928,8 +933,11 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
         return value.strip().toLowerCase(Locale.ROOT);
     }
 
-    private static String analysisLabel(UUID id) {
-        return "物料分析 " + id.toString().substring(0, 8).toUpperCase(Locale.ROOT);
+    /** 分析标签（V719）：优先编号；无编号的夹具行回退 id 前 8 位短号。 */
+    private static String analysisLabel(UUID id, String analysisNo) {
+        return analysisNo == null || analysisNo.isBlank()
+                ? "物料分析 " + id.toString().substring(0, 8).toUpperCase(Locale.ROOT)
+                : analysisNo;
     }
 
     private static String displayLabel(String code, String name) {

@@ -23,7 +23,7 @@ class UtenContentScrollbar extends StatefulWidget {
     required this.controller,
     this.visible = true,
     this.bottomInset = 0,
-    this.width = 14,
+    this.width = 16,
   });
 
   /// 驱动滚动条的位置源。
@@ -43,7 +43,9 @@ class UtenContentScrollbar extends StatefulWidget {
 }
 
 class _UtenContentScrollbarState extends State<UtenContentScrollbar> {
-  static const double _thumbWidth = 6;
+  // thumb 粗细：2026-09-25 用户口径「上下滚动条太细」，6 → 10（命中带默认宽随调
+  // 14 → 16，thumb 在带内 x∈[3,13]，右缘留 gutter 呼吸）。
+  static const double _thumbWidth = 10;
   static const double _thumbGutter = 3;
   bool _hovered = false;
   bool _metricsRefreshScheduled = false;

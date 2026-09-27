@@ -198,30 +198,28 @@ void main() {
     expect(body, containsPair('mouldId', null));
   });
 
-  test('cross-category paste always uses the currently selected target', () {
-    expect(
-      resolveGoodsSaveCategoryId(
-        currentCategoryId: 'category-v6',
-        sourceCategoryId: 'category-hp',
-        copyMode: true,
-      ),
-      'category-v6',
-    );
-    expect(
-      resolveGoodsSaveCategoryId(
-        currentCategoryId: 'category-v6',
-        sourceCategoryId: 'category-hp',
-        requestedCategoryId: 'category-v7',
-        copyMode: true,
-      ),
-      'category-v7',
-    );
+  test('paste keeps the source goods category (copy is its duplicate)', () {
+    // 粘贴 = 原件的副本：归源货品所在分类（编号分配器同族），当前打开的分类不抢。
     expect(
       resolveGoodsSaveCategoryId(
         currentCategoryId: 'category-v6',
         sourceCategoryId: 'category-hp',
       ),
       'category-hp',
+    );
+    // 显式指定的目标分类（调用方点名改挂）优先于源分类。
+    expect(
+      resolveGoodsSaveCategoryId(
+        currentCategoryId: 'category-v6',
+        sourceCategoryId: 'category-hp',
+        requestedCategoryId: 'category-v7',
+      ),
+      'category-v7',
+    );
+    // 快照缺分类的极端情况才落到当前分类兜底。
+    expect(
+      resolveGoodsSaveCategoryId(currentCategoryId: 'category-v6'),
+      'category-v6',
     );
   });
 }

@@ -32,6 +32,11 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/id_card_utils.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_values.dart';
+import '../../../shared/drafts/people_form_draft_values.dart';
+import '../../department/models/position.dart';
 import '../../department/widgets/uten_position_entry_picker.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../models/employee_api_models.dart';
@@ -49,8 +54,74 @@ class EmployeeOnboardingPage extends ConsumerStatefulWidget {
       _EmployeeOnboardingPageState();
 }
 
-class _EmployeeOnboardingPageState
-    extends ConsumerState<EmployeeOnboardingPage> {
+class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
+    with FormDraftMixin<EmployeeOnboardingPage> {
+  bool _canOnboardWith(Set<String> permissions) =>
+      permissions.contains(Perm.employeeCreate) &&
+      permissions.contains(Perm.employeePiiEdit);
+  bool _canEditCompensationWith(Set<String> permissions) =>
+      permissions.contains(Perm.employeeCompensationEdit);
+  @override
+  bool get formDraftBusy => _submitting;
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftCatalog.employeeOnboarding.spec(
+    title: '员工入职',
+    route: '/employee/onboarding',
+  );
+  Map<String, TextEditingController> get _draftFields => {
+    'name': _name,
+    'idNumber': _idNumber,
+    'phone': _phone,
+    'email': _email,
+    'baseSalary': _baseSalary,
+    'bankAccount': _bankAccount,
+    'bankBranch': _bankBranch,
+  };
+  @override
+  Iterable<Listenable> get formDraftListenables => _draftFields.values;
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'fields': draftTextValues(_draftFields),
+    'hireDate': _hireDate?.toIso8601String(),
+    'confirmedDate': _confirmedDate?.toIso8601String(),
+    'idType': _idType,
+    'employmentType': _employmentType,
+    'status': _status,
+    'departmentId': _departmentId,
+    'departments': draftDepartments(_departmentSelection),
+    'position': _position.position == null
+        ? null
+        : {
+            'id': _position.position!.id,
+            'code': _position.position!.code,
+            'name': _position.position!.name,
+            'level': _position.position!.level,
+          },
+    'customPosition': _position.customName,
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    if (!_canOnboardWith(ref.read(currentPermissionsProvider))) {
+      throw StateError('没有恢复入职敏感信息的权限');
+    }
+    restoreDraftTextValues(_draftFields, draftMap(data['fields']));
+    if (!_canEditCompensationWith(ref.read(currentPermissionsProvider))) {
+      _baseSalary.clear();
+    }
+    _hireDate = DateTime.tryParse(data['hireDate'] as String? ?? '');
+    _confirmedDate = DateTime.tryParse(data['confirmedDate'] as String? ?? '');
+    _idType = data['idType'] as String? ?? '身份证';
+    _employmentType = data['employmentType'] as String? ?? 'regular';
+    _status = data['status'] as String? ?? 'active';
+    _departmentId = data['departmentId'] as String?;
+    _departmentSelection = restoreDraftDepartments(data['departments']);
+    _position = data['position'] != null
+        ? PositionEntryValue.existing(
+            Position.fromJson(draftMap(data['position'])),
+          )
+        : PositionEntryValue.custom(data['customPosition'] as String?);
+  }
+
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _idNumber = TextEditingController();
@@ -101,6 +172,7 @@ class _EmployeeOnboardingPageState
               level: '',
             ),
           ];
+    WidgetsBinding.instance.addPostFrameCallback((_) => initializeFormDraft());
   }
 
   @override
@@ -145,8 +217,7 @@ class _EmployeeOnboardingPageState
 
   Future<void> _submit() async {
     final permissions = ref.read(currentPermissionsProvider);
-    if (!permissions.contains(Perm.employeeCreate) ||
-        !permissions.contains(Perm.employeePiiEdit)) {
+    if (!_canOnboardWith(permissions)) {
       context.appError('无员工入职或敏感信息写入权限'); // TODO(l10n): 补 arb
       return;
     }
@@ -169,6 +240,7 @@ class _EmployeeOnboardingPageState
     }
     setState(() => _submitting = true);
     try {
+      await saveFormDraftNow();
       final profile = <String, dynamic>{
         'fullName': _name.text.trim(),
         'idType': _idType,
@@ -190,9 +262,7 @@ class _EmployeeOnboardingPageState
           'confirmedAt': ChinaDateTime.formatDate(_confirmedDate!),
       };
       Map<String, dynamic>? compensation;
-      final canEditCompensation = permissions.contains(
-        Perm.employeeCompensationEdit,
-      );
+      final canEditCompensation = _canEditCompensationWith(permissions);
       if ((canEditCompensation && _baseSalary.text.trim().isNotEmpty) ||
           _bankAccount.text.trim().isNotEmpty ||
           _bankBranch.text.trim().isNotEmpty) {
@@ -205,15 +275,18 @@ class _EmployeeOnboardingPageState
             'bankBranch': _bankBranch.text.trim(),
         };
       }
-      final onboardingResult = await ref
-          .read(employeeRepositoryProvider)
-          .create(
-            EmployeeOnboardingInput(
-              profile: profile,
-              employment: employment,
-              compensation: compensation,
+      final onboardingResult = await runFormDraftSubmission(
+        () => ref
+            .read(employeeRepositoryProvider)
+            .create(
+              EmployeeOnboardingInput(
+                profile: profile,
+                employment: employment,
+                compensation: compensation,
+              ),
             ),
-          );
+      );
+      await completeFormDraft();
       if (!mounted) return;
       // 一次性凭据弹窗前必须先撤遮罩：遮罩是 root Overlay 的裸图层, Navigator 每次重排
       // 都把它重新抬到最顶, 而这个弹窗 barrierDismissible=false 且 PopScope 挡掉返回键,
@@ -239,14 +312,14 @@ class _EmployeeOnboardingPageState
 
   @override
   Widget build(BuildContext context) {
+    return withFormDraft(_buildEditor(context));
+  }
+
+  Widget _buildEditor(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
-    final canOnboard =
-        permissions.contains(Perm.employeeCreate) &&
-        permissions.contains(Perm.employeePiiEdit);
-    final canEditCompensation = permissions.contains(
-      Perm.employeeCompensationEdit,
-    );
+    final canOnboard = _canOnboardWith(permissions);
+    final canEditCompensation = _canEditCompensationWith(permissions);
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.employeeOnboardTitle,

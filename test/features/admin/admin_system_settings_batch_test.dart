@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/admin/models/system_setting_entry.dart';
+import 'package:uten_imp/features/admin/models/system_updater_status.dart';
 import 'package:uten_imp/features/admin/pages/admin_system_settings_page.dart';
 import 'package:uten_imp/features/admin/repositories/system_setting_repository.dart';
 
@@ -147,6 +148,9 @@ Future<void> _pump(WidgetTester tester, _Repository repo) async {
 }
 
 class _Repository implements SystemSettingRepository {
+  @override
+  Future<SystemUpdaterStatus> updaterStatus() => throw UnimplementedError();
+
   int batchCalls = 0;
   List<({String key, String value, String expectedValue})>? changes;
   final settings = [

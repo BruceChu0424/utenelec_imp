@@ -6,6 +6,7 @@
 // 新增资料类型（如颜色资料）时在 _resources 加一条即可。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/drafts/form_draft_category.dart';
 
 import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -120,30 +121,34 @@ class BasicDataHubPage extends ConsumerWidget {
             .toList(growable: false);
     return Scaffold(
       appBar: UtenAppBar(title: l10n.basicDataHubTitle, showBackButton: true),
-      body: SafeArea(
-        child: UtenContentContainer(
-          child: ListView(
-            padding: EdgeInsets.only(
-              top: UtenSpacing.s8,
-              bottom: context.breakpoint.isCompact
-                  ? UtenSpacing.s16
-                  : UtenSpacing.s40,
-            ),
-            children: [
-              UtenResponsiveGrid(
-                itemCount: resources.length,
-                spacing: UtenSpacing.s12,
-                columns: const UtenResponsiveColumns(compact: 2, medium: 3),
-                itemBuilder: (context, i, _) => UtenHubCard(
-                  icon: resources[i].icon,
-                  label: resources[i].label,
-                  description: resources[i].description,
-                  color: resources[i].color,
-                  labelStyle: theme.textTheme.titleMedium,
-                  onTap: () => goFrom(context, resources[i].location),
-                ),
+      body: FormDraftCategoryHost(
+        scope: const FormDraftCategoryScope(routePrefix: '/basicinfo/'),
+        contentLabel: '基础资料',
+        child: SafeArea(
+          child: UtenContentContainer(
+            child: ListView(
+              padding: EdgeInsets.only(
+                top: UtenSpacing.s8,
+                bottom: context.breakpoint.isCompact
+                    ? UtenSpacing.s16
+                    : UtenSpacing.s40,
               ),
-            ],
+              children: [
+                UtenResponsiveGrid(
+                  itemCount: resources.length,
+                  spacing: UtenSpacing.s12,
+                  columns: const UtenResponsiveColumns(compact: 2, medium: 3),
+                  itemBuilder: (context, i, _) => UtenHubCard(
+                    icon: resources[i].icon,
+                    label: resources[i].label,
+                    description: resources[i].description,
+                    color: resources[i].color,
+                    labelStyle: theme.textTheme.titleMedium,
+                    onTap: () => goFrom(context, resources[i].location),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -21,8 +21,10 @@ void main() {
       multiLine: true,
     );
     // 关掉动画的唯一写法：换成别的 animator 就不是「无动画」了。
-    const noAnimation =
-        'floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,';
+    final noAnimation = RegExp(
+      r'^\s*floatingActionButtonAnimator:\s*FloatingActionButtonAnimator\.noAnimation\s*,',
+      multiLine: true,
+    );
 
     final libDir = Directory('lib');
     expect(libDir.existsSync(), isTrue, reason: '请在仓库根目录运行本测试');
@@ -56,7 +58,7 @@ void main() {
       isEmpty,
       reason:
           '以下 Scaffold 会让右下角按钮缩放淡入，请补 '
-          '`$noAnimation`：\n${offenders.join('\n')}',
+          '`floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation`：\n${offenders.join('\n')}',
     );
   });
 }

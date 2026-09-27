@@ -176,6 +176,66 @@ mixin CommercialTermsRowMixin on EditableGridRow
   /// 当前仍带预填黄标的条款 key 集合。
   Set<String> get termsAutofilled => termsAutofilledNotifier.value;
 
+  /// Keeps learned-price provenance so recovery retains the same invalidation
+  /// rules when the supplier, currency, tax, color or unit changes.
+  Map<String, dynamic> exportCommercialDraft() => {
+    'currencyId': currencyId,
+    'settlementMethodId': settlementMethodId,
+    'exchangeRate': exchangeRate.text,
+    'taxRate': taxRate.text,
+    'autofilled': {..._termsAutofillValues},
+    if (_defaultPriceContext case final context?)
+      'priceContext': {
+        'supplierId': context.supplierId,
+        'colorId': context.colorId,
+        'unitId': context.unitId,
+        'currencyId': context.currencyId,
+        'taxRate': context.taxRate,
+      },
+    'priceGoodsId': _defaultPriceGoodsId,
+  };
+
+  void restoreCommercialDraft(
+    Map<String, dynamic> data, {
+    required TextEditingController price,
+    required ValueNotifier<String?> supplier,
+    required String? Function() currentGoodsId,
+    required String? Function() currentColorId,
+    required String? Function() currentUnitId,
+  }) {
+    currencyId = data['currencyId'] as String?;
+    settlementMethodId = data['settlementMethodId'] as String?;
+    exchangeRate.text = data['exchangeRate'] as String? ?? '';
+    taxRate.text = data['taxRate'] as String? ?? '';
+    final autofilled = data['autofilled'];
+    if (autofilled is Map) {
+      for (final entry in autofilled.entries) {
+        if (entry.key is String && entry.value is String) {
+          markTermsAutofilled(entry.key as String, entry.value as String);
+        }
+      }
+    }
+    final context = data['priceContext'];
+    final goodsId = data['priceGoodsId'];
+    if (context is Map &&
+        goodsId is String &&
+        termsAutofilled.contains('price')) {
+      watchDefaultPrice(
+        price: price,
+        supplier: supplier,
+        context: ProcurementPriceContext.fromJson(
+          Map<String, dynamic>.from(context),
+        ),
+        goodsId: goodsId,
+        currentGoodsId: currentGoodsId,
+        currentColorId: currentColorId,
+        currentUnitId: currentUnitId,
+      );
+      revalidateDefaultPrice();
+    }
+    trackCommercialEdits(price: price, supplier: supplier);
+  }
+
   /// 标记一个学习带入值（黄框提醒核对）。[value] 为带入值（文本字段比对用）。
   void markTermsAutofilled(String key, String value) {
     termsAutofilledNotifier.value = {...termsAutofilledNotifier.value, key};

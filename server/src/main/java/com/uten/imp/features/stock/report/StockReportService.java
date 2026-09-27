@@ -88,7 +88,7 @@ public class StockReportService {
                 "WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false AND i.bill_type = '" + dt + "'");
         addCommonFilters(w, billNo, warehouseId, clientId, status, departmentId, dateFrom, dateTo, kw, true);
         return execute(cols.stream().map(c -> c.col).toList(), dataSelect, fromJoin, w,
-                "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", commonFacets(), facets, page, size, sort, order);
+                "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", detailFacets(), facets, page, size, sort, order);
     }
 
     @Transactional(readOnly = true)
@@ -358,6 +358,17 @@ public class StockReportService {
                 new FacetSpec("warehouseName", "CAST(wh.id AS text) AS v, wh.name AS lbl", "wh.id, wh.name", "o.warehouse_id", "uuid"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl",
                         "(o.status = 1)", "o.status = 1", "bool"));
+    }
+
+    /**
+     * 明细报表 facet（2026-09-25 单号列统一）：七个 docType 的明细列集均有 billNo 列（= o.bill_no），
+     * 单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）；汇总报表沿用 {@link #commonFacets()} 不挂单号 facet。
+     */
+    private static List<FacetSpec> detailFacets() {
+        List<FacetSpec> specs = new ArrayList<>();
+        specs.add(new FacetSpec("billNo", "o.bill_no AS v, o.bill_no AS lbl", "o.bill_no", "o.bill_no", "text"));
+        specs.addAll(commonFacets());
+        return specs;
     }
 
     // ======================== 导出（加密 Excel） ========================

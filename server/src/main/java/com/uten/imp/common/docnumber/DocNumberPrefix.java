@@ -68,6 +68,8 @@ public enum DocNumberPrefix {
     // 生产
     /** V719 物料分析编号：各页「计划单号」与采购/委外来源计划的展示锚点。 */
     MATERIAL_ANALYSIS("WL"),
+    /** Material request identity; actual warehouse DRAWs retain their own STOCK_DRAW numbers. */
+    PRODUCTION_MATERIAL_REQUEST("LQ"),
     PRODUCTION_PLAN("SJ"),
     PRODUCTION_SUBPLAN("SZ"),
     PRODUCTION_DAILY_REPORT("SR"),

@@ -30,9 +30,6 @@ import java.util.Locale;
 @Service
 public class LoginService {
 
-    /** 密码长度上限（防 Argon2 CPU DoS）。 */
-    private static final int PASSWORD_MAX_LENGTH = 128;
-
     private final UserAccountRepository userRepo;
     private final PasswordEncoder passwordEncoder;
     private final LoginRateLimiter rateLimiter;
@@ -72,9 +69,9 @@ public class LoginService {
             throw ex;
         }
 
-        // 密码长度上限：超长直接拒（防 Argon2 CPU DoS），消息与错密码一致（防枚举）
-        if (req.password() == null || req.password().length() > PASSWORD_MAX_LENGTH) {
-            passwordEncoder.matches(req.password() == null ? "" : truncate(req.password()), dummyHash);
+        // 空密码与错密码使用相同响应，密码原值完整参与后续匹配。
+        if (req.password() == null || req.password().isBlank()) {
+            passwordEncoder.matches("", dummyHash);
             audit.logExplicit(null, req.loginAccount(), "login_failed",
                     "users", null, "bad_credentials");
             throw new ApiException(ErrorCode.BAD_CREDENTIALS);
@@ -141,7 +138,4 @@ public class LoginService {
         }
     }
 
-    private static String truncate(String value) {
-        return value.length() > PASSWORD_MAX_LENGTH ? value.substring(0, PASSWORD_MAX_LENGTH) : value;
-    }
 }

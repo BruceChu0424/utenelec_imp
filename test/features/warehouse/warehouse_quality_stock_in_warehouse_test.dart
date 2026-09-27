@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -593,6 +594,15 @@ class _Gateway implements WarehouseQualityResultGateway {
     WarehouseIqcStockInReceiptType? receiptType,
     String? keyword,
   }) async => {};
+
+  @override
+  Future<List<MasterFacetBucket>> billNoFacets({
+    WarehouseIqcStockInReceiptType? receiptType,
+    WarehouseQualityWorkStatus? workStatus,
+    String? keyword,
+    String? dateFrom,
+    String? dateTo,
+  }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   @override
   Future<PagedResult<WarehouseQualityResultTask>> list({
     int page = 1,
@@ -602,6 +612,9 @@ class _Gateway implements WarehouseQualityResultGateway {
     String? keyword,
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
+    String? billNo,
   }) async => throw StateError('Unexpected list request');
 }
 

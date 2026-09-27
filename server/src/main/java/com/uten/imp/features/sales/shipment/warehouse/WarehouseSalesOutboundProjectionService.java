@@ -67,6 +67,25 @@ public class WarehouseSalesOutboundProjectionService {
             int page,
             int size,
             com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        return list(keyword, warehouseWorkStatus, dateFrom, dateTo, page, size, warehouseScope, null, null, null);
+    }
+
+    /**
+     * 同上, 并透传列排序/单据号筛选（2026-09-25 单号列统一）：出货单号列
+     * billNo 排序白名单与表头值筛选由底层 {@link SalesShipmentService} 执行。
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<WarehouseSalesOutboundListItem> list(
+            String keyword,
+            String warehouseWorkStatus,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            int page,
+            int size,
+            com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope,
+            String sort,
+            String order,
+            String billNo) {
         // 2026-09-20: 单据 status 传 null——一步式确认出库(approveLocked)把 status 翻成 1,
         // 若仍按 status=0 过滤, 「已出库」与「历史单据」段永远列不出已出库单; 仓库投影只认
         // finance_audit=1 + warehouse_work_status 分段(与 countWarehouseWorkByStatus 同谓词).
@@ -85,11 +104,12 @@ public class WarehouseSalesOutboundProjectionService {
                         null,
                         null,
                         null,
-                        warehouseScope),
+                        warehouseScope,
+                        billNo),
                 page,
                 size,
-                null,
-                null);
+                sort,
+                order);
         NameDirectory names = new NameDirectory(entityManager);
         List<WarehouseSalesOutboundListItem> items = source.getItems().stream()
                 .map(item -> toListItem(item, names))
@@ -105,6 +125,32 @@ public class WarehouseSalesOutboundProjectionService {
     @Transactional(readOnly = true)
     public WarehouseSalesOutboundDetail detail(UUID id) {
         return toDetail(requireWarehouseVisible(id));
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
+    @Transactional(readOnly = true)
+    public Map<String, List<Map<String, Object>>> facets(
+            String keyword,
+            String warehouseWorkStatus,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        return shipments.facets(new ShipmentQueryFilter(
+                keyword,
+                null,
+                null,
+                null,
+                null,
+                (short) 1,
+                null,
+                normalize(warehouseWorkStatus),
+                dateFrom,
+                dateTo,
+                null,
+                null,
+                null,
+                warehouseScope,
+                null));
     }
 
     /** 待出库任务计数（出库任务中心/工作台角标），与列表同一读范围与仓库口径。 */

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -447,18 +448,18 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     }
     await showMasterEditDialog(
       context: context,
+      draftSpec: FormDraftCatalog.account.spec(title: '新增账户'),
       title: '新增账户',
       fields: _createFields,
       initialValues: const {'accountType': 'BANK', 'status': '使用'},
       readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: (body) async {
-        final ok = await context.guardRun(
-          () => ref.read(accountRepositoryProvider).create(body),
-          success: '账户已创建',
-          errorFallback: '创建失败，请稍后重试',
-        );
-        if (ok && mounted) await _refresh();
-        return ok;
+        await ref.read(accountRepositoryProvider).create(body);
+        if (mounted) {
+          context.appSuccess('账户已创建');
+          await _refresh();
+        }
+        return true;
       },
     );
   }
@@ -705,7 +706,13 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FormDraftDialogResume(
+    descriptor: FormDraftCatalog.account,
+    onResume: (_) => _showCreate(),
+    child: _buildDraftHost(context),
+  );
+
+  Widget _buildDraftHost(BuildContext context) {
     ref.watch(currentPermissionsProvider);
     final filteredLabel = AccountType.byValue(
       widget.initialAccountTypeFilter,

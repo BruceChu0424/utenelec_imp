@@ -3,7 +3,8 @@ package com.uten.imp.features.finance.receipt.dto;
 import java.time.LocalDate;
 import java.util.UUID;
 
-/** 销售收款单查询条件（keyword + 客户/账户/状态/收款类型精确 + 日期范围）。 */
+/** 销售收款单查询条件（keyword + 客户/账户/状态/收款类型精确 + 日期范围）。
+ *  billNo=单据号表头值筛选（2026-09-25 单号列统一，精确匹配）。 */
 public record FinanceReceiptQueryFilter(
         String keyword,
         UUID clientId,
@@ -11,5 +12,13 @@ public record FinanceReceiptQueryFilter(
         Short status,
         String receiptKind,
         LocalDate dateFrom,
-        LocalDate dateTo) {
+        LocalDate dateTo,
+        String billNo) {
+
+    /** 兼容旧签名（无单号筛选）。 */
+    public FinanceReceiptQueryFilter(
+            String keyword, UUID clientId, UUID accountId, Short status,
+            String receiptKind, LocalDate dateFrom, LocalDate dateTo) {
+        this(keyword, clientId, accountId, status, receiptKind, dateFrom, dateTo, null);
+    }
 }

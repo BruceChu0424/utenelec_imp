@@ -129,13 +129,16 @@ class BusinessDataResetSqlContractTest {
             // V703 车间催计划下单子层物料 (ADR-117)：催办提醒随业务流程数据清空。
             Map.entry("production_planning_urges", 703),
             Map.entry("production_material_discovery_requests", 710),
+            Map.entry("production_draw_issue_batches", 727),
             Map.entry("production_material_discovery_lines", 710),
             Map.entry("production_bom_learning_samples", 711),
             Map.entry("production_bom_learning_refresh_queue", 711),
             Map.entry("preplan_aggregate_batches", 712),
             Map.entry("preplan_aggregate_batch_events", 712),
             Map.entry("preplan_aggregate_material_aliases", 712),
-            Map.entry("preplan_aggregate_direct_transfer_slices", 715));
+            Map.entry("preplan_aggregate_direct_transfer_slices", 715),
+            Map.entry("preplan_make_public_claims", 722),
+            Map.entry("preplan_make_public_claim_cancellations", 722));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
@@ -183,123 +186,20 @@ class BusinessDataResetSqlContractTest {
                         "V464__reset_twin_order_item_sources.sql"),
                 Path.of("server", "src", "main", "resources", "db", "migration",
                         "V464__reset_twin_order_item_sources.sql"));
-        extensionSql = read(
-                Path.of("src", "main", "resources", "db", "migration",
-                        "V474__preplan_public_supply_and_inbound_allocation.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration",
-                        "V474__preplan_public_supply_and_inbound_allocation.sql"));
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration",
-                        "V478__analysis_root_supply_fulfillment.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration",
-                        "V478__analysis_root_supply_fulfillment.sql"));
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration",
-                        "V484__sales_qty_change_reset_extension.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration",
-                        "V484__sales_qty_change_reset_extension.sql"));
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration",
-                        "V486__procurement_qty_change_and_preparation_retirement.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration",
-                        "V486__procurement_qty_change_and_preparation_retirement.sql"));
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration",
-                        "V492__sales_order_commercial_revisions.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration",
-                        "V492__sales_order_commercial_revisions.sql"));
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration",
-                        "V496__subcontract_make_notification_reversals.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration",
-                        "V496__subcontract_make_notification_reversals.sql"));
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration",
-                        "V504__inventory_and_procurement_revision_reset_policy.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration",
-                        "V504__inventory_and_procurement_revision_reset_policy.sql"));
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration", "V514__production_material_exact_movement_links.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration", "V514__production_material_exact_movement_links.sql"));
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration", "V517__inventory_value_custody_positions.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration", "V517__inventory_value_custody_positions.sql"));
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration", "V518__procurement_iqc_replacement_consideration.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration", "V518__procurement_iqc_replacement_consideration.sql"));
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration", "V519__financial_actual_amounts_and_book_allocations.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration", "V519__financial_actual_amounts_and_book_allocations.sql"));
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration", "V522__subcontract_own_material_cost_sources.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration", "V522__subcontract_own_material_cost_sources.sql"));
         serviceSource = read(
                 Path.of("src", "main", "java", "com", "uten", "imp", "features", "admin",
                         "systemtest", "BusinessDataResetService.java"),
                 Path.of("server", "src", "main", "java", "com", "uten", "imp", "features",
                         "admin", "systemtest", "BusinessDataResetService.java"));
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration",
-                        "V506__inventory_value_openings_and_legacy_cases.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration",
-                        "V506__inventory_value_openings_and_legacy_cases.sql"));
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration",
-                        "V547__production_fqc_inspection_sheets.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration",
-                        "V547__production_fqc_inspection_sheets.sql"));
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration",
-                        "V548__production_finished_arrival_registration_reversal.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration",
-                        "V548__production_finished_arrival_registration_reversal.sql"));
-        for (String migration : java.util.List.of("V560__production_material_return_requests.sql", "V561__production_execution_batch_splits.sql", "V568__preplan_reallocation_make_supplements.sql", "V569__preplan_future_supply_transfers.sql")) {
-            extensionSql += read(Path.of("src", "main", "resources", "db", "migration", migration),
-                    Path.of("server", "src", "main", "resources", "db", "migration", migration));
-        }
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration",
-                        "V579__party_contact_address_activity.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration",
-                        "V579__party_contact_address_activity.sql"));
-        // V586 补登记 V583 报工实耗表与 V584 车间直送三张表（建表迁移漏了这一步，
-        // 清库函数 fail-closed 会直接拒绝执行，com.uten.imp.ops.** 整包红）。
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration",
-                        "V586__reset_policy_daily_report_usage_and_direct_transfer.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration",
-                        "V586__reset_policy_daily_report_usage_and_direct_transfer.sql"));
-        extensionSql += read(
-                Path.of("src", "main", "resources", "db", "migration",
-                        "V590__goods_owning_workshop_consolidation.sql"),
-                Path.of("server", "src", "main", "resources", "db", "migration",
-                        "V590__goods_owning_workshop_consolidation.sql"));
-        for (String migration : List.of("V608__expense_claim_fullchain.sql",
-                "V614__daily_report_finalization_provenance.sql",
-                "V615__workshop_direct_source_allocation.sql",
-                "V617__expense_claim_evidence_and_settings.sql",
-                "V618__production_material_return_receiving_warehouse.sql",
-                "V619__workshop_material_normal_warehouse_custody.sql",
-                "V624__legacy_subcontract_settlement_provenance.sql",
-                "V626__legacy_finance_source_provenance.sql",
-                "V627__legacy_receipt_consideration_provenance.sql",
-                "V636__subcontract_loss_tolerance_and_short_delivery_cases.sql",
-                "V646__subcontract_component_exact_stock_handoff.sql",
-                "V647__material_analysis_execution_growth_in_place.sql",
-                "V680__auth_sessions_and_step_up.sql",
-                "V686__finance_report_line_bindings.sql",
-                "V693__warehouse_keepers_notice_routing.sql",
-                "V698__production_overproduction_rate_review.sql",
-                "V700__actual_output_supplement_plans.sql",
-                "V702__production_material_increment_authorizations.sql",
-                "V703__workshop_planning_urges.sql",
-                "V710__leaf_material_discovery.sql",
-                "V711__production_bom_learning.sql",
-                "V712__material_aggregate_batches.sql",
-                "V715__aggregate_material_direct_transfers.sql")) {
-            extensionSql += read(Path.of("src/main/resources/db/migration",migration),
-                    Path.of("server/src/main/resources/db/migration",migration));
-        }
+        // The reviewed table/version registry is also the source-file manifest.
+        // A new registration must never be silently omitted from a second hand-maintained list.
+        var versions = new java.util.TreeSet<Integer>();
+        versions.addAll(RUNTIME_RESET_EXTENSIONS.values());
+        versions.addAll(PRESERVE_RESET_EXTENSIONS.values());
+        versions.addAll(REMOVED_RESET_TABLES.values());
+        StringBuilder extensions = new StringBuilder();
+        for (int version : versions) extensions.append(extensionSql(version)).append('\n');
+        extensionSql = extensions.toString();
     }
 
     @Test
@@ -520,23 +420,27 @@ class BusinessDataResetSqlContractTest {
                 .contains("(718, 647),")
                 .contains("(719, 648),")
                 .contains("(720, 649)")
-                // 迁移头 V720 / 649 条 (V648至V669 跳号)。
-                .contains("V507/469、V508/470及V511至V720完整目录");
+                .contains("(721, 650), (722, 651), (723, 652), (724, 653), (725, 654), (726, 655), (727, 656), (728, 657), (729, 658), (730, 659), (731, 660), (732, 661)")
+                .contains("(733, 662)")
+                // The exact range label follows the independently enumerated classpath head.
+                .contains("V507/469、V508/470及V511至V"
+                        + MigrationRehearsalSupport.CURRENT_HEAD_VERSION + "完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);
     }
 
     @Test
-    void runtimeResetExtensionsPatchTheTwinFunctionFailClosed() {
+    void runtimeResetExtensionsPatchTheTwinFunctionFailClosed() throws IOException {
         // V474 的补丁构件：读取已安装定义、锚点替换插入、锚点缺失即失败关闭。
         assertThat(extensionSql)
                 .contains("pg_get_functiondef('business_data_reset()'::regprocedure)")
                 .contains("RAISE EXCEPTION 'V474 cannot extend business_data_reset policy safely'")
                 .contains("(''preplan_supply_actions'', ''CLEAR'')");
         for (String table : RUNTIME_RESET_EXTENSIONS.keySet()) {
-            assertThat(extensionSql)
-                    .as(table + " must be inserted by the runtime reset patch")
+            assertThat(extensionSql(RUNTIME_RESET_EXTENSIONS.get(table)))
+                    .as(table + " must be inserted by its registered runtime reset migration")
+                    .contains("pg_get_functiondef('business_data_reset()'::regprocedure)")
                     .contains("'" + table + "'");
         }
         // V579：PRESERVE 语义扩展同样走补丁(基础资料子表随主档保留)。
@@ -690,9 +594,9 @@ class BusinessDataResetSqlContractTest {
                 Path.of("docs", "数据迁移", "README.md"));
         assertThat(migrationReadme)
                 .as("docs/数据迁移/README.md 的「当前正式目录」没跟上："
-                        + "请改成 **当前正式目录：V%d/%d …**（并补一句新迁移做了什么）"
+                        + "请改成 **当前源码目录：V%d/%d …**（并补一句新迁移做了什么）"
                                 .formatted(head, count))
-                .contains("当前正式目录：V" + head + "/" + count);
+                .contains("当前源码目录：V" + head + "/" + count);
     }
 
     /**
@@ -744,6 +648,40 @@ class BusinessDataResetSqlContractTest {
                 .as("白名单最后一对的版本必须是当前迁移头 %s"
                         .formatted(MigrationRehearsalSupport.CURRENT_HEAD_VERSION))
                 .isEqualTo(Integer.parseInt(MigrationRehearsalSupport.CURRENT_HEAD_VERSION));
+    }
+
+    /** Expected complete policy derives from frozen V464 plus explicit reviewed changes, never the ops script. */
+    static java.util.Set<String> expectedOperationalTables() {
+        return RUNTIME_RESET_EXTENSIONS.entrySet().stream()
+                .filter(entry -> entry.getValue() >= 511)
+                .map(Map.Entry::getKey).collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    static Map<String, String> expectedCurrentPolicy() throws IOException {
+        Map<String, String> expected = policy(extensionSql(464));
+        RUNTIME_RESET_EXTENSIONS.forEach((table, version) -> {
+            assertThat(expected.putIfAbsent(table, "CLEAR"))
+                    .as(table + " must be a new CLEAR extension in V" + version).isNull();
+        });
+        PRESERVE_RESET_EXTENSIONS.forEach((table, version) -> {
+            assertThat(expected.putIfAbsent(table, "PRESERVE"))
+                    .as(table + " must be a new PRESERVE extension in V" + version).isNull();
+        });
+        REMOVED_RESET_TABLES.forEach((table, version) ->
+                assertThat(expected.remove(table)).as(table + " must exist before retirement in V" + version).isNotNull());
+        return expected;
+    }
+
+    private static String extensionSql(int version) throws IOException {
+        Path directory = resolve(Path.of("src/main/resources/db/migration"),
+                Path.of("server/src/main/resources/db/migration"));
+        List<Path> matches;
+        try (var files = Files.list(directory)) {
+            matches = files.filter(path -> path.getFileName().toString().startsWith("V" + version + "__"))
+                    .filter(path -> path.getFileName().toString().endsWith(".sql")).toList();
+        }
+        assertThat(matches).as("registered reset migration V" + version + " must resolve exactly once").hasSize(1);
+        return Files.readString(matches.getFirst(), StandardCharsets.UTF_8);
     }
 
     private static Path resolve(Path direct, Path fallback) {

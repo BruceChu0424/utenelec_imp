@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/repositories/sales_repository.dart';
@@ -10,12 +13,47 @@ import 'package:uten_imp/features/sales/widgets/sales_plan_progress_panel.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
+/// 宿主样例（2026-09-26 全站口径）：scope 必传后，面板不再自带批量工具条；
+/// 「已选 N 项」胶囊与「去发货(N)」由宿主渲染成右下悬浮组——与订货单详情页、
+/// 订单进度详情页同一条路径。本夹具按同款渲染，供用例驱动真实按钮。
+Widget _hostScopeActions(SalesShipmentActionScope scope) {
+  return ListenableBuilder(
+    listenable: scope,
+    builder: (context, _) => UtenFloatingActionGroup(
+      children: [
+        UtenSelectionSummaryPill(
+          clearKey: const Key('sales-progress-clear-selection'),
+          count: scope.selectedCount,
+          onClear: scope.selectedCount > 0 && !scope.busy
+              ? scope.clearSelection
+              : null,
+        ),
+        UtenButton(
+          key: const Key('sales-progress-create-shipment'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          icon: Icons.local_shipping_outlined,
+          isLoading: scope.busy,
+          onPressed: scope.selectedCount > 0 && !scope.busy
+              ? () => scope.createShipment()
+              : null,
+          child: Text(
+            scope.selectedCount > 0 ? '去发货(${scope.selectedCount})' : '去发货',
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 void main() {
   testWidgets(
     'desktop product progress uses selectable columns and opens source details',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1500, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
+      final scope = SalesShipmentActionScope();
+      addTearDown(scope.dispose);
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
@@ -28,12 +66,13 @@ void main() {
             }),
             isSuperAdminProvider.overrideWithValue(false),
           ],
-          child: const MaterialApp(
+          child: MaterialApp(
             home: Scaffold(
               body: SingleChildScrollView(
                 child: SalesPlanProgressPanel(
                   orderId: 'order-1',
                   canShip: true,
+                  shipmentActions: scope,
                 ),
               ),
             ),
@@ -75,19 +114,27 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(390, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final repository = _ShippableRepository();
+      final scope = SalesShipmentActionScope();
+      addTearDown(scope.dispose);
       Uri? opened;
       final router = GoRouter(
         initialLocation: '/',
         routes: [
           GoRoute(
             path: '/',
-            builder: (_, _) => const Scaffold(
+            builder: (_, _) => Scaffold(
               body: SingleChildScrollView(
                 child: SalesPlanProgressPanel(
                   orderId: 'order-1',
                   canShip: true,
+                  shipmentActions: scope,
                 ),
               ),
+              floatingActionButtonLocation:
+                  FloatingActionButtonLocation.endFloat,
+              floatingActionButtonAnimator:
+                  FloatingActionButtonAnimator.noAnimation,
+              floatingActionButton: _hostScopeActions(scope),
             ),
           ),
           GoRoute(
@@ -153,6 +200,8 @@ void main() {
   testWidgets('submitted analysis plan is not shown as unplanned', (
     tester,
   ) async {
+    final scope = SalesShipmentActionScope();
+    addTearDown(scope.dispose);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -162,10 +211,13 @@ void main() {
           currentPermissionsProvider.overrideWithValue(const {}),
           isSuperAdminProvider.overrideWithValue(false),
         ],
-        child: const MaterialApp(
+        child: MaterialApp(
           home: Scaffold(
             body: SingleChildScrollView(
-              child: SalesPlanProgressPanel(orderId: 'order-1'),
+              child: SalesPlanProgressPanel(
+                orderId: 'order-1',
+                shipmentActions: scope,
+              ),
             ),
           ),
         ),
@@ -184,14 +236,19 @@ void main() {
   testWidgets(
     'sales execution-segment row opens its production plan deep link',
     (tester) async {
+      final scope = SalesShipmentActionScope();
+      addTearDown(scope.dispose);
       final router = GoRouter(
         initialLocation: '/',
         routes: [
           GoRoute(
             path: '/',
-            builder: (context, state) => const Scaffold(
+            builder: (context, state) => Scaffold(
               body: SingleChildScrollView(
-                child: SalesPlanProgressPanel(orderId: 'order-1'),
+                child: SalesPlanProgressPanel(
+                  orderId: 'order-1',
+                  shipmentActions: scope,
+                ),
               ),
             ),
           ),

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../models/sales_order_finance_confirmation.dart';
 
 /// 销售订货单财务确认（V294 闸门，V300 补驳回与审核详情）：
@@ -11,6 +12,16 @@ abstract interface class SalesOrderFinanceConfirmationRepository {
   Future<SalesOrderFinancePendingPage> pending({
     int page = 1,
     int size = 20,
+    bool? rejected,
+    String? keyword,
+    bool? changesOnly,
+    String? sort,
+    String? order,
+    String? billNo,
+  });
+
+  /// 销售单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径。
+  Future<List<MasterFacetBucket>> billNoFacets({
     bool? rejected,
     String? keyword,
     bool? changesOnly,
@@ -59,6 +70,9 @@ class DioSalesOrderFinanceConfirmationRepository
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    String? sort,
+    String? order,
+    String? billNo,
   }) async {
     final normalizedKeyword = keyword?.trim();
     final json = await api.get(
@@ -70,9 +84,32 @@ class DioSalesOrderFinanceConfirmationRepository
         'changesOnly': ?changesOnly,
         if (normalizedKeyword != null && normalizedKeyword.isNotEmpty)
           'keyword': normalizedKeyword,
+        // 2026-09-25 单号列统一：表头排序 + 销售单号表头值筛选。
+        if (sort != null && sort.isNotEmpty) 'sort': sort,
+        if (order != null && order.isNotEmpty) 'order': order,
+        if (billNo != null && billNo.trim().isNotEmpty) 'billNo': billNo.trim(),
       },
     );
     return SalesOrderFinancePendingPage.fromJson(json);
+  }
+
+  @override
+  Future<List<MasterFacetBucket>> billNoFacets({
+    bool? rejected,
+    String? keyword,
+    bool? changesOnly,
+  }) async {
+    final normalizedKeyword = keyword?.trim();
+    final json = await api.get(
+      ApiEndpoints.salesOrderFinanceConfirmationFacets,
+      query: <String, dynamic>{
+        'rejected': ?rejected,
+        'changesOnly': ?changesOnly,
+        if (normalizedKeyword != null && normalizedKeyword.isNotEmpty)
+          'keyword': normalizedKeyword,
+      },
+    );
+    return parseFacetBuckets(json, 'billNo');
   }
 
   @override

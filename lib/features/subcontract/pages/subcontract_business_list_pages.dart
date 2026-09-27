@@ -14,7 +14,9 @@
 // 成品退回/余料退回/损耗审核即完成单据动作，主类为草稿/历史记录，
 // 已审与红冲归历史子类，不把已完成记录误标为进行中。
 // 主类、子类、历史时间一起随页头收起；默认不选不加载，历史仍须先选时间。
+import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_master_names.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -34,12 +36,17 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_draft_category_table.dart';
+import '../../../shared/auth/document_scope_capability.dart';
+import '../../../shared/mixins/draft_bulk_delete_mixin.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../providers/subcontract_providers.dart';
@@ -47,14 +54,20 @@ import '../repositories/subcontract_repository.dart';
 
 /// 委外订货与全链路工作页：两种来源汇合后，从财务审批跟到 IQC 与结案。
 class SubcontractOrderWorkspacePage extends StatelessWidget {
-  const SubcontractOrderWorkspacePage({super.key, this.initialStatus});
+  const SubcontractOrderWorkspacePage({
+    super.key,
+    this.initialStatus,
+    this.embedded = false,
+  });
 
   /// 深链预选（路由 `?status=draft`）：新建页「草稿(N)」按钮的落点。
   final String? initialStatus;
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) => _SubcontractBusinessListPage(
     initialStatus: initialStatus,
+    embedded: embedded,
     presentation: const _ListPresentation(
       type: SubcontractDocType.order,
       title: '委外订货与全链路',
@@ -92,11 +105,20 @@ class SubcontractLegacyMaterialIssueHistoryPage extends StatelessWidget {
 
 /// 委外成品退回历史：只能从已经发生的回厂/IQC处置链进入，不开放空白新建。
 class SubcontractFinishedReturnHistoryPage extends StatelessWidget {
-  const SubcontractFinishedReturnHistoryPage({super.key});
+  const SubcontractFinishedReturnHistoryPage({
+    super.key,
+    this.initialStatus,
+    this.embedded = false,
+  });
+
+  final String? initialStatus;
+  final bool embedded;
 
   @override
-  Widget build(BuildContext context) => const _SubcontractBusinessListPage(
-    presentation: _ListPresentation(
+  Widget build(BuildContext context) => _SubcontractBusinessListPage(
+    initialStatus: initialStatus,
+    embedded: embedded,
+    presentation: const _ListPresentation(
       type: SubcontractDocType.returnDoc,
       title: '委外成品退回记录',
       icon: Icons.undo_outlined,
@@ -117,11 +139,20 @@ class SubcontractFinishedReturnHistoryPage extends StatelessWidget {
 
 /// 委外商退回我方余料历史，绑定供应商处台账，不允许任意手输创造结存。
 class SubcontractMaterialReturnHistoryPage extends StatelessWidget {
-  const SubcontractMaterialReturnHistoryPage({super.key});
+  const SubcontractMaterialReturnHistoryPage({
+    super.key,
+    this.initialStatus,
+    this.embedded = false,
+  });
+
+  final String? initialStatus;
+  final bool embedded;
 
   @override
-  Widget build(BuildContext context) => const _SubcontractBusinessListPage(
-    presentation: _ListPresentation(
+  Widget build(BuildContext context) => _SubcontractBusinessListPage(
+    initialStatus: initialStatus,
+    embedded: embedded,
+    presentation: const _ListPresentation(
       type: SubcontractDocType.materialReturn,
       title: '委外余料退回记录',
       icon: Icons.assignment_return_outlined,
@@ -142,11 +173,20 @@ class SubcontractMaterialReturnHistoryPage extends StatelessWidget {
 
 /// 委外损耗与责任工作历史。实物损耗、责任认定、索赔履约、会计事实严格分层。
 class SubcontractWasteResponsibilityPage extends StatelessWidget {
-  const SubcontractWasteResponsibilityPage({super.key});
+  const SubcontractWasteResponsibilityPage({
+    super.key,
+    this.initialStatus,
+    this.embedded = false,
+  });
+
+  final String? initialStatus;
+  final bool embedded;
 
   @override
-  Widget build(BuildContext context) => const _SubcontractBusinessListPage(
-    presentation: _ListPresentation(
+  Widget build(BuildContext context) => _SubcontractBusinessListPage(
+    initialStatus: initialStatus,
+    embedded: embedded,
+    presentation: const _ListPresentation(
       type: SubcontractDocType.waste,
       title: '委外损耗与责任',
       icon: Icons.gavel_outlined,
@@ -223,9 +263,11 @@ class _SubcontractBusinessListPage extends ConsumerStatefulWidget {
   const _SubcontractBusinessListPage({
     required this.presentation,
     this.initialStatus,
+    this.embedded = false,
   });
 
   final _ListPresentation presentation;
+  final bool embedded;
 
   /// 深链预选（路由 `?status=draft`）：新建页「草稿(N)」按钮进来时直接落在草稿段。
   final String? initialStatus;
@@ -266,7 +308,8 @@ class _BizSeg {
 }
 
 class _SubcontractBusinessListPageState
-    extends ConsumerState<_SubcontractBusinessListPage> {
+    extends ConsumerState<_SubcontractBusinessListPage>
+    with DraftBulkDeleteMixin<_SubcontractBusinessListPage> {
   final _controller = _BusinessPagedController();
 
   /// 当前选中分段；null = 未选择引导态（不发请求）。
@@ -282,6 +325,10 @@ class _SubcontractBusinessListPageState
   String? _supplierIdFilter;
   String? _warehouseIdFilter;
 
+  /// 2026-09-25 单号列统一：单据号表头值筛选 + 服务端桶（共享状态，见
+  /// MasterServerColumnFilters）。
+  final _columnFilters = MasterServerColumnFilters();
+
   String? _location;
 
   _ListPresentation get _p => widget.presentation;
@@ -292,6 +339,67 @@ class _SubcontractBusinessListPageState
 
   /// 「草稿」段：订货单额外带 NONE 切片（在审单归「等待财务审核」段，不算草稿）。
   _BizSeg get _draftSeg => _BizSeg.stage(0, _isOrder ? 'NONE' : null);
+
+  bool get _draftDeleteEnabled =>
+      _cfg.draftKind != null &&
+      _seg == _draftSeg &&
+      _cfg.deletePerm != null &&
+      ref.read(currentPermissionsProvider).contains(_cfg.deletePerm);
+
+  bool _deletableDraft(SubcontractDocListItem row) =>
+      _draftDeleteEnabled &&
+      row.status == 0 &&
+      !row.closed &&
+      !row.legacyImported &&
+      (!_isOrder ||
+          row.financeApproval == null ||
+          row.financeApproval!.status == 'DRAFT');
+
+  Widget _draftDeleteButton() {
+    final type = _p.type;
+    final cfg = _cfg;
+    final repo = ref.read(subcontractRepositoryProvider(type));
+    final scope = ref.read(authenticatedScopeProvider);
+    return buildDraftDeleteButton(
+      documentLabel: cfg.label,
+      delete: (id) async {
+        // 列表不带归属字段：删除前读取最新详情，复用详情页的对象写范围。
+        final detail = await repo.detail(id);
+        if (!mounted ||
+            !ref.read(currentPermissionsProvider).contains(cfg.deletePerm) ||
+            !await loadDocumentOwnerCanWrite(
+              ref,
+              DocumentDataScope.subcontract,
+              detail.makerId,
+            )) {
+          throw ApiException('FORBIDDEN', documentScopeReadOnlyMessage);
+        }
+        if (detail.status != 0 ||
+            detail.closed ||
+            detail.legacyImported ||
+            (type == SubcontractDocType.order &&
+                detail.financeApproval != null &&
+                detail.financeApproval!.status != 'DRAFT')) {
+          throw ApiException('CONFLICT', '单据已不是可删除草稿，请刷新后重试');
+        }
+        if (!mounted ||
+            _p.type != type ||
+            !_draftDeleteEnabled ||
+            !selectedDraftIds.contains(id) ||
+            ref.read(authenticatedScopeProvider) != scope) {
+          throw ApiException('CONFLICT', '页面或身份已变化，已停止删除');
+        }
+        await repo.delete(id);
+      },
+      reload: () async {
+        await _reload();
+        if (_controller.error != null) {
+          throw ApiException('LIST_REFRESH_FAILED', _controller.error!);
+        }
+        await _loadBadge();
+      },
+    );
+  }
 
   _BizSeg? get _primarySeg {
     final seg = _seg;
@@ -334,6 +442,24 @@ class _SubcontractBusinessListPageState
   }
 
   @override
+  void didUpdateWidget(covariant _SubcontractBusinessListPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.presentation.type == _p.type &&
+        oldWidget.initialStatus == widget.initialStatus) {
+      return;
+    }
+    clearDraftSelection();
+    _controller.result = null;
+    _seg = isDraftStatusQuery(widget.initialStatus) ? _draftSeg : null;
+    _location = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadBadge();
+      if (_shouldLoad) _reload(1);
+    });
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
@@ -357,21 +483,66 @@ class _SubcontractBusinessListPageState
                 ? null
                 : ChinaDateTime.formatDate(range.start),
             dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+            billNo: _columnFilters['billNo'],
           ),
+          sort: _controller.sortKey,
+          order: _controller.sortOrder,
         );
   }
 
-  Future<void> _reload([int? page, bool silent = false]) {
-    if (!_shouldLoad) return Future.value();
-    return _controller.load(
+  /// 单据号值筛选桶随过滤上下文重取（失败静默保持旧桶，不阻断列表；
+  /// 损耗等尚无 facets 端点的单据类型同样静默为空桶）。
+  Future<void> _loadBillNoFacets() {
+    final seg = _seg;
+    if (seg == null) return Future.value();
+    final range = seg.history ? _historyTime.range : null;
+    return _columnFilters.loadFacets(
+      () async => {
+        'billNo': await ref
+            .read(subcontractRepositoryProvider(_p.type))
+            .billNoFacets(
+              filter: SubcontractDocFilter(
+                keyword: _controller.keyword.trim(),
+                supplierId: _supplierIdFilter,
+                warehouseId: _warehouseIdFilter,
+                status: seg.status,
+                financeApproval: seg.financeApproval,
+                closed: seg.closed,
+                dateFrom: range == null
+                    ? null
+                    : ChinaDateTime.formatDate(range.start),
+                dateTo: range == null
+                    ? null
+                    : ChinaDateTime.formatDate(range.end),
+              ),
+            ),
+      },
+      onLoaded: () {
+        if (mounted) setState(() {});
+      },
+    );
+  }
+
+  Future<void> _reload([int? page, bool silent = false]) async {
+    if (!_shouldLoad) return;
+    unawaited(_loadBillNoFacets());
+    await _controller.load(
       page ?? _controller.page,
       silent: silent,
       fetch: _fetch,
     );
+    if (mounted) {
+      retainDraftSelection(
+        (_controller.result?.items ?? const <SubcontractDocListItem>[])
+            .where(_deletableDraft)
+            .map((row) => row.id),
+      );
+    }
   }
 
   void _selectSeg(_BizSeg seg) {
     if (seg == _seg) return;
+    clearDraftSelection();
     setState(() {
       _seg = seg;
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
@@ -381,12 +552,41 @@ class _SubcontractBusinessListPageState
 
   void _onHistoryTime(UtenHistoryTimeValue value) {
     if (value == _historyTime) return;
+    clearDraftSelection();
     setState(() => _historyTime = value);
     _reload(1);
   }
 
   /// 表头筛选回调：值并进既有 repository.list 参数，重拉回第 1 页。
+  Widget _withDraftCategory(MasterDataTableView<SubcontractDocListItem> table) {
+    final scope = _statusScope;
+    if (_seg != _draftSeg || scope == null) return table;
+    final names = ref.watch(mn.masterNameServiceProvider);
+    return FormDraftCategoryTable<SubcontractDocListItem>(
+      scope: formDraftScopeForDocumentStatus(scope),
+      table: table,
+      localValue: (draft, key) => formDraftMasterColumnValue(
+        draft,
+        key,
+        suppliers: names.supplierEntries,
+        currencies: names.currencyEntries,
+        warehouses: names.warehouseEntries,
+      ),
+      search: _controller.keyword,
+      formalId: (row) => row.id,
+    );
+  }
+
   void _onColumnFilterChanged(String key, String? value) {
+    clearDraftSelection();
+    if (key == 'billNo') {
+      _columnFilters.handleFilterChanged(
+        key,
+        value,
+        onChanged: _afterServerColumnChanged,
+      );
+      return;
+    }
     setState(() {
       if (key == 'supplier') {
         _supplierIdFilter = value;
@@ -394,6 +594,21 @@ class _SubcontractBusinessListPageState
         _warehouseIdFilter = value;
       }
     });
+    _reload(1);
+  }
+
+  /// 服务端列筛选落地后：setState 刷新表头 + 重拉回第 1 页。
+  void _afterServerColumnChanged() {
+    clearDraftSelection();
+    setState(() {});
+    _reload(1);
+  }
+
+  /// 表头排序回调（2026-09-25 单号列统一）：column=null 取消排序回后端默认；
+  /// 否则按该列升/降序重查（回第 1 页，服务端白名单排序）。
+  void _onSortChange(String? column, bool ascending) {
+    clearDraftSelection();
+    _controller.onSortChange(column, ascending);
     _reload(1);
   }
 
@@ -443,7 +658,9 @@ class _SubcontractBusinessListPageState
     final staged = statusScope != null;
     final statusCounts = statusScope == null
         ? null
-        : ref.watch(documentStatusCountsProvider(statusScope)).valueOrNull;
+        : ref
+              .watch(effectiveDocumentStatusCountsProvider(statusScope))
+              .valueOrNull;
     // 条件表达式里直接写 `? statusCounts?[key]` 会被 Dart 解析器当成两个 `?`, 走局部函数。
     int? bucket(String key) => statusCounts?[key];
     // 返回即刷新(ADR-108): 回到本列表时, 只有本端写过数据或离开超过 30 秒才重拉,
@@ -466,7 +683,7 @@ class _SubcontractBusinessListPageState
     // （紧凑断点自动换行到搜索下方），不再单独占一行。
     final action = _p.primaryAction;
     final actionReady = action != null && _canUse(action);
-    return Scaffold(
+    final page = Scaffold(
       appBar: UtenAppBar(
         title: _p.title,
         leading: UtenBackButton(
@@ -520,7 +737,7 @@ class _SubcontractBusinessListPageState
                               ? UtenSegmentCountForm.actionable
                               : UtenSegmentCountForm.browsing,
                         ),
-                        if (_isOrder)
+                        if (!widget.embedded && _isOrder)
                           UtenFilterSegment(
                             value: const _BizSeg.inProgress(),
                             label: '进行中',
@@ -528,16 +745,18 @@ class _SubcontractBusinessListPageState
                             countForm: UtenSegmentCountForm.actionable,
                             inProgressCount: ongoingCount,
                           ),
-                        const UtenFilterSegment(
-                          value: _BizSeg.history(),
-                          label: '历史记录',
-                        ),
+                        if (!widget.embedded)
+                          const UtenFilterSegment(
+                            value: _BizSeg.history(),
+                            label: '历史记录',
+                          ),
                       ],
                       selected: primarySeg == null ? const {} : {primarySeg},
                       onSelectionChanged: _selectSeg,
                       searchHint: '搜索单据号',
                       initialSearchValue: _controller.keyword,
                       onSearchChanged: (value) {
+                        clearDraftSelection();
                         _controller.keyword = value;
                         _reload(1);
                       },
@@ -627,54 +846,78 @@ class _SubcontractBusinessListPageState
                     ? const UtenFilterPlaceholder()
                     : seg.history && _historyTime.isNone
                     ? const UtenHistoryTimePlaceholder()
-                    : MasterDataTableView<SubcontractDocListItem>(
-                        // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
-                        primary: true,
-                        columns: _p.columns(
-                          names,
-                          _canViewCommercial &&
-                              !(_controller.result?.items.any(
-                                    (row) => row.priceMasked,
-                                  ) ??
-                                  false),
-                        ),
-                        items:
-                            _controller.result?.items ??
-                            const <SubcontractDocListItem>[],
-                        facets: {
-                          'supplier': masterDictionaryFacets(
-                            names.supplierEntries,
+                    : _withDraftCategory(
+                        MasterDataTableView<SubcontractDocListItem>(
+                          // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
+                          primary: true,
+                          columns: _p.columns(
+                            names,
+                            _canViewCommercial &&
+                                !(_controller.result?.items.any(
+                                      (row) => row.priceMasked,
+                                    ) ??
+                                    false),
                           ),
-                          'warehouse': masterDictionaryFacets(
-                            names.warehouseEntries,
-                          ),
-                        },
-                        nullCounts: const {},
-                        filters: {
-                          'supplier': _supplierIdFilter,
-                          'warehouse': _warehouseIdFilter,
-                        },
-                        onFilterChanged: _onColumnFilterChanged,
-                        onRowTap: (row) {
-                          context.push(
-                            SubcontractRoute.detail(
-                              _p.type.pathSegment,
-                              row.id,
+                          items:
+                              _controller.result?.items ??
+                              const <SubcontractDocListItem>[],
+                          selectable: _draftDeleteEnabled,
+                          idOf: (row) =>
+                              !draftDeleteBusy && _deletableDraft(row)
+                              ? row.id
+                              : null,
+                          rowKeyOf: (row) => row.id,
+                          selectedIds: selectedDraftIds,
+                          onSelectedIdsChanged: draftDeleteBusy
+                              ? null
+                              : selectDraftIds,
+                          batchActionsBuilder: _draftDeleteEnabled
+                              ? (_, _) => [_draftDeleteButton()]
+                              : null,
+                          facets: {
+                            'billNo': _columnFilters.bucketOf('billNo'),
+                            'supplier': masterDictionaryFacets(
+                              names.supplierEntries,
                             ),
-                          );
-                        },
-                        isLoading:
-                            _controller.loading && _controller.result == null,
-                        loadingMore:
-                            _controller.loading && _controller.result != null,
-                        error: _controller.error,
-                        onRetry: _reload,
-                        emptyMessage: seg.history
-                            ? '该时间段内暂无记录'
-                            : _p.emptyMessage,
-                        currentPage: _controller.page,
-                        totalPages: _controller.result?.totalPages ?? 1,
-                        onPageChange: (p) => _reload(p),
+                            'warehouse': masterDictionaryFacets(
+                              names.warehouseEntries,
+                            ),
+                          },
+                          nullCounts: const {},
+                          filters: {
+                            'billNo': _columnFilters['billNo'],
+                            'supplier': _supplierIdFilter,
+                            'warehouse': _warehouseIdFilter,
+                          },
+                          onFilterChanged: _onColumnFilterChanged,
+                          // 2026-09-25 单号列统一：服务端排序（传 onSortChange 即服务端排序）。
+                          sortColumn: _controller.sortKey,
+                          sortAscending: _controller.sortAsc,
+                          onSortChange: _onSortChange,
+                          onRowTap: (row) {
+                            context.push(
+                              SubcontractRoute.detail(
+                                _p.type.pathSegment,
+                                row.id,
+                              ),
+                            );
+                          },
+                          isLoading:
+                              _controller.loading && _controller.result == null,
+                          loadingMore:
+                              _controller.loading && _controller.result != null,
+                          error: _controller.error,
+                          onRetry: _reload,
+                          emptyMessage: seg.history
+                              ? '该时间段内暂无记录'
+                              : _p.emptyMessage,
+                          currentPage: _controller.page,
+                          totalPages: _controller.result?.totalPages ?? 1,
+                          onPageChange: (p) {
+                            clearDraftSelection();
+                            _reload(p);
+                          },
+                        ),
                       ),
               );
             },
@@ -682,6 +925,7 @@ class _SubcontractBusinessListPageState
         ),
       ),
     );
+    return widget.embedded ? page.body! : page;
   }
 
   Widget? _clearSubstageAction() => _seg == _primarySeg
@@ -700,6 +944,20 @@ class _BusinessPagedController extends ChangeNotifier {
   int page = 1;
   String keyword = '';
   int _requestId = 0;
+
+  /// 列排序态（2026-09-25 单号列统一）：sortKey=null 不排序（走后端默认）。
+  String? sortKey;
+  bool sortAsc = true;
+
+  /// 未选排序列时不传 order；选了按升/降序映射后端参数。
+  String? get sortOrder => sortKey == null ? null : (sortAsc ? 'asc' : 'desc');
+
+  /// 表头排序回调：column=null 取消排序回后端默认。只更新状态不重查，
+  /// 宿主随后自行 reload(1)。
+  void onSortChange(String? column, bool ascending) {
+    sortKey = column;
+    sortAsc = ascending;
+  }
 
   Future<void> load(
     int nextPage, {
@@ -736,7 +994,9 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
   String statusLabel = '状态',
 }) => [
   MasterColumnDef(
+    // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
     key: 'billNo',
+    sortable: true,
     label: '单据号',
     width: 150,
     value: (row) => row.billNo,

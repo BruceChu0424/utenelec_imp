@@ -13,6 +13,8 @@
 // 「历史单据」段一律时间门控（WarehouseHistoryGate：时间段/全部，
 // 未选时间显示引导占位不加载）。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_category.dart';
+import '../widgets/warehouse_form_draft_categories.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_segment_badge_label.dart';
@@ -84,6 +86,19 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
         : typeCounts.valueOrNull?['SUBCONTRACT'] ?? 0;
 
     final segments = <WarehouseTaskSegmentSpec>[
+      if (canInbound ||
+          canPurchaseHistory ||
+          canSubcontractHistory ||
+          canStockDocs)
+        WarehouseTaskSegmentSpec(
+          value: 'drafts',
+          label: '草稿',
+          count: ref.watch(
+            formDraftCategoryVisibleCountProvider(
+              warehouseInboundFormDraftScope,
+            ),
+          ),
+        ),
       if (canInbound || canPurchaseHistory)
         WarehouseTaskSegmentSpec(
           value: 'purchase',
@@ -120,6 +135,11 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
       onResume: () => invalidateWarehouseTaskCounts(ref),
       bodyBuilder: (segment, keyword, refreshTick, headerPrefix) =>
           switch (segment) {
+            'drafts' => WarehouseFormDraftCategory(
+              scope: warehouseInboundFormDraftScope,
+              header: headerPrefix,
+              search: keyword,
+            ),
             'purchase' => _PurchaseInboundSegment(
               keyword: keyword,
               refreshTick: refreshTick,
@@ -203,11 +223,7 @@ class _PurchaseInboundSegmentState extends State<_PurchaseInboundSegment> {
     // 本分段小类行；与宿主前缀合并后挂进叶子视图折叠头随页滚走
     // （2026-09-24「表格完全置顶」），未选小类时钉在占位区上方。
     final modeRow = Padding(
-      padding: const EdgeInsets.only(
-        bottom: UtenSpacing.s8,
-        left: UtenSpacing.s4,
-        right: UtenSpacing.s4,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: UtenFilterToolbar<int>(
         segmentsKey: const Key('purchase-inbound-mode'),
         segments: [
@@ -233,12 +249,17 @@ class _PurchaseInboundSegmentState extends State<_PurchaseInboundSegment> {
         onSelectionChanged: (value) => setState(() => _mode = value),
       ),
     );
-    final Widget? combined = widget.externalHeader == null
-        ? null
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [widget.externalHeader!, modeRow],
-          );
+    // 传给下一级的头部不带尾部留白；每一级只在父分类之后添加一次间距。
+    final combined = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.externalHeader != null) ...[
+          widget.externalHeader!,
+          const SizedBox(height: UtenSpacing.s12),
+        ],
+        modeRow,
+      ],
+    );
     return switch (mode) {
       0 => WarehouseInboundExpectationsView(
         fixedOrderType: ProcurementInboundOrderType.purchase,
@@ -272,8 +293,7 @@ class _PurchaseInboundSegmentState extends State<_PurchaseInboundSegment> {
       _ => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (widget.externalHeader != null) widget.externalHeader!,
-          modeRow,
+          combined,
           const SizedBox(height: UtenSpacing.s8),
           const Expanded(
             child: UtenFilterPlaceholder(
@@ -326,11 +346,7 @@ class _SubcontractInboundSegmentState
     // 本分段小类行；与宿主前缀合并后挂进叶子视图折叠头随页滚走
     // （2026-09-24「表格完全置顶」），未选小类时钉在占位区上方。
     final modeRow = Padding(
-      padding: const EdgeInsets.only(
-        bottom: UtenSpacing.s8,
-        left: UtenSpacing.s4,
-        right: UtenSpacing.s4,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: UtenFilterToolbar<int>(
         segmentsKey: const Key('subcontract-inbound-mode'),
         segments: [
@@ -349,12 +365,17 @@ class _SubcontractInboundSegmentState
         onSelectionChanged: (value) => setState(() => _mode = value),
       ),
     );
-    final Widget? combined = widget.externalHeader == null
-        ? null
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [widget.externalHeader!, modeRow],
-          );
+    // 传给下一级的头部不带尾部留白；每一级只在父分类之后添加一次间距。
+    final combined = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.externalHeader != null) ...[
+          widget.externalHeader!,
+          const SizedBox(height: UtenSpacing.s12),
+        ],
+        modeRow,
+      ],
+    );
     return switch (mode) {
       0 => WarehouseInboundExpectationsView(
         fixedOrderType: ProcurementInboundOrderType.subcontract,
@@ -382,8 +403,7 @@ class _SubcontractInboundSegmentState
       _ => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (widget.externalHeader != null) widget.externalHeader!,
-          modeRow,
+          combined,
           const SizedBox(height: UtenSpacing.s8),
           const Expanded(
             child: UtenFilterPlaceholder(
@@ -434,11 +454,7 @@ class _FinishedInSegmentState extends State<_FinishedInSegment> {
     // 本分段小类行；与宿主前缀合并后挂进叶子视图折叠头随页滚走
     // （2026-09-24「表格完全置顶」），未选小类时钉在占位区上方。
     final modeRow = Padding(
-      padding: const EdgeInsets.only(
-        bottom: UtenSpacing.s8,
-        left: UtenSpacing.s4,
-        right: UtenSpacing.s4,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: UtenFilterToolbar<int>(
         segmentsKey: const Key('finished-in-mode'),
         segments: [
@@ -455,12 +471,17 @@ class _FinishedInSegmentState extends State<_FinishedInSegment> {
         onSelectionChanged: (value) => setState(() => _mode = value),
       ),
     );
-    final Widget? combined = widget.externalHeader == null
-        ? null
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [widget.externalHeader!, modeRow],
-          );
+    // 传给下一级的头部不带尾部留白；每一级只在父分类之后添加一次间距。
+    final combined = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.externalHeader != null) ...[
+          widget.externalHeader!,
+          const SizedBox(height: UtenSpacing.s12),
+        ],
+        modeRow,
+      ],
+    );
     return switch (mode) {
       0 => ProductionFinishedInboundTasksView(
         keyword: widget.keyword,
@@ -478,8 +499,7 @@ class _FinishedInSegmentState extends State<_FinishedInSegment> {
       _ => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (widget.externalHeader != null) widget.externalHeader!,
-          modeRow,
+          combined,
           const SizedBox(height: UtenSpacing.s8),
           const Expanded(
             child: UtenFilterPlaceholder(

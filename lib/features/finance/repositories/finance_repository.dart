@@ -8,6 +8,7 @@
 // 端点路径常量化在文件顶部（暂不进 api_endpoints.dart，由用户统一接线时再迁）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../basic_data/models/master_facet.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/finance_doc.dart';
@@ -40,6 +41,7 @@ class FinanceDocFilter {
     this.receiptKind, // receipt：收款类型（AR_SETTLEMENT/CUSTOMER_PREPAYMENT）
     this.dateFrom,
     this.dateTo,
+    this.billNo,
   });
   final String? keyword;
   final String? partyId;
@@ -50,6 +52,9 @@ class FinanceDocFilter {
   final String? receiptKind;
   final String? dateFrom; // yyyy-MM-dd
   final String? dateTo;
+
+  /// 单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
+  final String? billNo;
 }
 
 class FinanceRepository {
@@ -95,11 +100,39 @@ class FinanceRepository {
       if (filter.status != null) 'status': filter.status,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
+      if (filter.billNo != null && filter.billNo!.trim().isNotEmpty)
+        'billNo': filter.billNo!.trim(),
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
     };
     final json = await api.get(FinanceEndpoints.docBase(_seg), query: query);
     return PagedResult.fromJson(json, FinanceDocListItem.fromJson);
+  }
+
+  /// 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径（按 docType
+  /// 切端点）分组计数；不含 billNo 自身的筛选值。
+  Future<List<MasterFacetBucket>> billNoFacets({
+    FinanceDocFilter filter = const FinanceDocFilter(),
+  }) async {
+    final query = <String, dynamic>{
+      if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
+        'keyword': filter.keyword!.trim(),
+      if (filter.partyId != null) _partyKey: filter.partyId,
+      if (type == FinanceDocType.bankTransfer && filter.outAccountId != null)
+        'outAccountId': filter.outAccountId,
+      if (type != FinanceDocType.bankTransfer && filter.accountId != null)
+        'accountId': filter.accountId,
+      if (type == FinanceDocType.receipt && filter.receiptKind != null)
+        'receiptKind': filter.receiptKind,
+      if (filter.status != null) 'status': filter.status,
+      if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
+      if (filter.dateTo != null) 'dateTo': filter.dateTo,
+    };
+    final json = await api.get(
+      '${FinanceEndpoints.docBase(_seg)}/facets',
+      query: query,
+    );
+    return parseFacetBuckets(json, 'billNo');
   }
 
   Future<FinanceDocDetail> detail(String id) async {
@@ -155,6 +188,8 @@ class ArApFilter {
     this.settled,
     this.dateFrom,
     this.dateTo,
+    this.billNo,
+    this.salesOrderNos,
   });
   final String? keyword;
   final String? direction;
@@ -164,6 +199,12 @@ class ArApFilter {
   final bool? settled;
   final String? dateFrom;
   final String? dateTo;
+
+  /// 台账单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
+  final String? billNo;
+
+  /// 关联销售单号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
+  final String? salesOrderNos;
 }
 
 class ArApLedgerRepository {
@@ -189,11 +230,39 @@ class ArApLedgerRepository {
       if (filter.settled != null) 'settled': filter.settled,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
+      if (filter.billNo != null && filter.billNo!.trim().isNotEmpty)
+        'billNo': filter.billNo!.trim(),
+      if (filter.salesOrderNos != null &&
+          filter.salesOrderNos!.trim().isNotEmpty)
+        'salesOrderNos': filter.salesOrderNos!.trim(),
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
     };
     final json = await api.get(FinanceEndpoints.arAp, query: query);
     return PagedResult.fromJson(json, ArApLedgerItem.fromJson);
+  }
+
+  /// 单号列值筛选桶（2026-09-25 单号列统一）：单据号/来源单号与列表同一过滤
+  /// 口径分组计数；不含单号列自身的筛选值。
+  Future<Map<String, List<MasterFacetBucket>>> facets({
+    ArApFilter filter = const ArApFilter(),
+  }) async {
+    final query = <String, dynamic>{
+      if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
+        'keyword': filter.keyword!.trim(),
+      if (filter.direction != null) 'direction': filter.direction,
+      if (filter.sourceDocType != null) 'sourceDocType': filter.sourceDocType,
+      if (filter.partyId != null) 'partyId': filter.partyId,
+      if (filter.currencyId != null) 'currencyId': filter.currencyId,
+      if (filter.settled != null) 'settled': filter.settled,
+      if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
+      if (filter.dateTo != null) 'dateTo': filter.dateTo,
+    };
+    final json = await api.get('${FinanceEndpoints.arAp}/facets', query: query);
+    return {
+      for (final key in const ['billNo', 'sourceDocNo'])
+        key: parseFacetBuckets(json, key),
+    };
   }
 
   /// 按 direction + partyId 取未清台账（核销引入用）。
@@ -233,6 +302,7 @@ class ReconciliationFilter {
     this.dateFrom,
     this.dateTo,
     this.entryKind,
+    this.billNo,
   });
   final String? keyword;
   final String? accountId;
@@ -243,6 +313,9 @@ class ReconciliationFilter {
 
   /// 流水类型（2026-09-16 表头筛选）：POSTING 入账 / REVERSAL 反向冲销 / ADJUSTMENT 余额调整
   final String? entryKind;
+
+  /// 单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
+  final String? billNo;
 }
 
 class ReconciliationRepository {
@@ -267,11 +340,35 @@ class ReconciliationRepository {
       if (filter.entryKind != null) 'entryKind': filter.entryKind,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
+      if (filter.billNo != null && filter.billNo!.trim().isNotEmpty)
+        'billNo': filter.billNo!.trim(),
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
     };
     final json = await api.get(FinanceEndpoints.reconciliations, query: query);
     return PagedResult.fromJson(json, ReconciliationItem.fromJson);
+  }
+
+  /// 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数；
+  /// 不含 billNo 自身的筛选值。
+  Future<List<MasterFacetBucket>> billNoFacets({
+    ReconciliationFilter filter = const ReconciliationFilter(),
+  }) async {
+    final query = <String, dynamic>{
+      if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
+        'keyword': filter.keyword!.trim(),
+      if (filter.accountId != null) 'accountId': filter.accountId,
+      if (filter.sourceDocType != null) 'sourceDocType': filter.sourceDocType,
+      if (filter.checkNo != null) 'checkNo': filter.checkNo,
+      if (filter.entryKind != null) 'entryKind': filter.entryKind,
+      if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
+      if (filter.dateTo != null) 'dateTo': filter.dateTo,
+    };
+    final json = await api.get(
+      '${FinanceEndpoints.reconciliations}/facets',
+      query: query,
+    );
+    return parseFacetBuckets(json, 'billNo');
   }
 }
 

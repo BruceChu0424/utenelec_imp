@@ -257,13 +257,18 @@ class _ProductionFinishedBatchStockInPageState
 
   List<MasterColumnDef<ProductionFinishedInboundTask>> get _columns => [
     MasterColumnDef<ProductionFinishedInboundTask>(
+      // 2026-09-25 单号列统一：本页全量加载，就地排序+按值筛选。
       key: 'taskNo',
+      sortable: true,
+      filterFromRows: true,
       label: '入库单号',
       width: 180,
       value: (task) => task.documentNo ?? task.taskId,
     ),
     MasterColumnDef<ProductionFinishedInboundTask>(
       key: 'planNo',
+      sortable: true,
+      filterFromRows: true,
       label: '生产计划',
       width: 160,
       value: (task) => task.planNo ?? '—',

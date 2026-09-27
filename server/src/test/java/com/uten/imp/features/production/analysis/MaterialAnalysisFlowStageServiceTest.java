@@ -173,6 +173,14 @@ class MaterialAnalysisFlowStageServiceTest {
     }
 
     @Test
+    void manufacturingTargetAdoptingUnprocessedPurchaseFollowsThatRealSupply() {
+        UUID line=UUID.randomUUID();stubAllocationChain(line,UUID.randomUUID(),"PURCHASE_REQUEST");
+        Map<UUID,String> stages=service.lineFlowStages(UUID.randomUUID(),Map.of(line,"MAKE"),
+                Map.of(line,new BigDecimal("2")),Map.of(line,new BigDecimal("2")),Map.of(),Map.of());
+        assertThat(stages).containsEntry(line,"BUY_REQUESTED");
+    }
+
+    @Test
     void delegatedBuyLineWithZeroShortageDoesNotFakeStocked() {
         // 2026-09-06 修复「采购未下单却显示已入库」：整批下达把 required/shortage
         // 一并归零（转出不是齐套）。有行动、无订货单 → BUY_REQUESTED，
@@ -191,8 +199,8 @@ class MaterialAnalysisFlowStageServiceTest {
     }
 
     @Test
-    void coveredBuyLineWithLiveDemandStillCompletes() {
-        // 需求仍在行内（required>0）且缺口归零 = 现货/权益覆盖齐套：保留完成口径。
+    void coveredPrivateDemandDoesNotCompleteAnUnprocessedRealPurchaseOrder() {
+        // 物理保障和真实订单进度分开：需求齐套不能把未办理申请报为整单已入库。
         UUID line = UUID.randomUUID();
         UUID action = UUID.randomUUID();
         stubAllocationChain(line, action, "PURCHASE_REQUEST");
@@ -203,7 +211,7 @@ class MaterialAnalysisFlowStageServiceTest {
                 Map.of(line, new BigDecimal("10")),
                 Map.of(),
                 Map.of());
-        assertThat(stages).containsEntry(line, "BUY_STOCKED");
+        assertThat(stages).containsEntry(line, "BUY_REQUESTED");
     }
 
     @Test
@@ -236,6 +244,14 @@ class MaterialAnalysisFlowStageServiceTest {
         assertThat(stage(route, "10", "6", false,
                 order("10", 1, receipt("COMPLETE", "4", "4"), receipt("COMPLETE", "6", "0"))))
                 .isEqualTo(prefix(route) + "WAIT_STOCK_IN");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"BUY", "SUBCONTRACT"})
+    void fulfilledPrivateShareDoesNotHideTheUnreceivedPublicRemainder(String route) {
+        assertThat(stage(route,"10","0",false,
+                order("20",1,receipt("COMPLETE","10","10"))))
+                .isEqualTo(waitReceipt(route));
     }
 
     @ParameterizedTest

@@ -64,8 +64,9 @@ public class SubcontractMaterialReturnService {
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
 
-    /** 列排序白名单：前端列 key → JPA 实体属性名（材料退无金额列，仅日期可排序；命中才排序，否则默认 billDate DESC）。 */
-    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate");
+    /** 列排序白名单：前端列 key → JPA 实体属性名（材料退无金额列，日期/单据号可排序；命中才排序，否则默认 billDate DESC）。
+     *  2026-09-25 单号列统一：billNo 进白名单。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "billNo", "billNo");
 
     private final SubcontractMaterialReturnRepository returnRepo;
     private final SubcontractMaterialReturnItemRepository itemRepo;
@@ -89,8 +90,24 @@ public class SubcontractMaterialReturnService {
     @Transactional(readOnly = true)
     public PageResponse<MaterialReturnListItem> list(MaterialReturnQueryFilter f, int page, int size, String sort, String order) {
         boolean priceMasked = subcontractPriceMasked();
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
+        Page<SubcontractMaterialReturn> p = returnRepo.findAll(materialReturnSpec(f), pageable);
+        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
+                p);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(MaterialReturnQueryFilter f) {
+        return java.util.Map.of("billNo",
+                com.uten.imp.common.web.TableFacets.groupCount(em, SubcontractMaterialReturn.class, materialReturnSpec(f), "billNo"));
+    }
+
+    /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）。 */
+    private Specification<SubcontractMaterialReturn> materialReturnSpec(MaterialReturnQueryFilter f) {
         var readScope = access.scope();
-        Specification<SubcontractMaterialReturn> spec = (Root<SubcontractMaterialReturn> root,
+        return (Root<SubcontractMaterialReturn> root,
                                                          jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                          CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -105,13 +122,12 @@ public class SubcontractMaterialReturnService {
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
+            // 2026-09-25 单号列统一：单据号表头值筛选（精确匹配）。
+            if (f.billNo() != null && !f.billNo().isBlank()) {
+                ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
+            }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<SubcontractMaterialReturn> p = returnRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
-                p);
     }
 
     @Transactional(readOnly = true)

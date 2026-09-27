@@ -85,6 +85,11 @@ class StockDocReviewedOutboundTest {
         when(empty.getResultList()).thenReturn(List.of());
         when(empty.getSingleResult()).thenReturn(false);
         when(em.createNativeQuery(anyString())).thenReturn(empty);
+        Query materialRequestNumbers = mock(Query.class);
+        when(materialRequestNumbers.setParameter(anyString(), any())).thenReturn(materialRequestNumbers);
+        when(materialRequestNumbers.getSingleResult()).thenReturn(null);
+        when(em.createNativeQuery(contains("SELECT string_agg(DISTINCT request.request_no")))
+                .thenReturn(materialRequestNumbers);
         FulfillmentMutationLockTestSupport.emptyExecutionGraph(em);
         Query goods = mock(Query.class);
         when(goods.setParameter(anyString(), any())).thenReturn(goods);

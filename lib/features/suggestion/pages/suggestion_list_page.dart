@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/drafts/form_draft_category.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/feedback/uten_context_menu.dart';
@@ -130,7 +131,11 @@ class SuggestionListPage extends ConsumerWidget {
         context,
         hasItems: list.valueOrNull?.items.isNotEmpty ?? false,
       ),
-      body: body,
+      body: FormDraftCategoryHost(
+        scope: const FormDraftCategoryScope(routePath: '/suggestion/new'),
+        contentLabel: '建议',
+        child: body,
+      ),
     );
   }
 }

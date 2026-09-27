@@ -81,8 +81,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     /** 2026-09-05 起：草稿单可「取消」——保留单据轨迹（区别于删除），不回写 -1。 */
     private static final short STATUS_CANCELED = 2;
 
-    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
-    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal");
+    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额/单据号可排序；命中才排序，否则默认 billDate DESC）。
+     *  2026-09-25 单号列统一：billNo 进白名单（价格遮蔽分支见 list）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal", "billNo", "billNo");
 
     private final PurchaseOrderRepository orderRepo;
     private final PurchaseOrderItemRepository itemRepo;
@@ -123,6 +124,35 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     @Transactional(readOnly = true)
     public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
         boolean priceMasked = purchasePriceMasked();
+        Specification<PurchaseOrder> spec = orderSpec(f);
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
+                        // 价格遮蔽时金额排序是侧信道：金额列不进白名单（单据号排序不泄露商业信息，保留）。
+                        priceMasked
+                                ? Map.of("billDate", "billDate", "billNo", "billNo")
+                                : ALLOWED_SORT));
+        Page<PurchaseOrder> p = orderRepo.findAll(spec, pageable);
+        Map<UUID, FinanceApproval> approvals = approvalProjection.latestForOrders(
+                orderType(),
+                p.getContent().stream().collect(Collectors.toMap(
+                        PurchaseOrder::getId,
+                        row -> row.getStatus())));
+        List<OrderListItem> items = p.getContent().stream()
+                .map(row -> toList(row, approvals.get(row.getId()), priceMasked))
+                .toList();
+        return new PageResponse<>(
+                items, p);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(OrderQueryFilter f) {
+        return java.util.Map.of("billNo",
+                com.uten.imp.common.web.TableFacets.groupCount(em, PurchaseOrder.class, orderSpec(f), "billNo"));
+    }
+
+    /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）：财务审批态切片 + 基础过滤。 */
+    private Specification<PurchaseOrder> orderSpec(OrderQueryFilter f) {
         var readScope = access.scope();
         // 财务审批态切片（financeApproval）：财务通过前 status 保持 0，草稿段与
         // 「等待财务审核」段同为 status=0，按 PENDING case 集合区分。待审队列很小，
@@ -135,7 +165,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         Set<UUID> rejectedFinanceIds = financeApproval == null
                 ? null
                 : approvalProjection.rejectedOrderIds(orderType());
-        Specification<PurchaseOrder> spec = (Root<PurchaseOrder> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
+        return (Root<PurchaseOrder> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
@@ -148,6 +178,10 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
+            // 2026-09-25 单号列统一：单据号表头值筛选（精确匹配）。
+            if (f.billNo() != null && !f.billNo().isBlank()) {
+                ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
+            }
             if (financeApproval != null) {
                 if ("PENDING".equals(financeApproval)) {
                     // 空集时 in() 会生成非法 SQL：无在审单 → 恒假。
@@ -175,20 +209,6 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
-                        priceMasked ? Map.of("billDate", "billDate") : ALLOWED_SORT));
-        Page<PurchaseOrder> p = orderRepo.findAll(spec, pageable);
-        Map<UUID, FinanceApproval> approvals = approvalProjection.latestForOrders(
-                orderType(),
-                p.getContent().stream().collect(Collectors.toMap(
-                        PurchaseOrder::getId,
-                        row -> row.getStatus())));
-        List<OrderListItem> items = p.getContent().stream()
-                .map(row -> toList(row, approvals.get(row.getId()), priceMasked))
-                .toList();
-        return new PageResponse<>(
-                items, p);
     }
 
     @Transactional(readOnly = true)

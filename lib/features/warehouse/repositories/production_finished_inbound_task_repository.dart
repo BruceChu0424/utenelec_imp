@@ -4,6 +4,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/production_finished_inbound_task.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 class ProductionFinishedInboundTaskRepository {
@@ -18,6 +19,10 @@ class ProductionFinishedInboundTaskRepository {
     String? taskStage,
     String? warehouseId,
     WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+    String? sort,
+    String? order,
+    String? taskNo,
+    String? planNo,
   }) async {
     final normalized = keyword?.trim();
     final json = await api.get(
@@ -30,9 +35,43 @@ class ProductionFinishedInboundTaskRepository {
         if (warehouseId != null && warehouseId.isNotEmpty)
           'warehouseId': warehouseId,
         ...scope.queryParameters,
+        // 2026-09-25 单号列统一：表头排序 + 任务单号/生产计划号表头值筛选。
+        if (sort != null && sort.isNotEmpty) 'sort': sort,
+        if (order != null && order.isNotEmpty) 'order': order,
+        if (taskNo != null && taskNo.trim().isNotEmpty) 'taskNo': taskNo.trim(),
+        if (planNo != null && planNo.trim().isNotEmpty) 'planNo': planNo.trim(),
       },
     );
     return PagedResult.fromJson(json, ProductionFinishedInboundTask.fromJson);
+  }
+
+  /// 产成品入库任务单号列值筛选桶（2026-09-25 单号列统一）：
+  /// {taskNo:[…], planNo:[…]}，与列表同一过滤口径。
+  Future<Map<String, List<MasterFacetBucket>>> taskBillNoFacets({
+    String? keyword,
+    String? taskStage,
+    String? warehouseId,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+  }) async {
+    final normalized = keyword?.trim();
+    final json =
+        await api.get(
+              ApiEndpoints.productionFinishedInboundTaskFacets,
+              query: {
+                if (normalized != null && normalized.isNotEmpty)
+                  'keyword': normalized,
+                if (taskStage != null && taskStage.isNotEmpty)
+                  'taskStage': taskStage,
+                if (warehouseId != null && warehouseId.isNotEmpty)
+                  'warehouseId': warehouseId,
+                ...scope.queryParameters,
+              },
+            )
+            as Map;
+    return {
+      'taskNo': parseFacetBuckets(json, 'taskNo'),
+      'planNo': parseFacetBuckets(json, 'planNo'),
+    };
   }
 
   Future<({int confirmedCount, bool replay, Set<String> confirmedDocumentIds})>

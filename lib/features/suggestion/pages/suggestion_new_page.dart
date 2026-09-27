@@ -15,6 +15,8 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
 import '../models/suggestion.dart';
 import '../providers/suggestion_providers.dart';
 
@@ -25,7 +27,39 @@ class SuggestionNewPage extends ConsumerStatefulWidget {
   ConsumerState<SuggestionNewPage> createState() => _SuggestionNewPageState();
 }
 
-class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
+class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage>
+    with FormDraftMixin<SuggestionNewPage> {
+  @override
+  bool get formDraftBusy => _isSubmitting;
+  @override
+  FormDraftSpec get formDraftSpec =>
+      FormDraftCatalog.suggestion.spec(title: '新建建议', route: '/suggestion/new');
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _titleController,
+    _contentController,
+  ];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'title': _titleController.text,
+    'content': _contentController.text,
+    'category': _category.name,
+    'anonymous': _isAnonymous,
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _titleController.text = data['title'] as String? ?? '';
+    _contentController.text = data['content'] as String? ?? '';
+    _category = SuggestionCategory.values.byName(data['category'] as String);
+    _isAnonymous = data['anonymous'] == true;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => initializeFormDraft());
+  }
+
   SuggestionCategory _category = SuggestionCategory.process;
   final _titleController = TextEditingController();
   final _contentController = TextEditingController();
@@ -41,6 +75,10 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
 
   @override
   Widget build(BuildContext context) {
+    return withFormDraft(_buildEditor(context));
+  }
+
+  Widget _buildEditor(BuildContext context) {
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -197,13 +235,17 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
 
     setState(() => _isSubmitting = true);
     try {
-      final s = await submitSuggestion(
-        ref,
-        category: _category,
-        title: _titleController.text.trim(),
-        content: _contentController.text.trim(),
-        isAnonymous: _isAnonymous,
+      await saveFormDraftNow();
+      final s = await runFormDraftSubmission(
+        () => submitSuggestion(
+          ref,
+          category: _category,
+          title: _titleController.text.trim(),
+          content: _contentController.text.trim(),
+          isAnonymous: _isAnonymous,
+        ),
       );
+      await completeFormDraft();
       if (mounted) {
         UtenToast.success(context, '提交成功，感谢您的建议！');
         // replace 成详情（2026-09-24 起，原来 push 把详情叠在空白新建表单上，

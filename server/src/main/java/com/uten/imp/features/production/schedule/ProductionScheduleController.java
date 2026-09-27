@@ -38,7 +38,7 @@ public class ProductionScheduleController {
     private final ProductionScheduleService service;
 
     /** 待排产订单行（服务端分页；keyword 模糊单号/客户/货品；dateFrom/dateTo 交货日期范围；
-     *  sort/order 表头排序；status 表头值筛选 urgent/normal）。 */
+     *  sort/order 表头排序；status 表头值筛选 urgent/normal；billNo 销售单号表头值筛选）。 */
     @GetMapping("/pending")
     @PreAuthorize("hasAuthority('production_plan:view')")
     public com.uten.imp.common.web.PageResponse<PendingPlanRow> pending(
@@ -49,11 +49,12 @@ public class ProductionScheduleController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) java.time.LocalDate dateTo,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String status) {
-        return service.pending(page, size, keyword, dateFrom, dateTo, sort, order, status);
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String billNo) {
+        return service.pending(page, size, keyword, dateFrom, dateTo, sort, order, status, billNo);
     }
 
-    /** 待排产状态 facets（表头值筛选下拉用）：{status:[{value,count,label}]}（紧急/正常）。 */
+    /** 待排产 facets（表头值筛选下拉用）：{status:[紧急/正常], orderBillNo:[各销售单号]}。 */
     @GetMapping("/pending/facets")
     @PreAuthorize("hasAuthority('production_plan:view')")
     public Map<String, List<Map<String, Object>>> pendingFacets(

@@ -343,6 +343,8 @@ public class SalesReportService {
             w.add("o.currency_id=:currencyId", "currencyId", currencyId);
         }
         List<FacetSpec> specs = List.of(
+                // 2026-09-25 单号列统一：单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）。
+                new FacetSpec("billNo", "o.bill_no AS v, o.bill_no AS lbl", "o.bill_no", "o.bill_no", "text"),
                 facetClient(),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"),
                 new FacetSpec("closed", "o.is_closed AS v, CASE WHEN o.is_closed THEN '已完成' ELSE '未完成' END AS lbl", "o.is_closed", "o.is_closed", "bool"));
@@ -430,6 +432,8 @@ public class SalesReportService {
         addOwnerReadFilter(w, "o.owner_employee_id", "salesOwners");
         addCommonDocFilters(w, billNo, clientId, null, status, dateFrom, dateTo, kw, "i.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
+                // 2026-09-25 单号列统一：单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）。
+                new FacetSpec("billNo", "i.bill_no AS v, i.bill_no AS lbl", "i.bill_no", "i.bill_no", "text"),
                 facetClient(),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
         return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
@@ -494,6 +498,8 @@ public class SalesReportService {
         addOwnerReadFilter(w, "o.owner_employee_id", "salesOwners");
         addCommonDocFilters(w, billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, "i.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
+                // 2026-09-25 单号列统一：单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）。
+                new FacetSpec("billNo", "i.bill_no AS v, i.bill_no AS lbl", "i.bill_no", "i.bill_no", "text"),
                 facetClient(), facetWarehouse("warehouseName"),
                 new FacetSpec("settlementStyle", "o.payment_style_id AS v, CAST(o.payment_style_id AS text) AS lbl", "o.payment_style_id", "o.payment_style_id", "style"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));

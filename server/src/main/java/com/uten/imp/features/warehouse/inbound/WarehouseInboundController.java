@@ -52,9 +52,26 @@ public class WarehouseInboundController {
             @RequestParam(defaultValue = "") String keyword,
             @RequestParam(required = false) UUID supplierId,
             @RequestParam(defaultValue = "") String warehouseScope,
-            @RequestParam(required = false) UUID scopeWarehouseId) {
+            @RequestParam(required = false) UUID scopeWarehouseId,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String billNo) {
         // 仓库范围(ADR-115)：MINE = 我负责的仓库；scopeWarehouseId = 指定仓库(含子仓)。
+        // 2026-09-25 单号列统一：sort/order 表头排序 + billNo 订货单号表头值筛选。
         return service.expectations(page, size, orderType, keyword, supplierId,
+                warehouseScopes.resolve(warehouseScope, scopeWarehouseId), sort, order, billNo);
+    }
+
+    /** 预计到货 facets（2026-09-25 单号列统一）：{billNo:[各订货单号]}——
+     *  同列表过滤口径（不含 billNo 自身值筛选）。 */
+    @GetMapping("/expectations/facets")
+    public Map<String, List<Map<String, Object>>> expectationFacets(
+            @RequestParam(defaultValue = "") String orderType,
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) UUID supplierId,
+            @RequestParam(defaultValue = "") String warehouseScope,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        return service.expectationFacets(orderType, keyword, supplierId,
                 warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
     }
 
@@ -81,9 +98,32 @@ public class WarehouseInboundController {
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "") String warehouseScope,
-            @RequestParam(required = false) UUID scopeWarehouseId) {
+            @RequestParam(required = false) UUID scopeWarehouseId,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String receiptBillNo,
+            @RequestParam(required = false) String orderBillNo) {
+        // 2026-09-25 单号列统一：sort/order 表头排序 + 收货单号/订货单号表头值筛选。
         return service.warehouseExceptions(page, size, keyword, includeHistory,
-                supplierId, warehouseId, status, warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
+                supplierId, warehouseId, status,
+                warehouseScopes.resolve(warehouseScope, scopeWarehouseId),
+                sort, order, receiptBillNo, orderBillNo);
+    }
+
+    /** 到货异常 facets（2026-09-25 单号列统一）：{receiptBillNo/orderBillNo:[各单号]}——
+     *  同列表过滤口径（不含单号列自身值筛选）。 */
+    @GetMapping("/arrival-exceptions/facets")
+    public Map<String, List<Map<String, Object>>> arrivalExceptionFacets(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(name = "history", defaultValue = "false") boolean includeHistory,
+            @RequestParam(required = false) UUID supplierId,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "") String warehouseScope,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        return service.warehouseExceptionFacets(keyword, includeHistory,
+                supplierId, warehouseId, status,
+                warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
     }
 
     @GetMapping("/arrival-exceptions/count")

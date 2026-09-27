@@ -75,6 +75,18 @@ bool _isAnalysisSalesOrderPath(String routePath) {
 List<String>? requiredAnyPermFor(String rawLocation) {
   final location = hubCardPath(rawLocation);
   final routePath = location;
+  if (location == '/finance/assets/new') {
+    return const [Perm.financeAssetEdit];
+  }
+  if (location == '/production/material-return/new') {
+    return const [Perm.productionMaterialSettle];
+  }
+  if (location == '/production/overproduction-rate-requests/new') {
+    return const [Perm.productionExecutionRequestOverproductionRate];
+  }
+  if (location.startsWith('/warehouse/material-discovery/')) {
+    return const [Perm.stockDocIssue, Perm.stockDocApprove];
+  }
   // hub：子卡守卫的并集(真正的放行判定在 route_access_policy：任一子卡可进即可进)。
   if (isHubLocation(location)) return hubUnionRequiredAny(location);
   // 账号支持可进入员工账号列表；只有超级管理员能看到并修改授权部分。
@@ -566,6 +578,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   }
   if (routePath == RouteName.productionWorkshopTasks ||
       routePath == RouteName.productionBatchDraw ||
+      routePath == '/production/material-discovery-request' ||
       routePath == RouteName.productionDrawRequest) {
     return const [Perm.productionExecutionView];
   }
@@ -665,9 +678,22 @@ List<String> hubUnionRequiredAny(String hub) {
 /// compound operations where one permission must not imply another.
 List<String> requiredAllPermsFor(String rawLocation) {
   final location = hubCardPath(rawLocation);
+  if (location == '/finance/assets/new') {
+    return const [Perm.financeAssetView, Perm.financeAssetEdit];
+  }
+  if (location == '/production/material-return/new') {
+    return const [Perm.productionMaterialSettle];
+  }
+  if (location == '/production/overproduction-rate-requests/new') {
+    return const [Perm.productionExecutionRequestOverproductionRate];
+  }
+  if (location.startsWith('/warehouse/material-discovery/')) {
+    return const [Perm.stockDocIssue, Perm.stockDocApprove];
+  }
   if ({
     RouteName.productionDrawRequest,
     RouteName.productionBatchDraw,
+    '/production/material-discovery-request',
   }.contains(Uri.tryParse(location)?.path ?? location)) {
     return const [Perm.productionExecutionView, Perm.productionExecutionStart];
   }

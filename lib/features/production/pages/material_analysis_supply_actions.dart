@@ -320,19 +320,11 @@ abstract class _MaterialAnalysisSupplyActionsState
     }
     return group.paths.fold(
       0.0,
-      (sum, path) => sum + path.additionalSupplyRecommendedQty,
+      (sum, path) =>
+          sum +
+          (path.aggregatePreparation?.planningUncoveredQty ??
+              path.additionalSupplyRecommendedQty),
     );
-  }
-
-  /// 下达数量的默认值。采购桶在「还需安排量」之上，按货品主档的最小起订量
-  /// 与订货倍数向上抬一次：`向上取整到倍数( max(还需安排量, 最小起订量) )`。
-  ///
-  /// 这是**软约束**：抬出来的富余部分走既有公共备货通道，计划员可以改小，
-  /// 服务端不硬拦。还需安排量为 0 时不抬量——没有需求就不该因为起订量凭空
-  /// 下单。委外与车间桶不抬量（它们会产生下层责任，数量必须与需求一致）。
-  double _defaultSubmitQty(_MaterialGroup group, MaterialSupplyRoute route) {
-    final residual = _residualSubmitQty(group, route);
-    return _submitQtyWithOrderPolicy(group, route, residual);
   }
 
   /// Apply the goods policy to this batch, never substitute the whole analysis.
@@ -374,7 +366,7 @@ abstract class _MaterialAnalysisSupplyActionsState
       policyNote = !_canOverSupply
           ? '本次 ${_qty(residual)} 低于起订量 ${_qty(minOrderQty ?? 0)}，'
                 '需由有超量下达权限的人抬量'
-          : '已按起订量与整包装抬至 ${_qty(raised)}，'
+          : '按起订量与整包装建议下单 ${_qty(raised)}，'
                 '富余 ${_qty(raised - residual)} 归公共备货';
     }
     final notes = [?policyNote, ?claimNote];
@@ -547,8 +539,43 @@ abstract class _MaterialAnalysisSupplyActionsState
   /// A zero requirement is not one generic “no replenishment” state. The
   /// server owns the reason; every branch includes both the cause and the next
   /// useful recovery path so staff do not have to infer it from a row of zeroes.
+  ///
+  /// 合单不增加员工操作步骤，原产品行继续办理和查看进度。
   ({String title, String detail, IconData icon, Color color})
   _requirementStateView(
+    ThemeData theme,
+    ProductionMaterialAnalysisMaterial material,
+  ) {
+    if (material.effectiveRequirementState ==
+            MaterialRequirementState.delegatedToMakeChild &&
+        material.aggregateDelegatedQty > 0.0001) {
+      final route = switch (material.confirmedRoute ??
+          material.sourceSuggestion) {
+        MaterialSupplyRoute.make => ProductionFlowRoute.make,
+        MaterialSupplyRoute.subcontract => ProductionFlowRoute.subcontract,
+        _ => ProductionFlowRoute.buy,
+      };
+      final fallback = switch (route) {
+        ProductionFlowRoute.make => 'MAKE_PENDING_ISSUE',
+        ProductionFlowRoute.subcontract => 'SC_PENDING_ISSUE',
+        ProductionFlowRoute.buy => 'BUY_PENDING_ISSUE',
+      };
+      final stage = ProductionFlowStage.fromServerKey(
+        material.flowStage ?? fallback,
+        route: route,
+      );
+      return (
+        title: stage.displayLabel,
+        detail: '数量和进度按实际单据显示，本行可以继续下单或追加',
+        icon: stage.icon,
+        color: theme.colorScheme.primary,
+      );
+    }
+    return _requirementStateBranches(theme, material);
+  }
+
+  ({String title, String detail, IconData icon, Color color})
+  _requirementStateBranches(
     ThemeData theme,
     ProductionMaterialAnalysisMaterial material,
   ) => switch (material.effectiveRequirementState) {
@@ -623,9 +650,14 @@ abstract class _MaterialAnalysisSupplyActionsState
     final child = _taskChildProductOf(material);
     if (child == null) return null;
     final executionStage = _productExecutionStage(child);
-    if (executionStage != null) return executionStage.displayLabel;
+    if (executionStage != null) {
+      return executionStage.displayLabel;
+    }
     // 2026-09-06 词表：未下达子件任务显示「等待下达车间」。
-    return '等待下达车间';
+    return ProductionFlowStage.fromServerKey(
+      'MAKE_PENDING_ISSUE',
+      route: ProductionFlowRoute.make,
+    ).displayLabel;
   }
 
   Widget _semanticFact(
@@ -815,7 +847,7 @@ abstract class _MaterialAnalysisSupplyActionsState
       return null;
     }
     if (_dirtyRouteGroups.isNotEmpty) {
-      context.appWarning('请先确认路线，再通知对应部门');
+      context.appWarning('请先补齐并保存供应方式，再下单');
       return null;
     }
     final targets = _notificationTargetsForGroups(groups);

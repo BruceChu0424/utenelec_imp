@@ -38,6 +38,9 @@ class _FakeRepo extends SubcontractShortDeliveryRepository {
     String? dateTo,
     int page = 1,
     int size = 50,
+    String? sort, // 2026-09-25 单号列统一：签名随仓储扩展。
+    String? order,
+    String? orderBillNo,
   }) async {
     segments.add(segment);
     final items = rows.where((r) {

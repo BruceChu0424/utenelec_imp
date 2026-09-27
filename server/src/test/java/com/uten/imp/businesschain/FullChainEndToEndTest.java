@@ -451,16 +451,16 @@ class FullChainEndToEndTest {
 
         // 默认调用（status=null, sort=deliverDate）——正是线上崩溃的那次
         assertDoesNotThrow(() -> scheduleService.pending(
-                1, 20, null, null, null, "deliverDate", "asc", null));
+                1, 20, null, null, null, "deliverDate", "asc", null, null));
         // 两种状态筛选：urgent/normal 进 :warn
         for (String status : List.of("urgent", "normal")) {
             assertDoesNotThrow(() -> scheduleService.pending(
-                    1, 20, null, null, null, "deliverDate", "asc", status));
+                    1, 20, null, null, null, "deliverDate", "asc", status, null));
         }
         // 各可排序列 + 降序
         for (String sort : List.of("deliverDate", "qty", "needQty", "orderBillNo")) {
             assertDoesNotThrow(() -> scheduleService.pending(
-                    1, 20, null, null, null, sort, "desc", null));
+                    1, 20, null, null, null, sort, "desc", null, null));
         }
         // facets 聚合（恒含 :warn）
         assertDoesNotThrow(() -> scheduleService.pendingFacets(null, null, null));
@@ -468,12 +468,12 @@ class FullChainEndToEndTest {
         assertDoesNotThrow(() -> scheduleService.pending(
                 1, 20, "A",
                 LocalDate.of(2020, 1, 1), LocalDate.of(2099, 12, 31),
-                "qty", "desc", "urgent"));
+                "qty", "desc", "urgent", null));
         assertDoesNotThrow(() -> scheduleService.pendingFacets(
                 "A", LocalDate.of(2020, 1, 1), LocalDate.of(2099, 12, 31)));
 
         // 基本正确性：刚创建的待排产行确实出现在默认列表里
-        var page = scheduleService.pending(1, 20, null, null, null, "deliverDate", "asc", null);
+        var page = scheduleService.pending(1, 20, null, null, null, "deliverDate", "asc", null, null);
         assertNotNull(page);
         assertFalse(page.getItems().isEmpty(),
                 "approved out-of-stock order line should appear in pending list");
@@ -559,7 +559,7 @@ class FullChainEndToEndTest {
         // 断言用订单号关键字限定范围——测试库内各 world 的单据共存，不能断言整表为空。
         assertEquals(2, itemChainStatus(orderId));
         String orderNo = billNo(orderId).toLowerCase();
-        assertTrue(scheduleService.pending(1, 20, orderNo, null, null, "deliverDate", "asc", null)
+        assertTrue(scheduleService.pending(1, 20, orderNo, null, null, "deliverDate", "asc", null, null)
                         .getItems().isEmpty(),
                 "unconfirmed order must not appear in the planning pending list");
         assertTrue(analysisService.salesCandidates(orderNo, 1, 20).items().isEmpty(),
@@ -582,7 +582,7 @@ class FullChainEndToEndTest {
         // 合格确认人（个人加授）确认后，计划部立即可见。
         loginAs(w.superAdminUserId());
         confirmInitialSalesFinance(orderId);
-        assertFalse(scheduleService.pending(1, 20, orderNo, null, null, "deliverDate", "asc", null)
+        assertFalse(scheduleService.pending(1, 20, orderNo, null, null, "deliverDate", "asc", null, null)
                         .getItems().isEmpty(),
                 "confirmed order appears in the planning pending list");
         assertFalse(analysisService.salesCandidates(orderNo, 1, 20).items().isEmpty(),
@@ -739,7 +739,7 @@ class FullChainEndToEndTest {
 
     private com.uten.imp.features.production.schedule.dto.PendingPlanRow schedulePendingRow(
             String orderNo, UUID orderItemId) {
-        return scheduleService.pending(1, 50, orderNo, null, null, "deliverDate", "asc", null)
+        return scheduleService.pending(1, 50, orderNo, null, null, "deliverDate", "asc", null, null)
                 .getItems().stream()
                 .filter(r -> orderItemId.equals(r.orderItemId()))
                 .findFirst().orElse(null);
@@ -747,7 +747,8 @@ class FullChainEndToEndTest {
 
     private com.uten.imp.features.sales.order.dto.OrderProgressRow progressRow(
             UUID orderId, String orderNo, String stage) {
-        return salesOrderService.progress(1, 50, stage, orderNo, null, null)
+        // 2026-09-25 单号列统一：progress 追加 sort/order/billNo 参数（此调用点不用，补 null）。
+        return salesOrderService.progress(1, 50, stage, orderNo, null, null, null, null, null)
                 .getItems().stream()
                 .filter(r -> orderId.toString().equals(r.orderId()))
                 .findFirst().orElse(null);

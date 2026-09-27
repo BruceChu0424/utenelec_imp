@@ -54,7 +54,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get materialDiscoveryRequestHelp =>
-      'These manufactured items have no material definition yet. Send the request, then confirm the materials with the warehouse. Actual issue is required before starting.';
+      'These manufactured items have no material definition yet. Optionally select materials and requested quantities for each work order, or leave them for the warehouse to complete. Entered materials carry through to the warehouse for source and quantity confirmation. Actual issue is required before starting.';
+
+  @override
+  String get materialDiscoveryPrefilledHelp =>
+      'Materials and requested quantities from the workshop are already filled in. Confirm the physical warehouse and quantity, and adjust the table if needed.';
 
   @override
   String get materialDiscoveryPending => 'Awaiting warehouse material entry';
@@ -121,7 +125,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get materialDiscoveryRequestSent =>
-      'Material request sent. Awaiting warehouse material entry.';
+      'Material request sent. Awaiting warehouse confirmation and issue.';
 
   @override
   String get materialDiscoveryMissingUnit =>
@@ -2466,7 +2470,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get materialTaskSectionHint =>
-      'Manage preparation by route and review pending, issued and blocked tasks.';
+      'Manage preparation by route and review pending, in-progress and blocked tasks.';
 
   @override
   String get materialWarehouseLimit =>
@@ -4277,4 +4281,40 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get warehouseBatchRegistrationHelp =>
       'Each line needs a warehouse and location. Goods master defaults take precedence over personal warehouse context. Selected lines can be edited together. Each report creates its own inspection submission; final receipt follows quality release.';
+
+  @override
+  String get materialPreparationReview => 'Review and order';
+
+  @override
+  String get materialPreparationApproveNow => 'Approve and release';
+
+  @override
+  String get materialPreparationViewPlans => 'View issued plans';
+
+  @override
+  String get materialPreparationOrdering => 'Placing orders…';
+
+  @override
+  String materialPreparationOrderCount(int count) {
+    return 'Order ($count)';
+  }
+
+  @override
+  String get materialPreparationNoActions =>
+      'No materials available for processing';
+
+  @override
+  String get materialPreparationAvailableHint =>
+      'Supply available to this line includes stock and issued supply, including incoming and unprocessed quantities. Supply assigned to other orders is excluded. Material issue requires actual stock.';
+
+  @override
+  String get materialPreparationPending => 'To order';
+
+  @override
+  String get materialPreparationInProgress => 'In progress';
+
+  @override
+  String materialPreparationMissingAssignment(String goods) {
+    return 'Set the production workshop and responsible person for “$goods” before ordering';
+  }
 }

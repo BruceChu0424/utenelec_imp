@@ -143,7 +143,7 @@ const Map<String, String> _materialStatusFacetLabels = {
 enum _BomViewMode {
   all('全部 BOM'),
   shortage('只看缺料'),
-  unconfirmed('待确认路线');
+  unconfirmed('缺少供应方式');
 
   const _BomViewMode(this.label);
 
@@ -221,6 +221,7 @@ class _StatusView {
     this.color, {
     this.facetKey,
     this.facetLabel,
+    this.flowStage,
   });
 
   final String label;
@@ -234,6 +235,7 @@ class _StatusView {
   /// 桶展示标签（流程阶段传 [ProductionFlowStage.label]，不带百分比）；
   /// 为空时按 [_materialStatusFacetLabels] 取，再退回 [label]。
   final String? facetLabel;
+  final ProductionFlowStage? flowStage;
 }
 
 /// 数量确认对话框里的一行：一个提交单元（操作组或单行物料）。

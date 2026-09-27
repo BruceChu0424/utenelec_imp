@@ -7,7 +7,7 @@
 > [首装执行记录与勘误](../../docs/99-项目治理/2026-09-02-首装执行记录与勘误.md)。
 > **手把手版（含阿里云/GitHub 控制台逐步截图位与验收清单）见
 > [新库上线与首装操作指引](../../docs/99-项目治理/2026-09-01-新库上线与首装操作指引.md)。**
-> 日常发版 = 打 tag 推 GitHub，其余全自动；只有含数据库迁移的版本需要一次 SSH。
+> 日常发版 = 打 tag 推 GitHub 后按需手动拉取；自动检查间隔在系统设置中配置（默认每周日），含数据库迁移的版本需手动激活。
 > **占位符约定**：文中 `<服务器IP>` 等尖括号占位符代表真实环境值（不入库防泄露），
 > 操作时替换为本机 Tailscale IP / 真实账号等。
 
@@ -18,7 +18,7 @@
                                       │ 构建+签名+上传
                                       ▼
                               阿里云 OSS releases/<v>/** + LATEST.txt
-                                      │ 每天 05:00（北京时间）拉取验签
+                                      │ 按系统设置到期拉取（默认每周日当地 05:00）
                                       ▼
 公司服务器 updater ──▶ /opt/uten-imp/releases/<v>
       ├─ 纯代码：自动激活（切 current + 重启 + 健康检查，失败自动回滚）
@@ -92,6 +92,8 @@ chmod 600 /etc/uten-imp/server.env /etc/uten-imp/migrator.env /etc/uten-imp-upda
 
 # 5. 安装更新器与 systemd 单元
 cp deploy/simple/uten-imp-updater.sh /usr/local/sbin/uten-imp-updater && chmod 755 $_
+install -d -o root -g root -m 0755 /usr/local/lib/uten-imp
+install -o root -g root -m 0644 deploy/simple/update_schedule.py /usr/local/lib/uten-imp/update_schedule.py
 cp deploy/simple/units/uten-imp.service deploy/simple/units/uten-imp-updater.{service,timer} \
    /etc/systemd/system/
 systemctl daemon-reload
@@ -127,7 +129,7 @@ systemctl enable --now uten-imp.service uten-imp-updater.timer
 
 每台服务器仅启用一条日常备份定时器。已经使用 `uten-paired-internal-backup.timer` 的主机继续沿用它，不重复启用旧 `uten-backup.timer`。修改前查实际 unit、最后成功时间与恢复结果，不能从脚本存在推断已生效。历史备份只在核对实际路径、保留需求和可恢复性后处理。
 
-## 四、日常发版（全自动）
+## 四、日常发版（按需手动拉取，可配置自动检查间隔）
 
 公司运行 `prod` 且强制HTTPS时，更新器的 `UTEN_HEALTH_URL` 也必须指向Nginx提供的HTTPS
 readiness地址，使用证书中包含的内部域名或IP，并安装内部CA；不能仍用会302跳转的后端HTTP地址，
@@ -156,8 +158,20 @@ Simple Release现在在构建前强制核验实际检出提交SHA对应的三个
 git tag v1.4.1 && git push origin v1.4.1
 ```
 
-- 服务器每天 **05:00（北京时间）** 自动拉取（要立即上线可 SSH 执行
+- 服务器默认每周日 **05:00（服务器当地时间）** 自动拉取（要立即上线可 SSH 执行
   `sudo /usr/local/sbin/uten-imp-updater check`）；**没动数据库**的版本直接自动激活（失败自动回滚上一版）；
+- 系统设置的 `updater_check_interval_days` 接受 `0..365`：`0` 仅手动，`7` 为每周日；
+  其他 `N` 从设置修改的服务器当地日期加 `N` 天开始，此后每隔 `N` 天当地 05:00 执行。
+  `7` 的首次执行是严格晚于设置修改时刻的首个周日 05:00。服务器时区可通过
+  `timedatectl show -p Timezone --value` 核实，本次不改变原有时区或 05:00 时刻。
+- systemd 每分钟运行 `update_schedule.py`，**只读本机 PostgreSQL**。未到期、仅手动、
+  配置缺失/非法或数据库不可读时不访问 OSS。设置保存后约一分钟内被读取，无需重启；
+  不补昨天及更早的计划，同一当地日期最多自动尝试一次（含失败与中断），失败后可手动重试。
+  没有开机专用触发或定时器补跑；同一到期日 05:00 后恢复服务会执行当日尚未尝试的计划。
+- 系统设置页读取 root 生成的 `/var/lib/uten-imp/updater-schedule/status.json`，显示实际已读取的
+  间隔、下次执行和最后尝试；保存值不等于服务器已应用。缺失、过期、与数据库设置不一致或
+  执行失败必须显示未同步/异常。该状态查询与保存设置都不产生 OSS GET。
+  `uten-imp-updater status` 仍会访问 OSS 读取最新版本，只用于主动检查，不接入周期状态探测。
 - **OSS 只保留最新一版**：发布流水线在发布成功后自动删除 `releases/` 下旧版本
   （含版本控制桶的历史版本与删除标记）。若发布 RAM 子账号缺 `DeleteObject` 权限，
   发布作业的 Purge 步骤会告警（发布本身不受影响）——去 RAM 控制台给发布账号策略
@@ -175,6 +189,41 @@ git tag v1.4.1 && git push origin v1.4.1
 迁移前备份由更新器以`0700`目录和`0600`文件保存，文件名带随机后缀，重复激活不会覆盖同秒的旧备份。空备份、目录权限设置失败或`pg_dump`失败都会停止激活。权限在备份创建处单独设置，发行目录和JAR继续保留应用/Nginx需要的读取权限。
 
 升级旧更新器时，另行只读列出实际`UTEN_BACKUP_DIR`及其已有dump的所有者/权限，确认后按明确路径收紧旧备份为`0600`、目录为`0700`；新代码不会自动重写历史文件。恢复时由root读取私有dump并流入postgres的`pg_restore`，不需要把备份临时开放给普通用户。相关回归为`deploy/updater/test_simple_release_backup.py`，文件权限验证必须在Linux执行。
+
+### 已有服务器应用可配置计划
+
+仅发布应用包不会替换已经安装的 systemd 单元。先核对 `systemctl cat uten-imp-updater.service
+uten-imp-updater.timer` 及 `systemctl list-timers --all uten-imp-updater.timer`；若有 drop-in
+覆盖命令或定时规则，先按实际内容合并，避免旧直接拉取任务与新调度器并行。
+确认没有正在执行的更新，完成包含设置登记的数据库前向迁移后，在服务器部署目录执行：
+
+```bash
+schedule_backup=$(sudo mktemp -d /var/backups/uten-imp-schedule.XXXXXX)
+sudo cp -a /etc/systemd/system/uten-imp-updater.service \
+  /etc/systemd/system/uten-imp-updater.timer "$schedule_backup/"
+sudo systemctl stop uten-imp-updater.timer
+sudo install -d -o root -g root -m 0755 /usr/local/lib/uten-imp
+sudo install -o root -g root -m 0644 deploy/simple/update_schedule.py \
+  /usr/local/lib/uten-imp/update_schedule.py
+sudo install -o root -g root -m 0644 deploy/simple/units/uten-imp-updater.service \
+  deploy/simple/units/uten-imp-updater.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now uten-imp-updater.timer
+systemctl cat uten-imp-updater.service uten-imp-updater.timer
+systemctl list-timers --all uten-imp-updater.timer
+# 下一分钟后核验本地回执；它不访问 OSS
+sudo cat /var/lib/uten-imp/updater-schedule/status.json
+```
+
+调度器使用 root 私有目录 `/var/lib/uten-imp-update-schedule` 的持久化尝试记录和锁去重；
+应用仅能读取回执（目录 root:uten-imp 0750、文件 0640），不能改 root 的排程执行记录。
+回执上级 `/var/lib/uten-imp` 必须由 root 管理且不可被应用写入；不符合时先核对用途并修正部署，
+调度器拒绝使用不安全目录。
+
+回退时先停定时器，从 `$schedule_backup` 恢复两个旧单元后 `daemon-reload`；恢复前的旧计划
+可能每日拉取，确认需要该频率后才重新启用，也可保持停用并手动 `check`。
+本节不改变数据库与附件备份计划。运行测试：
+`python3 -m unittest discover -s deploy/updater -p test_simple_update_schedule.py -v`。
 
 ## 五、数据库替换与旧系统首次导入
 

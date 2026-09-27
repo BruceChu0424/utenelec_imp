@@ -3,6 +3,7 @@ package com.uten.imp.features.warehouse.inbound;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.warehouse.inbound.ProcurementInspectionRecordContracts.InspectionDecisionRecord;
 import com.uten.imp.features.warehouse.inbound.ProcurementInspectionRecordContracts.InspectionDecisionRecordPage;
@@ -53,25 +54,30 @@ public class ProcurementInspectionRecordQueryService {
             String rawEffective,
             String rawDisposition,
             int requestedPage,
-            int requestedSize) {
+            int requestedSize,
+            String rawSort,
+            String rawOrder,
+            String rawSourceNo,
+            String rawReferenceNo) {
         NormalizedFilter filter = normalizeFilter(
                 rawDecision, rawKeyword, from, to,
                 rawSourceType, rawEffective, rawDisposition,
                 requestedPage, requestedSize);
-        String predicate = filteredPredicate(filter, true);
+        DocNoFilter docNo = DocNoFilter.of(rawSourceNo, rawReferenceNo);
+        String predicate = filteredPredicate(filter, docNo, true);
         String records = "(" + recordSql() + ") record";
 
         Query countQuery = em.createNativeQuery(
                 "SELECT COUNT(*) FROM " + records + " WHERE " + predicate);
-        bindFilters(countQuery, filter, true);
+        bindFilters(countQuery, filter, docNo, true);
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
         Query pageQuery = em.createNativeQuery(
                 "SELECT record.* FROM " + records
                         + " WHERE " + predicate
-                        + " ORDER BY record.decided_at DESC, record.record_id DESC"
+                        + " " + orderBy(rawSort, rawOrder)
                         + " OFFSET :offset LIMIT :limit");
-        bindFilters(pageQuery, filter, true);
+        bindFilters(pageQuery, filter, docNo, true);
         pageQuery.setParameter("offset", filter.offset());
         pageQuery.setParameter("limit", filter.size());
         List<InspectionDecisionRecord> items =
@@ -79,12 +85,55 @@ public class ProcurementInspectionRecordQueryService {
                         .map(ProcurementInspectionRecordQueryService::toView)
                         .toList();
 
-        Map<String, Long> metrics = metrics(filter, records);
+        Map<String, Long> metrics = metrics(filter, docNo, records);
         int totalPages = total == 0
                 ? 0 : (int) Math.min(Integer.MAX_VALUE,
                 (total + filter.size() - 1) / filter.size());
         return new InspectionDecisionRecordPage(
                 items, filter.page(), filter.size(), total, totalPages, metrics);
+    }
+
+    /**
+     * 单号列 facets（2026-09-25 单号列统一）：{sourceNo/referenceNo/sheetNo:[…]}。
+     * 与列表同一份谓词（含 decision/keyword/日期/表头三列筛选，不含单号列自身的值
+     * 筛选），桶按单号升序、空串剔除。IQC 行没有检查单号（sheetNo 恒空），该桶
+     * 返回空列表保持两端契约同形。
+     */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('procurement_inspection:view')")
+    public Map<String, List<Map<String, Object>>> facets(
+            String rawDecision,
+            String rawKeyword,
+            OffsetDateTime from,
+            OffsetDateTime to,
+            String rawSourceType,
+            String rawEffective,
+            String rawDisposition) {
+        NormalizedFilter filter = normalizeFilter(
+                rawDecision, rawKeyword, from, to,
+                rawSourceType, rawEffective, rawDisposition,
+                1, 40);
+        String predicate = filteredPredicate(filter, DocNoFilter.EMPTY, true);
+        String records = "(" + recordSql() + ") record";
+        Map<String, List<Map<String, Object>>> result = new LinkedHashMap<>();
+        for (String column : List.of("sourceNo", "referenceNo")) {
+            // The public camel-case field keys map to snake-case SQL aliases.
+            String expression = switch (column) {
+                case "sourceNo" -> "record.source_no";
+                case "referenceNo" -> "record.reference_no";
+                default -> throw new IllegalArgumentException("Unknown document number field");
+            };
+            Query query = em.createNativeQuery(
+                    "SELECT COALESCE(" + expression + ", ''), COUNT(*)"
+                            + " FROM " + records + " WHERE " + predicate
+                            + " GROUP BY 1 HAVING COALESCE(" + expression
+                            + ", '') <> '' ORDER BY 1")
+                    .setMaxResults(500);
+            bindFilters(query, filter, DocNoFilter.EMPTY, true);
+            result.put(column, NativeFacets.rows(NativeQueryResults.objectArrayRows(query)));
+        }
+        result.put("sheetNo", List.of());
+        return result;
     }
 
     @Transactional(readOnly = true)
@@ -102,13 +151,14 @@ public class ProcurementInspectionRecordQueryService {
 
     private Map<String, Long> metrics(
             NormalizedFilter filter,
+            DocNoFilter docNo,
             String records) {
-        String predicate = filteredPredicate(filter, false);
+        String predicate = filteredPredicate(filter, docNo, false);
         Query query = em.createNativeQuery(
                 "SELECT record.decision, COUNT(*) FROM " + records
                         + " WHERE " + predicate
                         + " GROUP BY record.decision");
-        bindFilters(query, filter, false);
+        bindFilters(query, filter, docNo, false);
         LinkedHashMap<String, Long> metrics = emptyMetrics();
         long all = 0;
         for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
@@ -123,8 +173,41 @@ public class ProcurementInspectionRecordQueryService {
         return metrics;
     }
 
+    /** 单号列值筛选（2026-09-25 单号列统一）：精确匹配、命名参数绑定，空=不过滤。 */
+    record DocNoFilter(String sourceNo, String referenceNo) {
+
+        static final DocNoFilter EMPTY = new DocNoFilter(null, null);
+
+        static DocNoFilter of(String rawSourceNo, String rawReferenceNo) {
+            return new DocNoFilter(
+                    blankToNull(rawSourceNo), blankToNull(rawReferenceNo));
+        }
+
+        boolean isEmpty() {
+            return sourceNo == null && referenceNo == null;
+        }
+    }
+
+    private static String blankToNull(String raw) {
+        return raw == null || raw.isBlank() ? null : raw.strip();
+    }
+
+    /** 排序白名单（2026-09-25 单号列统一）：sourceNo/referenceNo；未知/空回落默认
+     *  「决定时间倒序 + 记录 id」；稳定键固定追加默认两段。 */
+    private static String orderBy(String rawSort, String rawOrder) {
+        String direction = "desc".equalsIgnoreCase(rawOrder) ? "DESC" : "ASC";
+        return switch (rawSort == null ? "" : rawSort.strip()) {
+            case "sourceNo" -> "ORDER BY record.source_no " + direction
+                    + " NULLS LAST, record.decided_at DESC, record.record_id DESC";
+            case "referenceNo" -> "ORDER BY record.reference_no " + direction
+                    + " NULLS LAST, record.decided_at DESC, record.record_id DESC";
+            default -> "ORDER BY record.decided_at DESC, record.record_id DESC";
+        };
+    }
+
     private static String filteredPredicate(
             NormalizedFilter filter,
+            DocNoFilter docNo,
             boolean includeDecision) {
         StringBuilder predicate = new StringBuilder("""
                 (:keyword = '' OR LOWER(CONCAT_WS(' ',
@@ -162,12 +245,21 @@ public class ProcurementInspectionRecordQueryService {
         if (includeDecision && !"ALL".equals(filter.decision())) {
             predicate.append(" AND record.decision = :decision");
         }
+        // 单号列值筛选（2026-09-25 单号列统一）：参数化等值，随条件出现才绑定。
+        if (docNo.sourceNo() != null) {
+            predicate.append(" AND COALESCE(record.source_no, '') = :sourceNo");
+        }
+        if (docNo.referenceNo() != null) {
+            predicate.append(
+                    " AND COALESCE(record.reference_no, '') = :referenceNo");
+        }
         return predicate.toString();
     }
 
     private static void bindFilters(
             Query query,
             NormalizedFilter filter,
+            DocNoFilter docNo,
             boolean includeDecision) {
         query.setParameter("keyword", filter.keyword());
         query.setParameter("keywordLike", "%" + filter.keyword() + "%");
@@ -181,6 +273,12 @@ public class ProcurementInspectionRecordQueryService {
         }
         if (includeDecision && !"ALL".equals(filter.decision())) {
             query.setParameter("decision", filter.decision());
+        }
+        if (docNo.sourceNo() != null) {
+            query.setParameter("sourceNo", docNo.sourceNo());
+        }
+        if (docNo.referenceNo() != null) {
+            query.setParameter("referenceNo", docNo.referenceNo());
         }
     }
 

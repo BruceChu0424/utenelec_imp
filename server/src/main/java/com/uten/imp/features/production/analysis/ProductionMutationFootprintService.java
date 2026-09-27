@@ -115,6 +115,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
             costSegments.add((UUID) row[0]);
         }
         addExecutionCostFootprint(result, costSegments);
+        addMakePublicClaimTargets(result,planItems);
         if (!planItems.isEmpty()) {
             for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                     SELECT item.id,item.plan_id,item.sales_order_item_id,sales_item.order_id,
@@ -186,18 +187,18 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                 SELECT source.source_action_id,source.external_document_type,
                        source.external_document_id,source.claim_external_item_id,
                        source.available_to_claim_qty,source.expected_date
-                FROM v_preplan_public_surplus_source_state source
+                FROM fn_preplan_public_surplus_sources(:analysisId) source
                 JOIN production_material_analyses analysis ON analysis.id=:analysisId
                   AND analysis.is_deleted=FALSE AND fn_warehouse_same_main(analysis.warehouse_id,source.warehouse_id)
-                WHERE source.source_analysis_id<>analysis.id
-                  AND source.available_to_claim_qty>0 AND source.claim_external_item_id IS NOT NULL
+                WHERE source.available_to_claim_qty>0 AND source.claim_external_item_id IS NOT NULL
                   AND source.external_document_type IN ('PURCHASE_REQUEST','SUBCONTRACT_APPLICATION')
                   AND EXISTS (
                     SELECT 1 FROM production_material_analysis_materials material
                     WHERE material.analysis_id=analysis.id AND material.active=TRUE
                       AND material.goods_id=source.goods_id
                       AND material.color_id IS NOT DISTINCT FROM source.color_id
-                      AND material.unit_id=source.unit_id)
+                      AND material.unit_id=source.unit_id
+                      AND NOT fn_preplan_public_target_is_source(source.source_action_id,material.id))
                 ORDER BY source.source_action_id
                 """).setParameter("analysisId", analysisId))) {
             result.row("shared-future-source", row);
@@ -205,6 +206,21 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                     "PURCHASE_REQUEST".equals(row[1])
                             ? CommercialType.PURCHASE_REQUEST : CommercialType.SUBCONTRACT_APPLICATION,
                     (UUID) row[2]));
+        }
+        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT source.source_plan_item_id,source.source_analysis_id,source.goods_id,source.color_id,
+                       source.available_to_claim_qty,source.source_status
+                FROM fn_preplan_make_public_supply_sources(:analysisId) source
+                JOIN production_material_analyses analysis ON analysis.id=:analysisId
+                  AND fn_warehouse_same_main(analysis.warehouse_id,source.warehouse_id)
+                WHERE source.available_to_claim_qty>0
+                  AND EXISTS(SELECT 1 FROM production_material_analysis_materials material
+                    WHERE material.analysis_id=analysis.id AND material.active AND material.goods_id=source.goods_id
+                      AND material.color_id IS NOT DISTINCT FROM source.color_id AND material.unit_id=source.unit_id
+                      AND NOT fn_preplan_make_public_target_is_source(source.source_plan_item_id,material.id))
+                ORDER BY source.source_plan_item_id
+                """).setParameter("analysisId",analysisId))) {
+            result.row("make-public-candidate",row);result.analysis((UUID)row[1]);result.inventory((UUID)row[2],(UUID)row[3]);
         }
         expandAnalyses(result);
         return result.build();
@@ -281,6 +297,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         var result = new Footprint();
         result.parts.add("future-finished-in:" + changed + ":" + items);
         changed.forEach(d -> result.inventory(d.goodsId(), d.colorId()));
+        addMakePublicClaimTargets(result,items);
         if (!items.isEmpty()) {
             List<UUID> costSegments = NativeQueryResults.typedRows(em.createNativeQuery("""
                     SELECT id FROM production_execution_segments
@@ -440,8 +457,36 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
      */
     private void expandAnalyses(Footprint result) {
         if (result.analyses.isEmpty()) return;
+        addMakePublicAnalysisClosure(result);
         if (FulfillmentDiscoveryRound.deferAnalysisExpansion(result.analyses, this::analysisExpansion)) return;
         expandNow(result, Set.copyOf(result.analyses));
+    }
+
+    private void addMakePublicClaimTargets(Footprint result,Collection<UUID> planItems) {
+        if(planItems.isEmpty())return;
+        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT claim.id,claim.target_analysis_id,claim.xmin::text
+                FROM preplan_make_public_claims claim WHERE claim.source_plan_item_id IN(:ids) ORDER BY claim.id
+                """).setParameter("ids",planItems))) {
+            result.row("make-public-claim-target",row);result.analysis((UUID)row[1]);
+        }
+    }
+
+    private void addMakePublicAnalysisClosure(Footprint result) {
+        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                WITH RECURSIVE edges(source_id,target_id) AS (
+                    SELECT plan.material_analysis_id,claim.target_analysis_id
+                    FROM preplan_make_public_claims claim JOIN production_plan_items item ON item.id=claim.source_plan_item_id
+                    JOIN production_plans plan ON plan.id=item.plan_id WHERE plan.material_analysis_id IS NOT NULL
+                ), related(id) AS (
+                    SELECT id FROM production_material_analyses WHERE id IN(:ids)
+                    UNION
+                    SELECT CASE WHEN edge.source_id=related.id THEN edge.target_id ELSE edge.source_id END
+                    FROM related JOIN edges edge ON related.id IN(edge.source_id,edge.target_id)
+                ) SELECT analysis.id,analysis.xmin::text FROM related JOIN production_material_analyses analysis ON analysis.id=related.id ORDER BY analysis.id
+                """).setParameter("ids",List.copyOf(result.analyses)))) {
+            result.row("make-public-analysis-closure",row);result.analysis((UUID)row[0]);
+        }
     }
 
     /** 本轮收尾的并集展开: 只给出来源、库存维度与主仓, 分析 id 本身由各足迹决定。 */

@@ -31,7 +31,8 @@ class AccountStatementAuthorizationTest {
             throws Exception {
         PreAuthorize annotation = FinanceReportController.class.getDeclaredMethod(
                         "accountStatement", UUID.class, LocalDate.class, LocalDate.class,
-                        String.class, int.class, int.class)
+                        String.class, int.class, int.class,
+                        String.class) // 2026-09-25 单号列统一：billNo 表头值筛选参数
                 .getAnnotation(PreAuthorize.class);
 
         assertThat(annotation.value()).isEqualTo(REQUIRED);

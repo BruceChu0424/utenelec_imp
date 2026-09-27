@@ -9,6 +9,7 @@
 // 调用方刷新供应商字典（MasterNameService.reloadSuppliers）后把 id 写入选中值，
 // 即「保存后默认选中该供应商」。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/required_field_decoration.dart';
@@ -28,6 +29,7 @@ Future<SupplierDetail?> showSupplierQuickCreateSheet(
   return showMasterEditDialog(
     context: context,
     title: '添加供应商',
+    draftSpec: FormDraftCatalog.supplierQuick.spec(title: '添加供应商'),
     fields: [
       const MasterFieldDef(
         key: 'name',
@@ -37,11 +39,14 @@ Future<SupplierDetail?> showSupplierQuickCreateSheet(
       ),
       MasterFieldDef(
         key: 'categoryId',
+        type: MasterFieldType.custom,
         label: '分类',
         required: true,
         group: '基础',
-        customBuilder: (ctx) =>
-            _SupplierCategoryPickerField(onChanged: ctx.onChanged),
+        customBuilder: (ctx) => _SupplierCategoryPickerField(
+          initialValue: ctx.initialValue,
+          onChanged: ctx.onChanged,
+        ),
       ),
       const MasterFieldDef(
         key: 'code',
@@ -83,7 +88,12 @@ Future<SupplierDetail?> showSupplierQuickCreateSheet(
 /// 供应商分类树选择字段（quick-create 弹窗用）：点开底部抽屉按层级缩进选一个分类，
 /// 选中值经 [onChanged]（MasterFieldContext 回调）回写，buildBody 校验必填。
 class _SupplierCategoryPickerField extends ConsumerStatefulWidget {
-  const _SupplierCategoryPickerField({required this.onChanged});
+  const _SupplierCategoryPickerField({
+    this.initialValue,
+    required this.onChanged,
+  });
+
+  final String? initialValue;
 
   final ValueChanged<dynamic> onChanged;
 
@@ -111,6 +121,11 @@ class _SupplierCategoryPickerFieldState
       setState(() {
         _tree = tree;
         _error = null;
+        _selectedName ??= _flatten(tree)
+            .where((entry) => entry.$1.id == widget.initialValue)
+            .firstOrNull
+            ?.$1
+            .name;
       });
     } catch (_) {
       if (!mounted) return;

@@ -3,10 +3,14 @@ package com.uten.imp.features.warehouse.inbound;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
+import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.features.purchase.receipt.ReceiptPriceMasker;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -16,6 +20,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -37,16 +44,7 @@ class ProcurementArrivalExpectationQueryContractTest {
     @Test
     void listAndCountShareTheRealSubcontractOutboundVisibilityPredicate() {
         CapturingJdbcTemplate jdbc = new CapturingJdbcTemplate();
-        ProcurementArrivalControlService service =
-                new ProcurementArrivalControlService(
-                        jdbc,
-                        new ObjectMapper(),
-                        mock(BusinessEventPublisher.class),
-                        mock(SecurityContextCurrentUser.class),
-                        mock(TxSessionVars.class),
-                        mock(FinanceReviewerEligibilityPort.class),
-                        mock(ReceiptPriceMasker.class),
-                        com.uten.imp.support.FulfillmentMutationLockTestSupport.procurementLocks());
+        ProcurementArrivalControlService service = service(jdbc);
 
         service.expectations(1, 20, "", "");
 
@@ -65,6 +63,45 @@ class ProcurementArrivalExpectationQueryContractTest {
                     .contains("visible_item.expectation_id = expectation.id")
                     .doesNotContain("procurement_iqc_replacement_allocations");
         }
+    }
+
+    @ParameterizedTest
+    @MethodSource("expectationSortCases")
+    void sortingKeepsPaginationSeparateAndBindsFiltersBeforePageArguments(
+            String orderType, String sort, String order, String expectedOrderBy) {
+        CapturingJdbcTemplate jdbc = new CapturingJdbcTemplate();
+        UUID supplierId = UUID.randomUUID();
+        String billNo = orderType.equals("PURCHASE")
+                ? "CD20260926000001" : "EO20260926000001";
+
+        service(jdbc).expectations(3, 7, orderType, "", supplierId,
+                WarehouseTaskScope.ALL, sort, order, " " + billNo + " ");
+
+        assertThat(jdbc.expectationListSql)
+                .matches("(?s).*" + Pattern.quote(expectedOrderBy)
+                        + "\\s+LIMIT \\? OFFSET \\?\\s*");
+        for (String sql : List.of(jdbc.expectationListSql, jdbc.expectationCountSql)) {
+            assertThat(sql).contains("expectation.order_type = ?")
+                    .contains("expectation.supplier_id = ?")
+                    .contains("expectation.bill_no_snapshot = ?")
+                    .doesNotContain(billNo, supplierId.toString());
+        }
+        assertThat(jdbc.expectationCountArgs).containsExactly(orderType, supplierId, billNo);
+        assertThat(jdbc.expectationListArgs).containsExactly(orderType, supplierId, billNo, 7, 14);
+    }
+
+    private static Stream<Arguments> expectationSortCases() {
+        String defaultOrderBy = "ORDER BY expectation.expected_date NULLS LAST,"
+                + " expectation.created_at, expectation.id";
+        String billNoTieBreakers = " NULLS LAST, expectation.expected_date NULLS LAST,"
+                + " expectation.created_at, expectation.id";
+        return Stream.of("PURCHASE", "SUBCONTRACT").flatMap(orderType -> Stream.of(
+                Arguments.of(orderType, null, null, defaultOrderBy),
+                Arguments.of(orderType, "billNo", "asc",
+                        "ORDER BY expectation.bill_no_snapshot ASC" + billNoTieBreakers),
+                Arguments.of(orderType, "billNo", "desc",
+                        "ORDER BY expectation.bill_no_snapshot DESC" + billNoTieBreakers),
+                Arguments.of(orderType, "unknown", "desc", defaultOrderBy)));
     }
 
     @Test
@@ -92,6 +129,18 @@ class ProcurementArrivalExpectationQueryContractTest {
         return (value.length() - value.replace(token, "").length()) / token.length();
     }
 
+    private static ProcurementArrivalControlService service(CapturingJdbcTemplate jdbc) {
+        return new ProcurementArrivalControlService(
+                jdbc,
+                new ObjectMapper(),
+                mock(BusinessEventPublisher.class),
+                mock(SecurityContextCurrentUser.class),
+                mock(TxSessionVars.class),
+                mock(FinanceReviewerEligibilityPort.class),
+                mock(ReceiptPriceMasker.class),
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.procurementLocks());
+    }
+
     private static int parenthesisBalance(String sql) {
         int balance = 0;
         for (int index = 0; index < sql.length(); index++) {
@@ -110,11 +159,14 @@ class ProcurementArrivalExpectationQueryContractTest {
     private static final class CapturingJdbcTemplate extends JdbcTemplate {
         private String expectationListSql;
         private String expectationCountSql;
+        private Object[] expectationListArgs;
+        private Object[] expectationCountArgs;
 
         @Override
         public <T> T queryForObject(String sql, Class<T> requiredType, Object... args) {
             if (sql.contains("FROM inbound_expectations expectation")) {
                 expectationCountSql = sql;
+                expectationCountArgs = args.clone();
             }
             return requiredType.cast(0L);
         }
@@ -123,6 +175,7 @@ class ProcurementArrivalExpectationQueryContractTest {
         public <T> List<T> query(String sql, RowMapper<T> rowMapper, Object... args) {
             if (sql.contains("GROUP BY expectation.id")) {
                 expectationListSql = sql;
+                expectationListArgs = args.clone();
             }
             return List.of();
         }

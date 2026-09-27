@@ -168,6 +168,7 @@ class AuditTriggerCoverageMigrationContractTest {
                     Set.of(
                         "production_overproduction_rate_requests", "production_actual_output_supplement_requests",
                         "production_material_increment_requests", "production_material_discovery_requests", "production_bom_learning_samples",
+                        "production_draw_issue_batches",
                         "preplan_aggregate_batches",
                         "production_daily_report_items", "production_daily_report_material_usages",
                         "production_daily_report_workers", "production_daily_reports",
@@ -316,6 +317,7 @@ class AuditTriggerCoverageMigrationContractTest {
                         "measurement_capture_decision_events", "measurement_capture_evidence",
                         "measurement_capture_line_snapshots", "production_material_discovery_lines",
                         "preplan_future_supply_transfer_cancellations",
+                        "preplan_make_public_claims", "preplan_make_public_claim_cancellations",
                         "preplan_aggregate_batch_events", "preplan_aggregate_material_aliases", "preplan_aggregate_direct_transfer_slices",
                         "preplan_public_supply_events",
                         "preplan_root_output_events", "preplan_stock_entitlement_events",

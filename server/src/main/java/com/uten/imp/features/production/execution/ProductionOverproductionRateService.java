@@ -9,6 +9,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.ProductionWorkshopMembership;
@@ -121,19 +122,70 @@ public class ProductionOverproductionRateService {
     }
 
     public PageResponse<RequestView> list(String status,int page,int size) {
+        return list(status,page,size,null,null,null,null);
+    }
+
+    /** 2026-09-25 单号列统一：计划号/工单号排序（白名单，取申请快照里的单号）与
+     *  表头值筛选（精确匹配，分页前生效）。 */
+    public PageResponse<RequestView> list(String status,int page,int size,
+            String sort,String order,String planNo,String segmentCode) {
         requirePermission(APPROVE_PERMISSION);
         String filter=status==null?"PENDING":status.strip().toUpperCase(java.util.Locale.ROOT);
         if(!Set.of("PENDING","APPROVED","RETURNED","ALL").contains(filter))throw validation("比例调整状态无效");
         String predicate="ALL".equals(filter)?"TRUE":"request.status=:status";
+        boolean planFilter=planNo!=null&&!planNo.isBlank();
+        boolean segmentFilter=segmentCode!=null&&!segmentCode.isBlank();
+        if(planFilter) predicate+=" AND COALESCE(request.before_snapshot->>'planNo','') = :planNo";
+        if(segmentFilter) predicate+=" AND COALESCE(request.before_snapshot->>'segmentCode','') = :segmentCode";
         var count=em.createNativeQuery("SELECT COUNT(*) FROM production_overproduction_rate_requests request WHERE "+predicate);
         if(!"ALL".equals(filter))count.setParameter("status",filter);
+        if(planFilter)count.setParameter("planNo",planNo.strip());
+        if(segmentFilter)count.setParameter("segmentCode",segmentCode.strip());
         long total=((Number)count.getSingleResult()).longValue();
         int boundedSize=Math.min(Math.max(size,1),100),boundedPage=Math.max(page,1);
-        var query=em.createNativeQuery(PROJECTION+" WHERE "+predicate+" ORDER BY request.submitted_at DESC,request.id DESC LIMIT :size OFFSET :offset")
+        var query=em.createNativeQuery(PROJECTION+" WHERE "+predicate+" "+orderBy(sort,order)+" LIMIT :size OFFSET :offset")
                 .setParameter("size",boundedSize).setParameter("offset",(long)(boundedPage-1)*boundedSize);
         if(!"ALL".equals(filter))query.setParameter("status",filter);
+        if(planFilter)query.setParameter("planNo",planNo.strip());
+        if(segmentFilter)query.setParameter("segmentCode",segmentCode.strip());
         return new PageResponse<>(NativeQueryResults.objectArrayRows(query).stream().map(this::view).toList(),
                 boundedPage,boundedSize,total,total==0?0:(int)((total+boundedSize-1)/boundedSize));
+    }
+
+    /** 单号列 facets（2026-09-25 单号列统一）：{plan/segment:[…]}，与列表同一过滤
+     *  （状态默认 PENDING；不含单号列自身的值筛选）；桶按单号升序、空串剔除。 */
+    public Map<String,List<Map<String,Object>>> facets(String status) {
+        requirePermission(APPROVE_PERMISSION);
+        String filter=status==null?"PENDING":status.strip().toUpperCase(java.util.Locale.ROOT);
+        if(!Set.of("PENDING","APPROVED","RETURNED","ALL").contains(filter))throw validation("比例调整状态无效");
+        String predicate="ALL".equals(filter)?"TRUE":"request.status=:status";
+        Map<String,List<Map<String,Object>>> result=new java.util.LinkedHashMap<>();
+        for (String column : List.of("planNo","segmentCode")) {
+            var query=em.createNativeQuery("""
+                    SELECT COALESCE(request.before_snapshot->>'%1$s',''), COUNT(*)
+                    FROM production_overproduction_rate_requests request
+                    WHERE %2$s
+                    GROUP BY 1 HAVING COALESCE(request.before_snapshot->>'%1$s','') <> ''
+                    ORDER BY 1
+                    """.formatted(column,predicate)).setMaxResults(500);
+            if(!"ALL".equals(filter))query.setParameter("status",filter);
+            result.put("planNo".equals(column)?"plan":"segment",
+                    NativeFacets.rows(NativeQueryResults.objectArrayRows(query)));
+        }
+        return result;
+    }
+
+    /** 排序白名单（2026-09-25 单号列统一）：plan/segment → 申请快照里的计划号/工单号；
+     *  未知/空回落默认「提交时间倒序 + id」；稳定键固定追加默认两段。 */
+    private static String orderBy(String rawSort,String rawOrder) {
+        String direction="desc".equalsIgnoreCase(rawOrder)?"DESC":"ASC";
+        return switch(rawSort==null?"":rawSort.strip()) {
+            case "plan" -> "ORDER BY request.before_snapshot->>'planNo' "+direction
+                    +" NULLS LAST, request.submitted_at DESC, request.id DESC";
+            case "segment" -> "ORDER BY request.before_snapshot->>'segmentCode' "+direction
+                    +" NULLS LAST, request.submitted_at DESC, request.id DESC";
+            default -> "ORDER BY request.submitted_at DESC, request.id DESC";
+        };
     }
 
     public long count() {

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/features/basic_data/models/account_node.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/models/currency_node.dart';
 import 'package:uten_imp/features/basic_data/models/payment_style_node.dart';
 import 'package:uten_imp/features/basic_data/pages/account_detail_page.dart';
@@ -133,6 +134,13 @@ Future<void> _pumpDetail(
 }
 
 class _AccountRepositoryFake implements AccountRepository {
+  @override
+  Future<List<MasterFacetBucket>> statementBillNoFacets({
+    required String accountId,
+    required String dateFrom,
+    required String dateTo,
+    String? keyword,
+  }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   int detailCalls = 0;
   int statementCalls = 0;
   int updateCalls = 0;
@@ -174,6 +182,7 @@ class _AccountRepositoryFake implements AccountRepository {
     String? keyword,
     int page = 1,
     int size = 50,
+    String? billNo,
   }) async {
     statementCalls++;
     return AccountStatementPage(

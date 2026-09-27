@@ -218,6 +218,314 @@ class AggregateMaterialOrderEndToEndTest {
         amount("5",db.queryForObject("SELECT notified_qty FROM preplan_subcontract_make_tasks WHERE id=?",BigDecimal.class,task));
     }
 
+    @Test void productViewProjectsDelegatedSharesTargetsAndStagesAtEveryDepthAfterSelectAll(){
+        // 三层共享结构(顶层→共享件→子件→采购料)全选下单后的产品视图投影：
+        // 原树任意深度的行都要拿回自己的 BOM 份额、共享批次树上的目标行与真实
+        // 进度阶段(2026-09-26 用户实机「深层行全是 0/未下达、下达委外幻影红 1」)。
+        Case c=createWithChild("1");setRoute(c,c.common(),"SUBCONTRACT");
+        var raw=input(c,c.common(),"SUBCONTRACT","3",false);
+        var group=new GroupInput(raw.clientGroupKey(),raw.materialLineIds(),raw.route(),raw.qty(),false,c.workshop(),c.worker(),null,null,null,null,BigDecimal.ZERO,BigDecimal.ZERO);
+        var shared=writer.submit(c.analysis(),command(c,List.of(group))).batches().getFirst();
+        // 全选下单的其余两层也走汇总：子件(制造批)与采购料各成一批，嵌套共享批次。
+        writer.submit(c.analysis(),command(c,List.of(input(c,c.child(),"MAKE","3",false),input(c,c.material(),"BUY","6",false))));
+        AnalysisView view=analyses.detail(c.analysis());
+        Set<UUID> originalProducts=view.products().stream().filter(product->!Set.of("AGGREGATE_MAKE","MAKE_COMPONENT","SUBCONTRACT_MAKE").contains(product.sourceType()))
+                .map(ProductView::analysisLineId).collect(java.util.stream.Collectors.toSet());
+        List<MaterialView> originals=view.flatMaterials().stream()
+                .filter(row->originalProducts.contains(row.analysisLineId())).toList();
+        // 原树分层断言：成员行(共享件本体的原行)仍持有毛需求——它的「还缺」必须由
+        // 共享委外批次的先自制备料任务按 INTERNAL 覆盖清零；覆盖要落到**批次成员行**
+        // 上：锚点树没有 ROOT_SUPPLY 行(锚点树只长 BOM 组件)，关联锚点根行永远落空
+        // (2026-09-26 用户实机「等待下发委外」幻影计数的根因)。子层/孙层份额按 BOM
+        // 折算，目标行经嵌套解析落到最终真实下达行——不再有可填的 0 或找不到目标。
+        for(MaterialView row:originals){
+            if(row.goodsId().equals(c.common()))amount("0",row.additionalSupplyRecommendedQty());
+            if(row.goodsId().equals(c.child())){
+                amount("1",row.aggregateDelegatedQty());assertNotNull(row.aggregatePreparation());
+                assertTrue(row.aggregateTargetMaterialLineId()!=null||!row.downstreamReferences().isEmpty(),
+                        "An original path must have an exact target or its own real shared-order reference");
+                assertTrue(row.aggregatePreparation().orderedQty().signum()>0);
+            }
+            if(row.goodsId().equals(c.material())&&"BOM_COMPONENT".equals(row.nodeRole())){
+                amount("2",row.aggregateDelegatedQty());assertNotNull(row.aggregateTargetMaterialLineId());}
+        }
+        // 进度取最终真实下达行的阶段：孙层已随采购批下单，不得再报「未下达」。
+        assertTrue(originals.stream().filter(row->row.goodsId().equals(c.material())&&"BOM_COMPONENT".equals(row.nodeRole()))
+                .allMatch(row->!"BUY_PENDING_ISSUE".equals(row.flowStage())));
+    }
+
+    @Test void rootAssignmentsComeFromTheRealDraftAndTaskWhenGoodsMemoryChanges() {
+        Case c=create(false,false,"1");AnalysisView view=analyses.detail(c.analysis());
+        ProductView product=view.products().getFirst();
+        var line=new MaterialAnalysisContracts.IssueWorkshopPlansRequest.IssuePlanLine(null,product.analysisLineId(),BigDecimal.ONE,
+                null,null,c.workshop(),null,c.worker(),null,null,false,BigDecimal.ZERO);
+        var result=ordinary.issueWorkshopPlans(c.analysis(),new MaterialAnalysisContracts.IssueWorkshopPlansRequest(view.version(),view.fingerprint(),
+                "assignment-draft-"+UUID.randomUUID(),c.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),false,List.of(line)));
+        UUID plan=result.plans().getFirst().planId();
+        ProductView draft=result.analysis().products().stream().filter(row->row.analysisLineId().equals(product.analysisLineId())).findFirst().orElseThrow();
+        assertEquals(c.workshop(),draft.planExecutionWorkshopId());assertEquals(c.worker(),draft.planExecutionResponsibleId());
+        assertFalse(draft.planExecutionWorkshopName().isBlank());assertFalse(draft.planExecutionResponsibleName().isBlank());
+        beans.getBean(com.uten.imp.features.production.plan.ProductionPlanService.class).approve(plan);
+        Object other=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment","other-memory-"+UUID.randomUUID());
+        UUID otherWorkshop=ReflectionTestUtils.invokeMethod(other,"workshopId");
+        // Goods memory is mutable master data; the previously issued plan and task stay unchanged.
+        db.update("UPDATE goods SET owning_workshop_department_id=? WHERE id=?",otherWorkshop,product.goodsId());
+        ProductView current=analyses.detail(c.analysis()).products().stream().filter(row->row.analysisLineId().equals(product.analysisLineId())).findFirst().orElseThrow();
+        assertEquals(otherWorkshop,current.owningWorkshopId());
+        assertEquals(c.workshop(),current.planExecutionWorkshopId());assertEquals(c.worker(),current.planExecutionResponsibleId());
+        assertEquals(c.workshop(),db.queryForObject("SELECT department_id FROM production_plans WHERE id=?",UUID.class,plan));
+    }
+
+    @Test void originalDeepChildCanBeOrderedAndAppendedAfterItsParentsWereCombined() {
+        Case c=createWithChild("1");
+        AnalysisView initial=analyses.detail(c.analysis());
+        List<UUID> originalLeaves=initial.flatMaterials().stream().filter(row->row.goodsId().equals(c.material())).map(MaterialView::materialLineId).toList();
+        writer.submit(c.analysis(),command(c,List.of(input(c,c.common(),"MAKE","3",false),input(c,c.child(),"MAKE","3",false))));
+        UUID original=originalLeaves.getFirst();
+        GroupInput first=new GroupInput("original-leaf",List.of(original),"BUY",new BigDecimal("2"),false,
+                null,null,null,null,null,null,null,BigDecimal.ZERO,Map.of(original,new BigDecimal("2")));
+        var ordered=writer.submit(c.analysis(),command(c,List.of(first)));
+        assertEquals(1,ordered.batches().size());
+        MaterialView shown=ordered.analysis().flatMaterials().stream().filter(row->row.materialLineId().equals(original)).findFirst().orElseThrow();
+        assertNotNull(shown.aggregatePreparation());
+        amount("2",shown.aggregatePreparation().orderedQty());
+        assertTrue(shown.aggregatePreparation().orderedQtyExact());
+        for(UUID id:originalLeaves) {
+            var row=ordered.analysis().flatMaterials().stream().filter(material->material.materialLineId().equals(id)).findFirst().orElseThrow();
+            amount(id.equals(original)?"0":"2",row.aggregatePreparation().planningUncoveredQty());
+            amount(id.equals(original)?"2":"0",row.aggregatePreparation().allocatedOrderedQty());
+        }
+        GroupInput append=new GroupInput("original-leaf",List.of(original),"BUY",new BigDecimal("3"),true,
+                null,null,null,null,null,null,null,BigDecimal.ZERO,Map.of(original,new BigDecimal("3")));
+        var after=writer.submit(c.analysis(),command(c,List.of(append)));
+        assertEquals(ordered.batches().getFirst().documentId(),after.batches().getFirst().documentId());
+        shown=after.analysis().flatMaterials().stream().filter(row->row.materialLineId().equals(original)).findFirst().orElseThrow();
+        amount("5",shown.aggregatePreparation().orderedQty());
+        amount("5",db.queryForObject("SELECT qty FROM purchase_request_items WHERE request_id=? AND NOT is_deleted",BigDecimal.class,ordered.batches().getFirst().documentId()));
+        amount("2",shown.aggregatePreparation().allocatedOrderedQty());
+        amount("0",shown.aggregatePreparation().planningUncoveredQty());
+        UUID sibling=originalLeaves.get(1);
+        GroupInput adopt=new GroupInput("original-sibling",List.of(sibling),"BUY",new BigDecimal("2"),false,
+                null,null,null,null,null,null,null,BigDecimal.ZERO,Map.of(sibling,new BigDecimal("2")));
+        var adopted=writer.submit(c.analysis(),command(c,List.of(adopt)));
+        assertTrue(adopted.batches().isEmpty(),"An independent original sibling may use the first row's public remainder after both parents were merged");
+        var siblingRow=adopted.analysis().flatMaterials().stream().filter(row->row.materialLineId().equals(sibling)).findFirst().orElseThrow();
+        amount("0",siblingRow.aggregatePreparation().orderedQty());amount("2",siblingRow.preparationAdoptedQty());
+        amount("0",siblingRow.aggregatePreparation().planningUncoveredQty());
+        amount("5",db.queryForObject("SELECT qty FROM purchase_request_items WHERE request_id=? AND NOT is_deleted",BigDecimal.class,ordered.batches().getFirst().documentId()));
+    }
+
+    @Test void actualSourceOrderInputsRemainDistinctFromThePrivateDemandAllocations() {
+        Case c=create(false,false,"1");GroupInput base=input(c,c.material(),"BUY","11001",true);
+        List<UUID> ids=base.materialLineIds();
+        Map<UUID,BigDecimal> intended=Map.of(ids.get(0),new BigDecimal("10000"),ids.get(1),new BigDecimal("1000"),ids.get(2),BigDecimal.ONE);
+        GroupInput exact=new GroupInput(base.clientGroupKey(),ids,"BUY",new BigDecimal("11001"),true,
+                null,null,null,null,null,null,null,BigDecimal.ZERO,intended);
+        var result=writer.submit(c.analysis(),command(c,List.of(exact)));
+        for(MaterialView row:result.analysis().flatMaterials())if(intended.containsKey(row.materialLineId())) {
+            assertNotNull(row.aggregatePreparation());assertTrue(row.aggregatePreparation().orderedQtyExact());
+            assertEquals(0,intended.get(row.materialLineId()).compareTo(row.aggregatePreparation().orderedQty()));
+            assertTrue(row.aggregatePreparation().allocatedOrderedQty().compareTo(new BigDecimal("2"))<=0);
+        }
+        amount("11001",db.queryForObject("SELECT qty FROM purchase_request_items WHERE request_id=? AND NOT is_deleted",BigDecimal.class,result.batches().getFirst().documentId()));
+    }
+
+    @Test void deepSupplyIssuedBeforeParentsCombinedKeepsItsExactOriginalResponsibility() {
+        Case c=createWithChild("1");
+        List<UUID> originals=analyses.detail(c.analysis()).flatMaterials().stream()
+                .filter(row->row.goodsId().equals(c.material())).map(MaterialView::materialLineId).toList();
+        UUID first=originals.getFirst(),sibling=originals.get(1);
+        GroupInput order=new GroupInput("deep-before-parent",List.of(first),"BUY",new BigDecimal("5"),true,
+                null,null,null,null,null,null,null,BigDecimal.ZERO,Map.of(first,new BigDecimal("5")));
+        var supplied=writer.submit(c.analysis(),command(c,List.of(order)));
+        UUID request=supplied.batches().getFirst().documentId();
+        writer.submit(c.analysis(),command(c,List.of(input(c,c.common(),"MAKE","3",false),input(c,c.child(),"MAKE","3",false))));
+        amount("2",db.queryForObject("SELECT SUM(fn_preplan_aggregate_alias_qty(id)) FROM preplan_aggregate_material_aliases WHERE source_material_id=? AND cardinality(relative_bom_path)=2",BigDecimal.class,sibling));
+        long aliases=count("SELECT COUNT(*) FROM preplan_aggregate_material_aliases alias JOIN preplan_aggregate_batches batch ON batch.id=alias.batch_id WHERE batch.analysis_id=?",c.analysis());
+        for(int turn=1;turn<=2;turn++) {
+            GroupInput adopt=new GroupInput("deep-partial-original",List.of(sibling),"BUY",BigDecimal.ONE,false,
+                    null,null,null,null,null,null,null,BigDecimal.ZERO,Map.of(sibling,BigDecimal.ONE));
+            SubmitRequest intent=command(c,List.of(adopt));
+            var result=writer.submit(c.analysis(),intent);
+            assertTrue(result.batches().isEmpty());
+            MaterialView row=result.analysis().flatMaterials().stream().filter(value->value.materialLineId().equals(sibling)).findFirst().orElseThrow();
+            amount(Integer.toString(turn),row.preparationAdoptedQty());
+            amount(Integer.toString(2-turn),row.aggregatePreparation().planningUncoveredQty());
+            assertTrue(writer.submit(c.analysis(),intent).replayed());
+        }
+        assertEquals(aliases,count("SELECT COUNT(*) FROM preplan_aggregate_material_aliases alias JOIN preplan_aggregate_batches batch ON batch.id=alias.batch_id WHERE batch.analysis_id=?",c.analysis()));
+        amount("5",db.queryForObject("SELECT SUM(qty) FROM purchase_request_items WHERE request_id=? AND NOT is_deleted",BigDecimal.class,request));
+    }
+
+    @Test void fixedBatchClaimCreatedAfterMergeCoversOnlyItsCurrentOriginalShare() {
+        Case c=createForkedFixed();
+        List<UUID> originals=analyses.detail(c.analysis()).flatMaterials().stream()
+                .filter(row->row.goodsId().equals(c.material())).map(MaterialView::materialLineId).toList();
+        UUID source=originals.getFirst(),target=originals.get(1);
+        GroupInput order=new GroupInput("rounded-source",List.of(source),"BUY",new BigDecimal("2"),true,
+                null,null,null,null,null,null,null,BigDecimal.ZERO,Map.of(source,new BigDecimal("2")));
+        writer.submit(c.analysis(),command(c,List.of(order)));
+        writer.submit(c.analysis(),command(c,List.of(input(c,c.common(),"MAKE","2",false))));
+        BigDecimal share=db.queryForObject("SELECT SUM(fn_preplan_aggregate_alias_qty(id)) FROM preplan_aggregate_material_aliases WHERE source_material_id=?",BigDecimal.class,target);
+        assertTrue(share.signum()>0&&share.compareTo(BigDecimal.ONE)<0);
+        GroupInput adopt=new GroupInput("rounded-target",List.of(target),"BUY",share,false,
+                null,null,null,null,null,null,null,BigDecimal.ZERO,Map.of(target,share));
+        var result=writer.submit(c.analysis(),command(c,List.of(adopt)));
+        assertTrue(result.batches().isEmpty());
+        MaterialView row=result.analysis().flatMaterials().stream().filter(value->value.materialLineId().equals(target)).findFirst().orElseThrow();
+        amount(share.toPlainString(),row.preparationAdoptedQty());
+        amount("0",row.aggregatePreparation().planningUncoveredQty());
+        // The first row's real pre-merge private remainder still belongs to it.
+        BigDecimal sourceShare=db.queryForObject("SELECT SUM(fn_preplan_aggregate_alias_qty(id)) FROM preplan_aggregate_material_aliases WHERE source_material_id=?",BigDecimal.class,source);
+        amount(BigDecimal.ONE.subtract(sourceShare).toPlainString(),db.queryForObject("SELECT fn_preplan_aggregate_source_retained_qty(?)",BigDecimal.class,source));
+    }
+
+    @Test void historicalDirectOnlyParentBridgesAreCompletedBeforePartialOriginalClaims() {
+        historicalDirectOnlyParentBridgesAreCompletedBeforePartialOriginalClaims(false);
+    }
+    @Test void historicalPrivateReceiptIsDelegatedWhenItsMissingDeepBridgeIsCompleted() {
+        historicalDirectOnlyParentBridgesAreCompletedBeforePartialOriginalClaims(true);
+    }
+    private void historicalDirectOnlyParentBridgesAreCompletedBeforePartialOriginalClaims(boolean receivePrivate) {
+        Case c=createWithChild("1");
+        List<UUID> originals=analyses.detail(c.analysis()).flatMaterials().stream().filter(row->row.goodsId().equals(c.material()))
+                .map(MaterialView::materialLineId).toList();
+        UUID source=originals.getFirst(),target=originals.get(1);
+        GroupInput order=new GroupInput("historic-source",List.of(source),"BUY",new BigDecimal("5"),true,
+                null,null,null,null,null,null,null,BigDecimal.ZERO,Map.of(source,new BigDecimal("5")));
+        UUID request=writer.submit(c.analysis(),command(c,List.of(order))).batches().getFirst().documentId();
+        createLegacyDirectOnlyParent(c,input(c,c.common(),"MAKE","3",false));
+        assertEquals(0,count("SELECT COUNT(*) FROM preplan_aggregate_material_aliases WHERE source_material_id=?",target));
+        writer.submit(c.analysis(),command(c,List.of(input(c,c.child(),"MAKE","3",false))));
+        if(receivePrivate) {
+            var purchases=new PreplanPublicFutureReplenishmentEndToEndTest();beans.autowireBean(purchases);
+            ReflectionTestUtils.setField(purchases,"fixture",fixture);
+            UUID requestItem=db.queryForObject("SELECT id FROM purchase_request_items WHERE request_id=? AND NOT is_deleted",UUID.class,request);
+            UUID orderItem=ReflectionTestUtils.invokeMethod(purchases,"approveOrder",c.world(),requestItem,c.material(),"5",BusinessTime.today().plusDays(5));
+            ReflectionTestUtils.invokeMethod(purchases,"receive",c.world(),orderItem,c.material(),"2");
+            fixture.loginAs(c.world().superAdminUserId());
+            amount("2",db.queryForObject("SELECT COALESCE(SUM(effective_qty),0) FROM v_preplan_stock_entitlement_beneficiary_balance WHERE beneficiary_analysis_material_id=?",BigDecimal.class,source));
+        }
+        for(int turn=1;turn<=2;turn++) {
+            GroupInput adopt=new GroupInput("historic-target",List.of(target),"BUY",BigDecimal.ONE,false,
+                    null,null,null,null,null,null,null,BigDecimal.ZERO,Map.of(target,BigDecimal.ONE));
+            SubmitRequest intent=command(c,List.of(adopt));
+            var result=writer.submit(c.analysis(),intent);assertTrue(result.batches().isEmpty());
+            MaterialView row=result.analysis().flatMaterials().stream().filter(value->value.materialLineId().equals(target)).findFirst().orElseThrow();
+            amount(Integer.toString(turn),row.preparationAdoptedQty());
+            amount(Integer.toString(2-turn),row.aggregatePreparation().planningUncoveredQty());
+            amount("2",db.queryForObject("SELECT SUM(fn_preplan_aggregate_alias_qty(id)) FROM preplan_aggregate_material_aliases WHERE source_material_id=? AND cardinality(relative_bom_path)=2",BigDecimal.class,target));
+            assertTrue(writer.submit(c.analysis(),intent).replayed());
+        }
+        MaterialView first=analyses.detail(c.analysis()).flatMaterials().stream().filter(row->row.materialLineId().equals(source)).findFirst().orElseThrow();
+        amount("0",first.aggregatePreparation().planningUncoveredQty());
+        if(receivePrivate)amount("2",db.queryForObject("SELECT COALESCE(SUM(fn_preplan_aggregate_alias_delegated_qty(id)),0) FROM preplan_aggregate_material_aliases WHERE source_material_id=?",BigDecimal.class,source));
+        amount("5",db.queryForObject("SELECT SUM(qty) FROM purchase_request_items WHERE request_id=? AND NOT is_deleted",BigDecimal.class,request));
+    }
+
+    @Test void sharedPurchaseKeepsTheConfirmedSafetySliceSeparateFromSourceQuantities() {
+        Case c=create(false,false,"10");db.update("UPDATE goods SET min_qty=6 WHERE id=?",c.material());
+        GroupInput raw=input(c,c.material(),"BUY","60",false);
+        GroupInput order=new GroupInput(raw.clientGroupKey(),raw.materialLineIds(),"BUY",raw.qty(),false,
+                null,null,null,null,null,null,null,new BigDecimal("6"));
+        var result=writer.submit(c.analysis(),command(c,List.of(order)));var batch=result.batches().getFirst();
+        amount("66",db.queryForObject("SELECT SUM(qty) FROM purchase_request_items WHERE request_id=? AND NOT is_deleted",BigDecimal.class,batch.documentId()));
+        amount("6",db.queryForObject("SELECT safety_replenishment_qty FROM preplan_supply_actions WHERE id=(SELECT action_id FROM preplan_aggregate_batches WHERE id=?)",BigDecimal.class,batch.batchId()));
+        amount("60",db.queryForObject("SELECT SUM(allocated_qty) FROM preplan_supply_action_allocations WHERE action_id=(SELECT action_id FROM preplan_aggregate_batches WHERE id=?)",BigDecimal.class,batch.batchId()));
+    }
+
+    @Test void selectAllThreeProductsIssuesEveryLayerUsingOnlyTheOriginalClientPathIds() {
+        Case c=createWithChild("1");AnalysisView initial=analyses.detail(c.analysis());
+        List<ProductView> roots=initial.products().stream().filter(row->row.salesOrderItemId()!=null).toList();
+        Set<UUID> rootIds=roots.stream().map(ProductView::analysisLineId).collect(java.util.stream.Collectors.toSet());
+        List<MaterialView> original=initial.flatMaterials().stream().filter(row->rootIds.contains(row.analysisLineId())).toList();
+        List<GroupInput> groups=new ArrayList<>();
+        for(UUID goods:List.of(c.common(),c.child(),c.material())) {
+            boolean buy=goods.equals(c.material());BigDecimal perSource=new BigDecimal(buy?"2":"1");
+            List<UUID> ids=original.stream().filter(row->goods.equals(row.goodsId())&&row.level()>0).map(MaterialView::materialLineId).toList();
+            assertEquals(3,ids.size());Map<UUID,BigDecimal> intent=new LinkedHashMap<>();ids.forEach(id->intent.put(id,perSource));
+            groups.add(new GroupInput("original-level-"+goods,ids,buy?"BUY":"MAKE",perSource.multiply(new BigDecimal("3")),false,
+                    buy?null:c.workshop(),buy?null:c.worker(),null,BusinessTime.today(),BusinessTime.today().plusDays(10),null,buy?null:BigDecimal.ZERO,BigDecimal.ZERO,intent));
+        }
+        ordinary.issueWorkshopPlans(c.analysis(),new IssueWorkshopPlansRequest(initial.version(),initial.fingerprint(),"all-original-roots-"+UUID.randomUUID(),
+                c.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,
+                roots.stream().map(root->new IssueWorkshopPlansRequest.IssuePlanLine(null,root.analysisLineId(),BigDecimal.ONE,null,null,c.workshop(),null,c.worker(),null,null,false,BigDecimal.ZERO)).toList()));
+        for(GroupInput group:groups) {
+            var shown=preview.preview(c.analysis(),request(c,List.of(group)));
+            assertNull(shown.groups().getFirst().blockedReason(),"original path stage "+group.clientGroupKey());
+            Set<UUID> proved=shown.groups().getFirst().sources().stream().flatMap(source->source.originalMaterialLineIds().stream()).collect(java.util.stream.Collectors.toSet());
+            assertEquals(new HashSet<>(group.materialLineIds()),proved,"the preview must prove exactly the original client scope even when effective ids changed");
+            var issued=writer.submit(c.analysis(),submit(shown,request(c,List.of(group))));
+            assertEquals(1,issued.batches().size(),"every selected level must issue a real document");
+        }
+        assertEquals(5,count("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=? AND NOT is_deleted",c.analysis()));
+        amount("6",db.queryForObject("SELECT SUM(item.qty) FROM purchase_request_items item WHERE NOT item.is_deleted AND item.request_id IN(SELECT external_document_id FROM preplan_supply_actions WHERE analysis_id=? AND route='BUY' AND status<>'CANCELLED')",BigDecimal.class,c.analysis()));
+        AnalysisView after=analyses.detail(c.analysis());
+        for(GroupInput group:groups)for(UUID id:group.materialLineIds()) {
+            MaterialView row=after.flatMaterials().stream().filter(value->value.materialLineId().equals(id)).findFirst().orElseThrow();
+            assertNotNull(row.aggregatePreparation());assertTrue(row.aggregatePreparation().orderedQtyExact());
+            assertEquals(0,group.sourceRequestedQtyByMaterialLineId().get(id).compareTo(row.aggregatePreparation().orderedQty()));
+            assertFalse(row.flowStage().endsWith("PENDING_ISSUE"),"issued original path must expose its real downstream progress");
+        }
+    }
+
+    @Test void independentManufacturingCohortStillReservesSharedScarceMaterialSequentially() {
+        CohortCase cohort=createIndependentCohort();Case c=cohort.c();
+        receive(c,c.material(),"1");
+        List<GroupInput> groups=new ArrayList<>();
+        for(UUID output:cohort.outputs())groups.add(input(c,output,"MAKE","1",false));
+        var command=command(c,groups);var result=writer.submit(c.analysis(),command);
+        assertEquals(2,result.batches().size());
+        List<UUID> plans=result.batches().stream().map(BatchResult::planId).toList();
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_execution_segments WHERE plan_id IN(?,?) AND status='READY' AND NOT is_deleted",Integer.class,plans.get(0),plans.get(1)));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_execution_segments WHERE plan_id IN(?,?) AND status='WAITING' AND NOT is_deleted",Integer.class,plans.get(0),plans.get(1)));
+        amount("1",db.queryForObject("SELECT COALESCE(SUM(reservation.qty-reservation.released_qty-reservation.consumed_qty),0) FROM stock_reservations reservation JOIN production_material_demands demand ON demand.id=reservation.owner_id WHERE reservation.owner_type='PRODUCTION_MATERIAL_DEMAND' AND demand.plan_id IN(?,?) AND reservation.status=0 AND NOT reservation.is_deleted",BigDecimal.class,plans.get(0),plans.get(1)));
+        assertTrue(writer.submit(c.analysis(),command).replayed());
+        assertEquals(2,count("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=? AND NOT is_deleted",c.analysis()));
+    }
+
+    @Test void aSecondPlanFailureRollsBackTheAlreadyApprovedFirstPlanAndItsReservation() {
+        CohortCase cohort=createIndependentCohort();Case c=cohort.c();receive(c,c.material(),"1");
+        List<GroupInput> groups=cohort.outputs().stream().map(output->input(c,output,"MAKE","1",false)).toList();
+        SubmitRequest intent=command(c,groups);
+        String outputs=cohort.outputs().stream().map(id->"'"+id+"'::uuid").collect(java.util.stream.Collectors.joining(","));
+        String fault="test_aggregate_second_"+UUID.randomUUID().toString().replace("-","");
+        db.execute("CREATE FUNCTION "+fault+"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.goods_id IN("+outputs+") AND EXISTS(SELECT 1 FROM production_plans p WHERE p.material_analysis_id='"+c.analysis()+"'::uuid AND p.status=1 AND NOT p.is_deleted) THEN RAISE EXCEPTION 'TEST_SECOND_PLAN_AFTER_FIRST_APPROVED' USING ERRCODE='23514'; END IF; RETURN NEW; END $$");
+        db.execute("CREATE TRIGGER "+fault+" BEFORE INSERT ON production_plan_items FOR EACH ROW EXECUTE FUNCTION "+fault+"()");
+        try {
+            RuntimeException rejected=assertThrows(RuntimeException.class,()->writer.submit(c.analysis(),intent));
+            StringBuilder causes=new StringBuilder();for(Throwable current=rejected;current!=null;current=current.getCause())causes.append(current.getMessage());
+            assertTrue(causes.toString().contains("TEST_SECOND_PLAN_AFTER_FIRST_APPROVED"),causes.toString());
+        } finally {
+            db.execute("DROP TRIGGER "+fault+" ON production_plan_items");db.execute("DROP FUNCTION "+fault+"()");
+        }
+        assertEquals(0,count("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+        assertEquals(0,count("SELECT COUNT(*) FROM preplan_supply_actions WHERE analysis_id=?",c.analysis()));
+        assertEquals(0,count("SELECT COUNT(*) FROM production_material_analysis_commands WHERE analysis_id=? AND operation='AGGREGATE_ORDER'",c.analysis()));
+        assertEquals(intent.version(),db.queryForObject("SELECT version FROM production_material_analyses WHERE id=?",Long.class,c.analysis()));
+        amount("0",db.queryForObject("SELECT COALESCE(SUM(reservation.qty-reservation.released_qty-reservation.consumed_qty),0) FROM stock_reservations reservation WHERE reservation.goods_id=? AND reservation.status=0 AND NOT reservation.is_deleted",BigDecimal.class,c.material()));
+        amount("1",db.queryForObject("SELECT COALESCE(SUM(qty),0) FROM stock_balances WHERE goods_id=?",BigDecimal.class,c.material()));
+        var retry=writer.submit(c.analysis(),intent);assertEquals(2,retry.batches().size());assertTrue(writer.submit(c.analysis(),intent).replayed());
+    }
+
+    private record CohortCase(Case c,List<UUID> outputs) { }
+    private CohortCase createIndependentCohort() {
+        Case seed=create(true,false,"1");var world=seed.world();
+        List<MaterialAnalysisContracts.PreviewItem> roots=new ArrayList<>();List<UUID> outputs=new ArrayList<>();
+        for(int index=0;index<2;index++) {
+            UUID root=UUID.randomUUID(),output=UUID.randomUUID();outputs.add(output);
+            fixture.insertGoods(root,"COHORT-ROOT-"+root,"独立父产品","自制",world.unitId(),world.unitLegacy());
+            fixture.insertGoods(output,"COHORT-OUT-"+output,"共用原料的独立子件","自制",world.unitId(),world.unitLegacy());
+            fixture.insertBom(root,output,"1");fixture.insertBom(output,seed.material(),"1");
+            roots.add(new MaterialAnalysisContracts.PreviewItem("OTHER",null,root,null,world.unitId(),"cohort-"+root,"验证共享原料不重复预留",BusinessTime.today().plusDays(10),BigDecimal.ONE));
+        }
+        var view=analyses.preview(new MaterialAnalysisContracts.PreviewRequest(null,null,null,world.warehouseId(),"cohort-analysis-"+UUID.randomUUID(),roots));
+        view=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"cohort-routes-"+UUID.randomUUID(),view.flatMaterials().stream()
+                .map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.goodsId().equals(seed.material())?"BUY":"MAKE",null)).toList()));
+        Case c=new Case(world,view.analysisId(),seed.common(),null,seed.material(),seed.workshop(),seed.worker());
+        return new CohortCase(c,List.copyOf(outputs));
+    }
+
     void cancelNotification(Case c,UUID application){var current=analyses.detail(c.analysis());UUID action=db.queryForObject("SELECT id FROM preplan_supply_actions WHERE external_document_id=?",UUID.class,application);
         ordinary.cancelAction(c.analysis(),action,new CancelRequest(current.version(),current.fingerprint(),"cancel-notification-"+UUID.randomUUID(),"按本次通知完整撤回并保留准备成品"));}
 
@@ -282,6 +590,56 @@ class AggregateMaterialOrderEndToEndTest {
 
     Case create(boolean manufacture,boolean fixed,String quantity){return create(manufacture,fixed,quantity,false);}
     Case createWithChild(String quantity){return create(true,false,quantity,true);}
+    Case createForkedFixed() {
+        Case seed=create(true,true,"1");var world=seed.world();
+        UUID root=UUID.randomUUID(),left=UUID.randomUUID(),right=UUID.randomUUID();
+        for(UUID goods:List.of(root,left,right))fixture.insertGoods(goods,"AG-FORK-"+goods,"同产品不同BOM分支","自制",world.unitId(),world.unitLegacy());
+        fixture.insertBom(root,left,"1");fixture.insertBom(root,right,"1");
+        fixture.insertBom(left,seed.common(),"1");fixture.insertBom(right,seed.common(),"1");
+        UUID order=fixture.createApprovedOrder(world,root,"1","100");
+        UUID item=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,order);
+        var view=analyses.preview(new MaterialAnalysisContracts.PreviewRequest(null,null,null,world.warehouseId(),"forked-fixed-"+UUID.randomUUID(),
+                List.of(new PreviewItem("SALES_ORDER_ITEM",item,null,null,null,null,null,BusinessTime.today().plusDays(10),BigDecimal.ONE))));
+        analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"fork-routes-"+UUID.randomUUID(),
+                view.flatMaterials().stream().map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.goodsId().equals(world.goodsD())?"BUY":"MAKE",null)).toList()));
+        return new Case(world,view.analysisId(),seed.common(),null,seed.material(),seed.workshop(),seed.worker());
+    }
+    /** Replays the former writer's direct-child-only construction using real
+     * application primitives and DB guards. No immutable alias is deleted or altered. */
+    void createLegacyDirectOnlyParent(Case c,GroupInput input) {
+        var reviewed=preview.preview(c.analysis(),request(c,List.of(input)));
+        var intent=new SubmitRequest(reviewed.analysis().version(),reviewed.analysis().fingerprint(),"historic-parent-"+UUID.randomUUID(),
+                c.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,List.of(input),reviewed.previewFingerprint());
+        var group=reviewed.groups().getFirst();
+        new org.springframework.transaction.support.TransactionTemplate(beans.getBean(org.springframework.transaction.PlatformTransactionManager.class)).executeWithoutResult(status->{
+            beans.getBean(com.uten.imp.security.TxSessionVars.class).bind();
+            Object commandTarget=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(ordinary);
+            Object writerTarget=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(writer);
+            Object analysisTarget=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(analyses);
+            Object guard=ReflectionTestUtils.invokeMethod(commandTarget,"lockAnalysisWithClaimableShared",c.analysis());
+            ReflectionTestUtils.invokeMethod(guard,"verifyUnchanged");
+            AnalysisView current=analyses.detail(c.analysis());
+            Map<UUID,Object> captured=ReflectionTestUtils.invokeMethod(writerTarget,"captureSourceCapacities",group,current);
+            // The current writer returns an immutable phase snapshot. Trim a fixture
+            // copy to reproduce the legacy direct-only writer, never mutate it.
+            Map<UUID,Object> capacities=new HashMap<>(captured);
+            Set<String> parentNodes=current.flatMaterials().stream().filter(row->input.materialLineIds().contains(row.materialLineId()))
+                    .map(MaterialView::nodeKey).collect(java.util.stream.Collectors.toSet());
+            Set<UUID> direct=current.flatMaterials().stream().filter(row->parentNodes.contains(row.parentNodeKey()))
+                    .map(MaterialView::materialLineId).collect(java.util.stream.Collectors.toSet());
+            capacities.keySet().retainAll(direct);
+            String hash=ReflectionTestUtils.invokeMethod(writerTarget,"hashRequest",c.analysis(),intent);
+            Object batch=ReflectionTestUtils.invokeMethod(writerTarget,"createBatch",c.analysis(),group,input,intent,hash,true,current,null,null);
+            UUID batchId=ReflectionTestUtils.invokeMethod(batch,"id"),action=ReflectionTestUtils.invokeMethod(batch,"action"),anchor=ReflectionTestUtils.invokeMethod(batch,"anchor");
+            ReflectionTestUtils.invokeMethod(analysisTarget,"refreshLocked",c.analysis());
+            ReflectionTestUtils.invokeMethod(writerTarget,"installAliases",batch,group,capacities,intent.idempotencyKey());
+            ReflectionTestUtils.invokeMethod(writerTarget,"copySharedRoutes",batch);
+            ReflectionTestUtils.invokeMethod(analysisTarget,"refreshLocked",c.analysis());
+            beans.getBean(PreplanStockEntitlementService.class).delegateAggregateMakeEntitlements(c.analysis(),action);
+            ReflectionTestUtils.invokeMethod(commandTarget,"issueAggregateAnchor",c.analysis(),batchId,anchor,group,c.world().warehouseId(),true,intent.idempotencyKey()+"-plan");
+            ReflectionTestUtils.invokeMethod(analysisTarget,"refreshWithAnchorGrowth",c.analysis());
+        });
+    }
     Case create(boolean manufacture,boolean fixed,String quantity,boolean nested) {
         String tag="aggregate-"+UUID.randomUUID();var world=fixture.seedWorld(tag);fixture.loginAs(world.superAdminUserId());
         Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment",tag);UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId"),worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");

@@ -61,24 +61,49 @@ void popOrBackTo(BuildContext context, {required String defaultPath}) =>
 ///
 /// 「返回即刷新」onPageResume 需要页面的稳定 location；路由内即 matchedLocation，
 /// 测试环境没有路由就退回调用方已知的路由常量，注册不生效但不抛错。
-String currentLocationOr(BuildContext context, String fallback) {
+String currentLocationOr(BuildContext context, String fallback) =>
+    goRouterPageStateOrNull(context)?.matchedLocation ?? fallback;
+
+/// Reads this declarative page's route identity, never a route behind a dialog
+/// or an imperative Navigator page. Guard before subscribing to router state:
+/// catching lookup errors alone cannot prevent inherited dependencies crossing
+/// a route boundary while a dialog is building.
+GoRouterState? goRouterPageStateOrNull(BuildContext context) {
+  if (ModalRoute.of(context)?.settings is! Page) return null;
   try {
-    return GoRouterState.of(context).matchedLocation;
+    return GoRouterState.of(context);
   } catch (_) {
-    return fallback;
+    return null;
   }
 }
 
-/// 编辑既有单保存成功后的落点（2026-09-25）：能 pop 就 pop 回宿主——详情/审核页
-/// 压在栈下，靠「返回即刷新」(ADR-108) 重取保存后的新数据；深链直达编辑页
-/// （栈空无宿主）才 replace 到 [detailPath]。此前一律 replace：列表→详情→编辑→
-/// 保存→返回，落在保存前的旧详情快照上（旧详情页压在栈里从不重取）。
-/// 新建单不要用本方法——栈下没有本单详情宿主，pop 会回列表看不见新单，
-/// 应直接 replace 到新详情。
+/// 保存后只在紧邻前页是同一单据详情时 pop，复用宿主并触发返回刷新。
+/// 草稿列表直接进入编辑、从别的单据进入编辑或深链直达，均 replace 到本单详情。
+/// 不能仅凭 canPop 推断有详情宿主，否则草稿保存后会直接退回列表，无法继续审核。
 void popSavedEditOrReplace(BuildContext context, String detailPath) {
-  if (context.canPop()) {
-    context.pop();
-    return;
+  final router = GoRouter.of(context);
+  final configuration = router.routerDelegate.currentConfiguration;
+  final destination = Uri.parse(detailPath);
+  if (router.canPop() && configuration.isNotEmpty) {
+    // remove/last 会正确处理 ShellRoute 与 push 的 ImperativeRouteMatch，
+    // 不使用仍停在最初 go 落点的 configuration.uri 来判断上一页。
+    final previous = configuration.remove(configuration.last).lastOrNull;
+    if (previous?.matchedLocation == destination.path) {
+      router.pop();
+      return;
+    }
   }
-  context.replace(detailPath);
+  final returnTo = router.state.uri.queryParameters['returnTo'];
+  router.replace<void>(
+    returnTo != null && !destination.queryParameters.containsKey('returnTo')
+        ? destination
+              .replace(
+                queryParameters: {
+                  ...destination.queryParameters,
+                  'returnTo': returnTo,
+                },
+              )
+              .toString()
+        : detailPath,
+  );
 }

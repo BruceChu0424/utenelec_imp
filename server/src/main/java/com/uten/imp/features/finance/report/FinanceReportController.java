@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -386,8 +387,24 @@ public class FinanceReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return service.accountStatement(accountId, dateFrom, dateTo, keyword, page, size);
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String billNo) {
+        // 2026-09-25 单号列统一：单号表头值筛选（等值精确匹配）。滚动余额顺序
+        // 语义固定（bill_date, posting_seq），本报表不做表头排序。
+        return service.accountStatement(accountId, dateFrom, dateTo, keyword, page, size, billNo);
+    }
+
+    /** 账户流水单号 facets（2026-09-25 单号列统一）：{billNo:[各单号]}——
+     *  同列表过滤口径（不含 billNo 自身值筛选）。 */
+    @GetMapping("/account/statement/facets")
+    @PreAuthorize("hasAuthority('account:view') and hasAuthority('account:balance:view') "
+            + "and hasAuthority('account:flow:view')")
+    public Map<String, List<Map<String, Object>>> accountStatementFacets(
+            @RequestParam(required = false) UUID accountId,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) String keyword) {
+        return service.accountStatementFacets(accountId, dateFrom, dateTo, keyword);
     }
 
     /** Q 银行存取明细 / R 汇总（M_Bank 0 行，空结构）。 */

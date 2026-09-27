@@ -10,6 +10,22 @@ class StockQueryRepository {
   StockQueryRepository(this.api);
   final ApiClient api;
 
+  /// 按库存页自身的货品范围定位分类，不下载库存明细。
+  Future<Set<String>> instantInventorySearchCategoryIds(
+    String keyword, {
+    required Set<String> categoryRootIds,
+  }) async {
+    if (keyword.trim().isEmpty || categoryRootIds.isEmpty) return {};
+    final ids = await api.getStringList(
+      ApiEndpoints.stockInstantInventorySearchCategoryIds,
+      query: {
+        'keyword': keyword.trim(),
+        'categoryRootIds': categoryRootIds.toList(growable: false),
+      },
+    );
+    return ids.toSet();
+  }
+
   Future<PagedResult<BalanceRow>> balances({
     int page = 1,
     int size = 20,

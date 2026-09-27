@@ -38,6 +38,13 @@ final class _MaterialAggregateSubmission {
   Future<bool> submit(
     List<_MaterialGroup> selected, {
     bool confirmed = false,
+  }) => owner._withPreparationSubmissionScope(
+    () => _submit(selected, confirmed: confirmed),
+  );
+
+  Future<bool> _submit(
+    List<_MaterialGroup> selected, {
+    required bool confirmed,
   }) async {
     if (running || table.saving || selected.isEmpty) return false;
     final keys = selected
@@ -50,13 +57,14 @@ final class _MaterialAggregateSubmission {
               (group) => owner._aggregateKeyOf(group.representative) == key,
             )
             .toList();
-        table.begin(
+        final draft = table.begin(
           _MaterialAggregate(
             key: key,
             paths: [for (final group in scope) ...group.paths],
           ),
           scope: scope,
         );
+        draft.productFlow = draft.productFlow || confirmed;
       }
       running = true;
     });
@@ -106,7 +114,7 @@ final class _MaterialAggregateSubmission {
         if (!owner.mounted) return false;
         if (!success) {
           if (completed.isNotEmpty) {
-            owner.context.appInfo('前面的汇总批次已下达，其余总量和来源仍保留，可继续核对或重试');
+            owner.context.appInfo('前面的物料已下达，其余数量和来源仍保留，可继续核对或重试');
           }
           return false;
         }
@@ -236,6 +244,25 @@ final class _MaterialAggregateSubmission {
     );
     final nextIds = <String>{};
     for (final old in oldSnapshots.keys) {
+      final originalGroup = indexes.groupsByLine[old];
+      final original = originalGroup?.representative;
+      if (original?.aggregatePreparation?.actionable == true) {
+        // 用户原行继续持有输入和来源身份；目标只由服务端在事务内精确解析。
+        nextIds.add(old);
+        continue;
+      }
+      if (originalGroup != null &&
+          !rewrites.containsKey(old) &&
+          table.inactiveSourceContext(originalGroup) &&
+          owner._tableGroupResidual(originalGroup, authoritative: true) <=
+              0.0001) {
+        if (oldSnapshots[old]!.hasExplicitQty) {
+          throw FormatException('「${draft.label}」的来源已无需新增备料，手填数量已保留，请重新核对');
+        }
+        // Full adoption of a parent can remove its automatic child demand.
+        // This is a proven zero, not a lost identity bridge or failed order.
+        continue;
+      }
       if (rewrites[old] case final replacements?) {
         final oldMaterial = indexes.groupsByLine[old]?.representative;
         if (oldMaterial != null && oldMaterial.requiredQty > 0) {
@@ -275,17 +302,25 @@ final class _MaterialAggregateSubmission {
     draft.paths.clear();
     for (final id in nextIds) {
       final group = indexes.groupsByLine[id]!;
-      final original = !rewrites.containsKey(id) ? oldSnapshots[id] : null;
+      final original = oldSnapshots[id];
       final residual = owner._qty(
-        owner._tableGroupResidual(group, authoritative: true),
+        owner._tableDefaultSubmitQty(group, authoritative: true),
       );
+      final explicit = original?.hasExplicitQty == true;
       final order = owner._tableOrderQtyController(group),
           append = owner._tableAppendQtyController(group);
-      order.text = residual;
-      append.text = residual;
-      owner._tableSeededQtyTexts['ORDER|${group.key}'] = residual;
-      owner._tableSeededQtyTexts['APPEND|${group.key}'] = residual;
-      draft.paths[id] = original?.typedQty != null
+      order.text = explicit ? original!.orderText : residual;
+      append.text = explicit ? original!.appendText : residual;
+      owner._tableSeededQtyTexts['ORDER|${group.key}'] = explicit
+          ? original!.orderSeed ?? residual
+          : residual;
+      owner._tableSeededQtyTexts['APPEND|${group.key}'] = explicit
+          ? original!.appendSeed ?? residual
+          : residual;
+      if (explicit && original!.typedQty != null) {
+        owner._tableUserTypedQty[id] = original.typedQty!;
+      }
+      draft.paths[id] = explicit
           ? original!
           : _MaterialAggregatePathSnapshot(
               groupKey: group.key,
@@ -316,22 +351,56 @@ final class _MaterialAggregateSubmission {
             settings.rate!;
       }
     }
-    draft.mixedWorkshop = settings.mixedWorkshop;
-    draft.mixedWorker = settings.mixedWorker;
-    draft.mixedRate = settings.rate == null;
-    if (!draft.userEntered) {
+    final currentSettings = _settings(draft);
+    draft.mixedWorkshop = currentSettings.mixedWorkshop;
+    draft.mixedWorker = currentSettings.mixedWorker;
+    draft.mixedRate = currentSettings.rate == null;
+    final sourceQuantities = draft.sourceRequestedQtyByMaterialLineId;
+    final lostExplicitSource =
+        sourceQuantities?.keys.any(
+          (id) =>
+              !nextIds.contains(id) && oldSnapshots[id]?.hasExplicitQty == true,
+        ) ??
+        false;
+    if (sourceQuantities != null && !lostExplicitSource) {
+      // 父件采用已有供给后，系统预填子件按真正需要新增制造的量重算。
+      // 同料另一来源被手工修改，不能把本来源的旧系统默认量一起冻结。
+      draft.sourceRequestedQtyByMaterialLineId = {
+        for (final id in nextIds)
+          id:
+              oldSnapshots[id]?.hasExplicitQty == true &&
+                  sourceQuantities.containsKey(id)
+              ? sourceQuantities[id]!
+              : owner._qty(
+                  owner._tableDefaultSubmitQty(
+                    indexes.groupsByLine[id]!,
+                    authoritative: true,
+                  ),
+                ),
+      };
+      draft.totalText = owner._qty(
+        draft.sourceRequestedQtyByMaterialLineId!.values.fold<double>(
+          0,
+          (total, value) => total + double.parse(value),
+        ),
+      );
+      table.editors[draft.key]?.text = draft.totalText;
+    } else if (!draft.userEntered) {
       draft.totalText = owner._qty(
         nextIds.fold<double>(
           0,
           (sum, id) =>
               sum +
-              owner._tableGroupResidual(
+              owner._tableDefaultSubmitQty(
                 indexes.groupsByLine[id]!,
                 authoritative: true,
               ),
         ),
       );
       table.editors[draft.key]?.text = draft.totalText;
+    } else if (lostExplicitSource) {
+      // 旧快照只有替换桥时只能证明整组总量，不能伪造已丢失的逐行发出量。
+      draft.sourceRequestedQtyByMaterialLineId = null;
     }
     draft.previewGroups = const [];
     table._revision++;
@@ -351,8 +420,16 @@ final class _MaterialAggregateSubmission {
     final analysis = owner._analysis;
     if (!owner.mounted || analysis == null || table.hasDrafts) return;
     final indexes = owner._analysisIndexes(analysis);
+    final originalIds = {
+      for (final material in analysis.materials)
+        if (material.aggregatePreparation?.targetMaterialLineIds.any(
+              ids.contains,
+            ) ==
+            true)
+          material.materialLineId,
+    };
     final groups = [
-      for (final id in ids)
+      for (final id in originalIds.isEmpty ? ids : originalIds)
         if (indexes.groupsByLine[id] case final group?)
           if (table.selectableForOrder(group) &&
               owner._tableGroupResidual(group, authoritative: true) >
@@ -363,20 +440,15 @@ final class _MaterialAggregateSubmission {
     final confirm = await UtenDialog.show(
       owner.context,
       title: '下层还有物料待下达',
-      content: Text('已生成的汇总生产批次仍有 ${groups.length} 条实际用料责任待办理，是否在汇总表选中继续？'),
-      confirmLabel: '选中下层物料',
+      content: Text('还有 ${groups.length} 条下层物料需要补充，是否继续核对下单？'),
+      confirmLabel: '核对下层物料',
     );
     if (confirm != true ||
         !owner.mounted ||
         owner._analysis?.analysisId != analysis.analysisId) {
       return;
     }
-    owner._mutateAggregateTable(() {
-      owner._bomAggregateByMaterial = true;
-      for (final group in groups) {
-        owner._selectedMaterialGroupKeys.add(group.key);
-      }
-    });
+    await owner._submitPreparationGroups(groups, append: false);
   }
 }
 

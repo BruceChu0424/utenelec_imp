@@ -193,9 +193,10 @@ class PreplanAnalysisStockPegServiceTest {
         EntityManager em = mock(EntityManager.class);
         Query context = mock(Query.class);
         Query formalCommitment = mock(Query.class);
+        Query privateBudget = mock(Query.class);
         Query publicOutputs = mock(Query.class);
         when(publicOutputs.getResultList()).thenReturn(List.of());
-        for (Query query : List.of(context, formalCommitment, publicOutputs)) {
+        for (Query query : List.of(context, formalCommitment, privateBudget, publicOutputs)) {
             when(query.setParameter(anyString(), any())).thenReturn(query);
         }
         UUID analysisId = UUID.randomUUID();
@@ -204,13 +205,18 @@ class PreplanAnalysisStockPegServiceTest {
         UUID planItemId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
         UUID colorId = UUID.randomUUID();
+        when(privateBudget.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{planItemId, BigDecimal.TEN}));
         when(context.getResultList()).thenReturn(List.<Object[]>of(new Object[]{
                 analysisId, analysisItemId, "MAKE_COMPONENT",
                 parentMaterialId, "ACTIVE"}));
         when(formalCommitment.getSingleResult()).thenReturn(BigDecimal.TEN);
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
-            if (sql.contains("fn_finished_in_is_public_output")) return publicOutputs;
+            if (sql.contains("FROM production_plan_items item")
+                    && sql.contains("SELECT item.id,GREATEST")) return privateBudget;
+            if (sql.contains("SELECT id FROM stock_document_items")
+                    && sql.contains("fn_finished_in_is_public_output")) return publicOutputs;
             if (sql.contains("FROM production_plans plan")) return context;
             if (sql.contains("FROM production_material_supply_pegs peg")) {
                 return formalCommitment;
@@ -232,7 +238,16 @@ class PreplanAnalysisStockPegServiceTest {
                         BigDecimal.TEN)));
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em, org.mockito.Mockito.times(3)).createNativeQuery(sql.capture());
+        verify(em, atLeastOnce()).createNativeQuery(sql.capture());
+        verify(privateBudget).getResultList();
+        verify(privateBudget).setParameter("items", List.of(planItemId));
+        verify(context).getResultList();
+        verify(formalCommitment).getSingleResult();
+        var order = inOrder(privateBudget, publicOutputs, context, formalCommitment);
+        order.verify(privateBudget).getResultList();
+        order.verify(publicOutputs, org.mockito.Mockito.times(2)).getResultList();
+        order.verify(context).getResultList();
+        order.verify(formalCommitment).getSingleResult();
         assertThat(sql.getAllValues()).noneMatch(value ->
                 value.contains("INSERT INTO stock_reservations"));
     }
@@ -240,13 +255,28 @@ class PreplanAnalysisStockPegServiceTest {
     @Test
     void explicitlyPublicOutputCannotBeReservedByTheOriginalAnalysis() {
         EntityManager em = mock(EntityManager.class);
+        Query privateBudget = mock(Query.class);
         Query publicOutputs = mock(Query.class);
+        Query alreadyClaimed = mock(Query.class);
+        Query claims = mock(Query.class);
         UUID stockItem = UUID.randomUUID();
-        when(publicOutputs.setParameter(anyString(), any())).thenReturn(publicOutputs);
+        UUID planItem = UUID.randomUUID(), goods = UUID.randomUUID();
+        for (Query query : List.of(privateBudget, publicOutputs, alreadyClaimed, claims)) {
+            when(query.setParameter(anyString(), any())).thenReturn(query);
+        }
+        // Explicit public identity wins even when the source has unused private quota.
+        when(privateBudget.getResultList()).thenReturn(List.<Object[]>of(new Object[]{planItem, BigDecimal.TEN}));
         when(publicOutputs.getResultList()).thenReturn(List.of(stockItem));
+        when(alreadyClaimed.getSingleResult()).thenReturn(BigDecimal.ZERO);
+        when(claims.getResultList()).thenReturn(List.of());
+        List<String> statements = new java.util.ArrayList<>();
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
-            assertThat((String) invocation.getArgument(0)).contains("fn_finished_in_is_public_output");
-            return publicOutputs;
+            String sql = invocation.getArgument(0); statements.add(sql);
+            if (sql.contains("SELECT item.id,GREATEST")) return privateBudget;
+            if (sql.contains("SELECT id FROM stock_document_items") && sql.contains("fn_finished_in_is_public_output")) return publicOutputs;
+            if (sql.contains("SELECT COALESCE(SUM(qty),0) FROM preplan_analysis_stock_exact_pegs")) return alreadyClaimed;
+            if (sql.contains("FROM preplan_make_public_claims claim")) return claims;
+            throw new AssertionError("Public output must not enter original-analysis pegging: " + sql);
         });
         InventoryMutationLock inventory = mock(InventoryMutationLock.class);
         PreplanStockEntitlementService entitlement = mock(PreplanStockEntitlementService.class);
@@ -256,9 +286,15 @@ class PreplanAnalysisStockPegServiceTest {
 
         service.pegFinishedInbound(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
                 List.of(new com.uten.imp.application.port.PreplanAnalysisPegPort.FinishedInboundSlice(
-                        stockItem, UUID.randomUUID(), UUID.randomUUID(), null, BigDecimal.TEN)));
+                        stockItem, planItem, goods, null, BigDecimal.TEN)));
 
-        verifyNoInteractions(inventory, entitlement);
+        verify(inventory).lock(new InventoryKey(goods, null));
+        verify(claims).setParameter("planItem", planItem);
+        verify(claims).setParameter("stockItem", stockItem);
+        verify(claims).getResultList();
+        verifyNoInteractions(entitlement);
+        assertThat(statements).noneMatch(sql -> sql.contains("FROM production_plans plan")
+                || sql.contains("INSERT INTO stock_reservations"));
         verify(publicOutputs, never()).executeUpdate();
     }
 

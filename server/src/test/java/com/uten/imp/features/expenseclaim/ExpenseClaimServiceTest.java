@@ -460,9 +460,35 @@ class ExpenseClaimServiceTest {
     void facetsRejectUnknownQueue() {
         when(authUser.getPermissions()).thenReturn(Set.of("expense:approve", "expense:pay"));
 
-        ApiException error = assertThrows(ApiException.class, () -> service.facets("mine"));
+        ApiException error = assertThrows(ApiException.class, () -> service.facets("unknown-queue"));
 
         assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
+        verifyNoInteractions(applicantQuery);
+    }
+
+    @Test
+    void mineFacetsRequireApplyPermissionEvenForAnApproverAndPayer() {
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve", "expense:pay"));
+
+        ApiException error = assertThrows(ApiException.class, () -> service.facets("mine"));
+
+        assertEquals(ErrorCode.FORBIDDEN, error.getCode());
+        verifyNoInteractions(applicantQuery);
+    }
+
+    @Test
+    void mineFacetsUseOnlyTheCurrentApplicantsClaimNumbers() {
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:apply"));
+        when(applicantQuery.mineClaimNoFacets(actorId)).thenReturn(List.of(
+                new ExpenseApplicantQuery.FacetRow("BX-MINE", "BX-MINE", 2)));
+
+        var facets = service.facets("mine");
+
+        assertTrue(facets.departments().isEmpty());
+        assertTrue(facets.months().isEmpty());
+        assertTrue(facets.categories().isEmpty());
+        assertEquals("BX-MINE", facets.claimNos().getFirst().value());
+        verify(applicantQuery).mineClaimNoFacets(actorId);
     }
 
     // ---- 发票登记（V608） ---------------------------------------------------------

@@ -29,7 +29,9 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/providers/idle_timeout_controller.dart';
 import '../models/system_setting_entry.dart';
+import '../models/system_updater_status.dart';
 import '../repositories/system_setting_repository.dart';
+import '../widgets/system_updater_status_card.dart';
 
 class AdminSystemSettingsPage extends ConsumerStatefulWidget {
   const AdminSystemSettingsPage({super.key});
@@ -47,6 +49,10 @@ class _AdminSystemSettingsPageState
   bool _loading = false;
   bool _saving = false;
   String? _error;
+  SystemUpdaterStatus? _updaterStatus;
+  String? _updaterError;
+  bool _updaterLoading = false;
+  int _updaterRequestId = 0;
   final _formKey = GlobalKey<FormState>();
 
   // 分组顺序：(category, 中文标题, 图标)。
@@ -56,6 +62,7 @@ class _AdminSystemSettingsPageState
     ('sms', '短信验证', Icons.sms_outlined),
     ('business', '业务限制', Icons.assessment_outlined),
     ('audit', '审计与留存', Icons.policy_outlined),
+    ('updates', '系统更新', Icons.system_update_alt_outlined),
   ];
 
   @override
@@ -92,6 +99,9 @@ class _AdminSystemSettingsPageState
         _dirty.clear();
         _loading = false;
       });
+      if (list.any((entry) => entry.category == 'updates')) {
+        await _loadUpdaterStatus();
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -104,6 +114,32 @@ class _AdminSystemSettingsPageState
         _error = '加载系统设置失败';
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _loadUpdaterStatus() async {
+    final requestId = ++_updaterRequestId;
+    setState(() {
+      _updaterLoading = true;
+      _updaterStatus = null;
+      _updaterError = null;
+    });
+    try {
+      final status = await ref
+          .read(systemSettingRepositoryProvider)
+          .updaterStatus();
+      if (!mounted || requestId != _updaterRequestId) return;
+      setState(() => _updaterStatus = status);
+    } on ApiException catch (error) {
+      if (!mounted || requestId != _updaterRequestId) return;
+      setState(() => _updaterError = error.message);
+    } catch (_) {
+      if (!mounted || requestId != _updaterRequestId) return;
+      setState(() => _updaterError = '暂时无法确认更新计划，请刷新状态后重试');
+    } finally {
+      if (mounted && requestId == _updaterRequestId) {
+        setState(() => _updaterLoading = false);
+      }
     }
   }
 
@@ -163,8 +199,15 @@ class _AdminSystemSettingsPageState
       setState(() {
         _all = [for (final entry in _all!) byKey[entry.key] ?? entry];
         _dirty.clear();
+        if (keys.contains('updater_check_interval_days')) {
+          _updaterStatus = null;
+        }
       });
-      context.appSuccess('已保存 ${keys.length} 项设置');
+      context.appSuccess(
+        keys.contains('updater_check_interval_days')
+            ? '已保存 ${keys.length} 项设置；更新计划等待服务器确认'
+            : '已保存 ${keys.length} 项设置',
+      );
       // 公共运行时设置变更后立即重拉：同步空闲阈值，也让本机回执采用新的总留存月数。
       if (keys.contains('session_idle_timeout_minutes') ||
           keys.any((key) => key.startsWith('audit_'))) {
@@ -219,6 +262,16 @@ class _AdminSystemSettingsPageState
                                 isDirty: (k) => _dirty.contains(k),
                                 onChanged: _markDirty,
                                 enabled: !_saving && !_loading,
+                                footer: g.$1 == 'updates'
+                                    ? SystemUpdaterStatusCard(
+                                        status: _updaterStatus,
+                                        loading: _updaterLoading,
+                                        error: _updaterError,
+                                        onRefresh: !_saving && !_loading
+                                            ? _loadUpdaterStatus
+                                            : null,
+                                      )
+                                    : null,
                               ),
                           const SizedBox(
                             height: UtenFloatingActionGroup.scrollClearance,
@@ -291,6 +344,7 @@ class _SettingGroupCard extends StatelessWidget {
     required this.isDirty,
     required this.onChanged,
     required this.enabled,
+    this.footer,
   });
   final (String, String, IconData) group;
   final List<SystemSettingEntry> items;
@@ -298,6 +352,7 @@ class _SettingGroupCard extends StatelessWidget {
   final bool Function(String) isDirty;
   final void Function(String) onChanged;
   final bool enabled;
+  final Widget? footer;
 
   @override
   Widget build(BuildContext context) {
@@ -348,6 +403,11 @@ class _SettingGroupCard extends StatelessWidget {
                 onChanged: () => onChanged(e.key),
                 enabled: enabled,
               ),
+            if (group.$1 == 'updates')
+              const Text(
+                '填 0 为仅手动更新，填 7 为每周日 05:00；其他天数从设置修改当天起计算，每隔相应天数在 05:00 检查（服务器当地时间）。',
+              ),
+            ?footer,
           ],
         ),
       ),

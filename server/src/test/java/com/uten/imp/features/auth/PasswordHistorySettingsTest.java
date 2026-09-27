@@ -3,7 +3,6 @@ package com.uten.imp.features.auth;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.auth.dto.ChangePasswordRequest;
 import com.uten.imp.features.auth.model.*;
@@ -40,9 +39,8 @@ class PasswordHistorySettingsTest {
                 UUID.randomUUID())));
         when(users.findById(user.getId())).thenReturn(Optional.of(user));
         SystemSettingsService settings = mock(SystemSettingsService.class);
-        when(settings.readInt(SystemSettingKey.PASSWORD_MIN_LENGTH)).thenReturn(8);
         PasswordService service = new PasswordService(users, history, encoder,
-                new PasswordPolicy(settings), settings, current, mock(StepUpService.class),
+                new PasswordPolicy(), settings, current, mock(StepUpService.class),
                 mock(PasswordChangeTransaction.class));
         ApiException error = assertThrows(ApiException.class, () -> service.changePassword(
                 new ChangePasswordRequest("CurrentPassword1!", "CurrentPassword1!")));

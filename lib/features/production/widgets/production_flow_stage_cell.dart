@@ -225,6 +225,35 @@ UtenStatusBadgeType productionFlowBadgeType(ProductionFlowStage stage) =>
       ProductionFlowTone.pending => UtenStatusBadgeType.neutral,
     };
 
+/// 等待物料状态列的**整格底色**（2026-09-26 用户口径「不同就绪度颜色差别大点、
+/// 物料齐和部分齐现在同色」）：徽章是淡底胶囊，success(浅绿)与 accent(浅青)两档
+/// 并排几乎分不出来——状态列改由表格 cellColor 整格铺实底，色相拉开到互相一眼
+/// 可分，并沿用页内既有阶段色语义（绿=可开工 / 琥珀=部分齐 / 蓝=去领料 /
+/// 紫=部分可领 / 青=仓库处理中 / 灰=缺料等待 / 品红=等计划下单 / 红=待选路线）。
+/// 深浅两主题同色；文字对比度由 MasterDataTableView 的 cellColor 双向约定自动
+/// 保证（深底白字、浅底黑字，见 _buildDataCell）。[ProductionFlowTone.active] /
+/// [ProductionFlowTone.done] 只出现在生产中/历史段，不铺整格色，返回 null。
+Color? productionReadinessCellColor(ProductionFlowTone tone) => switch (tone) {
+  // 物料齐 / 无需领料 · 可开工 —— 绿。
+  ProductionFlowTone.ready => UtenColors.success,
+  // 部分物料已投 · 可开工（部分齐）—— 琥珀/橙，与全领齐的绿一眼分开。
+  ProductionFlowTone.readyPartial => UtenColors.warning,
+  // 物料已备齐 · 去领料 —— 蓝。
+  ProductionFlowTone.toDraw => UtenColors.info,
+  // 部分物料可领 · 去领料 —— 紫。
+  ProductionFlowTone.toDrawPartial => UtenColors.violet,
+  // 已提交领料 · 待仓库发料 —— 亮青（仓库正在处理，与可开工的绿分得开）。
+  ProductionFlowTone.pending => UtenColors.teal400,
+  // 等待到货 / 等待物料到齐（缺料）—— 灰：料没到齐，先看不用动。
+  ProductionFlowTone.waiting => UtenColors.slate500,
+  // 等计划下单（缺料且没人下单）—— 品红，与琥珀的「已下单等到货」分开。
+  ProductionFlowTone.waitPlanning => UtenColors.fuchsia,
+  // 待选生产路线 —— 红：车间必须先做决定，其它动作全锁着。
+  ProductionFlowTone.decide => UtenColors.error,
+  ProductionFlowTone.active => null,
+  ProductionFlowTone.done => null,
+};
+
 /// 阶段色调 → 颜色。一处定义，图标/文字/时间线点/产品卡共用，
 /// 避免各页各写一套 switch 又漏掉新档（2026-09-11 扩到 6 档时的教训）。
 /// 与 [productionFlowBadgeType] 同一套色相，徽章与图标不再各说各话。

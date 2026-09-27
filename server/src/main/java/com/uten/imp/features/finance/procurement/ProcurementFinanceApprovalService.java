@@ -9,6 +9,7 @@ import com.uten.imp.application.port.ProcurementOrderApprovalPort.OrderSnapshot;
 import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.admin.workflow.WorkflowReviewerEligibility;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.ApprovalTask;
@@ -343,29 +344,31 @@ public class ProcurementFinanceApprovalService {
             int size,
             String orderType,
             String keyword) {
+        return tasks(page, size, orderType, keyword, null, null, null);
+    }
+
+    /** 同上；2026-09-25 单号列统一：sort/order 表头排序（白名单，未知回落默认
+     *  提交时间序）、billNo 订货单号表头值筛选（等值精确匹配，参数绑定；
+     *  位置参数顺序与 SQL 文本出现顺序严格一致）。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_order_approval:view')")
+    public PageResponse<ApprovalTask> tasks(
+            int page,
+            int size,
+            String orderType,
+            String keyword,
+            String sort,
+            String order,
+            String billNo) {
         int safePage = Math.max(1, page);
         int safeSize = Math.max(1, Math.min(size, 200));
         // 类型分段（全部/采购/委外）：空 = 全部；非法值 fail-closed。
         String normalizedType = normalizeOrderType(orderType);
         String normalizedKeyword = normalizeKeyword(keyword);
-        long total = countTasks(normalizedType, normalizedKeyword);
-        String typeFilter = normalizedType.isEmpty() ? "" : " AND c.order_type = ?\n";
-        String keywordFilter = normalizedKeyword == null
-                ? ""
-                : """
-                   AND (LOWER(COALESCE(c.bill_no_snapshot, '')) LIKE ?
-                     OR LOWER(COALESCE(supplier.name, '')) LIKE ?
-                     OR LOWER(COALESCE(submitter.full_name, '')) LIKE ?)
-                  """;
-        List<Object> params = new ArrayList<>();
-        if (!normalizedType.isEmpty()) {
-            params.add(normalizedType);
-        }
-        if (normalizedKeyword != null) {
-            params.add(normalizedKeyword);
-            params.add(normalizedKeyword);
-            params.add(normalizedKeyword);
-        }
+        long total = countTasks(normalizedType, normalizedKeyword, billNo);
+        // 列表 / 计数 / facets 共用同一过滤基座（2026-09-25 单号列统一）。
+        TaskFilters filters = taskFilters(normalizedType, normalizedKeyword, billNo);
+        List<Object> params = new ArrayList<>(filters.args());
         params.add(safeSize);
         params.add((safePage - 1) * safeSize);
         List<String> allowedActions = currentReviewerActions();
@@ -398,8 +401,7 @@ public class ProcurementFinanceApprovalService {
                 LEFT JOIN employees submitter
                   ON submitter.id = c.submitted_by_employee_id
                 WHERE c.status = 'PENDING'
-                """ + typeFilter + keywordFilter + """
-                ORDER BY c.submitted_at, c.id
+                """ + filters.sql() + taskOrderBy(sort, order) + """
                 LIMIT ? OFFSET ?
                 """,
                 (rs, rowNum) -> new ApprovalTask(
@@ -426,6 +428,85 @@ public class ProcurementFinanceApprovalService {
                 items, safePage, safeSize, total, totalPages);
     }
 
+    /** 待审任务过滤基座（2026-09-25 单号列统一）：类型/关键字/订货单号等值筛选的
+     *  WHERE 片段与参数。列表 / 计数 / facets 三处共用同一份文本。 */
+    private record TaskFilters(String sql, List<Object> args) {
+
+        static TaskFilters of(String normalizedType, String normalizedKeyword,
+                              String billNo) {
+            StringBuilder sql = new StringBuilder();
+            List<Object> args = new ArrayList<>();
+            if (!normalizedType.isEmpty()) {
+                sql.append(" AND c.order_type = ?\n");
+                args.add(normalizedType);
+            }
+            if (normalizedKeyword != null) {
+                sql.append("""
+                           AND (LOWER(COALESCE(c.bill_no_snapshot, '')) LIKE ?
+                             OR LOWER(COALESCE(supplier.name, '')) LIKE ?
+                             OR LOWER(COALESCE(submitter.full_name, '')) LIKE ?)
+                          """);
+                args.add(normalizedKeyword);
+                args.add(normalizedKeyword);
+                args.add(normalizedKeyword);
+            }
+            String trimmedBillNo = billNo == null ? "" : billNo.trim();
+            if (!trimmedBillNo.isEmpty()) {
+                sql.append(" AND c.bill_no_snapshot = ?\n");
+                args.add(trimmedBillNo);
+            }
+            return new TaskFilters(sql.toString(), args);
+        }
+    }
+
+    private static TaskFilters taskFilters(String normalizedType,
+            String normalizedKeyword, String billNo) {
+        return TaskFilters.of(normalizedType, normalizedKeyword, billNo);
+    }
+
+    /** 排序 ORDER BY（2026-09-25 单号列统一）：白名单映射前端列 key→SQL 表达式；
+     *  未知/空→默认（提交时间, id 稳定序）。 */
+    private static String taskOrderBy(String sort, String order) {
+        String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
+        return switch (sort == null ? "" : sort) {
+            case "billNo" -> "ORDER BY c.bill_no_snapshot " + dir
+                    + " NULLS LAST, c.submitted_at, c.id\n";
+            default -> "ORDER BY c.submitted_at, c.id\n";
+        };
+    }
+
+    /** 待审任务 facets（2026-09-25 单号列统一）：{billNo:[各订货单号]}——与列表/计数
+     *  同一过滤基座（不含单号列自身值筛选），按订货单号快照分组计数、单号升序，
+     *  上限 500 桶。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_order_approval:view')")
+    public Map<String, List<Map<String, Object>>> taskFacets(
+            String orderType, String keyword) {
+        TaskFilters filters = taskFilters(
+                normalizeOrderType(orderType), normalizeKeyword(keyword), null);
+        List<Map<String, Object>> buckets = jdbc.query("""
+                        SELECT c.bill_no_snapshot, COUNT(*)
+                        FROM procurement_order_approval_cases c
+                        LEFT JOIN purchase_orders po
+                          ON c.order_type = 'PURCHASE' AND po.id = c.order_id
+                        LEFT JOIN subcontract_orders so
+                          ON c.order_type = 'SUBCONTRACT' AND so.id = c.order_id
+                        LEFT JOIN suppliers supplier
+                          ON supplier.id = COALESCE(po.supplier_id, so.supplier_id)
+                        LEFT JOIN employees submitter
+                          ON submitter.id = c.submitted_by_employee_id
+                        WHERE c.status = 'PENDING'
+                        """ + filters.sql() + """
+                        GROUP BY c.bill_no_snapshot
+                        ORDER BY 1
+                        LIMIT 500
+                        """,
+                (rs, rowNum) -> NativeFacets.bucket(
+                        rs.getString(1) == null ? "" : rs.getString(1), rs.getLong(2)),
+                filters.args().toArray());
+        return Map.of("billNo", buckets);
+    }
+
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('finance_order_approval:view')")
     public long countTasks() {
@@ -439,23 +520,12 @@ public class ProcurementFinanceApprovalService {
     }
 
     private long countTasks(String normalizedType, String normalizedKeyword) {
-        String typeFilter = normalizedType.isEmpty() ? "" : " AND c.order_type = ?\n";
-        String keywordFilter = normalizedKeyword == null
-                ? ""
-                : """
-                   AND (LOWER(COALESCE(c.bill_no_snapshot, '')) LIKE ?
-                     OR LOWER(COALESCE(supplier.name, '')) LIKE ?
-                     OR LOWER(COALESCE(submitter.full_name, '')) LIKE ?)
-                  """;
-        List<Object> params = new ArrayList<>();
-        if (!normalizedType.isEmpty()) {
-            params.add(normalizedType);
-        }
-        if (normalizedKeyword != null) {
-            params.add(normalizedKeyword);
-            params.add(normalizedKeyword);
-            params.add(normalizedKeyword);
-        }
+        return countTasks(normalizedType, normalizedKeyword, null);
+    }
+
+    /** 同上，另带 billNo 单号等值筛选（2026-09-25 单号列统一；列表/计数同口径）。 */
+    private long countTasks(String normalizedType, String normalizedKeyword, String billNo) {
+        TaskFilters filters = taskFilters(normalizedType, normalizedKeyword, billNo);
         Long count = jdbc.queryForObject("""
                 SELECT COUNT(*)
                 FROM procurement_order_approval_cases c
@@ -468,9 +538,9 @@ public class ProcurementFinanceApprovalService {
                 LEFT JOIN employees submitter
                   ON submitter.id = c.submitted_by_employee_id
                 WHERE c.status = 'PENDING'
-                """ + typeFilter + keywordFilter,
+                """ + filters.sql(),
                 Long.class,
-                params.toArray());
+                filters.args().toArray());
         return count == null ? 0 : count;
     }
 

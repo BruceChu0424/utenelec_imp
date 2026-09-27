@@ -45,9 +45,32 @@ public class ProcurementPayablesController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "30") int size,
             @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String sourceDocNo) {
         return service.list(businessType, supplierId, status, settlementMethodId, currencyId,
-                dateFrom, dateTo, dueFrom, dueTo, keyword, page, size, sort, order);
+                dateFrom, dateTo, dueFrom, dueTo, keyword, page, size, sort, order, sourceDocNo);
+    }
+
+    /** 来源单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
+    @GetMapping("/facets")
+    @PreAuthorize("hasAuthority('ar_ap_ledger:view') and hasAuthority('finance:view:all')")
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(
+            @RequestParam(required = false) String businessType,
+            @RequestParam(required = false) UUID supplierId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) UUID settlementMethodId,
+            @RequestParam(required = false) UUID currencyId,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueFrom,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueTo,
+            @RequestParam(required = false) String keyword) {
+        return service.facets(businessType, supplierId, status, settlementMethodId, currencyId,
+                dateFrom, dateTo, dueFrom, dueTo, keyword);
     }
 
     @GetMapping("/{id}")

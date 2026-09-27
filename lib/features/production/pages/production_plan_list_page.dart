@@ -7,6 +7,7 @@
 //
 // 路径写死（待用户在 route_names.dart 加 RouteName.production* 后替换）。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_category.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -40,10 +41,18 @@ import '../models/production_plan.dart';
 import '../repositories/production_repository.dart';
 
 class ProductionPlanListPage extends ConsumerStatefulWidget {
-  const ProductionPlanListPage({super.key, this.initialStatus});
+  const ProductionPlanListPage({
+    super.key,
+    this.initialStatus,
+    this.embedded = false,
+  });
 
   /// 深链预选（路由 `?status=draft`）：新建页「草稿(N)」按钮进来时直接落在草稿段。
   final String? initialStatus;
+
+  /// 内嵌模式（生产任务中心「草稿」段嵌入本页时）：剥掉 Scaffold 只留表体，
+  /// 状态分段/搜索/草稿合并照旧（与采购 hub 嵌入 PurchaseDocListPage 同款）。
+  final bool embedded;
 
   @override
   ConsumerState<ProductionPlanListPage> createState() =>
@@ -84,7 +93,7 @@ class _ProductionPlanListPageState
       .read(currentPermissionsProvider)
       .contains(Perm.productionMaterialAnalysisCreate);
 
-  /// 多选选中计划单 id（跨页保留；组件只读 + 回交新集合，这里就地同步进 final 集合）。
+  /// 只保留当前列表中可处理的草稿，切换分类或筛选后重新选择。
   final Set<String> _selectedIds = {};
   bool _batching = false;
 
@@ -127,14 +136,21 @@ class _ProductionPlanListPageState
   /// 分段计数范围(2026-09-21 用户口径: 父分类 hub 卡有草稿红徽章, 子分类也要有数)。
   static const _statusScope = DocumentStatusScope(DraftDocKind.productionPlan);
 
-  Future<void> _reload([int? page, bool silent = false]) {
+  Future<void> _reload([int? page, bool silent = false]) async {
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
     ref.invalidate(documentStatusCountsProvider(_statusScope));
-    return _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+    await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+    if (!mounted || _selectedIds.isEmpty) return;
+    final draftIds = {
+      for (final item in _list.page?.items ?? <ProductionPlanListItem>[])
+        if (item.status == kProductionStatusDraft) item.id,
+    };
+    setState(() => _selectedIds.retainAll(draftIds));
   }
 
   void _onStatus(int? s) {
     setState(() {
+      _selectedIds.clear();
       _statusFilter = s;
       _statusFilterSelected = true;
     });
@@ -145,7 +161,10 @@ class _ProductionPlanListPageState
   /// 分段条联动（复用 [_onStatus]），重拉回第 1 页。
   void _onColumnFilterChanged(String key, String? value) {
     if (key == 'workshop') {
-      setState(() => _workshopIdFilter = value);
+      setState(() {
+        _selectedIds.clear();
+        _workshopIdFilter = value;
+      });
       _reload(1);
     } else if (key == 'status') {
       _onStatus(value == null ? null : int.tryParse(value));
@@ -154,6 +173,7 @@ class _ProductionPlanListPageState
 
   /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
   void _onSortChange(String? column, bool ascending) {
+    _selectedIds.clear();
     _list.onSortChange(column, ascending);
     _reload(1);
   }
@@ -269,14 +289,18 @@ class _ProductionPlanListPageState
         UtenButton(
           type: UtenButtonType.tonal,
           size: UtenButtonSize.large,
-          onPressed: _batching ? null : _batchApprove,
+          onPressed: _batching || _list.loading || selectedIds.isEmpty
+              ? null
+              : _batchApprove,
           child: Text('批量审核(${selectedIds.length})'),
         ),
       if (_canBatchDelete)
         UtenButton(
           type: UtenButtonType.danger,
           size: UtenButtonSize.large,
-          onPressed: _batching ? null : _batchDelete,
+          onPressed: _batching || _list.loading || selectedIds.isEmpty
+              ? null
+              : _batchDelete,
           child: Text('批量删除(${selectedIds.length})'),
         ),
     ];
@@ -333,19 +357,33 @@ class _ProductionPlanListPageState
     ),
   ];
 
+  FormDraftCategoryScope get _formDraftScope =>
+      const FormDraftCategoryScope(kind: 'productionPlan');
+
+  Widget _withFormDraftRows(
+    MasterDataTableView<ProductionPlanListItem> table,
+  ) => _statusFilter == kProductionStatusDraft
+      ? FormDraftCategoryTable<ProductionPlanListItem>(
+          scope: _formDraftScope,
+          table: table,
+          search: _list.keyword,
+          formalId: (item) => item.id,
+        )
+      : table;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     // 分段计数(一次请求带回草稿/已审/红冲三桶); 加载中或无权限为 null, 不渲染数字。
     final statusCounts = ref
-        .watch(documentStatusCountsProvider(_statusScope))
+        .watch(effectiveDocumentStatusCountsProvider(_statusScope))
         .valueOrNull;
     // 返回即刷新：从详情/编辑页（保存/审核/删除后）回到本列表时静默重拉当前页，
     // 不再停留在进入子页前的老数据。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
     ref.onPageResume(_myLocation!, () => _reload(null, true));
-    return Scaffold(
+    final page = Scaffold(
       appBar: UtenAppBar(
         title: '生产计划单',
         leading: UtenBackButton(
@@ -454,70 +492,83 @@ class _ProductionPlanListPageState
                         searchHint: '搜索单据号',
                         initialSearchValue: _list.keyword,
                         onSearchChanged: (v) {
+                          _selectedIds.clear();
                           _list.keyword = v;
                           _reload(1);
                         },
                       ),
                     ),
-                    tablePane: MasterDataTableView<ProductionPlanListItem>(
-                      // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
-                      primary: true,
-                      columns: _columns(names),
-                      items: _list.page?.items ?? const [],
-                      facets: {
-                        'workshop': masterDictionaryFacets(
-                          names.departmentEntries,
-                        ),
-                        'status': const [
-                          MasterFacetBucket(
-                            value: '$kProductionStatusDraft',
-                            count: 0,
-                            label: '草稿',
+                    tablePane: _withFormDraftRows(
+                      MasterDataTableView<ProductionPlanListItem>(
+                        // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
+                        primary: true,
+                        columns: _columns(names),
+                        items: _list.page?.items ?? const [],
+                        facets: {
+                          'workshop': masterDictionaryFacets(
+                            names.departmentEntries,
                           ),
-                          MasterFacetBucket(
-                            value: '$kProductionStatusApproved',
-                            count: 0,
-                            label: '已审',
-                          ),
-                          MasterFacetBucket(
-                            value: '$kProductionStatusReversed',
-                            count: 0,
-                            label: '红冲',
-                          ),
-                        ],
-                      },
-                      nullCounts: const {},
-                      filters: {
-                        'workshop': _workshopIdFilter,
-                        'status': _statusFilterSelected
-                            ? _statusFilter?.toString()
+                          'status': const [
+                            MasterFacetBucket(
+                              value: '$kProductionStatusDraft',
+                              count: 0,
+                              label: '草稿',
+                            ),
+                            MasterFacetBucket(
+                              value: '$kProductionStatusApproved',
+                              count: 0,
+                              label: '已审',
+                            ),
+                            MasterFacetBucket(
+                              value: '$kProductionStatusReversed',
+                              count: 0,
+                              label: '红冲',
+                            ),
+                          ],
+                        },
+                        nullCounts: const {},
+                        filters: {
+                          'workshop': _workshopIdFilter,
+                          'status': _statusFilterSelected
+                              ? _statusFilter?.toString()
+                              : null,
+                        },
+                        onFilterChanged: _onColumnFilterChanged,
+                        sortColumn: _list.sortKey,
+                        sortAscending: _list.sortAsc,
+                        onSortChange: _onSortChange,
+                        onRowTap: (it) =>
+                            context.push('/production/plans/${it.id}'),
+                        // 审核与删除只接收草稿；仍走服务端已有的批量单事务接口。
+                        selectable:
+                            _statusFilter == kProductionStatusDraft &&
+                            (_canBatchApprove || _canBatchDelete),
+                        idOf: (it) =>
+                            !_batching &&
+                                !_list.loading &&
+                                it.status == kProductionStatusDraft
+                            ? it.id
                             : null,
-                      },
-                      onFilterChanged: _onColumnFilterChanged,
-                      sortColumn: _list.sortKey,
-                      sortAscending: _list.sortAsc,
-                      onSortChange: _onSortChange,
-                      onRowTap: (it) =>
-                          context.push('/production/plans/${it.id}'),
-                      // 多选：仅当用户有任一批量权限时开启勾选列（否则不显示，保持原样）。
-                      selectable: _canBatchApprove || _canBatchDelete,
-                      idOf: (it) => it.id,
-                      selectedIds: _selectedIds,
-                      onSelectedIdsChanged: (next) => setState(() {
-                        _selectedIds
-                          ..clear()
-                          ..addAll(next);
-                      }),
-                      // 批量操作条：组件统一渲染（常驻、未选灰色禁用）。
-                      batchActionsBuilder: _planBatchActions,
-                      isLoading: _list.isLoadingFirst,
-                      loadingMore: _list.isLoadingMore,
-                      error: _list.error,
-                      onRetry: () => _reload(),
-                      emptyMessage: '暂无生产计划单',
-                      currentPage: _list.currentPage,
-                      totalPages: _list.totalPages,
-                      onPageChange: (p) => _reload(p),
+                        rowKeyOf: (it) => it.id,
+                        selectedIds: _selectedIds,
+                        onSelectedIdsChanged: _batching
+                            ? null
+                            : (next) => setState(() {
+                                _selectedIds
+                                  ..clear()
+                                  ..addAll(next);
+                              }),
+                        // 批量操作条：组件统一渲染（常驻、未选灰色禁用）。
+                        batchActionsBuilder: _planBatchActions,
+                        isLoading: _list.isLoadingFirst,
+                        loadingMore: _list.isLoadingMore,
+                        error: _list.error,
+                        onRetry: () => _reload(),
+                        emptyMessage: '暂无生产计划单',
+                        currentPage: _list.currentPage,
+                        totalPages: _list.totalPages,
+                        onPageChange: (p) => _reload(p),
+                      ),
                     ),
                   ),
                 );
@@ -527,5 +578,7 @@ class _ProductionPlanListPageState
         ),
       ),
     );
+    // 内嵌（生产任务中心「草稿」段）：剥掉 Scaffold/AppBar，只留筛选+表体。
+    return widget.embedded ? page.body! : page;
   }
 }

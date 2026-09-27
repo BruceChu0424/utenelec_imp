@@ -13,6 +13,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /** Material totals are user intent; source slices and compatible production batches are server facts. */
@@ -24,6 +25,9 @@ public final class AggregateMaterialOrderContracts {
         MaterialAnalysisContracts.AnalysisView cancel(UUID analysisId,UUID actionId,MaterialAnalysisContracts.CancelRequest request);
     }
 
+    record AdoptedClaim(String kind,UUID claimId,UUID targetMaterialLineId,BigDecimal qty) { }
+    record SourceAdoptionIntent(UUID originalMaterialLineId,UUID targetMaterialLineId,String kind,UUID claimId,BigDecimal qty) { }
+
     public record GroupInput(
             @NotBlank @Size(max=250) String clientGroupKey,
             @NotEmpty @Size(max=RequestLimits.MATERIAL_AGGREGATE_SOURCE_PATHS) List<@NotNull UUID> materialLineIds,
@@ -34,11 +38,21 @@ public final class AggregateMaterialOrderContracts {
             LocalDate billDate, LocalDate deliveryDate,
             @Size(max=100) String productNo,
             @DecimalMin("0") @Digits(integer=3,fraction=6) BigDecimal allowedOverproductionRate,
-            @DecimalMin("0") @Digits(integer=14,fraction=4) BigDecimal safetyQty) {
+            @DecimalMin("0") @Digits(integer=14,fraction=4) BigDecimal safetyQty,
+            Map<UUID,BigDecimal> sourceRequestedQtyByMaterialLineId) {
         public GroupInput {
             materialLineIds=materialLineIds==null?List.of():List.copyOf(materialLineIds);
             safetyQty=safetyQty==null?BigDecimal.ZERO:safetyQty;
+            sourceRequestedQtyByMaterialLineId=sourceRequestedQtyByMaterialLineId==null?Map.of():java.util.Collections.unmodifiableMap(new java.util.TreeMap<>(sourceRequestedQtyByMaterialLineId));
         }
+
+        public GroupInput(String clientGroupKey,List<UUID> materialLineIds,String route,BigDecimal qty,
+                boolean allowPublicExtra,UUID departmentId,UUID workerId,UUID teamDepartmentId,
+                LocalDate billDate,LocalDate deliveryDate,String productNo,BigDecimal allowedOverproductionRate,BigDecimal safetyQty) {
+            this(clientGroupKey,materialLineIds,route,qty,allowPublicExtra,departmentId,workerId,teamDepartmentId,
+                    billDate,deliveryDate,productNo,allowedOverproductionRate,safetyQty,Map.of());
+        }
+
     }
 
     public record PreviewRequest(
@@ -67,7 +81,13 @@ public final class AggregateMaterialOrderContracts {
 
     public record SourcePreview(UUID materialLineId, UUID analysisLineId, String sourceLabel,
                                 int allocationPriority, LocalDate needDate, BigDecimal sourceRequiredQty,
-                                BigDecimal remainingQty, BigDecimal allocatedQty, BigDecimal orderedQty) { }
+                                BigDecimal remainingQty, BigDecimal allocatedQty, BigDecimal orderedQty,List<UUID> originalMaterialLineIds) {
+        public SourcePreview { originalMaterialLineIds=originalMaterialLineIds==null?List.of(materialLineId):List.copyOf(originalMaterialLineIds); }
+        public SourcePreview(UUID materialLineId,UUID analysisLineId,String sourceLabel,int allocationPriority,LocalDate needDate,
+                BigDecimal sourceRequiredQty,BigDecimal remainingQty,BigDecimal allocatedQty,BigDecimal orderedQty) {
+            this(materialLineId,analysisLineId,sourceLabel,allocationPriority,needDate,sourceRequiredQty,remainingQty,allocatedQty,orderedQty,null);
+        }
+    }
 
     /** One physical shared batch's direct frozen BOM inputs, never a sum of separately rounded source batches. */
     public record ChildPreview(UUID materialLineId, UUID goodsId, String goodsCode, String goodsName,
@@ -106,8 +126,12 @@ public final class AggregateMaterialOrderContracts {
     public record BatchResult(UUID batchId, String clientGroupKey, String route,
                               String documentType, UUID documentId, String documentNo,
                               UUID planId, UUID anchorAnalysisItemId, BigDecimal qty, BigDecimal publicExtraQty,
-                              List<SourcePreview> sources) {
+                              List<SourcePreview> sources,MaterialAnalysisContracts.GeneratedPlan generatedPlan) {
         public BatchResult { sources=List.copyOf(sources); }
+        public BatchResult(UUID batchId,String clientGroupKey,String route,String documentType,UUID documentId,String documentNo,
+                UUID planId,UUID anchorAnalysisItemId,BigDecimal qty,BigDecimal publicExtraQty,List<SourcePreview> sources) {
+            this(batchId,clientGroupKey,route,documentType,documentId,documentNo,planId,anchorAnalysisItemId,qty,publicExtraQty,sources,null);
+        }
     }
 
     public record MaterialIdentityBridge(List<UUID> fromMaterialLineIds,UUID toMaterialLineId,

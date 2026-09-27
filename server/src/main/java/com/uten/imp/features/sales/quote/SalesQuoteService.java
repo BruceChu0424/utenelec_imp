@@ -53,8 +53,10 @@ public class SalesQuoteService {
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
 
-    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
-    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal");
+    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额/单据号可排序；命中才排序，否则默认 billDate DESC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of(
+            "billDate", "billDate", "total", "totalLocal",
+            "billNo", "billNo"); // 2026-09-25 单号列统一
 
     private final SalesQuoteRepository quoteRepo;
     private final SalesQuoteItemRepository itemRepo;
@@ -70,9 +72,29 @@ public class SalesQuoteService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_quote:view')")
     public PageResponse<QuoteListItem> list(QuoteQueryFilter f, int page, int size, String sort, String order) {
+        Specification<SalesQuote> spec = quoteSpec(f);
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
+        Page<SalesQuote> p = quoteRepo.findAll(spec, pageable);
+        boolean canEdit = hasObjectActionAuthority();
+        return new PageResponse<>(p.map(q -> toList(q,
+                        canEdit && accessPolicy.canWrite(q.getMakerId(), accessPolicy.scope()))).getContent(),
+                p);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_quote:view')")
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(QuoteQueryFilter f) {
+        return java.util.Map.of("billNo",
+                com.uten.imp.common.web.TableFacets.groupCount(em, SalesQuote.class, quoteSpec(f), "billNo"));
+    }
+
+    /** 列表谓词（list 与 facets 共用，2026-09-25 单号列统一抽出；billNo=表头单据号精确匹配）。 */
+    private Specification<SalesQuote> quoteSpec(QuoteQueryFilter f) {
         var readScope = accessPolicy.scope();
-        Specification<SalesQuote> spec = (Root<SalesQuote> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
-                                          CriteriaBuilder cb) -> {
+        return (Root<SalesQuote> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
+                CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
             // 报价表没有独立 owner 列，maker_id 是其有效归属人。
@@ -92,15 +114,12 @@ public class SalesQuoteService {
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
+            // 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配。
+            if (f.billNo() != null && !f.billNo().isBlank()) {
+                ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
+            }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<SalesQuote> p = quoteRepo.findAll(spec, pageable);
-        boolean canEdit = hasObjectActionAuthority();
-        return new PageResponse<>(p.map(q -> toList(q,
-                        canEdit && accessPolicy.canWrite(q.getMakerId(), readScope))).getContent(),
-                p);
     }
 
     @Transactional(readOnly = true)

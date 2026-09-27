@@ -13,6 +13,9 @@ import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
+import '../../../shared/drafts/form_draft_values.dart';
 import '../../basic_data/models/payment_style_node.dart';
 import '../../basic_data/repositories/payment_style_repository.dart';
 import '../models/finance_asset_category_models.dart';
@@ -26,7 +29,18 @@ Future<bool> showFinanceAssetPolicyDialog(
 }) async {
   final compact =
       MediaQuery.sizeOf(context).width < UtenBreakpoints.mediumStart;
-  final content = FinanceAssetPolicySurface(canApprove: canApprove);
+  final parameters = dialogDraftParameters(context);
+  final ledger = parameters['draftForm'] == 'assetPolicy'
+      ? FinanceAssetLedger.values
+            .where((value) => value.name == parameters['categoryId'])
+            .firstOrNull
+      : null;
+  final content = FinanceAssetPolicySurface(
+    canApprove: canApprove,
+    initialLedger: ledger ?? FinanceAssetLedger.fixedAsset,
+    resumeDraftId: dialogDraftId(context, kind: 'assetPolicy'),
+    routerPageKey: dialogDraftPageKey(context),
+  );
   if (compact) {
     return await showModalBottomSheet<bool>(
           context: context,
@@ -61,7 +75,17 @@ Future<bool> showFinanceAssetPolicyDialog(
 }
 
 class FinanceAssetPolicySurface extends ConsumerStatefulWidget {
-  const FinanceAssetPolicySurface({super.key, required this.canApprove});
+  const FinanceAssetPolicySurface({
+    super.key,
+    required this.canApprove,
+    this.initialLedger = FinanceAssetLedger.fixedAsset,
+    this.resumeDraftId,
+    this.routerPageKey,
+  });
+
+  final FinanceAssetLedger initialLedger;
+  final String? resumeDraftId;
+  final ValueKey<String>? routerPageKey;
 
   final bool canApprove;
 
@@ -71,7 +95,8 @@ class FinanceAssetPolicySurface extends ConsumerStatefulWidget {
 }
 
 class _FinanceAssetPolicySurfaceState
-    extends ConsumerState<FinanceAssetPolicySurface> {
+    extends ConsumerState<FinanceAssetPolicySurface>
+    with FormDraftMixin<FinanceAssetPolicySurface> {
   final _requestGuard = LatestRequestGuard();
   final _styleRequestGuard = LatestRequestGuard();
   final _formKey = GlobalKey<FormState>();
@@ -114,14 +139,68 @@ class _FinanceAssetPolicySurfaceState
     _requiredDocuments,
   ];
 
+  bool _serverCreated = false;
+  @override
+  bool get formDraftEnabled => _selected == null;
+  @override
+  bool get formDraftBusy => _saving;
+  @override
+  bool get formDraftCanReplaySubmission => _serverCreated;
+  @override
+  bool get formDraftUsesRouterGuard => false;
+  @override
+  bool get formDraftUseCurrentRoute => false;
+  @override
+  String? get formDraftResumeId => widget.resumeDraftId;
+  @override
+  ValueKey<String>? get formDraftRouterPageKey => widget.routerPageKey;
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftCatalog.assetPolicy.spec(
+    title: '新增${_ledger.label}会计政策',
+    categoryId: _ledger.name,
+  );
+  Map<String, TextEditingController> get _draftText => {
+    'code': _code,
+    'name': _name,
+    'costAccount': _costAccountId,
+    'accumulatedAccount': _accumulatedAccountId,
+    'expenseAccount': _expenseAccountId,
+    'clearingAccount': _clearingAccountId,
+    'method': _method,
+    'months': _months,
+    'salvageRate': _salvageRate,
+    'effectiveDate': _effectiveDate,
+    'requiredDocuments': _requiredDocuments,
+  };
+  @override
+  Iterable<Listenable> get formDraftListenables => _controllers;
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'text': draftTextValues(_draftText),
+    'ledger': _ledger.name,
+    'serverCreated': _serverCreated,
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    if (data['ledger'] != _ledger.name) throw StateError('草稿所属账簿不匹配');
+    restoreDraftTextValues(_draftText, draftMap(data['text']));
+    _serverCreated = data['serverCreated'] == true;
+    _dirty = true;
+  }
+
+  Future<void> _initializeDraft() async {
+    await Future.wait([_load(), _loadStyles()]);
+    if (mounted) await initializeFormDraft();
+  }
+
   @override
   void initState() {
     super.initState();
     for (final controller in _controllers) {
       controller.addListener(_markDirty);
     }
-    _load();
-    _loadStyles();
+    _ledger = widget.initialLedger;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initializeDraft());
   }
 
   void _markDirty() => _dirty = true;
@@ -234,6 +313,8 @@ class _FinanceAssetPolicySurfaceState
   }
 
   Future<bool> _confirmDiscard() async {
+    if (_saving) return false;
+    if (_selected == null) return confirmFormDraftExit();
     if (!_dirty) return true;
     final discard = await UtenDialog.show(
       context,
@@ -247,20 +328,35 @@ class _FinanceAssetPolicySurfaceState
 
   Future<void> _switchLedger(FinanceAssetLedger ledger) async {
     if (_ledger == ledger || !await _confirmDiscard()) return;
-    setState(() => _ledger = ledger);
-    await _load();
+    await resetFormDraftAfterSubmission(
+      preserveCurrentDraft: true,
+      prepare: () async {
+        setState(() => _ledger = ledger);
+        await _load();
+      },
+    );
   }
 
   Future<void> _selectCategory(FinanceAssetCategory category) async {
     if (!await _confirmDiscard()) return;
-    setState(() => _selected = category);
-    _populate(category);
+    await resetFormDraftAfterSubmission(
+      preserveCurrentDraft: true,
+      prepare: () async {
+        setState(() => _selected = category);
+        _populate(category);
+      },
+    );
   }
 
   Future<void> _newCategory() async {
     if (!await _confirmDiscard()) return;
-    setState(() => _selected = null);
-    _clearForm();
+    await resetFormDraftAfterSubmission(
+      preserveCurrentDraft: true,
+      prepare: () async {
+        setState(() => _selected = null);
+        _clearForm();
+      },
+    );
   }
 
   String? _methodCode(String? value) {
@@ -282,6 +378,15 @@ class _FinanceAssetPolicySurfaceState
   }
 
   Future<void> _save() async {
+    if (_serverCreated) {
+      await resetFormDraftAfterSubmission(
+        prepare: () async {
+          _serverCreated = false;
+          await _load();
+        },
+      );
+      return;
+    }
     FocusScope.of(context).unfocus();
     setState(() => _showStyleErrors = true);
     if (!(_formKey.currentState?.validate() ?? false)) {
@@ -328,14 +433,22 @@ class _FinanceAssetPolicySurfaceState
       setState(() => _saving = true);
       final repository = ref.read(financeAssetCategoryRepositoryProvider);
       if (_selected == null) {
-        await repository.create(input);
+        await runFormDraftSubmission(() => repository.create(input));
+        if (!mounted) return;
+        setState(() => _serverCreated = true);
+        await saveFormDraftNow();
       } else {
         await repository.update(_selected!.id, input);
       }
       if (!mounted) return;
       _dirty = false;
       context.appSuccess(_selected == null ? '会计政策草稿已创建' : '会计政策已保存');
-      await _load();
+      await resetFormDraftAfterSubmission(
+        prepare: () async {
+          _serverCreated = false;
+          await _load();
+        },
+      );
     } catch (error) {
       if (mounted) {
         context.appApiError(error, fallback: '保存失败，表单内容已保留');
@@ -363,7 +476,12 @@ class _FinanceAssetPolicySurfaceState
           .activate(selected.id, expectedVersion: selected.rowVersion);
       if (!mounted) return;
       context.appSuccess('会计政策已启用');
-      await _load();
+      await resetFormDraftAfterSubmission(
+        prepare: () async {
+          _serverCreated = false;
+          await _load();
+        },
+      );
     } catch (error) {
       if (mounted) context.appApiError(error, fallback: '启用失败，请刷新后重试');
     } finally {
@@ -377,12 +495,15 @@ class _FinanceAssetPolicySurfaceState
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      withFormDraft(_buildPolicySurface(context));
+
+  Widget _buildPolicySurface(BuildContext context) {
     final theme = Theme.of(context);
     return PopScope(
-      canPop: !_dirty,
+      canPop: _selected == null || !_dirty,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _close();
+        if (!didPop && _selected != null) _close();
       },
       child: Stack(
         children: [

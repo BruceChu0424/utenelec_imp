@@ -11,12 +11,16 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/app_visibility_provider.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+late SharedPreferences _prefs;
 
 class _BadgeApi extends ApiClient {
   _BadgeApi() : super(Dio());
@@ -68,6 +72,7 @@ final _scope = StateProvider<AuthenticatedScope?>(
   final api = _BadgeApi();
   final container = ProviderContainer(
     overrides: [
+      sharedPreferencesProvider.overrideWithValue(_prefs),
       apiClientProvider.overrideWithValue(api),
       authenticatedScopeProvider.overrideWith((ref) => ref.watch(_scope)),
     ],
@@ -84,6 +89,72 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _prefs = await SharedPreferences.getInstance();
+  });
+  testWidgets('批量办理跨轮写入与显式刷新在最后一次释放后只读一次', (tester) async {
+    final (container, api) = _container();
+    await tester.pump();
+    final notifier = container.read(badgeSummaryProvider.notifier);
+    final outer = notifier.holdRefreshes();
+    final inner = notifier.holdRefreshes();
+    for (var seq = 1; seq <= 3; seq++) {
+      container.read(lastDataWriteProvider.notifier).state = (
+        seq: seq,
+        path: '/production/material-analyses/a/aggregate-orders/submit',
+      );
+      await tester.pump(const Duration(seconds: 1));
+      await notifier.refresh();
+    }
+    expect(api.calls, 1);
+    inner();
+    inner();
+    await tester.pump();
+    expect(api.calls, 1);
+    // The outer command releases in finally, including partial failure.
+    outer();
+    await _settle(tester);
+    expect(api.calls, 2);
+    await tester.pump(const Duration(seconds: 2));
+    expect(api.calls, 2);
+    container.dispose();
+  });
+
+  testWidgets('旧身份的批量释放不影响新身份刷新', (tester) async {
+    final (container, api) = _container();
+    await tester.pump();
+    final release = container
+        .read(badgeSummaryProvider.notifier)
+        .holdRefreshes();
+    await container.read(badgeSummaryProvider.notifier).refresh();
+    container.read(_scope.notifier).state = const AuthenticatedScope(
+      userId: 'new-user',
+    );
+    await _settle(tester);
+    expect(api.calls, 2);
+    release();
+    await _settle(tester);
+    expect(api.calls, 2);
+    await container.read(badgeSummaryProvider.notifier).refresh();
+    expect(api.calls, 3);
+    container.dispose();
+  });
+
+  testWidgets('已销毁页面的批量释放幂等且不重建请求', (tester) async {
+    final (container, api) = _container();
+    await tester.pump();
+    final release = container
+        .read(badgeSummaryProvider.notifier)
+        .holdRefreshes();
+    await container.read(badgeSummaryProvider.notifier).refresh();
+    container.dispose();
+    release();
+    release();
+    await _settle(tester);
+    expect(api.calls, 1);
+  });
+
   testWidgets('登录后立即拉一次, 一分钟内只有这一个请求, 之后每 60s 一次', (tester) async {
     final (container, api) = _container();
 
@@ -210,6 +281,9 @@ void main() {
     api.failWith = null;
     api.body = _summaryJson(todo: 0, stale: const ['purchaseTaskCenter']);
     await container.read(badgeSummaryProvider.notifier).refresh();
+    // Flush Riverpod's scheduled projection refresh before disposing the
+    // container (the effective summary also observes local draft counts).
+    await _settle(tester);
     expect(
       container.read(badgeEntryTodoProvider(BadgeEntry.purchaseTaskCenter)),
       4,

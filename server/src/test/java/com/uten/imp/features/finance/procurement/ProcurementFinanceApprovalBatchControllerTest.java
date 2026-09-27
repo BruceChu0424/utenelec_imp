@@ -30,13 +30,13 @@ class ProcurementFinanceApprovalBatchControllerTest {
         @SuppressWarnings("unchecked")
         PageResponse<ProcurementApprovalContracts.ApprovalTask> response =
                 mock(PageResponse.class);
-        when(service.tasks(2, 30, "PURCHASE", "供应商A"))
+        when(service.tasks(2, 30, "PURCHASE", "供应商A", null, null, null))
                 .thenReturn(response);
 
         assertSame(
                 response,
-                controller.tasks(2, 30, "PURCHASE", "供应商A"));
-        verify(service).tasks(2, 30, "PURCHASE", "供应商A");
+                controller.tasks(2, 30, "PURCHASE", "供应商A", null, null, null));
+        verify(service).tasks(2, 30, "PURCHASE", "供应商A", null, null, null);
     }
 
     @Test

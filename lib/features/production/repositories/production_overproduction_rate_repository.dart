@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/models/master_facet.dart';
 
 const productionOverproductionRateRefreshKey = 'production:overproduction-rate';
 const productionOverproductionRateRequestPermission =
@@ -98,17 +99,50 @@ class ProductionOverproductionRateRepository {
       );
   Future<ProductionOverproductionRateRequest> detail(String id) async =>
       ProductionOverproductionRateRequest(await api.get('$_base/requests/$id'));
+
+  /// 2026-09-25 单号列统一：[sort]/[order] 计划号/工单号表头排序（白名单
+  /// plan/segment）；[planNo]/[segmentCode] 值筛选（服务端精确匹配）。
   Future<PagedResult<ProductionOverproductionRateRequest>> list({
     String status = 'PENDING',
     int page = 1,
     int size = 20,
+    String? sort,
+    String? order,
+    String? planNo,
+    String? segmentCode,
   }) async => PagedResult.fromJson(
     await api.get(
       '$_base/requests',
-      query: {'status': status, 'page': page, 'size': size},
+      query: {
+        'status': status,
+        'page': page,
+        'size': size,
+        'sort': ?sort,
+        'order': ?order,
+        if (planNo?.isNotEmpty == true) 'planNo': planNo,
+        if (segmentCode?.isNotEmpty == true) 'segmentCode': segmentCode,
+      },
     ),
     ProductionOverproductionRateRequest.new,
   );
+
+  /// 单号列 facets（2026-09-25 单号列统一）：{plan/segment:[MasterFacetBucket]}，
+  /// 与列表同一过滤上下文（status；不含单号自身的值筛选）。
+  Future<Map<String, List<MasterFacetBucket>>> facets({
+    String status = 'PENDING',
+  }) async {
+    final json = await api.get(
+      '$_base/requests/facets',
+      query: {'status': status},
+    );
+    final result = <String, List<MasterFacetBucket>>{};
+    for (final entry in json.entries) {
+      if (entry.value is List) {
+        result[entry.key] = parseFacetBuckets(json, entry.key);
+      }
+    }
+    return result;
+  }
 
   Future<ProductionOverproductionRateRequest> submit(
     ProductionOverproductionRateContext context,

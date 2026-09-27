@@ -127,6 +127,49 @@ class SystemSettingsBatchUpdateTest {
                 new SystemSettingDto.Change(archive.getKey(), newArchive, "30")));
     }
 
+    @Test
+    void updaterIntervalUsesTheSameBoundedAuditedExpectedValueWrite() {
+        SystemSetting interval = setting("updater_check_interval_days", "7");
+        when(repository.findAllForUpdate(anyCollection())).thenReturn(List.of(interval));
+        var saved = service.writeBatch(new SystemSettingDto.BatchUpdate(List.of(
+                new SystemSettingDto.Change(interval.getKey(), "0", "7"))), actorId, "admin");
+        assertEquals("0", interval.getValue());
+        assertEquals("updates", saved.getFirst().category());
+        assertEquals(0L, saved.getFirst().minValue());
+        assertEquals(365L, saved.getFirst().maxValue());
+        verify(audit).logCommitted(eq(actorId), eq("admin"), eq("update_system_setting"),
+                eq("system_settings"), eq("updater_check_interval_days: 7 → 0"), eq("success"));
+        ApiException stale = assertThrows(ApiException.class, () -> service.writeBatch(
+                new SystemSettingDto.BatchUpdate(List.of(
+                        new SystemSettingDto.Change(interval.getKey(), "3", "7"))), actorId, "admin"));
+        assertEquals(ErrorCode.CONFLICT, stale.getCode());
+        assertEquals("0", interval.getValue());
+        for (String invalid : List.of("-1", "366", "1.5", "weekly")) {
+            assertThrows(ApiException.class, () -> service.writeBatch(
+                    new SystemSettingDto.BatchUpdate(List.of(
+                            new SystemSettingDto.Change(interval.getKey(), invalid, "0"))), actorId, "admin"));
+        }
+        assertEquals(null, SystemSettingsService.validationError(SystemSettingKey.UPDATER_CHECK_INTERVAL_DAYS, "365"));
+    }
+
+    @Test
+    void equivalentUpdaterIntegersAreCanonicalAndDoNotResetTheScheduleAnchor() {
+        SystemSetting interval = setting("updater_check_interval_days", "7");
+        when(repository.findAllForUpdate(anyCollection())).thenReturn(List.of(interval));
+        for (String sameValue : List.of("007", "+7", " 7 ")) {
+            service.writeBatch(new SystemSettingDto.BatchUpdate(List.of(
+                    new SystemSettingDto.Change(interval.getKey(), sameValue, "7"))), actorId, "admin");
+        }
+        assertEquals("7", interval.getValue());
+        verify(repository, never()).save(any());
+        verifyNoInteractions(audit);
+        service.writeBatch(new SystemSettingDto.BatchUpdate(List.of(
+                new SystemSettingDto.Change(interval.getKey(), "-0", "7"))), actorId, "admin");
+        assertEquals("0", interval.getValue());
+        verify(audit).logCommitted(eq(actorId), eq("admin"), eq("update_system_setting"),
+                eq("system_settings"), eq("updater_check_interval_days: 7 → 0"), eq("success"));
+    }
+
     private static SystemSetting setting(String key, String value) {
         SystemSetting result = new SystemSetting();
         result.setKey(key);

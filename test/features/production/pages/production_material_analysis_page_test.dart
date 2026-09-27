@@ -19,6 +19,7 @@ import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -269,7 +270,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         harness.requests.where(
-          (request) => request.queryParameters['keyword'] == 'new',
+          (request) =>
+              request.path.endsWith('/sales-candidates') &&
+              request.queryParameters['keyword'] == 'new',
         ),
         hasLength(1),
       );
@@ -405,24 +408,27 @@ void main() {
       await _pickCascadeWorkshop(tester, 'make-path-1', '装配一车间');
       await _submitIssuePage(tester);
 
-      // 候选行直发：客户端只发一次 issue-plans（建子件任务在服务端同一事务里）。
+      // 候选组件走统一下单契约，服务端在一个事务里创建其任务与计划。
       final issue = harness.requests.singleWhere(
-        (request) => request.path.endsWith('/issue-plans'),
+        (request) =>
+            request.path.endsWith('/aggregate-orders/submit') &&
+            ((request.data as Map)['groups'] as List).any(
+              (raw) => ((raw as Map)['materialLineIds'] as List).contains(
+                'make-path-1',
+              ),
+            ),
       );
       expect(
         harness.requests.where((request) => request.path.endsWith('/notify')),
         isEmpty,
       );
-      expect((issue.data! as Map<String, dynamic>)['lines'], [
-        {
-          'materialLineId': 'make-path-1',
-          'qty': 8.0,
-          'allowedOverproductionRate': 0,
-          'departmentId': 'workshop-1',
-          'workshopName': '装配一车间',
-          'workerId': 'worker-1',
-        },
-      ]);
+      final input = ((issue.data as Map)['groups'] as List).single as Map;
+      expect(input['materialLineIds'], ['make-path-1']);
+      expect(input['sourceRequestedQtyByMaterialLineId'], {'make-path-1': '8'});
+      expect(input['qty'], '8');
+      expect(input['allowedOverproductionRate'], 0);
+      expect(input['departmentId'], 'workshop-1');
+      expect(input['workerId'], 'worker-1');
       expect(tester.takeException(), isNull);
     },
   );
@@ -1180,7 +1186,7 @@ void main() {
   );
 
   testWidgets(
-    'analysis poll skips unsaved route editing and timer cancels on dispose',
+    'analysis poll preserves unsaved route editing and timer cancels on dispose',
     (tester) async {
       var detailReads = 0;
       await _pumpPage(
@@ -1209,19 +1215,19 @@ void main() {
 
       await _createDefaultRoutes(tester);
       // 2026-09-25 确认路线退役：按钮没了——「有未保存路线编辑」由两条直改
-      // 草稿承载，轮询照旧让路。
+      // 草稿承载；事实轮询继续读取，但不能吞掉这两条独立选择。
       expect(_routeDropdownValue(tester, 'material-path-1'), 'make');
       expect(_routeDropdownValue(tester, 'material-path-2'), 'make');
 
       await tester.pump(const Duration(seconds: 45));
       await tester.pumpAndSettle();
-      expect(detailReads, 1, reason: '未保存路线编辑期间轮询必须让路');
+      expect(detailReads, 2, reason: '未保存路线编辑期间仍刷新事实并保留草稿');
       expect(_routeDropdownValue(tester, 'material-path-1'), 'make');
       expect(_routeDropdownValue(tester, 'material-path-2'), 'make');
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(seconds: 45));
-      expect(detailReads, 1);
+      expect(detailReads, 2);
       expect(tester.takeException(), isNull);
     },
   );
@@ -1821,9 +1827,14 @@ void main() {
   );
 
   testWidgets(
-    '501 selected BUY nodes notify as 500 plus 1 with refreshed CAS facts',
+    '501 selected BUY nodes submit as 500 plus 1 groups with refreshed CAS facts',
     (tester) async {
       var notifyResponse = 0;
+      var serverView = _bulkRouteAnalysisJson(
+        count: 501,
+        allowedActions: const ['NOTIFY_SUPPLY'],
+        confirmedCount: 501,
+      );
       // 2026-09-22 起 501 行一起进「核对并下单」页: 页顶提示卡把 501 个种子名
       // 拼成一段不截断的文字, 1000 高的窗口装不下会溢出(lib 侧提示卡未按
       // _names 截断), 本用例只验分批 / 幂等 / CAS, 给足高度绕开。
@@ -1843,16 +1854,15 @@ void main() {
           confirmedCount: 501,
         ),
         responseOverride: (request) {
-          if (!request.path.endsWith('/notify')) return null;
+          if (!request.path.endsWith('/aggregate-orders/submit')) return null;
           notifyResponse++;
-          return _bulkRouteAnalysisJson(
-            count: 501,
-            allowedActions: const ['NOTIFY_SUPPLY'],
-            version: 3 + notifyResponse,
-            fingerprintChar: notifyResponse == 1 ? 'b' : 'c',
-            confirmedCount: 501,
-            notifiedCount: notifyResponse == 1 ? 500 : 501,
+          final result = _aggregateFixtureSubmit(
+            serverView,
+            request.data as Map<String, dynamic>,
           );
+          serverView = result['analysis'] as Map<String, dynamic>;
+          serverView['fingerprint'] = (notifyResponse == 1 ? 'b' : 'c') * 64;
+          return result;
         },
       );
 
@@ -1877,16 +1887,16 @@ void main() {
         'material-analysis-bucket-action-buy',
       );
       await _submitIssuePage(tester);
-      await _confirmSupplyQuantityDialog(tester);
       expect(
-        find.byKey(const Key('material-analysis-child-cascade-dialog')),
-        findsNothing,
+        find.byKey(const Key('material-preparation-order-page')),
+        findsOneWidget,
       );
 
       final writes = harness.requests
           .where(
             (request) =>
-                request.method == 'POST' && request.path.endsWith('/notify'),
+                request.method == 'POST' &&
+                request.path.endsWith('/aggregate-orders/submit'),
           )
           .toList(growable: false);
       expect(writes, hasLength(2));
@@ -1894,17 +1904,31 @@ void main() {
       final second = writes[1].data! as Map<String, dynamic>;
       expect(first['version'], 3);
       expect(first['fingerprint'], 'a' * 64);
-      expect(first['actionGroupKeys'], hasLength(500));
+      expect(first['groups'], hasLength(500));
       expect(second['version'], 4);
       expect(second['fingerprint'], 'b' * 64);
-      expect(second['actionGroupKeys'], ['bulk-action-501']);
+      expect(second['groups'], hasLength(1));
+      expect(
+        {
+          for (final request in [first, second])
+            for (final group in request['groups'] as List)
+              ...(group as Map)['materialLineIds'] as List,
+        },
+        {for (var index = 1; index <= 501; index++) 'bulk-line-$index'},
+      );
     },
   );
 
   testWidgets(
-    'notify retry reuses the exact timed-out second chunk idempotency key',
+    'aggregate retry reuses the exact timed-out second chunk idempotency key',
     (tester) async {
       var notifyAttempt = 0;
+      var serverView = _bulkRouteAnalysisJson(
+        count: 501,
+        allowedActions: const ['NOTIFY_SUPPLY'],
+        confirmedCount: 501,
+      );
+      final receipts = <String, Map<String, dynamic>>{};
       // 窗口高度同上一用例: 501 个种子的页顶提示卡在 1000 高下会溢出。
       final harness = await _pumpPage(
         tester,
@@ -1921,9 +1945,13 @@ void main() {
           confirmedCount: 501,
         ),
         errorOverride: (request) {
-          if (!request.path.endsWith('/notify')) return null;
+          if (!request.path.endsWith('/aggregate-orders/submit')) return null;
           notifyAttempt++;
           if (notifyAttempt != 2) return null;
+          final body = request.data as Map<String, dynamic>;
+          final result = _aggregateFixtureSubmit(serverView, body);
+          serverView = result['analysis'] as Map<String, dynamic>;
+          receipts[body['idempotencyKey'] as String] = result;
           return DioException(
             requestOptions: request,
             type: DioExceptionType.receiveTimeout,
@@ -1931,15 +1959,16 @@ void main() {
           );
         },
         responseOverride: (request) {
-          if (!request.path.endsWith('/notify')) return null;
-          return _bulkRouteAnalysisJson(
-            count: 501,
-            allowedActions: const ['NOTIFY_SUPPLY'],
-            version: notifyAttempt == 1 ? 4 : 5,
-            fingerprintChar: notifyAttempt == 1 ? 'b' : 'c',
-            confirmedCount: 501,
-            notifiedCount: notifyAttempt == 1 ? 500 : 501,
-          );
+          if (!request.path.endsWith('/aggregate-orders/submit')) return null;
+          final body = request.data as Map<String, dynamic>;
+          final key = body['idempotencyKey'] as String;
+          if (receipts[key] case final previous?) {
+            return {...previous, 'replayed': true};
+          }
+          final result = _aggregateFixtureSubmit(serverView, body);
+          serverView = result['analysis'] as Map<String, dynamic>;
+          receipts[key] = result;
+          return result;
         },
       );
 
@@ -1961,46 +1990,30 @@ void main() {
         'material-analysis-bucket-action-buy',
       );
       await _submitIssuePage(tester);
-      await _confirmSupplyQuantityDialog(tester);
 
-      // 第二分块超时: 父件段未完成, 下单页留在原地如实报告(已成功的段不重发)。
+      // 第二分块超时后保留原页、原来源和增量，不重发已完成的第一块。
       expect(
-        find.byKey(const Key('material-analysis-child-cascade-result')),
+        find.byKey(const Key('material-preparation-order-page')),
         findsOneWidget,
       );
-      expect(find.textContaining('未提交成功，可直接重试'), findsOneWidget);
-      // 超时的第二分块只剩 1 个组仍可执行（服务端已确认前 500 个）。
-      // 离开下单页、返回宿主页再重开桶核对。
-      await _leaveIssuePage(tester);
-      await _closeBucketDetail(tester);
-      await _openBucketDetail(tester, 'buy');
-      expect(find.textContaining('下达采购 · 1'), findsOneWidget);
-      await tester.tap(_bucketHeaderCheckbox());
-      await tester.pump();
-      expect(find.text('提交采购需求(1)…'), findsOneWidget);
-      await _openIssuePageFromBucket(
-        tester,
-        'material-analysis-bucket-action-buy',
-      );
       await _submitIssuePage(tester);
-      await _confirmSupplyQuantityDialog(tester);
 
       final writes = harness.requests
           .where(
             (request) =>
-                request.method == 'POST' && request.path.endsWith('/notify'),
+                request.method == 'POST' &&
+                request.path.endsWith('/aggregate-orders/submit'),
           )
           .toList(growable: false);
       expect(writes, hasLength(3));
       final failedChunk = writes[1].data! as Map<String, dynamic>;
       final retriedChunk = writes[2].data! as Map<String, dynamic>;
       expect(failedChunk['version'], 4);
-      expect(failedChunk['fingerprint'], 'b' * 64);
-      expect(failedChunk['actionGroupKeys'], hasLength(1));
+      expect(failedChunk['fingerprint'], '4'.padLeft(64, 'b'));
+      expect(failedChunk['groups'], hasLength(1));
       expect(retriedChunk['version'], failedChunk['version']);
       expect(retriedChunk['fingerprint'], failedChunk['fingerprint']);
-      expect(retriedChunk['target'], failedChunk['target']);
-      expect(retriedChunk['actionGroupKeys'], failedChunk['actionGroupKeys']);
+      expect(retriedChunk['groups'], failedChunk['groups']);
       expect(retriedChunk['idempotencyKey'], failedChunk['idempotencyKey']);
     },
   );
@@ -2074,6 +2087,7 @@ void main() {
           Perm.productionMaterialAnalysisCreate,
           Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisNotify,
+          Perm.productionMaterialAnalysisGenerate,
         },
         analysisJson: _pendingMakeCandidateAnalysisJson(),
         textScale: 1.3,
@@ -2097,10 +2111,16 @@ void main() {
       );
       expect(bucketTable, findsOneWidget);
       expect(find.byType(UtenEditableGrid<EditableGridRow>), findsNothing);
-      expect(
-        find.descendant(of: bucketTable, matching: find.byType(SelectionArea)),
-        findsNothing,
+      final materialCell = find.descendant(
+        of: bucketTable,
+        matching: find.text('待自制壳体'),
       );
+      expect(
+        SelectionContainer.maybeOf(tester.element(materialCell)),
+        isNull,
+        reason: '稳定挂载的表体选择区不能使业务多选行的文字可框选',
+      );
+      expect(_bucketRowCheckboxValue(tester, '待自制壳体'), isTrue);
       await _closeBucketDetail(tester);
       expect(
         harness.requests.where(
@@ -2123,6 +2143,7 @@ void main() {
           Perm.productionMaterialAnalysisCreate,
           Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisNotify,
+          Perm.productionMaterialAnalysisGenerate,
         },
         analysisJson: _pendingMakeCandidateAnalysisJson(
           parentRoute: 'SUBCONTRACT',
@@ -2151,6 +2172,7 @@ void main() {
           Perm.productionMaterialAnalysisCreate,
           Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisNotify,
+          Perm.productionMaterialAnalysisGenerate,
         },
         analysisJson: _pendingMakeCandidateAnalysisJson(
           parentRoute: 'SUBCONTRACT',
@@ -2216,6 +2238,7 @@ void main() {
         Perm.productionMaterialAnalysisCreate,
         Perm.productionMaterialAnalysisRefresh,
         Perm.productionMaterialAnalysisNotify,
+        Perm.productionMaterialAnalysisGenerate,
       },
       analysisJson: _pendingMakeCandidateAnalysisJson(lowerLevelPending: false),
     );
@@ -2440,19 +2463,9 @@ void main() {
           Perm.productionMaterialAnalysisGenerate,
         },
         analysisJson: _priorityMakeSupplementAnalysisJson(net: 2),
-        responseOverride: (request) => request.path.endsWith('/issue-plans')
-            ? {
-                'analysis': after,
-                'plans': [
-                  {
-                    'planId': 'supplement-plan',
-                    'planNo': 'PP-SUPPLEMENT',
-                    'status': 'DRAFT',
-                    'segmentIds': <String>[],
-                    'drawIds': <String>[],
-                  },
-                ],
-              }
+        responseOverride: (request) =>
+            request.path.endsWith('/aggregate-orders/submit')
+            ? {'analysis': after, 'batches': <Object>[], 'replayed': false}
             : null,
       );
       await _openBucketDetail(tester, 'workshop');
@@ -2468,23 +2481,20 @@ void main() {
       await _pickCascadeWorkshop(tester, 'pending-make-1', '装配一车间');
       await _submitIssuePage(tester);
       final issued = harness.requests.singleWhere(
-        (request) => request.path.endsWith('/issue-plans'),
+        (request) => request.path.endsWith('/aggregate-orders/submit'),
       );
-      expect((issued.data as Map<String, dynamic>)['lines'], [
-        {
-          'materialLineId': 'pending-make-1',
-          'qty': 2.0,
-          'allowedOverproductionRate': 0,
-          'departmentId': 'workshop-1',
-          'workshopName': '装配一车间',
-          'workerId': 'worker-1',
-        },
-      ]);
+      final input =
+          ((issued.data as Map<String, dynamic>)['groups'] as List).single
+              as Map;
+      expect(input['materialLineIds'], ['pending-make-1']);
+      expect(double.parse(input['qty'].toString()), 2);
+      expect(input['departmentId'], 'workshop-1');
+      expect(input['workerId'], 'worker-1');
       expect(
         find.byKey(const Key('material-analysis-child-cascade-dialog')),
         findsNothing,
       );
-      await _openBucketDetail(tester, 'workshop');
+      await _leaveIssuePage(tester);
       expect(find.text('待自制壳体'), findsNothing);
       expect(find.text('让料后补自制'), findsNothing);
       expect(tester.takeException(), isNull);
@@ -2521,7 +2531,7 @@ void main() {
           (request) =>
               request.path.endsWith('/notify') ||
               request.path.endsWith('/issue-plans/preview') ||
-              request.path.endsWith('/issue-plans'),
+              request.path.endsWith('/aggregate-orders/submit'),
         ),
         isEmpty,
       );
@@ -2542,7 +2552,8 @@ void main() {
         'requestedQty': 12,
         'remainingQty': 2,
         'generatedQty': 10,
-        'submittedQty': 10,
+        'submittedQty': 0,
+        'issuedPlanQty': 10,
         'approvedQty': 10,
         'planExecutionStatus': 'NOT_STARTED',
         'canSchedule': true,
@@ -2558,18 +2569,12 @@ void main() {
           Perm.productionMaterialAnalysisGenerate,
         },
         analysisJson: remaining,
-        responseOverride: (request) => request.path.endsWith('/issue-plans')
+        responseOverride: (request) =>
+            request.path.endsWith('/aggregate-orders/submit')
             ? {
                 'analysis': _priorityMakeSupplementAnalysisJson(net: 0),
-                'plans': [
-                  {
-                    'planId': 'remaining-plan',
-                    'planNo': 'PP-REMAINING',
-                    'status': 'DRAFT',
-                    'segmentIds': <String>[],
-                    'drawIds': <String>[],
-                  },
-                ],
+                'batches': <Object>[],
+                'replayed': false,
               }
             : null,
       );
@@ -2587,18 +2592,15 @@ void main() {
       await _pickCascadeWorkshop(tester, 'pending-make-1', '装配一车间');
       await _submitIssuePage(tester);
       final request = harness.requests.singleWhere(
-        (request) => request.path.endsWith('/issue-plans'),
+        (request) => request.path.endsWith('/aggregate-orders/submit'),
       );
-      expect((request.data as Map<String, dynamic>)['lines'], [
-        {
-          'analysisLineId': 'pending-make-child-1',
-          'qty': 2.0,
-          'allowedOverproductionRate': 0,
-          'departmentId': 'workshop-1',
-          'workshopName': '装配一车间',
-          'workerId': 'worker-1',
-        },
-      ]);
+      final input =
+          ((request.data as Map<String, dynamic>)['groups'] as List).single
+              as Map;
+      expect(input['materialLineIds'], ['pending-make-1']);
+      expect(double.parse(input['qty'].toString()), 2);
+      expect(input['departmentId'], 'workshop-1');
+      expect(input['workerId'], 'worker-1');
       expect(
         harness.requests.where((request) => request.path.endsWith('/notify')),
         isEmpty,
@@ -3326,7 +3328,7 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(find.text('只看缺料 2'), findsOneWidget);
-      expect(find.text('待确认路线 0'), findsOneWidget);
+      expect(find.text('缺少供应方式 0'), findsOneWidget);
       expect(find.text('全部 BOM 3'), findsOneWidget);
       expect(
         tester.getTopLeft(viewAll).dx,
@@ -3811,32 +3813,26 @@ void main() {
     );
     expect(_cascadeSeedQtyText(tester, 'buy-line-2'), '8');
     await _submitIssuePage(tester);
-    await _confirmSupplyQuantityDialog(tester);
     expect(
-      find.byKey(const Key('material-analysis-child-cascade-dialog')),
-      findsNothing,
+      find.byKey(const Key('material-preparation-order-page')),
+      findsOneWidget,
     );
     final request = harness.requests.singleWhere(
-      (request) => request.path.endsWith('/notify'),
+      (request) => request.path.endsWith('/aggregate-orders/submit'),
     );
-    expect(request.data, {
-      'version': 3,
-      'fingerprint': 'a' * 64,
-      'idempotencyKey': isA<String>(),
-      'target': 'BUY',
-      'actionGroupKeys': ['buy-action-2'],
-      // 数量对话框默认按「缺口 − 在途」全量提交：缺口 8、在途 0 → 8。
-      'quantities': [
-        {
-          'actionGroupKey': 'buy-action-2',
-          'qty': 8.0,
-          'safetyReplenishmentQty': 0.0,
-        },
-      ],
-    });
+    final body = request.data as Map;
+    expect(body['version'], 3);
+    expect(body['fingerprint'], 'a' * 64);
+    expect(body['idempotencyKey'], isA<String>());
+    final input = (body['groups'] as List).single as Map;
+    expect(input['route'], 'BUY');
+    expect(input['materialLineIds'], ['buy-line-2']);
+    expect(input['qty'], '8');
+    expect(input['safetyQty'], '0');
     // 采购通知刷新后：已通知行退出可采购桶（三态回到未选），委外路线的
     // 行不受影响、仍可勾选（旧断言的跨路线选择保留改为跨路线可执行保留）。
     // 2026-09-04：分桶动作完成后留在原页刷新——无需重开桶即可断言新行集。
+    await _leaveIssuePage(tester);
     expect(tester.widget<Checkbox>(_bucketHeaderCheckbox()).value, isFalse);
     await _closeBucketDetail(tester);
     await _openBucketDetail(tester, 'subcontract');
@@ -3874,33 +3870,23 @@ void main() {
       // 树顶默认量：两行各 8(安全补库是固定切片，不进默认输入值)。
       expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '8');
       expect(_cascadeSeedQtyText(tester, 'buy-line-2'), '8');
-      await _submitIssuePage(tester);
+      await _submitIssuePage(tester, confirm: false);
 
-      expect(
-        find.byKey(const Key('supply-submit-confirm-dialog')),
-        findsOneWidget,
-      );
-      expect(find.text('共 2 个品种，合计 22。'), findsOneWidget);
-      expect(find.text('本批需求 16 + 公共安全补库 6'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.textContaining('合计 22'), findsOneWidget);
+      expect(find.textContaining('本批下单 16 + 公共安全补库 6'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
       await _confirmSupplyQuantityDialog(tester);
       final request = harness.requests.singleWhere(
-        (request) => request.path.endsWith('/notify'),
+        (request) => request.path.endsWith('/aggregate-orders/submit'),
       );
       final data = request.data! as Map<String, dynamic>;
-      expect(data['quantities'], [
-        {
-          'actionGroupKey': 'buy-action-1',
-          'qty': 8.0,
-          'safetyReplenishmentQty': 6.0,
-        },
-        {
-          'actionGroupKey': 'buy-action-2',
-          'qty': 8.0,
-          'safetyReplenishmentQty': 0.0,
-        },
-      ]);
+      final groups = (data['groups'] as List).cast<Map<String, dynamic>>();
+      expect(groups, hasLength(1));
+      expect(double.parse(groups.single['qty'].toString()), 16);
+      expect(double.parse(groups.single['safetyQty'].toString()), 6);
+      expect(groups.single['materialLineIds'], ['buy-line-1', 'buy-line-2']);
     },
   );
 
@@ -3954,20 +3940,21 @@ void main() {
           tester,
           'material-analysis-bucket-action-buy',
         );
-        await _submitIssuePage(tester);
-        expect(find.text('共 2 个品种，合计 ${16 + budget.gap}。'), findsOneWidget);
+        await _submitIssuePage(tester, confirm: false);
+        if (budget.gap > 0) {
+          expect(find.textContaining('合计 ${16 + budget.gap}'), findsOneWidget);
+        }
         await _confirmSupplyQuantityDialog(tester);
         final request = harness.requests.singleWhere(
-          (request) => request.path.endsWith('/notify'),
+          (request) => request.path.endsWith('/aggregate-orders/submit'),
         );
-        final quantities =
-            (request.data! as Map<String, dynamic>)['quantities']
-                as List<dynamic>;
+        final groups =
+            ((request.data as Map<String, dynamic>)['groups'] as List)
+                .cast<Map<String, dynamic>>();
+        expect(groups, hasLength(1));
         expect(
-          quantities.map(
-            (row) => (row as Map<String, dynamic>)['safetyReplenishmentQty'],
-          ),
-          [budget.gap.toDouble(), 0.0],
+          double.parse(groups.single['safetyQty'].toString()),
+          budget.gap.toDouble(),
         );
         expect(tester.takeException(), isNull);
       },
@@ -4119,13 +4106,10 @@ void main() {
         'material-analysis-bucket-action-buy',
       );
       expect(find.text('核对并下单'), findsOneWidget);
-      await _submitIssuePage(tester);
+      await _submitIssuePage(tester, confirm: false);
       // 总结确认弹窗叠在下单页之上：宿主页入口(不透明路由下方)不在树中，
       // 下单页 AppBar 标题仍在——不退出回宿主页弹窗。
-      expect(
-        find.byKey(const Key('supply-submit-confirm-dialog')),
-        findsOneWidget,
-      );
+      expect(find.byType(AlertDialog), findsOneWidget);
       expect(
         find.byKey(const Key('material-analysis-entry-buy')),
         findsNothing,
@@ -4135,10 +4119,7 @@ void main() {
       await tester.pumpAndSettle();
       // 取消弹窗后仍留在下单页(一个 notify 都没发)，由用户决定返回；父件还没
       // 提交, 返回要先确认「放弃本次下达」, 之后回到分桶详情页。
-      expect(
-        find.byKey(const Key('supply-submit-confirm-dialog')),
-        findsNothing,
-      );
+      expect(find.byType(AlertDialog), findsNothing);
       expect(find.text('核对并下单'), findsOneWidget);
       expect(
         harness.requests.where((request) => request.path.endsWith('/notify')),
@@ -4233,21 +4214,23 @@ void main() {
       await _pickCascadeWorkshop(tester, 'make-path-1', '装配一车间');
       await _submitIssuePage(tester);
 
-      // 候选直发（ADR-71）：客户端只发一次 issue-plans，子件任务在服务端
-      // 同一事务创建（不再有独立的 /notify 与计划预览两段式）。
+      // 同一组件请求保留原行身份与指派，任务和计划由服务端统一办理。
       final issue = harness.requests.singleWhere(
-        (request) => request.path.endsWith('/issue-plans'),
+        (request) =>
+            request.path.endsWith('/aggregate-orders/submit') &&
+            ((request.data as Map)['groups'] as List).any(
+              (raw) => ((raw as Map)['materialLineIds'] as List).contains(
+                'make-path-1',
+              ),
+            ),
       );
-      expect((issue.data! as Map<String, dynamic>)['lines'], [
-        {
-          'materialLineId': 'make-path-1',
-          'qty': 8.0,
-          'allowedOverproductionRate': 0,
-          'departmentId': 'workshop-1',
-          'workshopName': '装配一车间',
-          'workerId': 'worker-1',
-        },
-      ]);
+      final input = ((issue.data as Map)['groups'] as List).single as Map;
+      expect(input['materialLineIds'], ['make-path-1']);
+      expect(input['sourceRequestedQtyByMaterialLineId'], {'make-path-1': '8'});
+      expect(input['qty'], '8');
+      expect(input['allowedOverproductionRate'], 0);
+      expect(input['departmentId'], 'workshop-1');
+      expect(input['workerId'], 'worker-1');
       expect(tester.takeException(), isNull);
     },
   );
@@ -4586,6 +4569,7 @@ void main() {
           Perm.productionMaterialAnalysisCreate,
           Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisGenerate,
+          Perm.productionPlanApprove,
         },
         analysisJson: firstRound,
         billDate: '2026-08-09',
@@ -4594,13 +4578,13 @@ void main() {
         workshopName: '装配一车间',
         workerId: 'worker-1',
         responseOverride: (request) {
-          if (request.path.endsWith('/issue-plans')) {
-            return {
+          if (request.path.endsWith('/aggregate-orders/submit')) {
+            return _aggregatePlanResult(request, {
               'analysis': secondRound,
               'plans': [
                 {'planId': 'plan-1', 'planNo': 'PP-20260809-001'},
               ],
-            };
+            });
           }
           return null;
         },
@@ -4614,12 +4598,19 @@ void main() {
         tester,
         'material-analysis-bucket-action-ready',
       );
+      final approve = tester.widget<CheckboxListTile>(
+        find.byKey(const Key('material-preparation-approve-now')),
+      );
+      expect(approve.value, isTrue);
+      approve.onChanged!(false);
+      await tester.pumpAndSettle();
       // ADR-71：数量默认=剩余需求 8(齐套拆批由执行段完成)。
       expect(_cascadeSeedQtyText(tester, 'make-path-1'), '8');
       await _enterCascadeSeedQty(tester, 'make-path-1', '3');
       await _pickCascadeWorkshop(tester, 'make-path-1', '装配一车间');
       await _submitIssuePage(tester);
 
+      await _viewIssuedPlans(tester);
       expect(find.text('生产计划已生成'), findsOneWidget);
       expect(find.textContaining('PP-20260809-001'), findsOneWidget);
       expect(find.text('留在物料分析'), findsOneWidget);
@@ -4632,25 +4623,22 @@ void main() {
       await tester.pumpAndSettle();
 
       final issue = harness.requests.singleWhere(
-        (request) => request.path.endsWith('/issue-plans'),
+        (request) => request.path.endsWith('/aggregate-orders/submit'),
       );
       final body = issue.data! as Map<String, dynamic>;
       expect(body['approveNow'], isFalse);
       expect(body['billDate'], '2026-08-09');
       expect(body['deliveryDate'], '2026-08-12');
       // ADR-71：日期在请求顶层提交；行内只带数量+车间+负责人。
-      expect(body['lines'], [
-        {
-          'analysisLineId': 'make-child-ready-1',
-          'qty': 3.0,
-          'allowedOverproductionRate': 0,
-          'departmentId': 'workshop-1',
-          'workshopName': '装配一车间',
-          'workerId': 'worker-1',
-        },
-      ]);
+      final input = (body['groups'] as List).single as Map;
+      expect(input['materialLineIds'], ['make-path-1']);
+      expect(input['qty'], '3');
+      expect(input['departmentId'], 'workshop-1');
+      expect(input['workerId'], 'worker-1');
       // A server refresh clears selection: 下达在桶内单次完成，重开可安排桶
       // ——子件行不再预选，数量回到新快照默认值。
+      await _leaveIssuePage(tester);
+      await _closeBucketDetail(tester);
       await _openBucketDetail(tester, 'workshop');
       expect(_bucketRowCheckboxValue(tester, '自制组件 A(备料任务)'), isFalse);
       await _closeBucketDetail(tester);
@@ -4683,8 +4671,8 @@ void main() {
         workshopName: '装配一车间',
         workerId: 'worker-1',
         responseOverride: (request) {
-          if (request.path.endsWith('/issue-plans')) {
-            return {
+          if (request.path.endsWith('/aggregate-orders/submit')) {
+            return _aggregatePlanResult(request, {
               'analysis': secondRound,
               'plans': [
                 {
@@ -4695,7 +4683,7 @@ void main() {
                   'appendedQty': 3,
                 },
               ],
-            };
+            });
           }
           return null;
         },
@@ -4711,6 +4699,7 @@ void main() {
       await _pickCascadeWorkshop(tester, 'make-path-1', '装配一车间');
       await _submitIssuePage(tester);
 
+      await _viewIssuedPlans(tester);
       expect(find.text('追加已并入原生产计划'), findsOneWidget);
       expect(find.text('生产计划已生成'), findsNothing);
       expect(find.textContaining('PP-20260809-001'), findsOneWidget);
@@ -4753,6 +4742,7 @@ void main() {
       }
 
       var notifyCalls = 0;
+      var serverView = state(partial: false);
       final harness = await _pumpPage(
         tester,
         size: const Size(1400, 1000),
@@ -4764,13 +4754,28 @@ void main() {
         allowedActions: const ['NOTIFY_SUPPLY'],
         analysisJson: state(partial: false),
         responseOverride: (request) {
-          if (!request.path.endsWith('/notify')) return null;
+          if (!request.path.endsWith('/aggregate-orders/submit')) return null;
           notifyCalls++;
-          // 真实服务端每次真的写了东西都会换 version / fingerprint; 版本没动
-          // 会被当成「本次没有产生任何下达」, 下单页的父件段就停在那里。
-          return state(partial: true)
-            ..['version'] = 3 + notifyCalls
-            ..['fingerprint'] = 'b' * 63 + '$notifyCalls';
+          final result = _aggregateFixtureSubmit(
+            serverView,
+            request.data as Map<String, dynamic>,
+          );
+          serverView = result['analysis'] as Map<String, dynamic>;
+          final material = (serverView['flatMaterials'] as List)
+              .cast<Map<String, dynamic>>()
+              .firstWhere((row) => row['materialLineId'] == 'buy-line-1');
+          material['downstreamReferences'] = [
+            {
+              'route': 'BUY',
+              'status': 'CREATED',
+              'documentType': 'PURCHASE_REQUEST',
+              'documentId': 'purchase-request-1',
+              'documentNo': 'CG-0001',
+              'allocatedQty':
+                  (material['aggregatePreparation'] as Map)['orderedQty'],
+            },
+          ];
+          return result;
         },
       );
 
@@ -4787,42 +4792,42 @@ void main() {
       // 树顶改小成 5 实现分批。
       await _enterCascadeSeedQty(tester, 'buy-line-1', '5');
       await _submitIssuePage(tester);
-      expect(find.text('共 1 个品种，合计 5。'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('supply-submit-confirm')));
-      await tester.pumpAndSettle();
-      // 提交成功: 下单页自动退回采购桶。
       expect(
-        find.byKey(const Key('material-analysis-child-cascade-dialog')),
-        findsNothing,
+        find.byKey(const Key('material-preparation-order-page')),
+        findsOneWidget,
       );
 
       final first =
           harness.requests
-                  .where((request) => request.path.endsWith('/notify'))
+                  .where(
+                    (request) =>
+                        request.path.endsWith('/aggregate-orders/submit'),
+                  )
                   .first
                   .data!
               as Map<String, dynamic>;
-      expect(first['quantities'], [
-        {
-          'actionGroupKey': 'buy-action-1',
-          'qty': 5.0,
-          'safetyReplenishmentQty': 0.0,
-        },
-      ]);
+      final firstInput = (first['groups'] as List).single as Map;
+      expect(firstInput['materialLineIds'], ['buy-line-1']);
+      expect(firstInput['qty'], '5');
       // 2026-09-04：批量动作完成后留在桶内——回到宿主页核对行内文案。
+      await _leaveIssuePage(tester);
       await _closeBucketDetail(tester);
 
       // 需求在途 5、本批还差 3：行保持可执行（可采购桶里仍可勾选），
       // 操作列出现「继续提交」。
       final row = await _materialTableRowVisible(tester, 'buy-line-1');
       expect(
-        find.descendant(of: row, matching: find.textContaining('需求在途 5')),
+        find.descendant(
+          of: row,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Tooltip &&
+                (widget.message ?? '').startsWith('累计已下单 5。'),
+          ),
+        ),
         findsOneWidget,
       );
-      expect(
-        find.descendant(of: row, matching: find.textContaining('本批还差 3')),
-        findsOneWidget,
-      );
+      expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '3');
       // 旧「行首勾选框仍在」的口径迁移：分批后该组仍在可采购桶可勾选。
       await _openBucketDetail(tester, 'buy');
       await _tapBucketRowCheckbox(tester, '采购件一');
@@ -4835,23 +4840,19 @@ void main() {
       );
       expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '3');
       await _submitIssuePage(tester);
-      expect(find.text('共 1 个品种，合计 3。'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('supply-submit-confirm')));
-      await tester.pumpAndSettle();
 
       final second =
           harness.requests
-                  .where((request) => request.path.endsWith('/notify'))
+                  .where(
+                    (request) =>
+                        request.path.endsWith('/aggregate-orders/submit'),
+                  )
                   .last
                   .data!
               as Map<String, dynamic>;
-      expect(second['quantities'], [
-        {
-          'actionGroupKey': 'buy-action-1',
-          'qty': 3.0,
-          'safetyReplenishmentQty': 0.0,
-        },
-      ]);
+      final secondInput = (second['groups'] as List).single as Map;
+      expect(secondInput['materialLineIds'], ['buy-line-1']);
+      expect(secondInput['qty'], '3');
       expect(notifyCalls, 2);
     },
   );
@@ -4877,9 +4878,9 @@ void main() {
         workshopName: '装配一车间',
         workerId: 'worker-1',
         responseOverride: (request) async {
-          if (request.path.endsWith('/issue-plans')) {
+          if (request.path.endsWith('/aggregate-orders/submit')) {
             await issueGate.future;
-            return {
+            return _aggregatePlanResult(request, {
               'analysis': secondRound,
               'plans': [
                 {
@@ -4894,7 +4895,7 @@ void main() {
                   ],
                 },
               ],
-            };
+            });
           }
           if (request.path.endsWith('/work-cards')) {
             return _confirmedWorkCardJson();
@@ -4912,12 +4913,25 @@ void main() {
         'material-analysis-bucket-action-ready',
       );
       await _pickCascadeWorkshop(tester, 'make-path-1', '装配一车间');
-      final submit = find.byKey(
-        const Key('material-analysis-child-cascade-submit'),
+      final submit = find.byKey(const Key('material-preparation-order-submit'));
+      expect(
+        tester
+            .widget<CheckboxListTile>(
+              find.byKey(const Key('material-preparation-approve-now')),
+            )
+            .value,
+        isTrue,
       );
       await tester.ensureVisible(submit);
       await tester.pump();
       await tester.tap(submit);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('下达'),
+        ),
+      );
 
       // Keep the single request pending so the in-flight overlay is observable
       // and cannot regress to a blank page. 遮罩画在最上层的下单页(跟宿主的
@@ -4926,13 +4940,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
       expect(
-        find.byKey(const Key('material-analysis-child-cascade-busy')),
+        find.byKey(const Key('material-analysis-plan-submission-progress')),
         findsOneWidget,
       );
       expect(find.text('正在生成并审核下达'), findsOneWidget);
       expect(
         harness.requests.where(
-          (request) => request.path.endsWith('/issue-plans'),
+          (request) => request.path.endsWith('/aggregate-orders/submit'),
         ),
         hasLength(1),
       );
@@ -4942,10 +4956,11 @@ void main() {
       await tester.pumpAndSettle();
 
       final issue = harness.requests.singleWhere(
-        (request) => request.path.endsWith('/issue-plans'),
+        (request) => request.path.endsWith('/aggregate-orders/submit'),
       );
       expect((issue.data! as Map<String, dynamic>)['approveNow'], isTrue);
 
+      await _viewIssuedPlans(tester);
       // 同一屏摆出两张单据：生产计划单 + 物料提货单（领料单）。
       expect(find.text('计划单与提货单已生成'), findsOneWidget);
       expect(find.textContaining('PP-20260809-001'), findsOneWidget);
@@ -4999,7 +5014,7 @@ void main() {
         workshopName: '装配一车间',
         workerId: 'worker-1',
         errorOverride: (request) {
-          if (!request.path.endsWith('/issue-plans')) return null;
+          if (!request.path.endsWith('/aggregate-orders/submit')) return null;
           return DioException(
             requestOptions: request,
             type: DioExceptionType.badResponse,
@@ -5027,12 +5042,12 @@ void main() {
       await _submitIssuePage(tester);
 
       expect(
-        find.byKey(const Key('material-analysis-child-cascade-busy')),
+        find.byKey(const Key('material-analysis-plan-submission-progress')),
         findsNothing,
       );
       expect(
         harness.requests.where(
-          (request) => request.path.endsWith('/issue-plans'),
+          (request) => request.path.endsWith('/aggregate-orders/submit'),
         ),
         hasLength(1),
       );
@@ -5040,18 +5055,26 @@ void main() {
       // out; staff can inspect and retry without navigating back into the
       // analysis and loading the same data.
       expect(
-        find.byKey(const Key('material-analysis-child-cascade-dialog')),
+        find.byKey(const Key('material-preparation-order-page')),
         findsOneWidget,
+      );
+      final container = ProviderScope.containerOf(
+        tester.element(
+          find.byType(ProductionMaterialAnalysisPage, skipOffstage: false),
+        ),
       );
       expect(
-        find.byKey(const Key('material-analysis-child-cascade-result')),
-        findsOneWidget,
+        container
+            .read(appNotificationProvider)
+            .any(
+              (notification) => notification.message.contains('创建生产计划服务暂时不可用'),
+            ),
+        isTrue,
       );
-      expect(find.textContaining('未提交成功，可直接重试'), findsOneWidget);
       expect(
         tester
             .widget<UtenButton>(
-              find.byKey(const Key('material-analysis-child-cascade-submit')),
+              find.byKey(const Key('material-preparation-order-submit')),
             )
             .onPressed,
         isNotNull,
@@ -5098,8 +5121,8 @@ void main() {
           return null;
         },
         responseOverride: (request) {
-          if (request.path.endsWith('/issue-plans')) {
-            return {
+          if (request.path.endsWith('/aggregate-orders/submit')) {
+            return _aggregatePlanResult(request, {
               'analysis': secondRound,
               'plans': [
                 for (var index = 0; index < 51; index++)
@@ -5121,7 +5144,7 @@ void main() {
                   'status': 'APPROVED',
                 },
               ],
-            };
+            });
           }
           if (request.path.endsWith('/work-cards')) {
             final parts = request.path.split('/');
@@ -5151,6 +5174,7 @@ void main() {
       await _pickCascadeWorkshop(tester, 'make-path-1', '装配一车间');
       await _submitIssuePage(tester);
 
+      await _viewIssuedPlans(tester);
       expect(
         find.byKey(const ValueKey('generated-plan-print-plan-draft')),
         findsNothing,
@@ -5745,6 +5769,18 @@ void main() {
     (tester) async {
       final initial = _futureCoverageAnalysisJson('BUY', claimed: false);
       final claimed = _futureCoverageAnalysisJson('BUY', claimed: true);
+      ((initial['flatMaterials'] as List).single
+          as Map)['sharedFutureSupplyRefs'] = [
+        <String, dynamic>{
+          'sourceActionId': 'same-analysis-other-product',
+          'sourceAnalysisId': 'analysis-1',
+          'sourceIsCurrentAnalysis': true,
+          'route': 'SUBCONTRACT',
+          'documentType': 'SUBCONTRACT_REQUEST',
+          'documentNo': 'SC-OTHER-PRODUCT',
+          'availableToClaimQty': 900,
+        },
+      ];
       final harness = await _pumpPage(
         tester,
         size: const Size(1600, 1000),
@@ -5779,6 +5815,11 @@ void main() {
         const ValueKey('shared-future-claim-qty-future-action'),
       );
       expect(tester.widget<TextField>(claimQty).controller?.text, '900');
+      expect(
+        find.text('指定来源（可选）'),
+        findsOneWidget,
+        reason: '同分析其它产品且不同供应路线的来源已被服务端精确授权，不能被前端再次排除',
+      );
       await tester.tap(
         find.byKey(const Key('material-table-confirm-claim-shared')),
       );
@@ -6129,8 +6170,14 @@ void main() {
         'material-analysis-bucket-action-buy',
       );
       expect(_cascadeSeedQtyText(tester, 'future-material'), '1000');
-      expect(find.text('公共认领未实收'), findsOneWidget);
-      expect(find.text('900'), findsWidgets);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Tooltip &&
+              (widget.message ?? '').contains('公共已认领未实收 900'),
+        ),
+        findsWidgets,
+      );
     },
   );
 
@@ -6987,7 +7034,7 @@ void main() {
       );
       expect(harness.requests.length, requestCountBefore);
       expect(
-        find.byKey(const Key('material-analysis-child-cascade-dialog')),
+        find.byKey(const Key('material-preparation-order-page')),
         findsOneWidget,
       );
       expect(
@@ -7070,6 +7117,7 @@ void main() {
       permissions: const {
         Perm.productionMaterialAnalysisCreate,
         Perm.productionMaterialAnalysisRefresh,
+        Perm.productionMaterialAnalysisGenerate,
       },
       analysisJson: _bigWaitingAnalysisJson(),
     );
@@ -7240,9 +7288,27 @@ void main() {
         ..['canSchedule'] = true
         ..['maxSchedulableQty'] = 10;
       product.remove('scheduleBlockedReason');
+      product['rootMaterialLineId'] = 'waiting-root';
       analysis
         ..['products'] = [product]
-        ..['flatMaterials'] = <Map<String, dynamic>>[];
+        ..['flatMaterials'] = <Map<String, dynamic>>[
+          {
+            ..._routeMaterial(
+              id: 'waiting-root',
+              nodeKey: 'root',
+              actionGroupKey: 'waiting-root-action',
+              goodsCode: 'ROOT',
+              goodsName: '测试产品',
+              route: 'MAKE',
+              controlStage: 'ASSEMBLY',
+            ),
+            'analysisLineId': product['analysisLineId'],
+            'nodeRole': 'ROOT_SUPPLY',
+            'level': 0,
+            'requiredQty': 10,
+            'additionalSupplyRecommendedQty': 10,
+          },
+        ];
 
       await _pumpPage(
         tester,
@@ -7264,12 +7330,11 @@ void main() {
       await _tapBucketRowCheckbox(tester, '测试产品');
       expect(_bucketRowCheckboxValue(tester, '测试产品'), isTrue);
       expect(find.text('创建生产计划(1)…'), findsOneWidget);
-      // 快照里没有这个产品的根供给行, 也要能进「核对并下单」页(树顶回退到产品行
-      // 本身): 2026-09-22 起下达一律进页, 进不了页就等于这类产品再也下不了单。
+      // 没有 BOM 子件也有真实根供给身份，统一核对页直接办理该根行。
       await tester.tap(find.text('创建生产计划(1)…'));
       await tester.pumpAndSettle();
       expect(
-        find.byKey(const Key('material-analysis-child-cascade-dialog')),
+        find.byKey(const Key('material-preparation-order-page')),
         findsOneWidget,
       );
       expect(find.text('核对并下单'), findsOneWidget);
@@ -7444,31 +7509,25 @@ void main() {
     );
     expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '150');
     expect(
-      find.byKey(
-        const ValueKey(
-          'material-analysis-child-cascade-order-policy-buy-line-1',
-        ),
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            (widget.message ?? '').contains('按起订量与整包装建议下单 150') &&
+            (widget.message ?? '').contains('富余 50 归公共备货'),
       ),
       findsOneWidget,
     );
-    expect(find.textContaining('已按起订量与整包装抬至 150'), findsOneWidget);
-    expect(find.textContaining('富余 50 归公共备货'), findsOneWidget);
 
     await _submitIssuePage(tester);
-    expect(find.text('本批需求 100 + 公共超量备货 50'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('supply-submit-confirm')));
-    await tester.pumpAndSettle();
 
     final notify = harness.requests.singleWhere(
-      (request) => request.path.endsWith('/notify'),
+      (request) => request.path.endsWith('/aggregate-orders/submit'),
     );
-    expect((notify.data! as Map<String, dynamic>)['quantities'], [
-      {
-        'actionGroupKey': 'buy-action-1',
-        'qty': 150.0,
-        'safetyReplenishmentQty': 0.0,
-      },
-    ]);
+    final input = ((notify.data as Map)['groups'] as List).single as Map;
+    expect(input['materialLineIds'], ['buy-line-1']);
+    expect(input['sourceRequestedQtyByMaterialLineId'], {'buy-line-1': '150'});
+    expect(input['qty'], '150');
+    expect(input['allowPublicExtra'], isTrue);
   });
 
   testWidgets('没有超量下达权限时不抬量，只提示低于起订量', (tester) async {
@@ -7495,7 +7554,13 @@ void main() {
       'material-analysis-bucket-action-buy',
     );
     expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '100');
-    expect(find.textContaining('低于起订量 120'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip && (widget.message ?? '').contains('低于起订量 120'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('未维护起订量与订货倍数时默认值保持净需求且不出提示', (tester) async {
@@ -7520,10 +7585,9 @@ void main() {
     );
     expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '100');
     expect(
-      find.byKey(
-        const ValueKey(
-          'material-analysis-child-cascade-order-policy-buy-line-1',
-        ),
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip && (widget.message ?? '').contains('按起订量与整包装建议'),
       ),
       findsNothing,
     );
@@ -7532,6 +7596,7 @@ void main() {
   testWidgets('BUY over-order splits exact demand 500 from public extra 1500', (
     tester,
   ) async {
+    Map<String, dynamic>? serverPreview;
     final analysis = _buySelectionAnalysisJson()
       ..['allowedActions'] = const ['NOTIFY_SUPPLY', 'OVER_SUPPLY'];
     final materials = (analysis['flatMaterials'] as List<dynamic>)
@@ -7573,6 +7638,18 @@ void main() {
       },
       allowedActions: const ['NOTIFY_SUPPLY', 'OVER_SUPPLY'],
       analysisJson: analysis,
+      responseOverride: (request) {
+        if (!request.path.endsWith('/aggregate-orders/preview')) return null;
+        final result = _aggregateFixturePreview(
+          analysis,
+          request.data as Map<String, dynamic>,
+        );
+        final group = (result['groups'] as List).single as Map;
+        group['publicExtraQty'] = 1500;
+        ((group['sources'] as List).single as Map)['allocatedQty'] = 500;
+        serverPreview = result;
+        return result;
+      },
     );
 
     _expectBucketCount(tester, 'buy', 1);
@@ -7589,25 +7666,21 @@ void main() {
     await _enterCascadeSeedQty(tester, 'buy-line-1', '2000');
     await _submitIssuePage(tester);
 
-    expect(
-      find.byKey(const Key('supply-submit-confirm-dialog')),
-      findsOneWidget,
-    );
-    expect(find.text('共 1 个品种，合计 2000。'), findsOneWidget);
-    expect(find.text('本批需求 500 + 公共超量备货 1500'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('supply-submit-confirm')));
-    await tester.pumpAndSettle();
-
     final notify = harness.requests.singleWhere(
-      (request) => request.path.endsWith('/notify'),
+      (request) => request.path.endsWith('/aggregate-orders/submit'),
     );
-    expect((notify.data! as Map<String, dynamic>)['quantities'], [
-      {
-        'actionGroupKey': 'buy-action-1',
-        'qty': 2000.0,
-        'safetyReplenishmentQty': 0.0,
-      },
-    ]);
+    final input = ((notify.data as Map)['groups'] as List).single as Map;
+    expect(input['materialLineIds'], ['buy-line-1']);
+    expect(input['sourceRequestedQtyByMaterialLineId'], {'buy-line-1': '2000'});
+    expect(input['qty'], '2000');
+    expect(input['allowPublicExtra'], isTrue);
+    final previewGroup = (serverPreview!['groups'] as List).single as Map;
+    expect(previewGroup['publicExtraQty'], 1500);
+    expect(
+      ((previewGroup['sources'] as List).single as Map)['allocatedQty'],
+      500,
+    );
+    expect(find.text('2000'), findsWidgets);
   });
 
   testWidgets(
@@ -8046,10 +8119,21 @@ Future<void> _openBucketDetail(
   await tester.tap(entry);
   await tester.pumpAndSettle();
   if (stateFilter != null) {
-    final target = find.descendant(
+    var target = find.descendant(
       of: find.byKey(const Key('material-analysis-task-state')),
-      matching: find.textContaining('$stateFilter ('),
+      matching: find.text(stateFilter == '已下达' ? '进行中' : stateFilter),
     );
+    if (target.evaluate().isEmpty) {
+      // 窄屏的统一分类工具条收为菜单，先打开再选择同一状态。
+      await tester.tap(
+        find.byWidgetPredicate((widget) => widget is PopupMenuButton),
+      );
+      await tester.pumpAndSettle();
+      target = find.descendant(
+        of: find.byWidgetPredicate((widget) => widget is PopupMenuItem),
+        matching: find.text(stateFilter == '已下达' ? '进行中' : stateFilter),
+      );
+    }
     await tester.ensureVisible(target);
     await tester.pumpAndSettle();
     await tester.tap(target);
@@ -8358,6 +8442,7 @@ ApiClient _api(
   DioException? Function(RequestOptions request)? errorOverride,
   FutureOr<Object?> Function(RequestOptions request)? responseOverride,
 }) {
+  var currentAnalysis = analysisJson ?? _analysisJson(allowedActions);
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
@@ -8393,10 +8478,8 @@ ApiClient _api(
                 'total': 1,
                 'totalPages': 1,
               },
-              '/production/material-analyses/preview' =>
-                analysisJson ?? _analysisJson(allowedActions),
-              '/production/material-analyses/analysis-1' =>
-                analysisJson ?? _analysisJson(allowedActions),
+              '/production/material-analyses/preview' => currentAnalysis,
+              '/production/material-analyses/analysis-1' => currentAnalysis,
               '/production/material-analyses/sales-candidates' => {
                 'items': <Map<String, dynamic>>[],
                 'page': 1,
@@ -8405,21 +8488,36 @@ ApiClient _api(
                 'totalPages': 1,
               },
               '/production/material-analyses/analysis-1/routes' =>
-                _confirmRoutesInJson(
-                  analysisJson ?? _analysisJson(allowedActions),
-                  request,
+                _confirmRoutesInJson(currentAnalysis, request),
+              '/production/material-analyses/analysis-1/aggregate-orders/preview' =>
+                _aggregateFixturePreview(
+                  currentAnalysis,
+                  request.data as Map<String, dynamic>,
+                ),
+              '/production/material-analyses/analysis-1/aggregate-orders/submit' =>
+                _aggregateFixtureSubmit(
+                  currentAnalysis,
+                  request.data as Map<String, dynamic>,
                 ),
               '/production/material-analyses/analysis-1/notify' =>
-                analysisJson ?? _analysisJson(allowedActions),
+                currentAnalysis,
               // 2026-09-22 起下达一律进「父件 + 下层一起下单」页: 车间通道的种子
               // 带上车间后会向服务端要一份「下达之后」的预览(真实跑一遍再回滚);
               // 本 harness 不算量, 原样回当前快照。
               '/production/material-analyses/analysis-1/issue-plans/preview' =>
-                analysisJson ?? _analysisJson(allowedActions),
+                currentAnalysis,
               '/production/material-analyses/analysis-1/allocation-priorities' =>
                 _analysisJson(allowedActions),
               _ => <Map<String, dynamic>>[],
             };
+        if (request.method != 'GET' && data is Map<String, dynamic>) {
+          if (data['analysis'] is Map<String, dynamic>) {
+            currentAnalysis = data['analysis'] as Map<String, dynamic>;
+          } else if (data['analysisId'] != null &&
+              data['flatMaterials'] is List) {
+            currentAnalysis = data;
+          }
+        }
         handler.resolve(
           Response<dynamic>(
             requestOptions: request,
@@ -8431,6 +8529,104 @@ ApiClient _api(
     ),
   );
   return ApiClient(dio);
+}
+
+Map<String, dynamic> _aggregateFixturePreview(
+  Map<String, dynamic> view,
+  Map<String, dynamic> body,
+) => {
+  'analysisId': view['analysisId'],
+  'version': view['version'],
+  'fingerprint': view['fingerprint'],
+  'previewFingerprint': 'e' * 64,
+  'analysis': view,
+  'groups': [
+    for (final raw in body['groups'] as List)
+      () {
+        final group = raw as Map;
+        final ids = (group['materialLineIds'] as List).cast<String>();
+        final material = (view['flatMaterials'] as List)
+            .cast<Map<String, dynamic>>()
+            .firstWhere((row) => row['materialLineId'] == ids.first);
+        return <String, dynamic>{
+          'clientGroupKey': group['clientGroupKey'],
+          'route': group['route'],
+          'goodsId': material['goodsId'],
+          'requestedQty': double.parse(group['qty'].toString()),
+          'departmentId': group['departmentId'],
+          'workerId': group['workerId'],
+          'sources': [
+            for (final id in ids)
+              {
+                'materialLineId': id,
+                'sourceLabel': id,
+                'allocatedQty': double.parse(
+                  ((group['sourceRequestedQtyByMaterialLineId'] as Map?)?[id] ??
+                          group['qty'])
+                      .toString(),
+                ),
+              },
+          ],
+          'sharedBomChildren': <Object>[],
+        };
+      }(),
+  ],
+};
+
+Map<String, dynamic> _aggregateFixtureSubmit(
+  Map<String, dynamic> view,
+  Map<String, dynamic> body,
+) {
+  final next = jsonDecode(jsonEncode(view)) as Map<String, dynamic>;
+  next['version'] = (next['version'] as num).toInt() + 1;
+  next['fingerprint'] = '${next['version']}'.padLeft(64, 'b');
+  for (final raw in body['groups'] as List) {
+    final group = raw as Map;
+    for (final id in group['materialLineIds'] as List) {
+      final material = (next['flatMaterials'] as List)
+          .cast<Map<String, dynamic>>()
+          .firstWhere((row) => row['materialLineId'] == id);
+      final old = material['aggregatePreparation'] as Map?;
+      final qty = double.parse(
+        ((group['sourceRequestedQtyByMaterialLineId'] as Map?)?[id] ??
+                group['qty'])
+            .toString(),
+      );
+      final residual =
+          ((old?['planningUncoveredQty'] ??
+                      material['additionalSupplyRecommendedQty'] ??
+                      material['demandSupplyGapQty'] ??
+                      material['shortageQty'] ??
+                      0)
+                  as num)
+              .toDouble();
+      final previous = (old?['orderedQty'] as num?)?.toDouble() ?? 0;
+      final gap = (residual - qty).clamp(0.0, double.infinity);
+      material['aggregatePreparation'] = {
+        'requiredQty': material['requiredQty'] ?? 0,
+        'orderedQty': previous + qty,
+        'allocatedOrderedQty': previous + qty,
+        'planningUncoveredQty': gap,
+        'netShortageQty': gap,
+        'totalOrderedQty': previous + qty,
+        'orderedQtyExact': true,
+        'targetMaterialLineIds': <String>[],
+        'actionable': true,
+      };
+      material['additionalSupplyRecommendedQty'] = gap;
+      material['flowStage'] = group['route'] == 'MAKE'
+          ? 'MAKE_WAIT_MATERIAL'
+          : group['route'] == 'BUY'
+          ? 'BUY_REQUESTED'
+          : 'SC_REQUESTED';
+    }
+  }
+  return {
+    'analysis': next,
+    'replayed': false,
+    'batches': <Object>[],
+    'materialIdentityBridges': <Object>[],
+  };
 }
 
 /// PUT /routes 的夹具回包：基于用例自己的分析 JSON 深拷贝后，把本次 decisions
@@ -8546,6 +8742,7 @@ Map<String, dynamic> _bigWaitingAnalysisJson({int productCount = 1500}) {
     final lineId = 'big-product-$i';
     products.add({
       'analysisLineId': lineId,
+      'rootMaterialLineId': 'big-root-$i',
       'sourceType': 'STOCK',
       'goodsCode': 'BIG-$i',
       'goodsName': '大分析产品$i',
@@ -8556,6 +8753,24 @@ Map<String, dynamic> _bigWaitingAnalysisJson({int productCount = 1500}) {
       'maxSchedulableQty': 0,
       'readyByDateQty': 0,
       'readinessRatio': 0,
+    });
+    materials.add({
+      'materialLineId': 'big-root-$i',
+      'analysisLineId': lineId,
+      'nodeKey': 'root',
+      'nodeRole': 'ROOT_SUPPLY',
+      'actionGroupKey': 'big-root-action-$i',
+      'goodsId': 'big-root-goods-$i',
+      'goodsName': '大分析产品$i',
+      'goodsCode': 'BIG-$i',
+      'unitName': '个',
+      'level': 0,
+      'requiredQty': 10,
+      'sourceRequiredQty': 10,
+      'additionalSupplyRecommendedQty': 10,
+      'sourceConfirmed': 'MAKE',
+      'routeConfirmed': true,
+      'actionable': true,
     });
     // 同款 BOM 的多个订单分析项会复用 nodeKey；唯一身份是
     // (analysisLineId, nodeKey)。fixture 刻意复用节点键，防止索引只按
@@ -9152,6 +9367,11 @@ Map<String, dynamic> _priorityMakeSupplementAnalysisJson({
     'approvedQty': 8,
     'planExecutionStatus': 'COMPLETED',
     'planExecutionPlannedQty': 8,
+    'issuedPlanQty': 8,
+    'planExecutionWorkshopId': 'workshop-1',
+    'planExecutionWorkshopName': '装配一车间',
+    'planExecutionResponsibleId': 'worker-1',
+    'planExecutionResponsibleName': '王负责人',
     'planExecutionInboundQty': 8,
     'canSchedule': false,
     'maxSchedulableQty': 0,
@@ -10023,7 +10243,10 @@ class _Harness {
 /// 点「提交采购/委外」按钮后弹总结确认对话框（品种数+合计；数量编辑
 /// 已前移到表格行内）；测试默认全量提交，直接点确认。
 Future<void> _confirmSupplyQuantityDialog(WidgetTester tester) async {
-  final confirm = find.byKey(const Key('supply-submit-confirm'));
+  final confirm = find.descendant(
+    of: find.byType(AlertDialog),
+    matching: find.text('下达'),
+  );
   await tester.ensureVisible(confirm);
   await tester.pumpAndSettle();
   await tester.tap(confirm);
@@ -10084,7 +10307,7 @@ Future<void> _openIssuePageFromBucket(
   await tester.tap(action);
   await tester.pumpAndSettle();
   expect(
-    find.byKey(const Key('material-analysis-child-cascade-dialog')),
+    find.byKey(const Key('material-preparation-order-page')),
     findsOneWidget,
   );
 }
@@ -10092,8 +10315,13 @@ Future<void> _openIssuePageFromBucket(
 /// 下单页树顶(种子行)的本批数量框。[rowId] = 种子行的行 id: 物料行 / 自制候选
 /// 用它的 materialLineId; 子件产品行用它锚定的物料行 id(planAnchorAnalysisLineId
 /// 反查)。
-Finder _cascadeSeedQtyField(String rowId) =>
-    find.byKey(ValueKey('material-analysis-child-cascade-qty-$rowId'));
+Finder _cascadeSeedQtyField(String rowId) => find.byWidgetPredicate((widget) {
+  final key = widget.key;
+  if (widget is! TextField || key is! ValueKey<String>) return false;
+  return (key.value.startsWith('material-analysis-order-qty-') ||
+          key.value.startsWith('material-analysis-append-qty-')) &&
+      key.value.endsWith('|$rowId');
+});
 
 /// 读下单页种子行数量框当前的文字。
 String _cascadeSeedQtyText(WidgetTester tester, String rowId) =>
@@ -10117,11 +10345,27 @@ Future<void> _pickCascadeWorkshop(
   String rowId,
   String workshopName,
 ) async {
-  final cell = find.byKey(
-    ValueKey('material-analysis-child-cascade-workshop-$rowId'),
-  );
+  final cell = find.byWidgetPredicate((widget) {
+    final key = widget.key;
+    return key is ValueKey<String> &&
+        key.value.startsWith('material-analysis-workshop-') &&
+        key.value.endsWith('|$rowId');
+  });
   await tester.ensureVisible(cell);
   await tester.pumpAndSettle();
+  if (tester.widget(cell) is Tooltip) {
+    // Existing plans retain their actual assignment; an append must not reopen
+    // the picker or silently substitute a new goods default.
+    expect(
+      find.descendant(of: cell, matching: find.text(workshopName)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: cell, matching: find.byType(InkWell)),
+      findsNothing,
+    );
+    return;
+  }
   await tester.tap(cell);
   await tester.pumpAndSettle();
   await tester.tap(find.text(workshopName).last);
@@ -10133,26 +10377,60 @@ Future<void> _pickCascadeWorkshop(
 /// 点下单页的提交按钮('下单(N)' / '只下达父件' / '一键下单(N)'); 车间种子在本页
 /// 被改大过时顺手过一次「确认超量下达」; 有下层行但一行都没勾时页面会问
 /// 「只下达父件？」, 这里按「只下达父件」答(本文件的用例都只验证父件段)。
-Future<void> _submitIssuePage(WidgetTester tester) async {
-  final submit = find.byKey(
-    const Key('material-analysis-child-cascade-submit'),
-  );
+Future<void> _submitIssuePage(
+  WidgetTester tester, {
+  bool confirm = true,
+}) async {
+  final submit = find.byKey(const Key('material-preparation-order-submit'));
   await tester.ensureVisible(submit);
   await tester.pumpAndSettle();
   await tester.tap(submit);
   await tester.pumpAndSettle();
-  final overQty = find.text('确认超量下达');
-  if (overQty.evaluate().isNotEmpty) {
-    await tester.tap(overQty);
-    await tester.pumpAndSettle();
-  }
-  if (find.text('只下达父件？').evaluate().isNotEmpty) {
-    await tester.tap(find.text('只下达父件').last);
+  if (!confirm) return;
+  final confirmation = find.descendant(
+    of: find.byType(AlertDialog),
+    matching: find.text('下达'),
+  );
+  if (confirmation.evaluate().isNotEmpty) {
+    await tester.tap(confirmation);
     await tester.pumpAndSettle();
   }
 }
 
-/// 从下单页返回桶页(父件还没提交时要先确认「放弃本次下达」)。
+Map<String, dynamic> _aggregatePlanResult(
+  RequestOptions request,
+  Map<String, dynamic> planResult,
+) {
+  final input = ((request.data as Map)['groups'] as List).first as Map;
+  return {
+    'analysis': _aggregateFixtureSubmit(
+      planResult['analysis'] as Map<String, dynamic>,
+      request.data as Map<String, dynamic>,
+    )['analysis'],
+    'batches': [
+      for (final raw in planResult['plans'] as List)
+        {
+          'batchId': null,
+          'clientGroupKey': input['clientGroupKey'],
+          'route': input['route'],
+          'qty': double.parse(input['qty'].toString()),
+          'planId': (raw as Map)['planId'],
+          'documentNo': raw['planNo'],
+          'documentType': 'PRODUCTION_PLAN',
+          'generatedPlan': raw,
+        },
+    ],
+  };
+}
+
+Future<void> _viewIssuedPlans(WidgetTester tester) async {
+  final button = find.byKey(const Key('material-preparation-view-plans'));
+  await tester.ensureVisible(button);
+  await tester.tap(button);
+  await tester.pumpAndSettle();
+}
+
+/// 从下单页返回桶页，未提交输入继续保留在主表。
 Future<void> _leaveIssuePage(WidgetTester tester) async {
   await tester.tap(find.byTooltip('返回').last);
   await tester.pumpAndSettle();

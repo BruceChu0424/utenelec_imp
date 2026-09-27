@@ -20,6 +20,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_values.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -86,8 +88,8 @@ class SubcontractDocEditPage extends ConsumerStatefulWidget {
       _SubcontractDocEditPageState();
 }
 
-class _SubcontractDocEditPageState
-    extends ConsumerState<SubcontractDocEditPage> {
+class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
+    with FormDraftMixin<SubcontractDocEditPage> {
   SubcontractDocConfig get _cfg => SubcontractDocConfig.by(widget.docType);
 
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
@@ -133,6 +135,79 @@ class _SubcontractDocEditPageState
   bool _saving = false;
   bool _existingEditable = false;
   bool _loading = false;
+
+  @override
+  bool get formDraftEnabled => widget.id == null;
+
+  @override
+  bool get formDraftBusy => _saving;
+
+  @override
+  bool get formDraftCanReplaySubmission => _draftCreatedId != null;
+
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftSpec(
+    title: _cfg.label,
+    module: BadgeModule.subcontract,
+    route: '/subcontract/${_cfg.type.pathSegment}/new',
+    permission: _cfg.createPerm!,
+    draftKind: _cfg.draftKind?.name,
+  );
+
+  Map<String, TextEditingController> get _draftHeaderText => {
+    'remark': _remark,
+    'rate': _rate,
+    'taxRate': _taxRate,
+    'bStyle': _bStyle,
+    'totalWeight': _totalWeight,
+    'deductAmount': _deductAmount,
+  };
+
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    ..._draftHeaderText.values,
+    _grid,
+    for (final row in _grid.rows) ...row.draftListenables,
+  ];
+
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'text': draftTextValues(_draftHeaderText),
+    'billDate': _billDate.toIso8601String(),
+    'settlementMethodId': _settlementMethodId,
+    'supplierId': _supplierId,
+    'warehouseId': _warehouseId,
+    'currencyId': _currencyId,
+    'purchaserId': _purchaserId,
+    'senderId': _senderId,
+    'workerId': _workerId,
+    'deliverDate': _deliverDate?.toIso8601String(),
+    'lastDate': _lastDate?.toIso8601String(),
+    'employees': draftEmployees(_empCache),
+    'rows': draftGridRows(_grid, (row) => row.exportDraft()),
+    'createdDocId': _draftCreatedId,
+  };
+
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    restoreDraftTextValues(_draftHeaderText, draftMap(data['text']));
+    _billDate =
+        DateTime.tryParse(data['billDate'] as String? ?? '') ?? _billDate;
+    _settlementMethodId = data['settlementMethodId'] as String?;
+    _supplierId = data['supplierId'] as String?;
+    _warehouseId = data['warehouseId'] as String?;
+    _currencyId = data['currencyId'] as String?;
+    _purchaserId = data['purchaserId'] as String?;
+    _senderId = data['senderId'] as String?;
+    _workerId = data['workerId'] as String?;
+    _deliverDate = DateTime.tryParse(data['deliverDate'] as String? ?? '');
+    _lastDate = DateTime.tryParse(data['lastDate'] as String? ?? '');
+    restoreDraftEmployees(_empCache, data['employees']);
+    restoreDraftGrid(_grid, data['rows'], SubcontractGridRow.fromDraft);
+    _draftCreatedId = data['createdDocId'] as String?;
+  }
+
+  String? _draftCreatedId;
 
   @override
   void initState() {
@@ -220,7 +295,9 @@ class _SubcontractDocEditPageState
             .map((e) => e.goodsId)
             .whereType<String>()
             .toSet();
-        await ref.read(mn.masterNameServiceProvider).loadGoodsNames(goodsIds);
+        await ref
+            .read(mn.masterNameServiceProvider)
+            .loadGoodsNamesWithCodes(goodsIds);
         await _preloadEmployees([d.purchaserId, d.senderId, d.workerId]);
         if (!mounted) return;
         _billNo.text = d.billNo ?? '';
@@ -260,14 +337,10 @@ class _SubcontractDocEditPageState
               it.orderItemId ??
               it.applicationItemId;
           final row = SubcontractGridRow(sourceLocked: upstreamItemId != null)
-            ..goods = it.goodsId == null
-                ? null
-                : GoodsOption(
-                    id: it.goodsId!,
-                    name: ref
-                        .read(mn.masterNameServiceProvider)
-                        .goods(it.goodsId),
-                  )
+            // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
+            ..goods = ref
+                .read(mn.masterNameServiceProvider)
+                .goodsOptionOf(it.goodsId)
             ..qty.text = financeExactTrimmed(it.qty?.toString()) ?? ''
             ..price.text = financeExactTrimmed(it.price?.toString()) ?? ''
             ..weight.text = financeExactTrimmed(it.weight?.toString()) ?? ''
@@ -302,6 +375,7 @@ class _SubcontractDocEditPageState
     if (_grid.isEmpty) {
       _grid.addRow(SubcontractGridRow());
     }
+    if (mounted && widget.id == null) await initializeFormDraft();
     if (mounted) setState(() => _loading = false);
   }
 
@@ -457,16 +531,17 @@ class _SubcontractDocEditPageState
         .where((id) => id.isNotEmpty)
         .toSet();
     if (goodsIds.isNotEmpty) {
-      await ref.read(mn.masterNameServiceProvider).loadGoodsNames(goodsIds);
+      await ref
+          .read(mn.masterNameServiceProvider)
+          .loadGoodsNamesWithCodes(goodsIds);
     }
     if (!mounted) return;
     final rows = <SubcontractGridRow>[];
     for (final li in result.items) {
       if (li.goodsId.isEmpty) continue;
-      final goods = GoodsOption(
-        id: li.goodsId,
-        name: ref.read(mn.masterNameServiceProvider).goods(li.goodsId),
-      );
+      final goods = ref
+          .read(mn.masterNameServiceProvider)
+          .goodsOptionOf(li.goodsId)!;
       rows.add(SubcontractGridRow.fromLinked(li, goods));
     }
     if (_cfg.itemHasStockPlace) {
@@ -490,6 +565,14 @@ class _SubcontractDocEditPageState
   }
 
   Future<void> _save() async {
+    if (widget.id == null && _draftCreatedId != null) {
+      final createdId = _draftCreatedId!;
+      await completeFormDraft();
+      if (mounted) {
+        context.replace(SubcontractRoute.detail(_cfg.pathSegment, createdId));
+      }
+      return;
+    }
     if (_loading || _saving || (widget.id != null && !_existingEditable)) {
       return;
     }
@@ -638,15 +721,24 @@ class _SubcontractDocEditPageState
     };
     setState(() => _saving = true);
     try {
+      if (widget.id == null) await saveFormDraftNow();
       final repo = ref.read(subcontractRepositoryProvider(widget.docType));
-      final outcome = await saveSubcontractDocument(
-        repository: repo,
-        docType: widget.docType,
-        body: body,
-        id: widget.id,
+      final outcome = await runFormDraftSubmission(
+        () => saveSubcontractDocument(
+          repository: repo,
+          docType: widget.docType,
+          body: body,
+          id: widget.id,
+        ),
       );
       if (!mounted) return;
       final d = outcome.detail;
+      if (widget.id == null) {
+        setState(() => _draftCreatedId = d.id);
+        await checkpointFormDraftAfterCreation();
+        await completeFormDraft();
+        if (!mounted) return;
+      }
       if (outcome.financeSubmitError case final error?) {
         context.appWarning('单据已保存，但未提交财务：$error。可在详情页重新提交。');
         bumpListRefresh(ref, _cfg.refreshKey);
@@ -712,7 +804,9 @@ class _SubcontractDocEditPageState
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => withFormDraft(_buildDraftPage(context));
+
+  Widget _buildDraftPage(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: UtenAppBar(

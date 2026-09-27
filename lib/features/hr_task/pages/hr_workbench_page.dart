@@ -18,6 +18,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_draft_category.dart';
 import '../models/hr_task_summary.dart';
 import '../providers/hr_task_summary_provider.dart';
 import '../widgets/hr_task_widgets.dart';
@@ -69,7 +70,10 @@ class HrWorkbenchPage extends ConsumerWidget {
           ),
         ],
       ),
-      body: body,
+      body: FormDraftCategoryHost(
+        scope: const FormDraftCategoryScope(module: BadgeModule.people),
+        child: body,
+      ),
     );
   }
 

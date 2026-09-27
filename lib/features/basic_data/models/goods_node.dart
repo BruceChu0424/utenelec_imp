@@ -526,17 +526,17 @@ Map<String, dynamic> normalizeGoodsUuidFirstBody(Map<String, dynamic> source) {
 
 /// Resolves the category UUID used by a goods save request.
 ///
-/// A copied goods record is a new identity under the category currently open in
-/// the UI, so its source category must never win.  This is what makes a paste
-/// into a `V6` category use that category's `V6xxxxxx` allocator.  Ordinary
-/// updates keep the persisted category unless the caller explicitly changes it.
+/// A copied goods record is a duplicate of the source, so on paste it keeps
+/// the SOURCE goods' category (and that category's code allocator — the copy
+/// gets a code from the same family as the original); the category currently
+/// open in the UI only acts as a fallback for snapshots missing a category.
+/// [requestedCategoryId] (an explicitly chosen target) always wins; ordinary
+/// updates likewise keep the persisted category unless the caller changes it.
 String resolveGoodsSaveCategoryId({
   required String currentCategoryId,
   String? sourceCategoryId,
   String? requestedCategoryId,
-  bool copyMode = false,
 }) {
-  if (copyMode) return requestedCategoryId ?? currentCategoryId;
   return requestedCategoryId ?? sourceCategoryId ?? currentCategoryId;
 }
 

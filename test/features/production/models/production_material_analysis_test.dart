@@ -3,6 +3,64 @@ import 'package:uten_imp/features/production/models/production_material_analysis
 
 void main() {
   test(
+    'preparation budget keeps explicit zero distinct from legacy missing scope',
+    () {
+      final current = ProductionMaterialAnalysisMaterial.fromJson({
+        'materialLineId': 'zero-pool',
+        'preparationPoolKey': 'warehouse|goods|color|unit',
+        'preparationSharedAvailableQty': 0,
+        'preparationOwnedAvailableQty': 200,
+        'preparationUncoveredBeforeSharedQty': 0,
+        'preparationAdoptableSharedQty': 0,
+        'preparationSharedSupplySlices': <Object>[],
+      });
+      expect(current.preparationSharedAvailableQty, 0);
+      expect(current.preparationOwnedAvailableQty, 200);
+      expect(current.preparationUncoveredBeforeSharedQty, 0);
+      expect(current.preparationAdoptableSharedQty, 0);
+      expect(current.preparationSharedSupplySlices, isEmpty);
+      final legacy = ProductionMaterialAnalysisMaterial.fromJson({
+        'materialLineId': 'old',
+        'preparationAvailableQty': 200,
+      });
+      expect(legacy.preparationPoolKey, isNull);
+      expect(legacy.preparationSharedAvailableQty, isNull);
+      expect(legacy.preparationOwnedAvailableQty, isNull);
+      expect(legacy.preparationUncoveredBeforeSharedQty, isNull);
+      expect(legacy.preparationAdoptableSharedQty, isNull);
+      expect(legacy.preparationSharedSupplySlices, isNull);
+    },
+  );
+
+  test(
+    'original line preparation separates actual order intent and coverage',
+    () {
+      final material = ProductionMaterialAnalysisMaterial.fromJson({
+        'materialLineId': 'original-child',
+        'requiredQty': 0,
+        'aggregatePreparation': {
+          'requiredQty': 1200,
+          'orderedQty': 10000,
+          'allocatedOrderedQty': 1000,
+          'planningUncoveredQty': 200,
+          'netShortageQty': 150,
+          'targetMaterialLineIds': ['canonical-a', 'canonical-b'],
+          'actionable': true,
+        },
+      });
+      expect(material.materialLineId, 'original-child');
+      expect(material.aggregatePreparation!.orderedQty, 10000);
+      expect(material.aggregatePreparation!.allocatedOrderedQty, 1000);
+      expect(material.aggregatePreparation!.planningUncoveredQty, 200);
+      expect(material.aggregatePreparation!.targetMaterialLineIds, [
+        'canonical-a',
+        'canonical-b',
+      ]);
+      expect(material.aggregatePreparation!.actionable, isTrue);
+    },
+  );
+
+  test(
     'source demand is independent of preparation and preserves missing or zero',
     () {
       final original = ProductionMaterialAnalysisMaterial.fromJson({

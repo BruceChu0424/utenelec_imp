@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_field_codec.dart';
+import '../../../core/router/route_names.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -29,7 +34,8 @@ Future<bool?> showProductionMaterialReturnRequestSheet(
   barrierDismissible: false,
   enableDrag: false,
   compactHeightFactor: .94,
-  builder: (_) => _ReturnRequestSheet(
+  builder: (_) => ProductionMaterialReturnRequestPage(
+    inPanel: true,
     planId: planId,
     executionSegmentId: executionSegmentId,
   ),
@@ -46,22 +52,143 @@ class _ReturnRow extends EditableGridRow {
   }
 }
 
-class _ReturnRequestSheet extends ConsumerStatefulWidget {
-  const _ReturnRequestSheet({required this.planId, this.executionSegmentId});
+class ProductionMaterialReturnRequestPage extends ConsumerStatefulWidget {
+  const ProductionMaterialReturnRequestPage({
+    super.key,
+    required this.planId,
+    this.executionSegmentId,
+    this.inPanel = false,
+  });
+  static const route = '/production/material-return/new';
+  final bool inPanel;
   final String planId;
   final String? executionSegmentId;
   @override
-  ConsumerState<_ReturnRequestSheet> createState() =>
-      _ReturnRequestSheetState();
+  ConsumerState<ProductionMaterialReturnRequestPage> createState() =>
+      _MaterialReturnRequestState();
 }
 
-class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
+class _MaterialReturnRequestState
+    extends ConsumerState<ProductionMaterialReturnRequestPage>
+    with FormDraftMixin<ProductionMaterialReturnRequestPage> {
   final _grid = UtenEditableGridController<_ReturnRow>();
   final _reason = TextEditingController(text: '生产余料退仓');
   bool _loading = true, _saving = false, _uncertain = false;
   String? _error, _submitError, _requestKey, _frozenReason;
   List<Map<String, dynamic>>? _frozenItems;
   bool get _locked => _saving || _uncertain;
+
+  bool _submissionPending = false;
+  @override
+  bool get formDraftEnabled => widget.planId.isNotEmpty;
+  @override
+  bool get formDraftBusy => _locked;
+  @override
+  bool get formDraftUseCurrentRoute => false;
+  @override
+  bool get formDraftUsesRouterGuard => !widget.inPanel;
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftCatalog.productionReturn.spec(
+    title: '生产余料退仓申请',
+    route: Uri(
+      path: ProductionMaterialReturnRequestPage.route,
+      queryParameters: {
+        'planId': widget.planId,
+        if (widget.executionSegmentId != null)
+          'executionSegmentId': widget.executionSegmentId!,
+      },
+    ).toString(),
+  );
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _reason,
+    _grid,
+    for (final row in _grid.rows) row.qty,
+  ];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'reason': _reason.text,
+    'requestKey': _requestKey,
+    'frozenReason': _frozenReason,
+    'frozenItems': _frozenItems,
+    'uncertain': _uncertain || _submissionPending,
+    'selected': draftGridSelection(_grid),
+    'rows': [
+      for (final row in _grid.rows)
+        {
+          'qty': row.qty.text,
+          'source': {
+            'issuePostingId': row.source.issuePostingId,
+            'sourceType': row.source.sourceType,
+            'directTransferItemId': row.source.directTransferItemId,
+            'demandId': row.source.demandId,
+            'drawId': row.source.drawId,
+            'drawNo': row.source.drawNo,
+            'drawItemId': row.source.drawItemId,
+            'sourceWarehouseId': row.source.sourceWarehouseId,
+            'sourceWarehouseName': row.source.sourceWarehouseName,
+            'goodsId': row.source.goodsId,
+            'goodsCode': row.source.goodsCode,
+            'goodsName': row.source.goodsName,
+            'colorId': row.source.colorId,
+            'colorName': row.source.colorName,
+            'unitId': row.source.unitId,
+            'unitName': row.source.unitName,
+            'unitRate': row.source.unitRate,
+            'issuedQty': row.source.issuedQty,
+            'unsettledQty': row.source.unsettledQty,
+            'pendingReturnQty': row.source.pendingReturnQty,
+            'availableQty': row.source.availableQty,
+            'returnBlockedReason': row.source.returnBlockedReason,
+          },
+        },
+    ],
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _uncertain = data['uncertain'] == true;
+    _requestKey = data['requestKey'] as String?;
+    _frozenReason = data['frozenReason'] as String?;
+    _frozenItems = data['frozenItems'] == null
+        ? null
+        : draftMaps(data['frozenItems']);
+    _reason.text = draftText(data, 'reason');
+    final current = {
+      for (final row in _grid.rows) row.source.sourceKey: row.source,
+    };
+    final restored = <_ReturnRow>[];
+    for (final item in draftMaps(data['rows'])) {
+      final original = ProductionMaterialReturnSource.fromJson(
+        draftMap(item['source']),
+      );
+      final fresh = current[original.sourceKey];
+      if (!_uncertain &&
+          fresh == null &&
+          draftText(item, 'qty').trim().isNotEmpty) {
+        throw const FormatException('已填写退料的原领料来源已变化，请核对来源；填写草稿保留');
+      }
+      if (!_uncertain && fresh == null) continue;
+      restored.add(
+        _ReturnRow(_uncertain ? original : fresh!)
+          ..qty.text = draftText(item, 'qty'),
+      );
+    }
+    _grid.replaceAll(restored);
+    restoreDraftGridSelection(_grid, data['selected']);
+    _error = null;
+    if (_uncertain) _submitError = '上次退料结果尚未确认，请原样重试本次申请。';
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _close() async {
+    if (await confirmFormDraftExit() && mounted) {
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      } else {
+        context.go(RouteName.productionWorkshopTasks);
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -102,7 +229,10 @@ class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
     } catch (_) {
       if (mounted) setState(() => _error = '可退料明细加载失败，请重试');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+        await initializeFormDraft();
+      }
     }
   }
 
@@ -165,6 +295,8 @@ class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
       _submitError = null;
     });
     try {
+      _submissionPending = true;
+      await saveFormDraftNow();
       final documents = await ref
           .read(productionMaterialRepositoryProvider)
           .requestReturn(
@@ -174,6 +306,7 @@ class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
             items: _frozenItems!,
             reason: _frozenReason,
           );
+      await completeFormDraft();
       if (!mounted) return;
       setState(() {
         _saving = false;
@@ -183,7 +316,11 @@ class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
       invalidateWarehouseTaskCounts(ref);
       bumpListRefresh(ref, StockDocType.wdraw.refreshKey);
       context.appSuccess('已提交 ${documents.length} 张退料单，等待仓库核对收料');
-      Navigator.pop(context, true);
+      if (Navigator.of(context).canPop()) {
+        Navigator.pop(context, true);
+      } else {
+        context.go(RouteName.productionWorkshopTasks);
+      }
     } on ApiException catch (error) {
       if (!mounted) return;
       final uncertain = _responseUncertain(error);
@@ -201,145 +338,151 @@ class _ReturnRequestSheetState extends ConsumerState<_ReturnRequestSheet> {
         });
       }
     } finally {
+      _submissionPending = false;
       if (mounted) setState(() => _saving = false);
     }
   }
 
   @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: !_locked,
-    child: Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: const Text('核对余料退仓'),
-        actions: [
-          IconButton(
-            tooltip: '刷新可退明细',
-            onPressed: _locked || _loading ? null : _load,
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            tooltip: '关闭',
-            onPressed: _locked ? null : () => Navigator.pop(context),
-            icon: const Icon(Icons.close),
-          ),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? UtenEmpty.error(message: _error, actionLabel: '重试', onAction: _load)
-          : _grid.rows.isEmpty
-          ? const UtenEmpty(
-              message: '当前没有可退仓余料',
-              description: '已申请退仓的数量正在等待仓库收料。',
-            )
-          : Stack(
-              children: [
-                SingleChildScrollView(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        '${_grid.rows.where((row) => row.source.availableQty > 0).length} 项可退物料 · ${_grid.rows.map((row) => row.source.sourceWarehouseId).toSet().length} 个来源位置',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: UtenSpacing.s8),
-                      const Text(
-                        '填写当前车间本次送仓的余料数量，其余材料可留待后续生产。仓库核对实物后选择正常仓库收料；来源记录仅用于追溯。',
-                      ),
-                      const SizedBox(height: UtenSpacing.s8),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          onPressed: _locked
-                              ? null
-                              : () => setState(() {
-                                  for (final row in _grid.rows) {
-                                    row.qty.text = _number(
-                                      row.source.availableQty,
-                                    );
-                                  }
-                                }),
-                          icon: const Icon(Icons.done_all),
-                          label: const Text('将可退量填入本次退料'),
+  Widget build(BuildContext context) => withFormDraft(
+    PopScope(
+      canPop: !_locked,
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: const Text('核对余料退仓'),
+          actions: [
+            IconButton(
+              tooltip: '刷新可退明细',
+              onPressed: _locked || _loading ? null : _load,
+              icon: const Icon(Icons.refresh),
+            ),
+            IconButton(
+              tooltip: '关闭',
+              onPressed: _locked ? null : _close,
+              icon: const Icon(Icons.close),
+            ),
+          ],
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+            ? UtenEmpty.error(
+                message: _error,
+                actionLabel: '重试',
+                onAction: _load,
+              )
+            : _grid.rows.isEmpty
+            ? const UtenEmpty(
+                message: '当前没有可退仓余料',
+                description: '已申请退仓的数量正在等待仓库收料。',
+              )
+            : Stack(
+                children: [
+                  SingleChildScrollView(
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          '${_grid.rows.where((row) => row.source.availableQty > 0).length} 项可退物料 · ${_grid.rows.map((row) => row.source.sourceWarehouseId).toSet().length} 个来源位置',
+                          style: Theme.of(context).textTheme.titleMedium,
                         ),
-                      ),
-                      UtenEditableGrid<_ReturnRow>(
-                        controller: _grid,
-                        columns: _columns(),
-                        createBlankRow: () =>
-                            throw UnsupportedError('退料来源不可手工新增'),
-                        showAddRow: false,
-                        showRowDelete: false,
-                      ),
-                      const SizedBox(height: UtenSpacing.s12),
-                      TextField(
-                        controller: _reason,
-                        enabled: !_locked,
-                        maxLength: 500,
-                        decoration: const UtenInputDecoration(
-                          InputDecoration(labelText: '退料说明', counterText: ''),
-                          info: '说明本次退回原因或交接情况。',
+                        const SizedBox(height: UtenSpacing.s8),
+                        const Text(
+                          '填写当前车间本次送仓的余料数量，其余材料可留待后续生产。仓库核对实物后选择正常仓库收料；来源记录仅用于追溯。',
                         ),
-                      ),
-                      if (_submitError != null)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: UtenSpacing.s8,
+                        const SizedBox(height: UtenSpacing.s8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: _locked
+                                ? null
+                                : () => setState(() {
+                                    for (final row in _grid.rows) {
+                                      row.qty.text = _number(
+                                        row.source.availableQty,
+                                      );
+                                    }
+                                  }),
+                            icon: const Icon(Icons.done_all),
+                            label: const Text('将可退量填入本次退料'),
                           ),
-                          child: Semantics(
-                            liveRegion: true,
-                            child: Text(
-                              _submitError!,
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.error,
+                        ),
+                        UtenEditableGrid<_ReturnRow>(
+                          controller: _grid,
+                          columns: _columns(),
+                          createBlankRow: () =>
+                              throw UnsupportedError('退料来源不可手工新增'),
+                          showAddRow: false,
+                          showRowDelete: false,
+                        ),
+                        const SizedBox(height: UtenSpacing.s12),
+                        TextField(
+                          controller: _reason,
+                          enabled: !_locked,
+                          maxLength: 500,
+                          decoration: const UtenInputDecoration(
+                            InputDecoration(labelText: '退料说明', counterText: ''),
+                            info: '说明本次退回原因或交接情况。',
+                          ),
+                        ),
+                        if (_submitError != null)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: UtenSpacing.s8,
+                            ),
+                            child: Semantics(
+                              liveRegion: true,
+                              child: Text(
+                                _submitError!,
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
                               ),
                             ),
                           ),
+                        const SizedBox(height: UtenSpacing.s12),
+                        Wrap(
+                          alignment: WrapAlignment.end,
+                          spacing: UtenSpacing.s8,
+                          runSpacing: UtenSpacing.s8,
+                          children: [
+                            UtenButton(
+                              type: UtenButtonType.secondary,
+                              onPressed: _locked ? null : _close,
+                              child: const Text('返回修改'),
+                            ),
+                            UtenButton(
+                              key: const Key('material-return-submit'),
+                              type: UtenButtonType.danger,
+                              icon: Icons.assignment_return_outlined,
+                              isLoading: _saving,
+                              onPressed:
+                                  _saving ||
+                                      (!_uncertain &&
+                                          !_grid.rows.any(
+                                            (row) =>
+                                                row.source.availableQty > 0,
+                                          ))
+                                  ? null
+                                  : _submit,
+                              child: Text(_uncertain ? '重试本次申请' : '提交退仓申请'),
+                            ),
+                          ],
                         ),
-                      const SizedBox(height: UtenSpacing.s12),
-                      Wrap(
-                        alignment: WrapAlignment.end,
-                        spacing: UtenSpacing.s8,
-                        runSpacing: UtenSpacing.s8,
-                        children: [
-                          UtenButton(
-                            type: UtenButtonType.secondary,
-                            onPressed: _locked
-                                ? null
-                                : () => Navigator.pop(context),
-                            child: const Text('返回修改'),
-                          ),
-                          UtenButton(
-                            key: const Key('material-return-submit'),
-                            type: UtenButtonType.danger,
-                            icon: Icons.assignment_return_outlined,
-                            isLoading: _saving,
-                            onPressed:
-                                _saving ||
-                                    (!_uncertain &&
-                                        !_grid.rows.any(
-                                          (row) => row.source.availableQty > 0,
-                                        ))
-                                ? null
-                                : _submit,
-                            child: Text(_uncertain ? '重试本次申请' : '提交退仓申请'),
-                          ),
-                        ],
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                // 提交退仓申请网络段的全屏加载遮罩。
-                if (_saving)
-                  const UtenBusyOverlay(
-                    title: '正在提交退仓申请',
-                    description: '正在写入退仓申请并通知仓库收料，请勿重复提交或关闭面板。',
-                  ),
-              ],
-            ),
+                  // 提交退仓申请网络段的全屏加载遮罩。
+                  if (_saving)
+                    const UtenBusyOverlay(
+                      title: '正在提交退仓申请',
+                      description: '正在写入退仓申请并通知仓库收料，请勿重复提交或关闭面板。',
+                    ),
+                ],
+              ),
+      ),
     ),
   );
 

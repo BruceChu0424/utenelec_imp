@@ -1,5 +1,19 @@
 # ER 草图
 
+## 制造公共供给承诺与实际实收 (V722)
+
+```mermaid
+erDiagram
+  production_plan_items ||--o{ preplan_make_public_claims : public_promise
+  production_material_analysis_materials ||--o{ preplan_make_public_claims : recipient
+  preplan_make_public_claims ||--o{ preplan_make_public_claim_cancellations : releases_pending
+  preplan_make_public_claims ||--o{ preplan_analysis_stock_exact_pegs : received_proof
+  preplan_analysis_stock_exact_pegs ||--|| stock_reservations : actual_stock
+  stock_reservations ||--o{ preplan_stock_entitlement_events : immutable_custody
+```
+
+认领只影响可安排供给余额；实际入库后才进入原库存预留和权益链。公共产出不能继承原计划的私有来源。
+
 ## 同料汇总与精确交接 (V712/V713/V715)
 
 ```mermaid
@@ -16,21 +30,58 @@ erDiagram
 
 共享制造另有唯一系统准备项与计划；原产品仍保留独立需求。别名同时引用原父、原子料和共享子料，不能按名称合并库存。共享委外台账通过批次关联多个原来源，普通单父关系不变。模型与交接上限见 [ADR-120](../99-决策记录-ADR/ADR-120-物料汇总办理与共享制造来源.md)。本节是源码设计，安装状态以各数据库实际迁移记录为准。
 
-## 底层自制材料发现与 BOM 学习 (V710–V711)
+<a id="material-discovery-bom"></a>
+
+## 底层自制材料发现、领料编号与 BOM 学习 (V710–V711 / V726–V727 / V731)
 
 ```mermaid
 erDiagram
     production_execution_segments ||--o{ production_material_discovery_requests : requests
     production_material_discovery_requests ||--o{ production_material_discovery_lines : defines
+    users ||--o{ production_draw_issue_batches : confirms_atomic_draw
+    employees ||--o{ production_draw_issue_batches : operates
     production_material_demands ||--o{ production_material_discovery_lines : physical_warehouses
+    production_material_demands ||--o{ production_planning_package_document_items : demand_id
+    stock_documents ||--o{ production_planning_package_document_items : DRAW_document_id
+    stock_documents ||--o{ stock_document_items : physical_draw_lines
+    stock_document_items ||--o| production_planning_package_document_items : DRAW_document_item_id
     production_execution_segments ||--o| production_bom_learning_samples : family_contribution
     goods ||--o| goods_bom_learning_profiles : learns
     goods_bom_learning_profiles ||--o{ goods_bom_learning_material_totals : aggregates
     goods_bom_learning_profiles ||--o{ production_bom_learning_samples : contributions
     goods_bom_items |o--o| goods_bom_learning_material_totals : learned_edge
+    production_material_discovery_requests {
+        uuid id PK
+        text request_no UK
+        uuid execution_segment_id FK
+        jsonb requested_materials
+        text status
+        bigint expected_version
+        bigint row_version
+    }
+    production_draw_issue_batches {
+        uuid id PK
+        uuid actor_user_id FK
+        uuid actor_employee_id FK
+        varchar idempotency_key
+        char request_hash
+        jsonb request_snapshot
+        jsonb response_snapshot
+        uuid_array document_ids
+    }
 ```
 
-同种物料按需求聚合，实际叶仓明细独立保存；拆批和实际追加共用一个生产族贡献。净耗与实际产量由原台账派生，BOM 学习不重复记库存。规则见 [ADR-119](../99-决策记录-ADR/ADR-119-底层自制实际领料与BOM累计学习.md)。
+V726 的 `requested_materials` 是最多 100 行不可变申请快照，空数组表示材料未知；已选货品必须有基础单位，颜色和数量可空，不含实际仓。详情 `suggestedItems` 返回快照，正式 `items` 返回配置后的 `production_material_discovery_lines`。两者不能互相冒充；仅提交申请不创建需求、预留、DRAW 或 BOM 边。同一执行段的有效申请不能用新键重复创建，受控冲突保留原 LQ、版本和全部数量事实。
+
+未知材料沿实际领料页登记，已知材料可与正常 DRAW 进入原批量出库页。V727 的批次在同一事务中配置申请、生成精确来源并审核实发；申请 UUID 与已有 DRAW UUID 分开提交，批次服务端 UUID 另作命令身份。`document_ids` 是成功结果中的真实 DRAW UUID 集合，不是新建的直接关系外键；批次账不复制库存或耗用数量。同人幂等键唯一，完整意图不一致时拒绝；同键重放依据冻结结果返回，已取消出库也不再次发料。失败时配置、出库与批次账全部回滚。
+
+V731 为申请的 `request_no` 分配不可变 LQ 号；正式 DRAW 的 `stock_documents.bill_no` 继续使用独立 SL 号。申请与正式单据不共用 UUID 或编号。沿申请明细的需求及上图 `document_type='DRAW'` 映射子集查询，一份 LQ 可关联零张到多张 SL，配置时按实际仓形成多单；这是一对多追溯视图，不是新增一个直接外键。正式单若承接多个真实申请来源，应完整展示全部 LQ，不按号码前缀或 ZX 工单号推断归属。全局占号登记在撤回后仍保留，编号变化不产生库存或 BOM 学习事实。
+
+同一申请内的精确材料按需求聚合，实际叶仓明细独立保存。正式单列表、计数、筛选及状态使用该张 DRAW 的真实明细和实际仓，不能按需求只取首张单或将需求总量重复投影到每张单。例如一需求分两仓 2 和 3，映射到两张 SL 后仍分别为 2 和 3。
+
+拆批和实际追加共用一个生产族贡献。学习分子是实际实发减已确认良品退料的净耗量，分母是已审核真实产量；生产族闭合平账后才更新累计贡献，反向按新旧贡献差量调整。预填、预留、未平账批次和重复命令不产生新学习样本，人工维护的 BOM 不被自动覆盖。
+
+业务清空清理申请、配置明细、批次命令账、业务样本和刷新队列；货品学习累计及永久编号占号保留。字段与约束见 [实体字典](实体字典.md#底层材料发现与累计学习)，完整规则见 [ADR-119](../99-决策记录-ADR/ADR-119-底层自制实际领料与BOM累计学习.md)，本地验证与未部署边界见 [2026-09-26 收尾记录](../99-项目治理/2026-09-26-领料申请批量出库与编号收尾.md)。
 
 ## 2026-09-23 未领料原工单追加(V647 / ADR-104)
 

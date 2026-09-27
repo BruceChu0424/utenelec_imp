@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 
 import '../../support/filter_segment_tap.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -174,6 +175,9 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
     String? dateFrom,
     String? dateTo,
     WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+    String? sort,
+    String? order,
+    String? billNo,
   }) async => PagedResult(
     items: [_salesDetail.header],
     page: page,
@@ -181,6 +185,15 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
     total: 1,
     totalPages: 1,
   );
+
+  @override
+  Future<List<MasterFacetBucket>> billNoFacets({
+    String? keyword,
+    String? warehouseWorkStatus,
+    String? dateFrom,
+    String? dateTo,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+  }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
 
   @override
   Future<WarehouseSalesOutboundDetail> detail(String id) async => _salesDetail;
@@ -214,6 +227,14 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   ) async => throw StateError('unexpected batch confirm');
 
   @override
+  Future<List<MasterFacetBucket>> billNoFacets({
+    WarehouseIqcStockInReceiptType? receiptType,
+    WarehouseQualityWorkStatus? workStatus,
+    String? keyword,
+    String? dateFrom,
+    String? dateTo,
+  }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
+  @override
   Future<PagedResult<WarehouseQualityResultTask>> list({
     int page = 1,
     int size = 40,
@@ -222,6 +243,9 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     String? keyword,
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
+    String? billNo,
   }) async => throw StateError('unexpected list');
 }
 

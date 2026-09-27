@@ -120,7 +120,7 @@ class LegacyMigrationSafetyContractTest {
         // Application migration head and the separate frozen offline-import
         // baseline have different responsibilities; neither may impersonate the other.
         assertThat(migrationReadme)
-                .contains("当前正式目录：v" + MigrationRehearsalSupport.CURRENT_HEAD_VERSION
+                .contains("当前源码目录：v" + MigrationRehearsalSupport.CURRENT_HEAD_VERSION
                         + "/" + MigrationRehearsalSupport.CURRENT_MIGRATION_COUNT)
                 .contains("mapping-version.txt")
                 .contains("verify_candidate.py")

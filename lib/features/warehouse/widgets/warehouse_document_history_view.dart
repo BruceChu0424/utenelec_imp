@@ -4,6 +4,8 @@
 // 2026-09-01 起任务中心分段（采购/委外入库的「收货历史」、委外出库的「出仓历史」）
 // 内嵌本组件；独立路由 /warehouse/history/:type 由对应页面以 embedded=false 包一层
 // 继续承接（含详情深链）。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,6 +16,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../config/warehouse_document_history_config.dart';
 import '../models/warehouse_document_history.dart';
 import '../repositories/warehouse_document_history_repository.dart';
@@ -64,6 +67,11 @@ class _WarehouseDocumentHistoryViewState
   String? _status;
   bool _statusSelected = false; // 进页面不预选（不选=不过滤）
   int _requestVersion = 0;
+
+  /// 表头排序 + 单据号/来源单据列值筛选 + facets 桶 + 防串台代数
+  /// （2026-09-25 单号列统一，共享状态见 MasterServerColumnFilters）；
+  /// 排序列 key 见 [_kSortFields]，null = 服务端默认序。
+  final _columnFilters = MasterServerColumnFilters();
 
   @override
   void initState() {
@@ -119,8 +127,16 @@ class _WarehouseDocumentHistoryViewState
             status: _status,
             dateFrom: widget.dateFrom,
             dateTo: widget.dateTo,
+            sort: _kSortFields[_columnFilters.sortColumn],
+            order: _columnFilters.sortColumn == null
+                ? null
+                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+            billNo: _columnFilters['billNo'],
+            sourceDocNo: _columnFilters['sourceDocNo'],
           );
       if (!mounted || version != _requestVersion) return;
+      // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
+      unawaited(_loadBillNoFacets());
       setState(() {
         _result = result;
         _loading = false;
@@ -139,6 +155,47 @@ class _WarehouseDocumentHistoryViewState
       });
     }
   }
+
+  /// 表头排序键 → 服务端 sort 参数（2026-09-25 单号列统一；未列出的列不可排序）。
+  static const _kSortFields = <String, String>{
+    'billNo': 'billNo',
+    'sourceDocNo': 'sourceDocNo',
+  };
+
+  /// 表头排序变化：服务端重排整个结果集，回第 1 页。
+  void _onSortChange(String? column, bool ascending) {
+    final next = column != null && _kSortFields.containsKey(column)
+        ? column
+        : null;
+    if (next == _columnFilters.sortColumn &&
+        (next == null || ascending == _columnFilters.sortAscending)) {
+      return;
+    }
+    _columnFilters.handleSortChanged(
+      next,
+      ascending,
+      onChanged: () {
+        if (mounted) setState(() {});
+        _load(1);
+      },
+    );
+  }
+
+  /// 单据号/来源单据 facets（2026-09-25 单号列统一）：与列表同过滤口径
+  /// （不含单号列自身值筛选）。
+  Future<void> _loadBillNoFacets() => _columnFilters.loadFacets(
+    () => ref
+        .read(warehouseDocumentHistoryRepositoryProvider(widget.type))
+        .billNoFacets(
+          keyword: _keyword,
+          status: _status,
+          dateFrom: widget.dateFrom,
+          dateTo: widget.dateTo,
+        ),
+    onLoaded: () {
+      if (mounted) setState(() {});
+    },
+  );
 
   void _openDetail(WarehouseDocumentHistorySummary item) {
     context.push(widget.type.detailPath(item.id));
@@ -185,10 +242,32 @@ class _WarehouseDocumentHistoryViewState
         key: Key('warehouse-history-table-${widget.type.segment}'),
         columns: _columns,
         items: result.items,
-        facets: const {},
+        // 单据号/来源单据表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
+        facets: {
+          'billNo': _columnFilters.bucketOf('billNo'),
+          'sourceDocNo': _columnFilters.bucketOf('sourceDocNo'),
+        },
         nullCounts: const {},
-        filters: const {},
-        onFilterChanged: (_, _) {},
+        filters: {
+          'billNo': _columnFilters['billNo'],
+          'sourceDocNo': _columnFilters['sourceDocNo'],
+        },
+        // 表头排序走服务端（2026-09-25 单号列统一）。
+        sortColumn: _columnFilters.sortColumn,
+        sortAscending: _columnFilters.sortAscending,
+        onSortChange: _onSortChange,
+        onFilterChanged: (key, value) {
+          if (key == 'billNo' || key == 'sourceDocNo') {
+            _columnFilters.handleFilterChanged(
+              key,
+              value,
+              onChanged: () {
+                if (mounted) setState(() {});
+                _load(1);
+              },
+            );
+          }
+        },
         onRowTap: _openDetail,
         isLoading: _loading && _result == null,
         loadingMore: _loading && _result != null,
@@ -244,6 +323,7 @@ class _WarehouseDocumentHistoryViewState
       key: 'billNo',
       label: '单据号',
       width: 170,
+      sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
       value: (item) => item.displayBillNo,
     ),
     MasterColumnDef(
@@ -275,6 +355,7 @@ class _WarehouseDocumentHistoryViewState
       key: 'sourceDocNo',
       label: '来源单据',
       width: 170,
+      sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
       value: (item) => item.sourceDocNo ?? '—',
     ),
     MasterColumnDef(

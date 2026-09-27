@@ -12,6 +12,7 @@ import 'package:uten_imp/core/router/app_router.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/features/visitor/providers/visitor_session_provider.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 
 /// 桩会话：默认未登录态，不触 secure_storage（测试环境无插件实现）。
 class _StubSessionNotifier extends SessionNotifier {
@@ -84,8 +85,30 @@ void _collect(RouteBase base, String parent, List<String> out) {
 /// 包含报销编辑路径，仍继承 expense:apply；生产路线重构不新增页面。
 /// 断言精确计数：新增路由必须同步改代码守卫 + 本处计数 + 文档数字，
 /// 防止「文档说 180、实际已 190」的静默漂移。
-const _expectedGuardedCount = 206;
+const _legacyGuardedCount = 206;
 const _expectedExemptCount = 17;
+
+/// 2026-09-26 实际新增路径逐条核对，不能用总数 +5 代替路由身份/组合权限验证。
+const _reviewedNewGuardedRoutes = <String, List<String>>{
+  '/warehouse/material-discovery/:requestId': [
+    Perm.stockDocIssue,
+    Perm.stockDocApprove,
+  ],
+  '/finance/assets/new': [Perm.financeAssetView, Perm.financeAssetEdit],
+  '/production/material-return/new': [Perm.productionMaterialSettle],
+  '/production/overproduction-rate-requests/new': [
+    Perm.productionExecutionRequestOverproductionRate,
+  ],
+  '/production/material-discovery-request': [
+    Perm.productionExecutionView,
+    Perm.productionExecutionStart,
+  ],
+};
+
+String _samplePath(String pattern) => pattern
+    .split('/')
+    .map((segment) => segment.startsWith(':') ? 'sample' : segment)
+    .join('/');
 
 void main() {
   test(
@@ -113,10 +136,7 @@ void main() {
       final guarded = <String>[];
       for (final pattern in paths) {
         // 动态段代入样本值（:id / :seg / :type …）。
-        final sample = pattern
-            .split('/')
-            .map((s) => s.startsWith(':') ? 'sample' : s)
-            .join('/');
+        final sample = _samplePath(pattern);
         final any = requiredAnyPermFor(sample);
         final all = requiredAllPermsFor(sample);
         // all 契约默认返回空列表（非 null）：空 = 无组合门槛，不算守卫；
@@ -130,16 +150,29 @@ void main() {
         }
       }
 
-      // 计数契约：与权限体系总设计.md §二的「N 守卫/M 豁免」一一对应。
-      // 路由增减时三处同步：permission_by_path.dart（守卫本体）、
-      // 本文件（_expected*Count）、总设计文档（§二数字）。
+      final reviewedSamples = _reviewedNewGuardedRoutes.keys
+          .map(_samplePath)
+          .toSet();
+      for (final route in _reviewedNewGuardedRoutes.entries) {
+        expect(
+          paths.where((path) => path == route.key),
+          hasLength(1),
+          reason: '${route.key} 必须只注册一次',
+        );
+        expect(
+          requiredAllPermsFor(_samplePath(route.key)),
+          orderedEquals(route.value),
+          reason: '${route.key} 不得放松已核对的组合权限',
+        );
+        expect(guarded, contains(_samplePath(route.key)));
+      }
+      // 新路径按精确身份和组合权限比较；原清单仍按原数量锁定，禁止只抬总数。
       expect(
-        guarded.length,
-        _expectedGuardedCount,
+        guarded.where((path) => !reviewedSamples.contains(path)).length,
+        _legacyGuardedCount,
         reason:
-            '守卫路由数 ${guarded.length} ≠ 文档口径 $_expectedGuardedCount。'
-            '新增路由请同步 permission_by_path.dart、本处计数与'
-            '权限体系总设计.md §二；删路由同理。',
+            '原守卫路由清单数量已变化；新增页面须登记精确路径及权限，'
+            '同时同步 permission_by_path.dart 与权限体系总设计.md §二。',
       );
       final exemptCount = paths.length - guarded.length;
       expect(

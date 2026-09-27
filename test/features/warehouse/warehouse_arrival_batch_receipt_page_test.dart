@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
@@ -20,6 +21,10 @@ import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_arrival_batch_receipt_page.dart';
+import 'package:uten_imp/features/warehouse/pages/warehouse_arrival_receipt_page.dart';
+import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_inbound_expectations_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/procurement_inbound.dart';
@@ -28,6 +33,128 @@ import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
+  for (final single in [true, false]) {
+    testWidgets(
+      'arrival draft restores ${single ? 'single' : 'batch'} source after restart without route extra',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1400, 1800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final api = _BatchApi();
+        Widget originalPage() => single
+            ? WarehouseArrivalReceiptPage(
+                prefill: _prefills().first,
+                canRegister: true,
+              )
+            : WarehouseArrivalBatchReceiptPage(
+                prefills: _prefills(),
+                canRegister: true,
+              );
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(api),
+              sessionProvider.overrideWith(_TestSessionNotifier.new),
+              masterNameServiceProvider.overrideWithValue(
+                MasterNameService(api),
+              ),
+            ],
+            child: MaterialApp(home: originalPage()),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final Map<String, dynamic> snapshot = single
+            ? (tester.state(find.byType(WarehouseArrivalReceiptPage))
+                      as FormDraftMixin<WarehouseArrivalReceiptPage>)
+                  .captureFormDraft()
+            : (tester.state(find.byType(WarehouseArrivalBatchReceiptPage))
+                      as FormDraftMixin<WarehouseArrivalBatchReceiptPage>)
+                  .captureFormDraft();
+        final rows = (snapshot['rows'] as List).cast<Map<String, dynamic>>();
+        rows.first['qty'] = '1.';
+        rows.first['selected'] = false;
+        rows.first['stockPlace'] = 'A-12';
+        rows.first['stockPlaceAutofilled'] = false;
+        snapshot['remark'] = '恢复尚未填完的到货';
+        final route = single
+            ? RouteName.warehouseArrivalReceiptNew
+            : RouteName.warehouseArrivalReceiptBatch;
+        final saved = FormDraft(
+          id: 'arrival-draft',
+          title: '登记到货',
+          module: BadgeModule.warehouse,
+          route: route,
+          permission: Perm.warehouseInboundStockIn,
+          updatedAt: DateTime.now(),
+          data: snapshot,
+          revision: 'version-1',
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+        final router = GoRouter(
+          initialLocation: saved.resumeLocation,
+          routes: [
+            GoRoute(
+              path: route,
+              builder: (_, state) => single
+                  ? WarehouseArrivalReceiptPage(
+                      key: state.pageKey,
+                      canRegister: true,
+                    )
+                  : WarehouseArrivalBatchReceiptPage(
+                      key: state.pageKey,
+                      canRegister: true,
+                    ),
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              authenticatedScopeProvider.overrideWithValue(
+                const AuthenticatedScope(userId: 'user-1'),
+              ),
+              apiBaseUrlProvider.overrideWithValue(
+                'https://draft-test.example/api',
+              ),
+              currentPermissionsProvider.overrideWithValue({
+                Perm.warehouseInboundView,
+                Perm.warehouseInboundStockIn,
+              }),
+              apiClientProvider.overrideWithValue(api),
+              sessionProvider.overrideWith(_TestSessionNotifier.new),
+              masterNameServiceProvider.overrideWithValue(
+                MasterNameService(api),
+              ),
+              formDraftsProvider.overrideWith(
+                () => _RecoveredArrivalDrafts(saved),
+              ),
+            ],
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final recovered = single
+            ? (tester.state(find.byType(WarehouseArrivalReceiptPage))
+                      as FormDraftMixin<WarehouseArrivalReceiptPage>)
+                  .captureFormDraft()
+            : (tester.state(find.byType(WarehouseArrivalBatchReceiptPage))
+                      as FormDraftMixin<WarehouseArrivalBatchReceiptPage>)
+                  .captureFormDraft();
+        final recoveredRows = (recovered['rows'] as List)
+            .cast<Map<String, dynamic>>();
+        expect(recovered['registrationId'], snapshot['registrationId']);
+        expect(recovered['remark'], '恢复尚未填完的到货');
+        expect(recoveredRows.first['qty'], '1.');
+        expect(recoveredRows.first['selected'], false);
+        expect(recoveredRows.first['stockPlaceAutofilled'], false);
+        expect(recoveredRows.first['item'], rows.first['item']);
+        expect(find.text('已恢复本机草稿'), findsOneWidget);
+        expect(api.arrivalPostBodies, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'disabled remembered warehouse is cleared before a new arrival and hidden in the picker',
     (tester) async {
@@ -564,6 +691,13 @@ List<ProcurementReceiptPrefill> _prefills() => const [
     ],
   ),
 ];
+
+class _RecoveredArrivalDrafts extends FormDraftsNotifier {
+  _RecoveredArrivalDrafts(this.draft);
+  final FormDraft draft;
+  @override
+  List<FormDraft> build() => [draft];
+}
 
 class _TestSessionNotifier extends SessionNotifier {
   @override

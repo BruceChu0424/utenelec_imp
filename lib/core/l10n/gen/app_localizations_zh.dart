@@ -51,7 +51,11 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get materialDiscoveryRequestHelp =>
-      '这些自制件尚未登记底层材料。提交领料后，请领料人与仓库对接，由仓库填写实际材料；实际发料后才能开工。';
+      '这些自制件尚未登记底层材料。知道用料时可按工单选填材料和申请数量；不填也可提交，由仓库补充。仓库会带入已填内容，核对实际发料仓后办理领料，实际发料后才能开工。';
+
+  @override
+  String get materialDiscoveryPrefilledHelp =>
+      '已带入车间填写的材料和申请数量，无需重复选料。请核对实际发料仓和数量；如有变化，可在表内调整。';
 
   @override
   String get materialDiscoveryPending => '待仓库填写物料';
@@ -112,7 +116,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get materialDiscoveryRetry => '重试';
 
   @override
-  String get materialDiscoveryRequestSent => '领料申请已提交，等待仓库填写物料';
+  String get materialDiscoveryRequestSent => '领料申请已提交，等待仓库核对并办理领料';
 
   @override
   String get materialDiscoveryMissingUnit => '该材料没有基本单位，请先完善货品资料';
@@ -2392,7 +2396,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get materialTaskWorkshopHint => '填写数量、车间和负责人后下达；缺料任务先进入待料，齐套并领料后才能开工。';
 
   @override
-  String get materialTaskSectionHint => '按供料路线集中处理，查看未下达、已下达与待处理任务。';
+  String get materialTaskSectionHint => '按供应方式集中处理待处理、进行中和需处理任务。';
 
   @override
   String get materialWarehouseLimit =>
@@ -4075,4 +4079,39 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get warehouseBatchRegistrationHelp =>
       '成品仓、库位号逐行必填；优先带入货品主档默认仓，缺项再参考个人选仓上下文。勾选多行后改仓或填写库位可批量应用。每张报工单各生成一份送检，品质放行后再最终点收。';
+
+  @override
+  String get materialPreparationReview => '核对并下单';
+
+  @override
+  String get materialPreparationApproveNow => '同时审核下达';
+
+  @override
+  String get materialPreparationViewPlans => '查看已下达计划';
+
+  @override
+  String get materialPreparationOrdering => '正在下单…';
+
+  @override
+  String materialPreparationOrderCount(int count) {
+    return '下单($count)';
+  }
+
+  @override
+  String get materialPreparationNoActions => '当前没有可办理的物料';
+
+  @override
+  String get materialPreparationAvailableHint =>
+      '本行可安排的现货和已下达供给，包含在途及未办理余量；其它订单已占用的量不重复计入，实际领料以实物为准。';
+
+  @override
+  String get materialPreparationPending => '待下单';
+
+  @override
+  String get materialPreparationInProgress => '进行中';
+
+  @override
+  String materialPreparationMissingAssignment(String goods) {
+    return '请先补齐“$goods”的生产车间和负责人，再下单';
+  }
 }

@@ -29,9 +29,6 @@ public enum SystemSettingKey {
     LOCKOUT_MINUTES("lockout_minutes", Type.INT, "15", 1L, 525_600L,
             Category.SECURITY, false, "锁定时长", "分钟", 30,
             "账号 (或敏感操作的密码确认) 锁定多少分钟后自动解除"),
-    PASSWORD_MIN_LENGTH("password_min_length", Type.INT, "8", 8L, 64L,
-            Category.SECURITY, true, "密码最短长度", "位", 35,
-            "员工自己设置新密码时至少要多少位 (还须同时包含字母和数字)"),
     PASSWORD_HISTORY_SIZE("password_history_size", Type.INT, "5", 0L, 100L,
             Category.SECURITY, false, "密码历史回溯", "个", 40,
             "改密码时禁止复用最近 N 个历史密码; 0 仅关闭历史回溯, 仍禁止复用当前密码。"),
@@ -97,7 +94,13 @@ public enum SystemSettingKey {
             "日志在审计中心可查询、可导出的月数; 到期后自动转入冷归档"),
     AUDIT_ARCHIVE_RETENTION_MONTHS("audit_archive_retention_months", Type.INT, "30", 0L, 240L,
             Category.AUDIT, true, "归档追加保留期", "个月", 420,
-            "转入冷归档后继续保留的月数; 到期将在每日清理任务中永久删除且不可恢复");
+            "转入冷归档后继续保留的月数; 到期将在每日清理任务中永久删除且不可恢复"),
+
+    // ===== 系统更新 =====
+    UPDATER_CHECK_INTERVAL_DAYS("updater_check_interval_days", Type.INT, "7", 0L, 365L,
+            Category.UPDATES, false, "服务器自动检查更新间隔", "天", 510,
+            "0 仅手动更新；7 每周日 05:00 检查阿里云 OSS；其他数值从修改当天起每隔 N 天 05:00 检查。"
+                    + "按服务器当地时区执行，保存后请查看调度状态确认已生效。");
 
     /** 值类型: 决定解析与校验方式。 */
     public enum Type {
@@ -116,7 +119,7 @@ public enum SystemSettingKey {
 
     /** 系统设置页的分组。 */
     public enum Category {
-        SECURITY("security"), TOKEN("token"), SMS("sms"), BUSINESS("business"), AUDIT("audit");
+        SECURITY("security"), TOKEN("token"), SMS("sms"), BUSINESS("business"), AUDIT("audit"), UPDATES("updates");
 
         private final String wire;
 

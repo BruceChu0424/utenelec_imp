@@ -64,6 +64,11 @@ final class MaterialAnalysisIssuePreviewOverlay {
 
     private final boolean frozen;
     private final Map<UUID, SourceDelta> sources = new HashMap<>();
+    private final Map<UUID,BigDecimal> rootPublicAdoption=new HashMap<>();
+    void addRootPublicAdoption(UUID sourceId,BigDecimal baseQty) {
+        requireMutable();rootPublicAdoption.merge(sourceId,baseQty,BigDecimal::add);
+    }
+    Map<UUID,BigDecimal> rootPublicAdoption(){return rootPublicAdoption;}
     private final Map<String, BigDecimal> plannedOutputByNode = new HashMap<>();
     private final Map<String, BigDecimal> internalCommitmentByNode = new HashMap<>();
     private final Map<String, List<BigDecimal>> appendedBatches = new HashMap<>();

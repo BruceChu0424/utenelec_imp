@@ -56,8 +56,24 @@ public class SubcontractOrderController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
-        return service.list(new OrderQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, closed, financeApproval), page, size, sort, order);
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String billNo) {
+        return service.list(new OrderQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, closed, financeApproval, billNo), page, size, sort, order);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
+    @GetMapping("/facets")
+    @PreAuthorize("hasAuthority('subcontract_order:view')")
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) UUID supplierId,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(required = false) Short status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) Boolean closed,
+            @RequestParam(required = false) String financeApproval) {
+        return service.facets(new OrderQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, closed, financeApproval, null));
     }
 
     @GetMapping("/{id}")

@@ -584,8 +584,8 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
     }
     @Test
     void overviewSeparatesOwnerScopeFromAndAndLoadsRootWorkOrders() {
-        assertThat(service.list(1, 50, "P001", WORKSHOP, true, null, null).getTotal()).isEqualTo(1);
-        assertThat(service.list(1, 50, null, WORKSHOP, false, null, null).getTotal()).isEqualTo(1);
+        assertThat(service.list(1, 50, "P001", WORKSHOP, true, null, null, null).getTotal()).isEqualTo(1);
+        assertThat(service.list(1, 50, null, WORKSHOP, false, null, null, null).getTotal()).isEqualTo(1);
         assertThat(service.workOrders("PLAN", PLAN, 1, 2).getItems()).hasSize(2);
     }
     @Test

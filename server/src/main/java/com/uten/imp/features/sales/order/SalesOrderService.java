@@ -9,6 +9,7 @@ import com.uten.imp.common.saleschain.SalesChainStatus;
 import com.uten.imp.common.saleschain.SalesOrderChainSql;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
@@ -86,8 +87,10 @@ public class SalesOrderService {
     /** 链路行状态（chain_status）：派生口径统一在 {@link SalesOrderChainSql}/{@link SalesChainStatus}；本类只直写取消态。 */
     private static final short CHAIN_CANCELED = -1;         // 已取消
 
-    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
-    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalOriginal");
+    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额/单据号可排序；命中才排序，否则默认 billDate DESC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of(
+            "billDate", "billDate", "total", "totalOriginal",
+            "billNo", "billNo"); // 2026-09-25 单号列统一
 
     private final SalesOrderRepository orderRepo;
     private final SalesOrderItemRepository itemRepo;
@@ -119,8 +122,31 @@ public class SalesOrderService {
         // 次按交货日升序（临近在前）、再按开单日期倒序；此时忽略列排序。
         boolean shippableFirst = "shippable".equals(sort);
         var readScope = accessPolicy.scope();
-        Specification<SalesOrder> spec = (Root<SalesOrder> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
-                                          CriteriaBuilder cb) -> {
+        Specification<SalesOrder> spec = orderSpec(f, shippableFirst);
+        Pageable pageable = Pageables.of(page, size,
+                shippableFirst ? Sort.unsorted()
+                        : TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
+        Page<SalesOrder> p = orderRepo.findAll(spec, pageable);
+        boolean canEdit = hasObjectActionAuthority();
+        return new PageResponse<>(p.map(o -> toList(o,
+                        nameResolver.nameOf(o.getSellerId()),
+                        canEdit && accessPolicy.canWrite(o.getOwnerEmployeeId(), readScope))).getContent(),
+                p);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(OrderQueryFilter f) {
+        return java.util.Map.of("billNo",
+                com.uten.imp.common.web.TableFacets.groupCount(em, SalesOrder.class, orderSpec(f, false), "billNo"));
+    }
+
+    /** 列表谓词（list 与 facets 共用，2026-09-25 单号列统一抽出；billNo=表头单据号精确匹配）。 */
+    private Specification<SalesOrder> orderSpec(OrderQueryFilter f, boolean shippableFirst) {
+        var readScope = accessPolicy.scope();
+        return (Root<SalesOrder> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
+                CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
             ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
@@ -160,6 +186,10 @@ public class SalesOrderService {
                         chainGroupPredicate(cb, i, f.chainGroup()));
                 ps.add(root.get("id").in(sub));
             }
+            // 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配。
+            if (f.billNo() != null && !f.billNo().isBlank()) {
+                ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
+            }
             if (shippableFirst) {
                 // 可发货置顶：Σ行预留 > 0 的单排前（CASE 1/0 DESC），次按交货日升序、开单日期倒序
                 jakarta.persistence.criteria.Subquery<BigDecimal> sum = q.subquery(BigDecimal.class);
@@ -176,15 +206,6 @@ public class SalesOrderService {
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size,
-                shippableFirst ? Sort.unsorted()
-                        : TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<SalesOrder> p = orderRepo.findAll(spec, pageable);
-        boolean canEdit = hasObjectActionAuthority();
-        return new PageResponse<>(p.map(o -> toList(o,
-                        nameResolver.nameOf(o.getSellerId()),
-                        canEdit && accessPolicy.canWrite(o.getOwnerEmployeeId(), readScope))).getContent(),
-                p);
     }
 
     /**
@@ -276,45 +297,36 @@ public class SalesOrderService {
                 ((Number) r[2]).longValue(), ((Number) r[3]).longValue());
     }
 
-    /** 订单进度看板（订单进度查询卡）：已审订单按明细聚合 订货/已排/已产/已发/可发 + 派生生产进度与链路阶段。 */
+    /**
+     * 订单进度看板（订单进度查询卡）：已审订单按明细聚合 订货/已排/已产/已发/可发 + 派生生产进度与链路阶段。
+     * sort/order（2026-09-25 单号列统一）：列排序白名单见 {@link #progressOrderBy}；
+     * billNo=订单号表头值筛选（精确匹配，分页前服务端生效）。
+     */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order:view')")
     public PageResponse<OrderProgressRow> progress(
-            int page, int size, String stage, String keyword, LocalDate dateFrom, LocalDate dateTo) {
+            int page, int size, String stage, String keyword, LocalDate dateFrom, LocalDate dateTo,
+            String sort, String order, String billNo) {
         int safeSize = Math.max(1, Math.min(size, 100));
         int safePage = Math.max(1, page);
         String normalizedStage = normalizeProgressStage(stage);
         String normalizedKeyword = keyword == null ? "" : keyword.strip().toLowerCase();
+        String normalizedBillNo = billNo == null ? "" : billNo.trim();
         var ownerScope = accessPolicy.nativeReadScope("o.owner_employee_id", "salesOwners");
         // 阶段筛选下沉到数据库：COUNT 与列表同一谓词，分页 total 即当前阶段真实总数。
-        // 日期（bill_date 为 ISO 文本，字典序与日期序一致）与关键字（单号/客户）
-        // 为可选过滤，null/'' 判空放行。
-        String stageFilter = progressStagePredicate()
-                + """
-                  AND (CAST(:date_from AS date) IS NULL OR t.bill_date >= CAST(:date_from AS text))
-                  AND (CAST(:date_to AS date) IS NULL OR t.bill_date <= CAST(:date_to AS text))
-                  AND (CAST(:keyword AS text) IS NULL OR :keyword = ''
-                       OR LOWER(COALESCE(t.bill_no, '')) LIKE :keyword_pattern
-                       OR LOWER(COALESCE(t.name, '')) LIKE :keyword_pattern)
-                """;
+        // 日期（bill_date 为 ISO 文本，字典序与日期序一致）、关键字（单号/客户）与
+        // 单据号表头值筛选（bill_no 精确匹配，2026-09-25 单号列统一）为可选过滤，null/'' 判空放行。
+        String stageFilter = progressFilterPredicate();
         var cq = em.createNativeQuery(
                 "SELECT COUNT(*) FROM (" + progressGroupedSql(ownerScope) + ") t WHERE " + stageFilter);
         ownerScope.bind(cq);
-        cq.setParameter("stage", normalizedStage);
-        cq.setParameter("keyword", normalizedKeyword);
-        cq.setParameter("keyword_pattern", "%" + normalizedKeyword + "%");
-        cq.setParameter("date_from", dateFrom);
-        cq.setParameter("date_to", dateTo);
+        bindProgressFilterParams(cq, normalizedStage, normalizedKeyword, dateFrom, dateTo, normalizedBillNo);
         long total = ((Number) cq.getSingleResult()).longValue();
         String rowsSql = "SELECT t.* FROM (" + progressGroupedSql(ownerScope) + ") t WHERE " + stageFilter
-                + " ORDER BY t.bill_date DESC NULLS LAST, t.bill_no DESC";
+                + " " + progressOrderBy(sort, order);
         var rq = em.createNativeQuery(rowsSql);
         ownerScope.bind(rq);
-        rq.setParameter("stage", normalizedStage);
-        rq.setParameter("keyword", normalizedKeyword);
-        rq.setParameter("keyword_pattern", "%" + normalizedKeyword + "%");
-        rq.setParameter("date_from", dateFrom);
-        rq.setParameter("date_to", dateTo);
+        bindProgressFilterParams(rq, normalizedStage, normalizedKeyword, dateFrom, dateTo, normalizedBillNo);
         rq.setFirstResult((safePage - 1) * safeSize).setMaxResults(safeSize);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = rq.getResultList();
@@ -360,6 +372,69 @@ public class SalesOrderService {
         }).toList();
         int totalPages = (int) Math.ceil((double) total / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
+    }
+
+    /**
+     * 订单进度订单号列值筛选桶（2026-09-25 单号列统一）：与列表同一份 WHERE
+     * （阶段/日期/关键字）分组计数；桶不算单号列自身的值筛选（bill_no 绑 ''）。
+     */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> progressFacets(
+            String stage, String keyword, LocalDate dateFrom, LocalDate dateTo) {
+        String normalizedStage = normalizeProgressStage(stage);
+        String normalizedKeyword = keyword == null ? "" : keyword.strip().toLowerCase();
+        var ownerScope = accessPolicy.nativeReadScope("o.owner_employee_id", "salesOwners");
+        var q = em.createNativeQuery(
+                "SELECT t.bill_no, COUNT(*) FROM (" + progressGroupedSql(ownerScope) + ") t WHERE "
+                        + progressFilterPredicate() + " GROUP BY t.bill_no ORDER BY 1");
+        ownerScope.bind(q);
+        bindProgressFilterParams(q, normalizedStage, normalizedKeyword, dateFrom, dateTo, "");
+        return java.util.Map.of("billNo",
+                NativeFacets.rows(NativeQueryResults.objectArrayRows(q)));
+    }
+
+    /** 订单进度列表/计数/桶共用的 WHERE 谓词（作用于聚合子查询别名 t；2026-09-25 单号列统一抽出复用）。 */
+    static String progressFilterPredicate() {
+        return progressStagePredicate()
+                + """
+                  AND (CAST(:date_from AS date) IS NULL OR t.bill_date >= CAST(:date_from AS text))
+                  AND (CAST(:date_to AS date) IS NULL OR t.bill_date <= CAST(:date_to AS text))
+                  AND (CAST(:keyword AS text) IS NULL OR :keyword = ''
+                       OR LOWER(COALESCE(t.bill_no, '')) LIKE :keyword_pattern
+                       OR LOWER(COALESCE(t.name, '')) LIKE :keyword_pattern)
+                  AND (CAST(:bill_no AS text) IS NULL OR :bill_no = '' OR t.bill_no = :bill_no)
+                """;
+    }
+
+    /** 绑定 {@link #progressFilterPredicate} 的命名参数（谓词常在 SQL，参数恒绑定）。 */
+    private static void bindProgressFilterParams(
+            jakarta.persistence.Query q, String stage, String keyword,
+            LocalDate dateFrom, LocalDate dateTo, String billNo) {
+        q.setParameter("stage", stage);
+        q.setParameter("keyword", keyword);
+        q.setParameter("keyword_pattern", "%" + keyword + "%");
+        q.setParameter("date_from", dateFrom);
+        q.setParameter("date_to", dateTo);
+        q.setParameter("bill_no", billNo);
+    }
+
+    /**
+     * 订单进度列排序（2026-09-25 单号列统一）：白名单 key → 聚合子查询别名 t 的表达式，
+     * 未知/空回落原默认排序（bill_date DESC NULLS LAST, bill_no DESC）；
+     * order 只认 asc/desc（其余按升序），稳定键兜底保证分页确定性。
+     * stage 原为前端本地排序，本表接服务端排序后入白名单（派生阶段表达式排序）。
+     */
+    static String progressOrderBy(String sort, String order) {
+        String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
+        return switch (sort == null ? "" : sort) {
+            case "billNo" -> "ORDER BY t.bill_no " + dir + " NULLS LAST, t.bill_date DESC NULLS LAST";
+            case "deliverDate" ->
+                    "ORDER BY t.deliver_date " + dir + " NULLS LAST, t.bill_date DESC NULLS LAST, t.bill_no DESC";
+            case "stage" ->
+                    "ORDER BY (" + progressStageExpr() + ") " + dir + ", t.bill_date DESC NULLS LAST, t.bill_no DESC";
+            default -> "ORDER BY t.bill_date DESC NULLS LAST, t.bill_no DESC";
+        };
     }
 
     /**

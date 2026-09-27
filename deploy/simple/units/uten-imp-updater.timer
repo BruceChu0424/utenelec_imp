@@ -1,14 +1,13 @@
-# 每天早上 5 点（服务器本地时间=北京时间）检查一次新版本
+# 每分钟只读本机数据库设置，未到期不访问 OSS；默认每周日当地 05:00 拉取
+# 不补跑错过的日期；需要立即更新时手动运行 check
 # 安装为 /etc/systemd/system/uten-imp-updater.timer
 [Unit]
-Description=Run Uten IMP updater daily at 05:00 (server local time = Asia/Shanghai)
+Description=Evaluate the local Uten IMP update schedule every minute
 
 [Timer]
-OnBootSec=3min
-OnCalendar=*-*-* 05:00:00
-AccuracySec=1min
-RandomizedDelaySec=2min
-Persistent=true
+OnCalendar=*-*-* *:*:00
+AccuracySec=1s
+Persistent=false
 
 [Install]
 WantedBy=timers.target

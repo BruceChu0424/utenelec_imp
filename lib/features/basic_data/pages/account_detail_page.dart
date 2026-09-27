@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -25,6 +27,7 @@ import '../../../shared/widgets/master_detail_card.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../models/account_node.dart';
 import '../models/currency_node.dart';
+import '../widgets/master_server_column_filters.dart';
 import '../models/payment_style_node.dart';
 import '../repositories/account_repository.dart';
 import '../repositories/currency_repository.dart';
@@ -68,6 +71,11 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
   int _searchEpoch = 0;
   late DateTime _from;
   late DateTime _to;
+
+  /// 单号列值筛选 + facets 桶 + 防串台代数（2026-09-25 单号列统一，共享状态
+  /// 见 MasterServerColumnFilters）。流水余额按单据日期/过账序滚动，排序语义
+  /// 固定，不做表头排序（本页不使用共享态的排序字段）。
+  final _columnFilters = MasterServerColumnFilters();
 
   Set<String> get _permissions => ref.read(currentPermissionsProvider);
   bool get _isAdmin => ref.read(isSuperAdminProvider);
@@ -213,8 +221,11 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
             dateTo: _date(_to),
             keyword: _flowKeyword,
             page: page,
+            billNo: _columnFilters['billNo'],
           );
       if (!mounted || !_flowRequests.isCurrent(generation)) return;
+      // 单号 facets 与流水同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
+      unawaited(_loadBillNoFacets());
       setState(() {
         _statement = result;
         _flowLoading = false;
@@ -233,6 +244,24 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
       });
     }
   }
+
+  /// 单号 facets（2026-09-25 单号列统一）：与流水列表同过滤口径
+  /// （不含单号列自身值筛选）。
+  Future<void> _loadBillNoFacets() => _columnFilters.loadFacets(
+    () async => {
+      'billNo': await ref
+          .read(accountRepositoryProvider)
+          .statementBillNoFacets(
+            accountId: widget.accountId,
+            dateFrom: _date(_from),
+            dateTo: _date(_to),
+            keyword: _flowKeyword,
+          ),
+    },
+    onLoaded: () {
+      if (mounted) setState(() {});
+    },
+  );
 
   String _currencyLabel(String? id, {String? name, String? code}) {
     if (id == null) return '未设置币种';
@@ -749,10 +778,23 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
             primary: true,
             columns: _flowColumns,
             items: _statement?.rows ?? const [],
-            facets: const {},
+            // 单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
+            // 滚动余额顺序语义固定，不做表头排序。
+            facets: {'billNo': _columnFilters.bucketOf('billNo')},
             nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
+            filters: {'billNo': _columnFilters['billNo']},
+            onFilterChanged: (key, value) {
+              if (key == 'billNo') {
+                _columnFilters.handleFilterChanged(
+                  key,
+                  value,
+                  onChanged: () {
+                    if (mounted) setState(() {});
+                    _loadFlow(1);
+                  },
+                );
+              }
+            },
             onRowTap: _showFlowDetail,
             isLoading: _flowLoading && _statement == null,
             loadingMore: _flowLoading && _statement != null,

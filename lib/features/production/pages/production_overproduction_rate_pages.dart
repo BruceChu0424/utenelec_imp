@@ -16,6 +16,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../providers/production_execution_refresh.dart';
 import '../widgets/production_review_reason_dialog.dart';
@@ -36,6 +37,13 @@ class _RateListState
   bool _loading = true;
   String? _error;
   int _request = 0;
+
+  // 2026-09-25 单号列统一：计划号/工单号表头排序 + 值筛选（服务端白名单/facets）。
+  String? _sortColumn;
+  bool _sortAscending = true;
+  Map<String, List<MasterFacetBucket>> _docNoFacets = const {};
+  String? _planFilter;
+  String? _segmentFilter;
   @override
   void initState() {
     super.initState();
@@ -44,15 +52,43 @@ class _RateListState
 
   Future<void> _load([int page = 1]) async {
     final request = ++_request;
+    // 2026-09-25 单号列统一：单号排序/值筛选随列表下推（服务端白名单）。
+    final requestedStatus = _status;
+    final requestedSort = _sortColumn;
+    final requestedOrder = _sortColumn == null
+        ? null
+        : (_sortAscending ? 'asc' : 'desc');
+    final requestedPlan = _planFilter;
+    final requestedSegment = _segmentFilter;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final data = await ref
-          .read(productionOverproductionRateRepositoryProvider)
-          .list(status: _status, page: page);
-      if (mounted && request == _request) setState(() => _data = data);
+      final repository = ref.read(
+        productionOverproductionRateRepositoryProvider,
+      );
+      final data = await repository.list(
+        status: requestedStatus,
+        page: page,
+        sort: requestedSort,
+        order: requestedOrder,
+        planNo: requestedPlan,
+        segmentCode: requestedSegment,
+      );
+      // 单号 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。
+      Map<String, List<MasterFacetBucket>> facets = const {};
+      try {
+        facets = await repository.facets(status: requestedStatus);
+      } catch (_) {
+        facets = const {};
+      }
+      if (mounted && request == _request) {
+        setState(() {
+          _docNoFacets = facets;
+          _data = data;
+        });
+      }
     } on ApiException catch (error) {
       if (mounted && request == _request) {
         setState(() => _error = error.message);
@@ -111,12 +147,15 @@ class _RateListState
                       key: 'plan',
                       label: '计划号',
                       width: 150,
+                      // 2026-09-25 单号列统一：可排序（服务端白名单 plan）+ 值筛选（facets）。
+                      sortable: true,
                       value: (row) => row.planNo,
                     ),
                     MasterColumnDef(
                       key: 'segment',
                       label: '工单号',
                       width: 145,
+                      sortable: true,
                       value: (row) => row.segmentCode,
                     ),
                     MasterColumnDef(
@@ -151,10 +190,38 @@ class _RateListState
                     ),
                   ],
                   items: _data?.items ?? const [],
-                  facets: const {},
+                  // 2026-09-25 单号列统一：单号值来自服务端 facets（与列表同一过滤上下文）。
+                  facets: {
+                    'plan': _docNoFacets['plan'] ?? const [],
+                    'segment': _docNoFacets['segment'] ?? const [],
+                  },
                   nullCounts: const {},
-                  filters: const {},
-                  onFilterChanged: (_, _) {},
+                  filters: {'plan': ?_planFilter, 'segment': ?_segmentFilter},
+                  onFilterChanged: (key, value) {
+                    // 2026-09-25 单号列统一：单号值筛选走服务端精确匹配。
+                    setState(() {
+                      final next = value?.trim();
+                      final normalized = next == null || next.isEmpty
+                          ? null
+                          : next;
+                      if (key == 'plan') {
+                        _planFilter = normalized;
+                      } else if (key == 'segment') {
+                        _segmentFilter = normalized;
+                      }
+                    });
+                    _load();
+                  },
+                  // 2026-09-25 单号列统一：表头排序走服务端白名单（plan/segment）。
+                  sortColumn: _sortColumn,
+                  sortAscending: _sortAscending,
+                  onSortChange: (column, ascending) {
+                    setState(() {
+                      _sortColumn = column;
+                      _sortAscending = ascending;
+                    });
+                    _load();
+                  },
                   isLoading: _loading,
                   error: _error,
                   onRetry: () => _load(),

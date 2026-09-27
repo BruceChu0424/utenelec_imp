@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -50,12 +51,30 @@ public class SalesOrderFinanceConfirmController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String rejected,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) Boolean changesOnly) {
+            @RequestParam(required = false) Boolean changesOnly,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String billNo) {
         // 缺省=仅未驳回（可办待办，与徽标同口径）；rejected=all 全部；true=仅已驳回。
+        // 2026-09-25 单号列统一：sort/order 表头排序 + 销售单号表头值筛选。
         Boolean filter = rejected == null || rejected.isBlank()
                 ? Boolean.FALSE
                 : "all".equalsIgnoreCase(rejected) ? null : Boolean.valueOf(rejected);
-        return service.pending(page, size, filter, keyword, changesOnly);
+        return service.pending(page, size, filter, keyword, changesOnly, sort, order, billNo);
+    }
+
+    /** 销售单号 facets（2026-09-25 单号列统一）：{billNo:[各销售单号]}——
+     *  同列表过滤口径（不含 billNo 自身值筛选）。 */
+    @GetMapping("/finance-confirmation/pending/facets")
+    @PreAuthorize("hasAuthority('sales_order_finance:view')")
+    public Map<String, List<Map<String, Object>>> pendingFacets(
+            @RequestParam(required = false) String rejected,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Boolean changesOnly) {
+        Boolean filter = rejected == null || rejected.isBlank()
+                ? Boolean.FALSE
+                : "all".equalsIgnoreCase(rejected) ? null : Boolean.valueOf(rejected);
+        return service.pendingFacets(filter, keyword, changesOnly);
     }
 
     @GetMapping("/finance-confirmation/count")

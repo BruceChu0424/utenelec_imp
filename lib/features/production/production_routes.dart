@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/router/route_names.dart';
+import '../../shared/drafts/form_draft_navigation.dart';
 import 'config/production_report_config.dart';
 import 'models/production_material_analysis.dart';
 import 'pages/production_analysis_sales_order_page.dart';
@@ -25,60 +26,85 @@ import 'pages/production_material_increment_pages.dart';
 import 'pages/production_actual_output_supplement_page.dart';
 import 'repositories/production_actual_output_supplement_repository.dart';
 import 'pages/production_draw_request_page.dart';
+import 'pages/production_material_discovery_request_page.dart';
 import 'pages/production_execution_batch_page.dart';
+import 'widgets/production_material_return_request_sheet.dart';
+import 'widgets/production_overproduction_rate_request_dialog.dart';
 
 /// 生产模块公开路由清单。
 ///
 /// 静态路径必须排在带 `:id` 的参数路径前，避免 Web 深链误匹配。
 final List<RouteBase> productionRoutes = [
-  GoRoute(
+  DraftAwareGoRoute(
+    path: ProductionMaterialReturnRequestPage.route,
+    builder: (_, state) => ProductionMaterialReturnRequestPage(
+      planId: state.uri.queryParameters['planId'] ?? '',
+      executionSegmentId: state.uri.queryParameters['executionSegmentId'],
+    ),
+  ),
+  DraftAwareGoRoute(
+    path: ProductionOverproductionRateRequestEditor.route,
+    builder: (_, state) => ProductionOverproductionRateRequestEditor(
+      segmentId: state.uri.queryParameters['segmentId'],
+    ),
+  ),
+  DraftAwareGoRoute(
+    path: ProductionMaterialDiscoveryRequestPage.route,
+    builder: (_, state) => ProductionMaterialDiscoveryRequestPage(
+      segmentIds:
+          state.uri.queryParameters['segmentIds']?.split(',') ?? const [],
+      segmentCodes:
+          state.uri.queryParameters['segmentCodes']?.split(',') ?? const [],
+    ),
+  ),
+  DraftAwareGoRoute(
     path: RouteName.productionMaterialIncrementRequests,
     builder: (_, _) => const ProductionMaterialIncrementListPage(),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: '/production/material-increment-requests/new',
     builder: (_, state) => ProductionMaterialIncrementCreatePage(
       segmentId: state.uri.queryParameters['segmentId'] ?? '',
     ),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: '/production/material-increment-requests/:id',
     builder: (_, state) =>
         ProductionMaterialIncrementDetailPage(id: state.pathParameters['id']!),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: '/production/actual-output-supplements/:id',
     builder: (_, state) => ProductionActualOutputSupplementPage(
       id: state.pathParameters['id']!,
       returnToReport: state.extra == 'return-to-report',
     ),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: RouteName.productionOverproductionRateRequests,
     builder: (_, _) => const ProductionOverproductionRateListPage(),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: '/production/overproduction-rate-requests/:id',
     builder: (_, state) =>
         ProductionOverproductionRateDetailPage(id: state.pathParameters['id']!),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: RouteName.production,
     name: 'production-hub',
     builder: (_, _) => const ProductionHubPage(),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: RouteName.productionSchedule,
     name: 'production-schedule',
     // 深链预选「待排产」大类段（2026-09-03 分类范式：默认不选，路由偏好例外）。
     builder: (_, _) => const ProductionBoardPage(initialTab: 0),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: RouteName.productionProgress,
     name: 'production-progress',
     builder: (_, _) => const ProductionBoardPage(initialTab: 1),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: RouteName.productionBatchDraw,
     name: 'production-batch-draw',
     builder: (_, state) => ProductionExecutionBatchPage(
@@ -86,7 +112,7 @@ final List<RouteBase> productionRoutes = [
       expectedVersion: int.tryParse(state.uri.queryParameters['version'] ?? ''),
     ),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: RouteName.productionDrawRequest,
     name: 'production-draw-request',
     builder: (_, state) {
@@ -104,12 +130,12 @@ final List<RouteBase> productionRoutes = [
       );
     },
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: RouteName.productionWorkshopTasks,
     name: 'production-workshop-tasks',
     builder: (_, _) => const ProductionWorkshopTasksPage(),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: RouteName.productionMaterialAnalysis,
     name: 'production-material-analysis',
     builder: (_, state) {
@@ -125,7 +151,7 @@ final List<RouteBase> productionRoutes = [
       return ProductionMaterialAnalysisPage(seed: seed);
     },
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: RouteName.productionMaterialAnalysisHistory,
     name: 'production-material-analysis-history',
     // 旧「section=subcontract-preparations」深链：委外准备中心已退役
@@ -140,7 +166,7 @@ final List<RouteBase> productionRoutes = [
   ),
   // 关联销售订货单只读货品清单(ADR-088)。静态段 summary 在前，
   // 本路由的第三段是固定字面量 sales-orders，两条互不遮挡。
-  GoRoute(
+  DraftAwareGoRoute(
     path: '/production/material-analyses/:id/sales-orders/:orderId',
     name: 'production-analysis-sales-order',
     builder: (_, state) => ProductionAnalysisSalesOrderPage(
@@ -151,7 +177,7 @@ final List<RouteBase> productionRoutes = [
       orderId: state.pathParameters['orderId']!,
     ),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: '/production/material-analyses/:id/summary',
     name: 'production-material-analysis-summary',
     builder: (_, state) {
@@ -164,18 +190,18 @@ final List<RouteBase> productionRoutes = [
       );
     },
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: '/production/plans/new',
     name: 'production-plan-new',
     redirect: (_, _) => RouteName.productionMaterialAnalysis,
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: '/production/plans/:id/edit',
     name: 'production-plan-edit',
     builder: (_, state) =>
         ProductionPlanEditPage(id: state.pathParameters['id']),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: '/production/plans/:id',
     name: 'production-plan-detail',
     builder: (_, state) {
@@ -188,7 +214,7 @@ final List<RouteBase> productionRoutes = [
       );
     },
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: RouteName.productionPlanList,
     name: 'production-plan-list',
     // ?status=draft：新建页「草稿(N)」按钮深链，直接落在草稿段。
@@ -196,7 +222,7 @@ final List<RouteBase> productionRoutes = [
       initialStatus: state.uri.queryParameters['status'],
     ),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: '/production/daily-reports/new',
     name: 'production-daily-report-new',
     builder: (_, state) {
@@ -216,50 +242,55 @@ final List<RouteBase> productionRoutes = [
         initialExecutionSegmentId:
             state.uri.queryParameters['executionSegmentId'],
         initialExecutionSegmentIds: batch ?? const [],
-        // 保存后的落点：从车间任务 push 进来（from=workshop-tasks）保存成功
-        // pop 回任务页（列表+徽章随之刷新）；其余入口照旧 replace 成详情页。
+        // 返回已保存日报 ID，车间任务页继续打开详情审核。
         returnToWorkshopTasks:
             state.uri.queryParameters['from'] == 'workshop-tasks',
       );
     },
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: '/production/daily-reports/:id/edit',
     name: 'production-daily-report-edit',
-    builder: (_, state) =>
-        ProductionDailyReportEditPage(id: state.pathParameters['id']),
+    builder: (_, state) => ProductionDailyReportEditPage(
+      id: state.pathParameters['id'],
+      returnToWorkshopTasks:
+          state.uri.queryParameters['from'] == 'workshop-tasks',
+    ),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: '/production/daily-reports/:id',
     name: 'production-daily-report-detail',
-    builder: (_, state) =>
-        ProductionDailyReportDetailPage(id: state.pathParameters['id']!),
+    builder: (_, state) => ProductionDailyReportDetailPage(
+      id: state.pathParameters['id']!,
+      returnToWorkshopTasks:
+          state.uri.queryParameters['from'] == 'workshop-tasks',
+    ),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: RouteName.productionDailyReportList,
     name: 'production-daily-report-list',
     builder: (_, state) => ProductionDailyReportListPage(
       initialStatus: state.uri.queryParameters['status'],
     ),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: RoutePath.productionReport('plan-detail'),
     name: 'production-report-plan-detail',
     builder: (_, _) =>
         const ProductionReportPage(kind: ProductionReportKind.detail),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: RoutePath.productionReport('plan-summary'),
     name: 'production-report-plan-summary',
     builder: (_, _) =>
         const ProductionReportPage(kind: ProductionReportKind.summary),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: RouteName.productionWhereUsed,
     name: 'production-where-used',
     builder: (_, _) => const WhereUsedReportPage(),
   ),
-  GoRoute(
+  DraftAwareGoRoute(
     path: RouteName.productionChainHealth,
     name: 'production-chain-health',
     builder: (_, _) => const ProductionChainHealthPage(),

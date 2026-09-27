@@ -8,9 +8,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../models/system_setting_entry.dart';
+import '../models/system_updater_status.dart';
 
 abstract interface class SystemSettingRepository {
   Future<List<SystemSettingEntry>> list();
+  Future<SystemUpdaterStatus> updaterStatus();
   Future<List<SystemSettingEntry>> updateBatch(
     List<({String key, String value, String expectedValue})> changes,
   );
@@ -21,14 +23,28 @@ class DioSystemSettingRepository implements SystemSettingRepository {
   final ApiClient api;
 
   @override
+  Future<SystemUpdaterStatus> updaterStatus() async =>
+      SystemUpdaterStatus.fromJson(
+        await api.get('${ApiEndpoints.adminSystemSettings}/updater-status'),
+      );
+
+  @override
   Future<List<SystemSettingEntry>> updateBatch(
     List<({String key, String value, String expectedValue})> changes,
   ) async {
+    final submitted = [
+      for (final change in changes)
+        (
+          key: change.key,
+          value: _submittedValue(change.key, change.value),
+          expectedValue: change.expectedValue,
+        ),
+    ];
     final rows = await api.putList(
       ApiEndpoints.adminSystemSettings,
       body: {
         'changes': [
-          for (final change in changes)
+          for (final change in submitted)
             {
               'key': change.key,
               'value': change.value,
@@ -41,12 +57,25 @@ class DioSystemSettingRepository implements SystemSettingRepository {
     final byKey = {for (final entry in saved) entry.key: entry};
     if (saved.length != changes.length ||
         byKey.length != changes.length ||
-        changes.any(
+        submitted.any(
           (change) => byKey[change.key]?.value != change.value.trim(),
         )) {
       throw const FormatException('Incomplete system settings batch response');
     }
     return saved;
+  }
+
+  // This setting is stored as a canonical decimal so equivalent edits do not
+  // reset the server scheduler's anchor. Preserve the exact expected old value
+  // and keep response verification strict for every other setting.
+  static String _submittedValue(String key, String value) {
+    if (key != 'updater_check_interval_days') return value;
+    final trimmed = value.trim();
+    if (!RegExp(r'^[+-]?[0-9]+$').hasMatch(trimmed)) return value;
+    final interval = int.tryParse(trimmed);
+    return interval != null && interval >= 0 && interval <= 365
+        ? interval.toString()
+        : value;
   }
 
   @override

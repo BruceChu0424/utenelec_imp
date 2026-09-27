@@ -22,6 +22,7 @@ import com.uten.imp.features.production.plan.dto.PlanSaveRequest;
 import com.uten.imp.features.production.plan.dto.PlanTraceLink;
 import com.uten.imp.features.production.mrp.MrpRow;
 import com.uten.imp.features.production.mrp.MrpService;
+import com.uten.imp.features.production.mrp.PlanningPackageResult;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.features.production.mrp.ProductionPlanningDraftService;
 import com.uten.imp.common.saleschain.SalesOrderChainSql;
@@ -47,6 +48,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -136,6 +138,34 @@ public class ProductionPlanService {
 
     @Transactional
     public PlanDetail create(PlanSaveRequest req) {
+        CreatedDraft created = createDraft(req);
+        return detail(created.plan().getId());
+    }
+
+    /** Persisted facts needed by the analysis command, without six unused trace projections. */
+    public record CommandResult(UUID id, String billNo, BigDecimal plannedQty) { }
+    private record CreatedDraft(ProductionPlan plan, List<PlanItemDto> items) { }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public CommandResult createForAnalysis(PlanSaveRequest req) {
+        CreatedDraft created = createDraft(req);
+        return commandResult(created.plan(), created.items());
+    }
+
+    @Transactional(readOnly = true)
+    public CommandResult readForAnalysis(UUID id) {
+        ProductionPlan plan = requirePlan(id);
+        access.requireReadable(plan.getMakerId(), "生产计划不存在", "production_plan:approve");
+        return commandResult(plan, itemRepo.findByPlanIdOrderByLineNoAsc(id).stream().map(this::toItemDto).toList());
+    }
+
+    private static CommandResult commandResult(ProductionPlan plan, List<PlanItemDto> items) {
+        return new CommandResult(plan.getId(), plan.getBillNo(), items.stream()
+                .map(item -> item.getQty() == null ? BigDecimal.ZERO : item.getQty())
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+    }
+
+    private CreatedDraft createDraft(PlanSaveRequest req) {
         tx.bind();
         mutationFootprint.lockPlan(null, requestedFootprint(req));
         ProductionPlan p = new ProductionPlan();
@@ -146,9 +176,9 @@ public class ProductionPlanService {
         // The database product-number allocator locks this persisted plan and
         // reads its server-issued bill_no. Do not rely on an implicit JPA flush.
         planRepo.flush();
-        saveItems(p, req.getItems());
+        List<PlanItemDto> items = saveItems(p, req.getItems());
         recomputeClosed(p.getId());
-        return detail(p.getId());
+        return new CreatedDraft(p, items);
     }
 
     @Transactional
@@ -214,14 +244,24 @@ public class ProductionPlanService {
         return detail(id);
     }
 
-    private void approveLocked(UUID id) {
+    /** Same approval and permission checks, without rebuilding a detail the caller never uses. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<PlanningPackageResult> approveForAnalysis(UUID id) {
+        tx.bind();
+        if (requirePlan(id).getMaterialAnalysisId() == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "此入口只用于物料分析来源计划的原子下达");
+        }
+        return approveLocked(id);
+    }
+
+    private Optional<PlanningPackageResult> approveLocked(UUID id) {
         ProductionPlan observed=requirePlan(id);
         if(observed.getActualOutputSupplementRequestId()!=null) {
             actualOutputSupplements.getObject().approve(observed.getActualOutputSupplementRequestId(),
                     new com.uten.imp.features.production.dailyreport.ActualOutputSupplementContracts.ApproveRequest("PLAN-APPROVE-SUPPLEMENT-"+id));
-            return;
+            return Optional.empty();
         }
-        approveOrdinaryLocked(id);
+        return approveOrdinaryLocked(id);
     }
 
     @Transactional
@@ -234,7 +274,7 @@ public class ProductionPlanService {
         approveOrdinaryLocked(planId);
     }
 
-    private void approveOrdinaryLocked(UUID id) {
+    private Optional<PlanningPackageResult> approveOrdinaryLocked(UUID id) {
         ProductionPlan p = requirePlanForUpdate(id);
         access.requireWritable(
                 p.getMakerId(), "无权审核此生产计划", "production_plan:approve");
@@ -242,19 +282,21 @@ public class ProductionPlanService {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         if (p.isStopped() || p.isCanceled())
             throw new ApiException(ErrorCode.BUSINESS, "已中止或已取消的生产计划不可审核");
-        if (itemRepo.findByPlanIdOrderByLineNoAsc(id).isEmpty())
+        List<ProductionPlanItem> items = itemRepo.findByPlanIdOrderByLineNoAsc(id);
+        if (items.isEmpty())
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
-        validateMaterialAnalysisPlanForApproval(id);
+        boolean hasUnallocatedAnalysisDemand = validateMaterialAnalysisPlanForApproval(p);
         p.setStatus(STATUS_APPROVED);
         p.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         p.setApprovedAt(OffsetDateTime.now());
         planRepo.save(p);
         planRepo.flush();
-        boolean shortage = linkOrderItems(id); // shortage 仅表示分配已核验后的真实及时缺口
+        boolean shortage = linkOrderItems(id, items, hasUnallocatedAnalysisDemand); // shortage 仅表示分配已核验后的真实及时缺口
         linkRepo.flush();
         recomputeClosed(id);
-        planningDraftService.applyActive(id);
+        var applied = planningDraftService.applyActive(id);
         chainNotice.notifyPlanScheduled(id, shortage); // 未核验不伪装成缺料；真实缺料才通知采购/调度
+        return applied;
     }
 
     /**
@@ -348,20 +390,8 @@ public class ProductionPlanService {
     }
 
     /** Re-lock and compare the immutable analysis demand, plan line and conservation link. */
-    private void validateMaterialAnalysisPlanForApproval(UUID planId) {
-        List<Object[]> analysisHeaders = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
-                SELECT analysis.id, plan.material_analysis_item_id
-                FROM production_plans plan
-                JOIN production_material_analyses analysis
-                  ON analysis.id = plan.material_analysis_id
-                WHERE plan.id = :id
-                FOR UPDATE OF analysis
-                """).setParameter("id", planId));
-        if (analysisHeaders.isEmpty()) return;
-        materialAnalysisService.requireCurrentBomSnapshot(
-                (UUID) analysisHeaders.getFirst()[0],
-                java.util.Set.of((UUID) analysisHeaders.getFirst()[1]));
+    private boolean validateMaterialAnalysisPlanForApproval(ProductionPlan lockedPlan) {
+        if (lockedPlan.getMaterialAnalysisId() == null) return false;
         List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                         SELECT p.material_analysis_id, p.material_analysis_item_id,
@@ -373,8 +403,15 @@ public class ProductionPlanService {
                                    + COALESCE(analysis_link.public_surplus_qty, 0),
                                analysis_link.allocation_status,
                                analysis_link.submitted_qty,
-                               COALESCE(analysis_link.public_surplus_qty, 0)
+                               COALESCE(analysis_link.public_surplus_qty, 0),
+                               EXISTS(SELECT 1 FROM production_material_demands demand
+                                   JOIN production_planning_packages package ON package.id=demand.package_id
+                                     AND package.status='CONFIRMED' AND NOT package.is_deleted
+                                   WHERE demand.plan_id=p.id AND NOT demand.is_deleted
+                                     AND demand.status NOT IN('RELEASED','REVERSED')) AS has_formal_demands,
+                               ai.source_type
                         FROM production_plans p
+                        JOIN production_material_analyses analysis ON analysis.id=p.material_analysis_id
                         JOIN production_material_analysis_items ai
                           ON ai.analysis_id = p.material_analysis_id
                          AND ai.id = p.material_analysis_item_id
@@ -388,8 +425,8 @@ public class ProductionPlanService {
                         LEFT JOIN sales_order_items soi
                           ON soi.id = ai.sales_order_item_id AND soi.is_deleted = FALSE
                         WHERE p.id = :id
-                        FOR UPDATE OF ai, analysis_link, plan_item
-                        """).setParameter("id", planId));
+                        FOR UPDATE OF analysis, ai, analysis_link, plan_item
+                        """).setParameter("id", lockedPlan.getId()));
         if (rows.isEmpty()) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "物料分析计划缺少有效需求、计划明细或提交守恒关联");
@@ -399,6 +436,7 @@ public class ProductionPlanService {
                     "物料分析计划必须且只能包含一条有效计划明细");
         }
         Object[] row = rows.getFirst();
+        materialAnalysisService.requireCurrentBomSnapshot((UUID) row[0],java.util.Set.of((UUID) row[1]));
         BigDecimal sourceRate = normalizedPositiveRate(bd(row[5]), "物料分析需求");
         BigDecimal planRate = normalizedPositiveRate(bd(row[10]), "生产计划明细");
         BigDecimal planQty = requirePositiveAllocation(bd(row[12]));
@@ -426,6 +464,11 @@ public class ProductionPlanService {
             throw new ApiException(ErrorCode.CONFLICT,
                     "物料分析需求、计划明细或提交数量已不一致，请释放后重新生成");
         }
+        // Ordinary child anchors keep their BOM on the original material tree;
+        // requireCurrentBomSnapshot deliberately does not revalidate their tree.
+        // Preserve the complete MRP path for those anchors.
+        return Boolean.FALSE.equals(row[17])
+                && !java.util.Set.of("MAKE_COMPONENT", "SUBCONTRACT_MAKE").contains(row[18]);
     }
 
     /**
@@ -462,12 +505,22 @@ public class ProductionPlanService {
      * 未排量归零才落 未核验或真实短缺→3待物料 / 已分配且及时齐套→4已排产。
      * @return 是否为已核验的真实及时缺口；未核验返回 false，避免误发采购通知
      */
-    private boolean linkOrderItems(UUID planId) {
-        List<ProductionPlanItem> items = itemRepo.findByPlanIdOrderByLineNoAsc(planId);
+    private boolean linkOrderItems(UUID planId, List<ProductionPlanItem> items, boolean unallocatedAnalysisDemand) {
         if (items.isEmpty()) return false;
-        List<PlanAllocation> allocations = collectAllocations(items, analysisSubmittedQtyByPlanItem(planId));
+        Map<UUID, BigDecimal> submitted = items.stream().anyMatch(item -> item.getSalesOrderItemId() != null)
+                ? analysisSubmittedQtyByPlanItem(planId) : Map.of();
+        List<PlanAllocation> allocations = collectAllocations(items, submitted);
         Map<UUID, LockedOrderItem> lockedOrderItems = lockAndValidateSourceOrderItems(allocations);
-        MaterialDecision material = materialDecision(planId);
+        MaterialDecision material;
+        if (unallocatedAnalysisDemand) {
+            // No effective formal demand means allocationBackedDimensions is empty:
+            // the full MRP projection can only report UNVERIFIED. Keep its graph
+            // validation, then let applyActive/confirm validate and reserve live stock.
+            mrpService.validatePlanBomGraph(planId);
+            material = MaterialDecision.UNVERIFIED;
+        } else {
+            material = materialDecision(planId);
+        }
         short chain = material == MaterialDecision.READY ? CHAIN_PLANNED : CHAIN_WAIT_MATERIAL;
         for (PlanAllocation allocation : allocations) {
             applyAllocation(allocation, lockedOrderItems.get(allocation.orderItemId()), chain);
@@ -519,10 +572,23 @@ public class ProductionPlanService {
     private List<PlanAllocation> collectAllocations(
             List<ProductionPlanItem> items,
             Map<UUID, BigDecimal> analysisSubmittedByItem) {
+        Map<UUID,BigDecimal> planQuantities=new HashMap<>();
+        for(ProductionPlanItem item:items)planQuantities.put(item.getId(),validatePlanItemForApproval(item));
+        // Read active and retired linkage together. A removed sales linkage is
+        // still evidence: it must never silently become an internal plan.
+        List<PlanOrderItemLink> observedLinks=em.createQuery("""
+                SELECT link FROM PlanOrderItemLink link WHERE link.planItemId IN :itemIds
+                """,PlanOrderItemLink.class).setParameter("itemIds",items.stream().map(ProductionPlanItem::getId).toList()).getResultList();
+        Map<UUID,List<PlanOrderItemLink>> activeByItem=new HashMap<>();Set<UUID> historicalItems=new HashSet<>();
+        for(PlanOrderItemLink link:observedLinks) {
+            if(!planQuantities.containsKey(link.getPlanItemId()))throw new ApiException(ErrorCode.CONFLICT,"排产关联不属于当前计划明细");
+            historicalItems.add(link.getPlanItemId());
+            if(!link.isDeleted())activeByItem.computeIfAbsent(link.getPlanItemId(),ignored->new ArrayList<>()).add(link);
+        }
         List<PlanAllocation> allocations = new ArrayList<>();
         for (ProductionPlanItem item : items) {
-            BigDecimal planQty = validatePlanItemForApproval(item);
-            List<PlanOrderItemLink> links = linkRepo.findActiveByPlanItemIds(List.of(item.getId()));
+            BigDecimal planQty = planQuantities.get(item.getId());
+            List<PlanOrderItemLink> links = activeByItem.getOrDefault(item.getId(),List.of());
             if (!links.isEmpty()) {
                 if (item.getSalesOrderItemId() != null
                         && (links.size() != 1
@@ -571,7 +637,7 @@ public class ProductionPlanService {
                 }
                 allocations.add(new PlanAllocation(
                         item, item.getSalesOrderItemId(), allocatedQty, null));
-            } else if (hasHistoricalOrderLinks(item.getId())) {
+            } else if (historicalItems.contains(item.getId())) {
                 throw new ApiException(ErrorCode.CONFLICT,
                         "计划明细的销售来源分摊已失效，不可降级为无来源计划审核");
             }
@@ -579,16 +645,6 @@ public class ProductionPlanService {
         return allocations;
     }
 
-    private boolean hasHistoricalOrderLinks(UUID planItemId) {
-        Number count = (Number) em.createNativeQuery("""
-                        SELECT COUNT(*)
-                        FROM plan_order_item_links
-                        WHERE plan_item_id = :itemId
-                        """)
-                .setParameter("itemId", planItemId)
-                .getSingleResult();
-        return count.longValue() > 0;
-    }
     /**
      * Different production plans can allocate the same sales-order line.
      * Lock the order headers and lines in stable order before validating any
@@ -1884,8 +1940,9 @@ public class ProductionPlanService {
 
     private ProductionPlan requirePlanForUpdate(UUID id, List<ProductionPlanMutationFootprintService.RequestedLine> requested) {
         mutationFootprint.lockPlan(id, requested);
-        ProductionPlan plan = em.find(
-                ProductionPlan.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        // The footprint already locks the plan row. Refresh obtains the current
+        // locked state once, rather than upgrading the same managed instance first.
+        ProductionPlan plan = em.find(ProductionPlan.class, id);
         if (plan != null) em.refresh(plan, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         if (plan == null || plan.isDeleted()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "生产计划单不存在");

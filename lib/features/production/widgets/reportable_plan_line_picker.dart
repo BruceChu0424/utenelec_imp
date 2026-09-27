@@ -323,7 +323,10 @@ class _ReportablePlanLineSheetState
             cellBuilder: (_, item) => UtenGoodsAttributeCell(item.colorName),
           ),
           MasterColumnDef(
+            // 2026-09-25 单号列统一：取件器列表就地排序+按值筛选。
             key: 'order',
+            sortable: true,
+            filterFromRows: true,
             label: '销售订单/客户',
             width: 170,
             value: (item) => item.orderNo == null

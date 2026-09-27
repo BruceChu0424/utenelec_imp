@@ -6,6 +6,8 @@
 // 分段：待判定（红徽章；含分批等待已过预计到齐日）/ 分批等待中（中性括号）/
 // 历史记录（时间门控，ADR-066）。严重短交置顶并加「严重」标签。
 // 入口：委外 hub 卡片、任务中心状态列「回厂短交待判定」（?orderId=）、通知卡片（?caseId=）。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -26,6 +28,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../../../shared/models/subcontract_short_delivery.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/subcontract_doc_config.dart';
@@ -91,6 +94,11 @@ class _SubcontractShortDeliveryPageState
       SubcontractShortDeliverySegment.pending;
   UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
 
+  /// 表头排序 + 订货单号列值筛选 + facets 桶 + 防串台代数
+  /// （2026-09-25 单号列统一，共享状态见 MasterServerColumnFilters）；
+  /// 排序列 key 见 [_kSortFields]，null = 分段默认序。
+  final _columnFilters = MasterServerColumnFilters();
+
   SubcontractShortDeliveryRepository get _repo =>
       widget.repository ?? ref.read(subcontractShortDeliveryRepositoryProvider);
 
@@ -134,10 +142,17 @@ class _SubcontractShortDeliveryPageState
               : ChinaDateTime.formatDate(range.start),
           dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
           page: page ?? _page,
+          sort: _kSortFields[_columnFilters.sortColumn],
+          order: _columnFilters.sortColumn == null
+              ? null
+              : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+          orderBillNo: _columnFilters['orderBillNo'],
         );
       }
       final counts = await _repo.counts();
       if (!mounted || requestId != _requestId) return;
+      // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
+      unawaited(_loadOrderBillNoFacets());
       setState(() {
         _result = next;
         _counts = counts;
@@ -151,6 +166,54 @@ class _SubcontractShortDeliveryPageState
         _error = error is ApiException ? error.message : '短交案件加载失败，请稍后重试';
       });
     }
+  }
+
+  /// 表头排序键 → 服务端 sort 参数（2026-09-25 单号列统一；未列出的列不可排序）。
+  static const _kSortFields = <String, String>{'orderBillNo': 'orderBillNo'};
+
+  /// 表头排序变化：服务端重排整个结果集，回第 1 页。
+  void _onSortChange(String? column, bool ascending) {
+    final next = column != null && _kSortFields.containsKey(column)
+        ? column
+        : null;
+    if (next == _columnFilters.sortColumn &&
+        (next == null || ascending == _columnFilters.sortAscending)) {
+      return;
+    }
+    _columnFilters.handleSortChanged(
+      next,
+      ascending,
+      onChanged: () {
+        if (mounted) setState(() {});
+        _load(page: 1);
+      },
+    );
+  }
+
+  /// 订货单号 facets（2026-09-25 单号列统一）：与列表同过滤口径
+  /// （不含单号列自身值筛选）。
+  Future<void> _loadOrderBillNoFacets() {
+    if (_historyBlocked) return Future.value();
+    final range = _seg == SubcontractShortDeliverySegment.history
+        ? _historyTime.range
+        : null;
+    return _columnFilters.loadFacets(
+      () async => {
+        'orderBillNo': await _repo.orderBillNoFacets(
+          segment: _seg.api,
+          keyword: _keyword,
+          supplierId: _supplierId,
+          orderId: _orderId,
+          dateFrom: range == null
+              ? null
+              : ChinaDateTime.formatDate(range.start),
+          dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+        ),
+      },
+      onLoaded: () {
+        if (mounted) setState(() {});
+      },
+    );
   }
 
   void _selectSeg(SubcontractShortDeliverySegment seg) {
@@ -404,6 +467,7 @@ class _SubcontractShortDeliveryPageState
           key: 'orderBillNo',
           label: '订货单号',
           width: 140,
+          sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
           value: (c) => c.orderBillNo,
         ),
         MasterColumnDef(
@@ -615,10 +679,26 @@ class _SubcontractShortDeliveryPageState
           ),
       ],
       items: result?.items ?? const [],
-      facets: const {},
+      // 订货单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
+      facets: {'orderBillNo': _columnFilters.bucketOf('orderBillNo')},
       nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
+      filters: {'orderBillNo': _columnFilters['orderBillNo']},
+      // 表头排序走服务端（2026-09-25 单号列统一）。
+      sortColumn: _columnFilters.sortColumn,
+      sortAscending: _columnFilters.sortAscending,
+      onSortChange: _onSortChange,
+      onFilterChanged: (key, value) {
+        if (key == 'orderBillNo') {
+          _columnFilters.handleFilterChanged(
+            key,
+            value,
+            onChanged: () {
+              if (mounted) setState(() {});
+              _load(page: 1);
+            },
+          );
+        }
+      },
       onRowTap: (c) => _openDetailById(c.id),
       canOpenRow: (_) => true,
       rowColor: (c) => pendingSeg && c.isBelowFloor

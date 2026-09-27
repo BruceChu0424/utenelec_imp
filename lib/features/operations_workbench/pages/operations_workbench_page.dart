@@ -39,6 +39,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/widgets/metric_filter_cards.dart' show metricToneColor;
+import '../../../shared/providers/draft_counts_provider.dart';
+import '../../../shared/drafts/form_draft_category.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/operations_workbench.dart';
@@ -64,10 +66,15 @@ class OperationsWorkbenchPage extends ConsumerStatefulWidget {
     super.key,
     required this.department,
     this.repository,
+    this.draftCategoryBuilder,
   });
 
   final OperationsWorkbenchDepartment department;
   final OperationsWorkbenchGateway? repository;
+
+  /// The application router composes department-owned draft content here.
+  /// The shared workbench does not depend on the purchase feature's UI.
+  final WidgetBuilder? draftCategoryBuilder;
 
   @override
   ConsumerState<OperationsWorkbenchPage> createState() =>
@@ -85,6 +92,7 @@ class _OperationsWorkbenchPageState
 
   /// 当前选中阶段分段；null = 未选择引导态（内容不加载）。
   _WorkbenchSeg? _seg;
+  static const _draftStage = '__DRAFTS__';
 
   /// 异常小类；null = 未选择（不附加过滤）。
   String? _exception;
@@ -186,6 +194,7 @@ class _OperationsWorkbenchPageState
 
   Future<void> _load({int? page, int size = 50}) async {
     if (!mounted) return;
+    if (_seg?.code == _draftStage) return;
     final requestId = ++_requestId;
     final seg = _seg;
     final range = seg?.history == true ? _historyTime.range : null;
@@ -491,29 +500,103 @@ class _OperationsWorkbenchPageState
     );
   }
 
+  Widget _buildStageToolbar(Map<String, int> statusCounts) {
+    final seg = _seg;
+    return UtenFilterToolbar<_WorkbenchSeg>(
+      segmentsKey: Key(
+        'operations-workbench-stages-${widget.department.apiValue}',
+      ),
+      segments: [
+        if (widget.department == OperationsWorkbenchDepartment.purchase &&
+            widget.draftCategoryBuilder != null)
+          UtenFilterSegment(
+            value: const _WorkbenchSeg.stage(_draftStage),
+            label: '草稿',
+            count:
+                ref.watch(draftCountsProvider).sumOf(const [
+                  DraftDocKind.purchaseOrder,
+                  DraftDocKind.purchaseReceipt,
+                  DraftDocKind.purchaseReturn,
+                ]) +
+                ref.watch(
+                  formDraftCategoryCountProvider(
+                    const FormDraftCategoryScope(
+                      module: BadgeModule.purchase,
+                      routePrefix: '/basicinfo/',
+                    ),
+                  ),
+                ),
+            countForm: UtenSegmentCountForm.actionable,
+          ),
+        for (final stage in _stages)
+          UtenFilterSegment(
+            value: _WorkbenchSeg.stage(stage.code),
+            label: stage.label,
+            // 「进行中」是大类, 底下的异常小类行里有要本部门动手的档(财务驳回),
+            // 所以这一段挂两枚: 黄 = 本类在跑的全量(与列表行数相等), 红 = 其中
+            // 等我动手的那几张。准则 §四之七 第 1 条(2026-09-21 追加): 大类行
+            // 只挂一种颜色时, 另一色的数字点进去才看得到, 等于在大类行上蒸发。
+            // 两枚**刻意重叠**(被驳回的单本来就在跑) —— 跨色不算双计, 别改成相减,
+            // 相减会让黄数与「进行中」列表行数对不上。
+            count: stage.code == _inProgressStage
+                ? statusCounts[_financeRejectedStatus]
+                : statusCounts[stage.code],
+            countForm: stage.code == _inProgressStage
+                ? UtenSegmentCountForm.actionable
+                : _stageCountForm(stage.code),
+            inProgressCount: stage.code == _inProgressStage
+                ? statusCounts[_inProgressStage]
+                : null,
+          ),
+        const UtenFilterSegment(value: _WorkbenchSeg.history(), label: '历史记录'),
+      ],
+      selected: seg == null ? const {} : {seg},
+      onSelectionChanged: _selectSeg,
+      searchHint: '搜索任务号、来源单号、货品或往来单位',
+      initialSearchValue: _keyword,
+      onSearchInputChanged: (_) => _requestId++,
+      onSearchChanged: _applyKeyword,
+    );
+  }
+
   Widget _buildBody(
     BuildContext context,
     _SelectionPrimaryAction? selectionAction,
   ) {
+    if (_seg?.code == _draftStage) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildStageToolbar(_data?.summary.statusCounts ?? const {}),
+          Expanded(child: widget.draftCategoryBuilder!(context)),
+        ],
+      );
+    }
     if (_data == null && _loading) {
-      return Center(
-        child: Semantics(
-          label: '正在加载任务工作台',
-          child: const CircularProgressIndicator(),
+      return _withInitialStages(
+        Center(
+          child: Semantics(
+            label: '正在加载任务工作台',
+            child: const CircularProgressIndicator(),
+          ),
         ),
       );
     }
     if (_error != null) {
-      return UtenEmpty.error(
-        message: '无法加载${widget.department.label}',
-        description: _error,
-        actionLabel: '重试',
-        onAction: () => _load(),
+      return _withInitialStages(
+        UtenEmpty.error(
+          message: '无法加载${widget.department.label}',
+          description: _error,
+          actionLabel: '重试',
+          onAction: () => _load(),
+        ),
       );
     }
     final data = _data;
     if (data == null) {
-      return UtenEmpty.error(actionLabel: '重试', onAction: () => _load());
+      return _withInitialStages(
+        UtenEmpty.error(actionLabel: '重试', onAction: () => _load()),
+      );
     }
 
     return LayoutBuilder(
@@ -525,43 +608,7 @@ class _OperationsWorkbenchPageState
         final exceptionOptions = data.exceptionOptions;
         // 阶段行：真实阶段（无「全部」；终态归历史记录）+ 末尾历史记录；
         // 计数取后端全量口径（statusCounts 不随当前筛选收窄）。
-        final stageRow = UtenFilterToolbar<_WorkbenchSeg>(
-          segmentsKey: Key(
-            'operations-workbench-stages-${widget.department.apiValue}',
-          ),
-          segments: [
-            for (final stage in _stages)
-              UtenFilterSegment(
-                value: _WorkbenchSeg.stage(stage.code),
-                label: stage.label,
-                // 「进行中」是大类, 底下的异常小类行里有要本部门动手的档(财务驳回),
-                // 所以这一段挂两枚: 黄 = 本类在跑的全量(与列表行数相等), 红 = 其中
-                // 等我动手的那几张。准则 §四之七 第 1 条(2026-09-21 追加): 大类行
-                // 只挂一种颜色时, 另一色的数字点进去才看得到, 等于在大类行上蒸发。
-                // 两枚**刻意重叠**(被驳回的单本来就在跑) —— 跨色不算双计, 别改成相减,
-                // 相减会让黄数与「进行中」列表行数对不上。
-                count: stage.code == _inProgressStage
-                    ? statusCounts[_financeRejectedStatus]
-                    : statusCounts[stage.code],
-                countForm: stage.code == _inProgressStage
-                    ? UtenSegmentCountForm.actionable
-                    : _stageCountForm(stage.code),
-                inProgressCount: stage.code == _inProgressStage
-                    ? statusCounts[_inProgressStage]
-                    : null,
-              ),
-            const UtenFilterSegment(
-              value: _WorkbenchSeg.history(),
-              label: '历史记录',
-            ),
-          ],
-          selected: seg == null ? const {} : {seg},
-          onSelectionChanged: _selectSeg,
-          searchHint: '搜索任务号、来源单号、货品或往来单位',
-          initialSearchValue: _keyword,
-          onSearchInputChanged: (_) => _requestId++,
-          onSearchChanged: _applyKeyword,
-        );
+        final stageRow = _buildStageToolbar(statusCounts);
         // 异常小类行：选中阶段后出现；无「全部异常」，默认不选=不附加过滤。
         // 每一项都是「不处理会出事」（逾期/缺料/延期/待挂接）→ 一律红徽章。
         // 注意 OVERDUE_ANY 是其余逾期项的并集，同一张单会在两段各红一次，
@@ -788,6 +835,14 @@ class _OperationsWorkbenchPageState
       },
     );
   }
+
+  Widget _withInitialStages(Widget body) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _buildStageToolbar(_data?.summary.statusCounts ?? const {}),
+      Expanded(child: body),
+    ],
+  );
 }
 
 class _SelectionPrimaryAction {
@@ -878,7 +933,9 @@ class _DesktopTaskTable extends StatelessWidget {
         MasterColumnDef(
           // ADR-065 修订：行=当前执行单据（申请/订货单），单据号是首要身份；
           // 双击行或「执行入口」直达详情，明细在单据详情里逐货品查看。
+          // 2026-09-25 单号列统一：可排序（服务端 docNo 已在排序白名单），筛选此前已有。
           key: 'actionDocNo',
+          sortable: true,
           label: '单据号',
           width: 160,
           value: (item) => item.actionDocument?.number ?? '—',

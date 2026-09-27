@@ -10,11 +10,15 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/shared/auth/session_epoch_provider.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/session_rehydrate_gate.dart';
+
+import '../drafts/memory_form_draft_storage.dart';
 
 class _SummaryApi extends ApiClient {
   _SummaryApi() : super(Dio());
@@ -87,6 +91,12 @@ Future<(_SummaryApi, _TestSessionNotifier)> _pump(WidgetTester tester) async {
       overrides: [
         sessionProvider.overrideWith(() => session),
         apiClientProvider.overrideWithValue(api),
+        // Keep real authentication/epoch rebuilding while isolating the new
+        // local-draft and recovery dependencies from platform I/O and probes.
+        apiBaseUrlProvider.overrideWithValue(
+          'https://session-test.invalid/api',
+        ),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
       ],
       child: const MaterialApp(
         home: Scaffold(

@@ -27,6 +27,8 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/page_permission_action.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../models/goods_node.dart';
@@ -91,7 +93,42 @@ class GoodsDetailBody extends ConsumerStatefulWidget {
   ConsumerState<GoodsDetailBody> createState() => _GoodsDetailBodyState();
 }
 
-class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
+class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
+    with FormDraftMixin<GoodsDetailBody> {
+  @override
+  bool get formDraftEnabled => widget.initialDetail == null;
+  @override
+  bool get formDraftBusy => _savingBasic;
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftCatalog.goods.spec(
+    title: '新增货品',
+    route: Uri(
+      path: '/basicinfo/goods/new',
+      queryParameters: {'categoryId': _categoryId ?? ''},
+    ).toString(),
+  );
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    if (_formKey?.currentState?.controller case final controller?) ...[
+      controller,
+      ...controller.controllers.values,
+    ],
+  ];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'categoryId': _categoryId,
+    'form': _formKey?.currentState?.controller.exportDraft(),
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    final controller = _formKey?.currentState?.controller;
+    if (controller == null) throw StateError('货品表单尚未就绪');
+    if (data['categoryId'] != _categoryId) throw StateError('货品分类与草稿不一致');
+    controller.restoreDraft(
+      Map<String, dynamic>.from(data['form'] as Map<String, dynamic>),
+    );
+  }
+
   late _GoodsDetailMode _mode;
   GoodsDetail? _detail;
   String? _goodsId;
@@ -115,6 +152,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         (_mode == _GoodsDetailMode.create || _mode == _GoodsDetailMode.edit)
         ? GlobalKey<MasterEditFormState>()
         : null;
+    WidgetsBinding.instance.addPostFrameCallback((_) => initializeFormDraft());
   }
 
   @override
@@ -548,7 +586,9 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
     try {
       final repo = ref.read(goodsRepositoryProvider);
       if (_mode == _GoodsDetailMode.create) {
-        final created = await repo.create(body);
+        await saveFormDraftNow();
+        final created = await runFormDraftSubmission(() => repo.create(body));
+        await completeFormDraft();
         if (!mounted) return;
         if (widget.canEdit && created.writable) {
           context.appSuccess('货品已创建，可继续编辑基本信息');
@@ -592,6 +632,10 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
 
   @override
   Widget build(BuildContext context) {
+    return withFormDraft(_buildEditor(context));
+  }
+
+  Widget _buildEditor(BuildContext context) {
     final theme = Theme.of(context);
     final title = _detail?.name?.isNotEmpty == true
         ? _detail!.name!

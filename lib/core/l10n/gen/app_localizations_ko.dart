@@ -54,7 +54,11 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get materialDiscoveryRequestHelp =>
-      '이 자체 생산품에는 하위 자재가 아직 없습니다. 자재를 요청한 후 창고와 실제 자재를 확인하세요. 실제 출고가 완료되어야 작업을 시작할 수 있습니다.';
+      '이 자체 생산품에는 하위 자재가 아직 없습니다. 작업지시별 자재와 요청 수량을 선택적으로 입력하거나 비워 두고 창고에서 보완할 수 있습니다. 입력한 자재는 창고에 자동으로 전달됩니다. 실제 출고 창고와 수량을 확인하고 출고한 후 작업을 시작할 수 있습니다.';
+
+  @override
+  String get materialDiscoveryPrefilledHelp =>
+      '현장에서 입력한 자재와 요청 수량을 불러왔습니다. 자재를 다시 선택할 필요 없이 실제 출고 창고와 수량을 확인하고 필요하면 표에서 수정하세요.';
 
   @override
   String get materialDiscoveryPending => '창고의 자재 입력 대기';
@@ -116,7 +120,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get materialDiscoveryRetry => '다시 시도';
 
   @override
-  String get materialDiscoveryRequestSent => '자재 요청을 제출했습니다. 창고의 자재 입력을 기다립니다.';
+  String get materialDiscoveryRequestSent =>
+      '자재 요청을 제출했습니다. 창고 확인 및 출고 처리를 기다립니다.';
 
   @override
   String get materialDiscoveryMissingUnit =>
@@ -2413,8 +2418,7 @@ class AppLocalizationsKo extends AppLocalizations {
       'Set quantity, workshop and owner before issuing. Material-short tasks wait until materials are ready and issued.';
 
   @override
-  String get materialTaskSectionHint =>
-      'Manage preparation by route and review pending, issued and blocked tasks.';
+  String get materialTaskSectionHint => '공급 방식별로 대기, 진행 중 및 조치가 필요한 작업을 확인합니다.';
 
   @override
   String get materialWarehouseLimit =>
@@ -4176,4 +4180,39 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get warehouseBatchRegistrationHelp =>
       '완제품 창고와 보관 위치 번호는 각 행에 필수입니다. 품목 기본 창고를 우선 적용하고, 없는 항목은 개인 창고 선택 정보를 참고합니다. 여러 행을 선택한 후 창고나 위치를 변경하면 일괄 적용할 수 있습니다. 생산 실적 보고서별로 검사 의뢰를 생성하며, 품질 승인 후 최종 실수량을 확인하여 입고합니다.';
+
+  @override
+  String get materialPreparationReview => '확인 후 발주';
+
+  @override
+  String get materialPreparationApproveNow => '승인 및 작업 지시';
+
+  @override
+  String get materialPreparationViewPlans => '지시한 계획 보기';
+
+  @override
+  String get materialPreparationOrdering => '발주 중…';
+
+  @override
+  String materialPreparationOrderCount(int count) {
+    return '발주($count)';
+  }
+
+  @override
+  String get materialPreparationNoActions => '현재 처리할 자재가 없습니다';
+
+  @override
+  String get materialPreparationAvailableHint =>
+      '이 항목에 배정 가능한 재고와 이미 지시한 공급량에는 입고 예정 및 미처리 잔량이 포함됩니다. 다른 주문에 배정된 수량은 중복 계산하지 않으며, 실제 출고에는 실물 재고가 필요합니다.';
+
+  @override
+  String get materialPreparationPending => '주문 대기';
+
+  @override
+  String get materialPreparationInProgress => '진행 중';
+
+  @override
+  String materialPreparationMissingAssignment(String goods) {
+    return '발주 전에 “$goods”의 생산 작업장과 담당자를 지정하세요';
+  }
 }

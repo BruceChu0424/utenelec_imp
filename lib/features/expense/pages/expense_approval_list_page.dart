@@ -59,6 +59,9 @@ class _ExpenseApprovalListPageState
     final listAsync = ref.watch(expenseApprovalListProvider);
     final facets = ref.watch(expenseApprovalFacetsProvider(queue));
     final filters = ref.watch(expenseApprovalFiltersProvider);
+    // 2026-09-25 单号列统一：报销单号表头排序（服务端白名单 claimNo）。
+    final sortColumn = ref.watch(expenseApprovalSortColumnProvider);
+    final sortAscending = ref.watch(expenseApprovalSortAscendingProvider);
     final summaryAsync = ref.watch(expenseQueueSummaryProvider);
     final permissions = ref.watch(currentPermissionsProvider);
     final canApprove = permissions.contains(Perm.expenseApprove);
@@ -161,10 +164,20 @@ class _ExpenseApprovalListPageState
             columns: _columns,
             items: page.items,
             // 部门 / 年月筛选桶来自后端聚合；未加载完成前列头暂无筛选项。
+            // 2026-09-25 单号列统一：facets 响应含报销单号桶（claimNo）。
             facets: facets.valueOrNull ?? const {},
             nullCounts: const {},
             filters: filters.asTableFilters,
             onFilterChanged: _onFilterChanged,
+            // 2026-09-25 单号列统一：表头排序走服务端白名单（claimNo）。
+            sortColumn: sortColumn,
+            sortAscending: sortAscending,
+            onSortChange: (column, ascending) {
+              ref.read(expenseApprovalSortColumnProvider.notifier).state =
+                  column;
+              ref.read(expenseApprovalSortAscendingProvider.notifier).state =
+                  ascending;
+            },
             // 待审批段开多选 + 悬浮批量通过/驳回；待付款段只读浏览
             //（打款参数逐单不同，打款在详情页完成）。
             selectable: isPendingQueue,
@@ -232,6 +245,8 @@ class _ExpenseApprovalListPageState
       key: 'claimNo',
       label: '报销单号',
       width: 160,
+      // 2026-09-25 单号列统一：可排序（服务端白名单 claimNo）+ 值筛选（facets）。
+      sortable: true,
       value: (claim) => claim.claimNo,
     ),
     MasterColumnDef(

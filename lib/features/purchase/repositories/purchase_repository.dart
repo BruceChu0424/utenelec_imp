@@ -4,6 +4,7 @@
 // create/update 收 Map body（编辑页组装 header+items）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../basic_data/models/master_facet.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
@@ -20,6 +21,7 @@ class PurchaseDocFilter {
     this.dateFrom,
     this.dateTo,
     this.financeApproval,
+    this.billNo,
   });
   final String? keyword;
   final String? supplierId;
@@ -31,6 +33,9 @@ class PurchaseDocFilter {
   /// 财务审批态切片（仅订货单端点支持）：财务通过前 status=0，
   /// 「草稿」段传 'NONE'（排除在审单）、「等待财务审核」段传 'PENDING'。
   final String? financeApproval;
+
+  /// 单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
+  final String? billNo;
 }
 
 class PurchaseRepository {
@@ -61,9 +66,28 @@ class PurchaseRepository {
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
+      if (filter.billNo != null && filter.billNo!.trim().isNotEmpty)
+        'billNo': filter.billNo!.trim(),
     };
     final json = await api.get(_base, query: query);
     return PagedResult.fromJson(json, PurchaseDocListItem.fromJson);
+  }
+
+  /// 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径。
+  Future<List<MasterFacetBucket>> billNoFacets({
+    PurchaseDocFilter filter = const PurchaseDocFilter(),
+  }) async {
+    final query = <String, dynamic>{
+      if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
+        'keyword': filter.keyword!.trim(),
+      if (filter.supplierId != null) 'supplierId': filter.supplierId,
+      if (filter.warehouseId != null) 'warehouseId': filter.warehouseId,
+      if (filter.status != null) 'status': filter.status,
+      if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
+      if (filter.dateTo != null) 'dateTo': filter.dateTo,
+    };
+    final json = await api.get('$_base/facets', query: query);
+    return parseFacetBuckets(json, 'billNo');
   }
 
   Future<PurchaseDocDetail> detail(String id) async {

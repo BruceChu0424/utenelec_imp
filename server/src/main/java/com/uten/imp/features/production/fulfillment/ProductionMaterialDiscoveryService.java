@@ -1,5 +1,8 @@
 package com.uten.imp.features.production.fulfillment;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.common.util.CanonicalFingerprint;
 import com.uten.imp.common.util.NativeQueryResults;
@@ -38,6 +41,8 @@ public class ProductionMaterialDiscoveryService {
     private final ProductionExecutionReadinessService readiness;
     private final ChainNoticeService notices;
     private final BusinessEventPublisher events;
+    private final ObjectMapper mapper;
+    private final DocNumberService numbers;
 
     public Context context(UUID segmentId) {
         Segment segment=segment(segmentId,false); requireWorkshop(segment,false);
@@ -50,7 +55,8 @@ public class ProductionMaterialDiscoveryService {
 
     @Transactional public Detail request(UUID segmentId,Request command) {
         validate(command);tx.bind();Segment discovered=segment(segmentId,false);requireWorkshop(discovered,true);
-        String hash=hash(List.of("DISCOVERY-REQUEST",segmentId.toString(),command.expectedVersion().toString()));
+        List<RequestedMaterial> requestedItems=normalizeRequested(command.items());
+        String hash=requestHash(segmentId,command.expectedVersion(),requestedItems);
         lockCommand(command.idempotencyKey());
         List<Object[]> replay=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT id,request_hash FROM production_material_discovery_requests WHERE created_by=:actor AND idempotency_key=:key")
                 .setParameter("actor",currentUser.requireId()).setParameter("key",command.idempotencyKey()));
@@ -59,18 +65,27 @@ public class ProductionMaterialDiscoveryService {
         if(!segment.eligible()||segment.version()!=command.expectedVersion())throw conflict("任务已变化，请刷新后重新申请");
         if(!Boolean.TRUE.equals(em.createNativeQuery("SELECT start_route IN('FULL_KIT','CONTINUOUS') FROM production_execution_segments WHERE id=:id").setParameter("id",segmentId).getSingleResult()))
             throw conflict("实际物料尚未确定，请先选择齐套或持续生产路线再申请领料");
-        if(!rows("SELECT id FROM production_material_discovery_requests WHERE execution_segment_id=:id AND status<>'CANCELLED'",segmentId).isEmpty())throw conflict("此任务已提交领料，请查看仓库处理进度");
+        if(Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM production_material_discovery_requests
+                    WHERE execution_segment_id=:id AND status<>'CANCELLED')
+                """).setParameter("id",segmentId).getSingleResult()))
+            throw conflict("此任务已提交领料，请查看仓库处理进度");
+        List<SuggestedItem> suggestions=requestedItems.stream().map(item->suggestion(segment,item)).toList();
         UUID id=UUID.randomUUID();
         em.createNativeQuery("""
-                INSERT INTO production_material_discovery_requests(id,execution_segment_id,expected_version,created_by,idempotency_key,request_hash)
-                VALUES(:id,:segment,:version,:actor,:key,:hash)
+                INSERT INTO production_material_discovery_requests(id,execution_segment_id,expected_version,created_by,idempotency_key,request_hash,requested_materials,request_no)
+                VALUES(:id,:segment,:version,:actor,:key,:hash,CAST(:materials AS jsonb),:number)
                 """).setParameter("id",id).setParameter("segment",segmentId).setParameter("version",segment.version())
-                .setParameter("actor",currentUser.requireId()).setParameter("key",command.idempotencyKey()).setParameter("hash",hash).executeUpdate();
+                .setParameter("actor",currentUser.requireId()).setParameter("key",command.idempotencyKey()).setParameter("hash",hash)
+                .setParameter("materials",mapper.valueToTree(suggestions).toString())
+                .setParameter("number",numbers.nextNumber(DocNumberPrefix.PRODUCTION_MATERIAL_REQUEST)).executeUpdate();
         bump(segmentId);publish(id,"PENDING");return detail(id);
     }
 
     @Transactional public Detail cancel(UUID id,Request command) {
-        validate(command);tx.bind();Detail discovered=detail(id);Segment before=segment(discovered.segmentId(),false);requireWorkshop(before,true);
+        validate(command);
+        if(command.items()!=null&&!command.items().isEmpty())throw validation("撤回申请不接受物料明细");
+        tx.bind();Detail discovered=detail(id);Segment before=segment(discovered.segmentId(),false);requireWorkshop(before,true);
         String hash=hash(List.of("DISCOVERY-CANCEL",id.toString(),command.expectedVersion().toString()));lockCommand(command.idempotencyKey());
         List<Object[]> replay=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT id,cancellation_hash FROM production_material_discovery_requests WHERE cancelled_by=:actor AND cancellation_key=:key")
                 .setParameter("actor",currentUser.requireId()).setParameter("key",command.idempotencyKey()));
@@ -153,7 +168,7 @@ public class ProductionMaterialDiscoveryService {
     public Detail detail(UUID id) {
         List<Object[]> rows=rows("""
                 SELECT request.id,segment.id,segment.segment_code,plan.bill_no,goods.code,goods.name,segment.planned_qty,
-                       unit.name,department.name,request.status,request.row_version
+                       unit.name,department.name,request.status,request.row_version,request.request_no
                 FROM production_material_discovery_requests request JOIN production_execution_segments segment ON segment.id=request.execution_segment_id
                 JOIN production_plans plan ON plan.id=segment.plan_id JOIN goods ON goods.id=segment.product_goods_id
                 LEFT JOIN units unit ON unit.id=segment.product_unit_id LEFT JOIN departments department ON department.id=segment.workshop_department_id
@@ -162,12 +177,28 @@ public class ProductionMaterialDiscoveryService {
         if(rows.isEmpty())throw notFound();Object[] r=rows.getFirst();
         if(!(access.hasAuthority("stock_doc:view")&&warehouseAccess.canAccessWarehouseTasks()))requireWorkshop(segment((UUID)r[1],false),false);
         List<Item> items=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT line.id,line.demand_id,line.goods_id,goods.code,goods.name,line.color_id,color.name,line.unit_id,unit.name,line.warehouse_id,warehouse.name,line.qty
+                SELECT line.id,line.demand_id,line.goods_id,goods.code,goods.name,line.color_id,color.name,line.unit_id,unit.name,line.warehouse_id,warehouse.name,line.qty,
+                       goods.spec,goods.stock_place
                 FROM production_material_discovery_lines line JOIN goods ON goods.id=line.goods_id LEFT JOIN colors color ON color.id=line.color_id
                 JOIN units unit ON unit.id=line.unit_id JOIN warehouses warehouse ON warehouse.id=line.warehouse_id WHERE line.request_id=:id ORDER BY goods.code,line.id
-                """).setParameter("id",id)).stream().map(line->new Item((UUID)line[0],(UUID)line[1],(UUID)line[2],(String)line[3],(String)line[4],(UUID)line[5],(String)line[6],(UUID)line[7],(String)line[8],(UUID)line[9],(String)line[10],decimal(line[11]))).toList();
-        List<UUID> docs=NativeQueryResults.typedRows(em.createNativeQuery("SELECT DISTINCT mapping.document_id FROM production_material_discovery_lines line JOIN production_planning_package_document_items mapping ON mapping.demand_id=line.demand_id AND mapping.document_type='DRAW' WHERE line.request_id=:id ORDER BY mapping.document_id").setParameter("id",id),UUID.class);
-        return new Detail((UUID)r[0],(UUID)r[1],(String)r[2],(String)r[3],(String)r[4],(String)r[5],decimal(r[6]),(String)r[7],(String)r[8],(String)r[9],((Number)r[10]).longValue(),items,docs);
+                """).setParameter("id",id)).stream().map(line->new Item((UUID)line[0],(UUID)line[1],(UUID)line[2],(String)line[3],(String)line[4],(UUID)line[5],(String)line[6],(UUID)line[7],(String)line[8],(UUID)line[9],(String)line[10],decimal(line[11]),(String)line[12],(String)line[13])).toList();
+        List<DrawDocument> documents=rows("""
+                SELECT DISTINCT document.id,document.bill_no,document.warehouse_id,warehouse.name
+                FROM production_material_discovery_lines line
+                JOIN production_planning_package_document_items mapping ON mapping.demand_id=line.demand_id AND mapping.document_type='DRAW'
+                JOIN stock_documents document ON document.id=mapping.document_id
+                LEFT JOIN warehouses warehouse ON warehouse.id=document.warehouse_id
+                WHERE line.request_id=:id ORDER BY document.id
+                """,id).stream().map(row->new DrawDocument((UUID)row[0],(String)row[1],(UUID)row[2],(String)row[3])).toList();
+        List<UUID> docs=documents.stream().map(DrawDocument::id).toList();
+        List<SuggestedItem> suggestions=rows("""
+                SELECT item."goodsId",item."goodsCode",item."goodsName",item."colorId",item."colorName",item."unitId",item."unitName",item.qty,item.spec,item."stockPlace"
+                FROM production_material_discovery_requests request
+                CROSS JOIN LATERAL jsonb_to_recordset(request.requested_materials) AS item(
+                    "goodsId" uuid,"goodsCode" text,"goodsName" text,"colorId" uuid,"colorName" text,"unitId" uuid,"unitName" text,qty numeric,spec text,"stockPlace" text)
+                WHERE request.id=:id ORDER BY item."goodsId",item."colorId" NULLS FIRST
+                """,id).stream().map(item->new SuggestedItem((UUID)item[0],(String)item[1],(String)item[2],(UUID)item[3],(String)item[4],(UUID)item[5],(String)item[6],item[7]==null?null:decimal(item[7]),(String)item[8],(String)item[9])).toList();
+        return new Detail((UUID)r[0],(UUID)r[1],(String)r[2],(String)r[3],(String)r[4],(String)r[5],decimal(r[6]),(String)r[7],(String)r[8],(String)r[9],((Number)r[10]).longValue(),items,docs,suggestions,(String)r[11],documents);
     }
     public PageResponse<Detail> list(String status,int page,int size) {
         requireWarehouse(false);String filter=status==null?"PENDING":status;
@@ -194,25 +225,62 @@ public class ProductionMaterialDiscoveryService {
         if(rows.isEmpty())throw notFound();Object[] r=rows.getFirst();return new Segment((UUID)r[0],(UUID)r[1],(UUID)r[2],(UUID)r[3],(UUID)r[4],(UUID)r[5],(UUID)r[6],(UUID)r[7],((Number)r[8]).longValue(),decimal(r[9]),Boolean.TRUE.equals(r[10]),Boolean.TRUE.equals(r[11]));
     }
     private void validateMaterial(Segment segment,Material item) {
+        validateMaterialIdentity(segment,item.goodsId(),item.colorId(),item.unitId());
         boolean valid=Boolean.TRUE.equals(em.createNativeQuery("""
-                SELECT EXISTS(SELECT 1 FROM goods JOIN warehouses warehouse ON warehouse.id=:warehouse
-                    JOIN units unit ON unit.id=goods.unit_id AND NOT unit.is_deleted
-                    WHERE goods.id=:goods AND NOT goods.is_deleted AND goods.unit_id=:unit
-                      AND goods.id<>(SELECT product_goods_id FROM production_execution_segments WHERE id=:segment)
+                SELECT EXISTS(SELECT 1 FROM warehouses warehouse WHERE warehouse.id=:warehouse
                       AND NOT warehouse.is_deleted AND warehouse.is_accountable AND NOT warehouse.is_defective
                       AND warehouse.status='使用' AND NOT COALESCE(warehouse.is_line_side,FALSE)
                       AND fn_warehouse_same_main(warehouse.id,:logical)
-                      AND NOT EXISTS(SELECT 1 FROM warehouses child WHERE child.parent_id=warehouse.id AND NOT child.is_deleted)
+                      AND NOT EXISTS(SELECT 1 FROM warehouses child WHERE child.parent_id=warehouse.id AND NOT child.is_deleted))
+                """).setParameter("warehouse",item.warehouseId()).setParameter("logical",segment.warehouse()).getSingleResult());
+        if(!valid)throw validation("实际仓库无效；必须选择同主仓下的普通实际叶仓");
+    }
+    private void validateMaterialIdentity(Segment segment,UUID goodsId,UUID colorId,UUID unitId) {
+        boolean valid=Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM goods JOIN units unit ON unit.id=goods.unit_id AND NOT unit.is_deleted
+                    WHERE goods.id=:goods AND NOT goods.is_deleted AND goods.unit_id=:unit
+                      AND goods.id<>(SELECT product_goods_id FROM production_execution_segments WHERE id=:segment)
                       AND (CAST(:color AS uuid) IS NULL OR EXISTS(SELECT 1 FROM colors WHERE id=:color AND NOT is_deleted)))
-                """).setParameter("warehouse",item.warehouseId()).setParameter("goods",item.goodsId()).setParameter("unit",item.unitId()).setParameter("segment",segment.id()).setParameter("logical",segment.warehouse()).setParameter("color",item.colorId()).getSingleResult());
-        if(!valid)throw validation("物料、颜色、基本单位或实际仓库无效；必须选择同主仓下的普通实际叶仓");
+                """).setParameter("goods",goodsId).setParameter("unit",unitId).setParameter("segment",segment.id()).setParameter("color",colorId).getSingleResult());
+        if(!valid)throw validation("物料、颜色或基本单位无效，请重新选择实际材料");
         if(Boolean.TRUE.equals(em.createNativeQuery("""
                 WITH RECURSIVE descendants(id) AS (
                     SELECT CAST(:goods AS uuid)
                     UNION SELECT bom.component_goods_id
                     FROM descendants JOIN goods_bom_items bom ON bom.goods_id=descendants.id AND NOT bom.is_deleted)
                 SELECT EXISTS(SELECT 1 FROM descendants WHERE id=(SELECT product_goods_id FROM production_execution_segments WHERE id=:segment))
-                """).setParameter("goods",item.goodsId()).setParameter("segment",segment.id()).getSingleResult()))throw validation("此材料会形成组件结构循环，请核对所领物料");
+                """).setParameter("goods",goodsId).setParameter("segment",segment.id()).getSingleResult()))throw validation("此材料会形成组件结构循环，请核对所领物料");
+    }
+    private SuggestedItem suggestion(Segment segment,RequestedMaterial item) {
+        validateMaterialIdentity(segment,item.goodsId(),item.colorId(),item.unitId());
+        List<Object[]> available=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT goods.code,goods.name,color.name,unit.name,goods.spec,goods.stock_place FROM goods JOIN units unit ON unit.id=goods.unit_id
+                LEFT JOIN colors color ON color.id=:color WHERE goods.id=:goods
+                  AND NOT goods.auto_created AND goods.status IS DISTINCT FROM '禁用'
+                  AND unit.status IS DISTINCT FROM '禁用' AND color.status IS DISTINCT FROM '禁用'
+                """).setParameter("goods",item.goodsId()).setParameter("color",item.colorId()));
+        if(available.isEmpty())throw validation("请选择可用的货品、颜色和基本单位，不能使用停用或系统占位主档");
+        Object[] row=available.getFirst();
+        return new SuggestedItem(item.goodsId(),(String)row[0],(String)row[1],item.colorId(),(String)row[2],item.unitId(),(String)row[3],item.qty(),(String)row[4],(String)row[5]);
+    }
+    static List<RequestedMaterial> normalizeRequested(List<RequestedMaterial> items) {
+        if(items==null||items.isEmpty())return List.of();
+        if(items.size()>100)throw validation("提前填写的实际材料最多100行");
+        Set<String> keys=new HashSet<>();
+        for(RequestedMaterial item:items) {
+            if(item==null||item.goodsId()==null||item.unitId()==null)throw validation("已选择的材料必须填写货品和基本单位");
+            if(item.qty()!=null)ProductionMaterialIncrementService.quantity(item.qty());
+            if(!keys.add(item.goodsId()+":"+Objects.toString(item.colorId(),"")))throw validation("相同物料颜色请合并为一行");
+        }
+        return items.stream().sorted(Comparator.comparing(RequestedMaterial::goodsId)
+                .thenComparing(item->Objects.toString(item.colorId(),""))).toList();
+    }
+    static String requestHash(UUID segmentId,long expectedVersion,List<RequestedMaterial> items) {
+        // Preserve hashes of requests created before workshop suggestions were supported.
+        List<String> parts=new ArrayList<>(List.of("DISCOVERY-REQUEST",segmentId.toString(),Long.toString(expectedVersion)));
+        for(RequestedMaterial item:items)parts.add("MATERIAL:"+item.goodsId()+"|"+Objects.toString(item.colorId(),"")+"|"
+                +item.unitId()+"|"+(item.qty()==null?"UNSPECIFIED":item.qty().stripTrailingZeros().toPlainString()));
+        return hash(parts);
     }
     static List<Material> normalize(List<Material> items) {
         if(items==null||items.isEmpty()||items.size()>100)throw validation("请填写1至100种实际物料");
@@ -236,7 +304,8 @@ public class ProductionMaterialDiscoveryService {
     private Object[] requestRow(UUID id,boolean lock) {return rows("SELECT status,row_version,configuration_key,configuration_hash,cancelled_by,cancellation_key,configured_by,expected_version FROM production_material_discovery_requests WHERE id=:id"+(lock?" FOR UPDATE":""),id).getFirst();}
     private List<Object[]> rows(String sql,UUID id){return NativeQueryResults.objectArrayRows(em.createNativeQuery(sql).setParameter("id",id));}
     private void bump(UUID id){em.createNativeQuery("UPDATE production_execution_segments SET lock_version=lock_version+1,updated_at=now(),updated_by=:actor WHERE id=:id").setParameter("id",id).setParameter("actor",currentUser.requireId()).executeUpdate();}
-    private void lockCommand(String key){em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,710))").setParameter("key",currentUser.requireId()+":"+key).getSingleResult();}
+    // Batch orchestrators take these same command locks before their complete inventory prefix.
+    void lockCommand(String key){em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,710))").setParameter("key",currentUser.requireId()+":"+key).getSingleResult();}
     private void publish(UUID id,String state){events.publishOnce("PRODUCTION_MATERIAL_DISCOVERY_"+state,"PRODUCTION_MATERIAL_DISCOVERY_REQUEST",id,Map.of(),"MATERIAL_DISCOVERY:"+id+":"+state);}
     private static void validate(Request command){if(command==null||command.expectedVersion()==null||command.expectedVersion()<0)throw validation("申请缺少有效版本");ProductionMaterialIncrementService.key(command.idempotencyKey());}
     private static String hash(List<String> values){return CanonicalFingerprint.sha256(values);}

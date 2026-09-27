@@ -13,6 +13,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /** 采购退货单 API（采购管理）。CRUD + 审核（出库）+ 红冲（入库）。 */
@@ -36,8 +37,22 @@ public class PurchaseReturnController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
-        return service.list(new ReturnQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo), page, size, sort, order);
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String billNo) {
+        return service.list(new ReturnQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, billNo), page, size, sort, order);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
+    @GetMapping("/facets")
+    @PreAuthorize("hasAuthority('purchase_return:view')")
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) UUID supplierId,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(required = false) Short status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
+        return service.facets(new ReturnQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, null));
     }
 
     @GetMapping("/{id}")

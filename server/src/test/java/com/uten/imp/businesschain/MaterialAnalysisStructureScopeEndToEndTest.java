@@ -49,6 +49,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.reset;
+import org.springframework.test.util.AopTestUtils;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /** Real transaction boundaries and a second committed PostgreSQL connection. */
@@ -97,8 +98,12 @@ class MaterialAnalysisStructureScopeEndToEndTest {
     @MockitoSpyBean ProductionPlanService plans;
     private ProductionChainDataFactory factory;
 
+    // Register stubs on the spy without invoking the MANDATORY transaction
+    // interceptor. Business commands still call the original Spring proxy.
+    private ProductionPlanService planTarget() { return AopTestUtils.getUltimateTargetObject(plans); }
+
     @BeforeEach void prepare() { factory = new ProductionChainDataFactory(beans, jdbc, sales, finance); }
-    @AfterEach void clear() { reset(plans); SecurityContextHolder.clearContext(); ProductionJdbcMeasurement.end(); }
+    @AfterEach void clear() { reset(planTarget()); SecurityContextHolder.clearContext(); ProductionJdbcMeasurement.end(); }
 
     @Test void committedBomChangeOnUnselectedSourceDuringLoopRollsBackEveryPlan() throws Exception {
         driftDuringLoop(true);
@@ -126,7 +131,7 @@ class MaterialAnalysisStructureScopeEndToEndTest {
                 }
             }
             return result;
-        }).when(plans).approve(any(UUID.class));
+        }).when(planTarget()).approveForAnalysis(any(UUID.class));
         ApiException failure = assertThrows(ApiException.class,
                 () -> commands.issueWorkshopPlans(view.analysisId(), issue(view, scenario, true)));
         assertTrue(failure.getMessage().contains("批量下达期间"), failure.getMessage());
@@ -155,7 +160,7 @@ class MaterialAnalysisStructureScopeEndToEndTest {
                 }
             }
             return result;
-        }).when(plans).approve(any(UUID.class));
+        }).when(planTarget()).approveForAnalysis(any(UUID.class));
         var rejected = assertThrows(ApiException.class,
                 () -> commands.issueWorkshopPlans(view.analysisId(), issue(view, scenario, true)));
         assertTrue(rejected.getMessage().contains("批量下达期间"), rejected.getMessage());
@@ -174,7 +179,7 @@ class MaterialAnalysisStructureScopeEndToEndTest {
         doAnswer(invocation -> {
             if (approvals.incrementAndGet() == 2) throw original;
             return invocation.callRealMethod();
-        }).when(plans).approve(any(UUID.class));
+        }).when(planTarget()).approveForAnalysis(any(UUID.class));
         var failure = assertThrows(IllegalStateException.class,
                 () -> commands.issueWorkshopPlans(view.analysisId(), issue(view, scenario, true)));
         assertSame(original, failure);

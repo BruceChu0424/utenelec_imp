@@ -10,11 +10,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/feedback/uten_module_progress_chip.dart';
-import '../../../components/feedback/uten_module_todo_chip.dart';
+import '../../../components/feedback/uten_module_badges.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
-import '../../../components/feedback/uten_in_progress_badge.dart';
 import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -29,6 +27,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../widgets/production_pending_badge.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/badges/badge_scope.dart';
 
 class ProductionHubPage extends ConsumerWidget {
   const ProductionHubPage({super.key});
@@ -51,19 +50,11 @@ class ProductionHubPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
-        actions: [
+        actions: const [
           // 黄左红右(ADR-100), 与卡片右上角同序。两枚都是「生产管理」容器的和
-          // (服务端徽章目录算好, ADR-108): 车间任务单列 workshop 容器, 有自己的
-          // 入口页, 不属于本 Hub 的卡片集合 —— 「各卡之和 = 顶栏累计」由目录保证。
-          // AppBar 的 actions 行是 crossAxisAlignment.stretch，故包 Center 才竖直居中。
-          UtenModuleProgressChip(
-            count: ref.watch(
-              badgeModuleInProgressProvider(BadgeModule.production),
-            ),
-          ),
-          UtenModuleTodoChip(
-            count: ref.watch(badgeModuleTodoProvider(BadgeModule.production)),
-          ),
+          // (服务端徽章目录算好, ADR-108)，包含生产草稿。车间任务单列 workshop
+          // 容器，不混入本 Hub。公共组件处理顶栏居中与零数隐藏。
+          UtenModuleBadges(module: BadgeModule.production),
         ],
       ),
       body: SafeArea(
@@ -92,17 +83,21 @@ class ProductionHubPage extends ConsumerWidget {
                     label: '生产任务中心',
                     description: l10n.productionHubScheduleSub,
                     location: '/production/schedule',
-                    badge: const ProductionPendingBadge(showLabel: true),
-                    // 黄 = 页内「进行中」段那批在办批次(计划员视角的分析/根计划),
-                    // 与红色的待排产是两队互不重叠的活: 待排产还没排下去, 在办的
-                    // 已经在跑。数字随徽章汇总带回, 页面里不手写加法。
-                    progressBadge: UtenInProgressBadge(
-                      count: ref.watch(
-                        badgeEntryInProgressProvider(
-                          BadgeEntry.productionBatches,
-                        ),
-                      ),
+                    // 待排产与进行中批次分别取已登记入口；生产草稿（计划 draft +
+                    // 日报 status=0）计入红数——2026-09-26 全站草稿口径：红数里的
+                    // 每张草稿都能在生产任务中心「草稿」段看到行。
+                    badgeScope: const BadgeScope.entries(
+                      todo: BadgeEntry.productionSchedule,
+                      inProgress: BadgeEntry.productionBatches,
+                      formDraftModule: BadgeModule.production,
+                      additionalTodoEntries: {BadgeEntry.productionDrafts},
+                    ),
+                    badgeShowLabel: true,
+                    // 待排产红数保留逾期拆分与提示（含生产草稿合计，与
+                    // badgeScope 红数同口径），黄数由卡片按范围统一取数。
+                    badge: const ProductionPendingBadge(
                       showLabel: true,
+                      includeProductionDrafts: true,
                     ),
                     // ADR-117 车间在催计划下单的任务数(红，行内)：等计划员动手的
                     // 队列信号挂在任务中心卡上（2026-09-24 三段式：新建卡不挂数）。
@@ -110,30 +105,22 @@ class ProductionHubPage extends ConsumerWidget {
                         ? UtenNotificationBadge(count: planningUrges)
                         : null,
                   ),
-                  _Entry(
+                  const _Entry(
                     icon: Icons.fact_check_outlined,
                     label: '超产比例审批',
                     description: '核对原比例与申请比例，批准后生效',
                     location: RouteName.productionOverproductionRateRequests,
-                    badge: UtenNotificationBadge(
-                      count: ref.watch(
-                        badgeEntryTodoProvider(
-                          BadgeEntry.productionRateApprovals,
-                        ),
-                      ),
+                    badgeScope: BadgeScope.entry(
+                      BadgeEntry.productionRateApprovals,
                     ),
                   ),
-                  _Entry(
+                  const _Entry(
                     icon: Icons.add_box_outlined,
                     label: '追加用料审批',
                     description: '核对原定额与追加量，批准后安排领料',
                     location: RouteName.productionMaterialIncrementRequests,
-                    badge: UtenNotificationBadge(
-                      count: ref.watch(
-                        badgeEntryTodoProvider(
-                          BadgeEntry.productionMaterialIncrementApprovals,
-                        ),
-                      ),
+                    badgeScope: BadgeScope.entry(
+                      BadgeEntry.productionMaterialIncrementApprovals,
                     ),
                   ),
                 ],
@@ -264,8 +251,9 @@ class _Entry {
     required this.label,
     required this.description,
     required this.location,
+    this.badgeScope,
+    this.badgeShowLabel = false,
     this.badge,
-    this.progressBadge,
     this.labelSuffix,
   });
 
@@ -273,21 +261,16 @@ class _Entry {
   final String label;
   final String description;
   final String location;
+  final BadgeScope? badgeScope;
+  final bool badgeShowLabel;
 
   /// 右上角红色徽章（待排产 / 在催任务数；>0 自动显示）。
   ///
   /// 本页每张卡最多一种计数，故只留这一个槽。2026-09-24 三段式：新建类卡
   /// （计划/日报）不再挂草稿徽章，草稿在新页「草稿(N)」按钮与记录页草稿分段可见。
   ///
-  /// 「最多一种」说的是红色: 黄色的在办数另有 [progressBadge] 一个槽, 两者并存
-  /// 不算往一个槽里塞两个红圆点。
+  /// 可覆盖 [badgeScope] 的红数展示以保留待排产逾期提示；黄色由公共卡片渲染。
   final Widget? badge;
-
-  /// 右上角黄色「进行中」徽章, 渲染在 [badge] 左边(ADR-100)。
-  ///
-  /// 放「已经在办、还没完、现在不用我动手」的数; 两个槽同时有数是正常的,
-  /// 它们回答的是两个问题(我还欠多少活 / 我手上还有多少在跑), 不是双计。
-  final Widget? progressBadge;
 
   /// 标题右侧行内的次要计数（任务中心卡挂「在催 N」等队列信号时用）。
   final Widget? labelSuffix;
@@ -304,8 +287,9 @@ class _EntryTile extends StatelessWidget {
       label: entry.label,
       description: entry.description,
       onTap: () => goFrom(context, entry.location),
+      badgeScope: entry.badgeScope,
+      badgeShowLabel: entry.badgeShowLabel,
       badge: entry.badge,
-      progressBadge: entry.progressBadge,
       labelSuffix: entry.labelSuffix,
     );
   }

@@ -28,10 +28,16 @@ public class SystemSettingController {
 
     private final SystemSettingsService service;
     private final SecurityContextCurrentUser currentUser;
+    private final UpdaterStatusService updaterStatusService;
 
     @GetMapping
     public List<SystemSettingDto> list() {
         return service.list();
+    }
+
+    @GetMapping("/updater-status")
+    public UpdaterStatusService.Status updaterStatus() {
+        return updaterStatusService.read();
     }
 
     @PutMapping

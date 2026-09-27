@@ -20,6 +20,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -51,8 +53,27 @@ public class SubcontractShortDeliveryController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return service.list(segment, keyword, supplierId, orderId, dateFrom, dateTo, page, size);
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String orderBillNo) {
+        // 2026-09-25 单号列统一：sort/order 表头排序 + 订货单号表头值筛选。
+        return service.list(segment, keyword, supplierId, orderId, dateFrom, dateTo,
+                page, size, sort, order, orderBillNo);
+    }
+
+    /** 订货单号 facets（2026-09-25 单号列统一）：{orderBillNo:[各订货单号]}——
+     *  同列表过滤口径（不含 orderBillNo 自身值筛选）。 */
+    @GetMapping("/facets")
+    @PreAuthorize("hasAuthority('subcontract_order:view')")
+    public Map<String, List<Map<String, Object>>> facets(
+            @RequestParam(defaultValue = "PENDING") String segment,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) UUID supplierId,
+            @RequestParam(required = false) UUID orderId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
+        return service.facets(segment, keyword, supplierId, orderId, dateFrom, dateTo);
     }
 
     @GetMapping("/count")

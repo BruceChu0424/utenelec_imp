@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_inbound_expectations_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -65,10 +66,9 @@ class _ExpectationApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.contains('expectations')) {
-      if (!path.contains('count')) {
-        lastQuery = query == null ? null : Map<String, dynamic>.from(query);
-      }
+    if (path == ApiEndpoints.warehouseInboundExpectationFacets) return const {};
+    if (path == '/warehouse/inbound/expectations') {
+      lastQuery = query == null ? null : Map<String, dynamic>.from(query);
       return {
         'items': [
           {

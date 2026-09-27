@@ -4,6 +4,7 @@
 // 守的是**口径**不是像素：哪一行能填数、填的是「下单数量」还是「追加下单」、
 // 哪一行的办理按钮该灰、没确认路线时表现成什么样。
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +19,8 @@ import 'package:uten_imp/features/production/models/production_material_analysis
 import 'package:uten_imp/features/production/pages/production_material_analysis_page.dart';
 import 'package:uten_imp/features/production/providers/material_analysis_warehouse_prefs_provider.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
+import 'package:uten_imp/features/production/widgets/production_overproduction_rate_field.dart';
+import 'package:uten_imp/features/production/widgets/material_preparation_status_style.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
@@ -169,19 +172,11 @@ List<({String method, String path, Map<String, dynamic>? body})> _submits() => [
       request,
 ];
 
-/// 某段 notify 请求里某个操作组送出的数量。
-double? _qtyOf(
-  ({String method, String path, Map<String, dynamic>? body}) request,
-  String actionGroupKey,
-) {
-  for (final raw in (request.body?['quantities'] as List? ?? const [])) {
-    final quantity = raw as Map;
-    if (quantity['actionGroupKey'] == actionGroupKey) {
-      return (quantity['qty'] as num).toDouble();
-    }
-  }
-  return null;
-}
+List<({String method, String path, Map<String, dynamic>? body})>
+_aggregateSubmits() => [
+  for (final request in requests)
+    if (request.path.endsWith('/aggregate-orders/submit')) request,
+];
 
 /// 已下达行「下单数量」格的锁定提示：累计已下单多少。
 Finder _issuedTooltip(String qty) => find.byWidgetPredicate(
@@ -201,6 +196,703 @@ bool _framedRed(WidgetTester tester, Finder field) {
 }
 
 void main() {
+  for (final scenario in [
+    (blocked: false, mandatory: false),
+    (blocked: true, mandatory: false),
+    (blocked: false, mandatory: true),
+  ]) {
+    final blocked = scenario.blocked, mandatory = scenario.mandatory;
+    testWidgets(
+      '提交性能：整树每层应用回包，辅助读取在结束后一次 blocked=$blocked mandatory=$mandatory',
+      (tester) async {
+        await _pump(
+          tester,
+          permissions: {
+            ..._permissions,
+            Perm.productionMaterialAnalysisGenerate,
+          },
+          mutate: (data) {
+            _deepProductAnalysis(data);
+            (data['allowedActions'] as List).add('VIEW_FUTURE_TRANSFERS');
+            return data;
+          },
+          defaultWorkshops: _workshopDefaultsFor(const [
+            'parent-0',
+            'parent-1',
+            'parent-2',
+            'deep-make',
+            'deep-subcontract',
+            'deep-inner',
+          ]),
+          afterWrite: (data) {
+            for (final row in _records(data['flatMaterials'])) {
+              if (row['goodsId'] != (mandatory ? 'deep-make' : 'deep-raw')) {
+                continue;
+              }
+              row['owningWorkshopId'] = 'ws-1';
+              row['owningWorkshopName'] = '学习车间${data['version']}';
+            }
+            return data;
+          },
+          aggregatePreview: (body, data) =>
+              _deepProductPreview(body, data, blocked: blocked),
+          aggregateSubmit: _deepProductSubmit,
+          delayMs: 450,
+        );
+        for (var i = 0; i < 3; i++) {
+          await _check(tester, _productCheckbox('product-$i'));
+        }
+        await _submitSelected(tester);
+        expect(
+          _aggregateSubmits(),
+          hasLength(blocked ? 1 : 4),
+          reason: ProviderScope.containerOf(
+            tester.element(find.byType(ProductionMaterialAnalysisPage)),
+          ).read(appNotificationProvider).map((n) => n.message).join('\n'),
+        );
+        final writes = requests
+            .where(
+              (r) =>
+                  r.path.endsWith('/aggregate-orders/submit') ||
+                  r.path.endsWith('/issue-plans'),
+            )
+            .toList();
+        final lastWrite = requests.indexOf(writes.last);
+        for (final suffix in ['/future-transfers', '/default-workshops']) {
+          final reads = requests.where((r) => r.path.endsWith(suffix)).toList();
+          final needsSetting = mandatory && suffix == '/default-workshops';
+          expect(
+            reads,
+            hasLength(needsSetting ? 2 : 1),
+            reason: '$suffix 辅助读取尾随一次，必需指派不得延后',
+          );
+          // Records compare by value: both GETs have equal method/path/body,
+          // so indexOf(reads.last) would incorrectly find the first one.
+          expect(
+            requests.lastIndexWhere((r) => r.path.endsWith(suffix)),
+            greaterThan(lastWrite),
+          );
+          if (needsSetting) {
+            expect(
+              requests.indexWhere((r) => r.path.endsWith(suffix)),
+              lessThan(requests.indexOf(_aggregateSubmits().first)),
+            );
+            expect(
+              _records(
+                _aggregateSubmits().first.body!['groups'],
+              ).single['workerId'],
+              'w-1',
+            );
+          }
+        }
+        expect(
+          requests.where((r) => r.path.endsWith('/issue-plans/preview')),
+          isEmpty,
+        );
+        expect(_records(writes.first.body!['lines']), hasLength(3));
+        if (blocked) {
+          final shortage = find.byKey(const Key('child-shortage-dialog'));
+          expect(shortage, findsOneWidget);
+          final completed = _records(
+            _aggregateSubmits().single.body!['groups'],
+          ).single;
+          expect(completed['route'], 'MAKE');
+          expect(completed['materialLineIds'], [
+            'shared-0',
+            'shared-1',
+            'shared-2',
+          ]);
+          expect(completed['qty'], '3000');
+          for (final material in ['保护门', '压板', '底层铜件', '分支采购件']) {
+            expect(
+              find.descendant(of: shortage, matching: find.text(material)),
+              findsWidgets,
+              reason: '已下达功能件对应的未完成子料必须明确列出',
+            );
+          }
+          expect(
+            find.descendant(of: shortage, matching: find.text('待认领 1000个')),
+            findsWidgets,
+          );
+        } else {
+          expect(find.byType(AlertDialog), findsNothing);
+        }
+      },
+    );
+  }
+
+  for (final obsolete in [true, false]) {
+    testWidgets('提交性能：旧编辑预览取消不阻塞，当前同签名预览复用 obsolete=$obsolete', (tester) async {
+      final first = Completer<void>();
+      final previewOptions = <RequestOptions>[];
+      var calls = 0;
+      await _pump(
+        tester,
+        overSupply: true,
+        permissions: _overSupplyPermissions,
+        mutate: _threeSharedBuySources,
+        requestObserver: (request) {
+          if (request.path.endsWith('/aggregate-orders/preview')) {
+            previewOptions.add(request);
+          }
+        },
+        aggregatePreview: (body, data) async {
+          final result = _sharedAggregatePreview(body, data);
+          if (++calls == 1) await first.future;
+          return result;
+        },
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      final field = find.byKey(
+        const ValueKey('material-aggregate-qty-g-m-2|本色|unit-1'),
+      );
+      await tester.enterText(field, '3100');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pump();
+      expect(previewOptions, hasLength(1));
+      if (obsolete) await tester.enterText(field, '3200');
+      await tester.tap(
+        find.byKey(const Key('material-analysis-submit-orders')),
+      );
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      if (obsolete) {
+        expect(previewOptions.first.cancelToken!.isCancelled, isTrue);
+        expect(previewOptions, hasLength(2));
+        expect(
+          find.byType(AlertDialog),
+          findsOneWidget,
+          reason: '无需等旧请求回来才能确认',
+        );
+      } else {
+        expect(previewOptions.first.cancelToken!.isCancelled, isFalse);
+        expect(previewOptions, hasLength(1));
+        expect(find.byType(AlertDialog), findsNothing);
+        first.complete();
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('下达'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      if (obsolete) first.complete();
+      await tester.pumpAndSettle();
+      expect(_aggregateSubmits(), hasLength(1));
+      expect(
+        _records(_aggregateSubmits().single.body!['groups']).single['qty'],
+        obsolete ? '3200' : '3100',
+      );
+      expect(previewOptions, hasLength(obsolete ? 2 : 1));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('提交性能：主表旧层级读取实际取消，迟到回包不能恢复已下达输入', (tester) async {
+    final pending = <RequestOptions>[];
+    await _pump(
+      tester,
+      mutate: _withSubcontractPair,
+      previewDelayMs: 3000,
+      requestObserver: (request) {
+        if (request.path.endsWith('/issue-plans/preview')) pending.add(request);
+      },
+    );
+    await tester.enterText(_orderQty('m-s'), '700');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(pending, hasLength(1));
+    expect(pending.single.cancelToken!.isCancelled, isFalse);
+    await _submitSelected(tester);
+    expect(pending.single.cancelToken!.isCancelled, isTrue);
+    final parent = _aggregateSubmits()
+        .expand((r) => _records(r.body!['groups']))
+        .singleWhere((g) => (g['materialLineIds'] as List).contains('m-s'));
+    expect(parent['qty'], '700');
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+    expect(_orderQty('m-s'), findsNothing);
+    expect(_appendQty('m-s'), findsOneWidget);
+    expect(_nodeSelected(tester, 'm-s'), isFalse);
+    expect(pending, hasLength(1));
+  });
+
+  testWidgets('准备最新：各产品独立填写并明确显示相同货品合计12000', (tester) async {
+    await _pump(
+      tester,
+      permissions: _overSupplyPermissions,
+      overSupply: true,
+      mutate: _threeSharedBuySources,
+    );
+    await tester.enterText(_orderQty('shared-0'), '10000');
+    await _settleRebuild(tester);
+    expect(_qtyText(tester, _orderQty('shared-1')), '1000');
+    expect(_qtyText(tester, _orderQty('shared-2')), '1000');
+    await _check(tester, _rowCheckbox('shared-1'));
+    await _check(tester, _rowCheckbox('shared-2'));
+    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('同货品填写合计'), findsOneWidget);
+    expect(find.textContaining('12000'), findsOneWidget);
+    expect(find.textContaining('10000 + 1000 + 1000'), findsOneWidget);
+    expect(_aggregateSubmits(), isEmpty);
+  });
+
+  testWidgets('准备最新：已下达根产品锁定真实指派，主档新归属不冒充工单指派', (tester) async {
+    await _pump(
+      tester,
+      permissions: {
+        ..._overSupplyPermissions,
+        Perm.productionMaterialAnalysisGenerate,
+      },
+      overSupply: true,
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-root']),
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        ((data['products'] as List).first as Map).addAll(<String, Object>{
+          'issuedPlanQty': 2000,
+          'latestPlanId': 'actual-plan',
+          'remainingQty': 0,
+          'canSchedule': false,
+          'canIssueSurplus': true,
+          'planExecutionWorkshopId': 'actual-department',
+          'planExecutionWorkshopName': '实际计划车间',
+          'planExecutionResponsibleId': 'actual-worker',
+          'planExecutionResponsibleName': '实际计划负责人',
+        });
+        _fixtureMaterial(data, 'm-root').addAll({
+          'owningWorkshopId': 'new-master-department',
+          'owningWorkshopName': '最新主档归属',
+        });
+        return data;
+      },
+    );
+    final workshop = find.byKey(
+      ValueKey('material-analysis-workshop-${_groupKey('m-root')}'),
+    );
+    final worker = find.byKey(
+      ValueKey('material-analysis-worker-${_groupKey('m-root')}'),
+    );
+    expect(tester.widget(workshop), isA<Tooltip>());
+    expect(tester.widget(worker), isA<Tooltip>());
+    expect(
+      find.descendant(of: workshop, matching: find.text('实际计划车间')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: worker, matching: find.text('实际计划负责人')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: workshop, matching: find.byType(InkWell)),
+      findsNothing,
+    );
+    expect(find.text('最新主档归属'), findsWidgets);
+    await tester.enterText(_appendQty('m-root'), '200');
+    await _settlePreview(tester);
+    await _onlyRoot(tester);
+    await _submitSelected(tester);
+    final lines = _submits().single.body!['lines'] as List;
+    expect((lines.single as Map)['departmentId'], 'actual-department');
+    expect((lines.single as Map)['workerId'], 'actual-worker');
+  });
+
+  testWidgets('准备最新：选中输入期间同版本外部可用和主档变化仍刷新但不改输入选择', (tester) async {
+    var reads = 0;
+    await _pump(
+      tester,
+      mutate: (data) {
+        _fixtureMaterial(data, 'm-2').addAll({
+          'preparationPoolKey': 'pool',
+          'preparationSharedAvailableQty': 10000,
+          'preparationOwnedAvailableQty': 200,
+          'preparationUncoveredBeforeSharedQty': 500,
+          'owningWarehouseId': 'warehouse-1',
+          'owningWarehouseName': '旧主档归属',
+        });
+        return data;
+      },
+      detailResponse: (data, count) {
+        reads = count;
+        if (count > 1) {
+          _fixtureMaterial(data, 'm-2').addAll({
+            'preparationSharedAvailableQty': 8000,
+            'owningWarehouseId': 'new-warehouse',
+            'owningWarehouseName': '新主档归属',
+            'flowStage': 'BUY_WAIT_STOCK_IN',
+          });
+        }
+        return data;
+      },
+    );
+    await tester.enterText(_orderQty('m-2'), '123');
+    await _settleRebuild(tester);
+    expect(_rowChecked(tester, 'm-2'), isTrue);
+    await tester.pump(const Duration(seconds: 45));
+    await tester.pumpAndSettle();
+    expect(reads, 2);
+    expect(_qtyText(tester, _orderQty('m-2')), '123');
+    expect(_rowChecked(tester, 'm-2'), isTrue);
+    expect(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey('material-analysis-public-available-m-2'),
+        ),
+        matching: find.text('7877'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('新主档归属'), findsWidgets);
+    expect(find.text('品质已通过 · 等待入库'), findsWidgets);
+  });
+
+  testWidgets('准备最新：晚到旧GET不回滚刚保存的主档，后续新主档变化能替换临时覆盖', (tester) async {
+    final oldRead = Completer<Map<String, dynamic>>();
+    Map<String, dynamic>? stale;
+    var reads = 0;
+    await _pump(
+      tester,
+      mutate: (data) {
+        _fixtureMaterial(data, 'm-2').addAll({
+          'owningWarehouseId': 'warehouse-1',
+          'owningWarehouseName': '旧主档归属',
+        });
+        return data;
+      },
+      detailResponse: (data, count) {
+        reads = count;
+        if (count == 2) {
+          stale = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
+          return oldRead.future;
+        }
+        if (count >= 3) {
+          _fixtureMaterial(data, 'm-2').addAll({
+            'owningWarehouseId': count == 3 ? 'main' : 'later-warehouse',
+            'owningWarehouseName': count == 3 ? '综合主仓' : '入库后的最新归属',
+          });
+        }
+        return data;
+      },
+    );
+    await tester.enterText(_orderQty('m-2'), '123');
+    await _settleRebuild(tester);
+    await tester.pump(const Duration(seconds: 45));
+    await tester.pump();
+    expect(reads, 2);
+    final field = find.byKey(
+      const ValueKey('material-owning-warehouse-MATERIAL|m-2'),
+    );
+    tester.widget<InkWell>(field).onTap!();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('综合主仓').last);
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: field, matching: find.text('综合主仓')),
+      findsOneWidget,
+    );
+    oldRead.complete(stale!);
+    await tester.pumpAndSettle();
+    expect(reads, 3);
+    expect(
+      find.descendant(of: field, matching: find.text('综合主仓')),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(seconds: 45));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: field, matching: find.text('入库后的最新归属')),
+      findsOneWidget,
+    );
+    expect(_qtyText(tester, _orderQty('m-2')), '123');
+    expect(_rowChecked(tester, 'm-2'), isTrue);
+  });
+  testWidgets('准备主表与采购桶同一待入库状态使用整格背景和配对前景', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) {
+        _fixtureMaterial(data, 'm-2')['flowStage'] = 'BUY_WAIT_STOCK_IN';
+        return data;
+      },
+    );
+    final mainLabel = find.byKey(
+      const ValueKey('material-preparation-status-MATERIAL|m-2'),
+    );
+    final style = tester
+        .widget<MaterialPreparationStatusLabel>(mainLabel)
+        .style;
+    expect(style.phase, MaterialPreparationStatusPhase.awaitingReceipt);
+    final background = find.ancestor(
+      of: mainLabel,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is Container &&
+            widget.decoration is BoxDecoration &&
+            (widget.decoration as BoxDecoration).color == style.background,
+      ),
+    );
+    expect(
+      background,
+      findsWidgets,
+      reason: '整格背景由MasterColumnDef.cellColor铺满',
+    );
+    final entry = find.byKey(const Key('material-analysis-entry-buy'));
+    await tester.ensureVisible(entry);
+    await tester.tap(entry);
+    await tester.pumpAndSettle();
+    final bucketLabel = find.byKey(
+      ValueKey('material-preparation-progress-${_groupKey('m-2')}'),
+    );
+    final bucketStyle = tester
+        .widget<MaterialPreparationStatusLabel>(bucketLabel)
+        .style;
+    expect(bucketStyle.background, style.background);
+    expect(bucketStyle.foreground, style.foreground);
+    expect(bucketStyle.icon, style.icon);
+  });
+  testWidgets('精确供给片预算不把其它行用剩但本行不可采用的量当作覆盖', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) {
+        _threeSharedBuySources(data);
+        for (var i = 0; i < 3; i++) {
+          _fixtureMaterial(data, 'shared-$i').addAll({
+            'preparationPoolKey': 'xy-pool',
+            'preparationSharedAvailableQty': 200,
+            'preparationOwnedAvailableQty': 0,
+            'preparationUncoveredBeforeSharedQty': 100,
+            'preparationAdoptableSharedQty': 100,
+            'preparationSharedSupplySlices': [
+              {'key': 'X', 'availableQty': 100, 'adoptable': false},
+              {'key': 'Y', 'availableQty': 100, 'adoptable': true},
+            ],
+            'additionalSupplyRecommendedQty': 100,
+          });
+        }
+        return data;
+      },
+    );
+    await _check(tester, _rowCheckbox('shared-1'));
+    await _settleRebuild(tester);
+    final available = find.byKey(
+      const ValueKey('material-analysis-public-available-shared-0'),
+    );
+    final shortage = find.byKey(
+      const ValueKey('material-analysis-net-shortage-shared-0'),
+    );
+    expect(
+      find.descendant(of: available, matching: find.text('100')),
+      findsOneWidget,
+    );
+    expect(tester.widget<Tooltip>(shortage).message, contains('还缺 100'));
+    await _toggle(tester, _rowCheckbox('shared-1'));
+    await _settleRebuild(tester);
+    expect(
+      find.descendant(of: available, matching: find.text('200')),
+      findsOneWidget,
+    );
+    expect(tester.widget<Tooltip>(shortage).message, contains('还缺 0'));
+  });
+  testWidgets('草稿预算汇总输入4500在三个原来源只预占一次', (tester) async {
+    await _pump(
+      tester,
+      permissions: _overSupplyPermissions,
+      overSupply: true,
+      aggregatePreview: _sharedAggregatePreview,
+      mutate: (data) {
+        _threeSharedBuySources(data);
+        for (var i = 0; i < 3; i++) {
+          _fixtureMaterial(data, 'shared-$i').addAll({
+            'preparationPoolKey': 'same-pool',
+            'preparationSharedAvailableQty': 10000,
+            'preparationOwnedAvailableQty': 0,
+            'preparationUncoveredBeforeSharedQty': 1000,
+          });
+        }
+        return data;
+      },
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('material-aggregate-qty-g-m-2|本色|unit-1')),
+      '4500',
+    );
+    await _settlePreview(tester);
+    expect(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey(
+            'material-analysis-public-available-AGGREGATE|g-m-2|本色|unit-1',
+          ),
+        ),
+        matching: find.text('5500'),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('material-bom-layout-product')));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 3; i++) {
+      expect(
+        find.descendant(
+          of: find.byKey(
+            ValueKey('material-analysis-public-available-shared-$i'),
+          ),
+          matching: find.text('5500'),
+        ),
+        findsOneWidget,
+      );
+    }
+  });
+
+  testWidgets('缺追加权限的父行未选中，保留输入但不展开也不送预览', (tester) async {
+    await _pump(tester);
+    await tester.enterText(_appendQty('m-p'), '1500');
+    await _settlePreview(tester);
+    expect(_qtyText(tester, _appendQty('m-p')), '1500');
+    expect(_rowChecked(tester, 'm-p'), isFalse);
+    expect(_qtyText(tester, _orderQty('m-pc')), '600');
+    expect(previews, isEmpty);
+  });
+  testWidgets('草稿预算只扣选中有效输入，取消和清空恢复同料余额，私有量不外借', (tester) async {
+    await _pump(
+      tester,
+      permissions: _overSupplyPermissions,
+      overSupply: true,
+      mutate: (data) {
+        _threeSharedBuySources(data);
+        for (var i = 0; i < 3; i++) {
+          _fixtureMaterial(data, 'shared-$i').addAll({
+            'preparationPoolKey': 'same-goods|color|unit|warehouse',
+            'preparationSharedAvailableQty': 10000,
+            'preparationOwnedAvailableQty': i == 2 ? 200 : 0,
+            'preparationUncoveredBeforeSharedQty': 1000,
+          });
+        }
+        return data;
+      },
+    );
+    String available(String id) => tester
+        .widget<Text>(
+          find
+              .descendant(
+                of: find.byKey(
+                  ValueKey('material-analysis-public-available-$id'),
+                ),
+                matching: find.byType(Text),
+              )
+              .last,
+        )
+        .data!;
+    expect(available('shared-0'), '10000');
+    await tester.enterText(_orderQty('shared-0'), '1000');
+    await _check(tester, _rowCheckbox('shared-0'));
+    await _settleRebuild(tester);
+    expect(available('shared-1'), '9000');
+    expect(available('shared-2'), '9000');
+    await _toggle(tester, _rowCheckbox('shared-0'));
+    await _settleRebuild(tester);
+    expect(_qtyText(tester, _orderQty('shared-0')), '1000');
+    expect(available('shared-1'), '10000');
+    await tester.enterText(_orderQty('shared-1'), '10000');
+    await _settleRebuild(tester);
+    expect(available('shared-0'), '0');
+    expect(available('shared-2'), '0');
+    expect(
+      tester
+          .widget<Tooltip>(
+            find.byKey(
+              const ValueKey('material-analysis-net-shortage-shared-0'),
+            ),
+          )
+          .message,
+      contains('还缺 1000'),
+    );
+    expect(
+      tester
+          .widget<Tooltip>(
+            find.byKey(
+              const ValueKey('material-analysis-net-shortage-shared-1'),
+            ),
+          )
+          .message,
+      contains('还缺 0'),
+    );
+    await tester.enterText(_orderQty('shared-1'), '');
+    await _settleRebuild(tester);
+    expect(available('shared-0'), '10000');
+    expect(previews, isEmpty);
+  });
+
+  testWidgets('草稿预算只扣追加量，不把锁定的历史下单重复扣掉', (tester) async {
+    await _pump(
+      tester,
+      permissions: _overSupplyPermissions,
+      overSupply: true,
+      mutate: (data) {
+        final line = _fixtureMaterial(data, 'm-3');
+        line.addAll({
+          'preparationPoolKey': 'm-3-pool',
+          'preparationSharedAvailableQty': 10000,
+          'preparationOwnedAvailableQty': 0,
+          'preparationUncoveredBeforeSharedQty': 0,
+        });
+        return data;
+      },
+    );
+    String available() => tester
+        .widget<Text>(
+          find
+              .descendant(
+                of: find.byKey(
+                  const ValueKey('material-analysis-public-available-m-3'),
+                ),
+                matching: find.byType(Text),
+              )
+              .last,
+        )
+        .data!;
+    expect(_orderQty('m-3'), findsNothing);
+    expect(available(), '10000');
+    await tester.enterText(_appendQty('m-3'), '1000');
+    await _settleRebuild(tester);
+    expect(available(), '9000');
+    await _toggle(tester, _rowCheckbox('m-3'));
+    await _settleRebuild(tester);
+    expect(_qtyText(tester, _appendQty('m-3')), '1000');
+    expect(available(), '10000');
+  });
+
+  testWidgets('取消父件选择保留手输但立即停止展开，预览也只传有效选择', (tester) async {
+    await _pump(tester, permissions: _overSupplyPermissions, overSupply: true);
+    await tester.enterText(_appendQty('m-p'), '2000');
+    await _settlePreview(tester);
+    expect(_qtyText(tester, _orderQty('m-pc')), '2000');
+    await _toggle(tester, _rowCheckbox('m-p'));
+    await _settlePreview(tester);
+    expect(_qtyText(tester, _appendQty('m-p')), '2000');
+    expect(_qtyText(tester, _orderQty('m-pc')), '600');
+    expect(_rowChecked(tester, 'm-pc'), isFalse);
+    final count = previews.length;
+    await _check(tester, _rowCheckbox('m-p'));
+    await _settlePreview(tester);
+    expect(previews.length, greaterThan(count));
+    expect(
+      (previews.last['typedOutputs'] as List).map(
+        (value) => (value as Map)['materialLineId'],
+      ),
+      contains('m-p'),
+    );
+    expect(_qtyText(tester, _orderQty('m-pc')), '2000');
+  });
+
   testWidgets('需要数量保留显式零，旧响应缺基线时不拿动态备料量冒充', (tester) async {
     await _pump(
       tester,
@@ -595,7 +1287,7 @@ void main() {
     await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
     await tester.pumpAndSettle();
     // 主确认框要说明同料将合并，不再各下各的。
-    expect(find.textContaining('1 种物料在多个产品'), findsOneWidget);
+    expect(find.textContaining('1 种组件按来源一次下达'), findsOneWidget);
     expect(find.textContaining('本次跳过'), findsNothing);
     await tester.tap(
       find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
@@ -636,7 +1328,68 @@ void main() {
     );
     expect(group['qty'], '3000');
     expect(group['route'], 'BUY');
+    expect(group['sourceRequestedQtyByMaterialLineId'], {
+      'shared-0': '1000',
+      'shared-1': '1000',
+      'shared-2': '1000',
+    });
     expect(find.text('下单(0)'), findsOneWidget);
+  });
+
+  testWidgets('同料合单保留每行10000和1000的真实输入，公共可用随回执刷新', (tester) async {
+    await _pump(
+      tester,
+      permissions: _overSupplyPermissions,
+      overSupply: true,
+      mutate: _threeSharedBuySources,
+      aggregatePreview: _sharedAggregatePreview,
+      aggregateSubmit: (body, data) {
+        final result = _sharedAggregateSubmit(body, data);
+        for (final material in _records(
+          (result['analysis'] as Map)['flatMaterials'],
+        )) {
+          material['preparationAvailableQty'] = 9000;
+        }
+        return result;
+      },
+    );
+    await tester.enterText(_orderQty('shared-0'), '10000');
+    for (final line in const ['shared-1', 'shared-2']) {
+      await _check(tester, _rowCheckbox(line));
+    }
+    await _settleRebuild(tester);
+    await _submitSelected(tester);
+    final input = _records(_aggregateSubmits().single.body!['groups']).single;
+    expect(input['qty'], '12000');
+    expect(input['sourceRequestedQtyByMaterialLineId'], {
+      'shared-0': '10000',
+      'shared-1': '1000',
+      'shared-2': '1000',
+    });
+    for (final entry in const {
+      'shared-0': '10000',
+      'shared-1': '1000',
+      'shared-2': '1000',
+    }.entries) {
+      expect(_orderQty(entry.key), findsNothing);
+      expect(_appendQty(entry.key), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey('material-table-row-${entry.key}')),
+          matching: _issuedTooltip(entry.value),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(
+            ValueKey('material-analysis-public-available-${entry.key}'),
+          ),
+          matching: find.text('9000'),
+        ),
+        findsOneWidget,
+      );
+    }
   });
 
   testWidgets('只缺生产车间/负责人的行：必填格实时红框，下单拦下滚动定位，不给提交', (tester) async {
@@ -686,6 +1439,226 @@ void main() {
     );
     expect(_framedRed(tester, rootWorkshop), isTrue);
   });
+
+  for (final scenario in [
+    (blocked: false, proof: true),
+    (blocked: true, proof: true),
+    (blocked: false, proof: false),
+  ]) {
+    final blockedSecondRound = scenario.blocked;
+    testWidgets(
+      '三产品四层混合全选保留原身份走完整DAG，第二轮阻断=$blockedSecondRound proof=${scenario.proof}',
+      (tester) async {
+        var block = blockedSecondRound;
+        await _pump(
+          tester,
+          permissions: {
+            ..._permissions,
+            Perm.productionMaterialAnalysisGenerate,
+          },
+          mutate: _deepProductAnalysis,
+          defaultWorkshops: _workshopDefaultsFor(const [
+            'parent-0',
+            'parent-1',
+            'parent-2',
+            'deep-make',
+            'deep-subcontract',
+            'deep-inner',
+          ]),
+          aggregatePreview: (body, data) => _deepProductPreview(
+            body,
+            data,
+            blocked: block,
+            includeProof: scenario.proof,
+          ),
+          aggregateSubmit: _deepProductSubmit,
+        );
+        for (var i = 0; i < 3; i++) {
+          await _check(tester, _productCheckbox('product-$i'));
+        }
+        await _submitSelected(tester);
+        final firstWrites = List.of(_aggregateSubmits());
+        expect(
+          _submits().where((r) => r.path.endsWith('/issue-plans')),
+          hasLength(1),
+        );
+        if (blockedSecondRound) {
+          expect(firstWrites, hasLength(1));
+          expect(
+            find.descendant(
+              of: find.byType(AlertDialog),
+              matching: find.text('下达'),
+            ),
+            findsNothing,
+            reason: '第二轮不得丢失confirmed后暗中再弹确认',
+          );
+          final shortage = find.byKey(const Key('child-shortage-dialog'));
+          expect(shortage, findsOneWidget);
+          for (final material in ['保护门', '压板', '底层铜件', '分支采购件']) {
+            expect(
+              find.descendant(of: shortage, matching: find.text(material)),
+              findsWidgets,
+              reason: '部分成功后应明确提醒已下父件对应的未完成子料',
+            );
+          }
+          for (final prefix in [
+            'deep-sc',
+            'deep-inner',
+            'deep-raw',
+            'deep-branch',
+          ]) {
+            for (var i = 0; i < 3; i++) {
+              expect(
+                _nodeSelected(tester, '$prefix-$i'),
+                isTrue,
+                reason: '未下达来源须保留选择和输入',
+              );
+            }
+          }
+          await tester.tap(find.byKey(const Key('child-shortage-later')));
+          await tester.pumpAndSettle();
+          block = false;
+          await _submitSelected(tester);
+          expect(
+            _aggregateSubmits(),
+            hasLength(3),
+            reason: '只重试未完成轮，已成功第一层不重下',
+          );
+        } else {
+          expect(firstWrites, hasLength(4));
+        }
+        final writes = blockedSecondRound
+            ? [...firstWrites, ..._aggregateSubmits()]
+            : firstWrites;
+        expect(writes.map((r) => _records(r.body!['groups']).length), [
+          1,
+          2,
+          1,
+          1,
+        ]);
+        final sourceIds = <String>[];
+        for (final request in writes) {
+          for (final group in _records(request.body!['groups'])) {
+            final ids = (group['materialLineIds'] as List).cast<String>();
+            expect(ids, hasLength(3));
+            expect(ids.any((id) => id.startsWith('canonical-')), isFalse);
+            expect(group['qty'], '3000');
+            expect(group['sourceRequestedQtyByMaterialLineId'], {
+              for (final id in ids) id: '1000',
+            });
+            sourceIds.addAll(ids);
+          }
+        }
+        expect(sourceIds.toSet(), {
+          for (final prefix in [
+            'shared',
+            'deep-sc',
+            'deep-inner',
+            'deep-raw',
+            'deep-branch',
+          ])
+            for (var i = 0; i < 3; i++) '$prefix-$i',
+        });
+        expect(sourceIds, hasLength(15));
+        expect(find.textContaining('汇总生产用料'), findsNothing);
+        for (final id in sourceIds) {
+          expect(_orderQty(id), findsNothing);
+          expect(_appendQty(id), findsOneWidget);
+          expect(_nodeSelected(tester, id), isFalse);
+        }
+        expect(find.text('下单(0)'), findsOneWidget);
+      },
+    );
+  }
+
+  for (final scenario in [
+    (manual: false, remaining: 2),
+    (manual: true, remaining: 2),
+    (manual: false, remaining: 0),
+  ]) {
+    final manualChild = scenario.manual;
+    testWidgets(
+      '父件采用已有供给后逐来源重算自动子量，保留手填 $manualChild remaining=${scenario.remaining}',
+      (tester) async {
+        await _pump(
+          tester,
+          permissions: {
+            ..._overSupplyPermissions,
+            Perm.productionMaterialAnalysisGenerate,
+          },
+          overSupply: true,
+          mutate: (data) {
+            _aggregateDagAnalysis(data);
+            (data['flatMaterials'] as List).removeWhere(
+              (raw) => (raw as Map)['materialLineId'] == 'p',
+            );
+            final parentKey = _fixtureMaterial(
+              data,
+              'raw-direct',
+            )['parentNodeKey'];
+            for (final id in ['raw-direct', 'raw-deep']) {
+              final child = _fixtureMaterial(data, id);
+              child['parentNodeKey'] = parentKey;
+              child['requiredQty'] = 6;
+              child['additionalSupplyRecommendedQty'] = 6;
+              child['netShortageQty'] = 6;
+            }
+            return data;
+          },
+          defaultWorkshops: _workshopDefaultsFor(const ['g-h']),
+          aggregatePreview: _defaultAggregatePreview,
+          aggregateSubmit: (body, data) {
+            final result = _defaultAggregateSubmit(body, data);
+            final inputs = _records(body['groups']);
+            if ((inputs.single['materialLineIds'] as List).contains('h')) {
+              final next = result['analysis'] as Map<String, dynamic>;
+              for (final id in ['raw-direct', 'raw-deep']) {
+                final child = _fixtureMaterial(next, id);
+                child['requiredQty'] = scenario.remaining;
+                child['additionalSupplyRecommendedQty'] = scenario.remaining;
+                child['netShortageQty'] = scenario.remaining;
+                if (scenario.remaining == 0) {
+                  child['requirementState'] = 'INACTIVE_PARENT_COVERED';
+                  child['actionable'] = false;
+                }
+              }
+              if (scenario.remaining == 0) {
+                final parent = _fixtureMaterial(next, 'h');
+                parent['preparationAdoptedQty'] = 3;
+                final preparation = parent['aggregatePreparation'] as Map;
+                preparation['orderedQty'] = 0;
+                preparation['allocatedOrderedQty'] = 0;
+              }
+            }
+            return result;
+          },
+        );
+        if (manualChild) {
+          await tester.enterText(_orderQty('raw-deep'), '9');
+          await _settleRebuild(tester);
+        }
+        for (final id in ['h', 'raw-direct', 'raw-deep']) {
+          await _check(tester, _rowCheckbox(id));
+        }
+        await _submitSelected(tester);
+        final writes = _aggregateSubmits();
+        if (scenario.remaining == 0) {
+          expect(writes, hasLength(1));
+          expect(_nodeSelected(tester, 'raw-direct'), isFalse);
+          expect(_nodeSelected(tester, 'raw-deep'), isFalse);
+          expect(find.text('下单(0)'), findsOneWidget);
+          return;
+        }
+        expect(writes, hasLength(2));
+        final raw = _records(writes.last.body!['groups']).single;
+        expect(raw['qty'], manualChild ? '11' : '4');
+        expect(raw['sourceRequestedQtyByMaterialLineId'], {
+          'raw-direct': '2',
+          'raw-deep': manualChild ? '9' : '2',
+        });
+      },
+    );
+  }
 
   for (final scenario in [
     (manual: false, retained: false),
@@ -1228,7 +2201,7 @@ void main() {
         find.byKey(const Key('material-analysis-submit-orders')),
       );
       await tester.pumpAndSettle();
-      expect(find.textContaining('追加原批次'), findsOneWidget);
+      expect(find.textContaining('追加原单'), findsOneWidget);
       await _confirmAggregateRound(tester);
       if (increment > 0) await _confirmAggregateRound(tester);
       final writes = requests
@@ -1387,7 +2360,7 @@ void main() {
     // 原行：需求整体转交(份额 1000)，本行没有任何引用。
     final original = _fixtureMaterial(data, 'm-6');
     original['requiredQty'] = 0;
-    original['sourceRequiredQty'] = 0;
+    original['sourceRequiredQty'] = 1000;
     original['allocatedAvailableQty'] = 0;
     original['availableQty'] = 0;
     original['shortageQty'] = 0;
@@ -1397,12 +2370,19 @@ void main() {
     original['requirementState'] = 'DELEGATED_TO_MAKE_CHILD';
     original['delegatedToAnalysisLineId'] = 'shared-anchor';
     original['aggregateDelegatedQty'] = 1000;
+    original['aggregatePreparation'] = {
+      'requiredQty': 1000,
+      'orderedQty': ordered ? 1000 : 0,
+      'allocatedOrderedQty': ordered ? 1000 : 0,
+      'planningUncoveredQty': ordered ? 0 : 1000,
+      'netShortageQty': ordered ? 0 : 1000,
+      'targetMaterialLineIds': ['m-6-shared'],
+      'actionable': true,
+    };
     return data;
   }
 
-  testWidgets('需求并入共享批次且已下达：原行锁成转交份额，产品视图不再立共享批次顶层行(2026-09-26)', (
-    tester,
-  ) async {
+  testWidgets('合单已下达仍保留原产品树：下单量锁定且原子件能直接追加', (tester) async {
     await _pump(
       tester,
       mutate: (data) => delegatedFixture(data, ordered: true),
@@ -1411,21 +2391,21 @@ void main() {
     expect(find.textContaining('汇总生产用料'), findsNothing);
     // 原行：下单格没有输入框，锁成本行份额 1000。
     expect(_orderQty('m-6'), findsNothing);
-    expect(_appendQty('m-6'), findsNothing);
+    expect(_appendQty('m-6'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('material-table-row-m-6')),
         matching: find.text('1000'),
       ),
       findsWidgets,
-      reason: '转交份额 1000 应显示在下单数量格里',
+      reason: '原行实际下单 1000 应显示在下单数量格里',
     );
     expect(
       find.byWidgetPredicate(
         (widget) =>
-            widget is Tooltip && (widget.message ?? '').contains('已并入共享制造批次下达'),
+            widget is Tooltip && (widget.message ?? '').contains('累计已下单 1000'),
       ),
-      findsOneWidget,
+      findsWidgets,
     );
     // 追加格是「—」并指路按物料汇总，不再是可编辑的 0。
     expect(
@@ -1434,28 +2414,499 @@ void main() {
             widget is Tooltip &&
             (widget.message ?? '').contains('追加或撤回到「按物料汇总」'),
       ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('草稿预算排除同一原件的canonical镜像，不重复私有量和共用余额', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) {
+        delegatedFixture(data, ordered: false);
+        _fixtureMaterial(data, 'm-6').addAll({
+          'preparationPoolKey': 'original-pool',
+          'preparationSharedAvailableQty': 10000,
+          'preparationOwnedAvailableQty': 100,
+          'preparationUncoveredBeforeSharedQty': 1000,
+        });
+        _fixtureMaterial(data, 'm-6-shared').addAll({
+          'preparationPoolKey': 'original-pool',
+          'preparationSharedAvailableQty': 0,
+          'preparationOwnedAvailableQty': 9900,
+          'preparationUncoveredBeforeSharedQty': 4000,
+        });
+        return data;
+      },
+    );
+    expect(
+      find.byKey(const ValueKey('material-table-row-m-6-shared')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey('material-analysis-public-available-m-6'),
+        ),
+        matching: find.text('10000'),
+      ),
       findsOneWidget,
     );
   });
 
-  testWidgets('需求转入共享批次但还没下达：原行只读份额并指路，不给输入框(2026-09-26)', (tester) async {
+  testWidgets('合单父件的未下单子件仍在原树填写下单量，不把转交需求冒充已下单', (tester) async {
     await _pump(
       tester,
       mutate: (data) => delegatedFixture(data, ordered: false),
     );
-    expect(_orderQty('m-6'), findsNothing);
+    expect(_qtyText(tester, _orderQty('m-6')), '1000');
     expect(_appendQty('m-6'), findsNothing);
     expect(
       find.byWidgetPredicate(
         (widget) =>
             widget is Tooltip && (widget.message ?? '').contains('需求已转入共享制造批次'),
       ),
+      findsNothing,
+    );
+  });
+
+  // 2026-09-26 二轮：#31 只锁了成员行的直接子层(别名行)，孙层及更深仍显示成可填的
+  // 0、进度整列「未下达」。服务端转交投影(AggregateDelegationProjection)把份额按
+  // BOM 数学分摊到任意深度并给出目标行(aggregateTargetMaterialLineId)，进度列报
+  // 目标行的真实阶段。守四条口径：
+  // 1) 任意深度都不再给输入框；2) 各行锁成本行份额(1000/500/100)；
+  // 3) 进度 = 「并入共享批次 · 目标真实阶段」；4) 已并入的行允许超产比例只读。
+  Map<String, dynamic> nestedDelegatedFixture(Map<String, dynamic> data) {
+    delegatedFixture(data, ordered: true);
+    // 共享批次树上的中间层目标行(已采购下单)与孙层目标行。
+    (data['flatMaterials'] as List).addAll([
+      {
+        ..._material(
+          line: 'm-6c-shared',
+          name: '中间连接件',
+          confirmed: 'BUY',
+          netShortageQty: 0,
+          requiredQty: 500,
+          stockQty: 0,
+        ),
+        'goodsId': 'g-m-6c',
+        'goodsCode': 'M-m-6c',
+        'analysisLineId': 'shared-anchor',
+        'flowStage': 'BUY_REQUESTED',
+        'downstreamReferences': [
+          {
+            'actionId': 'act-agg-child',
+            'route': 'BUY',
+            'status': 'REQUESTED',
+            'documentNo': 'REQ-06C',
+            'allocatedQty': 500,
+          },
+        ],
+      },
+    ]);
+    // 原产品树的子层与孙层：需求都已转走，份额按 BOM 折算，目标行由服务端给出。
+    (data['flatMaterials'] as List).addAll([
+      for (final spec in [
+        ('m-6c', '中间连接件', 500, 'm-6', 'm-6c-shared', 'BUY_REQUESTED'),
+        ('m-6g', '触点簧片', 100, 'm-6c', 'm-6g-shared', 'BUY_REQUESTED'),
+      ])
+        {
+          ..._material(
+            line: spec.$1,
+            name: spec.$2,
+            confirmed: 'BUY',
+            netShortageQty: 0,
+            requiredQty: 0,
+            stockQty: 0,
+            parentLine: spec.$4,
+          ),
+          'goodsId': 'g-${spec.$1}',
+          'goodsCode': 'M-${spec.$1}',
+          'requirementState': 'DELEGATED_TO_MAKE_CHILD',
+          'delegatedToAnalysisLineId': 'shared-anchor',
+          'aggregateDelegatedQty': spec.$3,
+          'aggregateTargetMaterialLineId': spec.$5,
+          'aggregatePreparation': {
+            'requiredQty': spec.$3,
+            'orderedQty': spec.$3,
+            'allocatedOrderedQty': spec.$3,
+            'planningUncoveredQty': 0,
+            'netShortageQty': 0,
+            'targetMaterialLineIds': [spec.$5],
+            'actionable': true,
+          },
+          'flowStage': spec.$6,
+        },
+    ]);
+    // 孙层目标行挂在共享批次树更深处(展示用；精确目标行查找不再依赖物料键匹配)。
+    (data['flatMaterials'] as List).add({
+      ..._material(
+        line: 'm-6g-shared',
+        name: '触点簧片',
+        confirmed: 'BUY',
+        netShortageQty: 0,
+        requiredQty: 100,
+        stockQty: 0,
+      ),
+      'goodsId': 'g-m-6g',
+      'goodsCode': 'M-m-6g',
+      'analysisLineId': 'shared-anchor',
+      'flowStage': 'BUY_REQUESTED',
+      'downstreamReferences': [
+        {
+          'actionId': 'act-agg-grandchild',
+          'route': 'BUY',
+          'status': 'REQUESTED',
+          'documentNo': 'REQ-06G',
+          'allocatedQty': 100,
+        },
+      ],
+    });
+    final original = _fixtureMaterial(data, 'm-6');
+    original['aggregateTargetMaterialLineId'] = 'm-6-shared';
+    original['flowStage'] = 'MAKE_IN_PROGRESS';
+    return data;
+  }
+
+  testWidgets('嵌套合单的子孙件分别保留追加入口，原树进度直接报告真实阶段', (tester) async {
+    await _pump(tester, mutate: nestedDelegatedFixture);
+    // 子层与孙层都没有输入框(#31 时代孙层是可编辑的 0)。
+    expect(_orderQty('m-6c'), findsNothing);
+    expect(_orderQty('m-6g'), findsNothing);
+    expect(_appendQty('m-6c'), findsOneWidget);
+    expect(_appendQty('m-6g'), findsOneWidget);
+    // 各行锁成本行份额：子层 500、孙层 100(按 BOM 折算，不再是 0)。
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('material-table-row-m-6c')),
+        matching: find.text('500'),
+      ),
+      findsWidgets,
+      reason: '子层转交份额 500 应显示在下单数量格里',
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('material-table-row-m-6g')),
+        matching: find.text('100'),
+      ),
+      findsWidgets,
+      reason: '孙层转交份额 100 应显示在下单数量格里',
+    );
+    // 进度列报目标行的真实阶段(服务端 flowStage)，前缀点破进度挂在共享批次上——
+    // 不再是「等待下发采购」这类未下达文案。
+    expect(find.textContaining('并入共享批次 ·'), findsNothing);
+    expect(find.textContaining('生产中 · 可报工'), findsOneWidget);
+    expect(find.textContaining('等待采购下单'), findsWidgets);
+    // 允许超产比例：已并入共享批次的行只读，不再渲染输入框。
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('material-table-row-m-6')),
+        matching: find.byType(ProductionOverproductionRateField),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('material-table-row-m-6')),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Tooltip &&
+              (widget.message ?? '').contains('允许超产比例随工单锁定'),
+        ),
+      ),
       findsOneWidget,
     );
   });
 
+  // 已是共享批次来源的行(还有未撤回的 AGGREGATE_SUPPLY 引用)单独下达时也要走
+  // 汇总通道——服务端会把这次的量并进那张还挂着的批次，而不是在按产品通道另起
+  // 一条申请(2026-09-26)。
+  for (final foreignOriginal in [false, true]) {
+    testWidgets(
+      'canonical预览必须同时证明原来源范围和精确目标 foreignOriginal=$foreignOriginal',
+      (tester) async {
+        await _pump(
+          tester,
+          permissions: _overSupplyPermissions,
+          overSupply: true,
+          mutate: nestedDelegatedFixture,
+          aggregatePreview: (body, data) {
+            final preview = _aggregateDagPreview(body, data);
+            final group = _records(preview['groups']).single;
+            group['sources'] = [
+              <String, dynamic>{
+                'materialLineId': foreignOriginal
+                    ? 'm-6g-shared'
+                    : 'm-6c-shared',
+                'originalMaterialLineIds': [
+                  foreignOriginal ? 'another-original' : 'm-6g',
+                ],
+                'allocatedQty': 0,
+              },
+            ];
+            return preview;
+          },
+        );
+        await tester.enterText(_appendQty('m-6g'), '200');
+        await _settleRebuild(tester);
+        await _submitSelected(tester);
+        expect(_aggregateSubmits(), isEmpty);
+        expect(_nodeSelected(tester, 'm-6g'), isTrue);
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('material-table-row-m-6g')),
+            matching: find.text('200'),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+  }
+
+  testWidgets('原树采购子件使用同一办理缺口应用起订建议并保留手填', (tester) async {
+    await _pump(
+      tester,
+      permissions: _overSupplyPermissions,
+      overSupply: true,
+      mutate: (data) {
+        nestedDelegatedFixture(data);
+        final material = _fixtureMaterial(data, 'm-6c');
+        material['minOrderQty'] = 1000;
+        material['orderMultipleQty'] = 100;
+        material['flowStage'] = 'BUY_PENDING_ISSUE';
+        (material['aggregatePreparation'] as Map).addAll(<String, Object>{
+          'orderedQty': 0,
+          'allocatedOrderedQty': 0,
+          'planningUncoveredQty': 500,
+          'netShortageQty': 500,
+        });
+        final target = _fixtureMaterial(data, 'm-6c-shared');
+        target['downstreamReferences'] = <Object>[];
+        target['flowStage'] = 'BUY_PENDING_ISSUE';
+        return data;
+      },
+    );
+    expect(_qtyText(tester, _orderQty('m-6c')), '1000');
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            (widget.message ?? '').contains('按起订量与整包装建议下单 1000'),
+      ),
+      findsOneWidget,
+    );
+    await tester.enterText(_orderQty('m-6c'), '600');
+    await _settleRebuild(tester);
+    expect(_qtyText(tester, _orderQty('m-6c')), '600');
+  });
+
+  testWidgets('旧预览缺proof且没有精确桥时拒绝canonical，不按相同货品猜来源', (tester) async {
+    await _pump(
+      tester,
+      permissions: _overSupplyPermissions,
+      overSupply: true,
+      mutate: (data) {
+        nestedDelegatedFixture(data);
+        (_fixtureMaterial(data, 'm-6g')['aggregatePreparation']
+                as Map)['targetMaterialLineIds'] =
+            <String>[];
+        return data;
+      },
+      aggregatePreview: (body, data) {
+        final preview = _aggregateDagPreview(body, data);
+        _records(preview['groups']).single['sources'] = [
+          <String, dynamic>{'materialLineId': 'm-6g-shared', 'allocatedQty': 0},
+        ];
+        return preview;
+      },
+    );
+    await tester.enterText(_appendQty('m-6g'), '200');
+    await _settleRebuild(tester);
+    await _submitSelected(tester);
+    expect(_aggregateSubmits(), isEmpty);
+    expect(_nodeSelected(tester, 'm-6g'), isTrue);
+  });
+
+  testWidgets('合单后的孙件单独追加仍提交原行身份和逐行数量', (tester) async {
+    await _pump(
+      tester,
+      permissions: _overSupplyPermissions,
+      overSupply: true,
+      mutate: nestedDelegatedFixture,
+      aggregatePreview: _aggregateDagPreview,
+      aggregateSubmit: (body, data) {
+        final next = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
+        next['version'] = (data['version'] as int) + 1;
+        next['fingerprint'] = 'f' * 64;
+        final preparation =
+            _fixtureMaterial(next, 'm-6g')['aggregatePreparation'] as Map;
+        preparation['orderedQty'] = 300;
+        preparation['allocatedOrderedQty'] = 300;
+        return {'analysis': next, 'batches': <Object>[]};
+      },
+    );
+    await tester.enterText(_appendQty('m-6g'), '200');
+    await _settleRebuild(tester);
+    expect(_rowChecked(tester, 'm-6g'), isTrue);
+    await _submitSelected(tester);
+    final submitted = requests.singleWhere(
+      (request) => request.path.endsWith('/aggregate-orders/submit'),
+    );
+    final group = (submitted.body!['groups'] as List).single as Map;
+    expect(group['materialLineIds'], ['m-6g']);
+    expect(group['qty'], '200');
+    expect(group['sourceRequestedQtyByMaterialLineId'], {'m-6g': '200'});
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('material-table-row-m-6g')),
+        matching: _issuedTooltip('300'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('追加或撤回到「按物料汇总」'), findsNothing);
+  });
+
+  testWidgets('已是共享批次来源的单行单独下达也走汇总通道，不另起按产品申请(2026-09-26)', (tester) async {
+    await _pump(
+      tester,
+      permissions: {
+        ..._permissions,
+        Perm.productionMaterialAnalysisGenerate,
+        Perm.productionMaterialAnalysisNotify,
+      },
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        final root = Map<String, dynamic>.from(
+          _fixtureMaterial(data, 'm-root'),
+        );
+        root['requiredQty'] = 0;
+        root['sourceRequiredQty'] = 0;
+        root['availableQty'] = 0;
+        root['allocatedAvailableQty'] = 0;
+        root['shortageQty'] = 0;
+        root['demandSupplyGapQty'] = 0;
+        root['additionalSupplyRecommendedQty'] = 0;
+        root['netShortageQty'] = 0;
+        data['flatMaterials'] = [
+          root,
+          {
+            ..._material(
+              line: 'm-merge',
+              name: '已并入批次的共享料',
+              confirmed: 'BUY',
+              netShortageQty: 600,
+              requiredQty: 600,
+              stockQty: 0,
+            ),
+            'downstreamReferences': [
+              {
+                'actionId': 'aggregate-action',
+                'route': 'BUY',
+                'status': 'REQUESTED',
+                'documentType': 'PURCHASE_REQUEST',
+                'documentId': 'agg-req',
+                'documentNo': 'CS-AGG-1',
+                'allocatedQty': 1000,
+              },
+            ],
+          },
+        ];
+        data['supplyActions'] = [
+          {
+            'actionId': 'aggregate-action',
+            'route': 'BUY',
+            'operationType': 'AGGREGATE_SUPPLY',
+            'requestedQty': 1000,
+            'publicSurplusQty': 0,
+          },
+        ];
+        return data;
+      },
+      aggregatePreview: (body, data) {
+        final group = (body['groups'] as List).single as Map;
+        return {
+          'analysisId': data['analysisId'],
+          'version': data['version'],
+          'fingerprint': data['fingerprint'],
+          'previewFingerprint': 'e' * 64,
+          'analysis': data,
+          'groups': [
+            {
+              'clientGroupKey': group['clientGroupKey'],
+              'compatibilityKey': 'shared-append',
+              'route': 'BUY',
+              'goodsId': 'g-m-merge',
+              'goodsName': '已并入批次的共享料',
+              'unitId': 'unit-1',
+              'unitName': '个',
+              'sourceRequiredQty': 1600,
+              'orderedQty': 1000,
+              'remainingQty': 600,
+              'requestedQty': double.parse(group['qty'].toString()),
+              'publicExtraQty': 0,
+              'safetyQty': 0,
+              'existingBatchId': 'shared-batch-1',
+              'sources': [
+                {
+                  'materialLineId': 'm-merge',
+                  'analysisLineId': 'product-1',
+                  'sourceLabel': '智能多功能插座',
+                  'allocationPriority': 1,
+                  'sourceRequiredQty': 1600,
+                  'remainingQty': 600,
+                  'allocatedQty': double.parse(group['qty'].toString()),
+                  'orderedQty': 1000,
+                },
+              ],
+              'sharedBomChildren': <Object>[],
+            },
+          ],
+        };
+      },
+      aggregateSubmit: (body, data) {
+        final next = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
+        next['version'] = (data['version'] as int) + 1;
+        next['fingerprint'] = 'f' * 64;
+        final material = _fixtureMaterial(next, 'm-merge');
+        material['additionalSupplyRecommendedQty'] = 0;
+        material['netShortageQty'] = 0;
+        return {'analysis': next, 'replayed': false, 'batches': <Object>[]};
+      },
+    );
+    // 已下达过 1000 的行：本次的量从「追加下单」列填(下单数量列已锁成累计量)，
+    // 填完勾这一行(与叶子行下单测试同一交互顺序)。
+    await tester.enterText(_appendQty('m-merge'), '600');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    await _check(tester, _rowCheckbox('m-merge'));
+    await tester.pumpAndSettle();
+    requests.clear();
+    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+    await tester.pumpAndSettle();
+    // 单行也要说明合并语义(追加并回共享批次)。
+    expect(find.textContaining('相同物料自动合单'), findsOneWidget);
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
+    );
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpAndSettle();
+    // 走汇总通道一次提交这一行；按产品通道的 /notify 一条都不发。
+    final writes = requests
+        .where((request) => request.path.endsWith('/aggregate-orders/submit'))
+        .toList();
+    expect(writes, hasLength(1));
+    final group = _records(writes.single.body!['groups']).single;
+    expect(group['materialLineIds'], ['m-merge']);
+    expect(group['qty'], '600');
+    expect(
+      _submits().where((request) => request.path.endsWith('/notify')),
+      isEmpty,
+    );
+  });
+
   testWidgets('主表追加格也带动子层：在已下达父件的追加格填数，子件按新数量重算', (tester) async {
-    await _pump(tester);
+    await _pump(tester, permissions: _overSupplyPermissions, overSupply: true);
     // 已下达的自制父件两格都在(下单数量 + 追加下单)，它们是同一个提交单元的
     // 两半；子件此刻按权威快照是 600。
     expect(find.text('已下达委外父件'), findsWidgets);
@@ -1478,7 +2929,12 @@ void main() {
   });
 
   testWidgets('层级预览单飞 + 尾随：在途期间连改 5 次，只按最后一次补发一份(ADR-116)', (tester) async {
-    await _pump(tester, previewDelayMs: 3000);
+    await _pump(
+      tester,
+      permissions: _overSupplyPermissions,
+      overSupply: true,
+      previewDelayMs: 3000,
+    );
     await tester.enterText(_appendQty('m-p'), '1100');
     // 去抖到点，第一份预览发出并一直在途。
     await tester.pump(const Duration(milliseconds: 400));
@@ -1503,7 +2959,7 @@ void main() {
   });
 
   testWidgets('父行改量后子件的还缺数量与下单预填都跟着重算后的快照走', (tester) async {
-    await _pump(tester);
+    await _pump(tester, permissions: _overSupplyPermissions, overSupply: true);
     final shortage = find.byKey(
       const ValueKey('material-analysis-net-shortage-m-pc'),
     );
@@ -1520,7 +2976,7 @@ void main() {
   });
 
   testWidgets('两格都空 = 交还系统算：清掉追加格后不再送这一行的数', (tester) async {
-    await _pump(tester);
+    await _pump(tester, permissions: _overSupplyPermissions, overSupply: true);
     await tester.enterText(_appendQty('m-p'), '1500');
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
@@ -1537,7 +2993,7 @@ void main() {
   });
 
   testWidgets('敲一下当场变：父行填数的那一拍子件就按比例换算好，不等服务端那趟', (tester) async {
-    await _pump(tester);
+    await _pump(tester, permissions: _overSupplyPermissions, overSupply: true);
     final shortage = find.byKey(
       const ValueKey('material-analysis-net-shortage-m-pc'),
     );
@@ -1563,7 +3019,7 @@ void main() {
   });
 
   testWidgets('填了又立刻清空：子件当场回落到快照值，一次服务端都不问', (tester) async {
-    await _pump(tester);
+    await _pump(tester, permissions: _overSupplyPermissions, overSupply: true);
     await tester.enterText(_appendQty('m-p'), '1500');
     await tester.pump();
     expect(_qtyText(tester, _orderQty('m-pc')), '2100');
@@ -1578,7 +3034,7 @@ void main() {
   });
 
   testWidgets('服务端那份回来之后再改：从模拟快照起算比例，不是从权威快照', (tester) async {
-    await _pump(tester);
+    await _pump(tester, permissions: _overSupplyPermissions, overSupply: true);
     await tester.enterText(_appendQty('m-p'), '1500');
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
@@ -1598,7 +3054,19 @@ void main() {
   });
 
   testWidgets('顶层产品行改数：整棵树当场按比例变，而且会去问服务端(原来判成没有下层)', (tester) async {
-    await _pump(tester);
+    await _pump(
+      tester,
+      permissions: {
+        ..._overSupplyPermissions,
+        Perm.productionMaterialAnalysisGenerate,
+      },
+      overSupply: true,
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        return data;
+      },
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-root', 'g-m-6']),
+    );
     expect(_qtyText(tester, _orderQty('m-6')), '400');
     expect(_qtyText(tester, _orderQty('m-pc')), '600');
 
@@ -1683,6 +3151,34 @@ void main() {
     expect(find.text('下单(4)'), findsOneWidget);
   });
 
+  for (final parentQty in ['2000', '1000']) {
+    testWidgets('父件填同默认或部分量仍选中有缺口子件 $parentQty', (tester) async {
+      await _pump(
+        tester,
+        permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+        mutate: _withConfirmedMakeSubtree,
+        defaultWorkshops: _workshopDefaultsFor(const [
+          'g-m-root',
+          'g-m-hv5g001',
+          'g-m-nested',
+        ]),
+        preview: _previewRootOnlySubtree,
+      );
+      await tester.enterText(_orderQty('m-root'), '');
+      await tester.pump();
+      await tester.enterText(_orderQty('m-root'), parentQty);
+      await _settlePreview(tester);
+      for (final line in ['m-hv5g001', 'm-nested', 'm-leaf']) {
+        expect(_rowChecked(tester, line), isTrue);
+      }
+      await tester.enterText(_orderQty('m-root'), '');
+      await _settlePreview(tester);
+      for (final line in ['m-hv5g001', 'm-nested', 'm-leaf']) {
+        expect(_rowChecked(tester, line), isFalse);
+      }
+    });
+  }
+
   testWidgets('仅顶层改数且第一层父节点为空串：自制中间件应自动选中', (tester) async {
     await _pump(
       tester,
@@ -1709,8 +3205,70 @@ void main() {
     expect(_rowChecked(tester, 'm-hv5g001'), isTrue);
   });
 
+  testWidgets('父件改量会选中尚未渲染的下一页子件', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) {
+        _withConfirmedMakeSubtree(data);
+        final leaf = _fixtureMaterial(data, 'm-leaf');
+        (data['flatMaterials'] as List).addAll(<Map<String, dynamic>>[
+          for (var index = 0; index < 110; index++)
+            {
+              ...leaf,
+              'materialLineId': 'm-extra-$index',
+              'actionGroupKey': 'a-m-extra-$index',
+              'nodeKey': 'node-extra-$index',
+              'goodsId': 'goods-extra-$index',
+              'goodsCode': 'ZZ${index.toString().padLeft(3, '0')}',
+            },
+        ]);
+        return data;
+      },
+      defaultWorkshops: _workshopDefaultsFor(const [
+        'g-m-root',
+        'g-m-hv5g001',
+        'g-m-nested',
+      ]),
+      preview: _previewRootOnlySubtree,
+    );
+    expect(_orderQty('m-extra-109'), findsNothing);
+    await tester.enterText(_orderQty('m-root'), '3000');
+    await _settleRebuild(tester);
+    expect(_nodeSelected(tester, 'm-extra-109'), isTrue);
+    expect(find.text('下单(114)'), findsOneWidget);
+    await _settlePreview(tester);
+    expect(_nodeSelected(tester, 'm-extra-109'), isTrue);
+  });
+
+  testWidgets('部分下单后原格仍有缓存：追加预览只提交当前追加量', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: _withConfirmedMakeSubtree,
+      defaultWorkshops: _workshopDefaultsFor(const [
+        'g-m-root',
+        'g-m-hv5g001',
+        'g-m-nested',
+      ]),
+      preview: _previewRootOnlySubtree,
+    );
+    await tester.enterText(_orderQty('m-root'), '500');
+    await _settleRebuild(tester);
+    await _onlyRoot(tester);
+    await _submitSelected(tester);
+    expect(_orderQty('m-root'), findsNothing);
+    expect(_qtyText(tester, _appendQty('m-root')), '1500');
+    previews.clear();
+    await tester.enterText(_appendQty('m-root'), '200');
+    await _settlePreview(tester);
+    expect(previews.last['typedOutputs'], [
+      {'materialLineId': 'm-root', 'qty': 200.0},
+    ]);
+  });
+
   testWidgets('数量填少了 / 填错了当场冒红，改对了红框就消失；父行改大让子行缺了也冒红', (tester) async {
-    await _pump(tester);
+    await _pump(tester, permissions: _overSupplyPermissions, overSupply: true);
     // 自制外壳：还需安排 400，预填 400 → 不红。
     expect(_framedRed(tester, _orderQty('m-6')), isFalse);
     await tester.enterText(_orderQty('m-6'), '300');
@@ -1911,19 +3469,19 @@ void main() {
     expect(_appendQty('m-6'), findsNothing);
   });
 
-  testWidgets('要先自制目标件的委外行：有「下达车间」权限时下单数量可填，没有权限才整批接管只读', (tester) async {
+  testWidgets('前置自制委外统一要求车间权限与可见指派，缺权限不能退回外发绕过', (tester) async {
     // 2026-09-22 用户实机：把一行改成委外后「下单数量就定死了不能修改, 我都没有下单过」——
     // 原来这类行不看权限一律锁死, 而有权限时它走 issue-plans 的 ARRANGE 段, 数量可改可超。
     await _pump(tester, mutate: _withPreparationSubcontract);
-    // 默认权限没有「生成生产计划」：退回 notify 整批接管, 下单数量只读显示 800、追加横杠。
-    expect(_orderQty('m-u'), findsNothing);
+    expect(_qtyText(tester, _orderQty('m-u')), '800');
     expect(_appendQty('m-u'), findsNothing);
+    expect(_nodeSelected(tester, 'm-u'), isFalse);
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('material-table-row-m-u')),
-        matching: find.text('800'),
+        matching: find.byType(Checkbox),
       ),
-      findsWidgets,
+      findsNothing,
     );
 
     await _pump(
@@ -1946,15 +3504,14 @@ void main() {
       ),
       findsWidgets,
     );
-    // 生产车间 / 负责人跟路线走：委外行两格横杠、不要求指派, 行照样可勾；
-    // 自制行(m-6)才有指派格。
+    // 前置制造也必须有可见的车间/负责人入口，不能藏起必填项。
     expect(
       find.byKey(ValueKey('material-analysis-workshop-${_groupKey('m-u')}')),
-      findsNothing,
+      findsOneWidget,
     );
     expect(
       find.byKey(ValueKey('material-analysis-worker-${_groupKey('m-u')}')),
-      findsNothing,
+      findsOneWidget,
     );
     expect(_rowCheckbox('m-u'), findsOneWidget);
     expect(
@@ -1971,6 +3528,7 @@ void main() {
       tester,
       permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
       mutate: _withOverIssuedAnchoredSubcontractChild,
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-v', 'g-m-vc']),
     );
     // 累计已下单按锚点计划 1400(不是发外申请 1000), 追加格预填 0。
     expect(_orderQty('m-vc'), findsNothing);
@@ -2020,6 +3578,55 @@ void main() {
     expect(tooltip.message, contains('本次要覆盖的总量 1000'));
   });
 
+  testWidgets('纯采用制造来源显示来源进度，不冒充本行前置自制', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) {
+        _withPreparationSubcontract(data);
+        final material = _fixtureMaterial(data, 'm-u');
+        material['preparationAdoptedQty'] = 2;
+        material['flowStage'] = 'MAKE_WAIT_STOCK_IN';
+        return data;
+      },
+    );
+    expect(find.text('等待实收入库'), findsOneWidget);
+    expect(find.textContaining('前置自制 · 等待实收入库'), findsNothing);
+  });
+
+  testWidgets('本行有真实前置计划时仍保留前置制造进度', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) {
+        _withOverIssuedAnchoredSubcontractChild(data);
+        final material = _fixtureMaterial(data, 'm-vc');
+        material['preparationAdoptedQty'] = 2;
+        material['flowStage'] = 'MAKE_WAIT_STOCK_IN';
+        return data;
+      },
+    );
+    expect(find.textContaining('前置自制 · 等待实收入库'), findsOneWidget);
+  });
+
+  testWidgets('纯采用供给显示真实下单0和采用量，锁定原格并可继续追加', (tester) async {
+    await _pump(
+      tester,
+      permissions: _overSupplyPermissions,
+      overSupply: true,
+      mutate: (data) {
+        final material = _fixtureMaterial(data, 'm-5');
+        material['preparationAdoptedQty'] = 2;
+        material['additionalSupplyRecommendedQty'] = 0;
+        material['netShortageQty'] = 0;
+        return data;
+      },
+    );
+    expect(_orderQty('m-5'), findsNothing);
+    expect(_appendQty('m-5'), findsOneWidget);
+    expect(_qtyText(tester, _appendQty('m-5')), '0');
+    expect(find.text('采用 2'), findsOneWidget);
+    expect(_issuedTooltip('0'), findsOneWidget);
+  });
+
   testWidgets('从别的计划调拨进来的量不算已下单，这一行照样能正常下单', (tester) async {
     await _pump(tester);
     // m-5 有一条 FUTURE_TRANSFER 分摊，但一张订货单都没下过。
@@ -2045,27 +3652,28 @@ void main() {
     await _submitSelected(tester);
     // 原来是「采购 → 委外」：子件按父件新数量填的量先到，服务端当成超出当时需求的
     // 公共备货；父件的委外申请随后把子件需求抬上去，子件行留下一截认不回来的缺口。
-    final submits = _submits();
-    expect(submits.map((request) => request.body?['target']), [
-      'SUBCONTRACT',
-      'BUY',
-    ]);
-    expect(submits.first.body?['actionGroupKeys'], ['a-m-s']);
-    expect(_qtyOf(submits.first, 'a-m-s'), 700);
-    expect(
-      submits.last.body?['actionGroupKeys'],
-      unorderedEquals(['a-m-2', 'a-m-sc']),
+    final submits = _aggregateSubmits();
+    expect(submits, hasLength(2));
+    final first = _records(submits.first.body!['groups']);
+    final parent = first.singleWhere(
+      (group) => group['route'] == 'SUBCONTRACT',
     );
+    expect(parent['materialLineIds'], ['m-s']);
+    expect(parent['qty'], '700');
+    final child = _records(submits.last.body!['groups']).single;
+    expect(child['materialLineIds'], ['m-sc']);
     // 子件按父件填的 700 换算(还需安排 800 → 700)，父件落地后照样送 700，不翻倍。
-    expect(_qtyOf(submits.last, 'a-m-2'), 500);
-    expect(_qtyOf(submits.last, 'a-m-sc'), 700);
+    expect(first.singleWhere((group) => group['route'] == 'BUY')['qty'], '500');
+    expect(child['qty'], '700');
     // 提交期间与提交之后都不再补发层级预览：填过的数已随下达交还系统。
     // 假后端每段等 350ms，300ms 的去抖若没被挡住早就发出去了。
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
     expect(previews, hasLength(1));
     expect(
-      requests.where((request) => request.path.endsWith('/preview')),
+      requests.where(
+        (request) => request.path.endsWith('/issue-plans/preview'),
+      ),
       isEmpty,
     );
     // 成功的行勾选撤掉。
@@ -2084,6 +3692,7 @@ void main() {
         product['canIssueSurplus'] = true;
         product['remainingQty'] = 0;
         product['latestPlanId'] = 'plan-1';
+        _fixturePlanAssignment(product);
         return data;
       },
       defaultWorkshops: _workshopDefaultsFor(const ['g-m-root']),
@@ -2101,9 +3710,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('下单(2)'), findsOneWidget);
     await _submitSelected(tester);
-    final submits = _submits();
-    expect(submits.map((request) => request.path.split('/').last), ['notify']);
-    expect(submits.single.body?['target'], 'BUY');
+    expect(_submits(), isEmpty);
+    final submits = _aggregateSubmits();
+    expect(submits, hasLength(1));
+    expect(_records(submits.single.body!['groups']).single['route'], 'BUY');
   });
 
   testWidgets('顶层追加格填了数：顶层自己和被带出缺口的子件都自动勾上', (tester) async {
@@ -2119,6 +3729,7 @@ void main() {
         product['canIssueSurplus'] = true;
         product['remainingQty'] = 0;
         product['latestPlanId'] = 'plan-1';
+        _fixturePlanAssignment(product);
         return data;
       },
       defaultWorkshops: _workshopDefaultsFor(const ['g-m-root', 'g-m-6']),
@@ -2137,7 +3748,7 @@ void main() {
     expect(_nodeSelected(tester, 'm-root'), isTrue);
   });
 
-  testWidgets('顶层填了追加数却缺生产车间勾不上：当场说原因，不重复刷屏', (tester) async {
+  testWidgets('已下达根产品缺实际指派回包：锁定且明确阻止错误追加', (tester) async {
     // 2026-09-22 用户实机「我填数字的这层(顶层)默认是没有选中的」的另一种真因：数量格只要有
     // 下达权限就是开着的, 顶层没有车间学习默认值时填了数、子层照带, 自己却静静地勾不上,
     // 原因只藏在悬浮说明里。
@@ -2154,19 +3765,19 @@ void main() {
         product['latestPlanId'] = 'plan-1';
         return data;
       },
-      defaultWorkshops: _workshopDefaultsFor(const ['g-m-6']),
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-root', 'g-m-6']),
     );
     await tester.enterText(_appendQty('m-root'), '1000');
     await tester.pump();
     await _settleRebuild(tester);
     expect(_nodeSelected(tester, 'm-root'), isFalse);
-    expect(_rowChecked(tester, 'm-6'), isTrue);
+    expect(_rowChecked(tester, 'm-6'), isFalse);
     final container = ProviderScope.containerOf(
       tester.element(find.byType(ProductionMaterialAnalysisPage)),
     );
     bool blockedNotice(AppNotification notice) =>
         notice.message.contains('填了数但本次还下不了单') &&
-        notice.message.contains('生产车间');
+        notice.message.contains('实际指派');
     expect(
       container.read(appNotificationProvider).where(blockedNotice),
       hasLength(1),
@@ -2206,11 +3817,11 @@ void main() {
     await _check(tester, _rowCheckbox('m-2'));
     await tester.pumpAndSettle();
     await _submitSelected(tester);
-    final submits = _submits();
+    final submits = _aggregateSubmits();
     expect(submits, hasLength(1));
-    final quantities = submits.single.body?['quantities'] as List;
-    expect((quantities.single as Map)['actionGroupKey'], 'a-m-2');
-    expect((quantities.single as Map)['qty'], 450);
+    final quantity = _records(submits.single.body!['groups']).single;
+    expect(quantity['materialLineIds'], ['m-2']);
+    expect(quantity['qty'], '450');
     // 原来下达成功后 _applyAnalysis 会带着这行填的数去抖发一次 preview(服务端是
     // 「已下达 + 本次填的」，等于把刚下达的量再加一遍)；现在填的数已交还系统，
     // 一次都不发；这一行落库后锁成累计已下单 450。追加格预填 = 新快照里的缺口
@@ -2280,18 +3891,15 @@ void main() {
     }
     await tester.pumpAndSettle();
     await _submitSelected(tester);
-    final submits = _submits();
-    expect(submits.map((request) => request.path.split('/').last), [
-      'issue-plans',
-      'notify',
-      'notify',
-    ]);
-    final planLines = submits.first.body?['lines'] as List;
-    expect((planLines.single as Map)['materialLineId'], 'm-6');
-    expect((planLines.single as Map)['qty'], 400);
-    expect((planLines.single as Map)['allowedOverproductionRate'], 0.123456);
-    expect(submits[1].body?['target'], 'SUBCONTRACT');
-    expect(submits[2].body?['target'], 'BUY');
+    final submits = _aggregateSubmits();
+    expect(submits, hasLength(2));
+    final first = _records(submits.first.body!['groups']);
+    final make = first.singleWhere((group) => group['route'] == 'MAKE');
+    expect(make['materialLineIds'], ['m-6']);
+    expect(make['qty'], '400');
+    expect(make['allowedOverproductionRate'], 0.123456);
+    expect(first.any((group) => group['route'] == 'SUBCONTRACT'), isTrue);
+    expect(_records(submits.last.body!['groups']).single['route'], 'BUY');
     expect(previews, isEmpty);
     expect(find.text('下单(0)'), findsOneWidget);
   });
@@ -2322,8 +3930,8 @@ void main() {
     await tester.enterText(rate, '0');
     await tester.pumpAndSettle();
     await _submitSelected(tester);
-    expect(_submits(), hasLength(1));
-    final line = (_submits().single.body!['lines'] as List).single as Map;
+    expect(_aggregateSubmits(), hasLength(1));
+    final line = _records(_aggregateSubmits().single.body!['groups']).single;
     expect(line['allowedOverproductionRate'], 0);
   });
 
@@ -2339,6 +3947,7 @@ void main() {
         product['canIssueSurplus'] = true;
         product['remainingQty'] = 0;
         product['latestPlanId'] = 'plan-1';
+        _fixturePlanAssignment(product);
         return data;
       },
       defaultWorkshops: _workshopDefaultsFor(const ['g-m-root']),
@@ -2384,7 +3993,6 @@ void main() {
     final submits = _submits();
     expect(submits.map((request) => request.path.split('/').last), [
       'issue-plans',
-      'issue-plans',
     ]);
     final rootLine = (submits.first.body?['lines'] as List).single as Map;
     expect(rootLine['analysisLineId'], 'product-1');
@@ -2392,10 +4000,12 @@ void main() {
     // 第一段落地后快照里顶层已下 1500，而顶层填的 1500 还挂在 typedOutputs 上——原来
     // 这一刻的重估会把子树翻倍，m-7 的还需安排被估成正数，纯公共备货就被判成 false，
     // 服务端 409「当前分析需求已全部转入生产计划」整批停下(2026-09-23 对抗复查)。
-    final childLine = (submits.last.body?['lines'] as List).single as Map;
-    expect(childLine['materialLineId'], 'm-7');
-    expect(childLine['qty'], 500);
-    expect(childLine['publicSurplusOnly'], isTrue);
+    final childLine = _records(
+      _aggregateSubmits().single.body!['groups'],
+    ).single;
+    expect(childLine['materialLineIds'], ['m-7']);
+    expect(childLine['qty'], '500');
+    expect(childLine['allowPublicExtra'], isTrue);
   });
 
   testWidgets('车间段失败：后面的采购段不发，勾选保留，之后填数仍会去抖发预览', (tester) async {
@@ -2407,22 +4017,21 @@ void main() {
         return _withSubcontractPair(data);
       },
       defaultWorkshops: _workshopDefaultsFor(const ['g-m-6']),
-      failOn: const {'/issue-plans': 409},
+      failOn: const {'/aggregate-orders/submit': 409},
     );
     await _check(tester, _rowCheckbox('m-6'));
     await _check(tester, _rowCheckbox('m-2'));
     await tester.pumpAndSettle();
     await _submitSelected(tester);
-    expect(_submits().map((request) => request.path.split('/').last), [
-      'issue-plans',
-    ]);
+    expect(_submits(), isEmpty);
+    expect(_aggregateSubmits(), hasLength(1));
+    final firstRequest = _aggregateSubmits().single.body;
     // 停在第一段：勾选一个都不撤，让人改了再试。
     expect(find.text('下单(2)'), findsOneWidget);
-    // 编排的忙标志已复位：再填一个带下层的行，300ms 后照常去抖发预览。
-    await tester.enterText(_orderQty('m-s'), '700');
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
-    expect(previews, hasLength(1));
+    // 当前页可以直接重试同一批，原来源与数量没有消失，也不强制切换视图。
+    await _submitSelected(tester);
+    expect(_aggregateSubmits(), hasLength(1));
+    expect(_aggregateSubmits().single.body!['groups'], firstRequest!['groups']);
   });
 
   testWidgets('下过生产计划的自制行(含顶层)：供应方式锁死，不再给下拉', (tester) async {
@@ -2437,6 +4046,7 @@ void main() {
         product['canIssueSurplus'] = true;
         product['remainingQty'] = 0;
         product['latestPlanId'] = 'plan-1';
+        _fixturePlanAssignment(product);
         return _withIssuedMakeRow(data);
       },
       defaultWorkshops: _workshopDefaultsFor(const ['g-m-7']),
@@ -2494,16 +4104,19 @@ Future<void> _pump(
   bool overSupply = false,
   Map<String, dynamic> Function(Map<String, dynamic> data)? mutate,
   Map<String, dynamic> Function(Map<String, dynamic> data)? afterWrite,
+  FutureOr<Map<String, dynamic>> Function(Map<String, dynamic> data, int count)?
+  detailResponse,
   Map<String, dynamic> Function(
     Map<String, dynamic> data,
     Map<String, double> typed,
   )?
   preview,
-  Map<String, dynamic> Function(
+  FutureOr<Map<String, dynamic>> Function(
     Map<String, dynamic> body,
     Map<String, dynamic> data,
   )?
   aggregatePreview,
+  void Function(RequestOptions)? requestObserver,
   Map<String, dynamic> Function(
     Map<String, dynamic> body,
     Map<String, dynamic> data,
@@ -2537,6 +4150,7 @@ Future<void> _pump(
       jsonDecode(jsonEncode(_analysis(overSupply: overSupply)))
           as Map<String, dynamic>;
   if (mutate != null) data = mutate(data);
+  var detailReads = 0;
   // 真下达 / 通知之后服务端会换版本与指纹；夹具照样推一版，否则页面把
   // 「版本没动」当成「这次一条都没下」。
   Map<String, dynamic> bumped() {
@@ -2552,6 +4166,7 @@ Future<void> _pump(
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (request, handler) async {
+        requestObserver?.call(request);
         requests.add((
           method: request.method,
           path: request.path,
@@ -2585,7 +4200,7 @@ Future<void> _pump(
           result = aggregateCancel!(request.data as Map<String, dynamic>, data);
           data = Map<String, dynamic>.from(result as Map);
         } else if (request.path.endsWith('/aggregate-orders/preview')) {
-          result = aggregatePreview!(
+          result = await (aggregatePreview ?? _defaultAggregatePreview)(
             request.data as Map<String, dynamic>,
             data,
           );
@@ -2593,8 +4208,18 @@ Future<void> _pump(
           if (await _rejectIfConfigured(request, handler, failOn, delayMs)) {
             return;
           }
-          result = aggregateSubmit!(request.data as Map<String, dynamic>, data);
+          result = (aggregateSubmit ?? _defaultAggregateSubmit)(
+            request.data as Map<String, dynamic>,
+            data,
+          );
           data = Map<String, dynamic>.from((result as Map)['analysis'] as Map);
+          if (afterWrite != null) {
+            data = afterWrite(data);
+            result = <String, dynamic>{
+              ...Map<String, dynamic>.from(result),
+              'analysis': data,
+            };
+          }
         } else if (request.path.endsWith('/issue-plans/preview')) {
           // 回滚式预览：按请求里 typedOutputs 把子层需求放大(与服务端「子件按
           // 父件计划产出量展开」同一口径)，并记下这次送了什么供断言。
@@ -2694,6 +4319,10 @@ Future<void> _pump(
           _applyNotifyToFixture(data, request.data as Map<String, dynamic>);
           result = bumped();
         } else if (request.path == '/production/material-analyses/analysis-1') {
+          detailReads++;
+          if (detailResponse != null) {
+            data = await detailResponse(data, detailReads);
+          }
           result = data;
         } else if (request.path.endsWith('/routes') &&
             request.method == 'PUT') {
@@ -2854,6 +4483,224 @@ Map<String, dynamic> _aggregateDagAnalysis(Map<String, dynamic> data) {
   return data;
 }
 
+Map<String, dynamic> _deepProductAnalysis(Map<String, dynamic> data) {
+  _threeSharedBuySources(data);
+  (data['allowedActions'] as List).add('GENERATE_PLAN');
+  for (var i = 0; i < 3; i++) {
+    final first = _fixtureMaterial(data, 'shared-$i');
+    first['goodsId'] = 'deep-make';
+    first['sourceConfirmed'] = 'MAKE';
+    first['sourceSuggestion'] = 'MAKE';
+    first['goodsName'] = '功能件';
+    for (final spec in [
+      ('deep-sc', '保护门', 'SUBCONTRACT', 'deep-subcontract', 'shared-$i', 2),
+      ('deep-inner', '压板', 'MAKE', 'deep-inner', 'deep-sc-$i', 3),
+      ('deep-raw', '底层铜件', 'BUY', 'deep-raw', 'deep-inner-$i', 4),
+      ('deep-branch', '分支采购件', 'BUY', 'deep-branch', 'shared-$i', 2),
+    ]) {
+      final parent = _fixtureMaterial(data, spec.$5);
+      (data['flatMaterials'] as List).add(<String, dynamic>{
+        ..._material(
+          line: '${spec.$1}-$i',
+          name: spec.$2,
+          confirmed: spec.$3,
+          netShortageQty: 1000,
+          stockQty: 0,
+          level: spec.$6,
+        ),
+        'analysisLineId': 'product-$i',
+        'goodsId': spec.$4,
+        'parentNodeKey': parent['nodeKey'],
+        'sourceRequiredQty': 1000,
+        'subcontractOutboundForm': spec.$3 == 'SUBCONTRACT'
+            ? 'FINISHED_GOOD_OUTBOUND'
+            : null,
+      });
+    }
+  }
+  return data;
+}
+
+Map<String, dynamic> _deepProductPreview(
+  Map<String, dynamic> body,
+  Map<String, dynamic> data, {
+  bool blocked = false,
+  bool includeProof = true,
+}) {
+  return {
+    'analysisId': data['analysisId'],
+    'version': data['version'],
+    'fingerprint': data['fingerprint'],
+    'previewFingerprint': 'deep-${data['version']}',
+    'analysis': data,
+    'groups': [
+      for (final input in _records(body['groups']))
+        (() {
+          final ids = (input['materialLineIds'] as List).cast<String>();
+          final first = _fixtureMaterial(data, ids.first);
+          final effective = <String, List<String>>{};
+          for (final id in ids) {
+            final original = _fixtureMaterial(data, id);
+            final targets =
+                (original['aggregatePreparation']
+                        as Map?)?['targetMaterialLineIds']
+                    as List?;
+            for (final target
+                in targets?.isNotEmpty == true ? targets! : [id]) {
+              effective.putIfAbsent(target as String, () => []).add(id);
+            }
+          }
+          return <String, dynamic>{
+            'clientGroupKey': input['clientGroupKey'],
+            'goodsId': first['goodsId'],
+            'goodsName': first['goodsName'],
+            'route': input['route'],
+            'requestedQty': double.parse(input['qty'].toString()),
+            'publicExtraQty': 0,
+            if (blocked && first['goodsId'] == 'deep-subcontract')
+              'blockedReason': '本轮前置制造需重新核对',
+            'sources': [
+              for (final entry in effective.entries)
+                {
+                  'materialLineId': entry.key,
+                  if (includeProof) 'originalMaterialLineIds': entry.value,
+                  'allocatedQty': entry.value.fold<double>(
+                    0,
+                    (sum, id) =>
+                        sum +
+                        double.parse(
+                          (input['sourceRequestedQtyByMaterialLineId']
+                                  as Map)[id]
+                              .toString(),
+                        ),
+                  ),
+                  'sourceLabel': entry.value.join('/'),
+                },
+            ],
+            'sharedBomChildren': <Object>[],
+          };
+        })(),
+    ],
+  };
+}
+
+Map<String, dynamic> _deepProductSubmit(
+  Map<String, dynamic> body,
+  Map<String, dynamic> data,
+) {
+  final next = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
+  next['version'] = (data['version'] as int) + 1;
+  next['fingerprint'] = '${next['version']}'.padLeft(64, 'f');
+  final bridges = <Map<String, dynamic>>[];
+  for (final input in _records(body['groups'])) {
+    final ids = (input['materialLineIds'] as List).cast<String>();
+    final amount = double.parse(input['qty'].toString());
+    for (final id in ids) {
+      final original = _fixtureMaterial(next, id);
+      final previous = original['aggregatePreparation'] as Map?;
+      original['aggregatePreparation'] = <String, dynamic>{
+        'requiredQty': 1000,
+        'orderedQty': 1000,
+        'allocatedOrderedQty': 1000,
+        'totalOrderedQty': amount,
+        'orderedQtyExact': true,
+        'planningUncoveredQty': 0,
+        'netShortageQty': 0,
+        'targetMaterialLineIds':
+            previous?['targetMaterialLineIds'] ?? <String>[],
+        'actionable': true,
+      };
+      original['additionalSupplyRecommendedQty'] = 0;
+      original['netShortageQty'] = 0;
+    }
+    if (input['route'] == 'BUY') continue;
+    final anchor = 'anchor-${input['clientGroupKey']}';
+    (next['products'] as List).add(<String, dynamic>{
+      'analysisLineId': anchor,
+      'sourceType': 'AGGREGATE_MAKE',
+      'goodsId': _fixtureMaterial(next, ids.first)['goodsId'],
+      'goodsName': '内部执行',
+      'requestedQty': amount,
+      'issuedPlanQty': amount,
+      'remainingQty': 0,
+      'canSchedule': false,
+      'canIssueSurplus': true,
+    });
+    final originals = _records(next['flatMaterials'])
+        .where(
+          (row) => (row['analysisLineId'] as String).startsWith('product-'),
+        )
+        .toList();
+    final descendants = <String, List<Map<String, dynamic>>>{};
+    for (final sourceId in ids) {
+      final source = _fixtureMaterial(next, sourceId);
+      final queue = <String>[source['nodeKey'] as String];
+      for (var index = 0; index < queue.length; index++) {
+        for (final child in originals.where(
+          (row) =>
+              row['analysisLineId'] == source['analysisLineId'] &&
+              row['parentNodeKey'] == queue[index],
+        )) {
+          queue.add(child['nodeKey'] as String);
+          final prefix = (child['materialLineId'] as String).replaceFirst(
+            RegExp(r'-[0-2]$'),
+            '',
+          );
+          descendants.putIfAbsent(prefix, () => []).add(child);
+        }
+      }
+    }
+    for (final entry in descendants.entries) {
+      final target = 'canonical-${input['clientGroupKey']}-${entry.key}';
+      final source = Map<String, dynamic>.from(entry.value.first);
+      (next['flatMaterials'] as List).add(<String, dynamic>{
+        ...source,
+        'materialLineId': target,
+        'actionGroupKey': 'action-$target',
+        'analysisLineId': anchor,
+        'nodeKey': target,
+        'parentNodeKey': null,
+        'sourceRequiredQty': 0,
+        'requiredQty': 3000,
+        'additionalSupplyRecommendedQty': 3000,
+        'netShortageQty': 3000,
+        'aggregatePreparation': null,
+        'aggregateDelegatedQty': 0,
+      });
+      for (final original in entry.value) {
+        original['requiredQty'] = 0;
+        original['additionalSupplyRecommendedQty'] = 0;
+        original['netShortageQty'] = 0;
+        original['requirementState'] = 'DELEGATED_TO_MAKE_CHILD';
+        original['delegatedToAnalysisLineId'] = anchor;
+        original['aggregateDelegatedQty'] = 1000;
+        original['aggregatePreparation'] = <String, dynamic>{
+          'requiredQty': 1000,
+          'orderedQty': 0,
+          'allocatedOrderedQty': 0,
+          'planningUncoveredQty': 1000,
+          'netShortageQty': 1000,
+          'targetMaterialLineIds': [target],
+          'actionable': true,
+        };
+      }
+      bridges.add(<String, dynamic>{
+        'fromMaterialLineIds': [
+          for (final original in entry.value) original['materialLineId'],
+        ],
+        'toMaterialLineId': target,
+        'relativeBomPath': entry.key,
+        'requiredQty': 3000,
+      });
+    }
+  }
+  return {
+    'analysis': next,
+    'materialIdentityBridges': bridges,
+    'batches': <Object>[],
+  };
+}
+
 List<Map<String, dynamic>> _records(Object? value) =>
     (value as List? ?? const <Object>[]).cast<Map<String, dynamic>>();
 
@@ -2903,6 +4750,94 @@ Map<String, dynamic> _aggregateDagPreview(
       },
   ],
 };
+
+Map<String, dynamic> _defaultAggregatePreview(
+  Map<String, dynamic> body,
+  Map<String, dynamic> data,
+) => {
+  'analysisId': data['analysisId'],
+  'version': data['version'],
+  'fingerprint': data['fingerprint'],
+  'previewFingerprint': 'e' * 64,
+  'analysis': data,
+  'groups': [
+    for (final group in _records(body['groups']))
+      {
+        'clientGroupKey': group['clientGroupKey'],
+        'goodsId': _fixtureMaterial(
+          data,
+          (group['materialLineIds'] as List).cast<String>().first,
+        )['goodsId'],
+        'route': group['route'],
+        'requestedQty': double.parse(group['qty'].toString()),
+        'publicExtraQty': 0,
+        'sources': [
+          for (final id in (group['materialLineIds'] as List).cast<String>())
+            {
+              'materialLineId': id,
+              'sourceLabel': id,
+              'allocatedQty': double.parse(
+                ((group['sourceRequestedQtyByMaterialLineId'] as Map?)?[id] ??
+                        group['qty'])
+                    .toString(),
+              ),
+            },
+        ],
+        'sharedBomChildren': <Object>[],
+      },
+  ],
+};
+
+Map<String, dynamic> _defaultAggregateSubmit(
+  Map<String, dynamic> body,
+  Map<String, dynamic> data,
+) {
+  final next = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
+  next['version'] = (data['version'] as int) + 1;
+  next['fingerprint'] = '${next['version']}'.padLeft(64, 'f');
+  for (final group in _records(body['groups'])) {
+    for (final id in (group['materialLineIds'] as List).cast<String>()) {
+      final material = _fixtureMaterial(next, id);
+      final quantity = double.parse(
+        ((group['sourceRequestedQtyByMaterialLineId'] as Map?)?[id] ??
+                group['qty'])
+            .toString(),
+      );
+      final existing = material['aggregatePreparation'] as Map?;
+      final residual = _num(
+        existing?['planningUncoveredQty'] ??
+            material['additionalSupplyRecommendedQty'],
+      );
+      final previous = existing != null
+          ? _num(existing['orderedQty'])
+          : _records(material['downstreamReferences']).fold<double>(
+              0,
+              (sum, target) => sum + _num(target['allocatedQty']),
+            );
+      final remaining = (residual - quantity).clamp(0.0, double.infinity);
+      material['aggregatePreparation'] = {
+        'requiredQty': existing?['requiredQty'] ?? material['requiredQty'],
+        'orderedQty': previous + quantity,
+        'allocatedOrderedQty': previous + quantity,
+        'planningUncoveredQty': remaining,
+        'netShortageQty': remaining,
+        'targetMaterialLineIds':
+            existing?['targetMaterialLineIds'] ?? <String>[],
+        'actionable': true,
+      };
+      material['additionalSupplyRecommendedQty'] = remaining;
+      material['netShortageQty'] = remaining;
+      if (id == 'm-s') {
+        // 父委外实际下达后，服务端快照把其我方供料子件按本次产量重算。
+        final child = _fixtureMaterial(next, 'm-sc');
+        child['requiredQty'] = quantity;
+        child['additionalSupplyRecommendedQty'] = quantity;
+        child['netShortageQty'] = quantity;
+      }
+    }
+  }
+  return {'analysis': next, 'batches': <Object>[]};
+}
 
 Map<String, dynamic> _aggregateDagSubmit(
   Map<String, dynamic> body,
@@ -3061,6 +4996,9 @@ Map<String, dynamic> _sharedAggregateSubmit(
   final next = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
   next['version'] = (data['version'] as int) + 1;
   next['fingerprint'] = 'b' * 64;
+  final input = (body['groups'] as List).single as Map;
+  final sourceQuantities = input['sourceRequestedQtyByMaterialLineId'] as Map?;
+  final totalQuantity = double.parse((input['qty'] ?? 3100).toString());
   for (final raw in _records(next['flatMaterials'])) {
     final material = raw;
     if (!(material['materialLineId'] as String).startsWith('shared-')) continue;
@@ -3075,6 +5013,21 @@ Map<String, dynamic> _sharedAggregateSubmit(
         'allocatedQty': 1000,
       },
     ];
+    material['aggregatePreparation'] = {
+      'requiredQty': material['requiredQty'],
+      'orderedQty': sourceQuantities == null
+          ? 1000
+          : double.parse(
+              sourceQuantities[material['materialLineId']].toString(),
+            ),
+      'allocatedOrderedQty': 1000,
+      'totalOrderedQty': totalQuantity,
+      'orderedQtyExact': sourceQuantities != null,
+      'planningUncoveredQty': 0,
+      'netShortageQty': 0,
+      'targetMaterialLineIds': <String>[],
+      'actionable': true,
+    };
     material['additionalSupplyRecommendedQty'] = 0;
     material['netShortageQty'] = 0;
   }
@@ -3084,7 +5037,7 @@ Map<String, dynamic> _sharedAggregateSubmit(
       'route': 'BUY',
       'operationType': 'AGGREGATE_SUPPLY',
       'requestedQty': 3000,
-      'publicSurplusQty': 100,
+      'publicSurplusQty': totalQuantity - 3000,
     },
   ];
   final group = (body['groups'] as List).single as Map;
@@ -3100,8 +5053,8 @@ Map<String, dynamic> _sharedAggregateSubmit(
         'documentType': 'PURCHASE_REQUEST',
         'documentId': 'purchase-aggregate',
         'documentNo': 'CS-AGG',
-        'qty': 3100,
-        'publicExtraQty': 100,
+        'qty': totalQuantity,
+        'publicExtraQty': totalQuantity - 3000,
         'sources': <Object>[],
       },
     ],
@@ -3505,6 +5458,12 @@ Map<String, dynamic> _withOverIssuedAnchoredSubcontractChild(
       'unitName': '个',
     },
   ]);
+  for (final product
+      in (data['products'] as List).cast<Map<String, dynamic>>()) {
+    if (const ['anchor-v', 'anchor-vc'].contains(product['analysisLineId'])) {
+      _fixturePlanAssignment(product);
+    }
+  }
   return data;
 }
 
@@ -3700,8 +5659,22 @@ void _applyIssuePlansToFixture(
     product['canSchedule'] = remaining - demand > 0;
     product['canIssueSurplus'] = true;
     product['latestPlanId'] = 'plan-${requests.length}';
+    product['planExecutionWorkshopId'] = line['departmentId'];
+    product['planExecutionResponsibleId'] = line['workerId'];
+    product['planExecutionWorkshopName'] =
+        line['workshopName'] ?? product['planExecutionWorkshopName'] ?? '装配一车间';
+    product['planExecutionResponsibleName'] ??= '张三';
   }
 }
+
+// These issued-plan fixtures explicitly belong to this actual workshop/worker.
+void _fixturePlanAssignment(Map<dynamic, dynamic> product) =>
+    product.addAll(<String, Object>{
+      'planExecutionWorkshopId': 'ws-1',
+      'planExecutionWorkshopName': '装配一车间',
+      'planExecutionResponsibleId': 'w-1',
+      'planExecutionResponsibleName': '张三',
+    });
 
 /// 一条已建锚点且计划排满(需求 2000 全部转入计划)的自制行。
 Map<String, dynamic> _withIssuedMakeRow(
@@ -3734,6 +5707,12 @@ Map<String, dynamic> _withIssuedMakeRow(
     'canIssueSurplus': canIssueSurplus,
     'unitName': '个',
   });
+  for (final product
+      in (data['products'] as List).cast<Map<String, dynamic>>()) {
+    if (const ['anchor-7'].contains(product['analysisLineId'])) {
+      _fixturePlanAssignment(product);
+    }
+  }
   return data;
 }
 

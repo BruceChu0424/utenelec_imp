@@ -6,6 +6,7 @@
 // 查看全员可见（路由不设守卫），编辑按 unit:edit 权限显隐。
 // 文档：见 docs/03-页面/基础资料页.md。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -200,9 +201,10 @@ class _UnitPageState extends ConsumerState<UnitPage> {
     ),
   ];
 
-  void _showCreate() {
-    showMasterEditDialog(
+  Future<void> _showCreate() async {
+    await showMasterEditDialog(
       context: context,
+      draftSpec: FormDraftCatalog.unit.spec(title: '新增单位'),
       title: '新增单位', // TODO(l10n): 补 arb
       fields: _unitFields,
       initialValues: const {'status': '使用', 'measurementDimension': ''},
@@ -212,15 +214,12 @@ class _UnitPageState extends ConsumerState<UnitPage> {
   }
 
   Future<bool> _doCreate(Map<String, dynamic> body) async {
-    final ok = await context.guardRun(
-      () async {
-        await ref.read(unitRepositoryProvider).create(body);
-      },
-      success: '单位已创建', // TODO(l10n): 补 arb
-      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _loadUnits(_pageNum);
+    // Preserve the actual API failure for the shared draft submission fence.
+    await ref.read(unitRepositoryProvider).create(body);
+    if (mounted) {
+      context.appSuccess('单位已创建');
+      await _loadUnits(_pageNum);
+    }
     return true;
   }
 
@@ -408,7 +407,13 @@ class _UnitPageState extends ConsumerState<UnitPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FormDraftDialogResume(
+    descriptor: FormDraftCatalog.unit,
+    onResume: (_) => _showCreate(),
+    child: _buildDraftHost(context),
+  );
+
+  Widget _buildDraftHost(BuildContext context) {
     final theme = Theme.of(context);
     final total = _page?.total ?? 0;
     return Scaffold(

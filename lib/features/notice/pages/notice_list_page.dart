@@ -7,6 +7,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/drafts/form_draft_category.dart';
 
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
@@ -256,7 +257,11 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
     }
 
     return Scaffold(
-      body: body,
+      body: FormDraftCategoryHost(
+        scope: const FormDraftCategoryScope(routePath: '/notice/publish'),
+        contentLabel: '通知',
+        child: body,
+      ),
       // 多选操作：2026-09-14 UI 统一口径——吸底操作条改右下悬浮组，
       // 「已选 N」用全站标准胶囊，删除按钮统一 large。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

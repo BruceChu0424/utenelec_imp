@@ -49,6 +49,8 @@ public class ProductionExecutionPlanningService {
 
     @Transactional(readOnly = true)
     public Snapshot preview(UUID planId, UUID warehouseId) {
+        Snapshot prepared = AnalysisExecutionSnapshotScope.reusable(planId, warehouseId, Map.of());
+        if (prepared != null) return prepared;
         return snapshot(planId, warehouseId, Map.of(), false);
     }
 
@@ -57,6 +59,8 @@ public class ProductionExecutionPlanningService {
             UUID planId,
             UUID warehouseId,
             Map<CompleteKitAllocator.MaterialKey, String> routeOverrides) {
+        Snapshot prepared = AnalysisExecutionSnapshotScope.reusable(planId, warehouseId, routeOverrides);
+        if (prepared != null) return prepared;
         return snapshot(planId, warehouseId, routeOverrides, true);
     }
 

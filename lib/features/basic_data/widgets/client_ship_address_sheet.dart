@@ -14,6 +14,8 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import '../models/client_ship_address.dart';
 import '../repositories/client_repository.dart';
 import '../repositories/client_ship_address_repository.dart';
@@ -28,10 +30,16 @@ Future<ClientShipAddress?> showClientShipAddressSheet(
   return showModalBottomSheet<ClientShipAddress?>(
     context: context,
     isScrollControlled: true,
+    isDismissible: false,
+    enableDrag: false,
     showDragHandle: true,
     constraints: const BoxConstraints(maxWidth: 560),
-    builder: (ctx) =>
-        _ClientShipAddressSheet(clientId: clientId, clientName: clientName),
+    builder: (ctx) => _ClientShipAddressSheet(
+      clientId: clientId,
+      clientName: clientName,
+      resumeDraftId: dialogDraftId(context, kind: 'clientAddress'),
+      routerPageKey: dialogDraftPageKey(context),
+    ),
   );
 }
 
@@ -39,10 +47,14 @@ class _ClientShipAddressSheet extends ConsumerStatefulWidget {
   const _ClientShipAddressSheet({
     required this.clientId,
     required this.clientName,
+    this.resumeDraftId,
+    this.routerPageKey,
   });
 
   final String clientId;
   final String clientName;
+  final String? resumeDraftId;
+  final ValueKey<String>? routerPageKey;
 
   @override
   ConsumerState<_ClientShipAddressSheet> createState() =>
@@ -50,7 +62,8 @@ class _ClientShipAddressSheet extends ConsumerStatefulWidget {
 }
 
 class _ClientShipAddressSheetState
-    extends ConsumerState<_ClientShipAddressSheet> {
+    extends ConsumerState<_ClientShipAddressSheet>
+    with FormDraftMixin<_ClientShipAddressSheet> {
   List<ClientShipAddress>? _items;
   String? _error;
   bool _adding = false;
@@ -74,6 +87,57 @@ class _ClientShipAddressSheetState
           ref
               .read(currentPermissionsProvider)
               .contains(Perm.clientAddressDelete));
+
+  ClientShipAddress? _createdAddress;
+  @override
+  bool get formDraftEnabled => _canCreate;
+  @override
+  bool get formDraftBusy => _busy;
+  @override
+  bool get formDraftCanReplaySubmission => _createdAddress != null;
+  @override
+  bool get formDraftUsesRouterGuard => false;
+  @override
+  bool get formDraftUseCurrentRoute => false;
+  @override
+  String? get formDraftResumeId => widget.resumeDraftId;
+  @override
+  ValueKey<String>? get formDraftRouterPageKey => widget.routerPageKey;
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftCatalog.clientAddress.spec(
+    title: '新增收货地址 · ${widget.clientName}',
+    parentId: widget.clientId,
+  );
+  @override
+  Iterable<Listenable> get formDraftListenables => [_newAddr, _newPhone];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'address': _newAddr.text,
+    'phone': _newPhone.text,
+    'clientId': widget.clientId,
+    'createdId': _createdAddress?.id,
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    if (data['clientId'] != widget.clientId) throw StateError('草稿客户不匹配');
+    _newAddr.text = data['address'] as String? ?? '';
+    _newPhone.text = data['phone'] as String? ?? '';
+    _adding = true;
+    final createdId = data['createdId'] as String?;
+    if (createdId != null) {
+      _createdAddress = ClientShipAddress(
+        id: createdId,
+        clientId: widget.clientId,
+        address: _newAddr.text,
+        linkPhone: _newPhone.text,
+      );
+    }
+  }
+
+  Future<void> _close([ClientShipAddress? selected]) async {
+    if (_busy || !await confirmFormDraftExit() || !mounted) return;
+    Navigator.of(context).pop(selected);
+  }
 
   @override
   void initState() {
@@ -99,6 +163,7 @@ class _ClientShipAddressSheetState
         _objectWritable = detail.writable;
         _accessLoading = false;
       });
+      await initializeFormDraft();
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -134,6 +199,11 @@ class _ClientShipAddressSheetState
   }
 
   Future<void> _add() async {
+    if (_createdAddress != null) {
+      await completeFormDraft();
+      if (mounted) Navigator.of(context).pop(_createdAddress);
+      return;
+    }
     final addr = _newAddr.text.trim();
     if (addr.length < 2) {
       context.appWarning('请填写收货地址(至少 2 个字符)');
@@ -141,9 +211,15 @@ class _ClientShipAddressSheetState
     }
     setState(() => _busy = true);
     try {
-      final saved = await ref
-          .read(clientShipAddressRepositoryProvider)
-          .add(widget.clientId, address: addr, linkPhone: _newPhone.text);
+      final saved = await runFormDraftSubmission(
+        () => ref
+            .read(clientShipAddressRepositoryProvider)
+            .add(widget.clientId, address: addr, linkPhone: _newPhone.text),
+      );
+      if (!mounted) return;
+      setState(() => _createdAddress = saved);
+      await saveFormDraftNow();
+      await completeFormDraft();
       if (!mounted) return;
       // 新增即选用：直接回填表单并关闭弹窗，少一步操作。
       Navigator.of(context).pop(saved);
@@ -197,7 +273,10 @@ class _ClientShipAddressSheetState
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      withFormDraft(_buildAddressSheet(context));
+
+  Widget _buildAddressSheet(BuildContext context) {
     final theme = Theme.of(context);
     final items = _items;
     return Padding(
@@ -219,10 +298,21 @@ class _ClientShipAddressSheetState
                 title: '正在保存收货地址',
                 description: '正在写入地址资料，请稍候。',
               ),
-            Text(
-              '收货地址 · ${widget.clientName}',
-              style: theme.textTheme.titleMedium,
-              overflow: TextOverflow.ellipsis,
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '收货地址 · ${widget.clientName}',
+                    style: theme.textTheme.titleMedium,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  tooltip: '关闭',
+                  onPressed: _busy ? null : () => _close(),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
             ),
             const SizedBox(height: UtenSpacing.s4),
             Text(
@@ -280,7 +370,7 @@ class _ClientShipAddressSheetState
                     item: item,
                     enabled: !_busy,
                     canDelete: _canDelete,
-                    onTap: () => Navigator.of(context).pop(item),
+                    onTap: () => _close(item),
                     onDelete: () => _delete(item),
                   ),
                 ),

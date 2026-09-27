@@ -59,7 +59,11 @@ public record FulfillmentTaskRow(
          * 普通委外件 / 多子件先自制的委外件 / 非申请行为 null。
          */
         BigDecimal componentAvailableQty,
-        List<SubcontractTaskSource> sources) {
+        List<SubcontractTaskSource> sources,
+        boolean materialsDefined,
+        String productionProductCode,
+        String productionProductName,
+        String materialRequestNo) {
 
     public FulfillmentTaskRow withSources(List<SubcontractTaskSource> value) {
         return new FulfillmentTaskRow(
@@ -70,7 +74,7 @@ public record FulfillmentTaskRow(
                 actionDocType, actionDocId, actionDocNo, actionDocItemId, actionDocStatus,
                 actionDocCanView, actionDocCanEdit, actionDocRestricted, goodsCount, openLineCount,
                 actionItemIds, issuedAt, canCreateOrder, displayStage, componentAvailableQty,
-                List.copyOf(value));
+                List.copyOf(value), materialsDefined, productionProductCode, productionProductName, materialRequestNo);
     }
 
     /** 按单据归组的行（采购/委外）：一行代表一张申请或订货单的整批明细。 */

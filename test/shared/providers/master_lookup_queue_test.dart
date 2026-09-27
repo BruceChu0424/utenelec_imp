@@ -44,6 +44,27 @@ void main() {
       expect(names.employee('employee-0'), 'Employee employee-0');
     },
   );
+
+  test(
+    'goodsOptionOf pairs name+code and WithCodes backfills half-cached ids',
+    () async {
+      final api = _LookupApi();
+      final names = MasterDictionaryService(api);
+      // 搜索缓存只填名称（半缓存态）：此时编号缺、WithCodes 仍须补拉详情。
+      await names.searchGoods('probe');
+      expect(api.goodsBatches, isEmpty);
+      expect(names.goodsOptionOf('goods-1')?.name, 'bolt-1');
+      expect(names.goodsOptionOf('goods-1')?.code, isNull);
+      await names.loadGoodsNamesWithCodes(const ['goods-1']);
+      expect(api.goodsBatches, hasLength(1));
+      expect(names.goodsOptionOf('goods-1')?.code, 'goods-1');
+      // 全缓存态不再发请求；空 id 保持行必填校验语义（返回 null）。
+      await names.loadGoodsNamesWithCodes(const ['goods-1']);
+      expect(api.goodsBatches, hasLength(1));
+      expect(names.goodsOptionOf(null), isNull);
+      expect(names.goodsOptionOf(' '), isNull);
+    },
+  );
 }
 
 class _LookupApi extends ApiClient {
@@ -80,6 +101,14 @@ class _LookupApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == ApiEndpoints.goods) {
+      // 搜索端点（typeahead）：只喂名称缓存，不喂详情——模拟半缓存态。
+      return {
+        'items': [
+          {'id': 'goods-1', 'code': 'V6000001', 'name': 'bolt-1'},
+        ],
+      };
+    }
     final id = path.split('/').last;
     employeeCalls.add(id);
     await _wait();

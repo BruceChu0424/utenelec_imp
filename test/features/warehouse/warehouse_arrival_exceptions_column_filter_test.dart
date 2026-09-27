@@ -88,7 +88,9 @@ class _ArrivalExceptionApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.contains('arrival-exceptions')) {
+    // 2026-09-25 单号列统一：单号 facets 请求也打 arrival-exceptions 前缀，
+    // 只记录列表请求的 query（facets 无 page 且不带单号自身筛选）。
+    if (path.contains('arrival-exceptions') && !path.contains('facets')) {
       lastQuery = query == null ? null : Map<String, dynamic>.from(query);
       return const {
         'items': [

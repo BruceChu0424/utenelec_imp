@@ -1,6 +1,8 @@
 package com.uten.imp.features.report;
 
+import com.uten.imp.features.production.mrp.MrpService;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -20,7 +22,12 @@ class MasterReferenceJoinPrecedenceContractTest {
         String mrp = source("production/mrp/MrpService.java");
         // 订单级 MRP 预览 SQL 已随死端点删除(ADR-109), 计划级 MRP 余 2 处。
         assertStrictColorJoin(mrp, 2);
-        assertStrictUnitJoin(mrp, "u", "g.unit_id", 1);
+        // Both the plan projection and its independent input-validation path
+        // resolve units by UUID. Inspect each executable query, not a global
+        // source-file occurrence count that changes when a valid reader is added.
+        assertStrictUnitJoin(mrpQuery("MRP_SQL"), "u", "g.unit_id", 1);
+        assertStrictUnitJoin(mrpQuery("PLAN_MRP_INPUT_VALIDATION_SQL"), "u", "g.unit_id", 1);
+        assertThat(mrp).doesNotContain("u.legacy_id");
 
         String execution = source(
                 "production/mrp/ProductionExecutionPlanningService.java");
@@ -96,6 +103,12 @@ class MasterReferenceJoinPrecedenceContractTest {
     private static String source(String relativePath) throws IOException {
         return canonical(Files.readString(
                 FEATURE_ROOT.resolve(relativePath), StandardCharsets.UTF_8));
+    }
+
+    private static String mrpQuery(String field) {
+        String sql = (String) ReflectionTestUtils.getField(MrpService.class, field);
+        assertThat(sql).as("executable MRP query %s", field).isNotBlank();
+        return canonical(sql);
     }
 
     private static int occurrences(String source, String clause) {

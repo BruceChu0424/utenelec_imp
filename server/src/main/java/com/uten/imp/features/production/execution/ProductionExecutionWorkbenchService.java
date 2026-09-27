@@ -5,6 +5,7 @@ import com.uten.imp.application.port.ProductionMaterialUsageReadPort;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
@@ -61,7 +62,8 @@ public class ProductionExecutionWorkbenchService {
             UUID workshopDepartmentId,
             boolean mine,
             String sort,
-            String order) {
+            String order,
+            String salesOrder) {
         int size = boundedSize(requestedSize);
         int page = Math.max(requestedPage, 1);
         NativeReadScope scope = productionAccess.nativeReadScope(
@@ -71,12 +73,13 @@ public class ProductionExecutionWorkbenchService {
                 productionAccess.hasAuthority("sales_order:view");
         String filters = rootFilters(
                 keyword, workshopDepartmentId, mine, employeeId,
-                canSearchClient);
+                canSearchClient, salesOrder);
         String from = " FROM v_production_execution_workbench_roots root WHERE ("
                 + rootVisibility(scope.predicate()) + ") " + filters;
         Query count = em.createNativeQuery("SELECT COUNT(*)" + from);
         scope.bind(count);
-        bindRootFilters(count, keyword, workshopDepartmentId, mine, employeeId);
+        bindRootFilters(count, keyword, workshopDepartmentId, mine, employeeId,
+                salesOrder);
         long total = ((Number) count.getSingleResult()).longValue();
         int totalPages = pages(total, size);
         if (totalPages > 0 && page > totalPages) page = totalPages;
@@ -87,7 +90,8 @@ public class ProductionExecutionWorkbenchService {
                 LIMIT :limit OFFSET :offset
                 """);
         scope.bind(data);
-        bindRootFilters(data, keyword, workshopDepartmentId, mine, employeeId);
+        bindRootFilters(data, keyword, workshopDepartmentId, mine, employeeId,
+                salesOrder);
         data.setParameter("limit", size);
         data.setParameter("offset", (long) (page - 1) * size);
         List<ProductionExecutionWorkbenchGroup> items =
@@ -95,6 +99,35 @@ public class ProductionExecutionWorkbenchService {
                         .map(ProductionExecutionWorkbenchService::groupRow)
                         .toList();
         return new PageResponse<>(items, page, size, total, totalPages);
+    }
+
+    /**
+     * 「进行中」根列表单号列 facets（2026-09-25 单号列统一）：{orders:[…]}。
+     * 与 {@link #list} 同一视图、同一可见范围与过滤基座（不含单号列自身的值筛选，
+     * 桶按 preview 全量分组计数）；桶值 = 关联订单 preview（前 3 单聚合，
+     * 与列展示同源），按 preview 升序，空串剔除——没有订单的根不进下拉。
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, List<java.util.Map<String, Object>>> rootFacets(
+            String keyword, UUID workshopDepartmentId, boolean mine) {
+        NativeReadScope scope = productionAccess.nativeReadScope(
+                "root.owner_employee_id", "rootOwners");
+        UUID employeeId = currentUser.employeeId().orElse(null);
+        boolean canSearchClient =
+                productionAccess.hasAuthority("sales_order:view");
+        String filters = rootFilters(
+                keyword, workshopDepartmentId, mine, employeeId,
+                canSearchClient, null);
+        var query = em.createNativeQuery(
+                "SELECT COALESCE(root.sales_order_preview, ''), COUNT(*)"
+                + " FROM v_production_execution_workbench_roots root WHERE ("
+                + rootVisibility(scope.predicate()) + ") " + filters
+                + " GROUP BY 1 HAVING COALESCE(root.sales_order_preview, '') <> ''"
+                + " ORDER BY 1");
+        scope.bind(query);
+        bindRootFilters(query, keyword, workshopDepartmentId, mine, employeeId,
+                null);
+        return java.util.Map.of("orders", NativeFacets.rowsOf(query));
     }
 
     /**
@@ -167,14 +200,6 @@ public class ProductionExecutionWorkbenchService {
                 workshopDepartmentId, dateFrom, dateTo, null);
     }
 
-    @Transactional(readOnly = true)
-    public PageResponse<ProductionExecutionWorkbenchSegment> workshopTasks(
-            int requestedPage, int requestedSize, String keyword, String rawStatus,
-            UUID workshopDepartmentId, LocalDate dateFrom, LocalDate dateTo, String preparationFilter) {
-        return workshopTasks(requestedPage, requestedSize, keyword, rawStatus,
-                workshopDepartmentId, dateFrom, dateTo, preparationFilter, null);
-    }
-
     /**
      * @param routeFilter 「下一步」表头筛选(ADR-095)：UNCONFIRMED(待选路线) / FULL_KIT /
      *                    CONTINUOUS / BATCH；空=不筛。与其它筛选一样在分页前于服务端生效。
@@ -182,21 +207,58 @@ public class ProductionExecutionWorkbenchService {
     @Transactional(readOnly = true)
     public PageResponse<ProductionExecutionWorkbenchSegment> workshopTasks(
             int requestedPage, int requestedSize, String keyword, String rawStatus,
-            UUID workshopDepartmentId, LocalDate dateFrom, LocalDate dateTo, String preparationFilter,
-            String routeFilter) {
+            UUID workshopDepartmentId, LocalDate dateFrom, LocalDate dateTo, String preparationFilter) {
+        return workshopTasks(requestedPage, requestedSize, keyword, rawStatus,
+                workshopDepartmentId, dateFrom, dateTo, preparationFilter, null,
+                null, null, null, null);
+    }
+
+    /**
+     * 2026-09-25 单号列统一：来源计划/工单号/关联订单可排序(sort 白名单 sourcePlan/order/segment)
+     * 与表头值筛选（analysisNo/segmentCode 精确匹配，分页前服务端生效）。
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<ProductionExecutionWorkbenchSegment> workshopTasks(
+            int requestedPage, int requestedSize, String keyword, String rawStatus,
+            UUID workshopDepartmentId, LocalDate dateFrom, LocalDate dateTo,
+            String preparationFilter, String routeFilter,
+            String analysisNo, String segmentCode, String sort, String order) {
         UUID employeeId = currentUser.employeeId().orElse(null);
-        // 超管可查看并代办全部车间任务；普通员工仍按有效车间归属收敛。
-        // 车间筛选只进一步缩小范围，不扩大普通员工的可见性。
         boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
         if (employeeId == null && !seeAll) {
             int size = boundedSize(requestedSize);
             return new PageResponse<>(List.of(), 1, size, 0, 0);
         }
         String status = normalizeTaskStatus(rawStatus);
-        // 「历史任务」= 终态段（已完工 / 已取消 / 已红冲），ADR-066 §1.3 时间门控：
-        // 只在显式筛选时返回，并按计划完工日期 dateFrom/dateTo 收窄（视图没有
-        // 完工时间戳列，退回 plan_end_date；CAST 判空口径与全站一致）。默认列表
-        // 与徽章仍只看四个活动状态（终态不挂徽章——与全站计数口径一致）。
+        String predicate = workshopTaskPredicate(status, workshopDepartmentId,
+                keyword, dateFrom, dateTo, preparationFilter, routeFilter,
+                analysisNo, segmentCode);
+        boolean history = "COMPLETED".equals(status);
+        // 我的车间任务「等待物料」（2026-09-15 用户口径）：可开工的排最前，
+        // 进度越接近可开工越靠前——档位与状态筛选四桶一一对应。
+        String orderBy = workshopTaskOrderBy(status, sort, order);
+        // 路线记忆的操作者档(ADR-096)：本产品没有历史时预填「你上次选的」；每页只查一次。
+        String operatorRouteMemory = history ? null : operatorRouteMemory();
+        UUID scopedEmployeeId = seeAll ? null : employeeId;
+        return segmentPage(
+                predicate,
+                query -> bindWorkshopTaskFilters(query, scopedEmployeeId,
+                        keyword, workshopDepartmentId, dateFrom, dateTo, history,
+                        routeFilter, analysisNo, segmentCode),
+                requestedPage,
+                requestedSize,
+                orderBy,
+                operatorRouteMemory,
+                !history);
+    }
+
+    /** workshopTasks/workshopTaskFacets 共用的 WHERE 谓词（单号值筛选也在此拼接）。 */
+    private String workshopTaskPredicate(String status, UUID workshopDepartmentId,
+            String keyword, LocalDate dateFrom, LocalDate dateTo,
+            String preparationFilter, String routeFilter,
+            String analysisNo, String segmentCode) {
+        UUID employeeId = currentUser.employeeId().orElse(null);
+        boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
         boolean history = "COMPLETED".equals(status);
         String statuses = history
                 ? "('COMPLETED','CANCELLED','REVERSED')"
@@ -250,42 +312,104 @@ public class ProductionExecutionWorkbenchService {
                     : " AND EXISTS (SELECT 1 FROM production_execution_segments route_filter"
                         + " WHERE route_filter.id = task.segment_id AND route_filter.start_route = :routeFilter)";
         }
-        String finalPredicate = predicate;
+        // 2026-09-25 单号列值筛选：来源计划=根分析的 WL 编号（历史计划根不命中），工单号精确匹配。
+        if (analysisNo != null && !analysisNo.isBlank()) {
+            predicate += " AND COALESCE(" + ROOT_ANALYSIS_NO_SQL
+                    + ", '') = :analysisNo";
+        }
+        if (segmentCode != null && !segmentCode.isBlank()) {
+            predicate += " AND COALESCE(task.segment_code, '') = :segmentCode";
+        }
+        return predicate;
+    }
+
+    /** workshopTasks/workshopTaskFacets 谓词参数绑定（未出现的条件不绑，Hibernate 校验未知参数）。 */
+    private void bindWorkshopTaskFilters(jakarta.persistence.Query query,
+            UUID scopedEmployeeId, String keyword, UUID workshopDepartmentId,
+            LocalDate dateFrom, LocalDate dateTo, boolean history,
+            String routeFilter, String analysisNo, String segmentCode) {
+        if (scopedEmployeeId != null) {
+            query.setParameter("employeeId", scopedEmployeeId);
+        }
+        if (workshopDepartmentId != null) {
+            query.setParameter("workshopId", workshopDepartmentId);
+        }
+        if (keyword != null && !keyword.isBlank()) {
+            query.setParameter(
+                    "keyword",
+                    "%" + keyword.strip().toLowerCase(Locale.ROOT) + "%");
+        }
+        if (history) {
+            query.setParameter("dateFrom", dateFrom);
+            query.setParameter("dateTo", dateTo);
+        }
+        String normalizedRoute = normalizeRouteFilter(routeFilter);
+        if (normalizedRoute != null && !"UNCONFIRMED".equals(normalizedRoute)) {
+            query.setParameter("routeFilter", normalizedRoute);
+        }
+        if (analysisNo != null && !analysisNo.isBlank()) {
+            query.setParameter("analysisNo", analysisNo.trim());
+        }
+        if (segmentCode != null && !segmentCode.isBlank()) {
+            query.setParameter("segmentCode", segmentCode.trim());
+        }
+    }
+
+    /** 排序：单号列白名单(sourcePlan/order/segment)；默认保持原「等待物料按可开工程度」档位。 */
+    private String workshopTaskOrderBy(String status, String sort, String order) {
+        String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
+        return switch (sort == null ? "" : sort.strip()) {
+            case "sourcePlan" -> "ORDER BY COALESCE(" + ROOT_ANALYSIS_NO_SQL
+                    + ", '') " + dir + " NULLS LAST, task.segment_code";
+            case "order" -> "ORDER BY task.sales_order_nos " + dir
+                    + " NULLS LAST, task.segment_code";
+            case "segment" -> "ORDER BY task.segment_code " + dir
+                    + ", task.segment_id";
+            default -> "PREPARING".equals(status)
+                    ? SEGMENT_ORDER_READINESS
+                    : SEGMENT_ORDER_DEFAULT;
+        };
+    }
+
+    /**
+     * 我的车间任务单号列 facets（2026-09-25 单号列统一）：{sourcePlan:[…], segment:[…]}。
+     * 与列表同一份谓词（不含单号自身的值筛选），分页前口径；空值不设「其他」桶——
+     * 来源计划为空=历史计划根，工单号恒非空。
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, List<java.util.Map<String, Object>>> workshopTaskFacets(
+            String keyword, String rawStatus, UUID workshopDepartmentId,
+            LocalDate dateFrom, LocalDate dateTo,
+            String preparationFilter, String routeFilter) {
+        UUID employeeId = currentUser.employeeId().orElse(null);
+        boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
+        if (employeeId == null && !seeAll) {
+            return java.util.Map.of();
+        }
+        String status = normalizeTaskStatus(rawStatus);
+        String predicate = workshopTaskPredicate(status, workshopDepartmentId,
+                keyword, dateFrom, dateTo, preparationFilter, routeFilter, null, null);
+        boolean history = "COMPLETED".equals(status);
+        String from = " FROM v_production_execution_workbench_segments task WHERE "
+                + predicate;
+        var sourcePlanQuery = em.createNativeQuery("""
+                SELECT COALESCE(%s, ''), COUNT(*)
+                """.formatted(ROOT_ANALYSIS_NO_SQL) + from
+                + " GROUP BY 1 HAVING COALESCE(" + ROOT_ANALYSIS_NO_SQL
+                + ", '') <> '' ORDER BY 1");
+        var segmentQuery = em.createNativeQuery(
+                "SELECT COALESCE(task.segment_code, ''), COUNT(*)" + from
+                + " GROUP BY 1 ORDER BY 1");
         UUID scopedEmployeeId = seeAll ? null : employeeId;
-        // 我的车间任务「等待物料」（2026-09-15 用户口径）：可开工的排最前，
-        // 进度越接近可开工越靠前——档位与状态筛选四桶一一对应。
-        String orderBy = "PREPARING".equals(status)
-                ? SEGMENT_ORDER_READINESS
-                : SEGMENT_ORDER_DEFAULT;
-        // 路线记忆的操作者档(ADR-096)：本产品没有历史时预填「你上次选的」；每页只查一次。
-        String operatorRouteMemory = history ? null : operatorRouteMemory();
-        return segmentPage(
-                finalPredicate,
-                query -> {
-                    if (scopedEmployeeId != null) {
-                        query.setParameter("employeeId", scopedEmployeeId);
-                    }
-                    if (workshopDepartmentId != null) {
-                        query.setParameter("workshopId", workshopDepartmentId);
-                    }
-                    if (keyword != null && !keyword.isBlank()) {
-                        query.setParameter(
-                                "keyword",
-                                "%" + keyword.strip().toLowerCase(Locale.ROOT) + "%");
-                    }
-                    if (history) {
-                        query.setParameter("dateFrom", dateFrom);
-                        query.setParameter("dateTo", dateTo);
-                    }
-                    if (normalizedRoute != null && !"UNCONFIRMED".equals(normalizedRoute)) {
-                        query.setParameter("routeFilter", normalizedRoute);
-                    }
-                },
-                requestedPage,
-                requestedSize,
-                orderBy,
-                operatorRouteMemory,
-                !history);
+        for (var query : List.of(sourcePlanQuery, segmentQuery)) {
+            bindWorkshopTaskFilters(query, scopedEmployeeId, keyword,
+                    workshopDepartmentId, dateFrom, dateTo, history,
+                    routeFilter, null, null);
+        }
+        java.util.Map<String, List<java.util.Map<String, Object>>> result = new java.util.LinkedHashMap<>();
+        result.put("sourcePlan", NativeFacets.rowsOf(sourcePlanQuery));
+        result.put("segment", NativeFacets.rowsOf(segmentQuery));
+        return result;
     }
 
     /**
@@ -490,6 +614,11 @@ public class ProductionExecutionWorkbenchService {
                      task.segment_no ASC,
                      task.segment_id ASC
             """;
+
+    /** ANALYSIS 根的分析编号（WL，V719）；历史计划根为 NULL。排序/值筛选/facets 共用。 */
+    private static final String ROOT_ANALYSIS_NO_SQL =
+            "(SELECT root_analysis.analysis_no FROM production_material_analyses root_analysis"
+                    + " WHERE task.root_type = 'ANALYSIS' AND root_analysis.id = task.root_id)";
 
     /**
      * 我的车间任务「等待物料」排序（2026-09-15 用户口径：可开工的放最前，越接近
@@ -1027,7 +1156,8 @@ public class ProductionExecutionWorkbenchService {
             UUID workshopDepartmentId,
             boolean mine,
             UUID employeeId,
-            boolean canSearchClient) {
+            boolean canSearchClient,
+            String salesOrder) {
         String filter = "";
         if (keyword != null && !keyword.isBlank()) {
             String clientFilter = canSearchClient ? """
@@ -1104,6 +1234,10 @@ public class ProductionExecutionWorkbenchService {
                           AND %s)
                     """.formatted(assignmentPredicate("task"));
         }
+        // 2026-09-25 单号列统一：关联订单表头值筛选（精确匹配 preview，分页前生效）。
+        if (salesOrder != null && !salesOrder.isBlank()) {
+            filter += " AND COALESCE(root.sales_order_preview, '') = :salesOrder";
+        }
         return filter;
     }
 
@@ -1112,7 +1246,8 @@ public class ProductionExecutionWorkbenchService {
             String keyword,
             UUID workshopDepartmentId,
             boolean mine,
-            UUID employeeId) {
+            UUID employeeId,
+            String salesOrder) {
         if (keyword != null && !keyword.isBlank()) {
             query.setParameter(
                     "keyword",
@@ -1123,6 +1258,9 @@ public class ProductionExecutionWorkbenchService {
         }
         if (mine && employeeId != null) {
             query.setParameter("employeeId", employeeId);
+        }
+        if (salesOrder != null && !salesOrder.isBlank()) {
+            query.setParameter("salesOrder", salesOrder.trim());
         }
     }
 
@@ -1213,6 +1351,8 @@ public class ProductionExecutionWorkbenchService {
                         ELSE 99
                     END""";
             case "rootLabel" -> "root.root_label";
+            // 2026-09-25 单号列统一：关联订单按 preview 排序（稳定键 root_id 由调用方追加）。
+            case "orders" -> "root.sales_order_preview";
             case "latestEndDate", "" -> "root.latest_end_date";
             default -> "root.latest_end_date";
         };

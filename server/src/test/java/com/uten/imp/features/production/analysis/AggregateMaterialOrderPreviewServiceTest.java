@@ -213,4 +213,124 @@ class AggregateMaterialOrderPreviewServiceTest {
         when(reference.route()).thenReturn("MAKE");when(reference.status()).thenReturn("ACTIVE");
         return reference;
     }
+
+    @Test void originalDeepPathResolvesAllExactTargetsAndDeduplicatesTheSamePhysicalRow() {
+        MaterialView original=material(UUID.randomUUID(),"original/deep","0"),otherOriginal=material(UUID.randomUUID(),"other/deep","0");
+        MaterialView first=material(UUID.randomUUID(),"canonical-one","3"),second=material(UUID.randomUUID(),"canonical-two","2");
+        List<UUID> exactTargets=List.of(first.materialLineId(),second.materialLineId());
+        for(MaterialView source:List.of(original,otherOriginal)) {
+            when(source.requiredQty()).thenReturn(BigDecimal.ZERO);
+            when(source.aggregatePreparation()).thenReturn(new MaterialAnalysisContracts.AggregatePreparationView(qty("5"),BigDecimal.ZERO,
+                    BigDecimal.ZERO,BigDecimal.ZERO,false,qty("5"),qty("5"),exactTargets,true));
+        }
+        var result=service().resolve(ANALYSIS,request(List.of(group(List.of(original,otherOriginal),"5",false))),
+                view(List.of(),List.of(original,otherOriginal,first,second))).groups().getFirst();
+        assertThat(result.sources()).hasSize(2);
+        assertThat(result.sources()).extracting(SourcePreview::materialLineId).containsExactlyInAnyOrder(first.materialLineId(),second.materialLineId());
+        assertThat(result.sources().stream().map(SourcePreview::allocatedQty).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo("5");
+    }
+
+    @Test void anOriginalSourceBlockCannotBeBypassedByItsHealthyCanonicalTarget() {
+        MaterialView original=material(UUID.randomUUID(),"original/blocked","0"),target=material(UUID.randomUUID(),"canonical/open","1");
+        UUID targetId=target.materialLineId(),originalItem=original.analysisLineId();
+        when(original.requiredQty()).thenReturn(BigDecimal.ZERO);
+        when(original.aggregatePreparation()).thenReturn(new MaterialAnalysisContracts.AggregatePreparationView(qty("1"),BigDecimal.ZERO,BigDecimal.ZERO,
+                BigDecimal.ZERO,false,qty("1"),qty("1"),List.of(targetId),true));
+        AnalysisView current=new AnalysisView(ANALYSIS,"PARTIALLY_PLANNED",13,FINGERPRINT,FINGERPRINT,WAREHOUSE,List.of(WAREHOUSE),null,
+                List.of(),List.of(original,target),List.of(),List.of(),List.of(),false,null,
+                Map.of(originalItem,"原销售来源已停止"),0,Map.of(GOODS,qty("0.1")),null);
+        assertThatThrownBy(()->service().resolve(ANALYSIS,request(List.of(group(List.of(original),"1",false))),current))
+                .isInstanceOf(ApiException.class).hasMessageContaining("原销售来源已停止");
+    }
+
+    @Test void originalRequestedQuantitiesBoundEachOfSeveralCanonicalTargets() {
+        MaterialView a=material(UUID.randomUUID(),"original/a","0"),b=material(UUID.randomUUID(),"original/b","0");
+        MaterialView first=material(UUID.randomUUID(),"canonical/one","3000"),second=material(UUID.randomUUID(),"canonical/two","1000");
+        UUID firstId=first.materialLineId(),secondId=second.materialLineId();
+        when(a.requiredQty()).thenReturn(BigDecimal.ZERO);when(b.requiredQty()).thenReturn(BigDecimal.ZERO);
+        when(a.aggregatePreparation()).thenReturn(new MaterialAnalysisContracts.AggregatePreparationView(qty("500"),BigDecimal.ZERO,BigDecimal.ZERO,
+                BigDecimal.ZERO,false,qty("500"),qty("500"),List.of(firstId),true));
+        when(b.aggregatePreparation()).thenReturn(new MaterialAnalysisContracts.AggregatePreparationView(qty("500"),BigDecimal.ZERO,BigDecimal.ZERO,
+                BigDecimal.ZERO,false,qty("500"),qty("500"),List.of(secondId),true));
+        var base=group(List.of(a,b),"1000",false);
+        var input=new GroupInput(base.clientGroupKey(),base.materialLineIds(),base.route(),base.qty(),false,base.departmentId(),base.workerId(),
+                base.teamDepartmentId(),base.billDate(),base.deliveryDate(),base.productNo(),base.allowedOverproductionRate(),base.safetyQty(),
+                Map.of(a.materialLineId(),qty("500"),b.materialLineId(),qty("500")));
+        var result=service().resolve(ANALYSIS,request(List.of(input)),view(List.of(),List.of(a,b,first,second))).groups().getFirst();
+        assertThat(result.blockedReason()).isNull();assertThat(result.publicExtraQty()).isZero();
+        assertThat(result.sources()).hasSize(2).allSatisfy(source->assertThat(source.allocatedQty()).isEqualByComparingTo("500"));
+    }
+
+    @Test void sourceQuantityIntentMustBeCompleteConservedAndPartOfTheReviewFingerprint() {
+        MaterialView first=material(UUID.randomUUID(),"one","1000"),second=material(UUID.randomUUID(),"two","1000");
+        var base=group(List.of(first,second),"11000",true);
+        java.util.function.Function<Map<UUID,BigDecimal>,GroupInput> intent=map->new GroupInput(base.clientGroupKey(),base.materialLineIds(),base.route(),base.qty(),
+                base.allowPublicExtra(),base.departmentId(),base.workerId(),base.teamDepartmentId(),base.billDate(),base.deliveryDate(),base.productNo(),base.allowedOverproductionRate(),base.safetyQty(),map);
+        AnalysisView current=view(List.of(),List.of(first,second));
+        var original=service().resolve(ANALYSIS,request(List.of(intent.apply(Map.of(first.materialLineId(),qty("10000"),second.materialLineId(),qty("1000"))))),current);
+        var swapped=service().resolve(ANALYSIS,request(List.of(intent.apply(Map.of(first.materialLineId(),qty("1000"),second.materialLineId(),qty("10000"))))),current);
+        assertThat(swapped.previewFingerprint()).isNotEqualTo(original.previewFingerprint());
+        assertThatThrownBy(()->service().resolve(ANALYSIS,request(List.of(intent.apply(Map.of(first.materialLineId(),qty("11000"))))),current))
+                .isInstanceOf(ApiException.class).hasMessageContaining("完整对应");
+        assertThatThrownBy(()->service().resolve(ANALYSIS,request(List.of(intent.apply(Map.of(first.materialLineId(),qty("10000"),second.materialLineId(),qty("2"))))),current))
+                .isInstanceOf(ApiException.class).hasMessageContaining("总量");
+    }
+
+    @Test void manufacturingPublicAdoptionReducesOnlyNewProductionAndItsChildRequirement() {
+        MaterialView parent=material(UUID.randomUUID(),"parent","3"),child=material(parent.analysisLineId(),"parent/edge","6");
+        when(child.parentNodeKey()).thenReturn("parent");when(child.goodsId()).thenReturn(UUID.randomUUID());when(child.level()).thenReturn(2);
+        when(child.controlStage()).thenReturn("START");when(child.consumptionBasis()).thenReturn("PER_UNIT");
+        when(child.bomQty()).thenReturn(qty("2"));when(child.basisOutputQty()).thenReturn(BigDecimal.ONE);when(child.allowPartialPackage()).thenReturn(true);
+        var candidate=new PreplanMakePublicSupplyService.Candidate(UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"SJ-other",qty("2"),DATE,false,true);
+        when(parent.makePublicSupplyRefs()).thenReturn(List.of(candidate));
+        var result=service().resolve(ANALYSIS,request(List.of(group(List.of(parent),"3",false))),view(List.of(),List.of(parent,child))).groups().getFirst();
+        assertThat(result.requestedQty()).isEqualByComparingTo("3");
+        assertThat(result.sharedBomChildren().getFirst().requiredQty()).isEqualByComparingTo("2");
+    }
+
+    @Test void purchasePublicAdoptionAlsoReducesManufacturingAndItsChildRequirement() {
+        MaterialView parent=material(UUID.randomUUID(),"parent","3"),child=material(parent.analysisLineId(),"parent/edge","6");
+        when(child.parentNodeKey()).thenReturn("parent");when(child.goodsId()).thenReturn(UUID.randomUUID());when(child.level()).thenReturn(2);
+        when(child.controlStage()).thenReturn("START");when(child.consumptionBasis()).thenReturn("PER_UNIT");
+        when(child.bomQty()).thenReturn(qty("2"));when(child.basisOutputQty()).thenReturn(BigDecimal.ONE);when(child.allowPartialPackage()).thenReturn(true);
+        var candidate=new MaterialAnalysisContracts.SharedFutureSupplyRef("BUY",qty("2"),qty("2"),DATE,UUID.randomUUID(),"PURCHASE_REQUEST",UUID.randomUUID(),"CS-other",false);
+        when(parent.sharedFutureSupplyRefs()).thenReturn(List.of(candidate));
+        var result=service().resolve(ANALYSIS,request(List.of(group(List.of(parent),"3",false))),view(List.of(),List.of(parent,child))).groups().getFirst();
+        assertThat(result.requestedQty()).isEqualByComparingTo("3");
+        assertThat(result.sharedBomChildren().getFirst().requiredQty()).isEqualByComparingTo("2");
+    }
+
+    @Test void hiddenSourceDocumentsStillForecastTheirPublicBudgetWithoutExposingIds() {
+        MaterialView parent=material(UUID.randomUUID(),"parent","3"),child=material(parent.analysisLineId(),"parent/edge","6");
+        when(child.parentNodeKey()).thenReturn("parent");when(child.goodsId()).thenReturn(UUID.randomUUID());when(child.level()).thenReturn(2);
+        when(child.controlStage()).thenReturn("START");when(child.consumptionBasis()).thenReturn("PER_UNIT");
+        when(child.bomQty()).thenReturn(qty("2"));when(child.basisOutputQty()).thenReturn(BigDecimal.ONE);when(child.allowPartialPackage()).thenReturn(true);
+        var candidate=new MaterialAnalysisContracts.SharedFutureSupplyRef("BUY",qty("2"),qty("2"),DATE,null,null,null,null,false,"opaque-public-budget");
+        when(parent.sharedFutureSupplyRefs()).thenReturn(List.of(candidate));
+        var result=service().resolve(ANALYSIS,request(List.of(group(List.of(parent),"3",false))),view(List.of(),List.of(parent,child))).groups().getFirst();
+        assertThat(result.requestedQty()).isEqualByComparingTo("3");
+        assertThat(result.sharedBomChildren().getFirst().requiredQty()).isEqualByComparingTo("2");
+    }
+
+    @Test void singletonPrioritySupplementUsesItsExactNetResponsibilityInsteadOfPublicOverproduction() {
+        MaterialView row=material(UUID.randomUUID(),"priority","0");UUID anchor=UUID.randomUUID();
+        when(row.requiredQty()).thenReturn(BigDecimal.ZERO);when(row.actionable()).thenReturn(false);when(row.requirementState()).thenReturn("INACTIVE");
+        when(row.priorityMakeSupplementQty()).thenReturn(qty("2"));when(row.planAnchorAnalysisLineId()).thenReturn(anchor);
+        ProductView child=product(anchor,"MAKE_COMPONENT","10");when(child.remainingQty()).thenReturn(BigDecimal.ZERO);
+        GroupPreview result=service().resolve(ANALYSIS,request(List.of(group(List.of(row),"2",false))),view(List.of(child),List.of(row))).groups().getFirst();
+        assertThat(result.blockedReason()).isNull();assertThat(result.publicExtraQty()).isZero();assertThat(result.remainingQty()).isEqualByComparingTo("2");
+        when(row.priorityMakeSupplementQty()).thenReturn(BigDecimal.ZERO);when(child.remainingQty()).thenReturn(qty("2"));
+        result=service().resolve(ANALYSIS,request(List.of(group(List.of(row),"2",false))),view(List.of(child),List.of(row))).groups().getFirst();
+        assertThat(result.blockedReason()).isNull();assertThat(result.publicExtraQty()).isZero();assertThat(result.remainingQty()).isEqualByComparingTo("2");
+    }
+
+    @Test void safetyReplenishmentIsASeparateBuySliceBoundedByTheLiveMainWarehouseGap() {
+        MaterialView row=material(UUID.randomUUID(),"safety","0");when(row.sourceConfirmed()).thenReturn("BUY");
+        when(row.mainWarehouseSafetyReplenishmentGapQty()).thenReturn(qty("6"));
+        GroupInput input=new GroupInput("safety",List.of(row.materialLineId()),"BUY",BigDecimal.ZERO,false,null,null,null,null,null,null,null,qty("6"));
+        GroupPreview result=service().resolve(ANALYSIS,request(List.of(input)),view(List.of(),List.of(row))).groups().getFirst();
+        assertThat(result.blockedReason()).isNull();assertThat(result.requestedQty()).isZero();assertThat(result.safetyQty()).isEqualByComparingTo("6");
+        when(row.mainWarehouseSafetyReplenishmentGapQty()).thenReturn(qty("5"));
+        assertThat(service().resolve(ANALYSIS,request(List.of(input)),view(List.of(),List.of(row))).groups().getFirst().blockedReason()).contains("主仓缺口");
+    }
 }

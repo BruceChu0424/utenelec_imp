@@ -13,7 +13,9 @@
 //   未选时间不发请求显示引导占位；选中后按 dateFrom/dateTo 加载（不限状态）。
 // 其余（折叠头+表格吸顶内滚、列表刷新 tick、返回即刷新、PagedListController
 // 竞态状态机）保持原实现。
+import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_master_names.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -28,16 +30,22 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_draft_category_table.dart';
+import '../../../shared/auth/document_scope_capability.dart';
+import '../../../shared/mixins/draft_bulk_delete_mixin.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
@@ -78,8 +86,10 @@ class PurchaseDocListPage extends ConsumerStatefulWidget {
     super.key,
     required this.docType,
     this.initialStatus,
+    this.embedded = false,
   });
   final PurchaseDocType docType;
+  final bool embedded;
 
   /// 深链预选（路由 `?status=draft`）：新建页「草稿(N)」按钮进来时直接落在草稿段。
   final String? initialStatus;
@@ -89,7 +99,8 @@ class PurchaseDocListPage extends ConsumerStatefulWidget {
       _PurchaseDocListPageState();
 }
 
-class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
+class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
+    with DraftBulkDeleteMixin<PurchaseDocListPage> {
   PurchaseDocConfig get _cfg => PurchaseDocConfig.by(widget.docType);
   final _list = PagedListController<PurchaseDocListItem>();
 
@@ -109,6 +120,10 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
   /// 表头列筛选：供应商/仓库（dict 桶，value=UUID，回传 supplierId/warehouseId）。
   String? _supplierIdFilter;
   String? _warehouseIdFilter;
+
+  /// 2026-09-25 单号列统一：单据号表头值筛选 + 服务端桶（共享状态，见
+  /// MasterServerColumnFilters）。
+  final _columnFilters = MasterServerColumnFilters();
 
   /// 待处理段对应的状态：申请页=计划已下达（待分解）；其余=草稿（待提交/待审）。
   int get _actionableStatus => widget.docType == PurchaseDocType.request
@@ -137,6 +152,24 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
   }
 
   @override
+  void didUpdateWidget(covariant PurchaseDocListPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.docType == widget.docType &&
+        oldWidget.initialStatus == widget.initialStatus) {
+      return;
+    }
+    clearDraftSelection();
+    _list.page = null;
+    _seg = isDraftStatusQuery(widget.initialStatus) ? _draftSeg : null;
+    _myLocation = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadBadge();
+      if (_shouldLoad) _reload(1);
+    });
+  }
+
+  @override
   void dispose() {
     _list.dispose();
     super.dispose();
@@ -155,6 +188,67 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
     kPurchaseStatusDraft,
     widget.docType == PurchaseDocType.order ? 'NONE' : null,
   );
+
+  bool get _draftDeleteEnabled =>
+      _cfg.draftKind != null &&
+      _seg == _draftSeg &&
+      _cfg.deletePerm != null &&
+      ref.read(currentPermissionsProvider).contains(_cfg.deletePerm);
+
+  bool _deletableDraft(PurchaseDocListItem row) =>
+      _draftDeleteEnabled &&
+      row.status == kPurchaseStatusDraft &&
+      !row.closed &&
+      !row.legacyImported &&
+      (widget.docType != PurchaseDocType.order ||
+          row.financeApproval == null ||
+          row.financeApproval!.status == 'DRAFT');
+
+  Widget _draftDeleteButton() {
+    final type = widget.docType;
+    final cfg = _cfg;
+    final repo = ref.read(purchaseRepositoryProvider(type));
+    final scope = ref.read(authenticatedScopeProvider);
+    return buildDraftDeleteButton(
+      documentLabel: cfg.label,
+      delete: (id) async {
+        // 列表不带归属字段：删除前读取最新详情，复用详情页的对象写范围。
+        final detail = await repo.detail(id);
+        if (!mounted ||
+            !ref.read(currentPermissionsProvider).contains(cfg.deletePerm) ||
+            !await loadDocumentOwnerCanWrite(
+              ref,
+              DocumentDataScope.purchase,
+              detail.makerId,
+            )) {
+          throw ApiException('FORBIDDEN', documentScopeReadOnlyMessage);
+        }
+        if (detail.status != kPurchaseStatusDraft ||
+            detail.closed ||
+            detail.legacyImported ||
+            (type == PurchaseDocType.order &&
+                detail.financeApproval != null &&
+                detail.financeApproval!.status != 'DRAFT')) {
+          throw ApiException('CONFLICT', '单据已不是可删除草稿，请刷新后重试');
+        }
+        if (!mounted ||
+            widget.docType != type ||
+            !_draftDeleteEnabled ||
+            !selectedDraftIds.contains(id) ||
+            ref.read(authenticatedScopeProvider) != scope) {
+          throw ApiException('CONFLICT', '页面或身份已变化，已停止删除');
+        }
+        await repo.delete(id);
+      },
+      reload: () async {
+        await _reload();
+        if (_list.error != null) {
+          throw ApiException('LIST_REFRESH_FAILED', _list.error!);
+        }
+        await _loadBadge();
+      },
+    );
+  }
 
   /// 分段计数范围(2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数): 订货/收货/退货
   /// 按状态分桶(订货另有等待财审 / 财务已退回桶), 一次请求; 申请页没有 hub 徽章,
@@ -180,19 +274,60 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                 ? null
                 : ChinaDateTime.formatDate(range.start),
             dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+            billNo: _columnFilters['billNo'],
           ),
           sort: _list.sortKey,
           order: _list.sortOrder,
         );
   }
 
-  Future<void> _reload([int? page, bool silent = false]) {
-    if (!_shouldLoad) return Future.value();
-    return _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+  /// 单据号值筛选桶随过滤上下文重取（失败静默保持旧桶，不阻断列表）。
+  Future<void> _loadBillNoFacets() {
+    final seg = _seg;
+    if (seg == null) return Future.value();
+    final range = seg.history ? _historyTime.range : null;
+    return _columnFilters.loadFacets(
+      () async => {
+        'billNo': await ref
+            .read(purchaseRepositoryProvider(widget.docType))
+            .billNoFacets(
+              filter: PurchaseDocFilter(
+                keyword: _list.normalizedKeyword,
+                supplierId: _cfg.hasSupplier ? _supplierIdFilter : null,
+                warehouseId: _cfg.hasWarehouse ? _warehouseIdFilter : null,
+                status: seg.history ? null : seg.status,
+                financeApproval: seg.history ? null : seg.financeApproval,
+                dateFrom: range == null
+                    ? null
+                    : ChinaDateTime.formatDate(range.start),
+                dateTo: range == null
+                    ? null
+                    : ChinaDateTime.formatDate(range.end),
+              ),
+            ),
+      },
+      onLoaded: () {
+        if (mounted) setState(() {});
+      },
+    );
+  }
+
+  Future<void> _reload([int? page, bool silent = false]) async {
+    if (!_shouldLoad) return;
+    unawaited(_loadBillNoFacets());
+    await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+    if (mounted) {
+      retainDraftSelection(
+        (_list.page?.items ?? const <PurchaseDocListItem>[])
+            .where(_deletableDraft)
+            .map((row) => row.id),
+      );
+    }
   }
 
   void _selectSeg(_PurchaseDocSeg seg) {
     if (seg == _seg) return;
+    clearDraftSelection();
     setState(() {
       _seg = seg;
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
@@ -202,12 +337,41 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
 
   void _onHistoryTime(UtenHistoryTimeValue value) {
     if (value == _historyTime) return;
+    clearDraftSelection();
     setState(() => _historyTime = value);
     _reload(1);
   }
 
   /// 表头筛选回调：值并进既有 repository.list 参数，重拉回第 1 页。
+  Widget _withDraftCategory(MasterDataTableView<PurchaseDocListItem> table) {
+    final scope = _statusScope;
+    if (_seg != _draftSeg || scope == null) return table;
+    final names = ref.watch(masterNameServiceProvider);
+    return FormDraftCategoryTable<PurchaseDocListItem>(
+      scope: formDraftScopeForDocumentStatus(scope),
+      table: table,
+      localValue: (draft, key) => formDraftMasterColumnValue(
+        draft,
+        key,
+        suppliers: names.supplierEntries,
+        currencies: names.currencyEntries,
+        warehouses: names.warehouseEntries,
+      ),
+      search: _list.keyword,
+      formalId: (row) => row.id,
+    );
+  }
+
   void _onColumnFilterChanged(String key, String? value) {
+    clearDraftSelection();
+    if (key == 'billNo') {
+      _columnFilters.handleFilterChanged(
+        key,
+        value,
+        onChanged: _afterServerColumnChanged,
+      );
+      return;
+    }
     setState(() {
       if (key == 'supplier') {
         _supplierIdFilter = value;
@@ -215,6 +379,13 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
         _warehouseIdFilter = value;
       }
     });
+    _reload(1);
+  }
+
+  /// 服务端列筛选落地后：setState 刷新表头 + 重拉回第 1 页。
+  void _afterServerColumnChanged() {
+    clearDraftSelection();
+    setState(() {});
     _reload(1);
   }
 
@@ -273,7 +444,9 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
   }) {
     return <MasterColumnDef<PurchaseDocListItem>>[
       MasterColumnDef(
+        // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
         key: 'billNo',
+        sortable: true,
         label: '单据号',
         width: 140,
         value: (it) => it.billNo,
@@ -336,7 +509,9 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
     final staged = statusScope != null;
     final statusCounts = statusScope == null
         ? null
-        : ref.watch(documentStatusCountsProvider(statusScope)).valueOrNull;
+        : ref
+              .watch(effectiveDocumentStatusCountsProvider(statusScope))
+              .valueOrNull;
     // 条件表达式里直接写 `? statusCounts?[key]` 会被 Dart 解析器当成两个 `?`, 走局部函数。
     int? bucket(String key) => statusCounts?[key];
     // 返回即刷新(ADR-108): 回到本列表时, 只有本端写过数据或离开超过 30 秒才重拉,
@@ -350,7 +525,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
     final isRequest = widget.docType == PurchaseDocType.request;
     final approvedLabel = isRequest ? '计划已下达' : '已审';
     final seg = _seg;
-    return Scaffold(
+    final page = Scaffold(
       appBar: UtenAppBar(
         title: _cfg.label,
         leading: UtenBackButton(
@@ -375,6 +550,15 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
               listenable: _list,
               builder: (context, _) {
                 final total = _list.total;
+                final hasLocalDrafts =
+                    _seg == _draftSeg &&
+                    statusScope != null &&
+                    ref.watch(
+                          formDraftCategoryCountProvider(
+                            formDraftScopeForDocumentStatus(statusScope),
+                          ),
+                        ) >
+                        0;
                 final canViewCommercialAmounts =
                     _cfg.canViewCommercial(
                       ref.watch(currentPermissionsProvider),
@@ -413,58 +597,63 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                           ),
                           // 订货单专属两段：已提交财务审核的在审单、财务退回件（status 仍=0），
                           // 与「草稿」段三者互斥，退回件不再混在草稿里。
-                          if (widget.docType == PurchaseDocType.order) ...[
+                          if (!widget.embedded) ...[
+                            if (widget.docType == PurchaseDocType.order) ...[
+                              UtenFilterSegment(
+                                value: const _PurchaseDocSeg.stage(
+                                  kPurchaseStatusDraft,
+                                  'PENDING',
+                                ),
+                                label: '等待财务审核',
+                                count:
+                                    statusCounts?[DocumentStatusBucket
+                                        .pendingFinance],
+                                countForm: UtenSegmentCountForm.inProgress,
+                              ),
+                              UtenFilterSegment(
+                                value: const _PurchaseDocSeg.stage(
+                                  kPurchaseStatusDraft,
+                                  'REJECTED',
+                                ),
+                                label: '财务已退回',
+                                count:
+                                    statusCounts?[DocumentStatusBucket
+                                        .financeRejected],
+                                countForm: UtenSegmentCountForm.actionable,
+                              ),
+                            ],
                             UtenFilterSegment(
                               value: const _PurchaseDocSeg.stage(
-                                kPurchaseStatusDraft,
-                                'PENDING',
+                                kPurchaseStatusApproved,
                               ),
-                              label: '等待财务审核',
-                              count:
-                                  statusCounts?[DocumentStatusBucket
-                                      .pendingFinance],
-                              countForm: UtenSegmentCountForm.inProgress,
+                              label: approvedLabel,
+                              count: staged
+                                  ? bucket(DocumentStatusBucket.approved)
+                                  : (_actionableStatus ==
+                                            kPurchaseStatusApproved
+                                        ? _actionableCount
+                                        : null),
                             ),
                             UtenFilterSegment(
                               value: const _PurchaseDocSeg.stage(
-                                kPurchaseStatusDraft,
-                                'REJECTED',
+                                kPurchaseStatusReversed,
                               ),
-                              label: '财务已退回',
+                              label: '红冲',
                               count:
-                                  statusCounts?[DocumentStatusBucket
-                                      .financeRejected],
-                              countForm: UtenSegmentCountForm.actionable,
+                                  statusCounts?[DocumentStatusBucket.reversed],
+                            ),
+                            const UtenFilterSegment(
+                              value: _PurchaseDocSeg.history(),
+                              label: '历史记录',
                             ),
                           ],
-                          UtenFilterSegment(
-                            value: const _PurchaseDocSeg.stage(
-                              kPurchaseStatusApproved,
-                            ),
-                            label: approvedLabel,
-                            count: staged
-                                ? bucket(DocumentStatusBucket.approved)
-                                : (_actionableStatus == kPurchaseStatusApproved
-                                      ? _actionableCount
-                                      : null),
-                          ),
-                          UtenFilterSegment(
-                            value: const _PurchaseDocSeg.stage(
-                              kPurchaseStatusReversed,
-                            ),
-                            label: '红冲',
-                            count: statusCounts?[DocumentStatusBucket.reversed],
-                          ),
-                          const UtenFilterSegment(
-                            value: _PurchaseDocSeg.history(),
-                            label: '历史记录',
-                          ),
                         ],
                         selected: seg == null ? const {} : {seg},
                         onSelectionChanged: _selectSeg,
                         searchHint: '搜索单据号', // TODO(l10n): 补 arb
                         initialSearchValue: _list.keyword,
                         onSearchChanged: (v) {
+                          clearDraftSelection();
                           _list.keyword = v;
                           _reload(1);
                         },
@@ -485,7 +674,9 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                             ),
                             const SizedBox(width: UtenSpacing.s8),
                             Text(
-                              '${_cfg.shortLabel} ($total)',
+                              hasLocalDrafts
+                                  ? _cfg.shortLabel
+                                  : '${_cfg.shortLabel} ($total)',
                               style: theme.textTheme.titleSmall?.copyWith(
                                 fontWeight: FontWeight.w600,
                               ),
@@ -527,53 +718,76 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                       ? const UtenFilterPlaceholder()
                       : seg.history && _historyTime.isNone
                       ? const UtenHistoryTimePlaceholder()
-                      : MasterDataTableView<PurchaseDocListItem>(
-                          // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
-                          primary: true,
-                          columns: _columns(
-                            names,
-                            canViewCommercialAmounts: canViewCommercialAmounts,
-                          ),
-                          items: _list.page?.items ?? const [],
-                          facets: {
-                            if (_cfg.hasSupplier)
-                              'supplier': masterDictionaryFacets(
-                                names.supplierEntries,
-                              ),
-                            if (_cfg.hasWarehouse)
-                              'warehouse': masterDictionaryFacets(
-                                names.warehouseEntries,
-                              ),
-                          },
-                          nullCounts: const {},
-                          filters: {
-                            if (_cfg.hasSupplier) 'supplier': _supplierIdFilter,
-                            if (_cfg.hasWarehouse)
-                              'warehouse': _warehouseIdFilter,
-                          },
-                          onFilterChanged: _onColumnFilterChanged,
-                          sortColumn: _list.sortKey,
-                          sortAscending: _list.sortAsc,
-                          onSortChange: (column, ascending) {
-                            _list.onSortChange(column, ascending);
-                            _reload(1);
-                          },
-                          onRowTap: (it) => context.push(
-                            RoutePath.purchaseDocDetail(
-                              _cfg.type.pathSegment,
-                              it.id,
+                      : _withDraftCategory(
+                          MasterDataTableView<PurchaseDocListItem>(
+                            // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
+                            primary: true,
+                            columns: _columns(
+                              names,
+                              canViewCommercialAmounts:
+                                  canViewCommercialAmounts,
                             ),
+                            items: _list.page?.items ?? const [],
+                            selectable: _draftDeleteEnabled,
+                            idOf: (row) =>
+                                !draftDeleteBusy && _deletableDraft(row)
+                                ? row.id
+                                : null,
+                            rowKeyOf: (row) => row.id,
+                            selectedIds: selectedDraftIds,
+                            onSelectedIdsChanged: draftDeleteBusy
+                                ? null
+                                : selectDraftIds,
+                            batchActionsBuilder: _draftDeleteEnabled
+                                ? (_, _) => [_draftDeleteButton()]
+                                : null,
+                            facets: {
+                              'billNo': _columnFilters.bucketOf('billNo'),
+                              if (_cfg.hasSupplier)
+                                'supplier': masterDictionaryFacets(
+                                  names.supplierEntries,
+                                ),
+                              if (_cfg.hasWarehouse)
+                                'warehouse': masterDictionaryFacets(
+                                  names.warehouseEntries,
+                                ),
+                            },
+                            nullCounts: const {},
+                            filters: {
+                              'billNo': _columnFilters['billNo'],
+                              if (_cfg.hasSupplier)
+                                'supplier': _supplierIdFilter,
+                              if (_cfg.hasWarehouse)
+                                'warehouse': _warehouseIdFilter,
+                            },
+                            onFilterChanged: _onColumnFilterChanged,
+                            sortColumn: _list.sortKey,
+                            sortAscending: _list.sortAsc,
+                            onSortChange: (column, ascending) {
+                              clearDraftSelection();
+                              _list.onSortChange(column, ascending);
+                              _reload(1);
+                            },
+                            onRowTap: (it) => context.push(
+                              RoutePath.purchaseDocDetail(
+                                _cfg.type.pathSegment,
+                                it.id,
+                              ),
+                            ),
+                            isLoading: _list.isLoadingFirst,
+                            loadingMore: _list.isLoadingMore,
+                            error: _list.error,
+                            onRetry: () => _reload(),
+                            emptyMessage: seg.history
+                                ? '该时间段内暂无${_cfg.shortLabel}单'
+                                : '暂无${_cfg.shortLabel}单', // TODO(l10n): 补 arb
+                            currentPage: _list.currentPage,
+                            totalPages: _list.totalPages,
+                            onPageChange: (p) {
+                              clearDraftSelection();
+                              _reload(p);
+                            },
                           ),
-                          isLoading: _list.isLoadingFirst,
-                          loadingMore: _list.isLoadingMore,
-                          error: _list.error,
-                          onRetry: () => _reload(),
-                          emptyMessage: seg.history
-                              ? '该时间段内暂无${_cfg.shortLabel}单'
-                              : '暂无${_cfg.shortLabel}单', // TODO(l10n): 补 arb
-                          currentPage: _list.currentPage,
-                          totalPages: _list.totalPages,
-                          onPageChange: (p) => _reload(p),
                         ),
                 );
               },
@@ -582,5 +796,6 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
         ),
       ),
     );
+    return widget.embedded ? page.body! : page;
   }
 }

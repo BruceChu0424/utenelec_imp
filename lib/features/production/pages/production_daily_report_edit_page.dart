@@ -9,6 +9,11 @@
 //
 // 仅草稿可编辑（后端校验；已审走详情页红冲）。
 import 'package:flutter/material.dart';
+import '../../../shared/widgets/saved_document_fields.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_field_codec.dart';
+
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -76,9 +81,8 @@ class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
   final List<String> initialExecutionSegmentIds;
   final ProductionOutputSupplementView? initialSupplement;
 
-  /// 从「我的车间任务」push 进来（2026-09-24 用户口径「点击报工后应该去到任务
-  /// 中心，通知数量自动刷新」）：保存成功后 pop 回任务页——它的 await push 收尾
-  /// 自带清勾选+整页重拉+徽章刷新；其余入口照旧 replace 成详情页。
+  /// 由车间任务页发起：保存返回日报 ID，发起方继续打开详情审核。
+  /// 审核后再回任务页，避免把保存草稿误当成已完成报工。
   final bool returnToWorkshopTasks;
 
   @override
@@ -87,7 +91,8 @@ class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
 }
 
 class _ProductionDailyReportEditPageState
-    extends ConsumerState<ProductionDailyReportEditPage> {
+    extends ConsumerState<ProductionDailyReportEditPage>
+    with FormDraftMixin<ProductionDailyReportEditPage> {
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
   DateTime _billDate = ChinaDateTime.today();
@@ -157,6 +162,238 @@ class _ProductionDailyReportEditPageState
   String? _createdAt;
 
   @override
+  bool get formDraftEnabled => _isCreate;
+  @override
+  bool get formDraftBusy => _saving;
+  @override
+  bool get formDraftCanReplaySubmission => true;
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftCatalog.dailyReport.spec(
+    title: '新建生产日报',
+    route: '/production/daily-reports/new',
+  );
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _remark,
+    _grid,
+    _pendingFiles,
+    for (final row in _productRows) ...[
+      row.goodsNotifier,
+      row.qty,
+      row.weight,
+      row.planNo,
+      row.remark,
+      row.colorIdNotifier,
+      row.unitIdNotifier,
+      row.finalNotifier,
+      row.destinationNotifier,
+      row.directTransferNotifier,
+    ],
+    for (final input in _materialInputs.values) input.used,
+  ];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'remark': _remark.text,
+    'billDate': _billDate.toIso8601String(),
+    'departmentId': _departmentId,
+    'workshopName': _workshopName,
+    'workers': _workers.map(draftEmployee).toList(),
+    'surplusReturnRequested': _surplusReturnRequested,
+    'createdReportId': _createdReportId,
+    'idempotencyKey': _createIdempotencyKey,
+    'attachments': _pendingFiles.exportDraft(),
+    'rows': [
+      for (final row in _productRows)
+        {
+          'goods': draftGoods(row.goods),
+          'selected': _grid.isSelected(row),
+          'destination': row.destination,
+          'directTransferDemandId':
+              row.directTransfer?.demandId ?? row.pendingDirectTransferDemandId,
+          'destinationTouched': row.destinationTouched,
+          'destinationAutofilled': row.destinationAutofilled.value,
+          'directTransferAutofilled': row.directTransferAutofilled.value,
+          'executionSegmentVersion': row.executionSegmentVersion,
+          'planItemId': row.planItemId,
+          'planId': row.planId,
+          'executionSegmentId': row.executionSegmentId,
+          'executionSegmentSalesAllocationId':
+              row.executionSegmentSalesAllocationId,
+          'executionSegmentCode': row.executionSegmentCode,
+          'fqcRecoveryAuthorizationId': row.fqcRecoveryAuthorizationId,
+          'fqcRecoveryDispositionCode': row.fqcRecoveryDispositionCode,
+          'fqcSourceReportNo': row.fqcSourceReportNo,
+          'salesOrderItemId': row.salesOrderItemId,
+          'salesOrderNo': row.salesOrderNo,
+          'clientName': row.clientName,
+          'supplementRequestId': row.supplementRequestId,
+          'supplementProofId': row.supplementProofId,
+          'colorId': row.colorId,
+          'unitId': row.unitId,
+          'unitRate': row.unitRate,
+          'orderQty': row.orderQty,
+          'maxReportQty': row.maxReportQty,
+          'supplementApprovedActualQty': row.supplementApprovedActualQty,
+          'remainingPlanQty': row.remainingPlanQty,
+          'allowActualOverproduction': row.allowActualOverproduction,
+          'legacyManual': row.legacyManual,
+          'isFinal': row.isFinal,
+          'qty': row.qty.text,
+          'weight': row.weight.text,
+          'planNo': row.planNo.text,
+          'remark': row.remark.text,
+        },
+    ],
+    'materialInputs': {
+      for (final entry in _materialInputs.entries)
+        entry.key: {
+          'used': entry.value.used.text,
+          'autofilled': entry.value.autofilled.value,
+          'autofillText': entry.value.autofillText,
+          'manualRatio': entry.value.manualRatio,
+          'manuallyEdited': entry.value.manuallyEdited,
+        },
+    },
+    'savedMaterialUsage': [
+      for (final usage in _savedMaterialUsage.values)
+        {
+          'id': usage.id,
+          'lineNo': usage.lineNo,
+          'planId': usage.planId,
+          'demandId': usage.demandId,
+          'materialExecutionSegmentId': usage.materialExecutionSegmentId,
+          'materialExecutionSegmentCode': usage.materialExecutionSegmentCode,
+          'goodsId': usage.goodsId,
+          'goodsCode': usage.goodsCode,
+          'goodsName': usage.goodsName,
+          'colorName': usage.colorName,
+          'unitName': usage.unitName,
+          'qtyBase': usage.qtyBase,
+        },
+    ],
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _remark.text = draftText(data, 'remark');
+    _billDate = DateTime.tryParse(draftText(data, 'billDate')) ?? _billDate;
+    _departmentId = data['departmentId'] as String?;
+    _workshopName = data['workshopName'] as String?;
+    _workers = draftMaps(data['workers']).map(restoreDraftEmployee).toList();
+    for (final worker in _workers) {
+      _empCache[worker.id] = worker;
+    }
+    _surplusReturnRequested = data['surplusReturnRequested'] == true;
+    _createdReportId = data['createdReportId'] as String?;
+    _createIdempotencyKey =
+        data['idempotencyKey'] as String? ?? _createIdempotencyKey;
+    _pendingFiles.restoreDraft(draftMap(data['attachments']));
+    _savedMaterialUsage.clear();
+    for (final value in draftMaps(data['savedMaterialUsage'])) {
+      final usage = ProductionDailyReportMaterialUsage.fromJson(value);
+      _savedMaterialUsage[usage.demandId] = usage;
+    }
+    final selected = <DailyGridRow>[];
+    final values = draftMaps(data['rows']);
+    final rows = <DailyGridRow>[];
+    for (final item in values) {
+      final row = DailyGridRow()..goods = restoreDraftGoods(item['goods']);
+      row.planItemId = item['planItemId'] as String?;
+      row.planId = item['planId'] as String?;
+      row.executionSegmentId = item['executionSegmentId'] as String?;
+      row.executionSegmentSalesAllocationId =
+          item['executionSegmentSalesAllocationId'] as String?;
+      row.executionSegmentCode = item['executionSegmentCode'] as String?;
+      row.fqcRecoveryAuthorizationId =
+          item['fqcRecoveryAuthorizationId'] as String?;
+      row.fqcRecoveryDispositionCode =
+          item['fqcRecoveryDispositionCode'] as String?;
+      row.fqcSourceReportNo = item['fqcSourceReportNo'] as String?;
+      row.salesOrderItemId = item['salesOrderItemId'] as String?;
+      row.salesOrderNo = item['salesOrderNo'] as String?;
+      row.clientName = item['clientName'] as String?;
+      row.supplementRequestId = item['supplementRequestId'] as String?;
+      row.supplementProofId = item['supplementProofId'] as String?;
+      row.colorId = item['colorId'] as String?;
+      row.unitId = item['unitId'] as String?;
+      row.unitRate = (item['unitRate'] as num?)?.toDouble();
+      row.orderQty = (item['orderQty'] as num?)?.toDouble();
+      row.maxReportQty = (item['maxReportQty'] as num?)?.toDouble();
+      row.supplementApprovedActualQty =
+          (item['supplementApprovedActualQty'] as num?)?.toDouble();
+      row.remainingPlanQty = (item['remainingPlanQty'] as num?)?.toDouble();
+      row.allowActualOverproduction = item['allowActualOverproduction'] == true;
+      row.legacyManual = item['legacyManual'] == true;
+      row.isFinal = item['isFinal'] == true;
+      row.qty.text = draftText(item, 'qty');
+      row.weight.text = draftText(item, 'weight');
+      row.planNo.text = draftText(item, 'planNo');
+      row.remark.text = draftText(item, 'remark');
+      row.executionSegmentVersion = (item['executionSegmentVersion'] as num?)
+          ?.toInt();
+      row.destination = item['destination'] as String? ?? 'WAREHOUSE';
+      row.pendingDirectTransferDemandId =
+          item['directTransferDemandId'] as String?;
+      // A recovered choice is explicit. Fresh candidates may validate it but may not replace it.
+      row.destinationTouched = true;
+      rows.add(row);
+      if (item['selected'] == true) selected.add(row);
+    }
+    _grid.clearSelection();
+    _grid.replaceAll(rows);
+    _grid.setSelected(selected, true);
+    if (_createdReportId != null) {
+      // The server already accepted this report. Resume attachment completion;
+      // current custody or exhausted report quotas cannot invalidate that fact.
+      _resumeBlocked = false;
+      _resumeNotice = null;
+      if (mounted) setState(() {});
+      return;
+    }
+    // Reload current custody and permissions. Stored quantities never recreate quota.
+    _usageSourceCache.clear();
+    _clearanceCache.clear();
+    void applyMaterialInputs() {
+      for (final entry in draftMap(data['materialInputs']).entries) {
+        final item = draftMap(entry.value);
+        final input = _materialInputs.putIfAbsent(
+          entry.key,
+          DailyMaterialInput.new,
+        );
+        input.used.text = draftText(item, 'used');
+        input.autofillText = item['autofillText'] as String?;
+        input.manualRatio = (item['manualRatio'] as num?)?.toDouble();
+        input.manuallyEdited = item['manuallyEdited'] == true;
+        input.autofilled.value = item['autofilled'] == true;
+      }
+    }
+
+    applyMaterialInputs();
+    await _reloadMaterialRows();
+    if (!mounted) return;
+    // Reattaching material watchers must not overwrite raw incomplete/manual input.
+    applyMaterialInputs();
+    final availableDemandIds = {
+      for (final row in _grid.rows)
+        if (row.material != null) row.material!.demandId,
+    };
+    if (draftMap(data['materialInputs']).entries.any(
+      (entry) =>
+          draftText(draftMap(entry.value), 'used').trim().isNotEmpty &&
+          !availableDemandIds.contains(entry.key),
+    )) {
+      _resumeBlocked = true;
+      _resumeNotice = '已填写的部分实际用料来源未能恢复，填写草稿保留；请核对原材料台账后再保存，避免遗漏实耗。';
+    }
+    for (var index = 0; index < rows.length; index++) {
+      rows[index].destinationAutofilled.value =
+          values[index]['destinationAutofilled'] == true;
+      rows[index].directTransferAutofilled.value =
+          values[index]['directTransferAutofilled'] == true;
+    }
+    setState(() {});
+  }
+
+  @override
   void initState() {
     super.initState();
     _grid.addListener(_scheduleMaterialOwnershipRefresh);
@@ -204,7 +441,9 @@ class _ProductionDailyReportEditPageState
             .map((e) => e.goodsId)
             .whereType<String>()
             .toSet();
-        await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
+        await ref
+            .read(masterNameServiceProvider)
+            .loadGoodsNamesWithCodes(goodsIds);
         await _preloadEmployees(d.workerIds);
         if (!mounted) return;
         _billNo.text = d.billNo ?? '';
@@ -258,12 +497,10 @@ class _ProductionDailyReportEditPageState
                 it.planItemId == null && (it.planNo?.isEmpty ?? true)
             ..colorId = it.colorId
             ..unitId = it.unitId
-            ..goods = it.goodsId == null
-                ? null
-                : GoodsOption(
-                    id: it.goodsId!,
-                    name: ref.read(masterNameServiceProvider).goods(it.goodsId),
-                  );
+            // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
+            ..goods = ref
+                .read(masterNameServiceProvider)
+                .goodsOptionOf(it.goodsId);
           row.qty.text = group.qty?.toString() ?? '';
           row.weight.text = group.weight?.toString() ?? '';
           row.isFinal = it.isFinal;
@@ -323,7 +560,10 @@ class _ProductionDailyReportEditPageState
     }
     if (!mounted) return;
     await _reloadMaterialRows();
-    if (mounted) setState(() => _loading = false);
+    if (mounted) {
+      setState(() => _loading = false);
+      await initializeFormDraft();
+    }
   }
 
   Future<bool> _restoreSupplementContext(
@@ -340,6 +580,17 @@ class _ProductionDailyReportEditPageState
           (snapshot['expectedVersion'] as num?)?.toInt() != _rowVersion) {
         throw const FormatException('原草稿已被更新，未覆盖其最新内容；请先核对申请时内容与当前草稿');
       }
+      // 快照只存货品 UUID：恢复行前把名称+编号字典拉齐（两列同源显示）。
+      await ref
+          .read(masterNameServiceProvider)
+          .loadGoodsNamesWithCodes(
+            rawItems
+                .map((raw) => Map<String, dynamic>.from(raw as Map))
+                .map((m) => m['goodsId'])
+                .whereType<String>()
+                .toSet(),
+          );
+      if (!mounted) return false;
       final restored = <DailyGridRow>[];
       for (final raw in rawItems) {
         final item = Map<String, dynamic>.from(raw as Map);
@@ -366,7 +617,9 @@ class _ProductionDailyReportEditPageState
           ..unitId = item['unitId'] as String
           ..colorId = item['colorId'] as String?
           ..unitRate = productionRateNumber(item['unitRate'])
-          ..goods = GoodsOption(id: item['goodsId'] as String)
+          ..goods = ref
+              .read(masterNameServiceProvider)
+              .goodsOptionOf(item['goodsId'] as String)
           ..qty.text = _quantityText(qty)
           ..weight.text = item['weight']?.toString() ?? ''
           ..planNo.text = item['planNo'] as String? ?? ''
@@ -1388,24 +1641,35 @@ class _ProductionDailyReportEditPageState
         ownerIds: [createdId],
       );
       if (!mounted || !ok) return;
-      // 从车间任务进来时同样直接回任务页（见 _save 同名分支）。
-      if (widget.returnToWorkshopTasks) {
-        final navigator = Navigator.of(context);
-        if (navigator.canPop()) {
-          navigator.pop(true);
-        } else {
-          context.go(RouteName.productionWorkshopTasks);
-        }
-        return;
-      }
-      context.replace('/production/daily-reports/$createdId');
+      await completeFormDraft();
+      if (!mounted) return;
+      _openSavedReport(createdId);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
+  /// 附件首次上传与失败后重试都走同一保存后导航，不能绕过详情审核。
+  void _openSavedReport(String reportId) {
+    final detailPath = '/production/daily-reports/$reportId';
+    if (widget.returnToWorkshopTasks) {
+      if (context.canPop()) {
+        // 完成车间页原来的 push Future，由它再 push 详情；replace 会遗失该 Future。
+        context.pop(reportId);
+      } else {
+        context.go('$detailPath?from=workshop-tasks');
+      }
+      return;
+    }
+    context.replace(detailPath);
+  }
+
   Future<void> _save() async {
     if (_saving) return;
+    if (_createdReportId case final createdId?) {
+      await _finishCreatedReport(createdId);
+      return;
+    }
     if (_resumeBlocked) {
       context.appWarning(_resumeNotice ?? '请先核对申请时填写内容');
       return;
@@ -1415,11 +1679,6 @@ class _ProductionDailyReportEditPageState
       return;
     }
     _refreshMaterialInputOwners();
-    if (_createdReportId case final createdId?) {
-      // 日报已创建、附件未全部上传：只补传附件，成功后进入详情。
-      await _finishCreatedReport(createdId);
-      return;
-    }
     // 校验与「第 N 行」计数都只看成品报工行：物料子行是挂在它们下面的派生行，
     // 混进来会让行号对不上用户在界面上数到的那一行。
     // 新建态只提交勾选行（2026-09-18，与订货单编辑页同款）；编辑既有单整单保存。
@@ -1697,31 +1956,26 @@ class _ProductionDailyReportEditPageState
     }
     setState(() => _saving = true);
     try {
+      if (_isCreate) await saveFormDraftNow();
       final repo = ref.read(productionDailyReportRepositoryProvider);
       final d = widget.id == null
-          ? await repo.create(body, idempotencyKey: _createIdempotencyKey)
+          ? await runFormDraftSubmission(
+              () => repo.create(body, idempotencyKey: _createIdempotencyKey),
+            )
           : await repo.update(widget.id!, body, expectedVersion: _rowVersion);
       if (!mounted) return;
-      context.appSuccess(widget.id == null ? '已创建' : '已保存');
+      context.appSuccess('报工草稿已保存，待审核');
       // 同生产计划单：本页不走 bumpListRefresh，草稿计数在这里单独失效。
       refreshBadges(ref);
       if (widget.id == null && _pendingFiles.isNotEmpty) {
         setState(() => _createdReportId = d.id);
+        await checkpointFormDraftAfterCreation();
         await _finishCreatedReport(d.id);
         return;
       }
-      // 从车间任务进来：保存成功直接回任务页（其 await push 收尾自带刷新与
-      // 徽章重拉）；其余入口照旧落详情页。
-      if (widget.returnToWorkshopTasks) {
-        final navigator = Navigator.of(context);
-        if (navigator.canPop()) {
-          navigator.pop(true);
-        } else {
-          context.go(RouteName.productionWorkshopTasks);
-        }
-        return;
-      }
-      context.replace('/production/daily-reports/${d.id}');
+      await completeFormDraft();
+      if (!mounted) return;
+      _openSavedReport(d.id);
     } on ApiException catch (e) {
       if (!mounted) return;
       if (e.code == 'CONFLICT' && widget.id != null) {
@@ -2023,6 +2277,9 @@ class _ProductionDailyReportEditPageState
     ];
   }
 
+  Widget _savedFields(Widget child) =>
+      SavedDocumentFields(locked: _createdReportId != null, child: child);
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -2030,354 +2287,371 @@ class _ProductionDailyReportEditPageState
     final workforceTree = ref
         .watch(productionWorkforceTreeProvider)
         .valueOrNull;
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: widget.id == null ? '新建生产日报' : '编辑生产日报',
-        showBackButton: true,
-        actions: _draftsAction,
-      ),
-      body: SafeArea(
-        child: Stack(
-          children: [
-            _loading
-                ? const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2.5),
-                  )
-                : !_isCreate && !_detailLoaded
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('日报草稿未能读取，原有内容没有改变'),
-                        const SizedBox(height: UtenSpacing.s12),
-                        FilledButton(
-                          onPressed: _init,
-                          child: const Text('重新读取草稿'),
-                        ),
-                      ],
-                    ),
-                  )
-                : UtenGridPageScrollbar(
-                    pinned: _gridPinned,
-                    controller: _scrollCtl,
-                    // 滚动条贴屏幕右缘(2026-09-15)：包装在内容容器之外，右缘窄条
-                    // 恒在屏幕最右，不随限宽容器/列宽漂移。
-                    child: UtenContentContainer(
-                      child: ListView(
-                        controller: _scrollCtl,
-                        // 底部多留一段：右下角悬浮的「取消/保存」不压住最后一行明细。
-                        padding: const EdgeInsets.fromLTRB(
-                          UtenSpacing.s12,
-                          UtenSpacing.s12,
-                          UtenSpacing.s12,
-                          UtenFloatingActionGroup.scrollClearance,
-                        ),
+    return withFormDraft(
+      Scaffold(
+        appBar: UtenAppBar(
+          title: widget.id == null ? '新建生产日报' : '编辑生产日报',
+          showBackButton: true,
+          actions: _draftsAction,
+        ),
+        body: SafeArea(
+          child: Stack(
+            children: [
+              _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    )
+                  : !_isCreate && !_detailLoaded
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(UtenSpacing.s12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  UtenFormGrid(
-                                    children: [
-                                      // 单据号：系统自动生成，只读显示。
-                                      TextFormField(
-                                        errorBuilder: utenTextFieldErrorBuilder,
-                                        readOnly: true,
-                                        controller: _billNo,
-                                        decoration: UtenInputDecoration(
-                                          InputDecoration(
-                                            labelText: '单据号',
-                                            hintText: _billNo.text.isEmpty
-                                                ? '保存后自动生成'
-                                                : null,
-                                            filled: _billNo.text.isEmpty,
-                                            suffixIcon: _billNo.text.isEmpty
-                                                ? const Icon(
-                                                    Icons.autorenew_outlined,
-                                                    size: 18,
-                                                  )
-                                                : const Icon(
-                                                    Icons.lock_outline,
-                                                    size: 16,
-                                                  ),
-                                          ),
-                                        ),
-                                      ),
-                                      // 制单员/制单时间：服务端权威，只读展示（责任制）。
-                                      ...utenMakerAuditCells(
-                                        ref,
-                                        makerName: _makerName,
-                                        createdAt: _createdAt,
-                                      ),
-                                      UtenDateField(
-                                        label: '单据日期',
-                                        required: true,
-                                        value: _billDate,
-                                        onChanged: (d) =>
-                                            setState(() => _billDate = d),
-                                      ),
-                                      // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
-                                      UtenDepartmentPicker(
-                                        mode: UtenDepartmentPickerMode.single,
-                                        label: '车间',
-                                        hint: '选择生产车间(部门)',
-                                        selectablePredicate: (node) =>
-                                            workforceTree
-                                                    ?.productionDepartmentId !=
-                                                null &&
-                                            node.parentId ==
-                                                workforceTree!
-                                                    .productionDepartmentId,
-                                        treeOverride:
-                                            workforceTree?.tree ?? const [],
-                                        expandOnRowTap: true,
-                                        initiallyExpandedIds:
-                                            workforceTree
-                                                ?.initiallyExpandedIds ??
-                                            const {},
-                                        initialSelection: _departmentId == null
-                                            ? const []
-                                            : [
-                                                DeptSelection(
-                                                  id: _departmentId!,
-                                                  name: _workshopName ?? '',
-                                                  fullPath: '',
-                                                  level: '',
-                                                ),
-                                              ],
-                                        onChanged: (sel) {
-                                          final s = sel.isEmpty
-                                              ? null
-                                              : sel.first;
-                                          setState(() {
-                                            _departmentId = s?.id;
-                                            _workshopName = s?.name; // 部门名冗余
-                                          });
-                                        },
-                                      ),
-                                      _workerPicker(),
-                                    ],
-                                  ),
-                                  const SizedBox(height: UtenSpacing.s12),
-                                  TextField(
-                                    controller: _remark,
-                                    decoration: const InputDecoration(
-                                      labelText: '备注',
-                                    ),
-                                    maxLines: 2,
-                                  ),
-                                ],
-                              ),
-                            ),
+                          const Text('日报草稿未能读取，原有内容没有改变'),
+                          const SizedBox(height: UtenSpacing.s12),
+                          FilledButton(
+                            onPressed: _init,
+                            child: const Text('重新读取草稿'),
                           ),
-                          const SizedBox(height: UtenSpacing.s12),
-                          // 2026-09-24 简洁口径：常驻教学横幅撤掉；仅恢复草稿/申请
-                          // 时显示一条紧凑状态提示（条件渲染，非教学）。
-                          if (_resumeNotice != null) ...[
-                            Container(
-                              padding: const EdgeInsets.all(UtenSpacing.s12),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.tertiaryContainer,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Icon(
-                                    Icons.info_outline_rounded,
-                                    color:
-                                        theme.colorScheme.onTertiaryContainer,
-                                  ),
-                                  const SizedBox(width: UtenSpacing.s8),
-                                  Expanded(
-                                    child: Text(
-                                      _resumeNotice!,
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(
-                                            color: theme
-                                                .colorScheme
-                                                .onTertiaryContainer,
-                                          ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: UtenSpacing.s12),
-                          ],
-                          // 日报附件（报工照片/检验记录）：已有单直接挂 PRODUCTION_DAILY_REPORT；
-                          // 新建单先本地暂存，保存拿到 UUID 后逐个确认上传（ADR-074）。
-                          const SizedBox(height: UtenSpacing.s12),
-                          if (widget.id != null)
-                            BusinessAttachmentSection(
-                              ownerType: 'PRODUCTION_DAILY_REPORT',
-                              ownerId: widget.id!,
-                              canView: ref
-                                  .watch(currentPermissionsProvider)
-                                  .contains(Perm.attachmentView),
-                              // 进入编辑页即已确认可写；草稿状态与归属由服务端附件策略再校验。
-                              canManage: !_saving,
-                              title: '附件（报工照片/检验记录）',
-                              categories: const ['报工照片', '检验记录', '签认单', '其他'],
-                            )
-                          else ...[
-                            if (_createdReportId != null)
-                              const PendingAttachmentRetryNotice(
-                                documentLabel: '生产日报',
-                              ),
-                            BusinessAttachmentSection.draft(
-                              key: const ValueKey(
-                                'daily-report-draft-attachments',
-                              ),
-                              controller: _pendingFiles,
-                              canManage: ref
-                                  .watch(currentPermissionsProvider)
-                                  .contains(Perm.productionDailyReportCreate),
-                              title: '附件（报工照片/检验记录）',
-                              categories: const ['报工照片', '检验记录', '签认单', '其他'],
-                            ),
-                          ],
-                          // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）。
-                          const SizedBox(height: UtenSpacing.s12),
-                          if (!_isCreate &&
-                              _productRows.any((row) => row.isFinal))
+                        ],
+                      ),
+                    )
+                  : UtenGridPageScrollbar(
+                      pinned: _gridPinned,
+                      controller: _scrollCtl,
+                      // 滚动条贴屏幕右缘(2026-09-15)：包装在内容容器之外，右缘窄条
+                      // 恒在屏幕最右，不随限宽容器/列宽漂移。
+                      child: UtenContentContainer(
+                        child: ListView(
+                          controller: _scrollCtl,
+                          // 底部多留一段：右下角悬浮的「取消/保存」不压住最后一行明细。
+                          padding: const EdgeInsets.fromLTRB(
+                            UtenSpacing.s12,
+                            UtenSpacing.s12,
+                            UtenSpacing.s12,
+                            UtenFloatingActionGroup.scrollClearance,
+                          ),
+                          children: [
                             Card(
                               child: Padding(
                                 padding: const EdgeInsets.all(UtenSpacing.s12),
-                                child: Wrap(
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  spacing: 12,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text(
-                                      '此草稿含旧版提前完结标记；普通报工会保留原任务的未完成数量。',
+                                    _savedFields(
+                                      UtenFormGrid(
+                                        children: [
+                                          // 单据号：系统自动生成，只读显示。
+                                          TextFormField(
+                                            errorBuilder:
+                                                utenTextFieldErrorBuilder,
+                                            readOnly: true,
+                                            controller: _billNo,
+                                            decoration: UtenInputDecoration(
+                                              InputDecoration(
+                                                labelText: '单据号',
+                                                hintText: _billNo.text.isEmpty
+                                                    ? '保存后自动生成'
+                                                    : null,
+                                                filled: _billNo.text.isEmpty,
+                                                suffixIcon: _billNo.text.isEmpty
+                                                    ? const Icon(
+                                                        Icons
+                                                            .autorenew_outlined,
+                                                        size: 18,
+                                                      )
+                                                    : const Icon(
+                                                        Icons.lock_outline,
+                                                        size: 16,
+                                                      ),
+                                              ),
+                                            ),
+                                          ),
+                                          // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                                          ...utenMakerAuditCells(
+                                            ref,
+                                            makerName: _makerName,
+                                            createdAt: _createdAt,
+                                          ),
+                                          UtenDateField(
+                                            label: '单据日期',
+                                            required: true,
+                                            value: _billDate,
+                                            onChanged: (d) =>
+                                                setState(() => _billDate = d),
+                                          ),
+                                          // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
+                                          UtenDepartmentPicker(
+                                            mode:
+                                                UtenDepartmentPickerMode.single,
+                                            label: '车间',
+                                            hint: '选择生产车间(部门)',
+                                            selectablePredicate: (node) =>
+                                                workforceTree
+                                                        ?.productionDepartmentId !=
+                                                    null &&
+                                                node.parentId ==
+                                                    workforceTree!
+                                                        .productionDepartmentId,
+                                            treeOverride:
+                                                workforceTree?.tree ?? const [],
+                                            expandOnRowTap: true,
+                                            initiallyExpandedIds:
+                                                workforceTree
+                                                    ?.initiallyExpandedIds ??
+                                                const {},
+                                            initialSelection:
+                                                _departmentId == null
+                                                ? const []
+                                                : [
+                                                    DeptSelection(
+                                                      id: _departmentId!,
+                                                      name: _workshopName ?? '',
+                                                      fullPath: '',
+                                                      level: '',
+                                                    ),
+                                                  ],
+                                            onChanged: (sel) {
+                                              final s = sel.isEmpty
+                                                  ? null
+                                                  : sel.first;
+                                              setState(() {
+                                                _departmentId = s?.id;
+                                                _workshopName =
+                                                    s?.name; // 部门名冗余
+                                              });
+                                            },
+                                          ),
+                                          _workerPicker(),
+                                        ],
+                                      ),
                                     ),
-                                    TextButton(
-                                      onPressed: () => setState(() {
-                                        for (final row in _productRows) {
-                                          row.isFinal = false;
-                                        }
-                                        _surplusReturnRequested = false;
-                                      }),
-                                      child: const Text('改为普通报工'),
+                                    const SizedBox(height: UtenSpacing.s12),
+                                    TextField(
+                                      controller: _remark,
+                                      decoration: const InputDecoration(
+                                        labelText: '备注',
+                                      ),
+                                      maxLines: 2,
                                     ),
                                   ],
                                 ),
                               ),
                             ),
-                          if (_materialLoading || _materialNotice != null)
-                            Padding(
-                              padding: const EdgeInsets.only(
-                                bottom: UtenSpacing.s8,
-                              ),
-                              child: Row(
-                                children: [
-                                  if (_materialLoading)
-                                    const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
+                            const SizedBox(height: UtenSpacing.s12),
+                            // 2026-09-24 简洁口径：常驻教学横幅撤掉；仅恢复草稿/申请
+                            // 时显示一条紧凑状态提示（条件渲染，非教学）。
+                            if (_resumeNotice != null) ...[
+                              Container(
+                                padding: const EdgeInsets.all(UtenSpacing.s12),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.tertiaryContainer,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(
+                                      Icons.info_outline_rounded,
+                                      color:
+                                          theme.colorScheme.onTertiaryContainer,
+                                    ),
+                                    const SizedBox(width: UtenSpacing.s8),
+                                    Expanded(
+                                      child: Text(
+                                        _resumeNotice!,
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onTertiaryContainer,
+                                            ),
                                       ),
                                     ),
-                                  if (_materialLoading)
-                                    const SizedBox(width: UtenSpacing.s8),
-                                  Expanded(
-                                    child: Text(
-                                      _materialLoading
-                                          ? '正在读取这些工单已领用的物料…'
-                                          : _materialNotice!,
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: _materialLoading
-                                                ? theme
-                                                      .colorScheme
-                                                      .onSurfaceVariant
-                                                : theme.colorScheme.error,
-                                          ),
-                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: UtenSpacing.s12),
+                            ],
+                            // 日报附件（报工照片/检验记录）：已有单直接挂 PRODUCTION_DAILY_REPORT；
+                            // 新建单先本地暂存，保存拿到 UUID 后逐个确认上传（ADR-074）。
+                            const SizedBox(height: UtenSpacing.s12),
+                            if (widget.id != null)
+                              BusinessAttachmentSection(
+                                ownerType: 'PRODUCTION_DAILY_REPORT',
+                                ownerId: widget.id!,
+                                canView: ref
+                                    .watch(currentPermissionsProvider)
+                                    .contains(Perm.attachmentView),
+                                // 进入编辑页即已确认可写；草稿状态与归属由服务端附件策略再校验。
+                                canManage: !_saving,
+                                title: '附件（报工照片/检验记录）',
+                                categories: const ['报工照片', '检验记录', '签认单', '其他'],
+                              )
+                            else ...[
+                              if (_createdReportId != null)
+                                PendingAttachmentRetryNotice(
+                                  documentLabel: '生产日报',
+                                  controller: _pendingFiles,
+                                ),
+                              BusinessAttachmentSection.draft(
+                                key: const ValueKey(
+                                  'daily-report-draft-attachments',
+                                ),
+                                controller: _pendingFiles,
+                                canManage: ref
+                                    .watch(currentPermissionsProvider)
+                                    .contains(Perm.productionDailyReportCreate),
+                                title: '附件（报工照片/检验记录）',
+                                categories: const ['报工照片', '检验记录', '签认单', '其他'],
+                              ),
+                            ],
+                            // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）。
+                            const SizedBox(height: UtenSpacing.s12),
+                            if (!_isCreate &&
+                                _productRows.any((row) => row.isFinal))
+                              Card(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(
+                                    UtenSpacing.s12,
                                   ),
-                                ],
+                                  child: Wrap(
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    spacing: 12,
+                                    children: [
+                                      const Text(
+                                        '此草稿含旧版提前完结标记；普通报工会保留原任务的未完成数量。',
+                                      ),
+                                      TextButton(
+                                        onPressed: () => setState(() {
+                                          for (final row in _productRows) {
+                                            row.isFinal = false;
+                                          }
+                                          _surplusReturnRequested = false;
+                                        }),
+                                        child: const Text('改为普通报工'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            if (_materialLoading || _materialNotice != null)
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: UtenSpacing.s8,
+                                ),
+                                child: Row(
+                                  children: [
+                                    if (_materialLoading)
+                                      const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                    if (_materialLoading)
+                                      const SizedBox(width: UtenSpacing.s8),
+                                    Expanded(
+                                      child: Text(
+                                        _materialLoading
+                                            ? '正在读取这些工单已领用的物料…'
+                                            : _materialNotice!,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: _materialLoading
+                                                  ? theme
+                                                        .colorScheme
+                                                        .onSurfaceVariant
+                                                  : theme.colorScheme.error,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            _savedFields(
+                              UtenEditableGrid<DailyGridRow>(
+                                controller: _grid,
+                                stickyHeaderPinned: _gridPinned,
+                                columns: dailyGridColumns(
+                                  context: context,
+                                  onPickGoods: _pickGoods,
+                                  onPickSource: _pickSource,
+                                  onOpenSource:
+                                      ref.watch(isSuperAdminProvider) ||
+                                          ref
+                                              .watch(currentPermissionsProvider)
+                                              .contains(Perm.productionPlanView)
+                                      ? _openSource
+                                      : null,
+                                  onClearSource: _clearSource,
+                                  colorEntries: names.colorEntries,
+                                  unitEntries: names.unitEntries,
+                                  hasMaterialChildren: _hasMaterialChildren,
+                                  isLastMaterialChild: _isLastMaterialChild,
+                                  onMaterialChanged: () => setState(() {}),
+                                  onDestinationChanged: _onDestinationChanged,
+                                  onDirectTransferPicked:
+                                      _onDirectTransferPicked,
+                                ),
+                                createBlankRow: () => DailyGridRow(),
+                                cloneRow: (r) => r.clone(),
+                                // 物料子行是成品行派生出来的：不能单独勾选、复制或删除，
+                                // 删成品行时由 _deleteProductRow 连带删掉它们。
+                                canSelectRow: (r) => !r.isMaterialRow,
+                                showRowSelection: (r) => !r.isMaterialRow,
+                                canDeleteRow: (r) =>
+                                    !r.isMaterialRow && !r.hasFixedSupplement,
+                                onDeleteRow: _deleteProductRow,
+                                rowColor: (r) => r.isMaterialRow
+                                    ? theme.colorScheme.surfaceContainerLow
+                                    : null,
                               ),
                             ),
-                          UtenEditableGrid<DailyGridRow>(
-                            controller: _grid,
-                            stickyHeaderPinned: _gridPinned,
-                            columns: dailyGridColumns(
-                              context: context,
-                              onPickGoods: _pickGoods,
-                              onPickSource: _pickSource,
-                              onOpenSource:
-                                  ref.watch(isSuperAdminProvider) ||
-                                      ref
-                                          .watch(currentPermissionsProvider)
-                                          .contains(Perm.productionPlanView)
-                                  ? _openSource
-                                  : null,
-                              onClearSource: _clearSource,
-                              colorEntries: names.colorEntries,
-                              unitEntries: names.unitEntries,
-                              hasMaterialChildren: _hasMaterialChildren,
-                              isLastMaterialChild: _isLastMaterialChild,
-                              onMaterialChanged: () => setState(() {}),
-                              onDestinationChanged: _onDestinationChanged,
-                              onDirectTransferPicked: _onDirectTransferPicked,
-                            ),
-                            createBlankRow: () => DailyGridRow(),
-                            cloneRow: (r) => r.clone(),
-                            // 物料子行是成品行派生出来的：不能单独勾选、复制或删除，
-                            // 删成品行时由 _deleteProductRow 连带删掉它们。
-                            canSelectRow: (r) => !r.isMaterialRow,
-                            showRowSelection: (r) => !r.isMaterialRow,
-                            canDeleteRow: (r) =>
-                                !r.isMaterialRow && !r.hasFixedSupplement,
-                            onDeleteRow: _deleteProductRow,
-                            rowColor: (r) => r.isMaterialRow
-                                ? theme.colorScheme.surfaceContainerLow
-                                : null,
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-            // 保存/补传附件网络段的全屏加载遮罩。
-            if (_saving)
-              UtenBusyOverlay(
-                title: widget.id == null ? '正在提交生产日报' : '正在保存生产日报',
-                description: '正在写入报工与物料消耗事实，请勿重复提交或离开本页。',
-              ),
-          ],
+              // 保存/补传附件网络段的全屏加载遮罩。
+              if (_saving)
+                UtenBusyOverlay(
+                  title: widget.id == null ? '正在提交生产日报' : '正在保存生产日报',
+                  description: '正在写入报工与物料消耗事实，请勿重复提交或离开本页。',
+                ),
+            ],
+          ),
         ),
+        // 详情尚未回填时不出按钮：此刻点保存会把空表单当草稿提交。
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        // 新建态保存只认勾选的成品报工行（2026-09-18）：监听表格选择集，一条有货品
+        // 的行都没勾时保存置灰（灰态点击说明原因），勾回任意行立即恢复。
+        floatingActionButton: _loading || (!_isCreate && !_detailLoaded)
+            ? null
+            : ListenableBuilder(
+                listenable: _grid,
+                builder: (context, _) {
+                  final hasCheckedLine =
+                      _createdReportId != null ||
+                      !_isCreate ||
+                      _grid.selectedRows.any(
+                        (row) => !row.isMaterialRow && row.goods != null,
+                      );
+                  return UtenEditFloatingActions(
+                    onCancel: () => popOrBackTo(
+                      context,
+                      defaultPath: RouteName.productionDailyReportList,
+                    ),
+                    onSave: hasCheckedLine ? _save : null,
+                    saving: _saving,
+                    saveDisabledHint: hasCheckedLine
+                        ? null
+                        : '请先勾选要报工的明细行（未勾选的行不会写入本张日报）',
+                  );
+                },
+              ),
       ),
-      // 详情尚未回填时不出按钮：此刻点保存会把空表单当草稿提交。
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      // 新建态保存只认勾选的成品报工行（2026-09-18）：监听表格选择集，一条有货品
-      // 的行都没勾时保存置灰（灰态点击说明原因），勾回任意行立即恢复。
-      floatingActionButton: _loading || (!_isCreate && !_detailLoaded)
-          ? null
-          : ListenableBuilder(
-              listenable: _grid,
-              builder: (context, _) {
-                final hasCheckedLine =
-                    !_isCreate ||
-                    _grid.selectedRows.any(
-                      (row) => !row.isMaterialRow && row.goods != null,
-                    );
-                return UtenEditFloatingActions(
-                  onCancel: () => popOrBackTo(
-                    context,
-                    defaultPath: RouteName.productionDailyReportList,
-                  ),
-                  onSave: hasCheckedLine ? _save : null,
-                  saving: _saving,
-                  saveDisabledHint: hasCheckedLine
-                      ? null
-                      : '请先勾选要报工的明细行（未勾选的行不会写入本张日报）',
-                );
-              },
-            ),
     );
   }
 }

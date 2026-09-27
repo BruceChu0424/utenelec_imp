@@ -9,6 +9,7 @@
 // 与 purchase_repository 形成对照，迁移时把 '/sales/$seg' 换成 ApiEndpoints.salesBase(seg) 即可）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../basic_data/models/master_facet.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/progress_timeline_event.dart';
@@ -32,6 +33,7 @@ class SalesDocFilter {
     this.financeRejected,
     this.warehouseWorkStatus,
     this.stage,
+    this.billNo,
   });
   final String? keyword;
   final String? clientId;
@@ -49,6 +51,9 @@ class SalesDocFilter {
   final String? warehouseWorkStatus; // 出货仓库作业状态
   /// 出货单真实阶段分段（shipments 端点 stage 参数，见 [SalesShipmentStage]，2026-09-20）。
   final String? stage;
+
+  /// 单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
+  final String? billNo;
 }
 
 class SalesRepository {
@@ -93,11 +98,47 @@ class SalesRepository {
       if (filter.chain != null && filter.chain!.isNotEmpty)
         'chain': filter.chain!.join(','),
       if (filter.chainGroup != null) 'chainGroup': filter.chainGroup,
+      if (filter.billNo != null && filter.billNo!.trim().isNotEmpty)
+        'billNo': filter.billNo!.trim(),
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
     };
     final json = await api.get(_base, query: query);
     return PagedResult.fromJson(json, SalesDocListItem.fromJson);
+  }
+
+  /// 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径（按 docType
+  /// 切端点）分组计数；不含 billNo 自身的筛选值。
+  Future<List<MasterFacetBucket>> billNoFacets({
+    SalesDocFilter filter = const SalesDocFilter(),
+  }) async {
+    final query = <String, dynamic>{
+      if (type == SalesDocType.customerShipment)
+        'shipmentKind': 'DIRECT_CUSTOMER',
+      if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
+        'keyword': filter.keyword!.trim(),
+      if (filter.clientId != null) 'clientId': filter.clientId,
+      if (filter.sellerId != null) 'sellerId': filter.sellerId,
+      if (filter.warehouseId != null) 'warehouseId': filter.warehouseId,
+      if (filter.currencyId != null) 'currencyId': filter.currencyId,
+      if (filter.status != null) 'status': filter.status,
+      if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
+      if (filter.dateTo != null) 'dateTo': filter.dateTo,
+      if (filter.financeAudit != null) 'financeAudit': filter.financeAudit,
+      if (filter.financeRejected != null)
+        'financeRejected': filter.financeRejected,
+      if (filter.warehouseWorkStatus != null &&
+          filter.warehouseWorkStatus!.trim().isNotEmpty)
+        'warehouseWorkStatus': filter.warehouseWorkStatus!.trim(),
+      if (filter.stage != null && filter.stage!.trim().isNotEmpty)
+        'stage': filter.stage!.trim(),
+      if (filter.chain != null && filter.chain!.isNotEmpty)
+        'chain': filter.chain!.join(','),
+      if (filter.chainGroup != null) 'chainGroup': filter.chainGroup,
+      if (filter.closed != null) 'closed': filter.closed,
+    };
+    final json = await api.get('$_base/facets', query: query);
+    return parseFacetBuckets(json, 'billNo');
   }
 
   Future<SalesDocDetail> detail(String id) async {
@@ -139,6 +180,8 @@ class SalesRepository {
   /// [stage]：'' = 全部；'OPEN' = 待完成（未发完）；PENDING/PRODUCING/SHIPPABLE/SHIPPED。
   /// [keyword]（单号/客户）与 [dateFrom]/[dateTo]（业务日期）为可选过滤（2026-09-03
   /// 历史记录时间门控引入）。
+  /// [sort]/[order]/[billNo]（2026-09-25 单号列统一）：订单号/交货日排序白名单 +
+  /// 订单号表头值筛选（服务端精确匹配）。
   Future<PagedResult<SalesOrderProgressRow>> progress({
     int page = 1,
     int size = 20,
@@ -146,6 +189,9 @@ class SalesRepository {
     String keyword = '',
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
+    String? billNo,
   }) async {
     final json = await api.get(
       '/sales/orders/progress',
@@ -156,9 +202,31 @@ class SalesRepository {
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
         'dateFrom': ?dateFrom,
         'dateTo': ?dateTo,
+        if (sort != null && sort.isNotEmpty) 'sort': sort,
+        if (order != null && order.isNotEmpty) 'order': order,
+        if (billNo != null && billNo.trim().isNotEmpty) 'billNo': billNo.trim(),
       },
     );
     return PagedResult.fromJson(json, SalesOrderProgressRow.fromJson);
+  }
+
+  /// 订单进度订单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。
+  Future<List<MasterFacetBucket>> progressFacets({
+    String stage = '',
+    String keyword = '',
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final json = await api.get(
+      '/sales/orders/progress/facets',
+      query: {
+        if (stage.isNotEmpty) 'stage': stage,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
+      },
+    );
+    return parseFacetBuckets(json, 'billNo');
   }
 
   /// 订单进度各阶段计数（顶部筛选卡的全量口径）：{PENDING: n, PRODUCING: n, ...}。

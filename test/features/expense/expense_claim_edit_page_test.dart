@@ -1,7 +1,9 @@
 // 报销新建/编辑页（V608）：编辑模式预填 + 驳回横幅 + 保存走 PUT + 大写合计。
 // 页面保存成功后 context.go 跳详情 —— 测试必须包 GoRouter（含 :id/edit 路由）。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/expense/models/expense_settings.dart';
 import 'package:uten_imp/features/expense/providers/expense_settings_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,6 +18,9 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+
+import '../../shared/drafts/memory_form_draft_storage.dart';
 
 class _Session extends SessionNotifier {
   @override
@@ -94,6 +99,8 @@ Widget _app(_FakeExpenseRepository repo, SharedPreferences preferences) {
   return ProviderScope(
     overrides: [
       sessionProvider.overrideWith(_Session.new),
+      apiBaseUrlProvider.overrideWithValue('https://expense-test.invalid/api'),
+      formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
       currentPermissionsProvider.overrideWithValue({Perm.expenseApply}),
       expenseSettingsProvider.overrideWith(
         (ref) async => const ExpenseSettings(companyName: '测试公司'),
@@ -201,6 +208,12 @@ void main() {
       ProviderScope(
         overrides: [
           sessionProvider.overrideWith(_Session.new),
+          // Exercise real draft initialization without native directory I/O
+          // or the local-server health probe inside the widget-test clock.
+          apiBaseUrlProvider.overrideWithValue(
+            'https://expense-test.invalid/api',
+          ),
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
           currentPermissionsProvider.overrideWithValue({Perm.expenseApply}),
           expenseSettingsProvider.overrideWith(
             (ref) async => const ExpenseSettings(companyName: '测试公司'),
@@ -218,10 +231,25 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('正在准备草稿保护…'), findsNothing);
     expect(find.text('新建报销'), findsOneWidget);
     // 新建无驳回横幅；存草稿/提交按钮就位（空明细时禁用由 onDisabledTap 提示）。
     expect(find.textContaining('驳回原因'), findsNothing);
     expect(find.text('保存并补充凭证'), findsOneWidget);
     expect(find.text('提交'), findsNothing);
+    final save = find.widgetWithText(UtenButton, '保存并补充凭证');
+    expect(tester.widget<UtenButton>(save).onPressed, isNull);
+    await tester.enterText(
+      find.widgetWithText(TextField, '报销标题 *').first,
+      '未完成报销',
+    );
+    await tester.pumpAndSettle();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ExpenseClaimEditPage)),
+      listen: false,
+    );
+    expect(container.read(formDraftsProvider).single.data['title'], '未完成报销');
+    expect(tester.widget<UtenButton>(save).onPressed, isNull);
+    expect(repo.updateCalls, isEmpty);
   });
 }

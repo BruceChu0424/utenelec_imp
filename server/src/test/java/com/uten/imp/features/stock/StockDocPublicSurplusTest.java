@@ -18,19 +18,20 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class StockDocPublicSurplusTest {
-    @Test void mixedPublicInboundAndReverseNeverTouchSalesOrReserveBackToAnalysis() {
+    @Test void mixedPublicInboundAndReverseNeverTouchSalesAndKeepExactBatchSources() {
         Fixture fixture = new Fixture("1000", "1000", "0");
         fixture.apply(1);
         assertThat(fixture.sql).anyMatch(sql -> sql.contains("UPDATE production_plan_items"));
         assertThat(fixture.sql).noneMatch(sql -> sql.contains("FROM plan_order_item_links l")
                 || sql.contains("UPDATE sales_order_items") || sql.contains("UPDATE plan_order_item_links"));
-        verifyNoInteractions(fixture.reservations, fixture.peg);
+        verifyNoInteractions(fixture.reservations);
+        fixture.assertForwardedSlice();
 
         Fixture reverse = new Fixture("1000", "1000", "1000");
         reverse.apply(-1);
         assertThat(reverse.sql).noneMatch(sql -> sql.contains("UPDATE sales_order_items")
                 || sql.contains("UPDATE plan_order_item_links"));
-        verifyNoInteractions(reverse.reservations, reverse.peg);
+        reverse.assertReverseReleasedOnly();
     }
 
     @Test void publicInboundCannotBorrowSalesApprovedReportQuantity() {
@@ -40,12 +41,13 @@ class StockDocPublicSurplusTest {
         verifyNoInteractions(fixture.reservations, fixture.peg);
     }
 
-    @Test void entirelyPublicLaterBatchDoesNotPegBackToTheSalesAnalysis() {
+    @Test void entirelyPublicLaterBatchReachesPublicClaimClassificationWithoutSalesWrites() {
         // Current segment has no sales allocation: its quota equals its whole
         // plan. The original plan item's sales ownership lives in sibling batches.
         Fixture fixture = new Fixture("1000", "1000", "0", "1000", true);
         fixture.apply(1);
-        verifyNoInteractions(fixture.reservations, fixture.peg);
+        verifyNoInteractions(fixture.reservations);
+        fixture.assertForwardedSlice();
         assertThat(fixture.sql).noneMatch(sql -> sql.contains("UPDATE sales_order_items")
                 || sql.contains("UPDATE plan_order_item_links"));
     }
@@ -53,15 +55,15 @@ class StockDocPublicSurplusTest {
     @Test void internalMakeBatchRetainsItsExactAnalysisPeg() {
         Fixture fixture = new Fixture("1000", "1000", "0", "1000", false);
         fixture.apply(1);
-        verify(fixture.peg).pegFinishedInbound(eq(fixture.document.getId()), eq(fixture.planId),
-                eq(fixture.document.getWarehouseId()), anyList());
+        fixture.assertForwardedSlice();
         verifyNoInteractions(fixture.reservations);
     }
 
-    @Test void actualSurplusOfInternalMakeTaskBecomesPublicWithoutInheritedAnalysisOwnership() {
+    @Test void actualSurplusOfInternalMakeTaskPreservesItsSourceForPublicClaimClassification() {
         Fixture fixture = new Fixture("1300", "1300", "300", "1000", false, true);
         fixture.apply(1);
-        verifyNoInteractions(fixture.reservations, fixture.peg);
+        verifyNoInteractions(fixture.reservations);
+        fixture.assertForwardedSlice();
         assertThat(fixture.sql).noneMatch(sql -> sql.contains("UPDATE sales_order_items")
                 || sql.contains("UPDATE plan_order_item_links"));
     }
@@ -73,10 +75,38 @@ class StockDocPublicSurplusTest {
         verifyNoInteractions(fixture.reservations, fixture.peg);
     }
 
+    @Test void privateAndPublicSiblingRowsReachOneBatchWithoutReusingThePrivateBudget() {
+        Fixture fixture = new Fixture("600", "600", "0", "1000", false, true);
+        fixture.item.setQty(new BigDecimal("400"));
+        fixture.item.setExecutionSegmentId(null);
+        StockDocumentItem publicLine = new StockDocumentItem();
+        publicLine.setId(UUID.randomUUID()); publicLine.setGoodsId(fixture.goods);
+        publicLine.setUnitId(fixture.unit); publicLine.setUnitRate(BigDecimal.ONE);
+        publicLine.setQty(new BigDecimal("600")); publicLine.setUpstreamItemId(fixture.planItem);
+        publicLine.setExecutionSegmentId(UUID.randomUUID());
+
+        ReflectionTestUtils.invokeMethod(fixture.service, "applyFinishedInChain",
+                fixture.document, List.of(fixture.item, publicLine), 1);
+
+        List<PreplanAnalysisPegPort.FinishedInboundSlice> lines = fixture.batchLines();
+        assertThat(lines).extracting(PreplanAnalysisPegPort.FinishedInboundSlice::stockDocumentItemId)
+                .containsExactly(fixture.item.getId(), publicLine.getId());
+        assertThat(lines.getFirst().baseQty()).isEqualByComparingTo("400");
+        assertThat(lines.getLast().baseQty()).isEqualByComparingTo("600");
+        assertThat(lines).allSatisfy(line -> {
+            assertThat(line.planItemId()).isEqualTo(fixture.planItem);
+            assertThat(line.goodsId()).isEqualTo(fixture.goods);
+        });
+        verifyNoMoreInteractions(fixture.peg);
+        verifyNoInteractions(fixture.reservations);
+        assertThat(fixture.sql).noneMatch(sql -> sql.contains("UPDATE sales_order_items")
+                || sql.contains("UPDATE plan_order_item_links"));
+    }
+
     @Test void actualSurplusReversalDoesNotCreateAnOriginalAnalysisClaim() {
         Fixture fixture = new Fixture("1300", "1300", "1000", "1000", false, true);
         fixture.apply(-1);
-        verifyNoInteractions(fixture.reservations, fixture.peg);
+        fixture.assertReverseReleasedOnly();
     }
 
     @Test void publicInboundCannotExceedPublicQuotaEvenAfterRecoveryReports() {
@@ -154,8 +184,27 @@ class StockDocPublicSurplusTest {
             });
         }
         void apply(int sign) {
-            ReflectionTestUtils.invokeMethod(service,"allocateFinishedIn",document,item,planId,
-                    new BigDecimal("1000"),sign,new BigDecimal("1000"));
+            // Exercise the real whole-document collector and real quantity allocator.
+            // The peg port classifies claimed-public versus private ownership once
+            // for all slices; its actual split is covered in PreplanMakeInboundSplitTest.
+            ReflectionTestUtils.invokeMethod(service,"applyFinishedInChain",document,List.of(item),sign);
+        }
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        List<PreplanAnalysisPegPort.FinishedInboundSlice> batchLines() {
+            org.mockito.ArgumentCaptor<List<PreplanAnalysisPegPort.FinishedInboundSlice>> captured =
+                    org.mockito.ArgumentCaptor.forClass((Class) List.class);
+            verify(peg).pegFinishedInbound(eq(document.getId()),eq(planId),eq(document.getWarehouseId()),captured.capture());
+            return captured.getValue();
+        }
+        void assertForwardedSlice() {
+            assertThat(batchLines()).containsExactly(new PreplanAnalysisPegPort.FinishedInboundSlice(
+                    item.getId(),planItem,goods,item.getColorId(),item.getQty()));
+            verifyNoMoreInteractions(peg);
+        }
+        void assertReverseReleasedOnly() {
+            verify(reservations).releaseBySourceDoc("PRODUCTION_INBOUND",document.getId());
+            verifyNoMoreInteractions(reservations);
+            verifyNoInteractions(peg);
         }
     }
 }

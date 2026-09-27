@@ -148,7 +148,8 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
                           UtenSpacing.s16,
                           UtenSpacing.s12,
                           UtenSpacing.s16,
-                          UtenSpacing.s24,
+                          // 末尾留白：把最后一行完整滚到右下悬浮操作组上方。
+                          UtenFloatingActionGroup.scrollClearance,
                         ),
                         children: [
                           _summaryCard(theme, lines, urged),
@@ -182,40 +183,58 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
                 ),
               ],
             ),
-            bottomNavigationBar: lines.isEmpty
+            // 全站口径（2026-09-26）：批量操作条退役吸底，改右下悬浮组——
+            // 「已选 N 项」标准胶囊 + 「一键下单(N)」；未选时按钮仍在但禁用
+            // （可辨识度由控件禁用态承担，见 UtenFloatingActionGroup 注释）。
+            floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+            floatingActionButtonAnimator:
+                FloatingActionButtonAnimator.noAnimation,
+            floatingActionButton: lines.isEmpty
                 ? null
-                : UtenBottomActionBar(
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '已选 ${selectable.length} / ${lines.length} 种',
-                            style: theme.textTheme.titleSmall,
-                          ),
-                        ),
-                        UtenButton(
-                          key: const Key('child-shortage-submit'),
-                          size: UtenButtonSize.large,
-                          icon: Icons.shopping_cart_checkout_rounded,
-                          // 不转圈：点下去先弹宿主的确认框，转圈会在确认框背后一直转；
-                          // 真正跑网络段时由上面的遮罩说明在做什么。
-                          onPressed:
-                              selectable.isEmpty || _submitting || _host._busy
-                              ? null
-                              : () => unawaited(_submit(lines)),
-                          child: Text(
-                            _submitting
-                                ? '正在下单…'
-                                : '一键下单(${selectable.length})',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                : _selectionActions(lines, selectable),
           ),
         );
       },
     );
+  }
+
+  /// 右下悬浮操作组：已选计数胶囊（✕ 撤掉全部勾选）+「一键下单(N)」。
+  Widget _selectionActions(
+    List<_ChildShortageLine> lines,
+    List<_ChildShortageLine> selectable,
+  ) {
+    final hasChecked = lines.any(_checked);
+    return UtenFloatingActionGroup(
+      children: [
+        UtenSelectionSummaryPill(
+          clearKey: const Key('child-shortage-clear-selection'),
+          count: selectable.length,
+          onClear: !hasChecked || _submitting
+              ? null
+              : () => _clearSelection(lines),
+        ),
+        UtenButton(
+          key: const Key('child-shortage-submit'),
+          size: UtenButtonSize.large,
+          icon: Icons.shopping_cart_checkout_rounded,
+          // 不转圈：点下去先弹宿主的确认框，转圈会在确认框背后一直转；
+          // 真正跑网络段时由上面的遮罩说明在做什么。
+          onPressed: selectable.isEmpty || _submitting || _host._busy
+              ? null
+              : () => unawaited(_submit(lines)),
+          child: Text(_submitting ? '正在下单…' : '一键下单(${selectable.length})'),
+        ),
+      ],
+    );
+  }
+
+  /// 胶囊的 ✕：把还勾着的行全部撤勾（清空数量的行不动，它们本来就不下单）。
+  void _clearSelection(List<_ChildShortageLine> lines) {
+    setState(() {
+      for (final line in lines) {
+        if (_checked(line)) _deselected.add(line.group.key);
+      }
+    });
   }
 
   Widget _doneState(ThemeData theme) {

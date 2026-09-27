@@ -11,6 +11,8 @@
 // 2026-09-20 小类行计数: 待出库挂红徽章(与父分类「销售出库」同源同数)、已出库挂中性
 // 括号数、历史单据不挂(已出库本身就是历史, 不数两遍); 计数来自
 // GET /warehouse/sales-outbound/counts 一次请求(warehouse_sales_outbound_count_provider.dart).
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -28,6 +30,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../models/warehouse_sales_outbound.dart';
 import '../pages/warehouse_sales_outbound_batch_page.dart';
 import '../providers/warehouse_sales_outbound_count_provider.dart';
@@ -113,6 +116,10 @@ class _WarehouseSalesOutboundWorkbenchState
   /// 表头「仓库作业」列筛选（固定枚举桶）；非空时优先于分段的状态口径。
   String? _workStatusColumnFilter;
 
+  /// 2026-09-25 单号列统一：出货单号列排序 + 表头值筛选 + 服务端桶 + 防串台
+  /// 代数（共享状态，见 MasterServerColumnFilters）。
+  final _columnFilters = MasterServerColumnFilters();
+
   /// 历史单据段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
   UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
   int _requestVersion = 0;
@@ -149,6 +156,8 @@ class _WarehouseSalesOutboundWorkbenchState
     final version = ++_requestVersion;
     final seg = _seg!;
     final range = seg.history ? _historyTime.range : null;
+    // 单号桶随列表口径重取（2026-09-25 单号列统一）。
+    unawaited(_loadBillNoFacets());
     setState(() {
       _loading = true;
       _error = null;
@@ -167,6 +176,12 @@ class _WarehouseSalesOutboundWorkbenchState
                 : ChinaDateTime.formatDate(range.start),
             dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
             scope: WarehouseListScope.of(context),
+            // 2026-09-25 单号列统一：出货单号排序白名单 + 表头值筛选（服务端精确匹配）。
+            sort: _columnFilters.sortColumn,
+            order: _columnFilters.sortColumn == null
+                ? null
+                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+            billNo: _columnFilters['billNo'],
           );
       if (!mounted || version != _requestVersion) return;
       setState(() {
@@ -186,6 +201,34 @@ class _WarehouseSalesOutboundWorkbenchState
         _loading = false;
       });
     }
+  }
+
+  /// 出货单号值筛选桶随过滤上下文重取（2026-09-25 单号列统一；失败静默保持旧桶）。
+  Future<void> _loadBillNoFacets() {
+    if (!mounted || !_shouldLoad) return Future.value();
+    final seg = _seg!;
+    final range = seg.history ? _historyTime.range : null;
+    return _columnFilters.loadFacets(
+      () async => {
+        'billNo': await ref
+            .read(warehouseSalesOutboundRepositoryProvider)
+            .billNoFacets(
+              keyword: _keyword,
+              warehouseWorkStatus:
+                  _workStatusColumnFilter ?? (seg.history ? null : seg.status),
+              dateFrom: range == null
+                  ? null
+                  : ChinaDateTime.formatDate(range.start),
+              dateTo: range == null
+                  ? null
+                  : ChinaDateTime.formatDate(range.end),
+              scope: WarehouseListScope.of(context),
+            ),
+      },
+      onLoaded: () {
+        if (mounted) setState(() {});
+      },
+    );
   }
 
   void _applySearch(String value) {
@@ -217,16 +260,31 @@ class _WarehouseSalesOutboundWorkbenchState
       _error = null;
       ++_requestVersion;
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
-      // 分段与表头筛选用同一服务端参数：切段时清表头状态桶。
+      // 分段与表头筛选用同一服务端参数：切段时清表头状态桶与单号筛选
+      // （2026-09-25 单号列统一，与仓库作业桶同一重置行为）。
       _workStatusColumnFilter = null;
+      _columnFilters.clearValues();
     });
     if (!seg.history || !_historyTime.isNone) _load(1);
   }
 
   /// 表头筛选回调：仓库作业固定枚举桶；值优先于分段状态回传，重拉回第 1 页。
+  /// 单据号（2026-09-25 单号列统一）为服务端精确匹配参数。
   void _onColumnFilterChanged(String key, String? value) {
-    if (key != 'warehouseWorkStatus') return;
-    setState(() => _workStatusColumnFilter = value);
+    if (key == 'warehouseWorkStatus') {
+      setState(() => _workStatusColumnFilter = value);
+    } else if (key == 'billNo') {
+      _columnFilters.handleFilterChanged(key, value, onChanged: _refilter);
+      return;
+    } else {
+      return;
+    }
+    _load(1);
+  }
+
+  /// 服务端列筛选/排序落地后：setState 刷新表头 + 重拉回第 1 页。
+  void _refilter() {
+    if (mounted) setState(() {});
     _load(1);
   }
 
@@ -361,10 +419,26 @@ class _WarehouseSalesOutboundWorkbenchState
               key: const Key('warehouse-sales-outbound-table'),
               columns: _columns,
               items: result.items,
-              facets: const {'warehouseWorkStatus': _workStatusFacets},
+              // 2026-09-25 单号列统一：出货单号表头值筛选 + 服务端桶 + 列排序。
+              facets: {
+                'billNo': _columnFilters.bucketOf('billNo'),
+                'warehouseWorkStatus': _workStatusFacets,
+              },
               nullCounts: const {},
-              filters: {'warehouseWorkStatus': _workStatusColumnFilter},
+              filters: {
+                'billNo': _columnFilters['billNo'],
+                'warehouseWorkStatus': _workStatusColumnFilter,
+              },
               onFilterChanged: _onColumnFilterChanged,
+              sortColumn: _columnFilters.sortColumn,
+              sortAscending: _columnFilters.sortAscending,
+              onSortChange: (column, ascending) {
+                _columnFilters.handleSortChanged(
+                  column,
+                  ascending,
+                  onChanged: _refilter,
+                );
+              },
               onRowTap: _openDetail,
               selectable: _batchAction != null,
               idOf: (item) => _canSelect(item) ? item.id : null,
@@ -461,7 +535,9 @@ class _WarehouseSalesOutboundWorkbenchState
 
   List<MasterColumnDef<WarehouseSalesOutboundSummary>> get _columns => [
     MasterColumnDef(
+      // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
       key: 'billNo',
+      sortable: true,
       label: '出货单号',
       width: 170,
       value: (item) => item.billNo ?? '—',

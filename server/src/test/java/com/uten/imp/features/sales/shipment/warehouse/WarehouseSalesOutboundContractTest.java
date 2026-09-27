@@ -50,9 +50,10 @@ class WarehouseSalesOutboundContractTest {
         assertThat(authority.value())
                 .isEqualTo("hasAuthority('warehouse_sales_outbound:view')");
 
+        // 2026-09-25 单号列统一：list 追加 sort/order/billNo（透传出货单号排序/筛选）。
         Method list = WarehouseSalesOutboundController.class.getDeclaredMethod(
                 "list", String.class, String.class, LocalDate.class, LocalDate.class, int.class, int.class,
-                String.class, UUID.class);
+                String.class, UUID.class, String.class, String.class, String.class);
         Method detail = WarehouseSalesOutboundController.class.getDeclaredMethod(
                 "detail", UUID.class);
         Method command = WarehouseSalesOutboundController.class.getDeclaredMethod(

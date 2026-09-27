@@ -28,6 +28,7 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -36,6 +37,9 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/providers/document_status_counts_provider.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
@@ -132,6 +136,8 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    // 分段计数与列表同步重取（写操作成功 / 返回本页 / 手动改筛选都经过这里）。
+    ref.invalidate(documentStatusCountsProvider(_statusScope));
     final api = ref.read(apiClientProvider);
     try {
       final query = <String, dynamic>{
@@ -239,6 +245,26 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
     );
   }
 
+  /// 分段计数范围：本页两种报表都是生产计划单的投影（明细/汇总同源），与
+  /// production_plan_list_page 同一 scope（2026-09-26 用户口径：报表分段也要挂数，
+  /// 草稿段合并本地草稿）。
+  static const _statusScope = DocumentStatusScope(DraftDocKind.productionPlan);
+
+  FormDraftCategoryScope get _formDraftScope =>
+      const FormDraftCategoryScope(kind: 'productionPlan');
+
+  Widget _withFormDraftRows(MasterDataTableView<Map<String, dynamic>> table) =>
+      // 草稿段合并本地「新建生产计划」表单草稿（与生产计划单列表同一形态）；
+      // 其余段不合并。
+      _status == 0
+      ? FormDraftCategoryTable<Map<String, dynamic>>(
+          scope: _formDraftScope,
+          table: table,
+          search: _keyword,
+          formalId: (row) => row['__srcId'] as String?,
+        )
+      : table;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -310,6 +336,11 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
   }
 
   Widget _buildFilterPane(ThemeData theme) {
+    // 分段计数（草稿/已审/红冲三桶，含本地草稿投影）；加载中或无权限为 null，
+    // 不渲染数字——与生产计划单列表同款。
+    final statusCounts = ref
+        .watch(effectiveDocumentStatusCountsProvider(_statusScope))
+        .valueOrNull;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: Column(
@@ -320,11 +351,26 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
           //（2026-09-11 用户要求搜索不再单独占一行，宽度由 searchWidth 封顶；
           // 窄屏工具条自己换行）。
           UtenFilterToolbar<int?>(
-            segments: const [
-              UtenFilterSegment<int?>(value: null, label: '全部'),
-              UtenFilterSegment<int?>(value: 1, label: '已审'),
-              UtenFilterSegment<int?>(value: 0, label: '草稿'),
-              UtenFilterSegment<int?>(value: -1, label: '红冲'),
+            // 2026-09-26 用户口径：报表分段与生产计划单列表同款挂数——草稿红徽章
+            //（含本地草稿投影），已审/红冲中性数，「全部」不挂。
+            segments: [
+              const UtenFilterSegment<int?>(value: null, label: '全部'),
+              UtenFilterSegment<int?>(
+                value: 1,
+                label: '已审',
+                count: statusCounts?[DocumentStatusBucket.approved],
+              ),
+              UtenFilterSegment<int?>(
+                value: 0,
+                label: '草稿',
+                count: statusCounts?[DocumentStatusBucket.draft],
+                countForm: UtenSegmentCountForm.actionable,
+              ),
+              UtenFilterSegment<int?>(
+                value: -1,
+                label: '红冲',
+                count: statusCounts?[DocumentStatusBucket.reversed],
+              ),
             ],
             selected: _statusSelected ? {_status} : const {},
             onSelectionChanged: _changeStatus,
@@ -425,53 +471,55 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
           ),
         )
         .toList();
-    return MasterDataTableView<Map<String, dynamic>>(
-      // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
-      primary: true,
-      columns: columns,
-      items: data.rows,
-      toolbarActions: [
-        UtenPrintPreviewButton(
-          title: '生产${_kind.label}',
-          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',
-          loader: _printLoader,
-          exportEndpoint: '/production/reports/export',
-          exportPermission: Perm.productionReportExport,
-          exportReport: _exportReport,
-          exportQuery: _exportQuery,
-          exportFilename: '生产${_kind.label}',
-          type: UtenButtonType.primary,
-          size: UtenButtonSize.large,
-        ),
-        UtenExportButton(
-          endpoint: '/production/reports/export',
-          requiredPermission: Perm.productionReportExport,
-          report: _exportReport,
-          queryParams: _exportQuery,
-          filename: '生产${_kind.label}',
-          type: UtenButtonType.primary,
-          size: UtenButtonSize.large,
-        ),
-      ],
-      facets: data.facets,
-      nullCounts: const {},
-      filters: {for (final e in _filters.entries) e.key: e.value},
-      onFilterChanged: _onFilterChanged,
-      sortColumn: _sortKey,
-      sortAscending: _sortAsc,
-      onSortChange: _onSortChange,
-      onRowTap: _onRowTap,
-      isLoading: _loading,
-      emptyMessage: _kind.isDetail ? '暂无明细数据' : '暂无汇总数据',
-      // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
-      // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
-      summaryBar: reportTotalsBar(data.totals),
-      currentPage: data.page,
-      totalPages: data.totalPages,
-      onPageChange: (p) {
-        _page = p;
-        _load();
-      },
+    return _withFormDraftRows(
+      MasterDataTableView<Map<String, dynamic>>(
+        // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
+        primary: true,
+        columns: columns,
+        items: data.rows,
+        toolbarActions: [
+          UtenPrintPreviewButton(
+            title: '生产${_kind.label}',
+            subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',
+            loader: _printLoader,
+            exportEndpoint: '/production/reports/export',
+            exportPermission: Perm.productionReportExport,
+            exportReport: _exportReport,
+            exportQuery: _exportQuery,
+            exportFilename: '生产${_kind.label}',
+            type: UtenButtonType.primary,
+            size: UtenButtonSize.large,
+          ),
+          UtenExportButton(
+            endpoint: '/production/reports/export',
+            requiredPermission: Perm.productionReportExport,
+            report: _exportReport,
+            queryParams: _exportQuery,
+            filename: '生产${_kind.label}',
+            type: UtenButtonType.primary,
+            size: UtenButtonSize.large,
+          ),
+        ],
+        facets: data.facets,
+        nullCounts: const {},
+        filters: {for (final e in _filters.entries) e.key: e.value},
+        onFilterChanged: _onFilterChanged,
+        sortColumn: _sortKey,
+        sortAscending: _sortAsc,
+        onSortChange: _onSortChange,
+        onRowTap: _onRowTap,
+        isLoading: _loading,
+        emptyMessage: _kind.isDetail ? '暂无明细数据' : '暂无汇总数据',
+        // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
+        // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
+        summaryBar: reportTotalsBar(data.totals),
+        currentPage: data.page,
+        totalPages: data.totalPages,
+        onPageChange: (p) {
+          _page = p;
+          _load();
+        },
+      ),
     );
   }
 

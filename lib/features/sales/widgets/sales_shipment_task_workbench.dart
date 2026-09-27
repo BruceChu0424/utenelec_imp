@@ -29,6 +29,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
@@ -91,6 +92,10 @@ class _SalesShipmentTaskWorkbenchState
   // V578：「已退回」专段——被财务退回待销售处理的单据集中可见，避免两侧失联。
   bool _financeRejected = false;
   String? _warehouseWorkStatus;
+
+  // 2026-09-25 单号列统一：出货单号列排序 + 表头值筛选 + 桶 + 防串台代数
+  // （共享状态，见 MasterServerColumnFilters）。
+  final _columnFilters = MasterServerColumnFilters();
 
   // ===== 财务批量审批（仅 financeAudit 模式；仓库模式恒空）=====
   final Set<String> _selectedIds = <String>{};
@@ -167,6 +172,8 @@ class _SalesShipmentTaskWorkbenchState
     if (!_hasRequiredPermission) return;
     final requestedPage = page ?? _page;
     final generation = ++_requestGeneration;
+    // 单号桶随列表口径重取（2026-09-25 单号列统一）。
+    unawaited(_loadBillNoFacets());
     setState(() {
       _loading = true;
       _error = null;
@@ -186,7 +193,14 @@ class _SalesShipmentTaskWorkbenchState
               warehouseWorkStatus: _isFinance
                   ? SalesWarehouseWorkStatus.pendingPick
                   : _warehouseWorkStatus,
+              // 2026-09-25 单号列统一：出货单号表头值筛选（服务端精确匹配）。
+              billNo: _columnFilters['billNo'],
             ),
+            // 2026-09-25 单号列统一：列排序（billNo 已入服务端白名单）。
+            sort: _columnFilters.sortColumn,
+            order: _columnFilters.sortColumn == null
+                ? null
+                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
           );
       if (!mounted || generation != _requestGeneration) return;
       setState(() {
@@ -209,6 +223,37 @@ class _SalesShipmentTaskWorkbenchState
         _loading = false;
       });
     }
+  }
+
+  /// 出货单号值筛选桶随过滤上下文重取（2026-09-25 单号列统一；失败静默保持旧桶）。
+  Future<void> _loadBillNoFacets() {
+    if (!_hasRequiredPermission) return Future.value();
+    return _columnFilters.loadFacets(
+      () async => {
+        'billNo': await ref
+            .read(salesRepositoryProvider(SalesDocType.shipment))
+            .billNoFacets(
+              filter: SalesDocFilter(
+                keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
+                status: kSalesStatusDraft,
+                financeAudit: _financeAudit,
+                financeRejected: _financeRejected ? true : null,
+                warehouseWorkStatus: _isFinance
+                    ? SalesWarehouseWorkStatus.pendingPick
+                    : _warehouseWorkStatus,
+              ),
+            ),
+      },
+      onLoaded: () {
+        if (mounted) setState(() {});
+      },
+    );
+  }
+
+  /// 服务端列筛选/排序落地后：setState 刷新表头 + 重拉回第 1 页。
+  void _refilter() {
+    if (mounted) setState(() {});
+    _load(1);
   }
 
   void _onSearchChanged(String value) {
@@ -683,10 +728,21 @@ class _SalesShipmentTaskWorkbenchState
         ),
         columns: _columns(names),
         items: result.items,
-        facets: const {},
+        // 2026-09-25 单号列统一：出货单号表头值筛选 + 桶 + 列排序。
+        facets: {'billNo': _columnFilters.bucketOf('billNo')},
         nullCounts: const {},
-        filters: const {},
-        onFilterChanged: (_, _) {},
+        filters: {'billNo': _columnFilters['billNo']},
+        onFilterChanged: (key, value) {
+          if (key != 'billNo') return;
+          _columnFilters.handleFilterChanged(key, value, onChanged: _refilter);
+        },
+        sortColumn: _columnFilters.sortColumn,
+        sortAscending: _columnFilters.sortAscending,
+        onSortChange: (column, ascending) => _columnFilters.handleSortChanged(
+          column,
+          ascending,
+          onChanged: _refilter,
+        ),
         onRowTap: _open,
         selectable: selectable,
         idOf: (item) => _canSelectItem(item) ? item.id : null,
@@ -977,7 +1033,9 @@ class _SalesShipmentTaskWorkbenchState
     SalesMasterNameService names,
   ) => [
     MasterColumnDef(
+      // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
       key: 'billNo',
+      sortable: true,
       label: '出货单号',
       width: 170,
       value: (item) => item.billNo ?? '—',

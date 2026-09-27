@@ -150,6 +150,12 @@ public class SystemSettingsService {
 
     private void apply(SystemSettingKey key, SystemSetting row, String value,
                        UUID actorId, String actorAccount, String auditAction) {
+        // The local scheduler consumes a canonical decimal interval. Equivalent
+        // input such as +7/007 must not create a new schedule anchor or disagree
+        // with the database value it reads independently of this application.
+        if (key == SystemSettingKey.UPDATER_CHECK_INTERVAL_DAYS) {
+            value = Integer.toString(Integer.parseInt(value));
+        }
         String old = row.getValue();
         if (Objects.equals(old, value)) {
             return;

@@ -78,12 +78,12 @@ void main() {
   );
 
   test(
-    'group query keeps paging and keyword; workshop/sort params retired',
+    'group query keeps paging and keyword; doc-no sort/filter sent server-side',
     () async {
-      late RequestOptions captured;
+      final requests = <RequestOptions>[];
       final repository = ProductionExecutionWorkbenchRepository(
         _api((request) {
-          captured = request;
+          requests.add(request);
           return {
             'items': [
               {
@@ -110,13 +110,27 @@ void main() {
 
       final result = await repository.groups(page: 2, keyword: '  SO-1  ');
 
-      expect(captured.path, '/production/execution-workbench');
-      expect(captured.queryParameters, {
+      expect(requests.last.path, '/production/execution-workbench');
+      expect(requests.last.queryParameters, {
         'page': 2,
         'size': 50,
         'keyword': 'SO-1',
       });
       expect(result.items.single.statusLabel, '部分已排 · 仍有待排数量');
+
+      // 2026-09-25 单号列统一：关联订单排序/值筛选走服务端（默认不带这些参数）。
+      await repository.groups(
+        sort: 'orders',
+        order: 'desc',
+        salesOrder: 'SO-1 / SO-2',
+      );
+      expect(requests.last.queryParameters, {
+        'page': 1,
+        'size': 50,
+        'sort': 'orders',
+        'order': 'desc',
+        'salesOrder': 'SO-1 / SO-2',
+      });
     },
   );
 }

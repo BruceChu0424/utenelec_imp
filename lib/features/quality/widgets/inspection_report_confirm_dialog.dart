@@ -42,6 +42,8 @@ Future<String?> showInspectionReportConfirmDialog(
   required List<InspectionReportConfirmLine> lines,
   int fqcTaskCount = 0,
   bool requireReason = false,
+  String initialReason = '',
+  ValueChanged<String>? onReasonChanged,
 }) {
   return showDialog<String>(
     context: context,
@@ -53,6 +55,8 @@ Future<String?> showInspectionReportConfirmDialog(
       lines: lines,
       fqcTaskCount: fqcTaskCount,
       requireReason: requireReason,
+      initialReason: initialReason,
+      onReasonChanged: onReasonChanged,
     ),
   );
 }
@@ -65,6 +69,8 @@ class _InspectionReportConfirmDialog extends StatefulWidget {
     required this.lines,
     required this.fqcTaskCount,
     required this.requireReason,
+    required this.initialReason,
+    this.onReasonChanged,
   });
 
   final int lineCount;
@@ -73,6 +79,8 @@ class _InspectionReportConfirmDialog extends StatefulWidget {
   final List<InspectionReportConfirmLine> lines;
   final int fqcTaskCount;
   final bool requireReason;
+  final String initialReason;
+  final ValueChanged<String>? onReasonChanged;
 
   @override
   State<_InspectionReportConfirmDialog> createState() =>
@@ -83,6 +91,13 @@ class _InspectionReportConfirmDialogState
     extends State<_InspectionReportConfirmDialog> {
   final _reason = TextEditingController();
   String? _reasonError;
+
+  @override
+  void initState() {
+    super.initState();
+    _reason.text = widget.initialReason;
+    _reason.addListener(() => widget.onReasonChanged?.call(_reason.text));
+  }
 
   @override
   void dispose() {

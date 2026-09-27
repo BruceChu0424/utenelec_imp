@@ -6,6 +6,7 @@ import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../core/theme/uten_tokens.dart';
 import 'quality_inspection_pending_badge.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/badges/effective_badge_summary_provider.dart';
 
 /// 工作台卡片通过枚举声明显示位置，由共享组件按徽章汇总取数和渲染。
 ///
@@ -52,7 +53,7 @@ BadgeCounts workbenchBadgeCounts(
     WorkbenchBadgeKind.hrTask => entry(BadgeEntry.hrTaskCenter),
     WorkbenchBadgeKind.production => module(BadgeModule.production),
     WorkbenchBadgeKind.productionWorkshop => module(BadgeModule.workshop),
-    WorkbenchBadgeKind.rdTask => entry(BadgeEntry.rdTaskCenter),
+    WorkbenchBadgeKind.rdTask => module(BadgeModule.rd),
     WorkbenchBadgeKind.warehouse => module(BadgeModule.warehouse),
     WorkbenchBadgeKind.purchase => module(BadgeModule.purchase),
     WorkbenchBadgeKind.finance => module(BadgeModule.finance),
@@ -84,7 +85,9 @@ class WorkbenchCardBadge extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final counts = ref.watch(
-      badgeSummaryProvider.select((s) => workbenchBadgeCounts(kind, s)),
+      effectiveBadgeSummaryProvider.select(
+        (s) => workbenchBadgeCounts(kind, s),
+      ),
     );
     // 品质任务中心的红数字有自己的组件(某一类待检没算出时显示异常图标)；
     // 黄色那枚照常并排。
@@ -126,7 +129,7 @@ class WorkbenchGroupBadge extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final counts = ref.watch(
-      badgeSummaryProvider.select((s) {
+      effectiveBadgeSummaryProvider.select((s) {
         var total = BadgeCounts.zero;
         for (final kind in kinds) {
           final one = workbenchBadgeCounts(kind, s);

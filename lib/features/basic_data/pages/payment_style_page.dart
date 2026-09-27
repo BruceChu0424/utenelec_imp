@@ -3,6 +3,8 @@
 // 这是纯分类主档，不套用“分类摘要卡 + 下方业务表格”的通用详情页模板：
 // 大屏采用可调宽目录树 + 页面级属性检查器，手机采用详情 + 分类抽屉。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/click_guard.dart';
@@ -188,11 +190,19 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
 
   // ---- CRUD ---------------------------------------------------------------
 
-  void _showCreate({PaymentStyleNode? parent}) {
-    showDialog<void>(
+  Future<void> _showCreate({PaymentStyleNode? parent}) async {
+    if (!_canCreate) return;
+    await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (_) => _PaymentStyleEditDialog(
+        draftSpec: FormDraftCatalog.paymentStyle.spec(
+          title: '新增${_category.label}类别',
+          categoryId: _category.value,
+          parentId: parent?.id,
+        ),
+        resumeDraftId: dialogDraftId(context, kind: 'paymentStyle'),
+        routerPageKey: dialogDraftPageKey(context),
         tree: _tree,
         category: _category,
         initialParent: parent,
@@ -203,31 +213,26 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
   }
 
   Future<bool> _doCreate(_EditResult result) async {
-    PaymentStyleDetail? created;
-    final ok = await context.guardRun(
-      () async {
-        created = await ref
-            .read(paymentStyleRepositoryProvider)
-            .create(
-              PaymentStyleSaveInput(
-                code: '',
-                name: result.name,
-                category: _category.value,
-                parentId: result.parentId,
-                sortOrder: result.sortOrder,
-                receipt: result.receipt,
-                payment: result.payment,
-                departmental: result.departmental,
-                status: result.status,
-              ),
-            );
-      },
-      success: '类别已创建',
-      errorFallback: '创建失败，请稍后重试',
-    );
-    if (!ok) return false;
-    _invalidatePaymentStyleCaches();
-    await _load(preferredSelectionId: created?.id);
+    final created = await ref
+        .read(paymentStyleRepositoryProvider)
+        .create(
+          PaymentStyleSaveInput(
+            code: '',
+            name: result.name,
+            category: _category.value,
+            parentId: result.parentId,
+            sortOrder: result.sortOrder,
+            receipt: result.receipt,
+            payment: result.payment,
+            departmental: result.departmental,
+            status: result.status,
+          ),
+        );
+    if (mounted) {
+      context.appSuccess('类别已创建');
+      _invalidatePaymentStyleCaches();
+      await _load(preferredSelectionId: created.id);
+    }
     return true;
   }
 
@@ -498,7 +503,27 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
       };
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FormDraftDialogResume(
+    descriptor: FormDraftCatalog.paymentStyle,
+    ready: !_treeLoading && _treeError == null,
+    onResume: (parameters) async {
+      final category = PaymentStyleCategory.byValue(parameters['categoryId']);
+      if (category == null) throw StateError('草稿的类别无效');
+      if (_category != category) {
+        setState(() => _category = category);
+        await _load();
+      }
+      if (!mounted) return;
+      if (_treeError != null) throw StateError(_treeError!);
+      final parentId = parameters['parentId'];
+      final parent = parentId == null ? null : _findById(_tree, parentId);
+      if (parentId != null && parent == null) throw StateError('草稿的父级类别已不存在');
+      await _showCreate(parent: parent);
+    },
+    child: _buildDraftHost(context),
+  );
+
+  Widget _buildDraftHost(BuildContext context) {
     final selected = _selectedId == null
         ? null
         : _findById(_tree, _selectedId!);
@@ -1349,8 +1374,11 @@ class _EditResult {
       statusChanged;
 }
 
-class _PaymentStyleEditDialog extends StatefulWidget {
+class _PaymentStyleEditDialog extends ConsumerStatefulWidget {
   const _PaymentStyleEditDialog({
+    this.draftSpec,
+    this.resumeDraftId,
+    this.routerPageKey,
     required this.tree,
     required this.category,
     required this.onSubmit,
@@ -1362,6 +1390,9 @@ class _PaymentStyleEditDialog extends StatefulWidget {
     this.canStatus = true,
   });
 
+  final FormDraftSpec? draftSpec;
+  final String? resumeDraftId;
+  final ValueKey<String>? routerPageKey;
   final List<PaymentStyleNode> tree;
   final PaymentStyleCategory category;
   final PaymentStyleNode? initialParent;
@@ -1373,11 +1404,13 @@ class _PaymentStyleEditDialog extends StatefulWidget {
   final Future<bool> Function(_EditResult result) onSubmit;
 
   @override
-  State<_PaymentStyleEditDialog> createState() =>
+  ConsumerState<_PaymentStyleEditDialog> createState() =>
       _PaymentStyleEditDialogState();
 }
 
-class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
+class _PaymentStyleEditDialogState
+    extends ConsumerState<_PaymentStyleEditDialog>
+    with FormDraftMixin<_PaymentStyleEditDialog> {
   late final TextEditingController _nameController;
   late final TextEditingController _sortOrderController;
   late PaymentStyleNode? _parent;
@@ -1391,6 +1424,59 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
   String? _formError;
 
   bool get _isEdit => widget.editing != null;
+
+  bool _saving = false;
+  bool _serverCreated = false;
+  @override
+  bool get formDraftEnabled => !_isEdit && widget.draftSpec != null;
+  @override
+  bool get formDraftBusy => _saving;
+  @override
+  bool get formDraftCanReplaySubmission => _serverCreated;
+  @override
+  bool get formDraftUsesRouterGuard => false;
+  @override
+  bool get formDraftUseCurrentRoute => false;
+  @override
+  String? get formDraftResumeId => widget.resumeDraftId;
+  @override
+  ValueKey<String>? get formDraftRouterPageKey => widget.routerPageKey;
+  @override
+  FormDraftSpec get formDraftSpec => widget.draftSpec!;
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _nameController,
+    _sortOrderController,
+  ];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'name': _nameController.text,
+    'sortOrder': _sortOrderController.text,
+    'parentId': _parent?.id,
+    'receipt': _receipt,
+    'payment': _payment,
+    'departmental': _departmental,
+    'status': _status,
+    'serverCreated': _serverCreated,
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _nameController.text = data['name'] as String? ?? '';
+    _sortOrderController.text = data['sortOrder'] as String? ?? '';
+    final parentId = data['parentId'] as String?;
+    _parent = parentId == null ? null : _findById(widget.tree, parentId);
+    if (parentId != null && _parent == null) throw StateError('草稿的父级类别已不存在');
+    _receipt = data['receipt'] == true;
+    _payment = data['payment'] == true;
+    _departmental = data['departmental'] == true;
+    _status = data['status'] as String? ?? '使用';
+    _serverCreated = data['serverCreated'] == true;
+  }
+
+  Future<void> _close() async {
+    if (_saving || !await confirmFormDraftExit() || !mounted) return;
+    Navigator.of(context).pop();
+  }
 
   @override
   void initState() {
@@ -1414,6 +1500,7 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
     _blockedParentIds = editing == null
         ? <String>{}
         : _descendantIds(editing.id);
+    WidgetsBinding.instance.addPostFrameCallback((_) => initializeFormDraft());
   }
 
   @override
@@ -1523,6 +1610,12 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
   }
 
   Future<void> _submit() async {
+    if (_saving) return;
+    if (_serverCreated) {
+      await completeFormDraft();
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
     final name = _nameController.text.trim();
     if (name.isEmpty) {
       setState(() => _formError = '请输入类别名称');
@@ -1542,35 +1635,51 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
 
     setState(() => _formError = null);
     final editing = widget.editing;
-    final ok = await widget.onSubmit(
-      _EditResult(
-        name: name,
-        nameChanged: editing == null || name != editing.name,
-        parentId: _parent?.id,
-        parentChanged: _positionChanged,
-        moveToRoot:
-            _positionChanged &&
-            editing != null &&
-            editing.parentId != null &&
-            _parent == null,
-        sortOrder: sortOrder,
-        sortOrderChanged: editing == null || sortOrder != editing.sortOrder,
-        receipt: _receipt,
-        receiptChanged: editing == null || _receipt != editing.receipt,
-        payment: _payment,
-        paymentChanged: editing == null || _payment != editing.payment,
-        departmental: _departmental,
-        departmentalChanged:
-            editing == null || _departmental != editing.departmental,
-        status: _status,
-        statusChanged: editing == null || _status != editing.status,
-      ),
-    );
-    if (ok && mounted) Navigator.of(context).pop();
+    setState(() => _saving = true);
+    try {
+      final ok = await runFormDraftSubmission(
+        () => widget.onSubmit(
+          _EditResult(
+            name: name,
+            nameChanged: editing == null || name != editing.name,
+            parentId: _parent?.id,
+            parentChanged: _positionChanged,
+            moveToRoot:
+                _positionChanged &&
+                editing != null &&
+                editing.parentId != null &&
+                _parent == null,
+            sortOrder: sortOrder,
+            sortOrderChanged: editing == null || sortOrder != editing.sortOrder,
+            receipt: _receipt,
+            receiptChanged: editing == null || _receipt != editing.receipt,
+            payment: _payment,
+            paymentChanged: editing == null || _payment != editing.payment,
+            departmental: _departmental,
+            departmentalChanged:
+                editing == null || _departmental != editing.departmental,
+            status: _status,
+            statusChanged: editing == null || _status != editing.status,
+          ),
+        ),
+      );
+      if (ok && mounted) {
+        setState(() => _serverCreated = true);
+        await saveFormDraftNow();
+        await completeFormDraft();
+        if (mounted) Navigator.of(context).pop();
+      }
+    } catch (error) {
+      if (mounted) context.appApiError(error);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => withFormDraft(_buildDialog(context));
+
+  Widget _buildDialog(BuildContext context) {
     final theme = Theme.of(context);
     final unresolvedParent =
         _isEdit && widget.editing!.parentId != null && !_parentResolved;
@@ -1726,7 +1835,7 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
       actions: [
         UtenButton(
           type: UtenButtonType.secondary,
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _saving ? null : _close,
           child: const Text('取消'),
         ),
         UtenActionButton(

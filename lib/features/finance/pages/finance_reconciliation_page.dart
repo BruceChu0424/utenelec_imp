@@ -2,6 +2,8 @@
 //
 // 账户下拉过滤 + 关键词 + 来源单据类型。列表展示：单据号/账户/对手方/收入/支出/日期/摘要。
 // 名称解析：账户用 FinanceNameService；账户下拉选项来自 FinanceNameService.accountEntries。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -19,6 +21,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
 import '../repositories/finance_repository.dart';
@@ -67,9 +70,10 @@ class _FinanceReconciliationPageState
   String? _accountId;
   String? _sourceDocType;
   String? _entryKind;
-  // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
-  String? _sortKey;
-  bool _sortAsc = true;
+  // 2026-09-25 单号列统一：单据号表头值筛选 + 服务端桶 + 列排序态
+  // （共享状态，见 MasterServerColumnFilters；_sortColumn=null=不排序，走后端
+  // 默认 billDate DESC）。
+  final _columnFilters = MasterServerColumnFilters();
 
   @override
   void initState() {
@@ -80,6 +84,16 @@ class _FinanceReconciliationPageState
     });
   }
 
+  /// 当前筛选组装（_load 与单号桶共用；[withBillNo] = false 供桶拉取）。
+  ReconciliationFilter _reconFilter({bool withBillNo = true}) =>
+      ReconciliationFilter(
+        keyword: _keyword.trim().isEmpty ? null : _keyword,
+        accountId: _accountId,
+        sourceDocType: _sourceDocType,
+        entryKind: _entryKind,
+        billNo: withBillNo ? _columnFilters['billNo'] : null,
+      );
+
   Future<void> _load(int page) async {
     final generation = _loadRequests.begin();
     setState(() {
@@ -87,19 +101,18 @@ class _FinanceReconciliationPageState
       _error = null;
       _pageNum = page;
     });
+    // 单号桶随列表口径重取（2026-09-25 单号列统一）。
+    unawaited(_loadBillNoFacets());
     try {
       final r = await ref
           .read(reconciliationRepositoryProvider)
           .list(
             page: page,
-            filter: ReconciliationFilter(
-              keyword: _keyword.trim().isEmpty ? null : _keyword,
-              accountId: _accountId,
-              sourceDocType: _sourceDocType,
-              entryKind: _entryKind,
-            ),
-            sort: _sortKey,
-            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
+            filter: _reconFilter(),
+            sort: _columnFilters.sortColumn,
+            order: _columnFilters.sortColumn == null
+                ? null
+                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
           );
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
@@ -121,6 +134,18 @@ class _FinanceReconciliationPageState
     }
   }
 
+  /// 单据号值筛选桶随过滤上下文重取（失败静默保持旧桶，不阻断列表）。
+  Future<void> _loadBillNoFacets() => _columnFilters.loadFacets(
+    () async => {
+      'billNo': await ref
+          .read(reconciliationRepositoryProvider)
+          .billNoFacets(filter: _reconFilter(withBillNo: false)),
+    },
+    onLoaded: () {
+      if (mounted) setState(() {});
+    },
+  );
+
   List<MasterColumnDef<ReconciliationItem>> _columns(FinanceNameService names) {
     return <MasterColumnDef<ReconciliationItem>>[
       MasterColumnDef(
@@ -132,7 +157,9 @@ class _FinanceReconciliationPageState
         value: (it) => (it.billDate ?? '').substring(0, 16),
       ),
       MasterColumnDef(
+        // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
         key: 'billNo',
+        sortable: true,
         label: '单据号',
         width: 140,
         value: (it) => it.billNo,
@@ -190,14 +217,14 @@ class _FinanceReconciliationPageState
 
   /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
   void _onSortChange(String? column, bool ascending) {
-    setState(() {
-      _sortKey = column;
-      _sortAsc = ascending;
-    });
-    _load(1);
+    _columnFilters.handleSortChanged(column, ascending, onChanged: _refilter);
   }
 
   void _onColumnFilterChanged(String key, String? value) {
+    if (key == 'billNo') {
+      _columnFilters.handleFilterChanged(key, value, onChanged: _refilter);
+      return;
+    }
     setState(() {
       if (key == 'accountId') {
         _accountId = value;
@@ -207,6 +234,12 @@ class _FinanceReconciliationPageState
         _entryKind = value;
       }
     });
+    _load(1);
+  }
+
+  /// 服务端列筛选/排序落地后：setState 刷新表头 + 重拉回第 1 页。
+  void _refilter() {
+    setState(() {});
     _load(1);
   }
 
@@ -322,19 +355,22 @@ class _FinanceReconciliationPageState
                   columns: _columns(names),
                   items: _page?.items ?? const [],
                   facets: {
+                    // 单据号桶与列表同一过滤口径（2026-09-25 单号列统一）。
+                    'billNo': _columnFilters.bucketOf('billNo'),
                     'accountId': financeDictionaryFacets(names.accountEntries),
                     'sourceDocType': financeReconciliationSourceFacets,
                     'entryKind': _entryKindFacets,
                   },
                   nullCounts: const {},
                   filters: {
+                    'billNo': _columnFilters['billNo'],
                     'accountId': _accountId,
                     'sourceDocType': _sourceDocType,
                     'entryKind': _entryKind,
                   },
                   onFilterChanged: _onColumnFilterChanged,
-                  sortColumn: _sortKey,
-                  sortAscending: _sortAsc,
+                  sortColumn: _columnFilters.sortColumn,
+                  sortAscending: _columnFilters.sortAscending,
                   onSortChange: _onSortChange,
                   isLoading: _loading && _page == null,
                   loadingMore: _loading && _page != null,

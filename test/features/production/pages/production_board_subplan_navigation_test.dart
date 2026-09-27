@@ -135,6 +135,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
+    // Four categories collapse to the shared menu at this width and scale.
+    await tester.tap(find.text('分类'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('历史记录'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('全部'));

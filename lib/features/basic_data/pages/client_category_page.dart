@@ -11,6 +11,8 @@
 // compact：分类树作为 endDrawer；medium/expanded：左树 + 右详情。
 // 文档：见 docs/数据迁移/07-客户资料-新库与迁移.md。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
+import '../widgets/client_ship_address_sheet.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -61,6 +63,10 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
 
   @override
   String get shellPersistenceKey => 'basicData.client';
+
+  @override
+  FormDraftDescriptor get shellCategoryDraftDescriptor =>
+      FormDraftCatalog.clientCategory;
 
   @override
   bool get shellCanCreate =>
@@ -159,7 +165,32 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
   MasterEntityPaneController<ClientListItem, ClientDetail>? _pane;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FormDraftDialogResume(
+    descriptor: FormDraftCatalog.clientAddress,
+    onResume: (parameters) async {
+      final clientId = parameters['parentId'];
+      if (clientId == null) throw StateError('草稿缺少客户');
+      final client = await ref.read(clientRepositoryProvider).detail(clientId);
+      if (!context.mounted) return;
+      if (!client.writable) throw StateError('当前客户已不在可写范围');
+      await showClientShipAddressSheet(
+        context,
+        ref,
+        clientId: clientId,
+        clientName: client.name ?? '客户',
+      );
+    },
+    child: _buildClientDraftHost(context),
+  );
+
+  Widget _buildClientDraftHost(BuildContext context) => FormDraftDialogResume(
+    descriptor: FormDraftCatalog.client,
+    onResume: (parameters) =>
+        _showClientCreate(draftCategoryId: parameters['categoryId']),
+    child: _buildDraftHost(context),
+  );
+
+  Widget _buildDraftHost(BuildContext context) {
     return buildShell(
       context,
       detailPaneBuilder: (selected) =>
@@ -302,13 +333,17 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
     return null;
   }
 
-  Future<void> _showClientCreate() async {
+  Future<void> _showClientCreate({String? draftCategoryId}) async {
     final settlementMethods = await _loadSettlementMethods();
     if (!mounted || settlementMethods == null) return;
     const iv = <String, String>{};
-    final categoryId = _pane?.categoryId;
-    showMasterEditDialog(
+    final categoryId = draftCategoryId ?? _pane?.categoryId;
+    await showMasterEditDialog(
       context: context,
+      draftSpec: FormDraftCatalog.client.spec(
+        title: '新增客户',
+        categoryId: categoryId,
+      ),
       title: '新增客户', // TODO(l10n): 补 arb
       fields: buildClientFields(iv, settlementMethods),
       initialValues: const {'status': '使用'},
@@ -322,15 +357,12 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
   }
 
   Future<bool> _doCreateClient(Map<String, dynamic> body) async {
-    final ok = await context.guardRun(
-      () async {
-        await ref.read(clientRepositoryProvider).create(body);
-      },
-      success: '客户已创建', // TODO(l10n): 补 arb
-      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _pane?.reload();
+    // Preserve the actual API failure for the shared draft submission fence.
+    await ref.read(clientRepositoryProvider).create(body);
+    if (mounted) {
+      context.appSuccess('客户已创建');
+      await _pane?.reload();
+    }
     return true;
   }
 

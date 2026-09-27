@@ -51,9 +51,14 @@ void main() {
       expect(tester.widget<Checkbox>(inactiveCheckbox).onChanged, isNull);
       await _selectAndOpenQuantity(tester);
       // 页里默认 0(缺口已被现货覆盖，0 = 交接现货，合法值)，现货交接提示进总结弹窗。
-      expect(tester.widget<TextField>(_seedQty()).controller!.text, '0');
-      expect(find.textContaining('将优先交接已分配现货 10'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('supply-submit-confirm')));
+      expect(find.textContaining('现货交接'), findsOneWidget);
+      expect(find.textContaining('交接已分配现货，不新增订货'), findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('下达'),
+        ),
+      );
       await tester.pumpAndSettle();
       final request = harness.notifications.single;
       expect(request.data, {
@@ -96,8 +101,13 @@ void main() {
         await _openBuy(tester);
         await _selectAndOpenQuantity(tester);
         expect(tester.widget<TextField>(_seedQty()).controller!.text, '7');
-        expect(find.text('共 1 个品种，合计 7。'), findsOneWidget);
-        await tester.tap(find.byKey(const Key('supply-submit-confirm')));
+        expect(find.text('确认下达 1 行？'), findsOneWidget);
+        await tester.tap(
+          find.descendant(
+            of: find.byType(AlertDialog),
+            matching: find.text('下达'),
+          ),
+        );
         await tester.pumpAndSettle();
         final quantities =
             (harness.notifications.single.data
@@ -114,7 +124,7 @@ void main() {
   }
 
   testWidgets(
-    'completed stock output stays in issued history and authorized revoke uses the cancel contract',
+    'completed stock output stays in source details and authorized revoke uses the cancel contract',
     (tester) async {
       final harness = await _pump(
         tester,
@@ -125,21 +135,6 @@ void main() {
           output: _output(qty: 10),
         ),
       );
-      await _openBuy(tester);
-      final issued = find.descendant(
-        of: find.byKey(const Key('material-analysis-task-state')),
-        matching: find.textContaining('已下达 ('),
-      );
-      await tester.ensureVisible(issued);
-      await tester.tap(issued);
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('row:NODE|root-action|root-line')),
-        findsOneWidget,
-      );
-      expect(find.textContaining('ROOT-EVENT-1'), findsWidgets);
-      await tester.tap(find.byTooltip('返回').last);
-      await tester.pumpAndSettle();
       await _openRootDetails(tester);
       final revoke = find.byKey(
         const ValueKey('material-root-output-revoke-event-1'),
@@ -322,19 +317,18 @@ Future<void> _selectAndOpenQuantity(WidgetTester tester) async {
   await tester.tap(action);
   await tester.pumpAndSettle();
   expect(
-    find.byKey(const Key('material-analysis-child-cascade-dialog')),
+    find.byKey(const Key('material-preparation-order-page')),
     findsOneWidget,
   );
-  await tester.tap(
-    find.byKey(const Key('material-analysis-child-cascade-submit')),
-  );
+  await tester.tap(find.byKey(const Key('material-preparation-order-submit')));
   await tester.pumpAndSettle();
-  expect(find.byKey(const Key('supply-submit-confirm-dialog')), findsOneWidget);
+  expect(find.byType(AlertDialog), findsOneWidget);
 }
 
 /// 「核对并下单」页里根供给行的数量框。
-Finder _seedQty() =>
-    find.byKey(const ValueKey('material-analysis-child-cascade-qty-root-line'));
+Finder _seedQty() => find.byKey(
+  const ValueKey('material-analysis-order-qty-NODE|root-action|root-line'),
+);
 
 Future<void> _openRootDetails(WidgetTester tester) async {
   final name = find

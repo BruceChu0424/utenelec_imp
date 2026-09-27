@@ -20,6 +20,7 @@ import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_draw_task.dart';
 import 'package:uten_imp/features/warehouse/repositories/production_draw_task_repository.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_draw_task_segment.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -32,6 +33,8 @@ class _FakeRepository extends ProductionDrawTaskRepository {
   Map<String, int> counts = const {};
   Object? countsError;
   final batchKeys = <String>[];
+  bool captureBatchRoute = false;
+  Uri? openedBatchRoute;
   late final router = GoRouter(
     routes: [
       GoRoute(
@@ -49,11 +52,22 @@ class _FakeRepository extends ProductionDrawTaskRepository {
       ),
       GoRoute(
         path: RouteName.warehouseProductionDrawBatchIssue,
-        builder: (_, state) => ProductionDrawBatchIssuePage(
-          documentIds: (state.uri.queryParameters['documentIds'] ?? '').split(
-            ',',
-          ),
-        ),
+        builder: (_, state) {
+          openedBatchRoute = state.uri;
+          if (captureBatchRoute) {
+            return const Scaffold(body: Text('批量领料核对页'));
+          }
+          return ProductionDrawBatchIssuePage(
+            documentIds: (state.uri.queryParameters['documentIds'] ?? '').split(
+              ',',
+            ),
+            discoveryRequestIds:
+                (state.uri.queryParameters['discoveryRequestIds'] ?? '')
+                    .split(',')
+                    .where((id) => id.isNotEmpty)
+                    .toList(),
+          );
+        },
       ),
     ],
   );
@@ -80,6 +94,7 @@ class _FakeRepository extends ProductionDrawTaskRepository {
     String? status,
     String? sort,
     bool ascending = true,
+    String? drawBillNo,
     WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   }) async {
     requests.add((page: page, sort: sort, ascending: ascending));
@@ -147,6 +162,24 @@ WarehouseDrawTask _task(
 );
 
 late SharedPreferences _prefs;
+
+WarehouseDrawTask _discoveryTask(String id, {bool defined = true}) =>
+    WarehouseDrawTask.fromJson({
+      'taskId': 'discovery-$id',
+      'planNo': 'SJ-$id',
+      'actionDocType': 'MATERIAL_DISCOVERY',
+      'actionDocId': id,
+      'actionDocNo': 'ZX-$id',
+      'taskStatus': 'MATERIALS_TO_DEFINE',
+      'materialsDefined': defined,
+      'goodsName': defined ? 'PC颗粒-$id' : null,
+      'goodsCode': defined ? 'PC-$id' : null,
+      'goodsCount': defined ? 1 : 0,
+      'openLineCount': 1,
+      'openQty': null,
+      'unitName': defined ? '千克' : null,
+      'productionProductName': '保护门-$id',
+    });
 
 final _refreshTickProvider = Provider<int>((ref) => 0);
 
@@ -264,6 +297,141 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _prefs = await SharedPreferences.getInstance();
   });
+
+  testWidgets(
+    'discovery shows materials and red missing rows, never parent as material',
+    (tester) async {
+      WarehouseDrawTask discovery(String id, {required bool defined}) =>
+          WarehouseDrawTask.fromJson({
+            'taskId': id,
+            'planNo': 'SJ001',
+            'actionDocType': 'MATERIAL_DISCOVERY',
+            'actionDocId': id,
+            'taskStatus': 'MATERIALS_TO_DEFINE',
+            'goodsName': defined ? 'PC颗粒' : 'V5多功能保护门',
+            'goodsCode': defined ? 'PC001' : 'V50052',
+            'materialsDefined': defined,
+            'goodsCount': defined ? 1 : 0,
+            'openLineCount': 1,
+            'openQty': defined ? 12.5 : 0,
+            'unitName': defined ? '千克' : '',
+            'colorName': defined ? '透明' : '',
+            'productionProductCode': 'V50052',
+            'productionProductName': 'V5多功能保护门',
+          });
+      final known = discovery('known', defined: true);
+      final unknown = discovery('unknown', defined: false);
+      final repo = _FakeRepository()..pages[1] = [known, unknown];
+      await _pump(tester, repo, _approverIssuer);
+      final tableFinder = find.byKey(const Key('warehouse-draw-task-table'));
+      final table = tester.widget<MasterDataTableView<WarehouseDrawTask>>(
+        tableFinder,
+      );
+      final goods = table.columns.firstWhere((column) => column.key == 'goods');
+      expect(goods.value(known), 'PC颗粒');
+      expect(goods.value(unknown), '需要填写');
+      final color = table.columns.firstWhere(
+        (column) => column.key == 'colorName',
+      );
+      expect(color.value(known), '透明');
+      expect(color.value(unknown), isNull);
+      expect(find.text('PC颗粒'), findsWidgets);
+      expect(
+        table.rowColor!(unknown),
+        Theme.of(tester.element(tableFinder)).colorScheme.errorContainer,
+      );
+      expect(table.rowColor!(known), isNull);
+      expect(known.quantityText, '12.5 千克');
+      expect(known.statusLabel, '待核对领料');
+      expect(unknown.statusLabel, '需要填写');
+      expect(known.canBatchIssue, isTrue);
+      expect(unknown.canBatchIssue, isFalse);
+      final purpose = table.columns.firstWhere(
+        (column) => column.key == 'productionPurpose',
+      );
+      expect(purpose.value(known), 'V5多功能保护门 · V50052');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  test(
+    'multiple suggested materials keep names and unknown quantity stays unknown',
+    () {
+      final multiple = WarehouseDrawTask.fromJson({
+        'actionDocType': 'MATERIAL_DISCOVERY',
+        'actionDocId': 'request',
+        'goodsName': 'PC颗粒、添加剂',
+        'goodsCount': 2,
+        'openLineCount': 2,
+        'materialsDefined': true,
+      });
+      expect(multiple.materialLabel, 'PC颗粒、添加剂');
+      expect(multiple.quantityText, '2 行材料');
+      final materialOnly = WarehouseDrawTask.fromJson({
+        'actionDocType': 'MATERIAL_DISCOVERY',
+        'actionDocId': 'request',
+        'goodsName': 'PC颗粒',
+        'goodsCount': 1,
+        'openLineCount': 1,
+        'materialsDefined': true,
+      });
+      expect(materialOnly.quantityText, '需要填写数量');
+      expect(materialOnly.needsMaterialEntry, isFalse);
+    },
+  );
+
+  testWidgets('request and formal draw numbers remain distinct and traceable', (
+    tester,
+  ) async {
+    final request = WarehouseDrawTask.fromJson({
+      'taskId': 'request-task',
+      'actionDocType': 'MATERIAL_DISCOVERY',
+      'actionDocId': 'request',
+      'actionDocNo': 'LQ20260927000001',
+      'materialRequestNo': 'LQ20260927000001',
+      'taskStatus': 'MATERIALS_TO_DEFINE',
+      'materialsDefined': true,
+      'goodsName': 'PC颗粒',
+    });
+    final draw = WarehouseDrawTask.fromJson({
+      'taskId': 'draw-task',
+      'actionDocType': 'DRAW',
+      'actionDocId': 'draw',
+      'actionDocNo': 'SL20260927000002',
+      'materialRequestNo': 'LQ20260927000001',
+      'taskStatus': 'READY_TO_PICK',
+      'goodsName': 'PC颗粒',
+    });
+    final repo = _FakeRepository()..pages[1] = [request, draw];
+    await _pump(tester, repo, _approverIssuer);
+    final table = tester.widget<MasterDataTableView<WarehouseDrawTask>>(
+      find.byKey(const Key('warehouse-draw-task-table')),
+    );
+    final number = table.columns.firstWhere(
+      (column) => column.key == 'drawBillNo',
+    );
+    final source = table.columns.firstWhere(
+      (column) => column.key == 'materialRequestNo',
+    );
+    expect(number.value(request), 'LQ20260927000001');
+    expect(number.value(draw), 'SL20260927000002');
+    expect(find.text('申请 LQ20260927000001'), findsWidgets);
+    expect(source.value(request), '—');
+    expect(source.value(draw), 'LQ20260927000001');
+    expect(tester.takeException(), isNull);
+  });
+
+  test(
+    'a legacy workshop code never masquerades as a request or draw number',
+    () {
+      final legacy = WarehouseDrawTask.fromJson({
+        'actionDocType': 'MATERIAL_DISCOVERY',
+        'actionDocId': 'request',
+        'actionDocNo': 'ZX00000592',
+      });
+      expect(legacy.drawBillLabel, '—');
+    },
+  );
 
   // ADR-115：任务中心选「我的仓库」时，待领任务列表按该范围请求；骨架外默认全部仓库。
   testWidgets('pending tasks are requested within the task-center scope', (
@@ -384,6 +552,115 @@ void main() {
     await _pump(tester, repo, _issuer);
     expect(_batchButton(), findsOneWidget);
   });
+
+  testWidgets(
+    'known materials with missing quantities join normal documents in batch review',
+    (tester) async {
+      final repo = _FakeRepository()
+        ..captureBatchRoute = true
+        ..pages[1] = [_task('normal'), _discoveryTask('known')];
+      await _pump(tester, repo, _approverIssuer);
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.pumpAndSettle();
+      await tester.tap(_batchButton());
+      await tester.pumpAndSettle();
+      expect(find.text('批量领料核对页'), findsOneWidget);
+      expect(repo.openedBatchRoute!.queryParameters['documentIds'], 'normal');
+      expect(
+        repo.openedBatchRoute!.queryParameters['discoveryRequestIds'],
+        'known',
+      );
+      expect(repo.batchKeys, isEmpty, reason: '进入补信息页面不能配置或出库');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('known material selection survives cross-page batch navigation', (
+    tester,
+  ) async {
+    final repo = _FakeRepository()
+      ..captureBatchRoute = true
+      ..pages[1] = [_discoveryTask('known')]
+      ..pages[2] = [_task('normal')];
+    await _pump(tester, repo, _approverIssuer);
+    await tester.tap(_rowCheckbox(0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('下一页'));
+    await tester.pumpAndSettle();
+    await tester.tap(_rowCheckbox(0));
+    await tester.pumpAndSettle();
+    await tester.tap(_batchButton());
+    await tester.pumpAndSettle();
+    expect(repo.openedBatchRoute!.queryParameters['documentIds'], 'normal');
+    expect(
+      repo.openedBatchRoute!.queryParameters['discoveryRequestIds'],
+      'known',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('opening one known material uses the same batch review page', (
+    tester,
+  ) async {
+    final task = _discoveryTask('known');
+    final repo = _FakeRepository()
+      ..captureBatchRoute = true
+      ..pages[1] = [task];
+    await _pump(tester, repo, _approverIssuer);
+    final table = tester.widget<MasterDataTableView<WarehouseDrawTask>>(
+      find.byKey(const Key('warehouse-draw-task-table')),
+    );
+    table.onRowTap!(task);
+    await tester.pumpAndSettle();
+    expect(
+      repo.openedBatchRoute!.queryParameters['discoveryRequestIds'],
+      'known',
+    );
+    expect(
+      repo.openedBatchRoute!.queryParameters.containsKey('documentIds'),
+      isFalse,
+    );
+    expect(repo.batchKeys, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'unknown materials cannot be silently omitted from a mixed selection',
+    (tester) async {
+      final repo = _FakeRepository()
+        ..captureBatchRoute = true
+        ..pages[1] = [
+          _task('normal'),
+          _discoveryTask('unknown', defined: false),
+        ];
+      await _pump(tester, repo, _approverIssuer);
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.pumpAndSettle();
+      await tester.tap(_batchButton());
+      await tester.pumpAndSettle();
+      expect(repo.openedBatchRoute, isNull);
+      expect(repo.batchKeys, isEmpty);
+      expect(find.textContaining('尚未确定材料'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'material requests need approval permission before batch confirmation',
+    (tester) async {
+      final repo = _FakeRepository()
+        ..captureBatchRoute = true
+        ..pages[1] = [_discoveryTask('known')];
+      await _pump(tester, repo, _issuer);
+      await tester.tap(_rowCheckbox(0));
+      await tester.pumpAndSettle();
+      await tester.tap(_batchButton());
+      await tester.pumpAndSettle();
+      expect(repo.openedBatchRoute, isNull);
+      expect(find.textContaining('审核权限'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'draft selection without approve permission is blocked with a hint',

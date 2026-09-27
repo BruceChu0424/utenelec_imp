@@ -4,6 +4,8 @@
 // 2026-09-01 起「入库任务中心 · 产成品入库」待点收分段内嵌本组件（embedded=true
 // 时搜索框由任务中心页级工具条接管）；独立路由 /warehouse/production-finished-in/tasks
 // 由对应页面以 embedded=false 包一层继续承接。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,6 +25,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../models/production_finished_inbound_task.dart';
 import '../models/stock_doc.dart';
 import '../providers/warehouse_count_refresh.dart';
@@ -70,6 +73,11 @@ class _ProductionFinishedInboundTasksViewState
   /// 表头列筛选（2026-09-16）：任务步骤（固定枚举）+ 仓库（dict 桶，仅待点收单有仓）。
   String? _taskStageFilter;
   String? _warehouseIdFilter;
+
+  /// 表头排序 + 任务单号/生产计划列值筛选 + facets 桶 + 防串台代数
+  /// （2026-09-25 单号列统一，共享状态见 MasterServerColumnFilters）；
+  /// 排序列 key 见 [_kSortFields]，null = 服务端默认序。
+  final _columnFilters = MasterServerColumnFilters();
   int _requestVersion = 0;
   final Set<String> _selectedIds = <String>{};
 
@@ -129,8 +137,16 @@ class _ProductionFinishedInboundTasksViewState
             taskStage: _taskStageFilter,
             warehouseId: _warehouseIdFilter,
             scope: WarehouseListScope.of(context),
+            sort: _kSortFields[_columnFilters.sortColumn],
+            order: _columnFilters.sortColumn == null
+                ? null
+                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+            taskNo: _columnFilters['taskNo'],
+            planNo: _columnFilters['planNo'],
           );
       if (!mounted || requestVersion != _requestVersion) return;
+      // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
+      unawaited(_loadBillNoFacets());
       setState(() {
         _result = result;
         _loading = false;
@@ -160,6 +176,47 @@ class _ProductionFinishedInboundTasksViewState
     }
     widget.onLoadingChanged?.call(false);
   }
+
+  /// 表头排序键 → 服务端 sort 参数（2026-09-25 单号列统一；未列出的列不可排序）。
+  static const _kSortFields = <String, String>{
+    'taskNo': 'taskNo',
+    'planNo': 'planNo',
+  };
+
+  /// 表头排序变化：服务端重排整个结果集，回第 1 页（勾选跨页保留，不清）。
+  void _onSortChange(String? column, bool ascending) {
+    final next = column != null && _kSortFields.containsKey(column)
+        ? column
+        : null;
+    if (next == _columnFilters.sortColumn &&
+        (next == null || ascending == _columnFilters.sortAscending)) {
+      return;
+    }
+    _columnFilters.handleSortChanged(
+      next,
+      ascending,
+      onChanged: () {
+        if (mounted) setState(() {});
+        _load(1, replaceActive: true);
+      },
+    );
+  }
+
+  /// 任务单号/生产计划 facets（2026-09-25 单号列统一）：与列表同过滤口径
+  /// （不含单号列自身值筛选）。
+  Future<void> _loadBillNoFacets() => _columnFilters.loadFacets(
+    () => ref
+        .read(productionFinishedInboundTaskRepositoryProvider)
+        .taskBillNoFacets(
+          keyword: _keyword,
+          taskStage: _taskStageFilter,
+          warehouseId: _warehouseIdFilter,
+          scope: WarehouseListScope.of(context),
+        ),
+    onLoaded: () {
+      if (mounted) setState(() {});
+    },
+  );
 
   Future<void> _openTask(ProductionFinishedInboundTask task) async {
     if (task.isArrivalRegistration) {
@@ -402,13 +459,33 @@ class _ProductionFinishedInboundTasksViewState
           'warehouseName': masterDictionaryFacets(
             ref.watch(masterNameServiceProvider).warehouseEntries,
           ),
+          // 任务单号/生产计划表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
+          'taskNo': _columnFilters.bucketOf('taskNo'),
+          'planNo': _columnFilters.bucketOf('planNo'),
         },
         nullCounts: const {},
         filters: {
           'taskStage': _taskStageFilter,
           'warehouseName': _warehouseIdFilter,
+          'taskNo': _columnFilters['taskNo'],
+          'planNo': _columnFilters['planNo'],
         },
+        // 表头排序走服务端（2026-09-25 单号列统一）。
+        sortColumn: _columnFilters.sortColumn,
+        sortAscending: _columnFilters.sortAscending,
+        onSortChange: _onSortChange,
         onFilterChanged: (key, value) {
+          if (key == 'taskNo' || key == 'planNo') {
+            _columnFilters.handleFilterChanged(
+              key,
+              value,
+              onChanged: () {
+                if (mounted) setState(() {});
+                _load(1, replaceActive: true);
+              },
+            );
+            return;
+          }
           setState(() {
             if (key == 'taskStage') {
               _taskStageFilter = value;
@@ -522,12 +599,14 @@ class _ProductionFinishedInboundTasksViewState
       key: 'taskNo',
       label: '任务单号',
       width: 180,
+      sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
       value: _taskDisplayNo,
     ),
     MasterColumnDef(
       key: 'planNo',
       label: '生产计划',
       width: 160,
+      sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
       value: (task) => task.planNo ?? '—',
     ),
     MasterColumnDef(

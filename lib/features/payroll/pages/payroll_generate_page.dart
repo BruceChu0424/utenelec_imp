@@ -16,6 +16,9 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../repositories/payroll_repository.dart';
 import '../models/payroll_batch.dart';
 import '../models/payroll_slip.dart';
 import '../providers/payroll_providers.dart';
@@ -28,7 +31,53 @@ class PayrollGeneratePage extends ConsumerStatefulWidget {
       _PayrollGeneratePageState();
 }
 
-class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
+class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage>
+    with FormDraftMixin<PayrollGeneratePage> {
+  @override
+  bool get formDraftBusy => _submitting;
+  @override
+  bool get formDraftCanReplaySubmission => _draftBatch != null;
+  @override
+  FormDraftSpec get formDraftSpec =>
+      FormDraftCatalog.payroll.spec(title: '生成工资', route: '/payroll/generate');
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'year': _year,
+    'month': _month,
+    'departmentId': _departmentId,
+    'overtime': _overtime,
+    'bonus': _bonus,
+    'social': _social,
+    'tax': _tax,
+    'step': _step,
+    'batchId': _draftBatch?.id,
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _year = data['year'] as int;
+    _month = data['month'] as int;
+    _departmentId = data['departmentId'] as String? ?? '';
+    _overtime = data['overtime'] == true;
+    _bonus = data['bonus'] == true;
+    _social = data['social'] == true;
+    _tax = data['tax'] == true;
+    _step = (data['step'] as int? ?? 0).clamp(0, 3);
+    if (data['batchId'] case final String id) {
+      _draftBatch = await ref.read(payrollRepositoryProvider).getBatch(id);
+      if (_draftBatch!.status != PayrollBatchStatus.draft) {
+        throw StateError('工资批次已提交，请到工资审核中查看');
+      }
+    } else if (_step > 1) {
+      _step = 1;
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => initializeFormDraft());
+  }
+
   int _step = 0;
   bool _submitting = false;
   String? _operationError;
@@ -45,6 +94,10 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
 
   @override
   Widget build(BuildContext context) {
+    return withFormDraft(_buildEditor(context));
+  }
+
+  Widget _buildEditor(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final departments = ref.watch(payrollDepartmentOptionsProvider);
 
@@ -351,16 +404,18 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
       _operationError = null;
     });
     try {
-      final batch = await createPayrollBatch(
-        ref,
-        PayrollBatchCreateInput(
-          year: _year,
-          month: _month,
-          departmentId: _departmentId.isEmpty ? null : _departmentId,
-          includeOvertime: _overtime,
-          includeBonus: _bonus,
-          includeSocialInsurance: _social,
-          includeTax: _tax,
+      final batch = await runFormDraftSubmission(
+        () => createPayrollBatch(
+          ref,
+          PayrollBatchCreateInput(
+            year: _year,
+            month: _month,
+            departmentId: _departmentId.isEmpty ? null : _departmentId,
+            includeOvertime: _overtime,
+            includeBonus: _bonus,
+            includeSocialInsurance: _social,
+            includeTax: _tax,
+          ),
         ),
       );
       if (batch.status != PayrollBatchStatus.draft ||
@@ -373,6 +428,7 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
         _draftBatch = batch;
         _step = 2;
       });
+      await saveFormDraftNow();
     } catch (error) {
       if (!mounted) return;
       setState(() => _operationError = '生成失败：$error');
@@ -391,6 +447,7 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
     });
     try {
       await submitPayrollBatch(ref, batch.id);
+      await completeFormDraft();
       if (!mounted) return;
       context.appSuccess('工资批次已提交审核');
       // 来源感知返回（2026-09-24）：pop 优先回到入口（HR 工作台等），深链无栈

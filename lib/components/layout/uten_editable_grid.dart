@@ -1594,10 +1594,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
     final sample = rows.length < _autoGrowSampleSize
         ? rows.length
         : _autoGrowSampleSize;
-    final headerStyle =
-        (Theme.of(context).textTheme.labelMedium ?? const TextStyle()).copyWith(
-          fontWeight: FontWeight.w700,
-        );
+    final headerStyle = UtenTableHeader.textStyle(Theme.of(context));
     for (var i = 0; i < widget.columns.length && i < _widths.length; i++) {
       final col = widget.columns[i];
       if (_manualResized.contains(col.key)) continue;
@@ -2671,21 +2668,16 @@ class _UtenEditableGridState<T extends EditableGridRow>
             setState(() => _columnFilters[column.key] = value),
       );
     }
+    final headerStyle = UtenTableHeader.textStyle(theme);
     final Widget label = Text.rich(
       TextSpan(
         text: column.label,
-        style: (theme.textTheme.labelMedium ?? const TextStyle()).copyWith(
-          fontWeight: FontWeight.w700,
-        ),
+        style: headerStyle,
         children: column.required
             ? [
                 TextSpan(
                   text: ' *',
-                  style: (theme.textTheme.labelMedium ?? const TextStyle())
-                      .copyWith(
-                        color: theme.colorScheme.error,
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: headerStyle.copyWith(color: theme.colorScheme.error),
                 ),
               ]
             : null,

@@ -288,6 +288,9 @@ public class PurchaseReportService {
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false AND (i.qty - COALESCE(i.received_qty,0) + COALESCE(i.returned_qty,0)) > 0");
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, null, null, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
+                // 2026-09-25 单号列统一：单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）；
+                // 桶按单号降序（新单号在前），空值排末尾，与 billDate facet 口径一致。
+                new FacetSpec("billNo", "o.bill_no AS v, o.bill_no AS lbl", "o.bill_no", "o.bill_no", "text", "v DESC NULLS LAST"),
                 facetSupplier(),
                 // 开单日期表头 autofilter：按日期降序（近期在上，与表格默认排序一致），空值排末尾。
                 new FacetSpec("billDate", "o.bill_date AS v, TO_CHAR(o.bill_date, 'YYYY-MM-DD') AS lbl",
@@ -354,6 +357,9 @@ public class PurchaseReportService {
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
         ReportQueryKit.addCommonDocFilters(w, billNo, null, null, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
+                // 2026-09-25 单号列统一：单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）；
+                // 桶按单号降序（新单号在前），空值排末尾，与 billDate facet 口径一致。
+                new FacetSpec("billNo", "o.bill_no AS v, o.bill_no AS lbl", "o.bill_no", "o.bill_no", "text", "v DESC NULLS LAST"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"),
                 new FacetSpec("closed", "o.is_closed AS v, CASE WHEN o.is_closed THEN '已完成' ELSE '未完成' END AS lbl", "o.is_closed", "o.is_closed", "bool"),
                 new FacetSpec("stopped", "o.is_stopped AS v, CASE WHEN o.is_stopped THEN '已中止' ELSE '未中止' END AS lbl", "o.is_stopped", "o.is_stopped", "bool"));
@@ -444,6 +450,9 @@ public class PurchaseReportService {
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, null, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
+                // 2026-09-25 单号列统一：单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）；
+                // 桶按单号降序（新单号在前），空值排末尾，与 billDate facet 口径一致。
+                new FacetSpec("billNo", "o.bill_no AS v, o.bill_no AS lbl", "o.bill_no", "o.bill_no", "text", "v DESC NULLS LAST"),
                 facetSupplier(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"),
@@ -547,6 +556,9 @@ public class PurchaseReportService {
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
+                // 2026-09-25 单号列统一：单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）；
+                // 桶按单号降序（新单号在前），空值排末尾，与 billDate facet 口径一致。
+                new FacetSpec("billNo", "o.bill_no AS v, o.bill_no AS lbl", "o.bill_no", "o.bill_no", "text", "v DESC NULLS LAST"),
                 facetSupplier(),
                 facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"),
@@ -639,6 +651,13 @@ public class PurchaseReportService {
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
+                // 2026-09-25 单号列统一：单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）。
+                // 本报表单号列合并渲染「单号 日期」（见 dataSelect），facet 表达式与列投影完全一致，
+                // 下拉值 = 列显示值，等值过滤才能命中。
+                new FacetSpec("billNo",
+                        "(o.bill_no || ' ' || TO_CHAR(o.bill_date, 'YYYY-MM-DD')) AS v, (o.bill_no || ' ' || TO_CHAR(o.bill_date, 'YYYY-MM-DD')) AS lbl",
+                        "(o.bill_no || ' ' || TO_CHAR(o.bill_date, 'YYYY-MM-DD'))",
+                        "(o.bill_no || ' ' || TO_CHAR(o.bill_date, 'YYYY-MM-DD'))", "text", "v DESC NULLS LAST"),
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/network/api_client.dart';
+import '../../../basic_data/models/master_facet.dart';
 import '../models/subcontract_loss_claim.dart';
 
 class SubcontractLossClaimRepository {
@@ -15,6 +16,9 @@ class SubcontractLossClaimRepository {
     String? keyword,
     int page = 1,
     int size = 30,
+    String? sort,
+    String? order,
+    String? wasteBillNo,
   }) async {
     final json = await api.get(
       _base,
@@ -24,9 +28,31 @@ class SubcontractLossClaimRepository {
         if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
         'page': page,
         'size': size,
+        // 2026-09-25 单号列统一：表头排序 + 损耗单号表头值筛选。
+        if (sort != null && sort.isNotEmpty) 'sort': sort,
+        if (order != null && order.isNotEmpty) 'order': order,
+        if (wasteBillNo != null && wasteBillNo.trim().isNotEmpty)
+          'wasteBillNo': wasteBillNo.trim(),
       },
     );
     return SubcontractLossClaimPageResult.fromJson(json);
+  }
+
+  /// 损耗单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径。
+  Future<List<MasterFacetBucket>> wasteBillNoFacets({
+    String? supplierId,
+    String? status,
+    String? keyword,
+  }) async {
+    final json = await api.get(
+      '$_base/facets',
+      query: {
+        if (supplierId?.isNotEmpty == true) 'supplierId': supplierId,
+        if (status?.isNotEmpty == true) 'status': status,
+        if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
+      },
+    );
+    return parseFacetBuckets(json, 'wasteBillNo');
   }
 
   Future<SubcontractLossClaimDetail> detail(String id) async {

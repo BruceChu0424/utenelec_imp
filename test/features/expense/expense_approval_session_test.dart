@@ -19,6 +19,9 @@ class _Repo extends Fake implements ExpenseRepository {
     int? month,
     String? departmentId,
     String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
   }) {
     final request = Completer<PagedResult<ExpenseClaim>>();
     requests.add(request);

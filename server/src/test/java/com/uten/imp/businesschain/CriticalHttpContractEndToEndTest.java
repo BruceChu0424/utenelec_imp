@@ -58,6 +58,13 @@ class CriticalHttpContractEndToEndTest {
 
     private static final Set<String> HTTP_METHODS = Set.of(
             "get", "post", "put", "patch", "delete", "head", "options");
+    // These read-only queries need to return usable data, not merely avoid 500.
+    // Empty tables still exercise every generated SQL branch and column alias.
+    private static final Map<String, List<String>> READ_QUERY_RESPONSE_FIELDS = Map.of(
+            "/api/sales/orders/finance-confirmation/pending", List.of("items", "total"),
+            "/api/production/quality-inspections/records/facets", List.of("sourceNo", "referenceNo", "sheetNo"),
+            "/api/production/overproduction-rate/requests/facets", List.of("plan", "segment"),
+            "/api/procurement/inspection/records/facets", List.of("sourceNo", "referenceNo", "sheetNo"));
     private static final String PROBE_UUID = "00000000-0000-0000-0000-000000000001";
 
     // 夹具身份固定与上面 bootstrap 属性一致；env 覆盖只服务于 CI 轮换测试机密。
@@ -302,6 +309,7 @@ class CriticalHttpContractEndToEndTest {
         int operations = 0;
         Map<Integer, Integer> statuses = new TreeMap<>();
         List<String> failures = new ArrayList<>();
+        Set<String> verifiedReadQueries = new java.util.HashSet<>();
         Iterator<Map.Entry<String, JsonNode>> pathIterator = paths.properties().iterator();
         while (pathIterator.hasNext()) {
             Map.Entry<String, JsonNode> pathEntry = pathIterator.next();
@@ -346,6 +354,22 @@ class CriticalHttpContractEndToEndTest {
                     HttpResponse<byte[]> response = http.send(
                             builder.build(), HttpResponse.BodyHandlers.ofByteArray());
                     statuses.merge(response.statusCode(), 1, Integer::sum);
+                    List<String> requiredFields = "get".equals(method)
+                            ? READ_QUERY_RESPONSE_FIELDS.get(resolvedPath) : null;
+                    if (requiredFields != null) {
+                        verifiedReadQueries.add(resolvedPath);
+                        JsonNode payload = response.statusCode() == 200
+                                ? json(response) : objectMapper.createObjectNode();
+                        boolean validPayload = response.statusCode() == 200 && requiredFields.stream()
+                                .allMatch(field -> "total".equals(field)
+                                        ? payload.path(field).isIntegralNumber()
+                                        : payload.path(field).isArray());
+                        if (!validPayload) {
+                            failures.add("GET " + requestPath + " must return 200 and query fields "
+                                    + requiredFields + "; received " + response.statusCode() + " "
+                                    + boundedBody(response.body()));
+                        }
+                    }
                     if (response.statusCode() >= 500) {
                         failures.add(method.toUpperCase(java.util.Locale.ROOT) + " " + requestPath
                                 + " -> " + response.statusCode() + " "
@@ -361,6 +385,8 @@ class CriticalHttpContractEndToEndTest {
 
         System.out.println("HTTP OpenAPI smoke operations=" + operations + ", statuses=" + statuses);
         assertTrue(operations >= 400, "Unexpectedly small OpenAPI surface: " + operations);
+        assertEquals(READ_QUERY_RESPONSE_FIELDS.keySet(), verifiedReadQueries,
+                "Every repaired read query must remain covered by the HTTP contract");
         assertTrue(failures.isEmpty(), () -> "HTTP operation smoke failures:\n" + String.join("\n", failures));
     }
 

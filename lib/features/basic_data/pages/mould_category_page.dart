@@ -10,6 +10,7 @@
 // compact：分类树作为 endDrawer；medium/expanded：左树 + 右详情。
 // 文档：见 docs/数据迁移/05-模具资料-新库与迁移.md。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_date_field.dart';
@@ -62,6 +63,10 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
 
   @override
   String get shellPersistenceKey => 'basicData.mould';
+
+  @override
+  FormDraftDescriptor get shellCategoryDraftDescriptor =>
+      FormDraftCatalog.mouldCategory;
 
   @override
   bool get shellCanCreate =>
@@ -253,7 +258,14 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FormDraftDialogResume(
+    descriptor: FormDraftCatalog.mould,
+    onResume: (parameters) =>
+        _showMouldCreate(null, draftCategoryId: parameters['categoryId']),
+    child: _buildDraftHost(context),
+  );
+
+  Widget _buildDraftHost(BuildContext context) {
     return buildShell(
       context,
       detailPaneBuilder: (selected) =>
@@ -491,17 +503,22 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   }
 
   Future<void> _showMouldCreate(
-    MasterEntityPaneController<MouldListItem, MouldDetail> pane,
-  ) async {
+    MasterEntityPaneController<MouldListItem, MouldDetail>? pane, {
+    String? draftCategoryId,
+  }) async {
     final workshop = await _loadWorkshopTree();
     if (!mounted) return;
-    final iv = {'status': '使用', 'categoryName': pane.category?.name ?? ''};
-    showMasterEditDialog(
+    final iv = {'status': '使用', 'categoryName': pane?.category?.name ?? ''};
+    await showMasterEditDialog(
       context: context,
+      draftSpec: FormDraftCatalog.mould.spec(
+        title: '新增模具',
+        categoryId: draftCategoryId ?? pane?.categoryId,
+      ),
       title: '新增模具', // TODO(l10n): 补 arb
       fields: _buildMouldFields(iv, workshop),
       initialValues: iv,
-      fixedValues: {'categoryId': pane.categoryId},
+      fixedValues: {'categoryId': (draftCategoryId ?? pane?.categoryId)},
       readOnlyKeys: _canStatusMaster ? null : const {'status'},
       onSubmit: (body) => _saveMould(pane, null, body),
     );
@@ -541,19 +558,25 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
 
   /// 新建([id] 为空)或编辑保存；成功后重拉明细区当前页。
   Future<bool> _saveMould(
-    MasterEntityPaneController<MouldListItem, MouldDetail> pane,
+    MasterEntityPaneController<MouldListItem, MouldDetail>? pane,
     String? id,
     Map<String, dynamic> body,
   ) async {
     final repository = ref.read(mouldRepositoryProvider);
+    if (id == null) {
+      await repository.create(body);
+      if (mounted) {
+        context.appSuccess('模具已创建');
+        await pane?.reload();
+      }
+      return true;
+    }
     final ok = await context.guardRun(
-      () => id == null ? repository.create(body) : repository.update(id, body),
-      success: id == null ? '模具已创建' : '模具已更新', // TODO(l10n): 补 arb
-      errorFallback: id == null
-          ? '创建失败，请稍后重试'
-          : '更新失败，请稍后重试', // TODO(l10n): 补 arb
+      () => repository.update(id, body),
+      success: '模具已更新', // TODO(l10n): 补 arb
+      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
     );
-    if (ok) await pane.reload();
+    if (ok) await pane?.reload();
     return ok;
   }
 

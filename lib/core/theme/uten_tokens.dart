@@ -121,6 +121,18 @@ abstract final class UtenTableToolbar {
   static const double controlHeight = 44;
 }
 
+/// 自研表格共用的表头文字样式，渲染与列宽测量使用同一入口。
+/// 可筛选、可排序和普通列保持相同字号/字重；仅生效状态使用主色。
+abstract final class UtenTableHeader {
+  static TextStyle textStyle(ThemeData theme, {bool highlighted = false}) =>
+      (theme.textTheme.labelLarge ?? const TextStyle()).copyWith(
+        fontWeight: FontWeight.w600,
+        color: highlighted
+            ? theme.colorScheme.primary
+            : theme.colorScheme.onSurfaceVariant,
+      );
+}
+
 /// Uten 阴影 token（双层柔和阴影）
 ///
 /// 每层阴影 = 近景接触影（小 blur、贴边）+ 远景弥散影（大 blur、扩散），

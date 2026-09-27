@@ -187,6 +187,60 @@ public class ExpenseApplicantQuery {
                 .toList();
     }
 
+    /**
+     * 某状态集合下报销单按单号聚合（表头「报销单号」筛选桶，2026-09-25 单号列统一）。
+     * 返回 [claim_no, claim_no, count]，按单号升序（下拉可搜索）；单号恒非空，上限 500。
+     */
+    public List<FacetRow> claimNoFacets(Collection<String> statuses, UUID actor, boolean payment) {
+        if (statuses == null || statuses.isEmpty()) {
+            return List.of();
+        }
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = entityManager.createNativeQuery("""
+                        SELECT c.claim_no, COUNT(*)
+                        FROM expense_claims c
+                        WHERE c.status IN (:statuses)
+                          AND c.applicant_id<>:actor
+                          AND (:payment=false OR c.approved_by IS NULL OR c.approved_by<>:actor)
+                        GROUP BY c.claim_no
+                        ORDER BY c.claim_no
+                        """)
+                .setParameter("statuses", statuses)
+                .setParameter("actor", actor).setParameter("payment", payment)
+                .setMaxResults(500)
+                .getResultList();
+        return rows.stream()
+                .map(row -> new FacetRow(
+                        (String) row[0],
+                        (String) row[0],
+                        ((Number) row[1]).longValue()))
+                .toList();
+    }
+
+    /**
+     * 本人报销单按单号聚合（我的报销列表「报销单号」筛选桶，2026-09-25 单号列统一）。
+     * 返回 [claim_no, claim_no, count]，按单号升序；单号恒非空，上限 500。
+     */
+    public List<FacetRow> mineClaimNoFacets(UUID actor) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = entityManager.createNativeQuery("""
+                        SELECT c.claim_no, COUNT(*)
+                        FROM expense_claims c
+                        WHERE c.applicant_id = :actor
+                        GROUP BY c.claim_no
+                        ORDER BY c.claim_no
+                        """)
+                .setParameter("actor", actor)
+                .setMaxResults(500)
+                .getResultList();
+        return rows.stream()
+                .map(row -> new FacetRow(
+                        (String) row[0],
+                        (String) row[0],
+                        ((Number) row[1]).longValue()))
+                .toList();
+    }
+
     public com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto historyFacets(UUID actor,boolean approve,boolean pay) {
         String scope="""
                 WHERE c.status IN ('APPROVED','REJECTED','PAID')
@@ -195,7 +249,9 @@ public class ExpenseApplicantQuery {
         return new com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto(
             historyBuckets("SELECT d.id::text,d.name,count(*) FROM expense_claims c JOIN departments d ON d.id=c.applicant_department_id "+scope+" GROUP BY d.id,d.name ORDER BY d.name",actor,approve,pay),
             historyBuckets("SELECT to_char(c.created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM') ym,to_char(c.created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM'),count(*) FROM expense_claims c "+scope+" GROUP BY ym ORDER BY ym DESC",actor,approve,pay),
-            historyBuckets("SELECT i.category,i.category,count(DISTINCT c.id) FROM expense_claims c JOIN expense_claim_items i ON i.claim_id=c.id "+scope+" GROUP BY i.category ORDER BY i.category",actor,approve,pay));
+            historyBuckets("SELECT i.category,i.category,count(DISTINCT c.id) FROM expense_claims c JOIN expense_claim_items i ON i.claim_id=c.id "+scope+" GROUP BY i.category ORDER BY i.category",actor,approve,pay),
+            // 2026-09-25 单号列统一：报销单号桶（同一历史可见范围）。
+            historyBuckets("SELECT c.claim_no,c.claim_no,count(*) FROM expense_claims c "+scope+" GROUP BY c.claim_no ORDER BY c.claim_no",actor,approve,pay));
     }
     @SuppressWarnings("unchecked")
     private List<com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto.Bucket> historyBuckets(String sql,UUID actor,boolean approve,boolean pay) {

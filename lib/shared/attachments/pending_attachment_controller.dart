@@ -3,6 +3,8 @@
 // presign → 直传字节 → confirm，契约与已保存单据的即时上传完全相同。
 // 失败项保留在 items 里（带 lastError）供重试，成功项移除。
 
+import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 
@@ -30,6 +32,8 @@ class PendingAttachment {
 
   /// 批量拆单时已成功挂上的单据（重试只补漏，不重复上传）。
   final Set<String> uploadedTo = {};
+  String? _draftBytes;
+  String get draftBytes => _draftBytes ??= base64Encode(bytes);
 
   int get sizeBytes => bytes.length;
 }
@@ -65,6 +69,48 @@ class PendingAttachmentController extends ChangeNotifier {
   bool get isFlushing => _flushing;
   int get totalBytes => _items.fold(0, (sum, item) => sum + item.sizeBytes);
   int get failedCount => _items.where((i) => i.lastError != null).length;
+
+  /// Keep original bytes and confirmed upload targets across interrupted editing.
+  /// This is local recovery only; uploads still use the server's permission checks.
+  Map<String, dynamic> exportDraft() => {
+    'items': [
+      for (final item in _items)
+        {
+          'name': item.name,
+          'contentType': item.contentType,
+          'bytes': item.draftBytes,
+          'category': item.category,
+          'lastError': item.lastError,
+          'uploadedTo': item.uploadedTo.toList(),
+        },
+    ],
+  };
+
+  void restoreDraft(Map<String, dynamic> draft) {
+    if (_flushing) throw StateError('附件上传过程中不能恢复草稿');
+    final restored = <PendingAttachment>[];
+    var bytes = 0;
+    for (final raw in draft['items'] as List? ?? const []) {
+      final data = Map<String, dynamic>.from(raw as Map);
+      final file = base64Decode(data['bytes'] as String);
+      bytes += file.length;
+      if (bytes > maxTotalBytes) throw const FormatException('草稿附件超出总大小限制');
+      final item = PendingAttachment(
+        name: data['name'] as String,
+        contentType: data['contentType'] as String,
+        bytes: file,
+        category: data['category'] as String?,
+      )..lastError = data['lastError'] as String?;
+      item.uploadedTo.addAll(
+        (data['uploadedTo'] as List? ?? const []).cast<String>(),
+      );
+      restored.add(item);
+    }
+    _items
+      ..clear()
+      ..addAll(restored);
+    notifyListeners();
+  }
 
   /// 接纳一个选中的文件；返回 null 表示已加入，否则返回拒绝原因（直接可展示）。
   String? add(PlatformFile file, {String? category}) {

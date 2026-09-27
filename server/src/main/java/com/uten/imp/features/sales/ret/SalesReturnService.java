@@ -84,8 +84,10 @@ public class SalesReturnService {
     /** 老库 BStyle=18 销售退货红字应收。 */
     private static final short BSTYLE_SALES_RETURN = 18;
 
-    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
-    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal");
+    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额/单据号可排序；命中才排序，否则默认 billDate DESC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of(
+            "billDate", "billDate", "total", "totalLocal",
+            "billNo", "billNo"); // 2026-09-25 单号列统一
 
     private final SalesReturnRepository returnRepo;
     private final SalesReturnItemRepository itemRepo;
@@ -110,8 +112,29 @@ public class SalesReturnService {
     @PreAuthorize("hasAuthority('sales_return:view')")
     public PageResponse<ReturnListItem> list(ReturnQueryFilter f, int page, int size, String sort, String order) {
         var readScope = accessPolicy.scope();
-        Specification<SalesReturn> spec = (Root<SalesReturn> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
-                                           CriteriaBuilder cb) -> {
+        Specification<SalesReturn> spec = returnSpec(f);
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
+        Page<SalesReturn> p = returnRepo.findAll(spec, pageable);
+        boolean canEdit = hasObjectActionAuthority();
+        return new PageResponse<>(p.map(r -> toList(r,
+                        canEdit && accessPolicy.canWrite(r.getOwnerEmployeeId(), readScope))).getContent(),
+                p);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_return:view')")
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(ReturnQueryFilter f) {
+        return java.util.Map.of("billNo",
+                com.uten.imp.common.web.TableFacets.groupCount(em, SalesReturn.class, returnSpec(f), "billNo"));
+    }
+
+    /** 列表谓词（list 与 facets 共用，2026-09-25 单号列统一抽出；billNo=表头单据号精确匹配）。 */
+    private Specification<SalesReturn> returnSpec(ReturnQueryFilter f) {
+        var readScope = accessPolicy.scope();
+        return (Root<SalesReturn> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
+                CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
             ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
@@ -132,15 +155,12 @@ public class SalesReturnService {
             if (f.arPosted() != null) ps.add(cb.equal(root.get("arPosted"), f.arPosted()));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
+            // 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配。
+            if (f.billNo() != null && !f.billNo().isBlank()) {
+                ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
+            }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<SalesReturn> p = returnRepo.findAll(spec, pageable);
-        boolean canEdit = hasObjectActionAuthority();
-        return new PageResponse<>(p.map(r -> toList(r,
-                        canEdit && accessPolicy.canWrite(r.getOwnerEmployeeId(), readScope))).getContent(),
-                p);
     }
 
     @Transactional(readOnly = true)

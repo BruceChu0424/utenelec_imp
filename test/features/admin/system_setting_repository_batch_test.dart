@@ -38,6 +38,62 @@ void main() {
       }
     },
   );
+  for (final (input, canonical) in [('007', '7'), ('+7', '7'), ('-0', '0')]) {
+    test(
+      'updater interval $input is sent and verified as $canonical',
+      () async {
+        final api = _Api([
+          {'key': 'updater_check_interval_days', 'value': canonical},
+        ]);
+        final result = await DioSystemSettingRepository(api).updateBatch([
+          (
+            key: 'updater_check_interval_days',
+            value: input,
+            expectedValue: '14',
+          ),
+        ]);
+        expect(result.single.value, canonical);
+        expect(api.body, {
+          'changes': [
+            {
+              'key': 'updater_check_interval_days',
+              'value': canonical,
+              'expectedValue': '14',
+            },
+          ],
+        });
+      },
+    );
+  }
+  test(
+    'normalizing updater input never accepts an incorrect saved value',
+    () async {
+      await expectLater(
+        DioSystemSettingRepository(
+          _Api([
+            {'key': 'updater_check_interval_days', 'value': '8'},
+          ]),
+        ).updateBatch([
+          (
+            key: 'updater_check_interval_days',
+            value: '+7',
+            expectedValue: '14',
+          ),
+        ]),
+        throwsFormatException,
+      );
+      await expectLater(
+        DioSystemSettingRepository(
+          _Api([
+            {'key': 'lockout_minutes', 'value': '7'},
+          ]),
+        ).updateBatch([
+          (key: 'lockout_minutes', value: '007', expectedValue: '15'),
+        ]),
+        throwsFormatException,
+      );
+    },
+  );
 }
 
 class _Api extends ApiClient {

@@ -350,10 +350,31 @@ abstract class _MaterialAnalysisCandidatesState
               showSelectionSummary: false,
               bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
               onSelectedIdsChanged: (ids) => _replaceCandidateIds(ids, lines),
-              facets: const {},
+              // 2026-09-25 单号列统一：销售单号值来自服务端 facets
+              //（与列表同一过滤上下文），值筛选走服务端精确匹配。
+              facets: {'orderNo': _candidateDocNoFacets['orderNo'] ?? const []},
               nullCounts: const {},
-              filters: const {},
-              onFilterChanged: (_, _) {},
+              filters: {'orderNo': _candidateOrderNoFilter},
+              onFilterChanged: (key, value) {
+                if (key != 'orderNo') return;
+                setState(() {
+                  final next = value?.trim();
+                  _candidateOrderNoFilter = next == null || next.isEmpty
+                      ? null
+                      : next;
+                });
+                _loadCandidates(page: 1);
+              },
+              // 2026-09-25 单号列统一：表头排序走服务端白名单（orderNo）。
+              sortColumn: _candidateSortColumn,
+              sortAscending: _candidateSortAscending,
+              onSortChange: (column, ascending) {
+                setState(() {
+                  _candidateSortColumn = column;
+                  _candidateSortAscending = ascending;
+                });
+                _loadCandidates(page: 1);
+              },
               isLoading: _loadingCandidates,
               emptyMessage: '暂无可分析的已审销售订单产品',
               currentPage: page?.page ?? _candidatePageNo,
@@ -673,7 +694,7 @@ abstract class _MaterialAnalysisCandidatesState
         const Expanded(
           child: Text(
             '先选择销售订单产品和分析仓库。系统会一次加载完整组装树；'
-            '结果默认显示完整 BOM，可搜索或切换“只看缺料”“待确认路线”。'
+            '结果默认显示完整 BOM，可搜索或切换“只看缺料”“缺少供应方式”。'
             '生产计划只从服务端确认可生产的批次数量生成。',
           ),
         ),
@@ -949,6 +970,8 @@ abstract class _MaterialAnalysisCandidatesState
       key: 'orderNo',
       label: '销售单号',
       width: 150,
+      // 2026-09-25 单号列统一：可排序（服务端白名单 orderNo）+ 值筛选（facets）。
+      sortable: true,
       value: (line) => line.orderNo,
     ),
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。

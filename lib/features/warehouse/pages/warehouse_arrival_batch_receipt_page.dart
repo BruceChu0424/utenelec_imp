@@ -16,6 +16,10 @@ import '../../../shared/presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_values.dart';
+import '../models/arrival_form_draft_codec.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -104,7 +108,113 @@ class WarehouseArrivalBatchReceiptPage extends ConsumerStatefulWidget {
 }
 
 class _WarehouseArrivalBatchReceiptPageState
-    extends ConsumerState<WarehouseArrivalBatchReceiptPage> {
+    extends ConsumerState<WarehouseArrivalBatchReceiptPage>
+    with FormDraftMixin<WarehouseArrivalBatchReceiptPage> {
+  @override
+  bool get formDraftBusy => _saving;
+  @override
+  bool get formDraftCanReplaySubmission => true;
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftCatalog.arrivalBatch.spec(
+    title: '批量登记实际到货',
+    route: RouteName.warehouseArrivalReceiptBatch,
+  );
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _remark,
+    _lineGrid,
+    for (final line in _lines) ...[
+      line.qty,
+      line.stockPlace,
+      line.series,
+      line.goodsCode,
+    ],
+  ];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'remark': _remark.text,
+    'billDate': _billDate.toIso8601String(),
+    'receiverId': _receiverId,
+    'registrationId': _registrationId,
+    'removedLineCount': _removedLineCount,
+    'stockInBeforeInspection': _stockInBeforeInspection,
+    'employees': draftEmployees(_empCache),
+    'prefills': {
+      for (final line in _lines)
+        line.prefill.expectationId: arrivalPrefillDraft(line.prefill),
+    },
+    'rows': draftGridRows(
+      _lineGrid,
+      (line) => {
+        'expectationId': line.prefill.expectationId,
+        'item': arrivalItemDraft(line.item),
+        'qty': line.qty.text,
+        'warehouseId': line.warehouseId,
+        'warehouseAutofilled': line.warehouseAutofilled,
+        'stockPlace': line.stockPlace.text,
+        'stockPlaceAutofilled': line.stockPlace.autofilled,
+        'series': line.series.text,
+        'seriesAutofilled': line.series.autofilled,
+        'goodsCode': line.goodsCode.text,
+        'goodsCodeAutofilled': line.goodsCode.autofilled,
+        'source': line.source.name,
+      },
+    ),
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _remark.text = draftText(data, 'remark');
+    _billDate = DateTime.parse(draftText(data, 'billDate'));
+    _receiverId = data['receiverId'] as String?;
+    _registrationId = draftText(data, 'registrationId');
+    _removedLineCount = data['removedLineCount'] as int? ?? 0;
+    _stockInBeforeInspection = data['stockInBeforeInspection'] == true;
+    restoreDraftEmployees(_empCache, data['employees']);
+    final prefills = draftMap(data['prefills']).map(
+      (key, value) =>
+          MapEntry(key, restoreArrivalPrefillDraft(draftMap(value))),
+    );
+    restoreDraftGrid(
+      _lineGrid,
+      data['rows'],
+      (row) =>
+          _BatchArrivalLine(
+              prefills[draftText(row, 'expectationId')]!,
+              restoreArrivalItemDraft(draftMap(row['item'])),
+              onChanged: _onLineChanged,
+            )
+            ..qty.text = draftText(row, 'qty')
+            ..warehouseId = row['warehouseId'] as String?
+            ..stockPlace.text = draftText(row, 'stockPlace')
+            ..series.text = draftText(row, 'series')
+            ..goodsCode.text = draftText(row, 'goodsCode')
+            ..warehouseAutofilled = row['warehouseAutofilled'] == true
+            ..source = WarehouseArrivalSource.values.byName(
+              draftText(row, 'source'),
+            ),
+    );
+    final rows = draftMaps(data['rows']);
+    for (var index = 0; index < _lines.length; index++) {
+      final row = rows[index];
+      final line = _lines[index];
+      restoreArrivalDraftText(
+        line.stockPlace,
+        draftText(row, 'stockPlace'),
+        row['stockPlaceAutofilled'] == true,
+      );
+      restoreArrivalDraftText(
+        line.series,
+        draftText(row, 'series'),
+        row['seriesAutofilled'] == true,
+      );
+      restoreArrivalDraftText(
+        line.goodsCode,
+        draftText(row, 'goodsCode'),
+        row['goodsCodeAutofilled'] == true,
+      );
+    }
+  }
+
   final _remark = TextEditingController();
   final _scrollCtl = ScrollController();
 
@@ -124,7 +234,7 @@ class _WarehouseArrivalBatchReceiptPageState
     if (mounted) setState(() => _saving = saving);
   }
 
-  final String _registrationId = const Uuid().v4();
+  String _registrationId = const Uuid().v4();
   int _removedLineCount = 0;
 
   /// 先入库后质检(V596)：本页路线由任务中心进页时定死(2026-09-20 起底部只有一个
@@ -182,7 +292,15 @@ class _WarehouseArrivalBatchReceiptPageState
 
   Future<void> _init() async {
     final prefills = widget.prefills;
-    if (prefills == null || prefills.isEmpty) return;
+    if (prefills == null || prefills.isEmpty) {
+      try {
+        await ref.read(masterNameServiceProvider).ensureLoaded();
+      } catch (_) {
+        // A local recovery snapshot must remain available while offline.
+      }
+      await initializeFormDraft();
+      return;
+    }
     setState(() => _loading = true);
     await ref.read(masterNameServiceProvider).ensureLoaded();
     final meId = ref.read(sessionProvider).user?.employeeId;
@@ -215,6 +333,7 @@ class _WarehouseArrivalBatchReceiptPageState
     }
     _removedLineCount = 0;
     if (mounted) setState(() => _loading = false);
+    if (mounted) await initializeFormDraft();
   }
 
   Future<void> _preloadEmployees(Iterable<String?> ids) async {
@@ -512,6 +631,7 @@ class _WarehouseArrivalBatchReceiptPageState
     setState(() => _saving = true);
     final registrations = <WarehouseArrivalRegistration>[];
     try {
+      await saveFormDraftNow();
       final repo = ref.read(procurementInboundRepositoryProvider);
       for (final entry in groups.entries) {
         final lines = entry.value;
@@ -568,9 +688,11 @@ class _WarehouseArrivalBatchReceiptPageState
           final registration = await registerArrivalConfirmingShortDelivery(
             context: context,
             body: body,
-            register: (payload) => repo.registerArrival(
-              orderType: prefill.orderType,
-              body: payload,
+            register: (payload) => runFormDraftSubmission(
+              () => repo.registerArrival(
+                orderType: prefill.orderType,
+                body: payload,
+              ),
             ),
             setBusy: _setSaving,
           );
@@ -601,6 +723,8 @@ class _WarehouseArrivalBatchReceiptPageState
       }
       // 学习回写只针对实际登记了的行（未勾选行不产生本次事实）。
       unawaited(_learnGoodsProfiles(submitLines));
+      if (!mounted) return;
+      await completeFormDraft();
       if (!mounted) return;
       bumpListRefresh(
         ref,
@@ -655,48 +779,50 @@ class _WarehouseArrivalBatchReceiptPageState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final canRegister = widget.canRegister ?? _canRegisterNow;
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '批量登记实际到货',
-        // 2026-09-20：路线在任务中心已选定，标题下标明本页走哪条，底部只此一个提交按钮。
-        subtitle: '路线：$_routeLabel',
-        leading: UtenBackButton(
-          onPressed: () => popOrBackTo(
-            context,
-            defaultPath: RouteName.warehouseInboundExpectations,
+    return withFormDraft(
+      Scaffold(
+        appBar: UtenAppBar(
+          title: '批量登记实际到货',
+          // 2026-09-20：路线在任务中心已选定，标题下标明本页走哪条，底部只此一个提交按钮。
+          subtitle: '路线：$_routeLabel',
+          leading: UtenBackButton(
+            onPressed: () => popOrBackTo(
+              context,
+              defaultPath: RouteName.warehouseInboundExpectations,
+            ),
           ),
         ),
-      ),
-      body: SafeArea(
-        child: _lines.isEmpty && !_loading
-            ? _missingPrefill(context)
-            : _loading
-            ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-            : Stack(
-                children: [
-                  AbsorbPointer(
-                    absorbing: _saving || !canRegister,
-                    child: _buildForm(context, theme, canRegister),
-                  ),
-                  // 提交期间全屏加载遮罩（整批到货登记事务）。
-                  if (_saving)
-                    const UtenBusyOverlay(
-                      title: '正在批量登记到货',
-                      description: '正在按实收数量整批登记送检，请勿重复提交或离开本页。',
+        body: SafeArea(
+          child: _lines.isEmpty && !_loading
+              ? _missingPrefill(context)
+              : _loading
+              ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
+              : Stack(
+                  children: [
+                    AbsorbPointer(
+                      absorbing: _saving || !canRegister,
+                      child: _buildForm(context, theme, canRegister),
                     ),
-                ],
+                    // 提交期间全屏加载遮罩（整批到货登记事务）。
+                    if (_saving)
+                      const UtenBusyOverlay(
+                        title: '正在批量登记到货',
+                        description: '正在按实收数量整批登记送检，请勿重复提交或离开本页。',
+                      ),
+                  ],
+                ),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        // 提交集=勾选集（2026-09-17）：监听表格选择集，一行都没勾时右下两个
+        // 提交按钮置灰（灰态点击说明原因），勾回任意行立即恢复。
+        floatingActionButton: _lines.isEmpty
+            ? null
+            : ListenableBuilder(
+                listenable: _lineGrid,
+                builder: (context, _) => _buildBottomBar(theme, canRegister),
               ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      // 提交集=勾选集（2026-09-17）：监听表格选择集，一行都没勾时右下两个
-      // 提交按钮置灰（灰态点击说明原因），勾回任意行立即恢复。
-      floatingActionButton: _lines.isEmpty
-          ? null
-          : ListenableBuilder(
-              listenable: _lineGrid,
-              builder: (context, _) => _buildBottomBar(theme, canRegister),
-            ),
     );
   }
 

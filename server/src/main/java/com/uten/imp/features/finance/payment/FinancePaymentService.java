@@ -74,8 +74,10 @@ public class FinancePaymentService {
     private static final short AMOUNT_AUTHORITY_VERSION = 1;
     private static final short BANK_AUTHORITY_VERSION = 2;
 
-    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
-    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "amountLocal", "amountLocal");
+    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额/单据号可排序；命中才排序，否则默认 billDate DESC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of(
+            "billDate", "billDate", "amountLocal", "amountLocal",
+            "billNo", "billNo"); // 2026-09-25 单号列统一
 
     private final SupplierClosedPeriodGuard closedPeriodGuard;
     public static final String SRC_DIRECT_PAYMENT = "DIRECT_PAYMENT";
@@ -96,9 +98,25 @@ public class FinancePaymentService {
 
     @Transactional(readOnly = true)
     public PageResponse<FinancePaymentListItem> list(FinancePaymentQueryFilter f, int page, int size, String sort, String order) {
+        Specification<FinancePayment> spec = paymentSpec(f);
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
+        Page<FinancePayment> p = paymentRepo.findAll(spec, pageable);
+        return new PageResponse<>(p.map(this::toList).getContent(), p);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(FinancePaymentQueryFilter f) {
+        return java.util.Map.of("billNo",
+                com.uten.imp.common.web.TableFacets.groupCount(em, FinancePayment.class, paymentSpec(f), "billNo"));
+    }
+
+    /** 列表谓词（list 与 facets 共用，2026-09-25 单号列统一抽出；billNo=表头单据号精确匹配）。 */
+    private Specification<FinancePayment> paymentSpec(FinancePaymentQueryFilter f) {
         var readScope = access.scope();
-        Specification<FinancePayment> spec = (Root<FinancePayment> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
-                                              CriteriaBuilder cb) -> {
+        return (Root<FinancePayment> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
+                CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
@@ -110,12 +128,12 @@ public class FinancePaymentService {
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
+            // 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配。
+            if (f.billNo() != null && !f.billNo().isBlank()) {
+                ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
+            }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<FinancePayment> p = paymentRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), p);
     }
 
     @Transactional(readOnly = true)

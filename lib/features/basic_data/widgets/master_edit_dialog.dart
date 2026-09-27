@@ -11,6 +11,11 @@
 // 容器自适应（参照 showMasterEditDialog）：compact 底部抽屉 / medium+ 居中面板。
 // 字段双列分组（compact 退单列），底部按钮居中。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
+import '../../../shared/drafts/form_draft_values.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -195,6 +200,42 @@ class MasterEditFormController extends ChangeNotifier {
   /// 最近一次 [buildBody] 的整表错误文案与出错字段；成功后清空。
   String? error;
   String? errorFieldKey;
+
+  int recoveryRevision = 0;
+
+  Map<String, dynamic> exportDraft() => {
+    'text': draftTextValues(controllers),
+    'select': {...selectValues},
+    'custom': {...customValues},
+  };
+
+  void restoreDraft(Map<String, dynamic> data) {
+    restoreDraftTextValues(controllers, draftMap(data['text']));
+    final selects = draftMap(data['select']);
+    final customs = draftMap(data['custom']);
+    for (final field in fields) {
+      if (field.type == MasterFieldType.select &&
+          selects.containsKey(field.key)) {
+        selectValues[field.key] = selects[field.key] as String?;
+      }
+      if (field.type == MasterFieldType.custom &&
+          customs.containsKey(field.key)) {
+        customValues[field.key] = customs[field.key];
+      }
+    }
+    recoveryRevision++;
+    notifyListeners();
+  }
+
+  String? recoveredCustomInitialValue(String key) {
+    if (recoveryRevision == 0) return initialValues[key];
+    final value = customValues[key];
+    if (value == null) return null;
+    if (value is String || value is num || value is bool) {
+      return value.toString();
+    }
+    return initialValues[key];
+  }
 
   MasterFieldDef? fieldOf(String key) {
     for (final f in fields) {
@@ -397,6 +438,7 @@ class MasterEditFormState extends State<MasterEditForm> {
   }
 
   /// 校验并构造提交 body（含 fixedValues）；校验失败返 null 并在表单内显错文案。
+
   Map<String, dynamic>? buildBody() => _controller.buildBody();
 
   @override
@@ -497,11 +539,14 @@ class MasterEditFormState extends State<MasterEditForm> {
     if (f.readOnly || locked) return _readOnlyField(f);
     if (f.type == MasterFieldType.select) return _selectField(f);
     if (f.type == MasterFieldType.custom) {
-      return f.customBuilder!(
-        MasterFieldContext(
-          initialValue: _controller.initialValues[f.key],
-          onChanged: (v) => _controller.setCustom(f.key, v),
-          required: f.required,
+      return KeyedSubtree(
+        key: ValueKey('master-custom-${_controller.recoveryRevision}-${f.key}'),
+        child: f.customBuilder!(
+          MasterFieldContext(
+            initialValue: _controller.recoveredCustomInitialValue(f.key),
+            onChanged: (v) => _controller.setCustom(f.key, v),
+            required: f.required,
+          ),
         ),
       );
     }
@@ -619,10 +664,19 @@ Future<void> showMasterEditDialog({
   Map<String, String> initialValues = const <String, String>{},
   Map<String, dynamic> fixedValues = const <String, dynamic>{},
   Set<String>? readOnlyKeys,
+  FormDraftSpec? draftSpec,
 }) {
   final formKey = GlobalKey<MasterEditFormState>();
   final body = _MasterEditDialog(
     title: title,
+    draftSpec: draftSpec,
+    resumeDraftId: draftSpec == null
+        ? null
+        : dialogDraftId(
+            context,
+            kind: Uri.parse(draftSpec.route).queryParameters['draftForm'],
+          ),
+    routerPageKey: dialogDraftPageKey(context),
     formKey: formKey,
     fields: fields,
     initialValues: initialValues,
@@ -634,6 +688,8 @@ Future<void> showMasterEditDialog({
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      isDismissible: draftSpec == null,
+      enableDrag: draftSpec == null,
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
@@ -648,6 +704,7 @@ Future<void> showMasterEditDialog({
   }
   return showDialog<void>(
     context: context,
+    barrierDismissible: draftSpec == null,
     builder: (ctx) => Dialog(
       shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
       child: ConstrainedBox(
@@ -664,9 +721,12 @@ Future<void> showMasterEditDialog({
 }
 
 /// showMasterEditDialog 的壳：header + MasterEditForm + actions（保存触发 buildBody→onSubmit→pop）。
-class _MasterEditDialog extends StatefulWidget {
+class _MasterEditDialog extends ConsumerStatefulWidget {
   const _MasterEditDialog({
     required this.title,
+    this.draftSpec,
+    this.resumeDraftId,
+    this.routerPageKey,
     required this.formKey,
     required this.fields,
     required this.initialValues,
@@ -676,6 +736,9 @@ class _MasterEditDialog extends StatefulWidget {
   });
 
   final String title;
+  final FormDraftSpec? draftSpec;
+  final String? resumeDraftId;
+  final ValueKey<String>? routerPageKey;
   final GlobalKey<MasterEditFormState> formKey;
   final List<MasterFieldDef> fields;
   final Map<String, String> initialValues;
@@ -684,16 +747,90 @@ class _MasterEditDialog extends StatefulWidget {
   final MasterSubmit onSubmit;
 
   @override
-  State<_MasterEditDialog> createState() => _MasterEditDialogState();
+  ConsumerState<_MasterEditDialog> createState() => _MasterEditDialogState();
 }
 
-class _MasterEditDialogState extends State<_MasterEditDialog> {
+class _MasterEditDialogState extends ConsumerState<_MasterEditDialog>
+    with FormDraftMixin<_MasterEditDialog> {
+  late MasterEditFormController _controller;
+  bool _saving = false;
+  bool _serverCreated = false;
+
+  @override
+  bool get formDraftEnabled => widget.draftSpec != null;
+  @override
+  bool get formDraftBusy => _saving;
+  @override
+  bool get formDraftCanReplaySubmission => _serverCreated;
+  @override
+  bool get formDraftUsesRouterGuard => false;
+  @override
+  bool get formDraftUseCurrentRoute => false;
+  @override
+  String? get formDraftResumeId => widget.resumeDraftId;
+  @override
+  ValueKey<String>? get formDraftRouterPageKey => widget.routerPageKey;
+  @override
+  FormDraftSpec get formDraftSpec => widget.draftSpec!;
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _controller,
+    ..._controller.controllers.values,
+  ];
+
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    ..._controller.exportDraft(),
+    'serverCreated': _serverCreated,
+  };
+
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _controller.restoreDraft(data);
+    _serverCreated = data['serverCreated'] == true;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = MasterEditFormController(
+      fields: widget.fields,
+      initialValues: widget.initialValues,
+      fixedValues: widget.fixedValues,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => initializeFormDraft());
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _close() async {
+    if (_saving || !await confirmFormDraftExit() || !mounted) return;
+    Navigator.of(context).pop();
+  }
+
   Future<void> _save() async {
+    if (_saving) return;
+    if (_serverCreated) {
+      await completeFormDraft();
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
     final body = widget.formKey.currentState?.buildBody();
     if (body == null) return; // 校验失败，错文案已在表单内
     late final bool ok;
+    setState(() => _saving = true);
     try {
-      ok = await widget.onSubmit(body);
+      await saveFormDraftNow();
+      ok = await runFormDraftSubmission(() => widget.onSubmit(body));
+      if (ok && mounted) {
+        setState(() => _serverCreated = true);
+        await saveFormDraftNow();
+        await completeFormDraft();
+      }
     } catch (e) {
       if (!mounted) return;
       // 编号查重 409：编号字段描红 + 显文案，保持弹窗不关让用户改。
@@ -703,13 +840,17 @@ class _MasterEditDialogState extends State<_MasterEditDialog> {
       }
       context.appApiError(e);
       return;
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
     if (!mounted) return;
     if (ok) Navigator.of(context).pop();
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => withFormDraft(_buildDialog(context));
+
+  Widget _buildDialog(BuildContext context) {
     final theme = Theme.of(context);
     return SafeArea(
       child: Column(
@@ -734,7 +875,7 @@ class _MasterEditDialogState extends State<_MasterEditDialog> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.close_rounded),
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: _saving ? null : _close,
                 ),
               ],
             ),
@@ -743,6 +884,7 @@ class _MasterEditDialogState extends State<_MasterEditDialog> {
           Flexible(
             child: MasterEditForm(
               key: widget.formKey,
+              controller: _controller,
               fields: widget.fields,
               initialValues: widget.initialValues,
               fixedValues: widget.fixedValues,
@@ -758,7 +900,7 @@ class _MasterEditDialogState extends State<_MasterEditDialog> {
               children: [
                 UtenButton(
                   type: UtenButtonType.secondary,
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: _saving ? null : _close,
                   child: const Text('取消'), // TODO(l10n): 补 arb
                 ),
                 const SizedBox(width: UtenSpacing.s12),

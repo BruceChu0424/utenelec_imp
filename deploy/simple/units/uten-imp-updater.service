@@ -1,12 +1,12 @@
-# 更新器 oneshot：下载/验签/暂存；纯代码版本自动激活
+# 每分钟只读本机数据库排程，仅到期时调用原更新器
 # 安装为 /etc/systemd/system/uten-imp-updater.service
 [Unit]
-Description=Uten IMP release updater (check/stage/auto-activate code-only)
+Description=Evaluate the local Uten IMP update schedule (OSS only when due)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/uten-imp-updater check
+ExecStart=/usr/bin/python3 -I /usr/local/lib/uten-imp/update_schedule.py
 # root 必需：systemctl 控制 + current symlink 切换 + pg_dump
 TimeoutStartSec=25min

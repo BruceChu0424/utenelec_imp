@@ -69,8 +69,9 @@ public class SubcontractMaterialIssueService {
     /** 仓库委外出仓池的读取门槛(系统池草稿按岗位放行，不按个人归属)。 */
     private static final String OUTBOUND_VIEW = "subcontract_outbound:view";
 
-    /** 列排序白名单：前端列 key → JPA 实体属性名（发料无金额列，仅日期可排序；命中才排序，否则默认 billDate DESC）。 */
-    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate");
+    /** 列排序白名单：前端列 key → JPA 实体属性名（发料无金额列，日期/单据号可排序；命中才排序，否则默认 billDate DESC）。
+     *  2026-09-25 单号列统一：billNo 进白名单。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "billNo", "billNo");
 
     private final SubcontractMaterialIssueRepository issueRepo;
     private final SubcontractMaterialIssueItemRepository itemRepo;
@@ -131,9 +132,25 @@ public class SubcontractMaterialIssueService {
     @Transactional(readOnly = true)
     public PageResponse<MaterialIssueListItem> list(MaterialIssueQueryFilter f, int page, int size, String sort, String order) {
         boolean priceMasked = subcontractPriceMasked();
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
+        Page<SubcontractMaterialIssue> p = issueRepo.findAll(issueSpec(f), pageable);
+        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
+                p);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(MaterialIssueQueryFilter f) {
+        return java.util.Map.of("billNo",
+                com.uten.imp.common.web.TableFacets.groupCount(em, SubcontractMaterialIssue.class, issueSpec(f), "billNo"));
+    }
+
+    /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）：个人归属 + 委外出仓池。 */
+    private Specification<SubcontractMaterialIssue> issueSpec(MaterialIssueQueryFilter f) {
         var readScope = access.scope();
         boolean outboundPool = access.hasAuthority(OUTBOUND_VIEW);
-        Specification<SubcontractMaterialIssue> spec = (Root<SubcontractMaterialIssue> root,
+        return (Root<SubcontractMaterialIssue> root,
                                                         jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                         CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -151,13 +168,12 @@ public class SubcontractMaterialIssueService {
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
+            // 2026-09-25 单号列统一：单据号表头值筛选（精确匹配）。
+            if (f.billNo() != null && !f.billNo().isBlank()) {
+                ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
+            }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<SubcontractMaterialIssue> p = issueRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
-                p);
     }
 
     @Transactional(readOnly = true)

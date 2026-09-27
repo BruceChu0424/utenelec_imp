@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
@@ -18,11 +19,13 @@ import 'package:uten_imp/features/quality/pages/quality_pending_disposal_page.da
 import 'package:uten_imp/features/warehouse/repositories/procurement_inspection_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
 
 void main() {
   testWidgets('workbench quality badge shows a positive pending count', (
@@ -342,6 +345,8 @@ void main() {
     expect(find.text('测试物料A'), findsOneWidget);
     expect(find.text('CJ20260822000001'), findsOneWidget);
     expect(find.byKey(const ValueKey('row:receipt-1')), findsNothing);
+    expect(find.text('正在准备草稿保护…'), findsNothing);
+    expect(find.byTooltip('返回').hitTestable(), findsOneWidget);
 
     await tester.tap(find.byTooltip('返回'));
     await tester.pumpAndSettle();
@@ -557,10 +562,19 @@ void main() {
       //（合并页可办计数：待入库+需退回）；旧单行/批量合格双入口已收敛为单按钮。
       // 2026-09-23 起(ADR-108)红黄两数随徽章汇总带回: 提交后立即重拉汇总一次,
       // 不等 60s 轮询。
+      final submitStart = source.indexOf('Future<void> _sendPendingReport()');
+      expect(submitStart, greaterThanOrEqualTo(0));
+      final submitEnd = source.indexOf(
+        'List<Widget> _batchActions(',
+        submitStart,
+      );
+      expect(submitEnd, greaterThan(submitStart));
+      final submitSource = source.substring(submitStart, submitEnd);
+      final reload = submitSource.indexOf('await _load(preserveEdits: false);');
+      expect(reload, greaterThanOrEqualTo(0));
+      expect(submitSource.indexOf('refreshBadges(ref);'), greaterThan(reload));
       expect(
-        RegExp(
-          r'await _load\(\);\s*//[^\n]*\n\s*refreshBadges\(ref\);',
-        ).allMatches(source),
+        RegExp(r'refreshBadges\(ref\);').allMatches(submitSource),
         hasLength(1),
       );
       expect(source, contains('已转仓库待入库，尚未增加可用库存'));
@@ -635,6 +649,10 @@ Future<void> _pumpWorkbenchBadge(
 List<Override> _taskCenterOverrides(_FakeInspectionRepository repository) {
   return [
     sessionProvider.overrideWith(_QualityReviewerSessionNotifier.new),
+    // The authenticated report now initializes durable draft protection. Keep
+    // these business-widget fixtures off platform file I/O and health probes.
+    apiBaseUrlProvider.overrideWithValue('https://quality-test.invalid/api'),
+    formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
     currentPermissionsProvider.overrideWithValue({
       Perm.procurementInspectionView,
       Perm.procurementInspectionHandle,
@@ -686,6 +704,7 @@ Future<void> _pumpInspectionDetailPage(
     ),
   );
   await tester.pumpAndSettle();
+  expect(find.text('正在准备草稿保护…'), findsNothing);
 }
 
 /// 单击行勾选（2026-09-05 起行内编辑合格/不合格数量，底部统一「提交报告」）。
@@ -693,6 +712,7 @@ Future<void> _selectRow(WidgetTester tester, String rowText) async {
   expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
   final row = find.text(rowText);
   expect(row, findsOneWidget);
+  expect(row.hitTestable(), findsOneWidget);
   await tester.tap(row);
   await tester.pumpAndSettle();
 }

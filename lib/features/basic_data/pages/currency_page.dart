@@ -4,6 +4,7 @@
 // 标题行(Icon+Text+(N)+搜索+添加) + MasterDataTableView + showMasterEditDialog/DetailSheet。
 // 查看全员可见（路由不设守卫），编辑按 currency:edit 显隐。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -173,9 +174,10 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
     ),
   ];
 
-  void _showCreate() {
-    showMasterEditDialog(
+  Future<void> _showCreate() async {
+    await showMasterEditDialog(
       context: context,
+      draftSpec: FormDraftCatalog.currency.spec(title: '新增币种'),
       title: '新增币种',
       fields: _fields,
       initialValues: const {'status': '使用'},
@@ -185,15 +187,12 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
   }
 
   Future<bool> _doCreate(Map<String, dynamic> body) async {
-    final ok = await context.guardRun(
-      () async {
-        await ref.read(currencyRepositoryProvider).create(body);
-      },
-      success: '币种已创建', // TODO(l10n): 补 arb
-      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _loadCurrencies(_pageNum);
+    // Preserve the actual API failure for the shared draft submission fence.
+    await ref.read(currencyRepositoryProvider).create(body);
+    if (mounted) {
+      context.appSuccess('币种已创建');
+      await _loadCurrencies(_pageNum);
+    }
     return true;
   }
 
@@ -387,7 +386,13 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FormDraftDialogResume(
+    descriptor: FormDraftCatalog.currency,
+    onResume: (_) => _showCreate(),
+    child: _buildDraftHost(context),
+  );
+
+  Widget _buildDraftHost(BuildContext context) {
     final theme = Theme.of(context);
     final total = _page?.total ?? 0;
     return Scaffold(

@@ -41,7 +41,6 @@ import java.util.UUID;
 public class StepUpService {
 
     public static final Duration TOKEN_TTL = Duration.ofMinutes(5);
-    private static final int PASSWORD_MAX_LENGTH = 128;
     private static final SecureRandom RNG = new SecureRandom();
 
     /** 再认证用途 (只进审计, 便于区分是哪个入口在试密码)。 */
@@ -136,18 +135,17 @@ public class StepUpService {
         Instant lockedUntil = state.isEmpty() || state.getFirst() == null
                 ? null : state.getFirst().toInstant();
         if (lockedUntil != null && lockedUntil.isAfter(now)) {
-            passwordEncoder.matches(password == null ? "" : truncate(password), dummyHash);
+            passwordEncoder.matches(password == null ? "" : password, dummyHash);
             throw locked(lockedUntil, now);
         }
         UserAccount user = userRepo.findById(userId)
                 .filter(row -> !row.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
-        boolean valid = password != null && !password.isEmpty()
-                && password.length() <= PASSWORD_MAX_LENGTH
+        boolean valid = password != null && !password.isBlank()
                 && passwordEncoder.matches(password, user.getPasswordHash());
         if (!valid) {
-            if (password == null || password.length() > PASSWORD_MAX_LENGTH) {
-                passwordEncoder.matches(password == null ? "" : truncate(password), dummyHash);
+            if (password == null || password.isBlank()) {
+                passwordEncoder.matches("", dummyHash);
             }
             throw recordFailure(userId, loginAccount, sessionId, purpose, now);
         }
@@ -234,10 +232,6 @@ public class StepUpService {
         long minutes = Math.max(1, (Duration.between(now, lockedUntil).toSeconds() + 59) / 60);
         return new ApiException(ErrorCode.REAUTH_LOCKED,
                 "密码连续输错次数过多，请 " + minutes + " 分钟后再试");
-    }
-
-    private static String truncate(String value) {
-        return value.length() > PASSWORD_MAX_LENGTH ? value.substring(0, PASSWORD_MAX_LENGTH) : value;
     }
 
     private static String randomToken() {

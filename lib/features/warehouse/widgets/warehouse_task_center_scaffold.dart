@@ -83,6 +83,7 @@ class WarehouseTaskCenterScaffold extends ConsumerStatefulWidget {
   /// 当前选中分段的内容（表格 + 折叠联动）。[headerPrefix] = 大类行(嵌入态)
   /// + 本骨架小类行——由分段视图挂进自己的折叠头随页滚走（2026-09-24
   /// 用户口径「表格完全置顶」，置顶后只剩表格自身工具条）。
+  /// 前缀不带底部留白，由接入下一行的视图统一添加 s12，避免多层间距叠加。
   final Widget Function(
     String segmentValue,
     String keyword,
@@ -210,11 +211,7 @@ class _WarehouseTaskCenterScaffoldState
           const SizedBox(height: UtenSpacing.s12),
         ],
         Padding(
-          padding: const EdgeInsets.only(
-            bottom: UtenSpacing.s12,
-            left: UtenSpacing.s4,
-            right: UtenSpacing.s4,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
           child: toolbar,
         ),
       ],

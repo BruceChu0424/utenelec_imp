@@ -1,9 +1,53 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/features/production/models/production_flow_stage.dart';
+import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
 import 'package:uten_imp/features/production/widgets/production_flow_stage_cell.dart';
 
 void main() {
+  test('adopted MAKE supply awaiting receipt remains in progress', () {
+    final stage = ProductionFlowStage.fromServerKey(
+      'MAKE_WAIT_STOCK_IN',
+      route: ProductionFlowRoute.make,
+    );
+    expect(stage.label, '等待实收入库');
+    expect(stage.key, 'MAKE_WAIT_STOCK_IN');
+    expect(stage.tone, ProductionFlowTone.waiting);
+    expect(stage.stepIndex, lessThan(stage.stepCount - 1));
+  });
+
+  // 2026-09-26 用户口径：未审核报工草稿（SR status=0）承接的数量占住待报额度
+  // 但不计入已报——待报被草稿全部承接时是「报工草稿待审核」，不是「已报完」；
+  // 部分承接仍可报。审核通过才进入品质/仓库环节，删除草稿则待报恢复。
+  test('draft claims reserve report quota without claiming completion', () {
+    final fullyClaimed = ProductionFlowStage.forSegment(
+      segmentStatus: 'IN_PROGRESS',
+      zeroMaterial: false,
+      remainingReportQty: 8000,
+      draftReportedQty: 8000,
+    );
+    expect(fullyClaimed.label, '报工草稿待审核');
+    expect(fullyClaimed.tone, ProductionFlowTone.pending);
+    expect(fullyClaimed.stepIndex, 4);
+    final partiallyClaimed = ProductionFlowStage.forSegment(
+      segmentStatus: 'IN_PROGRESS',
+      zeroMaterial: false,
+      remainingReportQty: 8000,
+      draftReportedQty: 3000,
+    );
+    expect(partiallyClaimed.label, '生产中 · 可报工');
+    expect(partiallyClaimed.tone, ProductionFlowTone.active);
+    // 已审核报满（无草稿）的既有口径不变：仍按品质/仓库环节出词。
+    final approvedDone = ProductionFlowStage.forSegment(
+      segmentStatus: 'IN_PROGRESS',
+      zeroMaterial: false,
+      remainingReportQty: 0,
+      reportedQty: 8000,
+      plannedQty: 8000,
+    );
+    expect(approvedDone.label, isNot('报工草稿待审核'));
+  });
+
   test('unconfirmed route and partial material do not claim complete kit', () {
     final unconfirmed = ProductionFlowStage.forSegment(
       segmentStatus: 'READY',
@@ -174,6 +218,52 @@ void main() {
         )
         .toSet();
     expect(types.length, tones.length, reason: '等待物料里同时出现的档位必须各有一色');
+  });
+
+  // 2026-09-26 用户口径「不同就绪度颜色差别大点、整格背景变色」：等待物料状态列
+  // 整格底色互不相同（此前 ready/readyPartial 两档淡底徽章几乎同色），生产中/
+  // 历史档不铺整格色。
+  test('readiness cell backgrounds are pairwise distinct solid colours', () {
+    final tones = [
+      ProductionFlowTone.ready,
+      ProductionFlowTone.readyPartial,
+      ProductionFlowTone.toDraw,
+      ProductionFlowTone.toDrawPartial,
+      ProductionFlowTone.pending,
+      ProductionFlowTone.waiting,
+      ProductionFlowTone.waitPlanning,
+      ProductionFlowTone.decide,
+    ];
+    final colors = tones.map(productionReadinessCellColor).toSet();
+    expect(colors.length, tones.length, reason: '等待物料里同时出现的档位必须各有一色');
+    expect(productionReadinessCellColor(ProductionFlowTone.ready), isNotNull);
+    expect(
+      productionReadinessCellColor(ProductionFlowTone.readyPartial),
+      isNot(productionReadinessCellColor(ProductionFlowTone.ready)),
+      reason: '物料齐与部分齐绝不能同色（本轮用户诉求的原始痛点）',
+    );
+    // 生产中/已完工只在别的分类出现，状态列不铺整格色。
+    expect(productionReadinessCellColor(ProductionFlowTone.active), isNull);
+    expect(productionReadinessCellColor(ProductionFlowTone.done), isNull);
+  });
+
+  // 2026-09-26 用户口径「等待物料越接近可开工越靠上」：就绪度档位单调（词表 tone
+  // → rank），物料齐 > 部分齐 > 可领 > 待发 > 缺料 > 等计划 > 待选路线。
+  test('preparing readiness rank orders closer-to-startable first', () {
+    final ranks = [
+      workshopPreparingReadinessRank(ProductionFlowTone.ready),
+      workshopPreparingReadinessRank(ProductionFlowTone.readyPartial),
+      workshopPreparingReadinessRank(ProductionFlowTone.toDraw),
+      workshopPreparingReadinessRank(ProductionFlowTone.toDrawPartial),
+      workshopPreparingReadinessRank(ProductionFlowTone.pending),
+      workshopPreparingReadinessRank(ProductionFlowTone.waiting),
+      workshopPreparingReadinessRank(ProductionFlowTone.waitPlanning),
+      workshopPreparingReadinessRank(ProductionFlowTone.decide),
+    ];
+    expect(ranks.toSet().length, ranks.length, reason: '档位互不相同才能稳定排序');
+    for (var i = 1; i < ranks.length; i++) {
+      expect(ranks[i], greaterThan(ranks[i - 1]));
+    }
   });
   test(
     'continuous task does not label planned remainder as material capacity',

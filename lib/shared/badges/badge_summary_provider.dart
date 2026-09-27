@@ -233,6 +233,29 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
   bool _active = false;
   bool _visible = true;
   int _generation = 0;
+  int _refreshHolds = 0;
+
+  /// A multi-step user command still marks changes immediately, but expensive
+  /// badge reads wait until its outermost scope finishes (including failure).
+  /// The returned release is idempotent and cannot affect a later auth scope.
+  VoidCallback holdRefreshes() {
+    final generation = _generation;
+    _refreshHolds++;
+    _timer?.cancel();
+    _timer = null;
+    var released = false;
+    return () {
+      if (released || generation != _generation) return;
+      released = true;
+      _refreshHolds--;
+      if (_refreshHolds != 0) return;
+      if (_dirty) {
+        unawaited(refresh());
+      } else {
+        _schedulePoll();
+      }
+    };
+  }
 
   @override
   BadgeSummary build() {
@@ -244,6 +267,7 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
     _writeTimer = null;
     _running = null;
     _dirty = false;
+    _refreshHolds = 0;
     _active = scope != null;
     ref.onDispose(() {
       if (_generation == generation) {
@@ -300,6 +324,7 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
     _writeTimer?.cancel();
     _writeTimer = null;
     _dirty = true;
+    if (_refreshHolds > 0) return Future<void>.value();
     final running = _running;
     if (running != null) return running;
     final run = _run(_generation);
@@ -311,7 +336,10 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
     // 让同一帧里的其它 refresh() 调用合并进这一次。
     await Future<void>.value();
     try {
-      while (_dirty && _visible && generation == _generation) {
+      while (_dirty &&
+          _visible &&
+          generation == _generation &&
+          _refreshHolds == 0) {
         _dirty = false;
         await _fetch(generation);
       }
@@ -339,7 +367,7 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
   void _schedulePoll() {
     _timer?.cancel();
     _timer = null;
-    if (!_active || !_visible) return;
+    if (!_active || !_visible || _refreshHolds > 0) return;
     _timer = Timer(pollInterval, () => unawaited(refresh()));
   }
 }

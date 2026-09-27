@@ -4,6 +4,7 @@ import com.uten.imp.support.ProcurementReceiptFixtureSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
+import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.features.purchase.receipt.ReceiptPriceMasker;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -13,6 +14,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -65,8 +68,19 @@ class ProcurementArrivalGuardPostgresTest {
         POSTGRES.stop();
     }
 
-    @Test
-    void emptyFiltersExecuteExpectationQueriesOnPostgres() {
+    @ParameterizedTest
+    @CsvSource({
+            ", , , 1, 20",
+            "SUBCONTRACT, , , 1, 20",
+            "PURCHASE, , , 2, 5",
+            ", billNo, asc, 1, 20",
+            "SUBCONTRACT, billNo, desc, 2, 5",
+            "PURCHASE, billNo, asc, 2, 5",
+            ", unknown, desc, 2, 5",
+            "SUBCONTRACT, billNo, invalid, 1, 20"
+    })
+    void expectationQueriesExecuteWithSortingAndPaginationOnPostgres(
+            String orderType, String sort, String order, int pageNumber, int pageSize) {
         JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
         ProcurementArrivalControlService service =
@@ -80,12 +94,20 @@ class ProcurementArrivalGuardPostgresTest {
                         mock(ReceiptPriceMasker.class),
                         com.uten.imp.support.FulfillmentMutationLockTestSupport.procurementLocks());
 
-        var page = assertDoesNotThrow(() -> service.expectations(1, 20, null, null));
+        // Other tests may commit expectations; keep the empty page scoped to this case.
+        UUID supplierId = UUID.randomUUID();
+        var page = assertDoesNotThrow(() -> service.expectations(
+                pageNumber, pageSize, orderType, null, supplierId, WarehouseTaskScope.ALL,
+                sort, order, null));
 
         assertTrue(page.getItems().isEmpty());
+        assertEquals(pageNumber, page.getPage());
+        assertEquals(pageSize, page.getSize());
         assertEquals(0L, page.getTotal());
-        assertEquals(0L, assertDoesNotThrow(service::countExpectations));
-        assertTrue(assertDoesNotThrow(() -> service.countExpectationsByType()).isEmpty());
+        assertDoesNotThrow(() -> {
+            service.countExpectations();
+            service.countExpectationsByType();
+        });
     }
 
     @Test

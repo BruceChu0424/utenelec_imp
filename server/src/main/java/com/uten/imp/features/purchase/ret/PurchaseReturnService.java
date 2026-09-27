@@ -95,8 +95,30 @@ public class PurchaseReturnService {
     @Transactional(readOnly = true)
     public PageResponse<ReturnListItem> list(ReturnQueryFilter f, int page, int size, String sort, String order) {
         boolean priceMasked = purchasePriceMasked();
+        Specification<PurchaseReturn> spec = returnSpec(f);
+        // 列排序：sort 命中白名单(日期/金额/单据号)才按实体属性排序，否则默认 billDate DESC。
+        // 2026-09-25 单号列统一：billNo 进两分支白名单（价格遮蔽只挡金额排序）。
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
+                        priceMasked
+                                ? Map.of("billDate", "billDate", "billNo", "billNo")
+                                : Map.of("billDate", "billDate", "total", "totalLocal", "billNo", "billNo")));
+        Page<PurchaseReturn> p = returnRepo.findAll(spec, pageable);
+        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
+                p);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(ReturnQueryFilter f) {
+        return java.util.Map.of("billNo",
+                com.uten.imp.common.web.TableFacets.groupCount(em, PurchaseReturn.class, returnSpec(f), "billNo"));
+    }
+
+    /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）。 */
+    private Specification<PurchaseReturn> returnSpec(ReturnQueryFilter f) {
         var readScope = access.scope();
-        Specification<PurchaseReturn> spec = (Root<PurchaseReturn> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
+        return (Root<PurchaseReturn> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                               CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
@@ -109,17 +131,12 @@ public class PurchaseReturnService {
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
+            // 2026-09-25 单号列统一：单据号表头值筛选（精确匹配）。
+            if (f.billNo() != null && !f.billNo().isBlank()) {
+                ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
+            }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        // 列排序：sort 命中白名单(日期/金额)才按实体属性排序，否则默认 billDate DESC。
-        Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
-                        priceMasked
-                                ? Map.of("billDate", "billDate")
-                                : Map.of("billDate", "billDate", "total", "totalLocal")));
-        Page<PurchaseReturn> p = returnRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
-                p);
     }
 
     @Transactional(readOnly = true)

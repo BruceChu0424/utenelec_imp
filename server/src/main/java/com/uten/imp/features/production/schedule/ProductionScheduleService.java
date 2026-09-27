@@ -5,6 +5,7 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.features.production.schedule.dto.PendingPlanRow;
 import com.uten.imp.features.production.schedule.dto.ScheduleOrderLine;
 import com.uten.imp.common.saleschain.SalesOrderChainSql;
@@ -92,12 +93,15 @@ public class ProductionScheduleService {
     @Transactional(readOnly = true)
     public com.uten.imp.common.web.PageResponse<PendingPlanRow> pending(
             int page, int size, String keyword, LocalDate dateFrom, LocalDate dateTo,
-            String sort, String order, String status) {
+            String sort, String order, String status, String billNo) {
         int p = Math.max(1, page);
         int sz = Math.min(Math.max(1, size), 100);
         String kw = keyword == null ? "" : keyword.trim().toLowerCase();
+        String billNoFilter = billNo == null || billNo.isBlank()
+                ? "" : " AND o.bill_no = :billNo";
         LocalDate warn = BusinessTime.today().plusDays(3);
-        String where = pendingWhere(kw, dateFrom, dateTo) + pendingStatusFilter(status);
+        String where = pendingWhere(kw, dateFrom, dateTo) + pendingStatusFilter(status)
+                + billNoFilter;
         // 计数不挂分析投影 LATERAL(纯投影，WHERE 从不引用它)；取数才挂。
         String countFilters = pendingFromJoins() + where;
         String dataFilters = pendingFromJoins() + pendingAnalysisProjection() + where;
@@ -107,6 +111,7 @@ public class ProductionScheduleService {
 
         var countQ = em.createNativeQuery("SELECT COUNT(*) " + countFilters);
         bindPendingFilters(countQ, kw, dateFrom, dateTo, warn, needsWarn);
+        if (!billNoFilter.isEmpty()) countQ.setParameter("billNo", billNo.trim());
         long total = ((Number) countQ.getSingleResult()).longValue();
         int totalPages = total == 0 ? 0 : (int) ((total + sz - 1) / sz);
         if (totalPages > 0 && p > totalPages) p = totalPages; // 页码越界回退
@@ -138,6 +143,7 @@ public class ProductionScheduleService {
                 """.formatted(PENDING_NEED_SQL, ACTIVE_ANALYSIS_COVERED_SQL) + dataFilters
                 + " " + pendingOrderBy(sort, order) + " LIMIT :lim OFFSET :off");
         bindPendingFilters(dataQ, kw, dateFrom, dateTo, warn, needsWarn);
+        if (!billNoFilter.isEmpty()) dataQ.setParameter("billNo", billNo.trim());
         @SuppressWarnings("unchecked")
         List<Object[]> rs = (List<Object[]>) dataQ
                 .setParameter("lim", sz).setParameter("off", (p - 1) * sz)
@@ -276,9 +282,8 @@ public class ProductionScheduleService {
                 : "ORDER BY " + expr + " " + dir + " NULLS LAST, deliver ASC NULLS LAST, o.bill_date";
     }
 
-    /** 待排产状态 facets：{status:[{value,count,label}]}（紧急/正常 两桶，全量计数）。
-     *  复用 pendingFiltersBase(不含 status 条件，故两桶计数互补，且与列表同样扣除活动分析承接量)；
-     *  SUM(CASE WHEN ...) 聚合。 */
+    /** 待排产 facets：{status:[紧急/正常], orderBillNo:[各销售单号]}（同一过滤基座，
+     *  全量计数；单号桶按单号升序，下拉里可搜索）。 */
     @Transactional(readOnly = true)
     public Map<String, List<Map<String, Object>>> pendingFacets(
             String keyword, LocalDate dateFrom, LocalDate dateTo) {
@@ -295,11 +300,22 @@ public class ProductionScheduleService {
         Object[] r = (Object[]) q.getSingleResult();
         long urgent = r[0] == null ? 0 : ((Number) r[0]).longValue();
         long normal = r[1] == null ? 0 : ((Number) r[1]).longValue();
-        return Map.of("status", List.of(
-                facetBucket("urgent", urgent, "紧急"),
-                facetBucket("normal", normal, "正常")));
+        // 销售单号桶（2026-09-25 单号列统一）：同一过滤基座按单号分组计数。
+        var billQ = em.createNativeQuery("""
+                SELECT o.bill_no, COUNT(*)
+                """ + filters + " GROUP BY o.bill_no ORDER BY o.bill_no");
+        bindPendingFilters(billQ, kw, dateFrom, dateTo, null, false);
+        @SuppressWarnings("unchecked")
+        List<Object[]> billRows = (List<Object[]>) billQ.getResultList();
+        List<Map<String, Object>> billBuckets = NativeFacets.rows(billRows);
+        return Map.of(
+                "status", List.of(
+                        facetBucket("urgent", urgent, "紧急"),
+                        facetBucket("normal", normal, "正常")),
+                "orderBillNo", billBuckets);
     }
 
+    /** 状态桶（label≠value 的展示文案，如 紧急/正常）：单号桶统一走 {@link NativeFacets}。 */
     private static Map<String, Object> facetBucket(String value, long count, String label) {
         return Map.of("value", value, "count", count, "label", label);
     }

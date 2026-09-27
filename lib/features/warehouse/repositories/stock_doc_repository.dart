@@ -1,6 +1,7 @@
 // 仓库单据仓库（8 类统一，端点 /api/stock/docs，docType 区分）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../basic_data/models/master_facet.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
@@ -22,6 +23,7 @@ class StockDocFilter {
     this.dateTo,
     this.productionReturnRequests,
     this.warehouseScope = const WarehouseTaskScope.all(),
+    this.billNo,
   });
   final String? keyword;
   final String? warehouseId;
@@ -43,6 +45,9 @@ class StockDocFilter {
 
   /// 仓库任务中心的仓库范围(ADR-115)：发出仓或调入仓在范围内；默认不过滤。
   final WarehouseTaskScope warehouseScope;
+
+  /// 单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
+  final String? billNo;
 }
 
 class StockDocRepository {
@@ -76,10 +81,37 @@ class StockDocRepository {
           'productionReturnRequests': filter.productionReturnRequests,
         if (sort != null && sort.isNotEmpty) 'sort': sort,
         if (order != null && order.isNotEmpty) 'order': order,
+        if (filter.billNo != null && filter.billNo!.trim().isNotEmpty)
+          'billNo': filter.billNo!.trim(),
         ...filter.warehouseScope.queryParameters,
       },
     );
     return PagedResult.fromJson(json, StockDocListItem.fromJson);
+  }
+
+  /// 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径（docType 维度）。
+  Future<List<MasterFacetBucket>> billNoFacets({
+    StockDocFilter filter = const StockDocFilter(),
+  }) async {
+    final json = await api.get(
+      '${ApiEndpoints.stockDocsBase}/facets',
+      query: {
+        'docType': type.code,
+        if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
+          'keyword': filter.keyword!.trim(),
+        if (filter.warehouseId != null) 'warehouseId': filter.warehouseId,
+        if (filter.toWarehouseId != null) 'toWarehouseId': filter.toWarehouseId,
+        if (filter.status != null) 'status': filter.status,
+        if (filter.departmentId != null) 'departmentId': filter.departmentId,
+        if (filter.issueStatus != null) 'issueStatus': filter.issueStatus,
+        if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
+        if (filter.dateTo != null) 'dateTo': filter.dateTo,
+        if (filter.productionReturnRequests != null)
+          'productionReturnRequests': filter.productionReturnRequests,
+        ...filter.warehouseScope.queryParameters,
+      },
+    );
+    return parseFacetBuckets(json, 'billNo');
   }
 
   Future<StockDocDetail> detail(String id) async {

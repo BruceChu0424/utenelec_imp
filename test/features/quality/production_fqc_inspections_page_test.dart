@@ -91,6 +91,41 @@ Future<void> _doubleTapRow(WidgetTester tester, String reportNo) async {
 }
 
 void main() {
+  testWidgets(
+    'manual FQC refresh preserves raw report input and retry identity',
+    (tester) async {
+      final api = _FqcApi();
+      await _pumpPage(
+        tester,
+        api: api,
+        permissions: const {
+          Perm.productionQualityInspectionView,
+          Perm.productionQualityInspectionApprove,
+        },
+      );
+      await _doubleTapRow(tester, _reportNo);
+      FqcReportRow row() => tester
+          .widget<MasterDataTableView<FqcReportRow>>(
+            find.byKey(const Key('fqc-inspection-decision-table')),
+          )
+          .items
+          .single;
+      final before = row();
+      before.pass.text = '1.';
+      before.fail.text = '2';
+      before.disposition = 'SCRAP';
+      final key = before.idempotencyKey;
+      await tester.tap(find.byTooltip('刷新').last);
+      await tester.pumpAndSettle();
+      expect(row().pass.text, '1.');
+      expect(row().fail.text, '2');
+      expect(row().disposition, 'SCRAP');
+      expect(row().idempotencyKey, key);
+      expect(api.decisionBody, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('375px table supports selection, detail, and PASS decision', (
     tester,
   ) async {

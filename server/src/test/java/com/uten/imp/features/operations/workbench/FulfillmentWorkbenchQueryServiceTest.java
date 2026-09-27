@@ -342,9 +342,11 @@ class FulfillmentWorkbenchQueryServiceTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());
         // One requested DRAW or one pending material-definition request is one task.
-        assertTrue(sql.getValue().contains("v_fulfillment_workbench_actions"));
+        assertTrue(sql.getValue().contains("FROM v_fulfillment_workbench v"));
+        assertTrue(sql.getValue().contains("mapping.demand_id=v.task_id"));
+        assertTrue(sql.getValue().contains("draw_doc.warehouse_id AS warehouse_id"));
         assertTrue(sql.getValue().contains("open_line_count > 0"));
-        assertTrue(sql.getValue().contains("fn_production_draw_requested(v.action_doc_id)"));
+        assertTrue(sql.getValue().contains("fn_production_draw_requested(draw_doc.id)"));
         assertTrue(sql.getValue().contains("production_material_discovery_requests"));
         assertTrue(sql.getValue().contains("request.status='PENDING'"));
         verify(countQuery).setParameter("department", "WAREHOUSE");
@@ -364,7 +366,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());
         assertTrue(sql.getValue().contains(FulfillmentWorkbenchQueryService.WAREHOUSE_DOCUMENT_ROWS));
-        assertTrue(sql.getValue().contains("fn_production_draw_requested(v.action_doc_id)"));
+        assertTrue(sql.getValue().contains("fn_production_draw_requested(draw_doc.id)"));
     }
 
     @Test void warehouseUnknownMaterialRequestsHaveTheirOwnStatusAndCountOnceWithoutInventingQuantity() {
@@ -381,29 +383,34 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertEquals(9L, counts.get("OPEN_ANY"));
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());
-        assertTrue(sql.getValue().contains("NULL::numeric, 'MATERIALS_TO_DEFINE'"));
+        assertTrue(sql.getValue().contains("material.qty, 'MATERIALS_TO_DEFINE'"));
+        assertTrue(sql.getValue().contains("jsonb_to_recordset(request.requested_materials)"));
         assertTrue(sql.getValue().contains("request.status='PENDING'"));
         assertTrue(sql.getValue().contains("NOT plan.is_closed"));
         assertTrue(sql.getValue().contains("warehouse_id IS NULL OR"));
         verify(query).setParameter("warehouse_scope", "");
     }
 
-    /** 生产领料任务中心表头排序(2026-09-24): 按生产计划号排, 白名单字段, 不为仓库多跑分面查询。 */
+    /** 生产领料任务中心表头排序(2026-09-24): 按生产计划号排, 白名单字段;
+     *  2026-09-25 单号列统一: 仓库多跑一次 docNo(领料单号)分面查询, 桶随响应带回。 */
     @Test
-    void warehouseRowsSortByPlanNumberWithoutFacetQuery() {
+    void warehouseRowsSortByPlanNumberAndCarryDocNoFacets() {
         EntityManager em = mock(EntityManager.class);
         Query rows = mock(Query.class);
         Query summary = mock(Query.class);
         Query statuses = mock(Query.class);
         Query exceptions = mock(Query.class);
         Query pending = mock(Query.class);
+        Query docNoFacets = mock(Query.class);
         when(em.createNativeQuery(anyString()))
-                .thenReturn(rows, summary, statuses, exceptions, pending);
+                .thenReturn(rows, summary, statuses, exceptions, pending, docNoFacets);
         when(rows.getResultList()).thenReturn(List.of());
         when(summary.getSingleResult()).thenReturn(new Object[]{0L, 0L, 0L, BigDecimal.ZERO});
         when(statuses.getResultList()).thenReturn(List.of());
         when(exceptions.getResultList()).thenReturn(List.of());
         when(pending.getSingleResult()).thenReturn(0L);
+        when(docNoFacets.getResultList())
+                .thenReturn(List.of(new Object[]{"LL2609001", 2L}, new Object[]{null, 1L}));
         FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
         when(access.canAccessWarehouseTasks()).thenReturn(true);
 
@@ -412,9 +419,15 @@ class FulfillmentWorkbenchQueryServiceTest {
                 new FulfillmentWorkbenchTableQuery("planNo", "desc", java.util.Map.of(), null, null, null, null));
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em, times(5)).createNativeQuery(sql.capture());
+        verify(em, times(6)).createNativeQuery(sql.capture());
         assertTrue(sql.getAllValues().getFirst().contains("NULLIF(plan_no,'') desc NULLS LAST, task_id"));
-        assertTrue(result.facets().isEmpty());
+        // docNo 分面：与列表同一份 WHERE（filters），按 visible_doc_no 分组计数。
+        assertTrue(sql.getAllValues().getLast().contains("GROUP BY visible_doc_no"));
+        assertEquals(1, result.facets().size());
+        assertEquals("LL2609001", result.facets().get("docNo").getFirst().value());
+        assertEquals(2L, result.facets().get("docNo").getFirst().count());
+        // 看不见领料单号的行（对象范围裁剪/物料待定）计进 nullCounts，不混进桶。
+        assertEquals(1L, result.nullCounts().get("docNo"));
     }
 
     @Test

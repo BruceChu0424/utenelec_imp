@@ -8,6 +8,7 @@ import com.uten.imp.common.report.ReportSort;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
@@ -192,6 +193,11 @@ public class FinanceReportService {
             case "bool"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, Boolean.valueOf(value));
             default      -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS text)", p, value);
         };
+    }
+
+    /** 2026-09-25 单号列统一：钱流单据型明细的单号列均投影 t.bill_no，按值筛选（等值匹配，桶 LIMIT 50 见 execute）。 */
+    private static FacetSpec facetBillNo() {
+        return new FacetSpec("billNo", "t.bill_no AS v, t.bill_no AS lbl", "t.bill_no", "t.bill_no", "text");
     }
 
     // ======================== ① 应收应付 Z / A·C / B·D ========================
@@ -472,6 +478,9 @@ public class FinanceReportService {
                     + "OR LOWER(COALESCE(refs.sales_order_nos,'')) LIKE LOWER(:kw))",
                     "kw", "%" + keyword.toLowerCase() + "%");
         List<FacetSpec> specs = List.of(
+                // 2026-09-25 单号列统一：立帐单号/来源单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）。
+                new FacetSpec("billNo", "l.bill_no AS v, l.bill_no AS lbl", "l.bill_no", "l.bill_no", "text"),
+                new FacetSpec("sourceDocNo", "l.source_doc_no AS v, l.source_doc_no AS lbl", "l.source_doc_no", "l.source_doc_no", "text"),
                 new FacetSpec("settled", "l.is_settled AS v, CASE WHEN l.is_settled THEN '已收/付' ELSE '未收/付' END AS lbl", "l.is_settled", "l.is_settled", "bool"));
         return execute(cols, dataSelect, fromJoin, w, "l.bill_date DESC, l.bill_no", specs, facets, page, size, sort, order);
     }
@@ -1102,7 +1111,7 @@ public class FinanceReportService {
                 "t.client_id", "t.bill_no", "t.bill_date",
                 "CONCAT_WS(' ',c.name,i.applied_bill_no,orders.sales_order_nos)");
         return execute(cols, dataSelect, fromJoin, w,
-                "t.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
+                "t.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(facetBillNo()), facets, page, size, sort, order);
     }
 
     /** F 销售收款汇总（按客户 + 币别；原币金额禁止跨币种直接相加）。 */
@@ -1218,7 +1227,7 @@ public class FinanceReportService {
                 "WHERE COALESCE(t.is_deleted,false)=false", "t.maker_id", readScope);
         addFinanceDocFilters(w, billNo, supplierId, accountId, status, dateFrom, dateTo, keyword,
                 "t.supplier_id", "t.bill_no", "t.bill_date", "s.name");
-        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(facetBillNo()), facets, page, size, sort, order);
     }
 
     /** H 采购付款汇总（一行一付款单 + 关联 AP 立帐单/已付/未付/本次付款/本次余额）。 */
@@ -1349,7 +1358,7 @@ public class FinanceReportService {
                 "WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false",
                 "t.maker_id", readScope);
         addFinanceItemFilters(w, billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(facetBillNo()), facets, page, size, sort, order);
     }
 
     /** N 一般费用汇总（按 单号×部门×费用项目 GROUP BY items）。 */
@@ -1451,7 +1460,7 @@ public class FinanceReportService {
                 "WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false",
                 "t.maker_id", readScope);
         addFinanceItemFilters(w, billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(facetBillNo()), facets, page, size, sort, order);
     }
 
     /** P 其它收入汇总。 */
@@ -1597,7 +1606,7 @@ public class FinanceReportService {
                 "t.client_id", "t.bill_no", "t.bill_date",
                 "CONCAT_WS(' ',c.name,i.applied_bill_no,orders.sales_order_nos)");
         return execute(cols, dataSelect, fromJoin, w,
-                "t.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
+                "t.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(facetBillNo()), facets, page, size, sort, order);
     }
 
     // ======================== ④ 往来对帐单 I·J·K·L / X（滚动余额，源=头表+台账） ========================
@@ -1720,16 +1729,67 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse accountStatement(UUID accountId, LocalDate dateFrom, LocalDate dateTo,
                                                 String keyword, int page, int size) {
+        return accountStatement(accountId, dateFrom, dateTo, keyword, page, size, null);
+    }
+
+    /**
+     * 同上；2026-09-25 单号列统一：billNo 单号表头值筛选（等值精确匹配）。
+     * 只作用于展示层 {@code filtered}（与 keyword 同一位置）——余额仍按完整日期窗
+     * 滚动计算，排序语义固定（bill_date, posting_seq），不做表头排序。
+     */
+    @Transactional(readOnly = true)
+    public ReportTableResponse accountStatement(UUID accountId, LocalDate dateFrom, LocalDate dateTo,
+                                                String keyword, int page, int size, String billNo) {
         if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "开始日期不能晚于结束日期");
         }
         requireAccountStatementAccess();
-        return accountStatementAuthorized(accountId, dateFrom, dateTo, keyword, page, size);
+        return accountStatementAuthorized(accountId, dateFrom, dateTo, keyword, page, size, billNo);
+    }
+
+    /** 账户流水单号 facets（2026-09-25 单号列统一）：{billNo:[各单号]}——与列表同一
+     *  账户/日期/关键字口径（不含 billNo 自身值筛选），按单号分组计数、单号升序，
+     *  上限 500 桶；滚动余额不参与，纯计数查询。 */
+    @Transactional(readOnly = true)
+    public Map<String, List<Map<String, Object>>> accountStatementFacets(
+            UUID accountId, LocalDate dateFrom, LocalDate dateTo, String keyword) {
+        if (accountId == null) return Map.of("billNo", List.of());
+        java.time.OffsetDateTime fromAt = dateFrom == null ? null : BusinessTime.startOfDay(dateFrom);
+        java.time.OffsetDateTime toExclusive = dateTo == null ? null : BusinessTime.startOfDay(dateTo.plusDays(1));
+        String normalizedKeyword = keyword == null || keyword.isBlank()
+                ? null : "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+        var query = em.createNativeQuery("""
+                        SELECT COALESCE(flow.bill_no, ''), COUNT(*)
+                        FROM finance_reconciliations flow
+                        WHERE flow.account_id = :aid AND COALESCE(flow.is_deleted, FALSE) = FALSE
+                          AND (CAST(:fromAt AS timestamptz) IS NULL
+                               OR flow.bill_date >= CAST(:fromAt AS timestamptz))
+                          AND (CAST(:toExclusive AS timestamptz) IS NULL
+                               OR flow.bill_date < CAST(:toExclusive AS timestamptz))
+                          AND (CAST(:keyword AS text) IS NULL
+                               OR LOWER(COALESCE(flow.bill_no, '') || ' ' || COALESCE(flow.check_no, '') || ' '
+                                 || COALESCE(flow.counterpart_name, '') || ' ' || COALESCE(flow.remark, '') || ' '
+                                 || COALESCE(flow.source_remark, '') || ' ' || COALESCE(flow.source_doc_type, ''))
+                                   LIKE CAST(:keyword AS text))
+                        GROUP BY 1 ORDER BY 1
+                        """)
+                .setMaxResults(500)
+                .setParameter("aid", accountId)
+                .setParameter("fromAt", fromAt)
+                .setParameter("toExclusive", toExclusive)
+                .setParameter("keyword", normalizedKeyword);
+        return Map.of("billNo", NativeFacets.rowsOf(query));
     }
 
     private ReportTableResponse accountStatementAuthorized(
             UUID accountId, LocalDate dateFrom, LocalDate dateTo,
             String keyword, int page, int size) {
+        return accountStatementAuthorized(accountId, dateFrom, dateTo, keyword, page, size, null);
+    }
+
+    private ReportTableResponse accountStatementAuthorized(
+            UUID accountId, LocalDate dateFrom, LocalDate dateTo,
+            String keyword, int page, int size, String billNo) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.date("billDate", "日期"), ReportColumn.text("billNo", "单号", 140),
                 ReportColumn.text("checkNo", "支票号", 120), ReportColumn.text("summary", "摘要", 160),
@@ -1811,8 +1871,12 @@ public class FinanceReportService {
                          SUM(in_amount) OVER() AS total_in,
                          SUM(out_amount) OVER() AS total_out
                   FROM windowed
-                  WHERE CAST(:keyword AS text) IS NULL
-                     OR searchable LIKE CAST(:keyword AS text)
+                  WHERE (CAST(:keyword AS text) IS NULL
+                         OR searchable LIKE CAST(:keyword AS text))
+                    -- 2026-09-25 单号列统一：单号表头值筛选（等值精确匹配，空参数即不过滤；
+                    -- 只筛展示行，余额仍按完整日期窗滚动，不破坏滚动余额语义）。
+                    AND (CAST(:billNoFilter AS text) IS NULL
+                         OR bill_no = CAST(:billNoFilter AS text))
                 )
                 SELECT bill_date,bill_no,check_no,summary,counterpart_name,source,
                        settled_date,in_amount,out_amount,balance,
@@ -1829,6 +1893,7 @@ public class FinanceReportService {
                 .setParameter("fromMonthAt",fromMonthAt)
                 .setParameter("toExclusive",toExclusive)
                 .setParameter("keyword",normalizedKeyword)
+                .setParameter("billNoFilter",billNo==null||billNo.isBlank()?null:billNo.trim())
                 .setParameter("limit",safeSize)
                 .setParameter("offset",offset);
         @SuppressWarnings("unchecked")
@@ -2408,7 +2473,7 @@ public class FinanceReportService {
             case "statement/flow"    -> (pg, sz) -> partyStatementFlowAuthorized(partyId, side, dateFrom, dateTo, pg, sz);
             case "statement/detail"  -> (pg, sz) -> partyStatementDetailAuthorized(partyId, side, dateFrom, dateTo, pg, sz);
             case "statement/annual"  -> (pg, sz) -> partyAnnualStatementAuthorized(partyId, side, year, pg, sz);
-            case "account/statement" -> (pg, sz) -> accountStatementAuthorized(accountId, dateFrom, dateTo, keyword, pg, sz);
+            case "account/statement" -> (pg, sz) -> accountStatementAuthorized(accountId, dateFrom, dateTo, keyword, pg, sz, billNo);
             // C2 对账单（FinanceStatementService；lossRate 仅 subcontract 用，默认 0.03）
             case "statements/subcontract" -> (pg, sz) -> statementService.subcontractStatement(
                     keyword, dateFrom, dateTo, parseBigDecimal(p == null ? null : p.get("lossRate")), pg, sz);

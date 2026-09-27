@@ -8,6 +8,10 @@
 // 编辑 REJECTED 保存后仍在 REJECTED，重提在详情页（清驳回痕迹并重新通知审批人）。
 
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_field_codec.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -42,17 +46,59 @@ class ExpenseClaimEditPage extends ConsumerStatefulWidget {
       _ExpenseClaimEditPageState();
 }
 
-class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage> {
+class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
+    with FormDraftMixin<ExpenseClaimEditPage> {
   final _titleController = TextEditingController();
   final _remarkController = TextEditingController();
   final List<ExpenseItem> _items = [];
   bool _busy = false;
   bool _initialized = false;
   int? _editVersion;
+  Map<String, dynamic>? _pendingItemDraft;
 
   AppLocalizations get l10n => AppLocalizations.of(context);
 
   bool get _isEdit => widget.claimId != null;
+
+  @override
+  bool get formDraftEnabled => !_isEdit;
+  @override
+  bool get formDraftBusy => _busy;
+  @override
+  FormDraftSpec get formDraftSpec =>
+      FormDraftCatalog.expense.spec(title: '新建报销', route: '/expense/new');
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _titleController,
+    _remarkController,
+  ];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'title': _titleController.text,
+    'remark': _remarkController.text,
+    'items': [
+      for (final item in _items) {...item.toCreateJson(), 'id': item.id},
+    ],
+    'pendingItem': _pendingItemDraft,
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _titleController.text = draftText(data, 'title');
+    _remarkController.text = draftText(data, 'remark');
+    _items
+      ..clear()
+      ..addAll(draftMaps(data['items']).map(ExpenseItem.fromJson));
+    _pendingItemDraft = data['pendingItem'] == null
+        ? null
+        : draftMap(data['pendingItem']);
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => initializeFormDraft());
+  }
 
   @override
   void dispose() {
@@ -78,12 +124,35 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage> {
   }
 
   Future<void> _addItem({ExpenseItem? existing}) async {
+    final pending = !_isEdit ? _pendingItemDraft : null;
+    if (pending != null) {
+      existing = _items
+          .where((item) => item.id == pending['existingItemId'])
+          .firstOrNull;
+    }
     final item = await showDialog<ExpenseItem>(
       context: context,
-      builder: (_) => ExpenseItemDialog(initial: existing),
+      barrierDismissible: _isEdit,
+      builder: (_) => ExpenseItemDialog(
+        initial: existing,
+        draft: pending,
+        onDraftChanged: _isEdit
+            ? null
+            : (value) {
+                setState(
+                  () => _pendingItemDraft = {
+                    ...value,
+                    'existingItemId': existing?.id,
+                  },
+                );
+              },
+        onDiscardDraft: () => setState(() => _pendingItemDraft = null),
+        onSaveDraft: _isEdit ? null : saveFormDraftNow,
+      ),
     );
     if (item == null || !mounted) return;
     setState(() {
+      _pendingItemDraft = null;
       if (existing != null) {
         final index = _items.indexOf(existing);
         if (index >= 0) _items[index] = item;
@@ -95,6 +164,11 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage> {
 
   Future<void> _save() async {
     if (_busy) return;
+    if (_pendingItemDraft != null) {
+      context.appWarning('还有未完成的报销明细，请先继续填写或放弃该明细');
+      await _addItem();
+      return;
+    }
     final title = _titleController.text.trim();
     if (title.isEmpty) {
       context.appWarning(l10n.expenseFlowMissingTitle);
@@ -130,12 +204,15 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage> {
         }
         return;
       }
-      final claim = await createExpense(
-        ref,
-        title: title,
-        items: List.from(_items),
-        remark: remark.isEmpty ? null : remark,
+      final claim = await runFormDraftSubmission(
+        () => createExpense(
+          ref,
+          title: title,
+          items: List.from(_items),
+          remark: remark.isEmpty ? null : remark,
+        ),
       );
+      await completeFormDraft();
       if (mounted) {
         context.appSuccess(l10n.expenseFlowDraftSaved);
         context.replace(RoutePath.expenseDetail(claim.id));
@@ -226,37 +303,39 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage> {
       ),
     );
 
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: _isEdit ? l10n.expenseFlowEdit : l10n.expenseFlowNew,
-        showBackButton: true,
-      ),
-      body: !canEdit && detail?.hasValue == true
-          ? UtenEmpty(message: l10n.expenseFlowNotEditable)
-          : AbsorbPointer(
-              absorbing: _busy || (_isEdit && claim == null),
-              child: body,
-            ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: UtenFloatingActionGroup(
-        children: [
-          if (canSave)
-            UtenButton(
-              size: UtenButtonSize.large,
-              isLoading: _busy,
-              icon: Icons.save_outlined,
-              onPressed: _busy || _items.isEmpty ? null : _save,
-              onDisabledTap: _busy
-                  ? null
-                  : () => context.appWarning(l10n.expenseFlowMissingItems),
-              child: Text(
-                _isEdit
-                    ? l10n.expenseFlowSave
-                    : l10n.expenseFlowSaveAndContinue,
+    return withFormDraft(
+      Scaffold(
+        appBar: UtenAppBar(
+          title: _isEdit ? l10n.expenseFlowEdit : l10n.expenseFlowNew,
+          showBackButton: true,
+        ),
+        body: !canEdit && detail?.hasValue == true
+            ? UtenEmpty(message: l10n.expenseFlowNotEditable)
+            : AbsorbPointer(
+                absorbing: _busy || (_isEdit && claim == null),
+                child: body,
               ),
-            ),
-        ],
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        floatingActionButton: UtenFloatingActionGroup(
+          children: [
+            if (canSave)
+              UtenButton(
+                size: UtenButtonSize.large,
+                isLoading: _busy,
+                icon: Icons.save_outlined,
+                onPressed: _busy || _items.isEmpty ? null : _save,
+                onDisabledTap: _busy
+                    ? null
+                    : () => context.appWarning(l10n.expenseFlowMissingItems),
+                child: Text(
+                  _isEdit
+                      ? l10n.expenseFlowSave
+                      : l10n.expenseFlowSaveAndContinue,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -366,7 +445,9 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage> {
               size: UtenButtonSize.small,
               icon: Icons.add_rounded,
               onPressed: () => _addItem(),
-              child: Text(l10n.expenseFlowAdd),
+              child: Text(
+                _pendingItemDraft == null ? l10n.expenseFlowAdd : '继续未完成明细',
+              ),
             ),
           ],
         ),

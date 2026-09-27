@@ -3,7 +3,7 @@
 //   selectable:false 退出（轮询页口径，准则 §3.4）；
 // - 页面 region 嵌套 MasterDataTableView：行双击仍打开（最深 region 竞技场不抢）、
 //   表体文字可选、表头文字被 SelectionContainer.disabled 隔离（保护列手势）；
-// - selectable:true 多选表（任务中心）整表隔离，页面 region 不渗入；
+// - selectable:true 多选表（任务中心）行内容隔离，页面 region 不渗入；
 // - UtenEditableGrid 整体隔离（单元格是 TextField 自带原生选择），行长按菜单不受
 //   外层 region 影响；
 // - UtenDialog 弹窗内容可选。
@@ -37,6 +37,7 @@ Widget _table({
   bool enableTextSelection = true,
   Set<String>? selectedIds,
   void Function(_Row)? onRowTap,
+  ValueChanged<Set<String>>? onSelectedIdsChanged,
 }) {
   return MasterDataTableView<_Row>(
     columns: [
@@ -56,7 +57,7 @@ Widget _table({
     enableTextSelection: enableTextSelection,
     idOf: (row) => row.id,
     selectedIds: selectedIds ?? const <String>{},
-    onSelectedIdsChanged: (_) {},
+    onSelectedIdsChanged: onSelectedIdsChanged ?? (_) {},
     onRowTap: onRowTap,
   );
 }
@@ -67,6 +68,7 @@ Widget _page({
   bool enableTableTextSelection = true,
   bool pageSelectable = true,
   void Function(_Row)? onRowTap,
+  ValueChanged<Set<String>>? onSelectedIdsChanged,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -83,6 +85,7 @@ Widget _page({
                   selectable: selectableTable,
                   enableTextSelection: enableTableTextSelection,
                   onRowTap: onRowTap,
+                  onSelectedIdsChanged: onSelectedIdsChanged,
                 ),
               ),
             ],
@@ -154,25 +157,55 @@ void main() {
   });
 
   testWidgets('重交互只读表可显式关闭文字选择且隔离外层 region', (tester) async {
+    await tester.pumpWidget(_page());
+    await tester.pumpAndSettle();
+    expect(_selectableOf(tester, find.text('a1')), isTrue);
+
     await tester.pumpWidget(_page(enableTableTextSelection: false));
     await tester.pumpAndSettle();
 
-    // 只剩页面说明的 region；表格自身不再创建 SelectionArea，且 disabled
-    // 边界阻止外层页面 region 渗入表头/表体。
-    expect(find.byType(SelectionArea), findsOneWidget);
+    // 禁用的是行文字的可选择性。表体 registrar 保持挂载，避免切换后
+    // ListView 的 SelectionKeepAlive 注销旧文本时访问已经移除的祖先。
     expect(_selectableOf(tester, find.text('页面说明文字')), isTrue);
     expect(_selectableOf(tester, find.text('ID')), isFalse);
     expect(_selectableOf(tester, find.text('a1')), isFalse);
+    expect(_selectableOf(tester, find.text('a2')), isFalse);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(_page());
+    await tester.pumpAndSettle();
+    expect(_selectableOf(tester, find.text('a1')), isTrue);
+    expect(_selectableOf(tester, find.text('a2')), isTrue);
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('多选表（任务中心）整表隔离：页面 region 不渗入勾选表体', (tester) async {
-    await tester.pumpWidget(_page(selectableTable: true));
+  testWidgets('多选表（任务中心）隔离行文字且仍能勾选，退出多选恢复复制', (tester) async {
+    await tester.pumpWidget(_page());
     await tester.pumpAndSettle();
+    expect(_selectableOf(tester, find.text('a1')), isTrue);
 
-    // 表体被 SelectionContainer.disabled 隔离，只剩页面 region 一个。
-    expect(find.byType(SelectionArea), findsOneWidget);
+    Set<String>? selected;
+    await tester.pumpWidget(
+      _page(
+        selectableTable: true,
+        onSelectedIdsChanged: (ids) => selected = ids,
+      ),
+    );
+    await tester.pumpAndSettle();
     expect(_selectableOf(tester, find.text('a1')), isFalse);
+    expect(_selectableOf(tester, find.text('a2')), isFalse);
+    expect(_selectableOf(tester, find.text('ID')), isFalse);
     expect(_selectableOf(tester, find.text('页面说明文字')), isTrue);
+    await tester.tap(find.byType(Checkbox).at(1));
+    await tester.pump();
+    expect(selected, {'a1'});
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(_page());
+    await tester.pumpAndSettle();
+    expect(_selectableOf(tester, find.text('a1')), isTrue);
+    expect(_selectableOf(tester, find.text('a2')), isTrue);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('UtenEditableGrid 整体隔离：外层 region 不渗入，长按行菜单照常', (tester) async {

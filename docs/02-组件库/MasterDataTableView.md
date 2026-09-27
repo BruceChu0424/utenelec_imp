@@ -24,6 +24,7 @@
 ## 二、Excel 风格特性（开箱即用）
 
 - **横排 autofilter 列头**：每列表头一个「标签 ▼」单元格，点开下拉筛选项（facet 桶 + 末尾兜底档），选中高亮。
+- **表头文字统一**：与 `UtenEditableGrid` 共用 `UtenTableHeader.textStyle`，普通列、可筛选列、可排序列均使用 `labelLarge`（当前主题 14px）、w600 和 `onSurfaceVariant`；筛选/排序生效时仅切换主色与背景，字号、字重保持一致。自动列宽测量也使用同一样式。
 - **空值兜底桶「其他 (n)」固定放列表末尾（2026-09-16 起，用户口径）**：菜单顺序为
   「所有 → 各 facet 桶 → 其他 (n)」；语义=该列为空/未归类的行的**兜底桶**（如货品未分类、
   单据未指定仓库——匹配不到任何已列出选项的行都落这里），选它即只看这些行。原「空值 (n)」桶
@@ -313,6 +314,8 @@ return MasterDataTableView<Map<String, dynamic>>(
 
 ## 八、行点击跳源头单据（Phase 5）
 
+> 2026-09-26 草稿列表补充：草稿段通过本组件的 `selectable`、`idOf`、受控选中集和 `batchActionsBuilder` 提供前置多选及右下角悬浮删除，确认、部分成功、身份变化和网络不确定处理复用 [草稿批量删除](草稿批量删除.md)。普通浏览与草稿多选切换时保持表体 `SelectionArea` 稳定，将 `SelectionContainer.disabled` 放在 ListView 自动保活节点之下的行内容，避免注销文字选择时 registrar 已为空的框架异常。回归：`master_data_table_view_selection_mode_test.dart`。
+
 报表的明细/汇总行**双击** → 跳对应单据编辑页（push → pop 回报表，保活筛选/分页状态；单击只选中行）。机制（命名约定，非组件改动）：
 
 - **后端**：明细/汇总报表的 `dataSelect` 末尾加 `, <头表别名>.id AS "__srcId"`，`cols` 末尾加 `ReportColumn.text("__srcId", "")`（**两处列数必须相等**，`execute()` 按位置 `r[i]` 取值）。`execute()` 末尾把 `columns` 过滤掉 `__` 前缀再返回 → 前端 `columns`、导出 Excel 都不含 `__srcId`，但 row Map 携带（`norm` 把 UUID 转 `toString`）。
@@ -389,3 +392,20 @@ return MasterDataTableView<Map<String, dynamic>>(
   超出当前宽度才加宽, **列宽只增不减**(静默刷新时列宽不跳); 手工拖过的列不动。
 - 换一套列(列 key 序列变化)或字号档变化时才全量重算。`shrinkWrap` 设计不变。
 - 测试钩子 `debugMasterTableMeasureTextCount`; 回归: `test/master_data_table_view_width_cache_test.dart`。
+
+## 2026-09-25 单号列统一三件套
+
+- **`MasterColumnDef.filterFromRows`**：组件用当前行的 `value` 就地构建筛选桶并过滤显示行，宿主无需接 facets/onFilterChanged（给全量加载/嵌入式表用；服务端分页表应走服务端 facets，只筛当页是误导）。宿主已为该 key 提供服务端 facets 时以服务端为准。
+- **本地排序兜底**：宿主未传 `onSortChange` 时 `sortable` 列就地排序（number/money 数值感知，空值/「—」恒排末尾）；传了回调仍走服务端。
+- **表头字体区分**：可筛列（有 facets）非选中态加粗 + 主色，与纯文本/纯排序列头一眼分开；筛选中/排序中的高亮态不变。
+- **筛选菜单**：「取消排序」移到菜单最上（用户口径），升降序跟后；值筛选段「所有」仍居首。
+
+## 2026-09-25 单号列统一 · 服务端链路（终版）
+
+前一节是组件本地能力；服务端分页表格（绝大多数列表页）的正确链路如下，全站已统一：
+
+- **页面侧共享状态** `MasterServerColumnFilters`（`lib/features/basic_data/widgets/master_server_column_filters.dart`）：持有筛选值/桶/排序态与防竞态 generation；页面只声明「列 key → 重拉参数」映射，`facets/filters/sortColumn/onSortChange/onFilterChanged` 全部转发给它，不再每页手写 `_xxxFilter`+`_loadXxxFacets` 样板。
+- **桶解析公共函数** `parseFacetBuckets(json, key)`（`master_facet.dart`）：所有仓库对 `/facets` 端点与内嵌 facets 字段的统一解析口。
+- **服务端**：JPA 列表 `TableSort`(排序白名单) + `TableFacets.groupCount`(与列表同一 Specification 分组计数)；原生 SQL 服务用 `NativeFacets` 桶助手 + 谓词共用基座。端点约定：列表加精确值筛选参数 + `GET {base}/facets` 返回该列桶（同权限、同过滤、不含该列自身筛选）。
+- **报表页**：`isSortableReportType` 已含 text（服务端 ReportSort 本就支持全列 key）；单号值筛选由各报表服务的 `FacetSpec` 提供，前端自动渲染。
+- 表头字体区分（可筛列非选中态加粗+主色）、菜单「取消排序」置顶——见上一节，对所有表格生效。

@@ -28,6 +28,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/drafts/form_draft_category.dart';
 
 class QualityTaskCenterPage extends ConsumerWidget {
   const QualityTaskCenterPage({super.key});
@@ -63,6 +64,32 @@ class QualityTaskCenterPage extends ConsumerWidget {
           location: RouteName.qualityInspectionRecords,
         ),
     ];
+    final content = SafeArea(
+      child: UtenContentContainer(
+        child: ListView(
+          padding: EdgeInsets.only(
+            top: UtenSpacing.s12,
+            bottom: context.breakpoint.isCompact
+                ? UtenSpacing.s16
+                : UtenSpacing.s40,
+          ),
+          children: [
+            if (taskEntries.isNotEmpty)
+              _section(context, theme, '任务中心', taskEntries),
+            if (taskEntries.isNotEmpty && recordEntries.isNotEmpty)
+              const SizedBox(height: UtenSpacing.s16),
+            if (recordEntries.isNotEmpty)
+              _section(context, theme, '查询与记录', recordEntries),
+            if (taskEntries.isEmpty && recordEntries.isEmpty)
+              const UtenEmpty(
+                icon: Icons.lock_outline_rounded,
+                message: '暂无已授权的品质页面',
+                description: '请联系品质主管开通 IQC 或生产成品质检查看权限。',
+              ),
+          ],
+        ),
+      ),
+    );
     return Scaffold(
       appBar: UtenAppBar(
         title: '品质任务中心',
@@ -70,32 +97,12 @@ class QualityTaskCenterPage extends ConsumerWidget {
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
       ),
-      body: SafeArea(
-        child: UtenContentContainer(
-          child: ListView(
-            padding: EdgeInsets.only(
-              top: UtenSpacing.s12,
-              bottom: context.breakpoint.isCompact
-                  ? UtenSpacing.s16
-                  : UtenSpacing.s40,
-            ),
-            children: [
-              if (taskEntries.isNotEmpty)
-                _section(context, theme, '任务中心', taskEntries),
-              if (taskEntries.isNotEmpty && recordEntries.isNotEmpty)
-                const SizedBox(height: UtenSpacing.s16),
-              if (recordEntries.isNotEmpty)
-                _section(context, theme, '查询与记录', recordEntries),
-              if (taskEntries.isEmpty && recordEntries.isEmpty)
-                const UtenEmpty(
-                  icon: Icons.lock_outline_rounded,
-                  message: '暂无已授权的品质页面',
-                  description: '请联系品质主管开通 IQC 或生产成品质检查看权限。',
-                ),
-            ],
-          ),
-        ),
-      ),
+      body: canViewInspection || canViewFqc
+          ? FormDraftCategoryHost(
+              scope: const FormDraftCategoryScope(module: BadgeModule.quality),
+              child: content,
+            )
+          : content,
     );
   }
 

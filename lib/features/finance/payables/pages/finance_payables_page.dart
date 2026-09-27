@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,7 +14,9 @@ import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_content_container.dart';
 import '../../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../../components/layout/uten_filter_toolbar.dart';
+import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../components/layout/uten_list_two_pane.dart';
+import '../../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/latest_request_guard.dart';
 import '../../../../core/router/nav_helpers.dart';
@@ -23,6 +27,7 @@ import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../../core/utils/currency_display.dart';
 import '../../../../shared/auth/permissions.dart';
+import '../../../basic_data/widgets/master_server_column_filters.dart';
 import '../../../basic_data/models/reference_method_option.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
 import '../../../basic_data/repositories/reference_method_repository.dart';
@@ -72,8 +77,9 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
   DateTime? _dateTo;
   DateTime? _dueFrom;
   DateTime? _dueTo;
-  String? _sortKey;
-  bool _sortAsc = true;
+  // 列排序 + 2026-09-25 单号列统一（来源单号表头值筛选 + 服务端桶 + 防串台
+  // 代数）：共享状态见 MasterServerColumnFilters。
+  final _columnFilters = MasterServerColumnFilters();
   bool _applyingOffset = false;
   Set<String> _selectedIds = <String>{};
   final Map<String, FinancePayableItem> _selectedItemsById = {};
@@ -153,6 +159,22 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
     }
   }
 
+  /// 当前筛选组装（_load 与来源单号桶共用；[withSourceDocNo] = false 供桶拉取）。
+  FinancePayablesFilter _payablesFilter({bool withSourceDocNo = true}) =>
+      FinancePayablesFilter(
+        businessType: _businessType,
+        supplierId: _supplierId,
+        status: _status,
+        settlementMethodId: _settlementMethodId,
+        currencyId: _currencyId,
+        keyword: _keyword,
+        dateFrom: _fmt(_dateFrom),
+        dateTo: _fmt(_dateTo),
+        dueFrom: _fmt(_dueFrom),
+        dueTo: _fmt(_dueTo),
+        sourceDocNo: withSourceDocNo ? _columnFilters['sourceDocNo'] : null,
+      );
+
   Future<void> _load([int? requestedPage]) async {
     if (!_canViewPayables) return;
     final generation = _requests.begin();
@@ -162,25 +184,18 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       _loading = true;
       _error = null;
     });
+    // 来源单号桶随列表口径重取（2026-09-25 单号列统一）。
+    unawaited(_loadSourceDocNoFacets());
     try {
       final result = await ref
           .read(financePayablesRepositoryProvider)
           .list(
             page: page,
-            filter: FinancePayablesFilter(
-              businessType: _businessType,
-              supplierId: _supplierId,
-              status: _status,
-              settlementMethodId: _settlementMethodId,
-              currencyId: _currencyId,
-              keyword: _keyword,
-              dateFrom: _fmt(_dateFrom),
-              dateTo: _fmt(_dateTo),
-              dueFrom: _fmt(_dueFrom),
-              dueTo: _fmt(_dueTo),
-            ),
-            sort: _sortKey,
-            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
+            filter: _payablesFilter(),
+            sort: _columnFilters.sortColumn,
+            order: _columnFilters.sortColumn == null
+                ? null
+                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
           );
       if (!mounted || !_requests.isCurrent(generation)) return;
       setState(() {
@@ -197,6 +212,21 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
     } catch (_) {
       _setLoadError(generation, '服务暂不可用，请稍后重试');
     }
+  }
+
+  /// 来源单号值筛选桶随过滤上下文重取（失败静默保持旧桶，不阻断列表）。
+  Future<void> _loadSourceDocNoFacets() {
+    if (!_canViewPayables) return Future.value();
+    return _columnFilters.loadFacets(
+      () async => {
+        'sourceDocNo': await ref
+            .read(financePayablesRepositoryProvider)
+            .sourceDocNoFacets(filter: _payablesFilter(withSourceDocNo: false)),
+      },
+      onLoaded: () {
+        if (mounted) setState(() {});
+      },
+    );
   }
 
   void _setLoadError(int generation, String message) {
@@ -225,6 +255,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       _status != null,
       _settlementMethodId != null,
       _currencyId != null,
+      _columnFilters['sourceDocNo'] != null,
       _dateFrom != null || _dateTo != null,
       _dueFrom != null || _dueTo != null,
     ].where((active) => active).length;
@@ -239,6 +270,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       _status = null;
       _settlementMethodId = null;
       _currencyId = null;
+      _columnFilters.clearValues();
       _dateFrom = null;
       _dateTo = null;
       _dueFrom = null;
@@ -275,14 +307,25 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
           _currencyId = value;
       }
     });
+    // 2026-09-25 单号列统一：来源单号表头值筛选（清空回 null=不过滤）走共享状态。
+    if (key == 'sourceDocNo') {
+      _columnFilters.handleFilterChanged(
+        key,
+        value,
+        onChanged: () => _changeFilter(() {}),
+      );
+    }
   }
 
   void _onSortChange(String? column, bool ascending) {
-    setState(() {
-      _sortKey = column;
-      _sortAsc = ascending;
-    });
-    _load(1);
+    _columnFilters.handleSortChanged(
+      column,
+      ascending,
+      onChanged: () {
+        if (mounted) setState(() {});
+        _load(1);
+      },
+    );
   }
 
   Future<DateTime?> _pickDate(DateTime? current) => showDatePicker(
@@ -352,7 +395,9 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       value: (item) => item.sourceTypeLabel,
     ),
     MasterColumnDef(
+      // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 sourceDocNo 白名单/桶）。
       key: 'sourceDocNo',
+      sortable: true,
       label: '来源单号',
       width: 160,
       value: (item) => item.sourceDocNo,
@@ -548,49 +593,19 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
         ),
       ],
     );
-    final actions = Wrap(
-      spacing: UtenSpacing.s8,
-      runSpacing: UtenSpacing.s8,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      alignment: WrapAlignment.end,
-      children: [
-        Semantics(
-          liveRegion: true,
-          child: Text(
-            '已选 ${_selectedIds.length} 项',
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: _selectedIds.isEmpty
-                  ? theme.colorScheme.onSurfaceVariant
-                  : theme.colorScheme.primary,
-              fontWeight: FontWeight.w700,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-        ),
-        UtenButton(
-          type: UtenButtonType.secondary,
-          size: UtenButtonSize.small,
-          onPressed: pageItems.isEmpty
-              ? null
-              : () => _setSelectedIds({
-                  ..._selectedIds,
-                  for (final item in pageItems) item.id,
-                }),
-          child: const Text('全选本页'),
-        ),
-        UtenButton(
-          type: UtenButtonType.ghost,
-          size: UtenButtonSize.small,
-          onPressed: _selectedIds.isEmpty
-              ? null
-              : () => _setSelectedIds(<String>{}),
-          child: const Text('清空'),
-        ),
-        _payablesPrimaryAction(
-          canCreatePayment: canCreatePayment,
-          canApplyOffset: canApplyOffset,
-        ),
-      ],
+    // 2026-09-26 全站口径：表格上方不再自制「已选 N 项 + 清空 + 生成付款单」
+    // 文本条——已选计数与主动作收进右下悬浮组（见 _payablesFloatingActions），
+    // 工具条只留「全选本页」（与销售订单财务确认页紧凑端同款）。
+    final selectAll = UtenButton(
+      type: UtenButtonType.secondary,
+      size: UtenButtonSize.small,
+      onPressed: pageItems.isEmpty
+          ? null
+          : () => _setSelectedIds({
+              ..._selectedIds,
+              for (final item in pageItems) item.id,
+            }),
+      child: const Text('全选本页'),
     );
     final notice = selectedPrepayment
         ? '供应商预付款需专用预付款资产/总账链，当前不可自动核销或应用。'
@@ -614,7 +629,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                   children: [
                     Expanded(child: heading),
                     const SizedBox(width: UtenSpacing.s12),
-                    actions,
+                    selectAll,
                   ],
                 );
               }
@@ -623,7 +638,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                 children: [
                   heading,
                   const SizedBox(height: UtenSpacing.s8),
-                  Align(alignment: Alignment.centerRight, child: actions),
+                  Align(alignment: Alignment.centerRight, child: selectAll),
                 ],
               );
             },
@@ -674,6 +689,32 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
     );
   }
 
+  /// 右下悬浮批量组（2026-09-26 全站口径）：「已选 N 项」标准胶囊（✕ 即清空）
+  /// + 主动作（生成付款单(N)/应用贷项）；「全选本页」留在表格上方工具条。
+  Widget _payablesFloatingActions({
+    required bool canCreatePayment,
+    required bool canApplyOffset,
+  }) {
+    return UtenFloatingActionGroup(
+      children: [
+        Semantics(
+          liveRegion: true,
+          child: UtenSelectionSummaryPill(
+            clearKey: const ValueKey('finance-payables-clear-selection'),
+            count: _selectedIds.length,
+            onClear: _selectedIds.isEmpty
+                ? null
+                : () => _setSelectedIds(<String>{}),
+          ),
+        ),
+        _payablesPrimaryAction(
+          canCreatePayment: canCreatePayment,
+          canApplyOffset: canApplyOffset,
+        ),
+      ],
+    );
+  }
+
   Widget _payablesPrimaryAction({
     required bool canCreatePayment,
     required bool canApplyOffset,
@@ -702,7 +743,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
         key: useCreditAction
             ? const ValueKey('finance-payables-apply-credit')
             : const ValueKey('finance-payables-create-payment'),
-        size: UtenButtonSize.small,
+        size: UtenButtonSize.large,
         icon: useCreditAction ? Icons.link_rounded : Icons.add_card_rounded,
         onPressed: enabled
             ? (useCreditAction ? _applySelectedCredit : _createPayment)
@@ -866,6 +907,19 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
           ],
         ),
       ),
+      // 应付台账的批量动作（2026-09-26 全站口径）：右下悬浮组，不吸底不驻工具条；
+      // 委外超耗责任/月结批次工作台没有批量选择，不显示。
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton:
+          _workspace == _PayablesWorkspaceView.payables &&
+              _canViewPayables &&
+              (canCreatePayment || canApplyOffset)
+          ? _payablesFloatingActions(
+              canCreatePayment: canCreatePayment,
+              canApplyOffset: canApplyOffset,
+            )
+          : null,
     );
   }
 
@@ -895,6 +949,8 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
             columns: _columns,
             items: pageItems,
             facets: {
+              // 来源单号桶与列表同一过滤口径（2026-09-25 单号列统一）。
+              'sourceDocNo': _columnFilters.bucketOf('sourceDocNo'),
               'businessType': financePayablesBusinessTypeFacets,
               'supplierName': financeDictionaryFacets(names),
               'settlementMethod': financeDictionaryFacets({
@@ -907,6 +963,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
             },
             nullCounts: const {},
             filters: {
+              'sourceDocNo': _columnFilters['sourceDocNo'],
               'businessType': _businessType,
               'supplierName': _supplierId,
               'settlementMethod': _settlementMethodId,
@@ -914,8 +971,8 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
               'status': _status,
             },
             onFilterChanged: _onColumnFilterChanged,
-            sortColumn: _sortKey,
-            sortAscending: _sortAsc,
+            sortColumn: _columnFilters.sortColumn,
+            sortAscending: _columnFilters.sortAscending,
             onSortChange: _onSortChange,
             selectable: canCreatePayment || canApplyOffset,
             idOf: (item) => item.id,

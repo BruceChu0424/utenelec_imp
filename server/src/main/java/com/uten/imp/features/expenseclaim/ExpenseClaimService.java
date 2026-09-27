@@ -114,6 +114,23 @@ public class ExpenseClaimService {
             String rawCategory,
             int page,
             int size) {
+        return listMine(rawStatuses, year, month, departmentId, rawCategory,
+                page, size, null, null, null);
+    }
+
+    /** 2026-09-25 单号列统一：报销单号表头排序（claimNo 白名单）+ 值筛选（精确匹配）。 */
+    @Transactional(readOnly = true)
+    public PageResponse<ExpenseClaimDto> listMine(
+            String rawStatuses,
+            Integer year,
+            Integer month,
+            UUID departmentId,
+            String rawCategory,
+            int page,
+            int size,
+            String sort,
+            String order,
+            String claimNo) {
         AuthUser user = requireStaff();
         require(user, "expense:apply");
         return listClaims(
@@ -125,7 +142,11 @@ public class ExpenseClaimService {
                 normalizeCategory(rawCategory),
                 page,
                 size,
-                true);
+                true,
+                false,
+                sort,
+                order,
+                claimNo);
     }
 
     @Transactional(readOnly = true)
@@ -136,6 +157,22 @@ public class ExpenseClaimService {
             String rawCategory,
             int page,
             int size) {
+        return listPending(year, month, departmentId, rawCategory, page, size,
+                null, null, null);
+    }
+
+    /** 2026-09-25 单号列统一：报销单号表头排序（claimNo 白名单）+ 值筛选（精确匹配）。 */
+    @Transactional(readOnly = true)
+    public PageResponse<ExpenseClaimDto> listPending(
+            Integer year,
+            Integer month,
+            UUID departmentId,
+            String rawCategory,
+            int page,
+            int size,
+            String sort,
+            String order,
+            String claimNo) {
         AuthUser user = requireStaff();
         require(user, "expense:approve");
         return listClaims(
@@ -147,7 +184,11 @@ public class ExpenseClaimService {
                 normalizeCategory(rawCategory),
                 page,
                 size,
-                false);
+                false,
+                false,
+                sort,
+                order,
+                claimNo);
     }
 
     @Transactional(readOnly = true)
@@ -158,6 +199,22 @@ public class ExpenseClaimService {
             String rawCategory,
             int page,
             int size) {
+        return listPayable(year, month, departmentId, rawCategory, page, size,
+                null, null, null);
+    }
+
+    /** 2026-09-25 单号列统一：报销单号表头排序（claimNo 白名单）+ 值筛选（精确匹配）。 */
+    @Transactional(readOnly = true)
+    public PageResponse<ExpenseClaimDto> listPayable(
+            Integer year,
+            Integer month,
+            UUID departmentId,
+            String rawCategory,
+            int page,
+            int size,
+            String sort,
+            String order,
+            String claimNo) {
         AuthUser user = requireStaff();
         require(user, "expense:pay");
         return listClaims(
@@ -169,7 +226,11 @@ public class ExpenseClaimService {
                 normalizeCategory(rawCategory),
                 page,
                 size,
-                false);
+                false,
+                false,
+                sort,
+                order,
+                claimNo);
     }
 
     /** 表头「类别」筛选（2026-09-16）：报销类别挂在明细项上，筛类别=存在任一命中类别的明细行；
@@ -187,9 +248,16 @@ public class ExpenseClaimService {
 
     @Transactional(readOnly=true)
     public PageResponse<ExpenseClaimDto> listHistory(Integer year,Integer month,UUID departmentId,String rawCategory,int page,int size) {
+        return listHistory(year,month,departmentId,rawCategory,page,size,null,null,null);
+    }
+
+    /** 2026-09-25 单号列统一：报销单号表头排序（claimNo 白名单）+ 值筛选（精确匹配）。 */
+    @Transactional(readOnly=true)
+    public PageResponse<ExpenseClaimDto> listHistory(Integer year,Integer month,UUID departmentId,String rawCategory,int page,int size,
+            String sort,String order,String claimNo) {
         AuthUser user=requireStaff();
         if(!has(user,"expense:approve") && !has(user,"expense:pay")) throw new ApiException(ErrorCode.FORBIDDEN);
-        return listClaims(null,Set.of("APPROVED","REJECTED","PAID"),year,month,departmentId,normalizeCategory(rawCategory),page,size,true,true);
+        return listClaims(null,Set.of("APPROVED","REJECTED","PAID"),year,month,departmentId,normalizeCategory(rawCategory),page,size,true,true,sort,order,claimNo);
     }
 
     private PageResponse<ExpenseClaimDto> listClaims(
@@ -202,10 +270,11 @@ public class ExpenseClaimService {
             int page,
             int size,
             boolean newestFirst) {
-        return listClaims(applicantId,statuses,year,month,departmentId,category,page,size,newestFirst,false);
+        return listClaims(applicantId,statuses,year,month,departmentId,category,page,size,newestFirst,false,null,null,null);
     }
     private PageResponse<ExpenseClaimDto> listClaims(UUID applicantId,Set<String> statuses,Integer year,Integer month,
-            UUID departmentId,String category,int page,int size,boolean newestFirst,boolean history) {
+            UUID departmentId,String category,int page,int size,boolean newestFirst,boolean history,
+            String sort,String order,String claimNo) {
         DateRange dateRange = createdAtRange(year, month);
         Specification<ExpenseClaim> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -238,6 +307,10 @@ public class ExpenseClaimService {
                         cb.equal(item.get("category"), category));
                 predicates.add(root.get("id").in(itemIds));
             }
+            // 2026-09-25 单号列统一：报销单号表头值筛选（精确匹配）。
+            if (claimNo != null && !claimNo.isBlank()) {
+                predicates.add(cb.equal(root.get("claimNo"), claimNo.trim()));
+            }
             if (dateRange != null) {
                 predicates.add(cb.greaterThanOrEqualTo(
                         root.get("createdAt"), dateRange.fromInclusive()));
@@ -246,10 +319,7 @@ public class ExpenseClaimService {
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
-        Sort.Direction direction = newestFirst ? Sort.Direction.DESC : Sort.Direction.ASC;
-        Pageable pageable = Pageables.of(page, size, Sort.by(
-                new Sort.Order(direction, "createdAt"),
-                new Sort.Order(direction, "id")));
+        Pageable pageable = Pageables.of(page, size, claimSort(sort, order, newestFirst));
         Page<ExpenseClaim> result = claimRepository.findAll(spec, pageable);
         return new PageResponse<>(
                 mapClaims(result.getContent()),
@@ -257,6 +327,23 @@ public class ExpenseClaimService {
                 pageable.getPageSize(),
                 result.getTotalElements(),
                 result.getTotalPages());
+    }
+
+    /** 排序白名单（2026-09-25 单号列统一）：claimNo → 单号属性；未知/空回落默认
+     *  createdAt/id（newestFirst 决定方向）；单号排序稳定键追加默认两段。 */
+    private static Sort claimSort(String rawSort, String rawOrder, boolean newestFirst) {
+        Sort.Direction direction = newestFirst ? Sort.Direction.DESC : Sort.Direction.ASC;
+        if ("claimNo".equals(rawSort == null ? "" : rawSort.strip())) {
+            Sort.Direction claimDirection =
+                    "desc".equalsIgnoreCase(rawOrder) ? Sort.Direction.DESC : Sort.Direction.ASC;
+            return Sort.by(
+                    new Sort.Order(claimDirection, "claimNo"),
+                    new Sort.Order(direction, "createdAt"),
+                    new Sort.Order(direction, "id"));
+        }
+        return Sort.by(
+                new Sort.Order(direction, "createdAt"),
+                new Sort.Order(direction, "id"));
     }
 
     @Transactional(readOnly = true)
@@ -349,12 +436,21 @@ public class ExpenseClaimService {
                 if(!has(user,"expense:approve") && !has(user,"expense:pay")) throw new ApiException(ErrorCode.FORBIDDEN);
                 return applicantQuery.historyFacets(user.getEmployeeId(),has(user,"expense:approve"),has(user,"expense:pay"));
             }
+            // 2026-09-25 单号列统一：我的报销列表只消费报销单号桶（部门/年月/类别
+            // 桶是审批/打款队列口径，个人列表不需要），其余桶恒空。
+            case "mine" -> {
+                require(user, "expense:apply");
+                return new ExpenseClaimFacetsDto(List.of(), List.of(), List.of(),
+                        toBuckets(applicantQuery.mineClaimNoFacets(user.getEmployeeId())));
+            }
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报销队列");
         }
         return new ExpenseClaimFacetsDto(
                 toBuckets(applicantQuery.departmentFacets(statuses,user.getEmployeeId(),statuses.contains("APPROVED"))),
                 toBuckets(applicantQuery.monthFacets(statuses,user.getEmployeeId(),statuses.contains("APPROVED"))),
-                toBuckets(applicantQuery.categoryFacets(statuses,user.getEmployeeId(),statuses.contains("APPROVED"))));
+                toBuckets(applicantQuery.categoryFacets(statuses,user.getEmployeeId(),statuses.contains("APPROVED"))),
+                // 2026-09-25 单号列统一：报销单号桶（与列表同一队列口径）。
+                toBuckets(applicantQuery.claimNoFacets(statuses,user.getEmployeeId(),statuses.contains("APPROVED"))));
     }
 
     private static List<ExpenseClaimFacetsDto.Bucket> toBuckets(

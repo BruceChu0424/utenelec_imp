@@ -89,6 +89,11 @@ void main() {
             qty: '3100.0001',
             allowPublicExtra: true,
             allowedOverproductionRate: 0,
+            sourceRequestedQtyByMaterialLineId: {
+              's0': '1100.0001',
+              's1': '1000',
+              's2': '1000',
+            },
           ),
         ],
       );
@@ -106,6 +111,11 @@ void main() {
         (((requests.single.data as Map)['groups'] as List).single
             as Map)['allowedOverproductionRate'],
         0,
+      );
+      expect(
+        (((requests.single.data as Map)['groups'] as List).single
+            as Map)['sourceRequestedQtyByMaterialLineId'],
+        {'s0': '1100.0001', 's1': '1000', 's2': '1000'},
       );
       expect(
         (requests.single.data as Map).containsKey('previewFingerprint'),

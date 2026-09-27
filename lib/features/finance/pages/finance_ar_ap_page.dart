@@ -3,6 +3,8 @@
 // direction(AR/AP) + settled(全部/未清/已清) 双向过滤 + 关键词 + 日期范围。
 // 列表展示：单据号/来源单号/方向/往来方/到期日/结账方式/金额/备注/状态。
 // 名称解析：AR→客户 / AP→供应商（FinanceNameService）。往来方显示用 partyId + direction。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -22,6 +24,7 @@ import '../../../core/utils/currency_display.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../models/finance_doc.dart';
 import '../models/finance_legacy_balance.dart';
 import '../providers/finance_name_provider.dart';
@@ -65,9 +68,10 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
   String? _currencyId; // 币别表头筛选（currencies/dict 桶 value=字典 id）
   bool? _settled; // null=全部 / false=未清 / true=已清
   bool _settledSelected = false;
-  // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
-  String? _sortKey;
-  bool _sortAsc = true;
+  // 列排序 + 2026-09-25 单号列统一（单据号/来源单号/关联销售单号表头值筛选 +
+  // 服务端桶 + 防串台代数）：共享状态见 MasterServerColumnFilters；
+  // 排序 null = 不排序（走后端默认 billDate DESC）。
+  final _columnFilters = MasterServerColumnFilters();
 
   @override
   void initState() {
@@ -78,6 +82,18 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
     });
   }
 
+  /// 当前筛选组装（_load 与单号桶共用；单号列自身的筛选值不进桶拉取）。
+  ArApFilter _arApFilter({bool withDocNoFilters = true}) => ArApFilter(
+    keyword: _keyword.trim().isEmpty ? null : _keyword,
+    direction: _direction,
+    sourceDocType: _sourceDocType,
+    partyId: _partyId,
+    currencyId: _currencyId,
+    settled: _settled,
+    billNo: withDocNoFilters ? _columnFilters['billNo'] : null,
+    salesOrderNos: withDocNoFilters ? _columnFilters['salesOrderNos'] : null,
+  );
+
   Future<void> _load(int page) async {
     final generation = _loadRequests.begin();
     setState(() {
@@ -85,21 +101,18 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
       _error = null;
       _pageNum = page;
     });
+    // 单号桶随列表口径重取（2026-09-25 单号列统一）。
+    unawaited(_loadDocNoFacets());
     try {
       final r = await ref
           .read(arApLedgerRepositoryProvider)
           .list(
             page: page,
-            filter: ArApFilter(
-              keyword: _keyword.trim().isEmpty ? null : _keyword,
-              direction: _direction,
-              sourceDocType: _sourceDocType,
-              partyId: _partyId,
-              currencyId: _currencyId,
-              settled: _settled,
-            ),
-            sort: _sortKey,
-            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
+            filter: _arApFilter(),
+            sort: _columnFilters.sortColumn,
+            order: _columnFilters.sortColumn == null
+                ? null
+                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
           );
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
@@ -120,6 +133,16 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
       });
     }
   }
+
+  /// 单号桶（单据号/来源单号）随过滤上下文重取（失败静默保持旧桶）。
+  Future<void> _loadDocNoFacets() => _columnFilters.loadFacets(
+    () => ref
+        .read(arApLedgerRepositoryProvider)
+        .facets(filter: _arApFilter(withDocNoFilters: false)),
+    onLoaded: () {
+      if (mounted) setState(() {});
+    },
+  );
 
   List<MasterColumnDef<ArApLedgerItem>> _columns(FinanceNameService names) {
     String directionLabel({
@@ -149,7 +172,9 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
 
     return <MasterColumnDef<ArApLedgerItem>>[
       MasterColumnDef(
+        // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
         key: 'billNo',
+        sortable: true,
         label: '单据号',
         width: 150,
         value: (it) => it.billNo,
@@ -182,6 +207,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
       ),
       if (_direction != 'AP')
         MasterColumnDef(
+          // 2026-09-25 单号列统一：关联销售单号表头值筛选（聚合列，服务端 EXISTS 精确匹配）。
           key: 'salesOrderNos',
           label: '销售订单号',
           width: 190,
@@ -189,7 +215,9 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
               it.salesOrderNos.isEmpty ? '—' : it.salesOrderNos.join('、'),
         ),
       MasterColumnDef(
+        // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 sourceDocNo 白名单/桶）。
         key: 'sourceDocNo',
+        sortable: true,
         label: '来源单号',
         width: 160,
         value: (it) => it.sourceDocNo,
@@ -301,14 +329,15 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
 
   /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
   void _onSortChange(String? column, bool ascending) {
-    setState(() {
-      _sortKey = column;
-      _sortAsc = ascending;
-    });
-    _load(1);
+    _columnFilters.handleSortChanged(column, ascending, onChanged: _refilter);
   }
 
   void _onColumnFilterChanged(String key, String? value) {
+    // 2026-09-25 单号列统一：单号类表头值筛选（清空回 null=不过滤）走共享状态。
+    if (key == 'billNo' || key == 'sourceDocNo' || key == 'salesOrderNos') {
+      _columnFilters.handleFilterChanged(key, value, onChanged: _refilter);
+      return;
+    }
     setState(() {
       switch (key) {
         case 'direction':
@@ -329,6 +358,12 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
           break;
       }
     });
+    _load(1);
+  }
+
+  /// 服务端列筛选/排序落地后：setState 刷新表头 + 重拉回第 1 页。
+  void _refilter() {
+    if (mounted) setState(() {});
     _load(1);
   }
 
@@ -455,6 +490,9 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                   columns: _columns(names),
                   items: _page?.items ?? const [],
                   facets: {
+                    // 单号桶与列表同一过滤口径（2026-09-25 单号列统一）。
+                    'billNo': _columnFilters.bucketOf('billNo'),
+                    'sourceDocNo': _columnFilters.bucketOf('sourceDocNo'),
                     'direction': financeArApDirectionFacets,
                     'sourceDocType': financeArApSourceTypeFacets,
                     'party': financeDictionaryFacets(
@@ -469,6 +507,9 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                   },
                   nullCounts: const {},
                   filters: {
+                    'billNo': _columnFilters['billNo'],
+                    'sourceDocNo': _columnFilters['sourceDocNo'],
+                    'salesOrderNos': _columnFilters['salesOrderNos'],
                     'direction': _direction,
                     'sourceDocType': _sourceDocType,
                     'party': _partyId,
@@ -476,8 +517,8 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                     'settled': _settled?.toString(),
                   },
                   onFilterChanged: _onColumnFilterChanged,
-                  sortColumn: _sortKey,
-                  sortAscending: _sortAsc,
+                  sortColumn: _columnFilters.sortColumn,
+                  sortAscending: _columnFilters.sortAscending,
                   onSortChange: _onSortChange,
                   isLoading: _loading && _page == null,
                   loadingMore: _loading && _page != null,

@@ -3,6 +3,7 @@ package com.uten.imp.features.warehouse.inbound;
 import com.uten.imp.application.port.PreplanInboundAllocationReadPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ReleasedSlice;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.InboundAllocation;
@@ -260,13 +261,35 @@ public class WarehouseQualityResultService {
             LocalDate dateTo,
             int page,
             int size) {
+        return list(keyword, receiptType, status, dateFrom, dateTo, page, size, null, null, null);
+    }
+
+    /** 同上；2026-09-25 单号列统一：sort/order 表头排序（白名单，未知回落默认序）、
+     *  billNo 收货单号表头值筛选（等值精确匹配，仅条件出现才绑定命名参数）。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('" + WarehouseQualityResultPermissions.STOCK_IN_VIEW + "')"
+            + " or hasAuthority('" + WarehouseQualityResultPermissions.RETURN_VIEW + "')")
+    public PageResponse<TaskSummary> list(
+            String keyword,
+            String receiptType,
+            String status,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            int page,
+            int size,
+            String sort,
+            String order,
+            String billNo) {
         int normalizedPage = Math.max(page, 1);
         int normalizedSize = Math.min(Math.max(size, 1), 100);
         String workStatus = normalizeStatus(status);
         String type = normalizeFilterType(receiptType);
         String search = normalizeSearch(keyword);
         String statusFilter = statusFilter(workStatus);
-        String filters = KEYWORD_WHERE + statusFilter + DATE_WHERE;
+        String trimmedBillNo = billNo == null ? "" : billNo.strip();
+        String billNoFilter = trimmedBillNo.isEmpty()
+                ? "" : "AND COALESCE(scope.bill_no, '') = :bill_no\n";
+        String filters = KEYWORD_WHERE + statusFilter + DATE_WHERE + billNoFilter;
 
         Query data = aggregateQuery(type, search, workStatus, """
                 SELECT (%s) AS work_status,
@@ -287,26 +310,26 @@ public class WarehouseQualityResultService {
                        last_event.last_event_at,
                        inspection.pre_stocked_line_count
                 %s%s
-                ORDER BY (CASE WHEN (%s) = 'COMPLETED' THEN 1 ELSE 0 END),
-                         COALESCE(last_event.last_event_at,
-                                  scope.bill_date::timestamptz) DESC NULLS LAST,
-                         scope.bill_no, scope.receipt_id
+                %s
                 LIMIT :limit OFFSET :offset
-                """.formatted(STATUS_CASE, AGGREGATE_FROM, filters, STATUS_CASE))
+                """.formatted(STATUS_CASE, AGGREGATE_FROM, filters,
+                orderBy(sort, order)))
                 .setParameter("date_from", dateFrom)
                 .setParameter("date_to", dateTo)
                 .setParameter("limit", normalizedSize)
                 .setParameter("offset", (normalizedPage - 1) * normalizedSize);
+        if (!trimmedBillNo.isEmpty()) data.setParameter("bill_no", trimmedBillNo);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = (List<Object[]>) data.getResultList();
 
-        long total = number(aggregateQuery(type, search, workStatus, """
+        Query countQuery = aggregateQuery(type, search, workStatus, """
                 SELECT COUNT(*)
                 %s%s
                 """.formatted(AGGREGATE_FROM, filters))
                 .setParameter("date_from", dateFrom)
-                .setParameter("date_to", dateTo)
-                .getSingleResult()).longValue();
+                .setParameter("date_to", dateTo);
+        if (!trimmedBillNo.isEmpty()) countQuery.setParameter("bill_no", trimmedBillNo);
+        long total = number(countQuery.getSingleResult()).longValue();
         List<TaskSummary> items = rows.stream().map(row -> new TaskSummary(
                 str(row[0]), str(row[1]), uuid(row[2]), str(row[3]), localDate(row[4]),
                 uuid(row[5]), str(row[6]), uuid(row[7]), str(row[8]),
@@ -318,6 +341,51 @@ public class WarehouseQualityResultService {
                 : (int) ((total + normalizedSize - 1) / normalizedSize);
         return new PageResponse<>(
                 items, normalizedPage, normalizedSize, total, totalPages);
+    }
+
+    /** 排序 ORDER BY（2026-09-25 单号列统一）：白名单映射前端列 key→SQL 表达式；
+     *  未知/空→默认（已完结沉底, 最近事件/单据日期降序）。 */
+    private String orderBy(String sort, String order) {
+        String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
+        return switch (sort == null ? "" : sort) {
+            case "billNo" -> "ORDER BY scope.bill_no " + dir + " NULLS LAST,\n"
+                    + "         (CASE WHEN (" + STATUS_CASE + ") = 'COMPLETED'"
+                    + " THEN 1 ELSE 0 END),\n"
+                    + "         COALESCE(last_event.last_event_at,\n"
+                    + "                  scope.bill_date::timestamptz) DESC NULLS LAST,\n"
+                    + "         scope.receipt_id\n";
+            default -> """
+                    ORDER BY (CASE WHEN (%s) = 'COMPLETED' THEN 1 ELSE 0 END),
+                             COALESCE(last_event.last_event_at,
+                                      scope.bill_date::timestamptz) DESC NULLS LAST,
+                             scope.bill_no, scope.receipt_id
+                    """.formatted(STATUS_CASE);
+        };
+    }
+
+    /** 收货单号 facets（2026-09-25 单号列统一）：{billNo:[各收货单号]}——与列表同一
+     *  过滤基座（同类型/状态/日期/关键字，不含 billNo 自身值筛选），按收货单号分组
+     *  计数、单号升序，上限 500 桶。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('" + WarehouseQualityResultPermissions.STOCK_IN_VIEW + "')"
+            + " or hasAuthority('" + WarehouseQualityResultPermissions.RETURN_VIEW + "')")
+    public Map<String, List<Map<String, Object>>> facets(
+            String keyword, String receiptType, String status,
+            LocalDate dateFrom, LocalDate dateTo) {
+        String workStatus = normalizeStatus(status);
+        String type = normalizeFilterType(receiptType);
+        String search = normalizeSearch(keyword);
+        String filters = KEYWORD_WHERE + statusFilter(workStatus) + DATE_WHERE;
+        List<Map<String, Object>> buckets = NativeFacets.rowsOf(
+                aggregateQuery(type, search, workStatus, """
+                                SELECT COALESCE(scope.bill_no, ''), COUNT(*)
+                                %s%s
+                                GROUP BY 1 ORDER BY 1
+                                """.formatted(AGGREGATE_FROM, filters))
+                        .setParameter("date_from", dateFrom)
+                        .setParameter("date_to", dateTo)
+                        .setMaxResults(500));
+        return Map.of("billNo", buckets);
     }
 
     /** 顶部状态分段计数：与列表同口径的全量分组计数（按类型/关键字过滤后）。 */

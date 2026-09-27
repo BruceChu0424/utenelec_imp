@@ -103,7 +103,8 @@ public class FulfillmentWorkbenchQueryService {
             COMPONENT_STOCK_AVAILABLE_SQL.formatted("sole_item.id", "NULL::uuid"), "%s");
 
     /**
-     * 仓库待领任务的单据归组行（一行=一张 DRAW 领料单；未挂单的行退回行级）。
+     * 仓库待领任务按真实 DRAW 明细映射归组；同一需求跨仓的多张单均独立列出。
+     * 未配置实际仓的材料申请由下面独立分支保留申请身份，不伪造库存单。
      * 列表 {@link #query}、状态卡片与 {@link #warehouseStatusBreakdown} 子分类徽章
      * 都从这同一段 SQL 取 task_status，保证三处口径永不分叉：整单状态按全部行
      *（含已出完的 DONE 行）判定——无 open 行=DONE、任一行≠READY_TO_PICK=PARTIAL、
@@ -111,13 +112,12 @@ public class FulfillmentWorkbenchQueryService {
      */
     static final String WAREHOUSE_DOCUMENT_ROWS = """
             (SELECT v.department,
-                    COALESCE(MIN(v.action_doc_id::text), MIN(v.task_id::text))::uuid
-                        AS task_id,
+                    draw_doc.id AS task_id,
                     MIN(v.package_id::text)::uuid AS package_id,
                     MIN(v.plan_id::text)::uuid AS plan_id,
                     MAX(v.plan_no) AS plan_no,
-                    MIN(v.warehouse_id::text)::uuid AS warehouse_id,
-                    MAX(v.warehouse_name) AS warehouse_name,
+                    draw_doc.warehouse_id AS warehouse_id,
+                    MAX(actual_warehouse.name) AS warehouse_name,
                     CASE WHEN COUNT(DISTINCT v.goods_id) = 1
                          THEN MIN(v.goods_id::text)::uuid END AS goods_id,
                     CASE WHEN COUNT(DISTINCT v.goods_id) = 1
@@ -136,13 +136,13 @@ public class FulfillmentWorkbenchQueryService {
                          THEN MAX(v.unit_name) END AS unit_name,
                     MAX(v.supply_route) AS supply_route,
                     CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                         THEN SUM(v.required_qty) END AS required_qty,
+                         THEN SUM(request.effective_qty) END AS required_qty,
                     CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                         THEN SUM(v.allocated_qty) END AS allocated_qty,
+                         THEN SUM(request.effective_qty) END AS allocated_qty,
                     CASE WHEN COUNT(DISTINCT v.goods_id) = 1
                          THEN SUM(request.fulfilled_qty) END AS fulfilled_qty,
                     CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                         THEN SUM(v.supply_pegged_qty) END AS supply_pegged_qty,
+                         THEN 0::numeric END AS supply_pegged_qty,
                     CASE WHEN COUNT(DISTINCT v.goods_id) = 1
                          THEN SUM(request.open_qty) END AS open_qty,
                     CASE WHEN COUNT(*) FILTER (WHERE request.open_qty > 0) = 0
@@ -153,45 +153,66 @@ public class FulfillmentWorkbenchQueryService {
                          ELSE 'READY_TO_PICK' END::text AS task_status,
                     MIN(v.need_date) AS need_date,
                     MIN(v.expected_date) AS expected_date,
-                    MAX(v.exception_code) AS exception_code,
-                    MAX(v.updated_at) AS updated_at,
-                    MAX(v.action_doc_type) AS action_doc_type,
-                    MIN(v.action_doc_id::text)::uuid AS action_doc_id,
-                    MAX(v.action_doc_no) AS action_doc_no,
+                    CASE WHEN COUNT(*) FILTER (WHERE request.open_qty > 0)=0
+                         THEN NULL ELSE MAX(v.exception_code) END AS exception_code,
+                    MAX(GREATEST(v.updated_at,draw_doc.updated_at)) AS updated_at,
+                    'DRAW'::text AS action_doc_type,
+                    draw_doc.id AS action_doc_id,
+                    draw_doc.bill_no AS action_doc_no,
                     NULL::UUID AS action_item_id,
-                    MAX(v.action_doc_status) AS action_doc_status,
+                    draw_doc.status::text AS action_doc_status,
                     COUNT(DISTINCT v.goods_id) AS goods_count,
                     COUNT(*) FILTER (WHERE request.open_qty > 0) AS open_line_count,
                     COALESCE(
-                        ARRAY_AGG(v.action_item_id::TEXT ORDER BY v.action_item_id)
-                            FILTER (WHERE v.action_item_id IS NOT NULL),
+                        ARRAY_AGG(draw_item.id::TEXT ORDER BY draw_item.id),
                         ARRAY[]::TEXT[]
                     ) AS action_item_ids
-             FROM v_fulfillment_workbench_actions v
-             JOIN stock_document_items draw_item ON draw_item.id=v.action_item_id AND NOT draw_item.is_deleted
+             FROM v_fulfillment_workbench v
+             JOIN production_planning_package_document_items mapping
+               ON mapping.package_id=v.package_id AND mapping.demand_id=v.task_id AND mapping.document_type='DRAW'
+             JOIN stock_documents draw_doc ON draw_doc.id=mapping.document_id
+               AND draw_doc.doc_type='DRAW' AND NOT draw_doc.is_deleted AND draw_doc.status IN(0,1)
+             JOIN stock_document_items draw_item ON draw_item.id=mapping.document_item_id
+               AND draw_item.doc_id=draw_doc.id AND NOT draw_item.is_deleted
+             LEFT JOIN warehouses actual_warehouse ON actual_warehouse.id=draw_doc.warehouse_id
              CROSS JOIN LATERAL (SELECT
+               fn_production_draw_item_effective_qty(draw_item.id)*COALESCE(draw_item.unit_rate,1) AS effective_qty,
                COALESCE(draw_item.issued_qty,0)*COALESCE(draw_item.unit_rate,1) AS fulfilled_qty,
                GREATEST(fn_production_draw_item_requested_qty(draw_item.id)-COALESCE(draw_item.issued_qty,0),0)
                  *COALESCE(draw_item.unit_rate,1) AS open_qty) request
              WHERE v.department = 'WAREHOUSE'
-               AND fn_production_draw_requested(v.action_doc_id)
+               AND fn_production_draw_requested(draw_doc.id)
                AND fn_production_draw_item_requested_qty(draw_item.id)>0
-             GROUP BY v.department, COALESCE(v.action_doc_id, v.task_id)
+             GROUP BY v.department,draw_doc.id,draw_doc.warehouse_id,draw_doc.bill_no,draw_doc.status
              UNION ALL
              SELECT 'WAREHOUSE', request.id, segment.package_id, segment.plan_id,
                     plan.bill_no, NULL::uuid, NULL::text,
-                    segment.product_goods_id, goods.code, goods.name, goods.spec,
-                    segment.product_color_id, color.name, segment.product_unit_id, unit.name,
-                    'MAKE', NULL::numeric, NULL::numeric, NULL::numeric, NULL::numeric,
-                    NULL::numeric, 'MATERIALS_TO_DEFINE', segment.plan_end_date, NULL::date,
+                    material.goods_id, material.goods_code, material.goods_name, material.spec,
+                    material.color_id, material.color_name, material.unit_id, material.unit_name,
+                    'MAKE', material.qty, NULL::numeric, NULL::numeric, NULL::numeric,
+                    material.qty, 'MATERIALS_TO_DEFINE', segment.plan_end_date, NULL::date,
                     NULL::text, request.created_at, 'MATERIAL_DISCOVERY', request.id,
-                    segment.segment_code, NULL::uuid, NULL::text, 1::bigint, 1::bigint, ARRAY[]::text[]
+                    request.request_no, NULL::uuid, NULL::text, material.goods_count,
+                    GREATEST(material.line_count,1), ARRAY[]::text[]
              FROM production_material_discovery_requests request
              JOIN production_execution_segments segment ON segment.id=request.execution_segment_id
              JOIN production_plans plan ON plan.id=segment.plan_id
-             JOIN goods ON goods.id=segment.product_goods_id
-             LEFT JOIN colors color ON color.id=segment.product_color_id
-             LEFT JOIN units unit ON unit.id=segment.product_unit_id
+             CROSS JOIN LATERAL (
+                 SELECT COUNT(DISTINCT item."goodsId") AS goods_count, COUNT(*) AS line_count,
+                        CASE WHEN COUNT(DISTINCT item."goodsId")=1 THEN MIN(item."goodsId"::text)::uuid END AS goods_id,
+                        CASE WHEN COUNT(DISTINCT item."goodsId")=1 THEN MAX(item."goodsCode") END AS goods_code,
+                        STRING_AGG(DISTINCT item."goodsName",'、' ORDER BY item."goodsName") AS goods_name,
+                        CASE WHEN COUNT(DISTINCT item."goodsId")=1 THEN MAX(goods.spec) END AS spec,
+                        CASE WHEN COUNT(*)=1 THEN MIN(item."colorId"::text)::uuid END AS color_id,
+                        CASE WHEN COUNT(*)=1 THEN MAX(item."colorName") END AS color_name,
+                        CASE WHEN COUNT(*)=1 THEN MIN(item."unitId"::text)::uuid END AS unit_id,
+                        CASE WHEN COUNT(*)=1 THEN MAX(item."unitName") END AS unit_name,
+                        CASE WHEN COUNT(*)=1 THEN MAX(item.qty) END AS qty
+                 FROM jsonb_to_recordset(request.requested_materials) AS item(
+                     "goodsId" uuid,"goodsCode" text,"goodsName" text,"colorId" uuid,"colorName" text,
+                     "unitId" uuid,"unitName" text,qty numeric)
+                 LEFT JOIN goods ON goods.id=item."goodsId"
+             ) material
              WHERE request.status='PENDING' AND NOT segment.is_deleted
                AND segment.status IN ('WAITING','READY','DISPATCHED')
                AND plan.status=1 AND NOT plan.is_deleted AND NOT plan.is_closed
@@ -339,7 +360,11 @@ public class FulfillmentWorkbenchQueryService {
                       COALESCE(plan_no,'') || ' ' ||
                       COALESCE(action_doc_no,'') || ' ' ||
                       COALESCE(goods_code,'') || ' ' ||
-                      COALESCE(goods_name,'')
+                      COALESCE(goods_name,'') || ' ' ||
+                      COALESCE(production_product_code,'') || ' ' ||
+                      COALESCE(production_product_name,'') || ' ' ||
+                      COALESCE(material_request_no,'') || ' ' ||
+                      COALESCE(execution_segment_codes,'')
                   ) LIKE :keywordLike)
                   -- 历史记录时间门控：仅行/汇总查询传入日期；null = 不过滤
                   -- （状态/异常/待完成计数始终传 null，保持角标全量口径）。
@@ -368,7 +393,8 @@ public class FulfillmentWorkbenchQueryService {
                        expected_date, exception_code, updated_at,
                        action_doc_type, action_doc_id, action_doc_no, action_item_id, action_doc_status,
                        goods_count, open_line_count, action_item_ids, issued_at, can_create_order,
-                       display_stage, component_available_qty
+                       display_stage, component_available_qty,
+                       materials_defined, production_product_code, production_product_name, material_request_no
                 FROM %s
                 WHERE %s
                 ORDER BY %s
@@ -466,7 +492,6 @@ public class FulfillmentWorkbenchQueryService {
         long pendingTasks = ((Number) pendingQuery.getSingleResult()).longValue();
         Map<String, List<FulfillmentWorkbenchPage.Facet>> facets = new LinkedHashMap<>();
         Map<String, Long> nullCounts = new LinkedHashMap<>();
-        // 仓库待领任务只用表头排序、不做列筛选(前端不渲染分面), 不为它多跑一次分面查询。
         if (table != null && !"WAREHOUSE".equals(department)) {
             // One materialized candidate set; each column excludes its own filter, while
             // retaining all other columns and the real date/category/keyword predicates.
@@ -495,6 +520,39 @@ public class FulfillmentWorkbenchQueryService {
                 } else {
                     facets.computeIfAbsent(key, ignored -> new java.util.ArrayList<>()).add(
                             new FulfillmentWorkbenchPage.Facet(row[1].toString(), (String) row[2], count));
+                }
+            }
+        } else if ("WAREHOUSE".equals(department)) {
+            // 2026-09-25 单号列统一：仓库待领任务也带回 docNo（领料单号）桶——只算这一列
+            // （其余列仍不做分面），谓词与列表同一份 filters，docNo 自身的值筛选不算进桶。
+            // table 可为 null（未排序、无列筛选时），此时桶只按状态/关键字/范围过滤。
+            String docNoFilter = table == null ? "" : table.filterSql("docNo");
+            Query docNoFacetQuery = em.createNativeQuery("""
+                    SELECT visible_doc_no, COUNT(*)
+                    FROM %s
+                    WHERE %s
+                    GROUP BY visible_doc_no
+                    ORDER BY visible_doc_no NULLS LAST
+                    """.formatted(sourceView, filters + docNoFilter));
+            bind(docNoFacetQuery, department, normalizedStatus, normalizedKeyword, normalizedException, dateFrom, dateTo);
+            bindScope.accept(docNoFacetQuery);
+            if (table != null) {
+                // 只绑定进得了 SQL 的参数：docNo 被排除在桶谓词外，绑了会撞
+                // Hibernate「未出现的命名参数」校验。
+                table.filters().forEach((key, value) -> {
+                    if (!"docNo".equals(key)
+                            && !FulfillmentWorkbenchTableQuery.NULL_VALUE.equals(value)) {
+                        docNoFacetQuery.setParameter("f_" + key, value);
+                    }
+                });
+            }
+            for (Object[] row : NativeQueryResults.objectArrayRows(docNoFacetQuery)) {
+                long count = ((Number) row[1]).longValue();
+                if (row[0] == null) {
+                    nullCounts.put("docNo", count);
+                } else {
+                    facets.computeIfAbsent("docNo", ignored -> new java.util.ArrayList<>()).add(
+                            new FulfillmentWorkbenchPage.Facet(row[0].toString(), row[0].toString(), count));
                 }
             }
         }
@@ -673,7 +731,7 @@ public class FulfillmentWorkbenchQueryService {
         boolean canCreate = subcontract ? accessPolicy.canCreateSubcontractOrder()
                 : purchase && accessPolicy.canCreatePurchaseOrder();
         String requestType = subcontract ? "SUBCONTRACT_APPLICATION" : "PURCHASE_REQUEST";
-        List<String> types = "WAREHOUSE".equals(department) ? List.of("DRAW")
+        List<String> types = "WAREHOUSE".equals(department) ? List.of("DRAW", "MATERIAL_DISCOVERY")
                 : subcontract ? List.of("SUBCONTRACT_APPLICATION", "SUBCONTRACT_ORDER", "SUBCONTRACT_MAKE_TASK")
                 : List.of("PURCHASE_REQUEST", "PURCHASE_ORDER");
         String readable = types.stream().filter(type -> accessPolicy.documentAccess(department, type) != null
@@ -816,6 +874,32 @@ public class FulfillmentWorkbenchQueryService {
                 CASE WHEN base.action_doc_type='PURCHASE_ORDER' AND base.task_status='FINANCE_REJECTED'
                           THEN 'FINANCE_REJECTED'
                      ELSE base.exception_code END""" : "base.exception_code";
+        String productionProductJoin = "WAREHOUSE".equals(department) ? """
+                LEFT JOIN LATERAL (
+                    SELECT STRING_AGG(DISTINCT goods.code,'、' ORDER BY goods.code) AS product_code,
+                           STRING_AGG(DISTINCT goods.name,'、' ORDER BY goods.name) AS product_name,
+                           STRING_AGG(DISTINCT source.request_no,'、' ORDER BY source.request_no) AS request_no,
+                           STRING_AGG(DISTINCT segment.segment_code,'、' ORDER BY segment.segment_code) AS segment_codes
+                    FROM (
+                        SELECT discovery.execution_segment_id AS id,discovery.request_no
+                        FROM production_material_discovery_requests discovery
+                        WHERE base.action_doc_type='MATERIAL_DISCOVERY' AND discovery.id=base.action_doc_id
+                        UNION
+                        SELECT mapping.execution_segment_id,discovery.request_no
+                        FROM production_planning_package_documents mapping
+                        LEFT JOIN production_material_discovery_requests discovery
+                          ON discovery.execution_segment_id=mapping.execution_segment_id AND discovery.status='CONFIGURED'
+                         AND EXISTS(SELECT 1 FROM production_material_discovery_lines discovered
+                           JOIN production_planning_package_document_items item_mapping ON item_mapping.demand_id=discovered.demand_id
+                            AND item_mapping.document_type='DRAW' AND item_mapping.document_id=mapping.document_id
+                           WHERE discovered.request_id=discovery.id)
+                        WHERE base.action_doc_type='DRAW' AND mapping.document_type='DRAW'
+                          AND mapping.document_id=base.action_doc_id
+                    ) source
+                    JOIN production_execution_segments segment ON segment.id=source.id
+                    JOIN goods ON goods.id=segment.product_goods_id
+                ) production_product ON TRUE
+                """ : "";
         // A grouped order can contain several real source issues. Its earliest source issue
         // remains the displayed date; later preparation/app creation never substitutes for it.
         return """
@@ -832,15 +916,22 @@ public class FulfillmentWorkbenchQueryService {
                             AND base.open_line_count > 0%s) AS can_create_order,
                         %s AS visible_doc_no,
                         %s AS display_stage,
-                        %s AS component_available_qty
-                 FROM %s base %s %s %s)
+                        %s AS component_available_qty,
+                        (base.action_doc_type IS DISTINCT FROM 'MATERIAL_DISCOVERY' OR base.goods_count>0) AS materials_defined,
+                        %s AS production_product_code, %s AS production_product_name, %s AS material_request_no,
+                        %s AS execution_segment_codes
+                 FROM %s base %s %s %s %s)
                 """.formatted(exceptionExpression, subcontract ? "issue.issued_at" : "NULL::timestamptz",
                         canCreate ? "TRUE" : "FALSE", requestType,
                         // ADR-103: 路线 B 锁住的申请不能生成委外订货单 (与建单/送审/批准的服务端守卫同判据).
                         subcontract ? " AND NOT COALESCE(component.locked, FALSE)" : "",
                         visibleDoc, stageExpression,
                         subcontract ? "component.available_qty" : "NULL::numeric",
-                        source, issueJoin, progressJoin, componentJoin);
+                        "WAREHOUSE".equals(department) ? "production_product.product_code" : "NULL::text",
+                        "WAREHOUSE".equals(department) ? "production_product.product_name" : "NULL::text",
+                        "WAREHOUSE".equals(department) ? "production_product.request_no" : "NULL::text",
+                        "WAREHOUSE".equals(department) ? "production_product.segment_codes" : "NULL::text",
+                        source, issueJoin, progressJoin, componentJoin, productionProductJoin);
     }
 
     private static String subcontractPreparationRows() {
@@ -948,7 +1039,10 @@ public class FulfillmentWorkbenchQueryService {
                 row.length > 35 && Boolean.TRUE.equals(row[35]),
                 row.length > 36 ? (String) row[36] : null,
                 row.length > 37 && row[37] != null ? new BigDecimal(row[37].toString()) : null,
-                List.of());
+                List.of(), row.length <= 38 || Boolean.TRUE.equals(row[38]),
+                row.length > 39 ? (String) row[39] : null,
+                row.length > 40 ? (String) row[40] : null,
+                row.length > 41 ? (String) row[41] : null);
     }
 
     /** Only the visible application IDs on this page are expanded, in one bounded query. */
@@ -1087,7 +1181,8 @@ public class FulfillmentWorkbenchQueryService {
                 row.goodsCount(), row.openLineCount(),
                 restricted ? List.of() : row.actionItemIds(), row.issuedAt(),
                 !restricted && row.canCreateOrder(), row.displayStage(),
-                row.componentAvailableQty(), restricted ? List.of() : row.sources());
+                row.componentAvailableQty(), restricted ? List.of() : row.sources(), row.materialsDefined(),
+                row.productionProductCode(), row.productionProductName(), restricted ? null : row.materialRequestNo());
     }
 
     private static BigDecimal decimal(Object value) {

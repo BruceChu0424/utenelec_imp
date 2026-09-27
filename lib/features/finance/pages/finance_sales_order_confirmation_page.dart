@@ -34,6 +34,7 @@ import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../models/sales_order_finance_confirmation.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
 import '../repositories/sales_order_finance_confirmation_repository.dart';
@@ -105,6 +106,11 @@ class _FinanceSalesOrderConfirmationPageState
   /// null = 尚未取到, 不渲染数字。
   int? _rejectedCount;
 
+  /// 表头排序 + 销售单号列值筛选 + facets 桶 + 防串台代数
+  /// （2026-09-25 单号列统一，共享状态见 MasterServerColumnFilters）；
+  /// 排序列 key 见 [_kSortFields]，null = 服务端默认序。
+  final _columnFilters = MasterServerColumnFilters();
+
   bool get _canView {
     return ref.read(isSuperAdminProvider) ||
         ref
@@ -151,8 +157,15 @@ class _FinanceSalesOrderConfirmationPageState
             rejected: _showRejected,
             keyword: _keyword.isEmpty ? null : _keyword,
             changesOnly: widget.changesOnly,
+            sort: _kSortFields[_columnFilters.sortColumn],
+            order: _columnFilters.sortColumn == null
+                ? null
+                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+            billNo: _columnFilters['billNo'],
           );
       if (!mounted || requestVersion != _requestVersion) return;
+      // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
+      unawaited(_loadBillNoFacets());
       setState(() {
         _result = result;
         _loading = false;
@@ -199,6 +212,45 @@ class _FinanceSalesOrderConfirmationPageState
       // 计数失败静默: 分段不显示数字, 不影响列表。
     }
   }
+
+  /// 表头排序键 → 服务端 sort 参数（2026-09-25 单号列统一；未列出的列不可排序）。
+  static const _kSortFields = <String, String>{'billNo': 'billNo'};
+
+  /// 表头排序变化：服务端重排整个结果集，回第 1 页（勾选清空防指向已变化任务）。
+  void _onSortChange(String? column, bool ascending) {
+    final next = column != null && _kSortFields.containsKey(column)
+        ? column
+        : null;
+    if (next == _columnFilters.sortColumn &&
+        (next == null || ascending == _columnFilters.sortAscending)) {
+      return;
+    }
+    _columnFilters.handleSortChanged(
+      next,
+      ascending,
+      onChanged: () {
+        if (mounted) setState(() {});
+        _load(1);
+      },
+    );
+  }
+
+  /// 销售单号 facets（2026-09-25 单号列统一）：与列表同过滤口径
+  /// （不含单号列自身值筛选）。
+  Future<void> _loadBillNoFacets() => _columnFilters.loadFacets(
+    () async => {
+      'billNo': await ref
+          .read(salesOrderFinanceConfirmationRepositoryProvider)
+          .billNoFacets(
+            rejected: _showRejected,
+            keyword: _keyword.isEmpty ? null : _keyword,
+            changesOnly: widget.changesOnly,
+          ),
+    },
+    onLoaded: () {
+      if (mounted) setState(() {});
+    },
+  );
 
   void _switchTab(bool rejected) {
     if (rejected == _showRejected) return;
@@ -699,10 +751,28 @@ class _FinanceSalesOrderConfirmationPageState
             : null,
         columns: _columns(),
         items: result.items,
-        facets: const <String, List<MasterFacetBucket>>{},
+        // 销售单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
+        facets: <String, List<MasterFacetBucket>>{
+          'billNo': _columnFilters.bucketOf('billNo'),
+        },
         nullCounts: const <String, int>{},
-        filters: const <String, String?>{},
-        onFilterChanged: (_, _) {},
+        filters: <String, String?>{'billNo': _columnFilters['billNo']},
+        // 表头排序走服务端（2026-09-25 单号列统一）。
+        sortColumn: _columnFilters.sortColumn,
+        sortAscending: _columnFilters.sortAscending,
+        onSortChange: _onSortChange,
+        onFilterChanged: (key, value) {
+          if (key == 'billNo') {
+            _columnFilters.handleFilterChanged(
+              key,
+              value,
+              onChanged: () {
+                if (mounted) setState(() {});
+                _load(1);
+              },
+            );
+          }
+        },
         onRowTap: _open,
         onSelectionChanged: canConfirm
             ? null
@@ -807,6 +877,7 @@ class _FinanceSalesOrderConfirmationPageState
       key: 'billNo',
       label: '销售单号',
       width: 172,
+      sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
       value: (item) => item.billNo,
     ),
     MasterColumnDef(

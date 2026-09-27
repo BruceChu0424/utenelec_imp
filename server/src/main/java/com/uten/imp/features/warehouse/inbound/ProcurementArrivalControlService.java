@@ -13,6 +13,7 @@ import com.uten.imp.common.finance.SubcontractLossSettlementSql;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.util.PostgresUuidOrder;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalDecisionRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalExceptionTask;
@@ -993,8 +994,90 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     public PageResponse<ArrivalExceptionTask> warehouseExceptions(
             int page, int size, String keyword, boolean includeHistory,
             UUID supplierId, UUID warehouseId, String status, WarehouseTaskScope warehouseScope) {
+        return warehouseExceptions(page, size, keyword, includeHistory,
+                supplierId, warehouseId, status, warehouseScope, null, null, null, null);
+    }
+
+    /** 同上；2026-09-25 单号列统一：sort/order 表头排序（白名单，未知回落默认
+     *  检出时间序）、receiptBillNo/orderBillNo 收货单号/订货单号表头值筛选（等值精确匹配）。 */
+    @Transactional(readOnly = true)
+    public PageResponse<ArrivalExceptionTask> warehouseExceptions(
+            int page, int size, String keyword, boolean includeHistory,
+            UUID supplierId, UUID warehouseId, String status, WarehouseTaskScope warehouseScope,
+            String sort, String order, String receiptBillNo, String orderBillNo) {
         int safePage = safePage(page);
         int safeSize = safeSize(size);
+        WarehouseExceptionFilters filters = warehouseExceptionFilters(
+                keyword, includeHistory, supplierId, warehouseId, status, warehouseScope);
+        // 单号列值筛选（2026-09-25 单号列统一）：追加在既有子句之后，
+        // 位置参数顺序与 SQL 文本出现顺序保持稳定。
+        String trimmedReceiptBillNo = receiptBillNo == null ? "" : receiptBillNo.trim();
+        if (!trimmedReceiptBillNo.isEmpty()) {
+            filters.clauses().add("exception.receipt_bill_no_snapshot = ?");
+            filters.args().add(trimmedReceiptBillNo);
+        }
+        String trimmedOrderBillNo = orderBillNo == null ? "" : orderBillNo.trim();
+        if (!trimmedOrderBillNo.isEmpty()) {
+            filters.clauses().add("exception.order_bill_no_snapshot = ?");
+            filters.args().add(trimmedOrderBillNo);
+        }
+        String where = filters.where();
+        Long total = jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM procurement_arrival_exceptions exception
+                JOIN goods goods ON goods.id = exception.goods_id
+                LEFT JOIN suppliers supplier ON supplier.id = exception.supplier_id
+                """ + " WHERE " + where, Long.class, filters.args().toArray());
+        List<Object> queryArgs = new ArrayList<>(filters.args());
+        queryArgs.add(safeSize);
+        queryArgs.add((safePage - 1) * safeSize);
+        List<ArrivalExceptionTask> items = queryExceptions(
+                where, ActionScope.NONE, exceptionOrderBy(sort, order),
+                "LIMIT ? OFFSET ?", queryArgs.toArray());
+        // 价格脱敏（V302）：仓库视角无对应收货单价格权限时，金额快照置 null + priceMasked。
+        items = items.stream().map(this::maskWarehousePrices).toList();
+        return page(items, safePage, safeSize, total == null ? 0 : total);
+    }
+
+    /** 到货异常 facets（2026-09-25 单号列统一）：{receiptBillNo:[各收货单号],
+     *  orderBillNo:[各订货单号]}——与列表/计数同一过滤基座（不含单号列自身值筛选），
+     *  按单号快照分组计数、单号升序，上限 500 桶。 */
+    @Transactional(readOnly = true)
+    public Map<String, List<Map<String, Object>>> warehouseExceptionFacets(
+            String keyword, boolean includeHistory, UUID supplierId, UUID warehouseId,
+            String status, WarehouseTaskScope warehouseScope) {
+        WarehouseExceptionFilters filters = warehouseExceptionFilters(
+                keyword, includeHistory, supplierId, warehouseId, status, warehouseScope);
+        String where = filters.where();
+        String fromJoins = """
+                FROM procurement_arrival_exceptions exception
+                JOIN goods goods ON goods.id = exception.goods_id
+                LEFT JOIN suppliers supplier ON supplier.id = exception.supplier_id
+                """;
+        List<Map<String, Object>> receiptBuckets = jdbc.query(
+                "SELECT exception.receipt_bill_no_snapshot, COUNT(*) " + fromJoins
+                        + " WHERE " + where
+                        + " GROUP BY exception.receipt_bill_no_snapshot ORDER BY 1 LIMIT 500",
+                WAREHOUSE_EXCEPTION_BILL_BUCKET_MAPPER, filters.args().toArray());
+        List<Map<String, Object>> orderBuckets = jdbc.query(
+                "SELECT exception.order_bill_no_snapshot, COUNT(*) " + fromJoins
+                        + " WHERE " + where
+                        + " GROUP BY exception.order_bill_no_snapshot ORDER BY 1 LIMIT 500",
+                WAREHOUSE_EXCEPTION_BILL_BUCKET_MAPPER, filters.args().toArray());
+        return Map.of("receiptBillNo", receiptBuckets, "orderBillNo", orderBuckets);
+    }
+
+    /** 到货异常单号桶行映射（value/count/label，label=value）。 */
+    private static final org.springframework.jdbc.core.RowMapper<Map<String, Object>>
+            WAREHOUSE_EXCEPTION_BILL_BUCKET_MAPPER = (rs, rowNum) ->
+            NativeFacets.bucket(
+                    rs.getString(1) == null ? "" : rs.getString(1), rs.getLong(2));
+
+    /** 到货异常列表 / 计数 / facets 共用过滤子句（同一过滤基座，2026-09-25 单号列统一；
+     *  含状态白名单 fail-closed 校验）。全部参数绑定，不拼接任何用户输入进 SQL 文本。 */
+    private WarehouseExceptionFilters warehouseExceptionFilters(String keyword,
+            boolean includeHistory, UUID supplierId, UUID warehouseId, String status,
+            WarehouseTaskScope warehouseScope) {
         List<String> clauses = new ArrayList<>();
         List<Object> args = new ArrayList<>();
         clauses.add(includeHistory
@@ -1015,7 +1098,6 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             }
         }
         // 表头筛选三列（2026-09-16）：供应商/仓库按外键等值、状态白名单 fail-closed。
-        // 全部参数绑定，不拼接任何用户输入进 SQL 文本。
         if (supplierId != null) {
             clauses.add("exception.supplier_id = ?");
             args.add(supplierId);
@@ -1036,21 +1118,27 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             clauses.add("exception.status = ?");
             args.add(normalizedStatus);
         }
-        String where = String.join(" AND ", clauses);
-        Long total = jdbc.queryForObject("""
-                SELECT COUNT(*)
-                FROM procurement_arrival_exceptions exception
-                JOIN goods goods ON goods.id = exception.goods_id
-                LEFT JOIN suppliers supplier ON supplier.id = exception.supplier_id
-                """ + " WHERE " + where, Long.class, args.toArray());
-        List<Object> queryArgs = new ArrayList<>(args);
-        queryArgs.add(safeSize);
-        queryArgs.add((safePage - 1) * safeSize);
-        List<ArrivalExceptionTask> items = queryExceptions(
-                where, ActionScope.NONE, "LIMIT ? OFFSET ?", queryArgs.toArray());
-        // 价格脱敏（V302）：仓库视角无对应收货单价格权限时，金额快照置 null + priceMasked。
-        items = items.stream().map(this::maskWarehousePrices).toList();
-        return page(items, safePage, safeSize, total == null ? 0 : total);
+        return new WarehouseExceptionFilters(clauses, args);
+    }
+
+    /** 到货异常过滤子句载体：clauses/args 可由调用方继续追加（单号列值筛选）。 */
+    private record WarehouseExceptionFilters(List<String> clauses, List<Object> args) {
+        String where() {
+            return String.join(" AND ", clauses);
+        }
+    }
+
+    /** 到货异常排序 ORDER BY（2026-09-25 单号列统一）：白名单映射前端列 key→SQL 表达式；
+     *  未知/空→默认（检出时间, id 稳定序）。 */
+    private static String exceptionOrderBy(String sort, String order) {
+        String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
+        return switch (sort == null ? "" : sort) {
+            case "receiptBillNo" -> "ORDER BY exception.receipt_bill_no_snapshot " + dir
+                    + " NULLS LAST, exception.detected_at, exception.id ";
+            case "orderBillNo" -> "ORDER BY exception.order_bill_no_snapshot " + dir
+                    + " NULLS LAST, exception.detected_at, exception.id ";
+            default -> "ORDER BY exception.detected_at, exception.id ";
+        };
     }
 
     @Transactional(readOnly = true)
@@ -1183,37 +1271,28 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     public PageResponse<InboundExpectationTask> expectations(
             int page, int size, String orderType, String keyword, UUID supplierId,
             WarehouseTaskScope warehouseScope) {
+        return expectations(page, size, orderType, keyword, supplierId,
+                warehouseScope, null, null, null);
+    }
+
+    /** 同上, 另按仓库任务中心的「仓库范围」(ADR-115)过滤(按预计到货的目标仓)；
+     *  2026-09-25 单号列统一：sort/order 表头排序（白名单，未知回落默认到货日序）、
+     *  billNo 订货单号表头值筛选（等值精确匹配，参数绑定）。 */
+    @Transactional(readOnly = true)
+    public PageResponse<InboundExpectationTask> expectations(
+            int page, int size, String orderType, String keyword, UUID supplierId,
+            WarehouseTaskScope warehouseScope, String sort, String order, String billNo) {
         int safePage = safePage(page);
         int safeSize = safeSize(size);
         // 类型筛选卡（全部/采购/委外）：空 = 全部；非法值 fail-closed。
         String normalizedType = normalizeOrderType(orderType);
         String trimmedKeyword = normalizeKeyword(keyword);
-        long total = countExpectations(normalizedType, trimmedKeyword, supplierId, warehouseScope);
-        String typeFilter =
-                normalizedType.isEmpty() ? "" : " AND expectation.order_type = ?\n";
-        List<Object> params = new ArrayList<>();
-        if (!normalizedType.isEmpty()) {
-            params.add(normalizedType);
-        }
-        // 供应商表头筛选（2026-09-16）：expectation.supplier_id 外键等值，参数绑定。
-        String supplierFilter = supplierId == null ? "" : " AND expectation.supplier_id = ?\n";
-        if (supplierId != null) {
-            params.add(supplierId);
-        }
-        boolean scoped = warehouseScope != null && warehouseScope.active();
-        String scopeFilter = scoped
-                ? " AND " + warehouseScope.predicate("expectation.warehouse_id", "?") + "\n" : "";
-        if (scoped) {
-            params.add(warehouseScope.idsCsv());
-        }
-        String keywordFilter = "";
-        if (!trimmedKeyword.isEmpty()) {
-            keywordFilter = " AND " + expectationKeywordClause() + "\n";
-            String like = "%" + trimmedKeyword + "%";
-            for (int i = 0; i < EXPECTATION_KEYWORD_PARAMS; i++) {
-                params.add(like);
-            }
-        }
+        long total = countExpectations(
+                normalizedType, trimmedKeyword, supplierId, warehouseScope, billNo);
+        // 列表 / 计数 / facets 共用同一过滤基座（参数顺序 = SQL 文本出现顺序）。
+        ExpectationFilters filters = expectationFilters(
+                normalizedType, trimmedKeyword, supplierId, warehouseScope, billNo);
+        List<Object> params = new ArrayList<>(filters.args());
         params.add(safeSize);
         params.add((safePage - 1) * safeSize);
         List<ExpectationHeader> headers = jdbc.query("""
@@ -1244,9 +1323,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                   AND (
                 """ + expectationVisible() + """
                   )
-                """ + typeFilter + supplierFilter + scopeFilter + keywordFilter + """
+                """ + filters.sql() + """
                 GROUP BY expectation.id, supplier.name, warehouse.name, owner.full_name
-                ORDER BY expectation.expected_date NULLS LAST, expectation.created_at, expectation.id
+                """ + expectationOrderBy(sort, order) + "\n" + """
                 LIMIT ? OFFSET ?
                 """, (rs, rowNum) -> new ExpectationHeader(
                         rs.getObject("id", UUID.class),
@@ -1461,37 +1540,117 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     /** 预计到货任务计数：类型 + 关键字（单号/供应商/货品编码或名称）+ 供应商（表头筛选）
-     * 多条件；口径与列表一致（仅保留仓库仍有活干的 OPEN 任务——见 warehouseWorkRemaining）。 */
+     *  多条件；口径与列表一致（仅保留仓库仍有活干的 OPEN 任务——见 warehouseWorkRemaining）。 */
     private long countExpectations(String orderType, String keyword, UUID supplierId,
                                    WarehouseTaskScope warehouseScope) {
+        return countExpectations(orderType, keyword, supplierId, warehouseScope, null);
+    }
+
+    /** 同上，另带 billNo 单号等值筛选（2026-09-25 单号列统一；列表/计数同口径）。 */
+    private long countExpectations(String orderType, String keyword, UUID supplierId,
+                                   WarehouseTaskScope warehouseScope, String billNo) {
         String normalizedType = normalizeOrderType(orderType);
-        StringBuilder sql = new StringBuilder("""
+        ExpectationFilters filters = expectationFilters(
+                normalizedType, keyword, supplierId, warehouseScope, billNo);
+        String sql = """
                 SELECT COUNT(*) FROM inbound_expectations expectation
                 WHERE (%s)
                   AND (%s)
-                """.formatted(warehouseWorkRemaining(), expectationVisible()));
-        List<Object> args = new ArrayList<>();
-        if (!normalizedType.isEmpty()) {
-            sql.append(" AND expectation.order_type = ?");
-            args.add(normalizedType);
-        }
-        if (supplierId != null) {
-            sql.append(" AND expectation.supplier_id = ?");
-            args.add(supplierId);
-        }
-        if (warehouseScope != null && warehouseScope.active()) {
-            sql.append(" AND ").append(warehouseScope.predicate("expectation.warehouse_id", "?"));
-            args.add(warehouseScope.idsCsv());
-        }
-        if (!keyword.isEmpty()) {
-            sql.append(" AND ").append(expectationKeywordClause());
-            String like = "%" + keyword + "%";
-            for (int i = 0; i < EXPECTATION_KEYWORD_PARAMS; i++) {
-                args.add(like);
-            }
-        }
-        Long count = jdbc.queryForObject(sql.toString(), Long.class, args.toArray());
+                """.formatted(warehouseWorkRemaining(), expectationVisible()) + filters.sql();
+        Long count = jdbc.queryForObject(sql, Long.class, filters.args().toArray());
         return count == null ? 0 : count;
+    }
+
+    /** 预计到货过滤基座（2026-09-25 单号列统一）：类型/供应商/仓库范围/关键字 +
+     *  订货单号等值筛选的 WHERE 片段与参数。列表 / 计数 / facets 三处共用同一份文本，
+     *  参数顺序与 SQL 文本出现顺序严格一致（JdbcTemplate 位置绑定）。 */
+    private record ExpectationFilters(String sql, List<Object> args) {
+
+        static ExpectationFilters of(String normalizedType, String trimmedKeyword,
+                                     UUID supplierId, WarehouseTaskScope warehouseScope,
+                                     String billNo) {
+            StringBuilder sql = new StringBuilder();
+            List<Object> args = new ArrayList<>();
+            if (!normalizedType.isEmpty()) {
+                sql.append(" AND expectation.order_type = ?\n");
+                args.add(normalizedType);
+            }
+            // 供应商表头筛选（2026-09-16）：expectation.supplier_id 外键等值，参数绑定。
+            if (supplierId != null) {
+                sql.append(" AND expectation.supplier_id = ?\n");
+                args.add(supplierId);
+            }
+            if (warehouseScope != null && warehouseScope.active()) {
+                sql.append(" AND ")
+                        .append(warehouseScope.predicate("expectation.warehouse_id", "?"))
+                        .append("\n");
+                args.add(warehouseScope.idsCsv());
+            }
+            if (!trimmedKeyword.isEmpty()) {
+                sql.append(" AND ").append(expectationKeywordClause()).append("\n");
+                String like = "%" + trimmedKeyword + "%";
+                for (int i = 0; i < EXPECTATION_KEYWORD_PARAMS; i++) {
+                    args.add(like);
+                }
+            }
+            String trimmedBillNo = billNo == null ? "" : billNo.trim();
+            if (!trimmedBillNo.isEmpty()) {
+                sql.append(" AND expectation.bill_no_snapshot = ?\n");
+                args.add(trimmedBillNo);
+            }
+            return new ExpectationFilters(sql.toString(), args);
+        }
+    }
+
+    private static ExpectationFilters expectationFilters(String normalizedType,
+            String trimmedKeyword, UUID supplierId,
+            WarehouseTaskScope warehouseScope, String billNo) {
+        return ExpectationFilters.of(
+                normalizedType, trimmedKeyword, supplierId, warehouseScope, billNo);
+    }
+
+    /** 预计到货排序 ORDER BY（2026-09-25 单号列统一）：白名单映射前端列 key→SQL 表达式；
+     *  未知/空→默认（预计到货日 NULLS LAST, 建单时间, id 稳定序）。
+     *  bill_no_snapshot 对 GROUP BY 主键 expectation.id 函数依赖，GROUP BY 查询可直接排序。 */
+    private static String expectationOrderBy(String sort, String order) {
+        String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
+        return switch (sort == null ? "" : sort) {
+            case "billNo" -> "ORDER BY expectation.bill_no_snapshot " + dir
+                    + " NULLS LAST, expectation.expected_date NULLS LAST,"
+                    + " expectation.created_at, expectation.id";
+            default -> "ORDER BY expectation.expected_date NULLS LAST,"
+                    + " expectation.created_at, expectation.id";
+        };
+    }
+
+    /** 预计到货 facets（2026-09-25 单号列统一）：{billNo:[各订货单号]}——与列表/计数
+     *  同一过滤基座（不含单号列自身值筛选），按订货单号分组计数、单号升序，上限 500 桶。 */
+    @Transactional(readOnly = true)
+    public Map<String, List<Map<String, Object>>> expectationFacets(
+            String orderType, String keyword, UUID supplierId,
+            WarehouseTaskScope warehouseScope) {
+        String normalizedType = normalizeOrderType(orderType);
+        String trimmedKeyword = normalizeKeyword(keyword);
+        ExpectationFilters filters = expectationFilters(
+                normalizedType, trimmedKeyword, supplierId, warehouseScope, null);
+        List<Map<String, Object>> buckets = jdbc.query("""
+                        SELECT expectation.bill_no_snapshot, COUNT(*)
+                        FROM inbound_expectations expectation
+                        WHERE (
+                        """ + warehouseWorkRemaining() + """
+                          )
+                          AND (
+                        """ + expectationVisible() + """
+                          )
+                        """ + filters.sql() + """
+                        GROUP BY expectation.bill_no_snapshot
+                        ORDER BY 1
+                        LIMIT 500
+                        """,
+                (rs, rowNum) -> NativeFacets.bucket(
+                        rs.getString(1) == null ? "" : rs.getString(1), rs.getLong(2)),
+                filters.args().toArray());
+        return Map.of("billNo", buckets);
     }
 
     /** 预计到货按订货类型计数（顶部类型筛选卡口径：与列表同口径，不受当前筛选影响）。 */
@@ -1827,6 +1986,17 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             ActionScope actionScope,
             String tailClause,
             Object... args) {
+        return queryExceptions(whereClause, actionScope,
+                "ORDER BY exception.detected_at, exception.id ", tailClause, args);
+    }
+
+    /** 同上，另接自定义 ORDER BY（2026-09-25 单号列统一：仓库到货异常表头排序，白名单）。 */
+    private List<ArrivalExceptionTask> queryExceptions(
+            String whereClause,
+            ActionScope actionScope,
+            String orderByClause,
+            String tailClause,
+            Object... args) {
         String sql = """
                 SELECT exception.id, exception.order_type, exception.receipt_id,
                        exception.receipt_item_id, exception.receipt_bill_no_snapshot,
@@ -1864,7 +2034,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 LEFT JOIN supplier_return_tasks return_task
                   ON return_task.arrival_exception_id = exception.id
                 """ + " WHERE " + whereClause
-                + " ORDER BY exception.detected_at, exception.id " + tailClause;
+                + " " + orderByClause + " " + tailClause;
         return jdbc.query(sql, (rs, rowNum) -> {
             SupplierReturnTask returnTask = rs.getObject("return_task_id") == null
                     ? null

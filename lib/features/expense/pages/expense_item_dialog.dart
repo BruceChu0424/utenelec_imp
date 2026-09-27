@@ -12,9 +12,20 @@ import '../../../core/utils/china_datetime.dart';
 import '../models/expense_item.dart';
 
 class ExpenseItemDialog extends StatefulWidget {
-  const ExpenseItemDialog({super.key, this.initial});
+  const ExpenseItemDialog({
+    super.key,
+    this.initial,
+    this.draft,
+    this.onDraftChanged,
+    this.onDiscardDraft,
+    this.onSaveDraft,
+  });
 
   final ExpenseItem? initial;
+  final Map<String, dynamic>? draft;
+  final ValueChanged<Map<String, dynamic>>? onDraftChanged;
+  final VoidCallback? onDiscardDraft;
+  final Future<void> Function()? onSaveDraft;
 
   @override
   State<ExpenseItemDialog> createState() => _ExpenseItemDialogState();
@@ -26,6 +37,21 @@ class _ExpenseItemDialogState extends State<ExpenseItemDialog> {
   late final TextEditingController _amountController;
   late final TextEditingController _descController;
   final _formKey = GlobalKey<FormState>();
+  bool _allowClose = false;
+  bool _closing = false;
+  late final Map<String, dynamic> _baseline;
+  Map<String, dynamic> get _snapshot => {
+    'category': _category.name,
+    'date': _date.toIso8601String(),
+    'amount': _amountController.text,
+    'description': _descController.text,
+  };
+  void _changed() => widget.onDraftChanged?.call(_snapshot);
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _changed();
+  }
 
   @override
   void initState() {
@@ -37,6 +63,16 @@ class _ExpenseItemDialogState extends State<ExpenseItemDialog> {
       text: initial == null ? '' : initial.amount.toStringAsFixed(2),
     );
     _descController = TextEditingController(text: initial?.description ?? '');
+    _baseline = _snapshot;
+    final draft = widget.draft;
+    if (draft != null) {
+      _category = ExpenseCategory.values.byName(draft['category'] as String);
+      _date = DateTime.parse(draft['date'] as String);
+      _amountController.text = draft['amount'] as String? ?? '';
+      _descController.text = draft['description'] as String? ?? '';
+    }
+    _amountController.addListener(_changed);
+    _descController.addListener(_changed);
   }
 
   @override
@@ -48,6 +84,71 @@ class _ExpenseItemDialogState extends State<ExpenseItemDialog> {
 
   @override
   Widget build(BuildContext context) {
+    return PopScope<ExpenseItem>(
+      canPop: _allowClose || widget.onSaveDraft == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _cancel();
+      },
+      child: _buildDialog(context),
+    );
+  }
+
+  Future<void> _close([ExpenseItem? item]) async {
+    if (!mounted) return;
+    super.setState(() => _allowClose = true);
+    await WidgetsBinding.instance.endOfFrame;
+    if (mounted) Navigator.pop(context, item);
+  }
+
+  Future<void> _cancel() async {
+    if (_closing) return;
+    _closing = true;
+    try {
+      final dirty = _snapshot.entries.any(
+        (entry) => _baseline[entry.key] != entry.value,
+      );
+      if (!dirty || widget.onSaveDraft == null) {
+        await _close();
+        return;
+      }
+      final decision = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('是否保存未完成的明细？'),
+          content: const Text('可随报销草稿保留金额、日期和说明，之后继续填写。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'stay'),
+              child: const Text('继续填写'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'discard'),
+              child: const Text('不保存'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, 'save'),
+              child: const Text('保存草稿'),
+            ),
+          ],
+        ),
+      );
+      if (decision == null || decision == 'stay' || !mounted) return;
+      if (decision == 'save') {
+        try {
+          await widget.onSaveDraft!();
+        } catch (_) {
+          return;
+        }
+      } else {
+        widget.onDiscardDraft?.call();
+      }
+      await _close();
+    } finally {
+      _closing = false;
+    }
+  }
+
+  Widget _buildDialog(BuildContext context) {
     return AlertDialog(
       title: Text(widget.initial == null ? '添加报销明细' : '修改报销明细'),
       content: SizedBox(
@@ -142,15 +243,11 @@ class _ExpenseItemDialogState extends State<ExpenseItemDialog> {
       ),
       actionsAlignment: MainAxisAlignment.center,
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
-        ),
+        TextButton(onPressed: _cancel, child: const Text('取消')),
         FilledButton(
           onPressed: () {
             if (_formKey.currentState!.validate()) {
-              Navigator.pop(
-                context,
+              _close(
                 ExpenseItem(
                   id:
                       widget.initial?.id ??

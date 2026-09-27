@@ -166,6 +166,34 @@ class ProductionPlanningDraftServiceTest {
         verify(draftRepo, never()).saveAndFlush(any());
     }
 
+    @Test
+    void applyingDraftUsesTheValidatedExecutionResultAndOnlyThenMarksItApplied() {
+        UUID planId=UUID.randomUUID(),packageId=UUID.randomUUID();
+        ProductionPlanningDraft draft=active(planId,request());
+        when(draftRepo.lockActiveByPlanId(planId)).thenReturn(Optional.of(draft));
+        PlanningPackageResult result=mock(PlanningPackageResult.class);
+        when(result.packageId()).thenReturn(packageId);
+        when(executionCommand.confirm(org.mockito.ArgumentMatchers.eq(planId),any())).thenReturn(result);
+        assertThat(service.applyActive(planId)).contains(result);
+        assertThat(draft.getStatus()).isEqualTo(ProductionPlanningDraft.STATUS_APPLIED);
+        assertThat(draft.getAppliedPackageId()).isEqualTo(packageId);
+        verify(draftRepo).saveAndFlush(draft);
+        verify(validator,never()).validateCurrent(any(),any());
+    }
+
+    @Test
+    void executionValidationFailureLeavesTheSavedDraftUnapplied() {
+        UUID planId=UUID.randomUUID();
+        ProductionPlanningDraft draft=active(planId,request());
+        when(draftRepo.lockActiveByPlanId(planId)).thenReturn(Optional.of(draft));
+        org.mockito.Mockito.doThrow(new ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"stale execution input"))
+                .when(executionCommand).confirm(org.mockito.ArgumentMatchers.eq(planId),any());
+        assertThatThrownBy(()->service.applyActive(planId)).isInstanceOf(ApiException.class);
+        assertThat(draft.getStatus()).isEqualTo(ProductionPlanningDraft.STATUS_ACTIVE);
+        assertThat(draft.getAppliedPackageId()).isNull();
+        verify(draftRepo,never()).saveAndFlush(any());
+    }
+
     private ProductionPlanningDraft active(
             UUID planId,
             GeneratePlanningPackageRequest request) {

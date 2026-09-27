@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/config/warehouse_document_history_config.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_document_history.dart';
@@ -152,6 +153,13 @@ void _setViewport(WidgetTester tester, Size size) {
 }
 
 class _Gateway implements WarehouseDocumentHistoryGateway {
+  @override
+  Future<Map<String, List<MasterFacetBucket>>> billNoFacets({
+    String? keyword,
+    String? status,
+    String? dateFrom,
+    String? dateTo,
+  }) async => const {'billNo': [], 'sourceDocNo': []}; // 2026-09-25 单号列统一：静默降级。
   final List<String?> statuses = <String?>[];
 
   @override
@@ -162,6 +170,10 @@ class _Gateway implements WarehouseDocumentHistoryGateway {
     String? status,
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
+    String? billNo,
+    String? sourceDocNo,
   }) async {
     statuses.add(status);
     return PagedResult<WarehouseDocumentHistorySummary>(

@@ -1145,13 +1145,18 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                   ),
                 ],
                 MasterColumnDef(
+                  // 2026-09-25 单号列统一：明细全量加载，就地排序+按值筛选。
                   key: 'planNo',
+                  sortable: true,
+                  filterFromRows: true,
                   label: '生产计划',
                   width: 130,
                   value: (it) => it.productionPlanNo ?? '',
                 ),
                 MasterColumnDef(
                   key: 'salesOrderNo',
+                  sortable: true,
+                  filterFromRows: true,
                   label: '销售订单',
                   width: 150,
                   value: (it) => it.salesOrderNo ?? '',
@@ -1160,6 +1165,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                 if (widget.docType == PurchaseDocType.order)
                   MasterColumnDef(
                     key: 'sourceRequests',
+                    sortable: true,
+                    filterFromRows: true,
                     label: '来源申请',
                     width: 170,
                     value: (it) => it.sourceRequests

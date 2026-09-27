@@ -67,6 +67,9 @@ import '../widgets/progress_ring.dart';
 import '../widgets/production_fqc_replenishment_banner.dart';
 import '../widgets/production_execution_group_panel.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
+import 'production_daily_report_list_page.dart';
+import 'production_plan_list_page.dart';
 
 class ProductionBoardPage extends ConsumerStatefulWidget {
   const ProductionBoardPage({super.key, this.initialTab});
@@ -167,6 +170,20 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
                     UtenFilterToolbar<String>(
                       segmentsKey: const Key('production-board-segments'),
                       segments: [
+                        UtenFilterSegment(
+                          value: 'drafts',
+                          label: '草稿',
+                          // 2026-09-26 全站草稿口径：本段展示服务端草稿（生产计划
+                          // draft + 生产日报 status=0），计数用同一份「服务端草稿 +
+                          // 本地表单草稿」投影（draftCountsProvider，随徽章汇总带回，
+                          // 不额外请求）。此前 module=production 没有任何本地草稿
+                          // 来源，本段恒空恒 0（死段）。
+                          count: ref.watch(draftCountsProvider).sumOf(const [
+                            DraftDocKind.productionPlan,
+                            DraftDocKind.productionDailyReport,
+                          ]),
+                          countForm: UtenSegmentCountForm.actionable,
+                        ),
                         // 待排产挂红徽章(调度员必须清空的队列); 进行中挂黄徽章
                         // (ADR-100): 这些批次已经排下去在跑了, 调度员只是看着,
                         // 但它们也没结束, 所以中性括号同样不对 —— 括号留给
@@ -213,6 +230,9 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
               ),
               Expanded(
                 child: switch (segment) {
+                  'drafts' => const _BoardDraftsPanel(
+                    key: Key('production-board-drafts'),
+                  ),
                   'pending' => _PendingPanel(
                     key: const Key('production-board-pending'),
                     keyword: _keyword,
@@ -268,6 +288,88 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ═════════════════════════ 草稿段（生产计划 + 生产日报） ═════════════════════════
+
+/// 生产任务中心「草稿」段（2026-09-26 全站草稿口径）：生产计划草稿（status=draft）
+/// + 生产日报草稿（status=0），按单据类型分两段，各自**内嵌对应列表页**的草稿段
+/// （与采购 hub 嵌入 PurchaseDocListPage 同款）：状态分段、计数、本地表单草稿合并
+/// （FormDraftCategoryTable）与行点击进详情/编辑全部复用列表页口径，本面板不另造
+/// 一套。此前本段是 module=production 的本地草稿列表——该 module 没有任何登记的
+/// 表单来源，恒空恒 0（死段）。
+class _BoardDraftsPanel extends ConsumerStatefulWidget {
+  const _BoardDraftsPanel({super.key});
+
+  @override
+  ConsumerState<_BoardDraftsPanel> createState() => _BoardDraftsPanelState();
+}
+
+class _BoardDraftsPanelState extends ConsumerState<_BoardDraftsPanel> {
+  /// plan=生产计划草稿 / report=生产日报草稿。
+  String _kind = 'plan';
+
+  static const _planViewPerm = Perm.productionPlanView;
+  static const _reportViewPerm = Perm.productionDailyReportView;
+
+  @override
+  Widget build(BuildContext context) {
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canPlan = permissions.contains(_planViewPerm);
+    final canReport = permissions.contains(_reportViewPerm);
+    if (!canPlan && !canReport) {
+      return const UtenFilterPlaceholder(
+        key: Key('production-board-drafts-no-permission'),
+        message: '当前账号没有可查看的生产草稿',
+        description:
+            '生产计划草稿需要 production_plan:view；生产日报草稿需要 '
+            'production_daily_report:view。',
+      );
+    }
+    final kind = canPlan ? _kind : 'report';
+    final drafts = ref.watch(draftCountsProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UtenFilterToolbar<String>(
+          segmentsKey: const Key('production-board-draft-kinds'),
+          segments: [
+            if (canPlan)
+              UtenFilterSegment(
+                value: 'plan',
+                label: '生产计划草稿',
+                count: drafts.of(DraftDocKind.productionPlan),
+                countForm: UtenSegmentCountForm.actionable,
+              ),
+            if (canReport)
+              UtenFilterSegment(
+                value: 'report',
+                label: '生产日报草稿',
+                count: drafts.of(DraftDocKind.productionDailyReport),
+                countForm: UtenSegmentCountForm.actionable,
+              ),
+          ],
+          selected: {kind},
+          onSelectionChanged: (value) => setState(() => _kind = value),
+        ),
+        Expanded(
+          child: switch (kind) {
+            // 内嵌列表页自带搜索/状态分段/分页；深链落在草稿段并合并本地草稿。
+            'plan' => const ProductionPlanListPage(
+              key: Key('production-board-draft-plan-list'),
+              initialStatus: 'draft',
+              embedded: true,
+            ),
+            _ => const ProductionDailyReportListPage(
+              key: Key('production-board-draft-report-list'),
+              initialStatus: 'draft',
+              embedded: true,
+            ),
+          },
+        ),
+      ],
     );
   }
 }
@@ -403,6 +505,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
           sort: _sortKey,
           order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           status: _filters['status'],
+          billNo: _filters['orderBillNo'],
         ),
         repo.schedulePendingFacets(keyword: kw),
       ]);

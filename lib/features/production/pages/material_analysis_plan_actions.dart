@@ -2,6 +2,18 @@ part of 'production_material_analysis_page.dart';
 
 abstract class _MaterialAnalysisPlanActionsState
     extends _MaterialAnalysisSupplyActionsState {
+  Widget _preparationPlanResultsButton() => UtenButton(
+    key: const Key('material-preparation-view-plans'),
+    type: UtenButtonType.ghost,
+    icon: Icons.receipt_long_outlined,
+    onPressed: _busy
+        ? null
+        : () => unawaited(
+            _showGeneratedPlans(_preparationPlanResults.values.toList()),
+          ),
+    child: Text(_l10n.materialPreparationViewPlans),
+  );
+
   /// 打开可深链恢复的备料计划汇总单；当前视图只作为首帧快照，
   /// 硬刷新时汇总页按 analysisId 重新读取权威详情。
   Future<void> _openSummarySheet() async {

@@ -22,9 +22,20 @@ public record StockDocQueryFilter(
         Short issueStatus,
         Boolean productionReturnRequests,
         UUID toWarehouseId,
-        WarehouseTaskScope warehouseScope) {
+        WarehouseTaskScope warehouseScope,
+        /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配，分页前服务端生效。 */
+        String billNo) {
     public StockDocQueryFilter {
         warehouseScope = warehouseScope == null ? WarehouseTaskScope.ALL : warehouseScope;
+    }
+
+    /** 兼容旧签名（无单号筛选）。 */
+    public StockDocQueryFilter(String docType, String keyword, UUID warehouseId, Short status,
+                              LocalDate dateFrom, LocalDate dateTo, UUID departmentId, Short issueStatus,
+                              Boolean productionReturnRequests, UUID toWarehouseId,
+                              WarehouseTaskScope warehouseScope) {
+        this(docType, keyword, warehouseId, status, dateFrom, dateTo, departmentId, issueStatus,
+                productionReturnRequests, toWarehouseId, warehouseScope, null);
     }
 
     /** 兼容旧调用：不按仓库范围过滤。 */
@@ -32,7 +43,7 @@ public record StockDocQueryFilter(
                               LocalDate dateFrom, LocalDate dateTo, UUID departmentId, Short issueStatus,
                               Boolean productionReturnRequests, UUID toWarehouseId) {
         this(docType, keyword, warehouseId, status, dateFrom, dateTo, departmentId, issueStatus,
-                productionReturnRequests, toWarehouseId, WarehouseTaskScope.ALL);
+                productionReturnRequests, toWarehouseId, WarehouseTaskScope.ALL, null);
     }
 
     public StockDocQueryFilter(String docType, String keyword, UUID warehouseId, Short status,

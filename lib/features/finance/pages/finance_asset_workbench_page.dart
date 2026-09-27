@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_category.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -42,7 +45,7 @@ class _FinanceAssetWorkbenchPageState
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this)
+    _tabs = TabController(length: 4, vsync: this)
       ..addListener(_handleTabChanged);
     _loadOverview();
   }
@@ -114,7 +117,20 @@ class _FinanceAssetWorkbenchPageState
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FormDraftDialogResume(
+    descriptor: FormDraftCatalog.assetPolicy,
+    onResume: (_) async {
+      await showFinanceAssetPolicyDialog(
+        context,
+        canApprove:
+            true, // Resume host already enforces the registered policy authority.
+      );
+      if (mounted) await _refreshAll();
+    },
+    child: _buildPolicyDraftHost(context),
+  );
+
+  Widget _buildPolicyDraftHost(BuildContext context) {
     final capabilities = _capabilities();
     if (!capabilities.canView) {
       return Scaffold(
@@ -128,10 +144,25 @@ class _FinanceAssetWorkbenchPageState
     final policyReady = _overview?.policyReady ?? false;
     final tabBar = TabBar(
       controller: _tabs,
-      tabs: const [
-        Tab(icon: Icon(Icons.apartment_outlined), text: '固定资产'),
-        Tab(icon: Icon(Icons.calendar_month_outlined), text: '长期待摊'),
-        Tab(icon: Icon(Icons.fact_check_outlined), text: '月末处理'),
+      isScrollable: true,
+      tabs: [
+        const Tab(icon: Icon(Icons.apartment_outlined), text: '固定资产'),
+        const Tab(icon: Icon(Icons.calendar_month_outlined), text: '长期待摊'),
+        const Tab(icon: Icon(Icons.fact_check_outlined), text: '月末处理'),
+        Tab(
+          child: UtenSegmentBadgeLabel(
+            label: '政策草稿',
+            count: ref.watch(
+              formDraftCategoryVisibleCountProvider(
+                const FormDraftCategoryScope(
+                  routePath: '/finance/assets',
+                  query: {'draftForm': 'assetPolicy'},
+                ),
+              ),
+            ),
+            countForm: UtenSegmentCountForm.actionable,
+          ),
+        ),
       ],
     );
     // 垂直层级：一级固定区（4 个数据卡片，常驻不滚）→ 可滚动区（提示横幅滚走 →
@@ -201,6 +232,15 @@ class _FinanceAssetWorkbenchPageState
                         FinanceAssetPostingPanel(
                           key: ValueKey('asset-posting-$_refreshToken'),
                           capabilities: capabilities,
+                        )
+                      else
+                        const SizedBox.shrink(),
+                      if (_visitedTabs.contains(3))
+                        const FormDraftCategoryList(
+                          scope: FormDraftCategoryScope(
+                            routePath: '/finance/assets',
+                            query: {'draftForm': 'assetPolicy'},
+                          ),
                         )
                       else
                         const SizedBox.shrink(),

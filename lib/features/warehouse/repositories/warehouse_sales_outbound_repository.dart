@@ -3,12 +3,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../models/warehouse_sales_outbound.dart';
 
 abstract interface class WarehouseSalesOutboundGateway {
   Future<PagedResult<WarehouseSalesOutboundSummary>> list({
     int page = 1,
     int size = 20,
+    String? keyword,
+    String? warehouseWorkStatus,
+    String? dateFrom,
+    String? dateTo,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+    String? sort,
+    String? order,
+    String? billNo,
+  });
+
+  /// 出货单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。
+  Future<List<MasterFacetBucket>> billNoFacets({
     String? keyword,
     String? warehouseWorkStatus,
     String? dateFrom,
@@ -45,6 +58,9 @@ class WarehouseSalesOutboundRepository
     String? dateFrom,
     String? dateTo,
     WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+    String? sort,
+    String? order,
+    String? billNo,
   }) async {
     final query = <String, dynamic>{
       'page': page < 1 ? 1 : page,
@@ -57,8 +73,34 @@ class WarehouseSalesOutboundRepository
     if (_trimmed(dateFrom) case final value?) query['dateFrom'] = value;
     if (_trimmed(dateTo) case final value?) query['dateTo'] = value;
     query.addAll(scope.queryParameters);
+    // 2026-09-25 单号列统一：出货单号排序白名单 + 表头值筛选（服务端精确匹配）。
+    if (_trimmed(sort) case final value?) query['sort'] = value;
+    if (sort != null && sort.trim().isNotEmpty && _trimmed(order) != null) {
+      query['order'] = _trimmed(order);
+    }
+    if (_trimmed(billNo) case final value?) query['billNo'] = value;
     final json = await api.get(_base, query: query);
     return PagedResult.fromJson(json, WarehouseSalesOutboundSummary.fromJson);
+  }
+
+  @override
+  Future<List<MasterFacetBucket>> billNoFacets({
+    String? keyword,
+    String? warehouseWorkStatus,
+    String? dateFrom,
+    String? dateTo,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+  }) async {
+    final query = <String, dynamic>{};
+    if (_trimmed(keyword) case final value?) query['keyword'] = value;
+    if (_trimmed(warehouseWorkStatus) case final value?) {
+      query['warehouseWorkStatus'] = value;
+    }
+    if (_trimmed(dateFrom) case final value?) query['dateFrom'] = value;
+    if (_trimmed(dateTo) case final value?) query['dateTo'] = value;
+    query.addAll(scope.queryParameters);
+    final json = await api.get('$_base/facets', query: query);
+    return parseFacetBuckets(json, 'billNo');
   }
 
   @override

@@ -10,6 +10,9 @@
 // 提交通过 onSubmit 回调上抛，由页面执行真正的仓储调用并返回是否成功；
 // 成功时对话框自行关闭。替代了部门页内联的 _showCreateDialog/_showEditDialog。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_values.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -42,9 +45,12 @@ class DepartmentEditResult {
   final String level;
 }
 
-class DepartmentEditDialog extends StatefulWidget {
+class DepartmentEditDialog extends ConsumerStatefulWidget {
   const DepartmentEditDialog({
     super.key,
+    this.draftSpec,
+    this.resumeDraftId,
+    this.routerPageKey,
     required this.tree,
     required this.onSubmit,
     this.initialParent,
@@ -55,6 +61,10 @@ class DepartmentEditDialog extends StatefulWidget {
     this.canMove = true,
     this.canAssignManager = true,
   });
+
+  final FormDraftSpec? draftSpec;
+  final String? resumeDraftId;
+  final ValueKey<String>? routerPageKey;
 
   /// 全树，用于父级挑选子弹层。
   final List<DepartmentNode> tree;
@@ -78,10 +88,12 @@ class DepartmentEditDialog extends StatefulWidget {
   final Future<bool> Function(DepartmentEditResult result) onSubmit;
 
   @override
-  State<DepartmentEditDialog> createState() => _DepartmentEditDialogState();
+  ConsumerState<DepartmentEditDialog> createState() =>
+      _DepartmentEditDialogState();
 }
 
-class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
+class _DepartmentEditDialogState extends ConsumerState<DepartmentEditDialog>
+    with FormDraftMixin<DepartmentEditDialog> {
   late final TextEditingController _codeCtl;
   late final TextEditingController _nameCtl;
   DepartmentNode? _parent;
@@ -98,6 +110,52 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
       (!isCompanyExecutiveOfficeCode(widget.editing?.code) &&
           widget.canMove &&
           kMovableDepartmentLevels.contains(widget.editing?.level));
+
+  bool _saving = false;
+  bool _serverCreated = false;
+  @override
+  bool get formDraftEnabled => !_isEdit && widget.draftSpec != null;
+  @override
+  bool get formDraftBusy => _saving;
+  @override
+  bool get formDraftCanReplaySubmission => _serverCreated;
+  @override
+  bool get formDraftUsesRouterGuard => false;
+  @override
+  bool get formDraftUseCurrentRoute => false;
+  @override
+  String? get formDraftResumeId => widget.resumeDraftId;
+  @override
+  ValueKey<String>? get formDraftRouterPageKey => widget.routerPageKey;
+  @override
+  FormDraftSpec get formDraftSpec => widget.draftSpec!;
+  Map<String, TextEditingController> get _draftControllers => {
+    'codeCtl': _codeCtl,
+    'nameCtl': _nameCtl,
+  };
+  @override
+  Iterable<Listenable> get formDraftListenables => _draftControllers.values;
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'text': draftTextValues(_draftControllers),
+    'parentId': _parent?.id,
+    'serverCreated': _serverCreated,
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    restoreDraftTextValues(_draftControllers, draftMap(data['text']));
+    final parentId = data['parentId'] as String?;
+    _parent = parentId == null ? null : _findById(widget.tree, parentId);
+    if (parentId != null && _parent == null) {
+      throw StateError('草稿的上级位置已不存在，请核查后重新选择');
+    }
+    _serverCreated = data['serverCreated'] == true;
+  }
+
+  Future<void> _close() async {
+    if (_saving || !await confirmFormDraftExit() || !mounted) return;
+    Navigator.of(context).pop();
+  }
 
   @override
   void initState() {
@@ -118,6 +176,7 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
     } else {
       _parent = widget.initialParent;
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) => initializeFormDraft());
   }
 
   @override
@@ -168,6 +227,12 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
   }
 
   Future<void> _submit() async {
+    if (_saving) return;
+    if (_serverCreated) {
+      await completeFormDraft();
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
     final err = _validate();
     if (err != null) {
       setState(() => _formError = err);
@@ -185,12 +250,21 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
     );
     // 兜底：onSubmit 内部通常已自带成功/失败通知；此处只兜未捕获异常，防止静默失败。
     late final bool ok;
+    setState(() => _saving = true);
     try {
-      ok = await widget.onSubmit(result);
+      await saveFormDraftNow();
+      ok = await runFormDraftSubmission(() => widget.onSubmit(result));
+      if (ok && mounted) {
+        setState(() => _serverCreated = true);
+        await saveFormDraftNow();
+        await completeFormDraft();
+      }
     } catch (e) {
       if (!mounted) return;
       context.appApiError(e);
       return;
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
     if (!mounted) return;
     if (ok) Navigator.of(context).pop();
@@ -233,7 +307,9 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => withFormDraft(_buildDialog(context));
+
+  Widget _buildDialog(BuildContext context) {
     final theme = Theme.of(context);
     return AlertDialog(
       title: Text(
@@ -385,7 +461,7 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
       actions: [
         UtenButton(
           type: UtenButtonType.secondary,
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _saving ? null : _close,
           child: const Text('取消'), // TODO(l10n): 补 arb
         ),
         UtenActionButton(

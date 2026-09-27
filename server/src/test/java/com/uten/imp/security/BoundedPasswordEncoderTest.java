@@ -3,6 +3,7 @@ package com.uten.imp.security;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.concurrent.CountDownLatch;
@@ -12,6 +13,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -102,5 +104,22 @@ class BoundedPasswordEncoderTest {
     void rejectsNonPositivePermits() {
         assertThrows(IllegalArgumentException.class,
                 () -> new BoundedPasswordEncoder(new BlockingEncoder(0), 0, 100));
+    }
+
+    @Test
+    void existingArgon2HashesRemainCompatibleAndLongPasswordsAreNeverTruncated() {
+        Argon2PasswordEncoder argon2 = new Argon2PasswordEncoder(16, 32, 1, 19456, 2);
+        BoundedPasswordEncoder bounded = new BoundedPasswordEncoder(argon2, 1, 100);
+        String existingHash = argon2.encode("existing-password-1");
+        assertTrue(bounded.matches("existing-password-1", existingHash));
+        assertFalse(bounded.matches("wrong-password", existingHash));
+
+        String longPassword = "中".repeat(129) + "first-suffix";
+        String newHash = bounded.encode(longPassword);
+        assertTrue(argon2.matches(longPassword, newHash));
+        assertTrue(bounded.matches(longPassword, newHash));
+        assertFalse(bounded.matches("中".repeat(129) + "different-suffix", newHash));
+        assertFalse(bounded.matches(longPassword.substring(0, 128), newHash));
+        assertEquals(1, bounded.availablePermits());
     }
 }

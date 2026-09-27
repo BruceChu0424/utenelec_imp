@@ -3,6 +3,7 @@ package com.uten.imp.features.finance.payables;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.NativeFacets;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +12,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -36,7 +36,9 @@ public class ProcurementPayablesService {
             "dueDate", "ledger.due_date",
             "supplierName", "supplier.name",
             "grossLocal", "ledger.amount_original_local",
-            "outstandingLocal", "ledger.amount_balance");
+            "outstandingLocal", "ledger.amount_balance",
+            // 2026-09-25 单号列统一：来源单号可排序。
+            "sourceDocNo", "ledger.source_doc_no");
 
     private final EntityManager em;
     private final SupplierPayableHoldGuard payableHoldGuard;
@@ -56,11 +58,12 @@ public class ProcurementPayablesService {
             int page,
             int size,
             String sort,
-            String order) {
+            String order,
+            String sourceDocNo) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), MAX_PAGE_SIZE);
         Filter filter = filter(businessType, supplierId, status, settlementMethodId,
-                currencyId, dateFrom, dateTo, dueFrom, dueTo, keyword);
+                currencyId, dateFrom, dateTo, dueFrom, dueTo, keyword, sourceDocNo);
         String orderBy = orderBy(sort, order);
 
         Query data = em.createNativeQuery(itemSelect() + filter.sql()
@@ -78,6 +81,30 @@ public class ProcurementPayablesService {
 
         return new Page(summary(filter), items(rows),
                 safePage, safeSize, total, totalPages);
+    }
+
+    /** 来源单号列值筛选桶（2026-09-25 单号列统一）：与列表同一份 WHERE 分组计数。 */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, List<Map<String, Object>>> facets(
+            String businessType,
+            UUID supplierId,
+            String status,
+            UUID settlementMethodId,
+            UUID currencyId,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            LocalDate dueFrom,
+            LocalDate dueTo,
+            String keyword) {
+        Filter filter = filter(businessType, supplierId, status, settlementMethodId,
+                currencyId, dateFrom, dateTo, dueFrom, dueTo, keyword, null);
+        Query query = em.createNativeQuery(
+                "SELECT ledger.source_doc_no, COUNT(*) " + baseFrom() + filter.sql()
+                        + " GROUP BY ledger.source_doc_no ORDER BY 1");
+        bind(query, filter.params());
+        query.setMaxResults(500);
+        return Map.of("sourceDocNo",
+                NativeFacets.rows(com.uten.imp.common.util.NativeQueryResults.objectArrayRows(query)));
     }
 
     @Transactional(readOnly = true)
@@ -247,7 +274,7 @@ public class ProcurementPayablesService {
             String businessType, UUID supplierId, String status, UUID settlementMethodId,
             UUID currencyId,
             LocalDate dateFrom, LocalDate dateTo, LocalDate dueFrom, LocalDate dueTo,
-            String keyword) {
+            String keyword, String sourceDocNo) {
         String normalizedBusiness = upper(businessType);
         String normalizedStatus = upper(status);
         if (normalizedBusiness != null && !BUSINESS_TYPES.contains(normalizedBusiness)) {
@@ -282,6 +309,11 @@ public class ProcurementPayablesService {
                             + " OR LOWER(COALESCE(supplier.code,'')) LIKE :keyword"
                             + " OR LOWER(COALESCE(supplier.name,'')) LIKE :keyword)",
                     "keyword", "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%");
+        }
+        // 来源单号表头值筛选（2026-09-25 单号列统一）：精确匹配，随条件绑定。
+        if (sourceDocNo != null && !sourceDocNo.isBlank()) {
+            add(sql, params, "COALESCE(ledger.source_doc_no, '') = :sourceDocNo",
+                    "sourceDocNo", sourceDocNo.trim());
         }
         if (normalizedStatus != null) {
             sql.append(" AND ").append(switch (normalizedStatus) {

@@ -11,9 +11,95 @@ import 'package:uten_imp/features/finance/repositories/finance_asset_workbench_r
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/drafts/form_draft_category.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets(
+    'asset inputs join their own ledger draft status and policy drafts stay separate',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      FormDraft input(String id, String route, Map<String, dynamic> data) =>
+          FormDraft(
+            id: id,
+            title: id,
+            module: BadgeModule.finance,
+            route: route,
+            permission: '',
+            updatedAt: DateTime.utc(2026, 9, 26),
+            data: data,
+          );
+      await _pumpWorkbench(
+        tester,
+        repository: _FakeAssetRepository(),
+        formDrafts: [
+          input('fixed-local', '/finance/assets/new?ledger=fixedAsset', {
+            'name': '测试机器',
+            'amount': '123.4500',
+          }),
+          input(
+            'deferred-local',
+            '/finance/assets/new?ledger=deferredExpense',
+            {'name': '待摊装修', 'amount': '22.'},
+          ),
+          input('policy-local', '/finance/assets?draftForm=assetPolicy', {
+            'name': '政策填写',
+          }),
+        ],
+      );
+      expect(
+        find.byType(FormDraftCategoryTable<FinanceAssetSummary>),
+        findsNothing,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('asset-draft-category-FIXED_ASSET')),
+      );
+      await tester.pumpAndSettle();
+      var table = tester
+          .widget<
+            MasterDataTableView<FormDraftCategoryRow<FinanceAssetSummary>>
+          >(
+            find.byType(
+              MasterDataTableView<FormDraftCategoryRow<FinanceAssetSummary>>,
+            ),
+          );
+      expect(table.items.single.draft!.id, 'fixed-local');
+      expect(
+        table.columns
+            .singleWhere((column) => column.key == 'grossAmount')
+            .value(table.items.single),
+        '123.4500',
+      );
+      await tester.tap(find.text('长期待摊'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('asset-draft-category-DEFERRED_EXPENSE')),
+      );
+      await tester.pumpAndSettle();
+      table = tester
+          .widget<
+            MasterDataTableView<FormDraftCategoryRow<FinanceAssetSummary>>
+          >(
+            find.byType(
+              MasterDataTableView<FormDraftCategoryRow<FinanceAssetSummary>>,
+            ),
+          );
+      expect(table.items.single.draft!.id, 'deferred-local');
+      await tester.tap(find.text('政策草稿'));
+      await tester.pumpAndSettle();
+      final policyTable = tester
+          .widget<MasterDataTableView<FormDraftCategoryRow<Object>>>(
+            find.byType(MasterDataTableView<FormDraftCategoryRow<Object>>),
+          );
+      expect(policyTable.items.map((row) => row.draft!.id), ['policy-local']);
+      expect(find.text('policy-local · 政策填写'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   test('overview keeps policy readiness separate from posting safety', () {
     final overview = FinanceAssetWorkbenchOverview.fromJson(const {
@@ -101,7 +187,20 @@ void main() {
     await tester.tap(find.text('重试').last);
     await tester.pumpAndSettle();
 
-    expect(repository.listCalls, 2);
+    expect(
+      repository.listQueries.where((query) => query.status == null),
+      hasLength(2),
+    );
+    final draftCounts = repository.listQueries
+        .where((query) => query.status == 'DRAFT')
+        .toList();
+    expect(draftCounts, hasLength(1));
+    expect(
+      draftCounts.single.size,
+      1,
+      reason:
+          'the draft badge uses a bounded count lookup after successful retry',
+    );
     expect(
       find.byKey(const Key('finance-asset-retry-FIXED_ASSET')),
       findsNothing,
@@ -379,12 +478,15 @@ Future<void> _pumpWorkbench(
   bool postedWorkflowsEnabled = true,
   bool policyReady = true,
   List<String> missingPolicyItems = const <String>[],
+  List<FormDraft>? formDrafts,
 }) async {
   SharedPreferences.setMockInitialValues(<String, Object>{});
   final preferences = await SharedPreferences.getInstance();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        if (formDrafts != null)
+          formDraftsProvider.overrideWith(() => _FixedAssetDrafts(formDrafts)),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
         sharedPreferencesProvider.overrideWithValue(preferences),
@@ -404,6 +506,13 @@ Future<void> _pumpWorkbench(
     ),
   );
   await tester.pumpAndSettle();
+}
+
+class _FixedAssetDrafts extends FormDraftsNotifier {
+  _FixedAssetDrafts(this.initial);
+  final List<FormDraft> initial;
+  @override
+  List<FormDraft> build() => initial;
 }
 
 class _FakeOverviewRepository implements FinanceAssetOverviewRepository {
@@ -477,6 +586,7 @@ class _FakeAssetRepository implements FinanceAssetWorkbenchRepository {
   final bool denyMakerApproval;
   final List<AssetPostingRun> historyRuns;
   int listCalls = 0;
+  final listQueries = <FinanceAssetQuery>[];
   int createCalls = 0;
   int postingActionCalls = 0;
   final List<int?> postingExpectedVersions = <int?>[];
@@ -486,6 +596,7 @@ class _FakeAssetRepository implements FinanceAssetWorkbenchRepository {
     FinanceAssetLedger ledger, {
     FinanceAssetQuery query = const FinanceAssetQuery(),
   }) async {
+    listQueries.add(query);
     listCalls++;
     if (failFirstList && listCalls == 1) throw StateError('offline');
     return PagedResult<FinanceAssetSummary>(

@@ -303,6 +303,7 @@ public class SubcontractReportService {
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
+                facetBillNo(),
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
@@ -401,6 +402,7 @@ public class SubcontractReportService {
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
+                facetBillNo(),
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
@@ -493,6 +495,7 @@ public class SubcontractReportService {
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
+                facetBillNo(),
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
         return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
@@ -579,6 +582,7 @@ public class SubcontractReportService {
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
+                facetBillNo(),
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
         return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
@@ -802,6 +806,11 @@ public class SubcontractReportService {
 
     private static FacetSpec facetWarehouse() {
         return new FacetSpec("warehouseName", "CAST(wh.id AS text) AS v, wh.name AS lbl", "wh.id, wh.name", "o.warehouse_id", "uuid");
+    }
+
+    /** 2026-09-25 单号列统一：四张委外明细报表的单号列均投影 o.bill_no，按值筛选（等值匹配，桶 LIMIT 50 见 execute）。 */
+    private static FacetSpec facetBillNo() {
+        return new FacetSpec("billNo", "o.bill_no AS v, o.bill_no AS lbl", "o.bill_no", "o.bill_no", "text");
     }
 
     // ======================== 导出（加密 Excel） ========================

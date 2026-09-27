@@ -54,6 +54,22 @@ final expenseStatusFilterProvider = StateProvider<ExpenseClaimStatus?>(
 /// 下推后端 category 参数（类别挂在明细项上，命中任一明细即返回该单）。
 final expenseCategoryFilterProvider = StateProvider<String?>((ref) => null);
 
+/// 我的报销「报销单号」列表头筛选（2026-09-25 单号列统一）：服务端精确匹配。
+final expenseClaimNoFilterProvider = StateProvider<String?>((ref) => null);
+
+/// 我的报销表头排序（2026-09-25 单号列统一）：claimNo 白名单，null=后端默认。
+final expenseSortColumnProvider = StateProvider<String?>((ref) => null);
+final expenseSortAscendingProvider = StateProvider<bool>((ref) => true);
+
+/// 我的报销「报销单号」筛选桶（facets?queue=mine，2026-09-25 单号列统一）。
+final expenseMineFacetsProvider =
+    FutureProvider.autoDispose<Map<String, List<MasterFacetBucket>>>((ref) {
+      ref.watch(masterDataSessionKeyProvider);
+      return ref
+          .watch(expenseRepositoryProvider)
+          .facets(ApprovalFacetQueue.mine);
+    });
+
 /// 某状态所属的分段（表头筛选选中状态时同步切换顶部分段）。
 ExpenseFilter expenseFilterOfStatus(ExpenseClaimStatus status) {
   for (final filter in ExpenseFilter.values) {
@@ -75,6 +91,8 @@ class ExpenseListNotifier
   ExpenseFilter? _lastFilter;
   ExpenseClaimStatus? _lastStatus;
   String? _lastCategory;
+  String? _lastClaimNo;
+  String? _lastSortColumn;
 
   @override
   Future<PagedResult<ExpenseClaim>> build() async {
@@ -87,21 +105,32 @@ class ExpenseListNotifier
     final filter = ref.watch(expenseFilterProvider);
     final status = ref.watch(expenseStatusFilterProvider);
     final category = ref.watch(expenseCategoryFilterProvider);
-    // 换分段 / 换表头状态或类别筛选都回第 1 页。
+    // 2026-09-25 单号列统一：报销单号值筛选 + 表头排序（服务端白名单）。
+    final claimNo = ref.watch(expenseClaimNoFilterProvider);
+    final sortColumn = ref.watch(expenseSortColumnProvider);
+    final sortAscending = ref.watch(expenseSortAscendingProvider);
+    // 换分段 / 换表头状态、类别、单号筛选或排序都回第 1 页。
     if (_lastFilter != filter ||
         _lastStatus != status ||
-        _lastCategory != category) {
+        _lastCategory != category ||
+        _lastClaimNo != claimNo ||
+        _lastSortColumn != sortColumn) {
       _page = 1;
     }
     _lastFilter = filter;
     _lastStatus = status;
     _lastCategory = category;
+    _lastClaimNo = claimNo;
+    _lastSortColumn = sortColumn;
     return ref
         .watch(expenseRepositoryProvider)
         .listMine(
           statuses: status != null ? [status] : filter.apiStatuses,
           category: category,
           page: _page,
+          claimNo: claimNo,
+          sort: sortColumn,
+          order: sortColumn == null ? null : (sortAscending ? 'asc' : 'desc'),
         );
   }
 
@@ -306,10 +335,14 @@ class ExpenseApprovalFilters {
     this.departmentId,
     this.yearMonth,
     this.category,
+    this.claimNo,
   });
 
   final String? departmentId;
   final String? category;
+
+  /// 报销单号值筛选（2026-09-25 单号列统一）：服务端精确匹配。
+  final String? claimNo;
 
   /// yyyy-MM（业务时区），拆成后端 year/month。
   final String? yearMonth;
@@ -333,6 +366,7 @@ class ExpenseApprovalFilters {
     if (departmentId != null) 'departmentName': departmentId,
     if (yearMonth != null) 'yearMonth': yearMonth,
     if (category != null) 'category': category,
+    if (claimNo != null) 'claimNo': claimNo,
   };
 
   ExpenseApprovalFilters withColumn(String key, String? value) {
@@ -341,16 +375,25 @@ class ExpenseApprovalFilters {
         departmentId: value,
         yearMonth: yearMonth,
         category: category,
+        claimNo: claimNo,
       ),
       'yearMonth' => ExpenseApprovalFilters(
         departmentId: departmentId,
         yearMonth: value,
         category: category,
+        claimNo: claimNo,
       ),
       'category' => ExpenseApprovalFilters(
         departmentId: departmentId,
         yearMonth: yearMonth,
         category: value,
+        claimNo: claimNo,
+      ),
+      'claimNo' => ExpenseApprovalFilters(
+        departmentId: departmentId,
+        yearMonth: yearMonth,
+        category: category,
+        claimNo: value?.trim().isEmpty == true ? null : value?.trim(),
       ),
       _ => this,
     };
@@ -363,6 +406,17 @@ final expenseApprovalFiltersProvider =
       ref.watch(approvalQueueProvider);
       return const ExpenseApprovalFilters();
     });
+
+/// 审批列表表头排序（2026-09-25 单号列统一）：claimNo 白名单；换分段自动复位。
+final expenseApprovalSortColumnProvider = StateProvider.autoDispose<String?>((
+  ref,
+) {
+  ref.watch(approvalQueueProvider);
+  return null;
+});
+final expenseApprovalSortAscendingProvider = StateProvider.autoDispose<bool>(
+  (ref) => true,
+);
 
 /// 审批列表表头筛选桶（部门 / 年月），按分段取后端聚合。
 final expenseApprovalFacetsProvider = FutureProvider.autoDispose
@@ -395,9 +449,11 @@ class ExpenseApprovalListNotifier
       ref.invalidateSelf();
     });
     ref.onDispose(() => _requestGeneration++);
-    // 换分段 / 换表头筛选 → 重建即回第 1 页。
+    // 换分段 / 换表头筛选或排序 → 重建即回第 1 页。
     ref.watch(approvalQueueProvider);
     ref.watch(expenseApprovalFiltersProvider);
+    ref.watch(expenseApprovalSortColumnProvider);
+    ref.watch(expenseApprovalSortAscendingProvider);
     return _fetch(1);
   }
 
@@ -434,6 +490,12 @@ class ExpenseApprovalListNotifier
   Future<PagedResult<ExpenseClaim>> _fetch(int page) {
     final queue = ref.read(approvalQueueProvider);
     final filters = ref.read(expenseApprovalFiltersProvider);
+    // 2026-09-25 单号列统一：报销单号值筛选 + 表头排序（服务端白名单）。
+    final claimNo = filters.claimNo;
+    final sortColumn = ref.read(expenseApprovalSortColumnProvider);
+    final order = sortColumn == null
+        ? null
+        : (ref.read(expenseApprovalSortAscendingProvider) ? 'asc' : 'desc');
     final repository = ref.read(expenseRepositoryProvider);
     return switch (queue) {
       ApprovalQueue.pending => repository.listPending(
@@ -442,6 +504,9 @@ class ExpenseApprovalListNotifier
         month: filters.month,
         departmentId: filters.departmentId,
         category: filters.category,
+        claimNo: claimNo,
+        sort: sortColumn,
+        order: order,
       ),
       ApprovalQueue.history => repository.listHistory(
         page: page,
@@ -449,6 +514,9 @@ class ExpenseApprovalListNotifier
         month: filters.month,
         departmentId: filters.departmentId,
         category: filters.category,
+        claimNo: claimNo,
+        sort: sortColumn,
+        order: order,
       ),
       ApprovalQueue.payable => repository.listPayable(
         page: page,
@@ -456,6 +524,9 @@ class ExpenseApprovalListNotifier
         month: filters.month,
         departmentId: filters.departmentId,
         category: filters.category,
+        claimNo: claimNo,
+        sort: sortColumn,
+        order: order,
       ),
     };
   }
@@ -596,6 +667,8 @@ bool _isSelectableMasterStatus(String? status) {
 void _invalidateExpense(WidgetRef ref, String id) {
   ref.invalidate(expenseQueueSummaryProvider);
   ref.invalidate(expenseApprovalFacetsProvider);
+  // 2026-09-25 单号列统一：单号新建/删除后个人单号桶随之失效。
+  ref.invalidate(expenseMineFacetsProvider);
   refreshBadges(ref);
   ref.invalidate(expenseListProvider);
   ref.invalidate(expenseApprovalListProvider);

@@ -333,6 +333,19 @@ class MasterDictionaryService {
   GoodsDictEntry? goodsInfo(String? id) =>
       id == null || id.isEmpty ? null : _goodsInfo[id];
 
+  /// 行货品项（名称+编号）：单据编辑页的带单新建/上游引入/详情回显行构造用，
+  /// 与「货品名称」「编号」两个独立列同源。名称缺失退 '—' 占位（resolveName
+  /// 口径），编号缺失为 null（列显 '—'）。id 空返回 null（保持行必填校验语义）。
+  GoodsOption? goodsOptionOf(String? id) {
+    final clean = id?.trim();
+    if (clean == null || clean.isEmpty) return null;
+    return GoodsOption(
+      id: clean,
+      name: goods(clean),
+      code: goodsInfo(clean)?.code,
+    );
+  }
+
   /// 补全货品详情缓存（编号/系列/库位号）：名称可能已由搜索缓存，但详情缺失时仍按需拉取。
   Future<void> loadGoodsDetails(Iterable<String> ids) async {
     final need = ids
@@ -343,6 +356,25 @@ class MasterDictionaryService {
       await _goodsLookup.load(need);
     } catch (_) {
       // 同上：辅助信息可降级。
+    }
+  }
+
+  /// 名称+编号一并确保：单据编辑页行（带单新建/引入/回显）的「货品名称」与
+  /// 「编号」两列同源读缓存。名称可能已缓存而详情（编号）缺失——半缓存态
+  /// 也触发补拉，收编各页「loadGoodsNames 后再 loadGoodsDetails」的重复样板。
+  Future<void> loadGoodsNamesWithCodes(Iterable<String> ids) async {
+    final need = ids
+        .where(
+          (id) =>
+              id.isNotEmpty &&
+              (!_goods.containsKey(id) || !_goodsInfo.containsKey(id)),
+        )
+        .toSet();
+    if (need.isEmpty) return;
+    try {
+      await _goodsLookup.load(need);
+    } catch (_) {
+      // 同 loadGoodsNames：列表可降级为占位符。
     }
   }
 

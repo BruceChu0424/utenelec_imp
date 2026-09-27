@@ -96,8 +96,9 @@ public class StockDocService {
 
     private static final short DIR_IN = 1, DIR_OUT = -1;
 
-    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
-    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal");
+    /** 列排序白名单：前端列 key → JPA 实体属性名。total 在 list 内显式拒绝（成本排序侧信道）；
+     *  2026-09-25 单号列统一：billNo 进白名单（list 实际生效的子集见 resolve 调用）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal", "billNo", "billNo");
 
     /** doc_type → 服务端权威单据号命名空间。 */
     private static final Map<String, DocNumberPrefix> DOC_TYPE_TO_PREFIX = Map.of(
@@ -152,10 +153,29 @@ public class StockDocService {
                     ErrorCode.FORBIDDEN,
                     "仓库实物单据不提供成本排序，请在财务或库存价值报表中查看");
         }
+        Specification<StockDocument> spec = docSpec(f);
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
+                        // 2026-09-25 单号列统一：billNo 可排序（单据号不泄露成本）。
+                        Map.of("billDate", "billDate", "billNo", "billNo")));
+        Page<StockDocument> p = docRepo.findAll(spec, pageable);
+        return new PageResponse<>(p.map(this::toList).getContent(), page, size,
+                p.getTotalElements(), p.getTotalPages());
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数（docType 维度）。 */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(StockDocQueryFilter f) {
+        return java.util.Map.of("billNo",
+                com.uten.imp.common.web.TableFacets.groupCount(em, StockDocument.class, docSpec(f), "billNo"));
+    }
+
+    /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）：可见范围 + docType + 表头过滤。 */
+    private Specification<StockDocument> docSpec(StockDocQueryFilter f) {
         var readScope = access.scope();
         boolean returnTaskReadable = access.hasAuthority("stock_doc:view")
                 && productionStockTaskAccess.canAccessWarehouseTasks();
-        Specification<StockDocument> spec = (Root<StockDocument> root,
+        return (Root<StockDocument> root,
                                              jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -201,14 +221,12 @@ public class StockDocService {
                 ps.add(cb.equal(root.get("docType"), "WDRAW"));
                 ps.add(cb.isTrue(cb.function("fn_is_production_material_return_request",Boolean.class,root.get("id"))));
             }
+            // 2026-09-25 单号列统一：单据号表头值筛选（精确匹配）。
+            if (f.billNo() != null && !f.billNo().isBlank()) {
+                ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
+            }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
-                        Map.of("billDate", "billDate")));
-        Page<StockDocument> p = docRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size,
-                p.getTotalElements(), p.getTotalPages());
     }
 
     // ===== 详情 =====
@@ -2914,6 +2932,8 @@ public class StockDocService {
             }
             reservationService.releaseBySourceDoc("PRODUCTION_INBOUND", d.getId());
         }
+        List<com.uten.imp.application.port.PreplanAnalysisPegPort.FinishedInboundSlice> pegLines =
+                new ArrayList<>();
         for (StockDocumentItem it : items) {
             if (it.getGoodsId() == null) continue;
             BigDecimal lineQty = it.getQty() == null ? BigDecimal.ZERO : it.getQty();
@@ -2924,7 +2944,12 @@ public class StockDocService {
                         "关联生产计划的成品入库行必须明确指向计划行，禁止生成不可逆的 FIFO 分摊");
             }
             allocateFinishedIn(d, it, planId, lineQty, sign,
-                    publicBatchQuantities.getOrDefault(it.getExecutionSegmentId(), lineQty));
+                    publicBatchQuantities.getOrDefault(it.getExecutionSegmentId(), lineQty), pegLines);
+        }
+        if (sign > 0 && planId != null && !pegLines.isEmpty()) {
+            // One physical document shares one private/public budget. Passing
+            // each line separately would reuse the private quota for sibling slices.
+            preplanAnalysisPeg.pegFinishedInbound(d.getId(), planId, d.getWarehouseId(), pegLines);
         }
     }
 
@@ -3121,9 +3146,9 @@ public class StockDocService {
      * 之前抛错，让库存、计划、销售和预留在同一事务中全回滚。
      */
     private void allocateFinishedIn(StockDocument d, StockDocumentItem it, UUID planId,
-                                    BigDecimal lineQty, int sign, BigDecimal sourceBatchQty) {
-        boolean publicStockOnly = isPublicExecutionSurplus(it)
-                && validatePublicFinishedInCapacity(it, sourceBatchQty, sign);
+                                    BigDecimal lineQty, int sign, BigDecimal sourceBatchQty,
+                                    List<com.uten.imp.application.port.PreplanAnalysisPegPort.FinishedInboundSlice> pegLines) {
+        if (isPublicExecutionSurplus(it)) validatePublicFinishedInCapacity(it, sourceBatchQty, sign);
         String itemRemainExpr = sign > 0
                 ? "GREATEST(COALESCE(i.fqty,0) - COALESCE(i.iqty,0), 0)"
                 : "GREATEST(COALESCE(i.iqty,0), 0)";
@@ -3440,9 +3465,7 @@ public class StockDocService {
         // 分析备料绑定（V298）：物料分析来源计划的完工入库，未被销售订单链接覆盖的
         // 产出量绑定回来源分析（自制备料回仓）；红冲由 applyFinishedInChain(-1) 的
         // releaseBySourceDoc('PRODUCTION_INBOUND') 对称释放。
-        if (sign > 0 && !publicStockOnly) {
-            List<com.uten.imp.application.port.PreplanAnalysisPegPort
-                    .FinishedInboundSlice> pegLines = new ArrayList<>();
+        if (sign > 0) {
             for (PlannedWrite write : writes) {
                 BigDecimal linkedQty = write.links().stream()
                         .map(FinishedInboundAllocator.LinkAllocation::quantity)
@@ -3457,10 +3480,6 @@ public class StockDocService {
                             it.getColorId(),
                             write.planItem().toBase(unlinked)));
                 }
-            }
-            if (!pegLines.isEmpty()) {
-                preplanAnalysisPeg.pegFinishedInbound(
-                        d.getId(), planId, d.getWarehouseId(), pegLines);
             }
         }
         recomputePlanClosed(planId);
@@ -3944,6 +3963,14 @@ public class StockDocService {
         List<Object[]> materialReturn="WDRAW".equals(d.getDocType())?NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT warehouse_id,fn_warehouse_main_id(warehouse_id) FROM production_material_return_requests WHERE id=:id
                 """).setParameter("id",d.getId())):List.of();
+        String materialRequestNo="DRAW".equals(d.getDocType())?(String)em.createNativeQuery("""
+                SELECT string_agg(DISTINCT request.request_no,'、' ORDER BY request.request_no)
+                FROM production_material_discovery_requests request
+                JOIN production_material_discovery_lines line ON line.request_id=request.id
+                JOIN production_planning_package_document_items mapping ON mapping.demand_id=line.demand_id
+                  AND mapping.document_type='DRAW' AND mapping.document_id=:id
+                WHERE request.status='CONFIGURED'
+                """).setParameter("id",d.getId()).getSingleResult():null;
         return new StockDocDetail(d.getId(), d.getLegacyId(), d.getDocType(), d.getBillNo(), d.getBillDate(),
                 d.getWarehouseId(), d.getToWarehouseId(), d.getSupplierId(), d.getClientId(),
                 d.getWorkerId(), d.getMakerId(), d.getApproverId(), d.getAssTeam(), d.getPlanNo(), d.getRemark(),
@@ -3957,7 +3984,7 @@ public class StockDocService {
                 resolveSourcePlanId(d.getId()),
                 decision, finishedInboundVarianceReason, !canViewCost,!materialReturn.isEmpty(),
                 materialReturn.isEmpty()?null:(UUID)materialReturn.getFirst()[0],
-                materialReturn.isEmpty()?null:(UUID)materialReturn.getFirst()[1]);
+                materialReturn.isEmpty()?null:(UUID)materialReturn.getFirst()[1],materialRequestNo);
     }
 
     private boolean canViewCost() {

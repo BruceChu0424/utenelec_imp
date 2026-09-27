@@ -105,7 +105,7 @@ public class MrpService {
     }
 
     /** 生产计划需求源：开工日优先，未排开工日时回落计划交货日。 */
-    private static final String MRP_SQL = buildMrpSql("""
+    private static final String PLAN_MRP_SEED = """
             SELECT b.component_goods_id AS goods_id,
                    resolved_color.id AS color_id,
                    CASE
@@ -145,9 +145,11 @@ public class MrpService {
              LEFT JOIN colors resolved_color
                     ON resolved_color.id = COALESCE(b.color_id, component.color_id)
             WHERE i.plan_id = :planId AND i.is_deleted = false
-            """);
+            """;
 
-    private static String buildMrpSql(String seed) {
+    private static final String MRP_SQL = buildMrpSql(PLAN_MRP_SEED);
+
+    private static String buildMrpExpansion(String seed) {
         return """
             WITH RECURSIVE exp AS (
                 %s
@@ -183,8 +185,13 @@ public class MrpService {
                  LEFT JOIN colors resolved_color
                         ON resolved_color.id = COALESCE(b.color_id, component.color_id)
                 WHERE e.lvl < 10 AND NOT b.id = ANY(e.path)
-            ),
-            demand_buckets AS (
+            )
+            """.formatted(seed);
+    }
+
+    private static String buildMrpSql(String seed) {
+        return buildMrpExpansion(seed) + """
+            , demand_buckets AS (
                 SELECT e.goods_id, e.color_id, e.need_date,
                        SUM(e.req_qty)::numeric AS bucket_gross
                 FROM exp e
@@ -314,8 +321,24 @@ public class MrpService {
                 FROM po_line pl
             ) po ON true
             ORDER BY a.need_date NULLS LAST, g.code, a.color_id NULLS FIRST
-            """.formatted(seed);
+            """;
     }
+
+    private static final String PLAN_MRP_INPUT_VALIDATION_SQL = buildMrpExpansion(PLAN_MRP_SEED) + """
+            , checked AS (
+                SELECT g.code,g.name,
+                    (e.invalid_requirement OR g.is_deleted OR u.id IS NULL OR COALESCE(u.is_deleted,true)) AS invalid_requirement,
+                    EXISTS(SELECT 1 FROM purchase_order_items oi JOIN purchase_orders o ON o.id=oi.order_id
+                        WHERE o.status=1 AND o.is_deleted=false AND COALESCE(o.is_stopped,false)=false
+                          AND o.is_closed=false AND oi.is_deleted=false
+                          AND oi.goods_id=e.goods_id AND oi.color_id IS NOT DISTINCT FROM e.color_id
+                          AND GREATEST(COALESCE(oi.qty,0)-COALESCE(oi.received_qty,0),0)>0
+                          AND (COALESCE(oi.unit_rate,1)<=0 OR oi.unit_id IS NULL)) AS invalid_po_rate
+                FROM exp e JOIN goods g ON g.id=e.goods_id LEFT JOIN units u ON u.id=g.unit_id
+            )
+            SELECT code,name,invalid_requirement,invalid_po_rate FROM checked
+            WHERE invalid_requirement OR invalid_po_rate LIMIT 1
+            """;
 
     private static final String PLAN_BOM_VALIDATION_SQL = buildBomValidationSql("""
             SELECT DISTINCT goods_id
@@ -378,6 +401,23 @@ public class MrpService {
                                 row.goodsId(), row.colorId())),
                         PLANNING_WRITE_READY))
                 .toList();
+    }
+
+    /** Structural half of the existing MRP validation, for a locked analysis
+     * plan whose absence of formal demand proves that material status is unverified. */
+    @Transactional(readOnly = true)
+    public void validatePlanBomGraph(UUID planId) {
+        validateBomGraph(PLAN_BOM_VALIDATION_SQL, planId);
+        List<Object[]> invalid = NativeQueryResults.objectArrayRows(em.createNativeQuery(PLAN_MRP_INPUT_VALIDATION_SQL)
+                .setParameter("planId", planId));
+        if (!invalid.isEmpty()) {
+            Object[] row=invalid.getFirst();
+            String label=java.util.Objects.toString(row[0], "")+" "+java.util.Objects.toString(row[1], "");
+            if (Boolean.TRUE.equals(row[2])) throw new ApiException(ErrorCode.CONFLICT,
+                    "货品 "+label+" 的BOM、颜色或基本单位数据无效，禁止计算齐套");
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "货品 "+label+" 存在未完成采购行的单位或换算率无效，禁止计算齐套");
+        }
     }
 
     /**

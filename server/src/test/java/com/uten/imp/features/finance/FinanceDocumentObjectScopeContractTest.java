@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -20,9 +21,15 @@ class FinanceDocumentObjectScopeContractTest {
             String source = source(relative);
 
             assertThat(source).contains("private final FinanceDocumentAccessPolicy access;");
-            assertThat(method(source, " list(")).contains(
+            String list = method(source, " list(");
+            var helper = Pattern.compile("Specification<[^>]+>\\s+spec\\s*=\\s*(\\w+Spec)\\(f\\)")
+                    .matcher(list);
+            assertThat(helper.find()).as("list must use its shared scope specification in %s", relative).isTrue();
+            assertThat(list).contains(".findAll(spec,");
+            assertThat(method(source, " " + helper.group(1) + "(")).contains(
                     "var readScope = access.scope();",
                     "access.readablePredicate(root, cb, \"makerId\", readScope)");
+            assertThat(method(source, " facets(")).contains(helper.group(1) + "(f)");
             String detail = method(source, " detail(");
             assertThat(detail).contains("access.requireReadable(");
             int childLoad = firstIndexOf(detail, "lineRepo.findBy", "itemRepo.findBy");
@@ -81,9 +88,12 @@ class FinanceDocumentObjectScopeContractTest {
     }
 
     private static String method(String source, String signature) {
-        int start = source.indexOf(signature);
+        String name = signature.strip().replace("(", "");
+        var declaration = Pattern.compile("(?m)^\\s*(?:public|private|protected)\\s+[^\\n;{}=]*\\b"
+                + Pattern.quote(name) + "\\s*\\(").matcher(source);
+        int start = declaration.find() ? declaration.start() : -1;
         assertThat(start).as("method %s", signature.trim()).isGreaterThanOrEqualTo(0);
-        int bodyStart = source.indexOf('{', start + signature.length());
+        int bodyStart = source.indexOf('{', declaration.end());
         assertThat(bodyStart).as("method body %s", signature.trim()).isGreaterThan(start);
         int depth = 0;
         for (int index = bodyStart; index < source.length(); index++) {

@@ -7,19 +7,17 @@
 //  ③ 销售报表：明细/汇总 + 稀缺仲裁（不变）。
 //
 // 卡片统一用 UtenHubCard。计数口径（准则 14）：
-//   · 任务中心卡：红 = SalesProgressBadge（财务驳回 + 可分批发货，salesAttention），
-//     黄 = 在途订单数（salesOrderInFlight，ADR-100）。
+//   · 任务中心卡：红 = 销售模块待办合计（订货关注事项 + 出货财务退回 + 四类草稿），
+//     黄 = 销售模块进行中合计（在途订单，ADR-100）；均读取服务端容器汇总。
 //   · 新建区五张卡不挂数（2026-09-24 用户口径：新建入口不需要通知数量徽章；
 //     草稿仍在新页「草稿(N)」按钮与任务中心草稿分段可见，模块累计照旧含草稿）。
 // 权限来自 currentPermissionsProvider；路由用 SalesRoutePath 字面量。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/feedback/uten_module_todo_chip.dart';
+import '../../../components/feedback/uten_module_badges.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
-import '../../../components/feedback/uten_in_progress_badge.dart';
-import '../../../components/feedback/uten_module_progress_chip.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -32,9 +30,9 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
-import '../widgets/sales_progress_badge.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/badges/badge_scope.dart';
 
 class SalesHubPage extends ConsumerWidget {
   const SalesHubPage({super.key});
@@ -53,22 +51,16 @@ class SalesHubPage extends ConsumerWidget {
         hubCardAllowed(RouteName.sales, location, perms, superAdmin);
 
     // 任务中心：销售任务中心（一站式查看全部销售单据与进度）。
-    // 红徽章 = 财务驳回待修正 + 可分批发货待开单；黄徽章 = 在途订单数
-    // (待排产 + 生产中 + 出货待财审 + 等仓库出货): 这批单还在生产/财务/仓库
-    // 手上跑着, 销售现在不用动手, 与红徽章各答一个问题(ADR-100)。
+    // 唯一任务中心覆盖销售模块全部待办，卡片与顶栏读取同一份服务端容器汇总。
+    // 不能只读 salesAttention，否则会漏掉订货/出货/退货/报价草稿和出货财务退回；
+    // 也不能再加页内分段数，避免把已登记的草稿与退回单重复累计（ADR-108）。
     final taskEntries = <_Entry>[
       _Entry(
         icon: Icons.timeline_outlined,
         label: '销售任务中心',
         description: l10n.salesHubTaskOrderProgressSub,
         location: RouteName.salesTasks,
-        badge: const SalesProgressBadge(),
-        progressBadge: UtenInProgressBadge(
-          count: ref.watch(
-            badgeEntryInProgressProvider(BadgeEntry.salesOrderInFlight),
-          ),
-          showLabel: true,
-        ),
+        badgeScope: const BadgeScope.module(BadgeModule.sales),
       ),
     ].where((e) => canOpen(e.location)).toList();
 
@@ -113,18 +105,7 @@ class SalesHubPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
-        actions: [
-          // 本模块「进行中」累计(黄, 在红药丸左边): 徽章汇总里 sales 容器的黄数
-          // (服务端对本容器在办入口求和, ADR-108), 同样不在页面里手写加法。
-          UtenModuleProgressChip(
-            count: ref.watch(badgeModuleInProgressProvider(BadgeModule.sales)),
-          ),
-          // 本模块累计：徽章汇总里 sales 容器的红数(服务端对全部入口求和, 已含各单据卡
-          // 草稿)，**页面里不要手写加法**——新增入口只改服务端徽章目录。
-          UtenModuleTodoChip(
-            count: ref.watch(badgeModuleTodoProvider(BadgeModule.sales)),
-          ),
-        ],
+        actions: const [UtenModuleBadges(module: BadgeModule.sales)],
       ),
       body: SafeArea(
         child: UtenContentContainer(
@@ -214,8 +195,7 @@ class _Entry {
     required this.label,
     required this.description,
     required this.location,
-    this.badge,
-    this.progressBadge,
+    this.badgeScope,
   });
 
   /// 新建单据卡（2026-09-24 三段式）：只对能新建的人显示（外层 canOpen 过滤），
@@ -225,20 +205,15 @@ class _Entry {
       label = '新建${_salesDocTitle(cfg.type, l10n)}',
       description = _salesDocSubtitle(cfg.type, l10n),
       location = SalesRoutePath.docNew(cfg.type.pathSegment),
-      badge = null,
-      progressBadge = null;
+      badgeScope = null;
 
   final IconData icon;
   final String label;
   final String description;
   final String location;
 
-  /// 右上角红色徽章（订单进度关注数 / 单据草稿数；null=无）。只放「需要我处理」的数。
-  final Widget? badge;
-
-  /// 右上角黄色「进行中」徽章(排在红徽章左边; null=该入口没有在办数)。
-  /// 只放「已经在办、还没完、现在不用我动手」的数。
-  final Widget? progressBadge;
+  /// 任务中心读取完整模块；新建、报表入口不声明徽章。
+  final BadgeScope? badgeScope;
 }
 
 class _EntryTile extends StatelessWidget {
@@ -252,8 +227,8 @@ class _EntryTile extends StatelessWidget {
       label: entry.label,
       description: entry.description,
       onTap: () => goFrom(context, entry.location),
-      badge: entry.badge,
-      progressBadge: entry.progressBadge,
+      badgeScope: entry.badgeScope,
+      badgeShowLabel: true,
     );
   }
 }

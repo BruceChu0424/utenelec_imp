@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_order_edit_page.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
@@ -45,6 +46,13 @@ void main() {
     expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isTrue);
     expect(tester.widget<Checkbox>(checkboxes.at(1)).value, isTrue);
     expect(tester.widget<Checkbox>(checkboxes.at(2)).value, isTrue);
+
+    // 带单新建行的「编号」「颜色」独立列必须显示（2026-09-26 回归锁：引入行
+    // 构造 GoodsOption 曾不带 code，编号列恒空；颜色按申请明细 colorId 查字典）。
+    expect(find.text('V60000g-1'), findsOneWidget);
+    expect(find.text('V60000g-2'), findsOneWidget);
+    expect(find.text('白色'), findsOneWidget);
+    expect(find.text('香槟金'), findsOneWidget);
 
     // 有勾选行 → 保存可点。
     final save = find.byKey(const ValueKey('uten-edit-save'));
@@ -156,6 +164,19 @@ class _SelectionApi extends ApiClient {
     if (path.contains('/master/suppliers/dict')) {
       return const [
         {'id': 's1', 'code': 'GY001', 'name': '洪武五金', 'status': '使用'},
+      ];
+    }
+    if (path == ApiEndpoints.goodsLookup) {
+      // 带单新建行的名称+编号都来自 lookup 字典（goodsOptionOf）。
+      final ids = (query!['ids'] as String).split(',');
+      return [
+        for (final id in ids) {'id': id, 'name': '货品$id', 'code': 'V60000$id'},
+      ];
+    }
+    if (path == ApiEndpoints.colorsDict) {
+      return const [
+        {'id': 'c-1', 'name': '白色'},
+        {'id': 'c-2', 'name': '香槟金'},
       ];
     }
     return const [];

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../config/warehouse_document_history_config.dart';
 import '../models/warehouse_document_history.dart';
 
@@ -9,6 +10,19 @@ abstract interface class WarehouseDocumentHistoryGateway {
   Future<PagedResult<WarehouseDocumentHistorySummary>> list({
     int page = 1,
     int size = 20,
+    String? keyword,
+    String? status,
+    String? dateFrom,
+    String? dateTo,
+    String? sort,
+    String? order,
+    String? billNo,
+    String? sourceDocNo,
+  });
+
+  /// 单号列值筛选桶（2026-09-25 单号列统一）：{billNo:[…], sourceDocNo:[…]}，
+  /// 与列表同一过滤口径（不含单号列自身值筛选）。
+  Future<Map<String, List<MasterFacetBucket>>> billNoFacets({
     String? keyword,
     String? status,
     String? dateFrom,
@@ -35,6 +49,10 @@ class WarehouseDocumentHistoryRepository
     String? status,
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
+    String? billNo,
+    String? sourceDocNo,
   }) async {
     final safePage = page < 1 ? 1 : page;
     final safeSize = size.clamp(1, 100);
@@ -49,11 +67,43 @@ class WarehouseDocumentHistoryRepository
     }
     if (_trimmed(dateFrom) case final value?) query['dateFrom'] = value;
     if (_trimmed(dateTo) case final value?) query['dateTo'] = value;
+    // 2026-09-25 单号列统一：表头排序 + 单据号/来源单据号表头值筛选。
+    if (_trimmed(sort) case final value?) query['sort'] = value;
+    if (_trimmed(order) case final value?) query['order'] = value;
+    if (_trimmed(billNo) case final value?) query['billNo'] = value;
+    if (_trimmed(sourceDocNo) case final value?) {
+      query['sourceDocNo'] = value;
+    }
     final json = await api.get(_basePath, query: query);
     return PagedResult<WarehouseDocumentHistorySummary>.fromJson(
       json,
       (item) => WarehouseDocumentHistorySummary.fromJson(type, item),
     );
+  }
+
+  @override
+  Future<Map<String, List<MasterFacetBucket>>> billNoFacets({
+    String? keyword,
+    String? status,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final query = <String, dynamic>{};
+    final safeKeyword = _trimmed(keyword);
+    final safeStatus = _trimmed(status);
+    if (safeKeyword != null) {
+      query['keyword'] = safeKeyword;
+    }
+    if (safeStatus != null) {
+      query['status'] = safeStatus;
+    }
+    if (_trimmed(dateFrom) case final value?) query['dateFrom'] = value;
+    if (_trimmed(dateTo) case final value?) query['dateTo'] = value;
+    final json = await api.get('$_basePath/facets', query: query);
+    return {
+      'billNo': parseFacetBuckets(json, 'billNo'),
+      'sourceDocNo': parseFacetBuckets(json, 'sourceDocNo'),
+    };
   }
 
   @override

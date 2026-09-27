@@ -119,11 +119,22 @@ public class MaterialAnalysisFlowStageService {
                 default -> result.put(lineId,
                         purchaseStage(lineId, required, shortage, facts));
             }
+            // A target may adopt another route's existing document. Its progress
+            // follows that real supply until receipt, instead of asking for a new order.
+            String stage=result.get(lineId);
+            LineChain chain=facts.lines.get(lineId);
+            if(stage!=null&&stage.endsWith("PENDING_ISSUE")&&chain!=null) {
+                List<String> adoptedStages=new ArrayList<>();
+                if(!chain.purchaseExternalItems.isEmpty())adoptedStages.add(purchaseStage(lineId,required,shortage,facts));
+                if(!chain.subcontractExternalItems.isEmpty())adoptedStages.add(subcontractStage(lineId,required,shortage,facts,null,false));
+                adoptedStages.stream().min(java.util.Comparator.comparingInt(MaterialAnalysisService::preparationStageRank))
+                        .ifPresent(value->result.put(lineId,value));
+            }
         }
         return result;
     }
 
-    private static String makeStage(String childStatus, boolean childZero) {
+    static String makeStage(String childStatus, boolean childZero) {
         if (childStatus == null || childStatus.isBlank()) {
             return MAKE_PENDING_ISSUE;
         }
@@ -144,12 +155,8 @@ public class MaterialAnalysisFlowStageService {
         if (chain == null || chain.purchaseExternalItems.isEmpty()) {
             return BUY_PENDING_ISSUE;
         }
-        // 2026-09-06 修复「未下单却显示已入库」：整批下达会同时归零 required 与
-        // shortage——那是需求转出，不是齐套。只有需求仍在行内（required>0）时
-        // 缺口归零才是现货/权益覆盖的已入库；转出行必须沿链路逐步判定。
-        if (required.signum() > 0 && shortage.signum() <= 0) {
-            return BUY_STOCKED;
-        }
+        // Fulfilment of this source's demand is separate from progress of the
+        // real order, which may also contain public overproduction.
         OrderView orders = facts.purchaseOrders(chain.purchaseExternalItems);
         if (orders.itemIds.isEmpty() || !orders.allOrdered) {
             return BUY_REQUESTED;
@@ -198,11 +205,10 @@ public class MaterialAnalysisFlowStageService {
                     ? MAKE_PENDING_ISSUE
                     : SC_PENDING_ISSUE;
         }
-        // 与采购同口径（2026-09-06）：整批下达归零是转出不是齐套，转出行沿
-        // 链路逐步判定；只有需求仍在行内时缺口归零才是覆盖齐套。
-        if (required.signum() > 0 && shortage.signum() <= 0) {
-            return SC_STOCKED;
-        }
+        // A later preparation batch must remain visible even when an earlier
+        // subcontract application has already returned the original private share.
+        if(childStatus!=null&&!childStatus.isBlank()&&!"COMPLETED".equals(childStatus))
+            return makeStage(childStatus,childZero);
         OrderView orders = facts.subcontractOrders(chain.subcontractExternalItems);
         if (orders.itemIds.isEmpty() || !orders.allOrdered) {
             return SC_REQUESTED;

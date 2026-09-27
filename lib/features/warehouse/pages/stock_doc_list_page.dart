@@ -10,7 +10,10 @@
 //   不发请求显示引导占位；选中后按 dateFrom/dateTo 加载（不限状态）。
 // 其余（折叠头+表格吸顶内滚、列表刷新 tick、返回即刷新、PagedListController
 // 竞态状态机）保持原实现。
+import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
+import '../../../shared/drafts/form_draft_category.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -29,13 +32,16 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/mixins/draft_bulk_delete_mixin.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
+import '../providers/stock_draft_delete.dart';
 import '../repositories/stock_doc_repository.dart';
 
 /// 状态分段值：真实单据状态（status 非空）或历史单据哨兵。
@@ -70,7 +76,8 @@ class StockDocListPage extends ConsumerStatefulWidget {
   ConsumerState<StockDocListPage> createState() => _StockDocListPageState();
 }
 
-class _StockDocListPageState extends ConsumerState<StockDocListPage> {
+class _StockDocListPageState extends ConsumerState<StockDocListPage>
+    with DraftBulkDeleteMixin<StockDocListPage> {
   final _list = PagedListController<StockDocListItem>();
 
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
@@ -92,6 +99,11 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   String? _warehouseIdFilter;
   String? _departmentIdFilter;
   String? _toWarehouseIdFilter;
+
+  /// 2026-09-25 单号列统一：单据号表头值筛选 + 服务端桶（共享状态，见
+  /// MasterServerColumnFilters）。
+  final _columnFilters = MasterServerColumnFilters();
+  int _reloadGeneration = 0;
 
   bool get _isDraw => widget.docType == StockDocType.draw;
 
@@ -126,6 +138,39 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant StockDocListPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.docType == widget.docType &&
+        oldWidget.initialStatus == widget.initialStatus) {
+      return;
+    }
+    clearDraftSelection();
+    _myLocation = null;
+    _seg = isDraftStatusQuery(widget.initialStatus)
+        ? const _StockDocSeg.stage(0)
+        : null;
+    _issueStatus = null;
+    _historyTime = const UtenHistoryTimeValue.none();
+    _warehouseIdFilter = null;
+    _departmentIdFilter = null;
+    _toWarehouseIdFilter = null;
+    _columnFilters.reset();
+    _list.page = null;
+    _list.keyword = '';
+    _list.onSortChange(null, true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadBadge();
+      _reload(1);
+    });
+  }
+
+  bool get _canSelectDrafts =>
+      _seg?.history == false &&
+      _seg?.status == 0 &&
+      canDeleteStockDrafts(ref.read(currentPermissionsProvider));
+
   bool get _canCreate =>
       widget.docType.supportsManualDraft &&
       DocumentPermissionCatalog.stockDocument.allows(
@@ -155,19 +200,65 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                 ? null
                 : ChinaDateTime.formatDate(range.start),
             dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+            billNo: _columnFilters['billNo'],
           ),
           sort: sort,
           order: sort == null ? null : _list.sortOrder,
         );
   }
 
-  Future<void> _reload([int? page, bool silent = false]) {
-    if (!_shouldLoad) return Future.value();
-    return _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+  /// 单据号值筛选桶随过滤上下文重取（失败静默保持旧桶，不阻断列表）。
+  Future<void> _loadBillNoFacets() {
+    final seg = _seg;
+    if (seg == null) return Future.value();
+    final range = seg.history ? _historyTime.range : null;
+    return _columnFilters.loadFacets(
+      () async => {
+        'billNo': await ref
+            .read(stockDocRepositoryProvider(widget.docType))
+            .billNoFacets(
+              filter: StockDocFilter(
+                keyword: _list.normalizedKeyword,
+                warehouseId: _warehouseIdFilter,
+                departmentId: _isDraw ? _departmentIdFilter : null,
+                toWarehouseId: widget.docType == StockDocType.transfer
+                    ? _toWarehouseIdFilter
+                    : null,
+                status: seg.history ? null : seg.status,
+                issueStatus: _showIssueRow ? _issueStatus : null,
+                dateFrom: range == null
+                    ? null
+                    : ChinaDateTime.formatDate(range.start),
+                dateTo: range == null
+                    ? null
+                    : ChinaDateTime.formatDate(range.end),
+              ),
+            ),
+      },
+      onLoaded: () {
+        if (mounted) setState(() {});
+      },
+    );
+  }
+
+  Future<void> _reload([int? page, bool silent = false]) async {
+    final generation = ++_reloadGeneration;
+    if (!_shouldLoad) return;
+    unawaited(_loadBillNoFacets());
+    await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+    if (!mounted || generation != _reloadGeneration) return;
+    retainDraftSelection(
+      _canSelectDrafts && _list.error == null
+          ? (_list.page?.items ?? const <StockDocListItem>[])
+                .where(isStockDraftDeleteCandidate)
+                .map((item) => item.id)
+          : const <String>[],
+    );
   }
 
   void _selectSeg(_StockDocSeg seg) {
     if (seg == _seg) return;
+    clearDraftSelection();
     setState(() {
       _seg = seg;
       _issueStatus = null;
@@ -178,12 +269,22 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
 
   void _onHistoryTime(UtenHistoryTimeValue value) {
     if (value == _historyTime) return;
+    clearDraftSelection();
     setState(() => _historyTime = value);
     _reload(1);
   }
 
   /// 表头筛选回调：值并进既有 repository.list 参数，重拉回第 1 页。
   void _onColumnFilterChanged(String key, String? value) {
+    clearDraftSelection();
+    if (key == 'billNo') {
+      _columnFilters.handleFilterChanged(
+        key,
+        value,
+        onChanged: _afterServerColumnChanged,
+      );
+      return;
+    }
     setState(() {
       if (key == 'warehouse') {
         _warehouseIdFilter = value;
@@ -193,6 +294,13 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
         _toWarehouseIdFilter = value;
       }
     });
+    _reload(1);
+  }
+
+  /// 服务端列筛选落地后：setState 刷新表头 + 重拉回第 1 页。
+  void _afterServerColumnChanged() {
+    clearDraftSelection();
+    setState(() {});
     _reload(1);
   }
 
@@ -211,6 +319,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
 
   /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
   void _onSortChange(String? column, bool ascending) {
+    clearDraftSelection();
     _list.onSortChange(column, ascending);
     _reload(1);
   }
@@ -220,7 +329,9 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
     final isDraw = widget.docType == StockDocType.draw;
     return <MasterColumnDef<StockDocListItem>>[
       MasterColumnDef(
+        // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
         key: 'billNo',
+        sortable: true,
         label: '单据号',
         width: 160,
         value: (it) => it.billNo,
@@ -276,14 +387,30 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
     ];
   }
 
+  FormDraftCategoryScope get _formDraftScope => FormDraftCategoryScope(
+    routePath: '/warehouse/${widget.docType.code}/new',
+  );
+
+  Widget _withFormDraftRows(MasterDataTableView<StockDocListItem> table) =>
+      _seg?.status == 0 && _seg?.history != true
+      ? FormDraftCategoryTable<StockDocListItem>(
+          scope: _formDraftScope,
+          table: table,
+          search: _list.keyword,
+          formalId: (item) => item.id,
+        )
+      : table;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final docType = widget.docType;
+    ref.watch(currentPermissionsProvider);
     // watch 一下以在 ensureLoaded 完成（虽 Provider 实例不变，但语义上声明依赖）
     final names = ref.watch(masterNameServiceProvider);
     // 分段计数(草稿/已审/红冲); 加载中或无权限为 null, 不渲染数字。
     final statusCounts = ref
-        .watch(documentStatusCountsProvider(_statusScope))
+        .watch(effectiveDocumentStatusCountsProvider(_statusScope))
         .valueOrNull;
     // 返回即刷新(ADR-108): 回到本列表时, 只有本端写过数据或离开超过 30 秒才重拉,
     // 且推迟到返回转场结束; 详情/编辑页保存成功 bump 的 tick 在本页就在栈顶时立即重拉,
@@ -337,6 +464,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                             value: const _StockDocSeg.stage(0),
                             label: '草稿',
                             count: statusCounts?[DocumentStatusBucket.draft],
+                            countForm: UtenSegmentCountForm.actionable,
                           ),
                           UtenFilterSegment(
                             value: const _StockDocSeg.stage(1),
@@ -358,6 +486,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                         searchHint: '搜索单据号', // TODO(l10n): 补 arb
                         initialSearchValue: _list.keyword,
                         onSearchChanged: (v) {
+                          clearDraftSelection();
                           _list.keyword = v;
                           _reload(1);
                         },
@@ -379,6 +508,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                               ? const <int>{}
                               : {_issueStatus!},
                           onSelectionChanged: (value) {
+                            clearDraftSelection();
                             setState(() => _issueStatus = value);
                             _reload(1);
                           },
@@ -441,53 +571,89 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                       ? const UtenFilterPlaceholder()
                       : seg.history && _historyTime.isNone
                       ? const UtenHistoryTimePlaceholder()
-                      : MasterDataTableView<StockDocListItem>(
-                          // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
-                          primary: true,
-                          columns: _columns(),
-                          items: _list.page?.items ?? const [],
-                          facets: {
-                            'warehouse': masterDictionaryFacets(
-                              names.warehouseEntries,
-                            ),
-                            if (_isDraw)
-                              'department': masterDictionaryFacets(
-                                names.departmentEntries,
+                      : _withFormDraftRows(
+                          MasterDataTableView<StockDocListItem>(
+                            // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
+                            primary: true,
+                            selectable: _canSelectDrafts,
+                            idOf: (item) =>
+                                !draftDeleteBusy &&
+                                    !_list.loading &&
+                                    isStockDraftDeleteCandidate(item)
+                                ? item.id
+                                : null,
+                            rowKeyOf: (item) => item.id,
+                            selectedIds: selectedDraftIds,
+                            onSelectedIdsChanged:
+                                draftDeleteBusy || _list.loading
+                                ? null
+                                : selectDraftIds,
+                            batchActionsBuilder: (_, _) => [
+                              buildDraftDeleteButton(
+                                documentLabel: docType.label,
+                                delete: (id) => deleteStockDraft(
+                                  ref,
+                                  type: docType,
+                                  id: id,
+                                  isMounted: () => mounted,
+                                  stillCurrent: () =>
+                                      widget.docType == docType &&
+                                      _canSelectDrafts &&
+                                      selectedDraftIds.contains(id),
+                                ),
+                                reload: () async {
+                                  _loadBadge();
+                                  await _reload();
+                                },
                               ),
-                            if (widget.docType == StockDocType.transfer)
-                              'toWarehouse': masterDictionaryFacets(
+                            ],
+                            columns: _columns(),
+                            items: _list.page?.items ?? const [],
+                            facets: {
+                              'billNo': _columnFilters.bucketOf('billNo'),
+                              'warehouse': masterDictionaryFacets(
                                 names.warehouseEntries,
                               ),
-                          },
-                          nullCounts: const {},
-                          filters: {
-                            'warehouse': _warehouseIdFilter,
-                            if (_isDraw) 'department': _departmentIdFilter,
-                            if (widget.docType == StockDocType.transfer)
-                              'toWarehouse': _toWarehouseIdFilter,
-                          },
-                          onFilterChanged: _onColumnFilterChanged,
-                          sortColumn: _list.sortKey == 'total'
-                              ? null
-                              : _list.sortKey,
-                          sortAscending: _list.sortAsc,
-                          onSortChange: _onSortChange,
-                          onRowTap: (it) => context.push(
-                            RoutePath.stockDocDetail(
-                              widget.docType.code,
-                              it.id,
+                              if (_isDraw)
+                                'department': masterDictionaryFacets(
+                                  names.departmentEntries,
+                                ),
+                              if (widget.docType == StockDocType.transfer)
+                                'toWarehouse': masterDictionaryFacets(
+                                  names.warehouseEntries,
+                                ),
+                            },
+                            nullCounts: const {},
+                            filters: {
+                              'billNo': _columnFilters['billNo'],
+                              'warehouse': _warehouseIdFilter,
+                              if (_isDraw) 'department': _departmentIdFilter,
+                              if (widget.docType == StockDocType.transfer)
+                                'toWarehouse': _toWarehouseIdFilter,
+                            },
+                            onFilterChanged: _onColumnFilterChanged,
+                            sortColumn: _list.sortKey == 'total'
+                                ? null
+                                : _list.sortKey,
+                            sortAscending: _list.sortAsc,
+                            onSortChange: _onSortChange,
+                            onRowTap: (it) => context.push(
+                              RoutePath.stockDocDetail(
+                                widget.docType.code,
+                                it.id,
+                              ),
                             ),
+                            isLoading: _list.isLoadingFirst,
+                            loadingMore: _list.isLoadingMore,
+                            error: _list.error,
+                            onRetry: () => _reload(),
+                            emptyMessage: seg.history
+                                ? '该时间段内暂无${widget.docType.label}'
+                                : '暂无${widget.docType.label}', // TODO(l10n): 补 arb
+                            currentPage: _list.currentPage,
+                            totalPages: _list.totalPages,
+                            onPageChange: (p) => _reload(p),
                           ),
-                          isLoading: _list.isLoadingFirst,
-                          loadingMore: _list.isLoadingMore,
-                          error: _list.error,
-                          onRetry: () => _reload(),
-                          emptyMessage: seg.history
-                              ? '该时间段内暂无${widget.docType.label}'
-                              : '暂无${widget.docType.label}', // TODO(l10n): 补 arb
-                          currentPage: _list.currentPage,
-                          totalPages: _list.totalPages,
-                          onPageChange: (p) => _reload(p),
                         ),
                 );
               },

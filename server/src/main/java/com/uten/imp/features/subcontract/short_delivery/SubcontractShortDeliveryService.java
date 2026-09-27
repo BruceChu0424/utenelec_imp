@@ -9,6 +9,7 @@ import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.order.SubcontractOrderService;
@@ -597,28 +598,83 @@ public class SubcontractShortDeliveryService
     @Transactional(readOnly = true)
     public PageResponse<CaseRow> list(String segment, String keyword, UUID supplierId, UUID orderId,
                                       LocalDate dateFrom, LocalDate dateTo, int page, int size) {
+        return list(segment, keyword, supplierId, orderId, dateFrom, dateTo, page, size, null, null, null);
+    }
+
+    /** 同上；2026-09-25 单号列统一：sort/order 表头排序（白名单，未知回落分段默认序）、
+     *  orderBillNo 订货单号表头值筛选（等值精确匹配，仅条件出现才绑定命名参数）。 */
+    @Transactional(readOnly = true)
+    public PageResponse<CaseRow> list(String segment, String keyword, UUID supplierId, UUID orderId,
+                                      LocalDate dateFrom, LocalDate dateTo, int page, int size,
+                                      String sort, String order, String orderBillNo) {
+        String normalized = normalizeSegment(segment);
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.min(Math.max(size, 1), 200);
+        var scope = access.nativeReadScope("c.owner_employee_id", "owners", VIEW_AUTHORITY);
+        String predicate = segmentPredicate(normalized);
+        // 列表 / 计数 / facets 同一过滤基座（2026-09-25 单号列统一）。
+        String where = predicate + " AND "
+                + shortDeliveryWhere(scope, dateFrom, dateTo, orderBillNo);
+        Query rows = em.createNativeQuery(ROW_SELECT + " WHERE " + where
+                + " ORDER BY " + shortDeliveryOrderBy(normalized, sort, order)
+                + " OFFSET :offset LIMIT :limit");
+        Query count = em.createNativeQuery("SELECT COUNT(*) " + ROW_FROM + " WHERE " + where);
+        for (Query query : List.of(rows, count)) {
+            bindShortDeliveryFilters(query, scope, supplierId, orderId, keyword, dateFrom, dateTo, orderBillNo);
+        }
+        rows.setParameter("offset", (long) (safePage - 1) * safeSize);
+        rows.setParameter("limit", safeSize);
+        boolean decideAuthority = access.hasAuthority(DECIDE_AUTHORITY);
+        List<CaseRow> items = NativeQueryResults.objectArrayRows(rows).stream()
+                .map(row -> mapRow(row, decideAuthority)).toList();
+        long total = ((Number) count.getSingleResult()).longValue();
+        return new PageResponse<>(items, safePage, safeSize, total,
+                (int) Math.ceil(total / (double) safeSize));
+    }
+
+    /** 订货单号 facets（2026-09-25 单号列统一）：{orderBillNo:[各订货单号]}——与列表/
+     *  计数同一过滤基座（不含单号列自身值筛选），按订货单号快照分组计数、单号升序，
+     *  上限 500 桶。 */
+    @Transactional(readOnly = true)
+    public Map<String, List<Map<String, Object>>> facets(String segment, String keyword,
+            UUID supplierId, UUID orderId, LocalDate dateFrom, LocalDate dateTo) {
+        String normalized = normalizeSegment(segment);
+        var scope = access.nativeReadScope("c.owner_employee_id", "owners", VIEW_AUTHORITY);
+        String where = segmentPredicate(normalized) + " AND "
+                + shortDeliveryWhere(scope, dateFrom, dateTo, null);
+        Query query = em.createNativeQuery("SELECT COALESCE(c.order_bill_no_snapshot, ''), COUNT(*) "
+                + ROW_FROM + " WHERE " + where + " GROUP BY 1 ORDER BY 1")
+                .setMaxResults(500);
+        bindShortDeliveryFilters(query, scope, supplierId, orderId, keyword, dateFrom, dateTo, null);
+        return Map.of("orderBillNo",
+                NativeFacets.rows(NativeQueryResults.objectArrayRows(query)));
+    }
+
+    /** 分段归一化（白名单 fail-closed）。 */
+    private static String normalizeSegment(String segment) {
         String normalized = segment == null ? "PENDING" : segment.strip().toUpperCase();
         if (!SEGMENTS.contains(normalized)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "短交案件分段无效");
         }
-        int safePage = Math.max(page, 1);
-        int safeSize = Math.min(Math.max(size, 1), 200);
-        var scope = access.nativeReadScope("c.owner_employee_id", "owners", VIEW_AUTHORITY);
-        String predicate = switch (normalized) {
+        return normalized;
+    }
+
+    /** 分段谓词（列表 / facets 同一段 WHERE 头）。 */
+    private static String segmentPredicate(String normalized) {
+        return switch (normalized) {
             case "PENDING" -> PENDING_PREDICATE;
             case "TOLERANT" -> TOLERANT_PREDICATE;
             case "WAITING" -> WAITING_PREDICATE;
             default -> HISTORY_PREDICATE;
         };
-        String orderBy = switch (normalized) {
-            case "PENDING" -> """
-                    CASE c.severity WHEN 'SEVERE' THEN 0 WHEN 'BELOW_FLOOR' THEN 1
-                         WHEN 'UNSET_TOLERANCE' THEN 2 ELSE 3 END, c.detected_at DESC""";
-            case "TOLERANT" -> "c.detected_at DESC";
-            case "WAITING" -> "c.expected_complete_by ASC, c.detected_at DESC";
-            default -> "c.closed_at DESC NULLS LAST, c.detected_at DESC";
-        };
-        String where = predicate + " AND " + scope.predicate() + """
+    }
+
+    /** 列表 / 计数 / facets 共用过滤基座（同一 WHERE 文本，2026-09-25 单号列统一；
+     *  orderBillNo 等值筛选仅条件出现，未出现不绑定命名参数）。 */
+    private static String shortDeliveryWhere(
+            com.uten.imp.security.DocumentAccessPolicy.NativeReadScope scope,
+            LocalDate dateFrom, LocalDate dateTo, String orderBillNo) {
+        return scope.predicate() + """
                  AND (CAST(:supplierId AS uuid) IS NULL OR c.supplier_id = CAST(:supplierId AS uuid))
                  AND (CAST(:orderId AS uuid) IS NULL OR c.order_id = CAST(:orderId AS uuid))
                  AND (:keyword = '' OR LOWER(
@@ -629,28 +685,48 @@ public class SubcontractShortDeliveryService
                  AND (CAST(:dateFrom AS date) IS NULL OR COALESCE(c.closed_at, c.detected_at) >= CAST(:dateFrom AS date))
                  AND (CAST(:dateTo AS date) IS NULL
                       OR COALESCE(c.closed_at, c.detected_at) < CAST(:dateTo AS date) + INTERVAL '1 day')
-                """;
-        Query rows = em.createNativeQuery(ROW_SELECT + " WHERE " + where + " ORDER BY " + orderBy
-                + " OFFSET :offset LIMIT :limit");
-        Query count = em.createNativeQuery("SELECT COUNT(*) " + ROW_FROM + " WHERE " + where);
-        for (Query query : List.of(rows, count)) {
-            scope.bind(query);
-            query.setParameter("supplierId", supplierId == null ? null : supplierId.toString());
-            query.setParameter("orderId", orderId == null ? null : orderId.toString());
-            String kw = keyword == null ? "" : keyword.strip().toLowerCase();
-            query.setParameter("keyword", kw);
-            query.setParameter("keywordLike", "%" + kw + "%");
-            query.setParameter("dateFrom", dateFrom == null ? null : dateFrom.toString());
-            query.setParameter("dateTo", dateTo == null ? null : dateTo.toString());
+                """ + (orderBillNo == null || orderBillNo.isBlank()
+                        ? "" : " AND c.order_bill_no_snapshot = :orderBillNo\n");
+    }
+
+    /** 绑定共用过滤参数（与 [shortDeliveryWhere] 条件一一对应）。 */
+    private static void bindShortDeliveryFilters(Query query,
+            com.uten.imp.security.DocumentAccessPolicy.NativeReadScope scope,
+            UUID supplierId, UUID orderId, String keyword,
+            LocalDate dateFrom, LocalDate dateTo, String orderBillNo) {
+        scope.bind(query);
+        query.setParameter("supplierId", supplierId == null ? null : supplierId.toString());
+        query.setParameter("orderId", orderId == null ? null : orderId.toString());
+        String kw = keyword == null ? "" : keyword.strip().toLowerCase();
+        query.setParameter("keyword", kw);
+        query.setParameter("keywordLike", "%" + kw + "%");
+        query.setParameter("dateFrom", dateFrom == null ? null : dateFrom.toString());
+        query.setParameter("dateTo", dateTo == null ? null : dateTo.toString());
+        if (orderBillNo != null && !orderBillNo.isBlank()) {
+            query.setParameter("orderBillNo", orderBillNo.strip());
         }
-        rows.setParameter("offset", (long) (safePage - 1) * safeSize);
-        rows.setParameter("limit", safeSize);
-        boolean decideAuthority = access.hasAuthority(DECIDE_AUTHORITY);
-        List<CaseRow> items = NativeQueryResults.objectArrayRows(rows).stream()
-                .map(row -> mapRow(row, decideAuthority)).toList();
-        long total = ((Number) count.getSingleResult()).longValue();
-        return new PageResponse<>(items, safePage, safeSize, total,
-                (int) Math.ceil(total / (double) safeSize));
+    }
+
+    /** 排序 ORDER BY（2026-09-25 单号列统一）：orderBillNo 白名单键→SQL 表达式；
+     *  未知/空→分段默认序（各分段原有顺序），方向 asc/desc。 */
+    private static String shortDeliveryOrderBy(String segment, String sort, String order) {
+        String segmentOrder = switch (segment) {
+            case "PENDING" -> """
+                    CASE c.severity WHEN 'SEVERE' THEN 0 WHEN 'BELOW_FLOOR' THEN 1
+                         WHEN 'UNSET_TOLERANCE' THEN 2 ELSE 3 END, c.detected_at DESC""";
+            case "TOLERANT" -> "c.detected_at DESC";
+            case "WAITING" -> "c.expected_complete_by ASC, c.detected_at DESC";
+            default -> "c.closed_at DESC NULLS LAST, c.detected_at DESC";
+        };
+        if (sort == null || sort.isBlank()) {
+            return segmentOrder;
+        }
+        String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
+        return switch (sort) {
+            // 订货单号快照（2026-09-25 单号列统一），其后保持分段默认序做稳定键。
+            case "orderBillNo" -> "c.order_bill_no_snapshot " + dir + " NULLS LAST, " + segmentOrder;
+            default -> segmentOrder;
+        };
     }
 
     @Transactional(readOnly = true)

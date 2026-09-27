@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../models/warehouse_iqc_stock_in.dart';
 import '../models/warehouse_quality_result.dart';
 
@@ -10,6 +11,18 @@ abstract interface class WarehouseQualityResultGateway {
   Future<PagedResult<WarehouseQualityResultTask>> list({
     int page,
     int size,
+    WarehouseIqcStockInReceiptType? receiptType,
+    WarehouseQualityWorkStatus? workStatus,
+    String? keyword,
+    String? dateFrom,
+    String? dateTo,
+    String? sort,
+    String? order,
+    String? billNo,
+  });
+
+  /// 收货单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径。
+  Future<List<MasterFacetBucket>> billNoFacets({
     WarehouseIqcStockInReceiptType? receiptType,
     WarehouseQualityWorkStatus? workStatus,
     String? keyword,
@@ -47,6 +60,9 @@ class WarehouseQualityResultRepository
     String? keyword,
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
+    String? billNo,
   }) async {
     final normalizedKeyword = keyword?.trim();
     final json = await api.get(
@@ -59,9 +75,35 @@ class WarehouseQualityResultRepository
         if (normalizedKeyword?.isNotEmpty == true) 'keyword': normalizedKeyword,
         'dateFrom': ?dateFrom,
         'dateTo': ?dateTo,
+        // 2026-09-25 单号列统一：表头排序 + 收货单号表头值筛选。
+        if (sort != null && sort.isNotEmpty) 'sort': sort,
+        if (order != null && order.isNotEmpty) 'order': order,
+        if (billNo != null && billNo.trim().isNotEmpty) 'billNo': billNo.trim(),
       },
     );
     return PagedResult.fromJson(json, WarehouseQualityResultTask.fromJson);
+  }
+
+  @override
+  Future<List<MasterFacetBucket>> billNoFacets({
+    WarehouseIqcStockInReceiptType? receiptType,
+    WarehouseQualityWorkStatus? workStatus,
+    String? keyword,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final normalizedKeyword = keyword?.trim();
+    final json = await api.get(
+      ApiEndpoints.warehouseQualityResultFacets,
+      query: {
+        'receiptType': receiptType?.apiValue ?? 'ALL',
+        if (workStatus != null) 'status': workStatus.apiValue,
+        if (normalizedKeyword?.isNotEmpty == true) 'keyword': normalizedKeyword,
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
+      },
+    );
+    return parseFacetBuckets(json, 'billNo');
   }
 
   @override

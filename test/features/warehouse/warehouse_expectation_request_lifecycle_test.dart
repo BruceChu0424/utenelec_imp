@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_inbound_expectations_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/procurement_inbound.dart';
@@ -32,6 +33,7 @@ void main() {
     api.requests.single.complete(_emptyPage);
     await tester.pump();
     expect(api.countReads, 0);
+    expect(api.facetReads, 0);
     expect(tester.takeException(), isNull);
   });
 
@@ -56,6 +58,7 @@ void main() {
     await tester.pumpAndSettle();
     // Only the current page may request its supplementary counts.
     expect(api.countReads, 1);
+    expect(api.facetReads, 1, reason: '仅当前来源加载筛选桶，过期回包不能跟读');
     expect(tester.takeException(), isNull);
   });
 
@@ -104,9 +107,14 @@ class _DelayedApi extends ApiClient {
   final requests = <Completer<Map<String, dynamic>>>[];
   final types = <String?>[];
   var countReads = 0;
+  var facetReads = 0;
 
   @override
   Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) {
+    if (path == ApiEndpoints.warehouseInboundExpectationFacets) {
+      facetReads++;
+      return Future.value(const <String, dynamic>{});
+    }
     if (path == '/warehouse/inbound/expectations') {
       final pending = Completer<Map<String, dynamic>>();
       requests.add(pending);

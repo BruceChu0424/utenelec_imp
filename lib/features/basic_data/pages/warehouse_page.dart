@@ -7,6 +7,7 @@
 // 仓库类通知只发给负责人(没登记的仓照旧发给整个仓库部门)，仓库任务中心「我的仓库」按它筛选；
 // 登记在主仓上 = 负责它下面全部子仓。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -288,9 +289,10 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     ),
   ];
 
-  void _showCreate() {
-    showMasterEditDialog(
+  Future<void> _showCreate() async {
+    await showMasterEditDialog(
       context: context,
+      draftSpec: FormDraftCatalog.warehouse.spec(title: '新增仓库'),
       title: '新增仓库',
       fields: _fields(),
       initialValues: const {
@@ -304,15 +306,12 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
   }
 
   Future<bool> _doCreate(Map<String, dynamic> body) async {
-    final ok = await context.guardRun(
-      () async {
-        await ref.read(warehouseRepositoryProvider).create(body);
-      },
-      success: '仓库已创建', // TODO(l10n): 补 arb
-      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _loadWarehouses(_pageNum);
+    // Preserve the actual API failure for the shared draft submission fence.
+    await ref.read(warehouseRepositoryProvider).create(body);
+    if (mounted) {
+      context.appSuccess('仓库已创建');
+      await _loadWarehouses(_pageNum);
+    }
     return true;
   }
 
@@ -535,7 +534,13 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FormDraftDialogResume(
+    descriptor: FormDraftCatalog.warehouse,
+    onResume: (_) => _showCreate(),
+    child: _buildDraftHost(context),
+  );
+
+  Widget _buildDraftHost(BuildContext context) {
     final theme = Theme.of(context);
     final total = _page?.total ?? 0;
     return Scaffold(

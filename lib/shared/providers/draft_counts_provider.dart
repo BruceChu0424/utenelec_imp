@@ -1,8 +1,9 @@
-// 跨模块草稿（status=0）计数：hub 单据卡红色徽章 [UtenDraftBadge] 与新建页
+// 跨模块草稿计数（业务草稿 + 本机尚未提交的填写草稿）：hub 红色徽章 [UtenDraftBadge] 与新建页
 // 「草稿」入口按钮 [UtenDraftsButton] 的唯一数据源。
 //
 // 21 类单据的草稿数随工作台徽章汇总(GET /api/workbench/badges，ADR-108)一次带回，
-// 事实数键 `drafts.<类型>`；每类都已按当前用户的 *:view 权限 + 该模块的对象级归属范围
+// 事实数键 `drafts.<类型>`；原始服务端事实保持不变，本机草稿按同一类型与当前账号权限补入。
+// 已确认创建业务单据的恢复检查点不再追加计数；每类业务草稿按 *:view 权限 + 对象级归属范围
 // 收敛，无权限的类型为 0。口径「草稿 = 待自审的新建/修订草稿」：销售订货单额外排除
 // 财务驳回单(驳回件已在销售关注徽章的 REJECTED 桶计数，不双计)。
 //
@@ -16,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/permissions.dart';
 import '../badges/badge_registry.dart';
+import '../drafts/form_draft_category.dart';
 
 /// 深链预选草稿段的约定：`<列表路径>?status=draft`。
 ///
@@ -240,8 +242,20 @@ class DraftCounts {
 /// 跨模块草稿计数(取自工作台徽章汇总，不单独请求)。
 final draftCountsProvider = Provider<DraftCounts>((ref) {
   final facts = ref.watch(badgeSummaryProvider.select((s) => s.facts));
+  final local = {
+    for (final kind in DraftDocKind.values)
+      kind: ref.watch(
+        formDraftCategoryCountProvider(FormDraftCategoryScope(kind: kind.name)),
+      ),
+  };
   return DraftCounts.fromJson({
     for (final kind in DraftDocKind.values)
-      kind.name: facts[BadgeFact.draft(kind.name)] ?? 0,
+      kind.name:
+          (facts[BadgeFact.draft(kind.name)] ?? 0) +
+          (local[kind] ?? 0) +
+          (kind == DraftDocKind.stockDocument
+              ? (local[DraftDocKind.stockTransfer] ?? 0) +
+                    (local[DraftDocKind.stockCheck] ?? 0)
+              : 0),
   });
 });

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/admin/models/system_setting_entry.dart';
+import 'package:uten_imp/features/admin/models/system_updater_status.dart';
 import 'package:uten_imp/features/admin/pages/admin_system_settings_page.dart';
 import 'package:uten_imp/features/admin/repositories/system_setting_repository.dart';
 
@@ -45,6 +46,9 @@ void main() {
 }
 
 class _RetentionSettingRepository implements SystemSettingRepository {
+  @override
+  Future<SystemUpdaterStatus> updaterStatus() => throw UnimplementedError();
+
   @override
   Future<List<SystemSettingEntry>> updateBatch(
     List<({String key, String value, String expectedValue})> changes,

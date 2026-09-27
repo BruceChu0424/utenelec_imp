@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -324,6 +325,118 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             List<FinishedInboundSlice> lines) {
         tx.bind();
         if (lines == null || lines.isEmpty() || planId == null
+                || warehouseId == null || stockDocumentId == null) return;
+        MakeInboundSplit split = splitMakeInbound(stockDocumentId, lines);
+        // Establish all claimed public ownership before readiness can consume
+        // unassigned stock from this same physical movement batch.
+        List<PreplanStockEntitlementService.OriginAppendResult> publicOrigins =
+                pegClaimedPublicMake(stockDocumentId, warehouseId, split.publicLines());
+        pegDemandFinishedInbound(stockDocumentId, planId, warehouseId, split.privateLines());
+        applyOriginPriority(publicOrigins);
+    }
+
+    record MakeInboundSplit(List<FinishedInboundSlice> privateLines,
+                                    List<FinishedInboundSlice> publicLines) { }
+
+    private MakeInboundSplit splitMakeInbound(UUID document, List<FinishedInboundSlice> lines) {
+        List<UUID> planItems = lines.stream().map(FinishedInboundSlice::planItemId).distinct().toList();
+        Map<UUID, BigDecimal> privateRemaining = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT item.id,GREATEST(item.qty*COALESCE(item.unit_rate,1)
+                    -COALESCE(source.planned_public_qty,0)-COALESCE((
+                        SELECT SUM(stock.base_qty)
+                        FROM stock_document_items stock JOIN stock_documents doc ON doc.id=stock.doc_id
+                        WHERE stock.upstream_item_id=item.id AND stock.bill_type='FINISHED_IN'
+                          AND NOT stock.is_deleted AND NOT doc.is_deleted AND doc.status=1
+                          AND doc.id<>:document AND NOT fn_finished_in_is_public_output(stock.id)
+                    ),0),0)
+                FROM production_plan_items item
+                LEFT JOIN LATERAL fn_preplan_make_public_supply_sources(NULL::uuid,item.id) source ON TRUE
+                WHERE item.id IN(:items) AND NOT item.is_deleted
+                ORDER BY item.id
+                """).setParameter("document", document).setParameter("items", planItems))) {
+            privateRemaining.put((UUID) row[0], decimal(row[1]));
+        }
+        Set<UUID> explicitPublic = new HashSet<>(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT id FROM stock_document_items WHERE doc_id=:document
+                  AND NOT is_deleted AND fn_finished_in_is_public_output(id)
+                """).setParameter("document", document), UUID.class));
+        return splitMakeInbound(lines, privateRemaining, explicitPublic);
+    }
+
+    static MakeInboundSplit splitMakeInbound(List<FinishedInboundSlice> lines,
+                                            Map<UUID, BigDecimal> privateBudget,
+                                            Set<UUID> explicitPublic) {
+        Map<UUID, BigDecimal> privateRemaining = new HashMap<>(privateBudget);
+        List<FinishedInboundSlice> privateLines = new ArrayList<>(), publicLines = new ArrayList<>();
+        for (FinishedInboundSlice line : lines.stream()
+                .sorted(Comparator.comparing(FinishedInboundSlice::planItemId)
+                        .thenComparing(FinishedInboundSlice::stockDocumentItemId)).toList()) {
+            BigDecimal amount = line.baseQty();
+            if (amount == null || amount.signum() <= 0) continue;
+            BigDecimal privateQty = explicitPublic.contains(line.stockDocumentItemId()) ? BigDecimal.ZERO
+                    : amount.min(privateRemaining.getOrDefault(line.planItemId(), amount));
+            if (privateQty.signum() > 0) {
+                privateLines.add(makeSlice(line, privateQty));
+                privateRemaining.computeIfPresent(line.planItemId(), (id, remaining) -> remaining.subtract(privateQty));
+            }
+            if (amount.compareTo(privateQty) > 0) publicLines.add(makeSlice(line, amount.subtract(privateQty)));
+        }
+        return new MakeInboundSplit(List.copyOf(privateLines), List.copyOf(publicLines));
+    }
+
+    private static FinishedInboundSlice makeSlice(FinishedInboundSlice line, BigDecimal qty) {
+        return new FinishedInboundSlice(line.stockDocumentItemId(), line.planItemId(),
+                line.goodsId(), line.colorId(), qty);
+    }
+
+    private List<PreplanStockEntitlementService.OriginAppendResult> pegClaimedPublicMake(
+            UUID document, UUID warehouse, List<FinishedInboundSlice> lines) {
+        List<PreplanStockEntitlementService.OriginAppendResult> origins = new ArrayList<>();
+        for (FinishedInboundSlice line : lines) {
+            inventoryLock.lock(new InventoryKey(line.goodsId(), line.colorId()));
+            BigDecimal remaining = line.baseQty().subtract(decimal(em.createNativeQuery("""
+                    SELECT COALESCE(SUM(qty),0) FROM preplan_analysis_stock_exact_pegs
+                    WHERE source_stock_document_item_id=:item AND make_public_claim_id IS NOT NULL
+                    """).setParameter("item", line.stockDocumentItemId()).getSingleResult())).max(BigDecimal.ZERO);
+            if (remaining.signum() == 0) continue;
+            List<Object[]> claims = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT claim.id,claim.target_analysis_id,claim.target_material_id,
+                        GREATEST(fn_preplan_make_public_claim_pending_qty(claim.id)-COALESCE((
+                            SELECT SUM(peg.qty) FROM preplan_analysis_stock_exact_pegs peg
+                            JOIN stock_documents doc ON doc.id=peg.source_stock_document_id
+                            WHERE peg.make_public_claim_id=claim.id AND doc.id=:document
+                              AND doc.status<>1 AND NOT doc.is_deleted),0),0)
+                    FROM preplan_make_public_claims claim
+                    JOIN production_material_analyses analysis ON analysis.id=claim.target_analysis_id
+                      AND NOT analysis.is_deleted AND analysis.status<>'CANCELLED'
+                    WHERE claim.source_plan_item_id=:planItem
+                      AND NOT EXISTS(SELECT 1 FROM preplan_analysis_stock_exact_pegs previous
+                        WHERE previous.make_public_claim_id=claim.id
+                          AND previous.source_stock_document_item_id=:stockItem)
+                    ORDER BY claim.created_at,claim.id FOR UPDATE OF claim
+                    """).setParameter("planItem", line.planItemId()).setParameter("document", document)
+                    .setParameter("stockItem", line.stockDocumentItemId()));
+            for (Object[] claim : claims) {
+                BigDecimal take = remaining.min(decimal(claim[3]));
+                if (take.signum() <= 0) continue;
+                origins.add(insertExactMakeReservation(null, null, (UUID) claim[1], (UUID) claim[2],
+                        warehouse, line.goodsId(), line.colorId(), take, line.planItemId(), document,
+                        line.stockDocumentItemId(), (UUID) claim[0]));
+                remaining = remaining.subtract(take);
+                if (remaining.signum() == 0) break;
+            }
+        }
+        return origins;
+    }
+
+    private void pegDemandFinishedInbound(
+            UUID stockDocumentId,
+            UUID planId,
+            UUID warehouseId,
+            List<FinishedInboundSlice> lines) {
+        tx.bind();
+        if (lines == null || lines.isEmpty() || planId == null
                 || warehouseId == null || stockDocumentId == null) {
             return;
         }
@@ -440,7 +553,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             if(aggregateMake) {
                 BigDecimal already=decimal(em.createNativeQuery("""
                         SELECT COALESCE((SELECT SUM(qty) FROM preplan_analysis_stock_exact_pegs
-                            WHERE source_receipt_type='MAKE' AND source_stock_document_item_id=:item),0)
+                            WHERE source_receipt_type='MAKE' AND source_stock_document_item_id=:item
+                              AND make_public_claim_id IS NULL),0)
                           +COALESCE((SELECT SUM(allocated_qty) FROM production_material_make_receipt_allocations
                             WHERE receipt_item_id=:item AND status='EFFECTIVE'),0)
                         """).setParameter("item",line.stockDocumentItemId()).getSingleResult());
@@ -545,7 +659,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     JOIN stock_documents document ON document.id=stock_item.doc_id
                     JOIN production_plan_items plan_item ON plan_item.id=stock_item.upstream_item_id
                     JOIN production_plans plan ON plan.id=plan_item.plan_id
-                    WHERE exact.source_receipt_type='MAKE' AND plan.material_analysis_item_id=child.id
+                    WHERE exact.source_receipt_type='MAKE' AND exact.make_public_claim_id IS NULL
+                      AND plan.material_analysis_item_id=child.id
                       AND NOT document.is_deleted AND (document.status=1 OR document.id=:currentDocument)
                 ),0) AS attributed_qty,
                     COALESCE((SELECT SUM(LEAST(proof.qty,relation.qty-relation.priority_fulfilled_qty))
@@ -1482,6 +1597,17 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             UUID planItemId,
             UUID stockDocumentId,
             UUID stockDocumentItemId) {
+        return insertExactMakeReservation(allocationId, makeSourceAnalysisItemId, analysisId,
+                analysisMaterialId, warehouseId, goodsId, colorId, qtyBase, planItemId,
+                stockDocumentId, stockDocumentItemId, null);
+    }
+
+    private PreplanStockEntitlementService.OriginAppendResult insertExactMakeReservation(
+            UUID allocationId, UUID makeSourceAnalysisItemId,
+            UUID analysisId, UUID analysisMaterialId,
+            UUID warehouseId, UUID goodsId, UUID colorId, BigDecimal qtyBase,
+            UUID planItemId, UUID stockDocumentId, UUID stockDocumentItemId,
+            UUID makePublicClaimId) {
         // The FINISHED_IN header becomes APPROVED later in the same approve
         // transaction. Defer the exact-provenance constraint so V312 observes
         // the committed status without publishing an intermediate header state.
@@ -1489,7 +1615,9 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 SET CONSTRAINTS
                     trg_check_preplan_analysis_stock_exact_peg DEFERRED
                 """).executeUpdate();
-        String key = allocationId == null
+        String key = makePublicClaimId != null
+                ? "PREPLAN-MAKE-PUBLIC:" + stockDocumentItemId + ":" + makePublicClaimId
+                : allocationId == null
                 ? "PREPLAN-MAKE-ANCHOR:" + stockDocumentItemId + ":" + makeSourceAnalysisItemId
                 : "PREPLAN-MAKE-EXACT:" + stockDocumentItemId + ":" + allocationId;
         insertReservation(
@@ -1509,7 +1637,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         em.createNativeQuery("""
                 INSERT INTO preplan_analysis_stock_exact_pegs (
                     id, stock_reservation_id,
-                    supply_action_allocation_id, make_source_analysis_item_id,
+                    supply_action_allocation_id, make_source_analysis_item_id, make_public_claim_id,
                     origin_analysis_id, origin_analysis_material_id,
                     beneficiary_analysis_id, beneficiary_analysis_material_id,
                     qty, source_receipt_type, source_receipt_id,
@@ -1518,7 +1646,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     beneficiary_reason, idempotency_key,
                     created_by, updated_by
                 ) VALUES (
-                    :id, :reservationId, :allocationId, :makeSourceItemId,
+                    :id, :reservationId, :allocationId, :makeSourceItemId, :makePublicClaimId,
                     :analysisId, :materialId,
                     :analysisId, :materialId,
                     :qty, 'MAKE', :stockDocumentId,
@@ -1531,6 +1659,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 .setParameter("reservationId", reservationId)
                 .setParameter("allocationId", allocationId)
                 .setParameter("makeSourceItemId", makeSourceAnalysisItemId)
+                .setParameter("makePublicClaimId", makePublicClaimId)
                 .setParameter("analysisId", analysisId)
                 .setParameter("materialId", analysisMaterialId)
                 .setParameter("qty", qtyBase)
@@ -1552,7 +1681,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 analysisId, analysisMaterialId, qtyBase,
                 exactPegId, stockDocumentId, stockDocumentItemId,
                 "PREPLAN-ENTITLEMENT-MAKE:" + stockDocumentItemId
-                        + ":" + allocationId);
+                        + ":" + (makePublicClaimId == null ? allocationId : makePublicClaimId));
     }
 
     BigDecimal legacyAttributed(

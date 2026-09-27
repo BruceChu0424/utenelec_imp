@@ -285,6 +285,9 @@ public class ProductionReportService {
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(p.is_deleted,false)=false");
         addCommonDocFilters(w, billNo, goodsId, status, dateFrom, dateTo, kw, "i.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
+                // 2026-09-25 单号列统一：单号/销售订货单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）。
+                new FacetSpec("billNo", "i.bill_no AS v, i.bill_no AS lbl", "i.bill_no", "i.bill_no", "text"),
+                new FacetSpec("salesOrderNo", "i.sales_order_no AS v, i.sales_order_no AS lbl", "i.sales_order_no", "i.sales_order_no", "text"),
                 new FacetSpec("approved", "(p.status = 1) AS v, CASE WHEN (p.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(p.status = 1)", "p.status = 1", "bool"),
                 new FacetSpec("closed", "p.is_closed AS v, CASE WHEN p.is_closed THEN '已完成' ELSE '未完成' END AS lbl", "p.is_closed", "p.is_closed", "bool"),
                 new FacetSpec("workshop", "p.workshop_name AS v, p.workshop_name AS lbl", "p.workshop_name", "p.workshop_name", "text"),

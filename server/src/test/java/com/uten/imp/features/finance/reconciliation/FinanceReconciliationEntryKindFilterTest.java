@@ -34,7 +34,8 @@ class FinanceReconciliationEntryKindFilterTest {
                 .thenReturn(new PageImpl<>(List.of()));
 
         PageResponse<FinanceReconciliationListItem> page =
-                new FinanceReconciliationService(repo).list(
+                // 2026-09-25 单号列统一：服务注入 EntityManager（facets 桶），单号筛选传 null。
+                new FinanceReconciliationService(repo, mock(jakarta.persistence.EntityManager.class)).list(
                         new FinanceReconciliationQueryFilter(
                                 null, null, null, null, null, null, null, "POSTING"),
                         1, 20, null, null);

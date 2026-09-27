@@ -185,6 +185,7 @@ class StockDocDetail {
     this.status,
     this.closed = false,
     this.sourceDocNo,
+    this.materialRequestNo,
     this.sourceDailyReportId,
     this.sourcePlanId,
     this.planNo,
@@ -218,6 +219,9 @@ class StockDocDetail {
   final int? status;
   final bool closed;
   final String? sourceDocNo;
+
+  /// 来源领料申请号（LQ），独立于正式领料单号（SL）。
+  final String? materialRequestNo;
   final String? sourceDailyReportId;
 
   /// 来源生产计划 id（plan_draw_links 反查；DRAW/FINISHED_IN 溯源跳转用）
@@ -273,6 +277,7 @@ class StockDocDetail {
     status: (json['status'] as num?)?.toInt(),
     closed: (json['closed'] as bool?) ?? false,
     sourceDocNo: json['sourceDocNo'] as String?,
+    materialRequestNo: json['materialRequestNo'] as String?,
     sourceDailyReportId: json['sourceDailyReportId'] as String?,
     sourcePlanId: json['sourcePlanId'] as String?,
     planNo: json['planNo'] as String?,

@@ -7,6 +7,8 @@
 // 固定来源、embedded=true 不渲染自己的类型分段与搜索框——关键字由任务中心页级
 // 工具条统一下发）；独立路由 /warehouse/inbound/expectations 由对应页面以
 // embedded=false 包一层继续承接（委外模块卡片深链依赖它）。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -35,6 +37,7 @@ import '../../../shared/providers/session_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/procurement_inbound_repository.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
@@ -92,6 +95,11 @@ class _WarehouseInboundExpectationsViewState
 
   /// 表头「供应商 / 委外商」列筛选（2026-09-16）：dict 桶，value=UUID 回传 supplierId。
   String? _supplierIdFilter;
+
+  /// 表头排序 + 订货单号列值筛选 + facets 桶 + 防串台代数
+  /// （2026-09-25 单号列统一，共享状态见 MasterServerColumnFilters）；
+  /// 排序列 key 见 [_kSortFields]，null = 服务端默认序。
+  final _columnFilters = MasterServerColumnFilters();
 
   /// 已送检待品质放行的收货单张数（口径提示用；null = 尚未返回或无查看权限）。
 
@@ -474,8 +482,15 @@ class _WarehouseInboundExpectationsViewState
         keyword: _keyword.isEmpty ? null : _keyword,
         supplierId: _supplierIdFilter,
         scope: scope,
+        sort: _kSortFields[_columnFilters.sortColumn],
+        order: _columnFilters.sortColumn == null
+            ? null
+            : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+        billNo: _columnFilters['billNo'],
       );
       if (!current()) return;
+      // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
+      unawaited(_loadBillNoFacets(scope));
       // 类型计数失败不阻断列表（分段按钮降级为 '—'）。
       repo
           .expectationTypeCounts(scope: scope)
@@ -512,6 +527,46 @@ class _WarehouseInboundExpectationsViewState
       });
     }
   }
+
+  /// 表头排序键 → 服务端 sort 参数（2026-09-25 单号列统一；未列出的列不可排序）。
+  static const _kSortFields = <String, String>{'billNo': 'billNo'};
+
+  /// 表头排序变化：服务端重排整个结果集，回第 1 页（勾选跨页保留，不清）。
+  void _onSortChange(String? column, bool ascending) {
+    final next = column != null && _kSortFields.containsKey(column)
+        ? column
+        : null;
+    if (next == _columnFilters.sortColumn &&
+        (next == null || ascending == _columnFilters.sortAscending)) {
+      return;
+    }
+    _columnFilters.handleSortChanged(
+      next,
+      ascending,
+      onChanged: () {
+        if (mounted) setState(() {});
+        _load(1);
+      },
+    );
+  }
+
+  /// 订货单号 facets（2026-09-25 单号列统一）：与列表同过滤口径（不含单号自身筛选）。
+  Future<void> _loadBillNoFacets(WarehouseTaskScope scope) =>
+      _columnFilters.loadFacets(
+        () async => {
+          'billNo': await ref
+              .read(procurementInboundRepositoryProvider)
+              .expectationBillNoFacets(
+                orderType: _orderType,
+                keyword: _keyword.isEmpty ? null : _keyword,
+                supplierId: _supplierIdFilter,
+                scope: scope,
+              ),
+        },
+        onLoaded: () {
+          if (mounted) setState(() {});
+        },
+      );
 
   /// 双击行：按当前到货步骤直达下一步操作（2026-09-05 用户口径：不要
   /// 「到货详情」中间页，双击即到对应办理页）——待登记→登记实际到货页；
@@ -689,12 +744,19 @@ class _WarehouseInboundExpectationsViewState
           'supplierName': masterDictionaryFacets(
             ref.watch(masterNameServiceProvider).supplierEntries,
           ),
+          // 订货单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
+          'billNo': _columnFilters.bucketOf('billNo'),
         },
         nullCounts: const {},
         filters: {
           'orderType': _orderType?.name.toUpperCase(),
           'supplierName': _supplierIdFilter,
+          'billNo': _columnFilters['billNo'],
         },
+        // 表头排序走服务端（2026-09-25 单号列统一）。
+        sortColumn: _columnFilters.sortColumn,
+        sortAscending: _columnFilters.sortAscending,
+        onSortChange: _onSortChange,
         // 分段子页把类型钉死时，下面的 onFilterChanged 会直接 return——
         // 空态再给「清除筛选」就是个点了没反应的死按钮。
         externalFilterKeys: widget.fixedOrderType != null
@@ -704,6 +766,18 @@ class _WarehouseInboundExpectationsViewState
           if (key == 'supplierName') {
             setState(() => _supplierIdFilter = value);
             _load(1);
+            return;
+          }
+          if (key == 'billNo') {
+            // 订货单号值筛选（2026-09-25 单号列统一）：服务端精确匹配。
+            _columnFilters.handleFilterChanged(
+              key,
+              value,
+              onChanged: () {
+                if (mounted) setState(() {});
+                _load(1);
+              },
+            );
             return;
           }
           if (key != 'orderType' || widget.fixedOrderType != null) return;
@@ -848,6 +922,7 @@ class _WarehouseInboundExpectationsViewState
       key: 'billNo',
       label: '订货单号',
       width: 170,
+      sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
       value: (expectation) => expectation.billNo,
     ),
     MasterColumnDef(

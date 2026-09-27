@@ -22,6 +22,7 @@ import 'package:uten_imp/features/production/pages/production_workshop_tasks_pag
 import 'package:uten_imp/features/production/pages/production_material_discovery_request_page.dart';
 import 'package:uten_imp/features/production/models/production_execution_workbench.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_material_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_material_discovery_request_repository.dart';
@@ -899,7 +900,7 @@ void main() {
 /// 未确认路线时开工侧入口全部隐藏；「生产中」不显示「下一步」列。
 /// 2026-09-21 用户口径「批量开工 / 批量领料 / 批量设路线要和别的页面一样, 有中间
 /// 的加载弹窗」。批量开工是本页唯一的纯网络批量动作(批量领料是跳页面, 遮罩挂着
-/// 跳会把目标页盖住, 它的加载卡片在领料汇总页自己那边), 这里锁两条:
+/// 跳会把目标页盖住, 实际加载遮罩由领料目标页自己持有), 这里锁两条:
 ///   1. 遮罩盖住提交**与提交后的整页重拉**两段——表格在已有数据时刷新是零画面的,
 ///      撤早了就是「成功提示已经弹出、表格还是旧行」的裸奔窗口;
 ///   2. 「返回即刷新」能把卡住的遮罩兜底清掉——遮罩带不可关闭的 ModalBarrier,
@@ -1033,7 +1034,7 @@ void batchBusyOverlayTests() {
 
   // 反向断言(核心纪律): 跳页的「批量领料」一路不许出现遮罩——遮罩是 root
   // Overlay 裸 entry, Navigator 每推一次路由都把它抬到最顶, 挂着跳页会把目标页
-  // 整片盖住且一个按钮都点不动。目标页自己给加载卡片。
+  // 整片盖住且一个按钮都点不动。目标页自己持有实际网络阶段的加载遮罩。
   testWidgets('batch draw never raises the busy overlay on the way out', (
     tester,
   ) async {
@@ -1051,6 +1052,66 @@ void batchBusyOverlayTests() {
     expect(find.text('领料汇总 segment-a 1'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'batch unknown-material draw shows destination loading and refreshes only after returning',
+    (tester) async {
+      final loadGate = _WorkshopLoadGate();
+      await mountReady(
+        tester,
+        repository: _repository(
+          readyIssued: false,
+          loadGate: loadGate,
+          aDiscovery: {
+            'materialDiscoveryRequired': true,
+            'canRequestMaterialDiscovery': true,
+            'materialDiscoveryStatus': null,
+            'materialDiscoveryRequestId': null,
+            'zeroMaterial': false,
+            'canStart': false,
+            'canRequestDraw': false,
+          },
+        ),
+      );
+      loadGate.pending = Completer<void>();
+      await tester.tap(find.text('批量领料(1)'));
+      await pumpFrames(tester, 8);
+      expect(
+        find.byKey(const Key('discovery-request-loading')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('workshop-draw-review-refresh-busy')),
+        findsNothing,
+      );
+      expect(find.byType(UtenBusyOverlay), findsOneWidget);
+      loadGate.pending!.complete();
+      loadGate.pending = null;
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(
+        find.byKey(const Key('discovery-request-submit')).hitTestable(),
+        findsOneWidget,
+      );
+
+      loadGate.pending = Completer<void>();
+      await tester.tap(find.byTooltip('返回').last);
+      await pumpFrames(tester, 8);
+      expect(
+        find.byKey(const Key('workshop-draw-review-refresh-busy')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('discovery-request-loading')), findsNothing);
+      loadGate.pending!.complete();
+      loadGate.pending = null;
+      await tester.pumpAndSettle();
+      expect(find.byType(ProductionWorkshopTasksPage), findsOneWidget);
+      expect(find.byType(ProductionMaterialDiscoveryRequestPage), findsNothing);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(find.text('批量领料(1)').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('returning to the page clears a stuck busy overlay', (
     tester,
@@ -2042,6 +2103,15 @@ GoRouter _router() => GoRouter(
   routes: [
     GoRoute(path: '/', builder: (_, _) => const ProductionWorkshopTasksPage()),
     GoRoute(
+      path: ProductionMaterialDiscoveryRequestPage.route,
+      builder: (_, state) => ProductionMaterialDiscoveryRequestPage(
+        segmentIds:
+            state.uri.queryParameters['segmentIds']?.split(',') ?? const [],
+        segmentCodes:
+            state.uri.queryParameters['segmentCodes']?.split(',') ?? const [],
+      ),
+    ),
+    GoRoute(
       path: '/production/workshop-tasks/batch-draw',
       builder: (_, state) => Scaffold(
         body: Text(
@@ -2505,10 +2575,25 @@ class _DelayedWorkshopRepository
     String? workshopDepartmentId,
     String? dateFrom,
     String? dateTo,
+    String? analysisNo,
+    String? segmentCode,
+    String? sort,
+    String? order,
   }) {
     calls++;
     return calls == 1 ? first.future : second.future;
   }
+
+  @override
+  Future<Map<String, List<MasterFacetBucket>>> workshopTaskFacets({
+    String keyword = '',
+    String? status,
+    String? preparationFilter,
+    String? routeFilter,
+    String? workshopDepartmentId,
+    String? dateFrom,
+    String? dateTo,
+  }) async => const {};
 }
 
 /// 记录每次列表请求的分类与时间门控参数；历史段返回一条已取消 + 一条已红冲。
@@ -2530,8 +2615,13 @@ class _RecordingWorkshopRepository
     String? workshopDepartmentId,
     String? dateFrom,
     String? dateTo,
+    String? analysisNo,
+    String? segmentCode,
+    String? sort,
+    String? order,
   }) async {
     calls.add((status: status, dateFrom: dateFrom, dateTo: dateTo));
+    // 单号 facets 走假实现；页面单独 try/catch，不参与断言。
     final items = status == 'COMPLETED'
         ? [
             ProductionExecutionWorkbenchSegment.fromJson(
@@ -2554,6 +2644,17 @@ class _RecordingWorkshopRepository
       totalPages: 1,
     );
   }
+
+  @override
+  Future<Map<String, List<MasterFacetBucket>>> workshopTaskFacets({
+    String keyword = '',
+    String? status,
+    String? preparationFilter,
+    String? routeFilter,
+    String? workshopDepartmentId,
+    String? dateFrom,
+    String? dateTo,
+  }) async => const {};
 }
 
 /// 行首勾选格 2026-09-11 起被「冻结」成整行 Stack 的 Positioned 兄弟
@@ -2597,7 +2698,12 @@ class _DiscoveryRequests extends ProductionMaterialDiscoveryRequestRepository {
   final requested = <String>[];
   final cancelled = <String>[];
   @override
-  Future<void> request(String id, int version, String key) async {
+  Future<void> request(
+    String id,
+    int version,
+    String key, {
+    List<Map<String, dynamic>> items = const [],
+  }) async {
     requested.add(id);
   }
 

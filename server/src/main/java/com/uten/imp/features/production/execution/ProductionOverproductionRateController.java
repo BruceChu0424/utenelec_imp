@@ -43,8 +43,21 @@ public class ProductionOverproductionRateController {
     @GetMapping("/requests")
     @PreAuthorize("hasAuthority('production_plan:approve')")
     public PageResponse<RequestView> list(@RequestParam(defaultValue="PENDING") String status,
-            @RequestParam(defaultValue="1") int page, @RequestParam(defaultValue="20") int size) {
-        return service.list(status,page,size);
+            @RequestParam(defaultValue="1") int page, @RequestParam(defaultValue="20") int size,
+            // 2026-09-25 单号列统一：计划号/工单号表头排序 + 值筛选（精确匹配）。
+            @RequestParam(required=false) String sort,
+            @RequestParam(required=false) String order,
+            @RequestParam(required=false) String planNo,
+            @RequestParam(required=false) String segmentCode) {
+        return service.list(status,page,size,sort,order,planNo,segmentCode);
+    }
+
+    /** 单号列 facets（2026-09-25 单号列统一）：{plan/segment:[…]}，与列表同一过滤参数。 */
+    @GetMapping("/requests/facets")
+    @PreAuthorize("hasAuthority('production_plan:approve')")
+    public Map<String, java.util.List<Map<String,Object>>> facets(
+            @RequestParam(defaultValue="PENDING") String status) {
+        return service.facets(status);
     }
 
     @GetMapping("/count")

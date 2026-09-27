@@ -14,6 +14,8 @@
 // 表头排序（2026-09-24 用户口径「生产计划那里表头加个排序，能够快速排序」）：
 // 生产计划 / 领料单号 / 发料仓 / 待领数量 / 状态 / 需求日期 可点表头排序，
 // 排序在服务端整个结果集上做(分页前)，换排序回第 1 页；切换状态与搜索保留排序。
+// 2026-09-25 单号列统一：领料单号列另加表头值筛选（桶=f.docNo 服务端分组，
+// 值筛选走 f.docNo 精确匹配，与列表同一响应带回）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -94,6 +96,10 @@ class _WarehouseDrawTaskSegmentState
   String? _sortColumn;
   bool _sortAscending = true;
 
+  /// 领料单号表头值筛选（2026-09-25 单号列统一）：服务端 f.docNo 精确匹配；
+  /// 桶随列表响应带回（_result.facets['docNo']，与列表同一过滤口径）。
+  String? _drawBillNoFilter;
+
   @override
   void initState() {
     super.initState();
@@ -132,6 +138,7 @@ class _WarehouseDrawTaskSegmentState
             status: _status,
             sort: _kSortFields[_sortColumn],
             ascending: _sortAscending,
+            drawBillNo: _drawBillNoFilter,
             scope: WarehouseListScope.of(context),
           );
       if (!mounted || version != _requestVersion) return;
@@ -172,6 +179,17 @@ class _WarehouseDrawTaskSegmentState
     _load(1);
   }
 
+  /// 领料单号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配整个结果集，
+  /// 回第 1 页；结果集变了，跨页勾选不再有意义，与关键字变化同样清空。
+  void _onColumnFilterChanged(String key, String? value) {
+    if (key != 'drawBillNo') return;
+    setState(() {
+      _drawBillNoFilter = (value == null || value.isEmpty) ? null : value;
+      _selectedIds.clear();
+    });
+    _load(1);
+  }
+
   /// 刷新后修剪勾选：本页已领完/不可出库的单剔除；整个结果只有一页时，
   /// 不在页内的单也剔除（已不是当前分段的待领任务）。多页结果不臆断其它页，
   /// 翻到该页再修剪。
@@ -202,7 +220,7 @@ class _WarehouseDrawTaskSegmentState
     }
   }
 
-  /// 当前勾选中真正可批量出库的领料单（挂有可见 DRAW 且未领完），跨页。
+  /// 可在同一批量页核对的正式领料单和已知材料申请，跨页保留。
   List<WarehouseDrawTask> get _issuableSelection => [
     for (final id in _selectedIds)
       if (_knownTasks[id] case final task? when task.canBatchIssue) task,
@@ -211,6 +229,13 @@ class _WarehouseDrawTaskSegmentState
   /// 批量全额出库：选中多张领料单按剩余量逐单出库（跨页勾选全部提交）。
   Future<void> _batchIssue() async {
     if (_batchIssuing || _selectedIds.isEmpty) return;
+    final unsupported = _selectedIds.where(
+      (id) => _knownTasks[id]?.canBatchIssue != true,
+    );
+    if (unsupported.isNotEmpty) {
+      context.appWarning('选中任务含尚未确定材料或已失效的任务，请先进入“填写实际领料”确认材料，再选择批量出库');
+      return;
+    }
     final tasks = _issuableSelection;
     if (tasks.isEmpty) {
       context.appWarning('选中任务没有可出库的领料单');
@@ -219,20 +244,13 @@ class _WarehouseDrawTaskSegmentState
     const limit = ProductionDrawTaskRepository.batchIssueLimit;
     if (tasks.length > limit) {
       context.appWarning(
-        '一次最多批量出库 $limit 张领料单，当前已选 ${tasks.length} 张，请先取消部分勾选',
+        '一次最多批量办理 $limit 项领料任务，当前已选 ${tasks.length} 项，请先取消部分勾选',
       );
       return;
     }
     setState(() => _batchIssuing = true);
     try {
-      final ids = tasks.map((task) => task.actionDocId!).toSet().toList()
-        ..sort();
-      final changed = await context.push<bool>(
-        Uri(
-          path: RouteName.warehouseProductionDrawBatchIssue,
-          queryParameters: {'documentIds': ids.join(',')},
-        ).toString(),
-      );
+      final changed = await context.push<bool>(_batchPath(tasks));
       if (!mounted) return;
       if (changed == true) _selectedIds.clear();
       await _load(_result?.page ?? 1);
@@ -241,15 +259,38 @@ class _WarehouseDrawTaskSegmentState
     }
   }
 
+  String _batchPath(List<WarehouseDrawTask> tasks) {
+    final documentIds =
+        tasks
+            .where((task) => !task.isMaterialDiscovery)
+            .map((task) => task.actionDocId!)
+            .toSet()
+            .toList()
+          ..sort();
+    final requestIds =
+        tasks
+            .where((task) => task.isMaterialDiscovery)
+            .map((task) => task.actionDocId!)
+            .toSet()
+            .toList()
+          ..sort();
+    return Uri(
+      path: RouteName.warehouseProductionDrawBatchIssue,
+      queryParameters: {
+        if (documentIds.isNotEmpty) 'documentIds': documentIds.join(','),
+        if (requestIds.isNotEmpty) 'discoveryRequestIds': requestIds.join(','),
+      },
+    ).toString();
+  }
+
   Future<void> _openTask(WarehouseDrawTask task) async {
     if (task.isMaterialDiscovery) {
-      await Navigator.of(context).push<bool>(
-        MaterialPageRoute(
-          builder: (_) =>
-              ProductionMaterialDiscoveryPage(requestId: task.actionDocId!),
-        ),
-      );
-      if (mounted) await _load(_result?.page ?? 1);
+      if (task.materialsDefined) {
+        await context.push<bool>(_batchPath([task]));
+        if (mounted) await _load(_result?.page ?? 1);
+        return;
+      }
+      await _openMaterialDefinition(task);
       return;
     }
     final path = task.drawDocPath;
@@ -261,6 +302,16 @@ class _WarehouseDrawTaskSegmentState
     if (mounted) await _load(_result?.page ?? 1);
   }
 
+  Future<void> _openMaterialDefinition(WarehouseDrawTask task) async {
+    await context.push<bool>(
+      ProductionMaterialDiscoveryPage.route.replaceFirst(
+        ':requestId',
+        task.actionDocId!,
+      ),
+    );
+    if (mounted) await _load(_result?.page ?? 1);
+  }
+
   List<Widget> _batchActions(
     BuildContext context,
     Set<String> selectedIds, {
@@ -268,11 +319,21 @@ class _WarehouseDrawTaskSegmentState
   }) {
     final issuable = _issuableSelection;
     final draftsNeedApprove =
-        !canApprove && issuable.any((task) => task.isDraftDoc);
+        !canApprove && issuable.any((task) => task.batchRequiresApproval);
+    final hasUnknown = selectedIds.any(
+      (id) => _knownTasks[id]?.needsMaterialEntry == true,
+    );
+    final hasUnavailable = selectedIds.any(
+      (id) => _knownTasks[id]?.canBatchIssue != true,
+    );
     final String? blocked = selectedIds.isEmpty
         ? '请先勾选要出库的领料单'
+        : hasUnknown
+        ? '选中任务尚未确定材料，请先进入“填写实际领料”选择材料'
+        : hasUnavailable
+        ? '选中任务已变化，请刷新后重新选择'
         : draftsNeedApprove
-        ? '选中含草稿领料单：出库即审核，当前账号还需要审核权限'
+        ? '选中含待生成或草稿领料单：出库即审核，当前账号还需要审核权限'
         : null;
     return [
       UtenButton(
@@ -295,8 +356,9 @@ class _WarehouseDrawTaskSegmentState
     // 批量出库按钮按会话权限门控：stock_doc:issue 才渲染；草稿单还需 approve
     //（出库即审核），无审核权限时按钮置灰并提示。
     final permissions = ref.watch(currentPermissionsProvider);
-    final canIssue = permissions.contains(Perm.stockDocIssue);
-    final canApprove = permissions.contains(Perm.stockDocApprove);
+    final superAdmin = ref.watch(isSuperAdminProvider);
+    final canIssue = superAdmin || permissions.contains(Perm.stockDocIssue);
+    final canApprove = superAdmin || permissions.contains(Perm.stockDocApprove);
     // 2026-09-24 用户口径「表格完全置顶」：状态行/错误行进折叠头随页滚走，
     // body 只剩表格（primary 拾取联动控制器）。
     return UtenCollapsingHeaderScrollView(
@@ -361,10 +423,16 @@ class _WarehouseDrawTaskSegmentState
         key: const Key('warehouse-draw-task-table'),
         columns: _columns,
         items: tasks,
-        facets: const {},
+        rowColor: (task) =>
+            task.needsMaterialEntry ? theme.colorScheme.errorContainer : null,
+        rowForegroundColor: (task) =>
+            task.needsMaterialEntry ? theme.colorScheme.onErrorContainer : null,
+        // 2026-09-25 单号列统一：领料单号桶来自同一响应的 facets['docNo']，
+        // 桶值=单号，列 drawBillNo 直接映射。
+        facets: {'drawBillNo': _result?.facets['docNo'] ?? const []},
         nullCounts: const {},
-        filters: const {},
-        onFilterChanged: (_, _) {},
+        filters: {'drawBillNo': _drawBillNoFilter},
+        onFilterChanged: _onColumnFilterChanged,
         sortColumn: _sortColumn,
         sortAscending: _sortAscending,
         onSortChange: _onSortChange,
@@ -389,11 +457,21 @@ class _WarehouseDrawTaskSegmentState
             : [
                 UtenMenuItem(
                   label: task.isMaterialDiscovery
-                      ? AppLocalizations.of(context).materialDiscoveryTitle
+                      ? task.materialsDefined
+                            ? '核对实际领料并出库'
+                            : AppLocalizations.of(
+                                context,
+                              ).materialDiscoveryTitle
                       : '进入领料单办理出库',
                   icon: Icons.outbound_outlined,
                   onTap: () => _openTask(task),
                 ),
+                if (task.isMaterialDiscovery && task.materialsDefined)
+                  UtenMenuItem(
+                    label: '调整领料材料',
+                    icon: Icons.edit_outlined,
+                    onTap: () => _openMaterialDefinition(task),
+                  ),
               ],
         isLoading: _loading && _result == null,
         loadingMore: _loading && _result != null,
@@ -421,8 +499,15 @@ class _WarehouseDrawTaskSegmentState
       key: 'drawBillNo',
       sortable: true,
       label: '领料单号',
-      width: 150,
+      width: 205,
       value: (task) => task.drawBillLabel,
+      cellBuilder: (_, task) => Text(
+        task.isMaterialDiscovery && task.drawBillLabel != '—'
+            ? '申请 ${task.drawBillLabel}'
+            : task.drawBillLabel,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
     ),
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列——
     // 仓库正是靠名称 + 颜色对位拣货，三个属性挤成一串时列一窄就先被省略号吃掉。
@@ -432,34 +517,49 @@ class _WarehouseDrawTaskSegmentState
       key: 'goods',
       label: '货品名称',
       width: 200,
-      value: (task) =>
-          task.isDocumentGrouped ? task.goodsLabel : task.goodsName,
+      value: (task) => task.materialLabel,
       cellBuilderHandlesSemantics: true,
-      cellBuilder: (context, task) => task.isDocumentGrouped
-          ? Text(task.goodsLabel, maxLines: 1, overflow: TextOverflow.ellipsis)
+      cellBuilder: (context, task) =>
+          task.isMaterialDiscovery || task.isDocumentGrouped
+          ? Text(
+              task.materialLabel,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            )
           : UtenGoodsIdentityCell(name: task.goodsName, spec: task.spec),
     ),
     MasterColumnDef(
       key: 'goodsCode',
       label: '编号',
       width: 130,
-      value: (task) => task.isDocumentGrouped
+      value: (task) => task.isDocumentGrouped || task.needsMaterialEntry
           ? null
           : UtenGoodsAttributeCell.text(task.goodsCode),
       cellBuilder: (context, task) => UtenGoodsAttributeCell(
-        task.isDocumentGrouped ? null : task.goodsCode,
+        task.isDocumentGrouped || task.needsMaterialEntry
+            ? null
+            : task.goodsCode,
       ),
     ),
     MasterColumnDef(
       key: 'colorName',
       label: '颜色',
       width: 96,
-      value: (task) => task.isDocumentGrouped
+      value: (task) => task.isDocumentGrouped || task.needsMaterialEntry
           ? null
           : UtenGoodsAttributeCell.text(task.colorName),
       cellBuilder: (context, task) => UtenGoodsAttributeCell(
-        task.isDocumentGrouped ? null : task.colorName,
+        task.isDocumentGrouped || task.needsMaterialEntry
+            ? null
+            : task.colorName,
       ),
+    ),
+    MasterColumnDef(
+      key: 'productionPurpose',
+      label: '用于生产',
+      width: 220,
+      value: (task) =>
+          task.productionPurpose.isEmpty ? '—' : task.productionPurpose,
     ),
     MasterColumnDef(
       key: 'warehouseName',
@@ -496,6 +596,15 @@ class _WarehouseDrawTaskSegmentState
       width: 120,
       type: 'date',
       value: (task) => task.dueDate,
+    ),
+    MasterColumnDef(
+      key: 'materialRequestNo',
+      label: '来源申请号',
+      width: 180,
+      value: (task) =>
+          task.isMaterialDiscovery || task.materialRequestNo.isEmpty
+          ? '—'
+          : task.materialRequestNo,
     ),
   ];
 }

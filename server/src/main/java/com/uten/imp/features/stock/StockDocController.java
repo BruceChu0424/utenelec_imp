@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -69,12 +70,34 @@ public class StockDocController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String warehouseScope,
-            @RequestParam(required = false) UUID scopeWarehouseId) {
+            @RequestParam(required = false) UUID scopeWarehouseId,
+            @RequestParam(required = false) String billNo) {
         // 仓库任务中心的「仓库范围」(ADR-115)：MINE = 我负责的仓库；scopeWarehouseId = 指定仓库(含子仓)。
         // 与表头的 warehouseId(精确发出仓)是两件事，二者可同时生效。
         return service.list(new StockDocQueryFilter(docType, keyword, warehouseId, status, dateFrom, dateTo,
                 departmentId, issueStatus, productionReturnRequests, toWarehouseId,
-                warehouseScopes.resolve(warehouseScope, scopeWarehouseId)), page, size, sort, order);
+                warehouseScopes.resolve(warehouseScope, scopeWarehouseId), billNo), page, size, sort, order);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径（docType 维度）分组计数。 */
+    @GetMapping("/facets")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(
+            @RequestParam String docType,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(required = false) Short status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) UUID departmentId,
+            @RequestParam(required = false) Short issueStatus,
+            @RequestParam(required = false) Boolean productionReturnRequests,
+            @RequestParam(required = false) UUID toWarehouseId,
+            @RequestParam(required = false) String warehouseScope,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        return service.facets(new StockDocQueryFilter(docType, keyword, warehouseId, status, dateFrom, dateTo,
+                departmentId, issueStatus, productionReturnRequests, toWarehouseId,
+                warehouseScopes.resolve(warehouseScope, scopeWarehouseId), null));
     }
 
     @GetMapping("/{id}")

@@ -15,6 +15,8 @@
 // 「历史单据」段一律时间门控（WarehouseHistoryGate：时间段/全部，
 // 未选时间显示引导占位不加载）。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_category.dart';
+import '../widgets/warehouse_form_draft_categories.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_segment_badge_label.dart';
@@ -85,6 +87,16 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
     );
 
     final segments = <WarehouseTaskSegmentSpec>[
+      if (canSales || canSubcontract || canSubcontractHistory || canStockDocs)
+        WarehouseTaskSegmentSpec(
+          value: 'drafts',
+          label: '草稿',
+          count: ref.watch(
+            formDraftCategoryVisibleCountProvider(
+              warehouseOutboundFormDraftScope,
+            ),
+          ),
+        ),
       if (canSales)
         WarehouseTaskSegmentSpec(
           value: 'sales',
@@ -119,6 +131,11 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
       onResume: () => invalidateWarehouseTaskCounts(ref),
       bodyBuilder: (segment, keyword, refreshTick, headerPrefix) =>
           switch (segment) {
+            'drafts' => WarehouseFormDraftCategory(
+              scope: warehouseOutboundFormDraftScope,
+              header: headerPrefix,
+              search: keyword,
+            ),
             'sales' => WarehouseSalesOutboundWorkbench(
               keyword: keyword,
               refreshTick: refreshTick,
@@ -217,11 +234,7 @@ class _SubcontractOutboundSegmentState
     // 本分段小类行；与宿主前缀合并后挂进叶子视图的折叠头随页滚走
     // （2026-09-24「表格完全置顶」），未选小类时钉在占位区上方。
     final modeRow = Padding(
-      padding: const EdgeInsets.only(
-        bottom: UtenSpacing.s8,
-        left: UtenSpacing.s4,
-        right: UtenSpacing.s4,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: UtenFilterToolbar<int>(
         segmentsKey: const Key('subcontract-outbound-mode'),
         segments: [
@@ -242,12 +255,17 @@ class _SubcontractOutboundSegmentState
         onSelectionChanged: (value) => setState(() => _mode = value),
       ),
     );
-    final Widget? combined = widget.externalHeader == null
-        ? null
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [widget.externalHeader!, modeRow],
-          );
+    // 传给下一级的头部不带尾部留白；每一级只在父分类之后添加一次间距。
+    final combined = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.externalHeader != null) ...[
+          widget.externalHeader!,
+          const SizedBox(height: UtenSpacing.s12),
+        ],
+        modeRow,
+      ],
+    );
     return switch (mode) {
       _tasksMode => WarehouseSubcontractOutboundWorkbench(
         keyword: widget.keyword,
@@ -275,8 +293,7 @@ class _SubcontractOutboundSegmentState
       _ => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (widget.externalHeader != null) widget.externalHeader!,
-          modeRow,
+          combined,
           const SizedBox(height: UtenSpacing.s8),
           const Expanded(
             child: UtenFilterPlaceholder(

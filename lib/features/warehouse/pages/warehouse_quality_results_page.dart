@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -22,6 +24,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../models/warehouse_iqc_stock_in.dart';
 import '../models/warehouse_quality_result.dart';
 import '../providers/warehouse_quality_result_count_provider.dart';
@@ -104,6 +107,11 @@ class _WarehouseQualityResultsPageState
 
   /// 状态分段计数（后端全量口径）；null = 尚未返回，分段显示 '—'。
   Map<WarehouseQualityWorkStatus, int>? _statusCounts;
+
+  /// 表头排序 + 收货单号列值筛选 + facets 桶 + 防串台代数
+  /// （2026-09-25 单号列统一，共享状态见 MasterServerColumnFilters）；
+  /// 排序列 key 见 [_kSortFields]，null = 服务端默认序。
+  final _columnFilters = MasterServerColumnFilters();
 
   /// 表格多选：键为「receiptType:receiptId」，跨页保留。
   Set<String> _selectedIds = {};
@@ -252,9 +260,16 @@ class _WarehouseQualityResultsPageState
         keyword: _effectiveKeyword.isEmpty ? null : _effectiveKeyword,
         dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
         dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+        sort: _kSortFields[_columnFilters.sortColumn],
+        order: _columnFilters.sortColumn == null
+            ? null
+            : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+        billNo: _columnFilters['billNo'],
       );
       // 状态计数失败不阻断列表（分段按钮降级为 '—'）。
       _refreshStatusCounts();
+      // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
+      unawaited(_loadBillNoFacets());
       if (!mounted || version != _requestVersion) return;
       setState(() {
         _result = result;
@@ -273,6 +288,56 @@ class _WarehouseQualityResultsPageState
         _loading = false;
       });
     }
+  }
+
+  /// 表头排序键 → 服务端 sort 参数（2026-09-25 单号列统一；未列出的列不可排序）。
+  static const _kSortFields = <String, String>{'billNo': 'billNo'};
+
+  /// 表头排序变化：服务端重排整个结果集，回第 1 页（勾选跨页保留，不清）。
+  void _onSortChange(String? column, bool ascending) {
+    final next = column != null && _kSortFields.containsKey(column)
+        ? column
+        : null;
+    if (next == _columnFilters.sortColumn &&
+        (next == null || ascending == _columnFilters.sortAscending)) {
+      return;
+    }
+    _columnFilters.handleSortChanged(
+      next,
+      ascending,
+      onChanged: () {
+        if (mounted) setState(() {});
+        _load(1);
+      },
+    );
+  }
+
+  /// 收货单号 facets（2026-09-25 单号列统一）：与列表同过滤口径
+  /// （不含单号列自身值筛选）。
+  Future<void> _loadBillNoFacets() {
+    final seg = _statusSeg;
+    if (seg == null) return Future.value();
+    final range = seg.history ? _historyTime.range : null;
+    return _columnFilters.loadFacets(
+      () async => {
+        'billNo': await ref
+            .read(warehouseQualityResultRepositoryProvider)
+            .billNoFacets(
+              receiptType: _receiptType,
+              workStatus: seg.history ? null : seg.status,
+              keyword: _effectiveKeyword.isEmpty ? null : _effectiveKeyword,
+              dateFrom: range == null
+                  ? null
+                  : ChinaDateTime.formatDate(range.start),
+              dateTo: range == null
+                  ? null
+                  : ChinaDateTime.formatDate(range.end),
+            ),
+      },
+      onLoaded: () {
+        if (mounted) setState(() {});
+      },
+    );
   }
 
   int? _statusCount(WarehouseQualityWorkStatus status) {
@@ -368,7 +433,9 @@ class _WarehouseQualityResultsPageState
     // 2026-09-24 用户口径「表格完全置顶」：分段行/错误行进折叠头随页滚走，
     // body 只剩表格（primary 拾取联动控制器）。
     final bodyContent = Padding(
-      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+      padding: widget.embedded
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
       child: UtenCollapsingHeaderScrollView(
         collapsingHeader: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -404,10 +471,26 @@ class _WarehouseQualityResultsPageState
                 key: const Key('warehouse-quality-result-table'),
                 columns: _columns,
                 items: result.items,
-                facets: const {},
+                // 收货单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
+                facets: {'billNo': _columnFilters.bucketOf('billNo')},
                 nullCounts: const {},
-                filters: const {},
-                onFilterChanged: (_, _) {},
+                filters: {'billNo': _columnFilters['billNo']},
+                // 表头排序走服务端（2026-09-25 单号列统一）。
+                sortColumn: _columnFilters.sortColumn,
+                sortAscending: _columnFilters.sortAscending,
+                onSortChange: _onSortChange,
+                onFilterChanged: (key, value) {
+                  if (key == 'billNo') {
+                    _columnFilters.handleFilterChanged(
+                      key,
+                      value,
+                      onChanged: () {
+                        if (mounted) setState(() {});
+                        _load(1);
+                      },
+                    );
+                  }
+                },
                 selectable: true,
                 idOf: _taskId,
                 rowKeyOf: _taskId,
@@ -558,7 +641,7 @@ class _WarehouseQualityResultsPageState
             ),
           ),
         ),
-        const SizedBox(height: UtenSpacing.s8),
+        const SizedBox(height: UtenSpacing.s12),
         // 第二条（小类）：作业状态分段（计数为后端全量），选中来源后解锁；
         // 无「全部」段，末尾是「历史记录」段；进页面不预选。
         // 计数形态：红徽章只挂需要仓库下一步操作的状态（全部合格/部分合格/
@@ -621,6 +704,7 @@ class _WarehouseQualityResultsPageState
       key: 'billNo',
       label: '收货单号',
       width: 160,
+      sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
       value: (task) => task.billNo ?? '—',
     ),
     MasterColumnDef(

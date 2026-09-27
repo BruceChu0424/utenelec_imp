@@ -121,7 +121,7 @@ public class ProductionExecutionPackageCommandService {
             UUID planId,
             GeneratePlanningPackageRequest request) {
         tx.bind();
-        requestValidator.validateRequestShape(request);
+        requestValidator.validateRequestStructure(request);
         var sourceGuard = mutationFootprint.beginPlan(planId, List.of());
         UUID prelockedAnalysisId =
                 preplanAnalysisPeg.lockPlanningPackageInventoryDimensions(planId);
@@ -197,6 +197,7 @@ public class ProductionExecutionPackageCommandService {
         CompleteKitAllocator.Allocation allocation = requestValidator
                 .validateAgainstSnapshot(request, locked)
                 .allocation();
+        AnalysisExecutionSnapshotScope.beforeFormalMutation();
         allocation = awaitWorkshopRoute(allocation);
         List<SegmentDraft> segmentDrafts = persistSegments(
                 plan, begin.planningPackage(), allocation);
@@ -253,8 +254,6 @@ public class ProductionExecutionPackageCommandService {
                 begin.planningPackage().getId(), preparedTransfers,
                 readyAllocation.formalReservations());
 
-        Map<UUID, MrpGenerateResult> draws = new LinkedHashMap<>();
-        List<MrpGenerateResult> drawResults = new ArrayList<>();
         for (SegmentDraft segment : segmentDrafts) {
             if (!ProductionExecutionSegment.STATUS_READY.equals(
                     segment.segment().getStatus())) {
@@ -272,15 +271,13 @@ public class ProductionExecutionPackageCommandService {
                     drawQuantitiesByWarehouse(
                             segmentDemands, readyAllocation.allocations());
             for (var warehouse : warehouseQuantities.entrySet()) {
-                MrpGenerateResult draw = createDraw(
+                createDraw(
                         plan, begin.planningPackage(), segment.segment(),
                         segmentDemands.stream()
                                 .filter(demand -> warehouse.getValue()
                                         .containsKey(demand.getId()))
                                 .toList(),
                         warehouse.getKey(), warehouse.getValue());
-                draws.putIfAbsent(segment.segment().getId(), draw);
-                drawResults.add(draw);
             }
         }
 
@@ -359,8 +356,6 @@ public class ProductionExecutionPackageCommandService {
                                 subcontractLines)
                         : null;
 
-        List<ExecutionSegmentResult> results = results(
-                segmentDrafts, demandsBySegment, allocatedByDemand, draws);
         // 自制件派生只使用本次直接层 MAKE 缺口；下层 BOM 进入子计划后再逐级排产。
         // 与领料/采购同事务，走 EXECUTION_V1 subplan_links，幂等不重复。
         List<GenerateSubplansRequest.Created> subplanResults =
@@ -402,13 +397,13 @@ public class ProductionExecutionPackageCommandService {
             }
             em.refresh(draft.segment());
         }
-        PlanningPackageResult current = replay(begin.planningPackage());
-        return new PlanningPackageResult(
-                current.packageId(),
-                current.status(),
-                false,
-                current.subplans(), current.purchaseRequest(), current.subcontractApplication(),
-                current.drawDocument(), current.executionSegments(), current.drawDocuments());
+        // These segments were just flushed/refreshed after readiness. An analysis
+        // package never creates its own purchase, subcontract or child plans;
+        // its existing supply belongs to the analysis actions, not this package.
+        // Still read actual demands, reservations and every DRAW after promotion.
+        return readCurrentResult(begin.planningPackage(),
+                segmentDrafts.stream().map(SegmentDraft::segment).toList(),
+                false, !packageOwnsSupply);
     }
 
     /**
@@ -1370,9 +1365,21 @@ public class ProductionExecutionPackageCommandService {
 
     PlanningPackageResult replay(
             ProductionPlanningPackage planningPackage) {
+        // A replay may include later operations or historical package documents.
+        // Only a fresh confirmation can supply its known-empty document context.
+        return readCurrentResult(planningPackage, null, true, false);
+    }
+
+    private PlanningPackageResult readCurrentResult(
+            ProductionPlanningPackage planningPackage,
+            List<ProductionExecutionSegment> confirmedSegments,
+            boolean replayed,
+            boolean freshAnalysisPackage) {
         List<ProductionExecutionSegment> segments =
-                segmentRepo.findByPackageIdAndDeletedFalseOrderBySegmentNoAsc(
-                        planningPackage.getId());
+                confirmedSegments == null
+                        ? segmentRepo.findByPackageIdAndDeletedFalseOrderBySegmentNoAsc(
+                                planningPackage.getId())
+                        : confirmedSegments;
         Map<UUID, MrpGenerateResult> draws = new LinkedHashMap<>();
         List<Object[]> drawRows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
@@ -1428,12 +1435,12 @@ public class ProductionExecutionPackageCommandService {
                         .flatMap(List::stream)
                         .map(ProductionMaterialDemand::getId)
                         .toList());
-        MrpGenerateResult purchase = replayPurchase(planningPackage);
-        MrpGenerateResult subcontract = replaySubcontract(planningPackage);
+        MrpGenerateResult purchase = freshAnalysisPackage ? null : replayPurchase(planningPackage);
+        MrpGenerateResult subcontract = freshAnalysisPackage ? null : replaySubcontract(planningPackage);
         List<GenerateSubplansRequest.Created> subplans =
-                replaySubplans(planningPackage.getId());
+                freshAnalysisPackage ? List.of() : replaySubplans(planningPackage.getId());
         List<ExecutionSegmentResult> executionResults =
-                replayResults(drafts, demandsBySegment, allocated, draws);
+                results(drafts, demandsBySegment, allocated, draws);
         // The segment keeps its first DRAW for compatibility; package replay
         // must return every physical warehouse document created for the kit.
         List<MrpGenerateResult> drawResults =
@@ -1443,7 +1450,7 @@ public class ProductionExecutionPackageCommandService {
         return new PlanningPackageResult(
                 planningPackage.getId(),
                 planningPackage.getStatus(),
-                true,
+                replayed,
                 subplans,
                 purchase,
                 subcontract,
@@ -1479,52 +1486,6 @@ public class ProductionExecutionPackageCommandService {
                         ((Number) row[2]).intValue(),
                         row[3] == null ? null : row[3].toString()))
                 .toList();
-    }
-
-    private List<ExecutionSegmentResult> replayResults(
-            List<SegmentDraft> drafts,
-            Map<UUID, List<ProductionMaterialDemand>> demandsBySegment,
-            Map<UUID, BigDecimal> allocated,
-            Map<UUID, MrpGenerateResult> draws) {
-        return drafts.stream().map(draft -> {
-            ProductionExecutionSegment segment = draft.segment();
-            List<ExecutionSegmentResult.Material> materials =
-                    demandsBySegment.getOrDefault(segment.getId(), List.of())
-                            .stream()
-                            .map(demand -> {
-                                BigDecimal stock = allocated.getOrDefault(
-                                        demand.getId(), BigDecimal.ZERO);
-                                return new ExecutionSegmentResult.Material(
-                                        demand.getId(),
-                                        demand.getGoodsId(),
-                                        demand.getColorId(),
-                                        demand.getUnitId(),
-                                        demand.getPerProductQty(),
-                                        demand.getRequiredQty(),
-                                        stock,
-                                        demand.getRequiredQty()
-                                                .subtract(stock)
-                                                .max(BigDecimal.ZERO),
-                                        demand.getSupplyRoute(),
-                                        demand.getRequirementMode());
-                            })
-                            .toList();
-            return new ExecutionSegmentResult(
-                    segment.getId(), segment.getSegmentCode(),
-                    segment.getClientSegmentKey(),
-                    segment.getSourcePlanItemId(),
-                    segment.getProductGoodsId(),
-                    segment.getProductColorId(),
-                    segment.getPlannedQty(), segment.getStatus(),
-                    segment.getMaterialRequirementMode(),
-                    segment.getZeroMaterialReason(),
-                    segment.getWorkshopDepartmentId(),
-                    segment.getTeamDepartmentId(),
-                    segment.getResponsibleEmployeeId(),
-                    segment.getPlanBeginDate(),
-                    segment.getPlanEndDate(),
-                    materials, draws.get(segment.getId()));
-        }).toList();
     }
 
     private Map<UUID, BigDecimal> allocationTotals(List<UUID> demandIds) {

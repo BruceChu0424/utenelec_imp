@@ -18,11 +18,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/feedback/uten_module_progress_chip.dart';
-import '../../../components/feedback/uten_module_todo_chip.dart';
+import '../../../components/feedback/uten_module_badges.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
-import '../../../components/feedback/uten_in_progress_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -34,13 +32,12 @@ import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/badges/badge_scope.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../warehouse/pages/procurement_return_task_pages.dart';
-import '../../warehouse/widgets/procurement_inbound_badges.dart';
 import '../config/subcontract_doc_config.dart';
 import '../config/subcontract_report_config.dart';
 import '../widgets/subcontract_short_delivery_badge.dart';
-import '../widgets/subcontract_task_badge.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 class SubcontractHubPage extends ConsumerWidget {
@@ -66,14 +63,15 @@ class SubcontractHubPage extends ConsumerWidget {
         label: l10n.subcontractHubTaskCenter,
         description: l10n.subcontractHubTaskCenterSub,
         location: RouteName.operationsSubcontractWorkbench,
-        badge: const SubcontractTaskBadge(showLabel: true),
         // 黄=任务中心「进行中」段(已下单、发料在外加工、等财务/等回厂);
         // 红=待处理与要本部门动手的两类异常。同一张单两枚都算得上不是双计。
-        progressBadge: UtenInProgressBadge(
-          count: ref.watch(
-            badgeEntryInProgressProvider(BadgeEntry.subcontractTaskCenter),
-          ),
-          showLabel: true,
+        // 草稿已并入任务中心分类；供应商退货仍由独立入口办理。
+        // 本地委外草稿由 effective 汇总按 ID 去重并入 subcontractDrafts 入口后在
+        // 这里取到，故**不得**再声明 formDraftModule——否则本地数加两次，任务中心
+        // 卡会超过顶栏模块红数(双计，purchase hub 同理)。
+        badgeScope: const BadgeScope.entry(
+          BadgeEntry.subcontractTaskCenter,
+          additionalTodoEntries: {BadgeEntry.subcontractDrafts},
         ),
       ),
       // ADR-098 回厂短交判定：徽章与任务中心 /count 里的「回厂短交待判定」同数展示，
@@ -94,9 +92,8 @@ class SubcontractHubPage extends ConsumerWidget {
         location: procurementReturnTasksLocation(
           ProcurementInboundOrderType.subcontract,
         ),
-        badge: const ProcurementArrivalReturnBadge(
-          orderType: ProcurementInboundOrderType.subcontract,
-          showLabel: true,
+        badgeScope: const BadgeScope.entry(
+          BadgeEntry.subcontractSupplierReturn,
         ),
       ),
     ]);
@@ -164,21 +161,9 @@ class SubcontractHubPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
-        actions: [
-          // 顶栏两枚药丸, 黄左红右(ADR-100)。
-          // 「进行中 N」= 本模块登记的在办入口之和(当前只有任务中心一处)。
-          // 「待办 N」= 任务中心 + 待退回供应商 + 本模块四类草稿。两个数字各由
-          // 自己的注册表按 BadgeModule.subcontract 求和得出(唯一实现),
-          // 页面里不要再手写加法。AppBar 的 actions 行是 stretch 对齐，
-          // 故包一层 Center 让徽章垂直居中；0 时组件自身不渲染。
-          UtenModuleProgressChip(
-            count: ref.watch(
-              badgeModuleInProgressProvider(BadgeModule.subcontract),
-            ),
-          ),
-          UtenModuleTodoChip(
-            count: ref.watch(badgeModuleTodoProvider(BadgeModule.subcontract)),
-          ),
+        actions: const [
+          // 模块合计包含任务中心、供应商退货和四类草稿，由服务端汇总。
+          UtenModuleBadges(module: BadgeModule.subcontract),
         ],
       ),
       body: SafeArea(
@@ -255,7 +240,7 @@ class _Entry {
     required this.description,
     required this.location,
     this.badge,
-    this.progressBadge,
+    this.badgeScope,
   });
 
   final IconData icon;
@@ -263,13 +248,11 @@ class _Entry {
   final String description;
   final String location;
 
-  /// 右上角红色待办徽章；本页每张卡最多一个待办来源，草稿卡也用这个槽。
-  /// 若某卡将来同时有待办与草稿，再把草稿挪到 [UtenHubCard.labelSuffix]
-  /// 行内显示——一个 badge 槽塞两个红圆点读不懂。
+  /// 短交案件的专用计数；已包含在任务中心待办中，不重复登记。
   final Widget? badge;
 
-  /// 右上角黄色「进行中」徽章，排在红徽章左边；走另一张注册表，与红数互不相干。
-  final Widget? progressBadge;
+  /// 当前入口的红黄计数范围；新建单据卡不挂徽章。
+  final BadgeScope? badgeScope;
 }
 
 class _EntryTile extends StatelessWidget {
@@ -284,7 +267,8 @@ class _EntryTile extends StatelessWidget {
       description: entry.description,
       onTap: () => goFrom(context, entry.location),
       badge: entry.badge,
-      progressBadge: entry.progressBadge,
+      badgeScope: entry.badgeScope,
+      badgeShowLabel: true,
     );
   }
 }

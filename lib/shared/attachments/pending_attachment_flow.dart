@@ -47,12 +47,28 @@ Future<bool> flushPendingAttachments(
 
 /// 单据已创建但仍有附件上传失败时，放在暂存区上方的提示：再点「保存」只重试附件。
 class PendingAttachmentRetryNotice extends StatelessWidget {
-  const PendingAttachmentRetryNotice({super.key, required this.documentLabel});
+  const PendingAttachmentRetryNotice({
+    super.key,
+    required this.documentLabel,
+    this.controller,
+  });
 
   final String documentLabel;
+  final PendingAttachmentController? controller;
 
   @override
   Widget build(BuildContext context) {
+    final pending = controller;
+    if (pending == null) return _buildNotice(context);
+    return ListenableBuilder(
+      listenable: pending,
+      builder: (context, _) => pending.failedCount == 0
+          ? const SizedBox.shrink()
+          : _buildNotice(context),
+    );
+  }
+
+  Widget _buildNotice(BuildContext context) {
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
     return Container(

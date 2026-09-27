@@ -35,6 +35,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -88,6 +89,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   TaskClaimSession? _approveClaim;
   String? _myLocation;
 
+  /// 产品进度面板 → 右下悬浮「去发货」的桥（2026-09-26 全站口径：旧宿主也改
+  /// 悬浮标准形态，面板不再自带批量工具条；见 SalesShipmentActionScope 文档）。
+  final SalesShipmentActionScope _shipmentActions = SalesShipmentActionScope();
+
   @override
   void initState() {
     super.initState();
@@ -96,6 +101,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   @override
   void dispose() {
+    _shipmentActions.dispose();
     _approveClaim?.releaseAll();
     super.dispose();
   }
@@ -851,10 +857,17 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               popOrBackTo(context, defaultPath: SalesRoutePath.hub),
         ),
         actions: [
-          // 整页刷新（2026-09-05 用户口径：右上角刷新=刷新整个页面）。
+          // 整页刷新（2026-09-05 用户口径：右上角刷新=刷新整个页面）——2026-09-26
+          // 起产品进度经 scope 一并重读（面板自带刷新按钮已随工具条退役）。
           IconButton(
             tooltip: '刷新',
-            onPressed: _loading ? null : _load,
+            onPressed: _loading
+                ? null
+                : () => Future.wait([
+                    _load(),
+                    // 审核并发认领等流程里面板可能未挂载，reload 已解绑时是空操作。
+                    _shipmentActions.reload(),
+                  ]),
             icon: const Icon(Icons.refresh_rounded, size: 20),
           ),
         ],
@@ -910,6 +923,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                                     !_detail!.closed &&
                                     !_detail!.stopped,
                                 onChanged: _load,
+                                shipmentActions: _shipmentActions,
                               ),
                             ],
                             if (_cfg.type == SalesDocType.order &&
@@ -1922,8 +1936,43 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         ),
       );
     }
-    return UtenFloatingActionGroup(
-      children: children.where((child) => child is! SizedBox).toList(),
+    // 2026-09-26 全站口径：产品进度的批量发货动作并入本悬浮组——「已选 N 项」
+    // 胶囊居首、红色「去发货(N)」收尾（面板经 SalesShipmentActionScope 上报，
+    // 与订单进度详情页同一条路径）；scope 帧末通知驱动选中数联动。
+    return ListenableBuilder(
+      listenable: _shipmentActions,
+      builder: (context, _) {
+        final shipping = _shipmentActions.shippingEnabled;
+        final count = _shipmentActions.selectedCount;
+        final busy = _shipmentActions.busy;
+        final group = <Widget>[
+          if (shipping)
+            UtenSelectionSummaryPill(
+              clearKey: const ValueKey('sales-progress-clear-selection'),
+              count: count,
+              onClear: count > 0 && !busy
+                  ? _shipmentActions.clearSelection
+                  : null,
+            ),
+          ...children,
+          if (shipping)
+            UtenButton(
+              key: const ValueKey('sales-progress-create-shipment'),
+              type: UtenButtonType.danger,
+              size: UtenButtonSize.large,
+              icon: Icons.local_shipping_outlined,
+              isLoading: busy,
+              onPressed: count > 0 && !busy
+                  ? () => _shipmentActions.createShipment()
+                  : null,
+              onDisabledTap: count == 0
+                  ? () => context.appWarning('请先勾选要发货的产品')
+                  : null,
+              child: Text(count > 0 ? '去发货($count)' : '去发货'),
+            ),
+        ].where((child) => child is! SizedBox).toList();
+        return UtenFloatingActionGroup(children: group);
+      },
     );
   }
 }

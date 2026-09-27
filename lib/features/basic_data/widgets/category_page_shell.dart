@@ -16,6 +16,7 @@
 //
 // 不改任何业务语义/文案/TODO(l10n)；渲染与交互只在这一处维护。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -59,6 +60,8 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
 
   /// UtenSplitView 分栏持久化 key，如 'basicData.client'。
   String get shellPersistenceKey;
+
+  FormDraftDescriptor get shellCategoryDraftDescriptor;
 
   bool get shellCanCreate;
   bool get shellCanEdit;
@@ -344,10 +347,16 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
 
   // ---- 创建/编辑/删除 -----------------------------------------------------
 
-  void shellShowCreateDialog({ProductCategoryNode? parent}) {
-    showDialog<void>(
+  Future<void> shellShowCreateDialog({ProductCategoryNode? parent}) async {
+    if (!shellCanCreate) return;
+    final descriptor = shellCategoryDraftDescriptor;
+    await showDialog<void>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => CategoryEditDialog(
+        draftSpec: descriptor.spec(parentId: parent?.id),
+        resumeDraftId: dialogDraftId(context, kind: 'category'),
+        routerPageKey: dialogDraftPageKey(context),
         tree: _tree ?? const <ProductCategoryNode>[],
         initialParent: parent,
         onSubmit: (r) => _doCreate(r),
@@ -356,14 +365,12 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   }
 
   Future<bool> _doCreate(CategoryEditResult r) async {
-    final ok = await guardShellAction(
-      () async => shellCreateCategory(r),
-      success: '分类已创建', // TODO(l10n): 补 arb
-      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await shellReload();
-    shellAfterCategorySaved();
+    await shellCreateCategory(r);
+    if (mounted) {
+      context.appSuccess('分类已创建');
+      await shellReload();
+      if (mounted) shellAfterCategorySaved();
+    }
     return true;
   }
 
@@ -489,6 +496,26 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   /// 页面 build 主体。[detailPaneBuilder] 构造选中分类的右栏（页面私有
   /// DetailPane；onAddChild/onEdit/onDelete 已由壳层接好分类 CRUD）。
   Widget buildShell(
+    BuildContext context, {
+    required Widget Function(ProductCategoryNode selected) detailPaneBuilder,
+  }) => FormDraftDialogResume(
+    descriptor: shellCategoryDraftDescriptor,
+    ready: _tree != null && !_loading,
+    onResume: (parameters) async {
+      final parentId = parameters['parentId'];
+      final parent = parentId == null ? null : _findById(_tree ?? [], parentId);
+      if (parentId != null && parent == null) {
+        throw StateError('草稿的上级分类已不存在');
+      }
+      await shellShowCreateDialog(parent: parent);
+    },
+    child: _buildDraftCategoryHost(
+      context,
+      detailPaneBuilder: detailPaneBuilder,
+    ),
+  );
+
+  Widget _buildDraftCategoryHost(
     BuildContext context, {
     required Widget Function(ProductCategoryNode selected) detailPaneBuilder,
   }) {

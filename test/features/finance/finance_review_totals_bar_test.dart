@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -194,6 +195,11 @@ class _ReviewerSessionNotifier extends SessionNotifier {
 }
 
 class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
+  @override
+  Future<List<MasterFacetBucket>> approvalBillNoFacets({
+    FinanceProcurementOrderType? orderType,
+    String? keyword,
+  }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   _FakeWorkflowRepo(this.reviewResult);
 
   final FinanceProcurementApprovalReview reviewResult;
@@ -204,6 +210,9 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
     int size = 20,
     FinanceProcurementOrderType? orderType,
     String? keyword,
+    String? sort,
+    String? order,
+    String? billNo,
   }) async => const FinanceProcurementApprovalPage(
     items: [],
     page: 1,
@@ -299,6 +308,12 @@ Future<void> _pumpSalesReview(WidgetTester tester) async {
 }
 
 class _FakeSalesReviewRepo implements SalesOrderFinanceConfirmationRepository {
+  @override
+  Future<List<MasterFacetBucket>> billNoFacets({
+    bool? rejected,
+    String? keyword,
+    bool? changesOnly,
+  }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   _FakeSalesReviewRepo(this.reviewValue);
 
   final SalesOrderFinanceReview reviewValue;
@@ -310,6 +325,9 @@ class _FakeSalesReviewRepo implements SalesOrderFinanceConfirmationRepository {
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    String? sort,
+    String? order,
+    String? billNo,
   }) async => const SalesOrderFinancePendingPage(
     items: [],
     page: 1,

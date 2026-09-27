@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/config/warehouse_document_history_config.dart';
 import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
@@ -106,6 +107,13 @@ Future<void> _pumpStockDoc(
 
 class _HistoryGateway implements WarehouseDocumentHistoryGateway {
   @override
+  Future<Map<String, List<MasterFacetBucket>>> billNoFacets({
+    String? keyword,
+    String? status,
+    String? dateFrom,
+    String? dateTo,
+  }) async => const {'billNo': [], 'sourceDocNo': []}; // 2026-09-25 单号列统一：静默降级。
+  @override
   Future<PagedResult<WarehouseDocumentHistorySummary>> list({
     int page = 1,
     int size = 20,
@@ -113,6 +121,10 @@ class _HistoryGateway implements WarehouseDocumentHistoryGateway {
     String? status,
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
+    String? billNo,
+    String? sourceDocNo,
   }) async => PagedResult<WarehouseDocumentHistorySummary>(
     items: <WarehouseDocumentHistorySummary>[_historyDetail.header],
     page: page,
@@ -235,6 +247,9 @@ class _OutboundGateway implements WarehouseSalesOutboundGateway {
     String? dateFrom,
     String? dateTo,
     WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+    String? sort,
+    String? order,
+    String? billNo,
   }) async => PagedResult(
     items: [summary],
     page: page,
@@ -242,6 +257,15 @@ class _OutboundGateway implements WarehouseSalesOutboundGateway {
     total: 1,
     totalPages: 1,
   );
+
+  @override
+  Future<List<MasterFacetBucket>> billNoFacets({
+    String? keyword,
+    String? warehouseWorkStatus,
+    String? dateFrom,
+    String? dateTo,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+  }) async => const [];
 
   @override
   Future<WarehouseSalesOutboundDetail> detail(String id) async => value;

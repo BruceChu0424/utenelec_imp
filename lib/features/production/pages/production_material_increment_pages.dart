@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_field_codec.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/data_display/uten_revision_table.dart';
@@ -173,13 +175,42 @@ class ProductionMaterialIncrementCreatePage extends ConsumerStatefulWidget {
 }
 
 class _IncrementCreateState
-    extends ConsumerState<ProductionMaterialIncrementCreatePage> {
+    extends ConsumerState<ProductionMaterialIncrementCreatePage>
+    with FormDraftMixin<ProductionMaterialIncrementCreatePage> {
   ProductionMaterialIncrementContext? _data;
   final _quantity = TextEditingController();
   final _reason = TextEditingController();
   String? _demandId;
   String? _error;
   bool _busy = false;
+  @override
+  bool get formDraftBusy => _busy;
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftSpec(
+    title: '申请追加用料',
+    module: BadgeModule.workshop,
+    route: RoutePath.productionMaterialIncrementForSegment(widget.segmentId),
+    permission: productionMaterialIncrementPermission,
+  );
+  @override
+  Iterable<Listenable> get formDraftListenables => [_quantity, _reason];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'quantity': _quantity.text,
+    'reason': _reason.text,
+    'demandId': _demandId,
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _quantity.text = draftText(data, 'quantity');
+    _reason.text = draftText(data, 'reason');
+    _demandId = data['demandId'] as String?;
+    if (_demandId != null && _selected == null) {
+      _error = '原材料来源已变化；草稿填写保留，请重新核对材料来源。';
+    }
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
@@ -211,6 +242,7 @@ class _IncrementCreateState
     } catch (_) {
       if (mounted) setState(() => _error = '材料来源读取失败，请重试');
     }
+    if (mounted) await initializeFormDraft();
   }
 
   Map<String, dynamic>? get _selected => _data?.demands
@@ -239,6 +271,7 @@ class _IncrementCreateState
       final request = await ref
           .read(productionMaterialIncrementRepositoryProvider)
           .submit(context: data, demand: demand, deltaQty: qty, reason: reason);
+      await completeFormDraft();
       if (!mounted) return;
       bumpListRefresh(ref, productionMaterialIncrementRefreshKey);
       context.pushReplacement(
@@ -256,140 +289,142 @@ class _IncrementCreateState
   @override
   Widget build(BuildContext context) {
     final data = _data, selected = _selected;
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '申请追加用料',
-        leading: UtenBackButton(
-          onPressed: () => popOrBackTo(
-            context,
-            defaultPath: RouteName.productionWorkshopTasks,
+    return withFormDraft(
+      Scaffold(
+        appBar: UtenAppBar(
+          title: '申请追加用料',
+          leading: UtenBackButton(
+            onPressed: () => popOrBackTo(
+              context,
+              defaultPath: RouteName.productionWorkshopTasks,
+            ),
           ),
         ),
-      ),
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_busy) const LinearProgressIndicator(),
-                if (data == null && _error == null)
-                  const Center(child: CircularProgressIndicator()),
-                if (data != null) ...[
-                  Text(
-                    '工单：${data.segmentCode ?? '—'}',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 12),
-                  const Text('填写这次还需补领的数量。计划部批准后，仓库按实际数量发料。'),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    initialValue:
-                        data.demands.any(
-                          (row) => row['originalDemandId'] == _demandId,
-                        )
-                        ? _demandId
-                        : null,
-                    isExpanded: true,
-                    decoration: const UtenInputDecoration(
-                      InputDecoration(labelText: '原工单材料'),
+        body: SafeArea(
+          child: UtenContentContainer.wide(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_busy) const LinearProgressIndicator(),
+                  if (data == null && _error == null)
+                    const Center(child: CircularProgressIndicator()),
+                  if (data != null) ...[
+                    Text(
+                      '工单：${data.segmentCode ?? '—'}',
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
-                    items: [
-                      for (final row in data.demands)
-                        DropdownMenuItem(
-                          value: row['originalDemandId'] as String,
-                          child: Text(
-                            '${row['goodsName']} · ${row['goodsCode']} · ${row['colorName'] ?? '—'}',
+                    const SizedBox(height: 12),
+                    const Text('填写这次还需补领的数量。计划部批准后，仓库按实际数量发料。'),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      initialValue:
+                          data.demands.any(
+                            (row) => row['originalDemandId'] == _demandId,
+                          )
+                          ? _demandId
+                          : null,
+                      isExpanded: true,
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(labelText: '原工单材料'),
+                      ),
+                      items: [
+                        for (final row in data.demands)
+                          DropdownMenuItem(
+                            value: row['originalDemandId'] as String,
+                            child: Text(
+                              '${row['goodsName']} · ${row['goodsCode']} · ${row['colorName'] ?? '—'}',
+                            ),
                           ),
+                      ],
+                      onChanged: _busy
+                          ? null
+                          : (id) => setState(() => _demandId = id),
+                    ),
+                    if (selected != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Text(
+                          '原定额 ${selected['requiredQty']} · 已批准追加 ${selected['approvedIncrementQty']} · 实际净领 ${selected['netIssuedQty']} · 可用余料 ${selected['availableQty']} ${selected['unitName'] ?? ''}',
                         ),
-                    ],
-                    onChanged: _busy
-                        ? null
-                        : (id) => setState(() => _demandId = id),
-                  ),
-                  if (selected != null)
+                      ),
+                    if (selected?['pendingRequestId'] != null)
+                      TextButton(
+                        onPressed: _busy
+                            ? null
+                            : () => context.push(
+                                RoutePath.productionMaterialIncrementRequest(
+                                  selected!['pendingRequestId'] as String,
+                                ),
+                              ),
+                        child: Text(
+                          '已有追加 ${selected?['pendingDeltaQty']} 待审批 · 查看原申请',
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _quantity,
+                      enabled: !_busy,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: UtenInputDecoration(
+                        InputDecoration(
+                          labelText: '本次追加数量',
+                          suffixText: selected?['unitName']?.toString(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _reason,
+                      enabled: !_busy,
+                      minLines: 2,
+                      maxLines: 4,
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(labelText: '申请原因（必填）'),
+                      ),
+                    ),
+                    if (data.blockingReason?.isNotEmpty == true)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(data.blockingReason!),
+                      ),
+                  ],
+                  if (_error != null)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       child: Text(
-                        '原定额 ${selected['requiredQty']} · 已批准追加 ${selected['approvedIncrementQty']} · 实际净领 ${selected['netIssuedQty']} · 可用余料 ${selected['availableQty']} ${selected['unitName'] ?? ''}',
+                        _error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
                       ),
                     ),
-                  if (selected?['pendingRequestId'] != null)
-                    TextButton(
-                      onPressed: _busy
-                          ? null
-                          : () => context.push(
-                              RoutePath.productionMaterialIncrementRequest(
-                                selected!['pendingRequestId'] as String,
-                              ),
-                            ),
-                      child: Text(
-                        '已有追加 ${selected?['pendingDeltaQty']} 待审批 · 查看原申请',
+                  const SizedBox(height: 20),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      OutlinedButton(
+                        onPressed: _busy ? null : _load,
+                        child: const Text('重新核对来源'),
                       ),
-                    ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _quantity,
-                    enabled: !_busy,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: UtenInputDecoration(
-                      InputDecoration(
-                        labelText: '本次追加数量',
-                        suffixText: selected?['unitName']?.toString(),
+                      FilledButton(
+                        onPressed:
+                            _busy ||
+                                data?.canSubmit != true ||
+                                selected == null ||
+                                selected['pendingRequestId'] != null
+                            ? null
+                            : _submit,
+                        child: const Text('提交计划部审批'),
                       ),
-                    ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _reason,
-                    enabled: !_busy,
-                    minLines: 2,
-                    maxLines: 4,
-                    decoration: const UtenInputDecoration(
-                      InputDecoration(labelText: '申请原因（必填）'),
-                    ),
-                  ),
-                  if (data.blockingReason?.isNotEmpty == true)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      child: Text(data.blockingReason!),
-                    ),
                 ],
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Text(
-                      _error!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 20),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    OutlinedButton(
-                      onPressed: _busy ? null : _load,
-                      child: const Text('重新核对来源'),
-                    ),
-                    FilledButton(
-                      onPressed:
-                          _busy ||
-                              data?.canSubmit != true ||
-                              selected == null ||
-                              selected['pendingRequestId'] != null
-                          ? null
-                          : _submit,
-                      child: const Text('提交计划部审批'),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
           ),
         ),

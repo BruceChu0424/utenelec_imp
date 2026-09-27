@@ -21,6 +21,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'badge_module.dart';
 import 'badge_summary_provider.dart';
+import 'effective_badge_summary_provider.dart';
 
 export 'badge_module.dart';
 export 'badge_summary_provider.dart';
@@ -242,8 +243,9 @@ abstract final class BadgeFact {
 
 /// 入口红数(待办)。汇总未到 / 无权访问按 0。
 final badgeEntryTodoProvider = Provider.family<int, BadgeEntry>(
-  (ref, entry) =>
-      ref.watch(badgeSummaryProvider.select((s) => s.entryTodo(entry))),
+  (ref, entry) => ref.watch(
+    effectiveBadgeSummaryProvider.select((s) => s.entryTodo(entry)),
+  ),
 );
 
 /// 入口黄数(进行中)。
@@ -254,8 +256,9 @@ final badgeEntryInProgressProvider = Provider.family<int, BadgeEntry>(
 
 /// 容器红数 = 服务端算好的该容器入口之和。
 final badgeModuleTodoProvider = Provider.family<int, BadgeModule>(
-  (ref, module) =>
-      ref.watch(badgeSummaryProvider.select((s) => s.moduleTodo(module))),
+  (ref, module) => ref.watch(
+    effectiveBadgeSummaryProvider.select((s) => s.moduleTodo(module)),
+  ),
 );
 
 /// 容器黄数。
@@ -266,7 +269,7 @@ final badgeModuleInProgressProvider = Provider.family<int, BadgeModule>(
 
 /// 导航「工作台」Tab 红色总数。
 final badgeTotalTodoProvider = Provider<int>(
-  (ref) => ref.watch(badgeSummaryProvider.select((s) => s.total.todo)),
+  (ref) => ref.watch(effectiveBadgeSummaryProvider.select((s) => s.total.todo)),
 );
 
 /// 导航「工作台」Tab 黄色总数。

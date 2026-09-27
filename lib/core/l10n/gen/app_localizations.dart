@@ -181,8 +181,14 @@ abstract class AppLocalizations {
   /// No description provided for @materialDiscoveryRequestHelp.
   ///
   /// In zh, this message translates to:
-  /// **'这些自制件尚未登记底层材料。提交领料后，请领料人与仓库对接，由仓库填写实际材料；实际发料后才能开工。'**
+  /// **'这些自制件尚未登记底层材料。知道用料时可按工单选填材料和申请数量；不填也可提交，由仓库补充。仓库会带入已填内容，核对实际发料仓后办理领料，实际发料后才能开工。'**
   String get materialDiscoveryRequestHelp;
+
+  /// No description provided for @materialDiscoveryPrefilledHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'已带入车间填写的材料和申请数量，无需重复选料。请核对实际发料仓和数量；如有变化，可在表内调整。'**
+  String get materialDiscoveryPrefilledHelp;
 
   /// No description provided for @materialDiscoveryPending.
   ///
@@ -301,7 +307,7 @@ abstract class AppLocalizations {
   /// No description provided for @materialDiscoveryRequestSent.
   ///
   /// In zh, this message translates to:
-  /// **'领料申请已提交，等待仓库填写物料'**
+  /// **'领料申请已提交，等待仓库核对并办理领料'**
   String get materialDiscoveryRequestSent;
 
   /// No description provided for @materialDiscoveryMissingUnit.
@@ -4642,7 +4648,7 @@ abstract class AppLocalizations {
   /// No description provided for @materialTaskSectionHint.
   ///
   /// In zh, this message translates to:
-  /// **'按供料路线集中处理，查看未下达、已下达与待处理任务。'**
+  /// **'按供应方式集中处理待处理、进行中和需处理任务。'**
   String get materialTaskSectionHint;
 
   /// No description provided for @materialWarehouseLimit.
@@ -7660,6 +7666,66 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'成品仓、库位号逐行必填；优先带入货品主档默认仓，缺项再参考个人选仓上下文。勾选多行后改仓或填写库位可批量应用。每张报工单各生成一份送检，品质放行后再最终点收。'**
   String get warehouseBatchRegistrationHelp;
+
+  /// No description provided for @materialPreparationReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对并下单'**
+  String get materialPreparationReview;
+
+  /// No description provided for @materialPreparationApproveNow.
+  ///
+  /// In zh, this message translates to:
+  /// **'同时审核下达'**
+  String get materialPreparationApproveNow;
+
+  /// No description provided for @materialPreparationViewPlans.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看已下达计划'**
+  String get materialPreparationViewPlans;
+
+  /// No description provided for @materialPreparationOrdering.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在下单…'**
+  String get materialPreparationOrdering;
+
+  /// No description provided for @materialPreparationOrderCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'下单({count})'**
+  String materialPreparationOrderCount(int count);
+
+  /// No description provided for @materialPreparationNoActions.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前没有可办理的物料'**
+  String get materialPreparationNoActions;
+
+  /// No description provided for @materialPreparationAvailableHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'本行可安排的现货和已下达供给，包含在途及未办理余量；其它订单已占用的量不重复计入，实际领料以实物为准。'**
+  String get materialPreparationAvailableHint;
+
+  /// No description provided for @materialPreparationPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'待下单'**
+  String get materialPreparationPending;
+
+  /// No description provided for @materialPreparationInProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'进行中'**
+  String get materialPreparationInProgress;
+
+  /// No description provided for @materialPreparationMissingAssignment.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先补齐“{goods}”的生产车间和负责人，再下单'**
+  String materialPreparationMissingAssignment(String goods);
 }
 
 class _AppLocalizationsDelegate

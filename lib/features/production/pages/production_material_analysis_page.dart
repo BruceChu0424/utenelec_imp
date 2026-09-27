@@ -2,9 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart' show CancelToken;
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'
-    show FilteringTextInputFormatter, TextInputFormatter;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -20,13 +19,11 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
-import '../../../components/layout/uten_segmented_filter.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../../components/layout/uten_grid_page_scrollbar.dart';
-import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -46,7 +43,6 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/badges/badge_registry.dart';
-import '../../../shared/providers/editable_grid_column_prefs.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/uten_tree_row_projection.dart';
@@ -62,6 +58,8 @@ import '../models/material_cascade_math.dart';
 import '../models/production_material_analysis.dart';
 import '../models/material_future_transfer.dart';
 import '../models/material_aggregate_order.dart';
+import '../models/material_preparation_draft_budget.dart';
+import '../models/material_analysis_ownership_overlay.dart';
 import '../models/material_future_transfer_progress.dart';
 import '../models/production_flow_stage.dart';
 import '../models/production_work_card.dart';
@@ -76,6 +74,7 @@ import '../widgets/material_shared_future_claim_dialog.dart';
 import '../widgets/material_future_transfer_history.dart';
 import '../widgets/production_execution_card_print_preview.dart';
 import '../widgets/production_flow_stage_cell.dart';
+import '../widgets/material_preparation_status_style.dart';
 import '../widgets/material_borrow_dialog.dart';
 import '../widgets/material_required_reason_dialog.dart';
 import '../widgets/material_supply_progress_dialog.dart';
@@ -87,9 +86,6 @@ part 'material_analysis_bom_tree.dart';
 part 'material_analysis_borrow.dart';
 part 'material_analysis_bucket_detail.dart';
 part 'material_analysis_candidates.dart';
-part 'material_analysis_cascade_models.dart';
-part 'material_analysis_child_cascade.dart';
-part 'material_analysis_child_cascade_page.dart';
 part 'material_analysis_child_shortage.dart';
 part 'material_analysis_child_shortage_page.dart';
 part 'material_analysis_plan_actions.dart';
@@ -97,6 +93,8 @@ part 'material_analysis_product_tasks.dart';
 part 'material_analysis_material_table.dart';
 part 'material_analysis_aggregate_table.dart';
 part 'material_analysis_aggregate_submission.dart';
+part 'material_analysis_draft_budget.dart';
+part 'material_analysis_order_page.dart';
 part 'material_analysis_supply_actions.dart';
 part 'material_analysis_view_models.dart';
 
@@ -134,6 +132,88 @@ abstract class _MaterialAnalysisPageBase
   };
 
   ProductionMaterialAnalysisView? _analysis;
+  final _ownerReadGuard = LatestRequestGuard();
+  final _ownerReadTokens = Expando<int>();
+  bool _savingGoodsOwnership = false;
+  bool _ownerRefreshQueued = false;
+  final Set<BuildContext> _preparationReadContexts = {};
+  int _preparationSubmissionScopes = 0;
+  bool _deferredFutureTransferRead = false;
+  bool get _preparationSubmissionActive => _preparationSubmissionScopes > 0;
+  void _cancelPreparationEditorPreview();
+  void _flushDeferredAssignmentRead();
+
+  Future<T> _withPreparationSubmissionScope<T>(
+    Future<T> Function() command,
+  ) async {
+    final outermost = _preparationSubmissionScopes++ == 0;
+    final releaseBadges = outermost
+        ? ref.read(badgeSummaryProvider.notifier).holdRefreshes()
+        : null;
+    if (outermost) _cancelPreparationEditorPreview();
+    try {
+      return await command();
+    } finally {
+      _preparationSubmissionScopes--;
+      if (outermost) {
+        releaseBadges?.call();
+        if (mounted) {
+          _flushDeferredAssignmentRead();
+          if (_deferredFutureTransferRead && _analysis != null) {
+            _deferredFutureTransferRead = false;
+            unawaited(_refreshFutureTransfers(_analysis!));
+          }
+        }
+      }
+    }
+  }
+
+  Future<ProductionMaterialAnalysisView> _readMaterialAnalysisDetail(
+    String id,
+  ) async {
+    final token = _ownerReadGuard.begin();
+    final view = await ref
+        .read(productionPlanRepositoryProvider)
+        .materialAnalysisDetail(id);
+    _ownerReadTokens[view] = token;
+    return view;
+  }
+
+  void _acceptAnalysisOwnership(
+    ProductionMaterialAnalysisView view, {
+    required bool confirmedRead,
+  });
+  void _invalidateOwnerAssignmentDefaults(Set<String> goodsIds);
+  void _applyAnalysisKeepingPreparationEditing(
+    ProductionMaterialAnalysisView view,
+  );
+
+  ProductionMaterialAnalysisView _prepareAnalysisOwnership(
+    ProductionMaterialAnalysisView view,
+  ) {
+    final token = _ownerReadTokens[view];
+    final current = _analysis;
+    final confirmed = token != null && _ownerReadGuard.isCurrent(token);
+    // An older GET may still contain useful quantity facts. It must not revert
+    // a later master-data read or a successfully saved ownership edit.
+    if (token != null && !confirmed && current?.analysisId == view.analysisId) {
+      view = view.withOwnershipFrom(current!);
+    }
+    _acceptAnalysisOwnership(view, confirmedRead: confirmed);
+    return view;
+  }
+
+  void _refreshAfterOwnershipWrite() {
+    _ownerReadGuard.begin();
+    _ownerRefreshQueued = true;
+    unawaited(_reloadAnalysisSilently(protectUnsavedEditing: true));
+  }
+
+  bool? _preparationApproveChoice;
+  bool get _preparationApproveNow =>
+      _permissions.contains(Perm.productionPlanApprove) &&
+      (_preparationApproveChoice ?? true);
+  final Map<String, ProductionGeneratedPlanRef> _preparationPlanResults = {};
   List<MaterialFutureTransferRecord> _futureTransferRecords = const [];
   Map<String, List<MaterialFutureTransferRecord>> _futureTransferByMaterial =
       const {};
@@ -147,6 +227,10 @@ abstract class _MaterialAnalysisPageBase
     if (!mounted ||
         !identical(_analysis, view) ||
         !view.allowedActions.contains('VIEW_FUTURE_TRANSFERS')) {
+      return;
+    }
+    if (_preparationSubmissionActive) {
+      _deferredFutureTransferRead = true;
       return;
     }
     final request = ++_futureTransferRequest;
@@ -240,6 +324,12 @@ abstract class _MaterialAnalysisPageBase
   int _candidatePageNo = 1;
   final int _candidatePageSize = 100;
   String _candidateKeyword = '';
+
+  // 2026-09-25 单号列统一：候选表销售单号列排序 + 值筛选（服务端白名单/facets）。
+  String? _candidateSortColumn;
+  bool _candidateSortAscending = true;
+  Map<String, List<MasterFacetBucket>> _candidateDocNoFacets = const {};
+  String? _candidateOrderNoFilter;
   final _candidateSearch = TextEditingController();
   final _bomSearch = TextEditingController();
   final _manualSourceRef = TextEditingController();
@@ -479,6 +569,7 @@ abstract class _MaterialAnalysisPageBase
       _serverAllows('CROSS_REALLOCATE');
 
   bool get _busy =>
+      _savingGoodsOwnership ||
       _previewingAnalysis ||
       _savingRoutes ||
       _savingPriorities ||
@@ -493,6 +584,7 @@ abstract class _MaterialAnalysisPageBase
 
   /// 当前把整页按住的那个操作叫什么（给禁用态的 tooltip 用）。
   String? get _busyLabel {
+    if (_savingGoodsOwnership) return '保存所属仓库';
     if (_previewingAnalysis) return '刷新分析';
     if (_savingRoutes) return '确认物料路线';
     if (_savingPriorities) return '调整优先级';
@@ -663,6 +755,9 @@ abstract class _MaterialAnalysisPageBase
   /// 实现见 material_analysis_child_shortage.dart。
   Map<String, double> _issuedQtySnapshot();
 
+  /// Compare authoritative order facts, including successful aggregate substeps.
+  bool _orderedSince(Map<String, double> before);
+
   /// 下单 / 追加成功后查刚下单的件的下层：还缺料就弹窗问要不要现在补(ADR-117)。
   Future<void> _checkChildShortagesAfterOrder(Map<String, double> before);
 
@@ -694,24 +789,6 @@ abstract class _MaterialAnalysisPageBase
   Future<void> _showTransferLauncher(_MaterialGroup group);
   String _analysisDynamicProjectionKey(ProductionMaterialAnalysisView view);
 
-  /// 父件 + 下层一起下单（ADR-081 整页前置；2026-09-21 ADR-099 改为服务端
-  /// 算量）；实现见 material_analysis_child_cascade.dart。
-  ///
-  /// [_pendingChildCascadeRows] = 预构建下层行（车间通道先向服务端要一份
-  /// 「下达之后」的预览快照）。返回值里的 [rows] 为空表示不需要进级联页
-  /// （调用方走原路直接提交），[note] 非空时调用方要把这句如实告诉用户——
-  /// 「下层都已下过单」和「下层全被权限/路线挡住」都不能静默跳过。
-  Future<_CascadePending> _pendingChildCascadeRows(
-    List<_ChildCascadeSeed> seeds, {
-    bool keepUnselectable = false,
-  });
-
-  Future<bool> _showChildCascadeDialog({
-    required List<_ChildCascadeSeed> seeds,
-    required List<_ChildCascadeRow> initialRows,
-    required ProductionMaterialAnalysisView? previewView,
-    Future<bool> Function()? parentAction,
-  });
   Widget _nodeBorrowSection(
     ThemeData theme,
     ProductionMaterialAnalysisMaterial material,
@@ -719,21 +796,40 @@ abstract class _MaterialAnalysisPageBase
 
   Future<void> _loadCandidates({int? page}) async {
     final request = _candidateRequests.begin();
+    // 2026-09-25 单号列统一：销售单号排序/值筛选随列表下推（服务端白名单）。
+    final requestedSort = _candidateSortColumn;
+    final requestedOrder = _candidateSortColumn == null
+        ? null
+        : (_candidateSortAscending ? 'asc' : 'desc');
+    final requestedOrderNo = _candidateOrderNoFilter;
+    final requestedKeyword = _candidateKeyword;
     setState(() {
       _loadingCandidates = true;
       _error = null;
       if (page != null) _candidatePageNo = page;
     });
     try {
-      final result = await ref
-          .read(productionPlanRepositoryProvider)
-          .materialAnalysisSalesCandidates(
-            page: _candidatePageNo,
-            size: _candidatePageSize,
-            keyword: _candidateKeyword,
-          );
+      final repository = ref.read(productionPlanRepositoryProvider);
+      final result = await repository.materialAnalysisSalesCandidates(
+        page: _candidatePageNo,
+        size: _candidatePageSize,
+        keyword: requestedKeyword,
+        sort: requestedSort,
+        order: requestedOrder,
+        orderBillNo: requestedOrderNo,
+      );
+      // 单号 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。
+      Map<String, List<MasterFacetBucket>> facets = const {};
+      try {
+        facets = await repository.materialAnalysisSalesCandidateFacets(
+          keyword: requestedKeyword,
+        );
+      } catch (_) {
+        facets = const {};
+      }
       if (!mounted || !_candidateRequests.isCurrent(request)) return;
       setState(() {
+        _candidateDocNoFacets = facets;
         _candidatePage = result;
         _candidatePageNo = result.page;
         _loadingCandidates = false;
@@ -763,11 +859,17 @@ abstract class _MaterialAnalysisPageBase
     WidgetsBinding.instance.addPostFrameCallback((_) => _boot());
   }
 
-  /// 页面停留期间轻量读取服务端权威快照。只在当前路由可见且员工没有进行中
-  /// 操作/编辑时触发；它不提交刷新命令，也不会覆盖尚未保存的现场输入。
+  /// 主表或准备子页可见时共用一个只读轮询；写命令期间让路。
+  /// 编辑期间更新服务端事实，并按原行恢复输入和选择，不执行刷新写命令。
   Future<void> _pollAnalysisIfIdle() async {
-    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
-    if (_analysis == null || _booting || _busy || _hasUnsavedAnalysisEditing) {
+    if (!mounted) return;
+    final visible =
+        ModalRoute.of(context)?.isCurrent == true ||
+        _preparationReadContexts.any(
+          (scope) => scope.mounted && ModalRoute.of(scope)?.isCurrent == true,
+        );
+    if (!visible) return;
+    if (_analysis == null || _booting || _busy) {
       return;
     }
     await _reloadAnalysisSilently(protectUnsavedEditing: true);
@@ -795,27 +897,30 @@ abstract class _MaterialAnalysisPageBase
     if (analysis == null ||
         _busy ||
         _booting ||
-        _silentAnalysisReloadInFlight ||
-        (protectUnsavedEditing && _hasUnsavedAnalysisEditing)) {
+        _silentAnalysisReloadInFlight) {
       return;
     }
     // 产品优先级正在拖动时不替换产品顺序；路线草稿则可以按 action group
     // 安全地映射到新快照，既加载最新库存，又不吞掉计划员的未保存决定。
-    if (_editingPriorities) return;
     _silentAnalysisReloadInFlight = true;
+    _ownerRefreshQueued = false;
     try {
-      final view = await ref
-          .read(productionPlanRepositoryProvider)
-          .materialAnalysisDetail(analysis.analysisId);
+      final view = await _readMaterialAnalysisDetail(analysis.analysisId);
       if (!mounted) return;
       final current = _analysis;
-      // 请求发出后员工可能开始编辑/提交，或者手动刷新已经返回了更高版本。
-      // 这两种情况下都丢弃轮询结果，防止迟到的 GET 覆盖新快照或现场输入。
+      // 写命令、切换分析或更高版本已经到达时不接收此旧读。
+      // 新开始的本地编辑由下方保留输入的事实刷新处理。
       if (_busy ||
-          (protectUnsavedEditing && _hasUnsavedAnalysisEditing) ||
           current == null ||
           current.analysisId != analysis.analysisId ||
           view.version < current.version) {
+        return;
+      }
+      if (_editingPriorities ||
+          (protectUnsavedEditing && _hasUnsavedAnalysisEditing)) {
+        setState(() {
+          _applyAnalysisKeepingPreparationEditing(view);
+        });
         return;
       }
       // 分析头版本只保护分析本身的写入 CAS；计划审批、派工、仓库发料、
@@ -838,6 +943,9 @@ abstract class _MaterialAnalysisPageBase
       // 静默失败：页面仍显示当前快照，用户可手动刷新。
     } finally {
       _silentAnalysisReloadInFlight = false;
+      if (mounted && _ownerRefreshQueued) {
+        unawaited(_reloadAnalysisSilently(protectUnsavedEditing: true));
+      }
     }
   }
 
@@ -873,9 +981,7 @@ abstract class _MaterialAnalysisPageBase
         // Explicit refresh and the server's version/BOM guards own that work.
         final results = await Future.wait<Object?>([
           ref.read(masterNameServiceProvider).ensureCommonLoaded(),
-          ref
-              .read(productionPlanRepositoryProvider)
-              .materialAnalysisDetail(existingAnalysisId),
+          _readMaterialAnalysisDetail(existingAnalysisId),
         ]);
         final view = results[1] as ProductionMaterialAnalysisView;
         if (!mounted) return;
@@ -920,6 +1026,7 @@ abstract class _MaterialAnalysisPageBase
   }
 
   void _applyAnalysis(ProductionMaterialAnalysisView view) {
+    view = _prepareAnalysisOwnership(view);
     final previousAnalysisId = _analysis?.analysisId;
     ++_futureTransferRequest;
     if (previousAnalysisId != view.analysisId ||
@@ -945,7 +1052,11 @@ abstract class _MaterialAnalysisPageBase
     // (只覆盖用户没动过的格子)。顺序不能反——反了就是拿模拟值去回填。
     _invalidateMaterialTableCascadePreview();
     _reseedMaterialTableQtyInputs();
-    unawaited(Future<void>.microtask(() => _refreshFutureTransfers(view)));
+    if (_preparationSubmissionActive) {
+      _deferredFutureTransferRead = true;
+    } else {
+      unawaited(Future<void>.microtask(() => _refreshFutureTransfers(view)));
+    }
     _serverRefreshNotice = null;
     _invalidateBucketRowsCache();
     _indexCacheAnalysis = null;
@@ -1133,9 +1244,7 @@ abstract class _MaterialAnalysisPageBase
     if (analysisId == null) return false;
     final original = productionErrorMessage(error, fallback: '请求冲突');
     try {
-      final latest = await ref
-          .read(productionPlanRepositoryProvider)
-          .materialAnalysisDetail(analysisId);
+      final latest = await _readMaterialAnalysisDetail(analysisId);
       if (!mounted) return true;
       setState(() {
         _error = null;
@@ -1551,30 +1660,6 @@ abstract class _MaterialAnalysisPageBase
         .withValues(alpha: 0.14);
   }
 
-  Widget _statusLabel(ThemeData theme, _StatusView status) => Semantics(
-    container: true,
-    label: status.label,
-    child: ExcludeSemantics(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(status.icon, size: 18, color: status.color),
-          const SizedBox(width: UtenSpacing.s4),
-          Flexible(
-            child: Text(
-              status.label,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: status.color,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-
   Widget _errorState(String message, Future<void> Function() retry) => Center(
     child: Column(
       mainAxisSize: MainAxisSize.min,
@@ -1675,8 +1760,28 @@ abstract class _MaterialAnalysisPageBase
     }
     if (childId == null) return null;
     final product = indexes.productsById[childId];
-    if (product == null || product.sourceType != sourceType) return null;
+    if (product == null) return null;
+    if (product.sourceType != sourceType) {
+      // 同料合并共享批次的产品(AGGREGATE_MAKE)与 MAKE/SUBCONTRACT_MAKE 子任务同一条
+      // 委托链：并入共享批次的行也解析得到「已建任务」的子产品，进度/计划入口
+      // 内联展示，不再误报「计划同步中」(2026-09-26 用户实机)。
+      if (sourceType == 'MAKE_COMPONENT' &&
+          product.sourceType == 'AGGREGATE_MAKE') {
+        return product;
+      }
+      return null;
+    }
     return product;
+  }
+
+  /// 本行需求并入的共享制造批次(AGGREGATE_MAKE)产品；没并进共享批次时返回 null。
+  ProductionMaterialAnalysisProduct? _sharedBatchChildProductOf(
+    ProductionMaterialAnalysisMaterial material,
+  ) {
+    if (material.aggregateDelegatedQty <= 0.0001) return null;
+    final child = _taskChildProductOf(material);
+    if (child?.sourceType == 'AGGREGATE_MAKE') return child;
+    return null;
   }
 
   /// 解析自制通知对应的 MAKE_COMPONENT 子产品（用于待生产/生产中/已完工）。
@@ -1715,6 +1820,22 @@ abstract class _MaterialAnalysisPageBase
   /// candidate while its exact child projection is unavailable.
   bool _hasUnlinkedIssuedPlan(ProductionMaterialAnalysisMaterial material) {
     if (_taskChildProductOf(material) != null) return false;
+    if (material.preparationAdoptedQty > 0 &&
+        material.planAnchorAnalysisLineId == null &&
+        (material.aggregatePreparation?.orderedQty ?? 0) <= 0.0001 &&
+        (material.aggregatePreparation?.totalOrderedQty ?? 0) <= 0.0001 &&
+        !material.notifiedTargets.any(
+          (target) =>
+              target.status != 'CANCELLED' &&
+              const {
+                'PREPLAN_MAKE_TASK',
+                'SUBCONTRACT_MAKE_TASK',
+                'PRODUCTION_PLAN',
+              }.contains(target.documentType),
+        )) {
+      // 采用的是已有来源计划；来源的 MAKE_* 进度不代表本行另建了待同步计划。
+      return false;
+    }
     final stage = material.flowStage?.trim().toUpperCase();
     return material.planAnchorAnalysisLineId != null ||
         (stage != null &&
@@ -2313,6 +2434,14 @@ class _ProductionMaterialAnalysisPageState
           product.planExecutionPlannedQty,
           product.planExecutionInboundQty,
           product.planExecutionProgressRatio,
+          product.planExecutionWorkshopId,
+          product.planExecutionWorkshopName,
+          product.planExecutionResponsibleId,
+          product.planExecutionResponsibleName,
+          product.owningWarehouseId,
+          product.owningWarehouseName,
+          product.owningWorkshopId,
+          product.owningWorkshopName,
         ].join('|'),
       );
     }
@@ -2320,6 +2449,11 @@ class _ProductionMaterialAnalysisPageState
       parts.add(
         <Object?>[
           material.materialLineId,
+          material.owningWarehouseId,
+          material.owningWarehouseName,
+          material.owningWorkshopId,
+          material.owningWorkshopName,
+          material.requiredQty,
           material.availableQty,
           material.allocatedAvailableQty,
           material.exactPeggedQty,
@@ -2354,6 +2488,28 @@ class _ProductionMaterialAnalysisPageState
           material.lateSharedFutureAvailableQty,
           material.additionalSupplyRecommendedQty,
           material.sharedFutureClaimableQty,
+          material.flowStage,
+          material.planningUncoveredQty,
+          material.netShortageQty,
+          material.preparationAvailableQty,
+          material.preparationAdoptedQty,
+          material.preparationPoolKey,
+          material.preparationSharedAvailableQty,
+          material.preparationOwnedAvailableQty,
+          material.preparationUncoveredBeforeSharedQty,
+          material.preparationAdoptableSharedQty,
+          material.preparationSharedSupplySlices
+              ?.map((slice) => [slice.key, slice.availableQty, slice.adoptable])
+              .toList(),
+          material.aggregatePreparation?.requiredQty,
+          material.aggregatePreparation?.orderedQty,
+          material.aggregatePreparation?.allocatedOrderedQty,
+          material.aggregatePreparation?.totalOrderedQty,
+          material.aggregatePreparation?.orderedQtyExact,
+          material.aggregatePreparation?.planningUncoveredQty,
+          material.aggregatePreparation?.netShortageQty,
+          material.aggregatePreparation?.targetMaterialLineIds.join(','),
+          material.aggregatePreparation?.actionable,
           material.plannedOutputQty,
           for (final target in material.notifiedTargets)
             '${target.target?.wireName}:${target.documentType}:'

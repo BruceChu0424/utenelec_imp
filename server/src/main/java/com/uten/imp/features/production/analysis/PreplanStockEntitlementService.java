@@ -521,6 +521,23 @@ public class PreplanStockEntitlementService {
         UUID originReservation=originEventId==null?null:uuid(em.createNativeQuery(
                 "SELECT stock_reservation_id FROM preplan_stock_entitlement_events WHERE id=:event")
                 .setParameter("event",originEventId).getSingleResult());
+        // A future promise or a BOM responsibility edge is not a physical lot.
+        // Avoid evaluating every alias/capacity function when the subsequent lot
+        // query cannot possibly find an active reservation. Historical events
+        // conservatively keep the normal balance, lock and delegation checks.
+        boolean hasPossibleLot=Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS (
+                    SELECT 1 FROM preplan_aggregate_batches batch
+                    JOIN preplan_aggregate_material_aliases alias ON alias.batch_id=batch.id
+                    JOIN preplan_stock_entitlement_events event
+                      ON event.beneficiary_analysis_id=batch.analysis_id
+                     AND event.beneficiary_analysis_material_id=alias.source_material_id
+                    JOIN stock_reservations reservation ON reservation.id=event.stock_reservation_id
+                      AND reservation.status=0 AND NOT reservation.is_deleted
+                    WHERE batch.analysis_id=:analysisId AND batch.action_id=:actionId
+                )
+                """).setParameter("analysisId",analysisId).setParameter("actionId",actionId).getSingleResult());
+        if (!hasPossibleLot) return BigDecimal.ZERO;
         List<Object[]> aliases = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT alias.id,alias.source_parent_material_id,batch.anchor_analysis_item_id,
                        alias.source_material_id,alias.aggregate_material_id,target.goods_id,target.color_id,target.unit_id,

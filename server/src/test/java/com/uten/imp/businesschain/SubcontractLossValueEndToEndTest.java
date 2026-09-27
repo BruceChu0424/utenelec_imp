@@ -298,7 +298,7 @@ class SubcontractLossValueEndToEndTest {
     private void changeQty(CaseFixture c,String qty){orders.changeQty(c.submitted().orderId(),new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(c.item(),new BigDecimal(qty)))));}
     private void drain(){
         long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(60);
-        for(int n=0;n<600&&System.nanoTime()<deadline;n++){
+        for(int n=0;n<2400&&System.nanoTime()<deadline;n++){
             int applied=worker.runBatch();
             if(!worker.hasPendingWork())return;
             // A scheduler may already own the remaining scope/task. Zero local
@@ -312,8 +312,7 @@ class SubcontractLossValueEndToEndTest {
                         + " UNION ALL SELECT 'cost_dirty', execution_segment_id::text FROM stock_value_production_cost_dirty WHERE observed_revision>cleared_revision"
                         + " UNION ALL SELECT 'cost_tasks', execution_segment_id::text FROM stock_value_production_cost_tasks WHERE status='PENDING'"
                         + " UNION ALL SELECT 'value_tasks', id::text FROM stock_value_tasks WHERE status='PENDING'"
-                        + " UNION ALL SELECT 'jobs', id::text FROM stock_value_jobs WHERE status<>'APPLIED'",
-                java.util.Map.of()));
+                        + " UNION ALL SELECT 'jobs', id::text FROM stock_value_jobs WHERE status<>'APPLIED'"));
     }
     private BigDecimal stock(CaseFixture c){return decimal("select amount_local from stock_balances where warehouse_id=? and goods_id=?",c.world().warehouseId(),c.world().goodsE());}
     private BigDecimal stock(CaseFixture c,UUID warehouse){return decimal("select amount_local from stock_balances where warehouse_id=? and goods_id=?",warehouse,c.world().goodsE());}

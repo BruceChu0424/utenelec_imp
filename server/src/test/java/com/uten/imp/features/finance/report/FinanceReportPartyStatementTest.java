@@ -122,7 +122,13 @@ class FinanceReportPartyStatementTest {
                 sql.contains("AT TIME ZONE 'Asia/Shanghai'")
                         && sql.contains("opening.amount+SUM(flow.in_amount-flow.out_amount) OVER")
                         && sql.contains("FROM windowed")
-                        && sql.contains("WHERE CAST(:keyword AS text) IS NULL")
+                        && java.util.regex.Pattern.compile(
+                                "FROM windowed\\s+WHERE\\s*\\(?\\s*CAST\\(:keyword AS text\\) IS NULL")
+                                .matcher(sql).find()
+                        && sql.indexOf("opening.amount+SUM(flow.in_amount-flow.out_amount) OVER")
+                                < sql.indexOf("), filtered AS")
+                        && sql.indexOf("CAST(:keyword AS text)") > sql.indexOf("), filtered AS")
+                        && sql.indexOf("CAST(:billNoFilter AS text)") > sql.indexOf("), filtered AS")
                         && sql.contains("ORDER BY sort_bill_date,sort_posting_seq")));
     }
 

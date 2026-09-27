@@ -77,7 +77,8 @@ class _FinishedTaskApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.contains('production-finished-in')) {
+    // 2026-09-25 单号列统一：单号 facets 请求同前缀，只记录列表请求。
+    if (path.contains('production-finished-in') && !path.contains('facets')) {
       lastQuery = query == null ? null : Map<String, dynamic>.from(query);
       return {
         'items': [

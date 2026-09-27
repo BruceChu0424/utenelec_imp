@@ -7,6 +7,7 @@
 // 供既有单回填/保存透传），单位列紧跟数量之后。
 // purchaseGridColumns：货品/数量/单价/金额 四列。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_values.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
@@ -139,6 +140,80 @@ class PurchaseGridRow extends EditableGridRow
           (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0),
     );
     amountExactNotifier.value = exactLineAmountText(qty.text, price.text);
+  }
+
+  Map<String, TextEditingController> get _draftTextControllers => {
+    'qty': qty,
+    'weight': weight,
+    'price': price,
+    'remark': remark,
+  };
+
+  Iterable<Listenable> get draftListenables => [
+    ..._draftTextControllers.values,
+    goodsNotifier,
+    stockPlaceNotifier,
+    supplierIdNotifier,
+    currencyIdNotifier,
+    settlementMethodIdNotifier,
+    termsAutofilledNotifier,
+    exchangeRate,
+    taxRate,
+  ];
+
+  Map<String, dynamic> exportDraft() => {
+    'text': draftTextValues(_draftTextControllers),
+    'goods': draftGoods(goods),
+    'stockPlace': stockPlaceNotifier.value,
+    'unitRate': unitRate,
+    'upstreamItemId': upstreamItemId,
+    'sourceDocNo': sourceDocNo,
+    'sourceRequestNo': sourceRequestNo,
+    'sourceRequestId': sourceRequestId,
+    'colorId': colorId,
+    'unitId': unitId,
+    'supplierId': supplierId,
+    'sourceLocked': sourceLocked,
+    'maxQty': maxQty,
+    'upstreamItemIds': [...upstreamItemIds],
+    'commercial': exportCommercialDraft(),
+    'sourceDocs': [
+      for (final source in sourceDocs)
+        {
+          'requestItemId': source.requestItemId,
+          'requestId': source.requestId,
+          'billNo': source.billNo,
+        },
+    ],
+  };
+
+  factory PurchaseGridRow.fromDraft(Map<String, dynamic> data) {
+    final row = PurchaseGridRow(sourceLocked: data['sourceLocked'] == true)
+      ..goods = restoreDraftGoods(data['goods'])
+      ..stockPlaceNotifier.value = data['stockPlace'] as String?
+      ..unitRate = (data['unitRate'] as num?)?.toDouble()
+      ..upstreamItemId = data['upstreamItemId'] as String?
+      ..sourceDocNo = data['sourceDocNo'] as String?
+      ..sourceRequestNo = data['sourceRequestNo'] as String?
+      ..sourceRequestId = data['sourceRequestId'] as String?
+      ..colorId = data['colorId'] as String?
+      ..unitId = data['unitId'] as String?
+      ..supplierId = data['supplierId'] as String?;
+    restoreDraftTextValues(row._draftTextControllers, draftMap(data['text']));
+    row.maxQty = (data['maxQty'] as num?)?.toDouble();
+    row.upstreamItemIds = draftStrings(data['upstreamItemIds']);
+    row.sourceDocs = draftMaps(
+      data['sourceDocs'],
+    ).map(PurchaseSourceRequestRef.fromJson).toList();
+    row.restoreCommercialDraft(
+      draftMap(data['commercial']),
+      price: row.price,
+      supplier: row.supplierIdNotifier,
+      currentGoodsId: () => row.goods?.id,
+      currentColorId: () => row.colorId,
+      currentUnitId: () => row.unitId,
+    );
+    return row;
   }
 
   /// 深拷贝（明细复制/粘贴用）：拷用户录入（数量/重量/单价/行供应商/行级商业条款/

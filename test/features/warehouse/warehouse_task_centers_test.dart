@@ -245,7 +245,12 @@ void main() {
     expect(find.text('新建其它出库'), findsNothing);
     expect(find.text('在上方选择分类后开始办理'), findsOneWidget);
     // 2026-09-03 分类范式：先选小类段（如「草稿」）才加载列表与「共 N 条」总结。
-    await tester.tap(find.text('草稿'));
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('stock-doc-segment-status-OTHER_OUT')),
+        matching: find.text('草稿'),
+      ),
+    );
     await tester.pump();
     await tester.pump();
     expect(find.text('共 0 条 · 双击办理'), findsOneWidget);

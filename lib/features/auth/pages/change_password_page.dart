@@ -18,7 +18,6 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/providers/session_provider.dart';
-import '../../../shared/repositories/public_settings_repository.dart';
 
 class ChangePasswordPage extends ConsumerStatefulWidget {
   const ChangePasswordPage({super.key, this.forced = false, this.returnTo});
@@ -93,10 +92,6 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    // 最短长度以服务端「密码最短长度」为准；拉取中/失败时按兜底默认值提示。
-    final minLength =
-        ref.watch(publicSettingsProvider).valueOrNull?.passwordMinLength ??
-        PublicSettings.defaultPasswordMinLength;
     return PopScope(
       canPop: !widget.forced,
       child: Scaffold(
@@ -145,7 +140,7 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
                               ),
                               const SizedBox(height: UtenSpacing.s4),
                               Text(
-                                '密码至少 $minLength 位，需同时包含字母和数字',
+                                '密码不能为空',
                                 key: const Key('change-password-rule'),
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: theme.colorScheme.onSurfaceVariant,
@@ -167,10 +162,7 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
                                 label: '新密码',
                                 isPassword: true,
                                 textInputAction: TextInputAction.next,
-                                validator: (v) => InputValidators.password(
-                                  v,
-                                  minLength: minLength,
-                                ),
+                                validator: InputValidators.password,
                               ),
                               const SizedBox(height: UtenSpacing.s12),
                               UtenInput(

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_field_codec.dart';
 
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
@@ -15,7 +18,8 @@ Future<ProductionOverproductionRateRequest?> showProductionRateRequestDialog(
   final result = await showDialog<ProductionOverproductionRateRequest>(
     context: context,
     barrierDismissible: false,
-    builder: (_) => _RateRequestDialog(
+    builder: (_) => ProductionOverproductionRateRequestEditor(
+      inDialog: true,
       source: source,
       onViewPending: (id) => pendingToView = id,
     ),
@@ -28,23 +32,124 @@ Future<ProductionOverproductionRateRequest?> showProductionRateRequestDialog(
   return result;
 }
 
-class _RateRequestDialog extends ConsumerStatefulWidget {
-  const _RateRequestDialog({required this.source, required this.onViewPending});
-  final ProductionOverproductionRateContext source;
-  final ValueChanged<String> onViewPending;
+class ProductionOverproductionRateRequestEditor extends ConsumerStatefulWidget {
+  const ProductionOverproductionRateRequestEditor({
+    super.key,
+    this.source,
+    this.onViewPending,
+    this.segmentId,
+    this.inDialog = false,
+  });
+  static const route = '/production/overproduction-rate-requests/new';
+  final ProductionOverproductionRateContext? source;
+  final ValueChanged<String>? onViewPending;
+  final String? segmentId;
+  final bool inDialog;
   @override
-  ConsumerState<_RateRequestDialog> createState() => _RateRequestDialogState();
+  ConsumerState<ProductionOverproductionRateRequestEditor> createState() =>
+      _RateRequestEditorState();
 }
 
-class _RateRequestDialogState extends ConsumerState<_RateRequestDialog> {
+class _RateRequestEditorState
+    extends ConsumerState<ProductionOverproductionRateRequestEditor>
+    with FormDraftMixin<ProductionOverproductionRateRequestEditor> {
   final _rate = TextEditingController();
   final _reason = TextEditingController();
   bool _busy = false;
   bool _refreshing = false;
   bool _contextNeedsRefresh = false;
-  late ProductionOverproductionRateContext _source = widget.source;
+  late ProductionOverproductionRateContext _source =
+      widget.source ??
+      ProductionOverproductionRateContext({
+        'segmentId': widget.segmentId ?? '',
+        'rateVersion': 0,
+        'canSubmit': false,
+      });
   String? _error;
   bool get _working => _busy || _refreshing;
+  bool _uncertain = false;
+  @override
+  bool get formDraftEnabled => _source.segmentId.isNotEmpty;
+  @override
+  bool get formDraftBusy => _working;
+  @override
+  bool get formDraftUseCurrentRoute => false;
+  @override
+  bool get formDraftUsesRouterGuard => !widget.inDialog;
+  @override
+  bool get formDraftCanReplaySubmission => true;
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftCatalog.productionRate.spec(
+    title: '申请调整允许超产比例',
+    route: Uri(
+      path: ProductionOverproductionRateRequestEditor.route,
+      queryParameters: {'segmentId': _source.segmentId},
+    ).toString(),
+  );
+  @override
+  Iterable<Listenable> get formDraftListenables => [_rate, _reason];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'rate': _rate.text,
+    'reason': _reason.text,
+    'source': _source.data,
+    'uncertain': _uncertain,
+    'contextNeedsRefresh': _contextNeedsRefresh,
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    final source = ProductionOverproductionRateContext(
+      draftMap(data['source']),
+    );
+    if (source.segmentId != _source.segmentId) {
+      throw const FormatException('原车间任务来源不一致');
+    }
+    _rate.text = draftText(data, 'rate');
+    _reason.text = draftText(data, 'reason');
+    _uncertain = data['uncertain'] == true;
+    _contextNeedsRefresh =
+        data['contextNeedsRefresh'] == true ||
+        (!_uncertain &&
+            (source.rateVersion != _source.rateVersion ||
+                source.requestGeneration != _source.requestGeneration));
+    if (_uncertain) _source = source;
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (widget.source == null) await _refreshContext();
+      if (mounted) await initializeFormDraft();
+    });
+  }
+
+  Future<void> _close([ProductionOverproductionRateRequest? result]) async {
+    if (result == null && !await confirmFormDraftExit()) return;
+    if (!mounted) return;
+    if (Navigator.of(context).canPop()) {
+      Navigator.pop(context, result);
+    } else {
+      context.go(
+        result == null
+            ? RouteName.productionWorkshopTasks
+            : RoutePath.productionOverproductionRateRequest(result.id),
+      );
+    }
+  }
+
+  Future<void> _viewPending() async {
+    if (!await confirmFormDraftExit() || !mounted) return;
+    final id = _source.pendingRequestId!;
+    if (widget.onViewPending case final callback?) {
+      callback(id);
+      Navigator.pop(context);
+    } else {
+      context.go(RoutePath.productionOverproductionRateRequest(id));
+    }
+  }
+
   @override
   void dispose() {
     _rate.dispose();
@@ -72,14 +177,21 @@ class _RateRequestDialogState extends ConsumerState<_RateRequestDialog> {
       _error = null;
     });
     try {
-      final request = await ref
-          .read(productionOverproductionRateRepositoryProvider)
-          .submit(_source, percentage / 100, _reason.text.trim());
-      if (mounted) Navigator.pop(context, request);
+      _uncertain = true;
+      final request = await runFormDraftSubmission(
+        () => ref
+            .read(productionOverproductionRateRepositoryProvider)
+            .submit(_source, percentage / 100, _reason.text.trim()),
+      );
+      await completeFormDraft();
+      if (mounted) await _close(request);
     } on ApiException catch (error) {
       if (mounted) {
         setState(() {
           _error = error.message;
+          _uncertain =
+              error.code != 'CONFLICT' &&
+              (error.httpStatus == null || error.httpStatus! >= 500);
           _contextNeedsRefresh =
               error.code == 'CONFLICT' || error.httpStatus == 409;
         });
@@ -92,7 +204,11 @@ class _RateRequestDialogState extends ConsumerState<_RateRequestDialog> {
   }
 
   Future<void> _refreshContext() async {
-    if (_working) return;
+    if (_working || _uncertain) return;
+    if (_source.segmentId.isEmpty) {
+      setState(() => _error = '缺少原车间任务，请从我的车间任务进入申请。');
+      return;
+    }
     setState(() {
       _refreshing = true;
       _contextNeedsRefresh = true;
@@ -121,85 +237,82 @@ class _RateRequestDialogState extends ConsumerState<_RateRequestDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('申请调整允许超产比例'),
-    content: SizedBox(
-      width: 480,
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '${_source.segmentCode ?? '当前工单'} · 当前有效 ${productionRateText(_source.effectiveRate)}',
-            ),
-            const SizedBox(height: 12),
-            const Text('提交后由计划部审批；审批通过前继续按当前有效比例执行。'),
-            if (_source.pendingRequestId != null)
-              TextButton(
-                onPressed: _working
-                    ? null
-                    : () {
-                        widget.onViewPending(_source.pendingRequestId!);
-                        Navigator.pop(context);
-                      },
-                child: Text(
-                  '已有 ${productionRateText(_source.pendingRate)} 待审批 · 查看原申请',
-                ),
-              )
-            else if (!_source.canSubmit)
-              const Text('当前工单不能提交比例申请，请核对任务状态和权限。'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _rate,
-              enabled: !_working,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const UtenInputDecoration(
-                InputDecoration(labelText: '申请比例', suffixText: '%'),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _reason,
-              enabled: !_working,
-              minLines: 2,
-              maxLines: 4,
-              decoration: const UtenInputDecoration(
-                InputDecoration(labelText: '申请原因'),
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
+  Widget build(BuildContext context) => withFormDraft(
+    AlertDialog(
+      title: const Text('申请调整允许超产比例'),
+      content: SizedBox(
+        width: 480,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               Text(
-                _error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+                '${_source.segmentCode ?? '当前工单'} · 当前有效 ${productionRateText(_source.effectiveRate)}',
               ),
+              const SizedBox(height: 12),
+              const Text('提交后由计划部审批；审批通过前继续按当前有效比例执行。'),
+              if (_source.pendingRequestId != null)
+                TextButton(
+                  onPressed: _working ? null : _viewPending,
+                  child: Text(
+                    '已有 ${productionRateText(_source.pendingRate)} 待审批 · 查看原申请',
+                  ),
+                )
+              else if (!_source.canSubmit)
+                const Text('当前工单不能提交比例申请，请核对任务状态和权限。'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _rate,
+                enabled: !_working && !_uncertain,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const UtenInputDecoration(
+                  InputDecoration(labelText: '申请比例', suffixText: '%'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _reason,
+                enabled: !_working && !_uncertain,
+                minLines: 2,
+                maxLines: 4,
+                decoration: const UtenInputDecoration(
+                  InputDecoration(labelText: '申请原因'),
+                ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
+      actions: [
+        TextButton(
+          onPressed: _working ? null : _close,
+          child: const Text('取消'),
+        ),
+        TextButton(
+          onPressed: _working || _uncertain ? null : _refreshContext,
+          child: Text(_refreshing ? '正在核对' : '重新核对当前比例'),
+        ),
+        FilledButton(
+          onPressed:
+              _working ||
+                  _contextNeedsRefresh ||
+                  !_source.canSubmit ||
+                  _source.pendingRequestId != null
+              ? null
+              : _submit,
+          child: Text(_busy ? '正在提交' : '提交申请'),
+        ),
+      ],
     ),
-    actions: [
-      TextButton(
-        onPressed: _working ? null : () => Navigator.pop(context),
-        child: const Text('取消'),
-      ),
-      TextButton(
-        onPressed: _working ? null : _refreshContext,
-        child: Text(_refreshing ? '正在核对' : '重新核对当前比例'),
-      ),
-      FilledButton(
-        onPressed:
-            _working ||
-                _contextNeedsRefresh ||
-                !_source.canSubmit ||
-                _source.pendingRequestId != null
-            ? null
-            : _submit,
-        child: Text(_busy ? '正在提交' : '提交申请'),
-      ),
-    ],
   );
 }

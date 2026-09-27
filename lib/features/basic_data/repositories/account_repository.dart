@@ -18,6 +18,7 @@ abstract final class AccountEndpoints {
   static const balanceAdjustmentBatch =
       '/finance/account-balance-adjustments/batch';
   static const statement = '/finance/reports/account/statement';
+  static const statementFacets = '$statement/facets'; // 2026-09-25 单号列统一
   static String one(String id) => '$base/$id';
   static String warning(String id) => '${one(id)}/warning';
 }
@@ -54,6 +55,15 @@ abstract interface class AccountRepository {
     String? keyword,
     int page = 1,
     int size = 50,
+    String? billNo,
+  });
+
+  /// 账户流水单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径。
+  Future<List<MasterFacetBucket>> statementBillNoFacets({
+    required String accountId,
+    required String dateFrom,
+    required String dateTo,
+    String? keyword,
   });
 
   Future<AccountBalanceAdjustmentBatchResult> adjustBalances({
@@ -154,6 +164,7 @@ class DioAccountRepository implements AccountRepository {
     String? keyword,
     int page = 1,
     int size = 50,
+    String? billNo,
   }) async {
     final json = await api.get(
       AccountEndpoints.statement,
@@ -165,9 +176,31 @@ class DioAccountRepository implements AccountRepository {
           'keyword': keyword.trim(),
         'page': page,
         'size': size,
+        // 2026-09-25 单号列统一：单号表头值筛选（滚动余额顺序固定，不做排序）。
+        if (billNo != null && billNo.trim().isNotEmpty) 'billNo': billNo.trim(),
       },
     );
     return AccountStatementPage.fromJson(json);
+  }
+
+  @override
+  Future<List<MasterFacetBucket>> statementBillNoFacets({
+    required String accountId,
+    required String dateFrom,
+    required String dateTo,
+    String? keyword,
+  }) async {
+    final json = await api.get(
+      AccountEndpoints.statementFacets,
+      query: <String, dynamic>{
+        'accountId': accountId,
+        'dateFrom': dateFrom,
+        'dateTo': dateTo,
+        if (keyword != null && keyword.trim().isNotEmpty)
+          'keyword': keyword.trim(),
+      },
+    );
+    return parseFacetBuckets(json, 'billNo');
   }
 
   @override

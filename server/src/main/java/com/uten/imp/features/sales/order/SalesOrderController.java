@@ -52,8 +52,26 @@ public class SalesOrderController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
-        return service.list(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId), page, size, sort, order);
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String billNo) {
+        return service.list(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId, billNo), page, size, sort, order);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
+    @GetMapping("/facets")
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) UUID clientId,
+            @RequestParam(required = false) Short status,
+            @RequestParam(required = false) Boolean closed,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) java.util.List<Short> chain,
+            @RequestParam(required = false) UUID sellerId,
+            @RequestParam(required = false) String chainGroup,
+            @RequestParam(required = false) UUID currencyId) {
+        return service.facets(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId, null));
     }
 
     /** 工作台统计卡：待生产 / 生产中 / 待发货 / 本月完成（同列表数据范围）。 */
@@ -72,8 +90,22 @@ public class SalesOrderController {
             @RequestParam(defaultValue = "") String stage,
             @RequestParam(defaultValue = "") String keyword,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String billNo) {
+        return service.progress(page, size, stage, keyword, dateFrom, dateTo, sort, order, billNo);
+    }
+
+    /** 订单进度订单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
+    @GetMapping("/progress/facets")
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public java.util.Map<String, List<java.util.Map<String, Object>>> progressFacets(
+            @RequestParam(defaultValue = "") String stage,
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.progress(page, size, stage, keyword, dateFrom, dateTo);
+        return service.progressFacets(stage, keyword, dateFrom, dateTo);
     }
 
     /** 订单进度各阶段计数：顶部筛选卡（待完成/待排产/生产中/可发货/已发货）的全量口径。 */

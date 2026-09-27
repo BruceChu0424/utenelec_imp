@@ -15,6 +15,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_values.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -104,7 +106,8 @@ class PurchaseDocEditPage extends ConsumerStatefulWidget {
       _PurchaseDocEditPageState();
 }
 
-class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
+class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
+    with FormDraftMixin<PurchaseDocEditPage> {
   PurchaseDocConfig get _cfg => PurchaseDocConfig.by(widget.docType);
 
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
@@ -141,6 +144,80 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
   String? _createdAt;
+
+  @override
+  bool get formDraftEnabled => widget.id == null;
+
+  @override
+  bool get formDraftBusy => _saving;
+
+  @override
+  bool get formDraftCanReplaySubmission => _draftCreatedId != null;
+
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftSpec(
+    title: _cfg.label,
+    module: BadgeModule.purchase,
+    route: '/purchase/${_cfg.type.pathSegment}/new',
+    permission: _cfg.createPerm!,
+    draftKind: _cfg.draftKind?.name,
+  );
+
+  Map<String, TextEditingController> get _draftHeaderText => {
+    'remark': _remark,
+    'rate': _rate,
+    'taxRate': _taxRate,
+  };
+
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    ..._draftHeaderText.values,
+    _grid,
+    for (final row in _grid.rows) ...row.draftListenables,
+  ];
+
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'text': draftTextValues(_draftHeaderText),
+    'billDate': _billDate.toIso8601String(),
+    'supplierId': _supplierId,
+    'warehouseId': _warehouseId,
+    'departmentId': _departmentId,
+    'currencyId': _currencyId,
+    'settlementMethodId': _settlementMethodId,
+    'applicantId': _applicantId,
+    'purchaserId': _purchaserId,
+    'senderId': _senderId,
+    'receiverId': _receiverId,
+    'needDate': _needDate?.toIso8601String(),
+    'deliverDate': _deliverDate?.toIso8601String(),
+    'employees': draftEmployees(_empCache),
+    'rows': draftGridRows(_grid, (row) => row.exportDraft()),
+    'createdDocId': _draftCreatedId,
+  };
+
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    restoreDraftTextValues(_draftHeaderText, draftMap(data['text']));
+    _billDate =
+        DateTime.tryParse(data['billDate'] as String? ?? '') ?? _billDate;
+    _supplierId = data['supplierId'] as String?;
+    _warehouseId = data['warehouseId'] as String?;
+    _departmentId = data['departmentId'] as String?;
+    _currencyId = data['currencyId'] as String?;
+    _settlementMethodId = data['settlementMethodId'] as String?;
+    _applicantId = data['applicantId'] as String?;
+    _purchaserId = data['purchaserId'] as String?;
+    _senderId = data['senderId'] as String?;
+    _receiverId = data['receiverId'] as String?;
+    _needDate = DateTime.tryParse(data['needDate'] as String? ?? '');
+    _deliverDate = DateTime.tryParse(data['deliverDate'] as String? ?? '');
+    restoreDraftEmployees(_empCache, data['employees']);
+    restoreDraftGrid(_grid, data['rows'], PurchaseGridRow.fromDraft);
+    _draftCreatedId = data['createdDocId'] as String?;
+  }
+
+  String? _draftCreatedId;
 
   @override
   void initState() {
@@ -228,7 +305,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
             .map((e) => e.goodsId)
             .whereType<String>()
             .toSet();
-        await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
+        await ref
+            .read(masterNameServiceProvider)
+            .loadGoodsNamesWithCodes(goodsIds);
         await _preloadEmployees([
           d.applicantId,
           d.purchaserId,
@@ -263,12 +342,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
           final upstreamItemId =
               it.receiptItemId ?? it.orderItemId ?? it.requestItemId;
           final row = PurchaseGridRow(sourceLocked: upstreamItemId != null)
-            ..goods = it.goodsId == null
-                ? null
-                : GoodsOption(
-                    id: it.goodsId!,
-                    name: ref.read(masterNameServiceProvider).goods(it.goodsId),
-                  )
+            // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
+            ..goods = ref
+                .read(masterNameServiceProvider)
+                .goodsOptionOf(it.goodsId)
             // 优先级与 _linkItemKey 一致（receipt > order > request），保证 round-trip。
             ..upstreamItemId = upstreamItemId
             ..colorId = it.colorId
@@ -292,6 +369,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       }
     }
     if (_grid.isEmpty) _grid.addRow(PurchaseGridRow());
+    if (mounted && widget.id == null) await initializeFormDraft();
     if (mounted) setState(() => _loading = false);
   }
 
@@ -436,16 +514,17 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         .where((id) => id.isNotEmpty)
         .toSet();
     if (goodsIds.isNotEmpty) {
-      await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
+      await ref
+          .read(masterNameServiceProvider)
+          .loadGoodsNamesWithCodes(goodsIds);
     }
     if (!mounted) return;
     final rows = <PurchaseGridRow>[];
     for (final li in result.items) {
       if (li.goodsId.isEmpty) continue;
-      final goods = GoodsOption(
-        id: li.goodsId,
-        name: ref.read(masterNameServiceProvider).goods(li.goodsId),
-      );
+      final goods = ref
+          .read(masterNameServiceProvider)
+          .goodsOptionOf(li.goodsId)!;
       rows.add(PurchaseGridRow.fromLinked(li, goods));
     }
     if (widget.docType == PurchaseDocType.receipt ||
@@ -470,6 +549,16 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   }
 
   Future<void> _save() async {
+    if (widget.id == null && _draftCreatedId != null) {
+      final createdId = _draftCreatedId!;
+      await completeFormDraft();
+      if (mounted) {
+        context.replace(
+          RoutePath.purchaseDocDetail(_cfg.type.pathSegment, createdId),
+        );
+      }
+      return;
+    }
     if (_loading || _saving || (widget.id != null && !_existingEditable)) {
       return;
     }
@@ -601,11 +690,18 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     };
     setState(() => _saving = true);
     try {
+      if (widget.id == null) await saveFormDraftNow();
       final repo = ref.read(purchaseRepositoryProvider(widget.docType));
       final d = widget.id == null
-          ? await repo.create(body)
+          ? await runFormDraftSubmission(() => repo.create(body))
           : await repo.update(widget.id!, body);
       if (!mounted) return;
+      if (widget.id == null) {
+        setState(() => _draftCreatedId = d.id);
+        await checkpointFormDraftAfterCreation();
+        await completeFormDraft();
+        if (!mounted) return;
+      }
       context.appSuccess(switch (widget.docType) {
         PurchaseDocType.order => '订货单已保存', // 防御分支：订货已走专属编辑页
         PurchaseDocType.receipt => '采购收货单已保存；下一步请在单据详情点击「审核」',
@@ -666,7 +762,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => withFormDraft(_buildDraftPage(context));
+
+  Widget _buildDraftPage(BuildContext context) {
     final names = ref.watch(masterNameServiceProvider);
     final List<ReferenceMethodOption> settlementMethods =
         ref.watch(settlementMethodOptionsProvider).valueOrNull ??

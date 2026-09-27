@@ -37,6 +37,7 @@ class StockDocDetailPeopleNameTest {
     private final StockDocAccessPolicy access = mock(StockDocAccessPolicy.class);
     private final EmployeeNameResolver employeeNames = mock(EmployeeNameResolver.class);
     private final EntityManager entityManager = stubbedEntityManager();
+    private final Query materialRequestNumbers = mock(Query.class);
 
     @Test
     void detailCarriesServerResolvedWorkerAndMakerNames() {
@@ -48,12 +49,15 @@ class StockDocDetailPeopleNameTest {
         stubDocumentReads(document);
         when(employeeNames.nameOf(worker)).thenReturn("石磊");
         when(employeeNames.nameOf(maker)).thenReturn("朱振炜");
+        when(materialRequestNumbers.getSingleResult()).thenReturn("LQ00000001、LQ00000002");
 
         var detail = service().detail(document.getId());
 
         assertEquals(worker, detail.getWorkerId());
         assertEquals("石磊", detail.getWorkerName());
         assertEquals("朱振炜", detail.getMakerName());
+        assertEquals("SL-TEST-001", detail.getBillNo());
+        assertEquals("LQ00000001、LQ00000002", detail.getMaterialRequestNo());
     }
 
     @Test
@@ -65,12 +69,18 @@ class StockDocDetailPeopleNameTest {
 
         assertNull(detail.getWorkerId());
         assertNull(detail.getWorkerName());
+        assertNull(detail.getMaterialRequestNo());
     }
 
     private void stubDocumentReads(StockDocument document) {
         when(documents.findById(document.getId())).thenReturn(Optional.of(document));
         when(items.findByDocIdOrderByLineNoAsc(document.getId())).thenReturn(List.of());
         when(balanceAdjustmentCommands.existsByStockDocumentId(document.getId())).thenReturn(false);
+        // SQL string_agg yields a String or NULL, independently of the Boolean access checks.
+        when(materialRequestNumbers.setParameter(anyString(), any())).thenReturn(materialRequestNumbers);
+        when(materialRequestNumbers.getSingleResult()).thenReturn(null);
+        when(entityManager.createNativeQuery(contains("SELECT string_agg(DISTINCT request.request_no")))
+                .thenReturn(materialRequestNumbers);
     }
 
     private StockDocService service() {

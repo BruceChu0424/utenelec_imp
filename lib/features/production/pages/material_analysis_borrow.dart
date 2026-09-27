@@ -408,9 +408,7 @@ abstract class _MaterialAnalysisBorrowState
       if (!mounted || supplied == null) return;
       final refreshed = supplied.analysisId == currentId
           ? supplied
-          : await ref
-                .read(productionPlanRepositoryProvider)
-                .materialAnalysisDetail(currentId);
+          : await _readMaterialAnalysisDetail(currentId);
       if (!mounted) return;
       setState(() => _applyAnalysis(refreshed));
       refreshAfterProductionPlanGenerated(ref);
@@ -601,9 +599,7 @@ abstract class _MaterialAnalysisBorrowState
       if (!mounted) return;
       final currentView = currentIsSource
           ? sourceView
-          : await ref
-                .read(productionPlanRepositoryProvider)
-                .materialAnalysisDetail(analysis.analysisId);
+          : await _readMaterialAnalysisDetail(analysis.analysisId);
       if (!mounted) return;
       setState(() {
         _borrowing = false;

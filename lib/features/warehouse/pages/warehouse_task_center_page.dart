@@ -35,6 +35,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/drafts/form_draft_category.dart';
+import '../widgets/warehouse_form_draft_categories.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
 import '../config/warehouse_document_history_config.dart';
 import '../pages/warehouse_draw_task_center_page.dart';
@@ -143,29 +145,51 @@ class _WarehouseTaskCenterPageState
 
     // 大类计数与原 hub 四张卡同源（徽章汇总一次带回；未到/无权为 null 不渲染）。
     final groups = <_GroupSpec>[
+      if (canOpen(RouteName.basicinfoWarehouse))
+        _GroupSpec(
+          value: 'drafts',
+          label: '资料草稿',
+          count: ref.watch(
+            formDraftCategoryVisibleCountProvider(
+              warehouseMasterFormDraftScope,
+            ),
+          ),
+        ),
       if (canOutbound)
         _GroupSpec(
           value: 'outbound',
           label: '出库',
-          count: ref.watch(
-            badgeEntryTodoProvider(BadgeEntry.warehouseOutboundCenter),
-          ),
+          count:
+              (ref.watch(
+                badgeEntryTodoProvider(BadgeEntry.warehouseOutboundCenter),
+              )) +
+              ref.watch(
+                formDraftCategoryCountProvider(warehouseOutboundAllDraftScope),
+              ),
         ),
       if (canInbound)
         _GroupSpec(
           value: 'inbound',
           label: '入库',
-          count: ref.watch(
-            badgeEntryTodoProvider(BadgeEntry.warehouseInboundCenter),
-          ),
+          count:
+              (ref.watch(
+                badgeEntryTodoProvider(BadgeEntry.warehouseInboundCenter),
+              )) +
+              ref.watch(
+                formDraftCategoryCountProvider(warehouseInboundAllDraftScope),
+              ),
         ),
       if (canDraw)
         _GroupSpec(
           value: 'draw',
           label: '生产领料',
-          count: ref.watch(
-            badgeEntryTodoProvider(BadgeEntry.warehouseDrawCenter),
-          ),
+          count:
+              (ref.watch(
+                badgeEntryTodoProvider(BadgeEntry.warehouseDrawCenter),
+              )) +
+              ref.watch(
+                formDraftCategoryCountProvider(warehouseDrawAllDraftScope),
+              ),
         ),
       if (canQuality)
         _GroupSpec(
@@ -184,25 +208,30 @@ class _WarehouseTaskCenterPageState
 
     // 大类行组件：选中大类后作为 externalHeader 传入正文，由分段视图挂进
     // 自己的折叠头一起随页滚走（2026-09-24「表格完全置顶」）。
-    final categoryBar = UtenFilterToolbar<String>(
-      segmentsKey: const Key('warehouse-task-center-groups'),
-      searchKey: const Key('warehouse-task-center-search'),
-      segments: [
-        for (final g in groups)
-          UtenFilterSegment(
-            value: g.value,
-            label: g.label,
-            count: g.count,
-            // 大类计数只有待办语义（与合并前三张卡角标同口径）；
-            // 浏览型大类传 null。
-            countForm: UtenSegmentCountForm.actionable,
-            inProgressCount: g.inProgressCount,
-          ),
+    final categoryBar = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UtenFilterToolbar<String>(
+          segmentsKey: const Key('warehouse-task-center-groups'),
+          searchKey: const Key('warehouse-task-center-search'),
+          segments: [
+            for (final g in groups)
+              UtenFilterSegment(
+                value: g.value,
+                label: g.label,
+                count: g.count,
+                // 大类计数只有待办语义（与合并前三张卡角标同口径）；
+                // 浏览型大类传 null。
+                countForm: UtenSegmentCountForm.actionable,
+                inProgressCount: g.inProgressCount,
+              ),
+          ],
+          selected: _group == null ? const <String>{} : {_group!},
+          onSelectionChanged: (value) => setState(() => _group = value),
+          searchHint: '搜索单号 / 客户 / 供应商 / 委外商 / 货品',
+          onSearchChanged: (value) => setState(() => _keyword = value.trim()),
+        ),
       ],
-      selected: _group == null ? const <String>{} : {_group!},
-      onSelectionChanged: (value) => setState(() => _group = value),
-      searchHint: '搜索单号 / 客户 / 供应商 / 委外商 / 货品',
-      onSearchChanged: (value) => setState(() => _keyword = value.trim()),
     );
 
     if (groups.isEmpty) {
@@ -260,6 +289,11 @@ class _WarehouseTaskCenterPageState
   /// 当前大类的正文：三张方向任务中心与品质结果页以嵌入态整体复用
   ///（小类行、表格、办理动作与独立页完全一致）；委外两类为时间门控历史视图。
   Widget _buildGroupBody(String group, Widget categoryBar) => switch (group) {
+    'drafts' => WarehouseFormDraftCategory(
+      scope: warehouseMasterFormDraftScope,
+      header: categoryBar,
+      search: _keyword,
+    ),
     'outbound' => WarehouseOutboundTaskCenterPage(
       embedded: true,
       externalKeyword: _keyword,

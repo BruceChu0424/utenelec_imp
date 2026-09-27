@@ -13,6 +13,7 @@ import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import '../auth/permissions.dart';
 import '../badges/badge_registry.dart';
+import '../drafts/form_draft_category.dart';
 import 'draft_counts_provider.dart';
 
 /// 分桶键(与后端 DocumentStatusCountQueryService 逐字一致)。
@@ -49,6 +50,45 @@ class DocumentStatusScope {
   @override
   int get hashCode => Object.hash(kind, shipmentKind, docType);
 }
+
+/// 同一业务分类内的本机填写草稿范围，供列表与分类徽章共用。
+FormDraftCategoryScope formDraftScopeForDocumentStatus(
+  DocumentStatusScope scope,
+) {
+  final docType = scope.docType;
+  if (scope.kind == DraftDocKind.stockDocument && docType != null) {
+    return FormDraftCategoryScope(
+      kind: switch (docType) {
+        'TRANSFER' => DraftDocKind.stockTransfer.name,
+        'CHECK' => DraftDocKind.stockCheck.name,
+        _ => DraftDocKind.stockDocument.name,
+      },
+      routePath: '/warehouse/$docType/new',
+    );
+  }
+  return FormDraftCategoryScope(
+    kind: scope.kind.name,
+    routePath: scope.shipmentKind == 'DIRECT_CUSTOMER'
+        ? '/sales/customer-shipments/new'
+        : null,
+  );
+}
+
+/// 原始服务端桶保持不变；分类列表已合并本机草稿，因此草稿红数也采用同一投影。
+final effectiveDocumentStatusCountsProvider = Provider.autoDispose
+    .family<AsyncValue<Map<String, int>>, DocumentStatusScope>((ref, scope) {
+      final server = ref.watch(documentStatusCountsProvider(scope));
+      final local = ref.watch(
+        formDraftCategoryCountProvider(formDraftScopeForDocumentStatus(scope)),
+      );
+      if (local == 0) return server;
+      final counts = server.valueOrNull;
+      return AsyncData({
+        ...?counts,
+        DocumentStatusBucket.draft:
+            (counts?[DocumentStatusBucket.draft] ?? 0) + local,
+      });
+    });
 
 /// 列表页分段计数: 桶键 → 张数。autoDispose——只在列表页打开期间存活; 不再自带 60s 轮询
 /// (ADR-108), 列表重拉时由页面 `ref.invalidate(documentStatusCountsProvider(scope))` 与列表

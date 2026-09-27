@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/finance/models/sales_order_finance_confirmation.dart';
@@ -113,12 +114,21 @@ Widget _app(
 class _EmptyConfirmationRepository
     implements SalesOrderFinanceConfirmationRepository {
   @override
+  Future<List<MasterFacetBucket>> billNoFacets({
+    bool? rejected,
+    String? keyword,
+    bool? changesOnly,
+  }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
+  @override
   Future<SalesOrderFinancePendingPage> pending({
     int page = 1,
     int size = 20,
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    String? sort,
+    String? order,
+    String? billNo,
   }) async => const SalesOrderFinancePendingPage(
     items: [],
     page: 1,

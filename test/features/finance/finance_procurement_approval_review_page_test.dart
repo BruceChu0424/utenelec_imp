@@ -8,6 +8,7 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/data_display/uten_revision_table.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/finance/models/finance_procurement_workflow.dart';
@@ -23,6 +24,11 @@ import '../../helpers/finance_claim_fixture.dart';
 import '../../helpers/badge_summary_fixture.dart';
 
 class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
+  @override
+  Future<List<MasterFacetBucket>> approvalBillNoFacets({
+    FinanceProcurementOrderType? orderType,
+    String? keyword,
+  }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   _FakeWorkflowRepo(this.reviewResult);
 
   FinanceProcurementApprovalReview reviewResult;
@@ -38,6 +44,9 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
     int size = 20,
     FinanceProcurementOrderType? orderType,
     String? keyword,
+    String? sort,
+    String? order,
+    String? billNo,
   }) async => const FinanceProcurementApprovalPage(
     items: [],
     page: 1,

@@ -34,10 +34,14 @@ public class FulfillmentWorkbenchController {
             @RequestParam(defaultValue = "") String sort,
             @RequestParam(defaultValue = "asc") String order,
             @RequestParam(defaultValue = "") String warehouseScope,
-            @RequestParam(required = false) UUID scopeWarehouseId) {
+            @RequestParam(required = false) UUID scopeWarehouseId,
+            @RequestParam Map<String, String> params) {
         // 生产领料任务中心表头排序(2026-09-24): 不传 sort 保持原排序(需求日期), 传了走白名单字段。
-        FulfillmentWorkbenchTableQuery table = sort.isBlank() ? null
-                : new FulfillmentWorkbenchTableQuery(sort, order, Map.of(), null, null, null, null);
+        // 2026-09-25 单号列统一: f.* 表头值筛选(docNo 领料单号)同样构建 table 走服务端精确过滤;
+        // 无排序也无列筛选时保持 table=null, 原默认行为一个不动。
+        boolean hasColumnFilters = params.keySet().stream().anyMatch(key -> key.startsWith("f."));
+        FulfillmentWorkbenchTableQuery table = sort.isBlank() && !hasColumnFilters ? null
+                : FulfillmentWorkbenchTableQuery.from(sort, order, params, null, null, null, null);
         // 仓库范围(ADR-115): MINE = 我负责的仓库; scopeWarehouseId = 指定仓库(含子仓)。
         return queryService.query("WAREHOUSE", status, keyword, exception, dateFrom, dateTo, page, size, table,
                 warehouseScopes.resolve(warehouseScope, scopeWarehouseId));

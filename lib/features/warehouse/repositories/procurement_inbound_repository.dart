@@ -5,11 +5,23 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
+import '../../basic_data/models/master_facet.dart';
 
 abstract interface class ProcurementInboundRepository {
   Future<PagedResult<InboundExpectation>> expectations({
     int page = 1,
     int size = 20,
+    ProcurementInboundOrderType? orderType,
+    String? keyword,
+    String? supplierId,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+    String? sort,
+    String? order,
+    String? billNo,
+  });
+
+  /// 预计到货订货单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径。
+  Future<List<MasterFacetBucket>> expectationBillNoFacets({
     ProcurementInboundOrderType? orderType,
     String? keyword,
     String? supplierId,
@@ -24,6 +36,21 @@ abstract interface class ProcurementInboundRepository {
   Future<PagedResult<ProcurementArrivalException>> warehouseExceptions({
     int page = 1,
     int size = 20,
+    String? keyword,
+    bool history = false,
+    String? supplierId,
+    String? warehouseId,
+    String? status,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+    String? sort,
+    String? order,
+    String? receiptBillNo,
+    String? orderBillNo,
+  });
+
+  /// 到货异常单号列值筛选桶（2026-09-25 单号列统一）：{receiptBillNo, orderBillNo}
+  /// 两组桶，与列表同一过滤口径。
+  Future<Map<String, List<MasterFacetBucket>>> arrivalExceptionBillNoFacets({
     String? keyword,
     bool history = false,
     String? supplierId,
@@ -111,6 +138,9 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
     String? keyword,
     String? supplierId,
     WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+    String? sort,
+    String? order,
+    String? billNo,
   }) async {
     final kw = keyword?.trim();
     final json = await api.get(
@@ -123,9 +153,34 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
         if (supplierId != null && supplierId.isNotEmpty)
           'supplierId': supplierId,
         ...scope.queryParameters,
+        // 2026-09-25 单号列统一：表头排序 + 订货单号表头值筛选。
+        if (sort != null && sort.isNotEmpty) 'sort': sort,
+        if (order != null && order.isNotEmpty) 'order': order,
+        if (billNo != null && billNo.trim().isNotEmpty) 'billNo': billNo.trim(),
       },
     );
     return PagedResult.fromJson(json, InboundExpectation.fromJson);
+  }
+
+  @override
+  Future<List<MasterFacetBucket>> expectationBillNoFacets({
+    ProcurementInboundOrderType? orderType,
+    String? keyword,
+    String? supplierId,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+  }) async {
+    final kw = keyword?.trim();
+    final json = await api.get(
+      ApiEndpoints.warehouseInboundExpectationFacets,
+      query: {
+        if (orderType != null) 'orderType': orderType.name.toUpperCase(),
+        if (kw != null && kw.isNotEmpty) 'keyword': kw,
+        if (supplierId != null && supplierId.isNotEmpty)
+          'supplierId': supplierId,
+        ...scope.queryParameters,
+      },
+    );
+    return parseFacetBuckets(json, 'billNo');
   }
 
   @override
@@ -152,6 +207,10 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
     String? warehouseId,
     String? status,
     WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+    String? sort,
+    String? order,
+    String? receiptBillNo,
+    String? orderBillNo,
   }) async {
     final kw = keyword?.trim();
     final json = await api.get(
@@ -167,9 +226,45 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
           'warehouseId': warehouseId,
         if (status != null && status.isNotEmpty) 'status': status,
         ...scope.queryParameters,
+        // 2026-09-25 单号列统一：表头排序 + 收货单号/订货单号表头值筛选。
+        if (sort != null && sort.isNotEmpty) 'sort': sort,
+        if (order != null && order.isNotEmpty) 'order': order,
+        if (receiptBillNo != null && receiptBillNo.trim().isNotEmpty)
+          'receiptBillNo': receiptBillNo.trim(),
+        if (orderBillNo != null && orderBillNo.trim().isNotEmpty)
+          'orderBillNo': orderBillNo.trim(),
       },
     );
     return PagedResult.fromJson(json, ProcurementArrivalException.fromJson);
+  }
+
+  @override
+  Future<Map<String, List<MasterFacetBucket>>> arrivalExceptionBillNoFacets({
+    String? keyword,
+    bool history = false,
+    String? supplierId,
+    String? warehouseId,
+    String? status,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+  }) async {
+    final kw = keyword?.trim();
+    final json = await api.get(
+      ApiEndpoints.warehouseArrivalExceptionFacets,
+      query: {
+        if (history) 'history': true,
+        if (kw != null && kw.isNotEmpty) 'keyword': kw,
+        if (supplierId != null && supplierId.isNotEmpty)
+          'supplierId': supplierId,
+        if (warehouseId != null && warehouseId.isNotEmpty)
+          'warehouseId': warehouseId,
+        if (status != null && status.isNotEmpty) 'status': status,
+        ...scope.queryParameters,
+      },
+    );
+    return {
+      'receiptBillNo': parseFacetBuckets(json, 'receiptBillNo'),
+      'orderBillNo': parseFacetBuckets(json, 'orderBillNo'),
+    };
   }
 
   @override

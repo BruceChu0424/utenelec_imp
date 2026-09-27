@@ -10,6 +10,7 @@
 // compact：分类树作为 endDrawer；medium/expanded：左树 + 右详情。
 // 文档：见 docs/数据迁移/09-供应商资料-新库与迁移.md。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -27,6 +28,7 @@ import '../widgets/master_data_table_view.dart';
 import '../widgets/master_entity_detail_pane.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/supplier_master_edit.dart';
+import '../widgets/supplier_quick_create_sheet.dart';
 import '../widgets/category_tree_search.dart';
 
 class SupplierCategoryPage extends ConsumerStatefulWidget {
@@ -53,6 +55,10 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
 
   @override
   String get shellPersistenceKey => 'basicData.supplier';
+
+  @override
+  FormDraftDescriptor get shellCategoryDraftDescriptor =>
+      FormDraftCatalog.supplierCategory;
 
   @override
   bool get shellCanCreate => ref
@@ -150,7 +156,22 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
   void shellAfterCategorySaved() => setState(() => _detailEpoch++);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FormDraftDialogResume(
+    descriptor: FormDraftCatalog.supplierQuick,
+    onResume: (_) async {
+      await showSupplierQuickCreateSheet(context, ref);
+    },
+    child: _buildMasterDraftHost(context),
+  );
+
+  Widget _buildMasterDraftHost(BuildContext context) => FormDraftDialogResume(
+    descriptor: FormDraftCatalog.supplier,
+    onResume: (parameters) =>
+        _showSupplierCreate(null, draftCategoryId: parameters['categoryId']),
+    child: _buildDraftHost(context),
+  );
+
+  Widget _buildDraftHost(BuildContext context) {
     return buildShell(
       context,
       detailPaneBuilder: (selected) =>
@@ -231,31 +252,33 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
 
   /// 新建供应商：先加载启用中的结算方式(范式同客户页)，再开表单。
   Future<void> _showSupplierCreate(
-    MasterEntityPaneController<SupplierListItem, SupplierDetail> pane,
-  ) async {
+    MasterEntityPaneController<SupplierListItem, SupplierDetail>? pane, {
+    String? draftCategoryId,
+  }) async {
     final settlementMethods = await loadSupplierSettlementMethods(context, ref);
     if (!mounted || settlementMethods == null) return;
     const iv = <String, String>{};
-    showMasterEditDialog(
+    await showMasterEditDialog(
       context: context,
+      draftSpec: FormDraftCatalog.supplier.spec(
+        title: '新增供应商',
+        categoryId: draftCategoryId ?? pane?.categoryId,
+      ),
       title: '新增供应商', // TODO(l10n): 补 arb
       fields: buildSupplierFields(context, iv, settlementMethods, ref),
       initialValues: const {'status': '使用'},
-      fixedValues: {'categoryId': pane.categoryId},
+      fixedValues: {'categoryId': (draftCategoryId ?? pane?.categoryId)},
       readOnlyKeys:
           ref.read(currentPermissionsProvider).contains(Perm.supplierStatus)
           ? null
           : const {'status'},
       onSubmit: (body) async {
-        final ok = await context.guardRun(
-          () async {
-            await ref.read(supplierRepositoryProvider).create(body);
-          },
-          success: '供应商已创建', // TODO(l10n): 补 arb
-          errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
-        );
-        if (ok) await pane.reload();
-        return ok;
+        await ref.read(supplierRepositoryProvider).create(body);
+        if (mounted) {
+          context.appSuccess('供应商已创建');
+          await pane?.reload();
+        }
+        return true;
       },
     );
   }

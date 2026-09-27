@@ -1,4 +1,4 @@
-// 公共运行时设置是前端规则的唯一来源 (ADR-110)：密码最短长度、附件单文件上限、
+// 公共运行时设置是前端规则的唯一来源 (ADR-110)：附件单文件上限、
 // 徽章轮询间隔都按服务端下发的值走；拉取失败时回到与服务端出厂默认一致的兜底值。
 import 'dart:typed_data';
 
@@ -18,16 +18,13 @@ void main() {
     final parsed = PublicSettings.fromJson(const {
       'idleTimeoutMinutes': 20,
       'auditReceiptRetentionMonths': 36,
-      'passwordMinLength': 12,
       'attachmentMaxBytes': 10485760,
       'badgePollSeconds': 90,
     });
-    expect(parsed.passwordMinLength, 12);
     expect(parsed.attachmentMaxBytes, 10485760);
     expect(parsed.badgePollSeconds, 90);
 
     final fallback = PublicSettings.fromJson(const {});
-    expect(fallback.passwordMinLength, 8);
     expect(fallback.attachmentMaxBytes, kAttachmentMaxFileBytes);
     expect(fallback.badgePollSeconds, 60);
   });
@@ -63,14 +60,12 @@ void main() {
     expect(AttachmentLimits.maxFileBytes, kAttachmentMaxFileBytes);
   });
 
-  test('密码校验按下发的最短长度，并与服务端一样拒绝超长密码', () {
-    expect(InputValidators.password('abc12345'), isNull);
-    expect(InputValidators.password('abc12345', minLength: 12), '密码至少 12 位');
-    expect(InputValidators.password('abcdefghijk1', minLength: 12), isNull);
-    expect(InputValidators.password('a1${'x' * 127}'), '密码过长');
-    expect(
-      InputValidators.password('abcdefghijkl', minLength: 12),
-      '密码需同时包含字母和数字',
-    );
+  test('密码只要求非空，不限制长度或字符组合', () {
+    for (final password in ['1', 'a', '密', '!', 'x' * 129, ' 1 ']) {
+      expect(InputValidators.password(password), isNull);
+    }
+    for (final password in [null, '', ' \t\n']) {
+      expect(InputValidators.password(password), '密码不能为空');
+    }
   });
 }

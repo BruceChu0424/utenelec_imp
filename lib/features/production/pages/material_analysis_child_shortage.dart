@@ -53,7 +53,38 @@ final class _ChildShortageLine {
 }
 
 abstract class _MaterialAnalysisChildShortageState
-    extends _MaterialAnalysisChildCascadeState {
+    extends _MaterialAnalysisMaterialTableState {
+  @override
+  Future<void> _submitPreparationGroups(
+    List<_MaterialGroup> groups, {
+    required bool append,
+  }) async {
+    final analysis = _analysis;
+    if (analysis == null || _busy || groups.isEmpty) return;
+    await _loadTableAssignmentDefaults(analysis, mandatory: true);
+    if (!mounted) return;
+    final ids = <String>{};
+    setState(() {
+      for (final group in groups) {
+        ids.addAll(group.paths.map((path) => path.materialLineId));
+        _selectedMaterialGroupKeys.add(group.key);
+        _tableUserDeselectedKeys.remove(group.key);
+        // 只预填还需安排的量；无缺口的追加从 0 开始，等待员工明确输入。
+        if (_tableGroupIssued(group)) {
+          _tableAppendQtyController(group);
+        } else {
+          _tableOrderQtyController(group);
+        }
+      }
+      _draftBudget.invalidate();
+    });
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => _PreparationOrderPage(host: this, rootLineIds: ids),
+      ),
+    );
+  }
+
   static const int _shortageDepthLimit = 10;
   static const int _shortageRowLimit = 300;
 
@@ -109,9 +140,7 @@ abstract class _MaterialAnalysisChildShortageState
       return;
     }
     try {
-      final view = await ref
-          .read(productionPlanRepositoryProvider)
-          .materialAnalysisDetail(analysisId);
+      final view = await _readMaterialAnalysisDetail(analysisId);
       if (!mounted || _busy || _hasUnsavedAnalysisEditing) return;
       setState(() {
         _applyAnalysis(view);
@@ -177,6 +206,7 @@ abstract class _MaterialAnalysisChildShortageState
   }
 
   /// 和下单前比，有没有哪一行的累计已下单量真的变多了。
+  @override
   bool _orderedSince(Map<String, double> before) {
     final analysis = _analysis;
     if (analysis == null) return false;

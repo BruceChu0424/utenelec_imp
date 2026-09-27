@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
@@ -75,7 +76,15 @@ void main() {
       expect(card.pendingCount, route == 'workshop' ? 2 : 1);
 
       await _openStatus(tester, route, 'in-progress');
-      expect(find.text('进行中 (1)'), findsOneWidget);
+      expect(_taskSegment('进行中 (1)'), findsOneWidget);
+      expect(
+        tester.widget<UtenSegmentBadgeLabel>(_taskSegment('进行中 (1)')).countForm,
+        UtenSegmentCountForm.inProgress,
+      );
+      expect(
+        tester.widget<UtenSegmentBadgeLabel>(_taskSegment('待下单')).countForm,
+        UtenSegmentCountForm.actionable,
+      );
       expect(
         find.text(route == 'workshop' ? '部分下达产品' : '部分下达物料'),
         findsOneWidget,
@@ -88,13 +97,19 @@ void main() {
         expect(find.textContaining('结构待修复产品'), findsNothing);
       }
 
-      // 完成任务从黄色进行中剔除，但仍能通过已下达页签回查历史。
-      await _filter(tester, '已下达 (2)');
+      // 进行中只包含未完成的真实任务，已下达分类退役。
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('material-analysis-task-state')),
+          matching: find.text('已下达'),
+        ),
+        findsNothing,
+      );
       expect(
         find.textContaining(route == 'workshop' ? '历史完成产品' : '已完成物料'),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(find.text('下达数量'), findsOneWidget);
+      expect(find.text('下单数量'), findsOneWidget);
 
       await tester.tap(find.byTooltip('返回').last);
       await tester.pumpAndSettle();
@@ -115,7 +130,7 @@ void main() {
     });
 
     testWidgets(
-      '$route history-only card hides both badges and opens issued history',
+      '$route history-only card hides both badges and does not pollute active tasks',
       (tester) async {
         final analysis = _analysis();
         if (route == 'workshop') {
@@ -161,13 +176,13 @@ void main() {
           findsNothing,
         );
 
-        // 没有未下达项时，卡片标题仍应让用户直接查看已下达历史。
         await _open(tester, route);
         expect(
           find.textContaining(route == 'workshop' ? '历史完成产品' : '已完成物料'),
-          findsOneWidget,
+          findsNothing,
         );
-        expect(find.text('下达数量'), findsOneWidget);
+        expect(_taskSegment('进行中 (0)'), findsOneWidget);
+        expect(find.text('当前筛选没有任务'), findsOneWidget);
         expect(requests.where((request) => request.method != 'GET'), isEmpty);
         expect(tester.takeException(), isNull);
       },
@@ -188,11 +203,11 @@ void main() {
     expect(card.pendingCount, 2);
 
     await _openStatus(tester, 'buy', 'in-progress');
-    expect(find.text('进行中 (1)'), findsOneWidget);
+    expect(_taskSegment('进行中 (1)'), findsOneWidget);
     expect(find.text('进行中采购物料'), findsOneWidget);
     expect(find.text('已取消采购物料'), findsNothing);
 
-    await _filter(tester, '已下达 (2)');
+    await _filter(tester, '待下单 (2)');
     expect(find.text('已取消采购物料'), findsOneWidget);
     expect(requests.where((request) => request.method != 'GET'), isEmpty);
     expect(tester.takeException(), isNull);
@@ -206,7 +221,7 @@ void main() {
         analysis['flatMaterials'] = [
           _material('first', '第一条已下达物料', route, 7, 4, 'IN_PROGRESS')
             ..['allocatedAvailableQty'] = 3,
-          _material('second', '第二条已下达物料', route, 0, 10, 'DONE'),
+          _material('second', '第二条已下达物料', route, 0, 10, 'IN_PROGRESS'),
         ];
         await _pump(
           tester,
@@ -344,7 +359,7 @@ void main() {
 
     await _filter(tester, '已下达 (2)');
     expect(find.text('部分采购物料'), findsOneWidget);
-    expect(find.text('已完成采购物料'), findsOneWidget);
+    expect(find.text('已完成采购物料'), findsNothing);
     expect(
       find.byKey(const Key('material-analysis-bucket-action-buy')),
       findsNothing,
@@ -357,8 +372,15 @@ void main() {
     tester,
   ) async {
     // 追加量属公共备货：要有超量下达权限才给勾（没有的账号已下达行照旧只读）。
+    final activeAnalysis = _analysis();
+    final full = (activeAnalysis['flatMaterials'] as List)
+        .cast<Map<String, dynamic>>()
+        .firstWhere((row) => row['materialLineId'] == 'material-complete');
+    ((full['downstreamReferences'] as List).single as Map)['status'] =
+        'IN_PROGRESS';
     final requests = await _pump(
       tester,
+      analysis: activeAnalysis,
       permissions: {
         Perm.productionMaterialAnalysisView,
         Perm.productionMaterialAnalysisNotify,
@@ -382,39 +404,42 @@ void main() {
     // 按钮改叫「追加采购」，省略号 = 还要过一页。
     expect(find.byType(Checkbox), findsWidgets);
     expect(find.text('追加采购(0)…'), findsOneWidget);
-    expect(find.text('下达数量'), findsOneWidget);
+    expect(find.text('下单数量'), findsOneWidget);
     expect(requests.where((request) => request.method != 'GET'), isEmpty);
     await _tapRowCheckbox(tester, '已完成采购物料');
     await tester.tap(find.text('追加采购(1)…'));
     await tester.pumpAndSettle();
     // 追加量默认就写 0(0 = 本次不追加)，在页里改成 5。
     final append = find.byKey(
-      const ValueKey('material-analysis-child-cascade-qty-material-complete'),
+      const ValueKey(
+        'material-analysis-append-qty-NODE|action-complete|material-complete',
+      ),
     );
     expect(tester.widget<TextField>(append).controller!.text, '0');
     await tester.enterText(append, '5');
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const Key('material-analysis-child-cascade-submit')),
+      find.byKey(const Key('material-preparation-order-submit')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('supply-submit-confirm')));
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
+    );
     await tester.pumpAndSettle();
-    // 追加量原样送 notify（服务端按超量分账为公共备货：未处理的申请就地改大、
-    // 已处理的另立新单）。
-    final notify = requests
-        .where((request) => request.path.endsWith('/notify'))
+    // 三桶与主表同一条组件命令，保留原行与原输入，不能绕回旧 notify。
+    final submits = requests
+        .where((request) => request.path.endsWith('/aggregate-orders/submit'))
         .toList();
-    expect(notify, hasLength(1));
-    final body = notify.single.data as Map<String, dynamic>;
-    expect(body['target'], 'BUY');
-    expect(body['quantities'], [
-      {
-        'actionGroupKey': 'action-complete',
-        'qty': 5.0,
-        'safetyReplenishmentQty': 0.0,
-      },
-    ]);
+    expect(submits, hasLength(1));
+    final body = submits.single.data as Map<String, dynamic>;
+    final group = (body['groups'] as List).single as Map;
+    expect(group['route'], 'BUY');
+    expect(double.parse(group['qty'].toString()), 5);
+    expect(group['materialLineIds'], ['material-complete']);
+    expect(
+      requests.where((request) => request.path.endsWith('/notify')),
+      isEmpty,
+    );
   });
 
   testWidgets(
@@ -445,8 +470,8 @@ void main() {
       expect(find.text('BOM 结构待修复'), findsWidgets);
       expect(find.byType(Checkbox), findsNothing);
       await _filter(tester, '已下达 (1)');
-      expect(find.textContaining('历史完成产品'), findsOneWidget);
-      expect(find.text('已完工'), findsOneWidget);
+      expect(find.textContaining('历史完成产品'), findsNothing);
+      expect(find.text('当前筛选没有任务'), findsOneWidget);
       expect(find.byType(Checkbox), findsNothing);
       expect(requests.where((request) => request.method != 'GET'), isEmpty);
       expect(tester.takeException(), isNull);
@@ -505,7 +530,7 @@ Future<void> _openStatus(
 Future<void> _filter(WidgetTester tester, String label) async {
   final filter = find.descendant(
     of: find.byKey(const Key('material-analysis-task-state')),
-    matching: find.text(label),
+    matching: _taskSegment(label.replaceFirst(RegExp(r' \(\d+\)$'), '')),
   );
   await tester.ensureVisible(filter);
   await tester.tap(filter);
@@ -527,6 +552,69 @@ Future<List<RequestOptions>> _pump(
     InterceptorsWrapper(
       onRequest: (request, handler) {
         requests.add(request);
+        if (request.path.endsWith('/aggregate-orders/preview')) {
+          final view = analysis ?? _analysis();
+          final body = request.data as Map<String, dynamic>;
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: request,
+              statusCode: 200,
+              data: {
+                'analysisId': view['analysisId'],
+                'version': view['version'],
+                'fingerprint': view['fingerprint'],
+                'previewFingerprint': 'e' * 64,
+                'analysis': view,
+                'groups': [
+                  for (final group
+                      in (body['groups'] as List).cast<Map<String, dynamic>>())
+                    {
+                      'clientGroupKey': group['clientGroupKey'],
+                      'goodsId':
+                          ((view['flatMaterials'] as List)
+                                  .cast<Map<String, dynamic>>()
+                                  .firstWhere(
+                                    (m) =>
+                                        m['materialLineId'] ==
+                                        (group['materialLineIds'] as List)
+                                            .first,
+                                  )
+                              as Map)['goodsId'],
+                      'route': group['route'],
+                      'requestedQty': double.parse(group['qty'].toString()),
+                      'sources': [
+                        for (final id in group['materialLineIds'] as List)
+                          {
+                            'materialLineId': id,
+                            'sourceLabel': id,
+                            'allocatedQty': double.parse(
+                              group['qty'].toString(),
+                            ),
+                          },
+                      ],
+                      'sharedBomChildren': <Object>[],
+                    },
+                ],
+              },
+            ),
+          );
+          return;
+        }
+        if (request.path.endsWith('/aggregate-orders/submit')) {
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: request,
+              statusCode: 200,
+              data: {
+                'analysis': analysis ?? _analysis(),
+                'replayed': false,
+                'batches': <Object>[],
+                'materialIdentityBridges': <Object>[],
+              },
+            ),
+          );
+          return;
+        }
         final data = switch (request.path) {
           '/master/warehouses/dict' => [
             {'id': 'warehouse-1', 'name': '主仓'},
@@ -697,3 +785,20 @@ Map<String, dynamic> _material(
       },
   ],
 };
+
+Finder _taskSegment(String label) {
+  final match = RegExp(r'^(.*) \((\d+)\)$').firstMatch(label);
+  final raw = match?.group(1) ?? label;
+  final name = raw == '已下达' || raw == '进行中'
+      ? '进行中'
+      : raw.startsWith('等待下')
+      ? '待下单'
+      : raw;
+  final count = match == null ? null : int.parse(match.group(2)!);
+  return find.byWidgetPredicate(
+    (widget) =>
+        widget is UtenSegmentBadgeLabel &&
+        widget.label == name &&
+        (count == null || widget.count == count),
+  );
+}

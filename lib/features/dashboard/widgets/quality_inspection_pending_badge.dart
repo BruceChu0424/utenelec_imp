@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/badges/effective_badge_summary_provider.dart';
 
 /// 品质任务中心红徽章 = IQC 待检收货单 + FQC 待检行(品质容器, 服务端算好的和)。
 ///
@@ -21,7 +22,7 @@ class QualityInspectionPendingBadge extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(
-      badgeSummaryProvider.select(
+      effectiveBadgeSummaryProvider.select(
         (s) => (
           s.loaded,
           s.isStale(BadgeEntry.qualityIqcPending) ||
@@ -30,7 +31,7 @@ class QualityInspectionPendingBadge extends ConsumerWidget {
         ),
       ),
     );
-    if (!state.$1) return const SizedBox.shrink();
+    if (!state.$1 && state.$3 <= 0) return const SizedBox.shrink();
     if (state.$2) {
       return Tooltip(
         message: '品质待检数量加载失败，请进入品质任务中心后重试',

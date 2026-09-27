@@ -56,7 +56,10 @@ void main() {
     expect(find.text('待检处置'), findsOneWidget);
     expect(find.text('生产成品质检'), findsNothing);
     expect(find.text('检测记录'), findsOneWidget);
-    expect(find.text('任务中心'), findsOneWidget);
+    expect(
+      find.descendant(of: find.byType(ListView), matching: find.text('任务中心')),
+      findsOneWidget,
+    );
     expect(find.text('查询与记录'), findsOneWidget);
   });
 
@@ -107,6 +110,7 @@ void main() {
     expect(find.text('生产成品质检'), findsNothing);
     expect(find.text('检测记录'), findsNothing);
     expect(find.text('任务中心'), findsNothing);
+    expect(find.text('草稿'), findsNothing);
     expect(find.text('查询与记录'), findsNothing);
     expect(find.text('暂无已授权的品质页面'), findsOneWidget);
     expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);

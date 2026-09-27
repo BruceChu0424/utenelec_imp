@@ -7,11 +7,14 @@ import java.util.List;
  * 年月（value=label=yyyy-MM，业务时区）。count 为该队列状态集下的命中单数。
  * 2026-09-16 增类别桶（value=label=类别码 TRANSPORT/TRAVEL/...，挂在明细项上，
  * count=该队列状态集下含该类别明细的单数）。
+ * 2026-09-25 单号列统一：增报销单号桶（value=label=claim_no，count=该队列状态集
+ * 下的单数，按单号升序，上限 500）。
  */
 public record ExpenseClaimFacetsDto(
         List<Bucket> departments,
         List<Bucket> months,
-        List<Bucket> categories
+        List<Bucket> categories,
+        List<Bucket> claimNos
 ) {
     public record Bucket(String value, String label, long count) {
     }

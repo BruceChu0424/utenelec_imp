@@ -22,6 +22,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_field_codec.dart';
 
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
@@ -92,7 +95,8 @@ class WarehouseSubcontractOutboundEditPage extends ConsumerStatefulWidget {
 }
 
 class _WarehouseSubcontractOutboundEditPageState
-    extends ConsumerState<WarehouseSubcontractOutboundEditPage> {
+    extends ConsumerState<WarehouseSubcontractOutboundEditPage>
+    with FormDraftMixin<WarehouseSubcontractOutboundEditPage> {
   final _remark = TextEditingController();
   final Map<String, UtenEmployeePickerItem> _empCache = {};
 
@@ -115,6 +119,76 @@ class _WarehouseSubcontractOutboundEditPageState
   int _loadGeneration = 0;
   String? _error;
   List<SubcontractOutboundLineDraft> _lines = const [];
+
+  @override
+  bool get formDraftEnabled => !_showAllDrafts;
+  @override
+  bool get formDraftBusy => _saving || _confirming || _requestUncertain;
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftCatalog.subcontractOutbound.spec(
+    title: '委外拣货出仓填写',
+    route: '/warehouse/subcontract-outbound/${widget.planId}',
+  );
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _remark,
+    for (final row in _lines) ...[row.qty, row.remarkController],
+  ];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'remark': _remark.text,
+    'warehouseId': _warehouseId,
+    'workerId': _workerId,
+    'billDate': _billDate.toIso8601String(),
+    'deliverDate': _deliverDate?.toIso8601String(),
+    'draftId': _draftId,
+    'employees': _empCache.values.map(draftEmployee).toList(),
+    'rows': [
+      for (final row in _lines)
+        {
+          'planItemId': row.line.planItemId,
+          'draftItemId': row.draftItemId,
+          'qty': row.qty.text,
+          'remark': row.remarkController.text,
+          'selected': row.selected,
+        },
+    ],
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    final saved = draftMaps(data['rows']);
+    // Regenerated documents and changed sources require review, never a goods/name match.
+    if (data['draftId'] != _draftId ||
+        saved.any(
+          (item) => !_lines.any(
+            (row) =>
+                row.line.planItemId == item['planItemId'] &&
+                row.draftItemId == item['draftItemId'],
+          ),
+        )) {
+      throw const FormatException('出仓来源或服务器草稿已变化，填写草稿保留；请先核对最新任务');
+    }
+    _remark.text = draftText(data, 'remark');
+    _warehouseId = data['warehouseId'] as String?;
+    _workerId = data['workerId'] as String?;
+    _billDate = DateTime.tryParse(draftText(data, 'billDate')) ?? _billDate;
+    _deliverDate = DateTime.tryParse(draftText(data, 'deliverDate'));
+    for (final value in draftMaps(data['employees'])) {
+      final employee = restoreDraftEmployee(value);
+      _empCache[employee.id] = employee;
+    }
+    for (final item in saved) {
+      final row = _lines.firstWhere(
+        (row) =>
+            row.line.planItemId == item['planItemId'] &&
+            row.draftItemId == item['draftItemId'],
+      );
+      row.qty.text = draftText(item, 'qty');
+      row.remarkController.text = draftText(item, 'remark');
+      row.selected = item['selected'] == true;
+    }
+    if (mounted) setState(() {});
+  }
 
   AppLocalizations get _l10n =>
       Localizations.of<AppLocalizations>(context, AppLocalizations) ??
@@ -279,6 +353,7 @@ class _WarehouseSubcontractOutboundEditPageState
         _requiresReload = false;
       });
       unawaited(_preloadEmployees([workerId], generation));
+      await initializeFormDraft();
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -450,6 +525,8 @@ class _WarehouseSubcontractOutboundEditPageState
       }
       if (id != null) {
         invalidateWarehouseTaskCounts(ref);
+        await completeFormDraft();
+        if (!mounted) return;
         context.appSuccess('出仓草稿已保存');
         context.pop(true);
       }
@@ -533,6 +610,8 @@ class _WarehouseSubcontractOutboundEditPageState
       }
       if (!mounted) return;
       invalidateWarehouseTaskCounts(ref);
+      await completeFormDraft();
+      if (!mounted) return;
       context.appSuccess('委外目标件出仓已审核，可交委外商加工');
       returnToSubcontractOutboundTasks(context);
     } on ApiException catch (error) {
@@ -575,6 +654,8 @@ class _WarehouseSubcontractOutboundEditPageState
             .detail(_draftId!);
         if (doc.status == 1 && mounted) {
           invalidateWarehouseTaskCounts(ref);
+          await completeFormDraft();
+          if (!mounted) return;
           context.appSuccess(_l10n.warehouseSubcontractOutboundDone);
           returnToSubcontractOutboundTasks(context);
           return;
@@ -639,6 +720,8 @@ class _WarehouseSubcontractOutboundEditPageState
           .closePlan(widget.planId, reasonCtl.text.trim());
       if (!mounted) return;
       invalidateWarehouseTaskCounts(ref);
+      await completeFormDraft();
+      if (!mounted) return;
       context.appSuccess('已关闭剩余出仓计划');
       context.pop(true);
     } on ApiException catch (error) {
@@ -684,98 +767,107 @@ class _WarehouseSubcontractOutboundEditPageState
     // 首屏骨架 / 出错 / 不存在时不挂悬浮动作组; 刷新中也收起(旧版整页换成转圈,
     // 按钮本就不可见, 这里保持「刷新期间不能动」的口径)。
     final ready = detail != null && !_loading && _error == null;
-    return PopScope(
-      canPop: !busy,
-      child: Scaffold(
-        appBar: UtenAppBar(
-          title: '委外拣货出仓',
-          leading: UtenBackButton(
-            onPressed: busy
-                ? null
-                : () => backTo(
-                    context,
-                    defaultPath: '/warehouse/subcontract-outbound',
-                  ),
+    return withFormDraft(
+      PopScope(
+        canPop: !busy,
+        child: Scaffold(
+          appBar: UtenAppBar(
+            title: '委外拣货出仓',
+            leading: UtenBackButton(
+              onPressed: busy
+                  ? null
+                  : () => backTo(
+                      context,
+                      defaultPath: '/warehouse/subcontract-outbound',
+                    ),
+            ),
+            actions: [
+              UtenAppBarActionButton(
+                key: const Key('warehouse-subcontract-outbound-detail-refresh'),
+                label: '刷新',
+                icon: Icons.refresh_rounded,
+                isLoading: _loading && detail != null,
+                onPressed: _loading || busy ? null : _load,
+              ),
+            ],
           ),
-          actions: [
-            UtenAppBarActionButton(
-              key: const Key('warehouse-subcontract-outbound-detail-refresh'),
-              label: '刷新',
-              icon: Icons.refresh_rounded,
-              isLoading: _loading && detail != null,
-              onPressed: _loading || busy ? null : _load,
-            ),
-          ],
-        ),
-        body: Stack(
-          children: [
-            Positioned.fill(
-              child: SafeArea(
-                child: _loading && detail == null
-                    ? const UtenSkeletonList(itemCount: 6)
-                    : _error != null
-                    ? UtenEmpty.error(
-                        message: _error,
-                        actionLabel: '重新加载',
-                        onAction: _load,
-                      )
-                    : detail == null
-                    ? const UtenEmpty(message: '出仓任务不存在')
-                    : AbsorbPointer(
-                        absorbing: busy || _loading,
-                        child: _buildBody(detail, gate!),
-                      ),
-              ),
-            ),
-            if (_saving)
+          body: Stack(
+            children: [
               Positioned.fill(
-                child: UtenBusyOverlay(title: _l10n.commonLoading),
+                child: SafeArea(
+                  child: _loading && detail == null
+                      ? const UtenSkeletonList(itemCount: 6)
+                      : _error != null
+                      ? UtenEmpty.error(
+                          message: _error,
+                          actionLabel: '重新加载',
+                          onAction: _load,
+                        )
+                      : detail == null
+                      ? const UtenEmpty(message: '出仓任务不存在')
+                      : AbsorbPointer(
+                          absorbing: busy || _loading,
+                          child: _buildBody(detail, gate!),
+                        ),
+                ),
               ),
-          ],
+              if (_saving)
+                Positioned.fill(
+                  child: UtenBusyOverlay(title: _l10n.commonLoading),
+                ),
+            ],
+          ),
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          floatingActionButtonAnimator:
+              FloatingActionButtonAnimator.noAnimation,
+          floatingActionButton: !ready || gate == null || !gate.hasActions
+              ? null
+              : UtenFloatingActionGroup(
+                  children: [
+                    if (gate.canEdit)
+                      UtenButton(
+                        key: const Key(
+                          'warehouse-subcontract-outbound-action-save',
+                        ),
+                        type: UtenButtonType.tonal,
+                        size: UtenButtonSize.large,
+                        icon: Icons.save_outlined,
+                        isLoading: _saving,
+                        onPressed: _saving || _requiresReload ? null : _onSave,
+                        child: Text(
+                          _l10n.warehouseSubcontractOutboundSaveDraft,
+                        ),
+                      ),
+                    if (gate.canApprove)
+                      UtenButton(
+                        key: const Key(
+                          'warehouse-subcontract-outbound-action-approve',
+                        ),
+                        type: UtenButtonType.danger,
+                        size: UtenButtonSize.large,
+                        icon: Icons.outbound_rounded,
+                        isLoading: _saving,
+                        onPressed: _saving || _requiresReload
+                            ? null
+                            : _onApprove,
+                        child: Text(_l10n.warehouseSubcontractOutboundApprove),
+                      ),
+                    if (gate.canClose)
+                      UtenButton(
+                        key: const Key(
+                          'warehouse-subcontract-outbound-action-close',
+                        ),
+                        type: UtenButtonType.secondary,
+                        size: UtenButtonSize.large,
+                        icon: Icons.stop_circle_outlined,
+                        onPressed: _saving ? null : _onClosePlan,
+                        child: Text(
+                          _l10n.warehouseSubcontractOutboundClosePlan,
+                        ),
+                      ),
+                  ],
+                ),
         ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-        floatingActionButton: !ready || gate == null || !gate.hasActions
-            ? null
-            : UtenFloatingActionGroup(
-                children: [
-                  if (gate.canEdit)
-                    UtenButton(
-                      key: const Key(
-                        'warehouse-subcontract-outbound-action-save',
-                      ),
-                      type: UtenButtonType.tonal,
-                      size: UtenButtonSize.large,
-                      icon: Icons.save_outlined,
-                      isLoading: _saving,
-                      onPressed: _saving || _requiresReload ? null : _onSave,
-                      child: Text(_l10n.warehouseSubcontractOutboundSaveDraft),
-                    ),
-                  if (gate.canApprove)
-                    UtenButton(
-                      key: const Key(
-                        'warehouse-subcontract-outbound-action-approve',
-                      ),
-                      type: UtenButtonType.danger,
-                      size: UtenButtonSize.large,
-                      icon: Icons.outbound_rounded,
-                      isLoading: _saving,
-                      onPressed: _saving || _requiresReload ? null : _onApprove,
-                      child: Text(_l10n.warehouseSubcontractOutboundApprove),
-                    ),
-                  if (gate.canClose)
-                    UtenButton(
-                      key: const Key(
-                        'warehouse-subcontract-outbound-action-close',
-                      ),
-                      type: UtenButtonType.secondary,
-                      size: UtenButtonSize.large,
-                      icon: Icons.stop_circle_outlined,
-                      onPressed: _saving ? null : _onClosePlan,
-                      child: Text(_l10n.warehouseSubcontractOutboundClosePlan),
-                    ),
-                ],
-              ),
       ),
     );
   }

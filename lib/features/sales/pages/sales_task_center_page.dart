@@ -38,6 +38,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/drafts/form_draft_category.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../models/sales_doc.dart';
@@ -94,21 +95,21 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
     //（documentStatusCounts 一次分桶；无权限返回空表 → 段不挂数）。
     final shipmentCounts = ref
         .watch(
-          documentStatusCountsProvider(
+          effectiveDocumentStatusCountsProvider(
             const DocumentStatusScope(DraftDocKind.salesShipment),
           ),
         )
         .valueOrNull;
     final quoteCounts = ref
         .watch(
-          documentStatusCountsProvider(
+          effectiveDocumentStatusCountsProvider(
             const DocumentStatusScope(DraftDocKind.salesQuote),
           ),
         )
         .valueOrNull;
     final returnCounts = ref
         .watch(
-          documentStatusCountsProvider(
+          effectiveDocumentStatusCountsProvider(
             const DocumentStatusScope(DraftDocKind.salesReturn),
           ),
         )
@@ -130,6 +131,13 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
     );
     final orderDraftCount = ref.watch(
       draftCountsProvider.select((d) => d.salesOrder),
+    );
+    const masterScope = FormDraftCategoryScope(
+      module: BadgeModule.sales,
+      routePrefix: '/basicinfo/',
+    );
+    final masterDraftCount = ref.watch(
+      formDraftCategoryVisibleCountProvider(masterScope),
     );
 
     final groups = <_GroupSpec>[
@@ -166,6 +174,12 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
           label: '报价单',
           count: sumCounts(quoteCounts, const [DocumentStatusBucket.draft]),
         ),
+      if (masterDraftCount > 0 || canOpen('/basicinfo/client'))
+        _GroupSpec(
+          value: 'masterDrafts',
+          label: '资料草稿',
+          count: masterDraftCount,
+        ),
       if (canOpen(SalesRoutePath.list('other-shipments')))
         const _GroupSpec(value: 'otherShipments', label: '历史其它出货'),
     ];
@@ -181,22 +195,27 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
 
     // 大类行（2026-09-24 用户口径「表格滑到顶」）：选中大类后它随正文一起进
     // 折叠头滚走——滑到头后只剩表格自身工具条；未选大类时仍钉在占位区上方。
-    final categoryBar = UtenFilterToolbar<String>(
-      segmentsKey: const Key('sales-task-center-groups'),
-      segments: [
-        for (final g in groups)
-          UtenFilterSegment(
-            value: g.value,
-            label: g.label,
-            count: g.count,
-            // 大类红数 = 该类等本人动手的单（草稿/财务退回/驳回/可发货）；
-            // 浏览型大类（客户零星发货/历史其它出货）传 null。
-            countForm: UtenSegmentCountForm.actionable,
-            inProgressCount: g.inProgressCount,
-          ),
+    final categoryBar = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UtenFilterToolbar<String>(
+          segmentsKey: const Key('sales-task-center-groups'),
+          segments: [
+            for (final g in groups)
+              UtenFilterSegment(
+                value: g.value,
+                label: g.label,
+                count: g.count,
+                // 大类红数 = 该类等本人动手的单（草稿/财务退回/驳回/可发货）；
+                // 浏览型大类（客户零星发货/历史其它出货）传 null。
+                countForm: UtenSegmentCountForm.actionable,
+                inProgressCount: g.inProgressCount,
+              ),
+          ],
+          selected: _group == null ? const <String>{} : {_group!},
+          onSelectionChanged: (value) => setState(() => _group = value),
+        ),
       ],
-      selected: _group == null ? const <String>{} : {_group!},
-      onSelectionChanged: (value) => setState(() => _group = value),
     );
     return Scaffold(
       appBar: UtenAppBar(
@@ -232,6 +251,20 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
   /// 由嵌入页挂进自己的折叠头一起随页滚走。
   Widget _buildGroupBody(String group, {Widget? externalHeader}) =>
       switch (group) {
+        'masterDrafts' => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ?externalHeader,
+            const Expanded(
+              child: FormDraftCategoryList(
+                scope: FormDraftCategoryScope(
+                  module: BadgeModule.sales,
+                  routePrefix: '/basicinfo/',
+                ),
+              ),
+            ),
+          ],
+        ),
         'progress' => SalesOrderProgressPage(
           embedded: true,
           externalHeader: externalHeader,

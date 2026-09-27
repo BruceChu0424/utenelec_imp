@@ -6,6 +6,7 @@ import com.uten.imp.features.subcontract.application.SubcontractApplicationContr
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -55,6 +56,13 @@ class DemandDecompositionControllerContractTest {
     }
 
     private static void assertReadOnlySurface(Class<?> controllerType) {
+        Method facets = Arrays.stream(controllerType.getDeclaredMethods())
+                .filter(method -> method.getName().equals("facets")).findFirst().orElseThrow();
+        assertThat(facets.getAnnotation(GetMapping.class).value()).containsExactly("/facets");
+        assertThat(facets.getAnnotation(PreAuthorize.class).value()).isEqualTo(
+                controllerType == PurchaseRequestController.class
+                        ? "hasAuthority('purchase_request:view')"
+                        : "hasAuthority('subcontract_application:view')");
         assertThat(Arrays.stream(controllerType.getDeclaredMethods())
                         .filter(method -> Modifier.isPublic(method.getModifiers()))
                         .map(Method::getName))
@@ -62,9 +70,9 @@ class DemandDecompositionControllerContractTest {
                         // 2026-09-05 申请详情分解前行内改量（读+改量权限同族，
                         // 非 write 全开）：仅采购申请面有，委外申请面保持只读。
                         controllerType == PurchaseRequestController.class
-                                ? new String[]{"list", "detail",
+                                ? new String[]{"list", "detail", "facets",
                                         "decompositionPreview", "adjustItemQty"}
-                                : new String[]{"list", "detail",
+                                : new String[]{"list", "detail", "facets",
                                         "decompositionPreview"});
     }
 

@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,12 +32,34 @@ public class ProductionWorkshopTaskController {
             @RequestParam(required = false) String routeFilter,
             @RequestParam(required = false) UUID workshopDepartmentId,
             @RequestParam(required = false) LocalDate dateFrom,
-            @RequestParam(required = false) LocalDate dateTo) {
+            @RequestParam(required = false) LocalDate dateTo,
+            @RequestParam(required = false) String analysisNo,
+            @RequestParam(required = false) String segmentCode,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order) {
         // dateFrom/dateTo 只对「历史任务」段生效（ADR-066 §1.3 时间门控：
         // 已完工/已取消/已红冲按计划完工日期筛选）；活动段忽略日期参数。
         // routeFilter：「下一步」表头筛选(ADR-095)，UNCONFIRMED/FULL_KIT/CONTINUOUS/BATCH。
+        // 2026-09-25 单号列统一：analysisNo/segmentCode 表头值筛选 + sort 白名单
+        //（sourcePlan/order/segment）。
         return service.workshopTasks(page, size, keyword, status,
-                workshopDepartmentId, dateFrom, dateTo, preparationFilter, routeFilter);
+                workshopDepartmentId, dateFrom, dateTo, preparationFilter, routeFilter,
+                analysisNo, segmentCode, sort, order);
+    }
+
+    /** 我的车间任务单号列 facets（2026-09-25 单号列统一）：{sourcePlan:[…], segment:[…]}。 */
+    @GetMapping("/facets")
+    @PreAuthorize("hasAuthority('production_execution:view')")
+    public Map<String, List<Map<String, Object>>> facets(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String preparationFilter,
+            @RequestParam(required = false) String routeFilter,
+            @RequestParam(required = false) UUID workshopDepartmentId,
+            @RequestParam(required = false) LocalDate dateFrom,
+            @RequestParam(required = false) LocalDate dateTo) {
+        return service.workshopTaskFacets(keyword, status, workshopDepartmentId,
+                dateFrom, dateTo, preparationFilter, routeFilter);
     }
 
     /** 本任务逐种物料事实(ADR-095)：只读，范围与列表同源。 */

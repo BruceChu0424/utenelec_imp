@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -29,9 +30,25 @@ public class ProductionExecutionWorkbenchController {
             @RequestParam(required = false) UUID workshopDepartmentId,
             @RequestParam(defaultValue = "false") boolean mine,
             @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
+            @RequestParam(required = false) String order,
+            // 2026-09-25 单号列统一：关联订单表头值筛选（精确匹配 preview）。
+            @RequestParam(required = false) String salesOrder) {
         return service.list(
-                page, size, keyword, workshopDepartmentId, mine, sort, order);
+                page, size, keyword, workshopDepartmentId, mine, sort, order,
+                salesOrder);
+    }
+
+    /**
+     * 「进行中」根列表单号列 facets（2026-09-25 单号列统一）：{orders:[…]}，
+     * 与列表同一过滤参数（不含 salesOrder 自身）。
+     */
+    @GetMapping("/facets")
+    @PreAuthorize("hasAuthority('production_execution:overview')")
+    public Map<String, List<Map<String, Object>>> facets(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) UUID workshopDepartmentId,
+            @RequestParam(defaultValue = "false") boolean mine) {
+        return service.rootFacets(keyword, workshopDepartmentId, mine);
     }
 
     /**

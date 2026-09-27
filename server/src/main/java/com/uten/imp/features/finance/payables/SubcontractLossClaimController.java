@@ -30,8 +30,23 @@ public class SubcontractLossClaimController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "30") int size) {
-        return service.list(supplierId, status, keyword, page, size);
+            @RequestParam(defaultValue = "30") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String wasteBillNo) {
+        // 2026-09-25 单号列统一：sort/order 表头排序 + 损耗单号表头值筛选。
+        return service.list(supplierId, status, keyword, page, size, sort, order, wasteBillNo);
+    }
+
+    /** 损耗单号 facets（2026-09-25 单号列统一）：{wasteBillNo:[各损耗单号]}——
+     *  同列表过滤口径（不含 wasteBillNo 自身值筛选）。 */
+    @GetMapping("/facets")
+    @PreAuthorize("hasAuthority('subcontract_loss_claim:view')")
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(
+            @RequestParam(required = false) UUID supplierId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword) {
+        return service.facets(supplierId, status, keyword);
     }
 
     @GetMapping("/{id}")

@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/payables/models/finance_payable.dart';
@@ -211,6 +213,25 @@ void main() {
         );
     refreshedTable.onSelectedIdsChanged?.call({'ap-1'});
     await tester.pump();
+    // 2026-09-26 全站口径：已选计数由右下悬浮组里的标准胶囊呈现（✕ 即清空），
+    // 「生成付款单(N)」也在同一悬浮组；表格上方工具条只留「全选本页」。
+    expect(
+      find.byType(UtenFloatingActionGroup),
+      findsOneWidget,
+      reason: '批量动作应在右下悬浮组，不再驻表格上方工具条',
+    );
+    expect(
+      tester
+          .widget<UtenSelectionSummaryPill>(
+            find.descendant(
+              of: find.byType(UtenFloatingActionGroup),
+              matching: find.byType(UtenSelectionSummaryPill),
+            ),
+          )
+          .count,
+      1,
+    );
+    expect(find.text('全选本页'), findsOneWidget);
     await tester.tap(
       find.byKey(const ValueKey('finance-payables-create-payment')),
     );

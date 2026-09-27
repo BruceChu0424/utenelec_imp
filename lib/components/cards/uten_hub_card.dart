@@ -25,7 +25,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../shared/badges/badge_scope.dart';
 import '../feedback/uten_notification_badge.dart' show UtenBadgeScale;
+import '../feedback/uten_scoped_badges.dart';
 
 class UtenHubCard extends StatelessWidget {
   const UtenHubCard({
@@ -37,6 +39,8 @@ class UtenHubCard extends StatelessWidget {
     this.color,
     this.badge,
     this.progressBadge,
+    this.badgeScope,
+    this.badgeShowLabel = false,
     this.labelSuffix,
     this.enabled = true,
     this.onDisabledTap,
@@ -66,6 +70,13 @@ class UtenHubCard extends StatelessWidget {
   /// 放「已经在办、还没完、现在不用我动手」的数字。两枚都有时的顺序是
   /// 「黄 红」——2026-09-21 用户口径，黄色在红色左边。
   final Widget? progressBadge;
+
+  /// 服务端计数范围：合并中心传模块，独立队列传入口；卡片自动绘制红黄徽章。
+  /// [badge] / [progressBadge] 可覆盖对应颜色以保留专用逾期、异常或读屏提示。
+  final BadgeScope? badgeScope;
+
+  /// 自动徽章使用带标签款的字号与内边距，与现有任务卡保持一致。
+  final bool badgeShowLabel;
 
   /// 标题右侧的次要计数位：卡片已用 [badge] 放待办时，草稿徽章
   /// （`UtenDraftBadge`）退到这里；浏览型计数用 `UtenCountSuffix`。
@@ -175,15 +186,22 @@ class UtenHubCard extends StatelessWidget {
     if (!enabled) return _DisabledChip(theme: theme);
     return UtenBadgeScale(
       scale: 1.4,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ?progressBadge,
-          if (progressBadge != null && badge != null)
-            const SizedBox(width: UtenSpacing.s6),
-          ?badge,
-        ],
-      ),
+      child: badgeScope != null
+          ? UtenScopedBadges(
+              scope: badgeScope!,
+              showLabel: badgeShowLabel,
+              todoOverride: badge,
+              inProgressOverride: progressBadge,
+            )
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ?progressBadge,
+                if (progressBadge != null && badge != null)
+                  const SizedBox(width: UtenSpacing.s6),
+                ?badge,
+              ],
+            ),
     );
   }
 }

@@ -38,6 +38,8 @@ abstract final class ApiEndpoints {
   // 批量决定由 caseId + expectedVersion 精确绑定并整批原子提交。
   static const financeProcurementApprovalTasks =
       '/finance/procurement-approvals/tasks';
+  static const financeProcurementApprovalFacets =
+      '$financeProcurementApprovalTasks/facets'; // 2026-09-25 单号列统一
   static const financeProcurementApprovalTypeCounts =
       '/finance/procurement-approvals/type-counts';
   static const financeProcurementApprovalBatchApprove =
@@ -50,6 +52,8 @@ abstract final class ApiEndpoints {
   // 销售订货单财务确认（V294 闸门）：待确认列表 / 徽标计数 / 确认动作。
   static const salesOrderFinanceConfirmationPending =
       '/sales/orders/finance-confirmation/pending';
+  static const salesOrderFinanceConfirmationFacets =
+      '$salesOrderFinanceConfirmationPending/facets'; // 2026-09-25 单号列统一
   static const salesOrderFinanceConfirmationCount =
       '/sales/orders/finance-confirmation/count';
   static const salesOrderFinanceConfirmationBatch =
@@ -63,10 +67,14 @@ abstract final class ApiEndpoints {
 
   // 财务批准后形成的仓储预计到货，以及超量到货隔离任务。
   static const warehouseInboundExpectations = '/warehouse/inbound/expectations';
+  static const warehouseInboundExpectationFacets =
+      '$warehouseInboundExpectations/facets'; // 2026-09-25 单号列统一
   static const warehouseInboundExpectationTypeCounts =
-      '/warehouse/inbound/expectations/type-counts';
+      '$warehouseInboundExpectations/type-counts';
   static const warehouseArrivalExceptions =
       '/warehouse/inbound/arrival-exceptions';
+  static const warehouseArrivalExceptionFacets =
+      '$warehouseArrivalExceptions/facets'; // 2026-09-25 单号列统一
   static const warehouseArrivalExceptionBatchStockIn =
       '/warehouse/inbound/arrival-exceptions/batch-stock-in';
   static const warehouseIqcStockIns = '/warehouse/iqc-stock-ins';
@@ -92,6 +100,8 @@ abstract final class ApiEndpoints {
   // 品质部检查结果合并页（原 IQC 合格待入库 + IQC 不合格实物退回）：
   // 按收货单聚合 等待检查结果/全部合格待入库/部分合格/全部不合格需退回/已完结。
   static const warehouseQualityResults = '/warehouse/quality-results';
+  static const warehouseQualityResultFacets =
+      '$warehouseQualityResults/facets'; // 2026-09-25 单号列统一
   static const warehouseQualityResultStatusCounts =
       '$warehouseQualityResults/status-counts';
   static String warehouseQualityResultDetail(
@@ -102,6 +112,8 @@ abstract final class ApiEndpoints {
       '${Uri.encodeComponent(receiptId.trim())}';
   static const productionFinishedInboundTasks =
       '/warehouse/production-finished-in/tasks';
+  static const productionFinishedInboundTaskFacets =
+      '$productionFinishedInboundTasks/facets'; // 2026-09-25 单号列统一
   static const productionFinishedInboundBatchConfirm =
       '/stock/docs/finished-in/confirm-batch';
   static String productionFinishedArrivalRegistration(String reportId) =>

@@ -10,6 +10,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -47,6 +48,7 @@ class _DailyReportApi extends ApiClient {
     'billNo': 'SR20260922000005',
     'billDate': '2026-09-22',
     'makerName': '朱振炜',
+    'makerId': 'maker-1',
     'createdAt': '2026-09-22T05:49:19+08:00',
     'status': serverStatus,
     'rowVersion': rowVersion,
@@ -107,6 +109,7 @@ Future<(_DailyReportApi, List<String>)> _pump(
   WidgetTester tester, {
   required Object? Function(_DailyReportApi server) onApprove,
   bool approvable = true,
+  bool fromWorkshop = false,
 }) async {
   tester.view.physicalSize = const Size(1400, 1000);
   tester.view.devicePixelRatio = 1.0;
@@ -128,6 +131,7 @@ Future<(_DailyReportApi, List<String>)> _pump(
       masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
       currentPermissionsProvider.overrideWithValue(const <String>{
         Perm.productionDailyReportView,
+        Perm.productionDailyReportEdit,
         Perm.productionDailyReportApprove,
         Perm.productionDailyReportReverse,
         Perm.attachmentView,
@@ -148,15 +152,51 @@ Future<(_DailyReportApi, List<String>)> _pump(
     fireImmediately: true,
   );
 
+  final router = fromWorkshop
+      ? GoRouter(
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (_, _) => const Scaffold(body: Text('已回车间任务')),
+            ),
+            GoRoute(
+              path: '/report',
+              builder: (_, _) => const ProductionDailyReportDetailPage(
+                id: 'dr-1',
+                returnToWorkshopTasks: true,
+              ),
+            ),
+            GoRoute(
+              path: '/production/daily-reports/:id/edit',
+              builder: (context, state) => Scaffold(
+                body: ElevatedButton(
+                  onPressed: () {
+                    api.rowVersion++;
+                    context.pop('dr-1');
+                  },
+                  child: Text('保存编辑 ${state.uri.queryParameters['from']}'),
+                ),
+              ),
+            ),
+          ],
+        )
+      : null;
+  if (router != null) addTearDown(router.dispose);
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: const MaterialApp(
-        home: ProductionDailyReportDetailPage(id: 'dr-1'),
-      ),
+      child: router != null
+          ? MaterialApp.router(routerConfig: router)
+          : const MaterialApp(
+              home: ProductionDailyReportDetailPage(id: 'dr-1'),
+            ),
     ),
   );
   await tester.pumpAndSettle();
+  if (router != null) {
+    router.push<void>('/report');
+    await tester.pumpAndSettle();
+  }
   return (api, notices);
 }
 
@@ -168,6 +208,79 @@ Future<void> _tapApprove(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'workshop review keeps its return destination after editing the draft',
+    (tester) async {
+      final (api, _) = await _pump(
+        tester,
+        fromWorkshop: true,
+        onApprove: (server) {
+          server.serverStatus = 1;
+          return null;
+        },
+      );
+      final reads = api.detailReads;
+      await tester.tap(find.widgetWithText(UtenButton, '编辑'));
+      await tester.pumpAndSettle();
+      expect(find.text('保存编辑 workshop-tasks'), findsOneWidget);
+      await tester.tap(find.text('保存编辑 workshop-tasks'));
+      await tester.pumpAndSettle();
+      expect(api.detailReads, reads + 1);
+      expect(find.widgetWithText(UtenButton, '审核'), findsOneWidget);
+      await _tapApprove(tester);
+      expect(find.text('已回车间任务'), findsOneWidget);
+      expect(api.approveKeys, hasLength(1));
+    },
+  );
+
+  testWidgets(
+    'workshop draft without approval capability stays visible and never auto-approves',
+    (tester) async {
+      final (api, _) = await _pump(
+        tester,
+        fromWorkshop: true,
+        approvable: false,
+        onApprove: (_) => null,
+      );
+      expect(find.byType(ProductionDailyReportDetailPage), findsOneWidget);
+      expect(find.widgetWithText(UtenButton, '审核'), findsNothing);
+      expect(api.approveKeys, isEmpty);
+    },
+  );
+
+  for (final responseLost in [false, true]) {
+    testWidgets(
+      'workshop approval returns only after authoritative success: responseLost=$responseLost',
+      (tester) async {
+        final (api, _) = await _pump(
+          tester,
+          fromWorkshop: true,
+          onApprove: (server) {
+            server.serverStatus = 1;
+            return responseLost ? Exception('response lost') : null;
+          },
+        );
+        await _tapApprove(tester);
+        expect(find.text('已回车间任务'), findsOneWidget);
+        expect(find.byType(ProductionDailyReportDetailPage), findsNothing);
+        expect(api.approveKeys, hasLength(1));
+      },
+    );
+  }
+
+  testWidgets('workshop rejected approval stays on the draft detail', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      fromWorkshop: true,
+      onApprove: (_) => Exception('rejected'),
+    );
+    await _tapApprove(tester);
+    expect(find.byType(ProductionDailyReportDetailPage), findsOneWidget);
+    expect(find.widgetWithText(UtenButton, '审核'), findsOneWidget);
+  });
+
   testWidgets('持审核码但服务端不允许(缺车间直送审核权)：不画审核按钮', (tester) async {
     await _pump(tester, onApprove: (server) => null, approvable: false);
 

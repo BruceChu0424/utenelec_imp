@@ -18,6 +18,7 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -53,6 +54,36 @@ public class ProductionPlanningPackageService {
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService mutationFootprint;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.concurrency.FulfillmentMutationLocks mutationLocks;
+
+    /** Only the analysis command may open this window after its complete source prelock. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public AnalysisExecutionSnapshotScope openAnalysisPlanningScope(UUID planId, UUID warehouseId) {
+        requireWarehouse(warehouseId);
+        UUID analysisId = preplanAnalysisPeg.lockPlanningPackageInventoryDimensions(planId);
+        if (analysisId == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "只有物料分析来源计划可以复用本次已锁定排产快照");
+        }
+        mutationLocks.requireAnalysesCovered(List.of(analysisId));
+        PlanHeader header = lockPlan(planId);
+        if (!analysisId.equals(header.materialAnalysisId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "计划的物料分析来源已变化，请重新核对");
+        }
+        return AnalysisExecutionSnapshotScope.openLocked(
+                executionPlanning.lockedSnapshot(planId, warehouseId, Map.of()));
+    }
+
+    public record ExecutionOnlyPreview(String fingerprint, List<ExecutionSegmentPreview> executionSegments) { }
+
+    /** Analysis already owns its supply tree; MRP rows and package-level ATP would be discarded. */
+    @Transactional(readOnly = true)
+    public ExecutionOnlyPreview previewExecution(UUID planId, UUID warehouseId) {
+        requireWarehouse(warehouseId);
+        var snapshot = executionPlanning.preview(planId, warehouseId);
+        var proposal = executionPlanning.propose(snapshot);
+        return new ExecutionOnlyPreview(snapshot.fingerprint(), executionPlanning.toPreview(proposal));
+    }
 
     @Transactional(readOnly = true)
     public PlanningPreviewResult preview(UUID planId, UUID warehouseId) {

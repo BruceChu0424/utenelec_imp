@@ -56,10 +56,9 @@ public class BootstrapRunner implements ApplicationRunner {
         }
         Employee adminEmp = employeeRepo.findByCode("ADMIN")
                 .orElseThrow(() -> new IllegalStateException("未找到 admin 员工种子记录(V08 迁移)"));
-        if (!StringUtils.hasText(props.getAdminPassword())
-                || props.getAdminPassword().length() < 12) {
+        if (!StringUtils.hasText(props.getAdminPassword())) {
             throw new IllegalStateException(
-                    "空库首次启动必须提供至少 12 位 BOOTSTRAP_ADMIN_PASSWORD；"
+                    "空库首次启动必须提供非空 BOOTSTRAP_ADMIN_PASSWORD；"
                             + "账号创建并完成首登改密后可移除此变量");
         }
 

@@ -35,7 +35,7 @@ void main() {
           items: [_item('inspection-2')],
         ),
       ];
-      final report = QualityBatchSubmission(
+      var report = QualityBatchSubmission(
         receipts: mutableReceipts,
         fqcInspectionIds: ['fqc-1', 'fqc-2'],
         reason: '按原报告确认少量不合格',
@@ -56,6 +56,13 @@ void main() {
       expect(report.currentLabel, 'R2');
       expect(report.complete, isFalse);
       final unknownBody = api.requests[1].$2;
+      final originalFqcKey = report.fqcIdempotencyKey;
+      // Process restart must retain acknowledgement and the frozen request keys.
+      report = QualityBatchSubmission.fromDraft(
+        jsonDecode(jsonEncode(report.exportDraft())) as Map<String, dynamic>,
+      );
+      expect(report.completedReceiptCount, 1);
+      expect(report.fqcIdempotencyKey, originalFqcKey);
       await report.send(iqc: iqc, fqc: fqc);
       expect(api.requests.length, 4);
       expect(

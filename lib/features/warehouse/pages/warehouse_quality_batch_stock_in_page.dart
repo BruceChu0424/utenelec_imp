@@ -416,7 +416,7 @@ class _WarehouseQualityBatchStockInPageState
     );
   }
 
-  /// 吸底操作栏（对齐品质批量审批页）：已选计数胶囊 + 说明 + 确认批量入库。
+  /// 右下悬浮操作组（对齐品质批量审批页）：已选计数胶囊 + 说明 + 确认批量入库。
   /// 窄屏竖排（横排会在 375px 溢出），大屏同款横排。
   Widget _buildBottomBar(ThemeData theme) {
     final selectedCount = _selected.length;

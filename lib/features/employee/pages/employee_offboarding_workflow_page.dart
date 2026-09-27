@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_values.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -51,7 +54,55 @@ class EmployeeOffboardingWorkflowPage extends ConsumerStatefulWidget {
 }
 
 class _EmployeeOffboardingWorkflowPageState
-    extends ConsumerState<EmployeeOffboardingWorkflowPage> {
+    extends ConsumerState<EmployeeOffboardingWorkflowPage>
+    with FormDraftMixin<EmployeeOffboardingWorkflowPage> {
+  @override
+  bool get formDraftBusy => _submitting;
+  @override
+  bool get formDraftCanReplaySubmission => true;
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftCatalog.employeeOffboarding.spec(
+    title: '员工离职办理',
+    route: '/employee/${widget.employeeId}/offboarding',
+  );
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _reasonController,
+    _handoverReasonController,
+  ];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'reason': _reasonController.text,
+    'handoverReason': _handoverReasonController.text,
+    'requestId': _requestId,
+    'checks': _checks,
+    'step': _step,
+    'effectiveDate': _effectiveDate?.toIso8601String(),
+    'resignType': _resignType.name,
+    'successor': draftEmployees({
+      for (final item in [_successor].whereType<UtenEmployeePickerItem>())
+        item.id: item,
+    }),
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _reasonController.text = data['reason'] as String? ?? '';
+    _handoverReasonController.text =
+        data['handoverReason'] as String? ?? _handoverReasonDefault;
+    _requestId = data['requestId'] as String;
+    final checks = data['checks'] as List<dynamic>? ?? [];
+    for (var i = 0; i < _checks.length; i++) {
+      _checks[i] = i < checks.length && checks[i] == true;
+    }
+    _step = (data['step'] as int? ?? 0).clamp(0, 3);
+    _effectiveDate = DateTime.tryParse(data['effectiveDate'] as String? ?? '');
+    _resignType = StableResignType.values.byName(data['resignType'] as String);
+    final successors = <String, UtenEmployeePickerItem>{};
+    restoreDraftEmployees(successors, data['successor']);
+    _successor = successors.values.firstOrNull;
+    await _loadPreview();
+  }
+
   static const _handoverReasonDefault = '员工离职数据交接与责任移交';
   static const _recoveryItems = <({String code, String label})>[
     (code: 'ACCESS_CARD_RETURNED', label: '已线下确认门禁卡回收'),
@@ -66,7 +117,7 @@ class _EmployeeOffboardingWorkflowPageState
   final _handoverReasonController = TextEditingController(
     text: _handoverReasonDefault,
   );
-  final _requestId = const Uuid().v4();
+  String _requestId = const Uuid().v4();
   final _checks = List<bool>.filled(_recoveryItems.length, false);
 
   int _step = 0;
@@ -82,14 +133,6 @@ class _EmployeeOffboardingWorkflowPageState
   StableResignType _resignType = StableResignType.voluntary;
   UtenEmployeePickerItem? _successor;
   DataHandoverPreview? _preview;
-
-  bool get _dirty =>
-      _effectiveDate != null ||
-      _resignType != StableResignType.voluntary ||
-      _reasonController.text.trim().isNotEmpty ||
-      _successor != null ||
-      _handoverReasonController.text.trim() != _handoverReasonDefault ||
-      _checks.any((checked) => checked);
 
   @override
   void initState() {
@@ -121,6 +164,7 @@ class _EmployeeOffboardingWorkflowPageState
         _employee = results[0] as EmployeeProfile;
         _preview = results[1] as DataHandoverPreview;
       });
+      await initializeFormDraft();
     } on ApiException catch (error) {
       if (mounted) setState(() => _loadError = error.message);
     } catch (_) {
@@ -265,20 +309,23 @@ class _EmployeeOffboardingWorkflowPageState
 
     setState(() => _submitting = true);
     try {
-      await ref.read(employeeRepositoryProvider).offboard(widget.employeeId, {
-        'requestId': _requestId,
-        'resignType': _resignType.code,
-        'effectiveDate': DateFormat('yyyy-MM-dd').format(_effectiveDate!),
-        'reason': _reasonController.text.trim(),
-        'confirmedChecklistCodes': [
-          for (var index = 0; index < _checks.length; index++)
-            if (_checks[index]) _recoveryItems[index].code,
-        ],
-        if (_successor != null) ...{
-          'successorEmployeeId': _successor!.id,
-          'handoverReason': _handoverReasonController.text.trim(),
-        },
-      });
+      await runFormDraftSubmission(
+        () => ref.read(employeeRepositoryProvider).offboard(widget.employeeId, {
+          'requestId': _requestId,
+          'resignType': _resignType.code,
+          'effectiveDate': DateFormat('yyyy-MM-dd').format(_effectiveDate!),
+          'reason': _reasonController.text.trim(),
+          'confirmedChecklistCodes': [
+            for (var index = 0; index < _checks.length; index++)
+              if (_checks[index]) _recoveryItems[index].code,
+          ],
+          if (_successor != null) ...{
+            'successorEmployeeId': _successor!.id,
+            'handoverReason': _handoverReasonController.text.trim(),
+          },
+        }),
+      );
+      await completeFormDraft();
       if (!mounted) return;
       context.appSuccess('离职办理及数据交接已完成');
       // pop 回员工详情（入口就是详情页 push 进来的，返回后它自己重拉）；
@@ -310,21 +357,16 @@ class _EmployeeOffboardingWorkflowPageState
       setState(() => _step--);
       return;
     }
-    if (_dirty) {
-      final discard = await UtenDialog.show(
-        context,
-        title: '放弃离职办理草稿？',
-        content: const Text('当前填写的离职和交接内容尚未保存。'),
-        confirmLabel: '放弃并离开',
-        danger: true,
-      );
-      if (!mounted || discard != true) return;
-    }
+    if (!await confirmFormDraftExit() || !mounted) return;
     context.pop();
   }
 
   @override
   Widget build(BuildContext context) {
+    return withFormDraft(_buildEditor(context));
+  }
+
+  Widget _buildEditor(BuildContext context) {
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
@@ -346,7 +388,7 @@ class _EmployeeOffboardingWorkflowPageState
       );
     }
     return PopScope<void>(
-      canPop: !_dirty && !_submitting,
+      canPop: !_submitting,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) unawaited(_backOrClose());
       },

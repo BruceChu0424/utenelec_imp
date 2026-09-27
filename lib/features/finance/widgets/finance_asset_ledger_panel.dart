@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_category.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
@@ -49,6 +53,7 @@ class _FinanceAssetLedgerPanelState
   final _categoryGuard = LatestRequestGuard();
   FinanceAssetQuery _query = const FinanceAssetQuery();
   PagedResult<FinanceAssetSummary>? _result;
+  int? _draftTotal;
   bool _loading = true;
   String? _error;
   List<FinanceAssetCategory> _categories = const [];
@@ -77,6 +82,7 @@ class _FinanceAssetLedgerPanelState
     setState(() {
       _loading = true;
       _error = null;
+      _draftTotal = null;
     });
     try {
       var result = await ref
@@ -94,13 +100,36 @@ class _FinanceAssetLedgerPanelState
       setState(() {
         _result = result;
         _loading = false;
+        if (_query.status == 'DRAFT') _draftTotal = result.total;
       });
+      if (_query.status != 'DRAFT') {
+        unawaited(_loadDraftTotal(generation, _query));
+      }
     } catch (_) {
       if (!mounted || !_requestGuard.isCurrent(generation)) return;
       setState(() {
         _loading = false;
         _error = '加载${widget.ledger.label}失败，请重试';
       });
+    }
+  }
+
+  Future<void> _loadDraftTotal(int generation, FinanceAssetQuery query) async {
+    if (!widget.capabilities.canView) return;
+    try {
+      final result = await ref
+          .read(financeAssetWorkbenchRepositoryProvider)
+          .list(
+            widget.ledger,
+            query: query.copyWith(page: 1, size: 1, status: 'DRAFT'),
+          );
+      if (mounted && _requestGuard.isCurrent(generation)) {
+        setState(() => _draftTotal = result.total);
+      }
+    } catch (_) {
+      if (mounted && _requestGuard.isCurrent(generation)) {
+        setState(() => _draftTotal = null);
+      }
     }
   }
 
@@ -211,6 +240,63 @@ class _FinanceAssetLedgerPanelState
     );
     if (mounted && changed) await _load();
   }
+
+  FormDraftCategoryScope get _formDraftScope => FormDraftCategoryScope(
+    routePath: '/finance/assets/new',
+    query: {'ledger': widget.ledger.name},
+  );
+
+  String? _assetDraftValue(FormDraft draft, String key) {
+    final values = formDraftHeader(draft);
+    if (key == 'grossAmount') return values['amount'] as String?;
+    if (key == 'categoryName') {
+      return _categories
+          .where((category) => category.id == values['categoryId'])
+          .firstOrNull
+          ?.name;
+    }
+    return formDraftColumnValue(draft, key);
+  }
+
+  bool _matchesAssetDraft(FormDraft draft) {
+    final values = formDraftHeader(draft);
+    if (_query.categoryId != null &&
+        values['categoryId'] != _query.categoryId) {
+      return false;
+    }
+    if (_query.departmentId != null &&
+        values['departmentId'] != _query.departmentId) {
+      return false;
+    }
+    final search = _query.q?.trim().toLowerCase() ?? '';
+    return search.isEmpty ||
+        [
+          draft.title,
+          for (final key in const [
+            'code',
+            'name',
+            'categoryName',
+            'departmentName',
+            'grossAmount',
+            'balance',
+            'startPeriod',
+            'status',
+          ])
+            _assetDraftValue(draft, key) ?? '',
+        ].join(' ').toLowerCase().contains(search);
+  }
+
+  Widget _withFormDraftRows(MasterDataTableView<FinanceAssetSummary> table) =>
+      _query.status == 'DRAFT'
+      ? FormDraftCategoryTable<FinanceAssetSummary>(
+          scope: _formDraftScope,
+          table: table,
+          search: _query.q ?? '',
+          formalId: (item) => item.id,
+          localValue: _assetDraftValue,
+          localPredicate: _matchesAssetDraft,
+        )
+      : table;
 
   @override
   Widget build(BuildContext context) {
@@ -348,18 +434,50 @@ class _FinanceAssetLedgerPanelState
         'TERMINATION_PENDING': '待终止',
       'TERMINATED': '已终止',
     };
-    return UtenDropdownField(
-      key: ValueKey('asset-status-${widget.ledger.apiValue}-${_query.status}'),
-      label: '状态',
-      value: _query.status,
-      hintText: '全部状态',
-      items: [
-        for (final entry in statuses.entries)
-          UtenDropdownItem(value: entry.key, label: entry.value),
+    final localDrafts = ref
+        .watch(formDraftCategoryProvider(_formDraftScope))
+        .where(
+          (draft) =>
+              formDraftConfirmedIds(draft).isEmpty && _matchesAssetDraft(draft),
+        )
+        .length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UtenDropdownField(
+          key: ValueKey(
+            'asset-status-${widget.ledger.apiValue}-${_query.status}',
+          ),
+          label: '状态',
+          value: _query.status,
+          hintText: '全部状态',
+          items: [
+            for (final entry in statuses.entries)
+              UtenDropdownItem(value: entry.key, label: entry.value),
+          ],
+          onChanged: (value) => _changeQuery(
+            _query.copyWith(page: 1, status: value, clearStatus: value == null),
+          ),
+        ),
+        const SizedBox(height: UtenSpacing.s8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: UtenButton(
+            key: ValueKey('asset-draft-category-${widget.ledger.apiValue}'),
+            size: UtenButtonSize.small,
+            type: UtenButtonType.tonal,
+            onPressed: () =>
+                _changeQuery(_query.copyWith(page: 1, status: 'DRAFT')),
+            child: UtenSegmentBadgeLabel(
+              label: '草稿',
+              count: _draftTotal == null
+                  ? (localDrafts == 0 ? null : localDrafts)
+                  : _draftTotal! + localDrafts,
+              countForm: UtenSegmentCountForm.actionable,
+            ),
+          ),
+        ),
       ],
-      onChanged: (value) => _changeQuery(
-        _query.copyWith(page: 1, status: value, clearStatus: value == null),
-      ),
     );
   }
 
@@ -413,98 +531,108 @@ class _FinanceAssetLedgerPanelState
 
   Widget _table() {
     final result = _result;
-    return MasterDataTableView<FinanceAssetSummary>(
-      key: ValueKey('finance-asset-table-${widget.ledger.apiValue}'),
-      columns: [
-        MasterColumnDef(
-          key: 'code',
-          label: '编号',
-          width: 128,
-          value: (item) => item.code,
-        ),
-        MasterColumnDef(
-          key: 'name',
-          label: '名称',
-          width: 180,
-          value: (item) => item.name,
-        ),
-        MasterColumnDef(
-          key: 'categoryName',
-          label: '分类',
-          width: 140,
-          value: (item) => item.categoryName ?? '—',
-        ),
-        MasterColumnDef(
-          key: 'departmentName',
-          label: '归属部门',
-          width: 140,
-          value: (item) => item.departmentName ?? '—',
-        ),
-        MasterColumnDef(
-          key: 'grossAmount',
-          label: widget.ledger.amountLabel,
-          width: 140,
-          type: 'money',
-          value: (item) => formatFinanceDecimal(
-            widget.ledger == FinanceAssetLedger.fixedAsset
-                ? item.originalValue
-                : item.totalAmount,
+    return _withFormDraftRows(
+      MasterDataTableView<FinanceAssetSummary>(
+        key: ValueKey('finance-asset-table-${widget.ledger.apiValue}'),
+        columns: [
+          MasterColumnDef(
+            key: 'code',
+            label: '编号',
+            width: 128,
+            value: (item) => item.code,
           ),
-        ),
-        MasterColumnDef(
-          key: 'balance',
-          label: widget.ledger == FinanceAssetLedger.fixedAsset
-              ? '账面净值'
-              : '待摊余额',
-          width: 140,
-          type: 'money',
-          value: (item) => formatFinanceDecimal(item.displayedBalance),
-        ),
-        MasterColumnDef(
-          key: 'startPeriod',
-          label: '开始期间',
-          width: 110,
-          value: (item) => item.startPeriod ?? '—',
-        ),
-        MasterColumnDef(
-          key: 'status',
-          label: '状态',
-          width: 100,
-          value: (item) => financeAssetStatusLabel(item.status),
-        ),
-      ],
-      items: result?.items ?? const [],
-      facets: const <String, List<MasterFacetBucket>>{},
-      nullCounts: const <String, int>{},
-      filters: const <String, String?>{},
-      onFilterChanged: (_, _) {},
-      // 联动折叠模式：竖向表体拾取工作台页 NestedScrollView 注入的
-      // PrimaryScrollController，参与「横幅收起 → Tab 吸顶 → 表格内滚」。
-      primary: true,
-      onRowTap: _openDetail,
-      isLoading: _loading,
-      error: _error,
-      onRetry: _load,
-      emptyMessage: '暂无${widget.ledger.label}，请先创建草稿并完成审批',
-      currentPage: result?.page ?? _query.page,
-      totalPages: result?.totalPages ?? 1,
-      onPageChange: (page) => _changeQuery(_query.copyWith(page: page)),
-      toolbarActions: widget.capabilities.canEdit
-          ? [
-              UtenButton(
-                key: Key(
-                  'finance-asset-create-table-${widget.ledger.apiValue}',
+          MasterColumnDef(
+            key: 'name',
+            label: '名称',
+            width: 180,
+            value: (item) => item.name,
+          ),
+          MasterColumnDef(
+            key: 'categoryName',
+            label: '分类',
+            width: 140,
+            value: (item) => item.categoryName ?? '—',
+          ),
+          MasterColumnDef(
+            key: 'departmentName',
+            label: '归属部门',
+            width: 140,
+            value: (item) => item.departmentName ?? '—',
+          ),
+          MasterColumnDef(
+            key: 'grossAmount',
+            label: widget.ledger.amountLabel,
+            width: 140,
+            type: 'money',
+            value: (item) => formatFinanceDecimal(
+              widget.ledger == FinanceAssetLedger.fixedAsset
+                  ? item.originalValue
+                  : item.totalAmount,
+            ),
+          ),
+          MasterColumnDef(
+            key: 'balance',
+            label: widget.ledger == FinanceAssetLedger.fixedAsset
+                ? '账面净值'
+                : '待摊余额',
+            width: 140,
+            type: 'money',
+            value: (item) => formatFinanceDecimal(item.displayedBalance),
+          ),
+          MasterColumnDef(
+            key: 'startPeriod',
+            label: '开始期间',
+            width: 110,
+            value: (item) => item.startPeriod ?? '—',
+          ),
+          MasterColumnDef(
+            key: 'status',
+            label: '状态',
+            width: 100,
+            value: (item) => financeAssetStatusLabel(item.status),
+          ),
+        ],
+        items: result?.items ?? const [],
+        facets: const <String, List<MasterFacetBucket>>{},
+        nullCounts: const <String, int>{},
+        filters: const <String, String?>{},
+        onFilterChanged: (_, _) {},
+        // 联动折叠模式：竖向表体拾取工作台页 NestedScrollView 注入的
+        // PrimaryScrollController，参与「横幅收起 → Tab 吸顶 → 表格内滚」。
+        primary: true,
+        onRowTap: _openDetail,
+        isLoading: _loading,
+        error: _error,
+        onRetry: _load,
+        emptyMessage: '暂无${widget.ledger.label}，请先创建草稿并完成审批',
+        currentPage: result?.page ?? _query.page,
+        totalPages: result?.totalPages ?? 1,
+        onPageChange: (page) => _changeQuery(_query.copyWith(page: page)),
+        toolbarActions: widget.capabilities.canEdit
+            ? [
+                UtenButton(
+                  key: Key(
+                    'finance-asset-create-table-${widget.ledger.apiValue}',
+                  ),
+                  icon: Icons.add_rounded,
+                  onPressed: _create,
+                  child: Text('新建${widget.ledger.label}'),
                 ),
-                icon: Icons.add_rounded,
-                onPressed: _create,
-                child: Text('新建${widget.ledger.label}'),
-              ),
-            ]
-          : null,
+              ]
+            : null,
+      ),
     );
   }
 
   Widget _compactList() {
+    if (_query.status == 'DRAFT') {
+      return Column(
+        children: [
+          _compactFilters(),
+          Expanded(child: _table()),
+        ],
+      );
+    }
     final result = _result;
     final items = result?.items ?? const <FinanceAssetSummary>[];
     return Column(

@@ -3,6 +3,8 @@
 // 2026-09-01 起「入库任务中心 · 采购入库」到货异常分段内嵌本组件（embedded=true
 // 时搜索框由任务中心页级工具条接管）；独立路由 /warehouse/inbound/arrival-exceptions
 // 由对应页面以 embedded=false 包一层继续承接（采购/委外单据详情深链依赖它）。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -24,6 +26,7 @@ import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../repositories/procurement_inbound_repository.dart';
@@ -72,6 +75,12 @@ class _WarehouseArrivalExceptionsViewState
   String? _supplierIdFilter;
   String? _warehouseIdFilter;
   String? _statusFilter;
+
+  /// 表头排序 + 收货单号/订货单号列值筛选 + facets 桶 + 防串台代数
+  /// （2026-09-25 单号列统一，共享状态见 MasterServerColumnFilters）；
+  /// 排序列 key 见 [_kSortFields]，null = 服务端默认序。
+  final _columnFilters = MasterServerColumnFilters();
+
   Set<String> _selectedIds = const {};
   bool _batchStocking = false;
   String? _batchSelectionFingerprint;
@@ -334,8 +343,16 @@ class _WarehouseArrivalExceptionsViewState
             warehouseId: _warehouseIdFilter,
             status: _statusFilter,
             scope: WarehouseListScope.of(context),
+            sort: _kSortFields[_columnFilters.sortColumn],
+            order: _columnFilters.sortColumn == null
+                ? null
+                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+            receiptBillNo: _columnFilters['receiptBillNo'],
+            orderBillNo: _columnFilters['orderBillNo'],
           );
       if (!mounted || version != _requestVersion) return;
+      // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
+      unawaited(_loadBillNoFacets());
       setState(() {
         _result = result;
         _loading = false;
@@ -354,6 +371,49 @@ class _WarehouseArrivalExceptionsViewState
       });
     }
   }
+
+  /// 表头排序键 → 服务端 sort 参数（2026-09-25 单号列统一；未列出的列不可排序）。
+  static const _kSortFields = <String, String>{
+    'receiptBillNo': 'receiptBillNo',
+    'orderBillNo': 'orderBillNo',
+  };
+
+  /// 表头排序变化：服务端重排整个结果集，回第 1 页（勾选跨页保留，不清）。
+  void _onSortChange(String? column, bool ascending) {
+    final next = column != null && _kSortFields.containsKey(column)
+        ? column
+        : null;
+    if (next == _columnFilters.sortColumn &&
+        (next == null || ascending == _columnFilters.sortAscending)) {
+      return;
+    }
+    _columnFilters.handleSortChanged(
+      next,
+      ascending,
+      onChanged: () {
+        if (mounted) setState(() {});
+        _load(1);
+      },
+    );
+  }
+
+  /// 收货单号/订货单号 facets（2026-09-25 单号列统一）：与列表同过滤口径
+  /// （不含单号列自身值筛选）。
+  Future<void> _loadBillNoFacets() => _columnFilters.loadFacets(
+    () => ref
+        .read(procurementInboundRepositoryProvider)
+        .arrivalExceptionBillNoFacets(
+          keyword: _keyword,
+          history: _history,
+          supplierId: _supplierIdFilter,
+          warehouseId: _warehouseIdFilter,
+          status: _statusFilter,
+          scope: WarehouseListScope.of(context),
+        ),
+    onLoaded: () {
+      if (mounted) setState(() {});
+    },
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -449,14 +509,34 @@ class _WarehouseArrivalExceptionsViewState
             MasterFacetBucket(value: 'CLOSED', count: 0, label: '到货异常已完成'),
             MasterFacetBucket(value: 'CANCELED', count: 0, label: '到货异常已取消'),
           ],
+          // 收货单号/订货单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
+          'receiptBillNo': _columnFilters.bucketOf('receiptBillNo'),
+          'orderBillNo': _columnFilters.bucketOf('orderBillNo'),
         },
         nullCounts: const {},
         filters: {
           'supplierName': _supplierIdFilter,
           'warehouseName': _warehouseIdFilter,
           'status': _statusFilter,
+          'receiptBillNo': _columnFilters['receiptBillNo'],
+          'orderBillNo': _columnFilters['orderBillNo'],
         },
+        // 表头排序走服务端（2026-09-25 单号列统一）。
+        sortColumn: _columnFilters.sortColumn,
+        sortAscending: _columnFilters.sortAscending,
+        onSortChange: _onSortChange,
         onFilterChanged: (key, value) {
+          if (key == 'receiptBillNo' || key == 'orderBillNo') {
+            _columnFilters.handleFilterChanged(
+              key,
+              value,
+              onChanged: () {
+                if (mounted) setState(() {});
+                _load(1);
+              },
+            );
+            return;
+          }
           setState(() {
             switch (key) {
               case 'supplierName':
@@ -608,12 +688,14 @@ class _WarehouseArrivalExceptionsViewState
       key: 'receiptBillNo',
       label: '收货单号',
       width: 170,
+      sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
       value: (task) => task.receiptBillNo,
     ),
     MasterColumnDef(
       key: 'orderBillNo',
       label: '订货单号',
       width: 170,
+      sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
       value: (task) => task.orderBillNo,
     ),
     MasterColumnDef(

@@ -104,8 +104,30 @@ public class PurchaseReceiptService {
 
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
+        Specification<PurchaseReceipt> spec = receiptSpec(f);
+        // 无商业查看权时金额排序同样属于侧信道：即使响应金额为 null，排序次序仍会泄露高低。
+        // 2026-09-25 单号列统一：billNo 进两分支白名单（单据号排序不泄露商业信息）。
+        boolean priceMasked = !priceMasker.canViewPurchaseReceipt();
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
+                        priceMasked
+                                ? Map.of("billDate", "billDate", "billNo", "billNo")
+                                : Map.of("billDate", "billDate", "total", "totalLocal", "billNo", "billNo")));
+        Page<PurchaseReceipt> p = receiptRepo.findAll(spec, pageable);
+        return new PageResponse<>(p.map(this::toList).getContent(), p);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(ReceiptQueryFilter f) {
+        return java.util.Map.of("billNo",
+                com.uten.imp.common.web.TableFacets.groupCount(em, PurchaseReceipt.class, receiptSpec(f), "billNo"));
+    }
+
+    /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）。 */
+    private Specification<PurchaseReceipt> receiptSpec(ReceiptQueryFilter f) {
         var readScope = access.scope();
-        Specification<PurchaseReceipt> spec = (Root<PurchaseReceipt> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
+        return (Root<PurchaseReceipt> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
@@ -119,17 +141,12 @@ public class PurchaseReceiptService {
             if (f.status() != null && f.status() == STATUS_DRAFT) ps.add(cb.isNull(root.get("legacyId")));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
+            // 2026-09-25 单号列统一：单据号表头值筛选（精确匹配）。
+            if (f.billNo() != null && !f.billNo().isBlank()) {
+                ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
+            }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        // 无商业查看权时金额排序同样属于侧信道：即使响应金额为 null，排序次序仍会泄露高低。
-        boolean priceMasked = !priceMasker.canViewPurchaseReceipt();
-        Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
-                        priceMasked
-                                ? Map.of("billDate", "billDate")
-                                : Map.of("billDate", "billDate", "total", "totalLocal")));
-        Page<PurchaseReceipt> p = receiptRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), p);
     }
 
     @Transactional(readOnly = true)

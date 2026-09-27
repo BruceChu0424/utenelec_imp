@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/finance/pages/finance_sales_shipment_audit_page.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_sales_outbound.dart';
@@ -165,6 +166,9 @@ class _OutboundGateway implements WarehouseSalesOutboundGateway {
     String? dateFrom,
     String? dateTo,
     WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+    String? sort,
+    String? order,
+    String? billNo,
   }) async {
     workStatuses.add(warehouseWorkStatus);
     return PagedResult(
@@ -184,6 +188,15 @@ class _OutboundGateway implements WarehouseSalesOutboundGateway {
       totalPages: 1,
     );
   }
+
+  @override
+  Future<List<MasterFacetBucket>> billNoFacets({
+    String? keyword,
+    String? warehouseWorkStatus,
+    String? dateFrom,
+    String? dateTo,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+  }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
 
   @override
   Future<WarehouseSalesOutboundDetail> detail(String id) =>

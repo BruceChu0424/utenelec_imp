@@ -39,6 +39,41 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class MaterialAnalysisServiceBehaviorTest {
+    @Test
+    void aggregatePlanSourceReadsOnlyPersistedSelectedIdentityFacts() {
+        UUID analysis=UUID.randomUUID(),id=UUID.randomUUID(),goods=UUID.randomUUID(),unit=UUID.randomUUID();
+        Object[] row=sourceRow(id,goods,unit);row[1]="AGGREGATE_MAKE";
+        Query selected=query(Collections.singletonList(row));
+        EntityManager em=mock(EntityManager.class);
+        when(em.createNativeQuery(anyString())).thenAnswer(call->{
+            assertThat(call.getArgument(0,String.class)).contains("WITH RECURSIVE selected_source_ids", "ai.id IN(SELECT id FROM selected_source_ids)");
+            return selected;
+        });
+        var source=service(em,mock(ProductionDocumentAccessPolicy.class)).aggregatePlanSources(analysis,Set.of(id)).get(id);
+        assertThat(source.analysisLineId()).isEqualTo(id);
+        assertThat(source.goodsId()).isEqualTo(goods);assertThat(source.unitId()).isEqualTo(unit);
+        assertThat(source.requestedQty()).isEqualByComparingTo("100");
+        assertThat(source.deliveryDate()).isEqualTo(LocalDate.of(2026,8,20));
+        assertThat(source.salesOrderItemId()).isNull();
+        var product=MaterialAnalysisService.SourceLine.from(row).toView(BigDecimal.ZERO,false,MaterialAnalysisService.ProductPlanState.NONE);
+        var json=new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules().valueToTree(product);
+        assertThat(json.path("analysisLineId").asText()).isEqualTo(id.toString());
+        assertThat(json.path("requestedQty").decimalValue()).isEqualByComparingTo("100");
+        verify(selected).setParameter("id",analysis);verify(selected).setParameter("selectedItemIds",Set.of(id));
+        verify(em,org.mockito.Mockito.times(1)).createNativeQuery(anyString());
+    }
+
+    @Test
+    void aggregatePlanSourceCannotSubstituteMissingOrOrdinarySources() {
+        UUID id=UUID.randomUUID();EntityManager em=mock(EntityManager.class);
+        Query missing=query(List.of());when(em.createNativeQuery(anyString())).thenReturn(missing);
+        var service=service(em,mock(ProductionDocumentAccessPolicy.class));
+        assertThrows(ApiException.class,()->service.aggregatePlanSources(UUID.randomUUID(),Set.of(id)));
+        Query ordinary=query(Collections.singletonList(sourceRow(id,UUID.randomUUID(),UUID.randomUUID())));
+        when(em.createNativeQuery(anyString())).thenReturn(ordinary);
+        assertThrows(ApiException.class,()->service.aggregatePlanSources(UUID.randomUUID(),Set.of(id)));
+    }
+
     /**
      * 2026-09-10 F8：主档来源为空/未知时，有 BOM 子层按自制建议（子层需求随之展开），
      * 叶子仍 REVIEW（只影响 UI 预填）；显式来源不受 hasChildren 影响。
@@ -1951,11 +1986,11 @@ class MaterialAnalysisServiceBehaviorTest {
             throws Exception {
         UUID analysisId = UUID.randomUUID();
         UUID analysisItemId = UUID.randomUUID();
-        UUID planId = UUID.randomUUID();
+        UUID planId = UUID.randomUUID(),workshopId=UUID.randomUUID(),responsibleId=UUID.randomUUID();
         Query query = query(List.<Object[]>of(new Object[]{
                 analysisItemId, planId, "PP-001", "IN_PROGRESS",
                 bd("10"), bd("4"), bd("6"), Boolean.TRUE,
-                "装配一车间", "张三"
+                "装配一车间", "张三",workshopId,responsibleId
         }));
         List<String> statements = new ArrayList<>();
         EntityManager em = mock(EntityManager.class);
@@ -1977,6 +2012,8 @@ class MaterialAnalysisServiceBehaviorTest {
         assertThat(projection.plannedQty()).isEqualByComparingTo("10");
         assertThat(projection.inboundQty()).isEqualByComparingTo("4");
         assertThat(projection.progressRatio()).isEqualByComparingTo("0.4000");
+        assertThat(projection.workshopId()).isEqualTo(workshopId);
+        assertThat(projection.responsibleId()).isEqualTo(responsibleId);
 
         String sql = statements.getFirst().replaceAll("\\s+", " ");
         assertThat(sql)
@@ -2300,7 +2337,7 @@ class MaterialAnalysisServiceBehaviorTest {
     }
 
     @Test
-    void sharedFutureProjectionFiltersRouteNeedDateAndCurrentAnalysis() {
+    void sharedFutureProjectionUsesExactSourceExclusionAcrossRoutesWithinTheSameAnalysis() {
         UUID warehouseId = UUID.randomUUID();
         var dimension = new MaterialAnalysisService.MaterialDimension(
                 UUID.randomUUID(), null, UUID.randomUUID());
@@ -2318,20 +2355,36 @@ class MaterialAnalysisServiceBehaviorTest {
                 null, null, null, null, true);
         var aggregate = MaterialAnalysisService.SharedFutureAggregate.ZERO
                 .plus(buyOnTime).plus(subcontract).plus(buyLate).plus(buyOwn);
+        UUID ownTarget=UUID.randomUUID(),otherTarget=UUID.randomUUID();
+        var displayedOwn = MaterialAnalysisService.sharedFutureRefForTarget(buyOwn, true);
+        assertThat(displayedOwn.approvedInboundQty()).isEqualByComparingTo("1500");
+        assertThat(displayedOwn.availableToClaimQty()).isZero();
+        assertThat(displayedOwn.sourceActionId()).isNull();
+        assertThat(displayedOwn.sourceIsCurrentAnalysis()).isTrue();
+        assertThat(MaterialAnalysisService.sharedFutureRefForTarget(buyOwn, false)).isSameAs(buyOwn);
+        var eligibleForOwn=MaterialAnalysisService.SharedFutureAggregate.ZERO
+                .plus(buyOnTime).plus(subcontract).plus(buyLate).plus(displayedOwn);
         var index = new MaterialAnalysisService.SharedFutureIndex(Map.of(
                 new MaterialAnalysisService.WarehouseMaterialDimension(
-                        warehouseId, dimension), aggregate));
+                        warehouseId, dimension), aggregate),Map.of(ownTarget,eligibleForOwn,otherTarget,aggregate));
 
         var buy = index.forMaterial(
-                warehouseId, dimension, "BUY", LocalDate.of(2026, 9, 15));
-        assertThat(buy.approvedInboundQty()).isEqualByComparingTo("3000");
-        assertThat(buy.availableQty()).isEqualByComparingTo("500");
+                ownTarget,warehouseId, dimension, "BUY", LocalDate.of(2026, 9, 15));
+        assertThat(buy.approvedInboundQty()).isEqualByComparingTo("4000");
+        assertThat(buy.availableQty()).isEqualByComparingTo("1500");
         assertThat(buy.lateAvailableQty()).isEqualByComparingTo("1000");
         assertThat(buy.refs()).extracting(SharedFutureSupplyRef::route)
-                .containsOnly("BUY");
+                .containsExactly("BUY","SUBCONTRACT","BUY","BUY");
+        assertThat(buy.refs()).doesNotContain(buyOwn);
+        assertThat(buy.refs()).contains(displayedOwn);
+        assertThat(buy.expectedDate()).isEqualTo(LocalDate.of(2026, 9, 8));
         var subcontractOnly = index.forMaterial(
-                warehouseId, dimension, "SUBCONTRACT", LocalDate.of(2026, 9, 15));
-        assertThat(subcontractOnly.availableQty()).isEqualByComparingTo("1000");
+                otherTarget,warehouseId, dimension, "SUBCONTRACT", LocalDate.of(2026, 9, 15));
+        assertThat(subcontractOnly.availableQty()).isEqualByComparingTo("2000");
+        assertThat(subcontractOnly.refs()).contains(buyOwn);
+        var make=index.forMaterial(otherTarget,warehouseId,dimension,"MAKE",LocalDate.of(2026,9,15));
+        assertThat(make.availableQty()).isEqualByComparingTo("2000");
+        assertThat(make.lateAvailableQty()).isEqualByComparingTo("1000");
     }
 
     @Test
@@ -2385,8 +2438,8 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ZERO, BigDecimal.ZERO,
                 // ADR-102：还缺数量(扣掉可认领公共在途后的展示量)
                 BigDecimal.ZERO, bd("100"), BigDecimal.ZERO,
-                // 同料合并共享批次的逐来源转交份额
-                BigDecimal.ZERO);
+                // 同料合并共享批次的逐来源转交份额与目标行
+                BigDecimal.ZERO, null, null, null, List.of(), BigDecimal.ZERO, null, null, null, null, null, List.of());
     }
 
     private static MaterialAnalysisService.MaterialRow materialRow(

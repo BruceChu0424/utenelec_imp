@@ -1,0 +1,681 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:uuid/uuid.dart';
+import '../../core/network/api_exception.dart';
+import '../../core/network/server_config.dart';
+import '../../core/router/nav_helpers.dart';
+
+import '../providers/authenticated_scope_provider.dart';
+import 'form_draft.dart';
+import 'form_draft_lifecycle.dart';
+import 'form_draft_navigation.dart';
+import 'form_draft_store.dart';
+
+export 'form_draft.dart';
+
+/// Pages provide only their typed snapshot codec and editable listenables.
+/// Saving here never invokes a business create/submit/approve endpoint.
+mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
+  bool get formDraftEnabled => true;
+  bool get formDraftBusy => false;
+  bool get formDraftUsesRouterGuard => true;
+  bool get formDraftUseCurrentRoute => true;
+  String? get formDraftResumeId => null;
+  ValueKey<String>? get formDraftRouterPageKey => null;
+
+  /// True only with a persisted server idempotency key or a confirmed created ID.
+  bool get formDraftCanReplaySubmission => false;
+  FormDraftSpec get formDraftSpec;
+  Map<String, dynamic> captureFormDraft();
+  Future<void> restoreFormDraft(Map<String, dynamic> data);
+  Iterable<Listenable> get formDraftListenables => const [];
+
+  final _draftStatus = ValueNotifier<String>('');
+  final _draftListeners = <Listenable>{};
+  bool _draftReady = false;
+  bool _draftRestoring = false;
+  bool _draftFinished = false;
+  bool _draftDisposed = false;
+  bool _draftExitAllowed = false;
+  bool _draftIdentityChanged = false;
+  bool _draftStorageReady = false;
+  bool _draftRestoreBlocked = false;
+  bool _draftSubmissionPending = false;
+  bool _draftSubmissionBlocked = false;
+  bool _draftSkipResume = false;
+  String _draftId = const Uuid().v4();
+  String? _draftRevision;
+  String _draftRoute = '';
+  String _draftBaseline = '';
+  String? _draftSavedJson;
+  String? _draftPendingJson;
+  Object? _draftError;
+  Future<void>? _draftWriting;
+  Future<bool>? _draftExitPrompt;
+  FormDraftsNotifier? _draftStore;
+  String? _draftOwnerKey;
+  AuthenticatedScope? _draftScope;
+  String? _draftServer;
+  ProviderSubscription<AuthenticatedScope?>? _draftScopeSubscription;
+  ProviderSubscription<String>? _draftServerSubscription;
+  void Function()? _removeDraftLifecycle;
+  late final _draftLifecycleObserver = _FormDraftLifecycleObserver(
+    _flushDraftQuietly,
+  );
+
+  Future<void> initializeFormDraft() async {
+    if (!formDraftEnabled || _draftReady || _draftRestoring || !mounted) return;
+    final scope = ref.read(authenticatedScopeProvider);
+    if (scope == null || scope.readOnly) return;
+    _draftScope = scope;
+    _draftServer = ref.read(apiBaseUrlProvider);
+    super.setState(() => _draftRestoring = true);
+    _draftBaseline = _captureDraftJson();
+    _draftRoute = formDraftSpec.route;
+    String? resumeId = _draftSkipResume ? null : formDraftResumeId;
+    ValueKey<String>? pageKey = formDraftRouterPageKey;
+    final routeState = goRouterPageStateOrNull(context);
+    if (routeState != null) {
+      final uri = routeState.uri;
+      pageKey ??= routeState.pageKey;
+      if (!_draftSkipResume &&
+          (formDraftUseCurrentRoute ||
+              (formDraftUsesRouterGuard &&
+                  uri.path == Uri.parse(formDraftSpec.route).path))) {
+        resumeId ??= uri.queryParameters['draftId'];
+      }
+      final parameters = Map<String, String>.of(uri.queryParameters)
+        ..remove('draftId');
+      if (formDraftUseCurrentRoute) {
+        _draftRoute = uri.replace(queryParameters: parameters).toString();
+      }
+    }
+    try {
+      _draftStore = ref.read(formDraftsProvider.notifier);
+      _draftOwnerKey = _draftStore!.ownerKey;
+      await _draftStore!.ready;
+      _draftStorageReady = true;
+      if (!mounted ||
+          ref.read(authenticatedScopeProvider) != scope ||
+          ref.read(apiBaseUrlProvider) != _draftServer) {
+        if (mounted) {
+          _draftIdentityChanged = true;
+          _draftStatus.value = '登录身份或服务器已变化，请重新进入新建页面';
+        }
+        return;
+      }
+      if (resumeId != null) {
+        final found = ref
+            .read(formDraftsProvider)
+            .where((draft) => draft.id == resumeId)
+            .firstOrNull;
+        if (found == null ||
+            !formDraftSpec.canRestore(found, currentRoute: _draftRoute)) {
+          throw StateError('草稿不存在或当前账号已无权继续填写');
+        }
+        _draftId = found.id;
+        _draftRevision = found.revision;
+        _draftSubmissionPending =
+            found.data['_formDraftSubmissionPending'] == true;
+        await restoreFormDraft(found.data);
+        if (!mounted ||
+            ref.read(authenticatedScopeProvider) != scope ||
+            ref.read(apiBaseUrlProvider) != _draftServer) {
+          if (mounted) {
+            _draftIdentityChanged = true;
+            _draftStatus.value = '登录身份或服务器已变化，请重新进入新建页面';
+          }
+          return;
+        }
+        _draftSavedJson = _captureDraftJson();
+        _draftSubmissionBlocked =
+            _draftSubmissionPending && !formDraftCanReplaySubmission;
+        _draftStatus.value = _draftSubmissionBlocked
+            ? '上次提交结果待确认，请先核对任务中心的单据记录，避免重复创建。'
+            : '已恢复本机草稿';
+      }
+    } catch (error) {
+      _draftError = error;
+      _draftRestoreBlocked = resumeId != null;
+      _draftStatus.value = '草稿保护未就绪：$error';
+    } finally {
+      if (mounted &&
+          ref.read(authenticatedScopeProvider) == scope &&
+          ref.read(apiBaseUrlProvider) == _draftServer) {
+        // Even failed storage must keep dirty tracking and the leave dialog.
+        _draftReady = true;
+        _draftScopeSubscription = ref.listenManual(authenticatedScopeProvider, (
+          _,
+          next,
+        ) {
+          if (next != _draftScope) {
+            super.setState(() => _draftIdentityChanged = true);
+            _draftStatus.value = '登录身份已变化，请重新进入新建页面';
+          }
+        });
+        _draftServerSubscription = ref.listenManual(apiBaseUrlProvider, (
+          _,
+          next,
+        ) {
+          if (next != _draftServer && mounted) {
+            super.setState(() => _draftIdentityChanged = true);
+            _draftStatus.value = '服务器已变化，请重新进入新建页面';
+          }
+        });
+        FormDraftNavigation.register(
+          this,
+          _draftRoute,
+          _confirmDraftExit,
+          pageKey: pageKey,
+        );
+        WidgetsBinding.instance.addObserver(_draftLifecycleObserver);
+        _removeDraftLifecycle = registerFormDraftLifecycle(_flushDraftQuietly);
+        _syncDraftListeners();
+      }
+      _draftRestoring = false;
+      if (mounted) super.setState(() {});
+    }
+  }
+
+  /// A report page can remain open for another partial report after server refresh.
+  /// Its next input belongs to a new draft identity and a new loaded baseline.
+  Future<void> resetFormDraftAfterSubmission({
+    bool preserveCurrentDraft = false,
+    Future<void> Function()? prepare,
+  }) async {
+    if (preserveCurrentDraft) {
+      await _draftWriting;
+    } else {
+      await completeFormDraft();
+    }
+    if (!mounted) return;
+    _removeDraftLifecycle?.call();
+    _removeDraftLifecycle = null;
+    WidgetsBinding.instance.removeObserver(_draftLifecycleObserver);
+    FormDraftNavigation.unregister(this);
+    _draftScopeSubscription?.close();
+    _draftScopeSubscription = null;
+    _draftServerSubscription?.close();
+    _draftServerSubscription = null;
+    for (final item in _draftListeners) {
+      item.removeListener(markFormDraftChanged);
+    }
+    _draftListeners.clear();
+    _draftReady = false;
+    _draftRestoring = false;
+    _draftFinished = false;
+    _draftExitAllowed = false;
+    _draftSubmissionPending = false;
+    _draftSubmissionBlocked = false;
+    _draftRestoreBlocked = false;
+    _draftError = null;
+    _draftId = const Uuid().v4();
+    _draftRevision = null;
+    _draftSavedJson = null;
+    _draftPendingJson = null;
+    _draftSkipResume = true;
+    if (prepare != null) await prepare();
+    await initializeFormDraft();
+  }
+
+  void _syncDraftListeners() {
+    if (!_draftReady || _draftDisposed) return;
+    final current = formDraftListenables.toSet();
+    for (final item in _draftListeners.difference(current)) {
+      item.removeListener(markFormDraftChanged);
+    }
+    for (final item in current.difference(_draftListeners)) {
+      item.addListener(markFormDraftChanged);
+    }
+    _draftListeners
+      ..clear()
+      ..addAll(current);
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    if (_draftReady && !_draftRestoring && !_draftFinished) {
+      markFormDraftChanged();
+    }
+  }
+
+  void markFormDraftChanged() {
+    if (!_draftReady ||
+        _draftRestoring ||
+        _draftFinished ||
+        _draftDisposed ||
+        _draftIdentityChanged) {
+      return;
+    }
+    _syncDraftListeners();
+    try {
+      final snapshot = _captureDraftJson();
+      if (snapshot == _draftPendingJson ||
+          (snapshot == _draftSavedJson && _draftError == null)) {
+        return;
+      }
+      _draftExitAllowed = false;
+      _draftPendingJson = snapshot;
+      _draftStatus.value = '正在保存本机草稿…';
+      _flushDraftQuietly();
+    } catch (error) {
+      _draftError = error;
+      _draftStatus.value = '草稿保存失败：$error';
+    }
+  }
+
+  void _flushDraftQuietly() {
+    unawaited(
+      saveFormDraftNow().catchError((Object error) {
+        if (_draftDisposed) return;
+        _draftError = error;
+        _draftStatus.value = '草稿尚未保存，请勿关闭页面：$error';
+      }),
+    );
+  }
+
+  /// Explicit transaction checkpoint; callers must await before sending a create.
+  Future<void> saveFormDraftNow() async {
+    if (!formDraftEnabled || _draftFinished || _draftDisposed) return;
+    if (_draftIdentityChanged) throw StateError('登录身份已变化');
+    if (_draftRestoreBlocked) throw StateError('草稿未能恢复，请返回任务中心');
+    if (!_draftReady) {
+      if (_draftError != null) throw _draftError!;
+      if (ref.read(authenticatedScopeProvider) != null) {
+        throw StateError('草稿保护正在初始化，请稍后保存');
+      }
+      return;
+    }
+    if (!_draftStorageReady) {
+      ref.invalidate(formDraftsProvider);
+      _draftStore = ref.read(formDraftsProvider.notifier);
+      await _draftStore!.ready;
+      _draftOwnerKey = _draftStore!.ownerKey;
+      if (_draftIdentityChanged) throw StateError('登录身份已变化');
+      _draftStorageReady = true;
+    }
+    _draftPendingJson = _captureDraftJson();
+    // Install the shared future BEFORE starting work. Waiters only join it;
+    // they must not each start another writer after the same await completes.
+    // That race used the same old revision twice, even within a single page.
+    final existing = _draftWriting;
+    if (existing != null) return existing;
+    final completion = Completer<void>();
+    _draftWriting = completion.future;
+    unawaited(_drainDraftWrites(completion));
+    return completion.future;
+  }
+
+  Future<void> _drainDraftWrites(Completer<void> completion) async {
+    try {
+      do {
+        await _writeDraftLoop();
+      } while (!_draftFinished &&
+          !_draftIdentityChanged &&
+          _draftPendingJson != _draftSavedJson);
+      // No await between the last state check and releasing the writer slot.
+      _draftWriting = null;
+      completion.complete();
+    } catch (error, stack) {
+      _draftWriting = null;
+      completion.completeError(error, stack);
+    }
+  }
+
+  /// A confirmed server create must not become a false create/upload failure
+  /// because a local checkpoint failed. IDs in memory still prevent recreation;
+  /// the durable pre-submit marker protects an interrupted restart.
+  Future<void> checkpointFormDraftAfterCreation() async {
+    try {
+      await saveFormDraftNow();
+    } catch (error) {
+      if (!_draftDisposed) {
+        _draftError = error;
+        _draftStatus.value = '单据已保存，继续处理本单；本机恢复记录暂存失败。';
+      }
+    }
+  }
+
+  Future<void> _writeDraftLoop() async {
+    while (!_draftFinished && !_draftIdentityChanged) {
+      final snapshot = _draftPendingJson;
+      if (snapshot == null || snapshot == _draftSavedJson) return;
+      if (snapshot == _draftBaseline) {
+        if (_draftRevision != null) {
+          await _draftStore!.delete(_draftId, expectedRevision: _draftRevision);
+        }
+        _draftRevision = null;
+        _draftSavedJson = snapshot;
+        _draftError = null;
+        if (!_draftDisposed) _draftStatus.value = '';
+        continue;
+      }
+      final spec = formDraftSpec;
+      final saved = await _draftStore!.save(
+        FormDraft(
+          id: _draftId,
+          title: spec.title,
+          module: spec.module,
+          route: _draftRoute,
+          permission: spec.permission,
+          draftKind: spec.draftKind,
+          updatedAt: DateTime.now(),
+          data: jsonDecode(snapshot) as Map<String, dynamic>,
+        ),
+        expectedRevision: _draftRevision,
+      );
+      _draftRevision = saved.revision;
+      _draftSavedJson = snapshot;
+      _draftError = null;
+      if (!_draftDisposed) _draftStatus.value = '已自动保存本机草稿';
+    }
+  }
+
+  String _captureDraftJson() => jsonEncode({
+    ...captureFormDraft(),
+    if (_draftSubmissionPending) '_formDraftSubmissionPending': true,
+  });
+
+  /// Fence a new business command before sending any bytes. An interrupted or
+  /// unknown result stays recoverable but cannot create twice without proof.
+  Future<R> runFormDraftSubmission<R>(Future<R> Function() send) async {
+    if (!formDraftEnabled || _draftScope == null) return send();
+    if (_draftFinished) throw StateError('本次单据已经提交，请返回任务中心');
+    if (_draftSubmissionPending && !formDraftCanReplaySubmission) {
+      throw StateError('上次提交结果待确认，请先核对任务中心，不能重复创建');
+    }
+    final wasPending = _draftSubmissionPending;
+    _draftSubmissionPending = true;
+    try {
+      await saveFormDraftNow();
+      if (_draftDisposed ||
+          !mounted ||
+          _draftFinished ||
+          _draftIdentityChanged ||
+          _draftStore?.ownerKey != _draftOwnerKey ||
+          ref.read(authenticatedScopeProvider) != _draftScope ||
+          ref.read(apiBaseUrlProvider) != _draftServer) {
+        throw StateError('页面或登录身份已变化，本次未提交新单据');
+      }
+    } catch (_) {
+      _draftSubmissionPending = wasPending;
+      rethrow;
+    }
+    try {
+      return await send();
+    } on ApiException catch (error) {
+      // Structured validation/constraint conflicts are transaction rejections,
+      // e.g. a duplicate master-data code. They must remain editable.
+      if (error.httpStatus == 400 ||
+          error.httpStatus == 422 ||
+          (error.httpStatus == 409 && error.code == 'CONFLICT')) {
+        _draftSubmissionPending = false;
+        await saveFormDraftNow();
+      } else if (!formDraftCanReplaySubmission && mounted) {
+        super.setState(() => _draftSubmissionBlocked = true);
+      }
+      rethrow;
+    } catch (_) {
+      if (!formDraftCanReplaySubmission && mounted) {
+        super.setState(() => _draftSubmissionBlocked = true);
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> completeFormDraft() async {
+    if (!formDraftEnabled || _draftFinished) return;
+    _draftFinished = true;
+    _draftExitAllowed = true;
+    // Fence writes before deleting, so a late autosave cannot resurrect a draft.
+    try {
+      await _draftWriting;
+    } catch (_) {}
+    if (_draftIdentityChanged ||
+        _draftStore?.ownerKey != _draftOwnerKey ||
+        (mounted &&
+            _draftScope != null &&
+            (ref.read(authenticatedScopeProvider) != _draftScope ||
+                ref.read(apiBaseUrlProvider) != _draftServer))) {
+      return;
+    }
+    if (_draftRevision != null) {
+      try {
+        await _draftStore?.complete(_draftId, expectedRevision: _draftRevision);
+      } catch (_) {
+        // Business success must never enter the caller's create-failure/retry path.
+        // The pre-write marker remains on disk and blocks unsafe replay.
+        if (!_draftDisposed) {
+          _draftStatus.value = '单据已保存，本机草稿清理失败；请以任务中心的单据记录为准。';
+        }
+        return;
+      }
+    }
+    if (!_draftDisposed) _draftStatus.value = '';
+  }
+
+  Future<bool> _confirmDraftExit() {
+    if (_draftIdentityChanged) return Future.value(true);
+    // The business operation already completed; its own navigation commonly
+    // runs before the page's finally block clears _saving. Do not veto it.
+    if (_draftFinished) return Future.value(true);
+    if (formDraftBusy) return Future.value(false);
+    if (_draftExitAllowed || !_draftReady || _draftRestoreBlocked) {
+      return Future.value(true);
+    }
+    if (_captureDraftJson() == _draftBaseline && _draftRevision == null) {
+      return Future.value(true);
+    }
+    return _draftExitPrompt ??= _showDraftExitPrompt().whenComplete(() {
+      _draftExitPrompt = null;
+    });
+  }
+
+  Future<bool> confirmFormDraftExit() => _confirmDraftExit();
+
+  Future<bool> _showDraftExitPrompt() async {
+    final decision = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('是否保存为草稿？'),
+        content: const Text('你已填写内容。保存草稿后，可在对应任务中心继续填写。草稿保存在当前设备和浏览器。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'stay'),
+            child: const Text('继续填写'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'discard'),
+            child: const Text('不保存'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, 'save'),
+            child: const Text('保存草稿'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || decision == null || decision == 'stay') return false;
+    try {
+      if (decision == 'save') {
+        await saveFormDraftNow();
+        _draftExitAllowed = true;
+      } else {
+        // Discard is different from successful business completion.
+        _draftFinished = true;
+        try {
+          await _draftWriting;
+        } catch (_) {}
+        try {
+          if (_draftRevision != null) {
+            try {
+              await _draftStore!.delete(
+                _draftId,
+                expectedRevision: _draftRevision,
+              );
+            } on FormDraftConflict {
+              // Discard this editor's stale changes, never delete another tab's work.
+            }
+          }
+          _draftExitAllowed = true;
+        } catch (_) {
+          _draftFinished = false;
+          rethrow;
+        }
+      }
+      return true;
+    } catch (error) {
+      _draftError = error;
+      _draftStatus.value = '草稿尚未保存，请保留页面重试：$error';
+      return false;
+    }
+  }
+
+  Widget withFormDraft(Widget child) {
+    if (!formDraftEnabled) return child;
+    if (_draftIdentityChanged) {
+      return const Material(
+        child: Center(child: Text('登录身份或服务器已变化，请重新进入页面。原草稿保留在原账号下。')),
+      );
+    }
+    // GoRouter onExit is the authoritative guard (covers go/replace and browser
+    // back). The wrapper also protects editors hosted by a plain Navigator.
+    var hasRouter = formDraftUsesRouterGuard;
+    try {
+      GoRouter.of(context);
+    } catch (_) {
+      hasRouter = false;
+    }
+    return PopScope(
+      canPop: hasRouter || _draftExitAllowed || !_draftReady,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop || hasRouter) return;
+        if (await _confirmDraftExit() && mounted) {
+          _draftExitAllowed = true;
+          super.setState(() {});
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) Navigator.of(context).pop(result);
+          });
+        }
+      },
+      child: Stack(
+        children: [
+          AbsorbPointer(
+            absorbing:
+                _draftRestoring ||
+                _draftIdentityChanged ||
+                _draftRestoreBlocked ||
+                _draftSubmissionBlocked,
+            child: child,
+          ),
+          if (_draftRestoring)
+            const Positioned.fill(
+              child: Material(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 12),
+                      Text('正在准备草稿保护…'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          if (_draftRestoreBlocked || _draftSubmissionBlocked)
+            Center(
+              child: Material(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _draftSubmissionBlocked
+                            ? '上次提交的结果尚未确认。输入已保留，请先到任务中心核对是否已经生成单据。'
+                            : '这份草稿暂时无法恢复，原草稿已保留。',
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton(
+                        onPressed: () => GoRouter.of(context).go('/dashboard'),
+                        child: const Text('返回工作台'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          Positioned(
+            left: 16,
+            bottom: 8,
+            child: ValueListenableBuilder<String>(
+              valueListenable: _draftStatus,
+              builder: (context, status, _) => status.isEmpty
+                  ? const SizedBox.shrink()
+                  : Material(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(6),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: MediaQuery.sizeOf(context).width - 48,
+                          ),
+                          child: Text(
+                            status,
+                            maxLines: 3,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _draftError == null
+                                  ? Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant
+                                  : Theme.of(context).colorScheme.error,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _draftDisposed = true;
+    _removeDraftLifecycle?.call();
+    WidgetsBinding.instance.removeObserver(_draftLifecycleObserver);
+    FormDraftNavigation.unregister(this);
+    _draftScopeSubscription?.close();
+    for (final item in _draftListeners) {
+      // Listener removal is safe even when the owning page disposed its controls.
+      item.removeListener(markFormDraftChanged);
+    }
+    _draftServerSubscription?.close();
+    _draftListeners.clear();
+    _draftStatus.dispose();
+    super.dispose();
+  }
+}
+
+class _FormDraftLifecycleObserver extends WidgetsBindingObserver {
+  _FormDraftLifecycleObserver(this.flush);
+  final VoidCallback flush;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) flush();
+  }
+}

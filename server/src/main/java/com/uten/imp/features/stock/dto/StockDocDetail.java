@@ -72,4 +72,6 @@ public class StockDocDetail {
     private boolean productionMaterialReturn;
     private UUID materialReturnSourceWarehouseId;
     private UUID materialReturnMainWarehouseId;
+    /** Read-only LQ source identity via exact discovery-demand-DRAW mapping. */
+    private String materialRequestNo;
 }

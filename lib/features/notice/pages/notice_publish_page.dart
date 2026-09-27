@@ -11,6 +11,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_values.dart';
+import '../../../shared/drafts/people_form_draft_values.dart';
 
 import '../../../core/router/nav_helpers.dart';
 import '../../../components/buttons/click_guard.dart';
@@ -49,7 +53,77 @@ class NoticePublishPage extends ConsumerStatefulWidget {
   ConsumerState<NoticePublishPage> createState() => _NoticePublishPageState();
 }
 
-class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
+class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
+    with FormDraftMixin<NoticePublishPage> {
+  bool _publishing = false;
+  @override
+  bool get formDraftBusy => _publishing;
+  @override
+  FormDraftSpec get formDraftSpec =>
+      FormDraftCatalog.notice.spec(title: '发布通知', route: '/notice/publish');
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _titleController,
+    _contentController,
+    _actionRouteController,
+  ];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'title': _titleController.text,
+    'content': _contentController.text,
+    'actionRoute': _actionRouteController.text,
+    'type': _type.name,
+    'kind': _kind.name,
+    'topPriority': _topPriority,
+    'audienceScope': _audienceScope.name,
+    'departments': draftDepartments(_departments),
+    'employees': draftEmployees({for (final item in _employees) item.id: item}),
+    'dueAt': _dueAt?.toIso8601String(),
+    'celebrationSubject': draftEmployees({
+      for (final subject in [
+        _celebrationSubject,
+      ].whereType<UtenEmployeePickerItem>())
+        subject.id: subject,
+    }),
+    'selectedTemplates': _selectedTemplates,
+    'titleAutoFilled': _titleAutoFilled,
+    'autoFilledTitle': _autoFilledTitle,
+    'preview': _celebrationPreview == null
+        ? null
+        : {
+            'subjectName': _celebrationPreview!.subjectName,
+            'eventLabel': _celebrationPreview!.eventLabel,
+            'suggestedTitle': _celebrationPreview!.suggestedTitle,
+            'suggestedTemplates': _celebrationPreview!.suggestedTemplates,
+          },
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _titleController.text = data['title'] as String? ?? '';
+    _contentController.text = data['content'] as String? ?? '';
+    _actionRouteController.text = data['actionRoute'] as String? ?? '';
+    _type = NoticeType.values.byName(data['type'] as String);
+    _kind = NoticeKind.values.byName(data['kind'] as String);
+    _topPriority = data['topPriority'] == true;
+    _audienceScope = NoticeAudienceScope.values.byName(
+      data['audienceScope'] as String,
+    );
+    _departments = restoreDraftDepartments(data['departments']);
+    final employees = <String, UtenEmployeePickerItem>{};
+    restoreDraftEmployees(employees, data['employees']);
+    _employees = employees.values.toList();
+    final subject = <String, UtenEmployeePickerItem>{};
+    restoreDraftEmployees(subject, data['celebrationSubject']);
+    _celebrationSubject = subject.values.firstOrNull;
+    _dueAt = DateTime.tryParse(data['dueAt'] as String? ?? '');
+    _selectedTemplates = draftStrings(data['selectedTemplates']);
+    _titleAutoFilled = data['titleAutoFilled'] == true;
+    _autoFilledTitle = data['autoFilledTitle'] as String?;
+    _celebrationPreview = data['preview'] == null
+        ? null
+        : NoticeCelebrationPreview.fromJson(draftMap(data['preview']));
+  }
+
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _contentController = TextEditingController();
@@ -95,9 +169,12 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
       if (preset.isCelebratory) _audienceScope = NoticeAudienceScope.all;
     }
     // 预设祝福对象（HR 子页「送祝福」按行透传）：首帧后异步预填对象 + 模板 + 标题。
-    if (widget.presetSubjectId != null && _type.isCelebratory) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _seedPresetSubject());
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (widget.presetSubjectId != null && _type.isCelebratory) {
+        await _seedPresetSubject();
+      }
+      if (mounted) await initializeFormDraft();
+    });
   }
 
   Future<void> _seedPresetSubject() async {
@@ -214,6 +291,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
       _departments.isNotEmpty || _employees.isNotEmpty;
 
   Future<void> _onPublish() async {
+    if (_publishing) return;
     final l10n = AppLocalizations.of(context);
     if (_formKey.currentState?.validate() != true) return;
     final isCelebration = _kind == NoticeKind.normal && _type.isCelebratory;
@@ -241,32 +319,37 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
       if (!mounted) return;
       final confirmed = await _confirmPublish(l10n, preview);
       if (confirmed != true || !mounted) return;
+      setState(() => _publishing = true);
+      await saveFormDraftNow();
 
       final type = _kind == NoticeKind.todo ? NoticeType.task : _type;
       final priority = type == NoticeType.urgent
           ? NoticePriority.urgent
           : (_topPriority ? NoticePriority.important : NoticePriority.normal);
-      final published = await ref
-          .read(noticeRepositoryProvider)
-          .publish(
-            title: _titleController.text.trim(),
-            content: _contentController.text.trim(),
-            type: type,
-            topPriority: _topPriority,
-            priority: priority,
-            audienceScope: isCelebration
-                ? NoticeAudienceScope.all
-                : _audienceScope,
-            departmentIds: _departments.map((item) => item.id).toList(),
-            employeeIds: _employees.map((item) => item.id).toList(),
-            kind: _kind,
-            actionRoute: _actionRouteController.text.trim().isEmpty
-                ? null
-                : _actionRouteController.text.trim(),
-            dueAt: _dueAt,
-            subjectEmployeeId: isCelebration ? _celebrationSubject!.id : null,
-            blessingTemplates: isCelebration ? _selectedTemplates : const [],
-          );
+      final published = await runFormDraftSubmission(
+        () => ref
+            .read(noticeRepositoryProvider)
+            .publish(
+              title: _titleController.text.trim(),
+              content: _contentController.text.trim(),
+              type: type,
+              topPriority: _topPriority,
+              priority: priority,
+              audienceScope: isCelebration
+                  ? NoticeAudienceScope.all
+                  : _audienceScope,
+              departmentIds: _departments.map((item) => item.id).toList(),
+              employeeIds: _employees.map((item) => item.id).toList(),
+              kind: _kind,
+              actionRoute: _actionRouteController.text.trim().isEmpty
+                  ? null
+                  : _actionRouteController.text.trim(),
+              dueAt: _dueAt,
+              subjectEmployeeId: isCelebration ? _celebrationSubject!.id : null,
+              blessingTemplates: isCelebration ? _selectedTemplates : const [],
+            ),
+      );
+      await completeFormDraft();
       ref.invalidate(noticeListProvider);
       refreshBadges(ref);
       if (isCelebration) {
@@ -285,6 +368,8 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
       backTo(context, defaultPath: '/notice');
     } catch (error) {
       if (mounted) context.appApiError(error);
+    } finally {
+      if (mounted) setState(() => _publishing = false);
     }
   }
 
@@ -329,6 +414,12 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
 
   @override
   Widget build(BuildContext context) {
+    return withFormDraft(
+      AbsorbPointer(absorbing: _publishing, child: _buildEditor(context)),
+    );
+  }
+
+  Widget _buildEditor(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: UtenAppBar(title: l10n.noticePublishTitle, showBackButton: true),

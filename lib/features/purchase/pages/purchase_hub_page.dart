@@ -12,12 +12,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/feedback/uten_module_progress_chip.dart';
-import '../../../components/feedback/uten_module_todo_chip.dart';
+import '../../../components/feedback/uten_module_badges.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_in_progress_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -29,13 +27,12 @@ import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/badges/badge_scope.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../warehouse/pages/procurement_return_task_pages.dart';
-import '../../warehouse/widgets/procurement_inbound_badges.dart';
 import '../config/purchase_doc_config.dart';
 import '../config/purchase_report_config.dart';
 import '../models/purchase_doc.dart';
-import '../widgets/purchase_task_badge.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 class PurchaseHubPage extends ConsumerWidget {
@@ -63,14 +60,15 @@ class PurchaseHubPage extends ConsumerWidget {
         label: l10n.purchaseHubTaskCenter,
         description: l10n.purchaseHubTaskCenterSub,
         location: RouteName.operationsPurchaseWorkbench,
-        badge: const PurchaseTaskBadge(showLabel: true),
         // 黄=任务中心「进行中」段(已下单、球在财务/供应商手上); 红=申请待分解与
         // 财务驳回。同一张被驳回的单两枚都算得上, 那是两条链对两个问题的答案。
-        progressBadge: UtenInProgressBadge(
-          count: ref.watch(
-            badgeEntryInProgressProvider(BadgeEntry.purchaseTaskCenter),
-          ),
-          showLabel: true,
+        // 草稿已并入任务中心分类；供应商退货仍由独立入口办理。
+        // 本地采购草稿由 effective 汇总按 ID 去重并入 purchaseDrafts 入口后在这里
+        // 取到，故**不得**再声明 formDraftModule——badgeScopeCountsProvider 会在
+        // 汇总之上再加一次本地数，任务中心卡就会超过顶栏模块红数(双计)。
+        badgeScope: const BadgeScope.entry(
+          BadgeEntry.purchaseTaskCenter,
+          additionalTodoEntries: {BadgeEntry.purchaseDrafts},
         ),
       ),
       _Entry(
@@ -80,10 +78,7 @@ class PurchaseHubPage extends ConsumerWidget {
         location: procurementReturnTasksLocation(
           ProcurementInboundOrderType.purchase,
         ),
-        badge: const ProcurementArrivalReturnBadge(
-          orderType: ProcurementInboundOrderType.purchase,
-          showLabel: true,
-        ),
+        badgeScope: const BadgeScope.entry(BadgeEntry.purchaseSupplierReturn),
       ),
     ]);
     final documentEntries = visible([
@@ -116,20 +111,9 @@ class PurchaseHubPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
-        actions: [
-          // 顶栏两枚药丸, 黄左红右(ADR-100, 与卡片右上角同序):
-          // 「进行中 N」= 采购下登记的在办入口之和(当前只有任务中心一处);
-          // 「待办 N」= 采购下全部待办入口之和(任务中心 + 待退回供应商 +
-          // 三张单据草稿)。两个数字都由各自注册表求和得出, 页面里不要手写加法,
-          // 否则与工作台「采购管理」卡的口径会各算各的。0 时组件自身不渲染。
-          UtenModuleProgressChip(
-            count: ref.watch(
-              badgeModuleInProgressProvider(BadgeModule.purchase),
-            ),
-          ),
-          UtenModuleTodoChip(
-            count: ref.watch(badgeModuleTodoProvider(BadgeModule.purchase)),
-          ),
+        actions: const [
+          // 模块合计包含任务中心、供应商退货和三类草稿，由服务端汇总。
+          UtenModuleBadges(module: BadgeModule.purchase),
         ],
       ),
       body: SafeArea(
@@ -219,8 +203,7 @@ class _Entry {
     required this.label,
     required this.description,
     required this.location,
-    this.badge,
-    this.progressBadge,
+    this.badgeScope,
   });
 
   /// 新建单据卡（2026-09-24 三段式）：只对能新建的人显示（外层 canOpen 过滤），
@@ -231,21 +214,15 @@ class _Entry {
       label = '新建${_purchaseDocTitle(cfg.type, l10n)}',
       description = _purchaseDocSubtitle(cfg.type, l10n),
       location = RoutePath.purchaseDocNew(cfg.type.pathSegment),
-      badge = null,
-      // 单据卡不挂黄: 订货/收货/退货的在途单据已经全在采购任务中心「进行中」里,
-      // 这里再按单据数一遍就是同一条黄链内的双计(ADR-100 §2.4)。
-      progressBadge = null;
+      badgeScope = null;
 
   final IconData icon;
   final String label;
   final String description;
   final String location;
 
-  /// 右上角红色徽章；待办数与草稿数都放这里，都会进上层累加。
-  final Widget? badge;
-
-  /// 右上角黄色「进行中」徽章，排在红徽章左边；走另一张注册表，与红数互不相干。
-  final Widget? progressBadge;
+  /// 当前入口的红黄计数范围；新建单据卡不挂徽章。
+  final BadgeScope? badgeScope;
 }
 
 class _EntryTile extends StatelessWidget {
@@ -259,8 +236,8 @@ class _EntryTile extends StatelessWidget {
       label: entry.label,
       description: entry.description,
       onTap: () => goFrom(context, entry.location),
-      badge: entry.badge,
-      progressBadge: entry.progressBadge,
+      badgeScope: entry.badgeScope,
+      badgeShowLabel: true,
     );
   }
 }

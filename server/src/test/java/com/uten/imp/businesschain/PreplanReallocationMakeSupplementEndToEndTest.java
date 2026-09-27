@@ -205,6 +205,43 @@ class PreplanReallocationMakeSupplementEndToEndTest {
         qty("14",db.queryForObject("SELECT notified_qty FROM preplan_subcontract_make_tasks WHERE preparation_item_id=? AND status='ACTIVE'",BigDecimal.class,childItem));
     }
 
+    @Test void aggregateEntryKeepsTheExistingChildAndIssuesOnlyTheTwoUnitNetSupplement() {
+        var c=scenario("aggregate-net-make-supplement",true);
+        ReflectionTestUtils.invokeMethod(fixture,"putDirectTargetStock",c.world(),c.raw(),"10");
+        AnalysisView a=preview(c,"A","10");UUID materialId=material(a,c.child()).materialLineId();
+        var first=commands.issueWorkshopPlans(a.analysisId(),planRequest(c,a,materialId,"10","aggregate-net-first-"+a.analysisId())).plans().getFirst();
+        UUID child=db.queryForObject("SELECT material_analysis_item_id FROM production_plans WHERE id=?",UUID.class,first.planId());
+        finish(c,first,"10");String history=planHistory(first.planId());
+        AnalysisView b=preview(c,"B","4");MaterialView receiver=material(b,c.child());
+        b=analyses.saveRoutes(b.analysisId(),new RouteRequest(b.version(),b.fingerprint(),"aggregate-net-buy-route-"+b.analysisId(),
+                List.of(new RouteDecision(receiver.materialLineId(),receiver.actionGroupKey(),"BUY",null))));
+        commands.notifySupply(b.analysisId(),new NotifyRequest(b.version(),b.fingerprint(),"aggregate-net-buy-"+b.analysisId(),"BUY",List.of(receiver.materialLineId()),List.of(),null));
+        UUID purchase=ReflectionTestUtils.invokeMethod(fixture,"approveExistingAnalysisPurchase",c.world(),b.analysisId(),c.child());
+        fixture.loginAs(c.world().superAdminUserId());yieldFour(c,analyses.detail(a.analysisId()),analyses.detail(b.analysisId()));
+        ReflectionTestUtils.invokeMethod(fixture,"receiveAndPassPurchase",c.world(),purchase,c.child(),new BigDecimal("2"),"aggregate-net-return-"+purchase);
+        fixture.loginAs(c.world().superAdminUserId());
+        AnalysisView current=analyses.detail(a.analysisId());qty("2",material(current,c.child()).priorityPendingQty());
+        var group=new com.uten.imp.features.production.analysis.AggregateMaterialOrderContracts.GroupInput("net-supplement",List.of(materialId),"MAKE",new BigDecimal("2"),false,
+                c.workshop(),c.worker(),null,BusinessTime.today(),BusinessTime.today().plusDays(10),null,BigDecimal.ZERO,BigDecimal.ZERO,java.util.Map.of(materialId,new BigDecimal("2")));
+        var request=new com.uten.imp.features.production.analysis.AggregateMaterialOrderContracts.PreviewRequest(current.version(),current.fingerprint(),"aggregate-net-submit-"+a.analysisId(),
+                c.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,List.of(group));
+        var reader=beans.getBean(com.uten.imp.features.production.analysis.AggregateMaterialOrderPreviewService.class);
+        var writer=beans.getBean(com.uten.imp.features.production.analysis.AggregateMaterialOrderWriteService.class);
+        var shown=reader.preview(a.analysisId(),request);assertNull(shown.groups().getFirst().blockedReason());qty("0",shown.groups().getFirst().publicExtraQty());
+        var submit=new com.uten.imp.features.production.analysis.AggregateMaterialOrderContracts.SubmitRequest(request.version(),request.fingerprint(),request.idempotencyKey(),request.warehouseId(),
+                request.billDate(),request.deliveryDate(),true,request.groups(),shown.previewFingerprint());
+        var result=writer.submit(a.analysisId(),submit);assertEquals(1,result.batches().size());
+        var next=result.batches().getFirst();assertNull(next.batchId());assertNotNull(next.generatedPlan());
+        assertEquals(child,db.queryForObject("SELECT material_analysis_item_id FROM production_plans WHERE id=?",UUID.class,next.planId()));
+        qty("2",db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=?",BigDecimal.class,next.planId()));
+        qty("0",db.queryForObject("SELECT public_surplus_qty FROM production_material_analysis_plan_links WHERE plan_id=?",BigDecimal.class,next.planId()));
+        qty("12",db.queryForObject("SELECT requested_qty FROM production_material_analysis_items WHERE id=?",BigDecimal.class,child));
+        assertEquals(next.planId(),writer.submit(a.analysisId(),submit).batches().getFirst().planId());
+        qty("12",db.queryForObject("SELECT requested_qty FROM production_material_analysis_items WHERE id=?",BigDecimal.class,child));
+        assertEquals(history,planHistory(first.planId()));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM preplan_aggregate_batches WHERE analysis_id=?",Integer.class,a.analysisId()));
+    }
+
     private Scenario scenario(String tag,boolean make) {
         var w=fixture.seedWorld(tag);fixture.loginAs(w.superAdminUserId());
         UUID root=UUID.randomUUID(),child=UUID.randomUUID(),raw=UUID.randomUUID(),workshop=UUID.randomUUID(),worker=UUID.randomUUID();

@@ -4,6 +4,7 @@ import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import jakarta.persistence.EntityManager;
@@ -43,10 +44,31 @@ public class WarehouseHistoryQueryService {
             LocalDate dateTo,
             int page,
             int size) {
+        return list(type, keyword, status, dateFrom, dateTo, page, size, null, null, null, null);
+    }
+
+    /** 同上；2026-09-25 单号列统一：sort/order 表头排序（白名单，未知回落默认
+     *  单据日期倒序）、billNo/sourceDocNo 单据号/来源单据号表头值筛选（等值精确匹配，
+     *  空参数即不过滤——WHERE 常驻 CAST 判空，参数恒绑定）。 */
+    @Transactional(readOnly = true)
+    public PageResponse<WarehouseHistoryListItem> list(
+            WarehouseHistoryType type,
+            String keyword,
+            Short status,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            int page,
+            int size,
+            String sort,
+            String order,
+            String billNo,
+            String sourceDocNo) {
         PageRequest pageable = Pageables.of(page, size);
         int safePage = pageable.getPageNumber() + 1;
         int safeSize = pageable.getPageSize();
         String normalizedKeyword = normalize(keyword);
+        String normalizedBillNo = normalizeToNull(billNo);
+        String normalizedSourceDocNo = normalizeToNull(sourceDocNo);
 
         Query countQuery = bindFilters(
                 entityManager.createNativeQuery(
@@ -54,7 +76,9 @@ public class WarehouseHistoryQueryService {
                 normalizedKeyword,
                 status,
                 dateFrom,
-                dateTo);
+                dateTo,
+                normalizedBillNo,
+                normalizedSourceDocNo);
         long total = number(countQuery.getSingleResult()).longValue();
         if (total == 0) {
             return new PageResponse<>(List.of(), safePage, safeSize, 0, 0);
@@ -62,11 +86,14 @@ public class WarehouseHistoryQueryService {
 
         Query rowsQuery = bindFilters(
                 entityManager.createNativeQuery(
-                        WarehouseHistoryQueries.listSql(type)),
+                        WarehouseHistoryQueries.listSql(
+                                type, WarehouseHistoryQueries.orderBy(sort, order))),
                 normalizedKeyword,
                 status,
                 dateFrom,
-                dateTo)
+                dateTo,
+                normalizedBillNo,
+                normalizedSourceDocNo)
                 .setParameter("limit", safeSize)
                 .setParameter("offset", pageable.getOffset());
         Map<UUID, String> employeeCache = new HashMap<>();
@@ -76,6 +103,34 @@ public class WarehouseHistoryQueryService {
                 .toList();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
+    }
+
+    /** 单号 facets（2026-09-25 单号列统一）：{billNo:[各单据号], sourceDocNo:[各来源
+     *  单据号]}——与列表同一过滤基座（不含单号列自身值筛选），按单号分组计数、单号
+     *  升序，上限 500 桶。 */
+    @Transactional(readOnly = true)
+    public Map<String, List<Map<String, Object>>> facets(
+            WarehouseHistoryType type,
+            String keyword,
+            Short status,
+            LocalDate dateFrom,
+            LocalDate dateTo) {
+        String normalizedKeyword = normalize(keyword);
+        return Map.of(
+                "billNo", billBuckets(type, "COALESCE(h.bill_no, '')",
+                        normalizedKeyword, status, dateFrom, dateTo),
+                "sourceDocNo", billBuckets(type, "COALESCE(h.source_doc_no, '')",
+                        normalizedKeyword, status, dateFrom, dateTo));
+    }
+
+    private List<Map<String, Object>> billBuckets(
+            WarehouseHistoryType type, String expr, String keyword, Short status,
+            LocalDate dateFrom, LocalDate dateTo) {
+        return NativeFacets.rowsOf(bindFilters(
+                entityManager.createNativeQuery(
+                        WarehouseHistoryQueries.facetsSql(type, expr)),
+                keyword, status, dateFrom, dateTo, null, null)
+                .setMaxResults(500));
     }
 
     @Transactional(readOnly = true)
@@ -117,12 +172,15 @@ public class WarehouseHistoryQueryService {
     }
 
     private Query bindFilters(
-            Query query, String keyword, Short status, LocalDate dateFrom, LocalDate dateTo) {
+            Query query, String keyword, Short status, LocalDate dateFrom, LocalDate dateTo,
+            String billNo, String sourceDocNo) {
         return query.setParameter("keyword", keyword)
                 .setParameter("keyword_pattern", "%" + keyword.toLowerCase() + "%")
                 .setParameter("status", status)
                 .setParameter("date_from", dateFrom)
-                .setParameter("date_to", dateTo);
+                .setParameter("date_to", dateTo)
+                .setParameter("bill_no", billNo)
+                .setParameter("source_doc_no", sourceDocNo);
     }
 
     private WarehouseHistoryListItem toListItem(

@@ -2,6 +2,7 @@ package com.uten.imp.features.sales.order;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.admin.workflow.SalesOrderFinanceConfirmerEligibility;
 import com.uten.imp.features.sales.order.dto.SalesOrderFinancePendingDto;
@@ -113,6 +114,17 @@ public class SalesOrderFinanceConfirmService {
     @PreAuthorize("hasAuthority('sales_order_finance:view')")
     public PageResponse<SalesOrderFinancePendingDto> pending(
             int page, int size, Boolean rejected, String keyword, Boolean changesOnly) {
+        return pending(page, size, rejected, keyword, changesOnly, null, null, null);
+    }
+
+    /** 同上；2026-09-25 单号列统一：sort/order 表头排序（白名单，未知回落默认
+     *  驳回沉底+交货日序）、billNo 销售单号表头值筛选（等值精确匹配，仅条件出现
+     *  才绑定命名参数）。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order_finance:view')")
+    public PageResponse<SalesOrderFinancePendingDto> pending(
+            int page, int size, Boolean rejected, String keyword, Boolean changesOnly,
+            String sort, String order, String billNo) {
         int p = Math.max(1, page);
         int sz = Math.min(Math.max(1, size), 100);
         String rejectedFilter = rejected == null ? ""
@@ -128,6 +140,10 @@ public class SalesOrderFinanceConfirmService {
                     OR POSITION(:keyword IN LOWER(COALESCE(e.full_name, ''))) > 0
                   )
                 """;
+        // 单号列值筛选（2026-09-25 单号列统一）：等值精确匹配；列表/计数同口径。
+        String trimmedBillNo = billNo == null ? "" : billNo.trim();
+        String billNoFilter = trimmedBillNo.isEmpty()
+                ? "" : " AND COALESCE(o.bill_no, '') = :bill_no\n";
         var countQuery = em.createNativeQuery("""
                 SELECT COUNT(*)
                 FROM sales_orders o
@@ -136,9 +152,12 @@ public class SalesOrderFinanceConfirmService {
                 WHERE o.status = 1 AND o.is_deleted = FALSE
                   AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE
                   AND o.finance_confirmed = FALSE
-                """ + rejectedFilter + changesFilter + keywordFilter);
+                """ + rejectedFilter + changesFilter + keywordFilter + billNoFilter);
         if (!normalizedKeyword.isEmpty()) {
             countQuery.setParameter("keyword", normalizedKeyword);
+        }
+        if (!trimmedBillNo.isEmpty()) {
+            countQuery.setParameter("bill_no", trimmedBillNo);
         }
         long total = ((Number) countQuery.getSingleResult()).longValue();
         int totalPages = total == 0 ? 0 : (int) ((total + sz - 1) / sz);
@@ -180,14 +199,14 @@ public class SalesOrderFinanceConfirmService {
                 WHERE o.status = 1 AND o.is_deleted = FALSE
                   AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE
                   AND o.finance_confirmed = FALSE
-                """ + rejectedFilter + changesFilter + keywordFilter + """
-
-                ORDER BY o.finance_rejected ASC,
-                         o.deliver_date NULLS LAST, o.bill_date, o.bill_no
-                LIMIT :lim OFFSET :off
-                """);
+                """ + String.join("\n", rejectedFilter, changesFilter,
+                        keywordFilter, billNoFilter, pendingOrderBy(sort, order),
+                        "LIMIT :lim OFFSET :off"));
         if (!normalizedKeyword.isEmpty()) {
             pendingQuery.setParameter("keyword", normalizedKeyword);
+        }
+        if (!trimmedBillNo.isEmpty()) {
+            pendingQuery.setParameter("bill_no", trimmedBillNo);
         }
         pendingQuery.setParameter("lim", sz);
         pendingQuery.setParameter("off", (p - 1) * sz);
@@ -223,6 +242,57 @@ public class SalesOrderFinanceConfirmService {
                     WHERE change_log.order_id = o.id
                       AND change_log.changed_at > COALESCE(o.finance_confirmed_at, to_timestamp(0)))
                 """;
+    }
+
+    /** 排序 ORDER BY（2026-09-25 单号列统一）：白名单映射前端列 key→SQL 表达式；
+     *  未知/空→默认（驳回沉底, 交货日升序, 单据日期/单号稳定序）。 */
+    private static String pendingOrderBy(String sort, String order) {
+        String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
+        return switch (sort == null ? "" : sort) {
+            case "billNo" -> "ORDER BY o.bill_no " + dir + " NULLS LAST,\n"
+                    + "         o.finance_rejected ASC,\n"
+                    + "         o.deliver_date NULLS LAST, o.bill_date\n";
+            default -> """
+                    ORDER BY o.finance_rejected ASC,
+                             o.deliver_date NULLS LAST, o.bill_date, o.bill_no
+                    """;
+        };
+    }
+
+    /** 销售单号 facets（2026-09-25 单号列统一）：{billNo:[各销售单号]}——与列表/计数
+     *  同一过滤基座（不含单号列自身值筛选），按销售单号分组计数、单号升序，上限 500 桶。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order_finance:view')")
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> pendingFacets(
+            Boolean rejected, String keyword, Boolean changesOnly) {
+        String rejectedFilter = rejected == null ? ""
+                : rejected ? " AND o.finance_rejected = TRUE" : " AND o.finance_rejected = FALSE";
+        String changesFilter = changesOnly == null ? ""
+                : " AND " + (changesOnly ? "" : "NOT ") + "(" + pendingChangesExpression() + ")";
+        String normalizedKeyword = keyword == null
+                ? "" : keyword.trim().toLowerCase(Locale.ROOT);
+        String keywordFilter = normalizedKeyword.isEmpty() ? "" : """
+                  AND (
+                    POSITION(:keyword IN LOWER(COALESCE(o.bill_no, ''))) > 0
+                    OR POSITION(:keyword IN LOWER(COALESCE(c.name, ''))) > 0
+                    OR POSITION(:keyword IN LOWER(COALESCE(e.full_name, ''))) > 0
+                  )
+                """;
+        var query = em.createNativeQuery("""
+                        SELECT COALESCE(o.bill_no, ''), COUNT(*)
+                        FROM sales_orders o
+                        LEFT JOIN clients c ON c.id = o.client_id
+                        LEFT JOIN employees e ON e.id = o.seller_id
+                        WHERE o.status = 1 AND o.is_deleted = FALSE
+                          AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE
+                          AND o.finance_confirmed = FALSE
+                        """ + rejectedFilter + changesFilter + keywordFilter
+                        + " GROUP BY 1 ORDER BY 1")
+                .setMaxResults(500);
+        if (!normalizedKeyword.isEmpty()) {
+            query.setParameter("keyword", normalizedKeyword);
+        }
+        return java.util.Map.of("billNo", NativeFacets.rowsOf(query));
     }
 
     /** 待确认计数（财务工作台徽标）：只数未驳回的可办件，已驳回等销售修正不占徽标。 */

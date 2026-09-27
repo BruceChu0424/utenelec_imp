@@ -7,10 +7,38 @@ final class WarehouseHistoryQueries {
     }
 
     static String listSql(WarehouseHistoryType type) {
-        return headerSelect(type) + searchJoins(type) + where(type, true) + """
-                ORDER BY h.bill_date DESC, h.bill_no DESC, h.id DESC
+        return listSql(type, DEFAULT_ORDER_BY);
+    }
+
+    /** 2026-09-25 单号列统一：列表排序接白名单 ORDER BY（未知/空回落默认单据日期倒序）。 */
+    static String listSql(WarehouseHistoryType type, String orderBy) {
+        return headerSelect(type) + searchJoins(type) + where(type, true) + orderBy + """
                 LIMIT :limit OFFSET :offset
                 """;
+    }
+
+    /** 默认排序（单据日期倒序, 单号/id 稳定序）。 */
+    static final String DEFAULT_ORDER_BY =
+            "ORDER BY h.bill_date DESC, h.bill_no DESC, h.id DESC\n";
+
+    /** 排序白名单（2026-09-25 单号列统一）：前端列 key→ORDER BY 表达式；
+     *  未知/空回落 [DEFAULT_ORDER_BY]。 */
+    static String orderBy(String sort, String order) {
+        String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
+        return switch (sort == null ? "" : sort) {
+            case "billNo" -> "ORDER BY h.bill_no " + dir
+                    + " NULLS LAST, h.bill_date DESC, h.id DESC\n";
+            case "sourceDocNo" -> "ORDER BY h.source_doc_no " + dir
+                    + " NULLS LAST, h.bill_date DESC, h.id DESC\n";
+            default -> DEFAULT_ORDER_BY;
+        };
+    }
+
+    /** 单号 facets（2026-09-25 单号列统一）：与列表同一 FROM/WHERE（同一过滤基座），
+     *  按表达式分组计数；上限 500 桶由调用方 setMaxResults 收口。 */
+    static String facetsSql(WarehouseHistoryType type, String expr) {
+        return "SELECT " + expr + ", COUNT(*) " + searchJoins(type)
+                + where(type, true) + " GROUP BY 1 ORDER BY 1\n";
     }
 
     static String countSql(WarehouseHistoryType type) {
@@ -153,6 +181,11 @@ final class WarehouseHistoryQueries {
                               )
                        )
                   )
+                  -- 2026-09-25 单号列统一：单据号/来源单据号表头值筛选（等值精确匹配，
+                  -- 空参数即不过滤；列表/计数/facets 三处同一段 WHERE）。
+                  AND (CAST(:bill_no AS text) IS NULL OR h.bill_no = CAST(:bill_no AS text))
+                  AND (CAST(:source_doc_no AS text) IS NULL
+                       OR h.source_doc_no = CAST(:source_doc_no AS text))
                 """.formatted(type.itemTable(), type.itemForeignKey()) : "";
         return """
                 WHERE COALESCE(h.is_deleted, FALSE) = FALSE

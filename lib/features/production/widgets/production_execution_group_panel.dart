@@ -7,6 +7,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_execution_workbench.dart';
 import '../models/production_material_analysis.dart';
@@ -46,6 +47,12 @@ class _ProductionExecutionGroupPanelState
   String? _error;
   int _loadGeneration = 0;
 
+  // 2026-09-25 单号列统一：关联订单列表头排序 + 值筛选（服务端白名单/facets）。
+  String? _sortColumn;
+  bool _sortAscending = true;
+  Map<String, List<MasterFacetBucket>> _ordersFacets = const {};
+  String? _salesOrderFilter;
+
   @override
   void initState() {
     super.initState();
@@ -65,16 +72,34 @@ class _ProductionExecutionGroupPanelState
     final generation = ++_loadGeneration;
     final requestedPage = _page;
     final requestedKeyword = widget.keyword;
+    final requestedSort = _sortColumn;
+    final requestedOrder = _sortColumn == null
+        ? null
+        : (_sortAscending ? 'asc' : 'desc');
+    final requestedSalesOrder = _salesOrderFilter;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final result = await ref
-          .read(productionExecutionWorkbenchRepositoryProvider)
-          .groups(page: requestedPage, keyword: requestedKeyword);
+      final repo = ref.read(productionExecutionWorkbenchRepositoryProvider);
+      final result = await repo.groups(
+        page: requestedPage,
+        keyword: requestedKeyword,
+        sort: requestedSort,
+        order: requestedOrder,
+        salesOrder: requestedSalesOrder,
+      );
+      // 关联订单 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。
+      Map<String, List<MasterFacetBucket>> facets = const {};
+      try {
+        facets = await repo.groupFacets(keyword: requestedKeyword);
+      } catch (_) {
+        facets = const {};
+      }
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
+        _ordersFacets = facets;
         _items = result.items;
         _page = result.page;
         _totalPages = result.totalPages;
@@ -126,10 +151,19 @@ class _ProductionExecutionGroupPanelState
       child: MasterDataTableView<ProductionExecutionWorkbenchGroup>(
         columns: _columns,
         items: _items,
-        facets: const {},
+        // 2026-09-25 单号列统一：关联订单值来自服务端 facets（与列表同一过滤上下文）。
+        facets: {'orders': _ordersFacets['orders'] ?? const []},
         nullCounts: const {},
-        filters: const {},
-        onFilterChanged: (_, _) {},
+        filters: {'orders': ?_salesOrderFilter},
+        onFilterChanged: (key, value) {
+          // 2026-09-25 单号列统一：关联订单值筛选走服务端精确匹配，分页前生效。
+          if (key != 'orders') return;
+          setState(() {
+            _salesOrderFilter = (value == null || value.isEmpty) ? null : value;
+            _page = 1;
+          });
+          _load();
+        },
         onRowTap: _opening ? null : _open,
         canOpenRow: (row) => !_opening,
         rowKeyOf: (row) => row.id,
@@ -141,6 +175,17 @@ class _ProductionExecutionGroupPanelState
             onTap: () => _open(row),
           ),
         ],
+        // 2026-09-25 单号列统一：表头排序走服务端白名单（orders）。
+        sortColumn: _sortColumn,
+        sortAscending: _sortAscending,
+        onSortChange: (column, ascending) {
+          setState(() {
+            _sortColumn = column;
+            _sortAscending = ascending;
+            _page = 1;
+          });
+          _load();
+        },
         currentPage: _page,
         totalPages: _totalPages,
         onPageChange: (page) {
@@ -181,6 +226,8 @@ class _ProductionExecutionGroupPanelState
       key: 'orders',
       label: '关联订单',
       width: 210,
+      // 2026-09-25 单号列统一：可排序（服务端白名单 orders）+ 值筛选（facets）。
+      sortable: true,
       value: (row) => _preview(
         row.salesOrderPreview,
         row.salesOrderCount,

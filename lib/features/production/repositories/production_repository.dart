@@ -722,12 +722,17 @@ class ProductionPlanRepository {
 
   /// Production-scoped approved sales-order candidates. This endpoint omits
   /// price data and does not require broad sales module visibility.
+  /// 2026-09-25 单号列统一：[sort]/[order] 销售单号表头排序（orderNo 白名单）；
+  /// [orderBillNo] 值筛选（服务端精确匹配）。
   Future<MaterialAnalysisSalesCandidatePage> materialAnalysisSalesCandidates({
     int page = 1,
     int size = 20,
     String keyword = '',
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
+    String? orderBillNo,
   }) async {
     final json = await api.get(
       '$_materialAnalysesBase/sales-candidates',
@@ -737,9 +742,29 @@ class ProductionPlanRepository {
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
         'dateFrom': ?dateFrom,
         'dateTo': ?dateTo,
+        'sort': ?sort,
+        'order': ?order,
+        if (orderBillNo?.isNotEmpty == true) 'orderBillNo': orderBillNo,
       },
     ); // ENDPOINT
     return MaterialAnalysisSalesCandidatePage.fromJson(json);
+  }
+
+  /// 销售单号列 facets（2026-09-25 单号列统一）：{orderNo:[MasterFacetBucket]}，
+  /// 与候选列表同一过滤上下文（keyword；不含单号自身的值筛选）。
+  Future<Map<String, List<MasterFacetBucket>>>
+  materialAnalysisSalesCandidateFacets({String keyword = ''}) async {
+    final json = await api.get(
+      '$_materialAnalysesBase/sales-candidates/facets',
+      query: {if (keyword.trim().isNotEmpty) 'keyword': keyword.trim()},
+    ); // ENDPOINT
+    final result = <String, List<MasterFacetBucket>>{};
+    for (final entry in json.entries) {
+      if (entry.value is List) {
+        result[entry.key] = parseFacetBuckets(json, entry.key);
+      }
+    }
+    return result;
   }
 
   /// Loads the complete persisted joint analysis. Resume flows must not POST a
@@ -1371,6 +1396,7 @@ class ProductionPlanRepository {
 
   /// 待排产订单行（服务端分页；交货升序，urgent=距交货 ≤3 天）。
   /// 2026-09-05 起页面不再提供交货日期范围筛选（dateFrom/dateTo 服务端仍兼容）。
+  /// 2026-09-25 单号列统一：billNo = 销售单号表头值筛选（服务端精确匹配）。
   Future<PagedResult<SchedulePendingRow>> schedulePending({
     int page = 1,
     int size = 20,
@@ -1378,6 +1404,7 @@ class ProductionPlanRepository {
     String? sort,
     String? order,
     String? status,
+    String? billNo,
   }) async {
     final json = await api.get(
       '/production/schedule/pending',
@@ -1388,6 +1415,7 @@ class ProductionPlanRepository {
         'sort': ?sort,
         'order': ?order,
         'status': ?status,
+        'billNo': ?billNo,
       },
     ); // ENDPOINT
     return PagedResult.fromJson(json, SchedulePendingRow.fromJson);
@@ -1541,15 +1569,14 @@ class SchedulePendingFacets {
   final Map<String, List<MasterFacetBucket>> fields;
 
   factory SchedulePendingFacets.fromJson(Map<String, dynamic> json) {
-    final fields = <String, List<MasterFacetBucket>>{};
-    final status = json['status'];
-    if (status is List) {
-      fields['status'] = [
-        for (final b in status)
-          if (b is Map<String, dynamic>) MasterFacetBucket.fromJson(b),
-      ];
-    }
-    return SchedulePendingFacets(fields: fields);
+    return SchedulePendingFacets(
+      fields: {
+        if (json['status'] is List) 'status': parseFacetBuckets(json, 'status'),
+        // 销售单号桶（2026-09-25 单号列统一）：服务端按当前过滤基座分组返回。
+        if (json['orderBillNo'] is List)
+          'orderBillNo': parseFacetBuckets(json, 'orderBillNo'),
+      },
+    );
   }
 }
 

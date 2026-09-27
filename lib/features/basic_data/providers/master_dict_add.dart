@@ -6,12 +6,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/inputs/uten_field_message.dart';
-import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
-import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
+import '../widgets/master_edit_dialog.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/reference_method_option.dart';
 import '../repositories/currency_repository.dart';
@@ -24,123 +22,24 @@ Future<String?> showNameAddSheet({
   required String title,
   required bool Function(String name) exists,
   required Future<String?> Function(String name) create,
-}) {
-  final ctl = TextEditingController();
-  String? error;
-  return showDialog<String>(
+  FormDraftSpec? draftSpec,
+}) async {
+  String? createdId;
+  await showMasterEditDialog(
     context: context,
-    builder: (ctx) {
-      return StatefulBuilder(
-        builder: (ctx, set) {
-          Future<void> doSave() async {
-            final name = ctl.text.trim();
-            if (name.isEmpty) {
-              set(() => error = '请输入名称');
-              return;
-            }
-            if (exists(name)) {
-              const msg = '该名称已存在';
-              set(() => error = msg);
-              ctx.appError(msg);
-              return;
-            }
-            try {
-              final v = await create(name);
-              if (!ctx.mounted) return;
-              Navigator.of(ctx).pop(v);
-            } on ApiException catch (e) {
-              set(() => error = e.message);
-              if (ctx.mounted) ctx.appError(e.message);
-            } catch (_) {
-              const msg = '保存失败，请稍后重试';
-              set(() => error = msg);
-              if (ctx.mounted) ctx.appError(msg);
-            }
-          }
-
-          return Dialog(
-            shape: const RoundedRectangleBorder(
-              borderRadius: UtenRadius.xxlAll,
-            ),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 360),
-              child: SafeArea(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        UtenSpacing.s16,
-                        UtenSpacing.s12,
-                        UtenSpacing.s8,
-                        UtenSpacing.s12,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              title,
-                              style: Theme.of(ctx).textTheme.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.close_rounded),
-                            onPressed: () => Navigator.of(ctx).pop(),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Divider(height: 1),
-                    Padding(
-                      padding: const EdgeInsets.all(UtenSpacing.s16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          TextField(
-                            controller: ctl,
-                            autofocus: true,
-                            decoration: UtenInputDecoration(
-                              InputDecoration(
-                                labelText: '名称',
-                                border: const OutlineInputBorder(),
-                                isDense: true,
-                                error: utenFieldError(error),
-                              ),
-                              info: '编号保存后自动生成，状态默认「使用」',
-                            ),
-                            onSubmitted: (_) => doSave(),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Divider(height: 1),
-                    Padding(
-                      padding: const EdgeInsets.all(UtenSpacing.s16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(),
-                            child: const Text('取消'),
-                          ),
-                          const SizedBox(width: UtenSpacing.s12),
-                          FilledButton(
-                            onPressed: doSave,
-                            child: const Text('保存'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      );
+    title: title,
+    draftSpec: draftSpec,
+    fields: const [MasterFieldDef(key: 'name', label: '名称', required: true)],
+    onSubmit: (body) async {
+      final name = body['name'] as String;
+      if (exists(name)) {
+        throw ApiException('DUPLICATE_NAME', '该名称已存在', httpStatus: 400);
+      }
+      createdId = await create(name);
+      return createdId != null;
     },
-  ).whenComplete(ctl.dispose);
+  );
+  return createdId;
 }
 
 /// 单据表单内联新增币种（currency:edit）：创建后重载 [names]（调用方页面的
@@ -156,6 +55,7 @@ Future<String?> showCurrencyAddSheet(
   return showNameAddSheet(
     context: context,
     title: '添加币种',
+    draftSpec: FormDraftCatalog.currency.spec(title: '添加币种'),
     exists: (name) => names.currencyEntries.values.any(
       (n) => n.toLowerCase() == name.toLowerCase(),
     ),
@@ -181,6 +81,7 @@ Future<String?> showSettlementAddSheet(BuildContext context, WidgetRef ref) {
   return showNameAddSheet(
     context: context,
     title: '添加结账方式',
+    draftSpec: FormDraftCatalog.settlement.spec(title: '添加结账方式'),
     exists: (name) =>
         (ref.read(settlementMethodOptionsProvider).valueOrNull ??
                 const <ReferenceMethodOption>[])

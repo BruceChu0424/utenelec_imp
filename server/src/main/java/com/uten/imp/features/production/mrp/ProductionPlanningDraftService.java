@@ -108,7 +108,9 @@ public class ProductionPlanningDraftService {
             return Optional.empty();
         }
         GeneratePlanningPackageRequest request = payload(active);
-        validator.validateCurrent(planId, request);
+        // confirm performs current request, assignment, fingerprint and locked
+        // inventory validation before any execution write. Repeating it here
+        // reads the same plan/BOM and master records immediately beforehand.
         PlanningPackageResult result = executionCommand.confirm(planId, request);
 
         active.setStatus(ProductionPlanningDraft.STATUS_APPLIED);

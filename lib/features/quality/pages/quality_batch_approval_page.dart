@@ -15,6 +15,10 @@ import '../presentation/procurement_inspection_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_store.dart';
+import '../../../shared/drafts/form_draft_values.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -80,7 +84,7 @@ class _EditableIqcRow {
 
   /// Before submission this is a draft. The accepted report freezes this key,
   /// quantities and reason together, so retries never pair it with a new body.
-  final String idempotencyKey = 'iqc-decide-${const Uuid().v4()}';
+  String idempotencyKey = 'iqc-decide-${const Uuid().v4()}';
   bool selected = true;
   bool completed = false;
 
@@ -122,9 +126,14 @@ class _IqcReceiptGroup {
 }
 
 class QualityBatchApprovalPage extends ConsumerStatefulWidget {
-  const QualityBatchApprovalPage({super.key, required this.selection});
+  const QualityBatchApprovalPage({
+    super.key,
+    required this.selection,
+    this.draftId,
+  });
 
   final QualityBatchApprovalSelection selection;
+  final String? draftId;
 
   @override
   ConsumerState<QualityBatchApprovalPage> createState() =>
@@ -132,7 +141,123 @@ class QualityBatchApprovalPage extends ConsumerStatefulWidget {
 }
 
 class _QualityBatchApprovalPageState
-    extends ConsumerState<QualityBatchApprovalPage> {
+    extends ConsumerState<QualityBatchApprovalPage>
+    with FormDraftMixin<QualityBatchApprovalPage> {
+  late QualityBatchApprovalSelection _selection;
+  String? _draftLoadError;
+  String _draftReason = '';
+  @override
+  bool get formDraftBusy => _submitting || _confirming;
+  @override
+  bool get formDraftCanReplaySubmission => _submission != null;
+  @override
+  FormDraftSpec get formDraftSpec =>
+      (_selection.receipts.isNotEmpty
+              ? FormDraftCatalog.iqcBatchReport
+              : FormDraftCatalog.fqcBatchReport)
+          .spec();
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    for (final row in _flatRows ?? <_EditableIqcRow>[]) ...[row.pass, row.fail],
+  ];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'selection': {
+      'receipts': [
+        for (final receipt in _selection.receipts)
+          {
+            'receiptType': receipt.receiptType,
+            'receiptId': receipt.receiptId,
+            'billNo': receipt.billNo,
+            'billDate': receipt.billDate,
+            'supplierId': receipt.supplierId,
+            'supplierName': receipt.supplierName,
+            'warehouseId': receipt.warehouseId,
+          },
+      ],
+      'sheetIds': _selection.sheets.map((item) => item.id).toList(),
+      'inspectionIds': _selection.inspections.map((item) => item.id).toList(),
+    },
+    'rows': [
+      for (final row in _flatRows ?? <_EditableIqcRow>[])
+        {
+          'id': row.item.id,
+          'pass': row.pass.text,
+          'fail': row.fail.text,
+          'key': row.idempotencyKey,
+          'selected': row.selected,
+          'completed': row.completed,
+        },
+    ],
+    'selectedFqcIds': _selectedFqcIds.toList(),
+    'reason': _draftReason,
+    'submission': _submission?.exportDraft(),
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    final rows = {for (final row in draftMaps(data['rows'])) row['id']: row};
+    for (final row in _flatRows ?? <_EditableIqcRow>[]) {
+      final saved = rows[row.item.id];
+      if (saved == null) {
+        row.selected = false;
+        continue;
+      }
+      row.pass.text = saved['pass'] as String? ?? '';
+      row.fail.text = saved['fail'] as String? ?? '';
+      row.idempotencyKey = saved['key'] as String;
+      row.selected = saved['selected'] == true;
+      row.completed = saved['completed'] == true;
+    }
+    _selectedFqcIds
+      ..clear()
+      ..addAll(draftStrings(data['selectedFqcIds']));
+    _draftReason = data['reason'] as String? ?? '';
+    _submission = data['submission'] == null
+        ? null
+        : QualityBatchSubmission.fromDraft(draftMap(data['submission']));
+  }
+
+  Future<void> _initializeAndLoad() async {
+    try {
+      if (widget.draftId != null) {
+        await ref.read(formDraftsProvider.notifier).ready;
+        if (!mounted) return;
+        final draft = ref
+            .read(formDraftsProvider)
+            .where((item) => item.id == widget.draftId)
+            .firstOrNull;
+        if (draft == null) {
+          throw StateError('草稿不存在或无恢复权限');
+        }
+        final selected = draftMap(draft.data['selection']);
+        final fqc = ref.read(productionFqcRepositoryProvider);
+        final inspections = <ProductionFqcInspection>[];
+        for (final id in draftStrings(selected['inspectionIds'])) {
+          inspections.add(await fqc.detail(id));
+        }
+        if (!mounted) return;
+        _selection = QualityBatchApprovalSelection(
+          receipts: draftMaps(
+            selected['receipts'],
+          ).map(PendingInspectionReceipt.fromJson).toList(),
+          sheets: [
+            for (final id in draftStrings(selected['sheetIds']))
+              ProductionFqcInspectionSheet.fromJson({'id': id}),
+          ],
+          inspections: inspections,
+        );
+      }
+      await _load();
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _draftLoadError = '$error';
+          _loading = false;
+        });
+      }
+    }
+  }
+
   List<_IqcReceiptGroup>? _groups;
   List<_FqcSheetGroup>? _sheetGroups;
   List<_EditableIqcRow>? _flatRows;
@@ -164,7 +289,8 @@ class _QualityBatchApprovalPageState
   @override
   void initState() {
     super.initState();
-    _load();
+    _selection = widget.selection;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initializeAndLoad());
   }
 
   @override
@@ -195,7 +321,7 @@ class _QualityBatchApprovalPageState
         group.sheet.id: group,
     };
     final tasks = <Future<Object> Function()>[
-      for (final receipt in widget.selection.receipts)
+      for (final receipt in _selection.receipts)
         () async {
           final old = oldIqc[(receipt.receiptType, receipt.receiptId)];
           if (retryFailuresOnly && old != null && old.loadError == null) {
@@ -219,7 +345,7 @@ class _QualityBatchApprovalPageState
             return _IqcReceiptGroup(receipt, const [], '待检明细加载失败');
           }
         },
-      for (final sheet in widget.selection.sheets)
+      for (final sheet in _selection.sheets)
         () async {
           final old = oldFqc[sheet.id];
           if (retryFailuresOnly && old != null && old.loadError == null) {
@@ -275,6 +401,7 @@ class _QualityBatchApprovalPageState
       }
       _loading = false;
     });
+    await initializeFormDraft();
   }
 
   List<_EditableIqcRow> get _selectedIqcRows => (_flatRows ?? const [])
@@ -289,7 +416,7 @@ class _QualityBatchApprovalPageState
         byId.putIfAbsent(inspection.id, () => inspection);
       }
     }
-    for (final inspection in widget.selection.inspections) {
+    for (final inspection in _selection.inspections) {
       byId.putIfAbsent(inspection.id, () => inspection);
     }
     return byId.values.toList(growable: false);
@@ -298,7 +425,7 @@ class _QualityBatchApprovalPageState
   /// 列表里已勾选的任务进入本页默认保持选中（可再取消）；IQC 行同理
   ///（_EditableIqcRow 构造即 selected = true）。
   late final Set<String> _selectedFqcIds = {
-    for (final inspection in widget.selection.inspections) inspection.id,
+    for (final inspection in _selection.inspections) inspection.id,
   };
 
   int get _selectedCount =>
@@ -361,6 +488,11 @@ class _QualityBatchApprovalPageState
     try {
       reason = await showInspectionReportConfirmDialog(
         context,
+        initialReason: _draftReason,
+        onReasonChanged: (value) {
+          _draftReason = value;
+          markFormDraftChanged();
+        },
         lineCount: iqcRows.length,
         passTotalText: iqcRows.isEmpty
             ? '0'
@@ -466,22 +598,25 @@ class _QualityBatchApprovalPageState
 
     setState(() => _submitting = true);
     try {
-      await submission.send(
-        iqc: ref.read(procurementInspectionRepositoryProvider),
-        fqc: ref.read(productionFqcRepositoryProvider),
-        onProgress: () {
-          if (!mounted) return;
-          final completed = submission.acknowledgedIqcIds.toSet();
-          setState(() {
-            for (final row in _flatRows ?? const <_EditableIqcRow>[]) {
-              if (completed.contains(row.item.id)) {
-                row.completed = true;
-                row.selected = false;
+      await runFormDraftSubmission(
+        () => submission.send(
+          iqc: ref.read(procurementInspectionRepositoryProvider),
+          fqc: ref.read(productionFqcRepositoryProvider),
+          onProgress: () {
+            if (!mounted) return;
+            final completed = submission.acknowledgedIqcIds.toSet();
+            setState(() {
+              for (final row in _flatRows ?? const <_EditableIqcRow>[]) {
+                if (completed.contains(row.item.id)) {
+                  row.completed = true;
+                  row.selected = false;
+                }
               }
-            }
-          });
-        },
+            });
+          },
+        ),
       );
+      await completeFormDraft();
       if (!mounted) return;
       invalidateCounts();
       setState(() => _submitting = false);
@@ -512,6 +647,20 @@ class _QualityBatchApprovalPageState
 
   @override
   Widget build(BuildContext context) {
+    return withFormDraft(_buildEditor(context));
+  }
+
+  Widget _buildEditor(BuildContext context) {
+    if (_draftLoadError != null) {
+      return Scaffold(
+        appBar: const UtenAppBar(title: '恢复检验草稿', showBackButton: true),
+        body: UtenEmpty.error(
+          message: _draftLoadError,
+          actionLabel: '重试',
+          onAction: _initializeAndLoad,
+        ),
+      );
+    }
     final theme = Theme.of(context);
     return PopScope(
       canPop: !_submitting,
@@ -521,9 +670,9 @@ class _QualityBatchApprovalPageState
       child: Scaffold(
         appBar: UtenAppBar(
           title:
-              '批量审批 · ${widget.selection.receipts.length} 单 IQC'
-              '${widget.selection.sheets.isNotEmpty ? ' + ${widget.selection.sheets.length} 张产成品检查单' : ''}'
-              '${widget.selection.inspections.isNotEmpty ? ' + ${widget.selection.inspections.length} 项产成品' : ''}',
+              '批量审批 · ${_selection.receipts.length} 单 IQC'
+              '${_selection.sheets.isNotEmpty ? ' + ${_selection.sheets.length} 张产成品检查单' : ''}'
+              '${_selection.inspections.isNotEmpty ? ' + ${_selection.inspections.length} 项产成品' : ''}',
           leading: UtenBackButton(
             color: _submitting ? theme.disabledColor : null,
             onPressed: () {
@@ -586,7 +735,7 @@ class _QualityBatchApprovalPageState
       for (final group in sheetGroups)
         for (final inspection in group.inspections) inspection.id,
     };
-    final looseFqc = widget.selection.inspections
+    final looseFqc = _selection.inspections
         .where((inspection) => !groupedFqcIds.contains(inspection.id))
         .toList(growable: false);
     if (groups.isEmpty && sheetGroups.isEmpty && looseFqc.isEmpty) {

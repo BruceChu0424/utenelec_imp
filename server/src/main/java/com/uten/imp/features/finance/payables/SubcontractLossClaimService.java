@@ -7,6 +7,7 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
 import com.uten.imp.features.finance.accountflow.AccountPosting;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
@@ -269,8 +270,56 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
 
     @Transactional(readOnly = true)
     public CasePage list(UUID supplierId, String status, String keyword, int page, int size) {
+        return list(supplierId, status, keyword, page, size, null, null, null);
+    }
+
+    /** 同上；2026-09-25 单号列统一：sort/order 表头排序（白名单，未知回落默认
+     *  创建时间倒序）、wasteBillNo 损耗单号表头值筛选（等值精确匹配）。 */
+    @Transactional(readOnly = true)
+    public CasePage list(UUID supplierId, String status, String keyword, int page, int size,
+                         String sort, String order, String wasteBillNo) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 200);
+        // 列表 / 计数 / facets 共用同一过滤基座（2026-09-25 单号列统一）。
+        LossFilters filters = lossFilters(supplierId, status, keyword, wasteBillNo);
+        String from = " FROM subcontract_loss_cases loss"
+                + " JOIN suppliers supplier ON supplier.id=loss.supplier_id";
+        Query data = em.createNativeQuery(summarySelect() + from + filters.where()
+                + " " + lossOrderBy(sort, order) + " LIMIT :limit OFFSET :offset");
+        bind(data, filters.params());
+        data.setParameter("limit", safeSize);
+        data.setParameter("offset", (long) (safePage - 1) * safeSize);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = data.getResultList();
+        Query count = em.createNativeQuery("SELECT COUNT(*)" + from + filters.where());
+        bind(count, filters.params());
+        long total = ((Number) count.getSingleResult()).longValue();
+        return new CasePage(rows.stream().map(this::summary).toList(), safePage, safeSize,
+                total, (int) ((total + safeSize - 1) / safeSize));
+    }
+
+    /** 损耗单号 facets（2026-09-25 单号列统一）：{wasteBillNo:[各损耗单号]}——与列表/
+     *  计数同一过滤基座（不含单号列自身值筛选），按损耗单号分组计数、单号升序，
+     *  上限 500 桶。 */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(
+            UUID supplierId, String status, String keyword) {
+        LossFilters filters = lossFilters(supplierId, status, keyword, null);
+        Query facetQuery = em.createNativeQuery(
+                        "SELECT COALESCE(loss.waste_bill_no, ''), COUNT(*)"
+                                + " FROM subcontract_loss_cases loss"
+                                + " JOIN suppliers supplier ON supplier.id=loss.supplier_id"
+                                + filters.where() + " GROUP BY 1 ORDER BY 1")
+                .setMaxResults(500);
+        bind(facetQuery, filters.params());
+        return java.util.Map.of("wasteBillNo", NativeFacets.rowsOf(facetQuery));
+    }
+
+    /** 过滤基座载体（WHERE 片段 + 命名参数；2026-09-25 单号列统一）。 */
+    private record LossFilters(String where, Map<String, Object> params) {}
+
+    private LossFilters lossFilters(UUID supplierId, String status, String keyword,
+                                    String wasteBillNo) {
         StringBuilder where = new StringBuilder(
                 " WHERE COALESCE(loss.is_deleted,FALSE)=FALSE");
         Map<String, Object> params = new LinkedHashMap<>();
@@ -293,20 +342,23 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                     + " OR LOWER(COALESCE(supplier.name,'')) LIKE :keyword)");
             params.put("keyword", "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%");
         }
-        String from = " FROM subcontract_loss_cases loss"
-                + " JOIN suppliers supplier ON supplier.id=loss.supplier_id";
-        Query data = em.createNativeQuery(summarySelect() + from + where
-                + " ORDER BY loss.created_at DESC, loss.id LIMIT :limit OFFSET :offset");
-        bind(data, params);
-        data.setParameter("limit", safeSize);
-        data.setParameter("offset", (long) (safePage - 1) * safeSize);
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = data.getResultList();
-        Query count = em.createNativeQuery("SELECT COUNT(*)" + from + where);
-        bind(count, params);
-        long total = ((Number) count.getSingleResult()).longValue();
-        return new CasePage(rows.stream().map(this::summary).toList(), safePage, safeSize,
-                total, (int) ((total + safeSize - 1) / safeSize));
+        String trimmedWasteBillNo = wasteBillNo == null ? "" : wasteBillNo.trim();
+        if (!trimmedWasteBillNo.isEmpty()) {
+            where.append(" AND loss.waste_bill_no=:wasteBillNo");
+            params.put("wasteBillNo", trimmedWasteBillNo);
+        }
+        return new LossFilters(where.toString(), params);
+    }
+
+    /** 排序 ORDER BY（2026-09-25 单号列统一）：白名单映射前端列 key→SQL 表达式；
+     *  未知/空→默认（创建时间倒序, id 稳定序）。 */
+    private static String lossOrderBy(String sort, String order) {
+        String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
+        return switch (sort == null ? "" : sort) {
+            case "wasteBillNo" -> "ORDER BY loss.waste_bill_no " + dir
+                    + " NULLS LAST, loss.created_at DESC, loss.id";
+            default -> "ORDER BY loss.created_at DESC, loss.id";
+        };
     }
 
     @Transactional(readOnly = true)

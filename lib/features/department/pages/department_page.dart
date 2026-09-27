@@ -4,6 +4,8 @@
 //   宽度收敛由 MainShell 统一处理
 // 文档：docs/03-页面/部门管理页.md
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
+import '../widgets/position_manager_sheet.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_empty.dart';
@@ -261,11 +263,18 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
     '行政组',
   ];
 
-  void _showCreateDialog({DepartmentNode? parent}) {
+  Future<void> _showCreateDialog({DepartmentNode? parent}) async {
     if (!_hasPermission(Perm.departmentCreate)) return;
-    showDialog<void>(
+    await showDialog<void>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => DepartmentEditDialog(
+        draftSpec: FormDraftCatalog.department.spec(
+          title: '新增部门',
+          parentId: parent?.id,
+        ),
+        resumeDraftId: dialogDraftId(context, kind: 'department'),
+        routerPageKey: dialogDraftPageKey(context),
         tree: _tree ?? const <DepartmentNode>[],
         initialParent: parent,
         suggestions: _departmentSuggestions,
@@ -276,34 +285,21 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
 
   Future<bool> _doCreate(DepartmentEditResult r) async {
     final l10n = AppLocalizations.of(context);
-    if (!_hasPermission(Perm.departmentCreate)) {
-      _toastError('无权新建部门'); // TODO(l10n): 补 arb
-      return false;
-    }
-    try {
-      await ref
-          .read(departmentRepositoryProvider)
-          .create(
-            DepartmentSaveInput(
-              code: r.code!,
-              name: r.name,
-              level: r.level,
-              parentId: r.parentId,
-            ),
-          );
-      if (!mounted) return false;
+    await ref
+        .read(departmentRepositoryProvider)
+        .create(
+          DepartmentSaveInput(
+            code: r.code!,
+            name: r.name,
+            level: r.level,
+            parentId: r.parentId,
+          ),
+        );
+    if (mounted) {
       _toastSuccess(l10n.departmentCreated);
       await _load();
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      _toastError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      _toastError(l10n.departmentLoadFailed);
-      return false;
     }
+    return true;
   }
 
   Future<void> _delete(DepartmentNode node) async {
@@ -511,7 +507,35 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FormDraftDialogResume(
+    descriptor: FormDraftCatalog.position,
+    ready: _tree != null && !_loading,
+    onResume: (parameters) async {
+      final departmentId = parameters['parentId'];
+      final node = departmentId == null
+          ? null
+          : _findById(_tree ?? [], departmentId);
+      if (node == null) throw StateError('草稿所属部门已不存在');
+      await showPositionCreateDialog(context, ref, node, onSaved: _load);
+    },
+    child: _buildDepartmentDraftHost(context),
+  );
+
+  Widget _buildDepartmentDraftHost(
+    BuildContext context,
+  ) => FormDraftDialogResume(
+    descriptor: FormDraftCatalog.department,
+    ready: _tree != null && !_loading,
+    onResume: (parameters) async {
+      final parentId = parameters['parentId'];
+      final parent = parentId == null ? null : _findById(_tree ?? [], parentId);
+      if (parentId != null && parent == null) throw StateError('草稿的上级部门已不存在');
+      await _showCreateDialog(parent: parent);
+    },
+    child: _buildDraftHost(context),
+  );
+
+  Widget _buildDraftHost(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final bp = context.breakpoint;
     final permissions = ref.watch(currentPermissionsProvider);

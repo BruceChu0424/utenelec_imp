@@ -9,6 +9,9 @@
 // 提交通过 onSubmit 回调上抛，由页面执行真正的仓储调用并返回是否成功；
 // 成功时对话框自行关闭。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_values.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -43,9 +46,12 @@ class CategoryEditResult {
   final String? parentId;
 }
 
-class CategoryEditDialog extends StatefulWidget {
+class CategoryEditDialog extends ConsumerStatefulWidget {
   const CategoryEditDialog({
     super.key,
+    this.draftSpec,
+    this.resumeDraftId,
+    this.routerPageKey,
     required this.tree,
     required this.onSubmit,
     this.initialParent,
@@ -55,6 +61,10 @@ class CategoryEditDialog extends StatefulWidget {
     this.canMove = true,
     this.canReorder = true,
   });
+
+  final FormDraftSpec? draftSpec;
+  final String? resumeDraftId;
+  final ValueKey<String>? routerPageKey;
 
   /// 全树，用于父级挑选子弹层。
   final List<ProductCategoryNode> tree;
@@ -80,10 +90,11 @@ class CategoryEditDialog extends StatefulWidget {
   final Future<bool> Function(CategoryEditResult result) onSubmit;
 
   @override
-  State<CategoryEditDialog> createState() => _CategoryEditDialogState();
+  ConsumerState<CategoryEditDialog> createState() => _CategoryEditDialogState();
 }
 
-class _CategoryEditDialogState extends State<CategoryEditDialog> {
+class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
+    with FormDraftMixin<CategoryEditDialog> {
   late final TextEditingController _prefixCtl;
   late final TextEditingController _nameCtl;
   late final TextEditingController _remarkCtl;
@@ -92,6 +103,54 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
   String? _formError;
 
   bool get _isEdit => widget.editing != null;
+
+  bool _saving = false;
+  bool _serverCreated = false;
+  @override
+  bool get formDraftEnabled => !_isEdit && widget.draftSpec != null;
+  @override
+  bool get formDraftBusy => _saving;
+  @override
+  bool get formDraftCanReplaySubmission => _serverCreated;
+  @override
+  bool get formDraftUsesRouterGuard => false;
+  @override
+  bool get formDraftUseCurrentRoute => false;
+  @override
+  String? get formDraftResumeId => widget.resumeDraftId;
+  @override
+  ValueKey<String>? get formDraftRouterPageKey => widget.routerPageKey;
+  @override
+  FormDraftSpec get formDraftSpec => widget.draftSpec!;
+  Map<String, TextEditingController> get _draftControllers => {
+    'prefixCtl': _prefixCtl,
+    'nameCtl': _nameCtl,
+    'remarkCtl': _remarkCtl,
+    'sortCtl': _sortCtl,
+  };
+  @override
+  Iterable<Listenable> get formDraftListenables => _draftControllers.values;
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'text': draftTextValues(_draftControllers),
+    'parentId': _parent?.id,
+    'serverCreated': _serverCreated,
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    restoreDraftTextValues(_draftControllers, draftMap(data['text']));
+    final parentId = data['parentId'] as String?;
+    _parent = parentId == null ? null : _findById(widget.tree, parentId);
+    if (parentId != null && _parent == null) {
+      throw StateError('草稿的上级位置已不存在，请核查后重新选择');
+    }
+    _serverCreated = data['serverCreated'] == true;
+  }
+
+  Future<void> _close() async {
+    if (_saving || !await confirmFormDraftExit() || !mounted) return;
+    Navigator.of(context).pop();
+  }
 
   @override
   void initState() {
@@ -109,6 +168,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
     } else {
       _parent = widget.initialParent;
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) => initializeFormDraft());
   }
 
   @override
@@ -228,6 +288,12 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
   }
 
   Future<void> _submit() async {
+    if (_saving) return;
+    if (_serverCreated) {
+      await completeFormDraft();
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
     final err = _validate();
     if (err != null) {
       setState(() => _formError = err);
@@ -251,12 +317,21 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
     );
     // 兜底：onSubmit 内部通常已自带成功/失败通知；此处只兜未捕获异常，防止静默失败。
     late final bool ok;
+    setState(() => _saving = true);
     try {
-      ok = await widget.onSubmit(result);
+      await saveFormDraftNow();
+      ok = await runFormDraftSubmission(() => widget.onSubmit(result));
+      if (ok && mounted) {
+        setState(() => _serverCreated = true);
+        await saveFormDraftNow();
+        await completeFormDraft();
+      }
     } catch (e) {
       if (!mounted) return;
       context.appApiError(e);
       return;
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
     if (!mounted) return;
     if (ok) Navigator.of(context).pop();
@@ -291,7 +366,9 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => withFormDraft(_buildDialog(context));
+
+  Widget _buildDialog(BuildContext context) {
     final theme = Theme.of(context);
     return AlertDialog(
       title: Text(
@@ -388,7 +465,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
       actions: [
         UtenButton(
           type: UtenButtonType.secondary,
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _saving ? null : _close,
           child: const Text('取消'), // TODO(l10n): 补 arb
         ),
         UtenActionButton(

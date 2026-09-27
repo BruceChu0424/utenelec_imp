@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -39,8 +40,25 @@ public class WarehouseQualityResultController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "40") int size) {
-        return service.list(keyword, receiptType, status, dateFrom, dateTo, page, size);
+            @RequestParam(defaultValue = "40") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String billNo) {
+        // 2026-09-25 单号列统一：sort/order 表头排序 + 收货单号表头值筛选。
+        return service.list(keyword, receiptType, status, dateFrom, dateTo,
+                page, size, sort, order, billNo);
+    }
+
+    /** 收货单号 facets（2026-09-25 单号列统一）：{billNo:[各收货单号]}——
+     *  同列表过滤口径（不含 billNo 自身值筛选）。 */
+    @GetMapping("/facets")
+    public Map<String, List<Map<String, Object>>> facets(
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(defaultValue = "ALL") String receiptType,
+            @RequestParam(defaultValue = "") String status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
+        return service.facets(keyword, receiptType, status, dateFrom, dateTo);
     }
 
     /** 顶部状态分段计数（等待检查结果/全部合格/部分合格/需退回/已完结）。 */

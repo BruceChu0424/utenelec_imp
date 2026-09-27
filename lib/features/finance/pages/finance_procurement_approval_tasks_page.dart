@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -27,6 +29,7 @@ import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../finance_workflow_routes.dart';
 import '../models/finance_procurement_workflow.dart';
 import '../repositories/finance_procurement_workflow_repository.dart';
@@ -75,6 +78,11 @@ class _FinanceProcurementApprovalTasksPageState
   /// 按类型计数（后端全量口径）；null = 尚未返回，卡片显示 '—'。
   Map<String, int>? _typeCounts;
   String _keyword = '';
+
+  /// 表头排序 + 订货单号列值筛选 + facets 桶 + 防串台代数
+  /// （2026-09-25 单号列统一，共享状态见 MasterServerColumnFilters）；
+  /// 排序列 key 见 [_kSortFields]，null = 服务端默认序。
+  final _columnFilters = MasterServerColumnFilters();
   Set<String> _selectedIds = <String>{};
   final Map<String, FinanceProcurementApprovalTask> _selectedTasksById = {};
   bool _busyDecision = false;
@@ -216,6 +224,11 @@ class _FinanceProcurementApprovalTasksPageState
         page: page,
         orderType: _orderType,
         keyword: _keyword.isEmpty ? null : _keyword,
+        sort: _kSortFields[_columnFilters.sortColumn],
+        order: _columnFilters.sortColumn == null
+            ? null
+            : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+        billNo: _columnFilters['billNo'],
       );
       // 类型计数失败不阻断列表（卡片降级为 '—'）。
       repo
@@ -224,6 +237,8 @@ class _FinanceProcurementApprovalTasksPageState
             if (mounted) setState(() => _typeCounts = counts);
           })
           .catchError((_) {});
+      // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
+      unawaited(_loadBillNoFacets());
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _result = result;
@@ -248,6 +263,44 @@ class _FinanceProcurementApprovalTasksPageState
       });
     }
   }
+
+  /// 表头排序键 → 服务端 sort 参数（2026-09-25 单号列统一；未列出的列不可排序）。
+  static const _kSortFields = <String, String>{'billNo': 'billNo'};
+
+  /// 表头排序变化：服务端重排整个结果集，回第 1 页（勾选清空防指向已变化任务）。
+  void _onSortChange(String? column, bool ascending) {
+    final next = column != null && _kSortFields.containsKey(column)
+        ? column
+        : null;
+    if (next == _columnFilters.sortColumn &&
+        (next == null || ascending == _columnFilters.sortAscending)) {
+      return;
+    }
+    _columnFilters.handleSortChanged(
+      next,
+      ascending,
+      onChanged: () {
+        if (mounted) setState(() {});
+        _load(1);
+      },
+    );
+  }
+
+  /// 订货单号 facets（2026-09-25 单号列统一）：与列表同过滤口径
+  /// （不含单号列自身值筛选）。
+  Future<void> _loadBillNoFacets() => _columnFilters.loadFacets(
+    () async => {
+      'billNo': await ref
+          .read(financeProcurementWorkflowRepositoryProvider)
+          .approvalBillNoFacets(
+            orderType: _orderType,
+            keyword: _keyword.isEmpty ? null : _keyword,
+          ),
+    },
+    onLoaded: () {
+      if (mounted) setState(() {});
+    },
+  );
 
   Future<void> _open(FinanceProcurementApprovalTask task) async {
     // 双击/行菜单主入口 → 财务专用审核详情页（底部通过/驳回，不退回本列表即可决策）；
@@ -613,15 +666,36 @@ class _FinanceProcurementApprovalTasksPageState
         key: const Key('finance-approval-task-table'),
         columns: _columns(context),
         items: result.items,
-        facets: const {
-          'orderType': [
+        facets: {
+          'orderType': const [
             MasterFacetBucket(value: 'PURCHASE', count: 0, label: '采购订货'),
             MasterFacetBucket(value: 'SUBCONTRACT', count: 0, label: '委外订货'),
           ],
+          // 订货单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
+          'billNo': _columnFilters.bucketOf('billNo'),
         },
         nullCounts: const {},
-        filters: {'orderType': _orderType?.name.toUpperCase()},
+        filters: {
+          'orderType': _orderType?.name.toUpperCase(),
+          'billNo': _columnFilters['billNo'],
+        },
+        // 表头排序走服务端（2026-09-25 单号列统一）。
+        sortColumn: _columnFilters.sortColumn,
+        sortAscending: _columnFilters.sortAscending,
+        onSortChange: _onSortChange,
         onFilterChanged: (key, value) {
+          if (key == 'billNo') {
+            // 订货单号值筛选（2026-09-25 单号列统一）：服务端精确匹配。
+            _columnFilters.handleFilterChanged(
+              key,
+              value,
+              onChanged: () {
+                if (mounted) setState(() {});
+                _load(1);
+              },
+            );
+            return;
+          }
           if (key != 'orderType') return;
           _selectType(switch (value) {
             'PURCHASE' => FinanceProcurementOrderType.purchase,
@@ -765,6 +839,7 @@ class _FinanceProcurementApprovalTasksPageState
       key: 'billNo',
       label: '订货单号',
       width: 170,
+      sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
       value: (task) => task.billNo,
     ),
     MasterColumnDef(

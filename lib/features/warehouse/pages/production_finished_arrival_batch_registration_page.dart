@@ -12,6 +12,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_field_codec.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
@@ -87,13 +90,14 @@ class ProductionFinishedArrivalBatchRegistrationPage
 }
 
 class _ProductionFinishedArrivalBatchRegistrationPageState
-    extends ConsumerState<ProductionFinishedArrivalBatchRegistrationPage> {
+    extends ConsumerState<ProductionFinishedArrivalBatchRegistrationPage>
+    with FormDraftMixin<ProductionFinishedArrivalBatchRegistrationPage> {
   final _grid = UtenEditableGridController<_BatchArrivalRegistrationRow>();
   final _scrollController = ScrollController();
 
   /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
   final _gridPinned = ValueNotifier<bool>(false);
-  final String _idempotencyKey = 'finished-arrival-batch-${const Uuid().v4()}';
+  String _idempotencyKey = 'finished-arrival-batch-${const Uuid().v4()}';
 
   List<ProductionFinishedArrivalRegistration>? _reports;
   // 整批备注（V542）：落到本批每个登记批次。
@@ -137,6 +141,80 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
   /// 是否勾了可登记行（2026-09-18 提交集=勾选集，右下按钮置灰门控）。
   bool get _hasCheckedEditableRow =>
       _grid.selectedRows.any((row) => !row.registered);
+
+  @override
+  bool get formDraftBusy =>
+      _saving || _confirmingCount || _remembering || _reversing;
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftCatalog.finishedArrivalBatch.spec(
+    title: '汇总登记成品仓与库位',
+    route: Uri(
+      path: RouteName.warehouseProductionFinishedArrivalBatchRegistration,
+      queryParameters: {'reportIds': widget.reportIds.join(',')},
+    ).toString(),
+  );
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _remarkController,
+    _grid,
+    for (final row in _grid.rows) ...[row.place, row.warehouseId],
+  ];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'remark': _remarkController.text,
+    'idempotencyKey': _idempotencyKey,
+    'rememberPlaces': _rememberPlaces,
+    'preStock': _stockInBeforeInspection,
+    'removedLineCount': _removedLineCount,
+    'rows': [
+      for (final row in _grid.rows)
+        {
+          'reportId': row.report.reportId,
+          'reportItemId': row.item.reportItemId,
+          'warehouseId': row.warehouseId.value,
+          'place': row.place.text,
+          'warehouseAutofilled': row.warehouseAutofilled,
+          'placeSource': row.placeSource.value.name,
+          'selected': _grid.isSelected(row),
+          'registered': row.registered,
+        },
+    ],
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _remarkController.text = draftText(data, 'remark');
+    _idempotencyKey = data['idempotencyKey'] as String? ?? _idempotencyKey;
+    _rememberPlaces = data['rememberPlaces'] != false;
+    _stockInBeforeInspection =
+        data['preStock'] == true && _canStockInBeforeInspection;
+    _removedLineCount = (data['removedLineCount'] as num?)?.toInt() ?? 0;
+    final saved = draftMaps(data['rows']);
+    final retained = saved.map((item) => item['reportItemId']).toSet();
+    _grid.removeWhere(
+      (row) => !row.registered && !retained.contains(row.item.reportItemId),
+    );
+    _grid.clearSelection();
+    for (final item in saved) {
+      final row = _grid.rows
+          .where((row) => row.item.reportItemId == item['reportItemId'])
+          .firstOrNull;
+      // Current registration facts win over an old editable snapshot after a lost response.
+      if (row == null && item['registered'] != true) {
+        throw const FormatException('原登记明细已变化或已由其他人办理，填写草稿保留；请核对服务器登记结果');
+      }
+      if (row == null || row.registered) continue;
+      row.warehouseId.value = item['warehouseId'] as String?;
+      row.place.text = draftText(item, 'place');
+      row.warehouseAutofilled = item['warehouseAutofilled'] == true;
+      row.placeSource.value =
+          _BatchPlaceSource.values
+              .where((source) => source.name == item['placeSource'])
+              .firstOrNull ??
+          _BatchPlaceSource.manual;
+      if (item['selected'] == true) _grid.setSelected([row], true);
+    }
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
@@ -230,6 +308,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       if (_editableRows.any((row) => row.warehouseId.value != null)) {
         await _reloadSuggestions();
       }
+      await initializeFormDraft();
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -624,6 +703,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
     });
     ProductionFinishedBatchRegistrationResult result;
     try {
+      await saveFormDraftNow();
       result = await ref
           .read(productionFinishedInboundTaskRepositoryProvider)
           .saveArrivalRegistrationBatch({
@@ -661,6 +741,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       if (mounted) setState(() => _saving = false);
       return;
     }
+    await completeFormDraft();
     if (!mounted) return;
     setState(() {
       _saving = false;
@@ -812,250 +893,254 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
     }
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '批量登记成品仓与库位',
-        leading: UtenBackButton(onPressed: () => _leave(changed: _submitted)),
-      ),
-      body: SafeArea(
-        child: Stack(
-          children: [
-            _loading
-                ? const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2.5),
-                  )
-                : _reports == null
-                ? UtenEmpty.error(
-                    message: _error ?? '没有找到可登记的成品报工任务',
-                    description: '任务可能已被其他仓库人员处理，请返回任务中心刷新。',
-                    actionLabel: '重新加载',
-                    onAction: _load,
-                  )
-                : UtenGridPageScrollbar(
-                    pinned: _gridPinned,
-                    controller: _scrollController,
-                    // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
-                    // 恒在屏幕最右，不随限宽容器/列宽漂移。
-                    child: UtenContentContainer(
-                      child: ListView(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.all(UtenSpacing.s12),
-                        children: [
-                          _buildBanner(theme),
-                          const SizedBox(height: UtenSpacing.s12),
-                          _buildHeaderCard(theme),
-                          const SizedBox(height: UtenSpacing.s12),
-                          if (_canRegister) ...[
-                            _buildRememberSwitch(theme),
+    return withFormDraft(
+      Scaffold(
+        appBar: UtenAppBar(
+          title: '批量登记成品仓与库位',
+          leading: UtenBackButton(onPressed: () => _leave(changed: _submitted)),
+        ),
+        body: SafeArea(
+          child: Stack(
+            children: [
+              _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    )
+                  : _reports == null
+                  ? UtenEmpty.error(
+                      message: _error ?? '没有找到可登记的成品报工任务',
+                      description: '任务可能已被其他仓库人员处理，请返回任务中心刷新。',
+                      actionLabel: '重新加载',
+                      onAction: _load,
+                    )
+                  : UtenGridPageScrollbar(
+                      pinned: _gridPinned,
+                      controller: _scrollController,
+                      // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
+                      // 恒在屏幕最右，不随限宽容器/列宽漂移。
+                      child: UtenContentContainer(
+                        child: ListView(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.all(UtenSpacing.s12),
+                          children: [
+                            _buildBanner(theme),
                             const SizedBox(height: UtenSpacing.s12),
-                          ],
-                          if (_suggestionsLoading ||
-                              _suggestionError != null) ...[
-                            _buildSuggestionStatus(theme),
+                            _buildHeaderCard(theme),
                             const SizedBox(height: UtenSpacing.s12),
-                          ],
-                          if (_validationError != null) ...[
-                            Semantics(
-                              liveRegion: true,
-                              child: Text(
-                                _validationError!,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: theme.colorScheme.error,
+                            if (_canRegister) ...[
+                              _buildRememberSwitch(theme),
+                              const SizedBox(height: UtenSpacing.s12),
+                            ],
+                            if (_suggestionsLoading ||
+                                _suggestionError != null) ...[
+                              _buildSuggestionStatus(theme),
+                              const SizedBox(height: UtenSpacing.s12),
+                            ],
+                            if (_validationError != null) ...[
+                              Semantics(
+                                liveRegion: true,
+                                child: Text(
+                                  _validationError!,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.error,
+                                  ),
                                 ),
+                              ),
+                              const SizedBox(height: UtenSpacing.s8),
+                            ],
+                            // 「成品明细 (N)」标题 2026-09-11 撤除（全站同改：明细表上方不再重复报行数）。
+                            // 只保留「来自几张报工单」——这是跨单据聚合信息，看表体数不出来。
+                            Text(
+                              '来自 '
+                              '${_grid.rows.map((row) => row.report.reportId).toSet().length}'
+                              ' 张报工单',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: UtenSpacing.s4),
+                            // 2026-09-14：本次可以只登记一部分产品，入口必须一眼可见。
+                            Text(
+                              '明细默认全选：右下「先入库后质检 / 登记并送检」只提交勾选的行，'
+                              '未勾选的行不登记、不产生 FQC 与库存事实，仍留在待登记送检（可重新勾回）；'
+                              '本次不送检的产品也可点行末 ⊖ 移出本次登记（可勾选多行后右键批量移出）；'
+                              '报工事实不会删除、也不写库存，这些行仍留在待登记送检。',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
                               ),
                             ),
                             const SizedBox(height: UtenSpacing.s8),
-                          ],
-                          // 「成品明细 (N)」标题 2026-09-11 撤除（全站同改：明细表上方不再重复报行数）。
-                          // 只保留「来自几张报工单」——这是跨单据聚合信息，看表体数不出来。
-                          Text(
-                            '来自 '
-                            '${_grid.rows.map((row) => row.report.reportId).toSet().length}'
-                            ' 张报工单',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(height: UtenSpacing.s4),
-                          // 2026-09-14：本次可以只登记一部分产品，入口必须一眼可见。
-                          Text(
-                            '明细默认全选：右下「先入库后质检 / 登记并送检」只提交勾选的行，'
-                            '未勾选的行不登记、不产生 FQC 与库存事实，仍留在待登记送检（可重新勾回）；'
-                            '本次不送检的产品也可点行末 ⊖ 移出本次登记（可勾选多行后右键批量移出）；'
-                            '报工事实不会删除、也不写库存，这些行仍留在待登记送检。',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(height: UtenSpacing.s8),
-                          UtenEditableGrid<_BatchArrivalRegistrationRow>(
-                            key: const Key(
-                              'production-finished-arrival-batch-grid',
-                            ),
-                            controller: _grid,
-                            stickyHeaderPinned: _gridPinned,
-                            columns: _columns(names),
-                            createBlankRow: () =>
-                                throw UnsupportedError('明细由所选报工单固定带入'),
-                            showAddRow: false,
-                            showRowDelete: false,
-                            selectable: _canRegister && !_submitted,
-                            selectionEnabled:
-                                !_saving && !_remembering && !_submitted,
-                            canSelectRow: (row) =>
-                                !row.registered && !_submitted,
-                            onRemoveRows: _canRegister && !_submitted
-                                ? _removeFromThisRegistration
-                                : null,
-                            removeRowsActionLabel: '移出本次登记',
-                            removeRowsDialogTitle: '移出本次登记',
-                            removeRowsConfirmLabel: '确认移出',
-                            removeRowsMessageBuilder: (count) =>
-                                '确认从本次汇总登记移出选中的 $count 行？'
-                                '报工事实不会删除，也不会产生 FQC、入库或库存事实；'
-                                '返回任务中心后仍保持待登记送检。',
-                            // 2026-09-12 表头上方常驻按钮全撤（用户口径，与采购批量
-                            // 登记页一致）：全选走表头复选框，「移出本次登记」搬进行
-                            // 右键菜单，批量设仓/填库位改成「勾选多行后在任意一行
-                            // 改仓/写库位即整批落值」+ 右键菜单批量动作。
-                            showSelectAllToggle: false,
-                            showRemoveRowsAction: false,
-                            // 2026-09-14：行末常驻 ⊖（与到货登记页同一口径）。
-                            // 已登记行与提交后 canSelectRow=false，自动只占位。
-                            showInlineRemoveAction: true,
-                            rowMenuExtraBuilder:
-                                _canRegister && !_saving && !_submitted
-                                ? (context, selected) => [
-                                    UtenMenuItem(
-                                      label: '批量设置成品仓 (${selected.length})',
-                                      icon: Icons.warehouse_outlined,
-                                      enabled: selected.isNotEmpty,
-                                      onTap: () => _pickWarehouseFor(selected),
-                                    ),
-                                    UtenMenuItem(
-                                      label: '批量设置库位号 (${selected.length})',
-                                      icon: Icons.edit_note_outlined,
-                                      enabled: selected.isNotEmpty,
-                                      onTap: () => _batchFillPlace(selected),
-                                    ),
-                                  ]
-                                : null,
-                            emptyMessage: '所选报工单没有可登记明细，请返回任务中心刷新',
-                            footer: Padding(
-                              padding: const EdgeInsets.all(UtenSpacing.s12),
-                              child: Text(
-                                _removedLineCount > 0
-                                    ? '已移出 $_removedLineCount 行（仅本次）；这些行仍在待登记送检，'
-                                          '本次只提交表内剩余行。'
-                                    : _canRegister
-                                    ? _rememberPlaces
-                                          ? '将按所选成品仓记住默认库位；不改变历史登记和库存事实。'
-                                          : '仅保存本次到货库位快照，不更新以后默认建议。'
-                                    : '当前账号只有查看权限，不能修改仓库或库位。',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
+                            UtenEditableGrid<_BatchArrivalRegistrationRow>(
+                              key: const Key(
+                                'production-finished-arrival-batch-grid',
+                              ),
+                              controller: _grid,
+                              stickyHeaderPinned: _gridPinned,
+                              columns: _columns(names),
+                              createBlankRow: () =>
+                                  throw UnsupportedError('明细由所选报工单固定带入'),
+                              showAddRow: false,
+                              showRowDelete: false,
+                              selectable: _canRegister && !_submitted,
+                              selectionEnabled:
+                                  !_saving && !_remembering && !_submitted,
+                              canSelectRow: (row) =>
+                                  !row.registered && !_submitted,
+                              onRemoveRows: _canRegister && !_submitted
+                                  ? _removeFromThisRegistration
+                                  : null,
+                              removeRowsActionLabel: '移出本次登记',
+                              removeRowsDialogTitle: '移出本次登记',
+                              removeRowsConfirmLabel: '确认移出',
+                              removeRowsMessageBuilder: (count) =>
+                                  '确认从本次汇总登记移出选中的 $count 行？'
+                                  '报工事实不会删除，也不会产生 FQC、入库或库存事实；'
+                                  '返回任务中心后仍保持待登记送检。',
+                              // 2026-09-12 表头上方常驻按钮全撤（用户口径，与采购批量
+                              // 登记页一致）：全选走表头复选框，「移出本次登记」搬进行
+                              // 右键菜单，批量设仓/填库位改成「勾选多行后在任意一行
+                              // 改仓/写库位即整批落值」+ 右键菜单批量动作。
+                              showSelectAllToggle: false,
+                              showRemoveRowsAction: false,
+                              // 2026-09-14：行末常驻 ⊖（与到货登记页同一口径）。
+                              // 已登记行与提交后 canSelectRow=false，自动只占位。
+                              showInlineRemoveAction: true,
+                              rowMenuExtraBuilder:
+                                  _canRegister && !_saving && !_submitted
+                                  ? (context, selected) => [
+                                      UtenMenuItem(
+                                        label: '批量设置成品仓 (${selected.length})',
+                                        icon: Icons.warehouse_outlined,
+                                        enabled: selected.isNotEmpty,
+                                        onTap: () =>
+                                            _pickWarehouseFor(selected),
+                                      ),
+                                      UtenMenuItem(
+                                        label: '批量设置库位号 (${selected.length})',
+                                        icon: Icons.edit_note_outlined,
+                                        enabled: selected.isNotEmpty,
+                                        onTap: () => _batchFillPlace(selected),
+                                      ),
+                                    ]
+                                  : null,
+                              emptyMessage: '所选报工单没有可登记明细，请返回任务中心刷新',
+                              footer: Padding(
+                                padding: const EdgeInsets.all(UtenSpacing.s12),
+                                child: Text(
+                                  _removedLineCount > 0
+                                      ? '已移出 $_removedLineCount 行（仅本次）；这些行仍在待登记送检，'
+                                            '本次只提交表内剩余行。'
+                                      : _canRegister
+                                      ? _rememberPlaces
+                                            ? '将按所选成品仓记住默认库位；不改变历史登记和库存事实。'
+                                            : '仅保存本次到货库位快照，不更新以后默认建议。'
+                                      : '当前账号只有查看权限，不能修改仓库或库位。',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(
-                            height: UtenFloatingActionGroup.scrollClearance,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-            // 登记/记忆/撤销网络段的全屏加载遮罩。
-            if (_saving || _remembering || _reversing)
-              UtenBusyOverlay(
-                title: _saving
-                    ? '正在批量登记成品仓与库位'
-                    : _reversing
-                    ? '正在撤销本次登记'
-                    : '正在记忆库位',
-                description: _saving
-                    ? '正在按成品仓逐张登记并送检，请勿重复提交或离开本页。'
-                    : '请稍候，完成后自动继续。',
-              ),
-          ],
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      // 提交集=勾选集（2026-09-18）：监听表格选择集，一行都没勾时右下两个提交
-      // 按钮置灰（灰态点击说明原因），勾回任意行立即恢复。
-      floatingActionButton: _reports == null
-          ? null
-          : ListenableBuilder(
-              listenable: _grid,
-              builder: (context, _) => UtenFloatingActionGroup(
-                children: [
-                  UtenButton(
-                    type: UtenButtonType.secondary,
-                    size: UtenButtonSize.large,
-                    onPressed: _saving || _remembering
-                        ? null
-                        : () => _leave(changed: _submitted),
-                    child: Text(_canRegister ? '取消' : '返回任务'),
-                  ),
-                  if (_canRegister && !_submitted) ...[
-                    // 先入库后质检(V597 / ADR-090 第六节)：与「登记并送检」并排的第二个
-                    // 主动作。点它 = 登记 + 送检 + 承诺「合格按本次登记的成品仓与库位自动
-                    // 点收」，仓库不再收到待点收任务；代价是实收恒等于报工量。需独立权限。
-                    if (canPreStock)
-                      Tooltip(
-                        message:
-                            '登记的同时承诺：品质合格由系统按本次登记的成品仓与库位自动点收入库，'
-                            '须逐行确认实点数与申报数一致；品质合格后自动点收，不合格仍不动库存；数量不符请用人工点收',
-                        child: UtenButton(
-                          key: const Key(
-                            'production-finished-arrival-batch-stock-in-first',
-                          ),
-                          size: UtenButtonSize.large,
-                          icon: Icons.shelves,
-                          isLoading: _saving && _stockInBeforeInspection,
-                          onPressed:
-                              _saving ||
-                                  _suggestionsLoading ||
-                                  _grid.isEmpty ||
-                                  !_hasCheckedEditableRow
-                              ? null
-                              : () => _save(preStock: true),
-                          onDisabledTap: !_hasCheckedEditableRow
-                              ? () => context.appWarning(
-                                  '请先勾选要登记送检的明细行（未勾选的行本次不登记）',
-                                )
-                              : null,
-                          child: const Text('清点上架后送检'),
+                            const SizedBox(
+                              height: UtenFloatingActionGroup.scrollClearance,
+                            ),
+                          ],
                         ),
                       ),
-                    UtenButton(
-                      key: const Key(
-                        'production-finished-arrival-batch-submit',
-                      ),
-                      type: UtenButtonType.danger,
-                      size: UtenButtonSize.large,
-                      icon: Icons.fact_check_outlined,
-                      isLoading: _saving && !_stockInBeforeInspection,
-                      onPressed:
-                          _saving ||
-                              _suggestionsLoading ||
-                              _grid.isEmpty ||
-                              !_hasCheckedEditableRow
-                          ? null
-                          : () => _save(preStock: false),
-                      onDisabledTap: _suggestionsLoading
-                          ? () => context.appInfo('正在读取默认库位，请稍候再提交')
-                          : !_hasCheckedEditableRow
-                          ? () =>
-                                context.appWarning('请先勾选要登记送检的明细行（未勾选的行本次不登记）')
-                          : null,
-                      child: const Text('登记并送检'),
                     ),
+              // 登记/记忆/撤销网络段的全屏加载遮罩。
+              if (_saving || _remembering || _reversing)
+                UtenBusyOverlay(
+                  title: _saving
+                      ? '正在批量登记成品仓与库位'
+                      : _reversing
+                      ? '正在撤销本次登记'
+                      : '正在记忆库位',
+                  description: _saving
+                      ? '正在按成品仓逐张登记并送检，请勿重复提交或离开本页。'
+                      : '请稍候，完成后自动继续。',
+                ),
+            ],
+          ),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        // 提交集=勾选集（2026-09-18）：监听表格选择集，一行都没勾时右下两个提交
+        // 按钮置灰（灰态点击说明原因），勾回任意行立即恢复。
+        floatingActionButton: _reports == null
+            ? null
+            : ListenableBuilder(
+                listenable: _grid,
+                builder: (context, _) => UtenFloatingActionGroup(
+                  children: [
+                    UtenButton(
+                      type: UtenButtonType.secondary,
+                      size: UtenButtonSize.large,
+                      onPressed: _saving || _remembering
+                          ? null
+                          : () => _leave(changed: _submitted),
+                      child: Text(_canRegister ? '取消' : '返回任务'),
+                    ),
+                    if (_canRegister && !_submitted) ...[
+                      // 先入库后质检(V597 / ADR-090 第六节)：与「登记并送检」并排的第二个
+                      // 主动作。点它 = 登记 + 送检 + 承诺「合格按本次登记的成品仓与库位自动
+                      // 点收」，仓库不再收到待点收任务；代价是实收恒等于报工量。需独立权限。
+                      if (canPreStock)
+                        Tooltip(
+                          message:
+                              '登记的同时承诺：品质合格由系统按本次登记的成品仓与库位自动点收入库，'
+                              '须逐行确认实点数与申报数一致；品质合格后自动点收，不合格仍不动库存；数量不符请用人工点收',
+                          child: UtenButton(
+                            key: const Key(
+                              'production-finished-arrival-batch-stock-in-first',
+                            ),
+                            size: UtenButtonSize.large,
+                            icon: Icons.shelves,
+                            isLoading: _saving && _stockInBeforeInspection,
+                            onPressed:
+                                _saving ||
+                                    _suggestionsLoading ||
+                                    _grid.isEmpty ||
+                                    !_hasCheckedEditableRow
+                                ? null
+                                : () => _save(preStock: true),
+                            onDisabledTap: !_hasCheckedEditableRow
+                                ? () => context.appWarning(
+                                    '请先勾选要登记送检的明细行（未勾选的行本次不登记）',
+                                  )
+                                : null,
+                            child: const Text('清点上架后送检'),
+                          ),
+                        ),
+                      UtenButton(
+                        key: const Key(
+                          'production-finished-arrival-batch-submit',
+                        ),
+                        type: UtenButtonType.danger,
+                        size: UtenButtonSize.large,
+                        icon: Icons.fact_check_outlined,
+                        isLoading: _saving && !_stockInBeforeInspection,
+                        onPressed:
+                            _saving ||
+                                _suggestionsLoading ||
+                                _grid.isEmpty ||
+                                !_hasCheckedEditableRow
+                            ? null
+                            : () => _save(preStock: false),
+                        onDisabledTap: _suggestionsLoading
+                            ? () => context.appInfo('正在读取默认库位，请稍候再提交')
+                            : !_hasCheckedEditableRow
+                            ? () => context.appWarning(
+                                '请先勾选要登记送检的明细行（未勾选的行本次不登记）',
+                              )
+                            : null,
+                        child: const Text('登记并送检'),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
+      ),
     );
   }
 

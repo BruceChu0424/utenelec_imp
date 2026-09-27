@@ -5,6 +5,7 @@ import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/subcontract_short_delivery.dart';
 import '../../../shared/repositories/subcontract_loss_summary_loader.dart';
+import '../../basic_data/models/master_facet.dart';
 
 class SubcontractShortDeliveryRepository {
   SubcontractShortDeliveryRepository(this.api);
@@ -23,6 +24,9 @@ class SubcontractShortDeliveryRepository {
     String? dateTo,
     int page = 1,
     int size = 50,
+    String? sort,
+    String? order,
+    String? orderBillNo,
   }) async {
     final json = await api.get(
       base,
@@ -37,9 +41,39 @@ class SubcontractShortDeliveryRepository {
         'dateTo': ?dateTo,
         'page': page,
         'size': size,
+        // 2026-09-25 单号列统一：表头排序 + 订货单号表头值筛选。
+        if (sort != null && sort.isNotEmpty) 'sort': sort,
+        if (order != null && order.isNotEmpty) 'order': order,
+        if (orderBillNo != null && orderBillNo.trim().isNotEmpty)
+          'orderBillNo': orderBillNo.trim(),
       },
     );
     return PagedResult.fromJson(json, SubcontractShortDeliveryCase.fromJson);
+  }
+
+  /// 订货单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径。
+  Future<List<MasterFacetBucket>> orderBillNoFacets({
+    String segment = 'PENDING',
+    String? keyword,
+    String? supplierId,
+    String? orderId,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final json = await api.get(
+      '$base/facets',
+      query: {
+        'segment': segment,
+        if (keyword != null && keyword.trim().isNotEmpty)
+          'keyword': keyword.trim(),
+        if (supplierId != null && supplierId.isNotEmpty)
+          'supplierId': supplierId,
+        if (orderId != null && orderId.isNotEmpty) 'orderId': orderId,
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
+      },
+    );
+    return parseFacetBuckets(json, 'orderBillNo');
   }
 
   Future<SubcontractShortDeliveryCounts> counts() async {

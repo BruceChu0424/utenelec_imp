@@ -27,9 +27,63 @@ class QualityBatchSubmission {
     required List<QualityReceiptSubmission> receipts,
     required List<String> fqcInspectionIds,
     required this.reason,
+    String? fqcKey,
   }) : receipts = List.unmodifiable(receipts),
        fqcInspectionIds = List.unmodifiable(fqcInspectionIds.toSet()),
-       fqcIdempotencyKey = 'fqc-batch-approval-${const Uuid().v4()}';
+       fqcIdempotencyKey = fqcKey ?? 'fqc-batch-approval-${const Uuid().v4()}';
+
+  Map<String, dynamic> exportDraft() => {
+    'receipts': [
+      for (final receipt in receipts)
+        {
+          'receiptType': receipt.receiptType,
+          'receiptId': receipt.receiptId,
+          'label': receipt.label,
+          'items': receipt.items.map((item) => item.toJson()).toList(),
+        },
+    ],
+    'fqcInspectionIds': fqcInspectionIds,
+    'reason': reason,
+    'fqcIdempotencyKey': fqcIdempotencyKey,
+    'acknowledged': _acknowledged.toList(),
+    'fqcAcknowledged': _fqcAcknowledged,
+  };
+
+  factory QualityBatchSubmission.fromDraft(Map<String, dynamic> data) {
+    final result = QualityBatchSubmission(
+      receipts: [
+        for (final receipt
+            in (data['receipts'] as List<dynamic>).cast<Map<String, dynamic>>())
+          QualityReceiptSubmission(
+            receiptType: receipt['receiptType'] as String,
+            receiptId: receipt['receiptId'] as String,
+            label: receipt['label'] as String,
+            items: [
+              for (final item
+                  in (receipt['items'] as List<dynamic>)
+                      .cast<Map<String, dynamic>>())
+                ProcurementInspectionDecideItem(
+                  inspectionItemId: item['inspectionItemId'] as String,
+                  expectedRemainingBaseQty:
+                      (item['expectedRemainingBaseQty'] as num).toDouble(),
+                  passBaseQty: (item['passBaseQty'] as num).toDouble(),
+                  failBaseQty: (item['failBaseQty'] as num).toDouble(),
+                  idempotencyKey: item['idempotencyKey'] as String,
+                ),
+            ],
+          ),
+      ],
+      fqcInspectionIds: (data['fqcInspectionIds'] as List<dynamic>)
+          .cast<String>(),
+      reason: data['reason'] as String?,
+      fqcKey: data['fqcIdempotencyKey'] as String,
+    );
+    result._acknowledged.addAll(
+      (data['acknowledged'] as List<dynamic>).cast<int>(),
+    );
+    result._fqcAcknowledged = data['fqcAcknowledged'] == true;
+    return result;
+  }
 
   /// 2026-09-21 起收货单按报告顺序逐单提交(此前 2026-09-18 为最多 4 条并行通道)。
   /// 实测(QualityBatchApprovalPerfProbeTest)：同一主仓/同一订货单的收货单在服务端本就

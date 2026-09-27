@@ -6,6 +6,7 @@
 // 报表端点：/api/subcontract/reports/{monthly,in-out-status}。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../basic_data/models/master_facet.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_commercial_terms.dart';
@@ -23,6 +24,7 @@ class SubcontractDocFilter {
     this.dateTo,
     this.closed,
     this.financeApproval,
+    this.billNo,
   });
   final String? keyword;
   final String? supplierId;
@@ -39,6 +41,9 @@ class SubcontractDocFilter {
   /// 'IN_PROGRESS' 聚合待财审、财务退回及已审未结案订货单。
   final String? financeApproval;
 
+  /// 单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
+  final String? billNo;
+
   Map<String, dynamic> toQuery() => <String, dynamic>{
     if (keyword != null && keyword!.trim().isNotEmpty)
       'keyword': keyword!.trim(),
@@ -49,6 +54,7 @@ class SubcontractDocFilter {
     if (dateTo != null) 'dateTo': dateTo,
     if (closed != null) 'closed': closed,
     if (financeApproval != null) 'financeApproval': financeApproval,
+    if (billNo != null && billNo!.trim().isNotEmpty) 'billNo': billNo!.trim(),
   };
 }
 
@@ -79,6 +85,25 @@ class SubcontractRepository {
       },
     );
     return PagedResult.fromJson(json, SubcontractDocListItem.fromJson);
+  }
+
+  /// 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径；
+  /// 桶不算 billNo 自身的值筛选（传入 filter 的 billNo 一律剔除）。
+  Future<List<MasterFacetBucket>> billNoFacets({
+    SubcontractDocFilter filter = const SubcontractDocFilter(),
+  }) async {
+    final query = SubcontractDocFilter(
+      keyword: filter.keyword,
+      supplierId: filter.supplierId,
+      warehouseId: filter.warehouseId,
+      status: filter.status,
+      dateFrom: filter.dateFrom,
+      dateTo: filter.dateTo,
+      closed: filter.closed,
+      financeApproval: filter.financeApproval,
+    ).toQuery();
+    final json = await api.get('$_base/facets', query: query);
+    return parseFacetBuckets(json, 'billNo');
   }
 
   Future<SubcontractDocDetail> detail(String id) async {

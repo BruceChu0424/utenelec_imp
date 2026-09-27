@@ -16,9 +16,11 @@ class ReceiptCommercialMaskContractTest {
                 "src/main/java/com/uten/imp/features/purchase/receipt/PurchaseReceiptService.java"))
                 .replace("\r\n", "\n");
 
+        // 2026-09-25 单号列统一：价格遮蔽分支仍不放开金额排序（total 不进白名单），
+        // billNo 排序不泄露商业信息故保留在两分支。
         assertThat(source)
                 .contains("boolean priceMasked = !priceMasker.canViewPurchaseReceipt()")
-                .contains("priceMasked\n                                ? Map.of(\"billDate\", \"billDate\")")
+                .contains("priceMasked\n                                ? Map.of(\"billDate\", \"billDate\", \"billNo\", \"billNo\")")
                 .contains("mask ? null : r.getCurrencyId()")
                 .contains("mask ? null : r.getExchangeRate()")
                 .contains("mask ? null : r.getTaxRate()")
@@ -27,12 +29,14 @@ class ReceiptCommercialMaskContractTest {
 
     @Test
     void subcontractReceiptMasksCommercialHeaderAndAmountSortSideChannel() throws Exception {
+        // 与采购侧同款：统一行尾，多行锚点不受 CRLF/LF 差异影响。
         String source = Files.readString(Path.of(
-                "src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptService.java"));
+                "src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptService.java"))
+                .replace("\r\n", "\n");
 
         assertThat(source)
                 .contains("boolean priceMasked = !priceMasker.canViewSubcontractReceipt()")
-                .contains("priceMasked ? Map.of(\"billDate\", \"billDate\") : ALLOWED_SORT")
+                .contains("priceMasked\n                                ? Map.of(\"billDate\", \"billDate\", \"billNo\", \"billNo\")\n                                : ALLOWED_SORT")
                 .contains("mask ? null : r.getCurrencyId()")
                 .contains("mask ? null : r.getExchangeRate()")
                 .contains("mask ? null : r.getTaxRate()")

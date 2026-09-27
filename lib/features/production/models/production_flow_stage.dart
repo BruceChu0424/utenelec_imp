@@ -214,6 +214,15 @@ class ProductionFlowStage {
         ProductionFlowTone.active,
         progress: progress,
       ),
+      'MAKE_WAIT_STOCK_IN' => const ProductionFlowStage(
+        route: ProductionFlowRoute.make,
+        key: 'MAKE_WAIT_STOCK_IN',
+        label: '等待实收入库',
+        tone: ProductionFlowTone.waiting,
+        stepIndex: 4,
+        stepCount: _makeStepCount,
+        detail: '来源已完工，所采用的供给尚未实收入库。',
+      ),
       'MAKE_COMPLETED' => _make(5, '已完工', ProductionFlowTone.done),
       'BUY_PENDING_ISSUE' => _buy(0, '等待下发采购', ProductionFlowTone.pending),
       'BUY_REQUESTED' => _buy(1, '等待采购下单', ProductionFlowTone.active),
@@ -271,6 +280,11 @@ class ProductionFlowStage {
     double? reportedQty,
     double? plannedQty,
     double? remainingReportQty,
+
+    /// 未审核报工草稿（SR status=0）已承接的数量：占住待报额度但不计入已报。
+    /// 生产中工单的待报被草稿全部承接时，阶段是「报工草稿待审核」而不是
+    /// 「已报完」——审核通过才进入品质/仓库环节，删除草稿则待报恢复。
+    double draftReportedQty = 0,
     double fqcPendingQty = 0,
     double fqcFailedQty = 0,
     double finishedInboundPendingQty = 0,
@@ -359,7 +373,12 @@ class ProductionFlowStage {
     }
     if (status == 'IN_PROGRESS' &&
         remainingReportQty != null &&
-        remainingReportQty <= 0.000001) {
+        remainingReportQty - draftReportedQty <= 0.000001) {
+      // 待报原本还有，是草稿承接完的：走「草稿待审核」，不能伪装成已报完
+      // （品质/仓库环节要等审核通过才开始）。
+      if (draftReportedQty > 0.000001 && remainingReportQty > 0.000001) {
+        return _make(4, '报工草稿待审核', ProductionFlowTone.pending);
+      }
       final label = fqcPendingQty > 0
           ? '已报完 · 待品质检查'
           : finishedInboundPendingQty > 0

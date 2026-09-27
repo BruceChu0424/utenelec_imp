@@ -24,6 +24,10 @@ class WarehouseDrawTask {
     this.actionDocStatus,
     this.goodsCount = 0,
     this.openLineCount = 0,
+    this.materialsDefined = false,
+    this.productionProductCode = '',
+    this.productionProductName = '',
+    this.materialRequestNo = '',
   });
 
   final String taskId;
@@ -47,8 +51,24 @@ class WarehouseDrawTask {
   final String? actionDocStatus;
   final int goodsCount;
   final int openLineCount;
+  final bool materialsDefined;
+  final String productionProductCode;
+  final String productionProductName;
+  final String materialRequestNo;
   bool get isMaterialDiscovery =>
       actionDocType == 'MATERIAL_DISCOVERY' && actionDocId != null;
+  bool get needsMaterialEntry => isMaterialDiscovery && !materialsDefined;
+  String get productionPurpose => [
+    productionProductName,
+    productionProductCode,
+  ].where((value) => value.isNotEmpty).join(' · ');
+  String get materialLabel => needsMaterialEntry
+      ? '需要填写'
+      : isMaterialDiscovery
+      ? goodsName
+      : isDocumentGrouped
+      ? goodsLabel
+      : goodsName;
   bool get canOpen => isMaterialDiscovery || drawDocPath != null;
 
   /// 归组行（一张领料单多行物料）：货品身份列改显示规模摘要。
@@ -57,9 +77,17 @@ class WarehouseDrawTask {
   /// 草稿领料单：批量出库时走「出库即审核」，需要同时具备审核权限。
   bool get isDraftDoc => actionDocStatus?.trim() == '0';
 
-  /// 本行可批量出库：挂有可见的 DRAW 领料单且尚未领完。
+  /// 已知材料的申请可在批量详情补齐数量和实际仓，再与 DRAW 一起确认。
   bool get canBatchIssue =>
-      drawDocPath != null && taskStatus.toUpperCase() != 'DONE';
+      (drawDocPath != null || (isMaterialDiscovery && materialsDefined)) &&
+      !const {
+        'DONE',
+        'COMPLETED',
+        'CANCELLED',
+        'REVERSED',
+      }.contains(taskStatus.toUpperCase());
+
+  bool get batchRequiresApproval => isDraftDoc || isMaterialDiscovery;
 
   /// 领料单深链：服务端投影 actionDocCanView=true 时才有（对象范围裁剪）。
   String? get drawDocPath {
@@ -79,10 +107,18 @@ class WarehouseDrawTask {
           if (colorName.isNotEmpty) colorName,
         ].join(' ');
 
-  String get drawBillLabel => actionDocNo.isEmpty ? '—' : actionDocNo;
+  String get drawBillLabel {
+    // A request owns its number; a workshop ZX code is never a draw number.
+    final number = isMaterialDiscovery ? materialRequestNo : actionDocNo;
+    return number.trim().isEmpty ? '—' : number;
+  }
 
   String get quantityText {
-    if (isMaterialDiscovery) return '—';
+    if (isMaterialDiscovery) {
+      if (!materialsDefined) return '—';
+      if (openLineCount > 1) return '$openLineCount 行材料';
+      if (openQty <= 0) return '需要填写数量';
+    }
     if (isDocumentGrouped) {
       return openLineCount > 0 ? '$openLineCount 行' : '—';
     }
@@ -102,7 +138,7 @@ class WarehouseDrawTask {
     'DONE' || 'COMPLETED' => '已完成',
     'OPEN_ANY' => '待完成',
     'BLOCKED' => '已阻塞',
-    'MATERIALS_TO_DEFINE' => '待填写物料',
+    'MATERIALS_TO_DEFINE' => materialsDefined ? '待核对领料' : '需要填写',
     _ => taskStatus,
   };
 
@@ -135,6 +171,10 @@ class WarehouseDrawTask {
       actionDocStatus: json['actionDocStatus']?.toString(),
       goodsCount: (json['goodsCount'] as num?)?.toInt() ?? 0,
       openLineCount: (json['openLineCount'] as num?)?.toInt() ?? 0,
+      materialsDefined: json['materialsDefined'] == true,
+      productionProductCode: json['productionProductCode'] as String? ?? '',
+      productionProductName: json['productionProductName'] as String? ?? '',
+      materialRequestNo: json['materialRequestNo'] as String? ?? '',
     );
   }
 }

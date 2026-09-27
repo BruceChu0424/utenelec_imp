@@ -161,6 +161,66 @@ class MaterialAnalysisMakeChildDetails extends StatelessWidget {
 
 abstract class _MaterialAnalysisProductTasksState
     extends _MaterialAnalysisPlanActionsState {
+  // 主表、三个准备桶和核对页共用同一份数量及办理规则。
+  double _preparationOrderedQty(_MaterialGroup group);
+  double _preparationUncoveredQty(_MaterialGroup group);
+  double _preparationDisplayShortageQty(_MaterialGroup group);
+  double _preparationAvailableQty(_MaterialGroup group);
+  MaterialPreparationBudgetRow? _preparationBudgetOfGroups(
+    Iterable<_MaterialGroup> groups,
+  );
+  bool _preparationCanAppend(_MaterialGroup group);
+  bool _preparationCanIssue(_MaterialGroup group);
+  Future<void> _submitPreparationGroups(
+    List<_MaterialGroup> groups, {
+    required bool append,
+  });
+  ProductionMaterialAnalysisView? _preparationGroupsAnalysis;
+  Map<String, List<_MaterialGroup>> _preparationGroupsByAnchor = const {};
+
+  List<_MaterialGroup> _preparationGroupsOf(_BucketRow row) {
+    if (row.group case final group?) return [group];
+    if (row.candidate?.group case final group?) return [group];
+    final product = row.product;
+    final analysis = _analysis;
+    if (product == null || analysis == null) return const [];
+    final indexes = _analysisIndexes(analysis);
+    final rootId = product.rootMaterialLineId;
+    if (product.sourceType != 'AGGREGATE_MAKE' && rootId != null) {
+      final group = indexes.groupsByLine[rootId];
+      if (group != null) return [group];
+    }
+    // 每份快照只建一次多来源索引，三个桶的徽章/筛选不按产品反复扫描全树。
+    if (!identical(_preparationGroupsAnalysis, analysis)) {
+      final byAnchor = <String, Map<String, _MaterialGroup>>{};
+      for (final group in indexes.groups) {
+        for (final material in group.paths) {
+          final anchors = <String>{
+            if (material.planAnchorAnalysisLineId != null)
+              material.planAnchorAnalysisLineId!,
+            for (final target in material.notifiedTargets)
+              if (target.status != 'CANCELLED' &&
+                  target.documentId != null &&
+                  const {
+                    'PREPLAN_MAKE_TASK',
+                    'SUBCONTRACT_MAKE_TASK',
+                  }.contains(target.documentType))
+                target.documentId!,
+          };
+          for (final anchor in anchors) {
+            byAnchor.putIfAbsent(anchor, () => {})[group.key] = group;
+          }
+        }
+      }
+      _preparationGroupsAnalysis = analysis;
+      _preparationGroupsByAnchor = {
+        for (final entry in byAnchor.entries)
+          entry.key: entry.value.values.toList(growable: false),
+      };
+    }
+    return _preparationGroupsByAnchor[product.analysisLineId] ?? const [];
+  }
+
   // ===== 所属仓库(V587): 三张表共用的读写口径 =====
   //
   // 为什么落在宿主状态链上: 主表、分桶详情、「父件+下层一起下单」三处都要显示并
@@ -170,11 +230,75 @@ abstract class _MaterialAnalysisProductTasksState
 
   /// 本次会话里改过的货品所属仓库(goodsId -> warehouseId, null = 已清空)。
   ///
-  /// 服务端写成功后**不刷分析快照**: 所属仓库刻意不进快照指纹(服务端同款口径),
-  /// 重拉快照既慢又会把别人在编的 CAS 令牌搅乱。所以本地留一份覆盖表, 读的时候
-  /// 优先于快照值, 下次真正重拉分析时自然归一。
+  /// 仅用于写成功到新权威读到达之间的回显。读序号保护晚到的旧GET；
+  /// 新读确认后移除暂存，后续入库或主档更新继续由同一goods主档投影刷新。
   final Map<String, String?> _owningWarehouseIdOverrides = {};
   final Map<String, String?> _owningWarehouseNameOverrides = {};
+
+  @override
+  void _acceptAnalysisOwnership(
+    ProductionMaterialAnalysisView view, {
+    required bool confirmedRead,
+  }) {
+    final warehouses = <String, String?>{};
+    final workshops = <String, (String?, String?)>{};
+    void collect(
+      String? goods,
+      String? warehouse,
+      String? workshop,
+      String? name,
+    ) {
+      if (goods == null) return;
+      warehouses.putIfAbsent(goods, () => warehouse);
+      workshops.putIfAbsent(goods, () => (workshop, name));
+    }
+
+    for (final row in view.materials) {
+      collect(
+        row.goodsId,
+        row.owningWarehouseId,
+        row.owningWorkshopId,
+        row.owningWorkshopName,
+      );
+    }
+    for (final row in view.products) {
+      collect(
+        row.goodsId,
+        row.owningWarehouseId,
+        row.owningWorkshopId,
+        row.owningWorkshopName,
+      );
+    }
+    for (final goods in _owningWarehouseIdOverrides.keys.toList()) {
+      if (warehouses.containsKey(goods) &&
+          (confirmedRead ||
+              warehouses[goods] == _owningWarehouseIdOverrides[goods])) {
+        _owningWarehouseIdOverrides.remove(goods);
+        _owningWarehouseNameOverrides.remove(goods);
+      }
+    }
+    final changed = <String>{};
+    for (final row
+        in _analysis?.materials ??
+            const <ProductionMaterialAnalysisMaterial>[]) {
+      if (row.goodsId != null &&
+          workshops.containsKey(row.goodsId) &&
+          workshops[row.goodsId] !=
+              (row.owningWorkshopId, row.owningWorkshopName)) {
+        changed.add(row.goodsId!);
+      }
+    }
+    for (final row
+        in _analysis?.products ?? const <ProductionMaterialAnalysisProduct>[]) {
+      if (row.goodsId != null &&
+          workshops.containsKey(row.goodsId) &&
+          workshops[row.goodsId] !=
+              (row.owningWorkshopId, row.owningWorkshopName)) {
+        changed.add(row.goodsId!);
+      }
+    }
+    if (changed.isNotEmpty) _invalidateOwnerAssignmentDefaults(changed);
+  }
 
   /// 这一行该显示的所属仓库名: 先看本次会话改过没有, 再回落快照下发值。
   String? owningWarehouseNameOf(String? goodsId, String? snapshotName) {
@@ -214,7 +338,7 @@ abstract class _MaterialAnalysisProductTasksState
     required String goodsId,
     String? currentWarehouseId,
   }) async {
-    if (goodsId.isEmpty) return false;
+    if (goodsId.isEmpty || _busy) return false;
     final names = ref.read(masterNameServiceProvider);
     final picked = await showUtenWarehousePickerPanel(
       context,
@@ -225,9 +349,10 @@ abstract class _MaterialAnalysisProductTasksState
       title: '选择所属仓库', // TODO(l10n): 补 arb
       allowParent: true,
     );
-    if (picked == null || !mounted) return false;
+    if (picked == null || !mounted || _busy) return false;
     final nextId = picked.isAll ? null : picked.id;
     if (nextId == currentWarehouseId) return false;
+    setState(() => _savingGoodsOwnership = true);
     try {
       await ref
           .read(productionPlanRepositoryProvider)
@@ -236,6 +361,7 @@ abstract class _MaterialAnalysisProductTasksState
       if (!mounted) return false;
       // 用宿主 State 自己的 context 报错: 传进来的那个可能属于已被回收的行/弹窗。
       this.context.appError('所属仓库保存失败: $error'); // TODO(l10n): 补 arb
+      setState(() => _savingGoodsOwnership = false);
       return false;
     }
     if (!mounted) return false;
@@ -243,9 +369,11 @@ abstract class _MaterialAnalysisProductTasksState
     // 而 label 就是面板刚刚展示给用户的那一个, 两者必然一致)。
     final nextName = nextId == null ? null : picked.label;
     setState(() {
+      _savingGoodsOwnership = false;
       _owningWarehouseIdOverrides[goodsId] = nextId;
       _owningWarehouseNameOverrides[goodsId] = nextName;
     });
+    _refreshAfterOwnershipWrite();
     return true;
   }
 
@@ -267,6 +395,26 @@ abstract class _MaterialAnalysisProductTasksState
   /// 与流程徽章共用同一份色表（2026-09-11 起 6 档一色一步）。
   Color _productExecutionColor(ThemeData theme, ProductionFlowStage stage) =>
       productionFlowToneColor(theme, stage.tone);
+
+  MaterialPreparationStatusStyle _preparationStatusStyle(
+    ThemeData theme,
+    _StatusView status, {
+    String? actualState,
+  }) => MaterialPreparationStatusStyle.resolve(
+    theme,
+    stage: status.flowStage,
+    facetKey: status.facetKey,
+    actualState: actualState,
+  );
+
+  MaterialPreparationStatusStyle _preparationMaterialStatusStyle(
+    ThemeData theme,
+    _MaterialGroup group,
+  ) => _preparationStatusStyle(
+    theme,
+    _materialStatus(theme, group),
+    actualState: group.representative.flowStage ?? group.representative.status,
+  );
 
   @override
   ProductionMaterialAnalysisMaterial? _rootSupplyMaterialOf(
@@ -590,25 +738,23 @@ abstract class _MaterialAnalysisProductTasksState
         .length;
     return MaterialPreparationRouteCard(
       routeId: bucket.name,
-      title: bucket == _AnalysisBucket.workshop
-          ? '下达自制'
-          : bucket.countLabel(_l10n),
+      title: bucket.countLabel(_l10n),
       compactTitle: switch (bucket) {
         _AnalysisBucket.buy => '采购',
         _AnalysisBucket.subcontract => '委外',
-        _AnalysisBucket.workshop => '自制',
+        _AnalysisBucket.workshop => '车间',
       },
-      hint: '${bucket.semanticHint(_l10n)} 黄色为进行中，红色为未下达；部分下达任务可同时计入。',
+      hint: '${bucket.semanticHint(_l10n)} 黄色为进行中，红色为待处理；部分下达任务可同时计入。',
       icon: _bucketIcon(bucket),
-      inProgressLabel: '进行中',
-      pendingLabel: '未下达',
+      inProgressLabel: _l10n.materialPreparationInProgress,
+      pendingLabel: _l10n.materialPreparationPending,
       inProgressCount: inProgress,
       pendingCount: pending,
       onOpen: rows.isNotEmpty && !_busy
           ? () => _openBucketDetail(
               bucket,
               initialFilter: pending == 0 && issued > 0
-                  ? _PreparationTaskFilter.issued
+                  ? _PreparationTaskFilter.inProgress
                   : _PreparationTaskFilter.pending,
             )
           : null,
@@ -659,6 +805,16 @@ abstract class _MaterialAnalysisProductTasksState
       final presentIds = products
           .map((product) => product.analysisLineId)
           .toSet();
+      final candidates = _pendingMakeCandidates(analysis)
+          .where((candidate) => candidate.route == MaterialSupplyRoute.make)
+          .toList(growable: false);
+      final representedGroups = {
+        for (final product in analysis.products.where(_belongsInWorkshop))
+          for (final group in _preparationGroupsOf(_BucketRow.product(product)))
+            group.key,
+        for (final candidate in candidates)
+          if (candidate.group != null) candidate.group!.key,
+      };
       return [
         for (final product in products) _BucketRow.product(product),
         // Completed products remain available in issued history.
@@ -666,25 +822,49 @@ abstract class _MaterialAnalysisProductTasksState
           if (_belongsInWorkshop(product) &&
               presentIds.add(product.analysisLineId))
             _BucketRow.product(product),
-        for (final candidate in _pendingMakeCandidates(analysis))
-          if (candidate.route == MaterialSupplyRoute.make)
-            _BucketRow.candidate(candidate),
+        for (final candidate in candidates) _BucketRow.candidate(candidate),
+        for (final group in _materialGroups(analysis))
+          if (group.representative.confirmedRoute == MaterialSupplyRoute.make &&
+              group.representative.preparationAdoptedQty > 0.0001 &&
+              !representedGroups.contains(group.key))
+            _BucketRow.group(group),
       ];
     }
     final route = bucket.supplyRoute!;
+    final representedTargets = {
+      for (final material in analysis.materials)
+        ...?material.aggregatePreparation?.targetMaterialLineIds,
+    };
+    final products = _analysisIndexes(analysis).productsById;
     return [
       for (final group in _materialGroups(analysis))
-        if ((group.representative.confirmedRoute == route &&
-                _hasSupplySubmitQty(group, route)) ||
-            group.paths.any(
-              (path) =>
-                  path.notifiedTargets.any((target) => target.target == route),
-            ))
+        if (!(products[group.representative.analysisLineId]?.sourceType ==
+                    'AGGREGATE_MAKE' &&
+                representedTargets.contains(
+                  group.representative.materialLineId,
+                )) &&
+            ((group.representative.confirmedRoute == route &&
+                    (_preparationUncoveredQty(group) > 0.0001 ||
+                        _preparationOrderedQty(group) > 0.0001 ||
+                        _hasSupplySubmitQty(group, route))) ||
+                group.paths.any(
+                  (path) => path.notifiedTargets.any(
+                    (target) => target.target == route,
+                  ),
+                )))
           _BucketRow.group(group),
     ];
   }
 
   bool _bucketRowHasIssued(_BucketRow row, _AnalysisBucket bucket) {
+    final groups = _preparationGroupsOf(row);
+    if (groups.any(
+      (group) =>
+          _preparationOrderedQty(group) > 0.0001 ||
+          group.paths.any((path) => path.preparationAdoptedQty > 0.0001),
+    )) {
+      return true;
+    }
     final product = row.product;
     if (product != null) return _productExecutionStage(product) != null;
     final route = bucket.supplyRoute;
@@ -697,6 +877,17 @@ abstract class _MaterialAnalysisProductTasksState
   }
 
   bool _bucketRowInProgress(_BucketRow row, _AnalysisBucket bucket) {
+    final adopted = _preparationGroupsOf(row).where(
+      (group) => group.paths.any(
+        (material) => material.preparationAdoptedQty > 0.0001,
+      ),
+    );
+    if (adopted.isNotEmpty) {
+      return adopted.any((group) {
+        final stage = _serverFlowStageOf(group);
+        return stage != null && stage.tone != ProductionFlowTone.done;
+      });
+    }
     final product = row.product;
     if (product != null) {
       final status = product.planExecutionStatus?.trim().toUpperCase();
@@ -718,6 +909,14 @@ abstract class _MaterialAnalysisProductTasksState
     }
     final route = bucket.supplyRoute;
     if (route == null) return false;
+    final group = row.group;
+    if (group != null &&
+        group.paths.any((path) => path.aggregatePreparation != null)) {
+      final stage = _serverFlowStageOf(group);
+      if (stage != null && _preparationOrderedQty(group) > 0.0001) {
+        return stage.tone != ProductionFlowTone.done;
+      }
+    }
     return row.group?.paths.any(
           (path) => path.notifiedTargets.any((target) {
             if (target.target != route) return false;
@@ -746,6 +945,18 @@ abstract class _MaterialAnalysisProductTasksState
   }
 
   bool _bucketRowHasPending(_BucketRow row, _AnalysisBucket bucket) {
+    final groups = _preparationGroupsOf(row);
+    if (row.product != null &&
+        _productExecutionCompleted(row.product!) &&
+        groups.any((group) => group.representative.hasPriorityMakeSupplement)) {
+      // 已完成原工单留历史，明确净补量由同一来源的补供行办理，不能重复计待办。
+      return false;
+    }
+    if (groups.isNotEmpty) {
+      return groups.any((group) => _preparationUncoveredQty(group) > 0.0001) ||
+          (!_bucketRowHasIssued(row, bucket) &&
+              groups.any(_preparationCanIssue));
+    }
     final product = row.product;
     if (product != null) {
       return !_productFullyTransferred(product) &&
@@ -762,6 +973,8 @@ abstract class _MaterialAnalysisProductTasksState
 
   bool _bucketRowNeedsAttention(_BucketRow row, _AnalysisBucket bucket) {
     if (!_bucketRowHasPending(row, bucket)) return false;
+    final groups = _preparationGroupsOf(row);
+    if (groups.isNotEmpty) return !groups.any(_preparationCanIssue);
     if (row.product != null) return !_canSelectProduct(row.product!);
     if (row.candidate != null) {
       return !_canArrangePendingMakeCandidate(row.candidate!);
@@ -774,7 +987,12 @@ abstract class _MaterialAnalysisProductTasksState
         _bucketRowNeedsAttention(row, bucket)) {
       return false;
     }
-    return row.product != null ? _canGenerate : _canNotify;
+    final groups = _preparationGroupsOf(row);
+    return groups.isNotEmpty
+        ? groups.any(_preparationCanIssue)
+        : row.product != null
+        ? _canGenerate
+        : _canNotify;
   }
 
   /// ADR-099 父层级追加（用户口径 2026-09-21「即使采购、委外已下达甚至已处理，
@@ -788,6 +1006,8 @@ abstract class _MaterialAnalysisProductTasksState
   bool _bucketRowCanAppend(_BucketRow row, _AnalysisBucket bucket) {
     final analysis = _analysis;
     if (analysis == null || !_bucketRowHasIssued(row, bucket)) return false;
+    final groups = _preparationGroupsOf(row);
+    if (groups.isNotEmpty) return groups.any(_preparationCanAppend);
     final product = row.product;
     if (product != null) {
       return bucket == _AnalysisBucket.workshop &&
@@ -864,58 +1084,6 @@ abstract class _MaterialAnalysisProductTasksState
     );
   }
 
-  /// 分桶详情页发起的批量动作（详情页保持在前台时执行）：数量确认弹窗、
-  /// 分批、幂等、409 恢复和计划向导仍由宿主页状态统一编排——实现只此一份，
-  /// 避免详情页与宿主页各自漂移；弹层经 root Navigator 显示在详情页之上，
-  /// 动作完成后详情页按最新快照刷新行集。
-  // Only successful workshop issuance returns true to close its bucket after
-  // the result dialog. Procurement/subcontract actions always keep their page.
-  // [silent] = 父件段由「一起下单」弹窗编排（ADR-081）：成功提示与结果弹层
-  // 由弹窗统一汇报，避免一次一键下单连弹多层结果。
-  Future<bool> _executeBucketAction(
-    _BucketActionRequest request, {
-    bool silent = false,
-  }) async {
-    // 遮罩挂在 _notifyRoute 的纯网络段（数量确认弹窗之后），见 supply_actions。
-    //
-    // 2026-09-14（ADR-081）：返回值语义收敛为**本次命令是否提交成功**。
-    // 原来采购/委外两支丢掉结果直接落到末尾的 `return false`，用的是
-    // 「要不要关掉分桶页」那套语义——而 ADR-081 的父件段拿同一个返回值判定
-    // 「父件下达成功没有」，于是从「下达委外」进级联页时父件明明已经提交，
-    // 编排却永远报「父件未提交成功，下层未动」，下层一行都下不出去。
-    // 「要不要关页」改由调用方 [_run] 按 request.type 自己决定。
-    switch (request.type) {
-      // allowExtra：分桶页明确勾选的行即使余量为 0 也能提交——已下达段的追加
-      //（ADR-099），服务端按超量分账为公共备货。
-      case _BucketActionType.buy:
-        return await _notifyRoute(
-              MaterialSupplyRoute.buy,
-              onlyGroupKeys: request.groupKeys,
-              qtyByActionGroupKey: request.qtyByActionGroupKey,
-              silent: silent,
-              allowExtra: true,
-            ) !=
-            null;
-      case _BucketActionType.subcontractOnly:
-        return _arrangeSubcontractProduction(
-          onlyGroupKeys: request.groupKeys,
-          qtyByActionGroupKey: request.qtyByActionGroupKey,
-          silent: silent,
-          allowExtra: true,
-        );
-      case _BucketActionType.createProductionPlans:
-        // 2026-09-05 ADR-071：车间桶单按钮「创建生产计划」——所有自制行
-        // 一视同仁，单次原子调用服务端 issue-plans（候选行建子件任务、逐行
-        // 出计划、有审核权限同事务审核下达）；任一行失败整体回滚，不再有
-        // 「已建子件、未出计划」的残留行。
-        return _issueWorkshopPlans(
-          candidateInputs: request.candidateInputs,
-          planDrafts: request.planDrafts,
-          silent: silent,
-        );
-    }
-  }
-
   /// 下达车间（ADR-071）：把分桶页收集的行输入交给服务端原子执行。数量/
   /// 车间/负责人在分桶页已校验；这里组幂等键、处理 409 冲突恢复并展示
   /// 生成结果（计划单/领料单一屏）。齐不齐料由车间侧执行段自行判断等待。
@@ -971,10 +1139,11 @@ abstract class _MaterialAnalysisProductTasksState
         analysis.fingerprint,
         _dateText(_billDate),
         _dateText(_deliveryDate),
+        _preparationApproveNow,
         for (final line in lines) line.toJson().toString(),
       ].join('|'),
     );
-    final approveNow = _permissions.contains(Perm.productionPlanApprove);
+    final approveNow = _preparationApproveNow;
     setState(() {
       _setGenerating(true);
       _planSubmissionApproveNow = approveNow;
@@ -1005,6 +1174,9 @@ abstract class _MaterialAnalysisProductTasksState
       final plans = result.plans;
       final approved = plans.any((plan) => plan.status == 'APPROVED');
       _lastIssuedPlans = plans;
+      for (final plan in plans) {
+        _preparationPlanResults[plan.planId] = plan;
+      }
       if (silent) return true;
       // ADR-104：追加并入了还没开工的原计划(同一单号)时不说「已生成」——那会让人去找
       // 一张不存在的新单。全部并入 / 部分并入 / 全部新建三种口径分开说。
@@ -1382,14 +1554,6 @@ abstract class _MaterialAnalysisProductTasksState
         facetKey: 'pendingIssue',
       );
     }
-    if ((material.sharedFuturePendingQty ?? 0) > 0) {
-      return _StatusView(
-        '公共已认领未实收 ${_qty(material.sharedFuturePendingQty)} · 尚需下达 ${_qty(material.additionalSupplyRecommendedQty)}',
-        Icons.schedule_outlined,
-        theme.colorScheme.secondary,
-        facetKey: 'inTransit',
-      );
-    }
     // 2026-09-06 统一流程阶段优先：已下达/链路中的行显示真实停在哪一步。
     // 锚点模型下已转生产的行 requiredQty 常为 0——不能因此退化为
     // 「本批需求已转入生产计划」这类通用文案，进度必须与具体单据对应。
@@ -1409,6 +1573,7 @@ abstract class _MaterialAnalysisProductTasksState
         _productExecutionColor(theme, serverStage),
         facetKey: serverStage.key,
         facetLabel: serverStage.label,
+        flowStage: serverStage,
       );
     }
     // 自制/有子层委外的锚点子件执行（服务端无键时回退同款词表推导）。
@@ -1427,8 +1592,17 @@ abstract class _MaterialAnalysisProductTasksState
           _productExecutionColor(theme, anchorStage),
           facetKey: anchorStage.key,
           facetLabel: anchorStage.label,
+          flowStage: anchorStage,
         );
       }
+    }
+    if ((material.sharedFuturePendingQty ?? 0) > 0) {
+      return _StatusView(
+        '公共已认领未实收 ${_qty(material.sharedFuturePendingQty)} · 尚需下达 ${_qty(material.additionalSupplyRecommendedQty)}',
+        Icons.schedule_outlined,
+        theme.colorScheme.secondary,
+        facetKey: 'inTransit',
+      );
     }
     if (material.requiredQty <= 0) {
       final view = _requirementStateView(theme, material);
@@ -1492,6 +1666,7 @@ abstract class _MaterialAnalysisProductTasksState
             _productExecutionColor(theme, executionStage),
             facetKey: executionStage.key,
             facetLabel: executionStage.label,
+            flowStage: executionStage,
           );
         }
         if (covered) {
@@ -1630,13 +1805,21 @@ abstract class _MaterialAnalysisProductTasksState
       return null;
     }
     final route = material.confirmedRoute ?? material.sourceSuggestion;
+    final adoptedMakeOnly =
+        key.startsWith('MAKE_') &&
+        material.preparationAdoptedQty > 0.0001 &&
+        _preparationOrderedQty(group) <= 0.0001 &&
+        (material.aggregatePreparation?.totalOrderedQty ?? 0) <= 0.0001;
     return ProductionFlowStage.fromServerKey(
       key,
-      route: switch (route) {
-        MaterialSupplyRoute.make => ProductionFlowRoute.make,
-        MaterialSupplyRoute.subcontract => ProductionFlowRoute.subcontract,
-        _ => ProductionFlowRoute.buy,
-      },
+      route: adoptedMakeOnly
+          ? ProductionFlowRoute.make
+          : switch (route) {
+              MaterialSupplyRoute.make => ProductionFlowRoute.make,
+              MaterialSupplyRoute.subcontract =>
+                ProductionFlowRoute.subcontract,
+              _ => ProductionFlowRoute.buy,
+            },
     );
   }
 

@@ -2,12 +2,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../models/finance_procurement_workflow.dart';
 
 abstract interface class FinanceProcurementWorkflowRepository {
   Future<FinanceProcurementApprovalPage> approvalTasks({
     int page = 1,
     int size = 20,
+    FinanceProcurementOrderType? orderType,
+    String? keyword,
+    String? sort,
+    String? order,
+    String? billNo,
+  });
+
+  /// 待审任务订货单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径。
+  Future<List<MasterFacetBucket>> approvalBillNoFacets({
     FinanceProcurementOrderType? orderType,
     String? keyword,
   });
@@ -41,6 +51,9 @@ class DioFinanceProcurementWorkflowRepository
     int size = 20,
     FinanceProcurementOrderType? orderType,
     String? keyword,
+    String? sort,
+    String? order,
+    String? billNo,
   }) async {
     final json = await api.get(
       ApiEndpoints.financeProcurementApprovalTasks,
@@ -51,9 +64,30 @@ class DioFinanceProcurementWorkflowRepository
             orderType != FinanceProcurementOrderType.unknown)
           'orderType': orderType.name.toUpperCase(),
         if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
+        // 2026-09-25 单号列统一：表头排序 + 订货单号表头值筛选。
+        if (sort != null && sort.isNotEmpty) 'sort': sort,
+        if (order != null && order.isNotEmpty) 'order': order,
+        if (billNo != null && billNo.trim().isNotEmpty) 'billNo': billNo.trim(),
       },
     );
     return FinanceProcurementApprovalPage.fromJson(json);
+  }
+
+  @override
+  Future<List<MasterFacetBucket>> approvalBillNoFacets({
+    FinanceProcurementOrderType? orderType,
+    String? keyword,
+  }) async {
+    final json = await api.get(
+      ApiEndpoints.financeProcurementApprovalFacets,
+      query: <String, dynamic>{
+        if (orderType != null &&
+            orderType != FinanceProcurementOrderType.unknown)
+          'orderType': orderType.name.toUpperCase(),
+        if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
+      },
+    );
+    return parseFacetBuckets(json, 'billNo');
   }
 
   @override

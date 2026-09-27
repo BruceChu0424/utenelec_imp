@@ -1,5 +1,7 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.common.util.CanonicalFingerprint;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,7 +18,6 @@ import com.uten.imp.features.production.mrp.ExecutionSegmentPreview;
 import com.uten.imp.features.production.mrp.GeneratePlanningPackageRequest;
 import com.uten.imp.features.production.mrp.MrpGenerateResult;
 import com.uten.imp.features.production.mrp.PlanningPackageResult;
-import com.uten.imp.features.production.mrp.PlanningPreviewResult;
 import com.uten.imp.features.production.mrp.ProductionPlanningDraftService;
 import com.uten.imp.features.production.mrp.ProductionPlanningDraftView;
 import com.uten.imp.features.production.mrp.ProductionPlanningPackageService;
@@ -24,7 +25,7 @@ import com.uten.imp.features.production.plan.ProductionPlan;
 import com.uten.imp.features.production.plan.ProductionPlanService;
 import com.uten.imp.features.production.plan.ProductionPlanItem;
 import com.uten.imp.features.production.plan.ProductionOverproductionAllowance;
-import com.uten.imp.features.production.plan.dto.PlanDetail;
+import com.uten.imp.features.production.plan.ProductionPlanService.CommandResult;
 import com.uten.imp.features.production.plan.dto.PlanItemLine;
 import com.uten.imp.features.production.plan.dto.PlanSaveRequest;
 import com.uten.imp.features.purchase.request.ProductionPurchaseRequestFacade;
@@ -89,6 +90,8 @@ public class MaterialAnalysisCommandService {
     private final com.uten.imp.application.port.ProductionMutationFootprintPort mutationFootprints;
     @org.springframework.beans.factory.annotation.Autowired
     private MaterialAnalysisRootSupplyService rootSupply;
+    @org.springframework.beans.factory.annotation.Autowired
+    private PreplanMakePublicSupplyService makePublicSupply;
 
     /**
      * 下达备料任务（采购/委外/自制）：先重算分配（库存与到货变化不触动分析头），再按操作组只补建「超过既有未结任务量」的增量，
@@ -171,6 +174,7 @@ public class MaterialAnalysisCommandService {
         // ADR-099：下达采购/直接外发委外时先自动认领同主仓公共在途（按期优先、
         // 晚到其次），只为余下部分新下单；认领动作与新单一起记进本次命令。
         List<UUID> claimActionIds = new ArrayList<>();
+        Map<UUID,BigDecimal> makeAdoptedQuantities=new LinkedHashMap<>();
         List<Map<String, String>> acceptedLateSources = new ArrayList<>();
         for (ActionGroup group : groups) {
             BigDecimal existingOpen = activeOpenActionQty(coverage, group);
@@ -182,6 +186,7 @@ public class MaterialAnalysisCommandService {
                     .subtract(existingOpen)
                     .subtract(replacementInFlight)
                     .max(BigDecimal.ZERO)
+                    .min(group.materials().stream().map(row->row.planningUncoveredQty().max(row.priorityMakeSupplementQty())).reduce(BigDecimal.ZERO,BigDecimal::add))
                     .setScale(4, RoundingMode.CEILING);
             SupplyQuantityInput input = quantityInputs.get(group.groupKey());
             BigDecimal demandQty = delta;
@@ -294,11 +299,24 @@ public class MaterialAnalysisCommandService {
             // ADR-099：外部路线先自动认领公共在途，认领到多少就少下多少新单。
             // ADR-101：我方供料的带 BOM 委外件也走这条路(只有「超量备货」仍然禁止)。
             BigDecimal claimedQty = BigDecimal.ZERO.setScale(4);
-            if (!createsChildOwnership && demandQty.signum() > 0) {
-                claimedQty = claimSharedFutureForGroup(analysisId, view, group, demandQty,
+            boolean retainedPriority=group.materials().stream().anyMatch(row->row.priorityMakeSupplementQty().signum()>0);
+            if(demandQty.signum()>0&&!retainedPriority) {
+                BigDecimal targetDemand=demandQty;
+                List<AggregateQuantityAllocator.SourceCapacity> makeTargets=group.materials().stream()
+                        .map(row->new AggregateQuantityAllocator.SourceCapacity(row.materialLineId(),0,null,row.planningUncoveredQty())).toList();
+                var shares=AggregateQuantityAllocator.allocate(targetDemand,makeTargets,true);
+                Map<UUID,BigDecimal> desired=new LinkedHashMap<>();shares.allocations().forEach(share->desired.put(share.sourceId(),share.qty()));
+                Map<UUID,BigDecimal> adopted=makePublicSupply.adoptLocked(analysisId,desired,Map.of(),request.idempotencyKey()+":NOTIFY-MAKE");
+                adopted.forEach((id,qty)->makeAdoptedQuantities.merge(id,qty,BigDecimal::add));
+                claimedQty=adopted.values().stream().reduce(BigDecimal.ZERO,BigDecimal::add);
+                demandQty=demandQty.subtract(claimedQty).max(BigDecimal.ZERO);
+            }
+            if (demandQty.signum() > 0&&!retainedPriority) {
+                BigDecimal externalClaimed = claimSharedFutureForGroup(analysisId, view, group, demandQty,
                         null, true, request.idempotencyKey(), requestHash,
                         claimActionIds, acceptedLateSources);
-                demandQty = demandQty.subtract(claimedQty).max(BigDecimal.ZERO)
+                claimedQty=claimedQty.add(externalClaimed);
+                demandQty = demandQty.subtract(externalClaimed).max(BigDecimal.ZERO)
                         .setScale(4, RoundingMode.CEILING);
             }
             plans.add(new ActionPlan(group, demandQty, publicExtraQty, safety, claimedQty));
@@ -438,7 +456,7 @@ public class MaterialAnalysisCommandService {
         // 都会走到这里。客户端要的是「这次到底有没有产生新的下达」——那由
         // 它按返回快照的 version/fingerprint 是否变化自行判定（只有真的写了东西
         // 才会 refreshLocked 换版本），不改本端点的成功语义（2026-09-15）。
-        if (!created.isEmpty() || !grown.isEmpty() || !claimActionIds.isEmpty()) {
+        if (!created.isEmpty() || !grown.isEmpty() || !claimActionIds.isEmpty() || !makeAdoptedQuantities.isEmpty()) {
             // 2026-09-05 简化：子件行不再接管原子树需求、不迁移 exact 权益
             // （物料行保持原位单一份数据，计划侧不搬家）；旧模式遗留的委托
             // 由 refreshLocked 开头的批量归还收敛。
@@ -448,6 +466,7 @@ public class MaterialAnalysisCommandService {
                 Map.of("actionIds", created.stream().map(ActionDraft::actionId).toList(),
                         "grownActionIds", grown.stream().map(line -> line.line().actionId()).toList(),
                         "claimActionIds", List.copyOf(claimActionIds),
+                        "makeAdoptedQuantities",makeAdoptedQuantities,
                         "acceptedLateSources", List.copyOf(acceptedLateSources)));
         return analysisService.detailInternal(analysisId, false);
     }
@@ -496,7 +515,7 @@ public class MaterialAnalysisCommandService {
             BigDecimal existingOpen = activeOpenActionQty(coverage, group);
             BigDecimal needed = group.demandRequiredQty().subtract(existingOpen)
                     .subtract(cancelledIqcReplacementInFlight(coverage,group))
-                    .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING);
+                    .max(BigDecimal.ZERO).min(group.materials().stream().map(MaterialView::planningUncoveredQty).reduce(BigDecimal.ZERO,BigDecimal::add)).setScale(4, RoundingMode.CEILING);
             SharedFutureClaimQuantity quantity=requestedQuantities.get(group.groupKey());
             if(quantity!=null) {
                 if(quantity.qty().compareTo(needed)>0) throw conflict("本次认领数量超过尚未被有效供给覆盖的需求，请刷新后重试");
@@ -521,30 +540,22 @@ public class MaterialAnalysisCommandService {
         return analysisService.detailInternal(analysisId, false);
     }
 
-    /**
-     * 可认领的公共在途来源。
-     *
-     * <p>ADR-101：候选**只取同路线**({@code route = :route})。在此之前这里是
-     * {@code route IN ('BUY','SUBCONTRACT')}，跨路线也能认领，而界面上告诉用户
-     * 「其中 X 可自动认领」的 {@code sharedFutureClaimableQty} 一直是按路线过滤的——两侧口径
-     * 不一致时，界面显示 0、用户照填 100 点下达，服务端却把需求全认领成 0，一张新申请明细都
-     * 不生成，用户以为下了 100 其实一分没下。ADR-101 把「还需安排」改成预扣公共在途的净数，
-     * 显示的数就是会下的数，两侧口径必须严格一致，跨路线认领要放开得连提示那一侧一起放开，
-     * 那是另一次产品决策。
-     */
+    /** Legal public sources cross routes; exact origin closure forbids self adoption. */
     private List<SharedFutureSource> sharedFutureSources(
             UUID analysisId, ActionGroup group,boolean allowLateSupply) {
         return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT source_action_id, available_to_claim_qty, expected_date,
                        claim_external_item_id, external_document_type,
                        external_document_id, external_document_no, route
-                FROM v_preplan_public_surplus_source_state
-                WHERE source_analysis_id <> :analysisId
-                  AND fn_warehouse_same_main(warehouse_id, :warehouseId)
+                FROM fn_preplan_public_surplus_sources(:analysisId)
+                WHERE fn_warehouse_same_main(warehouse_id, :warehouseId)
                   AND goods_id = :goodsId
                   AND color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
                   AND unit_id = :unitId
-                  AND route = :route
+                  AND route IN ('BUY','SUBCONTRACT')
+                  AND NOT EXISTS (
+                    SELECT 1 FROM unnest(CAST(string_to_array(:targetIds, ',') AS uuid[])) target(id)
+                    WHERE fn_preplan_public_target_is_source(source_action_id,target.id))
                   AND available_to_claim_qty > 0
                   AND claim_external_item_id IS NOT NULL
                   AND (:allowLateSupply=TRUE OR (expected_date IS NOT NULL AND
@@ -556,7 +567,7 @@ public class MaterialAnalysisCommandService {
                 .setParameter("goodsId", group.dimension().goodsId())
                 .setParameter("colorId", group.dimension().colorId())
                 .setParameter("unitId", group.dimension().unitId())
-                .setParameter("route", group.route())
+                .setParameter("targetIds", group.materials().stream().map(row->row.materialLineId().toString()).collect(Collectors.joining(",")))
                 .setParameter("needDate", group.needDate()).setParameter("allowLateSupply",allowLateSupply)).stream()
                 .map(row -> new SharedFutureSource(
                         (UUID) row[0], decimal(row[1]),
@@ -580,6 +591,20 @@ public class MaterialAnalysisCommandService {
             SharedFutureClaimQuantity quantity, boolean allowLateSupply,
             String idempotencyKey, String requestHash,
             List<UUID> createdIds, List<Map<String, String>> acceptedLateSources) {
+        return claimSharedFutureForGroup(analysisId,view,group,needed,quantity,allowLateSupply,idempotencyKey,
+                requestHash,createdIds,acceptedLateSources,new BigDecimal("0.0001"));
+    }
+
+    private BigDecimal claimSharedFutureForGroup(UUID analysisId,AnalysisView view,ActionGroup group,BigDecimal needed,
+            SharedFutureClaimQuantity quantity,boolean allowLateSupply,String idempotencyKey,String requestHash,
+            List<UUID> createdIds,List<Map<String,String>> acceptedLateSources,BigDecimal quantum) {
+        return claimSharedFutureForGroup(analysisId,view,group,needed,quantity,allowLateSupply,idempotencyKey,requestHash,
+                createdIds,acceptedLateSources,quantum,ignored->{ });
+    }
+    private BigDecimal claimSharedFutureForGroup(UUID analysisId,AnalysisView view,ActionGroup group,BigDecimal needed,
+            SharedFutureClaimQuantity quantity,boolean allowLateSupply,String idempotencyKey,String requestHash,
+            List<UUID> createdIds,List<Map<String,String>> acceptedLateSources,BigDecimal quantum,
+            java.util.function.Consumer<AggregateMaterialOrderContracts.AdoptedClaim> collector) {
         BigDecimal remaining = needed;
         List<SharedFutureSource> initial = sharedFutureSources(
                 analysisId, group, allowLateSupply).stream()
@@ -605,7 +630,7 @@ public class MaterialAnalysisCommandService {
         for (SharedFutureSource source : sources) {
             if (remaining.signum() <= 0) break;
             BigDecimal take = remaining.min(source.availableQty())
-                    .setScale(4, RoundingMode.DOWN);
+                    .divide(quantum,0,RoundingMode.DOWN).multiply(quantum);
             if (take.signum() <= 0) continue;
             // 认领动作沿用「来源路线」：公共在途本身是采购/委外份额，
             // 目标行可以是采购、委外或自制。代次按 (分析, 操作组, 路线)
@@ -662,9 +687,11 @@ public class MaterialAnalysisCommandService {
                     .setParameter("requestHash", requestHash)
                     .setParameter("actorId", currentUser.requireId())
                     .executeUpdate();
-            allocateClaim(actionId, analysisId, group.materials(), take,
+            Map<UUID,UUID> claimAllocations=allocateClaim(actionId, analysisId, group.materials(), take,
                     source.externalItemId());
             createdIds.add(actionId);
+            if(group.materials().size()==1)collector.accept(new AggregateMaterialOrderContracts.AdoptedClaim(
+                    "EXTERNAL_PUBLIC",claimAllocations.get(group.materials().getFirst().materialLineId()),group.materials().getFirst().materialLineId(),take));
             if (source.expectedDate() == null
                     || group.needDate() != null && source.expectedDate().isAfter(group.needDate())) {
                 acceptedLateSources.add(Map.of("claimActionId", actionId.toString(),
@@ -805,13 +832,14 @@ public class MaterialAnalysisCommandService {
         }
     }
 
-    private void allocateClaim(
+    private Map<UUID,UUID> allocateClaim(
             UUID actionId, UUID analysisId, List<MaterialView> materials,
             BigDecimal qty, UUID externalItemId) {
         BigDecimal total = materials.stream().map(MaterialView::demandSupplyGapQty)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal remaining = qty;
-        List<MaterialView> positive = materials.stream()
+        Map<UUID,UUID> allocationIds=new LinkedHashMap<>();
+        List<MaterialView> positive = materials.size()==1?materials:materials.stream()
                 .filter(material -> material.demandSupplyGapQty().signum() > 0).toList();
         for (int index = 0; index < positive.size(); index++) {
             MaterialView material = positive.get(index);
@@ -820,6 +848,7 @@ public class MaterialAnalysisCommandService {
                     : qty.multiply(material.demandSupplyGapQty())
                             .divide(total, 4, RoundingMode.DOWN).min(remaining);
             if (allocated.signum() <= 0) continue;
+            UUID allocationId=UUID.randomUUID();allocationIds.put(material.materialLineId(),allocationId);
             em.createNativeQuery("""
                     INSERT INTO preplan_supply_action_allocations (
                         id, analysis_id, action_id, analysis_material_id,
@@ -827,7 +856,7 @@ public class MaterialAnalysisCommandService {
                     VALUES (:id, :analysisId, :actionId, :materialId,
                             :qty, :externalItemId, :actorId)
                     """)
-                    .setParameter("id", UUID.randomUUID())
+                    .setParameter("id", allocationId)
                     .setParameter("analysisId", analysisId)
                     .setParameter("actionId", actionId)
                     .setParameter("materialId", material.materialLineId())
@@ -840,6 +869,7 @@ public class MaterialAnalysisCommandService {
         if (remaining.signum() != 0) {
             throw conflict("公共在途采用的节点分摊数量不守恒");
         }
+        return Map.copyOf(allocationIds);
     }
 
     /**
@@ -887,8 +917,13 @@ public class MaterialAnalysisCommandService {
     /** Shared batch entry keeps the ordinary plan/package/stock chain and its one-item identity intact. */
     GeneratedPlan issueAggregateAnchor(UUID analysisId,UUID batchId,UUID anchorId,
             AggregateMaterialOrderContracts.GroupPreview group,UUID warehouse,boolean approveNow,String key) {
-        ProductView product=analysisService.detailInternal(analysisId,false).products().stream()
-                .filter(row->anchorId.equals(row.analysisLineId())).findFirst().orElseThrow(()->conflict("共享生产锚点尚未形成有效物料快照"));
+        MaterialAnalysisPlanSource product=analysisService.aggregatePlanSources(analysisId,Set.of(anchorId)).get(anchorId);
+        return issueAggregateAnchor(analysisId,batchId,anchorId,group,warehouse,approveNow,key,product);
+    }
+
+    GeneratedPlan issueAggregateAnchor(UUID analysisId,UUID batchId,UUID anchorId,
+            AggregateMaterialOrderContracts.GroupPreview group,UUID warehouse,boolean approveNow,String key,MaterialAnalysisPlanSource product) {
+        if(product==null||!anchorId.equals(product.analysisLineId()))throw conflict("共享生产锚点尚未形成有效物料快照");
         PlanQuantity quantity=new PlanQuantity(anchorId,group.requestedQty(),group.billDate(),group.deliveryDate(),
                 group.departmentId(),null,group.workerId(),group.teamDepartmentId(),group.productNo(),group.allowedOverproductionRate());
         PlanScheduleDefaults defaults=new PlanScheduleDefaults(group.billDate(),group.deliveryDate());
@@ -900,28 +935,92 @@ public class MaterialAnalysisCommandService {
             return growPlan(analysisId,product,growable,quantity,defaults,group.requestedQty().subtract(group.publicExtraQty()),group.publicExtraQty(),
                     new IssueWorkshopPlansRequest(0L,"0".repeat(64),key,warehouse,group.billDate(),group.deliveryDate(),approveNow,List.of()));
         }
-        PlanDetail plan=createDraftPlan(analysisId,product,quantity,defaults,group.publicExtraQty());
+        CommandResult plan=createDraftPlan(analysisId,product,quantity,defaults,group.publicExtraQty());
         em.createNativeQuery("UPDATE preplan_aggregate_batches SET plan_id=:plan WHERE id=:id AND plan_id IS NULL")
-                .setParameter("plan",plan.getId()).setParameter("id",batchId).executeUpdate();
-        ProductionPlanningDraftView draft=savePlanningDraft(analysisId,product,plan,quantity,defaults,warehouse);
-        PlanningPackageResult applied=null;
-        if(approveNow) {
-            planService.approve(plan.getId());
-            applied=planningPackages.currentResult(plan.getId()).orElseThrow(()->conflict("共享生产计划已审核但正式计划包未生成"));
+                .setParameter("plan",plan.id()).setParameter("id",batchId).executeUpdate();
+        try(var planningScope=planningPackages.openAnalysisPlanningScope(plan.id(),warehouse)) {
+            ProductionPlanningDraftView draft=savePlanningDraft(analysisId,product,plan,quantity,defaults,warehouse);
+            PlanningPackageResult applied=null;
+            if(approveNow) {
+                applied=planService.approveForAnalysis(plan.id()).orElseThrow(()->conflict("共享生产计划已审核但正式计划包未生成"));
+            }
+            return toGenerated(plan,draft,applied);
         }
-        return toGenerated(plan,draft,applied);
+    }
+
+    @Transactional
+    public AnalysisView claimMakePublicSupply(UUID analysisId,PreplanMakePublicSupplyService.ClaimRequest request) {
+        if(!access.hasAuthority("production_material_analysis:claim_shared_future"))throw new ApiException(ErrorCode.FORBIDDEN,"缺少采用公共供给权限");
+        tx.bind();var guard=lockAnalysisWithClaimableShared(analysisId);requireNotFqcRecoveryWorkspace(analysisId);
+        var header=analysisService.headerAfterPrelock(analysisId);requireWritable(header,"只能采用本人负责分析的公共供给");
+        String hash=CanonicalFingerprint.sha256(List.of(request.sourcePlanItemId().toString(),request.materialLineId().toString(),request.qty().toPlainString()));
+        if(commandReplay(analysisId,"MAKE_PUBLIC_CLAIM",request.idempotencyKey(),hash)!=null)return analysisService.detailInternal(analysisId,false);
+        guard.verifyUnchanged();analysisService.requireCurrent(header,request.version(),request.fingerprint());
+        analysisService.refreshLocked(analysisId);AnalysisView view=analysisService.detailInternal(analysisId,false);
+        MaterialView original=view.flatMaterials().stream().filter(row->row.materialLineId().equals(request.materialLineId())).findFirst().orElseThrow(()->validation("目标物料不属于当前分析"));
+        BigDecimal pending=original.aggregatePreparation()==null?original.planningUncoveredQty():original.aggregatePreparation().planningUncoveredQty();
+        if(request.qty().compareTo(pending)>0)throw conflict("本次采用量超过该原物料尚未落实的需求");
+        List<UUID> claims=List.of(makePublicSupply.claimLocked(analysisId,original.materialLineId(),request.sourcePlanItemId(),request.qty(),
+                "MAKE-CLAIM-"+CanonicalFingerprint.sha256(List.of(request.idempotencyKey(),original.materialLineId().toString()))));
+        analysisService.refreshLocked(analysisId);
+        recordCommand(analysisId,"MAKE_PUBLIC_CLAIM",request.idempotencyKey(),hash,Map.of("claimIds",claims));
+        return analysisService.detailInternal(analysisId,false);
+    }
+
+    @Transactional
+    public AnalysisView cancelMakePublicClaim(UUID analysisId,UUID claimId,PreplanMakePublicSupplyService.CancelRequest request) {
+        if(!access.hasAuthority("production_material_analysis:claim_shared_future"))throw new ApiException(ErrorCode.FORBIDDEN,"缺少撤回公共供给采用权限");
+        tx.bind();var guard=lockAnalysisWithClaimableShared(analysisId);
+        var header=analysisService.headerAfterPrelock(analysisId);requireWritable(header,"只能撤回本人负责分析的公共供给采用");
+        String hash=CanonicalFingerprint.sha256(List.of(claimId.toString(),request.qty().toPlainString(),request.reason()));
+        if(commandReplay(analysisId,"MAKE_PUBLIC_CANCEL",request.idempotencyKey(),hash)!=null)return analysisService.detailInternal(analysisId,false);
+        guard.verifyUnchanged();analysisService.requireCurrent(header,request.version(),request.fingerprint());
+        makePublicSupply.cancelLocked(analysisId,claimId,request);analysisService.refreshLocked(analysisId);
+        recordCommand(analysisId,"MAKE_PUBLIC_CANCEL",request.idempotencyKey(),hash,Map.of("claimId",claimId));
+        return analysisService.detailInternal(analysisId,false);
+    }
+
+    Map<UUID,BigDecimal> claimAggregateMakeFuture(UUID analysisId,AnalysisView view,
+            AggregateMaterialOrderContracts.GroupPreview group,String key,
+            java.util.function.Consumer<AggregateMaterialOrderContracts.AdoptedClaim> collector) {
+        Map<UUID,BigDecimal> desired=new LinkedHashMap<>();group.sources().forEach(source->desired.put(source.materialLineId(),source.allocatedQty()));
+        return makePublicSupply.adoptLocked(analysisId,desired,Map.of(),key,collector);
+    }
+
+    Map<UUID,BigDecimal> claimOriginalAggregateMakeFuture(UUID analysisId,Map<UUID,BigDecimal> desired,String key,
+            java.util.function.Consumer<AggregateMaterialOrderContracts.AdoptedClaim> collector) {
+        return makePublicSupply.adoptLocked(analysisId,desired,Map.of(),key,collector);
+    }
+    Map<UUID,BigDecimal> claimOriginalAggregateFuture(UUID analysisId,AnalysisView view,Map<UUID,BigDecimal> desired,String key,String hash,
+            java.util.function.Consumer<AggregateMaterialOrderContracts.AdoptedClaim> collector) {
+        Map<UUID,MaterialView> materials=view.flatMaterials().stream().collect(Collectors.toMap(MaterialView::materialLineId,row->row));
+        Map<UUID,ProductView> products=view.products().stream().collect(Collectors.toMap(ProductView::analysisLineId,row->row));
+        Map<UUID,BigDecimal> result=new LinkedHashMap<>();
+        for(UUID id:desired.keySet().stream().sorted(Comparator.comparing(UUID::toString)).toList()) {
+            BigDecimal qty=desired.get(id);if(qty.signum()<=0)continue;
+            MaterialView row=materials.get(id);ProductView product=products.get(row.analysisLineId());
+            ActionGroup group=new ActionGroup(row.actionGroupKey(),row.sourceConfirmed(),new MaterialDimension(row.goodsId(),row.colorId(),row.unitId()),
+                    product==null?0:product.allocationPriority(),product==null?null:product.deliveryDate(),qty,List.of(row));
+            result.put(id,claimSharedFutureForGroup(analysisId,view,group,qty,null,true,key,hash,new ArrayList<>(),new ArrayList<>(),new BigDecimal("0.0001"),collector));
+        }
+        return result;
     }
 
     /** Preserve normal automatic public-future adoption before a genuinely new aggregate external order. */
     Map<UUID,BigDecimal> claimAggregateFuture(UUID analysisId,AnalysisView view,
-            AggregateMaterialOrderContracts.GroupPreview preview,String key,String hash) {
-        if("MAKE".equals(preview.route()))return Map.of();
-        List<ActionGroup> groups=selectedGroups(view,new NotifyRequest(view.version(),view.fingerprint(),key,preview.route(),
-                preview.sources().stream().map(AggregateMaterialOrderContracts.SourcePreview::materialLineId).toList(),null,null));
+            AggregateMaterialOrderContracts.GroupPreview preview,String key,String hash,
+            java.util.function.Consumer<AggregateMaterialOrderContracts.AdoptedClaim> collector) {
+        List<UUID> targets=preview.sources().stream().filter(source->source.allocatedQty().signum()>0)
+                .map(AggregateMaterialOrderContracts.SourcePreview::materialLineId).toList();
+        if(targets.isEmpty())return Map.of();
+        List<ActionGroup> groups=selectedGroups(view,new NotifyRequest(view.version(),view.fingerprint(),key,preview.route(),targets,null,null));
         Map<UUID,BigDecimal> desired=preview.sources().stream().collect(Collectors.toMap(AggregateMaterialOrderContracts.SourcePreview::materialLineId,AggregateMaterialOrderContracts.SourcePreview::allocatedQty));
         Map<UUID,BigDecimal> claimed=new HashMap<>();List<UUID> claimIds=new ArrayList<>();List<Map<String,String>> late=new ArrayList<>();
-        for(ActionGroup group:groups){UUID material=group.materials().getFirst().materialLineId();BigDecimal qty=desired.getOrDefault(material,BigDecimal.ZERO);
-            if(qty.signum()>0)claimed.put(material,claimSharedFutureForGroup(analysisId,view,group,qty,null,true,key,hash,claimIds,late));}
+        for(ActionGroup group:groups)for(MaterialView row:group.materials()) {
+            UUID material=row.materialLineId();BigDecimal qty=desired.getOrDefault(material,BigDecimal.ZERO);
+            ActionGroup exact=new ActionGroup(group.groupKey(),group.route(),group.dimension(),group.sourcePriority(),group.needDate(),qty,List.of(row));
+            if(qty.signum()>0)claimed.put(material,claimSharedFutureForGroup(analysisId,view,exact,qty,null,true,key,hash,claimIds,late,new BigDecimal("0.0001"),collector));
+        }
         return claimed;
     }
 
@@ -958,9 +1057,7 @@ public class MaterialAnalysisCommandService {
         if (!Objects.equals(header.warehouseId(), request.warehouseId())) {
             throw conflict("目标仓库与分析当前仓库不一致，请刷新后重试");
         }
-        if (request.approveNow() && !access.hasAuthority("production_plan:approve")) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "生成并审核需要独立的生产计划审核权限");
-        }
+        // Approval authority is checked when a real plan remains after public adoption.
         // Admission uses the original request CAS and BOM snapshot. Stock can
         // change through generic warehouse commands without updating this
         // analysis, so recompute allocation under the held mutation locks before
@@ -1060,6 +1157,10 @@ public class MaterialAnalysisCommandService {
         // repeat every warehouse, entitlement and document-chain projection.
         Map<UUID, ProductView> products = view.products().stream()
                 .collect(Collectors.toMap(ProductView::analysisLineId, value -> value));
+        Map<UUID,BigDecimal> newlyAdopted=new HashMap<>();
+        Map<UUID,BigDecimal> priorAdopted=preArrange.flatMaterials().stream().collect(Collectors.toMap(MaterialView::materialLineId,row->row.preparationAdoptedQty()==null?BigDecimal.ZERO:row.preparationAdoptedQty()));
+        view.flatMaterials().forEach(row->newlyAdopted.put(row.materialLineId(),(row.preparationAdoptedQty()==null?BigDecimal.ZERO:row.preparationAdoptedQty())
+                .subtract(priorAdopted.getOrDefault(row.materialLineId(),BigDecimal.ZERO)).max(BigDecimal.ZERO)));
         Map<UUID, IssueWorkshopPlansRequest.IssuePlanLine> lineByAnalysisLine =
                 new LinkedHashMap<>();
         // 2026-09-09 性能（保守优化）：子件行解析由逐行查询（N+1）改为一次
@@ -1073,6 +1174,7 @@ public class MaterialAnalysisCommandService {
             UUID lineId = line.analysisLineId() != null
                     ? line.analysisLineId()
                     : childLineByMaterialLine.get(line.materialLineId());
+            if(lineId==null&&line.materialLineId()!=null&&newlyAdopted.getOrDefault(line.materialLineId(),BigDecimal.ZERO).compareTo(line.qty())>=0)continue;
             if (lineId == null || lineByAnalysisLine.put(lineId, line) != null) {
                 throw validation("物料库存或候选任务已变化，本次未下达；请点击刷新重新核对后再提交");
             }
@@ -1117,8 +1219,33 @@ public class MaterialAnalysisCommandService {
                 // 锚点配额增长算法 growMakeAnchorQuotas 也不被污染），后者单独
                 // 记在计划关联行的 public_surplus_qty 上，不绑定任何需求：产出
                 // 入库后就是公共库存，其他计划可以直接用。
-                BigDecimal demandQty = line.qty().min(product.remainingQty());
-                BigDecimal surplusQty = line.qty().subtract(demandQty);
+                BigDecimal effectiveQty=line.qty().subtract(newlyAdopted.getOrDefault(line.materialLineId(),BigDecimal.ZERO)).max(BigDecimal.ZERO);
+                BigDecimal demandQty = effectiveQty.min(product.remainingQty());
+                BigDecimal surplusQty = effectiveQty.subtract(demandQty);
+                if(product.rootMaterialLineId()!=null&&demandQty.signum()>0) {
+                    MaterialView root=view.flatMaterials().stream().filter(row->row.materialLineId().equals(product.rootMaterialLineId())).findFirst().orElse(null);
+                    if(root!=null) {
+                        demandQty=demandQty.min(root.planningUncoveredQty().divide(product.unitRate(),4,RoundingMode.DOWN));
+                        surplusQty=effectiveQty.subtract(demandQty);
+                        BigDecimal baseDemand=demandQty.multiply(product.unitRate()).setScale(4,RoundingMode.DOWN).min(root.planningUncoveredQty());
+                        BigDecimal adopted=makePublicSupply.adoptLocked(analysisId,Map.of(root.materialLineId(),baseDemand),
+                                Map.of(root.materialLineId(),PreplanMakePublicSupplyService.baseQuantum(product.unitRate())),request.idempotencyKey()+":ROOT-MAKE")
+                                .getOrDefault(root.materialLineId(),BigDecimal.ZERO);
+                        BigDecimal remainingBase=baseDemand.subtract(adopted);
+                        if(remainingBase.signum()>0) {
+                            ActionGroup rootGroup=selectedGroups(view,new NotifyRequest(view.version(),view.fingerprint(),request.idempotencyKey(),
+                                    "MAKE",List.of(root.materialLineId()),null,null)).getFirst();
+                            adopted=adopted.add(claimSharedFutureForGroup(analysisId,view,rootGroup,remainingBase,null,true,
+                                    request.idempotencyKey()+":ROOT-EXTERNAL",requestHash,new ArrayList<>(),new ArrayList<>(),
+                                    PreplanMakePublicSupplyService.baseQuantum(product.unitRate())));
+                        }
+                        BigDecimal adoptedUnits=adopted.divide(product.unitRate(),4,RoundingMode.UNNECESSARY);
+                        demandQty=demandQty.subtract(adoptedUnits);effectiveQty=effectiveQty.subtract(adoptedUnits);
+                    }
+                }
+                if(effectiveQty.signum()==0)continue;
+                if(request.approveNow()&&!access.hasAuthority("production_plan:approve"))
+                    throw new ApiException(ErrorCode.FORBIDDEN,"生成并审核需要独立的生产计划审核权限");
                 // 2026-09-15 修订（用户口径「多余的不要单独列一张单，直接合并」）：
                 // 销售订单来源顶层行超量不再拆成两张计划单，与非销售来源同一形状
                 // ——一张计划、link 记 submitted=归需求量 + surplus=超量。销售侧
@@ -1126,7 +1253,7 @@ public class MaterialAnalysisCommandService {
                 // 的容量与执行段销售分摊都只覆盖归本需求的量（ProductionPlanService
                 // / ProductionExecutionPackageCommandService / DB 断言触发器同步
                 // 放宽），「排产量 ≤ 订单未满足」原样成立。
-                PlanQuantity quantity = new PlanQuantity(lineId, line.qty(),
+                PlanQuantity quantity = new PlanQuantity(lineId, effectiveQty,
                         line.billDate(), line.deliveryDate(), line.departmentId(),
                         line.workshopName(), line.workerId(), line.teamDepartmentId(),
                         line.productNo(), ProductionOverproductionAllowance.resolve(em, product.goodsId(), line.allowedOverproductionRate()));
@@ -1142,16 +1269,17 @@ public class MaterialAnalysisCommandService {
                             demandQty, surplusQty, request));
                     continue;
                 }
-                PlanDetail plan = createDraftPlan(analysisId, product, quantity, defaults, surplusQty);
-                ProductionPlanningDraftView draft = savePlanningDraft(
-                        analysisId, product, plan, quantity, defaults, request.warehouseId());
-                PlanningPackageResult applied = null;
-                if (request.approveNow()) {
-                    planService.approve(plan.getId());
-                    applied = planningPackages.currentResult(plan.getId()).orElseThrow(() ->
-                            conflict("生产计划已审核但正式计划包未生成，事务已回滚"));
+                CommandResult plan = createDraftPlan(analysisId, product, quantity, defaults, surplusQty);
+                try(var planningScope=planningPackages.openAnalysisPlanningScope(plan.id(),request.warehouseId())) {
+                    ProductionPlanningDraftView draft = savePlanningDraft(
+                            analysisId, product, plan, quantity, defaults, request.warehouseId());
+                    PlanningPackageResult applied = null;
+                    if (request.approveNow()) {
+                        applied = planService.approveForAnalysis(plan.id()).orElseThrow(() ->
+                                conflict("生产计划已审核但正式计划包未生成，事务已回滚"));
+                    }
+                    generated.add(toGenerated(plan, draft, applied));
                 }
-                generated.add(toGenerated(plan, draft, applied));
             }
         }
         MaterialAnalysisService.AnalysisHeader postPlanHeader =
@@ -1259,7 +1387,7 @@ public class MaterialAnalysisCommandService {
      * 销售分摊容量扩大，再同步增加原车间工单及其冻结物料需求。
      */
     private GeneratedPlan growPlan(
-            UUID analysisId, ProductView product, GrowablePlan target, PlanQuantity quantity,
+            UUID analysisId, MaterialAnalysisPlanSource product, GrowablePlan target, PlanQuantity quantity,
             PlanScheduleDefaults defaults, BigDecimal demandQty, BigDecimal surplusQty,
             IssueWorkshopPlansRequest request) {
         BigDecimal added = quantity.qty();
@@ -1305,16 +1433,17 @@ public class MaterialAnalysisCommandService {
         if (managedItem != null) em.refresh(managedItem);
         if (target.status() == 0) {
             planningDrafts.supersedeActive(target.planId(), "物料分析追加数量并入后重排分段");
-            PlanDetail plan = planService.detail(target.planId());
-            ProductionPlanningDraftView draft = savePlanningDraft(
-                    analysisId, product, plan, quantity, defaults, request.warehouseId());
-            PlanningPackageResult applied = null;
-            if (request.approveNow()) {
-                planService.approve(plan.getId());
-                applied = planningPackages.currentResult(plan.getId()).orElseThrow(() ->
-                        conflict("生产计划已审核但正式计划包未生成，事务已回滚"));
+            CommandResult plan = planService.readForAnalysis(target.planId());
+            try(var planningScope=planningPackages.openAnalysisPlanningScope(plan.id(),request.warehouseId())) {
+                ProductionPlanningDraftView draft = savePlanningDraft(
+                        analysisId, product, plan, quantity, defaults, request.warehouseId());
+                PlanningPackageResult applied = null;
+                if (request.approveNow()) {
+                    applied = planService.approveForAnalysis(plan.id()).orElseThrow(() ->
+                            conflict("生产计划已审核但正式计划包未生成，事务已回滚"));
+                }
+                return toGenerated(plan, draft, applied).merged(added);
             }
-            return toGenerated(plan, draft, applied).merged(added);
         }
         if (target.salesOrderItemId() != null && demandQty.signum() > 0) {
             planService.growAnalysisPlanSalesAllocation(
@@ -1365,16 +1494,15 @@ public class MaterialAnalysisCommandService {
         if (!Objects.equals(header.warehouseId(), request.warehouseId())) {
             throw conflict("目标仓库与分析当前仓库不一致，请刷新后重试");
         }
-        if (request.approveNow() && !access.hasAuthority("production_plan:approve")) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "生成并审核需要独立的生产计划审核权限");
-        }
         MaterialAnalysisIssuePreviewOverlay overlay = MaterialAnalysisIssuePreviewOverlay.create();
         // 真实下达入口先按实况刷新一次(库存可能在上次刷新后被仓库命令改过)；预览同口径先投影
         // 「不含本批」的实况，锚点跟涨/跟落的基线、新锚点配额与可排产都以它为准。
         analysisService.projectIssuePreviewBase(analysisId, overlay);
         if (!request.lines().isEmpty()) {
-            analysisService.addIssuePreviewSeeds(analysisId,
-                    issuePreviewSeeds(analysisId, request.toIssueRequest(), overlay), request.approveNow(), overlay);
+            var seeds=issuePreviewSeeds(analysisId,request.toIssueRequest(),overlay);
+            if(!seeds.isEmpty()&&request.approveNow()&&!access.hasAuthority("production_plan:approve"))
+                throw new ApiException(ErrorCode.FORBIDDEN,"生成并审核需要独立的生产计划审核权限");
+            analysisService.addIssuePreviewSeeds(analysisId,seeds,request.approveNow(),overlay);
         }
         return analysisService.issuePreviewView(analysisId, overlay, Map.copyOf(typedOutputs));
     }
@@ -1446,6 +1574,13 @@ public class MaterialAnalysisCommandService {
                         .filter(Objects::nonNull).collect(Collectors.toSet()));
         Map<UUID, ProductView> products = current.products().stream()
                 .collect(Collectors.toMap(ProductView::analysisLineId, value -> value));
+        Map<UUID,MaterialView> materialById=current.flatMaterials().stream().collect(Collectors.toMap(MaterialView::materialLineId,row->row));
+        Map<UUID,BigDecimal> makeBudget=new HashMap<>();
+        for(MaterialView row:current.flatMaterials())if(row.makePublicSupplyRefs()!=null)for(var candidate:row.makePublicSupplyRefs())
+            if(candidate.adoptable())makeBudget.put(candidate.sourcePlanItemId(),candidate.availableQty());
+        Map<String,BigDecimal> externalBudget=new HashMap<>();
+        for(MaterialView row:current.flatMaterials())if(row.sharedFutureSupplyRefs()!=null)for(var candidate:row.sharedFutureSupplyRefs())
+            if(candidate.budgetKey()!=null)externalBudget.put(candidate.budgetKey(),candidate.availableToClaimQty());
         Set<Object> seen = new HashSet<>();
         List<MaterialAnalysisService.IssuePreviewSeed> seeds = new ArrayList<>();
         PlanScheduleDefaults defaults = new PlanScheduleDefaults(request.billDate(), request.deliveryDate());
@@ -1479,15 +1614,42 @@ public class MaterialAnalysisCommandService {
                 throw conflict(product.scheduleBlockedReason() == null
                         ? "当前产品不可排产" : product.scheduleBlockedReason());
             }
-            BigDecimal demandQty = line.qty().min(product.remainingQty());
+            BigDecimal effectiveQty=line.qty();
+            BigDecimal demandQty = effectiveQty.min(product.remainingQty());
+            if(product.rootMaterialLineId()!=null) {
+                MaterialView root=materialById.get(product.rootMaterialLineId());
+                if(root!=null) {
+                    demandQty=demandQty.min(root.planningUncoveredQty().divide(product.unitRate(),4,RoundingMode.DOWN));
+                    BigDecimal remaining=demandQty.multiply(product.unitRate());
+                    BigDecimal adopted=BigDecimal.ZERO,quantum=PreplanMakePublicSupplyService.baseQuantum(product.unitRate());
+                    for(var candidate:root.makePublicSupplyRefs()==null?List.<PreplanMakePublicSupplyService.Candidate>of():root.makePublicSupplyRefs()) {
+                        if(!candidate.adoptable())continue;
+                        BigDecimal take=remaining.min(makeBudget.getOrDefault(candidate.sourcePlanItemId(),BigDecimal.ZERO))
+                                .divide(quantum,0,RoundingMode.DOWN).multiply(quantum);
+                        makeBudget.computeIfPresent(candidate.sourcePlanItemId(),(id,qty)->qty.subtract(take));
+                        adopted=adopted.add(take);remaining=remaining.subtract(take);
+                    }
+                    for(var candidate:root.sharedFutureSupplyRefs()==null?List.<SharedFutureSupplyRef>of():root.sharedFutureSupplyRefs()) {
+                        if(candidate.budgetKey()==null)continue;
+                        BigDecimal take=remaining.min(externalBudget.getOrDefault(candidate.budgetKey(),BigDecimal.ZERO))
+                                .divide(quantum,0,RoundingMode.DOWN).multiply(quantum);
+                        externalBudget.computeIfPresent(candidate.budgetKey(),(id,qty)->qty.subtract(take));
+                        adopted=adopted.add(take);remaining=remaining.subtract(take);
+                    }
+                    overlay.addRootPublicAdoption(product.analysisLineId(),adopted);
+                    BigDecimal units=adopted.divide(product.unitRate(),4,RoundingMode.UNNECESSARY);
+                    demandQty=demandQty.subtract(units);effectiveQty=effectiveQty.subtract(units);
+                }
+            }
+            if(effectiveQty.signum()==0)continue;
             GrowablePlan growable = growablePlanFor(
                     analysisId, lineId, line.departmentId(), request.approveNow(),
                     ProductionOverproductionAllowance.resolve(em, product.goodsId(), line.allowedOverproductionRate()), false);
             // ADR-104 并入一张草稿计划并立即审核: 审核把整条关联行(原已提交 + 本次)转成已审核。
             BigDecimal draftSubmitted = growable != null && growable.status() == 0
                     ? growable.submittedQty() : BigDecimal.ZERO;
-            seeds.add(new MaterialAnalysisService.IssuePreviewSeed(lineId, null, line.qty(),
-                    demandQty, line.qty().subtract(demandQty), growable == null ? null : growable.planId(),
+            seeds.add(new MaterialAnalysisService.IssuePreviewSeed(lineId, null, effectiveQty,
+                    demandQty, effectiveQty.subtract(demandQty), growable == null ? null : growable.planId(),
                     draftSubmitted));
         }
         return seeds;
@@ -1770,7 +1932,7 @@ public class MaterialAnalysisCommandService {
         List<UUID> actionIds = (List<UUID>) em.createNativeQuery("""
                 SELECT id FROM preplan_supply_actions
                 WHERE analysis_id = :id AND status IN ('OPEN','CREATED','IN_PROGRESS')
-                ORDER BY CASE WHEN route = 'MAKE' THEN 0 ELSE 1 END,
+                ORDER BY CASE WHEN operation_type='SHARED_FUTURE_CLAIM' THEN 0 WHEN route='MAKE' THEN 1 ELSE 2 END,
                          created_at DESC, id DESC
                 FOR UPDATE
                 """).setParameter("id", analysisId).getResultList();
@@ -1781,6 +1943,8 @@ public class MaterialAnalysisCommandService {
         // 连同其它遗留生效预留一并释放回公共现货池（V298）。
         analysisPeg.releaseForAnalysis(
                 analysisId, request.effectiveReason(), request.idempotencyKey());
+        List<UUID> closedMakeClaims=makePublicSupply.closeForCancelledAnalysis(
+                analysisId,request.idempotencyKey(),request.effectiveReason());
         em.createNativeQuery("""
                 UPDATE production_material_analyses
                 SET status = 'CANCELLED', cancelled_by = :actorId,
@@ -1794,7 +1958,7 @@ public class MaterialAnalysisCommandService {
                 .setParameter("id", analysisId)
                 .executeUpdate();
         recordCommand(analysisId, OP_CANCEL_ANALYSIS, request.idempotencyKey(), hash,
-                Map.of("analysisId", analysisId));
+                Map.of("analysisId", analysisId,"makePublicClaimIds",closedMakeClaims));
         return analysisService.detailInternal(analysisId, false);
     }
 
@@ -1888,6 +2052,9 @@ public class MaterialAnalysisCommandService {
         List<ActionGroup> result = new ArrayList<>();
         for (String key : selected) {
             List<MaterialView> lines = allGroups.get(key);
+            if(lines!=null && (request.actionGroupKeys()==null || !request.actionGroupKeys().contains(key))
+                    && request.materialLineIds()!=null && !request.materialLineIds().isEmpty())
+                lines=lines.stream().filter(line->request.materialLineIds().contains(line.materialLineId())).toList();
             if (lines == null || lines.isEmpty()) throw validation("物料操作组不存在或已过期");
             for (MaterialView line : lines) {
                 String reason = view.planningBlockedReasons().get(line.analysisLineId());
@@ -2625,8 +2792,8 @@ public class MaterialAnalysisCommandService {
      * @param publicSurplusQty 本批中超出该任务行剩余需求、按公共备货产出记账的量
      *                         （不占 submitted_qty，不绑定任何需求；0 = 无超量）
      */
-    private PlanDetail createDraftPlan(
-            UUID analysisId, ProductView product, PlanQuantity quantity,
+    private CommandResult createDraftPlan(
+            UUID analysisId, MaterialAnalysisPlanSource product, PlanQuantity quantity,
             PlanScheduleDefaults defaults, BigDecimal publicSurplusQty) {
         BigDecimal qty = quantity.qty();
         LocalDate billDate = itemBillDate(quantity, defaults);
@@ -2672,7 +2839,7 @@ public class MaterialAnalysisCommandService {
         save.setSourceDocNo(product.salesOrderNo());
         save.setRemark("物料分析 " + analysisId + " 原子生成");
         save.setItems(List.of(line));
-        PlanDetail plan = planService.create(save);
+        CommandResult plan = planService.createForAnalysis(save);
         em.createNativeQuery("""
                 UPDATE production_plans
                 SET material_analysis_id = :analysisId,
@@ -2683,8 +2850,8 @@ public class MaterialAnalysisCommandService {
                 .setParameter("analysisId", analysisId)
                 .setParameter("analysisItemId", product.analysisLineId())
                 .setParameter("actorId", currentUser.requireId())
-                .setParameter("planId", plan.getId()).executeUpdate();
-        ProductionPlan managedPlan = em.find(ProductionPlan.class, plan.getId());
+                .setParameter("planId", plan.id()).executeUpdate();
+        ProductionPlan managedPlan = em.find(ProductionPlan.class, plan.id());
         em.refresh(managedPlan);
         // 计划量 = 归本需求的量 + 公共备货产出量。只有前者写进 submitted_qty
         // （分析需求守恒），后者单列，V577 的触发器按两者之和与计划行数量对账。
@@ -2700,7 +2867,7 @@ public class MaterialAnalysisCommandService {
                 .setParameter("id", UUID.randomUUID())
                 .setParameter("analysisId", analysisId)
                 .setParameter("analysisItemId", product.analysisLineId())
-                .setParameter("planId", plan.getId())
+                .setParameter("planId", plan.id())
                 .setParameter("qty", qty.subtract(publicSurplusQty))
                 .setParameter("surplusQty", publicSurplusQty)
                 .setParameter("actorId", currentUser.requireId()).executeUpdate();
@@ -2708,21 +2875,18 @@ public class MaterialAnalysisCommandService {
     }
 
     private ProductionPlanningDraftView savePlanningDraft(
-            UUID analysisId, ProductView product, PlanDetail plan,
+            UUID analysisId, MaterialAnalysisPlanSource product, CommandResult plan,
             PlanQuantity quantity, PlanScheduleDefaults defaults,
             UUID warehouseId) {
         LocalDate billDate = itemBillDate(quantity, defaults);
         LocalDate deliveryDate = itemDeliveryDate(quantity, defaults);
         UUID departmentId = quantity.departmentId();
         UUID workerId = quantity.workerId();
-        PlanningPreviewResult preview = planningPackages.preview(
-                plan.getId(), warehouseId);
+        var preview = planningPackages.previewExecution(plan.id(), warehouseId);
         if (preview.executionSegments().isEmpty()) {
             throw conflict("正式生产计划未形成可下达的执行分段");
         }
-        BigDecimal expectedQty = plan.getItems().stream()
-                .map(item -> item.getQty() == null ? BigDecimal.ZERO : item.getQty())
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal expectedQty = plan.plannedQty();
         BigDecimal proposedQty = preview.executionSegments().stream()
                 .map(ExecutionSegmentPreview::plannedQty)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -2751,7 +2915,7 @@ public class MaterialAnalysisCommandService {
                     billDate, deliveryDate));
         }
         formal.setSegments(List.copyOf(segments));
-        return planningDrafts.save(plan.getId(), formal);
+        return planningDrafts.save(plan.id(), formal);
     }
 
     private static GeneratePlanningPackageRequest.ExecutionSegment requestedSegment(
@@ -2801,13 +2965,13 @@ public class MaterialAnalysisCommandService {
     }
 
     private GeneratedPlan toGenerated(
-            PlanDetail plan, ProductionPlanningDraftView draft,
+            CommandResult plan, ProductionPlanningDraftView draft,
             PlanningPackageResult applied) {
         if (applied == null) {
-            return new GeneratedPlan(plan.getId(), plan.getBillNo(), "DRAFT",
+            return new GeneratedPlan(plan.id(), plan.billNo(), "DRAFT",
                     draft.draftId(), null, List.of(), List.of(), List.of());
         }
-        return new GeneratedPlan(plan.getId(), plan.getBillNo(), "APPROVED",
+        return new GeneratedPlan(plan.id(), plan.billNo(), "APPROVED",
                 draft.draftId(), applied.packageId(),
                 applied.executionSegments().stream().map(value -> value.segmentId()).toList(),
                 applied.drawDocuments().stream().map(MrpGenerateResult::requestId).toList(),
@@ -2942,6 +3106,9 @@ public class MaterialAnalysisCommandService {
                 .setParameter("analysisId", analysisId), "备料任务不存在");
         String status = Objects.toString(row[1], "");
         if ("CANCELLED".equals(status)) return;
+        if(Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_preplan_action_has_shared_claims(:id)")
+                .setParameter("id",actionId).getSingleResult()))
+            throw conflict("该供给已被其他订单采用，请先撤回认领");
         String type = Objects.toString(row[4], null);
         UUID documentId = (UUID) row[5];
         boolean sharedFutureClaim = "SHARED_FUTURE_CLAIM".equals(

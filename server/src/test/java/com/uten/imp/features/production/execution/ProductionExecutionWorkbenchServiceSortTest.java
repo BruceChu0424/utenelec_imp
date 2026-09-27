@@ -21,6 +21,10 @@ class ProductionExecutionWorkbenchServiceSortTest {
         assertThat(ProductionExecutionWorkbenchService.rootOrderBy(
                 "rootLabel", "desc"))
                 .isEqualTo("root.root_label DESC NULLS LAST");
+        // 2026-09-25 单号列统一：关联订单按 preview 排序（稳定键由调用方追加）。
+        assertThat(ProductionExecutionWorkbenchService.rootOrderBy(
+                "orders", "desc"))
+                .isEqualTo("root.sales_order_preview DESC NULLS LAST");
         assertThat(ProductionExecutionWorkbenchService.rootOrderBy(
                 "root.latest_end_date; DELETE", "desc"))
                 .isEqualTo("root.latest_end_date DESC NULLS LAST");

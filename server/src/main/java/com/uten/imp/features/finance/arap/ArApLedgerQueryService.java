@@ -47,7 +47,10 @@ public class ArApLedgerQueryService {
             "amountWriteOffOriginal", "amountWriteOffOriginal",
             "amountBalanceOriginal", "amountBalanceOriginal",
             "amountSettled", "amountSettled",
-            "amountBalance", "amountBalance");
+            "amountBalance", "amountBalance",
+            // 2026-09-25 单号列统一：单据号/来源单号可排序。
+            "billNo", "billNo",
+            "sourceDocNo", "sourceDocNo");
 
     private final ArApLedgerRepository repo;
     private final EntityManager em;
@@ -80,6 +83,20 @@ public class ArApLedgerQueryService {
         LedgerMetadata metadata = loadMetadata(List.of(id))
                 .getOrDefault(id, LedgerMetadata.EMPTY);
         return toDetail(ledger, metadata);
+    }
+
+    /**
+     * 单号列值筛选桶（2026-09-25 单号列统一）：单据号/来源单号与列表同一份谓词
+     * 分组计数；端点不收单号列自身的筛选值（桶口径即全量行）。
+     */
+    @Transactional(readOnly = true)
+    public Map<String, List<Map<String, Object>>> facets(ArApLedgerQueryFilter filter) {
+        Specification<ArApLedger> spec = specification(filter);
+        return Map.of(
+                "billNo",
+                com.uten.imp.common.web.TableFacets.groupCount(em, ArApLedger.class, spec, "billNo"),
+                "sourceDocNo",
+                com.uten.imp.common.web.TableFacets.groupCount(em, ArApLedger.class, spec, "sourceDocNo"));
     }
 
     private Specification<ArApLedger> specification(ArApLedgerQueryFilter f) {
@@ -133,6 +150,21 @@ public class ArApLedgerQueryService {
             }
             if (hasText(f.sourceDocNo())) {
                 predicates.add(cb.equal(root.get("sourceDocNo"), f.sourceDocNo()));
+            }
+            // 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配。
+            if (hasText(f.billNo())) {
+                predicates.add(cb.equal(root.get("billNo"), f.billNo().trim()));
+            }
+            // 关联销售单号表头值筛选（2026-09-25 单号列统一）：存在任一
+            // SALES_ORDER 来源引用命中即返回（salesOrderNos 是聚合展示列）。
+            if (hasText(f.salesOrderNos())) {
+                Subquery<Integer> orderNoMatch = query.subquery(Integer.class);
+                Root<ArApSourceRef> ref = orderNoMatch.from(ArApSourceRef.class);
+                orderNoMatch.select(cb.literal(1)).where(
+                        cb.equal(ref.get("ledgerId"), root.get("id")),
+                        cb.equal(ref.get("sourceType"), "SALES_ORDER"),
+                        cb.equal(ref.get("sourceNo"), f.salesOrderNos().trim()));
+                predicates.add(cb.exists(orderNoMatch));
             }
             if (f.dateFrom() != null) {
                 predicates.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));

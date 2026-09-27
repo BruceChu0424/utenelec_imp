@@ -44,10 +44,15 @@ class ProductionBomLearningEndToEndTest {
 
     @BeforeEach void prepare() {
         task=new ProductionMaterialDiscoveryEndToEndTest();beans.autowireBean(task);task.prepare();
-        var pending=task.discovery.request(task.segment,new Request(task.version(),"learn-request-"+task.segment));
+        // The workshop's suggestion remains an audit fact; warehouse-confirmed real
+        // material and actual net consumption alone determine the learned component.
+        var pending=task.discovery.request(task.segment,new Request(task.version(),"learn-request-"+task.segment,
+                List.of(new RequestedMaterial(task.world.goodsE(),null,task.world.unitId(),new BigDecimal("21")))));
         task.receive(task.world.goodsD(),"22");
         var configured=task.discovery.configure(pending.requestId(),new Configure(pending.version(),"learn-configure-"+task.segment,
                 List.of(new Material(task.world.goodsD(),null,task.world.unitId(),task.world.warehouseId(),new BigDecimal("22")))));
+        assertEquals(task.world.goodsE(),configured.suggestedItems().getFirst().goodsId());
+        assertEquals(task.world.goodsD(),configured.items().getFirst().goodsId());
         demand=configured.items().getFirst().demandId();
         UUID draw=configured.drawDocIds().getFirst();var issue=new StockDocIssueRequest();issue.setIdempotencyKey("learn-issue-"+draw);
         issue.setLines(db.query("SELECT id,qty FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",(rs,index)->{
@@ -71,6 +76,7 @@ class ProductionBomLearningEndToEndTest {
         UUID returned=db.queryForObject("SELECT id FROM production_material_return_requests WHERE execution_segment_id=?",UUID.class,task.segment);
         task.fixture.loginAs(task.world.superAdminUserId());task.stock.approve(returned);
         amount("100",profileOutput());amount("0.2",bomQty());
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM goods_bom_items WHERE goods_id=? AND component_goods_id=? AND NOT is_deleted",Integer.class,task.world.goodsC(),task.world.goodsE()));
         amount("22",db.queryForObject("SELECT required_qty FROM production_material_demands WHERE id=?",BigDecimal.class,demand));
         assertEquals(1,db.queryForObject("SELECT count(*) FROM production_bom_learning_samples WHERE goods_id=? AND output_qty>0",Integer.class,task.world.goodsC()));
         amount("2",db.queryForObject("SELECT returned_qty FROM v_production_material_clearance WHERE demand_id=?",BigDecimal.class,demand));

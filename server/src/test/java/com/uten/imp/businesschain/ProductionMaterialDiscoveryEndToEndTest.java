@@ -68,15 +68,97 @@ class ProductionMaterialDiscoveryEndToEndTest {
     }
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
 
+    @Test void workshopSuggestionsKeepOptionalQuantitiesAndReplayWithoutInstallingInventoryOrBom(){
+        UUID user=fixture.createUserWithPerms(world,"discovery-workshop-"+UUID.randomUUID(),"production_execution:view","production_execution:start");
+        db.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)",workshop,user);
+        fixture.loginAs(user);
+        long expected=version();String key="suggestion-request-"+segment;
+        var unknownQuantity=new RequestedMaterial(world.goodsE(),null,world.unitId(),null);
+        var knownQuantity=new RequestedMaterial(world.goodsD(),null,world.unitId(),new BigDecimal("12.5"));
+        Detail pending=discovery.request(segment,new Request(expected,key,List.of(unknownQuantity,knownQuantity)));
+        assertEquals("PENDING",pending.status());assertEquals(2,pending.suggestedItems().size());
+        assertEquals(0,pending.items().size());assertEquals(0,pending.drawDocIds().size());
+        fixture.loginAs(world.superAdminUserId());
+        var warehouse=beans.getBean(com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryService.class);
+        var queued=warehouse.query("WAREHOUSE","MATERIALS_TO_DEFINE",pending.segmentCode(),null,null,null,1,20);
+        assertEquals(1,queued.total());var materialRow=queued.items().getFirst();
+        assertTrue(materialRow.materialsDefined());assertEquals(2,materialRow.goodsCount());assertEquals(2,materialRow.openLineCount());
+        assertEquals(pending.productName(),materialRow.productionProductName());
+        for(SuggestedItem item:pending.suggestedItems()) {
+            assertTrue(materialRow.goodsName().contains(item.goodsName()));
+            assertEquals(1,warehouse.query("WAREHOUSE","MATERIALS_TO_DEFINE",item.goodsName(),null,null,null,1,20).total());
+        }
+        fixture.loginAs(user);
+        assertNull(pending.suggestedItems().stream().filter(item->item.goodsId().equals(world.goodsE())).findFirst().orElseThrow().qty());
+        assertEquals(pending,discovery.request(segment,new Request(expected,key,List.of(
+                new RequestedMaterial(world.goodsD(),null,world.unitId(),new BigDecimal("12.5000")),unknownQuantity))));
+        assertThrows(ApiException.class,()->discovery.request(segment,new Request(expected,key,List.of(unknownQuantity))));
+        assertThrows(ApiException.class,()->discovery.request(segment,new Request(expected,key,List.of(
+                new RequestedMaterial(world.goodsD(),null,world.unitId(),new BigDecimal("13")),unknownQuantity))));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_material_demands WHERE execution_segment_id=?",Integer.class,segment));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM goods_bom_items WHERE goods_id=? AND NOT is_deleted",Integer.class,world.goodsC()));
+        assertFalse(ready());
+        assertThrows(ApiException.class,()->discovery.configure(pending.requestId(),new Configure(pending.version(),"suggestion-forbidden-"+segment,
+                List.of(new Material(world.goodsD(),null,world.unitId(),world.warehouseId(),BigDecimal.ONE)))));
+        assertThrows(org.springframework.dao.DataAccessException.class,()->db.update(
+                "UPDATE production_material_discovery_requests SET status='CANCELLED',row_version=row_version+1,cancelled_by=?,cancelled_at=now(),cancellation_key=?,cancellation_hash=?,requested_materials='[]'::jsonb WHERE id=?",
+                user,"tamper-"+segment,"0".repeat(64),pending.requestId()));
+        Detail cancelled=discovery.cancel(pending.requestId(),new Request(pending.version(),"suggestion-cancel-"+segment));
+        assertEquals(pending.suggestedItems(),cancelled.suggestedItems());
+        long retryVersion=version();String retryKey="suggestion-empty-"+segment;
+        Detail noSuggestions=discovery.request(segment,new Request(retryVersion,retryKey,List.of()));
+        assertEquals(noSuggestions,discovery.request(segment,new Request(retryVersion,retryKey)));
+        assertTrue(noSuggestions.suggestedItems().isEmpty());
+    }
+
+    @Test void invalidWorkshopSuggestionLeavesNoRequestOrMaterialFacts(){
+        var valid=new RequestedMaterial(world.goodsD(),null,world.unitId(),null);
+        List<List<RequestedMaterial>> invalid=List.of(List.of(valid,valid),
+                List.of(new RequestedMaterial(world.goodsC(),null,world.unitId(),BigDecimal.ONE)),
+                List.of(new RequestedMaterial(world.goodsA(),null,world.unitId(),BigDecimal.ONE)),
+                List.of(new RequestedMaterial(world.goodsD(),UUID.randomUUID(),world.unitId(),BigDecimal.ONE)),
+                List.of(new RequestedMaterial(world.goodsD(),null,UUID.randomUUID(),BigDecimal.ONE)),
+                List.of(new RequestedMaterial(world.goodsD(),null,world.unitId(),BigDecimal.ZERO)),
+                List.of(new RequestedMaterial(world.goodsD(),null,world.unitId(),new BigDecimal("0.00001"))));
+        long expected=version();
+        for(List<RequestedMaterial> items:invalid)assertThrows(ApiException.class,()->discovery.request(segment,new Request(expected,"invalid-suggestion-"+UUID.randomUUID(),items)));
+        db.update("UPDATE goods SET status='禁用' WHERE id=?",world.goodsD());
+        assertThrows(ApiException.class,()->discovery.request(segment,new Request(expected,"disabled-suggestion-"+segment,List.of(valid))));
+        db.update("UPDATE goods SET status='使用',auto_created=TRUE WHERE id=?",world.goodsD());
+        assertThrows(ApiException.class,()->discovery.request(segment,new Request(expected,"placeholder-suggestion-"+segment,List.of(valid))));
+        db.update("UPDATE goods SET auto_created=FALSE WHERE id=?",world.goodsD());
+        db.update("UPDATE units SET status='禁用' WHERE id=?",world.unitId());
+        assertThrows(ApiException.class,()->discovery.request(segment,new Request(expected,"disabled-unit-suggestion-"+segment,List.of(valid))));
+        db.update("UPDATE units SET status='使用' WHERE id=?",world.unitId());
+        assertEquals(expected,version());
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_material_discovery_requests WHERE execution_segment_id=?",Integer.class,segment));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_material_demands WHERE execution_segment_id=?",Integer.class,segment));
+    }
+
     @Test void unknownMaterialsRequireRealRequestedIssueBeforeStartAndReplayCreatesNothingTwice(){
         assertTrue(discovery.context(segment).materialDiscoveryRequired());assertFalse(ready());
         assertThrows(ApiException.class,()->segments.start(plan,segment,new SegmentTransitionRequest(version(),"early-start-"+segment)));
         Request request=new Request(version(),"discover-request-"+segment);Detail pending=discovery.request(segment,request);
         assertEquals(pending.requestId(),discovery.request(segment,request).requestId());assertEquals("PENDING",pending.status());assertFalse(ready());
+        assertTrue(pending.requestNo().matches("LQ[0-9]{14}"));assertTrue(pending.drawDocuments().isEmpty());
+        long afterRequest=version();
+        var duplicated=assertThrows(ApiException.class,()->discovery.request(segment,new Request(afterRequest,"duplicate-pending-"+segment)));
+        assertEquals(com.uten.imp.common.web.ErrorCode.CONFLICT,duplicated.getCode());assertTrue(duplicated.getMessage().contains("已提交领料"));
+        assertEquals(afterRequest,version());assertEquals(pending,discovery.detail(pending.requestId()));
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM production_material_discovery_requests WHERE execution_segment_id=?",Integer.class,segment));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_material_demands WHERE execution_segment_id=?",Integer.class,segment));
         var warehouse=beans.getBean(com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryService.class);
         var queued=warehouse.query("WAREHOUSE","MATERIALS_TO_DEFINE",pending.segmentCode(),null,null,null,1,20);
         assertEquals(1,queued.total());assertEquals("MATERIAL_DISCOVERY",queued.items().getFirst().actionDocType());
+        assertFalse(queued.items().getFirst().materialsDefined());assertNull(queued.items().getFirst().goodsId());assertNull(queued.items().getFirst().goodsName());
+        assertEquals(0,queued.items().getFirst().goodsCount());assertEquals(1,queued.items().getFirst().openLineCount());
+        assertEquals(pending.productCode(),queued.items().getFirst().productionProductCode());assertEquals(pending.productName(),queued.items().getFirst().productionProductName());
         assertEquals(pending.requestId(),queued.items().getFirst().actionDocId());assertTrue(queued.items().getFirst().actionDocCanEdit());
+        assertEquals(pending.requestNo(),queued.items().getFirst().actionDocNo());
+        assertEquals(pending.requestNo(),queued.items().getFirst().materialRequestNo());
+        assertTrue(queued.facets().get("docNo").stream().anyMatch(facet->pending.requestNo().equals(facet.value())));
+        var numberFilter=new com.uten.imp.features.operations.workbench.FulfillmentWorkbenchTableQuery("docNo","asc",Map.of("docNo",pending.requestNo()),null,null,null,null);
+        assertEquals(1,warehouse.query("WAREHOUSE","MATERIALS_TO_DEFINE",pending.requestNo(),null,null,null,1,20,numberFilter).total());
         assertTrue(warehouse.warehouseStatusBreakdown().get("MATERIALS_TO_DEFINE")>=1);
         var workshopTasks=beans.getBean(ProductionExecutionWorkbenchService.class);
         var row=workshopTasks.workshopTasks(1,50,pending.segmentCode(),"PREPARING",workshop,null,null).getItems().getFirst();
@@ -88,6 +170,10 @@ class ProductionMaterialDiscoveryEndToEndTest {
         Detail configured=discovery.configure(pending.requestId(),configure);
         assertEquals(0,warehouse.query("WAREHOUSE","MATERIALS_TO_DEFINE",pending.segmentCode(),null,null,null,1,20).total());
         assertEquals("CONFIGURED",configured.status());assertEquals(2,configured.items().size());assertEquals(1,configured.drawDocIds().size());
+        assertEquals(pending.requestNo(),configured.requestNo());
+        assertEquals(configured.drawDocIds(),configured.drawDocuments().stream().map(DrawDocument::id).toList());
+        assertTrue(configured.drawDocuments().getFirst().billNo().matches("SL[0-9]{14}"));
+        assertEquals(pending.requestNo(),stock.detail(configured.drawDocIds().getFirst()).getMaterialRequestNo());
         assertEquals(configured,discovery.configure(pending.requestId(),configure));
         assertThrows(ApiException.class,()->discovery.configure(pending.requestId(),new Configure(pending.version(),configure.idempotencyKey(),
                 List.of(new Material(world.goodsD(),null,world.unitId(),world.warehouseId(),new BigDecimal("19"))))));
@@ -109,8 +195,10 @@ class ProductionMaterialDiscoveryEndToEndTest {
         assertEquals("PENDING",discovery.detail(pending.requestId()).status());
         assertEquals(0,db.queryForObject("SELECT count(*) FROM production_material_demands WHERE execution_segment_id=?",Integer.class,segment));
         var cancelled=discovery.cancel(pending.requestId(),new Request(pending.version(),"cancel-"+segment));assertEquals("CANCELLED",cancelled.status());
+        assertEquals(pending.requestNo(),cancelled.requestNo());
         assertEquals(cancelled,discovery.cancel(pending.requestId(),new Request(pending.version(),"cancel-"+segment)));
         assertTrue(discovery.context(segment).canRequest());var next=discovery.request(segment,new Request(version(),"request-again-"+segment));assertNotEquals(pending.requestId(),next.requestId());
+        assertNotEquals(pending.requestNo(),next.requestNo());
         assertThrows(ApiException.class,()->discovery.cancel(next.requestId(),new Request(next.version(),"cancel-"+segment)));
         assertEquals("PENDING",discovery.detail(next.requestId()).status());
     }
@@ -132,6 +220,25 @@ class ProductionMaterialDiscoveryEndToEndTest {
                 new Material(world.goodsD(),null,world.unitId(),first,new BigDecimal("2")),
                 new Material(world.goodsD(),null,world.unitId(),second,new BigDecimal("3")))));
         assertEquals(2,defined.items().size());assertEquals(1,defined.items().stream().map(Item::demandId).distinct().count());assertEquals(2,defined.drawDocIds().size());
+        assertEquals(pending.requestNo(),defined.requestNo());
+        assertEquals(2,defined.drawDocuments().stream().map(DrawDocument::billNo).distinct().count());
+        for(DrawDocument document:defined.drawDocuments()) {
+            assertTrue(document.billNo().matches("SL[0-9]{14}"));
+            assertNotEquals(defined.requestNo(),document.billNo());
+            assertEquals(defined.requestNo(),stock.detail(document.id()).getMaterialRequestNo());
+        }
+        var warehouse=beans.getBean(com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryService.class);
+        var linked=warehouse.query("WAREHOUSE","OPEN_ANY",defined.requestNo(),null,null,null,1,20);
+        assertEquals(2,linked.total());assertTrue(linked.items().stream().allMatch(row->defined.requestNo().equals(row.materialRequestNo())&&row.actionDocNo().startsWith("SL")));
+        assertEquals(0,new BigDecimal("5").compareTo(linked.items().stream().map(com.uten.imp.features.operations.workbench.FulfillmentTaskRow::requiredQty).reduce(BigDecimal.ZERO,BigDecimal::add)));
+        assertEquals(0,new BigDecimal("5").compareTo(linked.items().stream().map(com.uten.imp.features.operations.workbench.FulfillmentTaskRow::openQty).reduce(BigDecimal.ZERO,BigDecimal::add)));
+        assertEquals(Set.of(first,second),new HashSet<>(linked.items().stream().map(com.uten.imp.features.operations.workbench.FulfillmentTaskRow::warehouseId).toList()));
+        for(UUID actual:List.of(first,second)) {
+            var scope=new com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope(true,List.of(actual),false);
+            var scoped=warehouse.query("WAREHOUSE","OPEN_ANY",defined.requestNo(),null,null,null,1,20,null,scope);
+            assertEquals(1,scoped.total());assertEquals(actual,scoped.items().getFirst().warehouseId());
+            assertEquals(1L,warehouse.warehouseStatusBreakdown(scope).get("OPEN_ANY"));
+        }
         assertEquals(0,new BigDecimal("5").compareTo(db.queryForObject("SELECT required_qty FROM production_material_demands WHERE execution_segment_id=?",BigDecimal.class,segment)));
         assertEquals(Set.of(first,second),new HashSet<>(db.queryForList("SELECT warehouse_id FROM stock_reservations WHERE demand_id IN(SELECT id FROM production_material_demands WHERE execution_segment_id=?)",UUID.class,segment)));
         for(UUID draw:defined.drawDocIds()){
@@ -161,10 +268,28 @@ class ProductionMaterialDiscoveryEndToEndTest {
     }
     @Test void nonDivisibleMaterialQuantityReportsActualOutputAndLearnsOnlyAfterWarehouseReceivesSurplus(){
         createTask("3");receive(world.goodsD(),"2");
-        Detail pending=discovery.request(segment,new Request(version(),"third-request-"+segment));
-        Detail defined=discovery.configure(pending.requestId(),new Configure(pending.version(),"third-config-"+segment,
-                List.of(new Material(world.goodsD(),null,world.unitId(),world.warehouseId(),new BigDecimal("2")))));
-        issue(defined);assertTrue(ready());
+        db.update("UPDATE goods SET spec='PC-测试规格',stock_place='原料架 A-03' WHERE id=?",world.goodsD());
+        Detail pending=discovery.request(segment,new Request(version(),"third-request-"+segment,
+                List.of(new RequestedMaterial(world.goodsD(),null,world.unitId(),new BigDecimal("2")))));
+        SuggestedItem suggested=pending.suggestedItems().getFirst();
+        assertEquals(world.goodsD(),suggested.goodsId());
+        assertEquals("PC-测试规格",suggested.spec());assertEquals("原料架 A-03",suggested.stockPlace());
+        var warehouse=beans.getBean(com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryService.class);
+        var suggestedRow=warehouse.query("WAREHOUSE","MATERIALS_TO_DEFINE",pending.segmentCode(),null,null,null,1,20).items().getFirst();
+        assertTrue(suggestedRow.materialsDefined());assertEquals(suggested.goodsId(),suggestedRow.goodsId());
+        assertEquals(suggested.goodsName(),suggestedRow.goodsName());assertEquals(suggested.unitId(),suggestedRow.unitId());
+        assertEquals(0,suggested.qty().compareTo(suggestedRow.openQty()));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM goods_bom_items WHERE goods_id=? AND NOT is_deleted",Integer.class,world.goodsC()));
+        var batch=beans.getBean(com.uten.imp.features.production.fulfillment.ProductionDrawDiscoveryBatchService.class);
+        assertEquals(1,batch.issue(new com.uten.imp.features.production.fulfillment.ProductionDrawDiscoveryBatchContracts.Request(
+                "third-batch-"+segment,List.of(),List.of(new com.uten.imp.features.production.fulfillment.ProductionDrawDiscoveryBatchContracts.Discovery(
+                        pending.requestId(),pending.version(),List.of(new Material(suggested.goodsId(),suggested.colorId(),suggested.unitId(),world.warehouseId(),suggested.qty())))),null)).issuedCount());
+        Detail defined=discovery.detail(pending.requestId());
+        assertEquals(suggested.spec(),defined.items().getFirst().spec());assertEquals(suggested.stockPlace(),defined.items().getFirst().stockPlace());
+        var drawRow=warehouse.query("WAREHOUSE","DONE",defined.planNo(),null,null,null,1,20).items().getFirst();
+        assertEquals("DRAW",drawRow.actionDocType());assertEquals(suggested.goodsId(),drawRow.goodsId());
+        assertEquals(defined.productName(),drawRow.productionProductName());
+        assertTrue(ready());
         assertEquals(0,new BigDecimal("3").compareTo(db.queryForObject("SELECT fn_execution_material_output_capacity(?,TRUE)",BigDecimal.class,segment)));
         segments.start(plan,segment,new SegmentTransitionRequest(version(),"third-start-"+segment));
         var reportable=beans.getBean(ReportablePlanLineQueryService.class).list(1,50,null,workshop,List.of(segment)).getItems().getFirst();

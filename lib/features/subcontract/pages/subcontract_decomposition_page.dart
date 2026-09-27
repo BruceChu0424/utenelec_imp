@@ -20,6 +20,9 @@
 // 黄底 = 在办等别人到货, 红底 = 路线 A 等自己部门的车间 / 服务端明确不可下单.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/providers/draft_counts_provider.dart';
+import '../../../shared/drafts/form_draft_category.dart';
+import '../widgets/subcontract_draft_task_category.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -92,6 +95,7 @@ class _SubcontractDecompositionPageState
 
   /// 当前选中阶段分段；null = 未选择引导态（内容不加载）。
   _DecompositionSeg? _seg;
+  static const _draftStage = '__DRAFTS__';
 
   /// 异常小类；null = 未选择（不附加过滤）。
   String? _exception;
@@ -223,6 +227,7 @@ class _SubcontractDecompositionPageState
 
   Future<void> _load({int? page, int size = 50}) async {
     if (!mounted) return;
+    if (_seg?.code == _draftStage) return;
     final requestId = ++_requestId;
     final seg = _seg;
     final range = seg?.history == true ? _historyTime.range : null;
@@ -583,26 +588,109 @@ class _SubcontractDecompositionPageState
     );
   }
 
+  Widget _buildStageToolbar(Map<String, int> statusCounts) {
+    final seg = _seg;
+    return UtenFilterToolbar<_DecompositionSeg>(
+      segmentsKey: const Key('subcontract-decomposition-stages'),
+      segments: [
+        UtenFilterSegment(
+          value: const _DecompositionSeg.stage(_draftStage),
+          label: '草稿',
+          count:
+              ref.watch(draftCountsProvider).sumOf(const [
+                DraftDocKind.subcontractOrder,
+                DraftDocKind.subcontractReturn,
+                DraftDocKind.subcontractMaterialReturn,
+                DraftDocKind.subcontractWaste,
+              ]) +
+              ref.watch(
+                formDraftCategoryCountProvider(
+                  const FormDraftCategoryScope(
+                    module: BadgeModule.subcontract,
+                    excludeKinds: {
+                      'subcontractOrder',
+                      'subcontractReturn',
+                      'subcontractMaterialReturn',
+                      'subcontractWaste',
+                    },
+                  ),
+                ),
+              ),
+          countForm: UtenSegmentCountForm.actionable,
+        ),
+        for (final stage in _stages)
+          UtenFilterSegment(
+            value: _DecompositionSeg.stage(stage.code),
+            label: stage.label,
+            // 「进行中」大类挂两枚(准则 §四之七 第 1 条, 2026-09-21 追加):
+            // 黄 = 本类在跑的全量(与列表行数相等), 红 = 其中等委外动手的
+            // 财务已退回单。只挂黄的话, 退回件要点进异常小类行才看得见,
+            // 等于在大类行上蒸发。两枚刻意重叠(退回件本来就在跑), 跨色不算
+            // 双计, 别改成相减 —— 相减会让黄数对不上「进行中」列表行数。
+            // 回厂短交待判定同样是红, 但它是案件数、不是任务行数, 量纲不同,
+            // 留在异常小类行里单独喊, 不并进这一枚。
+            // 「待处理」只挂一枚红(ADR-103, 2026-09-22 用户实机纠偏「刚下单的
+            // 都是待处理」): 服务端 WAITING_ORDER 含等子件到货的路线 B 锁行, 与
+            // 路线 A 前置自制合成行同款计红; 锁只体现在行上, 不另挂黄枚。
+            count: stage.code == _inProgressStage
+                ? statusCounts[_financeRejectedStatus]
+                : statusCounts[stage.code],
+            countForm: stage.code == _inProgressStage
+                ? UtenSegmentCountForm.actionable
+                : _stageCountForm(stage.code),
+            inProgressCount: stage.code == _inProgressStage
+                ? statusCounts[_inProgressStage]
+                : null,
+          ),
+        const UtenFilterSegment(
+          value: _DecompositionSeg.history(),
+          label: '历史记录',
+        ),
+      ],
+      selected: seg == null ? const {} : {seg},
+      onSelectionChanged: _selectSeg,
+      searchHint: '搜索计划号、申请号、货品编码或名称',
+      initialSearchValue: _keyword,
+      onSearchInputChanged: (_) => _requestId++,
+      onSearchChanged: _applyKeyword,
+    );
+  }
+
   Widget _buildBody() {
+    if (_seg?.code == _draftStage) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildStageToolbar(_data?.summary.statusCounts ?? const {}),
+          const Expanded(child: SubcontractDraftTaskCategory()),
+        ],
+      );
+    }
     if (_data == null && _loading) {
-      return Center(
-        child: Semantics(
-          label: '正在加载委外任务',
-          child: const CircularProgressIndicator(),
+      return _withInitialStages(
+        Center(
+          child: Semantics(
+            label: '正在加载委外任务',
+            child: const CircularProgressIndicator(),
+          ),
         ),
       );
     }
     if (_error != null) {
-      return UtenEmpty.error(
-        message: '无法加载委外任务',
-        description: _error,
-        actionLabel: '重试',
-        onAction: () => _load(),
+      return _withInitialStages(
+        UtenEmpty.error(
+          message: '无法加载委外任务',
+          description: _error,
+          actionLabel: '重试',
+          onAction: () => _load(),
+        ),
       );
     }
     final data = _data;
     if (data == null) {
-      return UtenEmpty.error(actionLabel: '重试', onAction: () => _load());
+      return _withInitialStages(
+        UtenEmpty.error(actionLabel: '重试', onAction: () => _load()),
+      );
     }
 
     return LayoutBuilder(
@@ -617,45 +705,7 @@ class _SubcontractDecompositionPageState
           children: [
             // 阶段行：真实阶段（无「全部阶段」；终态归历史记录）+ 末尾历史记录；
             // 前置生产与真实申请共用服务端WAITING_ORDER计数。
-            UtenFilterToolbar<_DecompositionSeg>(
-              segmentsKey: const Key('subcontract-decomposition-stages'),
-              segments: [
-                for (final stage in _stages)
-                  UtenFilterSegment(
-                    value: _DecompositionSeg.stage(stage.code),
-                    label: stage.label,
-                    // 「进行中」大类挂两枚(准则 §四之七 第 1 条, 2026-09-21 追加):
-                    // 黄 = 本类在跑的全量(与列表行数相等), 红 = 其中等委外动手的
-                    // 财务已退回单。只挂黄的话, 退回件要点进异常小类行才看得见,
-                    // 等于在大类行上蒸发。两枚刻意重叠(退回件本来就在跑), 跨色不算
-                    // 双计, 别改成相减 —— 相减会让黄数对不上「进行中」列表行数。
-                    // 回厂短交待判定同样是红, 但它是案件数、不是任务行数, 量纲不同,
-                    // 留在异常小类行里单独喊, 不并进这一枚。
-                    // 「待处理」只挂一枚红(ADR-103, 2026-09-22 用户实机纠偏「刚下单的
-                    // 都是待处理」): 服务端 WAITING_ORDER 含等子件到货的路线 B 锁行, 与
-                    // 路线 A 前置自制合成行同款计红; 锁只体现在行上, 不另挂黄枚。
-                    count: stage.code == _inProgressStage
-                        ? statusCounts[_financeRejectedStatus]
-                        : statusCounts[stage.code],
-                    countForm: stage.code == _inProgressStage
-                        ? UtenSegmentCountForm.actionable
-                        : _stageCountForm(stage.code),
-                    inProgressCount: stage.code == _inProgressStage
-                        ? statusCounts[_inProgressStage]
-                        : null,
-                  ),
-                const UtenFilterSegment(
-                  value: _DecompositionSeg.history(),
-                  label: '历史记录',
-                ),
-              ],
-              selected: seg == null ? const {} : {seg},
-              onSelectionChanged: _selectSeg,
-              searchHint: '搜索计划号、申请号、货品编码或名称',
-              initialSearchValue: _keyword,
-              onSearchInputChanged: (_) => _requestId++,
-              onSearchChanged: _applyKeyword,
-            ),
+            _buildStageToolbar(statusCounts),
             // 异常小类行：选中阶段后出现；无「全部异常」，默认不选=不附加过滤。
             // 每一项都是「不处理会出事」（逾期/缺料/延期/待挂接）→ 一律红徽章。
             if (seg != null && !seg.history && exceptionOptions.isNotEmpty) ...[
@@ -785,6 +835,14 @@ class _SubcontractDecompositionPageState
       },
     );
   }
+
+  Widget _withInitialStages(Widget body) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _buildStageToolbar(_data?.summary.statusCounts ?? const {}),
+      Expanded(child: body),
+    ],
+  );
 
   Widget _buildTable(OperationsWorkbenchData data) {
     return MasterDataTableView<OperationsWorkbenchTask>(

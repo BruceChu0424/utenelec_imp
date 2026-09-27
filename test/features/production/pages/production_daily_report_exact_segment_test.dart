@@ -1,10 +1,14 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_employee_multi_picker.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
@@ -21,11 +25,153 @@ import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/attachments/attachment.dart';
+import 'package:uten_imp/shared/attachments/attachment_service.dart';
+import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/features/production/widgets/production_daily_grid_columns.dart';
 import 'package:uten_imp/features/production/models/production_direct_transfer_candidate.dart';
 
 void main() {
+  for (final attachmentMode in ['none', 'upload', 'retry']) {
+    testWidgets(
+      'workshop save returns saved draft for review, never approves: attachments=$attachmentMode',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1440, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        var creates = 0;
+        var approvals = 0;
+        String? savedId;
+        final api = _api(
+          responseOverride: (request) {
+            if (request.path.endsWith('/approve')) approvals++;
+            if (request.method == 'POST' &&
+                request.path.endsWith('/daily-reports')) {
+              creates++;
+              return {
+                'id': 'saved-draft',
+                'billNo': 'SR-DRAFT',
+                'status': 0,
+                'items': <dynamic>[],
+              };
+            }
+            return null;
+          },
+        );
+        final attachments = _ReportSaveAttachments(
+          api,
+          failFirst: attachmentMode == 'retry',
+        );
+        late final GoRouter router;
+        router = GoRouter(
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (context, _) => Scaffold(
+                body: ElevatedButton(
+                  onPressed: () async {
+                    savedId = await context.push<String>('/new');
+                    if (context.mounted && savedId != null) {
+                      await context.push<void>('/review/$savedId');
+                    }
+                  },
+                  child: const Text('开始报工'),
+                ),
+              ),
+            ),
+            GoRoute(
+              path: '/new',
+              builder: (_, _) => const ProductionDailyReportEditPage(
+                initialExecutionSegmentId: 'segment-1',
+                returnToWorkshopTasks: true,
+              ),
+            ),
+            GoRoute(
+              path: '/review/:id',
+              builder: (_, state) =>
+                  Scaffold(body: Text('待审核 ${state.pathParameters['id']}')),
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        final container = ProviderContainer(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            attachmentServiceProvider.overrideWithValue(attachments),
+            departmentRepositoryProvider.overrideWithValue(
+              _FakeDepartmentRepository(),
+            ),
+            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+            productionDailyReportRepositoryProvider.overrideWithValue(
+              ProductionDailyReportRepository(api),
+            ),
+            employeeRepositoryProvider.overrideWithValue(
+              _FakeEmployeeRepository(),
+            ),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.productionDailyReportCreate,
+              Perm.attachmentUpload,
+            }),
+          ],
+        );
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp.router(
+              routerConfig: router,
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('开始报工'));
+        await tester.pumpAndSettle();
+        if (attachmentMode != 'none') {
+          tester
+              .widgetList<BusinessAttachmentSection>(
+                find.byType(BusinessAttachmentSection),
+              )
+              .firstWhere((section) => section.isDraft)
+              .draftController!
+              .restoreDraft({
+                'items': [
+                  {
+                    'name': 'report.txt',
+                    'contentType': 'text/plain',
+                    'bytes': 'AQID',
+                  },
+                ],
+              });
+          await tester.pumpAndSettle();
+        }
+        await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+        await tester.pumpAndSettle();
+        if (attachmentMode == 'retry') {
+          expect(savedId, isNull);
+          expect(creates, 1);
+          expect(find.byType(ProductionDailyReportEditPage), findsOneWidget);
+          await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+          await tester.pumpAndSettle();
+        }
+        expect(savedId, 'saved-draft');
+        expect(find.text('待审核 saved-draft'), findsOneWidget);
+        expect(creates, 1);
+        expect(approvals, 0);
+        expect(
+          attachments.attempts,
+          attachmentMode == 'none' ? 0 : (attachmentMode == 'retry' ? 2 : 1),
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+      },
+    );
+  }
+
   for (final scenario in ['complete', 'wrong-source', 'duplicate-active']) {
     testWidgets('approval resume restores exact whole input: $scenario', (
       tester,
@@ -1207,6 +1353,35 @@ void main() {
         });
         expect(tester.takeException(), isNull);
       },
+    );
+  }
+}
+
+class _ReportSaveAttachments extends AttachmentService {
+  _ReportSaveAttachments(super.api, {required this.failFirst});
+  final bool failFirst;
+  var attempts = 0;
+
+  @override
+  Future<Attachment> upload({
+    required String ownerType,
+    required String ownerId,
+    required String fileName,
+    required String contentType,
+    required Uint8List bytes,
+    String? category,
+  }) async {
+    attempts++;
+    if (failFirst && attempts == 1) {
+      throw StateError('temporary upload failure');
+    }
+    return Attachment(
+      id: 'attachment',
+      ownerType: ownerType,
+      ownerId: ownerId,
+      storageKey: 'report-file',
+      originalName: fileName,
+      sizeBytes: bytes.length,
     );
   }
 }

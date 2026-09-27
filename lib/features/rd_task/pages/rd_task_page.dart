@@ -23,6 +23,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../shared/drafts/form_draft_category.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -57,6 +58,7 @@ import '../../../shared/badges/badge_registry.dart';
 /// 两档合集, 留给老调用点, 本页三段都不用它。**改了这里就要同步后端白名单**,
 /// 这三个字符串是本页与服务端之间唯一的契约。
 enum _RdTaskSeg {
+  draft('', '草稿'),
   pending('pending', '待处理'),
   inProgress('in_progress', '进行中'),
   done('done', '已完成');
@@ -125,6 +127,16 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
                 segmentsKey: const Key('rd-task-segments'),
                 segments: [
                   UtenFilterSegment(
+                    value: _RdTaskSeg.draft,
+                    label: '草稿',
+                    count: ref.watch(
+                      formDraftCategoryCountProvider(
+                        const FormDraftCategoryScope(module: BadgeModule.rd),
+                      ),
+                    ),
+                    countForm: UtenSegmentCountForm.actionable,
+                  ),
+                  UtenFilterSegment(
                     value: _RdTaskSeg.pending,
                     label: _RdTaskSeg.pending.label,
                     count: pendingCount < 0 ? 0 : pendingCount,
@@ -146,7 +158,13 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
                 onSelectionChanged: (value) => setState(() => _seg = value),
               ),
             ),
-            Expanded(child: _RdTaskListPanel(seg: _seg)),
+            Expanded(
+              child: _seg == _RdTaskSeg.draft
+                  ? const FormDraftCategoryList(
+                      scope: FormDraftCategoryScope(module: BadgeModule.rd),
+                    )
+                  : _RdTaskListPanel(seg: _seg),
+            ),
           ],
         ),
       ),
@@ -399,7 +417,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
             tone: switch (widget.seg) {
               _RdTaskSeg.done => 'success',
               _RdTaskSeg.inProgress => 'warning',
-              _RdTaskSeg.pending => 'primary',
+              _RdTaskSeg.pending || _RdTaskSeg.draft => 'primary',
             },
           ),
           const SizedBox(height: UtenSpacing.s16),

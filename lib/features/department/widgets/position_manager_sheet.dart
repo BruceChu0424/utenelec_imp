@@ -10,9 +10,59 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/feedback/uten_toast.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
+import '../../basic_data/widgets/master_edit_dialog.dart';
 import '../models/department_node.dart';
 import '../models/position.dart';
 import '../repositories/position_repository.dart';
+
+/// The new-position form is shared by the manager sheet and task-center resume.
+Future<void> showPositionCreateDialog(
+  BuildContext context,
+  WidgetRef ref,
+  DepartmentNode node, {
+  Future<void> Function()? onSaved,
+}) async {
+  await showMasterEditDialog(
+    context: context,
+    title: '添加岗位 · ${node.name}',
+    draftSpec: FormDraftCatalog.position.spec(
+      title: '添加岗位 · ${node.name}',
+      parentId: node.id,
+    ),
+    fields: const [
+      MasterFieldDef(
+        key: 'code',
+        label: '岗位编码',
+        required: true,
+        hint: '如 BUYER-01',
+      ),
+      MasterFieldDef(key: 'name', label: '岗位名称', required: true),
+      MasterFieldDef(key: 'level', label: '职级', hint: '领导层 / 班组管理 / 员工'),
+      MasterFieldDef(
+        key: 'sortOrder',
+        label: '排序号',
+        type: MasterFieldType.integer,
+      ),
+    ],
+    onSubmit: (body) async {
+      await ref
+          .read(positionRepositoryProvider)
+          .create(
+            node.id,
+            PositionSaveInput(
+              code: body['code'] as String,
+              name: body['name'] as String,
+              level: body['level'] as String?,
+              sortOrder: body['sortOrder'] as int?,
+            ),
+          );
+      if (context.mounted) UtenToast.success(context, '岗位已添加');
+      await onSaved?.call();
+      return true;
+    },
+  );
+}
 
 /// 职级常用建议。
 const kPositionLevelSuggestions = ['领导层', '班组管理', '员工'];
@@ -84,11 +134,15 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
   Future<void> _showEditDialog({Position? position}) async {
     final isCreate = position == null;
     if (isCreate ? !_canCreate : !_canEdit) return;
-    final codeCtl = TextEditingController(text: position?.code ?? '');
-    final nameCtl = TextEditingController(text: position?.name ?? '');
-    final levelCtl = TextEditingController(text: position?.level ?? '');
+    if (isCreate) {
+      await showPositionCreateDialog(context, ref, widget.node, onSaved: _load);
+      return;
+    }
+    final codeCtl = TextEditingController(text: position.code);
+    final nameCtl = TextEditingController(text: position.name);
+    final levelCtl = TextEditingController(text: position.level);
     final sortCtl = TextEditingController(
-      text: position?.sortOrder?.toString() ?? '',
+      text: position.sortOrder?.toString() ?? '',
     );
     final saved = await showDialog<bool>(
       context: context,

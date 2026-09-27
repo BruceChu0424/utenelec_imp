@@ -303,7 +303,7 @@ class ProductionExecutionRouteGateEndToEndTest {
         assertEquals(0,summary.get("issued_count"));
         var workbench=beans.getBean(com.uten.imp.features.production.execution.ProductionExecutionWorkbenchService.class);
         fixture.loginAs(c.workerUser());
-        var row=workbench.workshopTasks(1,50,null,"PREPARING",null,null,null,null,"CONTINUOUS").getItems().stream()
+        var row=workbench.workshopTasks(1,50,null,"PREPARING",null,null,null,null,"CONTINUOUS",null,null,null,null).getItems().stream()
                 .filter(task->task.segmentId().equals(c.segment())).findFirst().orElseThrow();
         assertEquals(2,row.materialKindCount()); assertEquals(1,row.materialShortMakeKindCount());
         assertEquals(2,row.materialShortKindCount()); assertEquals(1,row.materialDrawableKindCount());
@@ -317,7 +317,7 @@ class ProductionExecutionRouteGateEndToEndTest {
         var extra=facts.stream().filter(fact->!fact.demandId().equals(parentDemand(c))).findFirst().orElseThrow();
         qty("40",extra.reservedQty()); qty("60",extra.shortageQty()); qty("40",extra.requestableQty());
         assertEquals("DRAWABLE",extra.state(),"有可领的一片时状态说下一步动作，缺口另列");
-        assertTrue(workbench.workshopTasks(1,50,null,"PREPARING",null,null,null,null,"FULL_KIT").getItems().stream()
+        assertTrue(workbench.workshopTasks(1,50,null,"PREPARING",null,null,null,null,"FULL_KIT",null,null,null,null).getItems().stream()
                 .noneMatch(task->task.segmentId().equals(c.segment())),"路线筛选在服务端生效");
         transfer(c,"100");
         summary=db.queryForMap("SELECT * FROM fn_execution_segment_material_summary(?)",c.segment());

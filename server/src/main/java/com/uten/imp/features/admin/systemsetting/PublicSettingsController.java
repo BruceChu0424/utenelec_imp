@@ -26,7 +26,6 @@ public class PublicSettingsController {
                 settings.readInt(SystemSettingKey.SESSION_IDLE_TIMEOUT_MINUTES),
                 settings.readInt(SystemSettingKey.AUDIT_HOT_RETENTION_MONTHS)
                         + settings.readInt(SystemSettingKey.AUDIT_ARCHIVE_RETENTION_MONTHS),
-                settings.readInt(SystemSettingKey.PASSWORD_MIN_LENGTH),
                 storage.getMaxBytes(),
                 settings.readInt(SystemSettingKey.BADGE_POLL_SECONDS));
     }
@@ -35,7 +34,6 @@ public class PublicSettingsController {
     public record PublicSettings(
             int idleTimeoutMinutes,
             int auditReceiptRetentionMonths,
-            int passwordMinLength,
             long attachmentMaxBytes,
             int badgePollSeconds) {}
 }

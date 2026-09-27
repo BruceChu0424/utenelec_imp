@@ -48,8 +48,26 @@ public class FinanceReconciliationController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String billNo) {
         return service.list(new FinanceReconciliationQueryFilter(
-                keyword, accountId, sourceDocType, sourceDocId, checkNo, dateFrom, dateTo, entryKind), page, size, sort, order);
+                keyword, accountId, sourceDocType, sourceDocId, checkNo, dateFrom, dateTo, entryKind, billNo), page, size, sort, order);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
+    @GetMapping(value = "/facets", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('account:view') and hasAuthority('account:balance:view') "
+            + "and hasAuthority('account:flow:view')")
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) UUID accountId,
+            @RequestParam(required = false) String sourceDocType,
+            @RequestParam(required = false) UUID sourceDocId,
+            @RequestParam(required = false) String checkNo,
+            @RequestParam(required = false) String entryKind,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime dateTo) {
+        return service.facets(new FinanceReconciliationQueryFilter(
+                keyword, accountId, sourceDocType, sourceDocId, checkNo, dateFrom, dateTo, entryKind, null));
     }
 }

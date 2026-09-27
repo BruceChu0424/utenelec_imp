@@ -180,7 +180,9 @@ class _ProductionPlanEditPageState
             .map((e) => e.goodsId)
             .whereType<String>()
             .toSet();
-        await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
+        await ref
+            .read(masterNameServiceProvider)
+            .loadGoodsNamesWithCodes(goodsIds);
         await _preloadEmployees([d.sellerId, d.workerId]);
         if (!mounted) return;
         _billNo.text = d.billNo ?? '';
@@ -208,12 +210,9 @@ class _ProductionPlanEditPageState
             ..unitRate = it.unitRate
             ..orderDate = it.orderDate
             ..outboundDate = it.outboundDate
-            ..goods = it.goodsId == null
-                ? null
-                : GoodsOption(
-                    id: it.goodsId!,
-                    name: ref.read(masterNameServiceProvider).goods(it.goodsId),
-                  );
+            ..goods = ref
+                .read(masterNameServiceProvider)
+                .goodsOptionOf(it.goodsId);
           row.qty.text = it.qty?.toString() ?? '';
           row.overproductionPercent.text = productionOverproductionPercentText(
             it.allowedOverproductionRate,

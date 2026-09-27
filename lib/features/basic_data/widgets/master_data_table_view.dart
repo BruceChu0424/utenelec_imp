@@ -57,6 +57,7 @@ class MasterColumnDef<T> {
     required this.value,
     this.type = 'text',
     this.sortable = false,
+    this.filterFromRows = false,
     this.cellColor,
     this.cellBuilder,
     this.cellBuilderHandlesSemantics = false,
@@ -98,7 +99,15 @@ class MasterColumnDef<T> {
   final String type;
 
   /// 该列是否允许点表头排序（日期/金额/数量等可排序列置 true）。
+  /// 页面传了 onSortChange 时排序走服务端；没传时组件就地排序（全量加载表）。
   final bool sortable;
+
+  /// 本地取值筛选（2026-09-25 用户口径「单号列像我的车间任务那样可排序、
+  /// 可只看某个单号」）：组件用当前行的 [value] 就地构建筛选桶并过滤显示行，
+  /// 不要求宿主接 facets/onFilterChanged。给**全量加载**（非服务端分页）的
+  /// 表用；服务端分页表格筛了也只是当页，应走服务端 facets 而不是这个开关。
+  /// 宿主已为该 key 提供服务端 facets 时以服务端为准（本开关不再生效）。
+  final bool filterFromRows;
 
   /// 单元格语义底色（如待处理步骤用浅警示色）；null = 跟随所在行底色。
   /// 选中行仍由表格统一使用深绿高亮，避免颜色叠加后文字对比不足。
@@ -419,8 +428,9 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 是否为只读表体创建独立 [SelectionArea]。
   ///
   /// 默认开启，保留普通数据表的复制能力。包含横向同步滚动、分页或密集行手势的
-  /// 重交互页面可显式关闭；此时整表用 [SelectionContainer.disabled] 隔离，避免
+  /// 重交互页面可显式关闭；此时各行内容用 [SelectionContainer.disabled] 隔离，避免
   /// Flutter Web 在路由转场/滚动期间反复维护 SelectionRegistrar 导致主线程卡顿。
+  /// 表体选择区实例保持稳定，禁用屏障位于 ListView 自动保活节点之下。
   /// [selectable] 为 true 的业务多选表始终关闭文字框选，本开关不改变行勾选语义。
   final bool enableTextSelection;
 
@@ -499,6 +509,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   // 分页跳转输入框：填数字回车跳页；外部翻页（上一页/下一页/跳页）时同步回当前页。
   late final TextEditingController _pageCtrl;
   bool _syncing = false;
+
+  // —— 本地取值筛选 / 本地排序（filterFromRows 列；2026-09-25）——
+  // filterFromRows 列的筛选值由组件自持（宿主 filters/onFilterChanged 不参与），
+  // 显示行就地过滤；宿主未接 onSortChange 时 sortable 列就地排序（取值感知
+  // number/money/date，空值恒排末尾）。服务端分页页两者都由宿主回调接管。
+  final Map<String, String?> _rowFilters = <String, String?>{};
+  String? _localSortColumn;
+  bool _localSortAscending = true;
 
   // —— 横滚条覆盖层测量 ——
   /// 表体区 Stack / 末行 的测量键。
@@ -1236,9 +1254,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (!measure.headerMeasured) {
       measure.header = _measureText(
         def.label,
-        (theme.textTheme.labelMedium ?? const TextStyle()).copyWith(
-          fontWeight: FontWeight.w700,
-        ),
+        UtenTableHeader.textStyle(theme),
         textScaler,
       );
       measure.headerMeasured = true;
@@ -1427,6 +1443,99 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       widget.selectable ? IntrinsicHeight(child: row) : row;
 
   /// 当前页可勾选的行 id 集合（主数据行 + 已展开的前导分组 items；过滤空 id）。
+  // —— 本地取值筛选 / 本地排序的取值与显示行 ——
+
+  Map<String, MasterColumnDef<T>> get _columnByKey => {
+    for (final def in widget.columns) def.key: def,
+  };
+
+  /// 筛选桶取值：trim 后空串或「—」占位算空（落「其他」桶）。
+  String? _facetRawValue(MasterColumnDef<T> def, T item) {
+    final raw = def.value(item)?.trim();
+    if (raw == null || raw.isEmpty || raw == '—') return null;
+    return raw;
+  }
+
+  /// filterFromRows 列的桶：宿主提供了服务端 facets 时返回 null（以服务端为准）。
+  ({List<MasterFacetBucket> buckets, int nullCount})? _rowFacetsFor(
+    MasterColumnDef<T> def,
+  ) {
+    if (!def.filterFromRows) return null;
+    if ((widget.facets[def.key] ?? const []).isNotEmpty) return null;
+    final counts = <String, int>{};
+    var nullCount = 0;
+    for (final it in widget.items) {
+      final v = _facetRawValue(def, it);
+      if (v == null) {
+        nullCount++;
+      } else {
+        counts[v] = (counts[v] ?? 0) + 1;
+      }
+    }
+    final values = counts.keys.toList()..sort();
+    return (
+      buckets: [
+        for (final v in values) MasterFacetBucket(value: v, count: counts[v]!),
+      ],
+      nullCount: nullCount,
+    );
+  }
+
+  /// 实际渲染/可勾选的行 = 宿主行 − 本地筛选命不中的行，再按本地排序整理。
+  List<T> get _displayItems {
+    var rows = widget.items;
+    if (_rowFilters.isNotEmpty) {
+      final defs = _columnByKey;
+      rows = rows.where((it) {
+        for (final entry in _rowFilters.entries) {
+          final selected = entry.value;
+          if (selected == null || selected.isEmpty) continue;
+          final def = defs[entry.key];
+          if (def == null || !def.filterFromRows) continue;
+          final raw = _facetRawValue(def, it);
+          if (selected == kMasterFilterNullValue) {
+            if (raw != null) return false;
+          } else if (raw != selected) {
+            return false;
+          }
+        }
+        return true;
+      }).toList();
+    }
+    final sortKey = _localSortColumn;
+    if (sortKey != null && widget.onSortChange == null) {
+      final def = _columnByKey[sortKey];
+      if (def != null && def.sortable) {
+        final numeric = def.type == 'number' || def.type == 'money';
+        final asc = _localSortAscending;
+        int compare(T a, T b) {
+          final left = def.value(a)?.trim() ?? '';
+          final right = def.value(b)?.trim() ?? '';
+          // 空值/「—」恒排末尾，不随升降序翻到最前。
+          final leftBlank = left.isEmpty || left == '—';
+          final rightBlank = right.isEmpty || right == '—';
+          if (leftBlank && rightBlank) return 0;
+          if (leftBlank) return 1;
+          if (rightBlank) return -1;
+          int base;
+          if (numeric) {
+            final x = double.tryParse(left.replaceAll(',', ''));
+            final y = double.tryParse(right.replaceAll(',', ''));
+            base = x == null || y == null
+                ? left.compareTo(right)
+                : x.compareTo(y);
+          } else {
+            base = left.compareTo(right);
+          }
+          return asc ? base : -base;
+        }
+
+        rows = rows.toList()..sort(compare);
+      }
+    }
+    return rows;
+  }
+
   /// 内联计算、勿缓存到实例字段——全屏 post-frame 间隙会读到旧值。
   Set<String> _pageSelectableIds() {
     final ids = <String>{};
@@ -1435,7 +1544,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (id != null && id.isNotEmpty) ids.add(id);
     }
 
-    for (final it in widget.items) {
+    for (final it in _displayItems) {
       add(it);
     }
     final leading = widget.leadingGroups;
@@ -1623,17 +1732,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       itemCount: summaryIndex + (summaryInline ? 1 : 0),
       itemBuilder: (ctx, i) {
         if (summaryInline && i == summaryIndex) {
-          return _ViewportPinnedRow(
-            controller: _bodyH,
-            contentWidth: total,
-            fallbackViewportWidth: viewportWidth,
-            child: Padding(
-              padding: const EdgeInsets.only(
-                top: UtenSpacing.s8,
-                left: UtenSpacing.s4,
-                right: UtenSpacing.s4,
+          return _rowSelectionArea(
+            _ViewportPinnedRow(
+              controller: _bodyH,
+              contentWidth: total,
+              fallbackViewportWidth: viewportWidth,
+              child: Padding(
+                padding: const EdgeInsets.only(
+                  top: UtenSpacing.s8,
+                  left: UtenSpacing.s4,
+                  right: UtenSpacing.s4,
+                ),
+                child: widget.summaryBar!,
               ),
-              child: widget.summaryBar!,
             ),
           );
         }
@@ -1651,7 +1762,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         }
         final row = plan[i];
         if (row.header) {
-          return _buildGroupHeader(theme, row.group!);
+          return _rowSelectionArea(_buildGroupHeader(theme, row.group!));
         }
         // 数据行：item 必非空（仅 header 行 item=null）；显式 null
         // 判定把 T? 提升为 T，避免对类型参数用 `!` 的告警。
@@ -1669,7 +1780,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               ((idKey != null && idKey.isNotEmpty)
                   ? ValueKey('row:$idKey')
                   : ValueKey('idx:$i')),
-          child: _buildDataRow(theme, item),
+          child: _rowSelectionArea(_buildDataRow(theme, item)),
         );
         // 末行挂测量键：覆盖层横滚条按末行定位（贴末行下）。
         // 内容超高时末行被虚拟化不挂载 → 横滚条钉表体区底。
@@ -1787,9 +1898,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
   }
 
-  /// 当前有值的表头筛选列（含「筛空值」哨兵）。
+  /// 当前有值的表头筛选列（含「筛空值」哨兵；含 filterFromRows 列的本地筛选）。
   List<String> get _activeFilterKeys => [
     for (final entry in widget.filters.entries)
+      if (entry.value != null && entry.value!.isNotEmpty) entry.key,
+    for (final entry in _rowFilters.entries)
       if (entry.value != null && entry.value!.isNotEmpty) entry.key,
   ];
 
@@ -1828,15 +1941,32 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       // 已在全屏中时保留按钮——那是唯一的退出口。
       if (_fullscreen) _fullscreenToggleButton(),
       // 有激活表头筛选却 0 行：列头筛选控件随表头一起不渲染，用户没有入口
-      // 把「看不见的筛选」撤掉——这里给一键清除（逐列回调 onFilterChanged(key,null)）。
+      // 把「看不见的筛选」撤掉——这里给一键清除（服务端筛选逐列回调
+      // onFilterChanged(key,null)；filterFromRows 列的本地筛选就地清）。
       if (activeFilterKeys.isNotEmpty)
         UtenButton(
           key: const ValueKey('master-table-clear-filters'),
           height: UtenTableToolbar.controlHeight,
           icon: Icons.filter_alt_off_rounded,
           onPressed: () {
+            final localKeys = <String>{};
+            final defs = _columnByKey;
             for (final key in activeFilterKeys) {
-              widget.onFilterChanged(key, null);
+              final def = defs[key];
+              if (def != null &&
+                  def.filterFromRows &&
+                  (widget.facets[key] ?? const []).isEmpty) {
+                localKeys.add(key);
+              } else {
+                widget.onFilterChanged(key, null);
+              }
+            }
+            if (localKeys.isNotEmpty) {
+              setState(() {
+                for (final key in localKeys) {
+                  _rowFilters.remove(key);
+                }
+              });
             }
           },
           child: const Text('清除筛选'), // TODO(l10n): 补 arb
@@ -1914,7 +2044,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           g.onExpand != null,
     );
     // 主数据为空且无任何前导分组 → 空态占位（有分组时仍渲染表头 + 分组行）。
-    if (widget.items.isEmpty && !hasGroupRows) {
+    // 本地取值筛选把行全部滤空时同样走空态（描述行会报筛选生效数，可一键清除）。
+    final displayItems = _displayItems;
+    if ((widget.items.isEmpty || displayItems.isEmpty) && !hasGroupRows) {
       final activeFilters = _clearableFilterKeys.length;
       return _emptyStateWithToolbarActions(
         UtenEmpty(
@@ -1947,7 +2079,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         }
       }
     }
-    for (final it in widget.items) {
+    for (final it in displayItems) {
       plan.add((header: false, group: null, item: it));
     }
     // stretch：列总宽 < 视口宽时（颜色/单位等列少主档）表头与表体撑满视口宽、
@@ -2186,26 +2318,25 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
   }
 
-  /// selectable 模式（任务中心批量勾选）下整表 SelectionContainer.disabled：批量勾选
-  /// 场景不需要文本复制，且勾选/拖选同处一表会增加 SelectionRegistrar 的 CME 风险
-  /// （FM2）。disabled 同时把表体与外层页面级 SelectionArea（UtenContentContainer
-  /// 默认包裹）隔开——勾选行为不受页面选择区影响。
-  /// 注：2026-08-11 查明 selectable 表整片空白的真正根因是 stretch 行在无界高度下
-  /// 布局崩溃（见 [_selectableCross]），并非 SelectionArea；此处隔离仅按上述理由保留。
-  /// 非 selectable 表默认保留自身文本复制；重交互调用方可用
-  /// [MasterDataTableView.enableTextSelection] 显式退出。
-  Widget _maybeSelectionArea(Widget child) =>
+  /// 表体选择区保持稳定，切分类时不撤掉 ListView 的 SelectionRegistrar。
+  /// SDK 的行保活节点在祖先 registrar 变 null 后仍可能收到旧文本的 remove，
+  /// 此时内部强制解引用会崩溃。禁用文字选择必须放在行保活节点下面。
+  Widget _maybeSelectionArea(Widget child) => SelectionArea(
+    // 2026-09-15 用户口径：表格自带右键行菜单时，只显示自家菜单。右键点到
+    // 可选文字上 SelectionArea 会弹框架默认「全选/复制」工具条与行菜单撞车
+    //（文字拖选/键盘复制不受影响，只静音右键工具条）。
+    contextMenuBuilder: widget.rowMenuBuilder == null
+        ? null
+        : (_, _) => const SizedBox.shrink(),
+    child: child,
+  );
+
+  /// 多选和显式退出文字选择时，只隔离行内容，不改变 ListView 自动创建的
+  /// SelectionKeepAlive 的祖先 registrar；普通浏览仍可拖选和复制文本。
+  Widget _rowSelectionArea(Widget child) =>
       widget.selectable || !widget.enableTextSelection
       ? SelectionContainer.disabled(child: child)
-      : SelectionArea(
-          // 2026-09-15 用户口径：表格自带右键行菜单时，只显示自家菜单。右键点到
-          // 可选文字上 SelectionArea 会弹框架默认「全选/复制」工具条与行菜单撞车
-          //（文字拖选/键盘复制不受影响，只静音右键工具条）。
-          contextMenuBuilder: widget.rowMenuBuilder == null
-              ? null
-              : (_, _) => const SizedBox.shrink(),
-          child: child,
-        );
+      : child;
 
   /// 选择摘要：已选 N 项 + 清除（升位公共组件 UtenSelectionSummaryPill）。
   /// 业务动作在右下悬浮区，不再塞进表头工具条。
@@ -2471,14 +2602,29 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 「icon 大一点、上下居中」——旧版 12px 右上角小角标太小）。
   Widget _headerColumnCell(ThemeData theme, int i, {required bool frozen}) {
     final pinned = _pinnedKeys.contains(widget.columns[i].key);
+    // filterFromRows 列：桶由当前行就地构建、值与回调走组件内部状态；
+    // 否则维持宿主 facets/filters/onFilterChanged 的服务端链路。
+    final rowFacets = _rowFacetsFor(widget.columns[i]);
+    // 宿主接了 onSortChange → 排序走服务端（sortActive 以宿主状态为准）；
+    // 没接（全量加载表）→ sortable 列就地排序，取消排序传 null 列。
+    final serverSort = widget.onSortChange != null;
+    final sortKey = widget.columns[i].key;
+    final localSortActive = !serverSort && _localSortColumn == sortKey;
     final filterCell = _FilterCell(
       label: widget.columns[i].label,
-      sortKey: widget.columns[i].key,
+      sortKey: sortKey,
       type: widget.columns[i].type,
       sortable: widget.columns[i].sortable,
-      sortActive: widget.sortColumn == widget.columns[i].key,
-      sortAscending: widget.sortAscending,
-      onSort: widget.onSortChange,
+      sortActive: serverSort ? widget.sortColumn == sortKey : localSortActive,
+      sortAscending: serverSort
+          ? widget.sortAscending
+          : (localSortActive ? _localSortAscending : true),
+      onSort: serverSort
+          ? widget.onSortChange
+          : (column, ascending) => setState(() {
+              _localSortColumn = column;
+              _localSortAscending = column == null ? true : ascending;
+            }),
       info: widget.columns[i].info,
       leading: pinned
           ? Icon(
@@ -2487,10 +2633,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               color: theme.colorScheme.primary,
             )
           : null,
-      buckets: widget.facets[widget.columns[i].key] ?? const [],
-      nullCount: widget.nullCounts[widget.columns[i].key] ?? 0,
-      selected: widget.filters[widget.columns[i].key],
-      onChanged: (v) => widget.onFilterChanged(widget.columns[i].key, v),
+      buckets:
+          rowFacets?.buckets ??
+          widget.facets[widget.columns[i].key] ??
+          const [],
+      nullCount:
+          rowFacets?.nullCount ?? widget.nullCounts[widget.columns[i].key] ?? 0,
+      selected: rowFacets != null
+          ? _rowFilters[widget.columns[i].key]
+          : widget.filters[widget.columns[i].key],
+      onChanged: rowFacets != null
+          ? (v) => setState(() => _rowFilters[widget.columns[i].key] = v)
+          : (v) => widget.onFilterChanged(widget.columns[i].key, v),
     );
     // 右键菜单挂在内容外层：桌面右击弹「固定/移动/隐藏」菜单（表头专用 region：
     // 不挂长按——触屏长按/按下即拖已让给列换位/移除手势；并压制系统右键
@@ -3092,10 +3246,7 @@ class _FilterCellState extends State<_FilterCell> {
                 widget.label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                style: UtenTableHeader.textStyle(theme),
               ),
             ),
           ],
@@ -3141,11 +3292,9 @@ class _FilterCellState extends State<_FilterCell> {
                   display,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight: highlighted ? FontWeight.w700 : FontWeight.w600,
-                    color: highlighted
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurfaceVariant,
+                  style: UtenTableHeader.textStyle(
+                    theme,
+                    highlighted: highlighted,
                   ),
                 ),
               ),
@@ -3290,7 +3439,16 @@ class _FilterCellState extends State<_FilterCell> {
                             shrinkWrap: true,
                             padding: EdgeInsets.zero,
                             children: <Widget>[
+                              // 2026-09-25 用户口径：「取消排序」放最上面（重置类
+                              // 选项先见），升降序跟后；值筛选段「所有」仍居首。
                               if (widget.sortable) ...[
+                                _menuItem(
+                                  ctx,
+                                  label: '取消排序', // TODO(l10n): 补 arb
+                                  isSelected: !widget.sortActive,
+                                  onTap: () => _sortSelect(null, true),
+                                  theme: theme,
+                                ),
                                 _menuItem(
                                   ctx,
                                   label: _sortAscLabel,
@@ -3308,13 +3466,6 @@ class _FilterCellState extends State<_FilterCell> {
                                       !widget.sortAscending,
                                   onTap: () =>
                                       _sortSelect(widget.sortKey, false),
-                                  theme: theme,
-                                ),
-                                _menuItem(
-                                  ctx,
-                                  label: '取消排序', // TODO(l10n): 补 arb
-                                  isSelected: !widget.sortActive,
-                                  onTap: () => _sortSelect(null, true),
                                   theme: theme,
                                 ),
                                 if (hasFacets)

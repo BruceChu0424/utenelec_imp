@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/router/nav_helpers.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -276,6 +277,7 @@ class _TrackingFinishedInboundApi extends ApiClient {
 
   int taskRequestCount = 0;
   int countRequestCount = 0;
+  int facetRequestCount = 0;
   final List<String> taskKeywords = [];
   Completer<Map<String, dynamic>>? _blockedTaskRequest;
 
@@ -294,9 +296,16 @@ class _TrackingFinishedInboundApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == ApiEndpoints.productionFinishedInboundTaskFacets) {
+      facetRequestCount++;
+      return const {};
+    }
     if (path.endsWith('/count')) {
       countRequestCount++;
       return const {'count': 2};
+    }
+    if (path != ApiEndpoints.productionFinishedInboundTasks) {
+      throw StateError('Unexpected request: $path');
     }
     taskRequestCount++;
     taskKeywords.add(query?['keyword'] as String? ?? '');

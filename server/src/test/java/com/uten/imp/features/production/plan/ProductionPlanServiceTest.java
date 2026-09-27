@@ -14,6 +14,7 @@ import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.Query;
+import jakarta.persistence.TypedQuery;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -30,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -53,7 +55,7 @@ class ProductionPlanServiceTest {
 
     private Query allocationLock;
     private Query plannedIncrement;
-    private Query historicalLinkCount;
+    private TypedQuery<PlanOrderItemLink> approvalLinks;
     private Query recomputeClosed;
     private Query planItemLock;
     private Query stockDownstream;
@@ -62,7 +64,6 @@ class ProductionPlanServiceTest {
     private Query executionV1ParentLink;
     private Query unlinkOrderLock;
     private Query plannedDecrement;
-    private Query analysisHeaderLock;
     private Query analysisPlanConsistency;
     private Query analysisSubmittedQty;
     private Query salesTrace;
@@ -92,7 +93,10 @@ class ProductionPlanServiceTest {
 
         allocationLock = query();
         plannedIncrement = query();
-        historicalLinkCount = query();
+        approvalLinks = mock(TypedQuery.class);
+        when(approvalLinks.setParameter(anyString(),any())).thenReturn(approvalLinks);
+        when(approvalLinks.getResultList()).thenReturn(List.of());
+        when(em.createQuery(anyString(),eq(PlanOrderItemLink.class))).thenReturn(approvalLinks);
         recomputeClosed = query();
         planItemLock = query();
         stockDownstream = query();
@@ -101,7 +105,6 @@ class ProductionPlanServiceTest {
         executionV1ParentLink = query();
         unlinkOrderLock = query();
         plannedDecrement = query();
-        analysisHeaderLock = query();
         analysisPlanConsistency = query();
         analysisSubmittedQty = query();
         salesTrace = query();
@@ -111,14 +114,12 @@ class ProductionPlanServiceTest {
         subcontractTrace = query();
 
         when(plannedIncrement.executeUpdate()).thenReturn(1);
-        when(historicalLinkCount.getSingleResult()).thenReturn(0L);
         when(recomputeClosed.executeUpdate()).thenReturn(1);
         when(plannedDecrement.executeUpdate()).thenReturn(1);
         when(stockDownstream.getResultList()).thenReturn(List.of());
         when(purchaseDownstream.getResultList()).thenReturn(List.of());
         when(subplanDownstream.getResultList()).thenReturn(List.of());
         when(executionV1ParentLink.getResultList()).thenReturn(List.of());
-        when(analysisHeaderLock.getResultList()).thenReturn(List.of());
         when(analysisPlanConsistency.getResultList()).thenReturn(List.of());
         // V588：审核分摊按分析 link 的 submitted_qty（手工计划返回空表 → 按整行数量分摊）。
         when(analysisSubmittedQty.getResultList()).thenReturn(List.of());
@@ -131,9 +132,6 @@ class ProductionPlanServiceTest {
 
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
-            if (sql.contains("SELECT COUNT(*)") && sql.contains("FROM plan_order_item_links")) {
-                return historicalLinkCount;
-            }
             if (sql.contains("JOIN sales_orders o") && sql.contains("FOR UPDATE OF o, i")) {
                 return allocationLock;
             }
@@ -164,9 +162,6 @@ class ProductionPlanServiceTest {
             }
             if (sql.contains("SET planned_qty = COALESCE(planned_qty,0) - :a")) {
                 return plannedDecrement;
-            }
-            if (sql.contains("FOR UPDATE OF analysis")) {
-                return analysisHeaderLock;
             }
             if (sql.contains("SELECT plan_item.id, link.submitted_qty")) {
                 return analysisSubmittedQty;
@@ -202,6 +197,115 @@ class ProductionPlanServiceTest {
     }
 
     @Test
+    void analysisCommandReadsActualQuantitiesWithoutLoadingUnrelatedTraceProjections() {
+        ProductionPlan plan = plan((short) 0);
+        plan.setMaterialAnalysisId(UUID.randomUUID());
+        arrangePlan(plan, List.of(item(plan, null, "2.25"), item(plan, null, "7.75")));
+        var result = service.readForAnalysis(plan.getId());
+        assertEquals(plan.getId(), result.id());
+        assertEquals("PP-TEST", result.billNo());
+        assertEquals(0, new BigDecimal("10").compareTo(result.plannedQty()));
+        verify(em, never()).createNativeQuery(anyString());
+    }
+
+    @Test
+    void lightweightApprovalReturnsItsActualAppliedPackageWithoutASecondRead() {
+        ProductionPlan plan = plan((short) 0);
+        plan.setMaterialAnalysisId(UUID.randomUUID());plan.setMaterialAnalysisItemId(UUID.randomUUID());
+        ProductionPlanItem item = item(plan, null, "5");
+        arrangePlan(plan, List.of(item));analysisProof(plan,item,false);
+        var applied = mock(com.uten.imp.features.production.mrp.PlanningPackageResult.class);
+        when(planningDraftService.applyActive(plan.getId())).thenReturn(Optional.of(applied));
+        when(currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
+        assertTrue(service.approveForAnalysis(plan.getId()).orElseThrow() == applied);
+        assertEquals((short) 1, plan.getStatus());
+        verify(planningDraftService).applyActive(plan.getId());
+        verify(chainNotice).notifyPlanScheduled(plan.getId(), false);
+    }
+
+    @Test
+    void firstAnalysisApprovalKeepsGraphValidationButCannotClaimVerifiedMaterialBeforeFormalDemandExists() {
+        ProductionPlan plan=plan((short)0);
+        plan.setMaterialAnalysisId(UUID.randomUUID());plan.setMaterialAnalysisItemId(UUID.randomUUID());
+        ProductionPlanItem item=item(plan,null,"5");arrangePlan(plan,List.of(item));
+        analysisProof(plan,item,false);
+        when(mrpService.isPlanningWriteReady()).thenReturn(true);
+        service.approveForAnalysis(plan.getId());
+        verify(mrpService).validatePlanBomGraph(plan.getId());
+        verify(mrpService,never()).preview(any());
+        verify(analysisSubmittedQty,never()).getResultList();
+        verify(itemRepo,times(1)).findByPlanIdOrderByLineNoAsc(plan.getId());
+        verify(em).refresh(plan,LockModeType.PESSIMISTIC_WRITE);
+        verify(planningDraftService).applyActive(plan.getId());
+        verify(chainNotice).notifyPlanScheduled(plan.getId(),false);
+        var statements=ArgumentCaptor.forClass(String.class);verify(em,atLeastOnce()).createNativeQuery(statements.capture());
+        assertEquals(1,statements.getAllValues().stream().filter(sql->sql.contains("analysis_link.submitted_qty")).count());
+        assertTrue(statements.getAllValues().stream().anyMatch(sql->sql.contains("FOR UPDATE OF analysis, ai, analysis_link, plan_item")));
+        assertTrue(statements.getAllValues().stream().noneMatch(sql->sql.contains("SELECT analysis.id, plan.material_analysis_item_id")));
+    }
+
+    @Test
+    void anExistingFormalDemandRetainsTheFullMaterialDecision() {
+        ProductionPlan plan=plan((short)0);
+        plan.setMaterialAnalysisId(UUID.randomUUID());plan.setMaterialAnalysisItemId(UUID.randomUUID());
+        ProductionPlanItem item=item(plan,null,"5");arrangePlan(plan,List.of(item));analysisProof(plan,item,true);
+        when(mrpService.isPlanningWriteReady()).thenReturn(true);
+        when(mrpService.preview(plan.getId())).thenReturn(List.of());
+        service.approveForAnalysis(plan.getId());
+        verify(mrpService).preview(plan.getId());
+        verify(mrpService,never()).validatePlanBomGraph(any());
+        verify(planningDraftService).applyActive(plan.getId());
+    }
+
+    @Test
+    void unallocatedAnalysisStillRejectsCyclicOrTooDeepBomBeforeApplyingAnyPackage() {
+        ProductionPlan plan=plan((short)0);
+        plan.setMaterialAnalysisId(UUID.randomUUID());plan.setMaterialAnalysisItemId(UUID.randomUUID());
+        ProductionPlanItem item=item(plan,null,"5");arrangePlan(plan,List.of(item));analysisProof(plan,item,false);
+        org.mockito.Mockito.doThrow(new ApiException(ErrorCode.CONFLICT,"BOM结构存在循环"))
+                .when(mrpService).validatePlanBomGraph(plan.getId());
+        assertThrows(ApiException.class,()->service.approveForAnalysis(plan.getId()));
+        verify(planningDraftService,never()).applyActive(any());
+        verify(chainNotice,never()).notifyPlanScheduled(any(),any(boolean.class));
+    }
+
+    @Test
+    void unallocatedAnalysisStillRejectsAnInvalidOpenPurchaseUnitBeforeApplyingAnyPackage() {
+        ProductionPlan plan=plan((short)0);
+        plan.setMaterialAnalysisId(UUID.randomUUID());plan.setMaterialAnalysisItemId(UUID.randomUUID());
+        ProductionPlanItem item=item(plan,null,"5");arrangePlan(plan,List.of(item));analysisProof(plan,item,false);
+        org.mockito.Mockito.doThrow(new ApiException(ErrorCode.CONFLICT,"未完成采购行的单位或换算率无效"))
+                .when(mrpService).validatePlanBomGraph(plan.getId());
+        ApiException failure=assertThrows(ApiException.class,()->service.approveForAnalysis(plan.getId()));
+        assertTrue(failure.getMessage().contains("未完成采购行"));
+        verify(planningDraftService,never()).applyActive(any());
+        verify(chainNotice,never()).notifyPlanScheduled(any(),any(boolean.class));
+    }
+
+    private void analysisProof(ProductionPlan plan,ProductionPlanItem item,boolean formal) {
+        when(analysisPlanConsistency.getResultList()).thenReturn(java.util.Collections.singletonList(new Object[]{
+                plan.getMaterialAnalysisId(),plan.getMaterialAnalysisItemId(),item.getGoodsId(),item.getColorId(),item.getUnitId(),
+                BigDecimal.ONE,item.getSalesOrderItemId(),item.getGoodsId(),item.getColorId(),item.getUnitId(),BigDecimal.ONE,
+                item.getSalesOrderItemId(),item.getQty(),item.getQty(),"SUBMITTED",item.getQty(),BigDecimal.ZERO,formal,"AGGREGATE_MAKE"}));
+    }
+
+    @Test
+    void lightweightApprovalStillRejectsBomDriftBeforeAnyBusinessWrite() {
+        UUID analysisId = UUID.randomUUID(), sourceId = UUID.randomUUID();
+        ProductionPlan plan = plan((short) 0);
+        plan.setMaterialAnalysisId(analysisId);
+        plan.setMaterialAnalysisItemId(sourceId);
+        ProductionPlanItem item=item(plan,null,"4");
+        arrangePlan(plan,List.of(item));analysisProof(plan,item,false);
+        org.mockito.Mockito.doThrow(new ApiException(ErrorCode.CONFLICT, "BOM changed"))
+                .when(materialAnalysisService).requireCurrentBomSnapshot(analysisId, java.util.Set.of(sourceId));
+        assertThrows(ApiException.class, () -> service.approveForAnalysis(plan.getId()));
+        assertEquals((short) 0, plan.getStatus());
+        verify(planRepo, never()).save(plan);
+        verify(plannedIncrement, never()).executeUpdate();
+    }
+
+    @Test
     void approveAnalysisPlanRejectsBomDriftBeforeChangingPlanOrSalesQuantities() {
         UUID analysisId = UUID.randomUUID();
         UUID analysisItemId = UUID.randomUUID();
@@ -210,9 +314,7 @@ class ProductionPlanServiceTest {
         plan.setMaterialAnalysisItemId(analysisItemId);
         ProductionPlanItem item = item(plan, null, "4");
         arrangePlan(plan, List.of(item));
-        when(analysisHeaderLock.getResultList()).thenReturn(
-                java.util.Collections.singletonList(
-                        new Object[]{analysisId, analysisItemId}));
+        analysisProof(plan,item,false);
         ApiException bomDrift = new ApiException(ErrorCode.CONFLICT, "BOM changed");
         org.mockito.Mockito.doThrow(bomDrift).when(materialAnalysisService)
                 .requireCurrentBomSnapshot(analysisId, java.util.Set.of(analysisItemId));
@@ -233,7 +335,6 @@ class ProductionPlanServiceTest {
         ProductionPlan plan = plan((short) 0);
         ProductionPlanItem item = item(plan, orderItemId, "5");
         arrangePlan(plan, List.of(item));
-        when(linkRepo.findActiveByPlanItemIds(List.of(item.getId()))).thenReturn(List.of());
         when(allocationLock.getResultList()).thenReturn(java.util.Collections.singletonList(orderRow(
                 orderItemId, item, (short) 1,
                 false, false, false, false,
@@ -265,8 +366,6 @@ class ProductionPlanServiceTest {
         ProductionPlan plan = plan((short) 0);
         ProductionPlanItem item = item(plan, orderItemId, "5");
         arrangePlan(plan, List.of(item));
-        when(linkRepo.findActiveByPlanItemIds(List.of(item.getId())))
-                .thenReturn(List.of());
         when(allocationLock.getResultList()).thenReturn(
                 java.util.Collections.singletonList(orderRow(
                         orderItemId, item, (short) 1,
@@ -295,7 +394,6 @@ class ProductionPlanServiceTest {
         ProductionPlan plan = plan((short) 0);
         ProductionPlanItem item = item(plan, orderItemId, "5");
         arrangePlan(plan, List.of(item));
-        when(linkRepo.findActiveByPlanItemIds(List.of(item.getId()))).thenReturn(List.of());
         when(allocationLock.getResultList()).thenReturn(java.util.Collections.singletonList(orderRow(
                 orderItemId, item, (short) 1,
                 false, false, true, false,
@@ -314,7 +412,6 @@ class ProductionPlanServiceTest {
         ProductionPlan plan = plan((short) 0);
         ProductionPlanItem item = item(plan, orderItemId, "5");
         arrangePlan(plan, List.of(item));
-        when(linkRepo.findActiveByPlanItemIds(List.of(item.getId()))).thenReturn(List.of());
         Object[] row = orderRow(
                 orderItemId, item, (short) 1,
                 false, false, false, false,
@@ -334,8 +431,8 @@ class ProductionPlanServiceTest {
         ProductionPlan plan = plan((short) 0);
         ProductionPlanItem item = item(plan, null, "5");
         arrangePlan(plan, List.of(item));
-        when(linkRepo.findActiveByPlanItemIds(List.of(item.getId()))).thenReturn(List.of());
-        when(historicalLinkCount.getSingleResult()).thenReturn(1L);
+        PlanOrderItemLink retired=link(item,UUID.randomUUID(),"5");retired.setDeleted(true);
+        when(approvalLinks.getResultList()).thenReturn(List.of(retired));
 
         ApiException error = assertThrows(ApiException.class, () -> service.approve(plan.getId()));
 
@@ -357,8 +454,7 @@ class ProductionPlanServiceTest {
         arrangePlan(plan, List.of(first, second));
         PlanOrderItemLink firstLink = link(first, orderItemId, "6");
         PlanOrderItemLink secondLink = link(second, orderItemId, "6");
-        when(linkRepo.findActiveByPlanItemIds(List.of(first.getId()))).thenReturn(List.of(firstLink));
-        when(linkRepo.findActiveByPlanItemIds(List.of(second.getId()))).thenReturn(List.of(secondLink));
+        when(approvalLinks.getResultList()).thenReturn(List.of(firstLink,secondLink));
         when(allocationLock.getResultList()).thenReturn(java.util.Collections.singletonList(orderRow(
                 orderItemId, first, (short) 1,
                 false, false, false, false,
@@ -370,6 +466,28 @@ class ProductionPlanServiceTest {
         verify(plannedIncrement, never()).executeUpdate();
         verify(em).refresh(firstLink);
         verify(em).refresh(secondLink);
+        verify(approvalLinks,times(1)).getResultList();
+        verify(approvalLinks).setParameter("itemIds",List.of(first.getId(),second.getId()));
+    }
+
+    @Test
+    void internalItemsReadActiveAndRetiredLinksOnceForTheWholePlan() {
+        ProductionPlan plan=plan((short)0);List<ProductionPlanItem> items=new java.util.ArrayList<>();
+        for(int index=0;index<100;index++)items.add(item(plan,null,"1"));
+        List<?> allocations=org.springframework.test.util.ReflectionTestUtils.invokeMethod(service,"collectAllocations",items,java.util.Map.of());
+        assertTrue(allocations.isEmpty());verify(approvalLinks,times(1)).getResultList();
+        verify(approvalLinks).setParameter("itemIds",items.stream().map(ProductionPlanItem::getId).toList());
+        verify(em,never()).createNativeQuery(anyString());
+    }
+
+    @Test
+    void aReturnedLinkForAnotherPlanItemCannotDisappearFromTheBatchedRead() {
+        ProductionPlan plan=plan((short)0);ProductionPlanItem selected=item(plan,null,"1"),other=item(plan,null,"1");
+        when(approvalLinks.getResultList()).thenReturn(List.of(link(other,UUID.randomUUID(),"1")));
+        ApiException failure=assertThrows(ApiException.class,()->org.springframework.test.util.ReflectionTestUtils
+                .invokeMethod(service,"collectAllocations",List.of(selected),java.util.Map.of()));
+        assertTrue(failure.getMessage().contains("不属于当前计划明细"));
+        verify(plannedIncrement,never()).executeUpdate();
     }
 
     @Test
@@ -469,17 +587,17 @@ class ProductionPlanServiceTest {
     }
 
     @Test
-    void updateAndDeleteUseDirectPessimisticFindBeforeStatusCheck() {
+    void updateAndDeleteRefreshTheAlreadyPrelockedPlanBeforeStatusCheck() {
         ProductionPlan plan = plan((short) 1);
-        when(em.find(ProductionPlan.class, plan.getId(), LockModeType.PESSIMISTIC_WRITE))
+        when(em.find(ProductionPlan.class, plan.getId()))
                 .thenReturn(plan);
 
         assertThrows(ApiException.class,
                 () -> service.update(plan.getId(), mock(PlanSaveRequest.class)));
         assertThrows(ApiException.class, () -> service.delete(plan.getId()));
 
-        verify(em, times(2)).find(
-                ProductionPlan.class, plan.getId(), LockModeType.PESSIMISTIC_WRITE);
+        verify(em, times(2)).find(ProductionPlan.class, plan.getId());
+        verify(em, times(2)).refresh(plan, LockModeType.PESSIMISTIC_WRITE);
     }
 
     @Test
@@ -493,8 +611,8 @@ class ProductionPlanServiceTest {
 
         org.mockito.InOrder order = org.mockito.Mockito.inOrder(mutationFootprint, em);
         order.verify(mutationFootprint).lockPlan(plan.getId(), List.of());
-        order.verify(em).find(
-                ProductionPlan.class, plan.getId(), LockModeType.PESSIMISTIC_WRITE);
+        order.verify(em).find(ProductionPlan.class, plan.getId());
+        order.verify(em).refresh(plan, LockModeType.PESSIMISTIC_WRITE);
     }
 
     private ProductionPlan reversiblePlan() {
@@ -507,7 +625,7 @@ class ProductionPlanServiceTest {
     }
 
     private void arrangePlan(ProductionPlan plan, List<ProductionPlanItem> items) {
-        when(em.find(ProductionPlan.class, plan.getId(), LockModeType.PESSIMISTIC_WRITE))
+        when(em.find(ProductionPlan.class, plan.getId()))
                 .thenReturn(plan);
         when(planRepo.findById(plan.getId())).thenReturn(Optional.of(plan));
         when(itemRepo.findByPlanIdOrderByLineNoAsc(plan.getId())).thenReturn(items);

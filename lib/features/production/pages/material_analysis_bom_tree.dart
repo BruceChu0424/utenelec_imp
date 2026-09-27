@@ -3,7 +3,7 @@ part of 'production_material_analysis_page.dart';
 /// BOM 兄弟行排序:先层级、再货品编号(无编号退货品名、再退行 id)。
 ///
 /// **全站唯一口径**:物料分析准备页主表([_MaterialAnalysisBomTreeState._orderedBomNodes])
-/// 与「父件+下层一起下单」页([_MaterialAnalysisChildCascadeState._cascadeNodes])
+/// 与三个准备桶的共用核对下单页
 /// 共用同一个比较器——两张表看的是同一棵 BOM,行序不一样用户就得在两页之间重新
 /// 找一遍物料(2026-09-15 用户口径「里面的顺序按照物料分析里准备下面的顺序一样」)。
 /// 两处属于不同的 State 类,故落在库级私有函数上而不是某个类里。
@@ -428,9 +428,18 @@ abstract class _MaterialAnalysisBomTreeState
   ) {
     final byKey = <String, List<ProductionMaterialAnalysisMaterial>>{};
     final presentation = _bomPresentation(analysis);
+    final representedTargets = {
+      for (final material in analysis.materials)
+        ...?material.aggregatePreparation?.targetMaterialLineIds,
+    };
     for (final nodes in presentation.nodesByProduct.values) {
       for (final material in nodes) {
         if (material.isRootSupply || material.level <= 0) continue;
+        if (representedTargets.contains(material.materialLineId) &&
+            indexes.productsById[material.analysisLineId]?.sourceType ==
+                'AGGREGATE_MAKE') {
+          continue;
+        }
         if (!_bomModeMatches(material)) continue;
         final product = indexes.productsById[material.analysisLineId];
         final root =

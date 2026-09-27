@@ -47,8 +47,9 @@ class ProcurementPayablesCurrencyFilterTest {
         UUID currencyId = UUID.randomUUID();
         new ProcurementPayablesService(
                 em, mock(SupplierPayableHoldGuard.class))
+                // 2026-09-25 单号列统一：list 追加 sourceDocNo（此调用点不用，补 null）。
                 .list(null, null, null, null, currencyId,
-                        null, null, null, null, null, 1, 30, null, null);
+                        null, null, null, null, null, 1, 30, null, null, null);
 
         // ①数据/计数/汇总查询带 currency 等值子句（列名硬编码；超耗案件计数不按
         // 币种过滤，属既有口径，不在断言范围）。

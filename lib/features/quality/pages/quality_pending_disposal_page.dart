@@ -17,6 +17,10 @@ import '../presentation/procurement_inspection_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_values.dart';
+import '../services/quality_batch_submission.dart';
 
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
@@ -809,6 +813,10 @@ class _QualityPendingDisposalPageState
       key: 'billNo',
       label: '单号',
       width: 175,
+      // 2026-09-25 单号列统一：本页客户端合并三个服务端列表并本地分页，
+      // 单号列排序/值筛选因此就地生效（sortable+filterFromRows），不走服务端。
+      sortable: true,
+      filterFromRows: true,
       value: (row) => row.isSheet
           ? row.sheet!.sheetNo
           : row.isFqc
@@ -1001,7 +1009,60 @@ class ProcurementInspectionDetailPage extends ConsumerStatefulWidget {
 }
 
 class _ProcurementInspectionDetailPageState
-    extends ConsumerState<ProcurementInspectionDetailPage> {
+    extends ConsumerState<ProcurementInspectionDetailPage>
+    with FormDraftMixin<ProcurementInspectionDetailPage> {
+  String _draftReason = '';
+  QualityBatchSubmission? _submission;
+  bool _submissionRejected = false;
+  @override
+  bool get formDraftBusy => _busyDecision;
+  @override
+  bool get formDraftCanReplaySubmission => _submission != null;
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftCatalog.iqcReport.spec(
+    title: '来料检验报告',
+    route:
+        '${RouteName.warehouseInspections}/${widget.receiptType}/${widget.receiptId}',
+  );
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    for (final row in _reportRows.values) ...[row.pass, row.fail],
+  ];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'rows': [
+      for (final row in _reportRows.values)
+        {
+          'id': row.item.id,
+          'pass': row.pass.text,
+          'fail': row.fail.text,
+          'key': row.idempotencyKey,
+        },
+    ],
+    'selected': _selectedItemIds.toList(),
+    'reason': _draftReason,
+    'submission': _submission?.exportDraft(),
+    'submissionRejected': _submissionRejected,
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    for (final saved in draftMaps(data['rows'])) {
+      final row = _reportRows[saved['id']];
+      if (row == null) continue;
+      row.pass.text = saved['pass'] as String? ?? '';
+      row.fail.text = saved['fail'] as String? ?? '';
+      if (saved['key'] is String) row.idempotencyKey = saved['key'] as String;
+    }
+    _selectedItemIds = draftStrings(
+      data['selected'],
+    ).toSet().intersection(_reportRows.keys.toSet());
+    _draftReason = data['reason'] as String? ?? '';
+    _submission = data['submission'] == null
+        ? null
+        : QualityBatchSubmission.fromDraft(draftMap(data['submission']));
+    _submissionRejected = data['submissionRejected'] == true;
+  }
+
   PendingInspectionReceipt? _receipt;
   List<ProcurementInspectionItem> _items = const [];
 
@@ -1047,7 +1108,11 @@ class _ProcurementInspectionDetailPageState
         item.status != 'REVERSED';
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool preserveEdits = true}) async {
+    final retained = preserveEdits && _reportRows.isNotEmpty
+        ? captureFormDraft()
+        : null;
+    final reviewingRejected = retained != null && _submissionRejected;
     final request = ++_requestVersion;
     setState(() {
       _loading = true;
@@ -1088,6 +1153,29 @@ class _ProcurementInspectionDetailPageState
         _selectedItemIds = const {};
         _loading = false;
       });
+      if (reviewingRejected) {
+        // A definite rejection has no committed decision to replay. After a
+        // successful fresh read, retain the entered quantities but issue new
+        // command keys and retire the old pending-submission marker.
+        _submission = null;
+        _submissionRejected = false;
+        _draftReason = '';
+        await resetFormDraftAfterSubmission();
+        if (!mounted) return;
+        await restoreFormDraft({
+          ...retained,
+          'rows': [
+            for (final row in draftMaps(retained['rows']))
+              {...row}..remove('key'),
+          ],
+          'submission': null,
+          'submissionRejected': false,
+        });
+        await saveFormDraftNow();
+      } else {
+        if (retained != null) await restoreFormDraft(retained);
+        await initializeFormDraft();
+      }
     } on ApiException catch (error) {
       if (!mounted || request != _requestVersion) return;
       setState(() {
@@ -1119,6 +1207,10 @@ class _ProcurementInspectionDetailPageState
   /// 一次提交——总结确认弹窗（仿计划部下达采购）后走 decide-batch 单事务。
   Future<void> _submitReport() async {
     if (_busyDecision) return;
+    if (_submission != null) {
+      await _sendPendingReport();
+      return;
+    }
     final selected = _selectedItems;
     if (selected.isEmpty) {
       UtenNotify.warning(context, '请先勾选要提交的明细行');
@@ -1139,17 +1231,14 @@ class _ProcurementInspectionDetailPageState
       }
     }
     final rows = [for (final item in selected) _reportRows[item.id]!];
-    final passTotalText = inspectionQuantityTotalText(
-      context,
-      rows.map((row) => (row.item, row.passValue)),
-    );
-    final failTotalText = inspectionQuantityTotalText(
-      context,
-      rows.map((row) => (row.item, row.failValue)),
-    );
     final hasFail = rows.any((row) => row.failValue > 0);
     final reason = await showInspectionReportConfirmDialog(
       context,
+      initialReason: _draftReason,
+      onReasonChanged: (value) {
+        _draftReason = value;
+        markFormDraftChanged();
+      },
       lineCount: rows.length,
       passTotalText: inspectionQuantityTotalText(
         context,
@@ -1175,48 +1264,90 @@ class _ProcurementInspectionDetailPageState
       ],
     );
     if (reason == null || !mounted) return;
+    _submission = QualityBatchSubmission(
+      reason: reason.isEmpty ? null : reason,
+      fqcInspectionIds: const [],
+      receipts: [
+        QualityReceiptSubmission(
+          receiptType: widget.receiptType,
+          receiptId: widget.receiptId,
+          label: _receipt?.billNo ?? widget.receiptId,
+          items: [
+            for (final row in rows)
+              ProcurementInspectionDecideItem(
+                inspectionItemId: row.item.id,
+                expectedRemainingBaseQty: row.item.remainingBaseQty ?? 0,
+                passBaseQty: row.passValue,
+                failBaseQty: row.failValue,
+                idempotencyKey: row.idempotencyKey,
+              ),
+          ],
+        ),
+      ],
+    );
+    await _sendPendingReport();
+  }
+
+  Future<void> _sendPendingReport() async {
+    final submission = _submission!;
+    final retained = captureFormDraft();
     setState(() => _busyDecision = true);
     try {
-      await ref
-          .read(procurementInspectionRepositoryProvider)
-          .decideBatch(
-            receiptType: widget.receiptType,
-            receiptId: widget.receiptId,
-            reason: reason.isEmpty ? null : reason,
-            items: [
-              for (final row in rows)
-                ProcurementInspectionDecideItem(
-                  inspectionItemId: row.item.id,
-                  expectedRemainingBaseQty: row.item.remainingBaseQty ?? 0,
-                  passBaseQty: row.passValue,
-                  failBaseQty: row.failValue,
-                  idempotencyKey: row.idempotencyKey,
-                ),
-            ],
-          );
+      await runFormDraftSubmission(
+        () => submission.send(
+          iqc: ref.read(procurementInspectionRepositoryProvider),
+          fqc: ref.read(productionFqcRepositoryProvider),
+        ),
+      );
+      await completeFormDraft();
       if (!mounted) return;
-      final completedIds = selected.map((item) => item.id).toSet();
+      final completedIds = submission.receipts
+          .expand((receipt) => receipt.items)
+          .map((item) => item.inspectionItemId)
+          .toSet();
       setState(() {
         _items = [
           for (final row in _items)
             if (!completedIds.contains(row.id)) row,
         ];
         _selectedItemIds = const {};
+        _submission = null;
+        _submissionRejected = false;
+        _draftReason = '';
       });
-      await _load();
+      await _load(preserveEdits: false);
+      if (!mounted) return;
+      await resetFormDraftAfterSubmission();
+      final leftovers = draftMaps(
+        retained['rows'],
+      ).where((row) => !completedIds.contains(row['id'])).toList();
+      if (leftovers.isNotEmpty) {
+        await restoreFormDraft({
+          ...retained,
+          'rows': leftovers,
+          'selected': <String>[],
+          'reason': '',
+          'submission': null,
+        });
+        await saveFormDraftNow();
+      }
       // 徽章汇总重拉一次: 品质待检与仓库「品质部检查结果」红黄两数随之更新。
       refreshBadges(ref);
       if (mounted) {
-        UtenNotify.success(
-          context,
-          '检验报告已提交（合格 $passTotalText'
-          '${hasFail ? '、不合格 $failTotalText' : ''}）；'
-          '合格部分已转仓库待入库，尚未增加可用库存',
-        );
+        UtenNotify.success(context, '检验报告已提交；合格部分已转仓库待入库，尚未增加可用库存');
       }
     } on ApiException catch (error) {
       if (mounted) {
-        UtenNotify.error(context, '提交被拒：${error.message}；请刷新后按最新待检量重填');
+        final rejected =
+            error.code == 'CONFLICT' ||
+            const {400, 409, 422}.contains(error.httpStatus);
+        setState(() => _submissionRejected = rejected);
+        UtenNotify.error(
+          context,
+          rejected
+              ? '提交被拒：${error.message}；请刷新后按最新待检量重填'
+              : '提交结果尚未确认：${error.message}；请重试原报告核对，原数量和请求编号已保留',
+        );
       }
     } catch (_) {
       if (mounted) {
@@ -1237,7 +1368,9 @@ class _ProcurementInspectionDetailPageState
         size: UtenButtonSize.large,
         icon: Icons.fact_check_outlined,
         isLoading: _busyDecision,
-        onPressed: selectedIds.isEmpty || _busyDecision ? null : _submitReport,
+        onPressed: (selectedIds.isEmpty && _submission == null) || _busyDecision
+            ? null
+            : _submitReport,
         onDisabledTap: selectedIds.isEmpty
             ? () => UtenNotify.warning(context, '请先勾选要提交的明细行')
             : null,
@@ -1248,6 +1381,10 @@ class _ProcurementInspectionDetailPageState
 
   @override
   Widget build(BuildContext context) {
+    return withFormDraft(_buildEditor(context));
+  }
+
+  Widget _buildEditor(BuildContext context) {
     final receipt = _receipt;
     return Scaffold(
       appBar: UtenAppBar(
@@ -1280,6 +1417,14 @@ class _ProcurementInspectionDetailPageState
   }
 
   Widget _buildBody() {
+    if (_submission != null && _items.isEmpty) {
+      return UtenEmpty(
+        message: '上次检验报告提交结果待确认',
+        description: '原始数量和请求编号已保留，核对将使用原报告，不会生成新的检验决定。',
+        actionLabel: '核对原报告',
+        onAction: _busyDecision ? null : _sendPendingReport,
+      );
+    }
     // 无快照且拿不到摘要：加载中 / 加载失败 / 不存在（或已处理完）三态。
     if (_receipt == null && _items.isEmpty) {
       if (_loading) {
@@ -1597,7 +1742,7 @@ class _ProcurementInspectionDetailPageState
           child: TextField(
             key: ValueKey('iqc-report-pass-${item.id}'),
             controller: row.pass,
-            enabled: _canHandle && !_busyDecision,
+            enabled: _canHandle && !_busyDecision && _submission == null,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             textAlign: TextAlign.right,
             decoration: const UtenInputDecoration(
@@ -1623,7 +1768,7 @@ class _ProcurementInspectionDetailPageState
           child: TextField(
             key: ValueKey('iqc-report-fail-${item.id}'),
             controller: row.fail,
-            enabled: _canHandle && !_busyDecision,
+            enabled: _canHandle && !_busyDecision && _submission == null,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             textAlign: TextAlign.right,
             decoration: UtenInputDecoration(
@@ -1669,7 +1814,7 @@ class _InspectionReportRow {
   final ProcurementInspectionItem item;
   final TextEditingController pass;
   final TextEditingController fail;
-  final String idempotencyKey = 'iqc-report-${const Uuid().v4()}';
+  String idempotencyKey = 'iqc-report-${const Uuid().v4()}';
 
   double get passValue => double.tryParse(pass.text.trim()) ?? 0;
   double get failValue => double.tryParse(fail.text.trim()) ?? 0;

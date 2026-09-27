@@ -3,6 +3,7 @@
 // 老库 F_DateReport 从未启用（docs/数据迁移/23 §2.2），本期建空结构保未来启用零成本。
 // UI 完整但预期 0 行。结构与生产计划单列表页同构（MasterDataTableView + 状态分段工具条）。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_category.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -19,23 +20,35 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/document_permission_set.dart';
+import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/mixins/draft_bulk_delete_mixin.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../models/production_daily_report.dart';
 import '../repositories/production_repository.dart';
 
 class ProductionDailyReportListPage extends ConsumerStatefulWidget {
-  const ProductionDailyReportListPage({super.key, this.initialStatus});
+  const ProductionDailyReportListPage({
+    super.key,
+    this.initialStatus,
+    this.embedded = false,
+  });
 
   /// 深链预选（路由 `?status=draft`）：新建页「草稿(N)」按钮进来时直接落在草稿段。
   final String? initialStatus;
+
+  /// 内嵌模式（生产任务中心「草稿」段嵌入本页时）：剥掉 Scaffold 只留表体，
+  /// 状态分段/搜索/草稿合并照旧（与采购 hub 嵌入 PurchaseDocListPage 同款）。
+  final bool embedded;
 
   @override
   ConsumerState<ProductionDailyReportListPage> createState() =>
@@ -43,7 +56,8 @@ class ProductionDailyReportListPage extends ConsumerStatefulWidget {
 }
 
 class _ProductionDailyReportListPageState
-    extends ConsumerState<ProductionDailyReportListPage> {
+    extends ConsumerState<ProductionDailyReportListPage>
+    with DraftBulkDeleteMixin<ProductionDailyReportListPage> {
   final _list = PagedListController<ProductionDailyReportListItem>();
   int? _statusFilter;
   bool _statusFilterSelected = false; // 进页面不预选（不选=不过滤）
@@ -80,6 +94,38 @@ class _ProductionDailyReportListPageState
     DocumentPermissionAction.create,
   );
 
+  bool get _canDeleteDrafts =>
+      _statusFilter == kProductionStatusDraft &&
+      DocumentPermissionCatalog.productionDailyReport.allows(
+        ref.read(currentPermissionsProvider),
+        DocumentPermissionAction.delete,
+      );
+
+  Future<void> _deleteDraft(String id) async {
+    final scope = ref.read(authenticatedScopeProvider);
+    bool isCurrent() =>
+        mounted &&
+        scope != null &&
+        !scope.readOnly &&
+        ref.read(authenticatedScopeProvider) == scope &&
+        selectedDraftIds.contains(id) &&
+        _canDeleteDrafts;
+    final repository = ref.read(productionDailyReportRepositoryProvider);
+    final current = await repository.detail(id);
+    if (!isCurrent() || current.status != kProductionStatusDraft) {
+      throw ApiException('CONFLICT', '生产日报状态已变化，仅能删除草稿');
+    }
+    final canWrite = await loadDocumentOwnerCanWrite(
+      ref,
+      DocumentDataScope.productionPlan,
+      current.makerId,
+    );
+    if (!isCurrent() || !canWrite) {
+      throw ApiException('FORBIDDEN', documentScopeReadOnlyMessage);
+    }
+    await repository.delete(id);
+  }
+
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
   Future<PagedResult<ProductionDailyReportListItem>> _fetch() => ref
       .read(productionDailyReportRepositoryProvider)
@@ -99,13 +145,19 @@ class _ProductionDailyReportListPageState
     DraftDocKind.productionDailyReport,
   );
 
-  Future<void> _reload([int? page, bool silent = false]) {
+  Future<void> _reload([int? page, bool silent = false]) async {
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
     ref.invalidate(documentStatusCountsProvider(_statusScope));
-    return _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+    await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+    if (!mounted) return;
+    retainDraftSelection([
+      for (final item in _list.page?.items ?? <ProductionDailyReportListItem>[])
+        if (item.status == kProductionStatusDraft) item.id,
+    ]);
   }
 
   void _onStatus(int? s) {
+    clearDraftSelection();
     setState(() {
       _statusFilter = s;
       _statusFilterSelected = true;
@@ -116,12 +168,14 @@ class _ProductionDailyReportListPageState
   /// 表头筛选回调：车间值并进 repository.list 的 departmentId，重拉回第 1 页。
   void _onColumnFilterChanged(String key, String? value) {
     if (key != 'workshop') return;
+    clearDraftSelection();
     setState(() => _workshopIdFilter = value);
     _reload(1);
   }
 
   /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
   void _onSortChange(String? column, bool ascending) {
+    clearDraftSelection();
     _list.onSortChange(column, ascending);
     _reload(1);
   }
@@ -163,19 +217,33 @@ class _ProductionDailyReportListPageState
     ),
   ];
 
+  FormDraftCategoryScope get _formDraftScope =>
+      const FormDraftCategoryScope(kind: 'productionDailyReport');
+
+  Widget _withFormDraftRows(
+    MasterDataTableView<ProductionDailyReportListItem> table,
+  ) => _statusFilter == kProductionStatusDraft
+      ? FormDraftCategoryTable<ProductionDailyReportListItem>(
+          scope: _formDraftScope,
+          table: table,
+          search: _list.keyword,
+          formalId: (item) => item.id,
+        )
+      : table;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     // 分段计数(一次请求带回草稿/已审/红冲三桶); 加载中或无权限为 null, 不渲染数字。
     final statusCounts = ref
-        .watch(documentStatusCountsProvider(_statusScope))
+        .watch(effectiveDocumentStatusCountsProvider(_statusScope))
         .valueOrNull;
     // 返回即刷新：从详情/编辑页（保存/审核/删除后）回到本列表时静默重拉当前页，
     // 不再停留在进入子页前的老数据。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
     ref.onPageResume(_myLocation!, () => _reload(null, true));
-    return Scaffold(
+    final page = Scaffold(
       appBar: UtenAppBar(
         title: '生产日报表',
         leading: UtenBackButton(
@@ -225,6 +293,7 @@ class _ProductionDailyReportListPageState
                               hint: '搜索单据号',
                               initialValue: _list.keyword,
                               onChanged: (v) {
+                                clearDraftSelection();
                                 _list.keyword = v;
                                 _reload(1);
                               },
@@ -278,30 +347,52 @@ class _ProductionDailyReportListPageState
                       ),
                     ),
                     Expanded(
-                      child: MasterDataTableView<ProductionDailyReportListItem>(
-                        columns: _columns(names),
-                        items: _list.page?.items ?? const [],
-                        facets: {
-                          'workshop': masterDictionaryFacets(
-                            names.departmentEntries,
+                      child: _withFormDraftRows(
+                        MasterDataTableView<ProductionDailyReportListItem>(
+                          columns: _columns(names),
+                          items: _list.page?.items ?? const [],
+                          facets: {
+                            'workshop': masterDictionaryFacets(
+                              names.departmentEntries,
+                            ),
+                          },
+                          nullCounts: const {},
+                          filters: {'workshop': _workshopIdFilter},
+                          onFilterChanged: _onColumnFilterChanged,
+                          sortColumn: _list.sortKey,
+                          sortAscending: _list.sortAsc,
+                          onSortChange: _onSortChange,
+                          onRowTap: (it) => context.push(
+                            '/production/daily-reports/${it.id}',
                           ),
-                        },
-                        nullCounts: const {},
-                        filters: {'workshop': _workshopIdFilter},
-                        onFilterChanged: _onColumnFilterChanged,
-                        sortColumn: _list.sortKey,
-                        sortAscending: _list.sortAsc,
-                        onSortChange: _onSortChange,
-                        onRowTap: (it) =>
-                            context.push('/production/daily-reports/${it.id}'),
-                        isLoading: _list.isLoadingFirst,
-                        loadingMore: _list.isLoadingMore,
-                        error: _list.error,
-                        onRetry: () => _reload(),
-                        emptyMessage: '暂无日报数据',
-                        currentPage: _list.currentPage,
-                        totalPages: _list.totalPages,
-                        onPageChange: (p) => _reload(p),
+                          selectable: _canDeleteDrafts,
+                          idOf: (it) =>
+                              !draftDeleteBusy &&
+                                  !_list.loading &&
+                                  it.status == kProductionStatusDraft
+                              ? it.id
+                              : null,
+                          rowKeyOf: (it) => it.id,
+                          selectedIds: selectedDraftIds,
+                          onSelectedIdsChanged: draftDeleteBusy
+                              ? null
+                              : selectDraftIds,
+                          batchActionsBuilder: (_, _) => [
+                            buildDraftDeleteButton(
+                              documentLabel: '生产日报',
+                              delete: _deleteDraft,
+                              reload: () => _reload(1),
+                            ),
+                          ],
+                          isLoading: _list.isLoadingFirst,
+                          loadingMore: _list.isLoadingMore,
+                          error: _list.error,
+                          onRetry: () => _reload(),
+                          emptyMessage: '暂无日报数据',
+                          currentPage: _list.currentPage,
+                          totalPages: _list.totalPages,
+                          onPageChange: (p) => _reload(p),
+                        ),
                       ),
                     ),
                   ],
@@ -312,5 +403,7 @@ class _ProductionDailyReportListPageState
         ),
       ),
     );
+    // 内嵌（生产任务中心「草稿」段）：剥掉 Scaffold/AppBar，只留筛选+表体。
+    return widget.embedded ? page.body! : page;
   }
 }

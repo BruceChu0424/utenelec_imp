@@ -7,6 +7,7 @@
 import '../../../shared/models/progress_ratio.dart';
 import '../../../shared/models/subcontract_task_source.dart';
 import 'material_analysis_projection.dart';
+import 'material_preparation_supply_slice.dart';
 
 enum MaterialSupplyRoute {
   make('MAKE', '自制'),
@@ -813,6 +814,8 @@ class ProductionMaterialAnalysisProduct {
     this.planExecutionZeroMaterial = false,
     this.planExecutionWorkshopName,
     this.planExecutionResponsibleName,
+    this.planExecutionWorkshopId,
+    this.planExecutionResponsibleId,
     this.owningWarehouseId,
     this.owningWarehouseName,
     this.owningWorkshopId,
@@ -908,6 +911,8 @@ class ProductionMaterialAnalysisProduct {
   /// 最新计划执行段的 生产车间 / 负责人（分桶已下达表显示）。
   final String? planExecutionWorkshopName;
   final String? planExecutionResponsibleName;
+  final String? planExecutionWorkshopId;
+  final String? planExecutionResponsibleId;
 
   /// 服务端明确区分“可以先排给车间”和“当前物料已经齐套”。旧服务端没有
   /// 新字段时保守回退原 ready-now 门禁，避免客户端越权放开待料排产。
@@ -977,6 +982,8 @@ class ProductionMaterialAnalysisProduct {
     planExecutionZeroMaterial: json['planExecutionZeroMaterial'] == true,
     planExecutionWorkshopName: _string(json['planExecutionWorkshopName']),
     planExecutionResponsibleName: _string(json['planExecutionResponsibleName']),
+    planExecutionWorkshopId: _string(json['planExecutionWorkshopId']),
+    planExecutionResponsibleId: _string(json['planExecutionResponsibleId']),
     owningWarehouseId: _string(json['owningWarehouseId']),
     owningWarehouseName: _string(json['owningWarehouseName']),
     owningWorkshopId: _string(json['owningWorkshopId']),
@@ -1070,6 +1077,50 @@ extension ProductionMaterialAnalysisBatchSuggestion
   }
 }
 
+/// 原 BOM 行的办理投影。目标身份由服务端精确来源关系解析，命令仍提交原行。
+class MaterialAggregatePreparation {
+  const MaterialAggregatePreparation({
+    required this.requiredQty,
+    required this.orderedQty,
+    required this.allocatedOrderedQty,
+    required this.totalOrderedQty,
+    required this.orderedQtyExact,
+    required this.planningUncoveredQty,
+    required this.netShortageQty,
+    required this.targetMaterialLineIds,
+    required this.actionable,
+  });
+
+  final double requiredQty;
+  final double orderedQty;
+  final double allocatedOrderedQty;
+  final double totalOrderedQty;
+  final bool orderedQtyExact;
+  final double planningUncoveredQty;
+  final double netShortageQty;
+  final List<String> targetMaterialLineIds;
+  final bool actionable;
+
+  factory MaterialAggregatePreparation.fromJson(Map<String, dynamic> json) =>
+      MaterialAggregatePreparation(
+        requiredQty: _double(json['requiredQty']) ?? 0,
+        orderedQty: _double(json['orderedQty']) ?? 0,
+        allocatedOrderedQty: _double(json['allocatedOrderedQty']) ?? 0,
+        totalOrderedQty:
+            _double(json['totalOrderedQty']) ??
+            _double(json['orderedQty']) ??
+            0,
+        orderedQtyExact: json['orderedQtyExact'] != false,
+        planningUncoveredQty: _double(json['planningUncoveredQty']) ?? 0,
+        netShortageQty: _double(json['netShortageQty']) ?? 0,
+        targetMaterialLineIds: [
+          for (final id in json['targetMaterialLineIds'] as List? ?? const [])
+            ?_string(id),
+        ],
+        actionable: json['actionable'] == true,
+      );
+}
+
 class ProductionMaterialAnalysisMaterial {
   const ProductionMaterialAnalysisMaterial({
     required this.materialLineId,
@@ -1102,6 +1153,14 @@ class ProductionMaterialAnalysisMaterial {
     this.reservedQty = 0,
     this.safetyStockQty = 0,
     this.mainWarehousePublicAvailableQty = 0,
+    this.preparationAvailableQty,
+    this.preparationAdoptedQty = 0,
+    this.preparationPoolKey,
+    this.preparationSharedAvailableQty,
+    this.preparationOwnedAvailableQty,
+    this.preparationUncoveredBeforeSharedQty,
+    this.preparationAdoptableSharedQty,
+    this.preparationSharedSupplySlices,
     this.mainWarehouseOpenSafetySupplyQty = 0,
     this.mainWarehouseSafetyReplenishmentGapQty = 0,
     this.inboundQty = 0,
@@ -1132,6 +1191,8 @@ class ProductionMaterialAnalysisMaterial {
     this.delegatedToSourceRef,
     this.delegatedToRequestedQty,
     this.aggregateDelegatedQty = 0,
+    this.aggregateTargetMaterialLineId,
+    this.aggregatePreparation,
     this.sourceSuggestion,
     this.sourceConfirmed,
     this.routeConfirmed = false,
@@ -1247,6 +1308,18 @@ class ProductionMaterialAnalysisMaterial {
   /// Server-calculated main-warehouse public budget, repeated across BOM paths.
   /// Leaf warehouse breakdowns remain explanatory and cannot replace this scope.
   final double mainWarehousePublicAvailableQty;
+
+  /// 准备页可采用供给：现货、已下单待办理及在途，排除已被来源占用的份额。
+  final double? preparationAvailableQty;
+
+  /// 本行已经采用的供给，包含有效在途和已到货；不是本行新增下单数量。
+  final double preparationAdoptedQty;
+  final String? preparationPoolKey;
+  final double? preparationSharedAvailableQty;
+  final double? preparationOwnedAvailableQty;
+  final double? preparationUncoveredBeforeSharedQty;
+  final double? preparationAdoptableSharedQty;
+  final List<MaterialPreparationSupplySlice>? preparationSharedSupplySlices;
   final double mainWarehouseOpenSafetySupplyQty;
   final double mainWarehouseSafetyReplenishmentGapQty;
   final double inboundQty;
@@ -1329,6 +1402,10 @@ class ProductionMaterialAnalysisMaterial {
   /// requiredQty 归零、没有自己的下单引用——产品视图靠它把行锁成
   /// 「已并入共享批次 N」，而不是显示成可填的 0。
   final double aggregateDelegatedQty;
+
+  /// 精确来源关系只有一个目标时的物料行。不得按相同货品猜测目标身份。
+  final String? aggregateTargetMaterialLineId;
+  final MaterialAggregatePreparation? aggregatePreparation;
   final MaterialSupplyRoute? sourceSuggestion;
   final MaterialSupplyRoute? sourceConfirmed;
   final bool routeConfirmed;
@@ -1412,6 +1489,31 @@ class ProductionMaterialAnalysisMaterial {
     safetyStockQty: _double(json['safetyStockQty']) ?? 0,
     mainWarehousePublicAvailableQty:
         _double(json['mainWarehousePublicAvailableQty']) ?? 0,
+    preparationAvailableQty: _double(json['preparationAvailableQty']),
+    preparationAdoptedQty: _double(json['preparationAdoptedQty']) ?? 0,
+    preparationPoolKey: _string(json['preparationPoolKey']),
+    preparationSharedAvailableQty:
+        _double(json['preparationSharedAvailableQty']) ??
+        (json['preparationPoolKey'] == null ? null : 0),
+    preparationOwnedAvailableQty:
+        _double(json['preparationOwnedAvailableQty']) ??
+        (json['preparationPoolKey'] == null ? null : 0),
+    preparationUncoveredBeforeSharedQty:
+        _double(json['preparationUncoveredBeforeSharedQty']) ??
+        (json['preparationPoolKey'] == null ? null : 0),
+    preparationAdoptableSharedQty: _double(
+      json['preparationAdoptableSharedQty'],
+    ),
+    preparationSharedSupplySlices: json['preparationSharedSupplySlices'] is List
+        ? (json['preparationSharedSupplySlices'] as List)
+              .whereType<Map<Object?, Object?>>()
+              .map(
+                (value) => MaterialPreparationSupplySlice.fromJson(
+                  value.cast<String, dynamic>(),
+                ),
+              )
+              .toList(growable: false)
+        : null,
     mainWarehouseOpenSafetySupplyQty:
         _double(json['mainWarehouseOpenSafetySupplyQty']) ?? 0,
     mainWarehouseSafetyReplenishmentGapQty:
@@ -1461,6 +1563,14 @@ class ProductionMaterialAnalysisMaterial {
     delegatedToSourceRef: _string(json['delegatedToSourceRef']),
     delegatedToRequestedQty: _double(json['delegatedToRequestedQty']),
     aggregateDelegatedQty: _double(json['aggregateDelegatedQty']) ?? 0,
+    aggregateTargetMaterialLineId: _string(
+      json['aggregateTargetMaterialLineId'],
+    ),
+    aggregatePreparation: json['aggregatePreparation'] is Map
+        ? MaterialAggregatePreparation.fromJson(
+            (json['aggregatePreparation'] as Map).cast<String, dynamic>(),
+          )
+        : null,
     sourceSuggestion: MaterialSupplyRoute.fromWire(
       json['sourceSuggestion'] ?? json['suggestedRoute'],
     ),

@@ -11,6 +11,7 @@ import 'package:uten_imp/features/production/pages/production_workshop_tasks_pag
 import 'package:uten_imp/features/production/providers/production_department_provider.dart';
 import 'package:uten_imp/features/production/providers/production_execution_refresh.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/production/widgets/production_execution_group_panel.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -149,6 +150,10 @@ class _Repository extends ProductionExecutionWorkbenchRepository {
     String? workshopDepartmentId,
     String? dateFrom,
     String? dateTo,
+    String? analysisNo,
+    String? segmentCode,
+    String? sort,
+    String? order,
   }) async {
     statuses.add(status);
     taskLoads++;
@@ -179,9 +184,9 @@ class _Repository extends ProductionExecutionWorkbenchRepository {
     int page = 1,
     int size = 50,
     String keyword = '',
-    String? workshopDepartmentId,
-    String sort = 'latestEndDate',
-    String order = 'asc',
+    String? sort,
+    String? order,
+    String? salesOrder,
   }) async {
     groupLoads++;
     return PagedResult(
@@ -201,4 +206,21 @@ class _Repository extends ProductionExecutionWorkbenchRepository {
       totalPages: 1,
     );
   }
+
+  // 2026-09-25 单号列统一：面板列表加载后还会拉一次关联订单 facets，测试桩静默置空。
+  @override
+  Future<Map<String, List<MasterFacetBucket>>> groupFacets({
+    String keyword = '',
+  }) async => const {};
+
+  @override
+  Future<Map<String, List<MasterFacetBucket>>> workshopTaskFacets({
+    String keyword = '',
+    String? status,
+    String? preparationFilter,
+    String? routeFilter,
+    String? workshopDepartmentId,
+    String? dateFrom,
+    String? dateTo,
+  }) async => const {};
 }

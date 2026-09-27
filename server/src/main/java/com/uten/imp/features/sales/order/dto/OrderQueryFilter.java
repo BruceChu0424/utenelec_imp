@@ -17,13 +17,15 @@ public record OrderQueryFilter(
         java.util.List<Short> chain,
         UUID sellerId,
         String chainGroup,
-        UUID currencyId) {
+        UUID currencyId,
+        /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配，分页前服务端生效。 */
+        String billNo) {
 
     /** 兼容旧调用（无 chainGroup/currencyId）。 */
     public OrderQueryFilter(
             String keyword, UUID clientId, Short status, Boolean closed,
             LocalDate dateFrom, LocalDate dateTo, java.util.List<Short> chain, UUID sellerId) {
-        this(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, null, null);
+        this(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, null, null, null);
     }
 
     /** 兼容旧调用（无 currencyId）。 */
@@ -31,6 +33,14 @@ public record OrderQueryFilter(
             String keyword, UUID clientId, Short status, Boolean closed,
             LocalDate dateFrom, LocalDate dateTo, java.util.List<Short> chain,
             UUID sellerId, String chainGroup) {
-        this(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, null);
+        this(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, null, null);
+    }
+
+    /** 兼容旧调用（无 billNo）。 */
+    public OrderQueryFilter(
+            String keyword, UUID clientId, Short status, Boolean closed,
+            LocalDate dateFrom, LocalDate dateTo, java.util.List<Short> chain,
+            UUID sellerId, String chainGroup, UUID currencyId) {
+        this(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId, null);
     }
 }

@@ -45,6 +45,7 @@ class MaterialAggregateOrderGroupInput {
     this.productNo,
     this.allowedOverproductionRate,
     this.safetyQty = '0',
+    this.sourceRequestedQtyByMaterialLineId,
   });
   final String clientGroupKey, qty;
   final List<String> materialLineIds;
@@ -58,6 +59,7 @@ class MaterialAggregateOrderGroupInput {
       productNo;
   final double? allowedOverproductionRate;
   final String safetyQty;
+  final Map<String, String>? sourceRequestedQtyByMaterialLineId;
 
   Map<String, dynamic> toJson() => {
     'clientGroupKey': clientGroupKey,
@@ -73,6 +75,7 @@ class MaterialAggregateOrderGroupInput {
     'productNo': ?productNo,
     'allowedOverproductionRate': ?allowedOverproductionRate,
     'safetyQty': safetyQty,
+    'sourceRequestedQtyByMaterialLineId': ?sourceRequestedQtyByMaterialLineId,
   };
 }
 
@@ -109,6 +112,12 @@ class MaterialAggregateOrderRequest {
 class MaterialAggregateSourceAllocation {
   MaterialAggregateSourceAllocation.fromJson(Map<String, dynamic> json)
     : materialLineId = json['materialLineId'] as String,
+      hasOriginalMaterialLineIds = json.containsKey('originalMaterialLineIds'),
+      originalMaterialLineIds = List<String>.from(
+        json.containsKey('originalMaterialLineIds')
+            ? json['originalMaterialLineIds'] as List? ?? const []
+            : [json['materialLineId'] as String],
+      ),
       analysisLineId = json['analysisLineId'] as String?,
       sourceLabel = json['sourceLabel'] as String? ?? '',
       allocationPriority = (json['allocationPriority'] as num?)?.toInt() ?? 0,
@@ -118,6 +127,10 @@ class MaterialAggregateSourceAllocation {
       allocatedQty = _amount(json['allocatedQty']),
       orderedQty = _amount(json['orderedQty']);
   final String materialLineId, sourceLabel;
+
+  /// Exact original request identities represented by this effective ledger row.
+  final List<String> originalMaterialLineIds;
+  final bool hasOriginalMaterialLineIds;
   final String? analysisLineId, needDate;
   final int allocationPriority;
   final double sourceRequiredQty, remainingQty, allocatedQty, orderedQty;
@@ -241,7 +254,7 @@ class MaterialAggregateOrderPreview {
 
 class MaterialAggregateOrderBatch {
   MaterialAggregateOrderBatch.fromJson(Map<String, dynamic> json)
-    : batchId = json['batchId'] as String,
+    : batchId = json['batchId'] as String?,
       clientGroupKey = json['clientGroupKey'] as String,
       route = MaterialSupplyRoute.fromWire(json['route']),
       documentType = json['documentType'] as String? ?? '',
@@ -251,14 +264,20 @@ class MaterialAggregateOrderBatch {
       anchorAnalysisItemId = json['anchorAnalysisItemId'] as String?,
       qty = _amount(json['qty']),
       publicExtraQty = _amount(json['publicExtraQty']),
+      generatedPlan = json['generatedPlan'] is Map
+          ? ProductionGeneratedPlanRef.fromJson(
+              Map<String, dynamic>.from(json['generatedPlan'] as Map),
+            )
+          : null,
       sources = _list(
         json['sources'],
         MaterialAggregateSourceAllocation.fromJson,
       );
-  final String batchId, clientGroupKey, documentType, documentNo;
-  final String? documentId, planId, anchorAnalysisItemId;
+  final String clientGroupKey, documentType, documentNo;
+  final String? batchId, documentId, planId, anchorAnalysisItemId;
   final MaterialSupplyRoute? route;
   final double qty, publicExtraQty;
+  final ProductionGeneratedPlanRef? generatedPlan;
   final List<MaterialAggregateSourceAllocation> sources;
 }
 

@@ -23,7 +23,9 @@ class PreplanFutureSupplyMigrationPostgresTest {
             assertThat(result.migrationsExecuted).isEqualTo(MigrationRehearsalSupport.CURRENT_MIGRATION_COUNT);
             var db=new JdbcTemplate(new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()));
             String definition=db.queryForObject("SELECT pg_get_viewdef('v_preplan_public_surplus_source_state'::regclass,true)",String.class);
-            assertThat(definition).contains("fn_preplan_public_source_approved_capacity", "fn_preplan_public_source_open_qty",
+            assertThat(definition).contains("fn_preplan_public_surplus_sources(NULL::uuid)");
+            String canonical=db.queryForObject("SELECT pg_get_functiondef('fn_preplan_public_surplus_sources(uuid)'::regprocedure)",String.class);
+            assertThat(canonical).contains("fn_preplan_public_source_approved_capacity", "fn_preplan_public_source_open_qty",
                     "fn_procurement_order_source_pending_qty", "fn_preplan_action_received_qty");
             UUID absent=UUID.randomUUID();
             assertThat(db.queryForObject("SELECT fn_procurement_order_source_pending_qty('PURCHASE',?,?)",BigDecimal.class,absent,absent)).isEqualByComparingTo("0");

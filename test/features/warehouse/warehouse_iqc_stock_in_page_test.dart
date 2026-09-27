@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 
 import '../../support/filter_segment_tap.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -180,6 +181,14 @@ Widget _qualityApp(
 
 class _QualityGateway implements WarehouseQualityResultGateway {
   @override
+  Future<List<MasterFacetBucket>> billNoFacets({
+    WarehouseIqcStockInReceiptType? receiptType,
+    WarehouseQualityWorkStatus? workStatus,
+    String? keyword,
+    String? dateFrom,
+    String? dateTo,
+  }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
+  @override
   Future<PagedResult<WarehouseQualityResultTask>> list({
     int page = 1,
     int size = 40,
@@ -188,6 +197,9 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     String? keyword,
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
+    String? billNo,
   }) async => PagedResult(
     items: [WarehouseQualityResultTask.fromJson(_qualitySummaryJson)],
     page: page,

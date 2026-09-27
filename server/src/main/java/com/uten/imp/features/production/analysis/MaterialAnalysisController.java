@@ -42,6 +42,18 @@ public class MaterialAnalysisController {
     private final AuditDetailViewRecorder detailViewAudit;
     private final GoodsOwningWarehouseWriteService goodsOwningWarehouses;
 
+    @PostMapping("/{id}/make-public-claims")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:claim_shared_future')")
+    public AnalysisView claimMakePublicSupply(@PathVariable UUID id,@Valid @RequestBody PreplanMakePublicSupplyService.ClaimRequest request) {
+        return commandService.claimMakePublicSupply(id,request);
+    }
+
+    @PostMapping("/{id}/make-public-claims/{claimId}/cancel")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:claim_shared_future')")
+    public AnalysisView cancelMakePublicClaim(@PathVariable UUID id,@PathVariable UUID claimId,@Valid @RequestBody PreplanMakePublicSupplyService.CancelRequest request) {
+        return commandService.cancelMakePublicClaim(id,claimId,request);
+    }
+
     @GetMapping
     @PreAuthorize("hasAuthority('production_material_analysis:view')")
     public PageResponse<AnalysisListItem> list(
@@ -58,8 +70,24 @@ public class MaterialAnalysisController {
     public SalesCandidatePage salesCandidates(
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return queryService.salesCandidates(keyword, page, size);
+            @RequestParam(defaultValue = "20") int size,
+            // 2026-09-25 单号列统一：销售单号表头排序（orderNo 白名单）+ 值筛选。
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String orderBillNo) {
+        return queryService.salesCandidates(keyword, page, size, sort, order,
+                orderBillNo);
+    }
+
+    /**
+     * 销售单号列 facets（2026-09-25 单号列统一）：{orderNo:[…]}，与候选列表
+     * 同一过滤参数（keyword；不含单号自身的值筛选）。
+     */
+    @GetMapping("/sales-candidates/facets")
+    @PreAuthorize("hasAuthority('production_material_analysis:view')")
+    public java.util.Map<String, List<java.util.Map<String, Object>>> salesCandidateFacets(
+            @RequestParam(required = false) String keyword) {
+        return queryService.salesCandidatesFacets(keyword);
     }
 
     // 2026-09-16：GET /last-routes(按历史分析推导「上次确认路线」的预填记忆)已退役——

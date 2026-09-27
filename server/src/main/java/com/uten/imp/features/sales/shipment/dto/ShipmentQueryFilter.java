@@ -31,17 +31,19 @@ public record ShipmentQueryFilter(
         String shipmentKind,
         UUID currencyId,
         String stage,
-        WarehouseTaskScope warehouseScope) {
+        WarehouseTaskScope warehouseScope,
+        /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配，分页前服务端生效。 */
+        String billNo) {
     public ShipmentQueryFilter {
         warehouseScope = warehouseScope == null ? WarehouseTaskScope.ALL : warehouseScope;
     }
 
-    /** 兼容旧调用：不按仓库范围过滤。 */
+    /** 兼容旧调用：不按仓库范围过滤、无单据号筛选。 */
     public ShipmentQueryFilter(String keyword,UUID clientId,UUID warehouseId,Short status,Boolean arPosted,
             Short financeAudit,Boolean financeRejected,String warehouseWorkStatus,
             LocalDate dateFrom,LocalDate dateTo,String shipmentKind,UUID currencyId,String stage) {
         this(keyword,clientId,warehouseId,status,arPosted,financeAudit,financeRejected,
-                warehouseWorkStatus,dateFrom,dateTo,shipmentKind,currencyId,stage,WarehouseTaskScope.ALL);
+                warehouseWorkStatus,dateFrom,dateTo,shipmentKind,currencyId,stage,WarehouseTaskScope.ALL,null);
     }
     /** 兼容旧调用：不按退回标记过滤。 */
     public ShipmentQueryFilter(String keyword,UUID clientId,UUID warehouseId,Short status,Boolean arPosted,
@@ -61,5 +63,13 @@ public record ShipmentQueryFilter(
             LocalDate dateFrom,LocalDate dateTo,String shipmentKind,UUID currencyId) {
         this(keyword,clientId,warehouseId,status,arPosted,financeAudit,financeRejected,
                 warehouseWorkStatus,dateFrom,dateTo,shipmentKind,currencyId,null);
+    }
+    /** 兼容旧调用：有仓库范围、无单据号筛选（2026-09-25 单号列统一前的旧全参签名）。 */
+    public ShipmentQueryFilter(String keyword,UUID clientId,UUID warehouseId,Short status,Boolean arPosted,
+            Short financeAudit,Boolean financeRejected,String warehouseWorkStatus,
+            LocalDate dateFrom,LocalDate dateTo,String shipmentKind,UUID currencyId,String stage,
+            WarehouseTaskScope warehouseScope) {
+        this(keyword,clientId,warehouseId,status,arPosted,financeAudit,financeRejected,
+                warehouseWorkStatus,dateFrom,dateTo,shipmentKind,currencyId,stage,warehouseScope,null);
     }
 }

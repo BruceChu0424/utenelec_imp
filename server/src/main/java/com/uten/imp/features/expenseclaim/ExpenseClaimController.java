@@ -51,8 +51,13 @@ public class ExpenseClaimController {
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) String category,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return service.listMine(status, year, month, departmentId, category, page, size);
+            @RequestParam(defaultValue = "20") int size,
+            // 2026-09-25 单号列统一：报销单号表头排序 + 值筛选（精确匹配）。
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String claimNo) {
+        return service.listMine(status, year, month, departmentId, category,
+                page, size, sort, order, claimNo);
     }
 
     @GetMapping("/pending")
@@ -63,8 +68,13 @@ public class ExpenseClaimController {
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) String category,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return service.listPending(year, month, departmentId, category, page, size);
+            @RequestParam(defaultValue = "20") int size,
+            // 2026-09-25 单号列统一：报销单号表头排序 + 值筛选（精确匹配）。
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String claimNo) {
+        return service.listPending(year, month, departmentId, category, page,
+                size, sort, order, claimNo);
     }
 
     @GetMapping("/payable")
@@ -75,16 +85,22 @@ public class ExpenseClaimController {
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) String category,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return service.listPayable(year, month, departmentId, category, page, size);
+            @RequestParam(defaultValue = "20") int size,
+            // 2026-09-25 单号列统一：报销单号表头排序 + 值筛选（精确匹配）。
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String claimNo) {
+        return service.listPayable(year, month, departmentId, category, page,
+                size, sort, order, claimNo);
     }
 
     /**
-     * 审批/打款队列表头筛选桶（部门/年月）。queue=pending|payable，权限与对应列表一致
-     *（服务层按队列再校验 expense:approve / expense:pay）。
+     * 审批/打款队列表头筛选桶（部门/年月）。queue=pending|payable|history|mine，权限与
+     * 对应列表一致（服务层按队列再校验 expense:approve / expense:pay / expense:apply；
+     * mine 为我的报销单号桶，2026-09-25 单号列统一）。
      */
     @GetMapping("/facets")
-    @PreAuthorize("hasAnyAuthority('expense:approve','expense:pay')")
+    @PreAuthorize("hasAnyAuthority('expense:approve','expense:pay','expense:apply')")
     public ExpenseClaimFacetsDto facets(@RequestParam String queue) {
         return service.facets(queue);
     }
@@ -229,8 +245,11 @@ public class ExpenseClaimController {
     @PreAuthorize("hasAnyAuthority('expense:approve','expense:pay')")
     public PageResponse<ExpenseClaimDto> history(@RequestParam(required=false) Integer year,@RequestParam(required=false) Integer month,
             @RequestParam(required=false) UUID departmentId,@RequestParam(required=false) String category,
-            @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size) {
-        return service.listHistory(year,month,departmentId,category,page,size);
+            @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size,
+            // 2026-09-25 单号列统一：报销单号表头排序 + 值筛选（精确匹配）。
+            @RequestParam(required=false) String sort,@RequestParam(required=false) String order,
+            @RequestParam(required=false) String claimNo) {
+        return service.listHistory(year,month,departmentId,category,page,size,sort,order,claimNo);
     }
     @GetMapping("/counts")
     @PreAuthorize("hasAnyAuthority('expense:apply','expense:approve','expense:pay')")

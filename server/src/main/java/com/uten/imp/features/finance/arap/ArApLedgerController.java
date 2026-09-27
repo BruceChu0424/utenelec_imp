@@ -58,11 +58,34 @@ public class ArApLedgerController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String billNo,
+            @RequestParam(required = false) String salesOrderNos) {
         ArApLedgerQueryFilter f = new ArApLedgerQueryFilter(
                 keyword, direction, sourceDocType, partyId, clientId, supplierId, currencyId,
-                settled, status, dateFrom, dateTo, sourceDocNo);
+                settled, status, dateFrom, dateTo, sourceDocNo, billNo, salesOrderNos);
         return queryService.list(f, page, size, sort, order);
+    }
+
+    /** 单号列值筛选桶（2026-09-25 单号列统一）：单据号/来源单号与列表同一过滤口径分组计数。 */
+    @GetMapping("/facets")
+    @PreAuthorize("hasAuthority('ar_ap_ledger:view') and hasAuthority('finance:view:all')")
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String direction,
+            @RequestParam(required = false) String sourceDocType,
+            @RequestParam(required = false) UUID partyId,
+            @RequestParam(required = false) UUID clientId,
+            @RequestParam(required = false) UUID supplierId,
+            @RequestParam(required = false) UUID currencyId,
+            @RequestParam(required = false) Boolean settled,
+            @RequestParam(required = false) Short status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
+        ArApLedgerQueryFilter f = new ArApLedgerQueryFilter(
+                keyword, direction, sourceDocType, partyId, clientId, supplierId, currencyId,
+                settled, status, dateFrom, dateTo, null, null, null);
+        return queryService.facets(f);
     }
 
     @GetMapping("/{id}")

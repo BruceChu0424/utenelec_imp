@@ -86,7 +86,7 @@ void main() {
       // 2026-09-14：新建仍留在分类页，编辑流程在共享模块 showClientMasterEdit。
       final create = _between(
         categoryPageSource,
-        'Future<void> _showClientCreate()',
+        'Future<void> _showClientCreate(',
         'Future<bool> _doCreateClient',
       );
       _expectCreateLoadGuardBeforeDialog(create);

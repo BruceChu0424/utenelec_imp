@@ -22,10 +22,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/feedback/uten_module_progress_chip.dart';
-import '../../../components/feedback/uten_module_todo_chip.dart';
-import '../../../components/feedback/uten_notification_badge.dart';
-import '../../../components/feedback/uten_in_progress_badge.dart';
+import '../../../components/feedback/uten_module_badges.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -43,6 +40,7 @@ import '../config/warehouse_report_config.dart';
 import '../models/stock_doc.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/badges/badge_scope.dart';
 
 class WarehouseHubPage extends ConsumerWidget {
   const WarehouseHubPage({super.key});
@@ -71,8 +69,7 @@ class WarehouseHubPage extends ConsumerWidget {
                 String label,
                 String description,
                 String location,
-                Widget? badge,
-                Widget? progressBadge,
+                BadgeScope badgeScope,
               })
             >[
               if (canOpen(RouteName.warehouseTasks))
@@ -81,19 +78,7 @@ class WarehouseHubPage extends ConsumerWidget {
                   label: '仓库任务中心',
                   description: '出库 · 入库 · 生产领料 · 品质检查结果 · 委外退回，一站式查看与办理',
                   location: RouteName.warehouseTasks,
-                  badge: UtenNotificationBadge(
-                    count: ref.watch(
-                      badgeModuleTodoProvider(BadgeModule.warehouse),
-                    ),
-                    showLabel: true,
-                  ),
-                  // 黄 = 等待检查结果的收货单(货已收、结论在品质部手上)。
-                  progressBadge: UtenInProgressBadge(
-                    count: ref.watch(
-                      badgeModuleInProgressProvider(BadgeModule.warehouse),
-                    ),
-                    showLabel: true,
-                  ),
+                  badgeScope: const BadgeScope.module(BadgeModule.warehouse),
                 ),
             ]
             .toList();
@@ -164,19 +149,9 @@ class WarehouseHubPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
-        actions: [
-          // 黄药丸排在红药丸左边(与卡片右上角「黄左红右」同序): 本模块还在跑、
-          // 暂不用仓库动手的合计, 求和同样只在服务端徽章目录里做一次。
-          UtenModuleProgressChip(
-            count: ref.watch(
-              badgeModuleInProgressProvider(BadgeModule.warehouse),
-            ),
-          ),
-          // 本模块累计：数字由注册表对 BadgeModule.warehouse 名下入口求和得出
-          //（四张任务中心 + 仓库草稿），页面里不要再手写加法；0 由徽章自己不渲染。
-          UtenModuleTodoChip(
-            count: ref.watch(badgeModuleTodoProvider(BadgeModule.warehouse)),
-          ),
+        actions: const [
+          // 与任务中心卡同取服务端仓库容器累计；公共组件统一黄左红右、零隐藏。
+          UtenModuleBadges(module: BadgeModule.warehouse),
         ],
       ),
       body: SafeArea(
@@ -202,8 +177,8 @@ class WarehouseHubPage extends ConsumerWidget {
                       icon: e.icon,
                       label: e.label,
                       description: e.description,
-                      badge: e.badge,
-                      progressBadge: e.progressBadge,
+                      badgeScope: e.badgeScope,
+                      badgeShowLabel: true,
                       onTap: () => goFrom(context, e.location),
                     );
                   },

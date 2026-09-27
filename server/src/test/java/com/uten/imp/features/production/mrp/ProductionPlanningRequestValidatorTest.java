@@ -58,6 +58,17 @@ class ProductionPlanningRequestValidatorTest {
     }
 
     @Test
+    void structuralPrecheckDoesNotReadMastersButLiveValidationStillRejectsADisabledWarehouse() {
+        GeneratePlanningPackageRequest request=request("a".repeat(64));
+        validator.validateRequestStructure(request);
+        verify(em,never()).createNativeQuery(anyString());
+        when(warehouseQuery.getSingleResult()).thenReturn(0L);
+        assertThatThrownBy(()->validator.validateCurrent(UUID.randomUUID(),request))
+                .isInstanceOf(ApiException.class).hasMessageContaining("目标发料仓不存在或已停用");
+        verify(planning,never()).preview(any(),any());
+    }
+
+    @Test
     void rejectsStalePreviewFingerprint() {
         GeneratePlanningPackageRequest request = request("a".repeat(64));
         when(planning.preview(any(), any())).thenReturn(

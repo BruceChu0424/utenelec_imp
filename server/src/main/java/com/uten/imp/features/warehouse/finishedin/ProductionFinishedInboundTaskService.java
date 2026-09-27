@@ -2,6 +2,7 @@ package com.uten.imp.features.warehouse.finishedin;
 
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
@@ -213,6 +214,18 @@ public class ProductionFinishedInboundTaskService {
     public PageResponse<ProductionFinishedInboundTask> list(
             String keyword, String taskStage, UUID warehouseId,
             int requestedPage, int requestedSize, WarehouseTaskScope warehouseScope) {
+        return list(keyword, taskStage, warehouseId, requestedPage, requestedSize,
+                warehouseScope, null, null, null, null);
+    }
+
+    /** 同上；2026-09-25 单号列统一：sort/order 表头排序（白名单，未知回落默认
+     *  进队时间序）、taskNo/planNo 任务单号/生产计划号表头值筛选（等值精确匹配，
+     *  仅条件出现才绑定命名参数）。 */
+    @Transactional(readOnly = true)
+    public PageResponse<ProductionFinishedInboundTask> list(
+            String keyword, String taskStage, UUID warehouseId,
+            int requestedPage, int requestedSize, WarehouseTaskScope warehouseScope,
+            String sort, String order, String taskNo, String planNo) {
         boolean scoped = warehouseScope != null && warehouseScope.active();
         PageRequest pageable = Pageables.of(
                 requestedPage, requestedSize);
@@ -233,32 +246,13 @@ public class ProductionFinishedInboundTaskService {
                     com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,
                     "任务步骤仅支持 ARRIVAL_REGISTRATION 或 FINAL_COUNT");
         }
-        String filter = """
-                 WHERE (
-                     :keyword = ''
-                     OR LOWER(
-                         COALESCE(document_no, '') || ' ' ||
-                         COALESCE(plan_no, '') || ' ' ||
-                         COALESCE(report_nos, '') || ' ' ||
-                         COALESCE(goods_summary, '')
-                     ) LIKE :keyword_like
-                 )
-                """ + (normalizedStage.isEmpty()
-                        ? ""
-                        : " AND task_stage = :task_stage\n")
-                + (warehouseId == null
-                        ? ""
-                        : " AND warehouse_id = :warehouse_id\n")
-                + (scoped
-                        ? " AND " + warehouseScope.predicate("scope_warehouse_id", ":warehouse_scope") + "\n"
-                        : "");
+        String filter = taskFilter(normalized, normalizedStage, warehouseId,
+                scoped ? warehouseScope : null, taskNo, planNo);
 
         Query countQuery = em.createNativeQuery(
                 BASE_SQL + " SELECT COUNT(*) FROM task_documents " + filter);
-        bindKeyword(countQuery, normalized);
-        if (!normalizedStage.isEmpty()) countQuery.setParameter("task_stage", normalizedStage);
-        if (warehouseId != null) countQuery.setParameter("warehouse_id", warehouseId);
-        if (scoped) countQuery.setParameter("warehouse_scope", warehouseScope.idsCsv());
+        bindTaskFilters(countQuery, normalized, normalizedStage, warehouseId,
+                scoped ? warehouseScope : null, taskNo, planNo);
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
         Query rowsQuery = em.createNativeQuery(BASE_SQL + """
@@ -269,13 +263,11 @@ public class ProductionFinishedInboundTaskService {
                        pending_qty, created_at, residual_task
                 FROM task_documents
                 """ + filter + """
-                ORDER BY created_at ASC, task_id ASC
+                """ + taskOrderBy(sort, order) + """
                 OFFSET :offset LIMIT :limit
                 """);
-        bindKeyword(rowsQuery, normalized);
-        if (!normalizedStage.isEmpty()) rowsQuery.setParameter("task_stage", normalizedStage);
-        if (warehouseId != null) rowsQuery.setParameter("warehouse_id", warehouseId);
-        if (scoped) rowsQuery.setParameter("warehouse_scope", warehouseScope.idsCsv());
+        bindTaskFilters(rowsQuery, normalized, normalizedStage, warehouseId,
+                scoped ? warehouseScope : null, taskNo, planNo);
         rowsQuery.setParameter("offset", pageable.getOffset());
         rowsQuery.setParameter("limit", size);
         List<ProductionFinishedInboundTask> items =
@@ -289,6 +281,107 @@ public class ProductionFinishedInboundTaskService {
                 items, page, size, total, totalPages);
     }
 
+    /** 产成品入库任务 facets（2026-09-25 单号列统一）：{taskNo:[各任务单号],
+     *  planNo:[各生产计划号]}——与列表/计数同一过滤基座（不含单号列自身值筛选），
+     *  按单号分组计数、单号升序，上限 500 桶。 */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(
+            String keyword, String taskStage, UUID warehouseId,
+            WarehouseTaskScope warehouseScope) {
+        if (!access.canAccessWarehouseTasks()) {
+            return java.util.Map.of(
+                    "taskNo", List.of(), "planNo", List.of());
+        }
+        String normalized = keyword == null ? "" : keyword.strip().toLowerCase();
+        String normalizedStage = taskStage == null ? "" : taskStage.strip().toUpperCase();
+        boolean scoped = warehouseScope != null && warehouseScope.active();
+        String filter = taskFilter(normalized, normalizedStage, warehouseId,
+                scoped ? warehouseScope : null, null, null);
+        List<java.util.Map<String, Object>> taskNoBuckets = billBuckets(
+                "SELECT " + TASK_NO_EXPR + ", COUNT(*) FROM task_documents " + filter
+                        + " GROUP BY 1 ORDER BY 1",
+                normalized, normalizedStage, warehouseId, scoped ? warehouseScope : null);
+        List<java.util.Map<String, Object>> planNoBuckets = billBuckets(
+                "SELECT COALESCE(plan_no, ''), COUNT(*) FROM task_documents " + filter
+                        + " GROUP BY 1 ORDER BY 1",
+                normalized, normalizedStage, warehouseId, scoped ? warehouseScope : null);
+        return java.util.Map.of("taskNo", taskNoBuckets, "planNo", planNoBuckets);
+    }
+
+    /** 单号桶查询 + 行映射（value/count/label，label=value；上限 500 桶）。
+     *  task_documents 是 BASE_SQL 里的 CTE，桶查询必须同样带上 CTE 前缀。 */
+    private List<java.util.Map<String, Object>> billBuckets(
+            String sql, String normalized, String normalizedStage, UUID warehouseId,
+            WarehouseTaskScope warehouseScope) {
+        Query query = em.createNativeQuery(BASE_SQL + sql).setMaxResults(500);
+        bindTaskFilters(query, normalized, normalizedStage, warehouseId, warehouseScope, null, null);
+        return NativeFacets.rowsOf(query);
+    }
+
+    /** 任务单号列展示口径（待登记=报工单号、待点收=入库单号，兜底任务 id）。 */
+    private static final String TASK_NO_EXPR =
+            "COALESCE(NULLIF(document_no, ''), NULLIF(report_nos, ''), task_id::text)";
+
+    /** 列表 / 计数 / facets 共用 WHERE 片段（同一过滤基座，2026-09-25 单号列统一）；
+     *  命名参数按条件出现，未出现的条件不绑定（Hibernate 6 校验未知命名参数）。 */
+    private static String taskFilter(String keyword, String taskStage, UUID warehouseId,
+            WarehouseTaskScope activeScope, String taskNo, String planNo) {
+        return """
+                 WHERE (
+                     :keyword = ''
+                     OR LOWER(
+                         COALESCE(document_no, '') || ' ' ||
+                         COALESCE(plan_no, '') || ' ' ||
+                         COALESCE(report_nos, '') || ' ' ||
+                         COALESCE(goods_summary, '')
+                     ) LIKE :keyword_like
+                 )
+                """ + (taskStage.isEmpty()
+                        ? ""
+                        : " AND task_stage = :task_stage\n")
+                + (warehouseId == null
+                        ? ""
+                        : " AND warehouse_id = :warehouse_id\n")
+                + (activeScope == null
+                        ? ""
+                        : " AND " + activeScope.predicate("scope_warehouse_id", ":warehouse_scope") + "\n")
+                + (isBlank(taskNo)
+                        ? ""
+                        : " AND " + TASK_NO_EXPR + " = :task_no\n")
+                + (isBlank(planNo)
+                        ? ""
+                        : " AND COALESCE(plan_no, '') = :plan_no\n");
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    /** 绑定共用过滤参数（与 [taskFilter] 的条件一一对应）。 */
+    private static void bindTaskFilters(Query query, String keyword, String taskStage,
+            UUID warehouseId, WarehouseTaskScope activeScope, String taskNo, String planNo) {
+        query.setParameter("keyword", keyword);
+        query.setParameter("keyword_like", "%" + keyword + "%");
+        if (!taskStage.isEmpty()) query.setParameter("task_stage", taskStage);
+        if (warehouseId != null) query.setParameter("warehouse_id", warehouseId);
+        if (activeScope != null) query.setParameter("warehouse_scope", activeScope.idsCsv());
+        if (!isBlank(taskNo)) query.setParameter("task_no", taskNo.strip());
+        if (!isBlank(planNo)) query.setParameter("plan_no", planNo.strip());
+    }
+
+    /** 排序 ORDER BY（2026-09-25 单号列统一）：白名单映射前端列 key→SQL 表达式；
+     *  未知/空→默认（进队时间升序, 任务 id 稳定序）。 */
+    private static String taskOrderBy(String sort, String order) {
+        String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
+        return switch (sort == null ? "" : sort) {
+            case "taskNo" -> "ORDER BY " + TASK_NO_EXPR + " " + dir
+                    + " NULLS LAST, created_at ASC, task_id ASC\n";
+            case "planNo" -> "ORDER BY plan_no " + dir
+                    + " NULLS LAST, created_at ASC, task_id ASC\n";
+            default -> "ORDER BY created_at ASC, task_id ASC\n";
+        };
+    }
+
     @Transactional(readOnly = true)
     public long countPending() {
         if (!access.canAccessWarehouseTasks()) return 0;
@@ -297,11 +390,6 @@ public class ProductionFinishedInboundTaskService {
                                 + " SELECT COUNT(*) FROM task_documents")
                 .getSingleResult();
         return count == null ? 0 : count.longValue();
-    }
-
-    private static void bindKeyword(Query query, String keyword) {
-        query.setParameter("keyword", keyword);
-        query.setParameter("keyword_like", "%" + keyword + "%");
     }
 
     private static ProductionFinishedInboundTask map(Object[] row) {

@@ -7,6 +7,7 @@ import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations_zh.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_sales_outbound.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_page.dart';
@@ -401,6 +402,9 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
     String? dateFrom,
     String? dateTo,
     WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+    String? sort,
+    String? order,
+    String? billNo,
   }) async => PagedResult(
     items: [summary],
     page: page,
@@ -408,6 +412,15 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
     total: 1,
     totalPages: 1,
   );
+
+  @override
+  Future<List<MasterFacetBucket>> billNoFacets({
+    String? keyword,
+    String? warehouseWorkStatus,
+    String? dateFrom,
+    String? dateTo,
+    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+  }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
 
   @override
   Future<WarehouseSalesOutboundDetail> detail(String id) async => value;

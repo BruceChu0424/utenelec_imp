@@ -13,6 +13,8 @@ final class _MaterialAggregateTableController {
   Timer? _debounce;
   CancelToken? _cancelToken;
   Future<void>? _flight;
+  String? _flightSignature;
+  int _previewGeneration = 0;
   int _revision = 0;
   bool saving = false, uncertain = false;
   String? error;
@@ -23,6 +25,8 @@ final class _MaterialAggregateTableController {
   MaterialAggregateOrderResult? lastStageResult;
   bool get hasDrafts => drafts.isNotEmpty;
   bool ownsLine(String lineId) => _draftByLine.containsKey(lineId);
+  bool isProductFlow(String lineId) =>
+      drafts[_draftByLine[lineId]]?.productFlow == true;
 
   void analysisChanged() {
     if (drafts.isEmpty) return;
@@ -36,7 +40,7 @@ final class _MaterialAggregateTableController {
   }
 
   Widget lockedText(String value) =>
-      Tooltip(message: '此来源已有未提交的汇总总量，请到「按物料汇总」修改、下达或撤销草稿', child: Text(value));
+      Tooltip(message: '本次数量已保留，可继续下单核对结果；需要改数时先撤销未提交草稿。', child: Text(value));
 
   Widget actionCell(_MaterialAggregate aggregate) {
     final actionIds = <String>{
@@ -304,6 +308,9 @@ final class _MaterialAggregateTableController {
         final line = group.representative.materialLineId;
         if (existing.paths.containsKey(line)) continue;
         existing.paths[line] = _snapshot(group);
+        existing.sourceRequestedQtyByMaterialLineId?[line] = owner._qty(
+          owner._tableSubmitQtyOf(group),
+        );
         _draftByLine[line] = aggregate.key;
         changed = true;
       }
@@ -333,12 +340,13 @@ final class _MaterialAggregateTableController {
             ),
           ),
         )
-        ..userEntered = snapshots.values.any(
-          (state) =>
-              state.typedQty != null ||
-              state.orderText != state.orderSeed ||
-              state.appendText != state.appendSeed,
-        );
+        ..sourceRequestedQtyByMaterialLineId = {
+          for (final group in groups)
+            group.representative.materialLineId: owner._qty(
+              owner._tableSubmitQtyOf(group),
+            ),
+        }
+        ..userEntered = snapshots.values.any((state) => state.hasExplicitQty);
     });
   }
 
@@ -368,6 +376,7 @@ final class _MaterialAggregateTableController {
       final draft = begin(aggregate);
       draft.totalText = value;
       draft.userEntered = true;
+      draft.sourceRequestedQtyByMaterialLineId = null;
       draft.previewGroups = const [];
       _revision++;
       _preview = null;
@@ -387,7 +396,12 @@ final class _MaterialAggregateTableController {
       (double.tryParse(value) ?? -1) >= 0;
 
   void schedulePreview() {
-    if (saving || uncertain || drafts.isEmpty) return;
+    if (saving ||
+        uncertain ||
+        drafts.isEmpty ||
+        owner._preparationSubmissionActive) {
+      return;
+    }
     _debounce?.cancel();
     _debounce = Timer(
       const Duration(milliseconds: 300),
@@ -420,6 +434,7 @@ final class _MaterialAggregateTableController {
   ) {
     final analysis = owner._analysis!;
     final inputs = <MaterialAggregateOrderGroupInput>[];
+    final safetyDimensions = <String>{};
     for (final draft in selected) {
       if (!validText(draft.totalText)) {
         throw FormatException('「${draft.label}」请输入非负数量，最多四位小数');
@@ -484,6 +499,8 @@ final class _MaterialAggregateTableController {
           materialLineIds: draft.lineIds.toList()..sort(),
           route: route,
           qty: draft.totalText,
+          sourceRequestedQtyByMaterialLineId:
+              draft.sourceRequestedQtyByMaterialLineId,
           allowPublicExtra: workshop || owner._canOverSupply,
           departmentId: workshop
               ? uniformId(
@@ -498,6 +515,11 @@ final class _MaterialAggregateTableController {
                 )
               : null,
           allowedOverproductionRate: rate,
+          safetyQty:
+              route == MaterialSupplyRoute.buy &&
+                  safetyDimensions.add(draft.key)
+              ? owner._qty(owner._groupSafetyReplenishmentGapQty(groups.first))
+              : '0',
         ),
       );
     }
@@ -512,7 +534,7 @@ final class _MaterialAggregateTableController {
         warehouse,
         owner._dateText(owner._billDate),
         owner._dateText(owner._deliveryDate),
-        owner._permissions.contains(Perm.productionPlanApprove),
+        owner._preparationApproveNow,
         for (final input in inputs) input.toJson(),
       ]),
     );
@@ -524,17 +546,18 @@ final class _MaterialAggregateTableController {
       warehouseId: warehouse,
       billDate: owner._dateText(owner._billDate)!,
       deliveryDate: owner._dateText(owner._deliveryDate),
-      approveNow: owner._permissions.contains(Perm.productionPlanApprove),
+      approveNow: owner._preparationApproveNow,
       groups: inputs,
     );
   }
 
-  Future<void> refreshPreview({Set<String>? keys}) async {
+  Future<void> refreshPreview({
+    Set<String>? keys,
+    bool forSubmission = false,
+  }) async {
     _debounce?.cancel();
     if (saving || uncertain || drafts.isEmpty) return;
-    while (_flight != null) {
-      await _flight!;
-    }
+    if (!forSubmission && owner._preparationSubmissionActive) return;
     if (!owner.mounted || saving || uncertain || drafts.isEmpty) return;
     final requestRevision = _revision;
     final Set<String> effectiveKeys;
@@ -549,20 +572,54 @@ final class _MaterialAggregateTableController {
     final signature =
         '$requestRevision|${scope.join('|')}|${owner._analysis?.version}|${owner._analysis?.fingerprint}|'
         '${owner._warehouseId}|${owner._dateText(owner._billDate)}|${owner._dateText(owner._deliveryDate)}|'
-        '${owner._permissions.contains(Perm.productionPlanApprove)}';
-    if (_preview != null && _previewSignature == signature) return;
+        '${owner._preparationApproveNow}';
+    final flight = _flight;
+    if (flight != null) {
+      if (forSubmission && _flightSignature != signature) {
+        // Only superseded reads are cancelled. A matching editor preview is
+        // the mandatory preview too, so reuse it rather than duplicate work.
+        _previewGeneration++;
+        _cancelToken?.cancel('submission superseded aggregate preview');
+        _cancelToken = null;
+        _flight = null;
+        _flightSignature = null;
+      } else {
+        await flight;
+        if (!owner.mounted ||
+            (!forSubmission && owner._preparationSubmissionActive)) {
+          return;
+        }
+        return refreshPreview(keys: keys, forSubmission: forSubmission);
+      }
+    }
+    if (_preview != null &&
+        _previewSignature == signature &&
+        _preview!.groups.every((group) => group.blockedReason == null)) {
+      return;
+    }
     late final Future<void> work;
-    work = _performPreview(requestRevision, effectiveKeys, signature)
-        .whenComplete(() {
-          if (identical(_flight, work)) _flight = null;
+    final generation = ++_previewGeneration;
+    work =
+        _performPreview(
+          requestRevision,
+          effectiveKeys,
+          signature,
+          generation,
+        ).whenComplete(() {
+          if (identical(_flight, work)) {
+            _flight = null;
+            _flightSignature = null;
+          }
         });
     _flight = work;
+    _flightSignature = signature;
     await work;
     if (_revision != requestRevision &&
         owner.mounted &&
         !saving &&
-        !uncertain) {
-      await refreshPreview(keys: keys);
+        !uncertain &&
+        (forSubmission || !owner._preparationSubmissionActive)) {
+      await refreshPreview(keys: keys, forSubmission: forSubmission);
     }
   }
 
@@ -570,6 +627,7 @@ final class _MaterialAggregateTableController {
     int revision,
     Set<String>? keys,
     String signature,
+    int generation,
   ) async {
     try {
       final selected = drafts.values
@@ -582,20 +640,88 @@ final class _MaterialAggregateTableController {
       final preview = await owner.ref
           .read(productionPlanRepositoryProvider)
           .previewAggregateOrders(request, cancelToken: token);
-      if (!owner.mounted || revision != _revision) return;
+      if (!owner.mounted ||
+          revision != _revision ||
+          generation != _previewGeneration) {
+        return;
+      }
+      if (preview.analysisId != request.analysisId ||
+          preview.analysis.analysisId != request.analysisId) {
+        throw const FormatException('预览属于其他分析，未套用此结果');
+      }
       final grouped = <String, List<MaterialAggregateOrderGroupPreview>>{};
+      final materials = {
+        for (final material in preview.analysis.materials)
+          material.materialLineId: material,
+      };
+      final ownerIds = preview.analysis.products
+          .map((product) => product.analysisLineId)
+          .toSet();
+      final sourceOrigins = <MaterialAggregateSourceAllocation, List<String>>{};
+      final coveredByGroup = <String, Set<String>>{};
       for (final group in preview.groups) {
         final input = request.groups
             .where((input) => input.clientGroupKey == group.clientGroupKey)
             .firstOrNull;
-        if (input == null ||
-            group.sources.any(
-              (source) =>
-                  !input.materialLineIds.contains(source.materialLineId),
-            )) {
+        if (input == null) {
           throw const FormatException('预览返回了不属于本次汇总的来源，未套用此结果');
         }
+        final requestedIds = input.materialLineIds.toSet();
+        final covered = coveredByGroup.putIfAbsent(
+          group.clientGroupKey,
+          () => {},
+        );
+        for (final source in group.sources) {
+          final effective = materials[source.materialLineId];
+          if (effective == null ||
+              !ownerIds.contains(effective.analysisLineId)) {
+            throw const FormatException('预览办理目标不属于本分析，未套用此结果');
+          }
+          final exactOrigins = [
+            for (final id in input.materialLineIds)
+              if (materials[id] != null &&
+                  (source.materialLineId == id ||
+                      (materials[id]!
+                              .aggregatePreparation
+                              ?.targetMaterialLineIds
+                              .contains(source.materialLineId) ??
+                          false)))
+                id,
+          ];
+          // Older responses already carry the exact graph in analysis. Use
+          // that proof only; never infer membership from SKU or row order.
+          final originals = source.hasOriginalMaterialLineIds
+              ? source.originalMaterialLineIds
+              : exactOrigins;
+          if (originals.isEmpty ||
+              originals.any((id) => !requestedIds.contains(id))) {
+            throw const FormatException('预览返回了不属于本次汇总的来源，未套用此结果');
+          }
+          if (originals.toSet().length != originals.length ||
+              originals.length != exactOrigins.length ||
+              !exactOrigins.toSet().containsAll(originals)) {
+            throw const FormatException('预览来源证明与精确对应关系冲突，未套用此结果');
+          }
+          for (final originalId in originals) {
+            final original = materials[originalId];
+            if (source.materialLineId != originalId &&
+                !(original?.aggregatePreparation?.targetMaterialLineIds
+                        .contains(source.materialLineId) ??
+                    false)) {
+              throw const FormatException('预览办理目标缺少原来源的精确对应关系，未套用此结果');
+            }
+          }
+          covered.addAll(originals);
+          sourceOrigins[source] = originals;
+        }
         grouped.putIfAbsent(group.clientGroupKey, () => []).add(group);
+      }
+      for (final input in request.groups) {
+        final covered =
+            coveredByGroup[input.clientGroupKey] ?? const <String>{};
+        if (!covered.containsAll(input.materialLineIds)) {
+          throw const FormatException('预览没有完整核对本次所选来源，未套用此结果');
+        }
       }
       for (final draft in selected) {
         final groups = grouped[draft.key] ?? const [];
@@ -638,8 +764,13 @@ final class _MaterialAggregateTableController {
           final allocation = <String, double>{};
           for (final group in draft.previewGroups) {
             for (final source in group.sources) {
+              // Canonical allocation may cover several original rows. Its
+              // total is a ledger fact, not a per-source amount to duplicate.
+              final originals = sourceOrigins[source]!;
+              if (originals.length != 1) continue;
+              final originalId = originals.single;
               allocation.update(
-                source.materialLineId,
+                originalId,
                 (value) => value + source.allocatedQty,
                 ifAbsent: () => source.allocatedQty,
               );
@@ -647,7 +778,16 @@ final class _MaterialAggregateTableController {
           }
           for (final group in draftGroups(draft)) {
             final line = group.representative.materialLineId;
-            final quantity = allocation[line] ?? 0;
+            if (draft.sourceRequestedQtyByMaterialLineId?[line] == null &&
+                !allocation.containsKey(line)) {
+              continue;
+            }
+            final quantity =
+                double.tryParse(
+                  draft.sourceRequestedQtyByMaterialLineId?[line] ?? '',
+                ) ??
+                allocation[line] ??
+                0;
             final append = owner._tableGroupIssued(group);
             final controller = append
                 ? owner._tableAppendQtyController(group)
@@ -668,7 +808,11 @@ final class _MaterialAggregateTableController {
         owner._reseedMaterialTableQtyInputs();
       });
     } catch (failure) {
-      if (!owner.mounted || revision != _revision) return;
+      if (!owner.mounted ||
+          revision != _revision ||
+          generation != _previewGeneration) {
+        return;
+      }
       owner._mutateAggregateTable(() {
         _preview = null;
         _previewRequest = null;
@@ -692,6 +836,10 @@ final class _MaterialAggregateTableController {
     bool confirmed = false,
   }) async {
     if (saving || selectedGroups.isEmpty) return false;
+    if (!uncertain) {
+      await owner._ensureTableMandatoryAssignments(selectedGroups);
+    }
+    if (!owner.mounted) return false;
     final keys = selectedGroups
         .map((group) => owner._aggregateKeyOf(group.representative))
         .toSet();
@@ -717,7 +865,7 @@ final class _MaterialAggregateTableController {
       // 确认弹窗之前必须撤掉，否则会把弹窗盖在背后转圈。
       owner.bucketActionBusyMessage.value = '正在核对汇总下达内容';
       try {
-        await refreshPreview(keys: keys);
+        await refreshPreview(keys: keys, forSubmission: true);
       } finally {
         owner.bucketActionBusyMessage.value = null;
       }
@@ -730,35 +878,18 @@ final class _MaterialAggregateTableController {
           .where((group) => group.blockedReason?.isNotEmpty == true)
           .toList();
       if (blocked.isNotEmpty) {
-        final blockedKeys = blocked
-            .map((group) => group.clientGroupKey)
-            .toSet();
-        if (keys.difference(blockedKeys).isEmpty) {
-          owner.context.appWarning(blocked.first.blockedReason!);
-          return false;
-        }
-        // 一个组被服务端拒绝不再拖停整批(对齐产品视图「blocked 列出、其余照下」
-        // 的口径)：释放被拒的草稿、把原因说一次，剩下的按原流程继续核对下达。
-        // 2026-09-25 用户实机：全选下单时一种物料缺车间被拒，整批全部停在第一
-        // 步，看起来就是「很多物料不能成功下单」。
-        owner._mutateAggregateTable(() {
-          for (final key in blockedKeys) {
-            submission._releaseZero(key);
-          }
-        });
-        owner.context.appInfo(
-          '已跳过 ${blockedKeys.length} 种暂不能下达的物料'
-          '（${blocked.first.blockedReason}），其余继续核对',
+        // A dependency round is complete only when every admitted group was
+        // committed. Dropping a blocked parent would falsely unlock its
+        // descendants and lose its original quantity. Keep the entire round
+        // for review/retry, and preserve the caller's single confirmation.
+        owner.context.appWarning(
+          '本轮尚未下达：${blocked.take(3).map((group) => '${group.goodsName}：${group.blockedReason}').join('；')}。'
+          '输入和选择已保留，请修正后继续。',
         );
-        return submitStage(
-          selectedGroups
-              .where(
-                (group) => !blockedKeys.contains(
-                  owner._aggregateKeyOf(group.representative),
-                ),
-              )
-              .toList(),
-        );
+        _preview = null;
+        _previewRequest = null;
+        _previewSignature = null;
+        return false;
       }
       final request = _previewRequest!, preview = _preview!;
       final userConfirmed =
@@ -772,7 +903,7 @@ final class _MaterialAggregateTableController {
                       for (final group in preview.groups) ...[
                         '${group.goodsName}：本次 ${owner._qty(group.requestedQty)} ${group.unitName}',
                         if (group.existingBatchId != null)
-                          '追加原批次，原产出 ${owner._qty(group.priorOutputQty)}；下层只办理本次净增量。',
+                          '追加原单，原下单量 ${owner._qty(group.priorOutputQty)}；下层只办理本次净增量。',
                         '来源分配 ${owner._qty(group.sources.fold<double>(0.0, (sum, source) => sum + source.allocatedQty))}，公共备货 ${owner._qty(group.publicExtraQty)}',
                         for (final source in group.sources.take(6))
                           '${source.sourceLabel}：${owner._qty(source.allocatedQty)}',
@@ -799,14 +930,22 @@ final class _MaterialAggregateTableController {
       _submittedFingerprint = preview.previewFingerprint;
     }
     final request = _submittedRequest!;
+    final makesPlans = request.groups.any(
+      (group) => group.departmentId != null,
+    );
     owner._mutateAggregateTable(() {
       saving = true;
       error = null;
       owner._tableSubmitting = true;
+      owner._planSubmissionApproveNow = makesPlans && request.approveNow;
     });
     try {
       // 确认弹窗已收口，这里起是纯网络段：挂遮罩(见上，同一次用户口径)。
-      owner.bucketActionBusyMessage.value = '正在下达汇总物料';
+      owner.bucketActionBusyMessage.value = makesPlans
+          ? request.approveNow
+                ? '正在生成并审核下达'
+                : '正在生成生产计划'
+          : '正在下达物料';
       final result = await owner.ref
           .read(productionPlanRepositoryProvider)
           .submitAggregateOrders(
@@ -815,6 +954,13 @@ final class _MaterialAggregateTableController {
           );
       if (!owner.mounted) return false;
       lastStageResult = result;
+      for (final batch in result.batches) {
+        final plan = batch.generatedPlan;
+        if (plan != null && plan.planId.isNotEmpty) {
+          owner._preparationPlanResults[plan.planId] = plan;
+        }
+      }
+
       owner._mutateAggregateTable(() {
         for (final input in request.groups) {
           final draft = drafts.remove(input.clientGroupKey);
@@ -840,8 +986,24 @@ final class _MaterialAggregateTableController {
         _revision++;
         owner._applyAnalysis(result.analysis);
       });
+      if (result.batches.any((batch) => batch.planId?.isNotEmpty == true)) {
+        refreshAfterProductionPlanGenerated(owner.ref);
+      }
+      refreshBadges(owner.ref);
       owner.context.appSuccess(
-        '已下达 ${result.batches.length} 个批次${result.batches.isEmpty ? '' : '：${result.batches.map((batch) => batch.documentNo).where((value) => value.isNotEmpty).join('、')}'}',
+        result.batches.isEmpty
+            ? result.analysis.materials.any(
+                    (material) =>
+                        material.preparationAdoptedQty > 0 &&
+                        request.groups.any(
+                          (group) => group.materialLineIds.contains(
+                            material.materialLineId,
+                          ),
+                        ),
+                  )
+                  ? '已采用现有供给，数量和进度已更新'
+                  : '办理完成，数量和进度已更新'
+            : '已下达 ${result.batches.length} 笔：${result.batches.map((batch) => batch.documentNo).where((value) => value.isNotEmpty).join('、')}',
       );
       return true;
     } catch (failure) {
@@ -853,7 +1015,10 @@ final class _MaterialAggregateTableController {
           failure.httpStatus! < 500;
       owner._mutateAggregateTable(() {
         uncertain = !rejected;
-        error = rejected ? failure.message : '提交回执尚未确认，请保留本次总量并使用相同内容重试核对';
+        error = rejected
+            ? failure.message
+            : '${productionErrorMessage(failure, fallback: '请求未获得确定结果')}；'
+                  '提交回执尚未确认，请保留本次总量并使用相同内容重试核对';
         if (rejected) {
           _revision++;
           _preview = null;
@@ -862,9 +1027,9 @@ final class _MaterialAggregateTableController {
       });
       if (failure is ApiException && failure.httpStatus == 409) {
         try {
-          final current = await owner.ref
-              .read(productionPlanRepositoryProvider)
-              .materialAnalysisDetail(request.analysisId);
+          final current = await owner._readMaterialAnalysisDetail(
+            request.analysisId,
+          );
           if (owner.mounted) {
             owner._mutateAggregateTable(() => owner._applyAnalysis(current));
           }
@@ -882,6 +1047,7 @@ final class _MaterialAggregateTableController {
         owner._mutateAggregateTable(() {
           saving = false;
           owner._tableSubmitting = false;
+          owner._planSubmissionApproveNow = false;
         });
       }
     }
@@ -1232,6 +1398,14 @@ final class _MaterialAggregateTableController {
 
   bool inactiveSourceContext(_MaterialGroup group) {
     final material = group.representative;
+    if (material.hasPriorityMakeSupplement) return false;
+    final anchor = owner._tableMakeAnchorOf(group);
+    if (anchor?.canSchedule == true && (anchor?.remainingQty ?? 0) > 0.0001) {
+      return false;
+    }
+    if (material.aggregatePreparation case final preparation?) {
+      return !preparation.actionable;
+    }
     return material.requiredQty <= 0 &&
         const {
           MaterialRequirementState.delegatedToMakeChild,
@@ -1247,7 +1421,8 @@ final class _MaterialAggregateTableController {
           .where(
             (group) =>
                 (row.aggregate != null ||
-                    !ownsLine(group.representative.materialLineId)) &&
+                    !ownsLine(group.representative.materialLineId) ||
+                    isProductFlow(group.representative.materialLineId)) &&
                 // 2026-09-25 确认路线退役：复选框只服务「下单」，不再有
                 // 「选行去确认路线」语义（进页自动确认 + 直改即存接管）。
                 selectableForOrder(group),
@@ -1274,7 +1449,34 @@ final class _MaterialAggregateTableController {
     final anchors = <String>{};
     final references = <String>{};
     final allocatedByAction = <String, double>{};
-    for (final group in groupsOf(aggregate)) {
+    final sourceGroups = groupsOf(aggregate);
+    final effectiveGroups = {
+      for (final group in sourceGroups) group.key: group,
+    };
+    final indexes = owner._analysis == null
+        ? null
+        : owner._analysisIndexes(owner._analysis!);
+    for (final group in sourceGroups) {
+      final preparation = group.representative.aggregatePreparation;
+      if (preparation == null ||
+          preparation.orderedQtyExact ||
+          preparation.targetMaterialLineIds.isEmpty) {
+        continue;
+      }
+      // 历史记录没有逐行发出量时，从精确目标的单据引用去重汇总，不能把每个
+      // 来源都可见的整单总量相加，也不能把转交需求当成已下单。
+      effectiveGroups.remove(group.key);
+      for (final id in preparation.targetMaterialLineIds) {
+        final target = indexes?.groupsByLine[id];
+        if (target != null) effectiveGroups[target.key] = target;
+      }
+    }
+    for (final group in effectiveGroups.values) {
+      final preparation = group.representative.aggregatePreparation;
+      if (preparation?.orderedQtyExact == true) {
+        total += preparation!.orderedQty;
+        continue;
+      }
       final route = owner._draftRoute(group);
       if (owner._tableUsesMakeAnchor(group)) {
         final anchor = owner._tableMakeAnchorOf(group, authoritative: true);
@@ -1380,6 +1582,8 @@ final class _MaterialAggregateDraft {
   final Map<String, _MaterialAggregatePathSnapshot> paths;
   String totalText;
   bool userEntered = false;
+  bool productFlow = false;
+  Map<String, String>? sourceRequestedQtyByMaterialLineId;
   bool mixedWorkshop = false, mixedWorker = false, mixedRate = false;
   List<MaterialAggregateOrderGroupPreview> previewGroups = const [];
   Iterable<String> get lineIds => paths.keys;
@@ -1407,4 +1611,6 @@ final class _MaterialAggregatePathSnapshot {
   final double? typedQty;
   final bool selected, autoSelected, deselected;
   final ({String? id, String? name})? workshop, worker;
+  bool get hasExplicitQty =>
+      typedQty != null || orderText != orderSeed || appendText != appendSeed;
 }

@@ -8,6 +8,7 @@
 // 单位列紧跟数量。折扣列表头 ⓘ 悬停说明「1 = 原价；0.9 = 9折」。
 // salesGridColumns：货品/颜色/数量/单位/单价/金额 + 补列（条件）。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_values.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -195,6 +196,65 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
         : d;
     return q * p * mult;
   });
+
+  Map<String, TextEditingController> get _draftTextControllers => {
+    'qty': qty,
+    'weight': weight,
+    'price': price,
+    'machiningPrice': machiningPrice,
+    'circumference': circumference,
+    'inboundQty': inboundQty,
+    'materialPrice': materialPrice,
+    'dieCastPrice': dieCastPrice,
+    'discount': discount,
+    'remark': remark,
+  };
+
+  Iterable<Listenable> get draftListenables => [
+    ..._draftTextControllers.values,
+    goodsNotifier,
+    colorIdNotifier,
+    unitIdNotifier,
+    stockPlaceNotifier,
+    solutionNotifier,
+    responsibleNotifier,
+  ];
+
+  Map<String, dynamic> exportDraft() => {
+    'text': draftTextValues(_draftTextControllers),
+    'goods': draftGoods(goods),
+    'stockPlace': stockPlaceNotifier.value,
+    'unitRate': unitRate,
+    'documentItemId': documentItemId,
+    'orderItemId': orderItemId,
+    'outItemId': outItemId,
+    'colorId': colorId,
+    'unitId': unitId,
+    'unitRateExact': unitRateExact,
+    'solution': solution,
+    'responsible': responsible,
+    'amountUsesDiscount': amountUsesDiscount,
+    'requiresOrderPriceRefresh': requiresOrderPriceRefresh,
+  };
+
+  factory SalesGridRow.fromDraft(Map<String, dynamic> data) {
+    final row =
+        SalesGridRow(amountUsesDiscount: data['amountUsesDiscount'] == true)
+          ..goods = restoreDraftGoods(data['goods'])
+          ..stockPlaceNotifier.value = data['stockPlace'] as String?
+          ..unitRate = (data['unitRate'] as num?)?.toDouble()
+          ..documentItemId = data['documentItemId'] as String?
+          ..orderItemId = data['orderItemId'] as String?
+          ..outItemId = data['outItemId'] as String?
+          ..colorId = data['colorId'] as String?
+          ..unitId = data['unitId'] as String?
+          ..unitRateExact = data['unitRateExact'] as String?
+          ..solution = data['solution'] as String?
+          ..responsible = data['responsible'] as String?;
+    restoreDraftTextValues(row._draftTextControllers, draftMap(data['text']));
+    row.requiresOrderPriceRefresh = data['requiresOrderPriceRefresh'] == true;
+    return row;
+  }
 
   /// 深拷贝（明细复制/粘贴用）：新建行 + 拷贝各控制器文本 + 透传字段 + 自动重算金额。
   SalesGridRow clone({bool requireOrderPriceRefresh = false}) {

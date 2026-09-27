@@ -69,6 +69,33 @@ public class ProductionPlanningRequestValidator {
     }
 
     public void validateRequestShape(GeneratePlanningPackageRequest request) {
+        validateRequestStructure(request);
+        assignmentValidator.validateAll(request.getSegments() == null
+                ? List.of()
+                : request.getSegments().stream()
+                        .map(segment -> new ProductionAssignmentValidator.Assignment(
+                                segment.getWorkshopDepartmentId(),
+                                segment.getTeamDepartmentId(),
+                                segment.getResponsibleEmployeeId(),
+                                segment.getPlanBeginDate(),
+                                segment.getPlanEndDate()))
+                        .toList());
+        long warehouse = ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM warehouses
+                        WHERE id = :id AND is_deleted = FALSE
+                          AND COALESCE(status, '') <> '禁用'
+                        """)
+                .setParameter("id", request.getWarehouseId())
+                .getSingleResult()).longValue();
+        if (warehouse != 1) {
+            throw new ApiException(
+                    ErrorCode.NOT_FOUND, "目标发料仓不存在或已停用");
+        }
+    }
+
+    /** Structural rejection before locking; live assignments are checked afterwards. */
+    public void validateRequestStructure(GeneratePlanningPackageRequest request) {
         if (request == null
                 || request.getWarehouseId() == null
                 || request.getIdempotencyKey() == null
@@ -108,28 +135,6 @@ public class ProductionPlanningRequestValidator {
                                 || !segment.getBomFingerprint().matches(
                                         "(?i)[0-9a-f]{64}"))) {
             throw validation("执行分段缺少来源行、数量、状态、键或有效 BOM 指纹");
-        }
-        assignmentValidator.validateAll(request.getSegments() == null
-                ? List.of()
-                : request.getSegments().stream()
-                        .map(segment -> new ProductionAssignmentValidator.Assignment(
-                                segment.getWorkshopDepartmentId(),
-                                segment.getTeamDepartmentId(),
-                                segment.getResponsibleEmployeeId(),
-                                segment.getPlanBeginDate(),
-                                segment.getPlanEndDate()))
-                        .toList());
-        long warehouse = ((Number) em.createNativeQuery("""
-                        SELECT COUNT(*)
-                        FROM warehouses
-                        WHERE id = :id AND is_deleted = FALSE
-                          AND COALESCE(status, '') <> '禁用'
-                        """)
-                .setParameter("id", request.getWarehouseId())
-                .getSingleResult()).longValue();
-        if (warehouse != 1) {
-            throw new ApiException(
-                    ErrorCode.NOT_FOUND, "目标发料仓不存在或已停用");
         }
     }
 

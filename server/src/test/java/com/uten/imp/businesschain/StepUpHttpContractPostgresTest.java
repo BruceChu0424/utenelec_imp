@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -24,6 +25,63 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
 
     private static final String STEP_UP_HEADER = "X-Uten-Step-Up";
+
+    @Test
+    void firstChangeLoginAndStepUpAcceptShortAndLongPasswordsWithExactMatching() throws Exception {
+        String admin = adminToken();
+        Employee employee = newEmployee(admin);
+        MvcResult reset = mvc.perform(json(post("/api/admin/users/" + employee.userId() + "/reset-password"),
+                Map.of(), admin).header(STEP_UP_HEADER, stepUp(admin, ADMIN_PASSWORD))).andReturn();
+        assertEquals(200, reset.getResponse().getStatus(), body(reset));
+        String temporary = json(reset).path("temporaryPassword").asText();
+        JsonNode firstLogin = login(employee.loginAccount(), temporary);
+        assertTrue(firstLogin.path("mustChangePassword").asBoolean());
+
+        JsonNode firstChange = changePassword(firstLogin.path("accessToken").asText(), temporary, "1");
+        assertFalse(firstChange.path("mustChangePassword").asBoolean());
+        String shortToken = login(employee.loginAccount(), "1").path("accessToken").asText();
+        assertFalse(stepUp(shortToken, "1").isBlank());
+
+        String longPassword = "中".repeat(129) + "a";
+        changePassword(shortToken, "1", longPassword);
+        String longToken = login(employee.loginAccount(), longPassword).path("accessToken").asText();
+        assertFalse(stepUp(longToken, longPassword).isBlank());
+        String wrongSuffix = "中".repeat(129) + "b";
+        MvcResult wrongLogin = loginResult(employee.loginAccount(), wrongSuffix);
+        assertEquals(401, wrongLogin.getResponse().getStatus(), body(wrongLogin));
+        assertEquals("BAD_CREDENTIALS", json(wrongLogin).path("code").asText());
+        MvcResult wrongStepUp = stepUpResult(longToken, wrongSuffix);
+        assertEquals(422, wrongStepUp.getResponse().getStatus(), body(wrongStepUp));
+        assertEquals("REAUTH_FAILED", json(wrongStepUp).path("code").asText());
+        assertFalse(stepUp(longToken, longPassword).isBlank());
+
+        // A long old password works for another change; account text is a valid new password too.
+        String accountPassword = employee.loginAccount();
+        changePassword(longToken, longPassword, accountPassword);
+        String finalToken = login(employee.loginAccount(), accountPassword).path("accessToken").asText();
+        assertFalse(stepUp(finalToken, accountPassword).isBlank());
+
+        for (String reused : List.of(accountPassword, longPassword, "1")) {
+            MvcResult reuse = mvc.perform(json(post("/api/auth/change-password"),
+                    Map.of("oldPassword", accountPassword, "newPassword", reused), finalToken)).andReturn();
+            assertEquals(422, reuse.getResponse().getStatus(), body(reuse));
+            assertEquals("PASSWORD_REUSE", json(reuse).path("code").asText());
+        }
+        for (String blank : List.of("", " \t\r\n")) {
+            List<MvcResult> rejected = List.of(
+                    loginResult(employee.loginAccount(), blank),
+                    stepUpResult(finalToken, blank),
+                    mvc.perform(json(post("/api/auth/change-password"),
+                            Map.of("oldPassword", accountPassword, "newPassword", blank), finalToken)).andReturn(),
+                    mvc.perform(json(post("/api/auth/change-password"),
+                            Map.of("oldPassword", blank, "newPassword", "other"), finalToken)).andReturn());
+            for (MvcResult result : rejected) {
+                assertEquals(422, result.getResponse().getStatus(), body(result));
+                assertEquals("VALIDATION_FAILED", json(result).path("code").asText());
+            }
+        }
+        assertFalse(stepUp(finalToken, accountPassword).isBlank());
+    }
 
     @Test
     void everyNamedEndpointRejectsCallsWithoutAFreshStepUp() throws Exception {
@@ -329,7 +387,7 @@ class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
         MvcResult publicSettings = mvc.perform(get("/api/settings/public")
                 .header("Authorization", "Bearer " + admin)).andReturn();
         JsonNode values = json(publicSettings);
-        assertEquals(8, values.path("passwordMinLength").asInt());
+        assertFalse(values.has("passwordMinLength"));
         assertEquals(60, values.path("badgePollSeconds").asInt());
         assertTrue(values.path("attachmentMaxBytes").asLong() > 0);
     }

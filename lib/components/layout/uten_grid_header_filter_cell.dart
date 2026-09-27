@@ -1,7 +1,7 @@
 // 表头筛选单元格（EditableGridColumn.filterValueOf 提供后启用）：点击弹锚定
 // 下拉（与 MasterDataTableView 列头 autofilter 同款视觉与交互——CompositedTransform
 // 锚定列头下方、root Overlay、TapRegion 点外关闭、选项多时带搜索）。单选值 +
-// 「所有」清空；选中时表头高亮（primaryContainer 底 + 主色加粗 + 下拉箭头）。
+// 「所有」清空；选中时表头高亮（primaryContainer 底 + 主色 + 下拉箭头）。
 // UtenEditableGrid 表头筛选单元格的公共实现（列声明 filterValueOf 即启用）。
 import 'package:flutter/material.dart';
 
@@ -95,6 +95,10 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
       return _plainHeader(theme);
     }
     final highlighted = s != null;
+    final headerStyle = UtenTableHeader.textStyle(
+      theme,
+      highlighted: highlighted,
+    );
     String display;
     if (s == null) {
       display = widget.label;
@@ -123,24 +127,14 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
                 child: Text.rich(
                   TextSpan(
                     text: display,
-                    style: (theme.textTheme.labelMedium ?? const TextStyle())
-                        .copyWith(
-                          fontWeight: highlighted
-                              ? FontWeight.w800
-                              : FontWeight.w700,
-                          color: highlighted ? theme.colorScheme.primary : null,
-                        ),
+                    style: headerStyle,
                     children: widget.requiredStar
                         ? [
                             TextSpan(
                               text: ' *',
-                              style:
-                                  (theme.textTheme.labelMedium ??
-                                          const TextStyle())
-                                      .copyWith(
-                                        color: theme.colorScheme.error,
-                                        fontWeight: FontWeight.w700,
-                                      ),
+                              style: headerStyle.copyWith(
+                                color: theme.colorScheme.error,
+                              ),
                             ),
                           ]
                         : null,
@@ -165,9 +159,7 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
 
   /// 无可选值时的纯标签表头（与可筛选态同高同内边距，只是不可点、无箭头）。
   Widget _plainHeader(ThemeData theme) {
-    final style = (theme.textTheme.labelMedium ?? const TextStyle()).copyWith(
-      fontWeight: FontWeight.w700,
-    );
+    final style = UtenTableHeader.textStyle(theme);
     return Container(
       constraints: const BoxConstraints(minHeight: 44),
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),

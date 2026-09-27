@@ -11,6 +11,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -125,6 +126,10 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
 
   @override
   String get shellPersistenceKey => 'basicData.goods';
+
+  @override
+  FormDraftDescriptor get shellCategoryDraftDescriptor =>
+      FormDraftCatalog.goodsCategory;
 
   @override
   bool get shellCanCreate => ref
@@ -604,11 +609,12 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     bool copyMode = false,
   }) {
     final body = <String, dynamic>{
+      // 粘贴 = 原货品的副本：归源货品所在分类(编号也用该分类的分配器，
+      // 与原件同族)，当前打开的分类只兜底快照缺分类的极端情况。
       'categoryId': resolveGoodsSaveCategoryId(
         currentCategoryId: currentCategoryId,
         sourceCategoryId: d.categoryId,
         requestedCategoryId: categoryId,
-        copyMode: copyMode,
       ),
       'name': d.name ?? '',
       'status': status ?? d.status ?? '使用',
@@ -708,11 +714,11 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     final d = clip.detail;
     context.appSuccess(
       '已复制货品「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '')}」'
-      '${clip.bomItems.isEmpty ? '' : '(含 ${clip.bomItems.length} 个组件)'}，可在目标分类下粘贴',
+      '${clip.bomItems.isEmpty ? '' : '(含 ${clip.bomItems.length} 个组件)'}，粘贴后将建在原货品所在分类',
     );
   }
 
-  /// 按剪贴板快照在当前分类下新建货品(编号自动生成，名称加「(n)」副本标记)，
+  /// 按剪贴板快照在原货品所在分类下新建货品(编号自动生成，名称加「(n)」副本标记)，
   /// 随后把快照里的组件行原样粘到新货品上(全量复制)。每个新货品两次请求
   /// (新建货品 + 服务端原子粘组件)；失败的逐条说明原因，不吞掉。
   /// 完成后跳到列表最后一页——列表按编号正序，新副本编号最大，落在最下面。
@@ -791,7 +797,9 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     if (mounted && outcome.succeeded > 0) await _reloadToLastPage(pane);
   }
 
-  /// 重载并跳到最后一页：新建/粘贴的货品编号最大，按编号正序排在列表最下面。
+  /// 重载并跳到最后一页：新建/粘贴的货品编号在其分类族内最大，按编号正序通常
+  /// 排在列表下面（在祖先分类下浏览、子树里存在编号序更大的别族货品时例外，
+  /// 结果弹窗已报成功数，此处不保证视口正好落在副本行）。
   Future<void> _reloadToLastPage(
     MasterEntityPaneController<GoodsListItem, GoodsDetail> pane,
   ) async {
@@ -900,7 +908,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     ref.read(goodsClipboardProvider.notifier).copyGoodsList(clips);
     pane.clearSelection();
     context.appSuccess(
-      '已复制 ${clips.length} 个货品(含组件)，可在目标分类下粘贴', // TODO(l10n): 补 arb
+      '已复制 ${clips.length} 个货品(含组件)，粘贴后将建在原货品所在分类', // TODO(l10n): 补 arb
     );
   }
 

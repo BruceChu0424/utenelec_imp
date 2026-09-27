@@ -27,6 +27,27 @@ class ProductionDrawTaskRepository {
   /// 单次批量出库上限（与后端 StockDocIssueBatchRequest.MAX_DOCUMENTS 同值）。
   static const int batchIssueLimit = 50;
 
+  /// Configure known-material requests and issue all selected DRAWs atomically.
+  Future<WarehouseDrawBatchIssueResult> issueDiscoveryBatch({
+    required String idempotencyKey,
+    required List<String> docIds,
+    required List<Map<String, dynamic>> discoveries,
+    String? reason,
+  }) async {
+    final result = await api.post(
+      '/stock/docs/issue-discovery-batch',
+      body: {
+        'idempotencyKey': idempotencyKey,
+        'docIds': docIds,
+        'discoveries': discoveries,
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      },
+    );
+    return WarehouseDrawBatchIssueResult.fromJson(
+      (result as Map).cast<String, dynamic>(),
+    );
+  }
+
   /// 批量全额出库（2026-09-09；2026-09-10 修订）：选中多张领料单按剩余量逐单出库，
   /// 草稿单在服务端走「审核并出库」（需同时持 stock_doc:approve），任一单失败整批回滚；
   /// [reason] 为统一备注（选填，≤200 字），随每张单追加到单据备注。
@@ -53,6 +74,8 @@ class ProductionDrawTaskRepository {
   /// [sort] 为服务端白名单排序字段(planNo / docNo / warehouseName / openQty /
   /// status / needDate)，[ascending] 为方向；不传 = 服务端默认(需求日期)。
   /// 排序在服务端整个结果集上做, 不是只排当前页。
+  /// [drawBillNo] 为领料单号表头值筛选（2026-09-25 单号列统一；服务端 f.docNo
+  /// 精确匹配），响应自带 facets['docNo'] 桶（与列表同一过滤口径，不含本列筛选）。
   Future<PagedResult<WarehouseDrawTask>> tasks({
     int page = 1,
     int size = 20,
@@ -60,6 +83,7 @@ class ProductionDrawTaskRepository {
     String? status,
     String? sort,
     bool ascending = true,
+    String? drawBillNo,
     WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   }) async {
     final json = await api.get(
@@ -74,6 +98,8 @@ class ProductionDrawTaskRepository {
           'sort': sort,
           'order': ascending ? 'asc' : 'desc',
         },
+        if (drawBillNo != null && drawBillNo.trim().isNotEmpty)
+          'f.docNo': drawBillNo.trim(),
         ...scope.queryParameters,
       },
     );

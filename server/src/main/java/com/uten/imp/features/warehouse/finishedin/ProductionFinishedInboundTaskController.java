@@ -44,9 +44,29 @@ public class ProductionFinishedInboundTaskController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "40") int size,
             @RequestParam(defaultValue = "") String warehouseScope,
-            @RequestParam(required = false) UUID scopeWarehouseId) {
+            @RequestParam(required = false) UUID scopeWarehouseId,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String taskNo,
+            @RequestParam(required = false) String planNo) {
         // 仓库范围(ADR-115)：MINE = 我负责的仓库；scopeWarehouseId = 指定仓库(含子仓)。
+        // 2026-09-25 单号列统一：sort/order 表头排序 + 任务单号/生产计划号表头值筛选。
         return service.list(keyword, taskStage, warehouseId, page, size,
+                warehouseScopes.resolve(warehouseScope, scopeWarehouseId),
+                sort, order, taskNo, planNo);
+    }
+
+    /** 产成品入库任务 facets（2026-09-25 单号列统一）：{taskNo/planNo:[各单号]}——
+     *  同列表过滤口径（不含单号列自身值筛选）。 */
+    @GetMapping("/tasks/facets")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public Map<String, List<Map<String, Object>>> taskFacets(
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) String taskStage,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(defaultValue = "") String warehouseScope,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        return service.facets(keyword, taskStage, warehouseId,
                 warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
     }
 

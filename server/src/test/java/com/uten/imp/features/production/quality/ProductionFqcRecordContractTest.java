@@ -33,7 +33,10 @@ class ProductionFqcRecordContractTest {
                 "list", String.class, String.class,
                 OffsetDateTime.class, OffsetDateTime.class,
                 String.class, String.class, String.class,
-                int.class, int.class);
+                int.class, int.class,
+                // 2026-09-25 单号列统一：排序 + 来源/关联/检查单号值筛选。
+                String.class, String.class, String.class, String.class,
+                String.class);
         var detail = ProductionFqcRecordController.class.getMethod(
                 "detail", UUID.class);
         assertThat(list.getAnnotation(GetMapping.class).value()).isEmpty();

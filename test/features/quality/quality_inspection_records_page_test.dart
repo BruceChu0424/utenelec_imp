@@ -251,6 +251,46 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('doc-no column filter and sort hit the server (2026-09-25)', (
+    tester,
+  ) async {
+    // 单号列统一：来源单号列头值筛选（服务端精确匹配）与排序（白名单）下推后端；
+    // facets 桶来自服务端 /facets 端点（与列表同过滤上下文）。
+    final api = _RecordApi();
+    await _pumpPage(
+      tester,
+      api: api,
+      permissions: const {Perm.procurementInspectionView},
+      size: const Size(1280, 900),
+    );
+
+    expect(api.facetPaths.last, '/procurement/inspection/records/facets');
+    final table = tester.widget<MasterDataTableView<QualityInspectionRecord>>(
+      find.byKey(const Key('quality-inspection-record-table')),
+    );
+    expect(table.facets.keys, containsAll(<String>['sourceNo', 'referenceNo']));
+    expect(table.facets['sourceNo']?.single.value, 'PR20260831001');
+    // IQC 无检查单号，桶为空表。
+    expect(table.facets['sheetNo'], isEmpty);
+
+    table.onFilterChanged('sourceNo', 'PR20260831001');
+    await tester.pumpAndSettle();
+    expect(api.listQueries.last['sourceNo'], 'PR20260831001');
+    expect(api.listQueries.last['page'], 1);
+
+    final filtered = tester
+        .widget<MasterDataTableView<QualityInspectionRecord>>(
+          find.byKey(const Key('quality-inspection-record-table')),
+        );
+    expect(filtered.filters['sourceNo'], 'PR20260831001');
+
+    filtered.onSortChange?.call('sourceNo', false);
+    await tester.pumpAndSettle();
+    expect(api.listQueries.last['sort'], 'sourceNo');
+    expect(api.listQueries.last['order'], 'desc');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('no view permission fails closed without making API requests', (
     tester,
   ) async {
@@ -308,6 +348,7 @@ class _RecordApi extends ApiClient {
   final List<String> listPaths = [];
   final List<String> detailPaths = [];
   final List<Map<String, dynamic>> listQueries = [];
+  final List<String> facetPaths = [];
   bool failNextList = false;
 
   @override
@@ -315,6 +356,24 @@ class _RecordApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    // 2026-09-25 单号列统一：单号列 facets 端点（与列表同过滤参数）。
+    if (path.endsWith('/facets')) {
+      facetPaths.add(path);
+      return {
+        'sourceNo': const [
+          {'value': 'PR20260831001', 'count': 1, 'label': 'PR20260831001'},
+        ],
+        'referenceNo': const [
+          {'value': 'PO20260831001', 'count': 1, 'label': 'PO20260831001'},
+        ],
+        // IQC 无检查单号（服务端恒空表）；FQC 有。
+        'sheetNo': path.contains('/production/')
+            ? const [
+                {'value': 'V510', 'count': 1, 'label': 'V510'},
+              ]
+            : const <Map<String, dynamic>>[],
+      };
+    }
     final detail = RegExp(
       r'^/(?:procurement/inspection|production/quality-inspections)/records/[^/]+$',
     ).hasMatch(path);

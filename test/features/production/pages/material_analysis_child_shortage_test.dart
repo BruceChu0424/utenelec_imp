@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -110,11 +111,21 @@ Future<void> _submitShortagePage(WidgetTester tester) async {
 List<({String method, String path, Map<String, dynamic>? body})> _writes() => [
   for (final request in requests)
     if (request.path.endsWith('/notify') ||
-        request.path.endsWith('/issue-plans'))
+        request.path.endsWith('/issue-plans') ||
+        request.path.endsWith('/aggregate-orders/submit'))
       request,
 ];
 
 double? _notifyQty(Map<String, dynamic>? body, String line) {
+  for (final group in _records(body?['groups'])) {
+    if ((group['materialLineIds'] as List).contains(line)) {
+      return double.parse(
+        ((group['sourceRequestedQtyByMaterialLineId'] as Map?)?[line] ??
+                group['qty'])
+            .toString(),
+      );
+    }
+  }
   for (final raw in (body?['quantities'] as List? ?? const [])) {
     final quantity = raw as Map;
     if (quantity['actionGroupKey'] == 'a-$line') {
@@ -122,6 +133,22 @@ double? _notifyQty(Map<String, dynamic>? body, String line) {
     }
   }
   return null;
+}
+
+double? _submittedSourceQty(String line) {
+  final quantities = [
+    for (final write in _writes())
+      for (final group in _records(write.body?['groups']))
+        if ((group['materialLineIds'] as List).contains(line))
+          double.parse(
+            ((group['sourceRequestedQtyByMaterialLineId'] as Map?)?[line] ??
+                    group['qty'])
+                .toString(),
+          ),
+  ];
+  if (quantities.isEmpty) return null;
+  expect(quantities, hasLength(1), reason: '$line 必须只下达一次，不能重复累计来源');
+  return quantities.single;
 }
 
 void main() {
@@ -273,17 +300,41 @@ void main() {
     final writes = _writes();
     expect(
       writes.map((request) => request.path.split('/').last).toList(),
-      ['issue-plans', 'notify'],
-      reason: '父先子后：自制子件先下达车间, 采购最后一次提交',
+      ['submit', 'submit'],
+      reason: '父先子后：同层独立组件一起提交，下一层等待父件落地',
     );
-    final issued = (writes.first.body!['lines'] as List).single as Map;
-    expect(issued['materialLineId'], 'm-c3');
-    expect(issued['qty'], 1000);
+    final issued = _records(writes.first.body!['groups']).singleWhere(
+      (group) =>
+          group['route'] == 'MAKE' &&
+          (group['materialLineIds'] as List).contains('m-c3'),
+    );
+    expect(issued['materialLineIds'], ['m-c3']);
+    expect(issued['route'], 'MAKE');
+    expect(issued['qty'], '1000');
     expect(issued['departmentId'], 'ws-1', reason: '车间按货品学习默认带出');
     expect(issued['allowedOverproductionRate'], 0.175);
-    expect(_notifyQty(writes.last.body, 'm-c1'), 1000);
-    expect(_notifyQty(writes.last.body, 'm-c2'), 500);
+    expect(_submittedSourceQty('m-c3'), 1000);
+    expect(_submittedSourceQty('m-c1'), 1000);
+    expect(_submittedSourceQty('m-c2'), 500);
+    expect(_submittedSourceQty('m-g1'), 1000);
+    expect(
+      _notifyQty(writes.first.body, 'm-g1'),
+      isNull,
+      reason: '子料不能与尚未落地的父件同段提前提交',
+    );
     expect(_notifyQty(writes.last.body, 'm-g1'), 1000);
+    for (final write in writes) {
+      for (final group in _records(write.body!['groups'])) {
+        final sourceQty = (group['sourceRequestedQtyByMaterialLineId'] as Map)
+            .values
+            .fold<double>(0, (sum, qty) => sum + double.parse(qty.toString()));
+        expect(
+          sourceQty,
+          double.parse(group['qty'].toString()),
+          reason: '每个合单组保留原来源量守恒',
+        );
+      }
+    }
 
     expect(find.byKey(const Key('child-shortage-done')), findsOneWidget);
     expect(find.text('下层物料都下够了'), findsOneWidget);
@@ -338,7 +389,8 @@ void main() {
 
     await _submitShortagePage(tester);
     final notify = _writes().single;
-    expect(notify.path, endsWith('/notify'));
+    expect(notify.path, endsWith('/aggregate-orders/submit'));
+    expect(_records(notify.body!['groups']).single['route'], 'BUY');
     expect(_notifyQty(notify.body, 'm-c1'), 200);
     expect(find.byKey(const Key('child-shortage-done')), findsOneWidget);
   });
@@ -347,7 +399,8 @@ void main() {
     await _pump(tester);
     await _check(tester, _rowCheckbox('m-c1'));
     await _submitMainTable(tester);
-    expect(_writes().single.path, endsWith('/notify'));
+    expect(_writes().single.path, endsWith('/aggregate-orders/submit'));
+    expect(_records(_writes().single.body!['groups']).single['route'], 'BUY');
     expect(find.byKey(const Key('child-shortage-dialog')), findsNothing);
   });
 
@@ -390,13 +443,25 @@ void main() {
         )
         .onChanged!(false);
     await tester.pump();
-    expect(find.text('已选 3 / 5 种'), findsOneWidget);
+    // 2026-09-26 全站口径：吸底「已选 N / M 种」文本条退役，已选计数由右下悬浮组
+    // 里的标准胶囊呈现——撤勾后胶囊计数与「一键下单(N)」都只剩 3。
+    expect(
+      tester
+          .widget<UtenSelectionSummaryPill>(
+            find.descendant(
+              of: find.byKey(const Key('child-shortage-page')),
+              matching: find.byType(UtenSelectionSummaryPill),
+            ),
+          )
+          .count,
+      3,
+    );
+    expect(find.text('一键下单(3)'), findsOneWidget);
 
     await _submitShortagePage(tester);
-    final notify = _writes().last;
-    expect(_notifyQty(notify.body, 'm-c1'), 1000);
-    expect(_notifyQty(notify.body, 'm-c2'), isNull, reason: '撤了勾的不下');
-    expect(_notifyQty(notify.body, 'm-c4'), isNull);
+    expect(_submittedSourceQty('m-c1'), 1000);
+    expect(_submittedSourceQty('m-c2'), isNull, reason: '撤了勾的不下');
+    expect(_submittedSourceQty('m-c4'), isNull);
     // 剩下没下的两行仍在页上, 等人处理。
     expect(_pageLine('m-c2'), findsOneWidget);
     expect(_pageLine('m-c4'), findsOneWidget);
@@ -531,13 +596,14 @@ void main() {
   });
 
   testWidgets('父件下成、采购那段失败：照样提醒下层还缺(正是「只下了父件」)', (tester) async {
-    await _pump(tester, failNotify: true);
+    final failures = {'BUY'};
+    await _pump(tester, failAggregateRoutes: failures);
     await _selectParentOnly(tester);
     await _check(tester, _rowCheckbox('m-c1'));
     await _submitMainTable(tester);
     final paths = _writes().map((r) => r.path.split('/').last).toList();
     expect(paths, contains('issue-plans'));
-    expect(paths, contains('notify'));
+    expect(paths, contains('submit'));
     expect(find.byKey(const Key('child-shortage-dialog')), findsOneWidget);
     expect(
       find.descendant(
@@ -547,6 +613,74 @@ void main() {
       findsOneWidget,
       reason: '采购那段没下成, 铜片仍缺',
     );
+    await tester.tap(find.text('稍后再说'));
+    await tester.pumpAndSettle();
+    failures.clear();
+    await _submitMainTable(tester);
+    expect(
+      _writes().where((write) => write.path.endsWith('/issue-plans')),
+      isEmpty,
+      reason: '已成功的根计划不重复下达',
+    );
+    expect(_submittedSourceQty('m-c1'), 1000);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('聚合内部前层成功后下层失败仍核对缺料且重试只提交未完成来源', (tester) async {
+    final failures = {'BUY'};
+    await _pump(
+      tester,
+      issuedRoot: true,
+      failAggregateRoutes: failures,
+      mutate: (data) {
+        for (final id in ['m-c3', 'm-g1']) {
+          _line(data, id).addAll({
+            'additionalSupplyRecommendedQty': 1000,
+            'planningUncoveredQty': 1000,
+            'netShortageQty': 1000,
+          });
+        }
+        return data;
+      },
+    );
+    await _check(tester, _rowCheckbox('m-c3'));
+    if (_rowCheckbox('m-g1').evaluate().isEmpty) {
+      await tester.tap(
+        find.byKey(const ValueKey('material-table-toggle-MATERIAL|m-c3')),
+      );
+      await tester.pumpAndSettle();
+    }
+    if (tester.widget<Checkbox>(_rowCheckbox('m-g1').last).value != true) {
+      await _check(tester, _rowCheckbox('m-g1'));
+    }
+    await _submitMainTable(tester);
+    expect(
+      _writes().where((write) => write.path.endsWith('/issue-plans')),
+      isEmpty,
+    );
+    expect(_submittedSourceQty('m-c3'), 1000);
+    expect(_submittedSourceQty('m-g1'), 1000);
+    expect(find.byKey(const Key('child-shortage-dialog')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('child-shortage-dialog')),
+        matching: find.text('底座原料'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      requests.where(
+        (request) => request.path.endsWith('/workshop-urges/reconcile'),
+      ),
+      isNotEmpty,
+    );
+    await tester.tap(find.text('稍后再说'));
+    await tester.pumpAndSettle();
+    failures.clear();
+    await _submitMainTable(tester);
+    expect(_submittedSourceQty('m-c3'), isNull, reason: '聚合前层已成功，重试不能再下同一来源');
+    expect(_submittedSourceQty('m-g1'), 1000);
+    expect(tester.takeException(), isNull);
   });
 }
 
@@ -561,6 +695,7 @@ Future<void> _pump(
   List<Map<String, dynamic>> urges = const [],
   List<Map<String, dynamic>>? urgeStore,
   bool failNotify = false,
+  Set<String> failAggregateRoutes = const {},
   Map<String, dynamic> Function(Map<String, dynamic> data)? mutate,
 }) async {
   requests.clear();
@@ -627,6 +762,38 @@ Future<void> _pump(
           result = {'resolved': before - liveUrges.length};
         } else if (path.endsWith('/issue-plans/preview')) {
           result = data;
+        } else if (path.endsWith('/aggregate-orders/preview')) {
+          result = _aggregatePreview(
+            data,
+            request.data as Map<String, dynamic>,
+          );
+        } else if (path.endsWith('/aggregate-orders/submit')) {
+          final body = request.data as Map<String, dynamic>;
+          if (_records(body['groups']).any(
+            (group) =>
+                (failNotify && group['route'] != 'MAKE') ||
+                failAggregateRoutes.contains(group['route']),
+          )) {
+            handler.reject(
+              DioException(
+                requestOptions: request,
+                type: DioExceptionType.badResponse,
+                response: Response<dynamic>(
+                  requestOptions: request,
+                  statusCode: 409,
+                  data: {'code': 'CONFLICT', 'message': '采购申请暂时下不了'},
+                ),
+              ),
+            );
+            return;
+          }
+          _applyAggregate(data, body);
+          result = {
+            'analysis': bumped(),
+            'replayed': false,
+            'batches': <Object>[],
+            'materialIdentityBridges': <Object>[],
+          };
         } else if (path.endsWith('/issue-plans')) {
           _applyIssuePlans(data, request.data as Map<String, dynamic>);
           result = {
@@ -737,6 +904,7 @@ Map<String, dynamic> _analysis({required bool issuedRoot}) => {
       'unitName': '件',
       'rootMaterialLineId': 'm-root',
       if (issuedRoot) 'latestPlanId': 'plan-0',
+      if (issuedRoot) ..._actualAssignment,
     },
     // 另一件早就下过单的产品：它下面的委外件缺料, 与「开关面板」这次下单无关。
     {
@@ -755,6 +923,7 @@ Map<String, dynamic> _analysis({required bool issuedRoot}) => {
       'unitName': '个',
       'rootMaterialLineId': 'm-root2',
       'latestPlanId': 'plan-old',
+      ..._actualAssignment,
     },
   ],
   'flatMaterials': [
@@ -921,6 +1090,110 @@ Map<String, dynamic> _line(Map<String, dynamic> data, String line) =>
 
 double _num(Object? value) => (value as num?)?.toDouble() ?? 0;
 
+const _actualAssignment = {
+  'planExecutionWorkshopId': 'ws-1',
+  'planExecutionWorkshopName': '装配一车间',
+  'planExecutionResponsibleId': 'w-1',
+  'planExecutionResponsibleName': '张三',
+};
+
+List<Map<String, dynamic>> _records(Object? value) => [
+  for (final row in value as List? ?? const [])
+    Map<String, dynamic>.from(row as Map),
+];
+
+Map<String, dynamic> _aggregatePreview(
+  Map<String, dynamic> data,
+  Map<String, dynamic> body,
+) => {
+  'analysisId': data['analysisId'],
+  'version': data['version'],
+  'fingerprint': data['fingerprint'],
+  'previewFingerprint': 'e' * 64,
+  'analysis': data,
+  'groups': [
+    for (final group in _records(body['groups']))
+      {
+        'clientGroupKey': group['clientGroupKey'],
+        'route': group['route'],
+        'goodsId': _line(
+          data,
+          (group['materialLineIds'] as List).first as String,
+        )['goodsId'],
+        'requestedQty': double.parse(group['qty'].toString()),
+        'sources': [
+          for (final id in (group['materialLineIds'] as List).cast<String>())
+            {
+              'materialLineId': id,
+              'originalMaterialLineIds': [id],
+              'sourceLabel': id,
+              'allocatedQty': double.parse(
+                ((group['sourceRequestedQtyByMaterialLineId'] as Map?)?[id] ??
+                        group['qty'])
+                    .toString(),
+              ),
+            },
+        ],
+        'sharedBomChildren': <Object>[],
+      },
+  ],
+};
+
+void _applyAggregate(Map<String, dynamic> data, Map<String, dynamic> body) {
+  for (final group in _records(body['groups'])) {
+    for (final id in (group['materialLineIds'] as List).cast<String>()) {
+      final material = _line(data, id);
+      final quantity = double.parse(
+        ((group['sourceRequestedQtyByMaterialLineId'] as Map?)?[id] ??
+                group['qty'])
+            .toString(),
+      );
+      final existing = material['aggregatePreparation'] as Map?;
+      final previous = existing == null
+          ? _records(material['downstreamReferences']).fold<double>(
+              0,
+              (total, reference) => total + _num(reference['allocatedQty']),
+            )
+          : _num(existing['orderedQty']);
+      final remaining =
+          (_num(
+                    existing?['planningUncoveredQty'] ??
+                        material['planningUncoveredQty'] ??
+                        material['additionalSupplyRecommendedQty'],
+                  ) -
+                  quantity)
+              .clamp(0.0, double.infinity);
+      if (group['route'] == 'MAKE') {
+        _applyIssuePlans(data, {
+          'lines': [
+            {'materialLineId': id, 'qty': quantity},
+          ],
+        });
+      } else {
+        _applyNotify(data, {
+          'target': group['route'],
+          'quantities': [
+            {'actionGroupKey': 'a-$id', 'qty': quantity},
+          ],
+        });
+      }
+      material['aggregatePreparation'] = {
+        'requiredQty': existing?['requiredQty'] ?? material['requiredQty'],
+        'orderedQty': previous + quantity,
+        'allocatedOrderedQty': previous + quantity,
+        'planningUncoveredQty': remaining,
+        'netShortageQty': remaining,
+        'targetMaterialLineIds':
+            existing?['targetMaterialLineIds'] ?? <String>[],
+        'actionable': true,
+      };
+      material['planningUncoveredQty'] = remaining;
+      material['additionalSupplyRecommendedQty'] = remaining;
+      material['netShortageQty'] = remaining;
+    }
+  }
+}
+
 /// 像服务端那样写回 notify：本行挂下游引用, 缺口扣掉。
 void _applyNotify(Map<String, dynamic> data, Map<String, dynamic> body) {
   final route = body['target'] as String;
@@ -980,6 +1253,7 @@ void _applyIssuePlans(Map<String, dynamic> data, Map<String, dynamic> body) {
       product['remainingQty'] = remaining - demand;
       product['canSchedule'] = remaining - demand > 0;
       product['latestPlanId'] = 'plan-${requests.length}';
+      product.addAll(_actualAssignment);
       _line(data, 'm-root')['netShortageQty'] = 0;
       _line(data, 'm-root')['additionalSupplyRecommendedQty'] = 0;
       if (line['publicSurplusOnly'] == true) {
@@ -1007,6 +1281,7 @@ void _applyIssuePlans(Map<String, dynamic> data, Map<String, dynamic> body) {
       'canIssueSurplus': true,
       'unitName': '个',
       'latestPlanId': 'plan-${requests.length}',
+      ..._actualAssignment,
     });
     material['netShortageQty'] = 0;
     material['additionalSupplyRecommendedQty'] = 0;

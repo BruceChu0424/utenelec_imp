@@ -15,6 +15,9 @@ import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/attachments/pending_attachment_controller.dart';
 import '../../../shared/attachments/pending_attachment_flow.dart';
 import 'package:flutter/material.dart';
+import '../../../shared/widgets/saved_document_fields.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_values.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
@@ -92,7 +95,8 @@ class SalesDocEditPage extends ConsumerStatefulWidget {
   ConsumerState<SalesDocEditPage> createState() => _SalesDocEditPageState();
 }
 
-class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
+class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
+    with FormDraftMixin<SalesDocEditPage> {
   SalesDocConfig get _cfg => _isCustomerShipment
       ? SalesDocConfig.customerShipment
       : SalesDocConfig.by(widget.docType);
@@ -232,6 +236,123 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   final Set<TextEditingController> _qtyListened = {};
 
   @override
+  bool get formDraftEnabled => widget.id == null;
+
+  @override
+  bool get formDraftBusy => _saving || _uncertainShipmentBody != null;
+
+  bool get _hasCreatedDocuments =>
+      _createdDocId != null || _createdShipments.isNotEmpty;
+
+  @override
+  bool get formDraftCanReplaySubmission =>
+      _createdDocId != null ||
+      _createdShipments.isNotEmpty ||
+      (widget.docType == SalesDocType.shipment && !_isCustomerShipment);
+
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftSpec(
+    title: _cfg.label,
+    module: BadgeModule.sales,
+    route: '/sales/${_cfg.type.pathSegment}/new',
+    permission: _cfg.createPerm!,
+    draftKind: _cfg.draftKind?.name,
+  );
+
+  Map<String, TextEditingController> get _draftHeaderText => {
+    'remark': _remark,
+    'rate': _rate,
+    'taxRate': _taxRate,
+    'contractNo': _contractNo,
+    'linkPhone': _linkPhone,
+    'logisticsNo': _logisticsNo,
+    'signAddr': _signAddr,
+    'shipAddr': _shipAddr,
+    'shipLinkPhone': _shipLinkPhone,
+    'parcelCount': _parcelCount,
+    'outType': _outType,
+    'returnReason': _returnReason,
+    'freeReason': _freeReason,
+  };
+
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    ..._draftHeaderText.values,
+    _grid,
+    for (final row in _grid.rows) ...row.draftListenables,
+    _pendingFiles,
+  ];
+
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'text': draftTextValues(_draftHeaderText),
+    'billDate': _billDate.toIso8601String(),
+    'clientId': _clientId,
+    'warehouseId': _warehouseId,
+    'currencyId': _currencyId,
+    'settlementMethodId': _settlementMethodId,
+    'sellerId': _sellerId,
+    'senderId': _senderId,
+    'shipmentPolicy': _shipmentPolicy,
+    'billingMode': _billingMode,
+    'directPurpose': _directPurpose,
+    'validUntil': _validUntil?.toIso8601String(),
+    'deliverDate': _deliverDate?.toIso8601String(),
+    'employees': draftEmployees(_empCache),
+    'rows': draftGridRows(_grid, (row) => row.exportDraft()),
+    'attachments': _pendingFiles.exportDraft(),
+    'batchIntentKey': _batchIntentKey,
+    'uncertainShipmentBody': _uncertainShipmentBody,
+    'createdDocId': _createdDocId,
+    'createdShipments': [
+      for (final doc in _createdShipments) {'id': doc.id, 'billNo': doc.billNo},
+    ],
+    'autofilled': _autofilled.toList(),
+    'autofillValues': {..._autofillValues},
+  };
+
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    restoreDraftTextValues(_draftHeaderText, draftMap(data['text']));
+    _billDate =
+        DateTime.tryParse(data['billDate'] as String? ?? '') ?? _billDate;
+    _clientId = data['clientId'] as String?;
+    _warehouseId = data['warehouseId'] as String?;
+    _currencyId = data['currencyId'] as String?;
+    _settlementMethodId = data['settlementMethodId'] as String?;
+    _sellerId = data['sellerId'] as String?;
+    _senderId = data['senderId'] as String?;
+    _shipmentPolicy = data['shipmentPolicy'] as String?;
+    _billingMode = data['billingMode'] as String?;
+    _directPurpose = data['directPurpose'] as String?;
+    _validUntil = DateTime.tryParse(data['validUntil'] as String? ?? '');
+    _deliverDate = DateTime.tryParse(data['deliverDate'] as String? ?? '');
+    restoreDraftEmployees(_empCache, data['employees']);
+    restoreDraftGrid(_grid, data['rows'], SalesGridRow.fromDraft);
+    _pendingFiles.restoreDraft(draftMap(data['attachments']));
+    _batchIntentKey = data['batchIntentKey'] as String? ?? _batchIntentKey;
+    _uncertainShipmentBody = data['uncertainShipmentBody'] is Map
+        ? draftMap(data['uncertainShipmentBody'])
+        : null;
+    _createdDocId = data['createdDocId'] as String?;
+    _createdShipments = draftMaps(data['createdShipments'])
+        .map(
+          (doc) => SalesDocDetail(
+            id: doc['id'] as String,
+            billNo: doc['billNo'] as String?,
+          ),
+        )
+        .toList();
+    _autofilled
+      ..clear()
+      ..addAll(draftStrings(data['autofilled']));
+    _autofillValues
+      ..clear()
+      ..addAll(draftMap(data['autofillValues']).cast<String, String>());
+    _clientPrefillGeneration++;
+  }
+
+  @override
   void initState() {
     super.initState();
     // 明细行增删 → 重新挂载数量监听并刷新按单位分组的数量。
@@ -325,7 +446,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             .map((e) => e.goodsId)
             .whereType<String>()
             .toSet();
-        await ref.read(salesMasterNameServiceProvider).loadGoodsNames(goodsIds);
+        await ref
+            .read(salesMasterNameServiceProvider)
+            .loadGoodsNamesWithCodes(goodsIds);
         await _preloadEmployees([d.sellerId, d.senderId]);
         if (!mounted) return;
         _billNo.text = d.billNo ?? '';
@@ -385,14 +508,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         for (final it in d.items) {
           final row = SalesGridRow(amountUsesDiscount: _amountUsesDiscount)
             ..documentItemId = it.id
-            ..goods = it.goodsId == null
-                ? null
-                : GoodsOption(
-                    id: it.goodsId!,
-                    name: ref
-                        .read(salesMasterNameServiceProvider)
-                        .goods(it.goodsId),
-                  )
+            // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
+            ..goods = ref
+                .read(salesMasterNameServiceProvider)
+                .goodsOptionOf(it.goodsId)
             ..orderItemId = it.orderItemId
             ..outItemId = it.outItemId
             ..colorId = it.colorId
@@ -486,6 +605,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           widget.initialOrderId != null) {
         await _prefillSelectedOrder();
       }
+      if (mounted && widget.id == null) await initializeFormDraft();
     } on ApiException catch (e) {
       _initializationError = e.message;
     } on FormatException catch (e) {
@@ -507,7 +627,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     final progress = await repository.planProgress(prefill.orderId);
     prefill.validate(order, progress);
     final names = ref.read(salesMasterNameServiceProvider);
-    await names.loadGoodsNames(
+    await names.loadGoodsNamesWithCodes(
       order.items
           .where((item) => prefill.quantities.containsKey(item.id))
           .map((item) => item.goodsId)
@@ -537,7 +657,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           unitId: item.unitId,
           unitRate: item.unitRate,
         ),
-        GoodsOption(id: item.goodsId!, name: names.goods(item.goodsId)),
+        names.goodsOptionOf(item.goodsId)!,
       );
       row.unitRateExact = item.exactDecimals['unitRate'];
       row.price.text =
@@ -668,16 +788,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         .where((id) => id.isNotEmpty)
         .toSet();
     if (goodsIds.isNotEmpty) {
-      await ref.read(salesMasterNameServiceProvider).loadGoodsNames(goodsIds);
+      await ref
+          .read(salesMasterNameServiceProvider)
+          .loadGoodsNamesWithCodes(goodsIds);
     }
     if (!mounted) return;
     final rows = <SalesGridRow>[];
     for (final li in result.items) {
       if (li.goodsId.isEmpty) continue;
-      final goods = GoodsOption(
-        id: li.goodsId,
-        name: ref.read(salesMasterNameServiceProvider).goods(li.goodsId),
-      );
+      final goods = ref
+          .read(salesMasterNameServiceProvider)
+          .goodsOptionOf(li.goodsId)!;
       rows.add(
         SalesGridRow.fromLinked(
           li,
@@ -1317,10 +1438,19 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     }
     setState(() => _saving = true);
     try {
+      if (widget.id == null) await saveFormDraftNow();
       final repo = ref.read(salesRepositoryProvider(widget.docType));
       final d = widget.id == null
-          ? await repo.create(body)
+          ? await runFormDraftSubmission(() => repo.create(body))
           : await repo.update(widget.id!, body);
+      if (!mounted) return;
+      if (widget.id == null) {
+        setState(() {
+          _createdDocId = d.id;
+          _clientPrefillGeneration++;
+        });
+        await checkpointFormDraftAfterCreation();
+      }
       if (!mounted) return;
       context.appSuccess(
         _financeRejected
@@ -1333,14 +1463,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       if (widget.id == null &&
           _hasDraftAttachmentArea &&
           _pendingFiles.isNotEmpty) {
-        // 新建单据：先拿到真实 UUID，再把保存前暂存的附件逐个确认上传。
-        setState(() => _createdDocId = d.id);
+        // 新建单据：已记录真实 UUID，继续上传附件，不重复创建。
         await _finishCreatedDocument(d.id);
         return;
       }
-      // 编辑既有单：pop 回宿主详情/审核页（其「返回即刷新」会重取保存后数据），
-      // 深链直达才落新详情；此前 replace 把新详情叠在旧详情上，返回一次看到的
-      // 是保存前快照（2026-09-25 用户反馈）。新建单仍落新详情。
+      await completeFormDraft();
+      if (!mounted) return;
+      // 编辑既有单：仅同单详情在紧邻栈下时 pop 并刷新；草稿列表直接编辑或深链
+      // 进入时 replace 到本单详情继续审核。新建单同样落新详情。
       if (widget.id != null) {
         popSavedEditOrReplace(
           context,
@@ -1359,43 +1489,50 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   }
 
   Future<void> _saveShipmentBatch(Map<String, dynamic> body) async {
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _uncertainShipmentBody = body;
+    });
     try {
-      final created = await ref
-          .read(salesRepositoryProvider(SalesDocType.shipment))
-          .batchShip(
-            billDate: body['billDate'] as String,
-            idempotencyKey: _batchIntentKey,
-            remark: body['remark'] as String?,
-            header: {
-              for (final key in [
-                'shipAddr',
-                'linkPhone',
-                'logisticsNo',
-                'sellerId',
-                'senderId',
-                'parcelCount',
-                'settlementMethodId',
-              ])
-                if (body[key] != null) key: body[key],
-            },
-            lines: [
-              for (final item
-                  in (body['items'] as List).cast<Map<String, dynamic>>())
-                {
-                  'orderItemId': item['orderItemId'],
-                  'qty': item['qty'],
-                  if (item['weight'] != null) 'weight': item['weight'],
-                  if (item['remark'] != null) 'remark': item['remark'],
-                },
-            ],
-          );
+      await saveFormDraftNow();
+      final created = await runFormDraftSubmission(
+        () => ref
+            .read(salesRepositoryProvider(SalesDocType.shipment))
+            .batchShip(
+              billDate: body['billDate'] as String,
+              idempotencyKey: _batchIntentKey,
+              remark: body['remark'] as String?,
+              header: {
+                for (final key in [
+                  'shipAddr',
+                  'linkPhone',
+                  'logisticsNo',
+                  'sellerId',
+                  'senderId',
+                  'parcelCount',
+                  'settlementMethodId',
+                ])
+                  if (body[key] != null) key: body[key],
+              },
+              lines: [
+                for (final item
+                    in (body['items'] as List).cast<Map<String, dynamic>>())
+                  {
+                    'orderItemId': item['orderItemId'],
+                    'qty': item['qty'],
+                    if (item['weight'] != null) 'weight': item['weight'],
+                    if (item['remark'] != null) 'remark': item['remark'],
+                  },
+              ],
+            ),
+      );
       if (!mounted) return;
       if (created.isEmpty) throw const FormatException('未收到已创建的出货单，请重试确认本次结果');
       setState(() {
         _createdShipments = created;
         _uncertainShipmentBody = null;
       });
+      await checkpointFormDraftAfterCreation();
       bumpListRefresh(ref, _cfg.refreshKey);
       bumpListRefresh(ref, SalesDocConfig.order.refreshKey);
       await _finishCreatedShipments();
@@ -1434,6 +1571,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         ownerIds: _createdShipments.map((doc) => doc.id).toList(),
       );
       if (!mounted || !ok) return;
+      await completeFormDraft();
+      if (!mounted) return;
       if (_createdShipments.length == 1) {
         context.appSuccess('出货单已创建，请核对并提交财务审核');
         context.replace(
@@ -1490,14 +1629,18 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   Future<void> _finishCreatedDocument(String createdId) async {
     setState(() => _saving = true);
     try {
-      final ok = await flushPendingAttachments(
-        context,
-        ref,
-        _pendingFiles,
-        ownerType: _cfg.attachmentOwnerType!,
-        ownerIds: [createdId],
-      );
-      if (!mounted || !ok) return;
+      if (_pendingFiles.isNotEmpty && _cfg.attachmentOwnerType != null) {
+        final ok = await flushPendingAttachments(
+          context,
+          ref,
+          _pendingFiles,
+          ownerType: _cfg.attachmentOwnerType!,
+          ownerIds: [createdId],
+        );
+        if (!mounted || !ok) return;
+      }
+      await completeFormDraft();
+      if (!mounted) return;
       context.replace(
         SalesRoutePath.docDetail(_cfg.type.pathSegment, createdId),
       );
@@ -1538,7 +1681,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => withFormDraft(_buildDraftPage(context));
+
+  Widget _buildDraftPage(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(salesMasterNameServiceProvider);
     final compact = MediaQuery.sizeOf(context).width < 600;
@@ -1724,468 +1869,491 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                 ),
                                 const SizedBox(height: UtenSpacing.s12),
                               ],
-                              Card(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(
-                                    UtenSpacing.s12,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      UtenFormGrid(
-                                        children: [
-                                          // 单据号：系统自动生成，只读显示。
-                                          TextFormField(
-                                            errorBuilder:
-                                                utenTextFieldErrorBuilder,
-                                            readOnly: true,
-                                            controller: _billNo,
-                                            decoration: UtenInputDecoration(
-                                              InputDecoration(
-                                                labelText: '单据号(系统自动生成)',
-                                                hintText: _billNo.text.isEmpty
-                                                    ? '保存后自动生成'
-                                                    : null,
-                                                filled: _billNo.text.isEmpty,
-                                                suffixIcon: _billNo.text.isEmpty
-                                                    ? const Icon(
-                                                        Icons
-                                                            .autorenew_outlined,
-                                                        size: 18,
-                                                      )
-                                                    : const Icon(
-                                                        Icons.lock_outline,
-                                                        size: 16,
-                                                      ),
-                                              ),
-                                            ),
-                                          ),
-                                          // 制单员/制单时间：服务端权威，只读展示（责任制）。
-                                          ...utenMakerAuditCells(
-                                            ref,
-                                            makerName: _makerName,
-                                            createdAt: _createdAt,
-                                          ),
-                                          UtenDateField(
-                                            label: '单据日期',
-                                            required: true,
-                                            value: _billDate,
-                                            onChanged: (d) =>
-                                                setState(() => _billDate = d),
-                                          ),
-                                          ClientPickerField(
-                                            initialId: _clientId,
-                                            initialName: names.client(
-                                              _clientId,
-                                            ),
-                                            required: _cfg.clientRequired,
-                                            errorMessage:
-                                                _errors.contains('client')
-                                                ? '请选择客户'
-                                                : null,
-                                            // 选客户后联动带出主档收货地址/联系电话。
-                                            onChanged: (v) =>
-                                                _onClientChanged(v),
-                                            onPick: () => showUtenClientPicker(
-                                              context,
-                                              ref,
-                                            ),
-                                          ),
-                                          if (_isCustomerShipment) ...[
-                                            UtenDropdownField(
-                                              key: const ValueKey(
-                                                'customer-shipment-billing',
-                                              ),
-                                              label: '是否收费',
-                                              required: true,
-                                              value: _billingMode,
-                                              info:
-                                                  '请按本次实际约定选择。收费和不收费都须财务确认，再由仓库出库。',
-                                              errorMessage:
-                                                  _errors.contains(
-                                                    'billingMode',
-                                                  )
-                                                  ? '请选择收费或不收费'
-                                                  : null,
-                                              items: const [
-                                                UtenDropdownItem(
-                                                  value: 'CHARGED',
-                                                  label: '收费',
-                                                ),
-                                                UtenDropdownItem(
-                                                  value: 'FREE',
-                                                  label: '不收费',
-                                                ),
-                                              ],
-                                              onChanged: (value) {
-                                                setState(
-                                                  () => _billingMode = value,
-                                                );
-                                                _clearError('billingMode');
-                                              },
-                                            ),
-                                            UtenDropdownField(
-                                              key: const ValueKey(
-                                                'customer-shipment-purpose',
-                                              ),
-                                              label: '发货用途',
-                                              required: true,
-                                              value: _directPurpose,
-                                              info:
-                                                  '用途和免费原因交财务核对；不会自动免除审批或库存成本。',
-                                              errorMessage:
-                                                  _errors.contains(
-                                                    'directPurpose',
-                                                  )
-                                                  ? '请选择发货用途'
-                                                  : null,
-                                              items: const [
-                                                UtenDropdownItem(
-                                                  value: 'SAMPLE',
-                                                  label: '样品',
-                                                ),
-                                                UtenDropdownItem(
-                                                  value: 'GIFT',
-                                                  label: '赠送',
-                                                ),
-                                                UtenDropdownItem(
-                                                  value: 'OTHER',
-                                                  label: '其它客户发货',
-                                                ),
-                                              ],
-                                              onChanged: (value) {
-                                                setState(
-                                                  () => _directPurpose = value,
-                                                );
-                                                _clearError('directPurpose');
-                                              },
-                                            ),
-                                            if (_freeCustomerShipment)
-                                              TextField(
-                                                key: const ValueKey(
-                                                  'customer-shipment-free-reason',
-                                                ),
-                                                controller: _freeReason,
-                                                decoration: UtenInputDecoration(
-                                                  InputDecoration(
-                                                    labelText: '不收费原因 *',
-                                                    error:
-                                                        _errors.contains(
-                                                          'freeReason',
+                              SavedDocumentFields(
+                                locked: _hasCreatedDocuments,
+                                child: Card(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(
+                                      UtenSpacing.s12,
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        UtenFormGrid(
+                                          children: [
+                                            // 单据号：系统自动生成，只读显示。
+                                            TextFormField(
+                                              errorBuilder:
+                                                  utenTextFieldErrorBuilder,
+                                              readOnly: true,
+                                              controller: _billNo,
+                                              decoration: UtenInputDecoration(
+                                                InputDecoration(
+                                                  labelText: '单据号(系统自动生成)',
+                                                  hintText: _billNo.text.isEmpty
+                                                      ? '保存后自动生成'
+                                                      : null,
+                                                  filled: _billNo.text.isEmpty,
+                                                  suffixIcon:
+                                                      _billNo.text.isEmpty
+                                                      ? const Icon(
+                                                          Icons
+                                                              .autorenew_outlined,
+                                                          size: 18,
                                                         )
-                                                        ? const UtenFieldMessage.error(
-                                                            '请填写不收费原因',
-                                                          )
-                                                        : null,
-                                                  ),
-                                                  info:
-                                                      '填写与客户约定的不收费原因，供销售确认和财务审核。',
+                                                      : const Icon(
+                                                          Icons.lock_outline,
+                                                          size: 16,
+                                                        ),
                                                 ),
-                                                onChanged: (_) =>
-                                                    _clearError('freeReason'),
                                               ),
-                                          ],
-                                          if (_cfg.hasWarehouse)
-                                            // V476：仓库下拉带主/子层级（父仓置灰分组，单据落具体仓）。
-                                            UtenDropdownField(
-                                              label: '仓库',
-                                              value: _warehouseId,
-                                              required: true,
-                                              searchable: true,
-                                              autofilled: _autofilled.contains(
-                                                'warehouse',
-                                              ),
-                                              errorMessage:
-                                                  _errors.contains('warehouse')
-                                                  ? '请选择仓库'
-                                                  : null,
-                                              items: warehouseHierarchyItems(
-                                                names.warehouseHierarchy,
-                                                currentValue: _warehouseId,
-                                              ),
-                                              onChanged: (v) {
-                                                setState(
-                                                  () => _warehouseId = v,
-                                                );
-                                                _clearError('warehouse');
-                                                _markConfirmed('warehouse');
-                                              },
                                             ),
-                                          if (_cfg.hasCurrency &&
-                                              !_freeCustomerShipment) ...[
-                                            _dropdown(
-                                              '币种',
-                                              _currencyId,
-                                              names.currencyEntries,
-                                              (v) {
-                                                setState(() => _currencyId = v);
-                                                _clearError('currency');
-                                                _markConfirmed('currency');
-                                              },
+                                            // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                                            ...utenMakerAuditCells(
+                                              ref,
+                                              makerName: _makerName,
+                                              createdAt: _createdAt,
+                                            ),
+                                            UtenDateField(
+                                              label: '单据日期',
                                               required: true,
-                                              autofilled: _autofilled.contains(
-                                                'currency',
+                                              value: _billDate,
+                                              onChanged: (d) =>
+                                                  setState(() => _billDate = d),
+                                            ),
+                                            ClientPickerField(
+                                              initialId: _clientId,
+                                              initialName: names.client(
+                                                _clientId,
                                               ),
+                                              required: _cfg.clientRequired,
                                               errorMessage:
-                                                  _errors.contains('currency')
-                                                  ? '请选择币种'
+                                                  _errors.contains('client')
+                                                  ? '请选择客户'
                                                   : null,
-                                              // 列表没有的币种可内联新增（currency:edit），
-                                              // 新建后字典重载并自动选中新值。
-                                              addNewLabel: '添加币种',
-                                              onAddNew: _canAddCurrency
-                                                  ? () async {
-                                                      final id =
-                                                          await showCurrencyAddSheet(
-                                                            context,
-                                                            ref,
-                                                            names,
-                                                          );
-                                                      if (id == null ||
-                                                          !mounted) {
-                                                        return;
+                                              // 选客户后联动带出主档收货地址/联系电话。
+                                              onChanged: (v) =>
+                                                  _onClientChanged(v),
+                                              onPick: () =>
+                                                  showUtenClientPicker(
+                                                    context,
+                                                    ref,
+                                                  ),
+                                            ),
+                                            if (_isCustomerShipment) ...[
+                                              UtenDropdownField(
+                                                key: const ValueKey(
+                                                  'customer-shipment-billing',
+                                                ),
+                                                label: '是否收费',
+                                                required: true,
+                                                value: _billingMode,
+                                                info:
+                                                    '请按本次实际约定选择。收费和不收费都须财务确认，再由仓库出库。',
+                                                errorMessage:
+                                                    _errors.contains(
+                                                      'billingMode',
+                                                    )
+                                                    ? '请选择收费或不收费'
+                                                    : null,
+                                                items: const [
+                                                  UtenDropdownItem(
+                                                    value: 'CHARGED',
+                                                    label: '收费',
+                                                  ),
+                                                  UtenDropdownItem(
+                                                    value: 'FREE',
+                                                    label: '不收费',
+                                                  ),
+                                                ],
+                                                onChanged: (value) {
+                                                  setState(
+                                                    () => _billingMode = value,
+                                                  );
+                                                  _clearError('billingMode');
+                                                },
+                                              ),
+                                              UtenDropdownField(
+                                                key: const ValueKey(
+                                                  'customer-shipment-purpose',
+                                                ),
+                                                label: '发货用途',
+                                                required: true,
+                                                value: _directPurpose,
+                                                info:
+                                                    '用途和免费原因交财务核对；不会自动免除审批或库存成本。',
+                                                errorMessage:
+                                                    _errors.contains(
+                                                      'directPurpose',
+                                                    )
+                                                    ? '请选择发货用途'
+                                                    : null,
+                                                items: const [
+                                                  UtenDropdownItem(
+                                                    value: 'SAMPLE',
+                                                    label: '样品',
+                                                  ),
+                                                  UtenDropdownItem(
+                                                    value: 'GIFT',
+                                                    label: '赠送',
+                                                  ),
+                                                  UtenDropdownItem(
+                                                    value: 'OTHER',
+                                                    label: '其它客户发货',
+                                                  ),
+                                                ],
+                                                onChanged: (value) {
+                                                  setState(
+                                                    () =>
+                                                        _directPurpose = value,
+                                                  );
+                                                  _clearError('directPurpose');
+                                                },
+                                              ),
+                                              if (_freeCustomerShipment)
+                                                TextField(
+                                                  key: const ValueKey(
+                                                    'customer-shipment-free-reason',
+                                                  ),
+                                                  controller: _freeReason,
+                                                  decoration: UtenInputDecoration(
+                                                    InputDecoration(
+                                                      labelText: '不收费原因 *',
+                                                      error:
+                                                          _errors.contains(
+                                                            'freeReason',
+                                                          )
+                                                          ? const UtenFieldMessage.error(
+                                                              '请填写不收费原因',
+                                                            )
+                                                          : null,
+                                                    ),
+                                                    info:
+                                                        '填写与客户约定的不收费原因，供销售确认和财务审核。',
+                                                  ),
+                                                  onChanged: (_) =>
+                                                      _clearError('freeReason'),
+                                                ),
+                                            ],
+                                            if (_cfg.hasWarehouse)
+                                              // V476：仓库下拉带主/子层级（父仓置灰分组，单据落具体仓）。
+                                              UtenDropdownField(
+                                                label: '仓库',
+                                                value: _warehouseId,
+                                                required: true,
+                                                searchable: true,
+                                                autofilled: _autofilled
+                                                    .contains('warehouse'),
+                                                errorMessage:
+                                                    _errors.contains(
+                                                      'warehouse',
+                                                    )
+                                                    ? '请选择仓库'
+                                                    : null,
+                                                items: warehouseHierarchyItems(
+                                                  names.warehouseHierarchy,
+                                                  currentValue: _warehouseId,
+                                                ),
+                                                onChanged: (v) {
+                                                  setState(
+                                                    () => _warehouseId = v,
+                                                  );
+                                                  _clearError('warehouse');
+                                                  _markConfirmed('warehouse');
+                                                },
+                                              ),
+                                            if (_cfg.hasCurrency &&
+                                                !_freeCustomerShipment) ...[
+                                              _dropdown(
+                                                '币种',
+                                                _currencyId,
+                                                names.currencyEntries,
+                                                (v) {
+                                                  setState(
+                                                    () => _currencyId = v,
+                                                  );
+                                                  _clearError('currency');
+                                                  _markConfirmed('currency');
+                                                },
+                                                required: true,
+                                                autofilled: _autofilled
+                                                    .contains('currency'),
+                                                errorMessage:
+                                                    _errors.contains('currency')
+                                                    ? '请选择币种'
+                                                    : null,
+                                                // 列表没有的币种可内联新增（currency:edit），
+                                                // 新建后字典重载并自动选中新值。
+                                                addNewLabel: '添加币种',
+                                                onAddNew: _canAddCurrency
+                                                    ? () async {
+                                                        final id =
+                                                            await showCurrencyAddSheet(
+                                                              context,
+                                                              ref,
+                                                              names,
+                                                            );
+                                                        if (id == null ||
+                                                            !mounted) {
+                                                          return;
+                                                        }
+                                                        setState(
+                                                          () =>
+                                                              _currencyId = id,
+                                                        );
+                                                        _clearError('currency');
                                                       }
-                                                      setState(
-                                                        () => _currencyId = id,
-                                                      );
-                                                      _clearError('currency');
-                                                    }
-                                                  : null,
-                                            ),
-                                            if (_cfg.hasExchangeRate)
+                                                    : null,
+                                              ),
+                                              if (_cfg.hasExchangeRate)
+                                                TextField(
+                                                  controller: _rate,
+                                                  keyboardType:
+                                                      const TextInputType.numberWithOptions(
+                                                        decimal: true,
+                                                      ),
+                                                  decoration:
+                                                      const InputDecoration(
+                                                        labelText: '汇率',
+                                                      ),
+                                                ),
                                               TextField(
-                                                controller: _rate,
+                                                controller: _taxRate,
                                                 keyboardType:
                                                     const TextInputType.numberWithOptions(
                                                       decimal: true,
                                                     ),
                                                 decoration:
                                                     const InputDecoration(
-                                                      labelText: '汇率',
+                                                      labelText: '税率(%)',
                                                     ),
                                               ),
-                                            TextField(
-                                              controller: _taxRate,
-                                              keyboardType:
-                                                  const TextInputType.numberWithOptions(
-                                                    decimal: true,
-                                                  ),
-                                              decoration: const InputDecoration(
-                                                labelText: '税率(%)',
-                                              ),
-                                            ),
-                                          ],
-                                          if (_cfg.hasSettlement &&
-                                              !_freeCustomerShipment)
-                                            _dropdown(
-                                              '结账方式',
-                                              _settlementMethodId,
-                                              settlementEntries,
-                                              (value) {
-                                                setState(
-                                                  () => _settlementMethodId =
-                                                      value,
-                                                );
-                                                _clearError('settlementMethod');
-                                                _markConfirmed(
-                                                  'settlementMethod',
-                                                );
-                                              },
-                                              required: _cfg.settlementRequired,
-                                              allowClear:
-                                                  !_cfg.settlementRequired,
-                                              autofilled: _autofilled.contains(
-                                                'settlementMethod',
-                                              ),
-                                              errorMessage:
-                                                  _errors.contains(
+                                            ],
+                                            if (_cfg.hasSettlement &&
+                                                !_freeCustomerShipment)
+                                              _dropdown(
+                                                '结账方式',
+                                                _settlementMethodId,
+                                                settlementEntries,
+                                                (value) {
+                                                  setState(
+                                                    () => _settlementMethodId =
+                                                        value,
+                                                  );
+                                                  _clearError(
                                                     'settlementMethod',
-                                                  )
-                                                  ? '请选择结账方式'
-                                                  : null,
-                                              // 列表没有的结账方式可内联新增（payment_style:edit）。
-                                              addNewLabel: '添加结账方式',
-                                              onAddNew: _canAddSettlement
-                                                  ? () async {
-                                                      final id =
-                                                          await showSettlementAddSheet(
-                                                            context,
-                                                            ref,
-                                                          );
-                                                      if (id == null ||
-                                                          !mounted) {
-                                                        return;
+                                                  );
+                                                  _markConfirmed(
+                                                    'settlementMethod',
+                                                  );
+                                                },
+                                                required:
+                                                    _cfg.settlementRequired,
+                                                allowClear:
+                                                    !_cfg.settlementRequired,
+                                                autofilled: _autofilled
+                                                    .contains(
+                                                      'settlementMethod',
+                                                    ),
+                                                errorMessage:
+                                                    _errors.contains(
+                                                      'settlementMethod',
+                                                    )
+                                                    ? '请选择结账方式'
+                                                    : null,
+                                                // 列表没有的结账方式可内联新增（payment_style:edit）。
+                                                addNewLabel: '添加结账方式',
+                                                onAddNew: _canAddSettlement
+                                                    ? () async {
+                                                        final id =
+                                                            await showSettlementAddSheet(
+                                                              context,
+                                                              ref,
+                                                            );
+                                                        if (id == null ||
+                                                            !mounted) {
+                                                          return;
+                                                        }
+                                                        setState(
+                                                          () =>
+                                                              _settlementMethodId =
+                                                                  id,
+                                                        );
+                                                        _clearError(
+                                                          'settlementMethod',
+                                                        );
                                                       }
-                                                      setState(
-                                                        () =>
-                                                            _settlementMethodId =
-                                                                id,
-                                                      );
-                                                      _clearError(
-                                                        'settlementMethod',
-                                                      );
-                                                    }
-                                                  : null,
-                                            ),
-                                          // 人员字段（按 config 显隐）
-                                          if (_cfg.hasSeller)
-                                            _employeePicker(
-                                              label: '业务员',
-                                              currentId: _sellerId,
-                                              defaultDeptCode:
-                                                  kDeptCodeMarketing,
-                                              required: _cfg.sellerRequired,
-                                              onChanged: (id) => setState(
-                                                () => _sellerId = id,
+                                                    : null,
                                               ),
-                                            ),
-                                          if (_cfg.hasSender)
-                                            _employeePicker(
-                                              label: '发货人',
-                                              currentId: _senderId,
-                                              onChanged: (id) => setState(
-                                                () => _senderId = id,
+                                            // 人员字段（按 config 显隐）
+                                            if (_cfg.hasSeller)
+                                              _employeePicker(
+                                                label: '业务员',
+                                                currentId: _sellerId,
+                                                defaultDeptCode:
+                                                    kDeptCodeMarketing,
+                                                required: _cfg.sellerRequired,
+                                                onChanged: (id) => setState(
+                                                  () => _sellerId = id,
+                                                ),
                                               ),
-                                            ),
-                                          // 日期字段（按 config 显隐，统一 UtenDateField）
-                                          if (_cfg.hasValidUntil)
-                                            UtenDateField(
-                                              label: '有效期',
-                                              value: _validUntil,
-                                              onChanged: (d) => setState(
-                                                () => _validUntil = d,
+                                            if (_cfg.hasSender)
+                                              _employeePicker(
+                                                label: '发货人',
+                                                currentId: _senderId,
+                                                onChanged: (id) => setState(
+                                                  () => _senderId = id,
+                                                ),
                                               ),
-                                            ),
-                                          if (_cfg.hasDeliverDate)
-                                            UtenDateField(
-                                              label: '交货日期',
-                                              required: true,
-                                              value: _deliverDate,
-                                              errorMessage:
-                                                  _errors.contains(
-                                                    'deliverDate',
-                                                  )
-                                                  ? '请选择交货日期'
-                                                  : null,
-                                              onChanged: (d) {
-                                                setState(
-                                                  () => _deliverDate = d,
-                                                );
-                                                _clearError('deliverDate');
-                                              },
-                                            ),
-                                          if (widget.docType ==
-                                              SalesDocType.order)
-                                            _shipmentPolicyField(),
-                                          if (_cfg.hasContractInfo) ...[
-                                            TextField(
-                                              controller: _contractNo,
-                                              decoration: const InputDecoration(
-                                                labelText: '合同号',
+                                            // 日期字段（按 config 显隐，统一 UtenDateField）
+                                            if (_cfg.hasValidUntil)
+                                              UtenDateField(
+                                                label: '有效期',
+                                                value: _validUntil,
+                                                onChanged: (d) => setState(
+                                                  () => _validUntil = d,
+                                                ),
                                               ),
-                                            ),
-                                            TextField(
-                                              controller: _signAddr,
-                                              decoration: const InputDecoration(
-                                                labelText: '签约地点',
+                                            if (_cfg.hasDeliverDate)
+                                              UtenDateField(
+                                                label: '交货日期',
+                                                required: true,
+                                                value: _deliverDate,
+                                                errorMessage:
+                                                    _errors.contains(
+                                                      'deliverDate',
+                                                    )
+                                                    ? '请选择交货日期'
+                                                    : null,
+                                                onChanged: (d) {
+                                                  setState(
+                                                    () => _deliverDate = d,
+                                                  );
+                                                  _clearError('deliverDate');
+                                                },
                                               ),
-                                            ),
-                                          ],
-                                          if (_cfg.hasShipInfo) ...[
-                                            TextField(
-                                              controller: _shipAddr,
-                                              decoration: applyAutofillHint(
-                                                InputDecoration(
-                                                  labelText: '收货地址',
-                                                  hintText: '选客户后自动带出，可改',
-                                                  // 客户地址簿：点击查看/选择/新增/删除该客户地址。
-                                                  suffixIcon: IconButton(
-                                                    key: const ValueKey(
-                                                      'sales-ship-address-book',
+                                            if (widget.docType ==
+                                                SalesDocType.order)
+                                              _shipmentPolicyField(),
+                                            if (_cfg.hasContractInfo) ...[
+                                              TextField(
+                                                controller: _contractNo,
+                                                decoration:
+                                                    const InputDecoration(
+                                                      labelText: '合同号',
                                                     ),
-                                                    tooltip: '客户收货地址簿',
-                                                    icon: const Icon(
-                                                      Icons
-                                                          .contact_mail_outlined,
-                                                      size: 20,
+                                              ),
+                                              TextField(
+                                                controller: _signAddr,
+                                                decoration:
+                                                    const InputDecoration(
+                                                      labelText: '签约地点',
                                                     ),
-                                                    onPressed: _openAddressBook,
+                                              ),
+                                            ],
+                                            if (_cfg.hasShipInfo) ...[
+                                              TextField(
+                                                controller: _shipAddr,
+                                                decoration: applyAutofillHint(
+                                                  InputDecoration(
+                                                    labelText: '收货地址',
+                                                    hintText: '选客户后自动带出，可改',
+                                                    // 客户地址簿：点击查看/选择/新增/删除该客户地址。
+                                                    suffixIcon: IconButton(
+                                                      key: const ValueKey(
+                                                        'sales-ship-address-book',
+                                                      ),
+                                                      tooltip: '客户收货地址簿',
+                                                      icon: const Icon(
+                                                        Icons
+                                                            .contact_mail_outlined,
+                                                        size: 20,
+                                                      ),
+                                                      onPressed:
+                                                          _openAddressBook,
+                                                    ),
                                                   ),
+                                                  theme,
+                                                  autofilled: _autofilled
+                                                      .contains('shipAddr'),
                                                 ),
-                                                theme,
-                                                autofilled: _autofilled
-                                                    .contains('shipAddr'),
                                               ),
-                                            ),
-                                            TextField(
-                                              controller: _shipLinkPhone,
-                                              decoration: applyAutofillHint(
-                                                const InputDecoration(
-                                                  labelText: '联系电话',
-                                                  hintText: '随地址自动带出，可改',
+                                              TextField(
+                                                controller: _shipLinkPhone,
+                                                decoration: applyAutofillHint(
+                                                  const InputDecoration(
+                                                    labelText: '联系电话',
+                                                    hintText: '随地址自动带出，可改',
+                                                  ),
+                                                  theme,
+                                                  autofilled: _autofilled
+                                                      .contains('shipPhone'),
                                                 ),
-                                                theme,
-                                                autofilled: _autofilled
-                                                    .contains('shipPhone'),
                                               ),
-                                            ),
-                                            TextField(
-                                              controller: _logisticsNo,
-                                              decoration: const InputDecoration(
-                                                labelText: '物流单号(发货后可填)',
+                                              TextField(
+                                                controller: _logisticsNo,
+                                                decoration:
+                                                    const InputDecoration(
+                                                      labelText: '物流单号(发货后可填)',
+                                                    ),
                                               ),
-                                            ),
-                                            TextFormField(
-                                              controller: _parcelCount,
-                                              keyboardType:
-                                                  TextInputType.number,
-                                              errorBuilder:
-                                                  utenTextFieldErrorBuilder,
-                                              decoration: const UtenInputDecoration(
-                                                InputDecoration(
-                                                  labelText: '物流件数',
-                                                  hintText: '按实际包装填写，不从明细数量推导',
-                                                ),
-                                                info:
-                                                    '可留空。若本次将生成多张出货单，请先留空，生成后按各单实际包装填写；系统不会把总件数复制到每张单。',
+                                              TextFormField(
+                                                controller: _parcelCount,
+                                                keyboardType:
+                                                    TextInputType.number,
+                                                errorBuilder:
+                                                    utenTextFieldErrorBuilder,
+                                                decoration:
+                                                    const UtenInputDecoration(
+                                                      InputDecoration(
+                                                        labelText: '物流件数',
+                                                        hintText:
+                                                            '按实际包装填写，不从明细数量推导',
+                                                      ),
+                                                      info:
+                                                          '可留空。若本次将生成多张出货单，请先留空，生成后按各单实际包装填写；系统不会把总件数复制到每张单。',
+                                                    ),
                                               ),
-                                            ),
+                                            ],
+                                            if (_cfg.hasOutType)
+                                              TextField(
+                                                controller: _outType,
+                                                decoration:
+                                                    const InputDecoration(
+                                                      labelText: '出库类型',
+                                                    ),
+                                              ),
                                           ],
-                                          if (_cfg.hasOutType)
-                                            TextField(
-                                              controller: _outType,
-                                              decoration: const InputDecoration(
-                                                labelText: '出库类型',
+                                        ),
+                                        const SizedBox(height: UtenSpacing.s12),
+                                        if (widget.docType ==
+                                            SalesDocType.returnDoc) ...[
+                                          TextField(
+                                            controller: _returnReason,
+                                            decoration: UtenInputDecoration(
+                                              const InputDecoration(
+                                                labelText: '退货原因',
                                               ),
+                                              info: workflowFieldText(
+                                                context,
+                                              ).workflowReturnReasonHint,
                                             ),
+                                            maxLines: 2,
+                                          ),
+                                          const SizedBox(
+                                            height: UtenSpacing.s12,
+                                          ),
                                         ],
-                                      ),
-                                      const SizedBox(height: UtenSpacing.s12),
-                                      if (widget.docType ==
-                                          SalesDocType.returnDoc) ...[
                                         TextField(
-                                          controller: _returnReason,
-                                          decoration: UtenInputDecoration(
-                                            const InputDecoration(
-                                              labelText: '退货原因',
-                                            ),
-                                            info: workflowFieldText(
-                                              context,
-                                            ).workflowReturnReasonHint,
+                                          controller: _remark,
+                                          decoration: const InputDecoration(
+                                            labelText: '备注',
                                           ),
                                           maxLines: 2,
                                         ),
-                                        const SizedBox(height: UtenSpacing.s12),
                                       ],
-                                      TextField(
-                                        controller: _remark,
-                                        decoration: const InputDecoration(
-                                          labelText: '备注',
-                                        ),
-                                        maxLines: 2,
-                                      ),
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -2240,9 +2408,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                 ),
                                 const SizedBox(height: UtenSpacing.s12),
                               ] else if (_hasDraftAttachmentArea) ...[
-                                if (_createdDocId != null ||
-                                    _createdShipments.isNotEmpty)
+                                if (_hasCreatedDocuments)
                                   PendingAttachmentRetryNotice(
+                                    controller: _pendingFiles,
                                     documentLabel: _cfg.shortLabel,
                                   ),
                                 BusinessAttachmentSection.draft(
@@ -2262,106 +2430,108 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                   final columnPrefs = ref.watch(
                                     salesDocGridColumnPrefsProvider,
                                   )[widget.docType.name];
-                                  return UtenEditableGrid<SalesGridRow>(
-                                    controller: _grid,
-                                    stickyHeaderPinned: _gridPinned,
-                                    columns: salesGridColumns(
-                                      context: context,
-                                      freeCustomerShipment:
-                                          _freeCustomerShipment,
-                                      onPickGoods: _pickGoods,
-                                      docType: _cfg.type,
-                                      colorEntries: names.colorEntries,
-                                      unitEntries: names.unitEntries,
-                                    ),
-                                    createBlankRow: () => SalesGridRow(
-                                      amountUsesDiscount: _amountUsesDiscount,
-                                    ),
-                                    cloneRow: (r) => r.clone(
-                                      requireOrderPriceRefresh:
-                                          widget.docType == SalesDocType.order,
-                                    ),
-                                    toolbarActions: [
-                                      if (_cfg.hasUpstreamLink)
-                                        UtenImportButton(
-                                          label: '从上游引入',
-                                          onPressed: _saving
-                                              ? null
-                                              : _importFromUpstream,
-                                        ),
-                                    ],
-                                    showColumnSettings: true,
-                                    initialColumnOrder: columnPrefs?.order,
-                                    initialHiddenColumnKeys:
-                                        columnPrefs?.hidden,
-                                    initialPinnedColumnKeys:
-                                        columnPrefs?.pinned,
-                                    onColumnSettingsChanged:
-                                        (order, hidden, pinned) => ref
-                                            .read(
-                                              salesDocGridColumnPrefsProvider
-                                                  .notifier,
-                                            )
-                                            .updateFor(
-                                              widget.docType.name,
-                                              order,
-                                              hidden,
-                                              pinned,
-                                            ),
-                                    // 网格底部合计条（全站统一 UtenTotalsSummaryBar 口径）：
-                                    // 数量严格按单位 UUID 分组，绝不跨单位相加；
-                                    // 金额在同币种单据内汇总，币种取表头。
-                                    footer: ValueListenableBuilder<double>(
-                                      valueListenable: _totalQtyNotifier,
-                                      builder: (_, _, _) => ValueListenableBuilder<double>(
-                                        valueListenable: _grid.totalListenable,
-                                        builder: (_, amount, _) =>
-                                            UtenTotalsSummaryBar(
-                                              key: const Key(
-                                                'sales-edit-totals',
+                                  return SavedDocumentFields(
+                                    locked: _hasCreatedDocuments,
+                                    child: UtenEditableGrid<SalesGridRow>(
+                                      controller: _grid,
+                                      stickyHeaderPinned: _gridPinned,
+                                      columns: salesGridColumns(
+                                        context: context,
+                                        freeCustomerShipment:
+                                            _freeCustomerShipment,
+                                        onPickGoods: _pickGoods,
+                                        docType: _cfg.type,
+                                        colorEntries: names.colorEntries,
+                                        unitEntries: names.unitEntries,
+                                      ),
+                                      createBlankRow: () => SalesGridRow(
+                                        amountUsesDiscount: _amountUsesDiscount,
+                                      ),
+                                      cloneRow: (r) => r.clone(
+                                        requireOrderPriceRefresh:
+                                            widget.docType ==
+                                            SalesDocType.order,
+                                      ),
+                                      toolbarActions: [
+                                        if (_cfg.hasUpstreamLink)
+                                          UtenImportButton(
+                                            label: '从上游引入',
+                                            onPressed: _saving
+                                                ? null
+                                                : _importFromUpstream,
+                                          ),
+                                      ],
+                                      showColumnSettings: true,
+                                      initialColumnOrder: columnPrefs?.order,
+                                      initialHiddenColumnKeys:
+                                          columnPrefs?.hidden,
+                                      initialPinnedColumnKeys:
+                                          columnPrefs?.pinned,
+                                      onColumnSettingsChanged:
+                                          (order, hidden, pinned) => ref
+                                              .read(
+                                                salesDocGridColumnPrefsProvider
+                                                    .notifier,
+                                              )
+                                              .updateFor(
+                                                widget.docType.name,
+                                                order,
+                                                hidden,
+                                                pinned,
                                               ),
-                                              density: true,
-                                              entries: [
-                                                utenQuantityTotalEntry(
-                                                  _grid.rows
-                                                      .where(
-                                                        (row) =>
-                                                            row.goods != null,
-                                                      )
-                                                      .map(
-                                                        (row) => MeasuredAmount(
-                                                          value:
-                                                              double.tryParse(
-                                                                row.qty.text
-                                                                    .trim(),
-                                                              ) ??
-                                                              0,
-                                                          unitId: row.unitId,
-                                                          unitName:
-                                                              names
-                                                                  .unitEntries[row
-                                                                  .unitId],
-                                                        ),
+                                      // 网格底部合计条（全站统一 UtenTotalsSummaryBar 口径）：
+                                      // 数量严格按单位 UUID 分组，绝不跨单位相加；
+                                      // 金额在同币种单据内汇总，币种取表头。
+                                      footer: ValueListenableBuilder<double>(
+                                        valueListenable: _totalQtyNotifier,
+                                        builder: (_, _, _) => ValueListenableBuilder<double>(
+                                          valueListenable:
+                                              _grid.totalListenable,
+                                          builder: (_, amount, _) => UtenTotalsSummaryBar(
+                                            key: const Key('sales-edit-totals'),
+                                            density: true,
+                                            entries: [
+                                              utenQuantityTotalEntry(
+                                                _grid.rows
+                                                    .where(
+                                                      (row) =>
+                                                          row.goods != null,
+                                                    )
+                                                    .map(
+                                                      (row) => MeasuredAmount(
+                                                        value:
+                                                            double.tryParse(
+                                                              row.qty.text
+                                                                  .trim(),
+                                                            ) ??
+                                                            0,
+                                                        unitId: row.unitId,
+                                                        unitName:
+                                                            names
+                                                                .unitEntries[row
+                                                                .unitId],
                                                       ),
-                                                  label: '数量',
-                                                ),
-                                                UtenTotalEntry(
-                                                  _totalAmountLabel(names),
-                                                  _freeCustomerShipment
-                                                      ? '不收费（货款 0）'
-                                                      : financeExactMoneyDisplay(
-                                                          exactAmountSumText(
-                                                            _grid.rows.map(
-                                                              (row) => row
-                                                                  .amountExactNotifier
-                                                                  .value,
-                                                            ),
+                                                    ),
+                                                label: '数量',
+                                              ),
+                                              UtenTotalEntry(
+                                                _totalAmountLabel(names),
+                                                _freeCustomerShipment
+                                                    ? '不收费（货款 0）'
+                                                    : financeExactMoneyDisplay(
+                                                        exactAmountSumText(
+                                                          _grid.rows.map(
+                                                            (row) => row
+                                                                .amountExactNotifier
+                                                                .value,
                                                           ),
                                                         ),
-                                                  danger: true,
-                                                ),
-                                              ],
-                                            ),
+                                                      ),
+                                                danger: true,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   );
@@ -2394,7 +2564,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                           popOrBackTo(context, defaultPath: SalesRoutePath.hub),
                 // 2026-09-14 口径：没选货品（无内容）保存按钮置灰，点了提示原因；
                 // 有内容才转红可点——与财审页「未选中灰/选中红」同款。
-                onSave: _hasGoodsRows || _uncertainShipmentBody != null
+                onSave:
+                    _hasCreatedDocuments ||
+                        _hasGoodsRows ||
+                        _uncertainShipmentBody != null
                     ? _save
                     : null,
                 saveDisabledHint: _uncertainShipmentBody != null

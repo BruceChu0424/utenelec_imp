@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_field_codec.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -45,7 +48,8 @@ class ProductionDrawRequestPage extends ConsumerStatefulWidget {
 }
 
 class _ProductionDrawRequestPageState
-    extends ConsumerState<ProductionDrawRequestPage> {
+    extends ConsumerState<ProductionDrawRequestPage>
+    with FormDraftMixin<ProductionDrawRequestPage> {
   ProductionDrawRequestPreview? _preview;
   bool _loading = true;
   bool _saving = false;
@@ -56,6 +60,105 @@ class _ProductionDrawRequestPageState
   final _selected = <String>{};
   final _quantities = <String, TextEditingController>{};
   final _quantityErrors = <String, String>{};
+
+  bool _draftSubmissionPending = false;
+  @override
+  bool get formDraftEnabled => true;
+  @override
+  bool get formDraftBusy => _saving || _uncertain;
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftCatalog.productionDraw.spec(
+    title: '新建车间领料申请',
+    route: Uri(
+      path: RouteName.productionDrawRequest,
+      queryParameters: {'segmentIds': widget.segmentIds.join(',')},
+    ).toString(),
+  );
+  @override
+  Iterable<Listenable> get formDraftListenables => _quantities.values;
+  Map<String, dynamic> _draftSummary(ProductionDrawRequestSummary row) => {
+    'warehouseId': row.warehouseId,
+    'goodsId': row.goodsId,
+    'qty': row.qty,
+    'warehouseName': row.warehouseName,
+    'goodsCode': row.goodsCode,
+    'goodsName': row.goodsName,
+    'colorId': row.colorId,
+    'colorName': row.colorName,
+    'unitId': row.unitId,
+    'unitName': row.unitName,
+  };
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'selected': _selected.toList()..sort(),
+    'quantities': {
+      for (final entry in _quantities.entries) entry.key: entry.value.text,
+    },
+    'uncertain': _uncertain || _draftSubmissionPending,
+    'rejected': _rejected,
+    'preview': _preview == null
+        ? null
+        : {
+            'fingerprint': _preview!.fingerprint,
+            'taskCount': _preview!.taskCount,
+            'documentCount': _preview!.documentCount,
+            'lineCount': _preview!.lineCount,
+            'tasks': [
+              for (final task in _preview!.tasks)
+                {
+                  'segmentId': task.segmentId,
+                  'expectedVersion': task.expectedVersion,
+                  'planId': task.planId,
+                  'planNo': task.planNo,
+                  'segmentCode': task.segmentCode,
+                  'workshopDepartmentId': task.workshopDepartmentId,
+                  'workshopName': task.workshopName,
+                  'productCode': task.productCode,
+                  'productName': task.productName,
+                  'plannedQty': task.plannedQty,
+                },
+            ],
+            'summaries': _preview!.summaries.map(_draftSummary).toList(),
+            'lines': [
+              for (final row in _preview!.lines)
+                {
+                  ..._draftSummary(row),
+                  'segmentId': row.segmentId,
+                  'drawId': row.drawId,
+                  'drawItemId': row.drawItemId,
+                  'drawNo': row.drawNo,
+                },
+            ],
+          },
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    final stored = draftMap(data['preview']);
+    if (stored.isNotEmpty) {
+      _preview = ProductionDrawRequestPreview.fromJson(stored);
+    }
+    for (final controller in _quantities.values) {
+      controller.dispose();
+    }
+    _quantities
+      ..clear()
+      ..addEntries(
+        draftMap(data['quantities']).entries.map(
+          (entry) => MapEntry(
+            entry.key,
+            TextEditingController(text: entry.value as String? ?? ''),
+          ),
+        ),
+      );
+    _selected
+      ..clear()
+      ..addAll(draftStrings(data['selected']));
+    _uncertain = data['uncertain'] == true;
+    _rejected = data['rejected'] == true;
+    _loadError = null;
+    if (_uncertain) _submitError = '上次领料提交结果尚未确认，请重试原批次；来源、版本和数量保持原提交内容。';
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
@@ -142,7 +245,10 @@ class _ProductionDrawRequestPageState
     } catch (_) {
       if (mounted) setState(() => _loadError = '领料汇总加载失败，请重新加载');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+        await initializeFormDraft();
+      }
     }
   }
 
@@ -212,6 +318,8 @@ class _ProductionDrawRequestPageState
       _submitError = null;
     });
     try {
+      _draftSubmissionPending = true;
+      await saveFormDraftNow();
       final result = await ref
           .read(productionDrawRequestRepositoryProvider)
           .submit(
@@ -220,6 +328,7 @@ class _ProductionDrawRequestPageState
             previewFingerprint: preview.fingerprint,
             lines: lines,
           );
+      await completeFormDraft();
       if (!mounted) return;
       refreshAfterProductionPlanGenerated(ref);
       invalidateWarehouseTaskCounts(ref);
@@ -259,6 +368,7 @@ class _ProductionDrawRequestPageState
         _submitError = '暂未确认领料结果，请点击“重试领料”查询并继续本批提交。当前汇总已保留。';
       });
     } finally {
+      _draftSubmissionPending = false;
       if (mounted) setState(() => _saving = false);
     }
   }
@@ -272,113 +382,111 @@ class _ProductionDrawRequestPageState
     ref.watch(isSuperAdminProvider);
     final preview = _preview;
     final blocked = _blocked;
-    return PopScope(
-      canPop: !_saving && !_uncertain,
-      child: Scaffold(
-        appBar: UtenAppBar(
-          title: '领料汇总',
-          leading: UtenBackButton(
-            onPressed: _saving || _uncertain ? null : _back,
-          ),
-          actions: [
-            IconButton(
-              key: const Key('production-draw-request-refresh'),
-              tooltip: _uncertain ? '请先重试领料，确认本批结果' : '刷新领料汇总',
-              onPressed: _loading || _saving || _uncertain || !_hasPermission
-                  ? null
-                  : () => _load(currentVersions: true),
-              icon: const Icon(Icons.refresh),
+    return withFormDraft(
+      PopScope(
+        canPop: !_loading && !_saving && !_uncertain,
+        child: Scaffold(
+          appBar: UtenAppBar(
+            title: '领料汇总',
+            leading: UtenBackButton(
+              onPressed: _saving || _uncertain ? null : _back,
             ),
-          ],
-        ),
-        body: SafeArea(
-          child: UtenContentContainer.wide(
-            child: Stack(
-              children: [
-                !_hasPermission
-                    ? const UtenEmpty(
-                        icon: Icons.lock_outline,
-                        message: '当前账号没有查看并提交车间领料的权限',
-                      )
-                    : _loading
-                    // 首屏汇总查询(2026-09-21 用户口径「点批量领料也要有中间的
-                    // 加载弹窗」)：用全站同款的居中加载卡片替掉裸转圈。这里用
-                    // 卡片本体而不是 UtenBusyOverlay——遮罩带不可关闭的
-                    // ModalBarrier, 首屏还在加载时会把返回按钮一起吃掉。
-                    ? const Center(
-                        child: UtenBusyOverlayCard(
-                          semanticsKey: Key('production-draw-request-loading'),
-                          title: '正在加载领料汇总',
-                          description: '正在按所选工单汇总本次可领的物料与数量。',
-                          // 首屏没有可重复点的按钮, 返回按钮也是故意留着能点的。
-                          showDoNotLeaveHint: false,
-                        ),
-                      )
-                    : _loadError != null
-                    ? UtenEmpty.error(
-                        message: _loadError,
-                        actionLabel: '重新加载',
-                        onAction: () => _load(currentVersions: true),
-                      )
-                    : preview == null ||
-                          preview.summaries.isEmpty ||
-                          preview.tasks.isEmpty
-                    ? UtenEmpty(
-                        message: '暂无可领物料',
-                        description: '请返回我的车间任务，刷新后查看到料情况。',
-                        actionLabel: '返回我的车间任务',
-                        onAction: _back,
-                      )
-                    : AbsorbPointer(
-                        absorbing: _saving,
-                        child: UtenCollapsingHeaderScrollView(
-                          collapsingHeader: _header(preview),
-                          body: Padding(
-                            padding: const EdgeInsets.all(UtenSpacing.s12),
-                            child: _summaryTable(preview),
+            actions: [
+              IconButton(
+                key: const Key('production-draw-request-refresh'),
+                tooltip: _uncertain ? '请先重试领料，确认本批结果' : '刷新领料汇总',
+                onPressed: _loading || _saving || _uncertain || !_hasPermission
+                    ? null
+                    : () => _load(currentVersions: true),
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+          body: SafeArea(
+            child: UtenContentContainer.wide(
+              child: Stack(
+                children: [
+                  !_hasPermission
+                      ? const UtenEmpty(
+                          icon: Icons.lock_outline,
+                          message: '当前账号没有查看并提交车间领料的权限',
+                        )
+                      : _loading
+                      ? const SizedBox.expand()
+                      : _loadError != null
+                      ? UtenEmpty.error(
+                          message: _loadError,
+                          actionLabel: '重新加载',
+                          onAction: () => _load(currentVersions: true),
+                        )
+                      : preview == null ||
+                            preview.summaries.isEmpty ||
+                            preview.tasks.isEmpty
+                      ? UtenEmpty(
+                          message: '暂无可领物料',
+                          description: '请返回我的车间任务，刷新后查看到料情况。',
+                          actionLabel: '返回我的车间任务',
+                          onAction: _back,
+                        )
+                      : AbsorbPointer(
+                          absorbing: _saving,
+                          child: UtenCollapsingHeaderScrollView(
+                            collapsingHeader: _header(preview),
+                            body: Padding(
+                              padding: const EdgeInsets.all(UtenSpacing.s12),
+                              child: _summaryTable(preview),
+                            ),
                           ),
                         ),
+                  // 目标页持有实际读取/提交网络段；跨路由不保留入口页的遮罩。
+                  if (_hasPermission && (_loading || _saving))
+                    UtenBusyOverlay(
+                      semanticsKey: Key(
+                        _loading
+                            ? 'production-draw-request-loading'
+                            : 'production-draw-request-saving',
                       ),
-                // 提交领料（生成领料单）网络段的全屏加载遮罩。
-                if (_saving)
-                  const UtenBusyOverlay(
-                    title: '正在提交领料',
-                    description: '正在生成领料单，请勿重复提交或离开本页。',
-                  ),
-              ],
-            ),
-          ),
-        ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-        floatingActionButton:
-            !_hasPermission ||
-                _loading ||
-                preview == null ||
-                preview.tasks.isEmpty ||
-                preview.summaries.isEmpty
-            ? null
-            : UtenFloatingActionGroup(
-                children: [
-                  UtenButton(
-                    type: UtenButtonType.secondary,
-                    size: UtenButtonSize.large,
-                    onPressed: _saving || _uncertain ? null : _back,
-                    child: const Text('返回'),
-                  ),
-                  UtenButton(
-                    key: const Key('production-draw-request-submit'),
-                    type: UtenButtonType.danger,
-                    size: UtenButtonSize.large,
-                    icon: Icons.inventory_2_outlined,
-                    isLoading: _saving,
-                    onPressed: blocked == null ? _submit : null,
-                    onDisabledTap: () =>
-                        context.appWarning(blocked ?? '正在提交领料'),
-                    child: Text(_uncertain ? '重试领料' : '领料'),
-                  ),
+                      title: _loading ? '正在加载领料汇总' : '正在提交领料',
+                      description: _loading
+                          ? '正在按所选工单汇总本次可领的物料与数量。'
+                          : '正在生成领料单，请勿重复提交或离开本页。',
+                    ),
                 ],
               ),
+            ),
+          ),
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          floatingActionButtonAnimator:
+              FloatingActionButtonAnimator.noAnimation,
+          floatingActionButton:
+              !_hasPermission ||
+                  _loading ||
+                  preview == null ||
+                  preview.tasks.isEmpty ||
+                  preview.summaries.isEmpty
+              ? null
+              : UtenFloatingActionGroup(
+                  children: [
+                    UtenButton(
+                      type: UtenButtonType.secondary,
+                      size: UtenButtonSize.large,
+                      onPressed: _saving || _uncertain ? null : _back,
+                      child: const Text('返回'),
+                    ),
+                    UtenButton(
+                      key: const Key('production-draw-request-submit'),
+                      type: UtenButtonType.danger,
+                      size: UtenButtonSize.large,
+                      icon: Icons.inventory_2_outlined,
+                      isLoading: _saving,
+                      onPressed: blocked == null ? _submit : null,
+                      onDisabledTap: () =>
+                          context.appWarning(blocked ?? '正在提交领料'),
+                      child: Text(_uncertain ? '重试领料' : '领料'),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -596,7 +704,10 @@ class _ProductionDrawRequestPageState
                   _label(preview.taskFor(line.segmentId)?.productName),
             ),
             MasterColumnDef(
+              // 2026-09-25 单号列统一：明细就地排序+按值筛选。
               key: 'drawNo',
+              sortable: true,
+              filterFromRows: true,
               label: '领料单号',
               width: 170,
               value: (line) => _label(line.drawNo),

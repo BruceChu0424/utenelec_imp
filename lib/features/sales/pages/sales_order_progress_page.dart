@@ -28,7 +28,10 @@
 // 「等待财务审核」> 生产阶段。终态必须最先判——整单取消不清 finance_confirmed，
 // 闸门先判会把取消单错显成「等待财务审核」。
 // 打开本页即把完工通知标记已读 → 完工徽章归零（已读语义）。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_master_names.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -49,14 +52,21 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/form_draft_category_table.dart';
+import '../../../shared/mixins/draft_bulk_delete_mixin.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../models/sales_order_progress.dart';
 import '../providers/sales_completion_count_provider.dart';
+import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
+import '../services/sales_draft_delete.dart';
 
 /// 阶段分段值：真实阶段/大类（stage 非空）或历史记录哨兵（全部订单入历史）。
 ///
@@ -130,8 +140,8 @@ class SalesOrderProgressPage extends ConsumerStatefulWidget {
       _SalesOrderProgressPageState();
 }
 
-class _SalesOrderProgressPageState
-    extends ConsumerState<SalesOrderProgressPage> {
+class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
+    with DraftBulkDeleteMixin<SalesOrderProgressPage> {
   static const _size = 50;
 
   /// 当前选中分段；null = 未选择引导态（不发请求）。
@@ -151,9 +161,36 @@ class _SalesOrderProgressPageState
   /// 阶段计数（后端全量口径）；null = 尚未返回，徽章不显示。
   Map<String, int>? _stageCounts;
 
+  // 2026-09-25 单号列统一：订单号列排序 + 表头值筛选 + 桶 + 防串台代数
+  // （共享状态，见 MasterServerColumnFilters）。
+  final _columnFilters = MasterServerColumnFilters();
+
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
   /// 「返回即刷新」onPageResume 用，见 build。
   String? _myLocation;
+
+  bool get _canDeleteDrafts =>
+      _seg?.stage == _kDraftStage && _hasPerm(Perm.salesOrderDelete);
+
+  bool _isDraftRow(SalesOrderProgressRow row) =>
+      row.stage == _kDraftStage &&
+      !row.closed &&
+      !row.stopped &&
+      !row.financeRejected;
+
+  Future<void> _deleteDraft(String id) {
+    final scope = ref.read(authenticatedScopeProvider);
+    return deleteSalesDraft(
+      ref.read(salesRepositoryProvider(SalesDocType.order)),
+      SalesDocType.order,
+      id,
+      stillCurrent: () =>
+          mounted &&
+          _canDeleteDrafts &&
+          selectedDraftIds.contains(id) &&
+          ref.read(authenticatedScopeProvider) == scope,
+    );
+  }
 
   bool get _shouldLoad {
     final seg = _seg;
@@ -184,10 +221,13 @@ class _SalesOrderProgressPageState
   }
 
   Future<void> _load(int page) async {
+    if (page != _page) clearDraftSelection();
     if (!_shouldLoad) return;
     final version = ++_requestVersion;
     final seg = _seg!;
     final range = seg.history ? _historyTime.range : null;
+    // 单号桶随列表口径重取（2026-09-25 单号列统一）。
+    unawaited(_loadBillNoFacets());
     setState(() {
       _loading = true;
       _error = null;
@@ -206,8 +246,19 @@ class _SalesOrderProgressPageState
                 ? null
                 : ChinaDateTime.formatDate(range.start),
             dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+            // 2026-09-25 单号列统一：订单号/交货日排序白名单 + 订单号表头值筛选。
+            sort: _columnFilters.sortColumn,
+            order: _columnFilters.sortColumn == null
+                ? null
+                : (_columnFilters.sortAscending ? 'asc' : 'desc'),
+            billNo: _columnFilters['billNo'],
           );
       if (!mounted || version != _requestVersion) return;
+      retainDraftSelection(
+        _canDeleteDrafts
+            ? res.items.where(_isDraftRow).map((row) => row.orderId)
+            : const <String>[],
+      );
       setState(() {
         _result = res;
         _page = page;
@@ -222,8 +273,42 @@ class _SalesOrderProgressPageState
     }
   }
 
+  /// 订单号值筛选桶随过滤上下文重取（2026-09-25 单号列统一；失败静默保持旧桶）。
+  Future<void> _loadBillNoFacets() {
+    if (!_shouldLoad) return Future.value();
+    final seg = _seg!;
+    final range = seg.history ? _historyTime.range : null;
+    return _columnFilters.loadFacets(
+      () async => {
+        'billNo': await ref
+            .read(salesRepositoryProvider(SalesDocType.order))
+            .progressFacets(
+              stage: seg.history ? '' : seg.stage!,
+              keyword: _keyword,
+              dateFrom: range == null
+                  ? null
+                  : ChinaDateTime.formatDate(range.start),
+              dateTo: range == null
+                  ? null
+                  : ChinaDateTime.formatDate(range.end),
+            ),
+      },
+      onLoaded: () {
+        if (mounted) setState(() {});
+      },
+    );
+  }
+
+  /// 服务端列筛选/排序落地后：setState 刷新表头 + 重拉回第 1 页。
+  void _refilter() {
+    clearDraftSelection();
+    if (mounted) setState(() {});
+    _load(1);
+  }
+
   void _selectSeg(_ProgressSeg seg) {
     if (seg == _seg) return;
+    clearDraftSelection();
     setState(() {
       _seg = seg;
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
@@ -240,6 +325,7 @@ class _SalesOrderProgressPageState
   void _applyKeyword(String value) {
     final normalized = value.trim();
     if (normalized == _keyword) return;
+    clearDraftSelection();
     _keyword = normalized;
     _load(1);
   }
@@ -408,6 +494,11 @@ class _SalesOrderProgressPageState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final seg = _seg;
+    final localDraftCount = ref.watch(
+      formDraftCategoryCountProvider(
+        const FormDraftCategoryScope(kind: 'salesOrder'),
+      ),
+    );
     // 返回即刷新：从详情/编辑页回到本页时重拉当前页与计数，不再看到老数据。
     // 嵌入态（任务中心「订货进度」大类）无独立路由落点时回退到进度页路径。
     _myLocation ??= currentLocationOr(context, RouteName.salesOrderProgress);
@@ -456,7 +547,10 @@ class _SalesOrderProgressPageState
                     UtenFilterSegment(
                       value: const _ProgressSeg.stage(_kDraftStage),
                       label: '草稿',
-                      count: _stageCounts?[_kDraftStage],
+                      count: _stageCounts == null && localDraftCount == 0
+                          ? null
+                          : (_stageCounts?[_kDraftStage] ?? 0) +
+                                localDraftCount,
                       countForm: UtenSegmentCountForm.actionable,
                     ),
                     for (final group in _stageGroups.keys)
@@ -492,7 +586,7 @@ class _SalesOrderProgressPageState
                 // 小类行：选中大类后才解锁（与采购/委外任务中心的异常小类行同构）。
                 // 没有「全部」段——大类本身就是全部；要看全量就点回大类。
                 if (_selectedGroup != null) ...[
-                  const SizedBox(height: UtenSpacing.s8),
+                  const SizedBox(height: UtenSpacing.s12),
                   UtenFilterToolbar<_ProgressSeg>(
                     segmentsKey: const Key('sales-order-progress-substages'),
                     segments: [
@@ -557,33 +651,87 @@ class _SalesOrderProgressPageState
     if (!_shouldLoad) {
       return segPlaceholder;
     }
-    return MasterDataTableView<SalesOrderProgressRow>(
-      // primary:true → 表体拾取外层 UtenCollapsingHeaderScrollView 注入的
-      // PrimaryScrollController，参与「分类条折叠 → 表格内滚」联动。
-      primary: true,
-      columns: _columns,
-      items: _result?.items ?? const <SalesOrderProgressRow>[],
-      // 阶段筛选由顶部分段卡承担，表头不建 autofilter 桶。
-      facets: const {},
-      nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
-      // 财务驳回行淡红底：一眼定位需要处理的订单（取消/修订后自然出队）。
-      rowColor: (r) => r.financeRejected
-          ? theme.colorScheme.errorContainer.withValues(alpha: 0.30)
-          : null,
-      onRowTap: (r) => r.stage == _kDraftStage
-          ? context.push(RoutePath.salesDocEdit('orders', r.orderId))
-          : context.push(RoutePath.salesOrderProgressDetail(r.orderId)),
-      rowMenuBuilder: _rowMenuItems,
-      isLoading: _loading && _result == null,
-      loadingMore: _loading && _result != null,
-      error: _error,
-      onRetry: () => _load(_page),
-      emptyMessage: _seg!.history ? '该时间段内暂无订单' : '该阶段暂无订单',
-      currentPage: _result?.page ?? 1,
-      totalPages: _result?.totalPages ?? 1,
-      onPageChange: _load,
+    return _withDraftCategory(
+      MasterDataTableView<SalesOrderProgressRow>(
+        selectable: _canDeleteDrafts,
+        idOf: (row) => !draftDeleteBusy && !_loading && _isDraftRow(row)
+            ? row.orderId
+            : null,
+        rowKeyOf: (row) => row.orderId,
+        selectedIds: selectedDraftIds,
+        onSelectedIdsChanged: draftDeleteBusy || _loading
+            ? null
+            : selectDraftIds,
+        batchActionsBuilder: _canDeleteDrafts
+            ? (_, _) => [
+                buildDraftDeleteButton(
+                  documentLabel: '订货单',
+                  delete: _deleteDraft,
+                  reload: () async {
+                    bumpListRefresh(ref, SalesDocConfig.order.refreshKey);
+                    await _load(_page);
+                    await _loadStageCounts();
+                  },
+                ),
+              ]
+            : null,
+        // primary:true → 表体拾取外层 UtenCollapsingHeaderScrollView 注入的
+        // PrimaryScrollController，参与「分类条折叠 → 表格内滚」联动。
+        primary: true,
+        columns: _columns,
+        items: _result?.items ?? const <SalesOrderProgressRow>[],
+        // 阶段筛选由顶部分段卡承担；订单号列值筛选（2026-09-25 单号列统一）
+        // 走服务端精确匹配 + 同口径分组桶。
+        facets: {'billNo': _columnFilters.bucketOf('billNo')},
+        nullCounts: const {},
+        filters: {'billNo': _columnFilters['billNo']},
+        onFilterChanged: (key, value) {
+          if (key != 'billNo') return;
+          _columnFilters.handleFilterChanged(key, value, onChanged: _refilter);
+        },
+        // 列排序（2026-09-25 单号列统一）：billNo 走服务端白名单排序。
+        sortColumn: _columnFilters.sortColumn,
+        sortAscending: _columnFilters.sortAscending,
+        onSortChange: (column, ascending) => _columnFilters.handleSortChanged(
+          column,
+          ascending,
+          onChanged: _refilter,
+        ),
+        // 财务驳回行淡红底：一眼定位需要处理的订单（取消/修订后自然出队）。
+        rowColor: (r) => r.financeRejected
+            ? theme.colorScheme.errorContainer.withValues(alpha: 0.30)
+            : null,
+        onRowTap: (r) => r.stage == _kDraftStage
+            ? context.push(RoutePath.salesDocEdit('orders', r.orderId))
+            : context.push(RoutePath.salesOrderProgressDetail(r.orderId)),
+        rowMenuBuilder: _rowMenuItems,
+        isLoading: _loading && _result == null,
+        loadingMore: _loading && _result != null,
+        error: _error,
+        onRetry: () => _load(_page),
+        emptyMessage: _seg!.history ? '该时间段内暂无订单' : '该阶段暂无订单',
+        currentPage: _result?.page ?? 1,
+        totalPages: _result?.totalPages ?? 1,
+        onPageChange: _load,
+      ),
+    );
+  }
+
+  Widget _withDraftCategory(MasterDataTableView<SalesOrderProgressRow> table) {
+    if (_seg?.stage != _kDraftStage) return table;
+    final names = ref.watch(salesMasterNameServiceProvider);
+    return FormDraftCategoryTable<SalesOrderProgressRow>(
+      scope: const FormDraftCategoryScope(kind: 'salesOrder'),
+      table: table,
+      localValue: (draft, key) => formDraftMasterColumnValue(
+        draft,
+        key,
+        clients: names.clientEntries,
+        currencies: names.currencyEntries,
+        warehouses: names.warehouseEntries,
+      ),
+      search: _keyword,
+      formalId: (row) => row.orderId,
     );
   }
 
@@ -603,7 +751,9 @@ class _SalesOrderProgressPageState
   List<MasterColumnDef<SalesOrderProgressRow>> get _columns {
     return <MasterColumnDef<SalesOrderProgressRow>>[
       MasterColumnDef(
+        // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
         key: 'billNo',
+        sortable: true,
         label: '订单号',
         width: 150,
         value: (r) => r.billNo,

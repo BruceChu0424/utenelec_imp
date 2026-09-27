@@ -93,6 +93,7 @@ class BusinessDataResetServicePostgresTest {
 
         SimpleDriverDataSource dataSource = new SimpleDriverDataSource(
                 new Driver(), POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        Map<String, String> expectedPolicy = BusinessDataResetSqlContractTest.expectedCurrentPolicy();
 
         // Compare the actually migrated function with the operator's script, including loop-added rows.
         try (Connection connection = dataSource.getConnection();
@@ -101,6 +102,7 @@ class BusinessDataResetServicePostgresTest {
             assertThat(rows.next()).isTrue();
             String ops = java.nio.file.Files.readString(java.nio.file.Path.of("ops", "reset_business_data.sql"));
             assertThat(BusinessDataResetSqlContractTest.policy(rows.getString(1)))
+                    .isEqualTo(expectedPolicy)
                     .isEqualTo(BusinessDataResetSqlContractTest.policy(ops));
         }
 
@@ -223,12 +225,14 @@ class BusinessDataResetServicePostgresTest {
         // V703 +1(车间催计划 production_planning_urges, ADR-117)：311→312。
         // V710/V711 +4: discovery requests/lines and per-family learning samples/queue.
         // V712/V715 retain source rights in four more business fact tables.
-        assertThat(result.clearedTableCount()).isEqualTo(320);
+        assertThat(result.clearedTableCount()).isEqualTo(Math.toIntExact(
+                expectedPolicy.values().stream().filter("CLEAR"::equals).count()));
         // V617 preserves expense settings; V624/V626/V627 preserve original import-source evidence.
         // V686 保留总账附表行绑定(ADR-112) +1, V677 删除角色体系四张 PRESERVE 表(ADR-109) -4: 102→99。
         // V693 保留仓库负责人(ADR-115) +1: 99→100。
         // V711 preserves both learned master profiles and cumulative material totals.
-        assertThat(result.preservedTableCount()).isEqualTo(102);
+        assertThat(result.preservedTableCount()).isEqualTo(Math.toIntExact(
+                expectedPolicy.values().stream().filter("PRESERVE"::equals).count()));
         // cleared_rows 只统计 CLEAR 表：2 条 outbox、1 条库存余额、1 条待核历史价值池。
         // refresh_tokens 属 PRESERVE，
         // 在终局校验后单独清空，不计入）

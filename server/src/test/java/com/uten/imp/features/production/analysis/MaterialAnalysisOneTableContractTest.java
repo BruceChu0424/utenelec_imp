@@ -11,9 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * ADR-102「一张表」服务端口径守卫。
  *
- * <p>这次改动只加了两个查询期派生值和一个只读端点，没有新迁移，所以没有数据库
- * 约束替我们把关；能钉住口径的就是这几条源码断言。它们守的都是**改错了不会当场
- * 报错、只会静静算错数**的地方。
+ * <p>补充行为/数据库回归，守住计划办理量、编辑净缺口与实物门禁之间的边界。
  */
 class MaterialAnalysisOneTableContractTest {
 
@@ -48,18 +46,17 @@ class MaterialAnalysisOneTableContractTest {
         assertThat(service).contains("committedPlan = committedPlan.max(materialSource.committedPlanQty()");
         assertThat(service).contains(".multiply(materialSource.unitRate()).setScale(4, RoundingMode.DOWN));");
 
-        // 条件一：下达段真会自动认领。判据与那里的排除口径同源——采购恒认领；
-        // 委外只有无我方供料 BOM 的纯外协件认领；自制与路线未定一律不认领。
+        // 三条供给路线均可采用精确来源证明允许的公共供给；未定路线不当作已采用。
+        // 各行合法来源已由 SharedFutureIndex 的身份投影筛选，不能再排整个来源分析。
         assertThat(service).contains("private static boolean sharedFutureDeductible(");
-        assertThat(service).contains("if (\"BUY\".equals(route)) return true;");
-        assertThat(service).contains("if (!\"SUBCONTRACT\".equals(route)) return false;");
-        assertThat(service).contains("return !subcontractBomParentGoods.contains(row.goodsId());");
+        assertThat(service.replaceAll("\\s+", "")).contains("Set.of(\"MAKE\",\"BUY\",\"SUBCONTRACT\")");
+        assertThat(service).doesNotContain("filter(ref -> !ref.sourceIsCurrentAnalysis())");
 
         // 条件二：这个物料维度在本分析里只有这一行。公共在途池是按维度共享的，
         // forMaterial 对同维度每一行都返回整池，而「建议下单量」是逐行可加的；
         // 同料多行时逐行扣会把同一池扣 N 次，三行各需 100、池里只有 100 时会算出
         // 三行都「不缺」，人照着填就少下 200。
-        assertThat(service).contains("if (!soleRowDimensions.contains(row.materialKey())) return false;");
+        assertThat(service).contains("soleRowDimensions.contains(row.materialKey())");
         assertThat(service).contains("private static Set<String> soleRowDimensions(");
     }
 
@@ -69,37 +66,26 @@ class MaterialAnalysisOneTableContractTest {
         String table = java.nio.file.Files.readString(
                 java.nio.file.Path.of(
                         "../lib/features/production/pages/material_analysis_material_table.dart"),
-                StandardCharsets.UTF_8);
+                StandardCharsets.UTF_8).replace("\r\n", "\n");
 
         // 服务端下达时 demandQty = requested.min(delta) 之后再从中减掉自动认领的
         // 公共在途——认领是从用户填的那个数里切走的，不是在它之上另加。所以
         // 「下单数量」的预填与提交必须用毛口径；用净数会让每一行都少下一个认领量。
-        // 2026-09-22 起三列都经 _tableShownQty(估算 → 模拟快照 → 权威)读数, 「还需安排」
-        // 那一项(residual)仍派生自毛口径 additionalSupplyRecommendedQty; 2026-09-23 起已下过
-        // 单的自制行(含顶层)改读锚点产品的剩余可排量(_tableAnchorResidual), 其余行不变。
-        // 2026-09-23 同日两个函数都加了 authoritative 命名参数(只看权威快照, 自动勾选拿它当
-        // 基线)并一路透传, 下面钉的原文随之更新; 守的不变量一字未动: 残量累加 .residual 不是
-        // .net, residual 回落到毛量, net 取 netShortageQty。
-        assertThat(table).contains(
-                "  double _tableGroupResidual(\n"
-                        + "    _MaterialGroup group, {\n"
-                        + "    bool authoritative = false,\n"
-                        + "  }) => group.paths.fold<double>(\n"
-                        + "    0,\n"
-                        + "    (sum, material) =>\n"
-                        + "        sum + _tableShownQty(material, authoritative: authoritative).residual,\n"
-                        + "  );");
-        assertThat(table).contains(
-                "_tableAnchorResidual(material, authoritative: authoritative) ??\n"
-                        + "          shown.additionalSupplyRecommendedQty,");
-        assertThat(table).contains("net: shown.netShortageQty,");
-        // 残量累加不许改成净数(新旧两种签名都禁)。
-        assertThat(table).doesNotContain("sum + _tableShownQty(material).net,\n  );");
-        assertThat(table).doesNotContain(
-                "sum + _tableShownQty(material, authoritative: authoritative).net,\n  );");
+        // 共用办理投影和原单锚点可重构，不能把整段函数排版当契约。
+        // 真正边界是提交累加毛量 residual，精确来源投影取 planningUncoveredQty，
+        // 尚未采用的候选只影响 net 展示，不提前冲掉本次办理量。
+        String compact = table.replaceAll("\\s+", " ");
+        assertThat(compact).contains(
+                "sum + _tableShownQty(material, authoritative: authoritative).residual");
+        assertThat(compact).contains("residual: preparation.planningUncoveredQty");
+        assertThat(compact).contains("final anchorResidual = _tableAnchorResidual(");
+        assertThat(compact).contains("residual: anchorResidual ?? shown.additionalSupplyRecommendedQty");
+        assertThat(compact).contains(": shown.netShortageQty");
+        assertThat(compact).doesNotContain(
+                "sum + _tableShownQty(material, authoritative: authoritative).net");
+        assertThat(compact).doesNotContain("residual: shown.netShortageQty");
 
-        // 跨计划调拨与公共在途认领也会投影进 downstreamReferences，算成「已下单」
-        // 会让这一行的下单格被锁死、批量下单静默跳过它。
+        // 调拨/采用是已经办理的供给事实，但不是本行新发出的订单；不能伪造下单量。
         assertThat(table).contains("'FUTURE_TRANSFER',");
         assertThat(table).contains("'SHARED_FUTURE_CLAIM',");
         assertThat(table).contains("}.contains(_supplyOperationType(target.actionId))");

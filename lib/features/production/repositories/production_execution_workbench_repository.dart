@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../basic_data/models/master_facet.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/production_execution_workbench.dart';
@@ -9,12 +10,16 @@ class ProductionExecutionWorkbenchRepository {
 
   final ApiClient _api;
 
-  /// 2026-09-06 起列表不再携带车间/排序参数（顶部筛选已下线，默认按计划
-  /// 完工日期升序）；服务端查询参数保留兼容，客户端不再使用。
+  /// 2026-09-06 起列表不再携带车间参数（顶部筛选已下线，默认按计划完工日期
+  /// 升序）。2026-09-25 单号列统一：关联订单列表头排序（sort 白名单 orders）
+  /// 与值筛选（salesOrder 精确匹配 preview）。
   Future<PagedResult<ProductionExecutionWorkbenchGroup>> groups({
     int page = 1,
     int size = 50,
     String keyword = '',
+    String? sort,
+    String? order,
+    String? salesOrder,
   }) async {
     final json = await _api.get(
       '/production/execution-workbench',
@@ -22,12 +27,33 @@ class ProductionExecutionWorkbenchRepository {
         'page': page,
         'size': size,
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        'sort': ?sort,
+        'order': ?order,
+        if (salesOrder?.isNotEmpty == true) 'salesOrder': salesOrder,
       },
     );
     return PagedResult.fromJson(
       json,
       ProductionExecutionWorkbenchGroup.fromJson,
     );
+  }
+
+  /// 「进行中」关联订单列 facets（2026-09-25 单号列统一）：
+  /// {orders:[MasterFacetBucket]}，与列表同一过滤上下文（不含 salesOrder 自身）。
+  Future<Map<String, List<MasterFacetBucket>>> groupFacets({
+    String keyword = '',
+  }) async {
+    final json = await _api.get(
+      '/production/execution-workbench/facets',
+      query: {if (keyword.trim().isNotEmpty) 'keyword': keyword.trim()},
+    );
+    final result = <String, List<MasterFacetBucket>>{};
+    for (final entry in json.entries) {
+      if (entry.value is List) {
+        result[entry.key] = parseFacetBuckets(json, entry.key);
+      }
+    }
+    return result;
   }
 
   // 2026-09-05 起删除 group()/workOrders() 客户端方法：
@@ -54,6 +80,8 @@ class ProductionExecutionWorkbenchRepository {
   /// 车间任务列表。[dateFrom]/[dateTo]（yyyy-MM-dd）只对「历史任务」段
   /// （status=COMPLETED，服务端扩为 完工/取消/红冲 终态集）生效——ADR-066 §1.3
   /// 时间门控；活动段服务端忽略日期参数。
+  /// 2026-09-25 单号列统一：analysisNo/segmentCode 表头值筛选 + sort 白名单
+  /// （sourcePlan/order/segment）。
   Future<PagedResult<ProductionExecutionWorkbenchSegment>> workshopTasks({
     int page = 1,
     int size = 50,
@@ -64,6 +92,10 @@ class ProductionExecutionWorkbenchRepository {
     String? workshopDepartmentId,
     String? dateFrom,
     String? dateTo,
+    String? analysisNo,
+    String? segmentCode,
+    String? sort,
+    String? order,
   }) async {
     final json = await _api.get(
       '/production/workshop-tasks',
@@ -80,12 +112,50 @@ class ProductionExecutionWorkbenchRepository {
           'workshopDepartmentId': workshopDepartmentId,
         if (dateFrom?.isNotEmpty == true) 'dateFrom': dateFrom,
         if (dateTo?.isNotEmpty == true) 'dateTo': dateTo,
+        if (analysisNo?.isNotEmpty == true) 'analysisNo': analysisNo,
+        if (segmentCode?.isNotEmpty == true) 'segmentCode': segmentCode,
+        'sort': ?sort,
+        'order': ?order,
       },
     );
     return PagedResult.fromJson(
       json,
       ProductionExecutionWorkbenchSegment.fromJson,
     );
+  }
+
+  /// 我的车间任务单号列 facets（2026-09-25 单号列统一）：
+  /// {sourcePlan:[MasterFacetBucket], segment:[MasterFacetBucket]}。
+  Future<Map<String, List<MasterFacetBucket>>> workshopTaskFacets({
+    String keyword = '',
+    String? status,
+    String? preparationFilter,
+    String? routeFilter,
+    String? workshopDepartmentId,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final json = await _api.get(
+      '/production/workshop-tasks/facets',
+      query: {
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        if (status?.isNotEmpty == true) 'status': status,
+        if (preparationFilter?.isNotEmpty == true)
+          'preparationFilter': preparationFilter,
+        if (routeFilter?.isNotEmpty == true) 'routeFilter': routeFilter,
+        if (workshopDepartmentId?.isNotEmpty == true)
+          'workshopDepartmentId': workshopDepartmentId,
+        if (dateFrom?.isNotEmpty == true) 'dateFrom': dateFrom,
+        if (dateTo?.isNotEmpty == true) 'dateTo': dateTo,
+      },
+    );
+    final result = <String, List<MasterFacetBucket>>{};
+    for (final entry in json.entries) {
+      if (entry.value is List) {
+        result[entry.key] = parseFacetBuckets(json, entry.key);
+      }
+    }
+    return result;
   }
 
   /// 本任务逐种物料事实(ADR-095)：只读，服务端按车间任务范围校验。

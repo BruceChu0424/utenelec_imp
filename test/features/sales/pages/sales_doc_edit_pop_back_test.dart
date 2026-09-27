@@ -1,5 +1,6 @@
 // 编辑既有销售订货单保存后的落点与返回（2026-09-25 修复）：
-//  - 保存成功 pop 回宿主详情页，不再 replace 在旧详情上叠一层新详情；
+//  - 从详情编辑后保存 pop 回宿主，避免叠一层新详情；
+//  - 从草稿列表直接编辑后保存进入本单详情，显示后续审核入口；
 //  - 详情页点一次左上角返回即回列表页（此前要先经过保存前的旧详情快照）；
 //  - 保存的写操作让宿主详情「返回即刷新」(ADR-108) 重取新数据。
 import 'package:dio/dio.dart';
@@ -47,88 +48,7 @@ const _detail = {
 
 void main() {
   testWidgets('编辑保存 pop 回宿主详情；返回一次回列表；宿主重取新数据', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    // fake api 需要 container 引用（PUT 后推进写修订号）：override 用惰性闭包，
-    // pump 前完成赋值即可，避免 updateOverrides 数量断言。
-    late final _PopApi api;
-    final container = ProviderContainer(
-      overrides: [
-        apiClientProvider.overrideWith((ref) => api),
-        salesMasterNameServiceProvider.overrideWith(
-          (ref) => SalesMasterNameService(api),
-        ),
-        taskClaimRepositoryProvider.overrideWithValue(FinanceClaimFixture()),
-        sessionProvider.overrideWith(_TestSessionNotifier.new),
-        currentPermissionsProvider.overrideWithValue(const {
-          Perm.salesOrderView,
-          Perm.salesOrderEdit,
-        }),
-      ],
-    );
-    addTearDown(container.dispose);
-    api = _PopApi(container);
-
-    final router = GoRouter(
-      initialLocation: '/list',
-      routes: [
-        GoRoute(
-          path: '/list',
-          builder: (context, _) => Scaffold(
-            body: Center(
-              child: FilledButton(
-                onPressed: () => context.push('/sales/orders/order-1'),
-                child: const Text('打开订货单'),
-              ),
-            ),
-          ),
-        ),
-        GoRoute(
-          path: '/sales/orders/:id',
-          builder: (_, state) => SalesDocDetailPage(
-            docType: SalesDocType.order,
-            id: state.pathParameters['id']!,
-          ),
-        ),
-        GoRoute(
-          path: '/sales/orders/:id/edit',
-          builder: (_, state) => SalesDocEditPage(
-            docType: SalesDocType.order,
-            id: state.pathParameters['id']!,
-          ),
-        ),
-      ],
-    );
-    final detach = attachPageResume(
-      router,
-      container.read(pageResumeProvider.notifier),
-    );
-    addTearDown(detach);
-
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp.router(
-          routerConfig: router,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: const Locale('zh'),
-          builder: (context, child) => Stack(
-            children: [
-              Positioned.fill(child: child!),
-              const Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: AppNotificationHost(),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+    final (:router, :api) = await _pumpFlow(tester);
 
     // 列表 → 详情 V1（GET #1）。
     await tester.tap(find.text('打开订货单'));
@@ -161,6 +81,137 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('草稿列表直接编辑保存后进入详情审核页；一次返回原草稿列表', (tester) async {
+    final (:router, :api) = await _pumpFlow(tester, fromDraftList: true);
+
+    // 与订货进度「草稿」行相同：直接 push 编辑页，栈下没有详情页。
+    await tester.tap(find.text('编辑草稿'));
+    await tester.pumpAndSettle();
+    expect(api.detailGets, 1);
+
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle(const Duration(seconds: 2));
+    expect(api.puts, 1);
+    expect(
+      router.routerDelegate.currentConfiguration.last.matchedLocation,
+      '/sales/orders/order-1',
+      reason: '保存后应进入本单详情继续审核，不能因列表在栈下就退回列表',
+    );
+    expect(find.byType(SalesDocDetailPage), findsOneWidget);
+    expect(find.text('审核'), findsOneWidget);
+    expect(api.detailGets, greaterThanOrEqualTo(2));
+
+    await tester.tap(find.byIcon(Icons.arrow_back_ios_new_rounded).first);
+    await tester.pumpAndSettle();
+    expect(
+      router.routerDelegate.currentConfiguration.last.matchedLocation,
+      '/drafts',
+    );
+    expect(find.text('草稿列表'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+}
+
+Future<({GoRouter router, _PopApi api})> _pumpFlow(
+  WidgetTester tester, {
+  bool fromDraftList = false,
+}) async {
+  await tester.binding.setSurfaceSize(const Size(1600, 1200));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+
+  // fake PUT 推进真实的写修订号，详情返回后的刷新沿用生产接线。
+  late final _PopApi api;
+  final container = ProviderContainer(
+    overrides: [
+      apiClientProvider.overrideWith((ref) => api),
+      salesMasterNameServiceProvider.overrideWith(
+        (ref) => SalesMasterNameService(api),
+      ),
+      taskClaimRepositoryProvider.overrideWithValue(FinanceClaimFixture()),
+      sessionProvider.overrideWith(_TestSessionNotifier.new),
+      currentPermissionsProvider.overrideWithValue(const {
+        Perm.salesOrderView,
+        Perm.salesOrderEdit,
+        Perm.salesOrderApprove,
+      }),
+    ],
+  );
+  addTearDown(container.dispose);
+  api = _PopApi(container);
+
+  final listPath = fromDraftList ? '/drafts' : '/list';
+  final router = GoRouter(
+    initialLocation: listPath,
+    routes: [
+      GoRoute(
+        path: listPath,
+        builder: (context, _) => Scaffold(
+          body: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(fromDraftList ? '草稿列表' : '订货列表'),
+                FilledButton(
+                  onPressed: () => context.push(
+                    fromDraftList
+                        ? '/sales/orders/order-1/edit'
+                        : '/sales/orders/order-1',
+                  ),
+                  child: Text(fromDraftList ? '编辑草稿' : '打开订货单'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/sales/orders/:id',
+        builder: (_, state) => SalesDocDetailPage(
+          docType: SalesDocType.order,
+          id: state.pathParameters['id']!,
+        ),
+      ),
+      GoRoute(
+        path: '/sales/orders/:id/edit',
+        builder: (_, state) => SalesDocEditPage(
+          docType: SalesDocType.order,
+          id: state.pathParameters['id']!,
+        ),
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
+  final detach = attachPageResume(
+    router,
+    container.read(pageResumeProvider.notifier),
+  );
+  addTearDown(detach);
+
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp.router(
+        routerConfig: router,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('zh'),
+        builder: (context, child) => Stack(
+          children: [
+            Positioned.fill(child: child!),
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: AppNotificationHost(),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return (router: router, api: api);
 }
 
 class _TestSessionNotifier extends SessionNotifier {

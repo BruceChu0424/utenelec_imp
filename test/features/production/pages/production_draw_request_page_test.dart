@@ -181,10 +181,8 @@ Future<ProviderContainer> _pump(
 void main() {
   // 2026-09-21 用户口径「批量领料也要和别的页面一样有中间的加载弹窗」: 车间任务页
   // 点「批量领料」是跳到本页, 遮罩挂着跳会把本页整片盖住(root Overlay 裸 entry),
-  // 所以加载反馈落在本页首屏——用全站同款的居中加载卡片替掉原来的裸转圈。这里
-  // 用卡片本体而不是 UtenBusyOverlay: 遮罩带不可关闭的 ModalBarrier, 首屏还在
-  // 加载时会把返回按钮一起吃掉。
-  testWidgets('first paint shows the shared centered loading card', (
+  // 所以实际加载遮罩由目标页首屏持有，网络完成后必须撤下。
+  testWidgets('first paint shows the shared modal loading overlay', (
     tester,
   ) async {
     final repository = _Repository()..previewGate = Completer<void>();
@@ -194,8 +192,16 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('正在加载领料汇总'), findsOneWidget);
-    // 返回按钮不能被蒙版吃掉: 首屏加载用的是卡片本体, 不是带不可关闭蒙版的遮罩。
-    expect(find.byType(UtenBusyOverlay), findsNothing);
+    expect(find.byType(UtenBusyOverlay), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is ModalBarrier &&
+            !widget.dismissible &&
+            widget.color != null,
+      ),
+      findsOneWidget,
+    );
     repository.previewGate!.complete();
     await tester.pumpAndSettle();
     expect(
@@ -204,6 +210,23 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'failed initial read removes the modal and leaves the review route available',
+    (tester) async {
+      final repository = _Repository()
+        ..previewGate = Completer<void>()
+        ..previewError = ApiException('CONFLICT', '所选工单已变化', httpStatus: 409);
+      await _pump(tester, repository, settle: false);
+      expect(find.byType(UtenBusyOverlay), findsOneWidget);
+      repository.previewGate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(find.byType(ProductionDrawRequestPage), findsOneWidget);
+      expect(find.text('重新加载').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'selected material quantity is allocated to exact reviewed sources',

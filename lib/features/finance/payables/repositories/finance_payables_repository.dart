@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/network/api_client.dart';
+import '../../../basic_data/models/master_facet.dart';
 import '../models/finance_payable.dart';
 
 class FinancePayablesFilter {
@@ -15,6 +16,7 @@ class FinancePayablesFilter {
     this.dateTo,
     this.dueFrom,
     this.dueTo,
+    this.sourceDocNo,
   });
 
   final String? businessType;
@@ -29,6 +31,9 @@ class FinancePayablesFilter {
   final String? dateTo;
   final String? dueFrom;
   final String? dueTo;
+
+  /// 来源单号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
+  final String? sourceDocNo;
 }
 
 class FinancePayableOffsetTarget {
@@ -78,11 +83,41 @@ class FinancePayablesRepository {
         if (filter.dateTo?.isNotEmpty == true) 'dateTo': filter.dateTo,
         if (filter.dueFrom?.isNotEmpty == true) 'dueFrom': filter.dueFrom,
         if (filter.dueTo?.isNotEmpty == true) 'dueTo': filter.dueTo,
+        if (filter.sourceDocNo?.trim().isNotEmpty == true)
+          'sourceDocNo': filter.sourceDocNo!.trim(),
         if (sort?.isNotEmpty == true) 'sort': sort,
         if (order?.isNotEmpty == true) 'order': order,
       },
     );
     return FinancePayablesResult.fromJson(json);
+  }
+
+  /// 来源单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数；
+  /// 不含 sourceDocNo 自身的筛选值。
+  Future<List<MasterFacetBucket>> sourceDocNoFacets({
+    FinancePayablesFilter filter = const FinancePayablesFilter(),
+  }) async {
+    final json = await api.get(
+      '/finance/payables/facets',
+      query: <String, dynamic>{
+        if (filter.businessType?.isNotEmpty == true)
+          'businessType': filter.businessType,
+        if (filter.supplierId?.isNotEmpty == true)
+          'supplierId': filter.supplierId,
+        if (filter.status?.isNotEmpty == true) 'status': filter.status,
+        if (filter.currencyId?.isNotEmpty == true)
+          'currencyId': filter.currencyId,
+        if (filter.settlementMethodId?.isNotEmpty == true)
+          'settlementMethodId': filter.settlementMethodId,
+        if (filter.keyword?.trim().isNotEmpty == true)
+          'keyword': filter.keyword!.trim(),
+        if (filter.dateFrom?.isNotEmpty == true) 'dateFrom': filter.dateFrom,
+        if (filter.dateTo?.isNotEmpty == true) 'dateTo': filter.dateTo,
+        if (filter.dueFrom?.isNotEmpty == true) 'dueFrom': filter.dueFrom,
+        if (filter.dueTo?.isNotEmpty == true) 'dueTo': filter.dueTo,
+      },
+    );
+    return parseFacetBuckets(json, 'sourceDocNo');
   }
 
   Future<String?> applyOffset({

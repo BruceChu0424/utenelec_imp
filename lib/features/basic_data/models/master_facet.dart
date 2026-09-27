@@ -29,6 +29,18 @@ class MasterFacetBucket {
 /// repository 据此把字段名收集进 nullFields 请求参数。
 const String kMasterFilterNullValue = '__null__';
 
+/// 解析服务端 facets 响应里某列的桶数组（空安全：缺失/非列表返回空）。
+/// 全站 /facets 端点与内嵌 facets 字段的统一解析口——各仓库不要再手写循环。
+/// （2026-09-25 单号列统一批次收口。）
+List<MasterFacetBucket> parseFacetBuckets(dynamic json, String key) {
+  final buckets = json is Map ? json[key] : null;
+  if (buckets is! List) return const [];
+  return [
+    for (final b in buckets)
+      if (b is Map<String, dynamic>) MasterFacetBucket.fromJson(b),
+  ];
+}
+
 /// 把主档 dict 端点的映射（id → 名称，如供应商/仓库/客户/币种/展平后的部门树）
 /// 转成表头筛选桶：按名称排序、count=0（不强调计数）。
 /// [MasterFacetBucket.value] 为字典项 id（UUID），与各列表 repository 的

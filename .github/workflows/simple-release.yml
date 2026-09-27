@@ -338,5 +338,5 @@ jobs:
             echo "## 发布完成：$VERSION"
             echo "- 本次明确允许CI仍在运行时手动发布：$ALLOW_RUNNING_CHECKS；不表示CI已通过"
             echo "- OSS：$OSS_BUCKET@$OSS_ENDPOINT（发布后自动清理旧版本，只保留本版）"
-            echo "- 服务器每天 05:00（北京时间）自动检测；纯代码版本自动激活，含迁移的版本需手动 activate；要立即拉取可 SSH：sudo /usr/local/sbin/uten-imp-updater check"
+            echo "- 服务器按系统设置自动检测（默认每周日当地 05:00，0=仅手动）；纯代码版本自动激活，含迁移的版本需手动 activate；立即拉取：sudo /usr/local/sbin/uten-imp-updater check"
           } >> "$GITHUB_STEP_SUMMARY"

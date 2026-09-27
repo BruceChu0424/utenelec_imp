@@ -42,8 +42,13 @@ import '../widgets/production_status_badge.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
 
 class ProductionDailyReportDetailPage extends ConsumerStatefulWidget {
-  const ProductionDailyReportDetailPage({super.key, required this.id});
+  const ProductionDailyReportDetailPage({
+    super.key,
+    required this.id,
+    this.returnToWorkshopTasks = false,
+  });
   final String id;
+  final bool returnToWorkshopTasks;
 
   @override
   ConsumerState<ProductionDailyReportDetailPage> createState() =>
@@ -198,10 +203,19 @@ class _ProductionDailyReportDetailPageState
       // 服务端已返回审核/红冲后的完整详情：直接落页面，省掉一次详情往返。
       _applyDetail(updated);
       _signalExecutionChanged();
+      if (reviewerResponsibility) _returnAfterApproval(updated);
     } on ApiException catch (e) {
-      await _settleFailedAction(e.message, ok);
+      await _settleFailedAction(
+        e.message,
+        ok,
+        returnAfterApproval: reviewerResponsibility,
+      );
     } catch (_) {
-      await _settleFailedAction('操作失败，请稍后重试', ok);
+      await _settleFailedAction(
+        '操作失败，请稍后重试',
+        ok,
+        returnAfterApproval: reviewerResponsibility,
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -220,8 +234,9 @@ class _ProductionDailyReportDetailPageState
   /// 所以两条失败路径都先重读一次，状态真变了就据实告诉用户它其实成功了。
   Future<void> _settleFailedAction(
     String failureMessage,
-    String successMessage,
-  ) async {
+    String successMessage, {
+    bool returnAfterApproval = false,
+  }) async {
     final before = _detail?.status;
     ProductionDailyReportDetail? fresh;
     try {
@@ -237,10 +252,47 @@ class _ProductionDailyReportDetailPageState
       if (fresh.status != before) {
         _signalExecutionChanged();
         context.appSuccess('$successMessage(本次提交服务端已完成，页面已刷新)');
+        if (returnAfterApproval) _returnAfterApproval(fresh);
         return;
       }
     }
     context.appError(failureMessage);
+  }
+
+  void _returnAfterApproval(ProductionDailyReportDetail detail) {
+    if (!widget.returnToWorkshopTasks || detail.status != 1) return;
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go(RouteName.productionWorkshopTasks);
+    }
+  }
+
+  /// 车间链路的编辑往返中。不进 [_busy]：忙碌遮罩只盖纯网络段（UtenBusyOverlay
+  /// 契约，挂着跳页会把目标页盖住、widget 测试也 settle 不了），跳页期间不需要
+  /// 任何遮罩。本标记只挡编辑重入，并让「返回即刷新」让位——回来后由 [_edit]
+  /// 自己按保存结果重拉一次，避免一次返回拉两遍详情。
+  bool _editing = false;
+
+  /// 审核链路（returnToWorkshopTasks）的编辑入口：带上 from=workshop-tasks，
+  /// 编辑页保存后 pop 回日报 ID，这里重拉详情保住「审核后回车间任务」的落点；
+  /// 普通入口照旧 push，返回刷新交给「返回即刷新」。
+  Future<void> _edit() async {
+    if (_busy || _editing) return;
+    final path = '/production/daily-reports/${widget.id}/edit';
+    if (!widget.returnToWorkshopTasks) {
+      await context.push(path);
+      return;
+    }
+    _editing = true;
+    try {
+      final savedId = await context.push<String>('$path?from=workshop-tasks');
+      if (!mounted || savedId == null || savedId.isEmpty) return;
+      await _load();
+      if (mounted) _signalExecutionChanged();
+    } finally {
+      _editing = false;
+    }
   }
 
   Future<void> _delete() async {
@@ -298,7 +350,7 @@ class _ProductionDailyReportDetailPageState
     // （保存/审核都在子页办完）就重拉本页详情。
     _myLocation ??= currentLocationOr(context, RouteName.production);
     ref.onPageResume(_myLocation!, () {
-      if (!_busy) _load();
+      if (!_busy && !_editing) _load();
     });
     final scopeCapability = ref.watch(
       documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
@@ -513,7 +565,10 @@ class _ProductionDailyReportDetailPageState
                 value: (it) => it.weight?.toStringAsFixed(4),
               ),
               MasterColumnDef(
+                // 2026-09-25 单号列统一：明细全量加载，就地排序+按值筛选。
                 key: 'planNo',
+                sortable: true,
+                filterFromRows: true,
                 label: '计划号',
                 width: 140,
                 value: (it) => it.planNo,
@@ -599,8 +654,7 @@ class _ProductionDailyReportDetailPageState
             type: UtenButtonType.secondary,
             size: UtenButtonSize.large,
             icon: Icons.edit_outlined,
-            onPressed: () =>
-                context.push('/production/daily-reports/${widget.id}/edit'),
+            onPressed: _edit,
             child: const Text('编辑'),
           ),
         );

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_endpoints.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import '../../../shared/providers/master_dictionary_repository.dart';
 import '../models/color_node.dart';
 import '../models/unit_node.dart';
@@ -39,6 +40,7 @@ Future<String?> showColorAddSheet(BuildContext context, WidgetRef ref) {
   return showNameAddSheet(
     context: context,
     title: '添加颜色',
+    draftSpec: FormDraftCatalog.color.spec(title: '添加颜色'),
     exists: (name) =>
         ref
             .read(colorDictProvider)
@@ -61,6 +63,7 @@ Future<String?> showUnitAddSheet(BuildContext context, WidgetRef ref) {
   return showNameAddSheet(
     context: context,
     title: '添加单位',
+    draftSpec: FormDraftCatalog.unit.spec(title: '添加单位'),
     exists: (name) =>
         ref
             .read(unitDictProvider)

@@ -10,9 +10,12 @@ import '../models/expense_invoice.dart';
 import '../models/expense_payment.dart';
 
 /// 审批列表筛选桶所属队列（与后端 /expense-claims/facets?queue= 对齐）。
-enum ApprovalFacetQueue { pending, payable, history }
+/// mine=我的报销（单号桶，2026-09-25 单号列统一）。
+enum ApprovalFacetQueue { pending, payable, history, mine }
 
 abstract interface class ExpenseRepository {
+  /// 2026-09-25 单号列统一：[sort]/[order] 报销单号表头排序（claimNo 白名单）；
+  /// [claimNo] 值筛选（服务端精确匹配）。
   Future<PagedResult<ExpenseClaim>> listMine({
     Iterable<ExpenseClaimStatus>? statuses,
     int page = 1,
@@ -21,6 +24,9 @@ abstract interface class ExpenseRepository {
     int? month,
     String? departmentId,
     String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
   });
   Future<PagedResult<ExpenseClaim>> listPending({
     int page = 1,
@@ -29,6 +35,9 @@ abstract interface class ExpenseRepository {
     int? month,
     String? departmentId,
     String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
   });
   Future<PagedResult<ExpenseClaim>> listPayable({
     int page = 1,
@@ -37,6 +46,9 @@ abstract interface class ExpenseRepository {
     int? month,
     String? departmentId,
     String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
   });
   Future<PagedResult<ExpenseClaim>> listHistory({
     int page = 1,
@@ -45,6 +57,9 @@ abstract interface class ExpenseRepository {
     int? month,
     String? departmentId,
     String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
   });
 
   /// 审批/打款队列表头筛选桶（部门 / 年月），queue = pending | payable。
@@ -142,6 +157,9 @@ class DioExpenseRepository implements ExpenseRepository {
     int? month,
     String? departmentId,
     String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
   }) => _list(
     '$_claims/mine',
     statuses: statuses,
@@ -151,6 +169,9 @@ class DioExpenseRepository implements ExpenseRepository {
     month: month,
     departmentId: departmentId,
     category: category,
+    sort: sort,
+    order: order,
+    claimNo: claimNo,
   );
 
   @override
@@ -161,6 +182,9 @@ class DioExpenseRepository implements ExpenseRepository {
     int? month,
     String? departmentId,
     String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
   }) => _list(
     '$_claims/pending',
     page: page,
@@ -169,6 +193,9 @@ class DioExpenseRepository implements ExpenseRepository {
     month: month,
     departmentId: departmentId,
     category: category,
+    sort: sort,
+    order: order,
+    claimNo: claimNo,
   );
 
   @override
@@ -179,6 +206,9 @@ class DioExpenseRepository implements ExpenseRepository {
     int? month,
     String? departmentId,
     String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
   }) => _list(
     '$_claims/payable',
     page: page,
@@ -187,6 +217,9 @@ class DioExpenseRepository implements ExpenseRepository {
     month: month,
     departmentId: departmentId,
     category: category,
+    sort: sort,
+    order: order,
+    claimNo: claimNo,
   );
 
   @override
@@ -197,6 +230,9 @@ class DioExpenseRepository implements ExpenseRepository {
     int? month,
     String? departmentId,
     String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
   }) => _list(
     '$_claims/history',
     page: page,
@@ -205,6 +241,9 @@ class DioExpenseRepository implements ExpenseRepository {
     month: month,
     departmentId: departmentId,
     category: category,
+    sort: sort,
+    order: order,
+    claimNo: claimNo,
   );
 
   Future<PagedResult<ExpenseClaim>> _list(
@@ -216,6 +255,9 @@ class DioExpenseRepository implements ExpenseRepository {
     int? month,
     String? departmentId,
     String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
   }) async {
     final normalizedStatuses = statuses?.map((status) => status.apiValue);
     final json = await _api.get(
@@ -231,6 +273,10 @@ class DioExpenseRepository implements ExpenseRepository {
           'departmentId': departmentId,
         // 类别表头筛选（2026-09-16）：明细项类别码（TRANSPORT/TRAVEL/...），空 = 不筛。
         if (category != null && category.isNotEmpty) 'category': category,
+        // 2026-09-25 单号列统一：报销单号排序 + 值筛选（服务端白名单/精确匹配）。
+        'sort': ?sort,
+        'order': ?order,
+        if (claimNo != null && claimNo.isNotEmpty) 'claimNo': claimNo,
       },
     );
     return PagedResult.fromJson(json, ExpenseClaim.fromJson);
@@ -244,15 +290,13 @@ class DioExpenseRepository implements ExpenseRepository {
       '$_claims/facets',
       query: <String, dynamic>{'queue': queue.name},
     );
-    List<MasterFacetBucket> parse(Object? raw) => [
-      for (final e in (raw as List<dynamic>? ?? const []))
-        MasterFacetBucket.fromJson(e as Map<String, dynamic>),
-    ];
     return {
-      'departmentName': parse(json['departments']),
-      'yearMonth': parse(json['months']),
+      'departmentName': parseFacetBuckets(json, 'departments'),
+      'yearMonth': parseFacetBuckets(json, 'months'),
       // 类别桶（2026-09-16 扩 facets 响应）：value=类别码（明细项级别聚合）。
-      'category': parse(json['categories']),
+      'category': parseFacetBuckets(json, 'categories'),
+      // 报销单号桶（2026-09-25 单号列统一）：value=label=claim_no。
+      'claimNo': parseFacetBuckets(json, 'claimNos'),
     };
   }
 

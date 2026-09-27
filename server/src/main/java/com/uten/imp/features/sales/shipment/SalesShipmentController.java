@@ -66,11 +66,37 @@ public class SalesShipmentController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String billNo) {
         return service.list(new ShipmentQueryFilter(
                 keyword, clientId, warehouseId, status, arPosted, financeAudit,
                 financeRejected, warehouseWorkStatus,
-                dateFrom, dateTo,shipmentKind,currencyId,stage), page, size, sort, order);
+                dateFrom, dateTo,shipmentKind,currencyId,stage,
+                com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL, billNo), page, size, sort, order);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
+    @GetMapping("/facets")
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) UUID clientId,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(required = false) Short status,
+            @RequestParam(required = false) Boolean arPosted,
+            @RequestParam(required = false) Short financeAudit,
+            @RequestParam(required = false) Boolean financeRejected,
+            @RequestParam(required = false) String warehouseWorkStatus,
+            @RequestParam(required = false) String shipmentKind,
+            @RequestParam(required = false) UUID currencyId,
+            @RequestParam(required = false) String stage,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
+        return service.facets(new ShipmentQueryFilter(
+                keyword, clientId, warehouseId, status, arPosted, financeAudit,
+                financeRejected, warehouseWorkStatus,
+                dateFrom, dateTo,shipmentKind,currencyId,stage,
+                com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL, null));
     }
 
     @GetMapping("/{id}")

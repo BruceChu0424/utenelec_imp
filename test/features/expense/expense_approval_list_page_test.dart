@@ -29,12 +29,18 @@ class _FakeExpenseRepository extends Fake implements ExpenseRepository {
     int? month,
     String? departmentId,
     String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
   }) async {
     pendingCalls.add({
       'page': page,
       'year': year,
       'month': month,
       'departmentId': departmentId,
+      'claimNo': claimNo,
+      'sort': sort,
+      'order': order,
     });
     return PagedResult(
       items: [_claim('c-1'), _claim('c-2')],
@@ -53,6 +59,9 @@ class _FakeExpenseRepository extends Fake implements ExpenseRepository {
     int? month,
     String? departmentId,
     String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
   }) async {
     historyCalls.add({
       'page': page,
@@ -60,6 +69,9 @@ class _FakeExpenseRepository extends Fake implements ExpenseRepository {
       'month': month,
       'departmentId': departmentId,
       'category': category,
+      'claimNo': claimNo,
+      'sort': sort,
+      'order': order,
     });
     return PagedResult(
       items: [_claim('c-1').copyWith(status: ExpenseClaimStatus.paid)],
@@ -78,6 +90,8 @@ class _FakeExpenseRepository extends Fake implements ExpenseRepository {
       MasterFacetBucket(value: 'dept-1', count: 2, label: '研发部'),
     ],
     'yearMonth': const [MasterFacetBucket(value: '2026-09', count: 2)],
+    // 2026-09-25 单号列统一：报销单号桶（claimNo）随 facets 响应下发。
+    'claimNo': const [MasterFacetBucket(value: 'BX2026073000001', count: 1)],
   };
 
   @override
@@ -188,6 +202,33 @@ void main() {
     expect(repo.pendingCalls.last['year'], 2026);
     expect(repo.pendingCalls.last['month'], 9);
     expect(repo.pendingCalls.last['departmentId'], 'dept-1');
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('claimNo header filter and sort hit the backend', (tester) async {
+    // 2026-09-25 单号列统一：报销单号列头值筛选（服务端精确匹配）与排序
+    // （claimNo 白名单）下推后端；桶来自服务端 facets（claimNo 键）。
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final repo = _FakeExpenseRepository();
+    await tester.pumpWidget(_app(repo, preferences));
+    await tester.pumpAndSettle();
+
+    final table = _table(tester);
+    expect(table.facets['claimNo']!.single.value, 'BX2026073000001');
+    expect(table.columns.first.key, 'claimNo');
+    expect(table.columns.first.sortable, isTrue);
+
+    table.onFilterChanged('claimNo', 'BX2026073000001');
+    await tester.pumpAndSettle();
+    expect(repo.pendingCalls.last['claimNo'], 'BX2026073000001');
+    expect(repo.pendingCalls.last['page'], 1);
+
+    _table(tester).onSortChange?.call('claimNo', false);
+    await tester.pumpAndSettle();
+    expect(repo.pendingCalls.last['sort'], 'claimNo');
+    expect(repo.pendingCalls.last['order'], 'desc');
 
     await tester.pumpWidget(const SizedBox());
   });

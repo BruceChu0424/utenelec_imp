@@ -3,7 +3,10 @@
 // 复刻采购单据列表：UtenAppBar(标题/返回/刷新) + UtenContentContainer > 标题行
 // (Icon+label+(N)+搜索+新建) + 状态筛选(UtenFilterToolbar 分段) + MasterDataTableView。
 // 名称解析（客户/供应商/账户）通过 FinanceNameService。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_category.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -19,14 +22,19 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/document_scope_capability.dart';
+import '../../../shared/mixins/draft_bulk_delete_mixin.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../config/finance_doc_config.dart';
 import '../models/finance_doc.dart';
@@ -49,7 +57,8 @@ class FinanceDocListPage extends ConsumerStatefulWidget {
   ConsumerState<FinanceDocListPage> createState() => _FinanceDocListPageState();
 }
 
-class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
+class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
+    with DraftBulkDeleteMixin<FinanceDocListPage> {
   FinanceDocConfig get _cfg => FinanceDocConfig.by(widget.docType);
   final _list = PagedListController<FinanceDocListItem>();
 
@@ -61,6 +70,11 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
   String? _partyIdFilter;
   String? _accountIdFilter;
   String? _receiptKindFilter; // 收款类型（仅收款单；null=不过滤）
+
+  /// 2026-09-25 单号列统一：单据号表头值筛选 + 服务端桶（共享状态，见
+  /// MasterServerColumnFilters）。
+  final _columnFilters = MasterServerColumnFilters();
+  int _reloadGeneration = 0;
 
   @override
   void initState() {
@@ -82,45 +96,142 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant FinanceDocListPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.docType == widget.docType &&
+        oldWidget.initialStatus == widget.initialStatus) {
+      return;
+    }
+    clearDraftSelection();
+    _myLocation = null;
+    _statusFilter = isDraftStatusQuery(widget.initialStatus)
+        ? kFinanceStatusDraft
+        : null;
+    _statusFilterSelected = isDraftStatusQuery(widget.initialStatus);
+    _partyIdFilter = null;
+    _accountIdFilter = null;
+    _receiptKindFilter = null;
+    _columnFilters.reset();
+    _list.page = null;
+    _list.keyword = '';
+    _list.onSortChange(null, true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _reload(1);
+    });
+  }
+
+  bool get _canSelectDrafts =>
+      _statusFilterSelected &&
+      _statusFilter == kFinanceStatusDraft &&
+      _cfg.deletePerm != null &&
+      ref.read(currentPermissionsProvider).contains(_cfg.deletePerm);
+
+  bool _isDeletableDraft(FinanceDocListItem item) =>
+      item.status == kFinanceStatusDraft && !item.legacyImported;
+
+  Future<void> _deleteDraft(String id, FinanceDocType type) async {
+    final scope = ref.read(authenticatedScopeProvider);
+    final config = FinanceDocConfig.by(type);
+    if (config.deletePerm == null ||
+        !ref.read(currentPermissionsProvider).contains(config.deletePerm)) {
+      throw ApiException('FORBIDDEN', '没有${config.label}删除权限');
+    }
+    final repository = ref.read(financeRepositoryProvider(type));
+    // 列表没有制单人字段，仅对本次勾选记录读取最新详情，复用详情页写范围。
+    final detail = await repository.detail(id);
+    if (detail.status != kFinanceStatusDraft) {
+      throw ApiException('CONFLICT', '单据状态已变化，仅草稿可删除');
+    }
+    if (detail.legacyImported) {
+      throw ApiException('CONFLICT', financeLegacyReadOnlyMessage);
+    }
+    if (!mounted ||
+        !await loadDocumentOwnerCanWrite(
+          ref,
+          DocumentDataScope.finance,
+          detail.makerId,
+        )) {
+      throw ApiException('FORBIDDEN', documentScopeReadOnlyMessage);
+    }
+    if (!mounted ||
+        ref.read(authenticatedScopeProvider) != scope ||
+        widget.docType != type ||
+        !_canSelectDrafts ||
+        !selectedDraftIds.contains(id) ||
+        !ref.read(currentPermissionsProvider).contains(config.deletePerm)) {
+      throw ApiException('FORBIDDEN', '当前身份、选择范围或${config.label}删除权限已变化');
+    }
+    await repository.delete(id);
+  }
+
   bool get _canCreate {
     final permission = _cfg.createPerm;
     return permission != null &&
         ref.read(currentPermissionsProvider).contains(permission);
   }
 
+  /// 当前分段/表头筛选组装查询条件（_fetch 与单号桶共用；[withBillNo] = false
+  /// 供桶拉取——桶不算单号列自身的值筛选，2026-09-25 单号列统一）。
+  FinanceDocFilter _docFilter({bool withBillNo = true}) => FinanceDocFilter(
+    keyword: _list.normalizedKeyword,
+    partyId: _cfg.hasParty ? _partyIdFilter : null,
+    accountId: _cfg.type == FinanceDocType.bankTransfer
+        ? null
+        : _accountIdFilter,
+    outAccountId: _cfg.type == FinanceDocType.bankTransfer
+        ? _accountIdFilter
+        : null,
+    status: _statusFilter,
+    receiptKind: _cfg.type == FinanceDocType.receipt
+        ? _receiptKindFilter
+        : null,
+    billNo: withBillNo ? _columnFilters['billNo'] : null,
+  );
+
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
   Future<PagedResult<FinanceDocListItem>> _fetch() => ref
       .read(financeRepositoryProvider(widget.docType))
       .list(
         page: _list.pageNum,
-        filter: FinanceDocFilter(
-          keyword: _list.normalizedKeyword,
-          partyId: _cfg.hasParty ? _partyIdFilter : null,
-          accountId: _cfg.type == FinanceDocType.bankTransfer
-              ? null
-              : _accountIdFilter,
-          outAccountId: _cfg.type == FinanceDocType.bankTransfer
-              ? _accountIdFilter
-              : null,
-          status: _statusFilter,
-          receiptKind: _cfg.type == FinanceDocType.receipt
-              ? _receiptKindFilter
-              : null,
-        ),
+        filter: _docFilter(),
         sort: _list.sortKey,
         order: _list.sortOrder,
       );
 
+  /// 单据号值筛选桶随过滤上下文重取（失败静默保持旧桶，不阻断列表）。
+  Future<void> _loadBillNoFacets() => _columnFilters.loadFacets(
+    () async => {
+      'billNo': await ref
+          .read(financeRepositoryProvider(widget.docType))
+          .billNoFacets(filter: _docFilter(withBillNo: false)),
+    },
+    onLoaded: () {
+      if (mounted) setState(() {});
+    },
+  );
+
   /// 分段计数范围(2026-09-21 用户口径: 父分类 hub 卡有草稿红徽章, 子分类也要有数)。
   DocumentStatusScope get _statusScope => DocumentStatusScope(_cfg.draftKind);
 
-  Future<void> _reload([int? page, bool silent = false]) {
+  Future<void> _reload([int? page, bool silent = false]) async {
+    final generation = ++_reloadGeneration;
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
     ref.invalidate(documentStatusCountsProvider(_statusScope));
-    return _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+    unawaited(_loadBillNoFacets());
+    await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+    if (!mounted || generation != _reloadGeneration) return;
+    retainDraftSelection(
+      _canSelectDrafts && _list.error == null
+          ? (_list.page?.items ?? const <FinanceDocListItem>[])
+                .where(_isDeletableDraft)
+                .map((item) => item.id)
+          : const <String>[],
+    );
   }
 
   void _onStatus(int? s) {
+    clearDraftSelection();
     setState(() {
       _statusFilter = s;
       _statusFilterSelected = true;
@@ -129,9 +240,19 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
   }
 
   void _onColumnFilterChanged(String key, String? value) {
+    clearDraftSelection();
+    if (key == 'billNo') {
+      _columnFilters.handleFilterChanged(
+        key,
+        value,
+        onChanged: _afterServerColumnChanged,
+      );
+      return;
+    }
     setState(() {
       if (key == 'status') {
         _statusFilter = value == null ? null : int.tryParse(value);
+        _statusFilterSelected = true;
       } else if (key == 'accountId') {
         _accountIdFilter = value;
       } else if (key == 'receiptKind') {
@@ -143,8 +264,16 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
     _reload(1);
   }
 
+  /// 服务端列筛选落地后：setState 刷新表头 + 重拉回第 1 页。
+  void _afterServerColumnChanged() {
+    clearDraftSelection();
+    setState(() {});
+    _reload(1);
+  }
+
   /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
   void _onSortChange(String? column, bool ascending) {
+    clearDraftSelection();
     _list.onSortChange(column, ascending);
     _reload(1);
   }
@@ -152,7 +281,9 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
   List<MasterColumnDef<FinanceDocListItem>> _columns(FinanceNameService names) {
     return <MasterColumnDef<FinanceDocListItem>>[
       MasterColumnDef(
+        // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
         key: 'billNo',
+        sortable: true,
         label: '单据号',
         width: 150,
         value: (it) => it.billNo,
@@ -219,13 +350,28 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
     ];
   }
 
+  FormDraftCategoryScope get _formDraftScope =>
+      FormDraftCategoryScope(kind: _cfg.draftKind.name);
+
+  Widget _withFormDraftRows(MasterDataTableView<FinanceDocListItem> table) =>
+      _statusFilter == kFinanceStatusDraft
+      ? FormDraftCategoryTable<FinanceDocListItem>(
+          scope: _formDraftScope,
+          table: table,
+          search: _list.keyword,
+          formalId: (item) => item.id,
+        )
+      : table;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final docType = widget.docType;
+    ref.watch(currentPermissionsProvider);
     final names = ref.watch(financeNameServiceProvider);
     // 分段计数(一次请求带回草稿/已审/红冲三桶); 加载中或无权限为 null, 不渲染数字。
     final statusCounts = ref
-        .watch(documentStatusCountsProvider(_statusScope))
+        .watch(effectiveDocumentStatusCountsProvider(_statusScope))
         .valueOrNull;
     // 返回即刷新(ADR-108): 回到本列表时, 只有本端写过数据或离开超过 30 秒才重拉,
     // 且推迟到返回转场结束; 详情/编辑页保存成功 bump 的 tick 在本页就在栈顶时立即重拉,
@@ -310,6 +456,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
                               hint: '搜索单据号',
                               initialValue: _list.keyword,
                               onChanged: (v) {
+                                clearDraftSelection();
                                 _list.keyword = v;
                                 _reload(1);
                               },
@@ -355,52 +502,76 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
                         ],
                       ),
                     ),
-                    tablePane: MasterDataTableView<FinanceDocListItem>(
-                      // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
-                      primary: true,
-                      columns: _columns(names),
-                      items: _list.page?.items ?? const [],
-                      facets: {
-                        if (_cfg.type == FinanceDocType.receipt)
-                          'receiptKind': financeReceiptKindFacets,
-                        if (_cfg.hasParty)
-                          _cfg.isClient
-                              ? 'clientId'
-                              : 'supplierId': financeDictionaryFacets(
-                            _cfg.isClient
-                                ? names.clientEntries
-                                : names.supplierEntries,
+                    tablePane: _withFormDraftRows(
+                      MasterDataTableView<FinanceDocListItem>(
+                        // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
+                        primary: true,
+                        selectable: _canSelectDrafts,
+                        idOf: (item) =>
+                            !draftDeleteBusy &&
+                                !_list.loading &&
+                                _isDeletableDraft(item)
+                            ? item.id
+                            : null,
+                        rowKeyOf: (item) => item.id,
+                        selectedIds: selectedDraftIds,
+                        onSelectedIdsChanged: draftDeleteBusy || _list.loading
+                            ? null
+                            : selectDraftIds,
+                        batchActionsBuilder: (_, _) => [
+                          buildDraftDeleteButton(
+                            documentLabel: _cfg.label,
+                            delete: (id) => _deleteDraft(id, docType),
+                            reload: () => _reload(),
                           ),
-                        'accountId': financeDictionaryFacets(
-                          names.accountEntries,
+                        ],
+                        columns: _columns(names),
+                        items: _list.page?.items ?? const [],
+                        facets: {
+                          // 单据号桶与列表同一过滤口径（2026-09-25 单号列统一）。
+                          'billNo': _columnFilters.bucketOf('billNo'),
+                          if (_cfg.type == FinanceDocType.receipt)
+                            'receiptKind': financeReceiptKindFacets,
+                          if (_cfg.hasParty)
+                            _cfg.isClient
+                                ? 'clientId'
+                                : 'supplierId': financeDictionaryFacets(
+                              _cfg.isClient
+                                  ? names.clientEntries
+                                  : names.supplierEntries,
+                            ),
+                          'accountId': financeDictionaryFacets(
+                            names.accountEntries,
+                          ),
+                          'status': financeDocumentStatusFacets,
+                        },
+                        nullCounts: const {},
+                        filters: {
+                          'billNo': _columnFilters['billNo'],
+                          if (_cfg.type == FinanceDocType.receipt)
+                            'receiptKind': _receiptKindFilter,
+                          if (_cfg.hasParty)
+                            _cfg.isClient ? 'clientId' : 'supplierId':
+                                _partyIdFilter,
+                          'accountId': _accountIdFilter,
+                          'status': _statusFilter?.toString(),
+                        },
+                        onFilterChanged: _onColumnFilterChanged,
+                        sortColumn: _list.sortKey,
+                        sortAscending: _list.sortAsc,
+                        onSortChange: _onSortChange,
+                        onRowTap: (it) => context.push(
+                          '/finance/${_cfg.type.pathSegment}/${it.id}',
                         ),
-                        'status': financeDocumentStatusFacets,
-                      },
-                      nullCounts: const {},
-                      filters: {
-                        if (_cfg.type == FinanceDocType.receipt)
-                          'receiptKind': _receiptKindFilter,
-                        if (_cfg.hasParty)
-                          _cfg.isClient ? 'clientId' : 'supplierId':
-                              _partyIdFilter,
-                        'accountId': _accountIdFilter,
-                        'status': _statusFilter?.toString(),
-                      },
-                      onFilterChanged: _onColumnFilterChanged,
-                      sortColumn: _list.sortKey,
-                      sortAscending: _list.sortAsc,
-                      onSortChange: _onSortChange,
-                      onRowTap: (it) => context.push(
-                        '/finance/${_cfg.type.pathSegment}/${it.id}',
+                        isLoading: _list.isLoadingFirst,
+                        loadingMore: _list.isLoadingMore,
+                        error: _list.error,
+                        onRetry: () => _reload(),
+                        emptyMessage: '暂无${_cfg.shortLabel}单',
+                        currentPage: _list.currentPage,
+                        totalPages: _list.totalPages,
+                        onPageChange: (p) => _reload(p),
                       ),
-                      isLoading: _list.isLoadingFirst,
-                      loadingMore: _list.isLoadingMore,
-                      error: _list.error,
-                      onRetry: () => _reload(),
-                      emptyMessage: '暂无${_cfg.shortLabel}单',
-                      currentPage: _list.currentPage,
-                      totalPages: _list.totalPages,
-                      onPageChange: (p) => _reload(p),
                     ),
                   ),
                 );

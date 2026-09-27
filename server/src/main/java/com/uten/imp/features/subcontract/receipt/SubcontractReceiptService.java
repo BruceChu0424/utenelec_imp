@@ -81,8 +81,9 @@ public class SubcontractReceiptService {
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
 
-    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
-    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal");
+    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额/单据号可排序；命中才排序，否则默认 billDate DESC）。
+     *  2026-09-25 单号列统一：billNo 进白名单（价格遮蔽分支见 list）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal", "billNo", "billNo");
 
     private final SubcontractReceiptRepository receiptRepo;
     private final SubcontractReceiptItemRepository itemRepo;
@@ -111,8 +112,30 @@ public class SubcontractReceiptService {
 
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
+        Specification<SubcontractReceipt> spec = receiptSpec(f);
+        // 金额被裁剪时也必须关闭金额排序，否则结果顺序会泄露商业金额高低。
+        // 2026-09-25 单号列统一：billNo 进两分支白名单（单据号排序不泄露商业信息）。
+        boolean priceMasked = !priceMasker.canViewSubcontractReceipt();
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
+                        priceMasked
+                                ? Map.of("billDate", "billDate", "billNo", "billNo")
+                                : ALLOWED_SORT));
+        Page<SubcontractReceipt> p = receiptRepo.findAll(spec, pageable);
+        return new PageResponse<>(p.map(this::toList).getContent(), p);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(ReceiptQueryFilter f) {
+        return java.util.Map.of("billNo",
+                com.uten.imp.common.web.TableFacets.groupCount(em, SubcontractReceipt.class, receiptSpec(f), "billNo"));
+    }
+
+    /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）。 */
+    private Specification<SubcontractReceipt> receiptSpec(ReceiptQueryFilter f) {
         var readScope = access.scope();
-        Specification<SubcontractReceipt> spec = (Root<SubcontractReceipt> root,
+        return (Root<SubcontractReceipt> root,
                                                   jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                   CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -128,15 +151,12 @@ public class SubcontractReceiptService {
             if (f.status() != null && f.status() == STATUS_DRAFT) ps.add(cb.isNull(root.get("legacyId")));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
+            // 2026-09-25 单号列统一：单据号表头值筛选（精确匹配）。
+            if (f.billNo() != null && !f.billNo().isBlank()) {
+                ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
+            }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        // 金额被裁剪时也必须关闭金额排序，否则结果顺序会泄露商业金额高低。
-        boolean priceMasked = !priceMasker.canViewSubcontractReceipt();
-        Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
-                        priceMasked ? Map.of("billDate", "billDate") : ALLOWED_SORT));
-        Page<SubcontractReceipt> p = receiptRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), p);
     }
 
     @Transactional(readOnly = true)

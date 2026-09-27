@@ -28,13 +28,15 @@ class ProductionMaterialDiscoveryRequestRepository {
   Future<void> request(
     String segmentId,
     int expectedVersion,
-    String idempotencyKey,
-  ) async {
+    String idempotencyKey, {
+    List<Map<String, dynamic>> items = const [],
+  }) async {
     await api.post(
       '/production/material-discovery/segments/$segmentId/request',
       body: {
         'expectedVersion': expectedVersion,
         'idempotencyKey': idempotencyKey,
+        if (items.isNotEmpty) 'items': items,
       },
     );
   }

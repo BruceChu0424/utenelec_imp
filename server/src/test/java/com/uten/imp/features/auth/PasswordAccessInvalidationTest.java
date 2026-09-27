@@ -59,7 +59,7 @@ class PasswordAccessInvalidationTest {
     private PasswordService service() {
         PasswordChangeTransaction transaction = new PasswordChangeTransaction(
                 users, history, refreshTokens, sessions, tokenIssuer, audit, mock(TxSessionVars.class));
-        return new PasswordService(users, history, encoder, new PasswordPolicy(settings),
+        return new PasswordService(users, history, encoder, new PasswordPolicy(),
                 settings, currentUser, stepUp, transaction);
     }
 
@@ -71,7 +71,6 @@ class PasswordAccessInvalidationTest {
         AuthUser principal = new AuthUser(user.getId(), UUID.randomUUID(), "E1001", Set.of(),
                 true, true, false, false, null, sessionId);
         when(currentUser.get()).thenReturn(Optional.of(principal));
-        when(settings.readInt(SystemSettingKey.PASSWORD_MIN_LENGTH)).thenReturn(8);
         when(settings.readInt(SystemSettingKey.PASSWORD_HISTORY_SIZE)).thenReturn(5);
         return user;
     }

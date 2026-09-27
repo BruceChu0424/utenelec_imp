@@ -76,7 +76,9 @@ public class SubcontractWasteService {
     private static final short STATUS_REVERSED = -1;
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（损耗无金额列，有总重数量列；命中才排序，否则默认 billDate DESC）。 */
-    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "totalWeight", "totalWeight");
+    // 2026-09-25 单号列统一：单据号 billNo 加入排序白名单。
+    private static final Map<String, String> ALLOWED_SORT = Map.of(
+            "billDate", "billDate", "totalWeight", "totalWeight", "billNo", "billNo");
 
     private final SubcontractWasteRepository wasteRepo;
     private final SubcontractWasteItemRepository itemRepo;
@@ -105,10 +107,28 @@ public class SubcontractWasteService {
     @Transactional(readOnly = true)
     public PageResponse<WasteListItem> list(WasteQueryFilter f, int page, int size, String sort, String order) {
         boolean priceMasked = subcontractPriceMasked();
+        Specification<SubcontractWaste> spec = wasteSpec(f);
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
+        Page<SubcontractWaste> p = wasteRepo.findAll(spec, pageable);
+        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
+                p);
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(
+            WasteQueryFilter f) {
+        return java.util.Map.of("billNo",
+                com.uten.imp.common.web.TableFacets.groupCount(
+                        em, SubcontractWaste.class, wasteSpec(f), "billNo"));
+    }
+
+    private Specification<SubcontractWaste> wasteSpec(WasteQueryFilter f) {
         var readScope = access.scope();
-        Specification<SubcontractWaste> spec = (Root<SubcontractWaste> root,
-                                                jakarta.persistence.criteria.CriteriaQuery<?> q,
-                                                CriteriaBuilder cb) -> {
+        return (Root<SubcontractWaste> root,
+                jakarta.persistence.criteria.CriteriaQuery<?> q,
+                CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
@@ -121,13 +141,11 @@ public class SubcontractWasteService {
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
+            if (f.billNo() != null && !f.billNo().isBlank()) {
+                ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
+            }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<SubcontractWaste> p = wasteRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
-                p);
     }
 
     @Transactional(readOnly = true)

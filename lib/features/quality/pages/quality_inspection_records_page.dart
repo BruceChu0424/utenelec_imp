@@ -80,6 +80,14 @@ class _QualityInspectionRecordsPageState
   String? _error;
   int _requestVersion = 0;
 
+  // 2026-09-25 单号列统一：来源/关联/检查单号表头排序 + 值筛选（服务端白名单/facets）。
+  String? _sortColumn;
+  bool _sortAscending = true;
+  Map<String, List<MasterFacetBucket>> _docNoFacets = const {};
+  String? _sourceNoFilter;
+  String? _referenceNoFilter;
+  String? _sheetNoFilter;
+
   @override
   void initState() {
     super.initState();
@@ -119,25 +127,55 @@ class _QualityInspectionRecordsPageState
     final requestedDisposition = _disposition;
     final requestedKeyword = _keyword;
     final requestedRange = _dateRange;
+    // 2026-09-25 单号列统一：单号排序/值筛选（sheetNo 仅 FQC 有列值）。
+    final requestedSort = _sortColumn;
+    final requestedOrder = _sortColumn == null
+        ? null
+        : (_sortAscending ? 'asc' : 'desc');
+    final requestedSourceNo = _sourceNoFilter;
+    final requestedReferenceNo = _referenceNoFilter;
+    final requestedSheetNo = domain == QualityInspectionRecordDomain.fqc
+        ? _sheetNoFilter
+        : null;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final result = await ref
-          .read(qualityInspectionRecordRepositoryProvider)
-          .list(
-            domain: domain,
-            decision: requestedDecision,
-            keyword: requestedKeyword,
-            dateRange: requestedRange,
-            sourceType: requestedSourceType,
-            effective: requestedEffective,
-            disposition: requestedDisposition,
-            page: requestedPage,
-          );
+      final repository = ref.read(qualityInspectionRecordRepositoryProvider);
+      final result = await repository.list(
+        domain: domain,
+        decision: requestedDecision,
+        keyword: requestedKeyword,
+        dateRange: requestedRange,
+        sourceType: requestedSourceType,
+        effective: requestedEffective,
+        disposition: requestedDisposition,
+        page: requestedPage,
+        sort: requestedSort,
+        order: requestedOrder,
+        sourceNo: requestedSourceNo,
+        referenceNo: requestedReferenceNo,
+        sheetNo: requestedSheetNo,
+      );
+      // 单号 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。
+      Map<String, List<MasterFacetBucket>> facets = const {};
+      try {
+        facets = await repository.facets(
+          domain: domain,
+          decision: requestedDecision,
+          keyword: requestedKeyword,
+          dateRange: requestedRange,
+          sourceType: requestedSourceType,
+          effective: requestedEffective,
+          disposition: requestedDisposition,
+        );
+      } catch (_) {
+        facets = const {};
+      }
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
+        _docNoFacets = facets;
         _data = result;
         _loading = false;
       });
@@ -161,10 +199,16 @@ class _QualityInspectionRecordsPageState
     setState(() {
       _domain = domain;
       _decision = null;
-      // 表头筛选与域强相关（IQC 无不良处置、FQC 来源恒为生产），换域一并清空。
+      // 表头筛选与域强相关（IQC 无不良处置、FQC 来源恒为生产），换域一并清空；
+      // 单号值筛选/排序同理（IQC 无检查单号列值），一并复位。
       _sourceType = null;
       _effective = null;
       _disposition = null;
+      _sortColumn = null;
+      _sourceNoFilter = null;
+      _referenceNoFilter = null;
+      _sheetNoFilter = null;
+      _docNoFacets = const {};
       _data = null;
       _error = null;
     });
@@ -196,6 +240,28 @@ class _QualityInspectionRecordsPageState
         case 'disposition':
           changed = _disposition != next;
           _disposition = next;
+      }
+    });
+    if (changed) await _load(page: 1);
+  }
+
+  /// 单号列值筛选（2026-09-25 单号列统一）：单号是文本原值、不转大写，
+  /// 空 = 清除；服务端精确匹配并回第 1 页。
+  Future<void> _selectDocNoFilter(String key, String? value) async {
+    final next = value?.trim();
+    final normalized = next == null || next.isEmpty ? null : next;
+    var changed = false;
+    setState(() {
+      switch (key) {
+        case 'sourceNo':
+          changed = _sourceNoFilter != normalized;
+          _sourceNoFilter = normalized;
+        case 'referenceNo':
+          changed = _referenceNoFilter != normalized;
+          _referenceNoFilter = normalized;
+        case 'sheetNo':
+          changed = _sheetNoFilter != normalized;
+          _sheetNoFilter = normalized;
       }
     });
     if (changed) await _load(page: 1);
@@ -497,6 +563,10 @@ class _QualityInspectionRecordsPageState
           'effective': _effectiveFacets,
           if (_domain == QualityInspectionRecordDomain.fqc)
             'disposition': _dispositionFacets,
+          // 2026-09-25 单号列统一：单号值来自服务端 facets（与列表同一过滤上下文）。
+          'sourceNo': _docNoFacets['sourceNo'] ?? const [],
+          'referenceNo': _docNoFacets['referenceNo'] ?? const [],
+          'sheetNo': _docNoFacets['sheetNo'] ?? const [],
         },
         nullCounts: const {},
         filters: {
@@ -504,13 +574,31 @@ class _QualityInspectionRecordsPageState
           'sourceType': _sourceType,
           'effective': _effective,
           'disposition': _disposition,
+          'sourceNo': _sourceNoFilter,
+          'referenceNo': _referenceNoFilter,
+          'sheetNo': _sheetNoFilter,
         },
         onFilterChanged: (key, value) async {
           if (key == 'decision') {
             await _selectDecision(value);
+          } else if (key == 'sourceNo' ||
+              key == 'referenceNo' ||
+              key == 'sheetNo') {
+            await _selectDocNoFilter(key, value);
           } else {
             await _selectColumnFilter(key, value);
           }
+        },
+        // 2026-09-25 单号列统一：表头排序走服务端白名单
+        //（sourceNo/referenceNo/sheetNo）。
+        sortColumn: _sortColumn,
+        sortAscending: _sortAscending,
+        onSortChange: (column, ascending) {
+          setState(() {
+            _sortColumn = column;
+            _sortAscending = ascending;
+          });
+          _load(page: 1);
         },
         idOf: (record) => record.recordId,
         onRowTap: _openDetail,
@@ -554,18 +642,23 @@ class _QualityInspectionRecordsPageState
       key: 'sourceNo',
       label: '来源单号',
       width: 180,
+      // 2026-09-25 单号列统一：可排序（服务端白名单）+ 值筛选（facets）。
+      sortable: true,
       value: (record) => _text(record.sourceNo),
     ),
     MasterColumnDef(
       key: 'referenceNo',
       label: '关联单号',
       width: 180,
+      sortable: true,
       value: (record) => _text(record.referenceNo),
     ),
     MasterColumnDef(
       key: 'sheetNo',
       label: '检查单号',
       width: 170,
+      // 检查单号仅 FQC 有列值（IQC 行恒空），排序也只在 FQC 域开放。
+      sortable: _domain == QualityInspectionRecordDomain.fqc,
       value: (record) => _text(record.sheetNo),
     ),
     MasterColumnDef(

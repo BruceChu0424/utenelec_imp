@@ -68,8 +68,11 @@ class WarehouseQualityResultApiContractTest {
                 .contains("warehouse_iqc_return:view")
                 .contains(" or ");
 
+        // 2026-09-25 单号列统一：列表方法追加 sort/order/billNo 三个可选参数
+        // （单号列排序 + 值筛选）；读权限口径不变。
         Method list = WarehouseQualityResultController.class.getDeclaredMethod(
-                "list", String.class, String.class, String.class, LocalDate.class, LocalDate.class, int.class, int.class);
+                "list", String.class, String.class, String.class, LocalDate.class, LocalDate.class,
+                int.class, int.class, String.class, String.class, String.class);
         Method detail = WarehouseQualityResultController.class.getDeclaredMethod(
                 "detail", String.class, UUID.class);
         // 读接口只吃类级任一视图权限，方法级不得再叠加更严的口径。

@@ -9,6 +9,7 @@
 //  - 损耗 4 列（标准用量/结存数/损耗率/损耗原因）仅 itemHasWasteFields（损耗单）。
 // 颜色/单位/上游明细 id 为透传（引入或回填时预填，保存时随行写回，UI 不单独编辑）。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_values.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
@@ -153,6 +154,88 @@ class SubcontractGridRow extends EditableGridRow
           (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0),
     );
     amountExactNotifier.value = exactLineAmountText(qty.text, price.text);
+  }
+
+  Map<String, TextEditingController> get _draftTextControllers => {
+    'qty': qty,
+    'price': price,
+    'weight': weight,
+    'girth': girth,
+    'boxQty': boxQty,
+    'endingQty': endingQty,
+    'standardQty': standardQty,
+    'wasteRate': wasteRate,
+    'cause': cause,
+    'allowedLossPct': allowedLossPct,
+    'remark': remark,
+  };
+
+  Iterable<Listenable> get draftListenables => [
+    ..._draftTextControllers.values,
+    goodsNotifier,
+    stockPlaceNotifier,
+    supplierIdNotifier,
+    currencyIdNotifier,
+    settlementMethodIdNotifier,
+    termsAutofilledNotifier,
+    exchangeRate,
+    taxRate,
+  ];
+
+  Map<String, dynamic> exportDraft() => {
+    'text': draftTextValues(_draftTextControllers),
+    'goods': draftGoods(goods),
+    'stockPlace': stockPlaceNotifier.value,
+    'unitRate': unitRate,
+    'upstreamItemId': upstreamItemId,
+    'planItemId': planItemId,
+    'colorId': colorId,
+    'unitId': unitId,
+    'sourceDocNo': sourceDocNo,
+    'supplierId': supplierId,
+    'sourceLocked': sourceLocked,
+    'maxQty': maxQty,
+    'upstreamItemIds': [...upstreamItemIds],
+    'commercial': exportCommercialDraft(),
+    'sourceDocs': [
+      for (final source in sourceDocs)
+        {
+          'applicationItemId': source.applicationItemId,
+          'applicationId': source.applicationId,
+          'billNo': source.billNo,
+        },
+    ],
+  };
+
+  factory SubcontractGridRow.fromDraft(Map<String, dynamic> data) {
+    final row = SubcontractGridRow(sourceLocked: data['sourceLocked'] == true)
+      ..goods = restoreDraftGoods(data['goods'])
+      ..stockPlaceNotifier.value = data['stockPlace'] as String?
+      ..unitRate = (data['unitRate'] as num?)?.toDouble()
+      ..upstreamItemId = data['upstreamItemId'] as String?
+      ..planItemId = data['planItemId'] as String?
+      ..colorId = data['colorId'] as String?
+      ..unitId = data['unitId'] as String?
+      ..sourceDocNo = data['sourceDocNo'] as String?
+      ..supplierId = data['supplierId'] as String?;
+    restoreDraftTextValues(row._draftTextControllers, draftMap(data['text']));
+    row.maxQty = (data['maxQty'] as num?)?.toDouble();
+    row.upstreamItemIds = draftStrings(data['upstreamItemIds']);
+    row.sourceDocs = draftMaps(
+      data['sourceDocs'],
+    ).map(SubcontractSourceApplicationRef.fromJson).toList();
+    row.restoreCommercialDraft(
+      draftMap(data['commercial']),
+      price: row.price,
+      supplier: row.supplierIdNotifier,
+      currentGoodsId: () => row.goods?.id,
+      currentColorId: () => row.colorId,
+      currentUnitId: () => row.unitId,
+    );
+    if (row.termsAutofilled.contains('allowedLoss')) {
+      row.markAllowedLossAutofilled(row.allowedLossPct.text);
+    }
+    return row;
   }
 
   /// 深拷贝（明细复制/粘贴用）：语义同 PurchaseGridRow.clone——拷用户录入（数量/

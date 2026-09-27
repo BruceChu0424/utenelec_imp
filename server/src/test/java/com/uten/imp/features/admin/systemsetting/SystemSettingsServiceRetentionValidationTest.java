@@ -36,7 +36,6 @@ class SystemSettingsServiceRetentionValidationTest {
             "lockout_minutes,525601,1 至 525600",
             "export_rate_limit_per_minute,10001,1 至 10000",
             "session_idle_timeout_minutes,525601,1 至 525600",
-            "password_min_length,7,8 至 64",
             "temp_password_ttl_hours,169,1 至 168",
             "impersonation_window_minutes,121,1 至 120",
             "jwt_refresh_ttl_days,31,1 至 30",

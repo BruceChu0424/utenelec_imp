@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -33,8 +34,21 @@ public class ProcurementFinanceApprovalController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "") String orderType,
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String billNo) {
+        // 2026-09-25 单号列统一：sort/order 表头排序 + 订货单号表头值筛选。
+        return service.tasks(page, size, orderType, keyword, sort, order, billNo);
+    }
+
+    /** 待审任务 facets（2026-09-25 单号列统一）：{billNo:[各订货单号]}——
+     *  同列表过滤口径（不含 billNo 自身值筛选）。 */
+    @GetMapping("/tasks/facets")
+    public Map<String, List<Map<String, Object>>> taskFacets(
+            @RequestParam(defaultValue = "") String orderType,
             @RequestParam(defaultValue = "") String keyword) {
-        return service.tasks(page, size, orderType, keyword);
+        return service.taskFacets(orderType, keyword);
     }
 
     @GetMapping("/count")

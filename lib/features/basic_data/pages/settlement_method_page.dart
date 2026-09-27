@@ -11,6 +11,7 @@
 // 表头筛选落到服务端查询；编号/名称等自由文本列不筛选；全量小字典仍不分页，
 // 关键词保持本地过滤。范式同 color_page（V4xx 批次）。
 import 'package:flutter/material.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -140,9 +141,10 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
 
   // ---- 新增（可随带账期） ------------------------------------------------
 
-  void _showCreate() {
-    showMasterEditDialog(
+  Future<void> _showCreate() async {
+    await showMasterEditDialog(
       context: context,
+      draftSpec: FormDraftCatalog.settlement.spec(title: '新增结算方式'),
       title: '新增结算方式', // TODO(l10n): 补 arb
       fields: _termsFields(),
       initialValues: const {
@@ -157,21 +159,13 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
 
   Future<bool> _doCreate(Map<String, dynamic> body) async {
     final name = (body['name'] as String?)?.trim() ?? '';
-    if (name.isEmpty) {
-      context.appError('结算方式名称不能为空');
-      return false;
+    await ref
+        .read(referenceMethodRepositoryProvider)
+        .createSettlement(name, terms: _termsOf(body));
+    if (mounted) {
+      context.appSuccess('结算方式已创建');
+      await _refresh();
     }
-    final ok = await context.guardRun(
-      () async {
-        await ref
-            .read(referenceMethodRepositoryProvider)
-            .createSettlement(name, terms: _termsOf(body));
-      },
-      success: '结算方式已创建', // TODO(l10n): 补 arb
-      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _refresh();
     return true;
   }
 
@@ -374,7 +368,13 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
   // ---- 展示 --------------------------------------------------------------
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FormDraftDialogResume(
+    descriptor: FormDraftCatalog.settlement,
+    onResume: (_) => _showCreate(),
+    child: _buildDraftHost(context),
+  );
+
+  Widget _buildDraftHost(BuildContext context) {
     final theme = Theme.of(context);
     final items = _filtered;
     final total = _items?.length ?? 0;

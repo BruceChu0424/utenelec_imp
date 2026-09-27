@@ -9,19 +9,19 @@
 //
 // 2026-09-12 交互改版（与全站批量页统一口径）：
 // - 行单击只切换勾选，不再弹进度弹窗——弹窗只由「查看进度」列按钮触发；
-// - 宿主传入 [SalesShipmentActionScope] 时进入统一悬浮模式：面板内不再渲染
-//   「全选可发产品/去发货/刷新」工具条与说明文字，勾选数与去发货动作经 scope
-//   交给宿主页渲染到右下 UtenFloatingActionGroup（订单进度详情页）；不传 scope
-//   的旧宿主（销售订货单详情页）继续用面板自带工具条，行为不变。
+// - 宿主传入 [SalesShipmentActionScope] 后，勾选数与去发货动作经 scope 交给
+//   宿主页渲染到右下 UtenFloatingActionGroup（订单进度详情页）。
 // 2026-09-13 面板不再提供「本次发货数量」输入列：只展示「本次可发」，去发货
 //   按可发量预填跳转出货页，实际发货数量在出货单明细里填写（出货页终校验 ≤可发）。
+// 2026-09-26 旧宿主（销售订货单详情页）也改走右下悬浮标准形态：scope 改为必传，
+//   面板自带的「全选可发产品/去发货/刷新」工具条与说明文字整体退役——所有宿主
+//   一律经 scope 在右下悬浮组渲染「已选 N 项」胶囊与「去发货(N)」。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/nav_helpers.dart';
-import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../core/router/route_names.dart';
@@ -36,9 +36,9 @@ import '../../../shared/badges/badge_registry.dart';
 
 /// 宿主与产品进度面板「去发货」动作的桥（统一悬浮口径，2026-09-12）。
 ///
-/// 宿主（订单进度详情页）创建并传入面板；面板在可发货态/勾选数/忙碌态变化时
-/// 更新字段并通知监听，宿主用 [ListenableBuilder] 据此重建右下
-/// UtenFloatingActionGroup（「已选 N 项」胶囊 + 红色「去发货(N)」大按钮）。
+/// 宿主（订单进度详情页、销售订货单详情页）创建并传入面板；面板在可发货态/
+/// 勾选数/忙碌态变化时更新字段并通知监听，宿主用 [ListenableBuilder] 据此重建
+/// 右下 UtenFloatingActionGroup（「已选 N 项」胶囊 + 红色「去发货(N)」大按钮）。
 /// 按钮点击分别回调 [createShipment] / [clearSelection]，由面板完成数量校验、
 /// 出货页跳转与选择清理；[reload] 供宿主右上角整页刷新联动本面板。
 ///
@@ -120,16 +120,16 @@ class SalesPlanProgressPanel extends ConsumerStatefulWidget {
     required this.orderId,
     this.canShip = false,
     this.onChanged,
-    this.shipmentActions,
+    required this.shipmentActions,
   });
 
   final String orderId;
   final bool canShip;
   final Future<void> Function()? onChanged;
 
-  /// 统一悬浮模式桥：非空时面板不渲染自带工具条，「去发货」交宿主右下悬浮组
-  /// （见 [SalesShipmentActionScope]）；null = 旧宿主自带工具条模式。
-  final SalesShipmentActionScope? shipmentActions;
+  /// 统一悬浮模式桥：面板不自带批量工具条，勾选数与「去发货」经 scope 交给
+  /// 宿主页渲染到右下 UtenFloatingActionGroup（见 [SalesShipmentActionScope]）。
+  final SalesShipmentActionScope shipmentActions;
 
   @override
   ConsumerState<SalesPlanProgressPanel> createState() =>
@@ -150,7 +150,7 @@ class _SalesPlanProgressPanelState
   void initState() {
     super.initState();
     _future = _read();
-    widget.shipmentActions?._bind(
+    widget.shipmentActions._bind(
       onCreateShipment: _createShipment,
       onClearSelection: _clearSelection,
       onReload: _refresh,
@@ -166,8 +166,8 @@ class _SalesPlanProgressPanelState
       _future = _read();
     }
     if (oldWidget.shipmentActions != widget.shipmentActions) {
-      oldWidget.shipmentActions?._unbind();
-      widget.shipmentActions?._bind(
+      oldWidget.shipmentActions._unbind();
+      widget.shipmentActions._bind(
         onCreateShipment: _createShipment,
         onClearSelection: _clearSelection,
         onReload: _refresh,
@@ -178,7 +178,7 @@ class _SalesPlanProgressPanelState
 
   @override
   void dispose() {
-    widget.shipmentActions?._unbind();
+    widget.shipmentActions._unbind();
     super.dispose();
   }
 
@@ -208,12 +208,11 @@ class _SalesPlanProgressPanelState
             permissions.contains(Perm.salesShipmentCreate));
   }
 
-  /// 把可发货态/勾选数/忙碌态同步到悬浮桥（有 scope 时）。
+  /// 把可发货态/勾选数/忙碌态同步到悬浮桥。
   /// build 期间调用须传 [shippingEnabled]（用 build 里已 watch 的值，避免
   /// build 期 ref.read）；通知推迟到帧末，避免监听方在 build 期重建。
   void _syncScope({bool? shippingEnabled}) {
     final scope = widget.shipmentActions;
-    if (scope == null) return;
     final enabled = shippingEnabled ?? _canShipEffective;
     var changed = false;
     if (scope.shippingEnabled != enabled) {
@@ -229,7 +228,7 @@ class _SalesPlanProgressPanelState
       changed = true;
     }
     if (changed) {
-      widget.shipmentActions?._scheduleNotify();
+      scope._scheduleNotify();
     }
   }
 
@@ -277,11 +276,6 @@ class _SalesPlanProgressPanelState
     }
   }
 
-  /// 旧宿主自带工具条的「去发货」：与悬浮模式同一条跳转路径。
-  Future<void> _openShipment() async {
-    await _createShipment();
-  }
-
   /// 出货单新建页保存后 replace 成详情，go_router 不会完成本面板原 push 的 Future——
   /// `_createShipment` 里 await 之后的收尾走不到，_navigating 卡在 true：「去发货」
   /// 一直灰着，只有整页重建才好(2026-09-20 用户反馈同款)。回到宿主页面时由
@@ -324,11 +318,8 @@ class _SalesPlanProgressPanelState
         return _ProgressList(
           lines: lines,
           canShip: canShip,
-          unifiedFloating: widget.shipmentActions != null,
           selected: _selected,
           busy: _navigating || snap.connectionState == ConnectionState.waiting,
-          onRefresh: _refresh,
-          onCreate: _openShipment,
           onSelected: (ids) {
             setState(() {
               _selected
@@ -355,9 +346,6 @@ class _ProgressList extends ConsumerWidget {
     required this.selected,
     required this.busy,
     required this.onSelected,
-    required this.onCreate,
-    required this.onRefresh,
-    required this.unifiedFloating,
   });
 
   final List<OrderPlanProgressLine> lines;
@@ -365,11 +353,6 @@ class _ProgressList extends ConsumerWidget {
   final bool busy;
   final Set<String> selected;
   final ValueChanged<Set<String>> onSelected;
-  final VoidCallback onCreate;
-  final VoidCallback onRefresh;
-
-  /// 统一悬浮模式：不渲染面板工具条与说明文字（去发货在宿主右下悬浮组）。
-  final bool unifiedFloating;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -379,67 +362,11 @@ class _ProgressList extends ConsumerWidget {
             .watch(currentPermissionsProvider)
             .contains(Perm.productionPlanView) ||
         ref.watch(isSuperAdminProvider);
+    // 2026-09-26 全站口径：面板不再自带「全选可发产品/去发货/刷新」工具条与
+    // 说明文字——批量动作由宿主经 SalesShipmentActionScope 渲染到右下悬浮组。
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (!unifiedFloating) ...[
-          Wrap(
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              if (canShip)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Checkbox(
-                      key: const Key('sales-progress-select-all'),
-                      value:
-                          selected.isNotEmpty &&
-                          selected.length ==
-                              lines
-                                  .where((line) => (line.shippableQty ?? 0) > 0)
-                                  .length,
-                      onChanged: busy
-                          ? null
-                          : (value) => onSelected(
-                              value == true
-                                  ? lines
-                                        .where(
-                                          (line) =>
-                                              (line.shippableQty ?? 0) > 0,
-                                        )
-                                        .map((line) => line.orderItemId)
-                                        .toSet()
-                                  : <String>{},
-                            ),
-                    ),
-                    Text('全选可发产品 · 已选 ${selected.length} 项'),
-                  ],
-                ),
-              if (canShip)
-                UtenButton(
-                  key: const Key('sales-progress-create-shipment'),
-                  type: UtenButtonType.danger,
-                  icon: Icons.local_shipping_outlined,
-                  onPressed: busy || selected.isEmpty ? null : onCreate,
-                  child: const Text('去发货'),
-                ),
-              TextButton.icon(
-                onPressed: busy ? null : onRefresh,
-                icon: const Icon(Icons.refresh),
-                label: const Text('刷新产品进度'),
-              ),
-            ],
-          ),
-          Text(
-            '已产按合格入库计算，可发量已扣除正在办理的出货。勾选产品后点「去发货」，本次发货数量在出货单中填写，保存后仍由财务放行。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-        ],
         if (lines.isEmpty)
           const Padding(
             padding: EdgeInsets.all(UtenSpacing.s24),

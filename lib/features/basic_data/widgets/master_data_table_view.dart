@@ -3249,6 +3249,14 @@ class _FilterCellState extends State<_FilterCell> {
                 style: UtenTableHeader.textStyle(theme),
               ),
             ),
+            // 列头说明 ⓘ 与可筛选/可排序列同款（2026-09-27 用户口径「提示
+            // icon 统一放表头」）：非交互列此前静默丢弃 MasterColumnDef.info，
+            // 领料汇总「应领数量」等列的列头说明一直没渲染。列宽量法已计入
+            // _headerInfoIconAllowance，这里只补渲染，不占额外量宽。
+            if (widget.info != null) ...[
+              const SizedBox(width: UtenSpacing.s4),
+              UtenColumnHintIcon(message: widget.info!),
+            ],
           ],
         ),
       );

@@ -1646,9 +1646,10 @@ abstract class _MaterialAnalysisMaterialTableState
       width: 100,
       type: 'number',
       value: (row) => _qty(_materialTableRequiredQty(row)),
-      info:
-          '原始销售订单或计划汇总需求按 BOM 展开的数量。下单、追加和备料不会改变这一列；'
-          '追加产量所需的实际备料另算，并计入「还缺数量」和下单预填。',
+      // 不给 info：ADR-102 §12.8（2026-09-22 用户口径）——本列与「物料办理/
+      // 编号/还缺数量/下单数量」同属「表头只显示那几个字」的五列。2026-09-23
+      // 并行会话 WIP 曾带回一条 info，因非交互列不渲染而沉睡；列头 ⓘ 机制
+      // 补齐非交互列后会真的显示，与该口径冲突，故移除。
       cellBuilder: (_, row) => Text(
         _qty(_materialTableRequiredQty(row)),
         key: ValueKey('material-analysis-source-required-${row.key}'),

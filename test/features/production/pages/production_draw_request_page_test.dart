@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -292,6 +294,45 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets(
+    'quantity column keeps guidance in the header only (no cell caption, no per-cell info icon)',
+    (tester) async {
+      final repository = _Repository();
+      await _pump(tester, repository);
+      // 表头：应领数量列带列头 ⓘ——列含义说明的唯一入口（全站口径）。
+      expect(find.byType(UtenColumnHintIcon), findsOneWidget);
+      // 单元格：不再有浮动标签「本次领料」角标；格内 ⓘ（非紧凑
+      // UtenFieldHintIcon）在数据合法时不应出现（表头 ⓘ 是 dense 态）。
+      expect(find.text('本次领料'), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is UtenFieldHintIcon && !widget.dense,
+        ),
+        findsNothing,
+      );
+      // 语义：删掉 labelText 后由表格列包装兜底，读屏仍有等价列名与当前值。
+      expect(find.bySemanticsLabel(RegExp('应领数量: 7')), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('应领数量: 2')), findsOneWidget);
+      // 行级校验反馈不受影响：超上限时错误披露图标（非紧凑）回到该格。
+      await tester.enterText(
+        find.byKey(
+          const ValueKey(
+            'production-draw-quantity-warehouse-a|goods|silver|unit',
+          ),
+        ),
+        '8',
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is UtenFieldHintIcon && !widget.dense,
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('entry only previews and summaries retain exact task sources', (
     tester,
   ) async {

@@ -599,11 +599,15 @@ class _ProductionDrawRequestPageState
           MasterColumnDef(
             key: 'requestQty',
             label: '应领数量',
+            // 列含义说明只在列头 ⓘ（全站口径，2026-09-27 用户口径再次确认）：
+            // 单元格输入框不带浮动标签（左上角小字）与格内 ⓘ；超限等行级
+            // 反馈仍由 UtenInputDecoration 的错误披露（UtenFieldMessage）承担。
             info: '本次提交仓库的数量，可分批填写。其余数量保留待申请，不修改原任务和需求。',
             width: 170,
             type: 'number',
             value: (row) => _quantities[row.identity]?.text,
-            cellBuilderHandlesSemantics: true,
+            // 语义交回表格的列包装（Semantics「应领数量: <当前值>」）：
+            // 删掉 labelText 后读屏仍有等价列名，不另贴页面级标签。
             cellBuilder: (context, row) => TextField(
               key: ValueKey('production-draw-quantity-${row.identity}'),
               controller: _quantities[row.identity],
@@ -618,7 +622,6 @@ class _ProductionDrawRequestPageState
               ),
               decoration: UtenInputDecoration(
                 InputDecoration(
-                  labelText: '本次领料',
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -628,7 +631,6 @@ class _ProductionDrawRequestPageState
                       ? null
                       : UtenFieldMessage.error(_quantityErrors[row.identity]!),
                 ),
-                info: '最多 ${_quantity(row.qty)} ${_label(row.unitName)}',
               ),
               onChanged: (_) => setState(() {
                 final error = _quantityError(row);

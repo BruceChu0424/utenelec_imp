@@ -243,22 +243,45 @@ class PreplanPrivateFutureTransferEndToEndTest {
         qty("40",material(analyses.detail(b.analysisId()),c.material()).exactPeggedQty());
     }
 
-    @Test void crossRoutePublicInTransitIsNoLongerClaimableBecauseCandidatesAreSameRouteOnly() {
+    @Test void crossRoutePublicInTransitClaimFollowsAdr080BothSides() {
         var c=scenario("cross-route-claim");
         AnalysisView a=preview(c,"A","100");
-        order(c,a,"1000",BusinessTime.today().plusDays(2));
+        var original=order(c,a,"1000",BusinessTime.today().plusDays(2));
         AnalysisView e=previewWithRoute(c,"E","300","MAKE");
         var em=material(e,c.material());
-        // ADR-101 §2.7：认领候选收成同路线——提示侧 SharedFutureIndex 一直按路线过滤,
-        // 服务端候选也必须同路线, 否则「界面显示 0、用户填 300 点下达、服务端把需求
-        // 全认领成 0、一张申请明细都不生成」。自制目标认不了采购路线的公共在途。
-        ApiException rejected=assertThrows(ApiException.class,()->commands.claimSharedFuture(e.analysisId(),new ClaimSharedFutureRequest(
+        // ADR-080（已采纳）把「跨路线公共在途认领查不到」列为待修问题：认领候选
+        // route IN ('BUY','SUBCONTRACT')、提示侧 SharedFutureIndex 同口径。ADR-101 §2.7
+        // 曾临时把双侧收窄成同路线（见 ADR-101 注记），2026-09-26 起按 ADR-080 既定
+        // 意图双侧一致放开——自制（车间）目标可以认领采购路线的公共在途。
+        e=commands.claimSharedFuture(e.analysisId(),new ClaimSharedFutureRequest(
                 e.version(),e.fingerprint(),"cross-route-claim-"+e.analysisId(),
-                List.of(em.actionGroupKey()))));
-        assertTrue(String.valueOf(rejected.getMessage()).contains("当前没有可采用的同主仓、按期公共在途余量"),
-                "跨路线候选应按同路线口径被拒: "+rejected.getMessage());
-        // 被拒就是被拒——300 的需求原样保留, 不许出现认领不成功却把建议量静默吃成 0。
-        qty("300",material(analyses.detail(e.analysisId()),c.material()).additionalSupplyRecommendedQty());
+                List.of(em.actionGroupKey())));
+        // 认领成功：动作落库且沿用来源路线（公共在途本身是一张采购单的份额）。
+        assertEquals("BUY",db.queryForObject(
+                "SELECT route FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SHARED_FUTURE_CLAIM'",
+                String.class,e.analysisId()));
+        // 认领数量 = E 缺的 300（A 公共在途 900 足够），分摊行同步落 300。
+        qty("300",db.queryForObject(
+                "SELECT requested_qty FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SHARED_FUTURE_CLAIM'",
+                BigDecimal.class,e.analysisId()));
+        qty("300",db.queryForObject("""
+                SELECT allocated_qty FROM preplan_supply_action_allocations allocation
+                JOIN preplan_supply_actions action ON action.id=allocation.action_id
+                WHERE action.analysis_id=? AND action.operation_type='SHARED_FUTURE_CLAIM'
+                """,BigDecimal.class,e.analysisId()));
+        // A 的公共在途相应扣减：来源自身的 approved_capacity_qty 仍是 900（上面同场景已钉），
+        // 认领落账在 claimed_qty（900 中被 E 占 300），可再认领余量 900→600。
+        qty("300",db.queryForObject(
+                "SELECT claimed_qty FROM v_preplan_public_surplus_source_state WHERE source_action_id=?",
+                BigDecimal.class,original.action()));
+        qty("600",db.queryForObject(
+                "SELECT available_to_claim_qty FROM v_preplan_public_surplus_source_state WHERE source_action_id=?",
+                BigDecimal.class,original.action()));
+        // E 的建议量被认领覆盖（300→0），到货前不算实物供给；外部在途覆盖挂 300。
+        var after=material(analyses.detail(e.analysisId()),c.material());
+        qty("0",after.additionalSupplyRecommendedQty());
+        qty("0",after.exactPeggedQty());
+        qty("300",after.externalFutureCoverageQty());
     }
 
     private Scenario scenario(String label){var w=fixture.seedWorld(label);fixture.loginAs(w.superAdminUserId());UUID product=UUID.randomUUID(),material=UUID.randomUUID();fixture.insertGoods(product,"FUT-P-"+product,"在途归属产品","自制",w.unitId(),w.unitLegacy());fixture.insertGoods(material,"FUT-M-"+material,"在途归属材料","采购",w.unitId(),w.unitLegacy());fixture.insertBom(product,material,"1");db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",w.supplierId(),material);return new Scenario(w,product,material);}

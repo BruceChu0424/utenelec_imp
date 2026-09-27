@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.WorkbenchBadgeReadPort;
 import com.uten.imp.application.port.WorkbenchBadgeSources;
 import com.uten.imp.features.notice.NoticeService;
+import com.uten.imp.features.notice.ServerStatusAlertScheduler;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.ArrayList;
@@ -184,6 +186,14 @@ class WorkbenchBadgeSummaryPostgresTest {
     @Autowired JdbcTemplate db;
     @Autowired NoticeService notices;
     @Autowired WorkbenchBadgeReadPort badgePort;
+
+    /**
+     * 服务器状态告警调度(@Profile("!cloud"), fixedDelay 5 分钟)会在测试中途给 seed 超管发
+     * 定向通知——notices 徽章汇总先读(0)、原端点后读(N)的 TOCTOU 假红(生产两处同一查询无此问题)。
+     * 该类没有属性开关, 用 Mockito 替换整个调度器; 上下文缓存因此为本类单开一份属预期成本。
+     */
+    @MockitoBean
+    ServerStatusAlertScheduler serverStatusAlertScheduler;
 
     private FullChainEndToEndTest fixture;
 

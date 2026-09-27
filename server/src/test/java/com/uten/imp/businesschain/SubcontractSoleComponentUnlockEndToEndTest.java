@@ -206,7 +206,10 @@ class SubcontractSoleComponentUnlockEndToEndTest {
     }
 
     @Test
-    void parentPublicSurplusRetainsItsExactChildResponsibilityBeyondTheSalesBoundAllocation() {
+    void parentPublicSurplusIsClaimedByOtherDemandSoItsOwnOrderIssuesOnlyThePrivateShare() {
+        // V721/ADR-120 §6.3 之前的口径是「公份子件责任仍留在来源」(草稿全额 12)；
+        // 未办理申请公共份可认领后，other 下达即自动认领超出的 2 件，认领先占来源
+        // 剩余——来源自己的订单只发得出私份 10，被认领的 2 件等认领侧接续。
         verifyExactChildCustody(false,true,BigDecimal.ONE);
     }
 
@@ -355,6 +358,12 @@ class SubcontractSoleComponentUnlockEndToEndTest {
         String totalQty=surplus ? "12" : "10";
         String componentQty=new BigDecimal(totalQty).multiply(bomQty).toPlainString();
         String firstQty=batched ? "6" : componentQty;
+        // V721/ADR-120 §6.3：未办理申请的公共份可认领——surplus 场景里 other 下达时自动认领
+        // 原申请超出销量下界的 2 件（认领先占来源剩余），来源自己的出仓草稿只剩私份，
+        // 被认领的子件实物留在库内等待认领侧接续，不再进本单草稿。
+        BigDecimal claimedByOther=surplus ? bomQty.multiply(new BigDecimal("2")) : BigDecimal.ZERO;
+        BigDecimal firstDraftQty=new BigDecimal(firstQty).subtract(claimedByOther);
+        BigDecimal issuedTotal=batched ? new BigDecimal(componentQty) : firstDraftQty;
         var w = fixture.seedWorld("sc-exact-owned-child-"+batched+"-"+surplus+"-"+bomQty);
         fixture.loginAs(w.superAdminUserId());
         fixture.insertBom(w.goodsE(), w.goodsD(), bomQty.toPlainString());
@@ -379,6 +388,14 @@ class SubcontractSoleComponentUnlockEndToEndTest {
         var other=componentAnalysis(w,"other");
         UUID otherApplicationItem=notifyComponent(w,other);
         assertEquals(0,componentAvailable(otherApplicationItem).signum(),"同货号其它产品需求不能抢本单专属到货");
+        if (surplus) {
+            assertEquals(0,new BigDecimal("2").compareTo(db.queryForObject("""
+                    SELECT action.requested_qty FROM preplan_supply_actions action
+                    WHERE action.analysis_id=? AND action.operation_type='SHARED_FUTURE_CLAIM'
+                      AND action.status<>'CANCELLED' AND action.external_document_type='SUBCONTRACT_APPLICATION'
+                    """,BigDecimal.class,other.analysisId())),
+                    "V721：未办理申请的公共份(12-10=2)在 other 下达时被自动认领，认领动作挂原申请行");
+        }
         var request=orderRequest(w,totalQty);
         request.getItems().getFirst().setApplicationItemId(applicationItem);
         UUID order=orders.create(request).getId();
@@ -389,8 +406,9 @@ class SubcontractSoleComponentUnlockEndToEndTest {
         UUID planItem=db.queryForObject("SELECT pi.id FROM subcontract_material_plan_items pi JOIN subcontract_material_plans p ON p.id=pi.plan_id WHERE p.order_id=?",UUID.class,order);
         UUID draft=draftId(planItem);
         assertNotNull(draft);
-        assertEquals(0,new BigDecimal(firstQty).compareTo(draftQty(draft)));
-        assertEquals(0,new BigDecimal(firstQty).compareTo(db.queryForObject(
+        assertEquals(0,firstDraftQty.compareTo(draftQty(draft)),
+                "出仓草稿=申请容量(公份被认领后只剩私份)");
+        assertEquals(0,firstDraftQty.compareTo(db.queryForObject(
                 "SELECT SUM(qty) FROM subcontract_component_stock_handoffs WHERE plan_item_id=?",BigDecimal.class,planItem)));
         SubcontractComponentHandoffGuardAssertions.verify(db, db.queryForObject(
                 "SELECT id FROM subcontract_component_stock_handoffs WHERE plan_item_id=? ORDER BY created_at,id LIMIT 1",
@@ -406,7 +424,8 @@ class SubcontractSoleComponentUnlockEndToEndTest {
         assertEquals(0,componentAvailable(otherApplicationItem).signum());
         materialIssues.approve(draft);
         assertOriginalReceiptCannotBeReversed(receipt,w.goodsD(),w.warehouseId(),planItem);
-        assertEquals(0,onHand(w.goodsD(),w.warehouseId()).signum());
+        assertEquals(0,claimedByOther.compareTo(onHand(w.goodsD(),w.warehouseId())),
+                "被认领的公份子件实物留在库内等认领侧接续, 不随本单出仓");
         assertEquals(0,onHand(w.goodsE(),w.warehouseId()).signum());
         if(batched) {
             ReflectionTestUtils.invokeMethod(fixture,"receiveAndPassPurchase",w,purchase,w.goodsD(),
@@ -418,7 +437,7 @@ class SubcontractSoleComponentUnlockEndToEndTest {
             assertEquals(0,componentAvailable(otherApplicationItem).signum());
             materialIssues.approve(draft);
         }
-        assertEquals(0,new BigDecimal(componentQty).compareTo(db.queryForObject("""
+        assertEquals(0,issuedTotal.compareTo(db.queryForObject("""
                 SELECT SUM(reservation.consumed_qty) FROM subcontract_component_stock_handoffs handoff
                 JOIN stock_reservations reservation ON reservation.id=handoff.target_reservation_id
                 WHERE handoff.plan_item_id=?
@@ -428,8 +447,8 @@ class SubcontractSoleComponentUnlockEndToEndTest {
         materialIssues.reverse(draft);
         BigDecimal restoredQty=new BigDecimal(batched ? "4" : componentQty);
         assertEquals(0,restoredQty.compareTo(onHand(w.goodsD(),w.warehouseId())));
-        assertEquals(0,restoredQty.compareTo(componentAvailable(applicationItem)),
-                "红冲实物出仓后恢复同一产品下原子件权益");
+        assertEquals(0,(batched ? restoredQty : firstDraftQty).compareTo(componentAvailable(applicationItem)),
+                "红冲实物出仓后恢复同一产品下原子件权益(私份容量, 公份仍归认领侧)");
         if (!surplus && bomQty.compareTo(BigDecimal.ONE)==0)
             assertComponentProjection(w,original.analysisId(),restoredQty.toPlainString(),restoredQty.toPlainString(),
                     restoredQty.toPlainString(),"reversed");
@@ -438,7 +457,7 @@ class SubcontractSoleComponentUnlockEndToEndTest {
         UUID replacement=materialPlans.regenerateDraft(plan);
         assertNotNull(replacement);
         materialIssues.delete(replacement);
-        assertEquals(0,restoredQty.compareTo(componentAvailable(applicationItem)),
+        assertEquals(0,(batched ? restoredQty : firstDraftQty).compareTo(componentAvailable(applicationItem)),
                 "删除未审草稿仍恢复原权益，不能放进公共库存");
         if (!surplus && bomQty.compareTo(BigDecimal.ONE)==0)
             assertComponentProjection(w,original.analysisId(),restoredQty.toPlainString(),restoredQty.toPlainString(),
@@ -491,6 +510,7 @@ class SubcontractSoleComponentUnlockEndToEndTest {
                 SELECT DISTINCT allocation.external_item_id FROM preplan_supply_action_allocations allocation
                 JOIN preplan_supply_actions action ON action.id=allocation.action_id
                 WHERE action.analysis_id=? AND action.route='SUBCONTRACT' AND action.status<>'CANCELLED'
+                  AND action.operation_type='SUPPLY'
                 """,UUID.class,view.analysisId());
     }
 

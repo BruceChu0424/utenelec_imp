@@ -56,6 +56,10 @@ class WarehouseHistoryQueryPostgresTest {
                     .addValue("date_to", null)
                     .addValue("keyword", "")
                     .addValue("keyword_pattern", "%%")
+                    // 4c7f5c8a 起单号列统一口径（出入库记录页 2026-09-25）恒绑定单号筛选；
+                    // 给 bill_no 一个不存在的非空值，顺带锻炼等值分支（结果仍 0 行）。
+                    .addValue("bill_no", "LQ20990101000001")
+                    .addValue("source_doc_no", null)
                     .addValue("limit", 20)
                     .addValue("offset", 0);
             assertEquals(
@@ -100,6 +104,8 @@ class WarehouseHistoryQueryPostgresTest {
                     .addValue("date_to", null)
                     .addValue("keyword", "")
                     .addValue("keyword_pattern", "%%")
+                    .addValue("bill_no", null)
+                    .addValue("source_doc_no", null)
                     .addValue("limit", 20)
                     .addValue("offset", 0);
             assertEquals(

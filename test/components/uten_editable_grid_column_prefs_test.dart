@@ -33,7 +33,6 @@ Widget _app({
             ],
             showAddRow: false,
             showRowDelete: false,
-            showColumnSettings: true,
             initialColumnOrder: initialOrder,
             initialHiddenColumnKeys: initialHidden,
             initialPinnedColumnKeys: initialPinned,

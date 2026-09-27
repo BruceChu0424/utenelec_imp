@@ -453,7 +453,6 @@ class _WarehouseQualityPreStockInPageState
           InputDecoration(
             isDense: true,
             counterText: '',
-            hintText: '实物放置的库位',
             error: utenFieldError(row.selected ? row.placeError : null),
           ),
         ),

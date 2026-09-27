@@ -226,7 +226,6 @@ class _SubcontractOutboundDetailTableState
       stickyHeaderPinned: widget.stickyHeaderPinned,
       showAddRow: false,
       showRowDelete: false,
-      showColumnSettings: true,
       showSelectAllToggle: false,
       showRemoveRowsAction: false,
       // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
@@ -449,7 +448,8 @@ class _SubcontractOutboundDetailTableState
                   value: row.warehouseId,
                   enabled:
                       widget.editable && row.editable && row.draft.selected,
-                  labelText: l10n.warehouseSubcontractOutboundWarehouse,
+                  // 格内浮动标签与列头「发出仓」重复，已删（2026-09-27 表格小字清理）。
+                  labelText: null,
                   onChanged: row.onWarehouseChanged!,
                 ),
         ),
@@ -465,12 +465,8 @@ class _SubcontractOutboundDetailTableState
           width: 240,
           textOf: (row) => row.draft.remarkController.text,
           listenableOf: (row) => row.draft.remarkController,
-          cellBuilder: (_, row) => _remarkField(
-            row,
-            row.draft.remarkController,
-            l10n.warehouseSubcontractOutboundLineRemark,
-            'remark',
-          ),
+          cellBuilder: (_, row) =>
+              _remarkField(row, row.draft.remarkController, 'remark'),
         ),
         if (widget.rows.any((row) => row.documentRemark != null))
           EditableGridColumn(
@@ -482,12 +478,7 @@ class _SubcontractOutboundDetailTableState
             listenableOf: (row) => row.documentRemark,
             cellBuilder: (_, row) => row.documentRemark == null
                 ? const Text('—')
-                : _remarkField(
-                    row,
-                    row.documentRemark!,
-                    l10n.warehouseSubcontractOutboundDocumentRemark,
-                    'document-remark',
-                  ),
+                : _remarkField(row, row.documentRemark!, 'document-remark'),
           ),
         if (widget.rows.any((row) => row.status != null))
           textColumn(
@@ -511,7 +502,6 @@ class _SubcontractOutboundDetailTableState
   Widget _remarkField(
     SubcontractOutboundTableRow row,
     TextEditingController controller,
-    String label,
     String suffix,
   ) => TextField(
     key: ValueKey(
@@ -520,8 +510,9 @@ class _SubcontractOutboundDetailTableState
     controller: controller,
     enabled: widget.editable && row.editable && row.draft.selected,
     maxLength: 200,
-    decoration: UtenInputDecoration(
-      InputDecoration(labelText: label, isDense: true, counterText: ''),
+    // 格内浮动标签与列头（行备注/单据备注）重复，已删（2026-09-27 表格小字清理）。
+    decoration: const UtenInputDecoration(
+      InputDecoration(isDense: true, counterText: ''),
     ),
   );
 

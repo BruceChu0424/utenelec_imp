@@ -39,7 +39,9 @@ class WarehouseHierarchyDropdown extends StatelessWidget {
   final String? value;
   final ValueChanged<String?> onChanged;
 
-  final String labelText;
+  /// 字段浮动标签。表格单元格里列头已表意，传 null 即不画标签
+  /// （2026-09-27 表格小字清理口径）；表单里照旧传文字。
+  final String? labelText;
   final bool includeAll;
 
   /// true = 允许选父仓（查询聚合语义）；false = 父仓只作分组标题。

@@ -31,7 +31,6 @@ Widget _app({
             ],
             showAddRow: false,
             showRowDelete: false,
-            showColumnSettings: true,
             onColumnSettingsChanged: onChanged,
           ),
         ],

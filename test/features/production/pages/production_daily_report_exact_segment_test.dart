@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -1106,6 +1107,105 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  // 2026-09-27 用户口径「表头右键菜单全站统一都要有」——生产车间提交报表
+  // （本页）是点名缺菜单的例子。默认翻转（UtenEditableGrid.showColumnSettings
+  // 默认 true）后：右击表头弹固定/移动/隐藏菜单；必填列（完工申报量）隐藏锁定。
+  testWidgets('报工表明头右键菜单：弹菜单、隐藏列、移动换位、必填列锁定', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _api();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+
+    Future<void> rightClick(Finder finder) async {
+      final gesture = await tester.startGesture(
+        tester.getCenter(finder.hitTestable().first),
+        kind: PointerDeviceKind.mouse,
+        buttons: kSecondaryButton,
+      );
+      await gesture.up();
+      await tester.pump();
+    }
+
+    double dxOf(Finder f) =>
+        (f.hitTestable().first.evaluate().first.renderObject as RenderBox)
+            .localToGlobal(Offset.zero)
+            .dx;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          departmentRepositoryProvider.overrideWithValue(
+            _FakeDepartmentRepository(),
+          ),
+          masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          productionDailyReportRepositoryProvider.overrideWithValue(
+            ProductionDailyReportRepository(api),
+          ),
+          employeeRepositoryProvider.overrideWithValue(
+            _FakeEmployeeRepository(),
+          ),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: const MaterialApp(
+          home: Column(
+            children: [
+              AppNotificationHost(),
+              Expanded(
+                child: ProductionDailyReportEditPage(
+                  initialExecutionSegmentId: 'segment-1',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('成品灯'), findsOneWidget);
+
+    // 右击「编号」表头：六条菜单条目齐全（编号列有 textOf → 可固定）。
+    await rightClick(find.text('编号'));
+    expect(find.text('固定到左侧'), findsOneWidget);
+    expect(find.text('向左移一格'), findsOneWidget);
+    expect(find.text('向右移一格'), findsOneWidget);
+    expect(find.text('放到最前'), findsOneWidget);
+    expect(find.text('放到最后'), findsOneWidget);
+    expect(find.text('隐藏此列'), findsOneWidget);
+
+    // 隐藏「编号」列：表头与表体（P-001）一起消失。
+    await tester.tap(find.text('隐藏此列'));
+    await tester.pumpAndSettle();
+    expect(find.text('编号'), findsNothing);
+    expect(find.text('P-001'), findsNothing);
+
+    // 移动换位：「颜色」放到最前 → 排到「单位」之前。
+    await rightClick(find.text('颜色'));
+    await tester.tap(find.text('放到最前'));
+    await tester.pumpAndSettle();
+    expect(dxOf(find.text('颜色')), lessThan(dxOf(find.text('单位'))));
+
+    // 固定：「单位」固定到左侧 → 排到「颜色」之前。
+    await rightClick(find.text('单位'));
+    await tester.tap(find.text('固定到左侧'));
+    await tester.pumpAndSettle();
+    expect(dxOf(find.text('单位')), lessThan(dxOf(find.text('颜色'))));
+    expect(find.byIcon(Icons.push_pin_rounded), findsOneWidget);
+
+    // 必填列锁定：「完工申报量」的隐藏入口置灰（必填项不允许从界面消失；
+    // 必填表头带红 * 后缀，用包含匹配）。
+    await rightClick(find.textContaining('完工申报量'));
+    final hideInk = find.ancestor(
+      of: find.text('隐藏此列'),
+      matching: find.byType(InkWell),
+    );
+    expect((hideInk.evaluate().single.widget as InkWell).onTap, isNull);
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('新建日报勾选口径：来源行自动勾选，没勾行时保存置灰并说明原因', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 900));

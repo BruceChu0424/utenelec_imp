@@ -628,9 +628,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
             textAlign: TextAlign.right,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: applyAutofillHint(
-              const UtenInputDecoration(
-                InputDecoration(isDense: true, hintText: '未设'),
-              ),
+              const UtenInputDecoration(InputDecoration(isDense: true)),
               Theme.of(context),
               autofilled: marks.contains('allowedLoss'),
             ),

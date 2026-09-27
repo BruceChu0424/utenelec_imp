@@ -65,7 +65,6 @@ void main() {
                   ),
                 ],
                 createBlankRow: () => _PerfRow('新行'),
-                showColumnSettings: true,
               ),
             ],
           ),

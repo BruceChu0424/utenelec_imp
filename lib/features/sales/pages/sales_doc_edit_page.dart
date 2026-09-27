@@ -2461,7 +2461,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                 : _importFromUpstream,
                                           ),
                                       ],
-                                      showColumnSettings: true,
                                       initialColumnOrder: columnPrefs?.order,
                                       initialHiddenColumnKeys:
                                           columnPrefs?.hidden,

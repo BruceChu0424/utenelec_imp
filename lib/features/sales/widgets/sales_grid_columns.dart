@@ -507,7 +507,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
             textAlign: TextAlign.right,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const UtenInputDecoration(
-              InputDecoration(isDense: true, hintText: '1=原价'),
+              InputDecoration(isDense: true),
             ),
           ),
         ),
@@ -571,7 +571,6 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         cellBuilder: (context, row) => _returnDropdown(
           row.solutionNotifier,
           const ['退款', '换货', '补发', '维修后返还', '其他'],
-          hint: '处理方案',
         ),
       ),
       EditableGridColumn<SalesGridRow>(
@@ -584,7 +583,6 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         cellBuilder: (context, row) => _returnDropdown(
           row.responsibleNotifier,
           const ['本公司', '客户', '物流', '供应商', '其他'],
-          hint: '责任单位',
         ),
       ),
     ],
@@ -597,7 +595,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       listenableOf: (r) => r.remark,
       cellBuilder: (context, row) => TextField(
         controller: row.remark,
-        decoration: const InputDecoration(isDense: true, hintText: '备注'),
+        decoration: const InputDecoration(isDense: true),
       ),
     ),
   ];
@@ -675,18 +673,14 @@ EditableGridColumn<SalesGridRow> _extraNumericColumn(
 /// 退货「处理方案 / 责任单位」下拉单元格：订阅 [notifier]，预置业务选项。
 /// 2026-09-16 起本文件内统一用自家 UtenDropdownField（单行省略号 + 列宽自适应 +
 /// 统一弹层），不再出现原生 DropdownButtonFormField（全站其余处的替换由下拉
-/// 组件批次负责）。
-Widget _returnDropdown(
-  ValueNotifier<String?> notifier,
-  List<String> options, {
-  required String hint,
-}) {
+/// 组件批次负责）。空格占位用组件默认「请选择」——格内提示字已按 2026-09-27
+/// 口径清掉（列头已表意）。
+Widget _returnDropdown(ValueNotifier<String?> notifier, List<String> options) {
   return ValueListenableBuilder<String?>(
     valueListenable: notifier,
     builder: (context, value, _) => UtenDropdownField(
       dense: true,
       value: value,
-      hintText: hint,
       items: [for (final o in options) UtenDropdownItem(value: o, label: o)],
       onChanged: (v) => notifier.value = v,
     ),

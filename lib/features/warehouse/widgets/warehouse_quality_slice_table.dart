@@ -61,8 +61,10 @@ class WarehouseQualitySliceDraft {
     return changed;
   }
 
-  String get placeInputHint =>
-      _placeRequiresReview ? '请重新填写实际库位' : slice.placeHint ?? '实际库位';
+  /// 空格占位提示：改仓后「请重新填写」的行级警示与服务端建议库位保留；
+  /// 无建议时的兜底「实际库位」与列头重复，已删（2026-09-27 表格小字清理）。
+  String? get placeInputHint =>
+      _placeRequiresReview ? '请重新填写实际库位' : slice.placeHint;
 
   String get receiptKey => '$receiptTypeValue:$receiptId';
   String get snapshotKey => '$receiptKey:${slice.passEventId}';

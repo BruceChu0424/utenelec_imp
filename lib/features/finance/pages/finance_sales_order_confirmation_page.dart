@@ -1099,98 +1099,113 @@ class _CompactTaskRow extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onSelected ?? onOpen,
-          child: Container(
-            padding: const EdgeInsets.all(UtenSpacing.s12),
+          child: DecoratedBox(
+            // 圆角边框要求四边同色（Flutter paint 断言），左缘强调色改为卡内
+            // 3px 色条实现，视觉不变。
             decoration: BoxDecoration(
               borderRadius: UtenRadius.mdAll,
-              border: Border(
-                left: BorderSide(width: 3, color: accent),
-                top: BorderSide(color: theme.colorScheme.outlineVariant),
-                right: BorderSide(color: theme.colorScheme.outlineVariant),
-                bottom: BorderSide(color: theme.colorScheme.outlineVariant),
-              ),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (onSelected != null) ...[
-                  Checkbox(
-                    value: selected,
-                    semanticLabel: '选择订单 ${item.billNo}',
-                    onChanged: (_) => onSelected!(),
-                  ),
-                  const SizedBox(width: UtenSpacing.s4),
-                ],
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+            // IntrinsicHeight：无界高度的列表里让色条与内容等高、贯穿整卡。
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ColoredBox(color: accent, child: const SizedBox(width: 3)),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(UtenSpacing.s12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if (onSelected != null) ...[
+                            Checkbox(
+                              value: selected,
+                              semanticLabel: '选择订单 ${item.billNo}',
+                              onChanged: (_) => onSelected!(),
+                            ),
+                            const SizedBox(width: UtenSpacing.s4),
+                          ],
                           Expanded(
-                            child: Text(
-                              item.billNo,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        item.billNo,
+                                        style: theme.textTheme.titleSmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                      ),
+                                    ),
+                                    Text(
+                                      _orderAmount(item),
+                                      style: theme.textTheme.labelLarge
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: UtenSpacing.s4),
+                                Text(
+                                  '${item.clientName ?? '未标注客户'} · ${item.sellerName ?? '未标注业务员'}',
+                                  style: theme.textTheme.bodyMedium,
+                                ),
+                                const SizedBox(height: UtenSpacing.s4),
+                                Text(
+                                  '交货 ${item.deliverDate ?? '未定'} · '
+                                  '${_urgencyLabel(urgency)} · '
+                                  '${item.itemCount} 行明细 · '
+                                  '应收（本币）${item.clientOutstanding ?? '—'}',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                if (item.changeCount > 0 &&
+                                    !item.financeRejected) ...[
+                                  const SizedBox(height: UtenSpacing.s4),
+                                  Text(
+                                    '修改后待复审 · 查看明细中的红绿对照',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: UtenColors.warningText,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                                if (item.financeRejected) ...[
+                                  const SizedBox(height: UtenSpacing.s4),
+                                  Text(
+                                    '驳回原因：${item.financeRejectedReason ?? '未注明原因'}',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.error,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
-                          Text(
-                            _orderAmount(item),
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              fontWeight: FontWeight.w800,
+                          const SizedBox(width: UtenSpacing.s8),
+                          UtenButton(
+                            key: Key(
+                              'sales-order-finance-review-${item.orderId}',
                             ),
+                            size: UtenButtonSize.small,
+                            type: UtenButtonType.secondary,
+                            icon: Icons.open_in_new_rounded,
+                            onPressed: onOpen,
+                            child: const Text('详情'),
                           ),
                         ],
                       ),
-                      const SizedBox(height: UtenSpacing.s4),
-                      Text(
-                        '${item.clientName ?? '未标注客户'} · ${item.sellerName ?? '未标注业务员'}',
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                      const SizedBox(height: UtenSpacing.s4),
-                      Text(
-                        '交货 ${item.deliverDate ?? '未定'} · '
-                        '${_urgencyLabel(urgency)} · '
-                        '${item.itemCount} 行明细 · '
-                        '应收（本币）${item.clientOutstanding ?? '—'}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      if (item.changeCount > 0 && !item.financeRejected) ...[
-                        const SizedBox(height: UtenSpacing.s4),
-                        Text(
-                          '修改后待复审 · 查看明细中的红绿对照',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: UtenColors.warningText,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                      if (item.financeRejected) ...[
-                        const SizedBox(height: UtenSpacing.s4),
-                        Text(
-                          '驳回原因：${item.financeRejectedReason ?? '未注明原因'}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.error,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                UtenButton(
-                  key: Key('sales-order-finance-review-${item.orderId}'),
-                  size: UtenButtonSize.small,
-                  type: UtenButtonType.secondary,
-                  icon: Icons.open_in_new_rounded,
-                  onPressed: onOpen,
-                  child: const Text('详情'),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

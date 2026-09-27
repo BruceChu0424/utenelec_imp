@@ -224,4 +224,96 @@ void main() {
     expect(changes.last.$1.indexOf('qty'), 1);
     expect(find.byIcon(Icons.push_pin_rounded), findsNothing);
   });
+
+  // 2026-09-27 用户口径「表头右键菜单全站统一都要有」：showColumnSettings 默认
+  // 翻转为 true（此前默认关，生产车间报工表等编辑页没显式开就一直没有菜单）。
+  // 这里锁定翻转本身：不传 showColumnSettings 的网格右击表头即有完整菜单，
+  // 固定/移动/隐藏三条动作全部生效。
+  testWidgets('默认（未传 showColumnSettings）右击表头即有固定/移动/隐藏菜单', (tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final changes = <(List<String>, Set<String>, Set<String>)>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 700,
+            height: 400,
+            child: ListView(
+              children: [
+                UtenEditableGrid<_Row>(
+                  controller: UtenEditableGridController<_Row>(
+                    initial: [_Row('甲', '10'), _Row('乙', '20')],
+                  ),
+                  columns: [
+                    EditableGridColumn<_Row>(
+                      key: 'name',
+                      label: '名称',
+                      width: 150,
+                      textOf: (r) => r.name,
+                      cellBuilder: (_, r) => Text(r.name),
+                    ),
+                    EditableGridColumn<_Row>(
+                      key: 'qty',
+                      label: '数量',
+                      width: 150,
+                      numeric: true,
+                      frozenTextOf: (r) => r.qty.text,
+                      cellBuilder: (_, r) => TextField(controller: r.qty),
+                    ),
+                    for (var i = 0; i < 3; i++)
+                      EditableGridColumn<_Row>(
+                        key: 'x$i',
+                        label: '补列$i',
+                        width: 150,
+                        textOf: (r) => 'x$i-${r.name}',
+                        cellBuilder: (_, r) => Text('x$i-${r.name}'),
+                      ),
+                  ],
+                  showAddRow: false,
+                  showRowDelete: false,
+                  onColumnSettingsChanged: (o, h, p) => changes.add((o, h, p)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 右击「数量」表头：六条菜单条目齐全（有 frozenTextOf → 可固定）。
+    await _rightClick(tester, find.text('数量'));
+    expect(find.text('固定到左侧'), findsOneWidget);
+    expect(find.text('向左移一格'), findsOneWidget);
+    expect(find.text('向右移一格'), findsOneWidget);
+    expect(find.text('放到最前'), findsOneWidget);
+    expect(find.text('放到最后'), findsOneWidget);
+    expect(find.text('隐藏此列'), findsOneWidget);
+
+    // 固定生效：数量列搬到名称列之前（固定块前缀）并上报固定集。
+    await tester.tap(find.text('固定到左侧'));
+    await tester.pumpAndSettle();
+    expect(_dxOf(find.text('数量')), lessThan(_dxOf(find.text('名称'))));
+    expect(changes.last.$3, {'qty'});
+
+    // 移动生效：补列0 放到最前（固定块之后、名称之前）。
+    await _rightClick(tester, find.text('补列0'));
+    await tester.tap(find.text('放到最前'));
+    await tester.pumpAndSettle();
+    expect(
+      _dxOf(find.text('补列0')),
+      lessThan(_dxOf(find.text('名称'))),
+      reason: '固定块之后的第一普通列应是补列0',
+    );
+
+    // 隐藏生效：表头与表体同时消失，并上报隐藏集。
+    await _rightClick(tester, find.text('补列2'));
+    await tester.tap(find.text('隐藏此列'));
+    await tester.pumpAndSettle();
+    expect(find.text('补列2'), findsNothing);
+    expect(find.text('x2-甲'), findsNothing);
+    expect(changes.last.$2, {'x2'});
+  });
 }

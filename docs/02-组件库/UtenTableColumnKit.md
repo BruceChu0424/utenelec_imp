@@ -3,7 +3,7 @@
 > 源码：[`lib/components/layout/uten_table_column_kit.dart`](../../lib/components/layout/uten_table_column_kit.dart)
 > 接入方：[`MasterDataTableView`](../../lib/features/basic_data/widgets/master_data_table_view.dart)（货品资料等主数据表）、
 > [`UtenEditableGrid`](../../lib/components/layout/uten_editable_grid.dart)（单据编辑明细表）
-> 最后核对：2026-09-25（新增表头右键菜单：固定到左侧/移动/隐藏 + 列序纯函数）
+> 最后核对：2026-09-27（①`UtenEditableGrid.showColumnSettings` 默认改为开启——全部编辑明细表默认就有表头右键菜单/竖拖隐藏/横拖换位，确不适用的宿主显式传 false；②表格单元格输入框不再带边框小文字：labelText 与复述表头的 hintText 全站清除，列含义一律由表头承载，错误文案/功能性提示保留）
 
 ## 一、为什么有它
 

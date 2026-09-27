@@ -934,7 +934,6 @@ class _ProductionFqcSheetHandlingPageState
         key: Key('fqc-sheet-disposition-${row.inspection.id}'),
         dense: true,
         value: row.disposition,
-        hintText: '选择处置',
         items: [
           for (final entry in kFqcDispositions)
             UtenDropdownItem(value: entry.$1, label: entry.$2),
@@ -1529,7 +1528,6 @@ class _ProductionFqcInspectionPageState
                     key: const Key('fqc-inspection-disposition'),
                     dense: true,
                     value: row.disposition,
-                    hintText: '选择处置',
                     items: [
                       for (final entry in kFqcDispositions)
                         UtenDropdownItem(value: entry.$1, label: entry.$2),

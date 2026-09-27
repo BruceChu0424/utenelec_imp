@@ -191,7 +191,8 @@ warehouseSalesOutboundTableColumns({
             value: selected,
             allowClear: false,
             enabled: editingEnabled,
-            hintText: choices.isEmpty ? '暂无可供货仓库' : '选择发出仓',
+            // 无可发仓的行级警示保留；其余空格不再复述列头（默认「请选择」）。
+            hintText: choices.isEmpty ? '暂无可供货仓库' : null,
             errorMessage: draft.lineErrors[row.line.id],
             items: [
               for (final choice in choices)
@@ -249,7 +250,7 @@ warehouseSalesOutboundTableColumns({
             decoration: const UtenInputDecoration(
               InputDecoration(
                 isDense: true,
-                labelText: '实际库位号',
+                // 浮动标签「实际库位号」与列头重复，已删（2026-09-27 表格小字清理）。
                 hintText: '按本次实际填写',
                 counterText: '',
               ),

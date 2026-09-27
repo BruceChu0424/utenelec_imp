@@ -662,7 +662,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.removeRowsConfirmLabel = '删除',
     this.removeRowsMessageBuilder,
     this.rowMenuExtraBuilder,
-    this.showColumnSettings = false,
+    this.showColumnSettings = true,
     this.toolbarActions = const <Widget>[],
     this.initialColumnOrder,
     this.initialHiddenColumnKeys,
@@ -781,8 +781,12 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   )?
   rowMenuExtraBuilder;
 
-  /// 显示「表头设置 x/y」：支持列显隐、拖拽排序、恢复默认；表头纵向拖出也可隐藏。
-  /// 默认关闭以保持既有嵌入式/任务表布局不变，业务编辑页按需开启。
+  /// 显示「表头设置 x/y」：支持列显隐、拖拽排序、恢复默认；表头纵向拖出也可隐藏，
+  /// 表头右键菜单提供固定/移动/隐藏（与 MasterDataTableView 统一口径）。
+  ///
+  /// 默认开启（2026-09-27 用户口径「表头右键菜单全站统一都要有」——此前默认关，
+  /// 生产车间报工表等编辑页没开就一直没菜单）。确不适用的宿主（列极少的内嵌
+  /// 选择器/滑层小表）显式传 false 关闭。未开启的页面保持固定布局、无恢复入口。
   final bool showColumnSettings;
 
   /// 工具条上「表头设置」右侧的常驻按钮（**不随选择态禁用**）。

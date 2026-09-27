@@ -2,6 +2,10 @@
 //
 // 2026-09-11「表头快速筛选补齐」批次的清扫页之一：合格/不合格混排的长明细里，
 // 「判定结果」「货品名称」给表头下拉，与下达车间页同一套 filterValueOf 机制。
+//
+// 2026-09-27「表头右键菜单全站统一」：本表宿主未显式开 showColumnSettings，
+// 靠默认翻转获得固定/移动/隐藏菜单——这里补默认形态的菜单回归。
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
@@ -94,5 +98,64 @@ void main() {
     expect(find.text('乙物料'), findsNothing);
     // 两行数据 + 表头显示的当前筛选值。
     expect(find.text('甲物料'), findsNWidgets(3));
+  });
+
+  testWidgets('默认即有表头右键菜单：隐藏列与「表头设置」入口随默认翻转而来', (tester) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller = UtenEditableGridController<WarehouseQualityMergedRow>(
+      initial: [
+        WarehouseQualityMergedRow(
+          line: _line(id: 'a', goodsName: '甲物料', passed: 10, failed: 0),
+        ),
+        WarehouseQualityMergedRow(
+          line: _line(id: 'b', goodsName: '乙物料', passed: 0, failed: 4),
+        ),
+      ],
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListView(
+            children: [
+              WarehouseQualityMergedTable(
+                controller: controller,
+                editable: false,
+                saving: false,
+                onChanged: () {},
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 默认翻转后操作条带「表头设置」入口（此前本表宿主从未显式开启）。
+    expect(find.textContaining('表头设置'), findsOneWidget);
+
+    // 右击「判定结果」筛选表头（判定列无快照源 → 固定置灰，隐藏/移动可用）。
+    final gesture = await tester.startGesture(
+      tester.getCenter(_headerFilter('判定结果')),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryButton,
+    );
+    await gesture.up();
+    await tester.pump();
+    expect(find.text('固定到左侧'), findsOneWidget);
+    expect(find.text('向左移一格'), findsOneWidget);
+    expect(find.text('隐藏此列'), findsOneWidget);
+
+    // 隐藏生效：判定列表头（筛选格）与表体判定单元一起消失。
+    await tester.tap(find.text('隐藏此列'));
+    await tester.pumpAndSettle();
+    expect(_headerFilter('判定结果'), findsNothing);
+    expect(find.text('合格'), findsNothing);
+    expect(find.text('不合格'), findsNothing);
   });
 }

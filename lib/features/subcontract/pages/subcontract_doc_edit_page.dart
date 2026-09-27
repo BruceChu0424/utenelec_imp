@@ -865,7 +865,6 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                               return UtenEditableGrid<SubcontractGridRow>(
                                 controller: _grid,
                                 stickyHeaderPinned: _gridPinned,
-                                showColumnSettings: true,
                                 initialColumnOrder: columnPrefs?.order,
                                 initialHiddenColumnKeys: columnPrefs?.hidden,
                                 initialPinnedColumnKeys: columnPrefs?.pinned,

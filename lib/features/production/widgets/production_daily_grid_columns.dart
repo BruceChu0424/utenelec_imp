@@ -889,8 +889,10 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                   builder: (context, autofilled, _) => UtenDropdownField(
                     dense: true,
                     value: picked?.demandId,
+                    // 未选时不再复述列头（空格走组件默认「请选择」）；
+                    // 原接收工单失效的行级警示保留（2026-09-27 表格小字清理口径）。
                     hintText: row.pendingDirectTransferDemandId == null
-                        ? '选择上层工单'
+                        ? null
                         : '原接收工单当前不可用，请刷新或重新选择',
                     // V595 记忆预填：黄框 + 警示图标提醒核对。
                     autofilled: autofilled && picked != null,

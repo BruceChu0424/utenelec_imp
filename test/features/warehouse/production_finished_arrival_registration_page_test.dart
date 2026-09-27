@@ -551,12 +551,25 @@ void main() {
     expect(tester.widget<TextField>(placeField).enabled, isTrue);
     await tester.enterText(placeField, 'MANUAL-A-07');
     await tester.pump();
-    await tester.ensureVisible(
-      find.byKey(const Key('production-finished-arrival-retry-suggestions')),
+    // 2026-09-27 编辑表默认开启表头设置（操作条多占一行）后，网格上方工具区的
+    // 重试入口更容易停在视口外、被 ListView 拆卸——ensureVisible 只对已构建元素
+    // 生效，改为向上滚到按钮出现为止再点。
+    final retryButton = find.byKey(
+      const Key('production-finished-arrival-retry-suggestions'),
+    );
+    await tester.scrollUntilVisible(
+      retryButton,
+      -320,
+      scrollable: find.byType(Scrollable).first,
     );
     await tester.pump();
-    await tester.tap(
-      find.byKey(const Key('production-finished-arrival-retry-suggestions')),
+    await tester.tap(retryButton);
+    await tester.pump();
+    // 向上滚动可能把明细行推出视口：滚回行内再断言（行重新进视口恢复构建）。
+    await tester.scrollUntilVisible(
+      placeField,
+      320,
+      scrollable: find.byType(Scrollable).first,
     );
     await tester.pump();
     expect(tester.widget<TextField>(placeField).enabled, isFalse);
@@ -991,6 +1004,15 @@ void main() {
       await _pressSubmit(tester);
       await tester.pump();
 
+      // 校验错误文案挂在网格上方；2026-09-27 编辑表默认带表头设置操作条后，
+      // 提交时的滚动位置更容易把它留在视口外、未被 ListView 构建——先向上滚到
+      // 文案出现再断言（已在视口内时为 no-op）。
+      await tester.scrollUntilVisible(
+        find.textContaining('同一颜色维度填写了不同库位'),
+        -320,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
       expect(find.textContaining('同一颜色维度填写了不同库位'), findsOneWidget);
       expect(find.textContaining('关闭“同时记住”'), findsOneWidget);
       expect(api.lastPostBody, isNull);

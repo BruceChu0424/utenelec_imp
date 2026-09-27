@@ -2095,7 +2095,9 @@ abstract class _MaterialAnalysisMaterialTableState
       ),
       dense: true,
       value: route?.name,
-      hintText: route == null ? '请选择供应方式' : _l10n.materialMixedRoutes,
+      // 混合路线提示保留（多行不同供应方式的行级事实）；未选时不再复述列头
+      // 「供应方式」，空格走组件默认「请选择」（2026-09-27 表格小字清理口径）。
+      hintText: route == null ? null : _l10n.materialMixedRoutes,
       items: [
         for (final option in MaterialSupplyRoute.values)
           UtenDropdownItem(value: option.name, label: option.label),

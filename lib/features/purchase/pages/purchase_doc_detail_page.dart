@@ -1051,10 +1051,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            hintText: '数量',
-                          ),
+                          decoration: const InputDecoration(isDense: true),
                         ),
                       )
                     : Align(

@@ -170,6 +170,28 @@ class SalesDocumentIntakeJobHandlerTest {
     }
 
     @Test
+    void newClientProposalIsOnlyOfferedToReadersWhoMayCreateClients() {
+        Map<String, Object> client = new LinkedHashMap<>();
+        client.put("status", "UNMATCHED");
+        client.put("newClientProposal", Map.of("name", "ACME FZE"));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("client", client);
+
+        login("sales_quote:create", "sales_order:price:view");
+        Map<String, Object> filtered = handler.filterResultForReader(result);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> filteredClient = (Map<String, Object>) filtered.get("client");
+        assertThat(filteredClient).containsEntry("status", "UNMATCHED").containsEntry("newClientProposal", null);
+        assertThat(client.get("newClientProposal")).as("入参不被修改").isNotNull();
+
+        login("sales_quote:create", "sales_order:price:view", "client:create");
+        assertThat(handler.filterResultForReader(result)).isSameAs(result);
+        login("sales_quote:create", "client:create");
+        assertThat(((Map<?, ?>) handler.filterResultForReader(result).get("client")).get("newClientProposal"))
+                .as("看不到价格也照常提议新建客户").isNotNull();
+    }
+
+    @Test
     void processRunsRulesOnlyWhenAiIsOff() {
         login("sales_quote:create");
         IntakeFixture.FixtureDocument doc = fixture.document("SUNAS");
@@ -212,6 +234,17 @@ class SalesDocumentIntakeJobHandlerTest {
         new SalesIntakeLayoutLearner(usage2, store2, noTx())
                 .onIntakeUsed(new SalesIntakeUsedEvent(job, user, "order", UUID.randomUUID(), null));
         verify(store2, never()).upsertLayout(anyString(), any(), anyString(), any(), anyInt());
+
+        // 保存时用的就是学习到的版式: 只刷新使用时间, 不当新证据(不加确认次数)。
+        IntakeReferenceData store3 = mock(IntakeReferenceData.class);
+        AiJobUsagePort usage3 = mock(AiJobUsagePort.class);
+        Map<String, Object> learnedExtraction = new LinkedHashMap<>(extraction);
+        learnedExtraction.put("layoutSource", "LEARNED");
+        when(usage3.resultFor(job, user)).thenReturn(Optional.of(Map.of("extraction", learnedExtraction)));
+        new SalesIntakeLayoutLearner(usage3, store3, noTx())
+                .onIntakeUsed(new SalesIntakeUsedEvent(job, user, "quote", UUID.randomUUID(), client));
+        verify(store3).touchLayout("a".repeat(64), client);
+        verify(store3, never()).upsertLayout(anyString(), any(), anyString(), any(), anyInt());
 
         Map<String, Object> pdfExtraction = new LinkedHashMap<>();
         pdfExtraction.put("layoutSource", "AI");

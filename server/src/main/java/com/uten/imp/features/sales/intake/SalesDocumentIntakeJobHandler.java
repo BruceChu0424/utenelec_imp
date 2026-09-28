@@ -36,6 +36,8 @@ public class SalesDocumentIntakeJobHandler implements AiJobHandler {
     static final Set<String> ACCEPTED = Set.of(DocumentKind.XLSX.name(), DocumentKind.XLS.name(), DocumentKind.CSV.name(),
             DocumentKind.PDF.name(), DocumentKind.PNG.name(), DocumentKind.JPEG.name(), DocumentKind.WEBP.name());
     static final String GOODS_PRICE_VIEW = "goods:price:view";
+    /** 「用文件信息新建客户」接口的权限(ClientFromDocumentController)。 */
+    static final String CLIENT_CREATE = "client:create";
     private static final String CLIENT_ACTIVE = "使用";
 
     private final MasterIntakeLookupPort lookup;
@@ -109,7 +111,7 @@ public class SalesDocumentIntakeJobHandler implements AiJobHandler {
 
     @Override
     public Map<String, Object> filterResultForReader(Map<String, Object> result) {
-        return IntakeResultFilter.filter(result, canViewPrices());
+        return IntakeResultFilter.filter(result, canViewPrices(), hasPermission(CLIENT_CREATE));
     }
 
     @Override
@@ -139,6 +141,10 @@ public class SalesDocumentIntakeJobHandler implements AiJobHandler {
             throw new ApiException(ErrorCode.FORBIDDEN, params.isOrder() ? "你没有新建或修改订货单的权限"
                     : "你没有新建或修改报价单的权限");
         }
+    }
+
+    private boolean hasPermission(String code) {
+        return currentUser.get().map(AuthUser::getPermissions).map(p -> p.contains(code)).orElse(false);
     }
 
     /** 与订单价格脱敏同口径, 另认货品价格查看权限。 */

@@ -10,6 +10,7 @@ import com.uten.imp.common.text.IntakeTextNormalizer;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -64,7 +65,22 @@ final class IntakeHeaderRules {
     private static final Pattern DOC_NO_HASH = Pattern.compile("(?i)(?:invoice|quotation|pi|order|contract)\\s*#\\s*([A-Z0-9][A-Z0-9/\\-]{1,30})");
     private static final Pattern DOC_NO_CN = Pattern.compile("(合同号|订单号|单号|发票号|报价单号)\\s*[:：]?\\s*([A-Za-z0-9][A-Za-z0-9/\\-]{1,30})");
     private static final Pattern EMAIL = Pattern.compile("[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}");
-    private static final Pattern PHONE_LABEL = Pattern.compile("(?i)(tel|phone|mobile|mob|cell|fax|whatsapp|电话|手机|传真)\\.?\\s*[:：]?\\s*");
+    /**
+     * 电话标签: 英文词前后不紧挨字母(「Total」「Photo」不算), 单字母「T」必须带「.」或「:」; 中文标签不限位置。
+     * 「Phone No.:」这类带编号字样的也吃掉, 让号码紧跟在标签后面。
+     */
+    private static final Pattern PHONE_LABEL = Pattern.compile(
+            "(?i)(?:(?<!\\p{L})(?:telephone|tel|ph|phone|mobile|mob|cell|cellphone|fax|whatsapp|wechat|viber|contact)(?!\\p{L})"
+                    + "\\.?(?:\\s*(?:no\\.?|number|#))?|(?<!\\p{L})t(?=\\s*[.:：])\\.?|电话|手机|传真|联系电话|联系人|联系)"
+                    + "\\s*[:：]?\\s*");
+    /** 整格只是电话标签(号码在右边一格)。 */
+    private static final Pattern PHONE_LABEL_CELL = Pattern.compile(
+            "(?i)^\\s*(?:telephone|tel|t|ph|phone|mobile|mob|cell|cellphone|fax|whatsapp|wechat|viber|contact)"
+                    + "\\.?(?:\\s*(?:no\\.?|number|#))?\\s*[:：]?\\s*$|^\\s*(?:电话|手机|传真|联系电话|联系人|联系)\\s*[:：]?\\s*$");
+    /** 整格只是税号/注册号标签(号码在右边一格)。 */
+    private static final Pattern TAX_LABEL_CELL = Pattern.compile(
+            "(?i)^\\s*(?:tax\\s*(?:no\\.?|number|id|code)?|vat\\s*(?:no\\.?|number)?|tin|trn|税号|纳税人识别号"
+                    + "|registration\\s*(?:no\\.?|number)?|reg\\.?\\s*no\\.?|注册号)\\s*[:：#]?\\s*$");
     private static final Pattern PHONE_NUMBER = Pattern.compile("\\+?\\d[\\d\\s\\-().]{5,}\\d");
     private static final Pattern DATE_LIKE = Pattern.compile("^\\s*(\\d{4}[-/.]\\d{1,2}[-/.]\\d{1,2}|\\d{1,2}[-/.]\\d{1,2}[-/.]\\d{2,4})\\s*$");
     private static final Pattern INCOTERM = Pattern.compile("(?i)(?<![A-Z])(EXW|FOB|CIF|CFR|CNF|C&F|DDP|DAP|DDU|FCA|CPT|CIP|EX[- ]?WORKS?)(?![A-Z])");
@@ -568,7 +584,9 @@ final class IntakeHeaderRules {
     /**
      * 认列用的表格片段: 去掉银行信息(银行关键字行及紧跟的银行信息行); 我司名称在第一行货品/表头之前(抬头区)时整行去掉,
      * 之后(如货品描述里写「UTEN logo」)只把我司名称换成占位符; 文字格里的邮箱/电话/税号换成占位符(不还原, 认列用不到)。
-     * 单价、数量等数字保留(认列需要看到数据的样子)。
+     * 抬头区(买方、联系人一带)按表头同口径从严: 7 位以上数字串都当电话, 7 位以上的整数数字格也换成占位符;
+     * 任何一行里左边一格只是「Tel:」「VAT No.」这类标签时, 右边的号码一律换成占位符。
+     * 表头之后的单价、数量等数字保留(认列需要看到数据的样子)。
      */
     static Sheet sanitizeForColumnPrompt(Sheet sheet, int fromRow0, int toRow0) {
         Map<String, String> placeholders = new LinkedHashMap<>();
@@ -592,13 +610,22 @@ final class IntakeHeaderRules {
                 continue;
             }
             List<Cell> cells = new ArrayList<>();
+            Cell left = null;
             for (Cell c : row.cells()) {
-                if (c.kind() == CellKind.TEXT) {
+                // 货品行里「T」「Tin」之类的格可能是尺码/材质, 不当标签; 只在联系方式这类非货品行里认。
+                String labelKind = goods || left == null || left.kind() != CellKind.TEXT
+                        ? null : labelledValueKind(left.text());
+                left = c;
+                if (labelKind != null && (labelKind.equals("TAXID") || digitCount(c.text()) >= 7)) {
+                    cells.add(Cell.text(c.col0(), placeholder(labelKind, c.text().strip(), placeholders)));
+                } else if (c.kind() == CellKind.TEXT) {
                     String text = seller ? maskSeller(c.text(), placeholders) : c.text();
-                    String masked = maskPii(text, placeholders, false);
+                    String masked = maskPii(text, placeholders, letterhead);
                     if (!masked.isBlank()) {
                         cells.add(Cell.text(c.col0(), masked));
                     }
+                } else if (letterhead && c.kind() == CellKind.NUMBER && longWholeNumber(c)) {
+                    cells.add(Cell.text(c.col0(), placeholder("PHONE", c.text(), placeholders)));
                 } else {
                     cells.add(c);
                 }
@@ -610,6 +637,28 @@ final class IntakeHeaderRules {
         return new Sheet(sheet.name(), sheet.index(), kept, sheet.merges(), 0, sheet.maxColumn(), false);
     }
 
+    /** 左边一格只是电话/税号标签时, 右边那格该换成哪种占位符; 不是标签返回 null。 */
+    private static String labelledValueKind(String leftText) {
+        String t = IntakeTextNormalizer.nfkc(leftText == null ? "" : leftText);
+        if (TAX_LABEL_CELL.matcher(t).matches()) {
+            return "TAXID";
+        }
+        return PHONE_LABEL_CELL.matcher(t).matches() ? "PHONE" : null;
+    }
+
+    private static int digitCount(String text) {
+        return text == null ? 0 : (int) text.chars().filter(Character::isDigit).count();
+    }
+
+    /** 7 位以上的整数(没有小数部分): 像电话/账号, 不像单价数量。 */
+    private static boolean longWholeNumber(Cell c) {
+        if (c.number() == null) {
+            return false;
+        }
+        BigDecimal n = c.number().stripTrailingZeros();
+        return n.scale() <= 0 && n.abs().toBigInteger().toString().length() >= 7;
+    }
+
     /** PDF 文字最小化(整段当作一页), 见 {@link #minimizeText(List, Set, Map)}。 */
     static String minimizeText(List<String> lines, Map<String, String> placeholders) {
         return minimizeText(lines, Set.of(0), placeholders);
@@ -618,7 +667,7 @@ final class IntakeHeaderRules {
     /**
      * PDF 文字最小化: 去掉银行信息(银行关键字行, 以及紧跟其后、不像货品行也不是新段落的几行, 如银行名称、地址、账号);
      * 我司名称出现在每页第一行货品/表头之前(抬头区)时整行去掉, 之后(货品描述里的「UTEN logo」、页脚)只把我司名称换成
-     * 占位符 ⟨SELLER_n⟩, 不丢行; 邮箱/电话/税号换成占位符。占位符与原文的对应记在 {@code placeholders} 里, 服务端再换回。
+     * 占位符 ⟨SELLER_n⟩, 不丢行; 邮箱/电话/税号换成占位符(抬头区 7 位以上数字串都当电话)。占位符与原文的对应记在 {@code placeholders} 里, 服务端再换回。
      *
      * @param pageStarts 新一页第一行在 {@code lines} 里的下标(每页重新判断抬头区; 从页中间接着的一段不含 0)
      */
@@ -647,7 +696,8 @@ final class IntakeHeaderRules {
                 }
                 text = maskSeller(normalized, placeholders);
             }
-            sb.append(maskPii(text, placeholders, false)).append('\n');
+            // 抬头区(买方、联系人一带)从严: 7 位以上数字串都当电话; 货品区只换带标签或明显格式的号码。
+            sb.append(maskPii(text, placeholders, letterhead)).append('\n');
         }
         return sb.toString().stripTrailing();
     }

@@ -153,6 +153,60 @@ class IntakeHeaderAndPromptTest {
         assertThat(req.maxOutputTokens()).isBetween(1000, IntakePrompts.MAX_OUTPUT_CAP);
     }
 
+    /** 9 位以上的连续数字(电话、税号), 允许中间有空格或连字符。 */
+    private static final Pattern LONG_DIGITS = Pattern.compile("\\d(?:[\\s-]?\\d){8,}");
+
+    @Test
+    void columnPromptMasksContactNumbersInTheBuyerBlockButKeepsGoodsNumbers() {
+        Sheet sheet = new Sheet("S", 0, List.of(
+                new Row(0, List.of(Cell.text(0, "Messrs: OMEGA IMPORTS LLC"))),
+                new Row(1, List.of(Cell.text(0, "Tel:"), Cell.text(1, "13812345678"))),
+                new Row(2, List.of(Cell.text(0, "Mobile"),
+                        new Cell(1, "8613800001111", CellKind.NUMBER, new BigDecimal("8613800001111")))),
+                new Row(3, List.of(Cell.text(0, "VAT No."), Cell.text(1, "300123456700003"))),
+                new Row(4, List.of(Cell.text(0, "Contact Ali 0791234567"), Cell.text(1, "T: 00962 6 552 3887"))),
+                new Row(5, List.of(Cell.text(0, "Part No"), Cell.text(1, "Description"), Cell.text(2, "Qty"),
+                        Cell.text(3, "Price"))),
+                new Row(6, List.of(Cell.text(0, "GZ23/D"), Cell.text(1, "socket"),
+                        new Cell(2, "1800000", CellKind.NUMBER, new BigDecimal("1800000")),
+                        new Cell(3, "21.5", CellKind.NUMBER, new BigDecimal("21.5")))),
+                new Row(7, List.of(Cell.text(0, "Fax"), Cell.text(1, "0791234599")))),
+                List.of(), 0, 3, false);
+        Sheet sanitized = IntakeHeaderRules.sanitizeForColumnPrompt(sheet, 0, 14);
+        String table = com.uten.imp.common.files.document.PromptTable.render(sanitized, 0, 14, 6000, Set.of());
+        assertThat(LONG_DIGITS.matcher(table).find()).as(table).isFalse();
+        assertThat(LEAK.matcher(table).find()).as(table).isFalse();
+        assertThat(table).contains("⟨PHONE_").contains("⟨TAXID_").contains("OMEGA IMPORTS LLC")
+                .doesNotContain("13812345678").doesNotContain("8613800001111").doesNotContain("300123456700003")
+                .doesNotContain("0791234567").doesNotContain("552 3887").doesNotContain("0791234599");
+        // 表头之后的货品数字原样保留(认列要看到数据的样子)。
+        assertThat(sanitized.text(6, 2)).isEqualTo("1800000");
+        assertThat(sanitized.text(6, 3)).isEqualTo("21.5");
+    }
+
+    @Test
+    void pdfPromptMasksEveryLongNumberInTheLetterheadAndLabelledNumbersInGoodsLines() {
+        Map<String, String> placeholders = new LinkedHashMap<>();
+        String text = IntakeHeaderRules.minimizeText(List.of(
+                "Buyer: OMEGA IMPORTS LLC",
+                "T: 00962 6 552 3887",
+                "Contact Ali 0791234567",
+                "Mob 0791234568",
+                "PI No. PI-778 Date 2026-09-15",
+                "Item  Description  Qty  Price  Amount",
+                "1  GZ23/D  socket  1800000  21  37800000",
+                "Tel 0791234569",
+                "2  GK12  switch  700  9.45  6615"), placeholders);
+        assertThat(LONG_DIGITS.matcher(text).find()).as(text).isFalse();
+        assertThat(text).contains("OMEGA IMPORTS LLC").contains("PI-778").contains("2026-09-15")
+                .contains("1  GZ23/D  socket  1800000  21  37800000").contains("Tel ⟨PHONE_");
+        assertThat(IntakeHeaderRules.unmask(text, placeholders)).contains("0791234567").contains("00962 6 552 3887");
+        // 「Total」「Photo」不是电话标签: 货品区的大金额不能被当电话抹掉。
+        String goods = IntakeHeaderRules.minimizeText(List.of("Item  Description  Qty  Price  Amount",
+                "1  GZ23/D  photo frame  100  12.5  1250", "Total 12345678.50"), new LinkedHashMap<>());
+        assertThat(goods).contains("Total 12345678.50");
+    }
+
     @Test
     void pdfBankBlocksAreDroppedEvenWhenLinesCarryNoBankKeyword() {
         Map<String, String> placeholders = new LinkedHashMap<>();

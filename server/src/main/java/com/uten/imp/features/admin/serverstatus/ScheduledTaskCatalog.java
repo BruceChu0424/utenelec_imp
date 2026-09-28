@@ -21,6 +21,11 @@ public final class ScheduledTaskCatalog {
     public record Entry(String label, String purpose) {}
 
     private static final Map<String, Entry> ENTRIES = Map.ofEntries(
+            Map.entry("AiJobHousekeeping.purge", new Entry("AI 数据清理",
+                    "每 10 分钟清理 AI 数据: 排队太久没开始的识别判失败, 用过或超过 48 小时的识别结果清空,"
+                            + " 7 天前的识别任务与 180 天前的调用记录删除。")),
+            Map.entry("AiJobScheduler.poll", new Entry("AI 识别任务",
+                    "每 5 秒接手排队中的 AI 识别(销售上传的客户文件), 并把处理中断的识别重新排队或判失败。")),
             Map.entry("AttachmentObjectOutboxScheduler.drain", new Entry("附件文件清理",
                     "把已确认删除或已过期的附件文件从文件存储里真正删掉, 释放磁盘空间。")),
             Map.entry("AttachmentUploadExpiryScheduler.expire", new Entry("附件上传超时清理",
@@ -61,8 +66,6 @@ public final class ScheduledTaskCatalog {
                     "每天 03:17 把整月超过在线保留期的审计日志移入归档, 归档再到期后整月清理, 每次运行留一条完成记录。")),
             Map.entry("AuditPartitionMaintainer.ensureUpcoming", new Entry("审计日志月分区预建",
                     "每天 01:07 预先建好当月和之后 3 个月的审计日志存放区, 保证新记录随时有地方写。")),
-            Map.entry("OfficialPolicyIntelligenceScheduler.refresh", new Entry("官方政策资讯刷新",
-                    "每天 06:15 刷新工作台的官方政策资讯, 需要显式开启才运行。")),
             Map.entry("PrimaryHealthIndicator.ping", new Entry("云端主库连通探测",
                     "云端部署下每 10 秒探测主数据库是否可达, 不可达时自动降级为只读。"))
     );

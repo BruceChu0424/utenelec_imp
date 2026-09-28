@@ -45,7 +45,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
         "spring.profiles.active=dev",
         "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false",
-        "uten.policy-intelligence.enabled=false",
         "uten.jwt.secret=auth-session-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=auth-session-pgp-key-0123456789-test-only",
         "uten.crypto.hmac-key=auth-session-hmac-key-0123456789-test-only",

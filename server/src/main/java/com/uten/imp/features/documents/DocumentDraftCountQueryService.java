@@ -98,9 +98,13 @@ public class DocumentDraftCountQueryService {
     static final DraftSource SALES_RETURN = new DraftSource(
             "sales_returns", "o.owner_employee_id", "sales", "sales:view:all",
             "sales_return:view", null);
+    /**
+     * 报价草稿(ADR-134) = 还没提交核价、也不是财务退回的草稿。财务退回件(status 0 + 退回原因)走
+     * {@link DocumentStatusCountQueryService} 的 FINANCE_REJECTED 桶(红徽章「报价被退回」), 草稿再数一次就是双计。
+     */
     static final DraftSource SALES_QUOTE = new DraftSource(
             "sales_quotes", "o.maker_id", "sales", "sales:view:all",
-            "sales_quote:view", null);
+            "sales_quote:view", "o.finance_return_reason IS NULL");
 
     // 采购/委外订货单：财务通过前单据 status 保持 0，但已提交财务审核的单
     // 不再是「我的草稿」（在等财务处理，列表另设「等待财务审核」段）；

@@ -5,7 +5,9 @@
   "bomLearningPaused": "没有自动建立学习组件：{reason}。真实使用数量照常累计。",
   "@bomLearningPaused": {
     "placeholders": {
-      "reason": {"type": "String"}
+      "reason": {
+        "type": "String"
+      }
     }
   },
   "bomDesignQty": "设计使用数量",
@@ -14,22 +16,32 @@
   "bomActualTipActual": "按 {samples} 批已完工生产累计：净耗 {net} / 产量 {output}",
   "@bomActualTipActual": {
     "placeholders": {
-      "samples": {"type": "int"},
-      "net": {"type": "String"},
-      "output": {"type": "String"}
+      "samples": {
+        "type": "int"
+      },
+      "net": {
+        "type": "String"
+      },
+      "output": {
+        "type": "String"
+      }
     }
   },
   "bomActualTipAverage": "实际平均每件用 {qty}",
   "@bomActualTipAverage": {
     "placeholders": {
-      "qty": {"type": "String"}
+      "qty": {
+        "type": "String"
+      }
     }
   },
   "bomActualTipUsed": "物料分析和车间领料按真实使用数量计算",
   "bomUsesDesignBecause": "{reason}，计算按设计使用数量",
   "@bomUsesDesignBecause": {
     "placeholders": {
-      "reason": {"type": "String"}
+      "reason": {
+        "type": "String"
+      }
     }
   },
   "bomDesignReasonNoData": "还没有已完工且核清余料的生产数据",
@@ -40,7 +52,9 @@
   "bomRelearnedSince": "从 {date} 起重新累计",
   "@bomRelearnedSince": {
     "placeholders": {
-      "date": {"type": "String"}
+      "date": {
+        "type": "String"
+      }
     }
   },
   "bomDesignQtyRequired": "请填写设计使用数量",
@@ -49,7 +63,9 @@
   "bomLearnedEdgeDeleteNote": "其中 {count} 个是系统学出的组件，删除后系统不会再自动加回",
   "@bomLearnedEdgeDeleteNote": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "bomLearningMaterial": "物料",
@@ -62,7 +78,9 @@
   "bomLearningRelearnConfirm": "「{name}」从现在起重新学习？\n之前的累计不再参与计算；新的生产数据出来前，计算按设计使用数量。",
   "@bomLearningRelearnConfirm": {
     "placeholders": {
-      "name": {"type": "String"}
+      "name": {
+        "type": "String"
+      }
     }
   },
   "bomLearningRelearnDone": "已从现在起重新学习",
@@ -84,9 +102,15 @@
   "bomActualTipDefect": "另有不良 {defect}：按实产(良品+不良)算用量为 {perProduced}，不良率 {rate}",
   "@bomActualTipDefect": {
     "placeholders": {
-      "defect": {"type": "String"},
-      "perProduced": {"type": "String"},
-      "rate": {"type": "String"}
+      "defect": {
+        "type": "String"
+      },
+      "perProduced": {
+        "type": "String"
+      },
+      "rate": {
+        "type": "String"
+      }
     }
   },
   "bomLearningDefect": "不良数",
@@ -1790,20 +1814,28 @@
   "visitorBatchLimitError": "单次最多批量处理 {limit} 条，请分批操作（当前 {count} 条）",
   "@visitorBatchLimitError": {
     "placeholders": {
-      "limit": {"type": "int"},
-      "count": {"type": "int"}
+      "limit": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveTitle": "批量批准({count})",
   "@visitorBatchApproveTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveMessage": "将逐单批准所选 {count} 条访客申请，批准后生成通行二维码。如需核对接待人与来访事由，请双击行进入详情逐单审阅。",
   "@visitorBatchApproveMessage": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveConfirm": "确认批量批准",
@@ -1811,7 +1843,9 @@
   "visitorBatchApproveResponsibility": "确认后，系统将以此登录员工记录所选 {count} 条访客申请的审批责任。",
   "@visitorBatchApproveResponsibility": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchVerbApprove": "批准",
@@ -1821,19 +1855,25 @@
   "@visitorBatchResult": {
     "placeholders": {
       "verb": {},
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchResultFailures": "，{count} 条失败",
   "@visitorBatchResultFailures": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchResultSkipped": "，{count} 条已跳过",
   "@visitorBatchResultSkipped": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchIncomplete": "批量{verb}未全部完成：{reason}",
@@ -1846,13 +1886,17 @@
   "visitorBatchRejectTitle": "批量拒绝({count})",
   "@visitorBatchRejectTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchRejectDescription": "拒绝原因将同步给 {count} 位访客，请说明具体问题。",
   "@visitorBatchRejectDescription": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchRejectConfirm": "确认拒绝",
@@ -1861,44 +1905,58 @@
   "visitorBatchForwardTitle": "批量转接待人确认({count})",
   "@visitorBatchForwardTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardMessage": "将把所选 {count} 条访客申请转给各自接待人确认，接待人确认后回到本队列等待你最终批准。",
   "@visitorBatchForwardMessage": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardSkippedNote": "（另有 {count} 条已在接待人确认中，已跳过）",
   "@visitorBatchForwardSkippedNote": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardConfirm": "确认批量转接",
   "visitorBatchForwardResponsibility": "确认后，系统将以此登录员工记录所选 {count} 条访客申请的转接责任。",
   "@visitorBatchForwardResponsibility": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveButton": "批量批准({count})",
   "@visitorBatchApproveButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardButton": "批量转接待人确认({count})",
   "@visitorBatchForwardButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchRejectButton": "批量拒绝({count})",
   "@visitorBatchRejectButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorApprovalDoneApprove": "访客申请已批准",
@@ -1915,26 +1973,34 @@
   "myVisitorsBatchTitle": "批量确认接待({count})",
   "@myVisitorsBatchTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchMessage": "将逐条确认接待所选 {count} 位访客，确认后申请转回 HR 等待最终批准。",
   "@myVisitorsBatchMessage": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchSkippedNote": "（另有 {count} 条不在「待我确认」状态，已跳过）",
   "@myVisitorsBatchSkippedNote": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchConfirm": "确认接待",
   "myVisitorsBatchResult": "已确认接待 {count} 位访客",
   "@myVisitorsBatchResult": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchIncomplete": "批量确认未全部完成：{reason}",
@@ -1946,7 +2012,9 @@
   "myVisitorsBatchButton": "批量确认接待({count})",
   "@myVisitorsBatchButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsStatusColInfo": "默认只看「待我确认」；表头筛选可切到已转 HR / 已批准 / 已拒绝（下推后端）。",
@@ -2258,5 +2326,1371 @@
   "wmReportNoBin": "还没有车间开启整批领料，暂时没有内料仓用量可看。",
   "wmOpenBom": "打开 BOM",
   "wmWorkshopMaterialSection": "车间用料",
-  "wmIssueMethodUpdated": "发料方式已更新"
+  "wmIssueMethodUpdated": "发料方式已更新",
+  "bomLearningAuto": "自动更新 BOM",
+  "bomLearningAverage": "每件平均用量",
+  "warehouseGoodsMasterDefaultHint": "已带入货品主档的默认存放仓，请核对本次实际仓库",
+  "warehouseSuggestedDestinationHint": "已带入建议存放仓，请核对本次实际仓库",
+  "warehouseBatchRegistrationHelp": "成品仓、库位号逐行必填；优先带入货品主档默认仓，缺项再参考个人选仓上下文。勾选多行后改仓或填写库位可批量应用。每张报工单各生成一份送检，品质放行后再最终点收。",
+  "goodsNameEnLabel": "英文名称",
+  "goodsNameEnHint": "如 DOUBLE 3 PIN SOCKET WITH SWITCH",
+  "goodsNameEnInfo": "客户报价单或订货单上对这个货品的英文叫法。识别客户文件时, 系统用它把英文品名对应到这个货品。",
+  "goodsNameEnColumnInfo": "客户文件里对这个货品的英文叫法。销售保存带英文品名的单据时会自动记住, 也可以在货品详情里修改。",
+  "goodsNameEnSearchHint": "搜索货品(名称/英文名称/编号/型号/规格/系列)",
+  "goodsNameEnLearned": "系统自动记住",
+  "goodsNameEnLearnedTip": "这是销售保存客户文件时系统自动记住的英文名称, 不对可以直接修改。",
+  "goodsNameEnEdit": "修改英文名称",
+  "goodsNameEnEditDescription": "填客户文件上写的英文品名。保存后, 以后识别客户文件都按这个名称对应到本货品。留空表示不用英文名称。",
+  "goodsNameEnSaving": "正在保存…",
+  "goodsNameEnSaved": "英文名称已保存",
+  "goodsNameEnCleared": "英文名称已清除",
+  "goodsNameEnImportHint": "英文名称也可以导入 (表头写「英文名称」或「English Name」)。",
+  "goodsNameEnTooLong": "英文名称最多 {max} 个字",
+  "@goodsNameEnTooLong": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "clientNameEnLabel": "外文名称",
+  "clientNameEnHint": "如 SUNAS TRADING LIMITED",
+  "clientNameEnInfo": "客户公司的英文或其他外文名称。识别客户文件时, 系统用它找到这个客户; 销售保存单据时也会自动补上。",
+  "clientNameEnSearchHint": "搜索客户(简称/编码/全称/外文名称/联系人/手机/邮箱)",
+  "clientGoodsAliasTab": "货品对照",
+  "clientGoodsAliasTitle": "客户对货品的叫法",
+  "clientGoodsAliasDescription": "客户报价单、订货单上的型号和品名, 对应到我们的哪个货品。识别这个客户的文件时, 系统优先按这里对应。",
+  "clientGoodsAliasSearchHint": "搜索客户的叫法、货品名称或编号",
+  "clientGoodsAliasEmptyTitle": "还没有货品对照",
+  "clientGoodsAliasEmpty": "保存带有文件型号的报价单或订货单后, 这里会自动记住客户的叫法",
+  "clientGoodsAliasNoMatch": "没有找到相关的对照, 换个关键词试试",
+  "clientGoodsAliasKindPartNo": "客户型号",
+  "clientGoodsAliasKindDescription": "客户品名",
+  "clientGoodsAliasContext": "适用于 {context}",
+  "@clientGoodsAliasContext": {
+    "placeholders": {
+      "context": {
+        "type": "String"
+      }
+    }
+  },
+  "clientGoodsAliasConfirmCount": "{count, plural, other{已确认 {count} 次}}",
+  "@clientGoodsAliasConfirmCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clientGoodsAliasExplicitCount": "{count, plural, other{其中 {count} 次是手工选的}}",
+  "@clientGoodsAliasExplicitCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clientGoodsAliasLastConfirmed": "最近 {date}",
+  "@clientGoodsAliasLastConfirmed": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "clientGoodsAliasLastConfirmedBy": "最近 {date} · {name}",
+  "@clientGoodsAliasLastConfirmedBy": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "clientGoodsAliasGoodsMissing": "货品资料已删除",
+  "clientGoodsAliasDelete": "删除这条对照",
+  "clientGoodsAliasDeleteAction": "删除",
+  "clientGoodsAliasDeleteConfirm": "删除后, 识别这个客户的文件时不再把「{alias}」对应到「{goods}」。以后销售保存单据时, 系统可能会重新记住。",
+  "@clientGoodsAliasDeleteConfirm": {
+    "placeholders": {
+      "alias": {
+        "type": "String"
+      },
+      "goods": {
+        "type": "String"
+      }
+    }
+  },
+  "clientGoodsAliasDeleting": "正在删除对照",
+  "clientGoodsAliasDeleted": "已删除这条对照",
+  "clientGoodsAliasLoadFailed": "货品对照没有加载出来, 请重试",
+  "clientGoodsAliasTotal": "{count, plural, other{共 {count} 条}}",
+  "@clientGoodsAliasTotal": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clientGoodsAliasPage": "第 {page} / {pages} 页",
+  "@clientGoodsAliasPage": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      },
+      "pages": {
+        "type": "int"
+      }
+    }
+  },
+  "clientGoodsAliasPrevPage": "上一页",
+  "clientGoodsAliasNextPage": "下一页",
+  "aiJobCancel": "取消",
+  "aiJobElapsed": "已用时 {time}",
+  "@aiJobElapsed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiJobQueued": "正在排队, 马上开始",
+  "aiJobSlowHint": "内容较多时需要一两分钟, 请耐心等待, 不用重复点",
+  "aiJobTimeout": "处理时间太长, 已停止等待。请稍后再试, 或把文件拆小一些",
+  "aiJobGone": "这次处理的任务已不存在(可能已被清理), 请重新开始",
+  "aiJobFailedGeneric": "处理没有成功, 请稍后重试",
+  "aiJobConfidenceHigh": "把握高",
+  "aiJobConfidenceMedium": "把握中",
+  "aiJobConfidenceLow": "把握低",
+  "aiJobConfidenceSemantics": "AI 判断把握: {level}",
+  "@aiJobConfidenceSemantics": {
+    "placeholders": {
+      "level": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsTitle": "AI 服务",
+  "aiSettingsEntrySubtitle": "配置大模型服务商、密钥和连接测试",
+  "aiSettingsHeroActive": "正在使用: {name} · {model}",
+  "@aiSettingsHeroActive": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsHeroReady": "销售上传客户文件时会用它自动识别",
+  "aiSettingsHeroNone": "还没有可用的 AI 服务",
+  "aiSettingsHeroNoneHint": "添加一个服务商并测试通过后, 销售上传客户文件就能自动识别",
+  "aiSettingsHeroDefaultDisabled": "默认服务已停用, 目前不会调用 AI",
+  "aiSettingsHeroNeedsKey": "还没有填写密钥, 目前不会调用 AI",
+  "aiSettingsSecurityNote": "密钥加密保存, 页面只显示尾号; 保存、删除和用已存密钥测试都要再次确认登录密码。",
+  "aiSettingsOutboundOff": "这台服务器关闭了对外调用 AI(测试环境默认如此), 配置可以保存, 但不会真正调用",
+  "aiSettingsProvidersSection": "服务商",
+  "aiSettingsAdd": "添加 AI 服务",
+  "aiSettingsEditTitle": "编辑 AI 服务",
+  "aiSettingsEmptyTitle": "还没有配置 AI 服务",
+  "aiSettingsEmptyHint": "支持 DeepSeek、通义千问、Kimi、智谱等国内服务商, 也可以接本机部署的模型",
+  "aiSettingsLoadFailed": "加载 AI 服务设置失败",
+  "aiSettingsNoAccess": "只有超级管理员可以查看和修改 AI 服务",
+  "aiSettingsRetry": "重试",
+  "aiSettingsRefresh": "刷新",
+  "aiSettingsClose": "关闭",
+  "aiSettingsCancel": "取消",
+  "aiSettingsRegion": "所在区域",
+  "aiSettingsRegionMainland": "国内",
+  "aiSettingsRegionOverseas": "境外",
+  "aiSettingsRegionLocal": "本机",
+  "aiSettingsDefaultBadge": "默认",
+  "aiSettingsDisabledBadge": "已停用",
+  "aiSettingsModel": "模型",
+  "aiSettingsBaseUrl": "接口地址",
+  "aiSettingsApiKey": "密钥",
+  "aiSettingsKeyMissing": "未配置",
+  "aiSettingsKeyNotNeeded": "不需要",
+  "aiSettingsKeyUnreadable": "密钥无法解密, 请重新填写",
+  "aiSettingsLastTest": "上次测试",
+  "aiSettingsLastTestOk": "通过 · {time}",
+  "@aiSettingsLastTestOk": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsLastTestFailed": "未通过 · {time}",
+  "@aiSettingsLastTestFailed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsNeverTested": "还没测试过",
+  "aiSettingsEnabledSwitch": "启用",
+  "aiSettingsEnabledInfo": "停用后不会调用这个服务",
+  "aiSettingsTest": "测试连接",
+  "aiSettingsTesting": "正在测试",
+  "aiSettingsEdit": "编辑",
+  "aiSettingsSetDefault": "设为默认",
+  "aiSettingsDelete": "删除",
+  "aiSettingsDeleteTitle": "删除这个 AI 服务?",
+  "aiSettingsDeleteMessage": "删除后「{name}」的配置和密钥都会清除, 不能恢复。",
+  "@aiSettingsDeleteMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsDeleteDefaultBlocked": "默认服务不能删除, 请先把别的服务设为默认",
+  "aiSettingsDeleted": "已删除",
+  "aiSettingsDefaultSet": "已把「{name}」设为默认",
+  "@aiSettingsDefaultSet": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsEnabledOn": "已启用「{name}」",
+  "@aiSettingsEnabledOn": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsEnabledOff": "已停用「{name}」",
+  "@aiSettingsEnabledOff": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsBusySaving": "正在保存",
+  "aiSettingsBusyDeleting": "正在删除",
+  "aiSettingsUpdatedBy": "{name} 修改于 {time}",
+  "@aiSettingsUpdatedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsTestNeedsKeyEdit": "还没有密钥, 请先点「编辑」填写密钥再测试",
+  "aiSettingsUsageTitle": "近 {days} 天用量",
+  "@aiSettingsUsageTitle": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsUsageCalls": "调用次数",
+  "aiSettingsUsageSuccessRate": "成功率",
+  "aiSettingsUsageTokens": "输入 / 输出 token",
+  "aiSettingsUsageLatency": "平均耗时",
+  "aiSettingsUsageSeconds": "{value} 秒",
+  "@aiSettingsUsageSeconds": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsUsageEmpty": "还没有调用记录",
+  "aiSettingsUsageUnavailable": "用量暂时读不到, 不影响使用",
+  "aiSettingsPreset": "服务商",
+  "aiSettingsPresetInfo": "选好服务商会自动填好接口地址和推荐设置, 每一项都还能改",
+  "aiSettingsPresetOverseasOff": "{label} (境外, 未开放)",
+  "@aiSettingsPresetOverseasOff": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsOverseasOffHint": "境外服务商默认关闭。如需使用, 请联系部署人员在服务器配置中开启, 并完成数据出境评估",
+  "aiSettingsPresetUnavailable": "{label} (暂不可用)",
+  "@aiSettingsPresetUnavailable": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsName": "显示名称",
+  "aiSettingsNameHint": "例如: DeepSeek 正式账号",
+  "aiSettingsNameRequired": "请填写显示名称",
+  "aiSettingsTooLong": "最多 {max} 个字符",
+  "@aiSettingsTooLong": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsBaseUrlInfo": "服务商文档里的 Base URL; 只能用 https, 本机部署可以用 http://127.0.0.1",
+  "aiSettingsBaseUrlRequired": "请填写接口地址",
+  "aiSettingsBaseUrlInvalid": "接口地址格式不对, 应以 https:// 开头, 不带问号后面的参数",
+  "aiSettingsBaseUrlHttpLocalOnly": "只有本机部署可以用 http, 其他服务商请用 https",
+  "aiSettingsModelHint": "填模型名称, 或点「获取模型」从列表选",
+  "aiSettingsModelRequired": "请填写模型名称",
+  "aiSettingsFetchModels": "获取模型",
+  "aiSettingsPickModel": "从列表选择模型",
+  "aiSettingsModelsLoaded": "找到 {count} 个模型",
+  "@aiSettingsModelsLoaded": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsModelsEmpty": "服务商没有返回模型列表, 请直接填写模型名称",
+  "aiSettingsApiKeyHint": "粘贴服务商后台生成的密钥",
+  "aiSettingsApiKeyNotNeededHint": "本机部署通常不需要密钥, 可以留空",
+  "aiSettingsApiKeyRequired": "请填写密钥",
+  "aiSettingsClearKey": "清除密钥",
+  "aiSettingsUndoClear": "撤销清除",
+  "aiSettingsKeyWillClear": "保存后会清除已存的密钥",
+  "aiSettingsUrlChangedNeedKey": "改了接口地址, 需要重新填写密钥",
+  "aiSettingsUrlChangedNeedKeyDetail": "为了安全, 已存的密钥只会发给原来的地址。请重新粘贴密钥后再保存。",
+  "aiSettingsUrlChangedNeedKeyLocalDetail": "为了安全, 已存的密钥只会发给原来的地址。请重新粘贴密钥; 新地址不需要密钥的, 点「清除密钥」。",
+  "aiSettingsAdvanced": "高级设置",
+  "aiSettingsProtocol": "接口协议",
+  "aiSettingsProtocolInfo": "国内服务商和本机部署基本都是 OpenAI 兼容; 只有 Claude 用 Anthropic",
+  "aiSettingsProtocolOpenAi": "OpenAI 兼容",
+  "aiSettingsProtocolAnthropic": "Anthropic",
+  "aiSettingsJsonMode": "JSON 输出方式",
+  "aiSettingsJsonModeInfo": "要求模型只回一段 JSON, 系统才能读懂结果; 服务商不支持时选「不要求」",
+  "aiSettingsJsonModeNone": "不要求",
+  "aiSettingsJsonModeObject": "JSON 对象",
+  "aiSettingsJsonModeSchema": "按结构输出",
+  "aiSettingsThinking": "关闭深度思考",
+  "aiSettingsThinkingInfo": "识别表格不需要深度思考, 关掉更快更省钱; 各服务商写法不同, 选好服务商会自动选对",
+  "aiSettingsThinkingNone": "不处理",
+  "aiSettingsThinkingDeepseek": "DeepSeek 写法",
+  "aiSettingsThinkingDashscope": "通义千问写法",
+  "aiSettingsThinkingOpenAi": "OpenAI 写法",
+  "aiSettingsTemperature": "固定输出(温度为 0)",
+  "aiSettingsTemperatureInfo": "同一份文件每次识别结果尽量一致; 个别模型不接受这个参数时关掉",
+  "aiSettingsVision": "能识别图片和扫描件",
+  "aiSettingsVisionInfo": "模型支持看图时打开, 销售上传的照片和扫描版 PDF 才能识别",
+  "aiSettingsMaxTokens": "最大输出长度",
+  "aiSettingsMaxTokensInfo": "256 ~ 65536; 行数多的文件需要更长",
+  "aiSettingsTimeout": "超时秒数",
+  "aiSettingsTimeoutInfo": "10 ~ 600; 超过这个时间还没回复就算失败",
+  "aiSettingsNumberRange": "请输入 {min} ~ {max} 之间的整数",
+  "@aiSettingsNumberRange": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsOverseasAck": "客户资料(公司名、货品描述)会发送到境外服务商, 我已确认完成数据出境评估",
+  "aiSettingsOverseasAckRequired": "使用境外服务商前请先勾选上面的确认",
+  "aiSettingsSave": "保存",
+  "aiSettingsSaving": "正在保存",
+  "aiSettingsSaved": "已保存",
+  "aiSettingsSaveFailed": "保存失败, 请稍后重试",
+  "aiSettingsFixFields": "请先改好标红的项",
+  "aiSettingsTestNeedsKey": "测试前请先填写密钥",
+  "aiSettingsTestStoredMismatch": "用已存的密钥测试时, 接口地址和模型要与已保存的一致。请先保存, 或重新填写密钥再测试",
+  "aiSettingsTestResultTitle": "连接测试",
+  "aiSettingsStepNetwork": "网络连通",
+  "aiSettingsStepAuth": "密钥验证",
+  "aiSettingsStepModel": "模型可用",
+  "aiSettingsStepJson": "JSON 输出",
+  "aiSettingsStepSkipped": "未进行",
+  "aiSettingsLatency": "{ms} 毫秒",
+  "@aiSettingsLatency": {
+    "placeholders": {
+      "ms": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsTestPassed": "连接正常, 可以使用",
+  "aiSettingsTestPassedShort": "通过",
+  "aiSettingsTestFailed": "连接没有通过, 请按提示检查后再试",
+  "aiSettingsTestFailedShort": "未通过",
+  "aiSettingsTestWarnShort": "需留意",
+  "aiSettingsTestPassedWithNotes": "连上了, 但有需要留意的地方, 请看上面的黄色提示",
+  "aiSettingsTestStoredUnsavedAdvanced": "高级设置改过了, 用已存的密钥测试不会带上这些改动。请先保存再测试, 或重新填写密钥后测试",
+  "aiSettingsModelChoices": "可选模型:",
+  "aiSettingsOverseasLockedShort": "境外服务商暂未开放, 需要部署人员在服务器上开启",
+  "aiSettingsKeyConfiguredPlain": "已配置",
+  "aiSettingsApiKeyKeepHintPlain": "已配置, 不改就留空",
+  "aiSettingsCurrentKey": "当前密钥",
+  "salesQuoteStatusDraft": "草稿",
+  "salesQuoteStatusPendingFinance": "待财务核价",
+  "salesQuoteStatusReturned": "财务退回",
+  "salesQuoteStatusConfirmed": "已核价",
+  "salesQuoteStatusReversed": "作废",
+  "salesQuoteStatusConverted": "已转订货单",
+  "salesQuoteStatusToConvert": "已核价, 待转订货单",
+  "salesQuoteStatusReadOnly": "{status} · 只读",
+  "@salesQuoteStatusReadOnly": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "salesQuoteStatusHistory": "历史记录",
+  "salesQuoteStatusBannerDraft": "草稿: 填好后点「提交财务核价」, 财务定好价格和折扣后才能转订货单。",
+  "salesQuoteStatusBannerPending": "已提交财务核价, 正在等财务定价格。需要改内容请先「撤回」。",
+  "salesQuoteStatusBannerReturned": "财务退回: {reason}。改好后再提交财务核价。",
+  "@salesQuoteStatusBannerReturned": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "salesQuoteStatusBannerConfirmed": "财务已核价({name} · {time}), 可以转订货单了。",
+  "@salesQuoteStatusBannerConfirmed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "salesQuoteStatusBannerConverted": "已转成订货单 {orderNo}, 报价不能再修改。",
+  "@salesQuoteStatusBannerConverted": {
+    "placeholders": {
+      "orderNo": {
+        "type": "String"
+      }
+    }
+  },
+  "salesQuoteStatusBannerReversed": "这张报价已作废, 只能查看。",
+  "salesQuoteStatusFinanceFallback": "财务",
+  "salesQuoteStatusFieldReturnReason": "退回原因",
+  "salesQuoteStatusFieldSubmittedAt": "提交核价时间",
+  "salesQuoteStatusFieldConfirmedBy": "核价人",
+  "salesQuoteStatusFieldConvertedOrder": "转入订货单",
+  "salesQuoteStatusFieldFinanceRemark": "财务备注",
+  "salesQuoteStatusActionSubmit": "提交财务核价",
+  "salesQuoteStatusActionWithdraw": "撤回",
+  "salesQuoteStatusActionReopen": "重新修改",
+  "salesQuoteStatusActionConvert": "转订货单",
+  "salesQuoteStatusActionReverse": "作废",
+  "salesQuoteStatusActionEdit": "编辑",
+  "salesQuoteStatusActionDelete": "删除",
+  "salesQuoteStatusActionFinanceReview": "去核价",
+  "salesQuoteStatusActionViewOrder": "查看订货单",
+  "salesQuoteStatusActionBack": "返回列表",
+  "salesQuoteStatusSubmitConfirmBody": "提交后财务会逐行定价格和折扣, 这期间你不能修改这张报价。确定提交?",
+  "salesQuoteStatusWithdrawConfirmBody": "撤回后报价回到草稿, 可以继续修改; 改好后需要重新提交财务核价。确定撤回?",
+  "salesQuoteStatusReopenConfirmBody": "财务已经核好价格。重新修改会让报价回到草稿, 改完要再交财务核价才能转订货单。确定重新修改?",
+  "salesQuoteStatusReverseConfirmBody": "作废后这张报价不能再转订货单, 也不能恢复。确定作废?",
+  "salesQuoteStatusDeleteConfirmBody": "确定删除这张报价草稿? 删除后不能恢复。",
+  "salesQuoteStatusConvertConfirmBody": "会按财务核定的单价和折扣生成订货单草稿。单价和折扣已由财务核定, 不能修改; 数量和交货信息可以在订货单里补充。确定转入?",
+  "salesQuoteStatusConfirm": "确定",
+  "salesQuoteStatusCancel": "取消",
+  "salesQuoteStatusSubmitted": "已提交财务核价",
+  "salesQuoteStatusWithdrawn": "已撤回, 可以继续修改",
+  "salesQuoteStatusReopened": "已回到草稿, 改好后请重新提交财务核价",
+  "salesQuoteStatusReversedDone": "报价已作废",
+  "salesQuoteStatusDeleted": "已删除",
+  "salesQuoteStatusConvertDone": "已生成订货单草稿 {billNo}",
+  "@salesQuoteStatusConvertDone": {
+    "placeholders": {
+      "billNo": {
+        "type": "String"
+      }
+    }
+  },
+  "salesQuoteStatusActionFailed": "操作没有成功, 请稍后再试",
+  "salesQuoteStatusBusy": "正在处理, 请稍候",
+  "salesQuoteStatusTimelineTitle": "核价记录",
+  "salesQuoteStatusTimelineEmpty": "还没有核价记录",
+  "salesQuoteStatusRevisionSubmit": "提交财务核价",
+  "salesQuoteStatusRevisionWithdraw": "销售撤回",
+  "salesQuoteStatusRevisionFinanceEdit": "财务修改价格",
+  "salesQuoteStatusRevisionReturn": "财务退回",
+  "salesQuoteStatusRevisionConfirm": "财务确认报价",
+  "salesQuoteStatusRevisionReopen": "销售重新修改",
+  "salesQuoteStatusRevisionFinanceReopen": "财务撤销确认",
+  "salesQuoteStatusRevisionOther": "其它记录",
+  "salesQuoteStatusRevisionOperator": "操作人",
+  "salesQuoteStatusRevisionVersion": "第 {revision} 版",
+  "@salesQuoteStatusRevisionVersion": {
+    "placeholders": {
+      "revision": {
+        "type": "int"
+      }
+    }
+  },
+  "salesQuoteStatusSourceQuoteConfirmed": "报价已核价",
+  "salesQuoteStatusSourceQuote": "来源报价",
+  "quoteFinanceHubTitle": "报价核价",
+  "quoteFinanceHubSubtitle": "销售报价由财务定价格和折扣, 确认后销售才能转订货单",
+  "quoteFinanceListTitle": "报价核价",
+  "quoteFinanceTabPending": "待核价",
+  "quoteFinanceTabConfirmed": "已核价",
+  "quoteFinanceTabReturned": "已退回",
+  "quoteFinanceSearchHint": "搜索单号 / 客户 / 业务员",
+  "quoteFinanceRowHint": "单击选中 · 双击核价",
+  "quoteFinanceColBillNo": "报价单号",
+  "quoteFinanceColClient": "客户",
+  "quoteFinanceColSeller": "业务员",
+  "quoteFinanceColSubmittedAt": "提交时间",
+  "quoteFinanceColLines": "明细行",
+  "quoteFinanceColAmount": "报价金额",
+  "quoteFinanceColStatus": "状态 / 说明",
+  "quoteFinanceStatusPending": "待核价",
+  "quoteFinanceStatusResubmitted": "销售改后重新提交",
+  "quoteFinanceStatusNeedPrice": "{count, plural, other{有 {count} 行没有标价}}",
+  "@quoteFinanceStatusNeedPrice": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceStatusConfirmed": "已核价 · {name}",
+  "@quoteFinanceStatusConfirmed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceStatusConverted": "已转订货单 {orderNo}",
+  "@quoteFinanceStatusConverted": {
+    "placeholders": {
+      "orderNo": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceStatusReturned": "已退回: {reason}",
+  "@quoteFinanceStatusReturned": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceEmptyPending": "目前没有等待核价的报价",
+  "quoteFinanceEmptyPendingHint": "销售提交核价后会出现在这里; 你定好价格并确认后, 销售才能转订货单。",
+  "quoteFinanceEmptyConfirmed": "还没有已核价的报价",
+  "quoteFinanceEmptyReturned": "没有退回给销售的报价",
+  "quoteFinanceEmptyReturnedHint": "退回的报价由销售改好后, 会重新回到「待核价」。",
+  "quoteFinanceEmptySearch": "没有找到“{keyword}”相关的报价",
+  "@quoteFinanceEmptySearch": {
+    "placeholders": {
+      "keyword": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceLoadFailed": "报价加载失败, 请检查网络后重试",
+  "quoteFinanceRetry": "重试",
+  "quoteFinanceRefresh": "刷新",
+  "quoteFinanceOpen": "核价",
+  "quoteFinancePrevPage": "上一页",
+  "quoteFinanceNextPage": "下一页",
+  "quoteFinanceUnnamed": "未标注",
+  "quoteFinanceReviewTitle": "报价核价",
+  "quoteFinanceStripPending": "待财务核价",
+  "quoteFinanceStripConfirmed": "已核价 · {name} · {time}",
+  "@quoteFinanceStripConfirmed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceStripReturned": "已退回销售 · {reason}",
+  "@quoteFinanceStripReturned": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceStripDraft": "销售修改中",
+  "quoteFinanceStripReversed": "已作废",
+  "quoteFinanceStripConverted": "已转订货单 {orderNo}",
+  "@quoteFinanceStripConverted": {
+    "placeholders": {
+      "orderNo": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceRevisionBadge": "第 {revision} 版",
+  "@quoteFinanceRevisionBadge": {
+    "placeholders": {
+      "revision": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceReadOnlyNotice": "这张报价现在不需要你处理, 只能查看。",
+  "quoteFinanceResubmitNotice": "销售改后重新提交。标黄的行, 折扣和你上次确认的不同, 请重点核对。",
+  "quoteFinanceNeedPriceNotice": "{count, plural, other{有 {count} 行货品没有标价。请填写成交单价, 或在行菜单里选「设为赠品/0价」, 然后再确认报价。}}",
+  "@quoteFinanceNeedPriceNotice": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceGoMaintainPrice": "去货品资料维护标价",
+  "quoteFinanceInfoTitle": "报价信息",
+  "quoteFinanceFieldClient": "客户",
+  "quoteFinanceFieldSeller": "业务员",
+  "quoteFinanceFieldMaker": "制单员",
+  "quoteFinanceFieldBillDate": "单据日期",
+  "quoteFinanceFieldSubmittedAt": "提交时间",
+  "quoteFinanceFieldDeliverDate": "交货日",
+  "quoteFinanceFieldContractNo": "合同号",
+  "quoteFinanceFieldCurrency": "币种",
+  "quoteFinanceFieldFileCurrency": "客户文件币种",
+  "quoteFinanceFileRateHint": "文件币种 {currency}, 按财务参考汇率 {rate} 折算成本币",
+  "@quoteFinanceFileRateHint": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      },
+      "rate": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceFieldRemark": "销售备注",
+  "quoteFinanceFieldValidUntil": "有效期",
+  "quoteFinanceFieldSettlement": "结账方式",
+  "quoteFinanceFieldFinanceRemark": "财务备注",
+  "quoteFinanceFinanceRemarkHint": "写给销售看的说明(选填)",
+  "quoteFinanceSettlementNone": "不指定",
+  "quoteFinanceAttachmentsTitle": "客户文件和附件",
+  "quoteFinanceLinesTitle": "货品明细",
+  "quoteFinanceColGoods": "货品名称",
+  "quoteFinanceColCode": "编号",
+  "quoteFinanceColColor": "颜色",
+  "quoteFinanceColQty": "数量",
+  "quoteFinanceColUnit": "单位",
+  "quoteFinanceColListPrice": "标价",
+  "quoteFinanceColListPriceInfo": "货品资料里的售价。没有标价, 或成交单价高于标价时, 由财务直接定成交单价; 低于标价一律算成折扣。",
+  "quoteFinanceColFilePrice": "文件单价(原币)",
+  "quoteFinanceColFilePriceLocal": "折合本币",
+  "quoteFinanceColDealPrice": "成交单价",
+  "quoteFinanceColDealPriceInfo": "客户最终每件付多少钱。改成交单价会自动算出折扣; 改折扣会自动算出成交单价。",
+  "quoteFinanceColDiscount": "折扣",
+  "quoteFinanceColDiscountInfo": "折扣 = 成交单价 ÷ 标价, 保留 4 位小数, 1 表示按标价。",
+  "quoteFinanceColLineAmount": "金额",
+  "quoteFinanceColFileDiff": "与文件差额",
+  "quoteFinanceColFileDiffInfo": "本行金额减去客户文件里的金额(已折合本币)。0 表示和客户文件一致。",
+  "quoteFinanceColLastConfirmed": "上次确认折扣",
+  "quoteFinanceColSalesProposed": "销售提交折扣",
+  "quoteFinanceColFileModel": "文件型号",
+  "quoteFinanceColFileName": "文件品名",
+  "quoteFinanceColRemark": "备注",
+  "quoteFinanceNoListPrice": "未定价",
+  "quoteFinanceFinancePriceChip": "财务定价",
+  "quoteFinanceGiveawayChip": "赠品/0价",
+  "quoteFinanceFileMatch": "一致",
+  "quoteFinanceErrorDealPrice": "请填写大于 0 的数字; 0 价请在行菜单选「设为赠品/0价」",
+  "quoteFinanceErrorFinancePrice": "请填写不小于 0 的数字",
+  "quoteFinanceErrorDiscount": "折扣要大于 0、不超过 1, 最多 4 位小数",
+  "quoteFinanceErrorNeedPrice": "请填写成交单价",
+  "quoteFinanceMenuMasterMode": "按标价打折",
+  "quoteFinanceMenuGiveaway": "设为赠品/0价",
+  "quoteFinanceMenuRestore": "撤销本行修改",
+  "quoteFinanceBatchDiscount": "批量设折扣",
+  "quoteFinanceBatchDiscountCount": "批量设折扣({count})",
+  "@quoteFinanceBatchDiscountCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceBatchDiscountTitle": "{count, plural, other{给勾选的 {count} 行设折扣}}",
+  "@quoteFinanceBatchDiscountTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceBatchDiscountHint": "例如 0.95 表示按标价的 95%",
+  "quoteFinanceBatchApply": "应用",
+  "quoteFinanceBatchApplied": "{count, plural, other{已给 {count} 行设好折扣}}",
+  "@quoteFinanceBatchApplied": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceBatchSkipped": "{count, plural, other{{count} 行没有标价或由财务定价, 已跳过}}",
+  "@quoteFinanceBatchSkipped": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceBatchNeedSelection": "请先勾选要改折扣的行",
+  "quoteFinanceCheckedEditHint": "{count, plural, other{本行已勾选: 改折扣会一起改勾选的 {count} 行}}",
+  "@quoteFinanceCheckedEditHint": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceActionSave": "保存修改",
+  "quoteFinanceActionSaving": "保存中…",
+  "quoteFinanceActionReturn": "退回销售",
+  "quoteFinanceActionConfirm": "确认报价",
+  "quoteFinanceActionReopen": "撤销确认再修改",
+  "quoteFinanceActionBack": "返回",
+  "quoteFinanceSaved": "修改已保存",
+  "quoteFinanceNothingToSave": "没有需要保存的修改",
+  "quoteFinanceFixErrors": "{count, plural, other{有 {count} 行填写不对, 请先改好}}",
+  "@quoteFinanceFixErrors": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceClaimNotReady": "还没有取得这张报价的核价占用, 请点「重新认领并刷新」",
+  "quoteFinanceSaveFirst": "请先保存修改, 再确认报价",
+  "quoteFinanceConfirmBlocked": "{count, plural, other{还有 {count} 行没有价格, 不能确认。请填写成交单价或设为赠品/0价。}}",
+  "@quoteFinanceConfirmBlocked": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceConfirmedDone": "报价已确认, 已通知销售转订货单",
+  "quoteFinanceReturnedDone": "已退回销售, 销售会收到通知",
+  "quoteFinanceReopenedDone": "已撤销确认, 可以继续修改价格",
+  "quoteFinanceLoadDetailFailed": "报价详情加载失败, 请检查网络或权限后重试",
+  "quoteFinanceActionFailed": "操作没有成功, 请稍后再试",
+  "quoteFinanceUnsavedTitle": "有修改还没保存",
+  "quoteFinanceUnsavedBody": "离开后这些修改会丢失。确定离开?",
+  "quoteFinanceLeave": "离开",
+  "quoteFinanceStay": "继续修改",
+  "quoteFinanceBusy": "正在处理, 请稍候",
+  "quoteFinanceSaving": "正在保存修改",
+  "quoteFinanceSessionChanged": "登录身份已变化, 请重新打开报价",
+  "quoteFinanceConfirmTitle": "确认报价 {billNo}",
+  "@quoteFinanceConfirmTitle": {
+    "placeholders": {
+      "billNo": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceConfirmBody": "确认后价格和折扣就定下来了, 销售可以转成订货单。以后要改, 可以在转单前「撤销确认再修改」。",
+  "quoteFinanceConfirmResponsibility": "报价核价确认",
+  "quoteFinanceConfirmResponsibilityDesc": "确认后系统会记录你是本次核价人。",
+  "quoteFinanceConfirmTotal": "报价金额 {amount}",
+  "@quoteFinanceConfirmTotal": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceReturnTitle": "退回销售 {billNo}",
+  "@quoteFinanceReturnTitle": {
+    "placeholders": {
+      "billNo": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceReturnBody": "退回后报价回到销售手上, 销售改好再提交。请写明原因, 销售会看到。",
+  "quoteFinanceReturnChipQty": "客户要改数量",
+  "quoteFinanceReturnChipGoods": "缺货品需补充",
+  "quoteFinanceReturnChipPrice": "价格需销售与客户确认",
+  "quoteFinanceReturnReasonLabel": "退回原因(必填)",
+  "quoteFinanceReturnReasonRequired": "请填写退回原因",
+  "quoteFinanceReturnSubmit": "确认退回",
+  "quoteFinanceReopenTitle": "撤销确认再修改",
+  "quoteFinanceReopenBody": "报价会回到「待核价」, 你可以继续修改价格, 改好后要重新确认。这期间销售不能转订货单。确定撤销?",
+  "quoteFinanceCancel": "取消",
+  "quoteFinanceRevisionTitle": "核价记录",
+  "quoteFinanceTotalQty": "合计数量",
+  "quoteFinanceTotalAmount": "合计金额",
+  "quoteFinanceTotalPreview": "合计金额(未保存预览)",
+  "quoteFinanceOrderSourceQuote": "来源报价 {billNo}",
+  "@quoteFinanceOrderSourceQuote": {
+    "placeholders": {
+      "billNo": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceOrderQuoteConfirmedBy": "报价已核价 · {name}",
+  "@quoteFinanceOrderQuoteConfirmedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceOrderAllMatch": "报价已核价 · 一致",
+  "quoteFinanceOrderMismatch": "{count, plural, other{有 {count} 行和报价不同}}",
+  "@quoteFinanceOrderMismatch": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceOrderChipHint": "这张订单由财务核过价的报价转来, 价格和折扣与报价一致时, 本次只需核对信用和条款。",
+  "quoteFinanceOrderColQuotePrice": "报价单价",
+  "quoteFinanceOrderColQuoteDiscount": "报价折扣",
+  "quoteFinanceOrderColMatch": "与报价",
+  "quoteFinanceOrderMatchYes": "一致",
+  "quoteFinanceOrderMatchNo": "不同",
+  "quoteFinanceOrderColFilePrice": "文件单价({currency})",
+  "@quoteFinanceOrderColFilePrice": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceOrderFileCurrencyUnknown": "原币",
+  "quoteFinanceOrderColFileModel": "文件型号",
+  "quoteFinanceOrderColFileName": "文件品名",
+  "quoteFinanceAboveListHint": "高于标价, 按财务定价保存(折扣为 1)",
+  "quoteFinanceMenuRefreshMaster": "按最新标价刷新",
+  "quoteFinanceRefreshMasterChip": "按货品资料最新标价 {price} 刷新, 折扣不变; 保存后可再改折扣",
+  "@quoteFinanceRefreshMasterChip": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceListPriceLatest": "{price}, 资料已改为 {latest}",
+  "@quoteFinanceListPriceLatest": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      },
+      "latest": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceStatusClaimedBy": "{name} 正在核价",
+  "@quoteFinanceStatusClaimedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceStatusClaimedByMe": "你正在核价",
+  "quoteFinanceFileRateMissing": "文件币种 {currency}, 还没有财务参考汇率, 折合本币先空着",
+  "@quoteFinanceFileRateMissing": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "salesQuoteStatusImportTitle": "选择已核价的报价单",
+  "salesQuoteStatusImportEmpty": "暂无已核价、可以转订货单的报价",
+  "salesQuoteStatusImportLoadFailed": "报价加载失败, 请稍后重试",
+  "salesIntakeBannerTitle": "识别客户文件",
+  "salesIntakeBannerMessage": "上传客户的报价单/形式发票, 自动填好客户和货品",
+  "salesIntakeBannerButton": "识别客户文件",
+  "salesIntakeBannerAgain": "再识别一个文件",
+  "salesIntakeBannerImported": "已从 {file} 导入 {count} 行",
+  "@salesIntakeBannerImported": {
+    "placeholders": {
+      "file": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeToolbarButton": "识别客户文件",
+  "salesIntakeAiOffHint": "AI 未开启, 只能识别常见格式的 Excel",
+  "salesIntakeApprovedOrderHint": "已审核的订单请用改量或修改, 不能整单重新识别",
+  "salesIntakeReplaceTitle": "明细里已经有货品",
+  "salesIntakeReplaceMessage": "要用识别结果替换现有明细, 还是追加在后面?",
+  "salesIntakeReplace": "替换",
+  "salesIntakeAppend": "追加",
+  "salesIntakeApplied": "已导入 {count} 行, 其中 {review} 行有黄色标记, 请核对",
+  "@salesIntakeApplied": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "review": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeAppliedAllMatched": "已导入 {count} 行",
+  "@salesIntakeAppliedAllMatched": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeAttachFailed": "原文件没能加入附件, 可在附件区手动上传",
+  "salesIntakeProgressTitle": "正在识别客户文件",
+  "salesIntakeStageUpload": "上传文件",
+  "salesIntakeStageRead": "读取表格",
+  "salesIntakeStageLayout": "识别表头与列",
+  "salesIntakeStageGoods": "匹配货品",
+  "salesIntakeStageClient": "匹配客户",
+  "salesIntakeStagePricing": "计算折扣",
+  "salesIntakeSendWholeFileTitle": "整份文件会发送给 AI 服务识别",
+  "salesIntakeSendWholeFileMessage": "这是 PDF/图片, 系统需要把整份文件发给 AI 服务来识别。文件里如有银行账号等敏感信息, 请先确认可以发送。",
+  "salesIntakeSendWholeFileConfirm": "继续识别",
+  "salesIntakeAiRequired": "PDF/图片需要开启 AI 才能识别, 请上传 Excel 或联系管理员",
+  "salesIntakeVisionRequired": "这是图片格式的文件, 需要管理员在 AI 服务设置中启用支持图片识别的模型",
+  "salesIntakeFileTooLarge": "文件太大, 最大 {max}",
+  "@salesIntakeFileTooLarge": {
+    "placeholders": {
+      "max": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeFileUnreadable": "没能读取这个文件, 请重新选择",
+  "salesIntakeFileTypeUnsupported": "只能识别 Excel、CSV、PDF 或图片文件",
+  "salesIntakeFailedTitle": "没能识别这个文件",
+  "salesIntakeResultUnreadable": "识别结果无法读取, 请重新识别",
+  "salesIntakeNoLines": "文件里没找到货品明细, 请确认上传的是报价单或形式发票",
+  "salesIntakeCancel": "取消",
+  "salesIntakeCreateClientTitle": "用文件信息新建客户",
+  "salesIntakeCreateClientIntro": "将按下面的信息新建客户, 负责人是你, 分类放在「未分类」。",
+  "salesIntakeCreateClientName": "客户简称",
+  "salesIntakeCreateClientNameRequired": "请填写客户简称",
+  "salesIntakeCreateClientConfirm": "新建客户",
+  "salesIntakeCreateClientDone": "已新建客户 {name}",
+  "@salesIntakeCreateClientDone": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeCreateClientExists": "这个客户已经存在, 已为你选上",
+  "salesIntakeCreateClientFailed": "新建客户没有成功, 请稍后重试",
+  "salesIntakeFieldFullName": "全称",
+  "salesIntakeFieldNameEn": "外文名称",
+  "salesIntakeFieldLinkman": "联系人",
+  "salesIntakeFieldEmail": "邮箱",
+  "salesIntakeFieldPhone": "电话",
+  "salesIntakeFieldAddress": "地址",
+  "salesIntakeFieldTaxId": "税号",
+  "salesIntakeFieldPlace": "国家/地区",
+  "salesIntakeReviewTitle": "核对识别结果",
+  "salesIntakeReviewSubtitle": "{file} · 共 {count} 行明细",
+  "@salesIntakeReviewSubtitle": {
+    "placeholders": {
+      "file": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeClose": "关闭",
+  "salesIntakeStepClient": "客户",
+  "salesIntakeStepGoods": "货品",
+  "salesIntakeClientResolved": "客户: {name}",
+  "@salesIntakeClientResolved": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeClientChange": "换一个",
+  "salesIntakeClientPickOther": "选其它客户…",
+  "salesIntakeClientCreate": "用文件信息新建客户",
+  "salesIntakeClientBuyer": "文件上的买方: {name}",
+  "@salesIntakeClientBuyer": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeClientNotFound": "没在你的客户里找到这个买方",
+  "salesIntakeClientSuggestions": "像是下面这些客户, 请选一个:",
+  "salesIntakeClientNone": "还没选客户, 导入后也可以在表头再选",
+  "salesIntakeNoVisibleClients": "你名下还没有客户资料, 请联系主管在客户资料里把客户分配给你",
+  "salesIntakeEnrichSummary": "文件里有客户的{fields}, 保存时补进客户资料",
+  "@salesIntakeEnrichSummary": {
+    "placeholders": {
+      "fields": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeEnrichShow": "查看",
+  "salesIntakeEnrichHide": "收起",
+  "salesIntakeEnrichDiffers": "文件里的值不同, 现在是: {current}",
+  "@salesIntakeEnrichDiffers": {
+    "placeholders": {
+      "current": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeEnrichCurrentEmpty": "客户资料里还没填",
+  "salesIntakeFilterReview": "需要核对 ({count})",
+  "@salesIntakeFilterReview": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeFilterAll": "全部 ({count})",
+  "@salesIntakeFilterAll": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeMatchedCollapsed": "{count} 行已自动对应",
+  "@salesIntakeMatchedCollapsed": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeExpand": "展开",
+  "salesIntakeCollapse": "收起",
+  "salesIntakeNoReviewLines": "所有行都已自动对应, 可以直接导入",
+  "salesIntakeLineNo": "第 {no} 行",
+  "@salesIntakeLineNo": {
+    "placeholders": {
+      "no": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeQty": "数量 {qty}",
+  "@salesIntakeQty": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeFilePrice": "文件单价 {price}",
+  "@salesIntakeFilePrice": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeFilePriceWithCurrency": "文件单价 {price} {currency}",
+  "@salesIntakeFilePriceWithCurrency": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      },
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeStatusMatched": "已对应",
+  "salesIntakeStatusConfirmed": "已确认",
+  "salesIntakeStatusReview": "请核对",
+  "salesIntakeStatusUnmatched": "没找到",
+  "salesIntakeStatusBlocked": "不能导入",
+  "salesIntakeGoodsLabel": "对应货品",
+  "salesIntakeGoodsHint": "请选择货品",
+  "salesIntakeConfirmChoice": "就是它",
+  "salesIntakePickFromMaster": "从货品资料选择…",
+  "salesIntakeSplit": "拆成 {count} 行",
+  "@salesIntakeSplit": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeMerge": "合回一行",
+  "salesIntakeBundleHint": "这一行是组合件, 可以拆开逐个选货品",
+  "salesIntakeSetNameEn": "设为货品英文名: {text}",
+  "@salesIntakeSetNameEn": {
+    "placeholders": {
+      "text": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeInclude": "导入这一行",
+  "salesIntakeDiscountPreview": "折扣 {discount}",
+  "@salesIntakeDiscountPreview": {
+    "placeholders": {
+      "discount": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeDiscountPending": "折扣待定",
+  "salesIntakePricingNoListPrice": "这个货品还没有标价",
+  "salesIntakePricingAboveList": "文件单价高于标价",
+  "salesIntakePricingOutOfRange": "折扣异常, 可能对应错货品",
+  "salesIntakePricingAmbiguous": "看不出文件是按人民币还是外币报价, 折扣请核对",
+  "salesIntakePricingRateMissing": "外币参考汇率还没维护, 折扣没能算出",
+  "salesIntakeUnmatchedRemarkHint": "不导入, 文件原文会写进备注",
+  "salesIntakeBlockedHint": "订货单不能直接导入, 要先做报价单交给财务定价",
+  "salesIntakeBlockedTitle": "这 {count} 个货品还没有标价(或文件单价高于标价)",
+  "@salesIntakeBlockedTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeBlockedMessage": "订货单不能直接导入这些货品, 要先做报价单交给财务定价。",
+  "salesIntakeHandoffToQuote": "改为新建报价单",
+  "salesIntakeDuplicateTitle": "这个文件可能已经录过",
+  "salesIntakeDuplicateItem": "{doc} {billNo} ({date}, {reason})",
+  "@salesIntakeDuplicateItem": {
+    "placeholders": {
+      "doc": {
+        "type": "String"
+      },
+      "billNo": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeDuplicateMessage": "已有 {items}, 确定还要再建一张吗?",
+  "@salesIntakeDuplicateMessage": {
+    "placeholders": {
+      "items": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeDocTypeQuote": "报价单",
+  "salesIntakeDocTypeOrder": "订货单",
+  "salesIntakeOtherSheets": "文件里还有工作表 {sheets} 也像明细表, 这次只识别了「{current}」。如需识别那张表, 请重新上传这个文件, 核对时点那张表即可。",
+  "@salesIntakeOtherSheets": {
+    "placeholders": {
+      "sheets": {
+        "type": "String"
+      },
+      "current": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeOtherSheetItem": "{name}({count} 行)",
+  "@salesIntakeOtherSheetItem": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeOtherSheetsLead": "这次识别的是工作表「{current}」。点下面的工作表可改为识别那一张 (每次只识别一张, 不会合在一起)。",
+  "@salesIntakeOtherSheetsLead": {
+    "placeholders": {
+      "current": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeOtherSheetChip": "另有工作表 {name} 也像明细表 ({count} 行)",
+  "@salesIntakeOtherSheetChip": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeOtherSheetTooltip": "改为识别这张表",
+  "salesIntakeSheetProgressSubtitle": "{file} · 工作表 {sheet}",
+  "@salesIntakeSheetProgressSubtitle": {
+    "placeholders": {
+      "file": {
+        "type": "String"
+      },
+      "sheet": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakePriceMaskedNotice": "你看不到价格, 折扣会在保存时按文件单价自动计算",
+  "salesIntakeCurrencyNotice": "文件是 {currency} 报价, 按财务参考汇率 {rate} 折算, 单据按{base}保存",
+  "@salesIntakeCurrencyNotice": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      },
+      "rate": {
+        "type": "String"
+      },
+      "base": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeRateMissingNotice": "{currency} 的参考汇率还没维护, 部分折扣没能算出, 请财务在币种资料中填写",
+  "@salesIntakeRateMissingNotice": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeSummary": "将导入 {rows} 行 · {review} 行导入后黄色提醒核对 · {skipped} 行不导入",
+  "@salesIntakeSummary": {
+    "placeholders": {
+      "rows": {
+        "type": "int"
+      },
+      "review": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeImportAll": "全部导入 ({count} 行)",
+  "@salesIntakeImportAll": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeNothingToImport": "还没有可导入的货品",
+  "salesIntakePickedManually": "从货品资料选择",
+  "salesIntakeRemarkLineItem": "{label} × {qty}",
+  "@salesIntakeRemarkLineItem": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeRemarkUnmatched": "以下 {count} 行没找到对应货品: {lines}",
+  "@salesIntakeRemarkUnmatched": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "lines": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeRemarkUnpriced": "以下 {count} 行还没有标价(或文件单价高于标价), 没有导入: {lines}",
+  "@salesIntakeRemarkUnpriced": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "lines": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeRemarkBundlePrice": "组合件 {bundle} 整套文件单价 {price}",
+  "@salesIntakeRemarkBundlePrice": {
+    "placeholders": {
+      "bundle": {
+        "type": "String"
+      },
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeMarkerDefault": "识别结果需要核对",
+  "salesIntakeMarkerUnit": "文件数量单位不是个, 请核对数量",
+  "salesIntakeMarkerQuotePricing": "这个货品还没有标价(或文件单价高于标价), 待财务定价",
+  "salesIntakeMarkerQuoteDiscount": "折扣没能自动算出, 财务核价时确定",
+  "salesIntakeMarkerOrderDiscount": "折扣没能自动算出, 请按文件单价核对后填写",
+  "salesIntakeQuoteLineReplaced": "这一行原来是报价里财务核定的货品, 换成别的货品后不再按报价的单价和折扣, 保存时按货品标价重新计算",
+  "salesIntakeMarkerBundlePart": "组合件已拆开, 请核对货品和折扣",
+  "salesIntakeColClientModel": "文件型号",
+  "salesIntakeColClientModelInfo": "客户文件里的型号/货号。保存后系统会记住客户的叫法, 下次识别更准。",
+  "salesIntakeColClientGoodsName": "文件品名",
+  "salesIntakeColClientGoodsNameInfo": "客户文件里的品名。手工选货品时会带出货品的英文名称, 可改。",
+  "salesIntakeColClientPrice": "文件单价",
+  "salesIntakeColClientPriceWithCurrency": "文件单价({currency})",
+  "@salesIntakeColClientPriceWithCurrency": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeColClientPriceInfo": "客户文件里的单价(文件币种), 只作核对参考; 单价以货品资料标价为准, 折扣按它计算。",
+  "salesIntakeQuotePriceHint": "单价按货品资料标价带入, 销售不能修改; 没有标价的货品由财务核价时定价。折扣按客户文件单价计算, 也可以留空交财务核价。",
+  "salesIntakeFinancePriced": "财务定价",
+  "salesIntakePendingFinancePrice": "待财务定价",
+  "salesIntakeQuoteDiscountPending": "财务核价时填写",
+  "salesIntakeMaskedDiscount": "保存时自动计算",
+  "salesIntakeQuoteLockedDiscount": "(报价核定)",
+  "salesIntakeQuoteLockedDiscountInfo": "该行折扣已由财务在报价中核定, 如需改价请重新打开报价"
 }

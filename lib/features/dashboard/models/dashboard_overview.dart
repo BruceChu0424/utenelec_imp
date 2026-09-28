@@ -5,7 +5,6 @@ class DashboardOverview {
     required this.generatedAt,
     required this.metrics,
     required this.todos,
-    required this.intelligence,
   });
 
   factory DashboardOverview.fromJson(Map<String, dynamic> json) {
@@ -23,10 +22,6 @@ class DashboardOverview {
         for (final item in json['todos'] as List<dynamic>? ?? const [])
           DashboardTodo.fromJson(item as Map<String, dynamic>),
       ],
-      intelligence: [
-        for (final item in json['intelligence'] as List<dynamic>? ?? const [])
-          PolicyBrief.fromJson(item as Map<String, dynamic>),
-      ],
     );
   }
 
@@ -35,7 +30,6 @@ class DashboardOverview {
   final DateTime generatedAt;
   final List<DashboardMetric> metrics;
   final List<DashboardTodo> todos;
-  final List<PolicyBrief> intelligence;
 }
 
 class DashboardMetric {
@@ -112,39 +106,4 @@ class DashboardTodo {
   final String? sourceId;
   final DateTime? dueAt;
   final bool completable;
-}
-
-class PolicyBrief {
-  const PolicyBrief({
-    required this.id,
-    required this.title,
-    required this.summary,
-    required this.category,
-    required this.sourceName,
-    required this.sourceUrl,
-    required this.publishedOn,
-    required this.capturedAt,
-  });
-
-  factory PolicyBrief.fromJson(Map<String, dynamic> json) {
-    return PolicyBrief(
-      id: json['id'] as String? ?? '',
-      title: json['title'] as String? ?? '',
-      summary: json['summary'] as String? ?? '',
-      category: json['category'] as String? ?? 'OTHER',
-      sourceName: json['sourceName'] as String? ?? '',
-      sourceUrl: json['sourceUrl'] as String? ?? '',
-      publishedOn: DateTime.tryParse(json['publishedOn'] as String? ?? ''),
-      capturedAt: DateTime.tryParse(json['capturedAt'] as String? ?? ''),
-    );
-  }
-
-  final String id;
-  final String title;
-  final String summary;
-  final String category;
-  final String sourceName;
-  final String sourceUrl;
-  final DateTime? publishedOn;
-  final DateTime? capturedAt;
 }

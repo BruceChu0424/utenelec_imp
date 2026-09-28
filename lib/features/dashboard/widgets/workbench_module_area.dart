@@ -573,6 +573,12 @@ const _allGroups = <_ModuleGroup>[
         label: '系统设置',
         location: RouteName.adminSystemSettings,
       ),
+      // AI 服务(ADR-133): 大模型服务商、密钥与连接测试; 与系统设置同一授权门槛。
+      _ModuleItem(
+        icon: Icons.auto_awesome_outlined,
+        label: 'AI 服务',
+        location: RouteName.adminAiSettings,
+      ),
     ],
   ),
 ];

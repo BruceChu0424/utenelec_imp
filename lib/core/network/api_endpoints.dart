@@ -65,6 +65,20 @@ abstract final class ApiEndpoints {
   static String salesOrderFinanceReject(String orderId) =>
       '/sales/orders/$orderId/finance-confirmation/reject';
 
+  // 销售报价财务核价(ADR-134)：队列(state=pending|confirmed|returned) / 核价详情 /
+  // 改价保存 / 退回销售 / 确认报价 / 撤销确认。动作都带 expectedRevision + expectedClaimId。
+  static const salesQuoteFinanceReviewList = '/sales/quotes/finance-review';
+  static String salesQuoteFinanceReview(String quoteId) =>
+      '/sales/quotes/${Uri.encodeComponent(quoteId)}/finance-review';
+  static String salesQuoteFinanceEdit(String quoteId) =>
+      '/sales/quotes/${Uri.encodeComponent(quoteId)}/finance';
+  static String salesQuoteFinanceReturn(String quoteId) =>
+      '/sales/quotes/${Uri.encodeComponent(quoteId)}/finance-return';
+  static String salesQuoteFinanceConfirm(String quoteId) =>
+      '/sales/quotes/${Uri.encodeComponent(quoteId)}/finance-confirm';
+  static String salesQuoteFinanceReopen(String quoteId) =>
+      '/sales/quotes/${Uri.encodeComponent(quoteId)}/finance-reopen';
+
   // 财务批准后形成的仓储预计到货，以及超量到货隔离任务。
   static const warehouseInboundExpectations = '/warehouse/inbound/expectations';
   static const warehouseInboundExpectationFacets =
@@ -270,6 +284,10 @@ abstract final class ApiEndpoints {
   static const goodsSearchCategoryIds = '$goods/search-category-ids';
   static String good(String id) => '/master/goods/$id';
 
+  /// Goods English name only (ADR-134): goods:name_en:edit or goods:edit;
+  /// body {nameEn, version}, the server marks the value as manually maintained.
+  static String goodNameEn(String id) => '${good(id)}/name-en';
+
   // 货品组装信息（BOM）—— 详情「组装信息」页签 + 配件清单导出
   static String goodsBom(String id) => '/master/goods/$id/bom';
   static String goodsBomItem(String id, String itemId) =>
@@ -347,8 +365,17 @@ abstract final class ApiEndpoints {
   static String client(String id) => '/master/clients/$id';
   static String clientAccess(String id) => '${client(id)}/access';
 
+  /// Learned customer goods cross reference (ADR-134): GET paged list
+  /// (?page&size&keyword), DELETE one row.
+  static String clientGoodsAliases(String id) => '${client(id)}/goods-aliases';
+  static String clientGoodsAlias(String id, String aliasId) =>
+      '${clientGoodsAliases(id)}/$aliasId';
+
   /// 多选客户批量设负责人/可见人（字面段 access 与 UUID 路径参数不冲突）。
   static const clientsAccessBatch = '$clients/access/batch';
+
+  /// 销售识别客户文件: 用文件信息新建客户(服务端先跨范围查重, ADR-134)。
+  static const clientFromDocument = '$clients/from-document';
 
   // 供应商资料分类（基础资料 / master-data）—— 与货品/模具分类同构，独立端点
   static const supplierCategories = '/master/supplier-categories';
@@ -652,6 +679,30 @@ abstract final class ApiEndpoints {
 
   /// 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const adminSystemSettings = '/admin/system-settings';
+
+  /// AI 服务设置(ADR-133，超管 authorization:manage + superAdmin)。
+  /// 增删改、设默认、启停、用已存密钥测试/取模型要再认证；用本次新填密钥测试免再认证。
+  static const adminAiProviders = '/admin/ai/providers';
+  static String adminAiProvider(String id) => '$adminAiProviders/$id';
+  static String adminAiProviderDefault(String id) =>
+      '$adminAiProviders/$id/default';
+  static String adminAiProviderEnabled(String id) =>
+      '$adminAiProviders/$id/enabled';
+  static String adminAiProviderTest(String id) => '$adminAiProviders/$id/test';
+  static String adminAiProviderModels(String id) =>
+      '$adminAiProviders/$id/models';
+  static const adminAiProvidersTest = '$adminAiProviders/test';
+  static const adminAiProvidersModels = '$adminAiProviders/models';
+  static const adminAiPresets = '/admin/ai/presets';
+  static const adminAiUsage = '/admin/ai/usage';
+
+  /// 公共 AI 作业(ADR-133): 提交原始文件(octet-stream) / 轮询 / 取消；员工账号本人可用。
+  static const aiJobs = '/ai/jobs';
+  static String aiJob(String id) => '$aiJobs/$id';
+  static String aiJobCancel(String id) => '$aiJobs/$id/cancel';
+
+  /// 当前账号能否用 AI(不含服务商/模型细节)。
+  static const aiStatus = '/ai/status';
 
   /// 管理员「切换人 / 模拟身份」：enter(验密码发 modeToken) / start(签发目标 token) / end(审计)。
   /// 仅 superAdmin；start 由 admin token 调，end 由模拟 token 调（主体=目标）。

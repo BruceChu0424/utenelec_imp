@@ -25,7 +25,8 @@ import 'package:flutter_test/flutter_test.dart';
 // 移除 2 处价格权限引用，净 +7。
 // 2026-09-25 +1：销售订单详情「修改订单」按钮显隐本地预演(与服务端 sales:order:edit
 // 的 @PreAuthorize 一一对应，随列对齐编辑保存 pop 回宿主批次)。
-const _baseline = 621;
+// 2026-09-28 -1: ADR-133/134 合并后(报价按钮改服务端 allowedActions、政策情报退役)净减 1。
+const _baseline = 620;
 
 final _permReference = RegExp(r'\bPerm\.[a-zA-Z]');
 

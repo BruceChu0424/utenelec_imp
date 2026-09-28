@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/purchase/config/purchase_doc_config.dart';
@@ -258,7 +259,13 @@ void main() {
                 badgeSummaryFixture(facts: {'drafts.${item.kind}': 2}),
               ),
             ],
-            child: MaterialApp.router(routerConfig: router),
+            // 报价列表分段文字走 arb(ADR-134)，与真实 App 一样挂本地化代理。
+            child: MaterialApp.router(
+              routerConfig: router,
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: const Locale('zh'),
+            ),
           ),
         );
         await tester.pumpAndSettle();

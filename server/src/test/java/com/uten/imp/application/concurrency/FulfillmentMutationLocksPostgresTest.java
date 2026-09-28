@@ -56,8 +56,8 @@ class FulfillmentMutationLocksPostgresTest {
         var ds = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         jdbc = new JdbcTemplate(ds);
         // Deliberately small SQL schema for lock mechanics, not a migration or finance fixture.
-        jdbc.execute("CREATE TABLE sales_orders(id uuid PRIMARY KEY, revision int NOT NULL DEFAULT 0, is_deleted boolean NOT NULL DEFAULT false)");
-        jdbc.execute("CREATE TABLE sales_order_items(id uuid PRIMARY KEY,order_id uuid NOT NULL REFERENCES sales_orders(id),goods_id uuid,color_id uuid,is_deleted boolean NOT NULL DEFAULT false)");
+        jdbc.execute("CREATE TABLE sales_orders(id uuid PRIMARY KEY, revision int NOT NULL DEFAULT 0, is_deleted boolean NOT NULL DEFAULT false, client_file_currency VARCHAR(8))");
+        jdbc.execute("CREATE TABLE sales_order_items(id uuid PRIMARY KEY,order_id uuid NOT NULL REFERENCES sales_orders(id),goods_id uuid,color_id uuid,is_deleted boolean NOT NULL DEFAULT false, client_goods_name VARCHAR(500), client_price NUMERIC)");
         jdbc.execute("CREATE TABLE sales_shipments(id uuid PRIMARY KEY,revision int NOT NULL DEFAULT 0,is_deleted boolean NOT NULL DEFAULT false)");
         jdbc.execute("CREATE TABLE sales_shipment_items(id uuid PRIMARY KEY,shipment_id uuid NOT NULL REFERENCES sales_shipments(id),order_item_id uuid REFERENCES sales_order_items(id),goods_id uuid,color_id uuid,is_deleted boolean NOT NULL DEFAULT false)");
         // 新建来源登记只凭本事务行版本(xmin)判定, 不依赖审计日志(db-schema-02): 这里刻意没有审计表和触发器。

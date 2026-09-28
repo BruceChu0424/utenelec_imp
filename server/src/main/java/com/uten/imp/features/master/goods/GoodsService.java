@@ -261,6 +261,8 @@ public class GoodsService {
                     cb.like(cb.lower(root.get("material")), like),
                     cb.like(cb.lower(root.get("requireRemark")), like),
                     cb.like(cb.lower(root.get("paper")), like),
+                    // 英文名称(ADR-134): 客户文件上的英文品名也能搜到货品。
+                    cb.like(cb.lower(root.get("nameEn")), like),
                     cb.like(cb.lower(mouldJoin.get("code")), like)));
         }
         addEq(ps, cb, root, "series", f.series());
@@ -520,6 +522,8 @@ public class GoodsService {
         boolean showDiscount = canViewDiscount();
         List<ExportColumn> cols = new ArrayList<>();
         cols.add(new ExportColumn("name", "货品名称", ExportColumn.TEXT));
+        // 英文名称(ADR-134): 紧跟货品名称, 与表格列序一致; 导入同名表头可直接导回。
+        cols.add(new ExportColumn("nameEn", "英文名称", ExportColumn.TEXT));
         cols.add(new ExportColumn("code", "编号", ExportColumn.TEXT));
         cols.add(new ExportColumn("categoryPath", "类别", ExportColumn.TEXT));
         cols.add(new ExportColumn("colorName", "主颜色", ExportColumn.TEXT));
@@ -546,6 +550,7 @@ public class GoodsService {
                 maxRows, (p, size) -> list(f, p, size, sort, order), g -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("name", g.getName());
+                    row.put("nameEn", g.getNameEn());
                     row.put("code", g.getCode());
                     row.put("categoryPath", categoryPath.get(g.getCategoryId()));
                     row.put("colorName", g.getColorName());
@@ -918,6 +923,72 @@ public class GoodsService {
         return a.compareTo(b) != 0;
     }
 
+    /**
+     * 单独修改英文名称(ADR-134, {@code PUT /api/master/goods/{id}/name-en}): 持有 goods:name_en:edit
+     * 或 goods:edit 即可, 不必有整单编辑权限; 对象写范围与乐观锁同整单编辑。写入后来源记为 MANUAL,
+     * 清空时来源一并清空。旧值由 goods 行级审计保留。
+     */
+    @org.springframework.security.access.prepost.PreAuthorize(
+            "hasAnyAuthority('goods:name_en:edit', 'goods:edit')")
+    @Transactional
+    public GoodsDetail updateNameEn(UUID id, String nameEn, Long version) {
+        tx.bind();
+        Goods g = requireGoods(id);
+        requireWritable(g);
+        em.refresh(g, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        OptimisticLocks.requireUpToDate(g.getVersion(), version);
+        String value = GoodsNameEn.normalizeForWrite(nameEn);
+        if (!Objects.equals(value, g.getNameEn())) {
+            g.setNameEn(value);
+            g.setNameEnSource(value == null ? null : GoodsNameEn.SOURCE_MANUAL);
+            // 立即落库, 让返回的版本号就是新版本(页面下次保存直接回传它)。
+            g = repo.saveAndFlush(g);
+        }
+        return toDetail(g, colorNameOf(g), unitNameOf(g), repo.quantityUnitInUse(g.getId()));
+    }
+
+    /**
+     * 保存报价/订货单后的学习写入(ADR-134, 由主档学习在独立事务里调用): 当前用户必须持有
+     * goods:name_en:edit 或 goods:edit 且对该货品有写范围, 货品须未删除、非占位。
+     * 值相同不写; 否则覆盖为学习值(用户已明确勾选), 来源记 LEARNED, 版本号随 JPA 递增。
+     *
+     * @return 是否真的改了
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public boolean learnNameEn(UUID goodsId, String text) {
+        String value = GoodsNameEn.normalize(text);
+        if (goodsId == null || value == null
+                || value.codePointCount(0, value.length()) > GoodsNameEn.MAX_LENGTH) {
+            return false;
+        }
+        if (!GoodsNameEn.canEdit(currentUser.get().orElse(null))) return false;
+        Goods g = repo.findById(goodsId).orElse(null);
+        if (g == null || g.isDeleted() || g.isAutoCreated() || !canWrite(g)) return false;
+        em.refresh(g, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (value.equals(g.getNameEn())) return false;
+        g.setNameEn(value);
+        g.setNameEnSource(GoodsNameEn.SOURCE_LEARNED);
+        repo.save(g);
+        return true;
+    }
+
+    /** 英文名称编辑能力: 功能权限(goods:name_en:edit 或 goods:edit) + 对象写范围。 */
+    boolean canEditNameEn(Goods g) {
+        return GoodsNameEn.canEdit(currentUser.get().orElse(null)) && canWrite(g);
+    }
+
+    /**
+     * 整单保存里的英文名称: 请求带了 nameEn 键才处理(没带 = 保持, 老客户端不误清)。
+     * 值有变化才写, 来源记 MANUAL; 清空时来源一并清空。
+     */
+    private static void applyNameEn(GoodsSaveRequest req, Goods g) {
+        if (!req.hasNameEn()) return;
+        String value = GoodsNameEn.normalizeForWrite(req.getNameEn());
+        if (Objects.equals(value, g.getNameEn())) return;
+        g.setNameEn(value);
+        g.setNameEnSource(value == null ? null : GoodsNameEn.SOURCE_MANUAL);
+    }
+
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:status')")
     @Transactional
     public GoodsDetail changeStatus(
@@ -1050,6 +1121,7 @@ public class GoodsService {
         g.setShortName(req.getShortName());
         g.setModel(req.getModel());
         g.setSpec(req.getSpec());
+        applyNameEn(req, g);
         g.setSeries(req.getSeries() == null ? null : req.getSeries().trim());
         g.setStockPlace(req.getStockPlace() == null ? null : req.getStockPlace().trim());
         // 售价：仅可查看者（goods:price:view，含 price:edit）提交的价格才落库。
@@ -1232,7 +1304,9 @@ public class GoodsService {
                 g.getSubcontractAllowedLossPct(),
                 // ADR-131 发料方式 (只读, 切换走 GoodsIssueMethodService)。
                 g.getIssueMethod(), g.getPeriodicCostBasis(), g.getBulkPackageQty(), g.isRecycledMaterial(),
-                periodicBomWeights(g.getId()));
+                periodicBomWeights(g.getId()),
+                // ADR-134 英文名称 + 当前用户能否单独改英文名称(功能权限 + 对象写范围)。
+                g.getNameEn(), g.getNameEnSource(), canEditNameEn(g));
         if (learnedPrices != null && costMasker.canView()) {
             var prices = learnedPrices.find(g.getId());
             d.setDefaultPurchasePriceInfo(prices.purchase());
@@ -1295,7 +1369,9 @@ public class GoodsService {
                 owningWorkshopId,
                 owningWorkshopId == null ? null : owningWorkshopNames.get(owningWorkshopId),
                 g.getVersion(),
-                g.getIssueMethod(), g.getPeriodicCostBasis(), g.getBulkPackageQty(), g.isRecycledMaterial());
+                g.getIssueMethod(), g.getPeriodicCostBasis(), g.getBulkPackageQty(), g.isRecycledMaterial(),
+                // ADR-134 英文名称(列表只读展示)。
+                g.getNameEn(), g.getNameEnSource());
     }
 
     /**

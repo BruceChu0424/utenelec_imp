@@ -8,7 +8,8 @@
 
 | 岗位 | 页面和实际路由 | 本岗位确认的事实 |
 |---|---|---|
-| 销售 | `/sales/orders`，报价可转入订货；[订单进度](../03-页面/销售订单进度详情页.md) `/sales/progress` | 客户、货品/颜色、数量、原币价格依据、折扣、交期和发运策略。 |
+| 销售 | `/sales/quotes`、`/sales/orders`(新建/草稿可「识别客户文件」)，报价经财务核价后转入订货；[订单进度](../03-页面/销售订单进度详情页.md) `/sales/progress` | 客户、货品/颜色、数量、原币价格依据、折扣、交期和发运策略；识别结果逐行核对后才导入。 |
+| 报价核价(财务) | [销售报价财务核价](../03-页面/销售报价财务核价页.md) `/finance/quote-review` | 认领报价，逐行核定折扣或成交单价(没标价的货品由财务定价)，退回销售或确认。 |
 | 订单财审 | [销售订单财务审核](../03-页面/销售订单财务审核页.md)：`/finance/sales-order-confirmations`；修改队列 `/finance/sales-order-changes` | 认领当前版本，核对原商业事实或修改前后清单，批准/驳回。 |
 | 计划 | [物料分析](../03-页面/生产物料分析页.md) `/production/material-analysis`；[履约工作台](../03-页面/生产履约任务工作台.md) | 原需求、BOM各层路线、责任数量、车间/负责人和计划下达。 |
 | 采购/委外 | 各自任务中心与商业订单；[委外SOP](08-委外全链路-订货出仓回仓重设计.md) | 按明确来源下单和跟催，采购/加工商业条件由财务审批。 |
@@ -21,8 +22,8 @@
 
 ## 二、销售开单、审核与修改
 
-1. 业务员选择有权访问的客户，可从已审核报价转入；主管跨归属读取和操作需对应权限。销售只录商业事实，不在订单录入客户预收到账或要求回填记账汇率。
-2. 原有草稿行保留已冻结的单价依据，报价转入沿报价快照；新增/换货行按当前允许的价格来源取值。折扣可按授权调整，新倍率必须大于0且不大于1；历史null/0按原解释留存。客户端单价/金额不能覆盖服务端权威来源，生产/仓库无价格权限时服务端脱敏。
+1. 业务员选择有权访问的客户，可从财务已核价的报价转入(见下方「报价与财务核价」)；主管跨归属读取和操作需对应权限。销售只录商业事实，不在订单录入客户预收到账或要求回填记账汇率。
+2. 原有草稿行保留已冻结的单价依据，报价转入沿报价核定的单价与折扣(折扣锁定，改动回 409「该行折扣已由财务在报价核定」，数量与新增行仍可改)；新增/换货行按当前允许的价格来源取值。折扣可按授权调整，新倍率必须大于0且不大于1；历史null/0按原解释留存。客户端单价/金额不能覆盖服务端权威来源，生产/仓库无价格权限时服务端脱敏。
 3. 开单时即可在「附件（合同/客户确认/图片）」区放入客户合同、确认件或图片：新建页先暂存，点保存拿到订单后自动逐个上传（任一失败留页重试，不重复建单）；已保存的草稿或财务退回订单可在详情/编辑页继续增删。提交审核或财务确认后原件只读，财务在确认页只读查看合同（草稿不对财务开放）。需要 `attachment:upload/delete`（V546 已授予销售各部门）。
 4. 新单必须选择 `ALLOW_PARTIAL` 或 `REQUIRE_COMPLETE`。`CUSTOMER_CONFIRM` 只保留历史值，不再新增一层客户确认审批。收货地址/电话在发货时选择或填写，可复用客户地址簿，不能回写为客户主档或当订单资金事实。
 5. 销售订单状态为草稿0、已审1、红冲-1，没有独立销售提交态。草稿不占库存承诺；销售审核使用 `sales_order:approve` 和对象范围校验，同事务形成有效预留并送订单财审。销售审核不是财务审核，也不扣实物或立正式AR。
@@ -37,6 +38,24 @@
 | 财务驳回 | 销售查看原因后受控修订回草稿再自审，或走合法改量重报/取消；复核保留前后内容，驳回不抹旧事实。 |
 
 已准入分析遇销售改单待财审，原采购/委外到货、品质和实际入库继续更新原需求履约；新的路线、追加安排、公共在途采用和采购/车间下达仍校验本次所选产品及来源父链。一个产品待审不冻结无关产品，也不能借子锚点绕过父订单财审。
+
+### 2.1 报价与财务核价(2026-09-27 ADR-134)
+
+报价不是最终单据，订货单才是。报价状态：草稿 0(带退回原因即「财务退回」) → 待财务核价 2 → 已核价 1 → 转订货单；作废 -1。
+
+1. 销售新建报价：单价只来自货品资料(只读)，草稿折扣可改；没标价或客户价高于标价的行折扣留空、标「待财务定价」。无售价查看权限的账号不显示价格与折扣，保存时由服务端按文件单价推算折扣。
+2. 销售「提交财务核价」→ 通知财务部门里持 `sales_quote_finance:view` + `sales_quote_finance:confirm` 的人；财务认领前销售可「撤回」回草稿。
+3. 财务认领后逐行改折扣或成交单价(二者互推)，没标价的给财务成交价(可选赠品/0价)，可改有效期、结算方式、财务备注、批量设折扣；然后「退回」(带原因，销售改完重新提交，上次财务确认过的折扣改动会标出)或「确认」。未定价的行挡确认。
+4. 已核价、未转订货前：销售可「重新修改」回草稿，财务可「撤销确认」回待核价。每次动作写只追加的修订记录。
+5. 销售「转订货单」生成订货草稿，单价与财务核定折扣带入并锁定；订货单仍走本页下文的销售自审与订单财务确认(V294，放行信用/条款/计划)，订单财务审核页显示「报价已核价 · 一致」，可批量确认。
+
+### 2.2 识别客户文件导入(2026-09-27 ADR-133/ADR-134)
+
+1. 新建报价/订货单或草稿上点「识别客户文件」，上传客户的报价单/形式发票(Excel、CSV、PDF、图片)；PDF/图片会整份发给 AI 服务，页面先请用户确认。
+2. 系统读表、对应客户与货品、按文件单价算折扣；只在证据充分时自动对应，其余进「需要核对」由业务员逐行确认。价格从不取自文件；订货单遇到没标价/客户价高于标价的货品不能导入，改为先做报价单交财务定价(复用同一次识别)。
+3. 用户确认保存后，系统在提交成功后另起事务学习客户的叫法(客户货品对照)、货品英文名与勾选的客户资料；学习失败不影响单据保存，价格与折扣从不学习。
+4. 没有 `ai:use` 或管理员没配置 AI 服务时只按固定规则识别常见格式的 Excel。AI 服务由超管在[系统设置 → AI 服务](../03-页面/AI服务设置页.md)配置。
+5. **上线前提：客户资料必须已分配负责人。** 业务员只能在自己看得到的客户里匹配与学习；没有负责人的客户对业务员不可见，识别会提示「你名下还没有客户资料, 请联系主管在客户资料里把客户分配给你」。
 
 ## 三、库存承诺与计划下达
 
@@ -121,6 +140,8 @@
 | 关键动作 | 服务函数 | 迁移/真实测试入口 |
 |---|---|---|
 | 保存、自审、改量、取消 | [SalesOrderService](../../server/src/main/java/com/uten/imp/features/sales/order/SalesOrderService.java)：create/update/approve/changeQty/cancel；[Controller](../../server/src/main/java/com/uten/imp/features/sales/order/SalesOrderController.java)核权限 | [V492修改复核](../数据迁移/108-V492销售订单完整修改与财务版本复核.md)；[SalesOrderFinanceConfirmServiceTest](../../server/src/test/java/com/uten/imp/features/sales/order/SalesOrderFinanceConfirmServiceTest.java)及FullChain |
+| 报价核价与转订货 | [SalesQuoteService](../../server/src/main/java/com/uten/imp/features/sales/quote/SalesQuoteService.java)：submit/withdraw/reopen/convertToOrder；[SalesQuoteFinanceService](../../server/src/main/java/com/uten/imp/features/sales/quote/SalesQuoteFinanceService.java)：编辑/退回/确认/撤销确认 | [V742](../数据迁移/260-V742公共AI平台与销售文件识别学习.md)；[SalesQuoteFinanceFlowPostgresTest](../../server/src/test/java/com/uten/imp/features/sales/quote/SalesQuoteFinanceFlowPostgresTest.java)、SalesQuoteStateRulesTest |
+| 识别客户文件与保存后学习 | [SalesDocumentIntakeJobHandler](../../server/src/main/java/com/uten/imp/features/sales/intake/SalesDocumentIntakeJobHandler.java) → SalesIntakePipeline；[SalesMasterLearningAdapter](../../server/src/main/java/com/uten/imp/features/master/learning/SalesMasterLearningAdapter.java)、SalesIntakeLayoutLearner | [ADR-134](../99-决策记录-ADR/ADR-134-销售客户文件AI识别导入与主档学习及报价财务核价.md)；SalesIntakeMatchingRegressionTest、[MasterIntakeLearningPostgresTest](../../server/src/test/java/com/uten/imp/businesschain/MasterIntakeLearningPostgresTest.java) |
 | 订单财审 | [SalesOrderFinanceConfirmService](../../server/src/main/java/com/uten/imp/features/sales/order/SalesOrderFinanceConfirmService.java)：review/confirm/confirmBatch/reject | [财审租约合同](../99-项目治理/2026-09-07-财务审核租约与订单互斥.md) |
 | 各层下达与旧链刷新 | [MaterialAnalysisCommandService](../../server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisCommandService.java)：notifySupply/issueWorkshopPlans；[MaterialAnalysisService](../../server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java)：refreshLocked | [ADR-071](../99-决策记录-ADR/ADR-071-下达车间原子化与计划侧齐套判断下线.md)、[ADR-073](../99-决策记录-ADR/ADR-073-本批物料履约与同主仓分仓领料.md)；V489–V491/V495 |
 | 齐套和开工 | [ProductionExecutionSegmentService](../../server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionSegmentService.java)：recheckMaterial/start/batchStart；[StockService](../../server/src/main/java/com/uten/imp/features/stock/StockService.java)实际流水 | [ProductionExecutionSegmentOperationsPostgresTest](../../server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionSegmentOperationsPostgresTest.java)；V514/V521/V524 |

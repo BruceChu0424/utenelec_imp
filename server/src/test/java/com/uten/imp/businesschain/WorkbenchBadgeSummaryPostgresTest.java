@@ -59,7 +59,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false",
-        "uten.policy-intelligence.enabled=false",
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",
         "uten.storage.malware-scan.provider=test-only",
         "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
@@ -89,6 +88,9 @@ class WorkbenchBadgeSummaryPostgresTest {
         ORIGINAL_ENDPOINTS.put("salesOrderFinance", "/api/sales/orders/finance-confirmation/count");
         ORIGINAL_ENDPOINTS.put("shipmentFinance", "/api/sales/shipments/pending-finance-count");
         ORIGINAL_ENDPOINTS.put("warehouseSalesOutbound", "/api/warehouse/sales-outbound/counts");
+        // ADR-134 报价核价: 新入口, 原端点即本次新增的计数端点。
+        ORIGINAL_ENDPOINTS.put("salesQuote", "/api/sales/quotes/counts");
+        ORIGINAL_ENDPOINTS.put("salesQuoteFinance", "/api/sales/quotes/finance-review/count");
         ORIGINAL_ENDPOINTS.put("procurementApproval", "/api/finance/procurement-approvals/count");
         ORIGINAL_ENDPOINTS.put("iqcRejection", "/api/procurement/iqc-rejections/counts");
         ORIGINAL_ENDPOINTS.put("warehouseInboundExpectation", "/api/warehouse/inbound/expectations/count");
@@ -141,6 +143,7 @@ class WorkbenchBadgeSummaryPostgresTest {
         legacy("financeAuditCenter", List.of("salesOrderFinance.count", "shipmentFinance.count",
                 "procurementApproval.count", "financeArrivalException.count",
                 "iqcRejection.open"), List.of());
+        legacy("financeQuoteReview", List.of("salesQuoteFinance.pending"), List.of());
         legacy("expenseFinance", List.of("expense.pendingApprovalCount", "expense.pendingPaymentCount"), List.of());
         legacy("financeDrafts", List.of("drafts.financeReceipt", "drafts.financePayment", "drafts.financeExpense",
                 "drafts.financeOtherIncome", "drafts.financeBankTransfer"), List.of());
@@ -176,6 +179,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         legacy("salesOrderInFlight", List.of(), List.of("salesStage.PENDING", "salesStage.PRODUCING",
                 "salesStage.SHIPMENT_PENDING", "salesStage.WAREHOUSE_PENDING"));
         legacy("salesShipmentFinanceRejected", List.of("financeRejected.salesShipment"), List.of());
+        legacy("salesQuoteFinanceRejected", List.of("financeRejected.salesQuote"), List.of());
+        legacy("salesQuoteAwaitingConversion", List.of("salesQuote.awaitingConversion"), List.of());
         legacy("salesDrafts", List.of("drafts.salesOrder", "drafts.salesShipment", "drafts.salesReturn",
                 "drafts.salesQuote"), List.of());
         legacy("serverStatusAlert", List.of("serverStatus.alerts"), List.of());

@@ -36,5 +36,12 @@ public record SalesOrderFinancePendingDto(
         OffsetDateTime financeRejectedAt,
         /** 上次财务确认之后的改量处数（>0 = 「改后待确认」，审核页有修改清单）。 */
         long changeCount,
-        long financeReviewRevision) {
+        long financeReviewRevision,
+        /**
+         * ADR-134 来源报价(由财务核价确认过的报价转入才有, 否则为 null): 单号、核价人与时间;
+         * allLinesMatch = 每行单价与折扣都与报价核定一致(列表显示「报价已核价 · 一致」), 与审核页同一配对规则。
+         */
+        SalesOrderFinanceReviewDto.SourceQuote sourceQuote,
+        /** 与审核页同口径: 报价转入的订单每行都与报价核定一致为 true、有不一致为 false; 不是报价转入为 null。 */
+        Boolean matchesQuote) {
 }

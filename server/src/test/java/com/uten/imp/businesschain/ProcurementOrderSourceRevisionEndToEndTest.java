@@ -49,7 +49,7 @@ import static org.assertj.core.api.Assertions.*;
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false",
-        "uten.reporting.materialized-view-refresh.enabled=false","uten.policy-intelligence.enabled=false",
+        "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true",
         "uten.storage.malware-scan.provider=test-only","uten.jwt.secret=source-revision-jwt-test-only-01234567890123456789",
         "uten.crypto.pgp-master-key=source-revision-pgp-test-only-01234567890123456789",

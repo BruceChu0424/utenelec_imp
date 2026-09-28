@@ -68,7 +68,22 @@ public record SalesOrderFinanceReviewDto(
         List<QtyChange> qtyChanges,
         List<com.uten.imp.features.sales.order.SalesOrderRevisionService.FieldChange> commercialChanges,
         long financeReviewRevision,
-        com.uten.imp.features.sales.order.SalesOrderRevisionService.RevisionDiff revisionDiff) {
+        com.uten.imp.features.sales.order.SalesOrderRevisionService.RevisionDiff revisionDiff,
+        /** ADR-134 来源报价(报价转入才有): 单号 + 财务核价人与时间; allLinesMatch = 每行单价折扣都与报价核定一致。 */
+        SourceQuote sourceQuote,
+        /** ADR-134 客户文件上单价的币种代码(阅读明细 clientPrice 用)。 */
+        String clientFileCurrency,
+        /** ADR-134 整单是否与来源报价核定一致(= sourceQuote.allLinesMatch; 不是报价转入为 null), 与列表同口径。 */
+        Boolean matchesQuote) {
+
+    /** 来源报价核价信息(订单确认只需再核信用与条款; 价格已由财务在报价上核定)。 */
+    public record SourceQuote(
+            @JsonSerialize(using = ToStringSerializer.class) UUID id,
+            String billNo,
+            String financeConfirmedByName,
+            OffsetDateTime financeConfirmedAt,
+            boolean allLinesMatch) {
+    }
 
     /**
      * 修改清单行（2026-09-05 确认后改量）：一行一次数量修改，
@@ -106,6 +121,15 @@ public record SalesOrderFinanceReviewDto(
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal price,
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal discount,
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal amountOriginal,
-            String remark) {
+            String remark,
+            /** ADR-134 客户文件品名原文。 */
+            String clientGoodsName,
+            /** ADR-134 客户文件单价原文(币种见表头 clientFileCurrency)。 */
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal clientPrice,
+            /** 来源报价核定的单价/折扣(报价转入且配对上的行才有)。 */
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal quotePrice,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal quoteDiscount,
+            /** 本行单价与折扣是否与报价核定一致(非报价转入的订单为 null; 报价外新增的行为 false)。 */
+            Boolean matchesQuote) {
     }
 }

@@ -7,12 +7,24 @@
 
 import 'master_facet.dart';
 
+/// Where goods.name_en came from (ADR-134): typed by a person, or learned when
+/// sales saved a customer file. null = no English name yet.
+abstract final class GoodsNameEnSource {
+  static const manual = 'MANUAL';
+  static const learned = 'LEARNED';
+}
+
+/// Longest English name the server accepts (goods.name_en varchar(255)).
+const kGoodsNameEnMaxLength = 255;
+
 /// 货品列表项（含筛选/展示所需的核心字段）。
 class GoodsListItem {
   const GoodsListItem({
     required this.id,
     this.code,
     this.name,
+    this.nameEn,
+    this.nameEnSource,
     this.spec,
     this.model,
     this.price,
@@ -56,6 +68,13 @@ class GoodsListItem {
   final String id;
   final String? code;
   final String? name;
+
+  /// English name used to match customer files (goods.name_en, ADR-134);
+  /// the goods picker hands it to the sales grid as the default file goods name.
+  final String? nameEn;
+
+  /// [GoodsNameEnSource] value, null when [nameEn] is blank.
+  final String? nameEnSource;
   final String? spec;
   final String? model;
   final double? price;
@@ -116,6 +135,8 @@ class GoodsListItem {
     id: json['id'] as String,
     code: json['code'] as String?,
     name: json['name'] as String?,
+    nameEn: json['nameEn'] as String?,
+    nameEnSource: json['nameEnSource'] as String?,
     spec: json['spec'] as String?,
     model: json['model'] as String?,
     price: (json['price'] as num?)?.toDouble(),
@@ -246,6 +267,9 @@ class GoodsDetail {
     required this.id,
     this.code,
     this.name,
+    this.nameEn,
+    this.nameEnSource,
+    this.canEditNameEn = false,
     this.spec,
     this.model,
     this.price,
@@ -335,6 +359,21 @@ class GoodsDetail {
   final bool quantityUnitLocked;
   final String? code;
   final String? name;
+
+  /// English name used to match customer files (goods.name_en, ADR-134).
+  final String? nameEn;
+
+  /// [GoodsNameEnSource] value, null when [nameEn] is blank.
+  final String? nameEnSource;
+
+  /// Server capability: the caller may change only the English name through
+  /// PUT /master/goods/{id}/name-en (goods:name_en:edit or goods:edit plus
+  /// object scope). Missing on older responses means read-only.
+  final bool canEditNameEn;
+
+  bool get nameEnLearned =>
+      nameEnSource == GoodsNameEnSource.learned &&
+      (nameEn?.trim().isNotEmpty ?? false);
   final String? spec;
   final String? model;
   final double? price;
@@ -461,6 +500,9 @@ class GoodsDetail {
     id: json['id'] as String,
     code: json['code'] as String?,
     name: json['name'] as String?,
+    nameEn: json['nameEn'] as String?,
+    nameEnSource: json['nameEnSource'] as String?,
+    canEditNameEn: json['canEditNameEn'] == true,
     spec: json['spec'] as String?,
     model: json['model'] as String?,
     price: (json['price'] as num?)?.toDouble(),

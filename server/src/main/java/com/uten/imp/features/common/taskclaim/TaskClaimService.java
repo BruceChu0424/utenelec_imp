@@ -43,6 +43,15 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
     private final List<ReviewTaskTargetLockPort> reviewTargetLocks;
     private final FinanceReviewerEligibilityPort procurementReviewers;
     private final SalesOrderFinanceReviewerEligibilityPort salesReviewers;
+    /**
+     * ADR-134 报价核价人资格。setter 注入: 未注入(直接 new 的单测)时报价核价认领一律按不合格处理(fail-closed)。
+     */
+    private com.uten.imp.application.port.SalesQuoteFinanceReviewerEligibilityPort quoteReviewers;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setQuoteReviewers(com.uten.imp.application.port.SalesQuoteFinanceReviewerEligibilityPort quoteReviewers) {
+        this.quoteReviewers = quoteReviewers;
+    }
 
     /** 认领（幂等：自己已认领=续租；他人在租约内=409；过期=惰性释放后重建）。 */
     @Transactional
@@ -213,6 +222,8 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
         boolean eligible = switch (targetType) {
             case "SALES_ORDER_FINANCE_CONFIRM" -> salesReviewers.isEligible(currentUser.requireId());
             case "PROCUREMENT_FINANCE_APPROVE" -> procurementReviewers.findEligible(currentUser.requireId()).isPresent();
+            case "SALES_QUOTE_FINANCE_REVIEW" -> quoteReviewers != null
+                    && quoteReviewers.isEligible(currentUser.requireId());
             default -> true;
         };
         if (!eligible) {
@@ -285,6 +296,11 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
         claimRepo.findUnreleasedForUpdate(targetType, targetKey)
                 .filter(TaskClaim::isActive)
                 .ifPresent(claim -> {
+                    if ("SALES_QUOTE_FINANCE_REVIEW".equals(targetType)) {
+                        throw new ApiException(ErrorCode.CONFLICT,
+                                "该报价正由 " + claimantName(claim.getClaimedBy())
+                                        + " 核价中，请等财务处理完，或请财务先退出核价后再操作");
+                    }
                     throw new ApiException(ErrorCode.CONFLICT,
                             "该订单正由 " + claimantName(claim.getClaimedBy())
                                     + " 进行财务审核，请等待审核完成或退出审核后再修改");

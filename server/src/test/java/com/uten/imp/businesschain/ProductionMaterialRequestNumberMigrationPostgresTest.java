@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.*;
     // The schema is pinned at V730 on purpose: entity columns added by later migrations must not be validated here.
     "spring.profiles.active=dev","spring.flyway.target=730","spring.jpa.hibernate.ddl-auto=none",
     "uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
-    "uten.production.readiness-reconcile.enabled=false","uten.policy-intelligence.enabled=false","uten.features.goods-owner-scope-enabled=false",
+    "uten.production.readiness-reconcile.enabled=false","uten.features.goods-owner-scope-enabled=false",
     "uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only",
     "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
     "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",

@@ -21,6 +21,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -954,6 +955,9 @@ class _FinanceSalesOrderConfirmationPageState
           ? '已驳回：${item.financeRejectedReason ?? '未注明原因'}'
           : item.changeCount > 0
           ? '修改后待确认 · ${item.changeCount} 次变更'
+          // 报价转入且各行单价/折扣与财务核定的报价一致(ADR-134)：本次只核信用与条款。
+          : item.sourceQuote != null && item.matchesQuote == true
+          ? '待财务确认 · ${AppLocalizations.of(context).quoteFinanceOrderAllMatch}'
           : '待财务确认',
       cellColor: (context, item) =>
           item.changeCount > 0 && !item.financeRejected

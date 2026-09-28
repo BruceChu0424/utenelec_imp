@@ -35,6 +35,9 @@ class SecurityDefaultsTest {
                         "Content-Type",
                         "Accept",
                         "X-Uten-Attachment-Upload-Token",
+                        // ADR-133: AI 识别上传的文件名与类型。
+                        "X-Uten-File-Name",
+                        "X-Uten-File-Type",
                         // ADR-110: 敏感操作的一次性再认证凭证随请求头发送。
                         "X-Uten-Step-Up",
                         // ADR-110: 用户已有一段时间没操作时发出的请求 (轮询/定时刷新) 不续期会话。

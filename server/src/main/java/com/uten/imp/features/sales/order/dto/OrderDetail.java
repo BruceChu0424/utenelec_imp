@@ -73,6 +73,18 @@ public class OrderDetail {
     private java.time.OffsetDateTime financeRejectedAt;
     /** 财务驳回人姓名（服务端按 finance_rejected_by 解析）。 */
     private String financeRejectedByName;
+    /** ADR-134 客户文件上单价的币种代码(阅读明细 clientPrice 用)。 */
+    @lombok.Setter
+    private String clientFileCurrency;
+    /** ADR-134 来源报价的核价信息(报价转入且可读时才有)。 */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    @lombok.Setter
+    private SourceQuote sourceQuote;
+
+    /** 来源报价: 单号 + 财务核价人与时间(订单明细里「报价核定」的依据)。 */
+    public record SourceQuote(UUID id, String billNo, String financeConfirmedByName,
+                              java.time.OffsetDateTime financeConfirmedAt) {
+    }
 
     // Exact text is derived after permission masking; null stays null.
     public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }

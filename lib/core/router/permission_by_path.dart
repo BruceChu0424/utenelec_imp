@@ -184,6 +184,11 @@ List<String>? requiredAnyPermFor(String rawLocation) {
       location.startsWith('${RouteName.financeSalesShipmentAudit}/')) {
     return const [Perm.salesShipmentFinanceView];
   }
+  // 报价核价(ADR-134)：列表与详情同一查看码；改价/退回/确认按服务端 allowedActions。
+  if (location == RouteName.financeQuoteReview ||
+      location.startsWith('${RouteName.financeQuoteReview}/')) {
+    return const [Perm.salesQuoteFinanceView];
+  }
   if (location == RouteName.financeArrivalExceptions ||
       location.startsWith('${RouteName.financeArrivalExceptions}/')) {
     return const [Perm.financeOrderApprovalView];

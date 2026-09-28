@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @SpringBootTest(properties = {
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false",
-        "uten.reporting.materialized-view-refresh.enabled=false", "uten.policy-intelligence.enabled=false",
+        "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.features.goods-owner-scope-enabled=false",
         "uten.jwt.secret=return-authority-harness-jwt-secret-0123456789-tst",
         "uten.crypto.pgp-master-key=return-authority-harness-pgp-key-test-only-0123",

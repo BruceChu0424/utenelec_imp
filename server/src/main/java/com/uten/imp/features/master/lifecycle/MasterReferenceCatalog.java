@@ -62,6 +62,13 @@ final class MasterReferenceCatalog {
     static final String PLAN_OPEN = ORDER_OPEN + " AND NOT h.is_canceled";
     /** 过账类：审核即过账完成，只有草稿(0)算在办。 */
     static final String DRAFT_OPEN = LIVE + " AND h.status = 0";
+    /**
+     * 报价(ADR-134)：草稿(0，含财务退回)、待财务核价(2)，以及按新流程财务已确认(1, finance_confirmed_at 非空)
+     * 但还没转成订货单的都算在办(转订货单时还要按报价明细校验主档)；已转订货单、作废(-1)、
+     * 以及旧流程销售自审的历史报价(没有财务确认时间, 也永远不会再转)不算, 否则会永久挡住主档删除。
+     */
+    static final String QUOTE_OPEN = LIVE + " AND (h.status IN (0, 2) OR (h.status = 1 AND h.finance_confirmed_at IS NOT NULL"
+            + " AND NOT EXISTS (SELECT 1 FROM sales_orders qo WHERE qo.source_quote_id = h.id AND NOT qo.is_deleted)))";
     /** 出货单审核即已出库(V632 财务闸)：未审核且没作废/冲回的才算在办。 */
     static final String SHIPMENT_OPEN = DRAFT_OPEN
             + " AND COALESCE(h.warehouse_work_status, '') NOT IN ('CANCELLED', 'REVERSED')";
@@ -82,7 +89,7 @@ final class MasterReferenceCatalog {
 
     private static final Doc SALES_ORDER = new Doc("sales_orders", RefKind.SALES_ORDER, ORDER_OPEN,
             "owner_employee_id", "sales");
-    private static final Doc SALES_QUOTE = new Doc("sales_quotes", RefKind.SALES_QUOTE, DRAFT_OPEN,
+    private static final Doc SALES_QUOTE = new Doc("sales_quotes", RefKind.SALES_QUOTE, QUOTE_OPEN,
             "maker_id", "sales");
     private static final Doc SHIPMENT = new Doc("sales_shipments", RefKind.SHIPMENT, SHIPMENT_OPEN,
             "owner_employee_id", "sales");
@@ -608,6 +615,10 @@ final class MasterReferenceCatalog {
         // V693(ADR-115): 负责关系是仓库自己的附属设置, 删仓库后负责人自然失效, 不算「还在用」。
         exempt(out, ExemptReason.OWN_CONFIG, "仓库负责人(仓管员)", "warehouse_keepers", "warehouse_id");
         exempt(out, ExemptReason.OWN_CONFIG, "单位自己的换算设置", "unit_measurement_profiles", "unit_id");
+        // V742(ADR-134): 客户货品对照与客户文件版式是客户/货品自己的学习资料，主档停用后自然不再使用。
+        exempt(out, ExemptReason.OWN_CONFIG, "客户货品对照(客户的型号/品名对应我们的货品)", "client_goods_aliases",
+                "client_id", "goods_id");
+        exempt(out, ExemptReason.OWN_CONFIG, "客户文件版式(表头对应的列)", "sales_intake_layouts", "client_id");
         exempt(out, ExemptReason.OWN_CONFIG, "货品自己的计量采集设置", "measurement_capture_profiles", "goods_id");
         exempt(out, ExemptReason.OWN_CONFIG, "父件自己的组装清单(删父件时同一事务软删)", "goods_bom_items",
                 "goods_id");

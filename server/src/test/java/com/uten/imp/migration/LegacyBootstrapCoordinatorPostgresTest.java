@@ -310,7 +310,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
                 "--spring.datasource.password=" + postgres.getPassword(),
                 "--spring.flyway.locations=filesystem:" + candidate.resolve("server/src/main/resources/db/migration"),
                 "--uten.audit.retention.enabled=false", "--uten.reporting.materialized-view-refresh.enabled=false",
-                "--uten.policy-intelligence.enabled=false", "--uten.features.goods-owner-scope-enabled=false",
+                "--uten.features.goods-owner-scope-enabled=false",
                 "--uten.jwt.secret=bootstrap-native-test-jwt-secret-0123456789-test-only",
                 "--uten.crypto.pgp-master-key=synthetic-test-only-pgp-material-0001",
                 "--uten.crypto.hmac-key=synthetic-test-only-hmac-material-0001",

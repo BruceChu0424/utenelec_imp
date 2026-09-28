@@ -157,7 +157,13 @@ class BusinessDataResetSqlContractTest {
             Map.entry("workshop_material_period_closes", 740),
             Map.entry("workshop_material_close_materials", 740),
             Map.entry("workshop_material_close_theory_lines", 740),
-            Map.entry("workshop_material_close_allocations", 740));
+            Map.entry("workshop_material_close_allocations", 740),
+
+            // V742 公共 AI 平台与销售客户文件识别(ADR-133/ADR-134)：识别任务、调用技术记录与
+            // 报价核价修订记录随业务数据清空。
+            Map.entry("ai_jobs", 742),
+            Map.entry("ai_call_logs", 742),
+            Map.entry("sales_quote_revision_logs", 742));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
@@ -183,7 +189,12 @@ class BusinessDataResetSqlContractTest {
             // V740 (ADR-131): 机台、机台容器与认料是车间和产品的配置, 随主档保留。
             Map.entry("workshop_machines", 740),
             Map.entry("workshop_machine_containers", 740),
-            Map.entry("goods_periodic_material_choices", 740));
+            Map.entry("goods_periodic_material_choices", 740),
+
+            // V742(ADR-133/ADR-134): AI 服务商配置、客户货品对照与客户文件版式是配置/学习知识。
+            Map.entry("ai_providers", 742),
+            Map.entry("client_goods_aliases", 742),
+            Map.entry("sales_intake_layouts", 742));
 
     /**
      * V590 起整表废弃并从清空策略移除的表（「读取已安装定义 + 锚点替换删除」
@@ -197,7 +208,10 @@ class BusinessDataResetSqlContractTest {
             "role_permissions", 677,
             "department_roles", 677,
             // V739 / ADR-129：按颜色的学习累计表由 goods_bom_actual_usages 取代。
-            "goods_bom_learning_material_totals", 739);
+            "goods_bom_learning_material_totals", 739,
+
+            // V741 / ADR-133：政策情报 AI 退役，外部抓取的政策摘要表整表删除。
+            "official_policy_briefs", 741);
 
     private String opsScript;
     private String migrationSql;
@@ -453,7 +467,17 @@ class BusinessDataResetSqlContractTest {
                 .contains("(736, 664),")
                 .contains("(738, 665),")
                 .contains("(739, 666),")
-                .contains("(740, 667)")                // The exact range label follows the independently enumerated classpath head.
+                .contains("(740, 667),")                // The exact range label follows the independently enumerated classpath head.
+
+                .contains("(734, 663)")
+                .contains("(738, 665),")
+                // V741 政策情报表删除(PRESERVE 102→101)，V742 公共 AI 平台六张新表(PRESERVE 101→104)；
+                // V735至V737、V739、V740 跳号(临时号，合并时顺延并重算)。
+                .contains("(741, 668),")
+                .contains("(742, 669)")
+                .contains("OR (applied_max_version = 741 AND preserve_count <> 101)")
+                .contains("OR (applied_max_version >= 742 AND preserve_count <> 104)")
+                // The exact range label follows the independently enumerated classpath head.
                 .contains("V507/469、V508/470及V511至V"
                         + MigrationRehearsalSupport.CURRENT_HEAD_VERSION + "完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)
@@ -484,11 +508,23 @@ class BusinessDataResetSqlContractTest {
         assertThat(extensionSql)
                 .contains("RAISE EXCEPTION 'V693 cannot extend business-data reset policy safely'")
                 .contains("(''warehouse_keepers'', ''PRESERVE'')");
+        assertThat(extensionSql(742))
+                .contains("RAISE EXCEPTION 'V742 cannot extend business-data reset policy safely'")
+                .contains("(''ai_providers'', ''PRESERVE'')")
+                .contains("(''client_goods_aliases'', ''PRESERVE'')")
+                .contains("(''sales_intake_layouts'', ''PRESERVE'')")
+                .contains("(''ai_jobs'', ''CLEAR'')")
+                .contains("(''ai_call_logs'', ''CLEAR'')")
+                .contains("(''sales_quote_revision_logs'', ''CLEAR'')");
         // V590：整表废弃走「读已安装定义 + 锚点替换删除」补丁；锚点单行无换行，
         // 不受迁移文件 CRLF/LF 差异影响（V588 教训）。
         assertThat(extensionSql)
                 .contains("RAISE EXCEPTION 'V590 cannot drop retired preference policy row from business_data_reset'")
                 .contains("(''production_goods_workshop_preferences'', ''PRESERVE''),");
+        assertThat(extensionSql(741))
+                .contains("RAISE EXCEPTION 'V741 cannot drop retired official_policy_briefs from business_data_reset'")
+                .contains("(''official_policy_briefs'', ''PRESERVE''),")
+                .contains("DROP TABLE official_policy_briefs;");
     }
 
     @Test

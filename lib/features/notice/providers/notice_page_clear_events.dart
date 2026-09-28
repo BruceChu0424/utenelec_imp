@@ -69,6 +69,8 @@ const Map<String, List<String>> noticePageClearEvents = {
   '/finance/sales-order-confirmations': ['SALES_ORDER_PENDING_FINANCE_CONFIRM'],
   '/finance/sales-order-changes': ['SALES_ORDER_PENDING_FINANCE_CONFIRM'],
   '/finance/sales-shipment-audits': ['SALES_SHIPMENT_PENDING_FINANCE_AUDIT'],
+  // ADR-134 报价核价队列(含 /finance/quote-review/{id} 详情子页)。
+  '/finance/quote-review': ['SALES_QUOTE_PENDING_FINANCE_REVIEW'],
   '/finance/procurement-approvals': [
     'PROCUREMENT_FINANCE_SUBMITTED',
     'PROCUREMENT_FINANCE_CHANGE_SUBMITTED',

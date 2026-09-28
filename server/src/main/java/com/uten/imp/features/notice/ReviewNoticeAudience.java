@@ -104,6 +104,9 @@ public class ReviewNoticeAudience {
             case "DIRECT_CUSTOMER_SHIPMENT_FINANCE_REJECTED" -> any(departments,"DEPT_SALES","DEPT_RAIL") && permissions.containsAll(Set.of("sales_other_shipment:view","sales_other_shipment:edit"));
             case "SALES_ORDER_PENDING_FINANCE_CONFIRM" -> departments.contains("DEPT_FIN")
                     && permissions.containsAll(Set.of("sales_order_finance:view", "sales_order_finance:confirm"));
+            // ADR-134 报价核价: 与核价人资格同口径(财务部门子树 + 查看 + 确认)。
+            case "SALES_QUOTE_PENDING_FINANCE_REVIEW" -> departments.contains("DEPT_FIN")
+                    && permissions.containsAll(Set.of("sales_quote_finance:view", "sales_quote_finance:confirm"));
             case "PROCUREMENT_FINANCE_SUBMITTED", "PROCUREMENT_FINANCE_CHANGE_SUBMITTED" ->
                     departments.contains("DEPT_FIN") && permissions.contains("finance_order_approval:view")
                     && any(permissions, "finance_order_approval:approve", "finance_order_approval:reject");

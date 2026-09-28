@@ -23,6 +23,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
@@ -34,6 +35,7 @@ import '../repositories/goods_bom_repository.dart';
 import '../repositories/goods_repository.dart';
 import '../repositories/product_category_repository.dart';
 import '../widgets/category_edit_dialog.dart';
+import '../widgets/basic_data_l10n.dart';
 import '../widgets/category_page_shell.dart';
 import '../widgets/goods_import_dialog.dart';
 import '../models/goods_import.dart';
@@ -444,13 +446,30 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     final canViewPrice =
         _perms.contains(Perm.goodsPriceView) ||
         _perms.contains(Perm.goodsPriceEdit);
+    final nameEnColumn = _goodsNameEnColumn(basicDataL10n(context));
     return [
       for (final c in _goodsColumns)
         if ((c.key != 'discount' || canViewDiscount) &&
-            (c.key != 'price' || canViewPrice))
+            (c.key != 'price' || canViewPrice)) ...[
           c,
+          // ADR-134: English name right after the goods name.
+          if (c.key == 'name') nameEnColumn,
+        ],
     ];
   }
+
+  /// 英文名称列 (ADR-134): the name customer files use; learned when sales
+  /// save a document, editable on the goods detail. Label comes from arb, so
+  /// it is built per context instead of living in the static column list.
+  static MasterColumnDef<GoodsListItem> _goodsNameEnColumn(
+    AppLocalizations l10n,
+  ) => MasterColumnDef(
+    key: 'nameEn',
+    label: l10n.goodsNameEnLabel,
+    width: 200,
+    info: l10n.goodsNameEnColumnInfo,
+    value: (g) => g.nameEn,
+  );
 
   /// 货品明细区配置：浏览态排除禁用/迁移占位(它们归表头下的前导分组)，
   /// 行菜单由本页接管(复制/粘贴/组件信息 + 多选批量菜单)。
@@ -461,7 +480,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       icon: Icons.inventory_2_outlined,
       defaultCodePrefix: 'HP',
       keyPrefix: 'goods',
-      searchHint: '搜索货品(名称/编号/型号/规格/系列)', // TODO(l10n): 补 arb
+      searchHint: basicDataL10n(context).goodsNameEnSearchHint,
       columns: _visibleGoodsColumns,
       idOf: (g) => g.id,
       statusOf: (g) => g.status,
@@ -619,6 +638,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         requestedCategoryId: categoryId,
       ),
       'name': d.name ?? '',
+      // nameEn is deliberately not copied: it is the key customer files are
+      // matched by, and two goods with one English name would be ambiguous.
       'status': status ?? d.status ?? '使用',
       'shortName': d.shortName,
       'sourceType': d.sourceType,

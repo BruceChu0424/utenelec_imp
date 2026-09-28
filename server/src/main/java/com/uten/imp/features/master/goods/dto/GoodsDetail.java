@@ -140,6 +140,15 @@ public class GoodsDetail {
     /** 本产品 BOM 里整批领料的料与单个重量 (期间边); 单重旁只读显示"塑料单个重量 (来自 BOM)"。 */
     private List<GoodsPeriodicBomWeight> periodicBomWeights;
 
+    // ===== 英文名称(ADR-134, V742) =====
+    private String nameEn;           // 英文名称; 未维护为 null
+    private String nameEnSource;     // MANUAL 人工维护 / LEARNED 从客户文件学习
+    /**
+     * 当前用户能否单独改英文名称(持有 goods:name_en:edit 或 goods:edit, 且对该货品有写范围)。
+     * 页面按它决定是否显示编辑入口, 不再新增前端权限字面量。
+     */
+    private boolean canEditNameEn;
+
     public BigDecimal getDefaultPurchasePrice() {
         return defaultPurchasePriceInfo == null ? null : defaultPurchasePriceInfo.price();
     }

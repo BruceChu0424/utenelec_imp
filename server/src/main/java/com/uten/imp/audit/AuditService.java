@@ -103,6 +103,18 @@ public class AuditService {
                 actorId, actorAccount, action, targetType, targetId, result, sessionId, false);
     }
 
+    /**
+     * 请求顺带引起的另一件事(例如保存报价/订货单后按客户文件补全客户资料), 与调用方事务同进退。
+     * 与 {@link #logCommitted} 不同, 它不算这次请求的说明: 请求自己的语义事件(资源.方法、状态码、耗时)
+     * 照常由 {@link UserOperationAuditInterceptor} 写; 这条事件随调用方事务回滚时也不会留下「已说明」的标记。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void logCommittedSideEffect(UUID actorId, String actorAccount, String action,
+                                       String targetType, String targetId, String result) {
+        persistBusinessEvent(
+                actorId, actorAccount, action, targetType, targetId, result, null, false, null, false);
+    }
+
     private void persistBusinessEvent(
             UUID actorId,
             String actorAccount,
@@ -126,6 +138,25 @@ public class AuditService {
             UUID sessionId,
             boolean durable,
             Map<String, Object> change) {
+        persistBusinessEvent(actorId, actorAccount, action, targetType, targetId, result,
+                sessionId, durable, change, true);
+    }
+
+    /**
+     * @param explainsRequest 这条事件是否就是这次请求的说明: 是则请求不再补写自己的语义事件或请求行;
+     *                        请求顺带引起的旁路事件为 false, 请求自己的那一行照常写。
+     */
+    private void persistBusinessEvent(
+            UUID actorId,
+            String actorAccount,
+            String action,
+            String targetType,
+            String targetId,
+            String result,
+            UUID sessionId,
+            boolean durable,
+            Map<String, Object> change,
+            boolean explainsRequest) {
         HttpServletRequest request = currentRequest();
         AuditLog a = base(
                 truncate(action, 120),
@@ -145,7 +176,7 @@ public class AuditService {
         save(a);
         if (durable) {
             AuditRequestContext.markDurableEventRecorded(request, AuditClassifier.failed(result, null));
-        } else {
+        } else if (explainsRequest) {
             AuditRequestContext.markMeaningfulEventRecorded(request);
         }
     }

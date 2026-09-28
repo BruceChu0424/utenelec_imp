@@ -5,7 +5,9 @@
   "bomLearningPaused": "학습 구성품을 자동으로 만들지 않았습니다: {reason}. 실제 사용량은 계속 누적됩니다.",
   "@bomLearningPaused": {
     "placeholders": {
-      "reason": {"type": "String"}
+      "reason": {
+        "type": "String"
+      }
     }
   },
   "bomDesignQty": "설계 사용량",
@@ -14,22 +16,32 @@
   "bomActualTipActual": "완료된 생산 {samples}배치 누적: 순소비 {net} / 생산량 {output}",
   "@bomActualTipActual": {
     "placeholders": {
-      "samples": {"type": "int"},
-      "net": {"type": "String"},
-      "output": {"type": "String"}
+      "samples": {
+        "type": "int"
+      },
+      "net": {
+        "type": "String"
+      },
+      "output": {
+        "type": "String"
+      }
     }
   },
   "bomActualTipAverage": "실제 개당 평균 {qty}",
   "@bomActualTipAverage": {
     "placeholders": {
-      "qty": {"type": "String"}
+      "qty": {
+        "type": "String"
+      }
     }
   },
   "bomActualTipUsed": "자재 분석과 작업장 자재 출고는 실제 사용량으로 계산합니다.",
   "bomUsesDesignBecause": "{reason}. 설계 사용량으로 계산합니다.",
   "@bomUsesDesignBecause": {
     "placeholders": {
-      "reason": {"type": "String"}
+      "reason": {
+        "type": "String"
+      }
     }
   },
   "bomDesignReasonNoData": "완료되고 잔여 자재가 정산된 생산 데이터가 아직 없습니다",
@@ -40,7 +52,9 @@
   "bomRelearnedSince": "{date}부터 다시 누적",
   "@bomRelearnedSince": {
     "placeholders": {
-      "date": {"type": "String"}
+      "date": {
+        "type": "String"
+      }
     }
   },
   "bomDesignQtyRequired": "설계 사용량을 입력하세요",
@@ -49,7 +63,9 @@
   "bomLearnedEdgeDeleteNote": "그중 {count}개는 시스템이 학습한 구성품이며, 삭제하면 자동으로 다시 추가되지 않습니다.",
   "@bomLearnedEdgeDeleteNote": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "bomLearningMaterial": "자재",
@@ -62,7 +78,9 @@
   "bomLearningRelearnConfirm": "「{name}」을(를) 지금부터 다시 학습할까요?\n이전 누적은 더 이상 계산에 쓰이지 않으며, 새 생산 데이터가 나오기 전까지 설계 사용량으로 계산합니다.",
   "@bomLearningRelearnConfirm": {
     "placeholders": {
-      "name": {"type": "String"}
+      "name": {
+        "type": "String"
+      }
     }
   },
   "bomLearningRelearnDone": "지금부터 다시 학습합니다",
@@ -1520,20 +1538,28 @@
   "visitorBatchLimitError": "한 번에 최대 {limit}건까지 처리할 수 있습니다. 나누어 처리해 주세요(현재 {count}건)",
   "@visitorBatchLimitError": {
     "placeholders": {
-      "limit": {"type": "int"},
-      "count": {"type": "int"}
+      "limit": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveTitle": "일괄 승인({count})",
   "@visitorBatchApproveTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveMessage": "선택한 {count}건의 방문 신청을 건별로 승인하며, 승인 시 출입 QR 코드가 발급됩니다. 담당자와 방문 목적을 확인하려면 행을 더블클릭하여 상세를 검토하세요.",
   "@visitorBatchApproveMessage": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveConfirm": "일괄 승인 확인",
@@ -1541,7 +1567,9 @@
   "visitorBatchApproveResponsibility": "확인 시 선택한 {count}건의 방문 신청에 대한 심사 책임이 현재 로그인 계정으로 기록됩니다.",
   "@visitorBatchApproveResponsibility": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchVerbApprove": "승인",
@@ -1551,19 +1579,25 @@
   "@visitorBatchResult": {
     "placeholders": {
       "verb": {},
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchResultFailures": ", {count}건 실패",
   "@visitorBatchResultFailures": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchResultSkipped": ", {count}건 건너뜀",
   "@visitorBatchResultSkipped": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchIncomplete": "일괄 {verb}이(가) 완료되지 않았습니다: {reason}",
@@ -1576,13 +1610,17 @@
   "visitorBatchRejectTitle": "일괄 거부({count})",
   "@visitorBatchRejectTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchRejectDescription": "거부 사유가 {count}명의 방문자에게 전달됩니다. 구체적인 문제를 설명해 주세요.",
   "@visitorBatchRejectDescription": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchRejectConfirm": "거부 확인",
@@ -1591,44 +1629,58 @@
   "visitorBatchForwardTitle": "일괄 담당자 확인 전달({count})",
   "@visitorBatchForwardTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardMessage": "선택한 {count}건의 방문 신청이 각 담당자에게 전달되며, 담당자 확인 후 최종 승인을 위해 이 대기열로 돌아옵니다.",
   "@visitorBatchForwardMessage": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardSkippedNote": " (추가 {count}건은 이미 담당자 확인 중이므로 건너뛰었습니다)",
   "@visitorBatchForwardSkippedNote": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardConfirm": "일괄 전달 확인",
   "visitorBatchForwardResponsibility": "확인 시 선택한 {count}건의 방문 신청 전달 작업이 현재 로그인 계정으로 기록됩니다.",
   "@visitorBatchForwardResponsibility": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveButton": "승인({count})",
   "@visitorBatchApproveButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardButton": "전달({count})",
   "@visitorBatchForwardButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchRejectButton": "거부({count})",
   "@visitorBatchRejectButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorApprovalDoneApprove": "방문 신청이 승인되었습니다",
@@ -1645,26 +1697,34 @@
   "myVisitorsBatchTitle": "일괄 담당 확정({count})",
   "@myVisitorsBatchTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchMessage": "선택한 {count}명의 방문자를 건별로 담당 확정하며, 신청은 최종 승인을 위해 HR로 돌아갑니다.",
   "@myVisitorsBatchMessage": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchSkippedNote": " (추가 {count}건은 확인 대기 상태가 아니므로 건너뛰었습니다)",
   "@myVisitorsBatchSkippedNote": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchConfirm": "확인",
   "myVisitorsBatchResult": "{count}명의 방문자를 담당 확정했습니다",
   "@myVisitorsBatchResult": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchIncomplete": "일괄 확인이 완료되지 않았습니다: {reason}",
@@ -1676,7 +1736,9 @@
   "myVisitorsBatchButton": "확정({count})",
   "@myVisitorsBatchButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsStatusColInfo": "기본적으로 '확인 대기' 항목만 표시합니다. 헤더 필터로 전달됨/승인됨/거부됨으로 전환할 수 있습니다(백엔드 전달).",
@@ -1974,5 +2036,726 @@
   "wmReportNoBin": "아직 일괄 출고를 사용하는 작업장이 없어 자재창고 사용량이 없습니다.",
   "wmOpenBom": "BOM 열기",
   "wmWorkshopMaterialSection": "작업장 자재",
-  "wmIssueMethodUpdated": "출고 방식이 변경되었습니다"
+  "wmIssueMethodUpdated": "출고 방식이 변경되었습니다",
+  "bomLearningAuto": "BOM 자동 갱신",
+  "bomLearningAverage": "개당 평균 소요량",
+  "warehouseGoodsMasterDefaultHint": "품목 기본 정보의 기본 보관 창고를 불러왔습니다. 이번 실제 창고를 확인하세요",
+  "warehouseSuggestedDestinationHint": "권장 보관 창고를 불러왔습니다. 이번 실제 창고를 확인하세요",
+  "warehouseBatchRegistrationHelp": "완제품 창고와 보관 위치 번호는 각 행에 필수입니다. 품목 기본 창고를 우선 적용하고, 없는 항목은 개인 창고 선택 정보를 참고합니다. 여러 행을 선택한 후 창고나 위치를 변경하면 일괄 적용할 수 있습니다. 생산 실적 보고서별로 검사 의뢰를 생성하며, 품질 승인 후 최종 실수량을 확인하여 입고합니다.",
+  "goodsNameEnLabel": "영문명",
+  "goodsNameEnHint": "예: DOUBLE 3 PIN SOCKET WITH SWITCH",
+  "goodsNameEnInfo": "고객 견적서나 주문서에서 이 품목을 부르는 영문 이름입니다. 고객 파일을 인식할 때 영문 품명을 이 품목과 연결하는 데 사용됩니다.",
+  "goodsNameEnColumnInfo": "고객 파일에서 이 품목을 부르는 영문 이름입니다. 영업이 영문 품명이 있는 문서를 저장하면 자동으로 기억되며, 품목 상세에서 수정할 수 있습니다.",
+  "goodsNameEnSearchHint": "품목 검색(이름/영문명/코드/모델/규격/시리즈)",
+  "goodsNameEnLearned": "자동 학습",
+  "goodsNameEnLearnedTip": "영업이 고객 파일을 저장할 때 시스템이 자동으로 기억한 영문명입니다. 틀리면 바로 수정하세요.",
+  "goodsNameEnEdit": "영문명 수정",
+  "goodsNameEnEditDescription": "고객 파일에 적힌 영문 품명을 입력하세요. 저장 후에는 고객 파일을 이 이름으로 이 품목과 연결합니다. 비워 두면 영문명을 사용하지 않습니다.",
+  "goodsNameEnSaving": "저장 중…",
+  "goodsNameEnSaved": "영문명을 저장했습니다",
+  "goodsNameEnCleared": "영문명을 지웠습니다",
+  "goodsNameEnImportHint": "영문명도 가져올 수 있습니다 (머리글 「英文名称」 또는 「English Name」).",
+  "goodsNameEnTooLong": "영문명은 최대 {max}자까지 입력할 수 있습니다",
+  "clientNameEnLabel": "외국어 이름",
+  "clientNameEnHint": "예: SUNAS TRADING LIMITED",
+  "clientNameEnInfo": "고객 회사의 영문 또는 기타 외국어 이름입니다. 고객 파일을 인식할 때 이 고객을 찾는 데 사용되며, 영업이 문서를 저장할 때 자동으로 채워집니다.",
+  "clientNameEnSearchHint": "고객 검색(약칭/코드/정식명/외국어 이름/담당자/휴대폰/이메일)",
+  "clientGoodsAliasTab": "품목 대응",
+  "clientGoodsAliasTitle": "고객이 부르는 품목 이름",
+  "clientGoodsAliasDescription": "고객 견적서·주문서의 모델 번호와 품명이 우리 어느 품목에 해당하는지 보여 줍니다. 이 고객의 파일을 인식할 때 여기를 먼저 참고합니다.",
+  "clientGoodsAliasSearchHint": "고객 표기, 품목명 또는 코드 검색",
+  "clientGoodsAliasEmptyTitle": "아직 품목 대응이 없습니다",
+  "clientGoodsAliasEmpty": "파일 모델 번호가 있는 견적서나 주문서를 저장하면 고객의 표기가 여기에 자동으로 기억됩니다",
+  "clientGoodsAliasNoMatch": "찾는 대응이 없습니다. 다른 검색어로 시도하세요.",
+  "clientGoodsAliasKindPartNo": "고객 모델",
+  "clientGoodsAliasKindDescription": "고객 품명",
+  "clientGoodsAliasContext": "{context}에 적용",
+  "clientGoodsAliasConfirmCount": "{count, plural, other{{count}회 확인}}",
+  "clientGoodsAliasExplicitCount": "{count, plural, other{그중 {count}회 직접 선택}}",
+  "clientGoodsAliasLastConfirmed": "최근 {date}",
+  "clientGoodsAliasLastConfirmedBy": "최근 {date} · {name}",
+  "clientGoodsAliasGoodsMissing": "품목 자료가 삭제됨",
+  "clientGoodsAliasDelete": "이 대응 삭제",
+  "clientGoodsAliasDeleteAction": "삭제",
+  "clientGoodsAliasDeleteConfirm": "삭제하면 이 고객의 파일을 인식할 때 「{alias}」를 「{goods}」에 더 이상 연결하지 않습니다. 이후 영업이 문서를 저장하면 다시 기억될 수 있습니다.",
+  "clientGoodsAliasDeleting": "대응을 삭제하는 중",
+  "clientGoodsAliasDeleted": "대응을 삭제했습니다",
+  "clientGoodsAliasLoadFailed": "품목 대응을 불러오지 못했습니다. 다시 시도하세요.",
+  "clientGoodsAliasTotal": "{count, plural, other{총 {count}건}}",
+  "clientGoodsAliasPage": "{page} / {pages} 페이지",
+  "clientGoodsAliasPrevPage": "이전",
+  "clientGoodsAliasNextPage": "다음",
+  "aiJobCancel": "취소",
+  "aiJobElapsed": "경과 시간 {time}",
+  "@aiJobElapsed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiJobQueued": "대기 중입니다. 곧 시작합니다",
+  "aiJobSlowHint": "내용이 많으면 1~2분 걸릴 수 있습니다. 다시 누르지 말고 기다려 주세요",
+  "aiJobTimeout": "처리 시간이 너무 길어 기다리기를 멈췄습니다. 잠시 후 다시 시도하거나 파일을 나눠 주세요",
+  "aiJobGone": "이번 작업이 더 이상 없습니다(정리되었을 수 있음). 다시 시작해 주세요",
+  "aiJobFailedGeneric": "처리하지 못했습니다. 잠시 후 다시 시도해 주세요",
+  "aiJobConfidenceHigh": "높음",
+  "aiJobConfidenceMedium": "보통",
+  "aiJobConfidenceLow": "낮음",
+  "aiJobConfidenceSemantics": "AI 판단 확신도: {level}",
+  "@aiJobConfidenceSemantics": {
+    "placeholders": {
+      "level": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsTitle": "AI 서비스",
+  "aiSettingsEntrySubtitle": "모델 제공업체, API 키, 연결 테스트 설정",
+  "aiSettingsHeroActive": "사용 중: {name} · {model}",
+  "@aiSettingsHeroActive": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsHeroReady": "영업팀이 올린 고객 파일을 자동 인식할 때 사용합니다",
+  "aiSettingsHeroNone": "사용 가능한 AI 서비스가 아직 없습니다",
+  "aiSettingsHeroNoneHint": "제공업체를 추가하고 테스트를 통과하면 영업팀이 올린 고객 파일을 자동으로 인식합니다",
+  "aiSettingsHeroDefaultDisabled": "기본 서비스가 사용 중지되어 현재 AI를 호출하지 않습니다",
+  "aiSettingsHeroNeedsKey": "API 키가 아직 없어 현재 AI를 호출하지 않습니다",
+  "aiSettingsSecurityNote": "API 키는 암호화되어 저장되며 끝자리만 표시됩니다. 저장, 삭제, 저장된 키로 테스트할 때는 로그인 비밀번호를 다시 확인합니다.",
+  "aiSettingsOutboundOff": "이 서버는 외부 AI 호출이 꺼져 있습니다(테스트 환경 기본값). 설정은 저장할 수 있지만 실제 호출은 하지 않습니다",
+  "aiSettingsProvidersSection": "제공업체",
+  "aiSettingsAdd": "AI 서비스 추가",
+  "aiSettingsEditTitle": "AI 서비스 편집",
+  "aiSettingsEmptyTitle": "설정된 AI 서비스가 없습니다",
+  "aiSettingsEmptyHint": "DeepSeek, Qwen, Kimi, Zhipu 등 중국 본토 제공업체와 로컬 배포 모델을 지원합니다",
+  "aiSettingsLoadFailed": "AI 서비스 설정을 불러오지 못했습니다",
+  "aiSettingsNoAccess": "최고 관리자만 AI 서비스를 보고 변경할 수 있습니다",
+  "aiSettingsRetry": "다시 시도",
+  "aiSettingsRefresh": "새로고침",
+  "aiSettingsClose": "닫기",
+  "aiSettingsCancel": "취소",
+  "aiSettingsRegion": "지역",
+  "aiSettingsRegionMainland": "중국 본토",
+  "aiSettingsRegionOverseas": "해외",
+  "aiSettingsRegionLocal": "로컬",
+  "aiSettingsDefaultBadge": "기본",
+  "aiSettingsDisabledBadge": "사용 중지",
+  "aiSettingsModel": "모델",
+  "aiSettingsBaseUrl": "엔드포인트 URL",
+  "aiSettingsApiKey": "API 키",
+  "aiSettingsKeyMissing": "미설정",
+  "aiSettingsKeyNotNeeded": "필요 없음",
+  "aiSettingsKeyUnreadable": "API 키를 복호화할 수 없습니다. 다시 입력해 주세요",
+  "aiSettingsLastTest": "마지막 테스트",
+  "aiSettingsLastTestOk": "통과 · {time}",
+  "@aiSettingsLastTestOk": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsLastTestFailed": "실패 · {time}",
+  "@aiSettingsLastTestFailed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsNeverTested": "아직 테스트하지 않음",
+  "aiSettingsEnabledSwitch": "사용",
+  "aiSettingsEnabledInfo": "사용 중지하면 이 서비스를 호출하지 않습니다",
+  "aiSettingsTest": "연결 테스트",
+  "aiSettingsTesting": "테스트 중",
+  "aiSettingsEdit": "편집",
+  "aiSettingsSetDefault": "기본으로 설정",
+  "aiSettingsDelete": "삭제",
+  "aiSettingsDeleteTitle": "이 AI 서비스를 삭제할까요?",
+  "aiSettingsDeleteMessage": "\"{name}\"의 설정과 API 키가 삭제되며 복구할 수 없습니다.",
+  "@aiSettingsDeleteMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsDeleteDefaultBlocked": "기본 서비스는 삭제할 수 없습니다. 먼저 다른 서비스를 기본으로 설정해 주세요",
+  "aiSettingsDeleted": "삭제했습니다",
+  "aiSettingsDefaultSet": "\"{name}\"을(를) 기본으로 설정했습니다",
+  "@aiSettingsDefaultSet": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsEnabledOn": "\"{name}\"을(를) 사용합니다",
+  "@aiSettingsEnabledOn": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsEnabledOff": "\"{name}\"을(를) 사용 중지했습니다",
+  "@aiSettingsEnabledOff": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsBusySaving": "저장 중",
+  "aiSettingsBusyDeleting": "삭제 중",
+  "aiSettingsUpdatedBy": "{name} 님이 {time}에 변경",
+  "@aiSettingsUpdatedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsTestNeedsKeyEdit": "API 키가 없습니다. \"편집\"에서 키를 입력한 뒤 테스트해 주세요",
+  "aiSettingsUsageTitle": "최근 {days}일 사용량",
+  "@aiSettingsUsageTitle": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsUsageCalls": "호출 수",
+  "aiSettingsUsageSuccessRate": "성공률",
+  "aiSettingsUsageTokens": "입력 / 출력 토큰",
+  "aiSettingsUsageLatency": "평균 소요 시간",
+  "aiSettingsUsageSeconds": "{value}초",
+  "@aiSettingsUsageSeconds": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsUsageEmpty": "아직 호출 기록이 없습니다",
+  "aiSettingsUsageUnavailable": "사용량을 잠시 불러올 수 없습니다. 서비스에는 영향이 없습니다",
+  "aiSettingsPreset": "제공업체",
+  "aiSettingsPresetInfo": "제공업체를 고르면 엔드포인트와 권장 설정이 자동으로 채워집니다. 모든 항목은 수정할 수 있습니다",
+  "aiSettingsPresetOverseasOff": "{label} (해외, 미개방)",
+  "@aiSettingsPresetOverseasOff": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsOverseasOffHint": "해외 제공업체는 기본적으로 꺼져 있습니다. 사용하려면 배포 담당자에게 서버 설정에서 켜 달라고 요청하고 데이터 국외 이전 평가를 완료해 주세요",
+  "aiSettingsPresetUnavailable": "{label} (사용 불가)",
+  "@aiSettingsPresetUnavailable": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsName": "표시 이름",
+  "aiSettingsNameHint": "예: DeepSeek 운영 계정",
+  "aiSettingsNameRequired": "표시 이름을 입력해 주세요",
+  "aiSettingsTooLong": "최대 {max}자",
+  "@aiSettingsTooLong": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsBaseUrlInfo": "제공업체 문서의 Base URL입니다. https만 사용할 수 있으며 로컬 배포는 http://127.0.0.1을 쓸 수 있습니다",
+  "aiSettingsBaseUrlRequired": "엔드포인트 URL을 입력해 주세요",
+  "aiSettingsBaseUrlInvalid": "엔드포인트 URL 형식이 올바르지 않습니다. https://로 시작하고 물음표 뒤 매개변수가 없어야 합니다",
+  "aiSettingsBaseUrlHttpLocalOnly": "로컬 배포만 http를 쓸 수 있습니다. 다른 제공업체는 https를 사용해 주세요",
+  "aiSettingsModelHint": "모델 이름을 입력하거나 \"모델 가져오기\"로 목록에서 고르세요",
+  "aiSettingsModelRequired": "모델 이름을 입력해 주세요",
+  "aiSettingsFetchModels": "모델 가져오기",
+  "aiSettingsPickModel": "목록에서 모델 선택",
+  "aiSettingsModelsLoaded": "모델 {count}개를 찾았습니다",
+  "@aiSettingsModelsLoaded": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsModelsEmpty": "제공업체가 모델 목록을 주지 않았습니다. 모델 이름을 직접 입력해 주세요",
+  "aiSettingsApiKeyHint": "제공업체 콘솔에서 만든 키를 붙여 넣으세요",
+  "aiSettingsApiKeyNotNeededHint": "로컬 배포는 보통 키가 필요 없어 비워 둘 수 있습니다",
+  "aiSettingsApiKeyRequired": "API 키를 입력해 주세요",
+  "aiSettingsClearKey": "키 삭제",
+  "aiSettingsUndoClear": "삭제 취소",
+  "aiSettingsKeyWillClear": "저장하면 저장된 키가 삭제됩니다",
+  "aiSettingsUrlChangedNeedKey": "엔드포인트가 바뀌어 API 키를 다시 입력해야 합니다",
+  "aiSettingsUrlChangedNeedKeyDetail": "보안을 위해 저장된 키는 원래 주소로만 전송됩니다. 저장하기 전에 키를 다시 붙여 넣으세요.",
+  "aiSettingsUrlChangedNeedKeyLocalDetail": "보안을 위해 저장된 키는 원래 주소로만 전송됩니다. 키를 다시 붙여 넣거나, 새 주소에 키가 필요 없으면 \"키 삭제\"를 누르세요.",
+  "aiSettingsAdvanced": "고급 설정",
+  "aiSettingsProtocol": "API 프로토콜",
+  "aiSettingsProtocolInfo": "중국 본토 제공업체와 로컬 배포는 대부분 OpenAI 호환이며, Claude만 Anthropic을 사용합니다",
+  "aiSettingsProtocolOpenAi": "OpenAI 호환",
+  "aiSettingsProtocolAnthropic": "Anthropic",
+  "aiSettingsJsonMode": "JSON 출력 방식",
+  "aiSettingsJsonModeInfo": "모델이 JSON으로만 답하게 해야 시스템이 결과를 읽을 수 있습니다. 제공업체가 지원하지 않으면 \"요구 안 함\"을 고르세요",
+  "aiSettingsJsonModeNone": "요구 안 함",
+  "aiSettingsJsonModeObject": "JSON 객체",
+  "aiSettingsJsonModeSchema": "구조 지정(스키마)",
+  "aiSettingsThinking": "심층 추론 끄기",
+  "aiSettingsThinkingInfo": "표 인식에는 심층 추론이 필요 없어 끄면 더 빠르고 저렴합니다. 제공업체마다 방식이 달라 제공업체를 고르면 자동으로 맞춰집니다",
+  "aiSettingsThinkingNone": "그대로 두기",
+  "aiSettingsThinkingDeepseek": "DeepSeek 방식",
+  "aiSettingsThinkingDashscope": "Qwen 방식",
+  "aiSettingsThinkingOpenAi": "OpenAI 방식",
+  "aiSettingsTemperature": "일정한 출력(온도 0)",
+  "aiSettingsTemperatureInfo": "같은 파일은 매번 비슷한 결과가 나오게 합니다. 모델이 이 매개변수를 거부하면 끄세요",
+  "aiSettingsVision": "이미지와 스캔본 인식 가능",
+  "aiSettingsVisionInfo": "모델이 이미지를 읽을 수 있으면 켜세요. 영업팀이 올린 사진과 스캔 PDF를 인식하려면 필요합니다",
+  "aiSettingsMaxTokens": "최대 출력 길이",
+  "aiSettingsMaxTokensInfo": "256 ~ 65536, 행이 많은 파일은 더 길게 필요합니다",
+  "aiSettingsTimeout": "시간 제한(초)",
+  "aiSettingsTimeoutInfo": "10 ~ 600, 이 시간 안에 응답이 없으면 실패로 처리합니다",
+  "aiSettingsNumberRange": "{min} ~ {max} 사이의 정수를 입력해 주세요",
+  "@aiSettingsNumberRange": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsOverseasAck": "고객 정보(회사명, 품목 설명)가 해외 제공업체로 전송됩니다. 데이터 국외 이전 평가를 완료했음을 확인합니다",
+  "aiSettingsOverseasAckRequired": "해외 제공업체를 사용하기 전에 위의 확인란을 선택해 주세요",
+  "aiSettingsSave": "저장",
+  "aiSettingsSaving": "저장 중",
+  "aiSettingsSaved": "저장했습니다",
+  "aiSettingsSaveFailed": "저장하지 못했습니다. 잠시 후 다시 시도해 주세요",
+  "aiSettingsFixFields": "빨간색으로 표시된 항목을 먼저 고쳐 주세요",
+  "aiSettingsTestNeedsKey": "테스트하기 전에 API 키를 입력해 주세요",
+  "aiSettingsTestStoredMismatch": "저장된 키로 테스트하려면 엔드포인트와 모델이 저장된 값과 같아야 합니다. 먼저 저장하거나 키를 다시 입력해 테스트하세요",
+  "aiSettingsTestResultTitle": "연결 테스트",
+  "aiSettingsStepNetwork": "네트워크 연결",
+  "aiSettingsStepAuth": "API 키 확인",
+  "aiSettingsStepModel": "모델 사용 가능",
+  "aiSettingsStepJson": "JSON 출력",
+  "aiSettingsStepSkipped": "진행 안 함",
+  "aiSettingsLatency": "{ms}ms",
+  "@aiSettingsLatency": {
+    "placeholders": {
+      "ms": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsTestPassed": "연결 정상, 사용할 수 있습니다",
+  "aiSettingsTestPassedShort": "통과",
+  "aiSettingsTestFailed": "연결 테스트에 실패했습니다. 안내를 확인한 뒤 다시 시도해 주세요",
+  "aiSettingsTestFailedShort": "실패",
+  "aiSettingsTestWarnShort": "확인 필요",
+  "aiSettingsTestPassedWithNotes": "연결되었지만 확인할 사항이 있습니다. 위의 안내를 확인해 주세요",
+  "aiSettingsTestStoredUnsavedAdvanced": "고급 설정이 바뀌었습니다. 저장된 키로 테스트하면 바뀐 내용이 반영되지 않습니다. 먼저 저장하거나 키를 다시 입력해 테스트하세요",
+  "aiSettingsModelChoices": "모델:",
+  "aiSettingsOverseasLockedShort": "해외 제공업체는 아직 열려 있지 않습니다. 배포 담당자가 서버에서 켜야 합니다",
+  "aiSettingsKeyConfiguredPlain": "설정됨",
+  "aiSettingsApiKeyKeepHintPlain": "설정됨. 바꾸지 않으려면 비워 두세요",
+  "aiSettingsCurrentKey": "현재 키",
+  "salesQuoteStatusDraft": "초안",
+  "salesQuoteStatusPendingFinance": "재무 가격 검토 대기",
+  "salesQuoteStatusReturned": "재무 반려",
+  "salesQuoteStatusConfirmed": "가격 확정",
+  "salesQuoteStatusReversed": "무효",
+  "salesQuoteStatusConverted": "주문으로 전환됨",
+  "salesQuoteStatusToConvert": "가격 확정, 주문 전환 대기",
+  "salesQuoteStatusReadOnly": "{status} · 읽기 전용",
+  "salesQuoteStatusHistory": "이력",
+  "salesQuoteStatusBannerDraft": "초안: 작성 후 \"재무 가격 검토 요청\"을 누르세요. 재무가 가격과 할인을 확정해야 주문으로 전환할 수 있습니다.",
+  "salesQuoteStatusBannerPending": "재무 가격 검토를 요청했으며 재무의 가격 확정을 기다리는 중입니다. 수정하려면 먼저 \"회수\"하세요.",
+  "salesQuoteStatusBannerReturned": "재무 반려: {reason}. 수정한 뒤 다시 가격 검토를 요청하세요.",
+  "salesQuoteStatusBannerConfirmed": "재무 가격 확정({name} · {time}). 이제 주문으로 전환할 수 있습니다.",
+  "salesQuoteStatusBannerConverted": "주문 {orderNo}(으)로 전환되어 견적을 더 이상 수정할 수 없습니다.",
+  "salesQuoteStatusBannerReversed": "이 견적은 무효 처리되어 조회만 가능합니다.",
+  "salesQuoteStatusFinanceFallback": "재무",
+  "salesQuoteStatusFieldReturnReason": "반려 사유",
+  "salesQuoteStatusFieldSubmittedAt": "가격 검토 요청 시각",
+  "salesQuoteStatusFieldConfirmedBy": "가격 확정자",
+  "salesQuoteStatusFieldConvertedOrder": "전환된 주문",
+  "salesQuoteStatusFieldFinanceRemark": "재무 메모",
+  "salesQuoteStatusActionSubmit": "재무 가격 검토 요청",
+  "salesQuoteStatusActionWithdraw": "회수",
+  "salesQuoteStatusActionReopen": "다시 수정",
+  "salesQuoteStatusActionConvert": "주문으로 전환",
+  "salesQuoteStatusActionReverse": "무효 처리",
+  "salesQuoteStatusActionEdit": "편집",
+  "salesQuoteStatusActionDelete": "삭제",
+  "salesQuoteStatusActionFinanceReview": "가격 검토 열기",
+  "salesQuoteStatusActionViewOrder": "주문 보기",
+  "salesQuoteStatusActionBack": "목록으로",
+  "salesQuoteStatusSubmitConfirmBody": "재무가 품목별로 가격과 할인을 정합니다. 그동안 견적을 수정할 수 없습니다. 요청할까요?",
+  "salesQuoteStatusWithdrawConfirmBody": "회수하면 초안으로 돌아가 계속 수정할 수 있으며, 수정 후 다시 가격 검토를 요청해야 합니다. 회수할까요?",
+  "salesQuoteStatusReopenConfirmBody": "재무가 이미 가격을 확정했습니다. 다시 수정하면 초안으로 돌아가며, 다시 가격 검토를 받아야 주문으로 전환할 수 있습니다. 계속할까요?",
+  "salesQuoteStatusReverseConfirmBody": "무효 처리하면 주문으로 전환할 수 없고 되돌릴 수도 없습니다. 무효 처리할까요?",
+  "salesQuoteStatusDeleteConfirmBody": "이 견적 초안을 삭제할까요? 삭제 후에는 복구할 수 없습니다.",
+  "salesQuoteStatusConvertConfirmBody": "재무가 확정한 단가와 할인으로 주문 초안을 만듭니다. 단가와 할인은 바꿀 수 없고 수량과 납기 정보는 주문에서 보완할 수 있습니다. 전환할까요?",
+  "salesQuoteStatusConfirm": "확인",
+  "salesQuoteStatusCancel": "취소",
+  "salesQuoteStatusSubmitted": "재무 가격 검토를 요청했습니다",
+  "salesQuoteStatusWithdrawn": "회수했습니다. 계속 수정할 수 있습니다",
+  "salesQuoteStatusReopened": "초안으로 돌아왔습니다. 수정 후 다시 가격 검토를 요청하세요",
+  "salesQuoteStatusReversedDone": "견적을 무효 처리했습니다",
+  "salesQuoteStatusDeleted": "삭제했습니다",
+  "salesQuoteStatusConvertDone": "주문 초안 {billNo}을(를) 만들었습니다",
+  "salesQuoteStatusActionFailed": "처리하지 못했습니다. 잠시 후 다시 시도하세요.",
+  "salesQuoteStatusBusy": "처리 중입니다. 잠시만 기다려 주세요",
+  "salesQuoteStatusTimelineTitle": "가격 검토 기록",
+  "salesQuoteStatusTimelineEmpty": "아직 가격 검토 기록이 없습니다",
+  "salesQuoteStatusRevisionSubmit": "가격 검토 요청",
+  "salesQuoteStatusRevisionWithdraw": "영업 회수",
+  "salesQuoteStatusRevisionFinanceEdit": "재무 가격 수정",
+  "salesQuoteStatusRevisionReturn": "재무 반려",
+  "salesQuoteStatusRevisionConfirm": "재무 견적 확정",
+  "salesQuoteStatusRevisionReopen": "영업 다시 수정",
+  "salesQuoteStatusRevisionFinanceReopen": "재무 확정 취소",
+  "salesQuoteStatusRevisionOther": "기타 기록",
+  "salesQuoteStatusRevisionOperator": "처리자",
+  "salesQuoteStatusRevisionVersion": "{revision}번째 버전",
+  "salesQuoteStatusSourceQuoteConfirmed": "견적 가격 확정",
+  "salesQuoteStatusSourceQuote": "원본 견적",
+  "quoteFinanceHubTitle": "견적 가격 검토",
+  "quoteFinanceHubSubtitle": "영업 견적의 가격과 할인을 재무가 정하며, 확정 후 영업이 주문으로 전환합니다",
+  "quoteFinanceListTitle": "견적 가격 검토",
+  "quoteFinanceTabPending": "검토 대기",
+  "quoteFinanceTabConfirmed": "확정됨",
+  "quoteFinanceTabReturned": "반려됨",
+  "quoteFinanceSearchHint": "번호 / 고객 / 영업 담당 검색",
+  "quoteFinanceRowHint": "탭하여 선택 · 두 번 탭하여 검토",
+  "quoteFinanceColBillNo": "견적 번호",
+  "quoteFinanceColClient": "고객",
+  "quoteFinanceColSeller": "영업 담당",
+  "quoteFinanceColSubmittedAt": "요청 시각",
+  "quoteFinanceColLines": "품목 수",
+  "quoteFinanceColAmount": "견적 금액",
+  "quoteFinanceColStatus": "상태 / 설명",
+  "quoteFinanceStatusPending": "검토 대기",
+  "quoteFinanceStatusResubmitted": "영업이 수정 후 재요청",
+  "quoteFinanceStatusNeedPrice": "{count, plural, other{표준가 없는 품목 {count}개}}",
+  "quoteFinanceStatusConfirmed": "확정 · {name}",
+  "quoteFinanceStatusConverted": "주문 {orderNo}(으)로 전환됨",
+  "quoteFinanceStatusReturned": "반려: {reason}",
+  "quoteFinanceEmptyPending": "가격 검토를 기다리는 견적이 없습니다",
+  "quoteFinanceEmptyPendingHint": "영업이 가격 검토를 요청하면 여기에 표시됩니다. 가격을 확정해야 영업이 주문으로 전환할 수 있습니다.",
+  "quoteFinanceEmptyConfirmed": "아직 확정된 견적이 없습니다",
+  "quoteFinanceEmptyReturned": "영업에 반려한 견적이 없습니다",
+  "quoteFinanceEmptyReturnedHint": "반려된 견적은 영업이 수정하면 다시 \"검토 대기\"로 돌아옵니다.",
+  "quoteFinanceEmptySearch": "\"{keyword}\"와(과) 일치하는 견적이 없습니다",
+  "quoteFinanceLoadFailed": "견적을 불러오지 못했습니다. 네트워크를 확인한 후 다시 시도하세요.",
+  "quoteFinanceRetry": "다시 시도",
+  "quoteFinanceRefresh": "새로 고침",
+  "quoteFinanceOpen": "검토",
+  "quoteFinancePrevPage": "이전 페이지",
+  "quoteFinanceNextPage": "다음 페이지",
+  "quoteFinanceUnnamed": "미지정",
+  "quoteFinanceReviewTitle": "견적 가격 검토",
+  "quoteFinanceStripPending": "재무 가격 검토 대기",
+  "quoteFinanceStripConfirmed": "확정 · {name} · {time}",
+  "quoteFinanceStripReturned": "영업에 반려 · {reason}",
+  "quoteFinanceStripDraft": "영업 수정 중",
+  "quoteFinanceStripReversed": "무효",
+  "quoteFinanceStripConverted": "주문 {orderNo}(으)로 전환됨",
+  "quoteFinanceRevisionBadge": "{revision}번째 버전",
+  "quoteFinanceReadOnlyNotice": "지금은 이 견적에서 처리할 일이 없어 조회만 가능합니다.",
+  "quoteFinanceResubmitNotice": "영업이 수정 후 다시 요청했습니다. 노란색 줄은 지난번 확정한 할인과 다르니 확인하세요.",
+  "quoteFinanceNeedPriceNotice": "{count, plural, other{표준가가 없는 품목이 {count}개 있습니다. 확정 전에 거래 단가를 입력하거나 행 메뉴에서 \"무상/0원으로 설정\"을 선택하세요.}}",
+  "quoteFinanceGoMaintainPrice": "품목 정보에서 표준가 관리",
+  "quoteFinanceInfoTitle": "견적 정보",
+  "quoteFinanceFieldClient": "고객",
+  "quoteFinanceFieldSeller": "영업 담당",
+  "quoteFinanceFieldMaker": "작성자",
+  "quoteFinanceFieldBillDate": "일자",
+  "quoteFinanceFieldSubmittedAt": "요청 시각",
+  "quoteFinanceFieldDeliverDate": "납기일",
+  "quoteFinanceFieldContractNo": "계약 번호",
+  "quoteFinanceFieldCurrency": "통화",
+  "quoteFinanceFieldFileCurrency": "고객 파일 통화",
+  "quoteFinanceFileRateHint": "파일 통화 {currency}, 재무 참고 환율 {rate}로 기준 통화 환산",
+  "quoteFinanceFieldRemark": "영업 메모",
+  "quoteFinanceFieldValidUntil": "유효 기한",
+  "quoteFinanceFieldSettlement": "결제 방식",
+  "quoteFinanceFieldFinanceRemark": "재무 메모",
+  "quoteFinanceFinanceRemarkHint": "영업에 전할 설명(선택)",
+  "quoteFinanceSettlementNone": "지정 안 함",
+  "quoteFinanceAttachmentsTitle": "고객 파일 및 첨부",
+  "quoteFinanceLinesTitle": "품목 내역",
+  "quoteFinanceColGoods": "품목명",
+  "quoteFinanceColCode": "코드",
+  "quoteFinanceColColor": "색상",
+  "quoteFinanceColQty": "수량",
+  "quoteFinanceColUnit": "단위",
+  "quoteFinanceColListPrice": "표준가",
+  "quoteFinanceColListPriceInfo": "품목 정보의 판매가입니다. 표준가가 없거나 거래 단가가 표준가보다 높으면 재무가 거래 단가를 직접 정하고, 낮으면 항상 할인으로 계산합니다.",
+  "quoteFinanceColFilePrice": "파일 단가(원통화)",
+  "quoteFinanceColFilePriceLocal": "기준 통화 환산",
+  "quoteFinanceColDealPrice": "거래 단가",
+  "quoteFinanceColDealPriceInfo": "고객이 개당 최종 지불하는 금액입니다. 거래 단가를 바꾸면 할인이, 할인을 바꾸면 거래 단가가 자동 계산됩니다.",
+  "quoteFinanceColDiscount": "할인율",
+  "quoteFinanceColDiscountInfo": "할인율 = 거래 단가 ÷ 표준가, 소수 4자리, 1은 표준가 그대로입니다.",
+  "quoteFinanceColLineAmount": "금액",
+  "quoteFinanceColFileDiff": "파일과의 차이",
+  "quoteFinanceColFileDiffInfo": "이 줄 금액에서 고객 파일 금액(기준 통화 환산)을 뺀 값입니다. 0이면 파일과 같습니다.",
+  "quoteFinanceColLastConfirmed": "지난 확정 할인",
+  "quoteFinanceColSalesProposed": "영업 제안 할인",
+  "quoteFinanceColFileModel": "파일 모델",
+  "quoteFinanceColFileName": "파일 품명",
+  "quoteFinanceColRemark": "비고",
+  "quoteFinanceNoListPrice": "가격 없음",
+  "quoteFinanceFinancePriceChip": "재무 가격",
+  "quoteFinanceGiveawayChip": "무상/0원",
+  "quoteFinanceFileMatch": "일치",
+  "quoteFinanceErrorDealPrice": "0보다 큰 숫자를 입력하세요. 무상/0원은 행 메뉴의 \"무상/0원으로 설정\"을 사용하세요.",
+  "quoteFinanceErrorFinancePrice": "0 이상의 숫자를 입력하세요",
+  "quoteFinanceErrorDiscount": "할인율은 0보다 크고 1 이하, 소수 4자리까지입니다",
+  "quoteFinanceErrorNeedPrice": "거래 단가를 입력하세요",
+  "quoteFinanceMenuMasterMode": "표준가 기준 할인",
+  "quoteFinanceMenuGiveaway": "무상/0원으로 설정",
+  "quoteFinanceMenuRestore": "이 줄 변경 취소",
+  "quoteFinanceBatchDiscount": "선택 줄 할인 설정",
+  "quoteFinanceBatchDiscountCount": "할인 설정({count})",
+  "quoteFinanceBatchDiscountTitle": "{count, plural, other{선택한 {count}개 줄의 할인 설정}}",
+  "quoteFinanceBatchDiscountHint": "예: 0.95는 표준가의 95%",
+  "quoteFinanceBatchApply": "적용",
+  "quoteFinanceBatchApplied": "{count, plural, other{{count}개 줄의 할인을 설정했습니다}}",
+  "quoteFinanceBatchSkipped": "{count, plural, other{표준가가 없거나 재무 가격인 {count}개 줄은 건너뛰었습니다}}",
+  "quoteFinanceBatchNeedSelection": "먼저 할인을 바꿀 줄을 선택하세요",
+  "quoteFinanceCheckedEditHint": "{count, plural, other{선택된 줄입니다: 할인을 바꾸면 선택한 {count}개 줄이 함께 바뀝니다}}",
+  "quoteFinanceActionSave": "변경 저장",
+  "quoteFinanceActionSaving": "저장 중…",
+  "quoteFinanceActionReturn": "영업에 반려",
+  "quoteFinanceActionConfirm": "견적 확정",
+  "quoteFinanceActionReopen": "확정 취소 후 수정",
+  "quoteFinanceActionBack": "돌아가기",
+  "quoteFinanceSaved": "변경을 저장했습니다",
+  "quoteFinanceNothingToSave": "저장할 변경이 없습니다",
+  "quoteFinanceFixErrors": "{count, plural, other{잘못 입력된 줄이 {count}개 있습니다. 먼저 수정하세요}}",
+  "quoteFinanceClaimNotReady": "아직 이 견적의 검토 점유를 얻지 못했습니다. \"다시 점유 후 새로 고침\"을 누르세요.",
+  "quoteFinanceSaveFirst": "확정하기 전에 변경을 저장하세요",
+  "quoteFinanceConfirmBlocked": "{count, plural, other{가격이 없는 줄이 {count}개 있어 확정할 수 없습니다. 거래 단가를 입력하거나 무상/0원으로 설정하세요.}}",
+  "quoteFinanceConfirmedDone": "견적을 확정했으며 영업에 주문 전환을 알렸습니다",
+  "quoteFinanceReturnedDone": "영업에 반려했으며 알림이 전송됩니다",
+  "quoteFinanceReopenedDone": "확정을 취소했습니다. 가격을 다시 수정할 수 있습니다",
+  "quoteFinanceLoadDetailFailed": "견적 상세를 불러오지 못했습니다. 네트워크나 권한을 확인한 후 다시 시도하세요.",
+  "quoteFinanceActionFailed": "처리하지 못했습니다. 잠시 후 다시 시도하세요.",
+  "quoteFinanceUnsavedTitle": "저장하지 않은 변경이 있습니다",
+  "quoteFinanceUnsavedBody": "나가면 변경 내용이 사라집니다. 나갈까요?",
+  "quoteFinanceLeave": "나가기",
+  "quoteFinanceStay": "계속 수정",
+  "quoteFinanceBusy": "처리 중입니다. 잠시만 기다려 주세요",
+  "quoteFinanceSaving": "변경을 저장하는 중",
+  "quoteFinanceSessionChanged": "로그인 정보가 바뀌었습니다. 견적을 다시 여세요.",
+  "quoteFinanceConfirmTitle": "견적 {billNo} 확정",
+  "quoteFinanceConfirmBody": "확정하면 가격과 할인이 고정되고 영업이 주문으로 전환할 수 있습니다. 나중에 바꾸려면 전환 전에 \"확정 취소 후 수정\"을 사용하세요.",
+  "quoteFinanceConfirmResponsibility": "견적 가격 확정",
+  "quoteFinanceConfirmResponsibilityDesc": "확정하면 이번 가격 확정자로 기록됩니다.",
+  "quoteFinanceConfirmTotal": "견적 금액 {amount}",
+  "quoteFinanceReturnTitle": "{billNo} 영업에 반려",
+  "quoteFinanceReturnBody": "반려하면 견적이 영업에게 돌아가 수정 후 다시 요청됩니다. 사유를 적어 주세요. 영업이 보게 됩니다.",
+  "quoteFinanceReturnChipQty": "고객이 수량 변경 요청",
+  "quoteFinanceReturnChipGoods": "누락 품목 보완 필요",
+  "quoteFinanceReturnChipPrice": "가격은 영업이 고객과 확인 필요",
+  "quoteFinanceReturnReasonLabel": "반려 사유(필수)",
+  "quoteFinanceReturnReasonRequired": "반려 사유를 입력하세요",
+  "quoteFinanceReturnSubmit": "반려",
+  "quoteFinanceReopenTitle": "확정 취소 후 수정",
+  "quoteFinanceReopenBody": "견적이 \"검토 대기\"로 돌아가 가격을 다시 수정할 수 있으며, 수정 후 다시 확정해야 합니다. 그동안 영업은 주문으로 전환할 수 없습니다. 취소할까요?",
+  "quoteFinanceCancel": "취소",
+  "quoteFinanceRevisionTitle": "가격 검토 기록",
+  "quoteFinanceTotalQty": "합계 수량",
+  "quoteFinanceTotalAmount": "합계 금액",
+  "quoteFinanceTotalPreview": "합계 금액(저장 전 미리보기)",
+  "quoteFinanceOrderSourceQuote": "원본 견적 {billNo}",
+  "quoteFinanceOrderQuoteConfirmedBy": "견적 가격 확정 · {name}",
+  "quoteFinanceOrderAllMatch": "견적 가격 확정 · 일치",
+  "quoteFinanceOrderMismatch": "{count, plural, other{견적과 다른 줄 {count}개}}",
+  "quoteFinanceOrderChipHint": "이 주문은 재무가 가격을 확정한 견적에서 전환되었습니다. 가격과 할인이 견적과 같으면 이번에는 신용과 조건만 확인하면 됩니다.",
+  "quoteFinanceOrderColQuotePrice": "견적 단가",
+  "quoteFinanceOrderColQuoteDiscount": "견적 할인",
+  "quoteFinanceOrderColMatch": "견적 대비",
+  "quoteFinanceOrderMatchYes": "일치",
+  "quoteFinanceOrderMatchNo": "다름",
+  "quoteFinanceOrderColFilePrice": "파일 단가({currency})",
+  "quoteFinanceOrderFileCurrencyUnknown": "원통화",
+  "quoteFinanceOrderColFileModel": "파일 모델",
+  "quoteFinanceOrderColFileName": "파일 품명",
+  "quoteFinanceAboveListHint": "표준가보다 높아 재무 지정가로 저장됩니다(할인 1)",
+  "quoteFinanceMenuRefreshMaster": "최신 표준가로 갱신",
+  "quoteFinanceRefreshMasterChip": "최신 표준가 {price}(으)로 갱신하고 할인은 유지합니다. 저장한 뒤 할인을 다시 바꿀 수 있습니다",
+  "quoteFinanceListPriceLatest": "{price}, 품목 정보는 {latest}(으)로 변경됨",
+  "quoteFinanceStatusClaimedBy": "{name} 님이 검토 중",
+  "quoteFinanceStatusClaimedByMe": "내가 검토 중",
+  "quoteFinanceFileRateMissing": "파일 통화 {currency}, 재무 참고 환율이 아직 없어 기준 통화 환산값은 비워 둡니다",
+  "salesQuoteStatusImportTitle": "재무가 가격을 확정한 견적 선택",
+  "salesQuoteStatusImportEmpty": "주문으로 전환할 수 있는 가격 확정 견적이 없습니다",
+  "salesQuoteStatusImportLoadFailed": "견적을 불러오지 못했습니다. 잠시 후 다시 시도하세요.",
+  "salesIntakeBannerTitle": "고객 파일 인식",
+  "salesIntakeBannerMessage": "고객의 견적서/프로포마 인보이스를 올리면 고객과 품목이 자동으로 채워집니다",
+  "salesIntakeBannerButton": "고객 파일 인식",
+  "salesIntakeBannerAgain": "다른 파일 인식",
+  "salesIntakeBannerImported": "{file}에서 {count}행을 가져왔습니다",
+  "salesIntakeToolbarButton": "고객 파일 인식",
+  "salesIntakeAiOffHint": "AI가 꺼져 있어 일반적인 형식의 Excel만 인식할 수 있습니다",
+  "salesIntakeApprovedOrderHint": "승인된 주문은 수량 변경이나 수정으로 바꾸세요. 파일로 다시 인식할 수 없습니다",
+  "salesIntakeReplaceTitle": "명세에 이미 품목이 있습니다",
+  "salesIntakeReplaceMessage": "인식 결과로 기존 명세를 바꿀까요, 뒤에 추가할까요?",
+  "salesIntakeReplace": "바꾸기",
+  "salesIntakeAppend": "뒤에 추가",
+  "salesIntakeApplied": "{count}행을 가져왔습니다. 노란색 표시 {review}행을 확인하세요",
+  "salesIntakeAppliedAllMatched": "{count}행을 가져왔습니다",
+  "salesIntakeAttachFailed": "원본 파일을 첨부하지 못했습니다. 첨부 영역에서 직접 올릴 수 있습니다",
+  "salesIntakeProgressTitle": "고객 파일을 인식하는 중",
+  "salesIntakeStageUpload": "파일 올리기",
+  "salesIntakeStageRead": "표 읽기",
+  "salesIntakeStageLayout": "머리글과 열 찾기",
+  "salesIntakeStageGoods": "품목 맞추기",
+  "salesIntakeStageClient": "고객 맞추기",
+  "salesIntakeStagePricing": "할인율 계산",
+  "salesIntakeSendWholeFileTitle": "파일 전체가 AI 서비스로 전송됩니다",
+  "salesIntakeSendWholeFileMessage": "PDF/이미지이므로 파일 전체를 AI 서비스로 보내야 인식할 수 있습니다. 은행 계좌 등 민감한 정보가 있다면 보내도 되는지 먼저 확인하세요.",
+  "salesIntakeSendWholeFileConfirm": "계속 인식",
+  "salesIntakeAiRequired": "PDF/이미지는 AI가 켜져 있어야 인식됩니다. Excel을 올리거나 관리자에게 문의하세요",
+  "salesIntakeVisionRequired": "이미지 파일입니다. 관리자가 AI 서비스 설정에서 이미지 인식 모델을 켜야 합니다",
+  "salesIntakeFileTooLarge": "파일이 너무 큽니다(최대 {max})",
+  "salesIntakeFileUnreadable": "이 파일을 읽지 못했습니다. 다시 선택하세요",
+  "salesIntakeFileTypeUnsupported": "Excel, CSV, PDF 또는 이미지 파일만 인식할 수 있습니다",
+  "salesIntakeFailedTitle": "이 파일을 인식하지 못했습니다",
+  "salesIntakeResultUnreadable": "인식 결과를 읽을 수 없습니다. 다시 인식하세요",
+  "salesIntakeNoLines": "품목 명세를 찾지 못했습니다. 견적서나 프로포마 인보이스인지 확인하세요",
+  "salesIntakeCancel": "취소",
+  "salesIntakeCreateClientTitle": "파일 정보로 고객 만들기",
+  "salesIntakeCreateClientIntro": "아래 정보로 새 고객을 만듭니다. 담당자는 본인이고 분류는 「미분류」입니다.",
+  "salesIntakeCreateClientName": "고객 약칭",
+  "salesIntakeCreateClientNameRequired": "고객 약칭을 입력하세요",
+  "salesIntakeCreateClientConfirm": "고객 만들기",
+  "salesIntakeCreateClientDone": "고객 {name}을(를) 만들었습니다",
+  "salesIntakeCreateClientExists": "이미 있는 고객이라 선택해 두었습니다",
+  "salesIntakeCreateClientFailed": "고객을 만들지 못했습니다. 잠시 후 다시 시도하세요",
+  "salesIntakeFieldFullName": "정식 명칭",
+  "salesIntakeFieldNameEn": "외국어 명칭",
+  "salesIntakeFieldLinkman": "담당자",
+  "salesIntakeFieldEmail": "이메일",
+  "salesIntakeFieldPhone": "전화",
+  "salesIntakeFieldAddress": "주소",
+  "salesIntakeFieldTaxId": "세금 번호",
+  "salesIntakeFieldPlace": "국가/지역",
+  "salesIntakeReviewTitle": "인식 결과 확인",
+  "salesIntakeReviewSubtitle": "{file} · 명세 {count}행",
+  "salesIntakeClose": "닫기",
+  "salesIntakeStepClient": "고객",
+  "salesIntakeStepGoods": "품목",
+  "salesIntakeClientResolved": "고객: {name}",
+  "salesIntakeClientChange": "바꾸기",
+  "salesIntakeClientPickOther": "다른 고객 선택…",
+  "salesIntakeClientCreate": "파일 정보로 고객 만들기",
+  "salesIntakeClientBuyer": "파일상의 구매자: {name}",
+  "salesIntakeClientNotFound": "내 고객 중에서 이 구매자를 찾지 못했습니다",
+  "salesIntakeClientSuggestions": "아래 고객 중 하나로 보입니다. 하나를 선택하세요:",
+  "salesIntakeClientNone": "아직 고객을 선택하지 않았습니다. 가져온 뒤 머리글에서 선택할 수도 있습니다",
+  "salesIntakeNoVisibleClients": "담당 고객이 아직 없습니다. 상사에게 고객 자료에서 고객을 배정해 달라고 요청하세요",
+  "salesIntakeEnrichSummary": "파일에 고객의 {fields}이(가) 있습니다. 저장할 때 고객 자료에 보충합니다",
+  "salesIntakeEnrichShow": "보기",
+  "salesIntakeEnrichHide": "접기",
+  "salesIntakeEnrichDiffers": "현재 값과 다릅니다: {current}",
+  "salesIntakeEnrichCurrentEmpty": "고객 자료에 아직 없습니다",
+  "salesIntakeFilterReview": "확인 필요 ({count})",
+  "salesIntakeFilterAll": "전체 ({count})",
+  "salesIntakeMatchedCollapsed": "{count}행 자동으로 맞춤",
+  "salesIntakeExpand": "펼치기",
+  "salesIntakeCollapse": "접기",
+  "salesIntakeNoReviewLines": "모든 행이 자동으로 맞춰졌습니다. 바로 가져올 수 있습니다",
+  "salesIntakeLineNo": "{no}행",
+  "salesIntakeQty": "수량 {qty}",
+  "salesIntakeFilePrice": "파일 단가 {price}",
+  "salesIntakeFilePriceWithCurrency": "파일 단가 {price} {currency}",
+  "salesIntakeStatusMatched": "맞춤",
+  "salesIntakeStatusConfirmed": "확인됨",
+  "salesIntakeStatusReview": "확인 필요",
+  "salesIntakeStatusUnmatched": "못 찾음",
+  "salesIntakeStatusBlocked": "가져올 수 없음",
+  "salesIntakeGoodsLabel": "대응 품목",
+  "salesIntakeGoodsHint": "품목을 선택하세요",
+  "salesIntakeConfirmChoice": "이것이 맞습니다",
+  "salesIntakePickFromMaster": "품목 자료에서 선택…",
+  "salesIntakeSplit": "{count}행으로 나누기",
+  "salesIntakeMerge": "한 행으로 합치기",
+  "salesIntakeBundleHint": "이 행은 세트입니다. 나눠서 품목을 하나씩 고를 수 있습니다",
+  "salesIntakeSetNameEn": "품목 영문명으로 설정: {text}",
+  "salesIntakeInclude": "이 행 가져오기",
+  "salesIntakeDiscountPreview": "할인율 {discount}",
+  "salesIntakeDiscountPending": "할인율 미정",
+  "salesIntakePricingNoListPrice": "이 품목은 아직 표준가가 없습니다",
+  "salesIntakePricingAboveList": "파일 단가가 표준가보다 높습니다",
+  "salesIntakePricingOutOfRange": "할인율이 이상합니다. 품목이 틀렸을 수 있습니다",
+  "salesIntakePricingAmbiguous": "파일이 어느 통화로 견적했는지 알 수 없습니다. 할인율을 확인하세요",
+  "salesIntakePricingRateMissing": "외화 참고 환율이 없어 할인율을 계산하지 못했습니다",
+  "salesIntakeUnmatchedRemarkHint": "가져오지 않고 파일 원문을 비고에 적습니다",
+  "salesIntakeBlockedHint": "주문서로 바로 가져올 수 없습니다. 먼저 견적서를 만들어 재무에서 가격을 정하게 하세요",
+  "salesIntakeBlockedTitle": "이 {count}개 품목은 표준가가 없습니다(또는 파일 단가가 표준가보다 높습니다)",
+  "salesIntakeBlockedMessage": "이 품목은 주문서로 바로 가져올 수 없습니다. 먼저 견적서를 만들어 재무에서 가격을 정하게 하세요.",
+  "salesIntakeHandoffToQuote": "견적서로 새로 만들기",
+  "salesIntakeDuplicateTitle": "이 파일은 이미 입력되었을 수 있습니다",
+  "salesIntakeDuplicateItem": "{doc} {billNo} ({date}, {reason})",
+  "salesIntakeDuplicateMessage": "이미 있습니다: {items}. 그래도 새로 만들까요?",
+  "salesIntakeDocTypeQuote": "견적서",
+  "salesIntakeDocTypeOrder": "주문서",
+  "salesIntakeOtherSheets": "파일에 명세처럼 보이는 시트 {sheets}도 있지만 이번에는 「{current}」만 인식했습니다. 그 시트를 인식하려면 파일을 다시 올린 뒤 확인 화면에서 그 시트를 누르세요.",
+  "salesIntakeOtherSheetItem": "{name}({count}행)",
+  "salesIntakeOtherSheetsLead": "이번에는 「{current}」 시트를 인식했습니다. 아래 시트를 누르면 그 시트로 바꿔 인식합니다 (한 번에 한 시트만, 합치지 않음).",
+  "salesIntakeOtherSheetChip": "시트 {name}도 명세처럼 보입니다 ({count}행)",
+  "salesIntakeOtherSheetTooltip": "이 시트로 바꿔 인식",
+  "salesIntakeSheetProgressSubtitle": "{file} · 시트 {sheet}",
+  "salesIntakePriceMaskedNotice": "가격을 볼 수 없으므로 저장할 때 파일 단가로 할인율을 자동 계산합니다",
+  "salesIntakeCurrencyNotice": "파일은 {currency} 견적으로 재무 참고 환율 {rate}로 환산하며 문서는 {base}로 저장합니다",
+  "salesIntakeRateMissingNotice": "{currency} 참고 환율이 없어 일부 할인율을 계산하지 못했습니다. 재무에서 통화 자료에 입력하도록 요청하세요",
+  "salesIntakeSummary": "가져오기 {rows}행 · 노란색 확인 {review}행 · 가져오지 않음 {skipped}행",
+  "salesIntakeImportAll": "모두 가져오기 ({count}행)",
+  "salesIntakeNothingToImport": "가져올 품목이 아직 없습니다",
+  "salesIntakePickedManually": "품목 자료에서 선택",
+  "salesIntakeRemarkLineItem": "{label} × {qty}",
+  "salesIntakeRemarkUnmatched": "다음 {count}행은 대응 품목을 찾지 못했습니다: {lines}",
+  "salesIntakeRemarkUnpriced": "다음 {count}행은 표준가가 없어(또는 파일 단가가 더 높아) 가져오지 않았습니다: {lines}",
+  "salesIntakeRemarkBundlePrice": "세트 {bundle} 전체 파일 단가 {price}",
+  "salesIntakeMarkerDefault": "인식 결과를 확인하세요",
+  "salesIntakeMarkerUnit": "파일 수량 단위가 개가 아닙니다. 수량을 확인하세요",
+  "salesIntakeMarkerQuotePricing": "표준가가 없거나 파일 단가가 더 높아 재무에서 가격을 정합니다",
+  "salesIntakeMarkerQuoteDiscount": "할인율을 자동 계산하지 못했습니다. 재무 가격 검토 때 정합니다",
+  "salesIntakeMarkerOrderDiscount": "할인율을 자동 계산하지 못했습니다. 파일 단가를 보고 입력하세요",
+  "salesIntakeQuoteLineReplaced": "이 줄은 견적에서 재무가 확정한 품목입니다. 다른 품목으로 바꾸면 견적 단가와 할인율을 쓰지 않고, 저장할 때 표준 단가로 다시 계산합니다",
+  "salesIntakeMarkerBundlePart": "세트를 나눴습니다. 품목과 할인율을 확인하세요",
+  "salesIntakeColClientModel": "파일 모델",
+  "salesIntakeColClientModelInfo": "고객 파일의 모델/품번입니다. 저장하면 고객이 부르는 이름을 기억해 다음 인식이 더 정확해집니다.",
+  "salesIntakeColClientGoodsName": "파일 품명",
+  "salesIntakeColClientGoodsNameInfo": "고객 파일의 품명입니다. 품목을 직접 고르면 품목 영문명이 채워지며 바꿀 수 있습니다.",
+  "salesIntakeColClientPrice": "파일 단가",
+  "salesIntakeColClientPriceWithCurrency": "파일 단가({currency})",
+  "salesIntakeColClientPriceInfo": "고객 파일의 단가(파일 통화)로 확인용입니다. 단가는 항상 품목 표준가를 따르고 할인율은 이 값으로 계산합니다.",
+  "salesIntakeQuotePriceHint": "단가는 품목 표준가로 들어오며 영업은 바꿀 수 없습니다. 표준가가 없는 품목은 재무가 정합니다. 할인율은 고객 파일 단가로 계산하며 비워 두고 재무에 맡길 수도 있습니다.",
+  "salesIntakeFinancePriced": "재무 가격",
+  "salesIntakePendingFinancePrice": "재무 가격 대기",
+  "salesIntakeQuoteDiscountPending": "재무가 입력",
+  "salesIntakeMaskedDiscount": "저장 시 자동 계산",
+  "salesIntakeQuoteLockedDiscount": "(견적 확정)",
+  "salesIntakeQuoteLockedDiscountInfo": "이 행의 할인율은 재무가 견적에서 확정했습니다. 바꾸려면 견적을 다시 여세요"
 }

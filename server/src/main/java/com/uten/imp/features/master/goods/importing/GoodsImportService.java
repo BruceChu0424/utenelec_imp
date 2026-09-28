@@ -114,6 +114,12 @@ public class GoodsImportService {
         for (String a : new String[]{"系列", "物料系列"}) putAlias(a, "series");
         putAlias("型号", "model");
         for (String a : new String[]{"名称", "货品名称", "货品名", "物料名称"}) putAlias(a, "name");
+        // 英文名称(ADR-134): 导出列名「英文名称」可原样导回; 常见英文表头一并认。
+        // normKey 不做大小写归一, 几种常见写法都登记。
+        for (String a : new String[]{"英文名称", "英文名", "英文品名", "English Name", "english name",
+                "ENGLISH NAME", "EnglishName", "name_en", "NAME_EN", "nameEn"}) {
+            putAlias(a, "nameEn");
+        }
         putAlias("规格", "spec");
         for (String a : new String[]{"材质", "材料"}) putAlias(a, "material");
         for (String a : new String[]{"颜色", "主颜色"}) putAlias(a, "colorName");
@@ -154,6 +160,9 @@ public class GoodsImportService {
 
     /** 与 goods.rear_insert_code varchar(100)、GoodsSaveRequest 的 @Size(max=100) 对齐。 */
     private static final int REAR_INSERT_CODE_MAX = 100;
+
+    /** 与 goods.name_en varchar(255) 对齐(ADR-134)。 */
+    private static final int NAME_EN_MAX = com.uten.imp.features.master.goods.GoodsNameEn.MAX_LENGTH;
 
     private static final Set<String> VALID_SOURCE_TYPES = Set.of("自制", "采购", "委外");
     private static final Set<String> VALID_STATUSES = Set.of("使用", "禁用");
@@ -206,6 +215,11 @@ public class GoodsImportService {
                 errors.add(new GoodsImportError(r.rowNum, "后模镶件编号",
                         "后模镶件编号不能超过 " + REAR_INSERT_CODE_MAX + " 个字符，当前 "
                                 + r.rearInsertCode.length() + " 个"));
+            }
+            // 英文名称同样是识别依据, 超长截断会得到错误的英文名, 检测期按行报错。
+            if (r.nameEn != null && r.nameEn.codePointCount(0, r.nameEn.length()) > NAME_EN_MAX) {
+                errors.add(new GoodsImportError(r.rowNum, "英文名称",
+                        "英文名称不能超过 " + NAME_EN_MAX + " 个字符"));
             }
             CategoryPathPlan category = null;
             if (r.categorySegments == null || r.categorySegments.isEmpty()) {
@@ -305,6 +319,7 @@ public class GoodsImportService {
             req.setMaterial(emptyToNull(r.material));
             req.setRearInsertCode(emptyToNull(r.rearInsertCode));
             req.setPaper(emptyToNull(r.paper));
+            if (r.nameEn != null) req.setNameEn(r.nameEn);
             req.setSourceType(emptyToNull(r.sourceType));
             req.setPrice(r.price);
             req.setMinOrderQty(r.minOrderQty);
@@ -551,6 +566,8 @@ public class GoodsImportService {
                 pr.material = trim(str(row, col.get("material")));
                 pr.rearInsertCode = trim(str(row, col.get("rearInsertCode")));
                 pr.paper = trim(str(row, col.get("paper")));
+                pr.nameEn = com.uten.imp.features.master.goods.GoodsNameEn.normalize(
+                        str(row, col.get("nameEn")));
                 pr.colorName = normKey(str(row, col.get("colorName")));
                 pr.unitName = normKey(str(row, col.get("unitName")));
                 pr.sourceType = normKey(str(row, col.get("sourceType")));
@@ -916,6 +933,7 @@ public class GoodsImportService {
         String material;
         String rearInsertCode;       // 后模镶件编号（V457）
         String paper;                // 备注（2026-09-25 导入导出格式对齐，落库）
+        String nameEn;               // 英文名称(ADR-134), 来源记 MANUAL
         String colorName;
         String unitName;
         String sourceType;

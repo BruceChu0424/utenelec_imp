@@ -99,9 +99,9 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                     cancelled_by uuid, cancelled_at timestamptz, cancellation_reason text,
                     is_deleted boolean DEFAULT FALSE, deleted_at timestamptz,
                     participating_warehouse_ids uuid[], analysis_no text);
-                CREATE TABLE sales_order_items(id uuid, order_id uuid, is_deleted boolean);
-                CREATE TABLE sales_orders(id uuid, client_id uuid, bill_no text, is_deleted boolean);
-                CREATE TABLE clients(id uuid, name text);
+                CREATE TABLE sales_order_items(id uuid, order_id uuid, is_deleted boolean, client_goods_name VARCHAR(500), client_price NUMERIC);
+                CREATE TABLE sales_orders(id uuid, client_id uuid, bill_no text, is_deleted boolean, client_file_currency VARCHAR(8));
+                CREATE TABLE clients(id uuid, name text, name_en VARCHAR(255));
                 CREATE TABLE execution_segment_sales_allocations(execution_segment_id uuid, sales_order_item_id uuid);
                 CREATE TABLE v_production_execution_workbench_segments(
                     segment_id uuid PRIMARY KEY, plan_id uuid, root_type text DEFAULT 'PLAN', root_id uuid,

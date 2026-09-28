@@ -50,6 +50,10 @@ enum BadgeEntry {
   /// 业务审核中心(一张卡承载全部审核队列, 页内按队列分段)。
   financeAuditCenter(BadgeModule.finance),
 
+  /// 报价核价(ADR-134): 销售提交、等财务定价确认的报价(财务部门树在职且持
+  /// sales_quote_finance:confirm 的人才有数)。
+  financeQuoteReview(BadgeModule.finance),
+
   /// 财务报销: 待审批 + 待付款。
   expenseFinance(BadgeModule.finance),
 
@@ -134,6 +138,13 @@ enum BadgeEntry {
 
   /// 销售出货「财务已退回」。
   salesShipmentFinanceRejected(BadgeModule.sales),
+
+  /// 报价被财务退回(本人的报价, status 0 且带退回原因; 事实数 financeRejected.salesQuote)。
+  salesQuoteFinanceRejected(BadgeModule.sales),
+
+  /// 报价已核价、还没转订货单(本人的报价, status 1 且没有生效的来源订货单;
+  /// 事实数 salesQuote.awaitingConversion)。入口键与服务端 WorkbenchBadgeCatalog 逐字一致。
+  salesQuoteAwaitingConversion(BadgeModule.sales),
 
   /// 销售草稿(订货/发货/退货/报价)。
   salesDrafts(BadgeModule.sales),

@@ -18,10 +18,6 @@ abstract final class Perm {
   /// 锁定、启停账号以及重置一次性临时密码。
   static const accountSupport = 'account:support';
 
-  /// 财务敏感驾驶舱字段查看。
-  static const dashboardFinanceSensitiveView =
-      'dashboard:finance_sensitive:view';
-
   /// 权限、数据范围和系统设置管理；后端同时要求超级管理员身份。
   static const authorizationManage = 'authorization:manage';
 
@@ -413,6 +409,11 @@ abstract final class Perm {
   static const salesOrderFinanceView = 'sales_order_finance:view';
   static const salesOrderFinanceConfirm = 'sales_order_finance:confirm';
 
+  /// 销售报价财务核价(ADR-134)：查看核价队列与详情 / 改价、退回、确认、撤销确认。
+  /// 服务端再叠加财务部门树在职资格(同订单财务确认)；页面按钮只认服务端 allowedActions。
+  static const salesQuoteFinanceView = 'sales_quote_finance:view';
+  static const salesQuoteFinanceConfirm = 'sales_quote_finance:confirm';
+
   static const arApLedgerView = 'ar_ap_ledger:view';
   static const customerPrepaymentView = 'customer_prepayment:view';
   static const customerPrepaymentApply = 'customer_prepayment:apply';
@@ -513,7 +514,6 @@ abstract final class Perm {
   static const settlementMethodExport = 'settlement_method:export';
   static const salesQuoteCreate = 'sales_quote:create';
   static const salesQuoteDelete = 'sales_quote:delete';
-  static const salesQuoteApprove = 'sales_quote:approve';
   static const salesQuoteReverse = 'sales_quote:reverse';
   static const salesQuoteConvert = 'sales_quote:convert';
   static const salesOrderCreate = 'sales_order:create';

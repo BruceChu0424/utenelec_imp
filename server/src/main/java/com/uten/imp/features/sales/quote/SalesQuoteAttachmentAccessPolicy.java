@@ -13,7 +13,10 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.UUID;
 
-/** Attachments follow the same exact owner as the document and freeze at approval. */
+/**
+ * 报价附件跟随报价的负责人(maker_id), 只在草稿(含财务退回的草稿)可增删, 提交核价后原件只读。
+ * 核价人(sales_quote_finance:view)可只读查看待核价/已核价/本轮退回的报价附件(客户文件原件), 与报价读范围一致。
+ */
 @Component
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -43,15 +46,23 @@ public class SalesQuoteAttachmentAccessPolicy implements AttachmentOwnerAccessPo
         return document;
     }
     private void readable(SalesQuote document, AuthUser user) {
+        if (document.isDeleted()) throw missing();
+        if (has(user, SalesQuoteService.FINANCE_VIEW) && SalesQuoteService.financeVisible(document)) return;
+        if (!has(user, "sales_quote:view")) throw missing();
+        access.requireReadable(document.getMakerId(), "销售报价单不存在");
+    }
+
+    /** 管理附件必须是负责人本人的读范围(核价人的只读放行不延伸到增删)。 */
+    private void ownerReadable(SalesQuote document, AuthUser user) {
         if (document.isDeleted() || !has(user, "sales_quote:view")) throw missing();
         access.requireReadable(document.getMakerId(), "销售报价单不存在");
     }
     private void editable(SalesQuote document, AuthUser user) {
-        readable(document, user);
+        ownerReadable(document, user);
         if (!has(user, "sales_quote:edit")) throw new ApiException(ErrorCode.FORBIDDEN, "缺少销售报价单编辑权限");
         access.requireWritable(document.getMakerId(), "无权修改该销售报价单附件");
         if (document.getStatus() == null || document.getStatus() != 0 || document.isClosed()) {
-            throw new ApiException(ErrorCode.CONFLICT, "仅未关闭的草稿销售报价单可修改附件，审核后原件只读");
+            throw new ApiException(ErrorCode.CONFLICT, "仅未关闭的草稿销售报价单可修改附件，提交核价后原件只读");
         }
     }
     private static boolean has(AuthUser user, String permission) {

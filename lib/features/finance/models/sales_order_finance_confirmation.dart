@@ -9,6 +9,48 @@
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/models/party_open_balance.dart';
 
+/// 订单的来源报价(ADR-134)：报价须财务核价确认后才能转订货单，
+/// 这里带出核价人/时间，列表与审核页据此显示「报价已核价」。
+///
+/// 契约(SPEC §6.1 + 服务端 SalesOrderFinanceReviewDto.SourceQuote)：列表行与审核详情都用
+/// `sourceQuote{id, billNo, financeConfirmedByName, financeConfirmedAt}`, 「全部行都与报价核定
+/// 一致」在同级 `matchesQuote`(列表「报价已核价 · 一致」); 旧形态把它放在
+/// `sourceQuote.allLinesMatch`, 解析时两处都认, 同级优先。
+class SalesOrderSourceQuote {
+  const SalesOrderSourceQuote({
+    required this.id,
+    this.billNo,
+    this.financeConfirmedByName,
+    this.financeConfirmedAt,
+    this.allLinesMatch,
+  });
+
+  final String id;
+  final String? billNo;
+  final String? financeConfirmedByName;
+  final String? financeConfirmedAt;
+
+  /// 旧形态 `sourceQuote.allLinesMatch`(全部行的单价与折扣都与来源报价一致)；未给为 null。
+  /// 页面请读外层的 `matchesQuote`。
+  final bool? allLinesMatch;
+
+  static SalesOrderSourceQuote? tryFromJson(Object? json) {
+    if (json is! Map) return null;
+    final map = json.cast<String, dynamic>();
+    final id = _string(map['id']);
+    if (id == null) return null;
+    return SalesOrderSourceQuote(
+      id: id,
+      billNo: _string(map['billNo']),
+      financeConfirmedByName: _string(map['financeConfirmedByName']),
+      financeConfirmedAt: _string(map['financeConfirmedAt']),
+      allLinesMatch: map['allLinesMatch'] is bool
+          ? map['allLinesMatch'] as bool
+          : null,
+    );
+  }
+}
+
 class SalesOrderFinancePendingItem {
   const SalesOrderFinancePendingItem({
     required this.orderId,
@@ -28,6 +70,8 @@ class SalesOrderFinancePendingItem {
     this.financeRejectedAt,
     this.changeCount = 0,
     this.financeReviewRevision = 0,
+    this.sourceQuote,
+    this.matchesQuote,
   });
 
   final String orderId;
@@ -61,6 +105,12 @@ class SalesOrderFinancePendingItem {
   final int changeCount;
   final int financeReviewRevision;
 
+  /// 来源报价(ADR-134)；非报价转入为 null。
+  final SalesOrderSourceQuote? sourceQuote;
+
+  /// 全部行的单价与折扣都与来源报价一致；非报价转入或服务端未给为 null。
+  final bool? matchesQuote;
+
   bool get canConfirm => orderId.isNotEmpty;
 
   String get detailRoute =>
@@ -85,6 +135,8 @@ class SalesOrderFinancePendingItem {
       financeRejectedAt: _string(json['financeRejectedAt']),
       changeCount: _int(json['changeCount']) ?? 0,
       financeReviewRevision: _int(json['financeReviewRevision']) ?? 0,
+      sourceQuote: SalesOrderSourceQuote.tryFromJson(json['sourceQuote']),
+      matchesQuote: _matchesQuote(json),
     );
   }
 }
@@ -176,6 +228,9 @@ class SalesOrderFinanceReview {
     this.commercialChanges = const [],
     this.revisionDiff,
     this.financeReviewRevision = 0,
+    this.sourceQuote,
+    this.clientFileCurrency,
+    this.matchesQuote,
   });
 
   final String orderId;
@@ -235,6 +290,13 @@ class SalesOrderFinanceReview {
   final List<SalesOrderCommercialChange> commercialChanges;
   final SalesOrderRevisionDiff? revisionDiff;
   final int financeReviewRevision;
+
+  /// 来源报价(ADR-134，含「全部行与报价一致」标记)；客户文件币种(文件单价列标题用)。
+  final SalesOrderSourceQuote? sourceQuote;
+  final String? clientFileCurrency;
+
+  /// 全部行的单价与折扣都与来源报价一致；非报价转入或服务端未给为 null。
+  final bool? matchesQuote;
 
   factory SalesOrderFinanceReview.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'];
@@ -297,6 +359,9 @@ class SalesOrderFinanceReview {
           .map((row) => SalesOrderCommercialChange.fromJson(row))
           .toList(growable: false),
       financeReviewRevision: _int(json['financeReviewRevision']) ?? 0,
+      sourceQuote: SalesOrderSourceQuote.tryFromJson(json['sourceQuote']),
+      clientFileCurrency: _string(json['clientFileCurrency']),
+      matchesQuote: _matchesQuote(json),
       revisionDiff: json['revisionDiff'] is Map
           ? SalesOrderRevisionDiff.fromJson(
               (json['revisionDiff'] as Map).cast<String, dynamic>(),
@@ -464,6 +529,11 @@ class SalesOrderFinanceReviewLine {
     this.discount,
     this.amountOriginal,
     this.remark,
+    this.quotePrice,
+    this.quoteDiscount,
+    this.matchesQuote,
+    this.clientPrice,
+    this.clientGoodsName,
   });
 
   final String itemId;
@@ -471,6 +541,17 @@ class SalesOrderFinanceReviewLine {
   final String? goodsCode;
   final String? goodsName;
   final String? colorName;
+
+  /// 来源报价行的单价与财务核定折扣(ADR-134)；非报价转入行为 null。
+  final String? quotePrice;
+  final String? quoteDiscount;
+
+  /// 本行单价与折扣都与来源报价行一致；非报价转入行为 null。
+  final bool? matchesQuote;
+
+  /// 客户文件里的单价(文件币种原币，只作对照)与品名。
+  final String? clientPrice;
+  final String? clientGoodsName;
 
   /// 单位主键：「合计数量」按它分组，不同单位的数量绝不相加。
   final String? unitId;
@@ -499,6 +580,13 @@ class SalesOrderFinanceReviewLine {
       discount: _string(json['discount']),
       amountOriginal: _string(json['amountOriginal']),
       remark: _string(json['remark']),
+      quotePrice: _string(json['quotePrice']),
+      quoteDiscount: _string(json['quoteDiscount']),
+      matchesQuote: json['matchesQuote'] is bool
+          ? json['matchesQuote'] as bool
+          : null,
+      clientPrice: _string(json['clientPrice']),
+      clientGoodsName: _string(json['clientGoodsName']),
     );
   }
 }
@@ -512,4 +600,15 @@ String? _string(Object? value) {
 int? _int(Object? value) {
   if (value is num) return value.toInt();
   return int.tryParse(value?.toString() ?? '');
+}
+
+/// 订单级「全部行都与来源报价核定一致」: 同级 `matchesQuote` 优先, 旧形态
+/// `sourceQuote.allLinesMatch` 兜底; 非报价转入(没有 sourceQuote)为 null。
+bool? _matchesQuote(Map<String, dynamic> json) {
+  final quote = json['sourceQuote'];
+  if (quote is! Map) return null;
+  final top = json['matchesQuote'];
+  if (top is bool) return top;
+  final legacy = quote['allLinesMatch'];
+  return legacy is bool ? legacy : null;
 }

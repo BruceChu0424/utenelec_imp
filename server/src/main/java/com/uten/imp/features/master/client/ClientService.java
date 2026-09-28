@@ -143,6 +143,9 @@ public class ClientService {
                         cb.like(cb.lower(root.get("name")), like),
                         cb.like(cb.lower(root.get("code")), like),
                         cb.like(cb.lower(root.get("fullName")), like),
+                        // 外文名称与邮箱(ADR-134): 客户文件上的英文公司名、邮箱也能搜到客户。
+                        cb.like(cb.lower(root.get("nameEn")), like),
+                        cb.like(cb.lower(root.get("email")), like),
                         cb.like(cb.lower(root.get("linkman")), like),
                         cb.like(cb.lower(root.get("mobile")), like)));
             }
@@ -248,6 +251,7 @@ public class ClientService {
                 new ExportColumn("code", "客户编码", ExportColumn.TEXT),
                 new ExportColumn("name", "客户简称", ExportColumn.TEXT),
                 new ExportColumn("fullName", "客户全称", ExportColumn.TEXT),
+                new ExportColumn("nameEn", "外文名称", ExportColumn.TEXT),
                 new ExportColumn("defaultSettlementMethodName", "主结账方式", ExportColumn.TEXT),
                 new ExportColumn("clientXz", "客户性质", ExportColumn.TEXT),
                 new ExportColumn("tday", "信用天数", ExportColumn.NUMBER),
@@ -275,6 +279,7 @@ public class ClientService {
                     row.put("code", m.getCode());
                     row.put("name", m.getName());
                     row.put("fullName", m.getFullName());
+                    row.put("nameEn", m.getNameEn());
                     row.put("defaultSettlementMethodName", m.getDefaultSettlementMethodName());
                     row.put("clientXz", m.getClientXz());
                     row.put("tday", m.getTday());
@@ -486,6 +491,7 @@ public class ClientService {
         m.setCategory(requireCategory(req.getCategoryId()));
         m.setName(req.getName());
         m.setFullName(req.getFullName());
+        applyNameEn(req, m);
         m.setClientRank(req.getClientRank());
         m.setRegion(req.getRegion());
         m.setPlaceId(req.getPlaceId());
@@ -559,7 +565,8 @@ public class ClientService {
                 clientAccessPolicy.accessReason(m, scope),
                 m.getDefaultShipmentPolicy(),
                 m.getDefaultCurrencyId(),
-                currencyName(m.getDefaultCurrencyId()));
+                currencyName(m.getDefaultCurrencyId()),
+                m.getNameEn());
     }
 
     private ClientListItem toList(
@@ -578,7 +585,8 @@ public class ClientService {
                 m.getDefaultSettlementMethodId(), settlementMethodName,
                 clientAccessPolicy.canWrite(m, scope),
                 clientAccessPolicy.canManageAccess(m, scope),
-                m.getVersion());
+                m.getVersion(),
+                m.getNameEn());
     }
 
     private Map<UUID, String> settlementMethodNames(List<Client> clients) {
@@ -711,6 +719,14 @@ public class ClientService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "币种不存在");
         }
         client.setDefaultCurrencyId(id);
+    }
+
+    /** 外文名称(ADR-134): presence 语义, 没带键不动; 首尾空白去掉、连续空白合并, 空白归一为 null。 */
+    private static void applyNameEn(ClientSaveRequest req, Client client) {
+        if (!req.hasNameEn()) return;
+        String raw = req.getNameEn();
+        String value = raw == null ? null : raw.strip().replaceAll("(?U)\\s+", " ");
+        client.setNameEn(value == null || value.isEmpty() ? null : value);
     }
 
     /** 币种名（详情展示用；软删/缺行回落 null）。 */

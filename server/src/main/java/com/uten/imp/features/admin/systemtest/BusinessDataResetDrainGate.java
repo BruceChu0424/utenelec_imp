@@ -1,5 +1,6 @@
 package com.uten.imp.features.admin.systemtest;
 
+import com.uten.imp.application.port.BusinessDataResetGatePort;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.TimeUnit;
@@ -20,7 +21,7 @@ import java.util.concurrent.TimeUnit;
  * 避免自己等自己。所有状态迁移与计数都在同一监视器上完成，无 check-then-act 竞态。</p>
  */
 @Component
-public class BusinessDataResetDrainGate {
+public class BusinessDataResetDrainGate implements BusinessDataResetGatePort {
 
     private enum Phase { IDLE, DRAINING, RESETTING }
 
@@ -28,18 +29,21 @@ public class BusinessDataResetDrainGate {
     private int inFlight = 0;
 
     /** 过滤器调用：非清空期间的请求进入在途计数。调用方必须保证 finally 里 {@link #leave()}。 */
+    @Override
     public synchronized boolean tryEnter() {
         if (phase != Phase.IDLE) return false;
         inFlight++;
         return true;
     }
 
+    @Override
     public synchronized void leave() {
         inFlight--;
         notifyAll();
     }
 
     /** 清空期间是否应拒绝新的普通 API 请求。 */
+    @Override
     public synchronized boolean blockingNewRequests() {
         return phase != Phase.IDLE;
     }

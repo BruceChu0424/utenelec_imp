@@ -170,6 +170,8 @@ abstract final class RouteName {
   // 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const String adminSystemSettings = '/admin/system-settings';
   static const String adminServerStatus = '/admin/server-status';
+  // AI 服务设置(ADR-133: 服务商/密钥/连接测试; 超管, 写操作再认证)
+  static const String adminAiSettings = '/admin/ai-settings';
 
   // 财税部主数据别名入口（复用基础资料真实页面）
   static const String financeCustomers = '/finance/customers';
@@ -456,6 +458,12 @@ abstract final class RouteName {
   /// 出货财务审核详情（财务专用审核视图，与销售端出货详情分离）。
   static const String financeSalesShipmentAuditReview =
       '/finance/sales-shipment-audits/:id';
+
+  /// 销售报价财务核价(ADR-134)：待核价 / 已核价 / 已退回 三个分段。
+  static const String financeQuoteReview = '/finance/quote-review';
+
+  /// 报价核价详情：认领后可改价、退回销售、确认报价、撤销确认。
+  static const String financeQuoteReviewDetail = '/finance/quote-review/:id';
   static const String financeArAp = '/finance/ar-ap';
   static const String financePayables = '/finance/payables';
   static const String financeReconciliations = '/finance/reconciliations';
@@ -657,6 +665,10 @@ abstract final class RoutePath {
       ).toString();
   static String financeArrivalException(String id) =>
       '/finance/procurement-arrival-exceptions/$id';
+
+  /// 报价核价详情(ADR-134)。
+  static String financeQuoteReview(String id) =>
+      '/finance/quote-review/${Uri.encodeComponent(id)}';
 
   /// 车间内料仓页深链 (ADR-131): 指定车间时带 ?workshopId=。
   static String workshopMaterialBin({String? workshopId}) =>

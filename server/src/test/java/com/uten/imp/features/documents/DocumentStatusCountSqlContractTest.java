@@ -40,7 +40,9 @@ class DocumentStatusCountSqlContractTest {
                 "DRAFT", "PENDING_FINANCE", "FINANCE_REJECTED", "APPROVED", "REVERSED");
         assertThat(keys("subcontractOrder")).containsExactly(
                 "DRAFT", "PENDING_FINANCE", "FINANCE_REJECTED", "APPROVED", "REVERSED", "EXECUTING");
-        for (String kind : List.of("salesQuote", "salesReturn", "financeReceipt", "productionPlan",
+        assertThat(keys("salesQuote")).as("ADR-134 报价核价分段").containsExactly(
+                "DRAFT", "PENDING_FINANCE", "FINANCE_REJECTED", "APPROVED", "REVERSED");
+        for (String kind : List.of("salesReturn", "financeReceipt", "productionPlan",
                 "purchaseReceipt", "subcontractWaste", "stockDocument", "stockTransfer")) {
             assertThat(keys(kind)).as(kind).containsExactly("DRAFT", "APPROVED", "REVERSED");
         }
@@ -79,6 +81,21 @@ class DocumentStatusCountSqlContractTest {
                 .contains("o.finance_gate_version < 2 OR (o.sales_confirmed_at IS NOT NULL");
         assertThat(predicate(buckets, "SHIPPED")).isEqualTo("o.status = 1");
         assertThat(predicate(buckets, "REVERSED")).isEqualTo("o.status = -1");
+    }
+
+    /** ADR-134: 财务退回的报价不算草稿(草稿徽章与「报价被退回」红徽章不双计), 待核价单独成段. */
+    @Test
+    void salesQuoteBucketsSeparateReturnedDraftsFromDrafts() {
+        DraftSource source = DocumentDraftCountQueryService.SALES_QUOTE;
+        assertThat(source.extraPredicate()).isEqualTo("o.finance_return_reason IS NULL");
+        List<Bucket> buckets = DocumentStatusCountQueryService.bucketsOf("salesQuote", source);
+        assertThat(predicate(buckets, "DRAFT")).isEqualTo("o.status = 0 AND o.finance_return_reason IS NULL");
+        assertThat(predicate(buckets, "FINANCE_REJECTED"))
+                .isEqualTo("o.status = 0 AND o.finance_return_reason IS NOT NULL");
+        assertThat(predicate(buckets, "PENDING_FINANCE")).isEqualTo("o.status = 2");
+        assertThat(predicate(buckets, "APPROVED")).isEqualTo("o.status = 1");
+        assertThat(predicate(buckets, "REVERSED")).isEqualTo("o.status = -1");
+        assertThat(DocumentStatusCountQueryService.FINANCE_REJECTED_KINDS).contains("salesQuote");
     }
 
     @Test

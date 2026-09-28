@@ -14,7 +14,9 @@
 import 'package:flutter/material.dart';
 import '../../../shared/models/decimal_text.dart';
 import '../../../shared/models/party_open_balance.dart';
+import 'sales_quote_workflow.dart';
 export '../../../shared/models/sales_shipment_policy.dart';
+export 'sales_quote_workflow.dart';
 
 /// 销售单据类型。pathSegment 对齐后端 /api/sales/{quotes|orders|shipments|other-shipments|returns}。
 enum SalesDocType {
@@ -41,9 +43,11 @@ enum SalesDocType {
 }
 
 /// 单据状态：0草稿 / 1已审 / -1红冲（与采购一致）。
+/// 报价单另有 2 = 待财务核价(ADR-134)，其「已审」语义是「财务已核价」。
 const int kSalesStatusDraft = 0;
 const int kSalesStatusApproved = 1;
 const int kSalesStatusReversed = -1;
+const int kSalesStatusPendingFinance = 2;
 
 String salesStatusLabel(int? code) {
   switch (code) {
@@ -53,6 +57,8 @@ String salesStatusLabel(int? code) {
       return '已审';
     case kSalesStatusReversed:
       return '红冲';
+    case kSalesStatusPendingFinance:
+      return '待财务核价';
     default:
       return '—';
   }
@@ -67,10 +73,74 @@ Color salesStatusColor(int? code, ThemeData theme) {
       return Colors.green;
     case kSalesStatusReversed:
       return theme.colorScheme.error;
+    case kSalesStatusPendingFinance:
+      return Colors.orange;
     default:
       return theme.colorScheme.onSurfaceVariant;
   }
 }
+
+/// 报价单分桶(ADR-134): 与服务端 DocumentStatusCountQueryService 的 salesQuote 分桶键、
+/// 报价列表 `bucket` 查询参数逐字一致。
+///
+/// 草稿与财务退回同是 status 0, 区别是有没有退回原因——草稿计数只数没有退回原因的,
+/// 退回件单独一桶(否则一张单在两个红段里各数一次)。
+abstract final class SalesQuoteStage {
+  static const draft = 'DRAFT';
+  static const financeRejected = 'FINANCE_REJECTED';
+  static const pendingFinance = 'PENDING_FINANCE';
+  static const approved = 'APPROVED';
+  static const reversed = 'REVERSED';
+
+  /// 只用于查询(不是列表分段): 已核价、还没转订货单(与徽章事实 salesQuote.awaitingConversion
+  /// 同口径)，「从报价引入」弹窗用它在服务端筛掉已转单的报价。
+  static const awaitingConversion = 'AWAITING_CONVERSION';
+
+  /// 列表分段顺序: 两个要本人动手的红段在前, 在财务手上的黄段居中, 终态殿后
+  /// (末尾另有「历史记录」)。
+  static const segments = [
+    draft,
+    financeRejected,
+    pendingFinance,
+    approved,
+    reversed,
+  ];
+}
+
+/// 报价单所处分桶: 服务端 statusBucket 优先; 旧载荷按 status + 退回原因兜底。
+String? salesQuoteStageFor({
+  int? status,
+  String? statusBucket,
+  String? financeReturnReason,
+}) {
+  if (statusBucket != null && SalesQuoteStage.segments.contains(statusBucket)) {
+    return statusBucket;
+  }
+  return switch (status) {
+    kSalesStatusDraft =>
+      (financeReturnReason?.trim().isNotEmpty ?? false)
+          ? SalesQuoteStage.financeRejected
+          : SalesQuoteStage.draft,
+    kSalesStatusPendingFinance => SalesQuoteStage.pendingFinance,
+    kSalesStatusApproved => SalesQuoteStage.approved,
+    kSalesStatusReversed => SalesQuoteStage.reversed,
+    _ => null,
+  };
+}
+
+/// 列表行 → 报价分桶。
+String? salesQuoteStageOf(SalesDocListItem it) => salesQuoteStageFor(
+  status: it.status,
+  statusBucket: it.quoteWorkflow.statusBucket,
+  financeReturnReason: it.quoteWorkflow.financeReturnReason,
+);
+
+/// 详情 → 报价分桶。
+String? salesQuoteDetailStage(SalesDocDetail d) => salesQuoteStageFor(
+  status: d.status,
+  statusBucket: d.quoteWorkflow.statusBucket,
+  financeReturnReason: d.quoteWorkflow.financeReturnReason,
+);
 
 /// 订单行优先级标签（priority）：1急单/2普通/3现货。仅稀缺让单决策用。
 String priorityLabel(int? p) {
@@ -553,6 +623,7 @@ class SalesDocListItem {
   const SalesDocListItem({
     this.exactDecimals = const {},
     this.shipmentWorkflow = const CustomerShipmentWorkflow(),
+    this.quoteWorkflow = SalesQuoteWorkflow.empty,
     required this.id,
     this.billNo,
     this.billDate,
@@ -592,6 +663,9 @@ class SalesDocListItem {
     this.financeRejected = false,
   });
   final CustomerShipmentWorkflow shipmentWorkflow;
+
+  /// 报价单财务核价流程(ADR-134)；其它单据类型为 [SalesQuoteWorkflow.empty]。
+  final SalesQuoteWorkflow quoteWorkflow;
   final Map<String, String> exactDecimals;
 
   final String id;
@@ -646,6 +720,7 @@ class SalesDocListItem {
   ) => SalesDocListItem(
     exactDecimals: readExactDecimalTexts(json),
     shipmentWorkflow: CustomerShipmentWorkflow.fromJson(json),
+    quoteWorkflow: SalesQuoteWorkflow.fromJson(json),
     id: json['id'] as String,
     billNo: json['billNo'] as String?,
     billDate: json['billDate'] as String?,
@@ -716,6 +791,11 @@ class SalesDocItem {
     this.cartonCount,
     this.clientNo,
     this.clientModel,
+    this.clientGoodsName,
+    this.clientPrice,
+    this.priceSource,
+    this.quoteDiscount,
+    this.quoteLocked = false,
     this.solution,
     this.responsible,
     this.orderItemId,
@@ -771,7 +851,25 @@ class SalesDocItem {
   final double? parcelQty;
   final double? cartonCount;
   final String? clientNo;
+
+  /// 文件型号(客户文件里的型号/货号, 报价/订货, ADR-134)。
   final String? clientModel;
+
+  /// 文件品名(客户文件里的品名)。
+  final String? clientGoodsName;
+
+  /// 文件单价(文件币种, 只读参考; 单价以标价为准)。
+  final double? clientPrice;
+
+  /// 报价行定价来源: MASTER(货品标价) / FINANCE(财务定价)。
+  final String? priceSource;
+
+  /// 报价转入的订货行: 财务在报价中核定的折扣(看不到价格的账号服务端置空)。
+  final double? quoteDiscount;
+
+  /// 报价转入的订货行: 单价与折扣由来源报价锁定(折扣只读「报价核定」)。
+  /// 服务端对看不到价格的账号也照常下发, 以它为准判断是否锁定。
+  final bool quoteLocked;
   final String? solution;
   final String? responsible;
   final String? orderItemId;
@@ -827,6 +925,11 @@ class SalesDocItem {
     cartonCount: (json['cartonCount'] as num?)?.toDouble(),
     clientNo: json['clientNo'] as String?,
     clientModel: json['clientModel'] as String?,
+    clientGoodsName: json['clientGoodsName'] as String?,
+    clientPrice: (json['clientPrice'] as num?)?.toDouble(),
+    priceSource: json['priceSource'] as String?,
+    quoteDiscount: (json['quoteDiscount'] as num?)?.toDouble(),
+    quoteLocked: json['quoteLocked'] == true,
     solution: json['solution'] as String?,
     responsible: json['responsible'] as String?,
     orderItemId: json['orderItemId'] as String?,
@@ -948,6 +1051,7 @@ class SalesDocDetail {
   const SalesDocDetail({
     this.exactDecimals = const {},
     this.shipmentWorkflow = const CustomerShipmentWorkflow(),
+    this.quoteWorkflow = SalesQuoteWorkflow.empty,
     required this.id,
     this.legacyId,
     this.billNo,
@@ -1017,8 +1121,12 @@ class SalesDocDetail {
     this.financeRejectedReason,
     this.financeRejectedAt,
     this.financeRejectedByName,
+    this.clientFileCurrency,
   });
   final CustomerShipmentWorkflow shipmentWorkflow;
+
+  /// 报价单财务核价流程(ADR-134)；其它单据类型为 [SalesQuoteWorkflow.empty]。
+  final SalesQuoteWorkflow quoteWorkflow;
   final Map<String, String> exactDecimals;
 
   final String id;
@@ -1028,6 +1136,9 @@ class SalesDocDetail {
   final String? clientId;
   final String? warehouseId;
   final String? currencyId;
+
+  /// 客户文件币种(报价/订货识别客户文件时记录; 单据本身按本位币, ADR-134)。
+  final String? clientFileCurrency;
   final double? exchangeRate;
   final double? taxRate;
   final int? paymentStyleId;
@@ -1126,6 +1237,7 @@ class SalesDocDetail {
   factory SalesDocDetail.fromJson(Map<String, dynamic> json) => SalesDocDetail(
     exactDecimals: readExactDecimalTexts(json),
     shipmentWorkflow: CustomerShipmentWorkflow.fromJson(json),
+    quoteWorkflow: SalesQuoteWorkflow.fromJson(json),
     shipments: [
       for (final e in (json['shipments'] as List? ?? const []))
         SalesOrderShipmentRef.fromJson(e as Map<String, dynamic>),
@@ -1204,6 +1316,7 @@ class SalesDocDetail {
     financeRejectedReason: json['financeRejectedReason'] as String?,
     financeRejectedAt: json['financeRejectedAt'] as String?,
     financeRejectedByName: json['financeRejectedByName'] as String?,
+    clientFileCurrency: json['clientFileCurrency'] as String?,
   );
 }
 

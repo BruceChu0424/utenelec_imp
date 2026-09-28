@@ -43,7 +43,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false",
-        "uten.reporting.materialized-view-refresh.enabled=false", "uten.policy-intelligence.enabled=false",
+        "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=false",
         // 量的是生产配置: 关掉测试默认打开的嵌套足迹诊断(ADR-107)。
         "uten.concurrency.verify-nested-footprint=false"})

@@ -108,6 +108,25 @@ void main() {
     },
   );
 
+  test(
+    'quote finance review notice lands on the quote review queue (ADR-134)',
+    () {
+      const event = 'SALES_QUOTE_PENDING_FINANCE_REVIEW';
+      expect(
+        workbenchRouteFor(event, actionRoute: '/finance/quote-review/q-1'),
+        RouteName.financeQuoteReview,
+      );
+      expect(
+        noticeClearEventsForLocation(RouteName.financeQuoteReview),
+        contains(event),
+      );
+      expect(
+        noticeClearEventsForLocation('${RouteName.financeQuoteReview}/q-1'),
+        contains(event),
+      );
+    },
+  );
+
   // ADR-117：车间催计划的待办卡直落被催的那一份物料分析；只认物料分析页自己的
   // 深链，别的 actionRoute(被篡改或旧数据)一律回落到物料分析首页。
   test('workshop planning urge lands on the urged material analysis', () {

@@ -1,5 +1,5 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空(支持至 V740；保留主档、人事、权限与治理证据)
+-- 本地/测试库业务数据一键清空(支持至 V742；保留主档、人事、权限与治理证据)
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
@@ -526,7 +526,6 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('material_categories', 'PRESERVE'),
 ('mould_categories', 'PRESERVE'),
 ('moulds', 'PRESERVE'),
-('official_policy_briefs', 'PRESERVE'),
 ('organization_permission_leader_assignments', 'PRESERVE'),
 ('password_history', 'PRESERVE'),
 ('payment_styles', 'PRESERVE'),
@@ -593,6 +592,20 @@ SELECT optional.table_name, optional.disposition FROM (VALUES
 ('workshop_machines', 'PRESERVE'),
 ('workshop_machine_containers', 'PRESERVE'),
 ('goods_periodic_material_choices', 'PRESERVE')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
+
+-- V742 公共 AI 平台与销售客户文件识别(ADR-133/ADR-134): AI 服务商配置、客户货品对照与
+-- 客户文件版式是配置/学习知识, 随主档保留; 识别任务、调用技术记录与报价核价修订记录
+-- 随业务数据清空。V741 目录上六张表都还不存在(存在性由下方 required 登记按版本核对)。
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition FROM (VALUES
+('ai_providers', 'PRESERVE'),
+('client_goods_aliases', 'PRESERVE'),
+('sales_intake_layouts', 'PRESERVE'),
+('ai_jobs', 'CLEAR'),
+('ai_call_logs', 'CLEAR'),
+('sales_quote_revision_logs', 'CLEAR')
 ) AS optional(table_name, disposition)
 WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
 
@@ -1311,10 +1324,16 @@ BEGIN
         (738, 665),
         -- V739 BOM 真实使用数量(ADR-129): 按颜色累计表换成 goods_bom_actual_usages(PRESERVE 数不变); 原号 V737, 并入 main 时因开发库已过 V738 改号 V739; 本迁移 665→666。
         (739, 666),
+        -- V740 车间整批领料与盘点计耗(ADR-131): 新增 21 张表 (CLEAR 18、PRESERVE 3)、7 个权限点与 GL/ZT 单号命名空间, 零料原因加 PERIODIC_MATERIAL; 本迁移 666→667。
+        (740, 667),
+        -- V741 政策情报 AI 退役 (ADR-133): 删除 official_policy_briefs 一张 PRESERVE 表; 本迁移 667→668。
+        (741, 668),
+        -- V742 公共 AI 平台与销售客户文件识别 (ADR-133/ADR-134): 新增 3 张 PRESERVE 与 3 张 CLEAR 表; 本迁移 668→669。
+        (742, 669)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V740完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669、V735、V737 跳号)，当前 V%/%',        -- V740 车间整批领料与盘点计耗(ADR-131): 新增 21 张表 (CLEAR 18、PRESERVE 3)、7 个权限点与 GL/ZT 单号命名空间, 零料原因加 PERIODIC_MATERIAL; 本迁移 666→667。
-        (740, 667)
+
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V742完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669、V735、V737 跳号)，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -1530,7 +1549,14 @@ BEGIN
             ('workshop_material_close_allocations', 740),
             ('workshop_machines', 740),
             ('workshop_machine_containers', 740),
-            ('goods_periodic_material_choices', 740)
+            ('goods_periodic_material_choices', 740),
+            -- V742 公共 AI 平台与销售客户文件识别(ADR-133/ADR-134)。
+            ('ai_providers', 742),
+            ('client_goods_aliases', 742),
+            ('sales_intake_layouts', 742),
+            ('ai_jobs', 742),
+            ('ai_call_logs', 742),
+            ('sales_quote_revision_logs', 742)
     )
     SELECT string_agg(required.table_name, ', ' ORDER BY required.table_name) FILTER (
                WHERE (to_regclass(format('public.%I', required.table_name)) IS NOT NULL)
@@ -1563,7 +1589,12 @@ BEGIN
        OR (applied_max_version BETWEEN 693 AND 710 AND preserve_count <> 100)
        OR (applied_max_version BETWEEN 711 AND 739 AND preserve_count <> 102)
        -- V740 机台、机台容器与认料三张配置表随主档保留(102→105, ADR-131)。
-       OR (applied_max_version >= 740 AND preserve_count <> 105)
+       OR (applied_max_version >= 740 AND preserve_count <> 105),
+       OR (applied_max_version BETWEEN 711 AND 740 AND preserve_count <> 102)
+       -- V741 删政策情报表 official_policy_briefs(102→101, ADR-133)；V742 新增 AI 服务商配置、
+       -- 客户货品对照与客户文件版式三张 PRESERVE 表(101→104, ADR-133/ADR-134)。
+       OR (applied_max_version = 741 AND preserve_count <> 101)
+       OR (applied_max_version >= 742 AND preserve_count <> 104)
        OR NOT (
            (v446_business_table_count = 0
                 AND v447_business_table_count = 0

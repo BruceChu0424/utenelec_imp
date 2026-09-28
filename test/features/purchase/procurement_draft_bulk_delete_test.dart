@@ -283,7 +283,7 @@ class _DraftApi extends ApiClient {
   }) async => const [];
 
   @override
-  Future<void> delete(String path) async {
+  Future<void> delete(String path, {Map<String, dynamic>? query}) async {
     deleted.add(path.split('/').last);
   }
 }

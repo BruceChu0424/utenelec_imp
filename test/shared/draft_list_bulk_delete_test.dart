@@ -386,7 +386,7 @@ class _Api extends ApiClient {
   }) async => [];
 
   @override
-  Future<void> delete(String path) async {
+  Future<void> delete(String path, {Map<String, dynamic>? query}) async {
     deletes.add(path);
     removed.add(Uri.parse(path).pathSegments.last);
   }

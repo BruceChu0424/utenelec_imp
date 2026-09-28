@@ -131,4 +131,23 @@ public class ClientSaveRequest {
     public boolean hasDefaultCurrencyReference() {
         return defaultCurrencyReferencePresent;
     }
+
+    /**
+     * 外文名称(ADR-134): 这一列也会被保存报价/订货单时从客户文件补全, 故同默认货运策略走 presence:
+     * 请求没带这个键 = 不动, 带了 null 或空白 = 清空。
+     */
+    @jakarta.validation.constraints.Size(max = 255)
+    private String nameEn;
+    @JsonIgnore
+    private boolean nameEnPresent;
+
+    @JsonSetter("nameEn")
+    public void setNameEn(String value) {
+        nameEn = value;
+        nameEnPresent = true;
+    }
+
+    public boolean hasNameEn() {
+        return nameEnPresent;
+    }
 }

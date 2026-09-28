@@ -273,6 +273,48 @@ public final class MoneyPolicy {
         return total.divide(quantity, FinancialExactAmount.MAX_BOOK_FRACTION_DIGITS, RoundingMode.DOWN);
     }
 
+    /**
+     * 由「对方写的单价」反推销售折扣倍率(ADR-134): 折扣 = 对方单价 × 汇率 ÷ 标价, 按折扣列 4 位四舍五入。
+     * 只算折扣, 从不改写任何单价; 标价仍是货品资料的售价(销售无权改价)。
+     * 也用于财务按「成交单价」反推折扣(汇率传 1)。
+     *
+     * <ul>
+     *   <li>标价为空或不大于 0: {@link DiscountFlag#NO_LIST_PRICE}, 折扣为空(需财务先定价)。</li>
+     *   <li>对方单价或汇率为空/不大于 0: {@link DiscountFlag#INVALID}, 折扣为空。</li>
+     *   <li>取位后大于 1(对方单价高于标价): {@link DiscountFlag#ABOVE_LIST}, 折扣为空, 绝不截成 1。</li>
+     *   <li>取位后等于换算单价: {@link DiscountFlag#OK}; 有取位差: {@link DiscountFlag#ROUNDED},
+     *       unitGap = |对方单价 × 汇率 − 标价 × 折扣|(单件差额, 调用方乘数量展示)。</li>
+     * </ul>
+     * 合理区间(例如 0.3 以上)属于业务判断, 由调用方比较, 不在这里取舍。
+     */
+    public static DiscountQuote discountFromUnitPrice(BigDecimal counterpartUnitPrice, BigDecimal rate, BigDecimal listPrice) {
+        if (listPrice == null || listPrice.signum() <= 0) {
+            return new DiscountQuote(null, DiscountFlag.NO_LIST_PRICE, null);
+        }
+        if (counterpartUnitPrice == null || counterpartUnitPrice.signum() <= 0 || rate == null || rate.signum() <= 0) {
+            return new DiscountQuote(null, DiscountFlag.INVALID, null);
+        }
+        BigDecimal converted = counterpartUnitPrice.multiply(rate);
+        BigDecimal discount = converted.divide(listPrice, QUANTITY_SCALE + 8, RoundingMode.HALF_UP)
+                .setScale(QUANTITY_SCALE, RoundingMode.HALF_UP);
+        if (discount.signum() <= 0) {
+            return new DiscountQuote(null, DiscountFlag.INVALID, null);
+        }
+        if (discount.compareTo(BigDecimal.ONE) > 0) {
+            return new DiscountQuote(null, DiscountFlag.ABOVE_LIST, null);
+        }
+        BigDecimal gap = converted.subtract(listPrice.multiply(discount)).abs();
+        return new DiscountQuote(discount, gap.signum() == 0 ? DiscountFlag.OK : DiscountFlag.ROUNDED,
+                canonical(gap));
+    }
+
+    /** {@link #discountFromUnitPrice} 的结果: discount 为 4 位倍率或空; unitGap 仅在算出折扣时给出。 */
+    public record DiscountQuote(BigDecimal discount, DiscountFlag flag, BigDecimal unitGap) {
+    }
+
+    /** 反推折扣的结论。 */
+    public enum DiscountFlag { OK, ROUNDED, ABOVE_LIST, NO_LIST_PRICE, INVALID }
+
     /** 行金额(原币/本币)。 */
     public record LineAmounts(BigDecimal original, BigDecimal local) {
     }

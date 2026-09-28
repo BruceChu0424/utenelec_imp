@@ -69,6 +69,17 @@ public class Goods extends SoftDeletableEntity {
     private String model;           // Number 型号
     private String spec;            // Standard 规格
 
+    /**
+     * 英文名称(ADR-134, V742): 货品资料里人工维护(来源 MANUAL), 或销售保存报价/订货单时勾选
+     * 「设为货品英文名」从客户文件学习(来源 LEARNED); 总是保持最新一次确认的值。
+     */
+    @Column(name = "name_en", length = 255)
+    private String nameEn;
+
+    /** 英文名称来源: {@link GoodsNameEn#SOURCE_MANUAL} / {@link GoodsNameEn#SOURCE_LEARNED}; 名称为空时为空。 */
+    @Column(name = "name_en_source", length = 8)
+    private String nameEnSource;
+
     // ===== 关联（老库主键，暂不 FK） =====
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "unit_id")

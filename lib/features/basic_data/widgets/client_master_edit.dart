@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
@@ -16,6 +17,7 @@ import '../repositories/reference_method_repository.dart';
 import '../models/currency_node.dart';
 import '../repositories/currency_repository.dart';
 import '../widgets/master_edit_dialog.dart';
+import 'basic_data_l10n.dart';
 
 /// 加载启用中的结账方式（客户编辑表单「默认结账方式」下拉用）。
 /// 模块级互斥防重复弹加载框；调用方负责 mounted 检查。
@@ -68,9 +70,12 @@ Future<List<CurrencyListItem>?> loadClientCurrencies(
 }
 
 /// 客户主档可编辑字段（与后端 ClientSaveRequest 对齐；含义不明的遗留字段不进表单）。
+///
+/// [l10n] supplies the labels of fields added after the arb migration (外文名称).
 List<MasterFieldDef> buildClientFields(
   Map<String, String> iv,
   List<ReferenceMethodOption> settlementMethods, {
+  required AppLocalizations l10n,
   List<CurrencyListItem> currencies = const [],
   bool legacyCreditSnapshot = false,
   bool showAccess = false,
@@ -108,6 +113,17 @@ List<MasterFieldDef> buildClientFields(
       hint: '保存后按分类前缀自动生成',
     ),
     MasterFieldDef(key: 'fullName', label: '全称', group: '基础'),
+  ],
+  // ADR-134: foreign (usually English) company name, matched against customer
+  // files; also filled in by learning when sales save a document.
+  MasterFieldDef(
+    key: 'nameEn',
+    label: l10n.clientNameEnLabel,
+    hint: l10n.clientNameEnHint,
+    info: l10n.clientNameEnInfo,
+    group: '基础',
+  ),
+  ...const <MasterFieldDef>[
     MasterFieldDef(key: 'clientRank', label: '等级', group: '基础'),
     MasterFieldDef(
       key: 'status',
@@ -272,6 +288,7 @@ Future<void> showClientMasterEdit(
     'name': d.name ?? '',
     'code': d.code ?? '',
     'fullName': d.fullName ?? '',
+    'nameEn': d.nameEn ?? '',
     'clientRank': d.clientRank ?? '',
     'region': d.region ?? '',
     'placeId': d.placeId ?? '',
@@ -315,6 +332,7 @@ Future<void> showClientMasterEdit(
     fields: buildClientFields(
       iv,
       settlementOptions,
+      l10n: basicDataL10n(context),
       currencies: currencies,
       legacyCreditSnapshot: d.legacyId != null,
       showAccess: true,

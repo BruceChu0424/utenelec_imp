@@ -5,9 +5,7 @@ import com.uten.imp.application.port.WorkbenchBadgeReadPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.dashboard.DashboardOverviewDto.MetricCard;
-import com.uten.imp.features.dashboard.DashboardOverviewDto.PolicyBrief;
 import com.uten.imp.features.dashboard.DashboardOverviewDto.TodoCard;
-import com.uten.imp.features.dashboard.policy.PolicyAudiences;
 import com.uten.imp.features.notice.NoticeService;
 import com.uten.imp.features.notice.dto.NoticeDto;
 import com.uten.imp.security.AuthUser;
@@ -16,9 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-import java.sql.Timestamp;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -28,8 +24,9 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 工作台「今日概览」聚合服务：通知/生产/销售指标 + 本部门待办，叠加官方政策简报
- * (按受众可见性过滤)。
+ * 工作台「今日概览」聚合服务：通知/生产/销售指标 + 本部门待办。
+ *
+ * <p>政策与监管动态已于 2026-09-27 随旧 AI 下线 (ADR-133), 响应不再带 {@code intelligence} 字段。
  *
  * <p><b>范围口径（2026-09-12 统一）</b>：每个分区都是「**权限 ∧ 本部门**」——
  * 权限决定「能不能看这类东西」，部门决定「该不该在你的工作台上出现」。
@@ -49,7 +46,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class DashboardOverviewService {
 
-    private static final int POLICY_LIMIT = 6;
     private static final int NOTICE_TODO_LIMIT = 8;
 
     /** 生产调度入口: 既出「待排产产品」指标, 也出待办卡(带逾期细分)。 */
@@ -112,8 +108,7 @@ public class DashboardOverviewService {
                 department.name(),
                 Instant.now(),
                 List.copyOf(metrics),
-                List.copyOf(todos),
-                policyBriefs(user, department));
+                List.copyOf(todos));
     }
 
     private void addNoticeCards(
@@ -230,46 +225,6 @@ public class DashboardOverviewService {
                 false));
     }
 
-    private List<PolicyBrief> policyBriefs(
-            AuthUser user, DepartmentContext department) {
-        // 可见性由分类权威映射决定（PolicyAudiences），不信任库存 audience_tags：
-        // 财税类（TAX/SUBSIDY/EXPORT）= 财税部（FINANCE）+ 总经办直属（GM）；
-        // 检查类（INSPECTION/SAFETY/QUALITY）与其他 = 仅总经办直属（GM）。
-        // GM 标签只来自直属部门（depth=0），总经办下级部门员工不会继承。
-        Set<String> audienceTags = new LinkedHashSet<>(department.audienceTags());
-        if (can(user, "dashboard:finance_sensitive:view")) {
-            audienceTags.add(PolicyAudiences.FINANCE);
-        }
-
-        return jdbc.query("""
-                SELECT id, title, summary, category,
-                       source_name, source_url, published_on, captured_at
-                FROM official_policy_briefs
-                WHERE status = 'ACTIVE'
-                  AND (valid_until IS NULL OR valid_until >= CURRENT_DATE)
-                  AND source_host IN (
-                    'www.zs.gov.cn', 'guangdong.chinatax.gov.cn',
-                    'www.mof.gov.cn', 'www.gov.cn')
-                ORDER BY published_on DESC, captured_at DESC
-                LIMIT 30
-                """, (rs, rowNum) -> new PolicyRow(
-                rs.getObject("id", UUID.class),
-                rs.getString("title"),
-                rs.getString("summary"),
-                rs.getString("category"),
-                rs.getString("source_name"),
-                rs.getString("source_url"),
-                rs.getObject("published_on", LocalDate.class),
-                rs.getTimestamp("captured_at")))
-                .stream()
-                .filter(row -> user.isSuperAdmin()
-                        || PolicyAudiences.forCategory(row.category()).stream()
-                                .anyMatch(audienceTags::contains))
-                .limit(POLICY_LIMIT)
-                .map(PolicyRow::toDto)
-                .toList();
-    }
-
     private DepartmentContext departmentContext(UUID employeeId) {
         if (employeeId == null) {
             return new DepartmentContext("UNKNOWN", "未分配部门", Set.of());
@@ -305,13 +260,7 @@ public class DashboardOverviewService {
         }
         Set<String> tags = new LinkedHashSet<>();
         for (Map<String, Object> row : rows) {
-            Set<String> rowTags =
-                    new LinkedHashSet<>(tagsForCode(String.valueOf(row.get("code"))));
-            if (((Number) row.get("depth")).intValue() > 0) {
-                // GM 是全公司的共同祖先，不能把总经办监管情报下发给所有部门。
-                rowTags.remove("GM");
-            }
-            tags.addAll(rowTags);
+            tags.addAll(tagsForCode(String.valueOf(row.get("code"))));
         }
         return new DepartmentContext(
                 String.valueOf(rows.getFirst().get("code")),
@@ -319,25 +268,25 @@ public class DashboardOverviewService {
                 Set.copyOf(tags));
     }
 
+    /**
+     * 部门编码 → 工作台分区标签。只产出有人读的标签: SALES(销售指标)、PRODUCTION(排产)与
+     * {@link #DEPARTMENT_TODOS} 各条的 scope; 没有分区用到的标签不生成。
+     */
     private static Set<String> tagsForCode(String rawCode) {
         String code = rawCode.toUpperCase(Locale.ROOT);
         Set<String> tags = new LinkedHashSet<>();
-        if (code.equals("GM") || code.contains("GENERAL") || code.contains("CEO")) tags.add("GM");
         if (code.equals("DEPT_FIN")) tags.add("FINANCE");
         if (code.contains("SALES") || code.equals("DEPT_RAIL")
                 || code.startsWith("SALE_") || code.startsWith("RAIL_")) {
             tags.add("SALES");
         }
         if (code.contains("PROD")) tags.add("PRODUCTION");
-        if (code.contains("PMC")) tags.add("PMC");
-        if (code.contains("QA") || code.contains("QUALITY")) tags.add("QA");
         if (code.equals("SUB_PURCHASE")) tags.add("PURCHASE");
         if (code.equals("SUB_WH")) tags.add("WAREHOUSE");
         if (code.equals("QA_OUT") || code.equals("DEPT_SALES")) {
             tags.add("SUBCONTRACT");
         }
         if (code.contains("HR")) tags.add("HR");
-        if (code.contains("SECURITY")) tags.add("SECURITY");
         return tags;
     }
 
@@ -381,28 +330,5 @@ public class DashboardOverviewService {
 
     private record DepartmentContext(
             String code, String name, Set<String> audienceTags) {
-    }
-
-    private record PolicyRow(
-            UUID id,
-            String title,
-            String summary,
-            String category,
-            String sourceName,
-            String sourceUrl,
-            LocalDate publishedOn,
-            Timestamp capturedAt) {
-
-        PolicyBrief toDto() {
-            return new PolicyBrief(
-                    id,
-                    title,
-                    summary,
-                    category,
-                    sourceName,
-                    sourceUrl,
-                    publishedOn,
-                    capturedAt == null ? null : capturedAt.toInstant());
-        }
     }
 }

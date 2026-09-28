@@ -44,6 +44,8 @@ enum WorkbenchBadgeCatalog {
             "iqcRejection.open"), none()),
     /** 财务报销: 待审批 + 待付款(每张单只处于一个队列)。 */
     expenseFinance(Module.finance, facts("expense.pendingApprovalCount", "expense.pendingPaymentCount"), none()),
+    /** 销售报价核价(ADR-134): 待核价的报价(只算有核价权限的人的待办)。挂在财务「销售报价核价」卡。 */
+    financeQuoteReview(Module.finance, facts("salesQuoteFinance.pending"), none()),
     /** 钱流草稿: 收款/付款/费用/其它收入/银行转账。 */
     financeDrafts(Module.finance, facts(
             "drafts.financeReceipt",
@@ -136,7 +138,11 @@ enum WorkbenchBadgeCatalog {
             "salesStage.WAREHOUSE_PENDING")),
     /** 销售出货「财务已退回」(采购/委外订货的退回件已由各自任务中心计入)。 */
     salesShipmentFinanceRejected(Module.sales, facts("financeRejected.salesShipment"), none()),
-    /** 销售草稿: 订货/发货/退货/报价。 */
+    /** 销售报价「财务已退回」(ADR-134): 退回待修改的报价(不再计入报价草稿)。 */
+    salesQuoteFinanceRejected(Module.sales, facts("financeRejected.salesQuote"), none()),
+    /** 销售报价已核价、还没转订货单(ADR-134): 下一步轮到负责销售转单。 */
+    salesQuoteAwaitingConversion(Module.sales, facts("salesQuote.awaitingConversion"), none()),
+    /** 销售草稿: 订货/发货/退货/报价(报价草稿不含财务退回件)。 */
     salesDrafts(Module.sales, facts("drafts.salesOrder", "drafts.salesShipment", "drafts.salesReturn", "drafts.salesQuote"), none()),
 
     // —— 系统管理 ——

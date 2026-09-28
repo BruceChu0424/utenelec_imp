@@ -17,7 +17,8 @@
 //     历史记录，草稿段红徽章与阶段计数同源（progress/stage-counts 的 DRAFT 桶）。
 //   · 出货/退货/报价大类红数 = 草稿 + 财务已退回（分段计数，读
 //     documentStatusCountsProvider，**不进注册表**）；草稿是本人开了头没交出去的活
-//     （红），财务已退回要本人改单重报（红）。客户零星发货刻意不挂——其草稿与
+//     (红)，财务已退回要本人改单重报(红)。报价另加「已核价待转订货单」
+//     (salesQuoteAwaitingConversion 入口)、黄数 = 待财务核价(ADR-134)。客户零星发货刻意不挂——其草稿与
 //     「出货单」同属 sales_shipments 同表，挂两处是同一批单数两遍（准则 14 §三）。
 //   · 历史其它出货是只读历史，不挂数（准则 14 §二）。
 //   · 各大类内的小类行计数与独立列表页完全同源（嵌入的是同一份页面代码）。
@@ -114,6 +115,9 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
           ),
         )
         .valueOrNull;
+    final quoteToConvert = ref.watch(
+      badgeEntryTodoProvider(BadgeEntry.salesQuoteAwaitingConversion),
+    );
     int? sumCounts(Map<String, int>? counts, List<String> keys) {
       if (counts == null) return null;
       var total = 0;
@@ -168,11 +172,20 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
           label: '退货单',
           count: sumCounts(returnCounts, const [DocumentStatusBucket.draft]),
         ),
+      // 报价(ADR-134)：红 = 草稿 + 财务退回 + 已核价待转订货单(徽章入口，
+      // 与列表「已核价」段红数同源)；黄 = 在财务手上的待财务核价。
       if (canOpen(SalesRoutePath.list('quotes')))
         _GroupSpec(
           value: 'quotes',
           label: '报价单',
-          count: sumCounts(quoteCounts, const [DocumentStatusBucket.draft]),
+          count: quoteCounts == null
+              ? null
+              : sumCounts(quoteCounts, const [
+                      SalesQuoteStage.draft,
+                      SalesQuoteStage.financeRejected,
+                    ])! +
+                    quoteToConvert,
+          inProgressCount: quoteCounts?[SalesQuoteStage.pendingFinance],
         ),
       if (masterDraftCount > 0 || canOpen('/basicinfo/client'))
         _GroupSpec(

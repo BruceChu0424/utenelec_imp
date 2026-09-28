@@ -110,6 +110,15 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
   '/workshop-material/issue': [Perm.workshopMaterialIssue],
   '/workshop-material/count': [Perm.workshopMaterialCount],
   '/warehouse/workshop-material/setup': [Perm.workshopMaterialSetup],
+
+  // 2026-09-27 AI 服务设置(ADR-133): 沿用 /admin/* 的 authorization:manage 单一守卫,
+  // 无组合权限; 服务端另校验 superAdmin。守卫断言见 test/features/admin/admin_ai_settings_page_test.dart
+  // 的 'route inherits the system-administration guard'。
+  '/admin/ai-settings': [],
+  // 2026-09-27 报价财务核价(ADR-134)：列表与详情只挂 any 守卫
+  // sales_quote_finance:view(无组合门槛)，改价/退回/确认按服务端 allowedActions。
+  '/finance/quote-review': <String>[],
+  '/finance/quote-review/:id': <String>[],
 };
 
 String _samplePath(String pattern) => pattern

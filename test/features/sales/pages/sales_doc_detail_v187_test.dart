@@ -502,7 +502,7 @@ class _DetailApi extends ApiClient {
   }
 
   @override
-  Future<void> delete(String path) async {}
+  Future<void> delete(String path, {Map<String, dynamic>? query}) async {}
 
   @override
   Future<List<Map<String, dynamic>>> getList(

@@ -66,4 +66,7 @@ public class ClientListItem {
      * 不必为拿版本先逐条拉详情。
      */
     private Long version;
+
+    /** 外文名称(ADR-134, V742): 列表「外文名称」列; 关键字搜索同样命中。 */
+    private String nameEn;
 }

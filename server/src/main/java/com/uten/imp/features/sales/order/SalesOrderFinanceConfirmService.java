@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -198,7 +199,13 @@ public class SalesOrderFinanceConfirmService {
                        o.finance_review_revision,
                        """ + CLIENT_CREDIT_SQL + """
                        , o.currency_id
+                       , source_quote.id, source_quote.bill_no,
+                       COALESCE(quote_confirmer.full_name, ''), source_quote.finance_confirmed_at
                 FROM sales_orders o
+                LEFT JOIN sales_quotes source_quote ON source_quote.id = o.source_quote_id
+                     AND source_quote.is_deleted = FALSE
+                     AND source_quote.finance_confirmed_at IS NOT NULL
+                LEFT JOIN employees quote_confirmer ON quote_confirmer.id = source_quote.finance_confirmed_by
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN employees e ON e.id = o.seller_id
                 LEFT JOIN currencies cur ON cur.id = o.currency_id
@@ -221,6 +228,11 @@ public class SalesOrderFinanceConfirmService {
         // 本页用到的客户一次取余额(不 N+1), 每行按自己订单的币种派生「客户应收」。
         PartyOpenBalances balances = rows.isEmpty() ? PartyOpenBalances.empty()
                 : partyBalances.clients(rows.stream().map(r -> (UUID) r[11]).toList());
+        Map<UUID, UUID> quoteByOrder = new java.util.LinkedHashMap<>();
+        for (Object[] r : rows) {
+            if (r[19] != null) quoteByOrder.put((UUID) r[0], (UUID) r[19]);
+        }
+        Map<UUID, Boolean> allLinesMatch = allLinesMatchByOrder(quoteByOrder);
         List<SalesOrderFinancePendingDto> out = rows.stream()
                 .map(r -> new SalesOrderFinancePendingDto(
                         (UUID) r[0], (String) r[1],
@@ -238,7 +250,13 @@ public class SalesOrderFinanceConfirmService {
                         (String) r[13],
                         com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(r[14]),
                         ((Number) r[15]).longValue(),
-                        ((Number) r[16]).longValue()))
+                        ((Number) r[16]).longValue(),
+                        r[19] == null ? null : new SalesOrderFinanceReviewDto.SourceQuote(
+                                (UUID) r[19], (String) r[20],
+                                ((String) r[21]).isBlank() ? null : (String) r[21],
+                                com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(r[22]),
+                                Boolean.TRUE.equals(allLinesMatch.get((UUID) r[0]))),
+                        r[19] == null ? null : Boolean.TRUE.equals(allLinesMatch.get((UUID) r[0]))))
                 .toList();
         return new PageResponse<>(out, p, sz, total, totalPages);
     }
@@ -371,7 +389,9 @@ public class SalesOrderFinanceConfirmService {
                        COALESCE(col.name, ''), i.unit_id, COALESCE(u.name, ''),
                        COALESCE(i.client_model, ''),
                        i.qty, i.weight, i.price, i.discount, i.amount_original,
-                       COALESCE(i.remark, '')
+                       COALESCE(i.remark, ''),
+                       i.client_goods_name, i.client_price,
+                       i.goods_id, i.color_id, i.unit_rate
                 FROM sales_order_items i
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
@@ -382,7 +402,12 @@ public class SalesOrderFinanceConfirmService {
                 .setParameter("id", orderId)
                 .getResultList();
         List<SalesOrderFinanceReviewDto.Line> lines = new ArrayList<>(itemRows.size());
-        for (Object[] r : itemRows) {
+        QuoteTrace quoteTrace = quoteTrace(order, itemRows);
+        for (int rowIndex = 0; rowIndex < itemRows.size(); rowIndex++) {
+            Object[] r = itemRows.get(rowIndex);
+            SalesOrderService.TrustedQuotePriceBook.Terms quoted = quoteTrace == null ? null
+                    : quoteTrace.match().terms().get(rowIndex);
+            Boolean matchesQuote = quoteTrace == null ? null : quoteTrace.match().matches().get(rowIndex);
             lines.add(new SalesOrderFinanceReviewDto.Line(
                     (UUID) r[0],
                     r[1] == null ? null : ((Number) r[1]).intValue(),
@@ -394,7 +419,12 @@ public class SalesOrderFinanceConfirmService {
                     r[10] == null ? null : (BigDecimal) r[10],
                     r[11] == null ? null : (BigDecimal) r[11],
                     r[12] == null ? null : (BigDecimal) r[12],
-                    (String) r[13]));
+                    (String) r[13],
+                    (String) r[14],
+                    r[15] == null ? null : (BigDecimal) r[15],
+                    quoted == null ? null : quoted.price(),
+                    quoted == null ? null : quoted.discount(),
+                    matchesQuote));
         }
         @SuppressWarnings("unchecked")
         List<Object[]> changeRows = em.createNativeQuery("""
@@ -467,7 +497,142 @@ public class SalesOrderFinanceConfirmService {
                 qtyChanges,
                 revisions.pendingChanges(orderId),
                 order.getFinanceReviewRevision(),
-                revisions.pendingDiff(orderId));
+                revisions.pendingDiff(orderId),
+                quoteTrace == null ? null : new SalesOrderFinanceReviewDto.SourceQuote(
+                        quoteTrace.quoteId(), quoteTrace.billNo(), quoteTrace.confirmedByName(),
+                        quoteTrace.confirmedAt(), quoteTrace.match().allLinesMatch()),
+                order.getClientFileCurrency(),
+                quoteTrace == null ? null : quoteTrace.match().allLinesMatch());
+    }
+
+    /**
+     * 报价转入订单的核价对照(ADR-134): 按订单保存时的同一配对规则把订单行对上来源报价行,
+     * 财务可见每行报价核定的单价/折扣与是否一致; 价格已在报价上核定, 订单确认只需再核信用与条款。
+     * 只有财务核价确认过的来源报价才有对照(旧流程直接审核的报价没有「报价核定」可比, 返回 null)。
+     */
+    private QuoteTrace quoteTrace(SalesOrder order, List<Object[]> itemRows) {
+        if (order.getSourceQuoteId() == null) return null;
+        @SuppressWarnings("unchecked")
+        List<Object[]> header = em.createNativeQuery("""
+                        SELECT q.bill_no, COALESCE(e.full_name, ''), q.finance_confirmed_at
+                        FROM sales_quotes q
+                        LEFT JOIN employees e ON e.id = q.finance_confirmed_by
+                        WHERE q.id = :id AND q.is_deleted = FALSE AND q.finance_confirmed_at IS NOT NULL
+                        """)
+                .setParameter("id", order.getSourceQuoteId())
+                .getResultList();
+        if (header.isEmpty()) return null;
+        Object[] h = header.getFirst();
+        List<QuoteMatchLine> lines = itemRows.stream()
+                .map(r -> new QuoteMatchLine(
+                        r[1] == null ? null : ((Number) r[1]).intValue(),
+                        (UUID) r[16], (UUID) r[17], (UUID) r[5],
+                        r[18] == null ? null : (BigDecimal) r[18],
+                        r[10] == null ? null : (BigDecimal) r[10],
+                        r[11] == null ? null : (BigDecimal) r[11]))
+                .toList();
+        List<com.uten.imp.features.sales.quote.SalesQuoteItem> quoteItems =
+                quoteItemsByQuote(List.of(order.getSourceQuoteId()))
+                        .getOrDefault(order.getSourceQuoteId(), List.of());
+        return new QuoteTrace(order.getSourceQuoteId(), (String) h[0],
+                ((String) h[1]).isBlank() ? null : (String) h[1],
+                com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(h[2]),
+                matchQuote(quoteItems, (String) h[0], lines));
+    }
+
+    /**
+     * 待确认列表一页里报价转入的订单: 每张订单的「每行单价与折扣都与报价核定一致」。与审核页同一规则
+     * ({@link #matchQuote}), 一页只查两次(订单明细 + 来源报价明细)。
+     */
+    private Map<UUID, Boolean> allLinesMatchByOrder(Map<UUID, UUID> quoteByOrder) {
+        if (quoteByOrder.isEmpty()) return Map.of();
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                        SELECT i.order_id, i.line_no, i.goods_id, i.color_id, i.unit_id, i.unit_rate,
+                               i.price, i.discount
+                        FROM sales_order_items i
+                        WHERE i.order_id IN (:ids) AND i.is_deleted = FALSE
+                        ORDER BY i.order_id, i.line_no NULLS LAST, i.id
+                        """)
+                .setParameter("ids", List.copyOf(quoteByOrder.keySet()))
+                .getResultList();
+        Map<UUID, List<QuoteMatchLine>> linesByOrder = new HashMap<>();
+        for (Object[] r : rows) {
+            linesByOrder.computeIfAbsent((UUID) r[0], ignored -> new ArrayList<>()).add(new QuoteMatchLine(
+                    r[1] == null ? null : ((Number) r[1]).intValue(),
+                    (UUID) r[2], (UUID) r[3], (UUID) r[4],
+                    (BigDecimal) r[5], (BigDecimal) r[6], (BigDecimal) r[7]));
+        }
+        Map<UUID, List<com.uten.imp.features.sales.quote.SalesQuoteItem>> quoteItems =
+                quoteItemsByQuote(quoteByOrder.values());
+        Map<UUID, Boolean> result = new HashMap<>();
+        quoteByOrder.forEach((orderId, quoteId) -> result.put(orderId, matchQuote(
+                quoteItems.getOrDefault(quoteId, List.of()), null,
+                linesByOrder.getOrDefault(orderId, List.of())).allLinesMatch()));
+        return result;
+    }
+
+    /** 来源报价明细(按报价分组, 行号 + id 稳定排序; 审核页与列表共用, 保证配对顺序一致)。 */
+    private Map<UUID, List<com.uten.imp.features.sales.quote.SalesQuoteItem>> quoteItemsByQuote(
+            java.util.Collection<UUID> quoteIds) {
+        Map<UUID, List<com.uten.imp.features.sales.quote.SalesQuoteItem>> out = new HashMap<>();
+        if (quoteIds.isEmpty()) return out;
+        em.createQuery("""
+                        SELECT i FROM SalesQuoteItem i
+                        WHERE i.quoteId IN :ids
+                        ORDER BY i.quoteId, i.lineNo, i.id
+                        """, com.uten.imp.features.sales.quote.SalesQuoteItem.class)
+                .setParameter("ids", java.util.Set.copyOf(quoteIds))
+                .getResultList()
+                .forEach(item -> out.computeIfAbsent(item.getQuoteId(), ignored -> new ArrayList<>()).add(item));
+        return out;
+    }
+
+    /** 一行订单明细的配对键与单价/折扣(对照来源报价用)。 */
+    record QuoteMatchLine(Integer lineNo, UUID goodsId, UUID colorId, UUID unitId, BigDecimal unitRate,
+                          BigDecimal price, BigDecimal discount) {
+    }
+
+    /** 对照结果: 逐行配上的报价条款(没配上为 null)、逐行是否一致、是否全部一致。 */
+    record QuoteMatch(List<SalesOrderService.TrustedQuotePriceBook.Terms> terms, List<Boolean> matches,
+                      boolean allLinesMatch) {
+    }
+
+    /**
+     * 订单行对照来源报价(审核页与待确认列表同一规则): 按订单保存时的配对规则(先行号 + 商业身份精确配, 再按商业
+     * 身份兜底; 商业身份含换算率; 每条报价行只配一次)配上报价行, 单价和折扣都相同才算一致; 报价外多出来的行不一致。
+     */
+    static QuoteMatch matchQuote(List<com.uten.imp.features.sales.quote.SalesQuoteItem> quoteItems,
+                                 String quoteBillNo, List<QuoteMatchLine> lines) {
+        SalesOrderService.TrustedQuotePriceBook book =
+                new SalesOrderService.TrustedQuotePriceBook(quoteItems, quoteBillNo, false);
+        List<SalesOrderService.TrustedQuotePriceBook.Terms> terms = book.assignKeys(lines.stream()
+                .map(line -> new SalesOrderService.TrustedQuotePriceBook.LineKey(
+                        line.lineNo(), line.goodsId(), line.colorId(), line.unitId(), line.unitRate()))
+                .toList(), false);
+        List<Boolean> matches = new ArrayList<>(lines.size());
+        for (int index = 0; index < lines.size(); index++) {
+            SalesOrderService.TrustedQuotePriceBook.Terms quoted = terms.get(index);
+            QuoteMatchLine line = lines.get(index);
+            BigDecimal discount = comparableDiscount(line.discount());
+            matches.add(quoted != null && line.price() != null && discount != null
+                    && quoted.price().compareTo(line.price()) == 0
+                    && quoted.discount().compareTo(discount) == 0);
+        }
+        return new QuoteMatch(terms, matches, matches.stream().allMatch(Boolean::booleanValue));
+    }
+
+    /** 订单行折扣按保存口径归一(空/0 = 1); 历史脏值(超出 0~1 或多于 4 位)算不一致, 不让列表报错。 */
+    private static BigDecimal comparableDiscount(BigDecimal discount) {
+        try {
+            return SalesOrderService.normalizeOrderDiscountForWrite(discount);
+        } catch (ApiException invalid) {
+            return null;
+        }
+    }
+
+    private record QuoteTrace(UUID quoteId, String billNo, String confirmedByName,
+                              OffsetDateTime confirmedAt, QuoteMatch match) {
     }
 
     /**

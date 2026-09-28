@@ -8596,6 +8596,3527 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'发料方式已更新'**
   String get wmIssueMethodUpdated;
+
+  /// No description provided for @bomLearningAuto.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动更新 BOM'**
+  String get bomLearningAuto;
+
+  /// No description provided for @bomLearningAverage.
+  ///
+  /// In zh, this message translates to:
+  /// **'每件平均用量'**
+  String get bomLearningAverage;
+
+  /// No description provided for @warehouseGoodsMasterDefaultHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'已带入货品主档的默认存放仓，请核对本次实际仓库'**
+  String get warehouseGoodsMasterDefaultHint;
+
+  /// No description provided for @warehouseSuggestedDestinationHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'已带入建议存放仓，请核对本次实际仓库'**
+  String get warehouseSuggestedDestinationHint;
+
+  /// No description provided for @warehouseBatchRegistrationHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'成品仓、库位号逐行必填；优先带入货品主档默认仓，缺项再参考个人选仓上下文。勾选多行后改仓或填写库位可批量应用。每张报工单各生成一份送检，品质放行后再最终点收。'**
+  String get warehouseBatchRegistrationHelp;
+
+  /// No description provided for @goodsNameEnLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'英文名称'**
+  String get goodsNameEnLabel;
+
+  /// No description provided for @goodsNameEnHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'如 DOUBLE 3 PIN SOCKET WITH SWITCH'**
+  String get goodsNameEnHint;
+
+  /// No description provided for @goodsNameEnInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户报价单或订货单上对这个货品的英文叫法。识别客户文件时, 系统用它把英文品名对应到这个货品。'**
+  String get goodsNameEnInfo;
+
+  /// No description provided for @goodsNameEnColumnInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户文件里对这个货品的英文叫法。销售保存带英文品名的单据时会自动记住, 也可以在货品详情里修改。'**
+  String get goodsNameEnColumnInfo;
+
+  /// No description provided for @goodsNameEnSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索货品(名称/英文名称/编号/型号/规格/系列)'**
+  String get goodsNameEnSearchHint;
+
+  /// No description provided for @goodsNameEnLearned.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统自动记住'**
+  String get goodsNameEnLearned;
+
+  /// No description provided for @goodsNameEnLearnedTip.
+  ///
+  /// In zh, this message translates to:
+  /// **'这是销售保存客户文件时系统自动记住的英文名称, 不对可以直接修改。'**
+  String get goodsNameEnLearnedTip;
+
+  /// No description provided for @goodsNameEnEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改英文名称'**
+  String get goodsNameEnEdit;
+
+  /// No description provided for @goodsNameEnEditDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'填客户文件上写的英文品名。保存后, 以后识别客户文件都按这个名称对应到本货品。留空表示不用英文名称。'**
+  String get goodsNameEnEditDescription;
+
+  /// No description provided for @goodsNameEnSaving.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在保存…'**
+  String get goodsNameEnSaving;
+
+  /// No description provided for @goodsNameEnSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'英文名称已保存'**
+  String get goodsNameEnSaved;
+
+  /// No description provided for @goodsNameEnCleared.
+  ///
+  /// In zh, this message translates to:
+  /// **'英文名称已清除'**
+  String get goodsNameEnCleared;
+
+  /// No description provided for @goodsNameEnImportHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'英文名称也可以导入 (表头写「英文名称」或「English Name」)。'**
+  String get goodsNameEnImportHint;
+
+  /// No description provided for @goodsNameEnTooLong.
+  ///
+  /// In zh, this message translates to:
+  /// **'英文名称最多 {max} 个字'**
+  String goodsNameEnTooLong(int max);
+
+  /// No description provided for @clientNameEnLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'外文名称'**
+  String get clientNameEnLabel;
+
+  /// No description provided for @clientNameEnHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'如 SUNAS TRADING LIMITED'**
+  String get clientNameEnHint;
+
+  /// No description provided for @clientNameEnInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户公司的英文或其他外文名称。识别客户文件时, 系统用它找到这个客户; 销售保存单据时也会自动补上。'**
+  String get clientNameEnInfo;
+
+  /// No description provided for @clientNameEnSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索客户(简称/编码/全称/外文名称/联系人/手机/邮箱)'**
+  String get clientNameEnSearchHint;
+
+  /// No description provided for @clientGoodsAliasTab.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品对照'**
+  String get clientGoodsAliasTab;
+
+  /// No description provided for @clientGoodsAliasTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户对货品的叫法'**
+  String get clientGoodsAliasTitle;
+
+  /// No description provided for @clientGoodsAliasDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户报价单、订货单上的型号和品名, 对应到我们的哪个货品。识别这个客户的文件时, 系统优先按这里对应。'**
+  String get clientGoodsAliasDescription;
+
+  /// No description provided for @clientGoodsAliasSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索客户的叫法、货品名称或编号'**
+  String get clientGoodsAliasSearchHint;
+
+  /// No description provided for @clientGoodsAliasEmptyTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有货品对照'**
+  String get clientGoodsAliasEmptyTitle;
+
+  /// No description provided for @clientGoodsAliasEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存带有文件型号的报价单或订货单后, 这里会自动记住客户的叫法'**
+  String get clientGoodsAliasEmpty;
+
+  /// No description provided for @clientGoodsAliasNoMatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有找到相关的对照, 换个关键词试试'**
+  String get clientGoodsAliasNoMatch;
+
+  /// No description provided for @clientGoodsAliasKindPartNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户型号'**
+  String get clientGoodsAliasKindPartNo;
+
+  /// No description provided for @clientGoodsAliasKindDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户品名'**
+  String get clientGoodsAliasKindDescription;
+
+  /// No description provided for @clientGoodsAliasContext.
+  ///
+  /// In zh, this message translates to:
+  /// **'适用于 {context}'**
+  String clientGoodsAliasContext(String context);
+
+  /// No description provided for @clientGoodsAliasConfirmCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count, plural, other{已确认 {count} 次}}'**
+  String clientGoodsAliasConfirmCount(int count);
+
+  /// No description provided for @clientGoodsAliasExplicitCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count, plural, other{其中 {count} 次是手工选的}}'**
+  String clientGoodsAliasExplicitCount(int count);
+
+  /// No description provided for @clientGoodsAliasLastConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近 {date}'**
+  String clientGoodsAliasLastConfirmed(String date);
+
+  /// No description provided for @clientGoodsAliasLastConfirmedBy.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近 {date} · {name}'**
+  String clientGoodsAliasLastConfirmedBy(String date, String name);
+
+  /// No description provided for @clientGoodsAliasGoodsMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品资料已删除'**
+  String get clientGoodsAliasGoodsMissing;
+
+  /// No description provided for @clientGoodsAliasDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除这条对照'**
+  String get clientGoodsAliasDelete;
+
+  /// No description provided for @clientGoodsAliasDeleteAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get clientGoodsAliasDeleteAction;
+
+  /// No description provided for @clientGoodsAliasDeleteConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除后, 识别这个客户的文件时不再把「{alias}」对应到「{goods}」。以后销售保存单据时, 系统可能会重新记住。'**
+  String clientGoodsAliasDeleteConfirm(String alias, String goods);
+
+  /// No description provided for @clientGoodsAliasDeleting.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在删除对照'**
+  String get clientGoodsAliasDeleting;
+
+  /// No description provided for @clientGoodsAliasDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已删除这条对照'**
+  String get clientGoodsAliasDeleted;
+
+  /// No description provided for @clientGoodsAliasLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品对照没有加载出来, 请重试'**
+  String get clientGoodsAliasLoadFailed;
+
+  /// No description provided for @clientGoodsAliasTotal.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count, plural, other{共 {count} 条}}'**
+  String clientGoodsAliasTotal(int count);
+
+  /// No description provided for @clientGoodsAliasPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'第 {page} / {pages} 页'**
+  String clientGoodsAliasPage(int page, int pages);
+
+  /// No description provided for @clientGoodsAliasPrevPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'上一页'**
+  String get clientGoodsAliasPrevPage;
+
+  /// No description provided for @clientGoodsAliasNextPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一页'**
+  String get clientGoodsAliasNextPage;
+
+  /// No description provided for @aiJobCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get aiJobCancel;
+
+  /// No description provided for @aiJobElapsed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已用时 {time}'**
+  String aiJobElapsed(String time);
+
+  /// No description provided for @aiJobQueued.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在排队, 马上开始'**
+  String get aiJobQueued;
+
+  /// No description provided for @aiJobSlowHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'内容较多时需要一两分钟, 请耐心等待, 不用重复点'**
+  String get aiJobSlowHint;
+
+  /// No description provided for @aiJobTimeout.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理时间太长, 已停止等待。请稍后再试, 或把文件拆小一些'**
+  String get aiJobTimeout;
+
+  /// No description provided for @aiJobGone.
+  ///
+  /// In zh, this message translates to:
+  /// **'这次处理的任务已不存在(可能已被清理), 请重新开始'**
+  String get aiJobGone;
+
+  /// No description provided for @aiJobFailedGeneric.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理没有成功, 请稍后重试'**
+  String get aiJobFailedGeneric;
+
+  /// No description provided for @aiJobConfidenceHigh.
+  ///
+  /// In zh, this message translates to:
+  /// **'把握高'**
+  String get aiJobConfidenceHigh;
+
+  /// No description provided for @aiJobConfidenceMedium.
+  ///
+  /// In zh, this message translates to:
+  /// **'把握中'**
+  String get aiJobConfidenceMedium;
+
+  /// No description provided for @aiJobConfidenceLow.
+  ///
+  /// In zh, this message translates to:
+  /// **'把握低'**
+  String get aiJobConfidenceLow;
+
+  /// No description provided for @aiJobConfidenceSemantics.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 判断把握: {level}'**
+  String aiJobConfidenceSemantics(String level);
+
+  /// No description provided for @aiSettingsTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 服务'**
+  String get aiSettingsTitle;
+
+  /// No description provided for @aiSettingsEntrySubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'配置大模型服务商、密钥和连接测试'**
+  String get aiSettingsEntrySubtitle;
+
+  /// No description provided for @aiSettingsHeroActive.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在使用: {name} · {model}'**
+  String aiSettingsHeroActive(String name, String model);
+
+  /// No description provided for @aiSettingsHeroReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售上传客户文件时会用它自动识别'**
+  String get aiSettingsHeroReady;
+
+  /// No description provided for @aiSettingsHeroNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有可用的 AI 服务'**
+  String get aiSettingsHeroNone;
+
+  /// No description provided for @aiSettingsHeroNoneHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加一个服务商并测试通过后, 销售上传客户文件就能自动识别'**
+  String get aiSettingsHeroNoneHint;
+
+  /// No description provided for @aiSettingsHeroDefaultDisabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认服务已停用, 目前不会调用 AI'**
+  String get aiSettingsHeroDefaultDisabled;
+
+  /// No description provided for @aiSettingsHeroNeedsKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有填写密钥, 目前不会调用 AI'**
+  String get aiSettingsHeroNeedsKey;
+
+  /// No description provided for @aiSettingsSecurityNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'密钥加密保存, 页面只显示尾号; 保存、删除和用已存密钥测试都要再次确认登录密码。'**
+  String get aiSettingsSecurityNote;
+
+  /// No description provided for @aiSettingsOutboundOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'这台服务器关闭了对外调用 AI(测试环境默认如此), 配置可以保存, 但不会真正调用'**
+  String get aiSettingsOutboundOff;
+
+  /// No description provided for @aiSettingsProvidersSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务商'**
+  String get aiSettingsProvidersSection;
+
+  /// No description provided for @aiSettingsAdd.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加 AI 服务'**
+  String get aiSettingsAdd;
+
+  /// No description provided for @aiSettingsEditTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑 AI 服务'**
+  String get aiSettingsEditTitle;
+
+  /// No description provided for @aiSettingsEmptyTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有配置 AI 服务'**
+  String get aiSettingsEmptyTitle;
+
+  /// No description provided for @aiSettingsEmptyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'支持 DeepSeek、通义千问、Kimi、智谱等国内服务商, 也可以接本机部署的模型'**
+  String get aiSettingsEmptyHint;
+
+  /// No description provided for @aiSettingsLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载 AI 服务设置失败'**
+  String get aiSettingsLoadFailed;
+
+  /// No description provided for @aiSettingsNoAccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'只有超级管理员可以查看和修改 AI 服务'**
+  String get aiSettingsNoAccess;
+
+  /// No description provided for @aiSettingsRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get aiSettingsRetry;
+
+  /// No description provided for @aiSettingsRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'刷新'**
+  String get aiSettingsRefresh;
+
+  /// No description provided for @aiSettingsClose.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get aiSettingsClose;
+
+  /// No description provided for @aiSettingsCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get aiSettingsCancel;
+
+  /// No description provided for @aiSettingsRegion.
+  ///
+  /// In zh, this message translates to:
+  /// **'所在区域'**
+  String get aiSettingsRegion;
+
+  /// No description provided for @aiSettingsRegionMainland.
+  ///
+  /// In zh, this message translates to:
+  /// **'国内'**
+  String get aiSettingsRegionMainland;
+
+  /// No description provided for @aiSettingsRegionOverseas.
+  ///
+  /// In zh, this message translates to:
+  /// **'境外'**
+  String get aiSettingsRegionOverseas;
+
+  /// No description provided for @aiSettingsRegionLocal.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机'**
+  String get aiSettingsRegionLocal;
+
+  /// No description provided for @aiSettingsDefaultBadge.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认'**
+  String get aiSettingsDefaultBadge;
+
+  /// No description provided for @aiSettingsDisabledBadge.
+  ///
+  /// In zh, this message translates to:
+  /// **'已停用'**
+  String get aiSettingsDisabledBadge;
+
+  /// No description provided for @aiSettingsModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'模型'**
+  String get aiSettingsModel;
+
+  /// No description provided for @aiSettingsBaseUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'接口地址'**
+  String get aiSettingsBaseUrl;
+
+  /// No description provided for @aiSettingsApiKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'密钥'**
+  String get aiSettingsApiKey;
+
+  /// No description provided for @aiSettingsKeyMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'未配置'**
+  String get aiSettingsKeyMissing;
+
+  /// No description provided for @aiSettingsKeyNotNeeded.
+  ///
+  /// In zh, this message translates to:
+  /// **'不需要'**
+  String get aiSettingsKeyNotNeeded;
+
+  /// No description provided for @aiSettingsKeyUnreadable.
+  ///
+  /// In zh, this message translates to:
+  /// **'密钥无法解密, 请重新填写'**
+  String get aiSettingsKeyUnreadable;
+
+  /// No description provided for @aiSettingsLastTest.
+  ///
+  /// In zh, this message translates to:
+  /// **'上次测试'**
+  String get aiSettingsLastTest;
+
+  /// No description provided for @aiSettingsLastTestOk.
+  ///
+  /// In zh, this message translates to:
+  /// **'通过 · {time}'**
+  String aiSettingsLastTestOk(String time);
+
+  /// No description provided for @aiSettingsLastTestFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'未通过 · {time}'**
+  String aiSettingsLastTestFailed(String time);
+
+  /// No description provided for @aiSettingsNeverTested.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没测试过'**
+  String get aiSettingsNeverTested;
+
+  /// No description provided for @aiSettingsEnabledSwitch.
+  ///
+  /// In zh, this message translates to:
+  /// **'启用'**
+  String get aiSettingsEnabledSwitch;
+
+  /// No description provided for @aiSettingsEnabledInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'停用后不会调用这个服务'**
+  String get aiSettingsEnabledInfo;
+
+  /// No description provided for @aiSettingsTest.
+  ///
+  /// In zh, this message translates to:
+  /// **'测试连接'**
+  String get aiSettingsTest;
+
+  /// No description provided for @aiSettingsTesting.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在测试'**
+  String get aiSettingsTesting;
+
+  /// No description provided for @aiSettingsEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑'**
+  String get aiSettingsEdit;
+
+  /// No description provided for @aiSettingsSetDefault.
+  ///
+  /// In zh, this message translates to:
+  /// **'设为默认'**
+  String get aiSettingsSetDefault;
+
+  /// No description provided for @aiSettingsDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get aiSettingsDelete;
+
+  /// No description provided for @aiSettingsDeleteTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除这个 AI 服务?'**
+  String get aiSettingsDeleteTitle;
+
+  /// No description provided for @aiSettingsDeleteMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除后「{name}」的配置和密钥都会清除, 不能恢复。'**
+  String aiSettingsDeleteMessage(String name);
+
+  /// No description provided for @aiSettingsDeleteDefaultBlocked.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认服务不能删除, 请先把别的服务设为默认'**
+  String get aiSettingsDeleteDefaultBlocked;
+
+  /// No description provided for @aiSettingsDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已删除'**
+  String get aiSettingsDeleted;
+
+  /// No description provided for @aiSettingsDefaultSet.
+  ///
+  /// In zh, this message translates to:
+  /// **'已把「{name}」设为默认'**
+  String aiSettingsDefaultSet(String name);
+
+  /// No description provided for @aiSettingsEnabledOn.
+  ///
+  /// In zh, this message translates to:
+  /// **'已启用「{name}」'**
+  String aiSettingsEnabledOn(String name);
+
+  /// No description provided for @aiSettingsEnabledOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'已停用「{name}」'**
+  String aiSettingsEnabledOff(String name);
+
+  /// No description provided for @aiSettingsBusySaving.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在保存'**
+  String get aiSettingsBusySaving;
+
+  /// No description provided for @aiSettingsBusyDeleting.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在删除'**
+  String get aiSettingsBusyDeleting;
+
+  /// No description provided for @aiSettingsUpdatedBy.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name} 修改于 {time}'**
+  String aiSettingsUpdatedBy(String name, String time);
+
+  /// No description provided for @aiSettingsTestNeedsKeyEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有密钥, 请先点「编辑」填写密钥再测试'**
+  String get aiSettingsTestNeedsKeyEdit;
+
+  /// No description provided for @aiSettingsUsageTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'近 {days} 天用量'**
+  String aiSettingsUsageTitle(int days);
+
+  /// No description provided for @aiSettingsUsageCalls.
+  ///
+  /// In zh, this message translates to:
+  /// **'调用次数'**
+  String get aiSettingsUsageCalls;
+
+  /// No description provided for @aiSettingsUsageSuccessRate.
+  ///
+  /// In zh, this message translates to:
+  /// **'成功率'**
+  String get aiSettingsUsageSuccessRate;
+
+  /// No description provided for @aiSettingsUsageTokens.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入 / 输出 token'**
+  String get aiSettingsUsageTokens;
+
+  /// No description provided for @aiSettingsUsageLatency.
+  ///
+  /// In zh, this message translates to:
+  /// **'平均耗时'**
+  String get aiSettingsUsageLatency;
+
+  /// No description provided for @aiSettingsUsageSeconds.
+  ///
+  /// In zh, this message translates to:
+  /// **'{value} 秒'**
+  String aiSettingsUsageSeconds(String value);
+
+  /// No description provided for @aiSettingsUsageEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有调用记录'**
+  String get aiSettingsUsageEmpty;
+
+  /// No description provided for @aiSettingsUsageUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'用量暂时读不到, 不影响使用'**
+  String get aiSettingsUsageUnavailable;
+
+  /// No description provided for @aiSettingsPreset.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务商'**
+  String get aiSettingsPreset;
+
+  /// No description provided for @aiSettingsPresetInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'选好服务商会自动填好接口地址和推荐设置, 每一项都还能改'**
+  String get aiSettingsPresetInfo;
+
+  /// No description provided for @aiSettingsPresetOverseasOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'{label} (境外, 未开放)'**
+  String aiSettingsPresetOverseasOff(String label);
+
+  /// No description provided for @aiSettingsOverseasOffHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'境外服务商默认关闭。如需使用, 请联系部署人员在服务器配置中开启, 并完成数据出境评估'**
+  String get aiSettingsOverseasOffHint;
+
+  /// No description provided for @aiSettingsPresetUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'{label} (暂不可用)'**
+  String aiSettingsPresetUnavailable(String label);
+
+  /// No description provided for @aiSettingsName.
+  ///
+  /// In zh, this message translates to:
+  /// **'显示名称'**
+  String get aiSettingsName;
+
+  /// No description provided for @aiSettingsNameHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'例如: DeepSeek 正式账号'**
+  String get aiSettingsNameHint;
+
+  /// No description provided for @aiSettingsNameRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写显示名称'**
+  String get aiSettingsNameRequired;
+
+  /// No description provided for @aiSettingsTooLong.
+  ///
+  /// In zh, this message translates to:
+  /// **'最多 {max} 个字符'**
+  String aiSettingsTooLong(int max);
+
+  /// No description provided for @aiSettingsBaseUrlInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务商文档里的 Base URL; 只能用 https, 本机部署可以用 http://127.0.0.1'**
+  String get aiSettingsBaseUrlInfo;
+
+  /// No description provided for @aiSettingsBaseUrlRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写接口地址'**
+  String get aiSettingsBaseUrlRequired;
+
+  /// No description provided for @aiSettingsBaseUrlInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'接口地址格式不对, 应以 https:// 开头, 不带问号后面的参数'**
+  String get aiSettingsBaseUrlInvalid;
+
+  /// No description provided for @aiSettingsBaseUrlHttpLocalOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'只有本机部署可以用 http, 其他服务商请用 https'**
+  String get aiSettingsBaseUrlHttpLocalOnly;
+
+  /// No description provided for @aiSettingsModelHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'填模型名称, 或点「获取模型」从列表选'**
+  String get aiSettingsModelHint;
+
+  /// No description provided for @aiSettingsModelRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写模型名称'**
+  String get aiSettingsModelRequired;
+
+  /// No description provided for @aiSettingsFetchModels.
+  ///
+  /// In zh, this message translates to:
+  /// **'获取模型'**
+  String get aiSettingsFetchModels;
+
+  /// No description provided for @aiSettingsPickModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'从列表选择模型'**
+  String get aiSettingsPickModel;
+
+  /// No description provided for @aiSettingsModelsLoaded.
+  ///
+  /// In zh, this message translates to:
+  /// **'找到 {count} 个模型'**
+  String aiSettingsModelsLoaded(int count);
+
+  /// No description provided for @aiSettingsModelsEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务商没有返回模型列表, 请直接填写模型名称'**
+  String get aiSettingsModelsEmpty;
+
+  /// No description provided for @aiSettingsApiKeyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'粘贴服务商后台生成的密钥'**
+  String get aiSettingsApiKeyHint;
+
+  /// No description provided for @aiSettingsApiKeyNotNeededHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机部署通常不需要密钥, 可以留空'**
+  String get aiSettingsApiKeyNotNeededHint;
+
+  /// No description provided for @aiSettingsApiKeyRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写密钥'**
+  String get aiSettingsApiKeyRequired;
+
+  /// No description provided for @aiSettingsClearKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'清除密钥'**
+  String get aiSettingsClearKey;
+
+  /// No description provided for @aiSettingsUndoClear.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤销清除'**
+  String get aiSettingsUndoClear;
+
+  /// No description provided for @aiSettingsKeyWillClear.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存后会清除已存的密钥'**
+  String get aiSettingsKeyWillClear;
+
+  /// No description provided for @aiSettingsUrlChangedNeedKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'改了接口地址, 需要重新填写密钥'**
+  String get aiSettingsUrlChangedNeedKey;
+
+  /// No description provided for @aiSettingsUrlChangedNeedKeyDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'为了安全, 已存的密钥只会发给原来的地址。请重新粘贴密钥后再保存。'**
+  String get aiSettingsUrlChangedNeedKeyDetail;
+
+  /// No description provided for @aiSettingsUrlChangedNeedKeyLocalDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'为了安全, 已存的密钥只会发给原来的地址。请重新粘贴密钥; 新地址不需要密钥的, 点「清除密钥」。'**
+  String get aiSettingsUrlChangedNeedKeyLocalDetail;
+
+  /// No description provided for @aiSettingsAdvanced.
+  ///
+  /// In zh, this message translates to:
+  /// **'高级设置'**
+  String get aiSettingsAdvanced;
+
+  /// No description provided for @aiSettingsProtocol.
+  ///
+  /// In zh, this message translates to:
+  /// **'接口协议'**
+  String get aiSettingsProtocol;
+
+  /// No description provided for @aiSettingsProtocolInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'国内服务商和本机部署基本都是 OpenAI 兼容; 只有 Claude 用 Anthropic'**
+  String get aiSettingsProtocolInfo;
+
+  /// No description provided for @aiSettingsProtocolOpenAi.
+  ///
+  /// In zh, this message translates to:
+  /// **'OpenAI 兼容'**
+  String get aiSettingsProtocolOpenAi;
+
+  /// No description provided for @aiSettingsProtocolAnthropic.
+  ///
+  /// In zh, this message translates to:
+  /// **'Anthropic'**
+  String get aiSettingsProtocolAnthropic;
+
+  /// No description provided for @aiSettingsJsonMode.
+  ///
+  /// In zh, this message translates to:
+  /// **'JSON 输出方式'**
+  String get aiSettingsJsonMode;
+
+  /// No description provided for @aiSettingsJsonModeInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'要求模型只回一段 JSON, 系统才能读懂结果; 服务商不支持时选「不要求」'**
+  String get aiSettingsJsonModeInfo;
+
+  /// No description provided for @aiSettingsJsonModeNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'不要求'**
+  String get aiSettingsJsonModeNone;
+
+  /// No description provided for @aiSettingsJsonModeObject.
+  ///
+  /// In zh, this message translates to:
+  /// **'JSON 对象'**
+  String get aiSettingsJsonModeObject;
+
+  /// No description provided for @aiSettingsJsonModeSchema.
+  ///
+  /// In zh, this message translates to:
+  /// **'按结构输出'**
+  String get aiSettingsJsonModeSchema;
+
+  /// No description provided for @aiSettingsThinking.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭深度思考'**
+  String get aiSettingsThinking;
+
+  /// No description provided for @aiSettingsThinkingInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别表格不需要深度思考, 关掉更快更省钱; 各服务商写法不同, 选好服务商会自动选对'**
+  String get aiSettingsThinkingInfo;
+
+  /// No description provided for @aiSettingsThinkingNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'不处理'**
+  String get aiSettingsThinkingNone;
+
+  /// No description provided for @aiSettingsThinkingDeepseek.
+  ///
+  /// In zh, this message translates to:
+  /// **'DeepSeek 写法'**
+  String get aiSettingsThinkingDeepseek;
+
+  /// No description provided for @aiSettingsThinkingDashscope.
+  ///
+  /// In zh, this message translates to:
+  /// **'通义千问写法'**
+  String get aiSettingsThinkingDashscope;
+
+  /// No description provided for @aiSettingsThinkingOpenAi.
+  ///
+  /// In zh, this message translates to:
+  /// **'OpenAI 写法'**
+  String get aiSettingsThinkingOpenAi;
+
+  /// No description provided for @aiSettingsTemperature.
+  ///
+  /// In zh, this message translates to:
+  /// **'固定输出(温度为 0)'**
+  String get aiSettingsTemperature;
+
+  /// No description provided for @aiSettingsTemperatureInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'同一份文件每次识别结果尽量一致; 个别模型不接受这个参数时关掉'**
+  String get aiSettingsTemperatureInfo;
+
+  /// No description provided for @aiSettingsVision.
+  ///
+  /// In zh, this message translates to:
+  /// **'能识别图片和扫描件'**
+  String get aiSettingsVision;
+
+  /// No description provided for @aiSettingsVisionInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'模型支持看图时打开, 销售上传的照片和扫描版 PDF 才能识别'**
+  String get aiSettingsVisionInfo;
+
+  /// No description provided for @aiSettingsMaxTokens.
+  ///
+  /// In zh, this message translates to:
+  /// **'最大输出长度'**
+  String get aiSettingsMaxTokens;
+
+  /// No description provided for @aiSettingsMaxTokensInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'256 ~ 65536; 行数多的文件需要更长'**
+  String get aiSettingsMaxTokensInfo;
+
+  /// No description provided for @aiSettingsTimeout.
+  ///
+  /// In zh, this message translates to:
+  /// **'超时秒数'**
+  String get aiSettingsTimeout;
+
+  /// No description provided for @aiSettingsTimeoutInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'10 ~ 600; 超过这个时间还没回复就算失败'**
+  String get aiSettingsTimeoutInfo;
+
+  /// No description provided for @aiSettingsNumberRange.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入 {min} ~ {max} 之间的整数'**
+  String aiSettingsNumberRange(int min, int max);
+
+  /// No description provided for @aiSettingsOverseasAck.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户资料(公司名、货品描述)会发送到境外服务商, 我已确认完成数据出境评估'**
+  String get aiSettingsOverseasAck;
+
+  /// No description provided for @aiSettingsOverseasAckRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用境外服务商前请先勾选上面的确认'**
+  String get aiSettingsOverseasAckRequired;
+
+  /// No description provided for @aiSettingsSave.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存'**
+  String get aiSettingsSave;
+
+  /// No description provided for @aiSettingsSaving.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在保存'**
+  String get aiSettingsSaving;
+
+  /// No description provided for @aiSettingsSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存'**
+  String get aiSettingsSaved;
+
+  /// No description provided for @aiSettingsSaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存失败, 请稍后重试'**
+  String get aiSettingsSaveFailed;
+
+  /// No description provided for @aiSettingsFixFields.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先改好标红的项'**
+  String get aiSettingsFixFields;
+
+  /// No description provided for @aiSettingsTestNeedsKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'测试前请先填写密钥'**
+  String get aiSettingsTestNeedsKey;
+
+  /// No description provided for @aiSettingsTestStoredMismatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'用已存的密钥测试时, 接口地址和模型要与已保存的一致。请先保存, 或重新填写密钥再测试'**
+  String get aiSettingsTestStoredMismatch;
+
+  /// No description provided for @aiSettingsTestResultTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'连接测试'**
+  String get aiSettingsTestResultTitle;
+
+  /// No description provided for @aiSettingsStepNetwork.
+  ///
+  /// In zh, this message translates to:
+  /// **'网络连通'**
+  String get aiSettingsStepNetwork;
+
+  /// No description provided for @aiSettingsStepAuth.
+  ///
+  /// In zh, this message translates to:
+  /// **'密钥验证'**
+  String get aiSettingsStepAuth;
+
+  /// No description provided for @aiSettingsStepModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'模型可用'**
+  String get aiSettingsStepModel;
+
+  /// No description provided for @aiSettingsStepJson.
+  ///
+  /// In zh, this message translates to:
+  /// **'JSON 输出'**
+  String get aiSettingsStepJson;
+
+  /// No description provided for @aiSettingsStepSkipped.
+  ///
+  /// In zh, this message translates to:
+  /// **'未进行'**
+  String get aiSettingsStepSkipped;
+
+  /// No description provided for @aiSettingsLatency.
+  ///
+  /// In zh, this message translates to:
+  /// **'{ms} 毫秒'**
+  String aiSettingsLatency(int ms);
+
+  /// No description provided for @aiSettingsTestPassed.
+  ///
+  /// In zh, this message translates to:
+  /// **'连接正常, 可以使用'**
+  String get aiSettingsTestPassed;
+
+  /// No description provided for @aiSettingsTestPassedShort.
+  ///
+  /// In zh, this message translates to:
+  /// **'通过'**
+  String get aiSettingsTestPassedShort;
+
+  /// No description provided for @aiSettingsTestFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'连接没有通过, 请按提示检查后再试'**
+  String get aiSettingsTestFailed;
+
+  /// No description provided for @aiSettingsTestFailedShort.
+  ///
+  /// In zh, this message translates to:
+  /// **'未通过'**
+  String get aiSettingsTestFailedShort;
+
+  /// No description provided for @aiSettingsTestWarnShort.
+  ///
+  /// In zh, this message translates to:
+  /// **'需留意'**
+  String get aiSettingsTestWarnShort;
+
+  /// No description provided for @aiSettingsTestPassedWithNotes.
+  ///
+  /// In zh, this message translates to:
+  /// **'连上了, 但有需要留意的地方, 请看上面的黄色提示'**
+  String get aiSettingsTestPassedWithNotes;
+
+  /// No description provided for @aiSettingsTestStoredUnsavedAdvanced.
+  ///
+  /// In zh, this message translates to:
+  /// **'高级设置改过了, 用已存的密钥测试不会带上这些改动。请先保存再测试, 或重新填写密钥后测试'**
+  String get aiSettingsTestStoredUnsavedAdvanced;
+
+  /// No description provided for @aiSettingsModelChoices.
+  ///
+  /// In zh, this message translates to:
+  /// **'可选模型:'**
+  String get aiSettingsModelChoices;
+
+  /// No description provided for @aiSettingsOverseasLockedShort.
+  ///
+  /// In zh, this message translates to:
+  /// **'境外服务商暂未开放, 需要部署人员在服务器上开启'**
+  String get aiSettingsOverseasLockedShort;
+
+  /// No description provided for @aiSettingsKeyConfiguredPlain.
+  ///
+  /// In zh, this message translates to:
+  /// **'已配置'**
+  String get aiSettingsKeyConfiguredPlain;
+
+  /// No description provided for @aiSettingsApiKeyKeepHintPlain.
+  ///
+  /// In zh, this message translates to:
+  /// **'已配置, 不改就留空'**
+  String get aiSettingsApiKeyKeepHintPlain;
+
+  /// No description provided for @aiSettingsCurrentKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前密钥'**
+  String get aiSettingsCurrentKey;
+
+  /// No description provided for @salesQuoteStatusDraft.
+  ///
+  /// In zh, this message translates to:
+  /// **'草稿'**
+  String get salesQuoteStatusDraft;
+
+  /// No description provided for @salesQuoteStatusPendingFinance.
+  ///
+  /// In zh, this message translates to:
+  /// **'待财务核价'**
+  String get salesQuoteStatusPendingFinance;
+
+  /// No description provided for @salesQuoteStatusReturned.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务退回'**
+  String get salesQuoteStatusReturned;
+
+  /// No description provided for @salesQuoteStatusConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已核价'**
+  String get salesQuoteStatusConfirmed;
+
+  /// No description provided for @salesQuoteStatusReversed.
+  ///
+  /// In zh, this message translates to:
+  /// **'作废'**
+  String get salesQuoteStatusReversed;
+
+  /// No description provided for @salesQuoteStatusConverted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已转订货单'**
+  String get salesQuoteStatusConverted;
+
+  /// No description provided for @salesQuoteStatusToConvert.
+  ///
+  /// In zh, this message translates to:
+  /// **'已核价, 待转订货单'**
+  String get salesQuoteStatusToConvert;
+
+  /// No description provided for @salesQuoteStatusReadOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'{status} · 只读'**
+  String salesQuoteStatusReadOnly(String status);
+
+  /// No description provided for @salesQuoteStatusHistory.
+  ///
+  /// In zh, this message translates to:
+  /// **'历史记录'**
+  String get salesQuoteStatusHistory;
+
+  /// No description provided for @salesQuoteStatusBannerDraft.
+  ///
+  /// In zh, this message translates to:
+  /// **'草稿: 填好后点「提交财务核价」, 财务定好价格和折扣后才能转订货单。'**
+  String get salesQuoteStatusBannerDraft;
+
+  /// No description provided for @salesQuoteStatusBannerPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'已提交财务核价, 正在等财务定价格。需要改内容请先「撤回」。'**
+  String get salesQuoteStatusBannerPending;
+
+  /// No description provided for @salesQuoteStatusBannerReturned.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务退回: {reason}。改好后再提交财务核价。'**
+  String salesQuoteStatusBannerReturned(String reason);
+
+  /// No description provided for @salesQuoteStatusBannerConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务已核价({name} · {time}), 可以转订货单了。'**
+  String salesQuoteStatusBannerConfirmed(String name, String time);
+
+  /// No description provided for @salesQuoteStatusBannerConverted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已转成订货单 {orderNo}, 报价不能再修改。'**
+  String salesQuoteStatusBannerConverted(String orderNo);
+
+  /// No description provided for @salesQuoteStatusBannerReversed.
+  ///
+  /// In zh, this message translates to:
+  /// **'这张报价已作废, 只能查看。'**
+  String get salesQuoteStatusBannerReversed;
+
+  /// No description provided for @salesQuoteStatusFinanceFallback.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务'**
+  String get salesQuoteStatusFinanceFallback;
+
+  /// No description provided for @salesQuoteStatusFieldReturnReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'退回原因'**
+  String get salesQuoteStatusFieldReturnReason;
+
+  /// No description provided for @salesQuoteStatusFieldSubmittedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交核价时间'**
+  String get salesQuoteStatusFieldSubmittedAt;
+
+  /// No description provided for @salesQuoteStatusFieldConfirmedBy.
+  ///
+  /// In zh, this message translates to:
+  /// **'核价人'**
+  String get salesQuoteStatusFieldConfirmedBy;
+
+  /// No description provided for @salesQuoteStatusFieldConvertedOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'转入订货单'**
+  String get salesQuoteStatusFieldConvertedOrder;
+
+  /// No description provided for @salesQuoteStatusFieldFinanceRemark.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务备注'**
+  String get salesQuoteStatusFieldFinanceRemark;
+
+  /// No description provided for @salesQuoteStatusActionSubmit.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交财务核价'**
+  String get salesQuoteStatusActionSubmit;
+
+  /// No description provided for @salesQuoteStatusActionWithdraw.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回'**
+  String get salesQuoteStatusActionWithdraw;
+
+  /// No description provided for @salesQuoteStatusActionReopen.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新修改'**
+  String get salesQuoteStatusActionReopen;
+
+  /// No description provided for @salesQuoteStatusActionConvert.
+  ///
+  /// In zh, this message translates to:
+  /// **'转订货单'**
+  String get salesQuoteStatusActionConvert;
+
+  /// No description provided for @salesQuoteStatusActionReverse.
+  ///
+  /// In zh, this message translates to:
+  /// **'作废'**
+  String get salesQuoteStatusActionReverse;
+
+  /// No description provided for @salesQuoteStatusActionEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑'**
+  String get salesQuoteStatusActionEdit;
+
+  /// No description provided for @salesQuoteStatusActionDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get salesQuoteStatusActionDelete;
+
+  /// No description provided for @salesQuoteStatusActionFinanceReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'去核价'**
+  String get salesQuoteStatusActionFinanceReview;
+
+  /// No description provided for @salesQuoteStatusActionViewOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看订货单'**
+  String get salesQuoteStatusActionViewOrder;
+
+  /// No description provided for @salesQuoteStatusActionBack.
+  ///
+  /// In zh, this message translates to:
+  /// **'返回列表'**
+  String get salesQuoteStatusActionBack;
+
+  /// No description provided for @salesQuoteStatusSubmitConfirmBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交后财务会逐行定价格和折扣, 这期间你不能修改这张报价。确定提交?'**
+  String get salesQuoteStatusSubmitConfirmBody;
+
+  /// No description provided for @salesQuoteStatusWithdrawConfirmBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回后报价回到草稿, 可以继续修改; 改好后需要重新提交财务核价。确定撤回?'**
+  String get salesQuoteStatusWithdrawConfirmBody;
+
+  /// No description provided for @salesQuoteStatusReopenConfirmBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务已经核好价格。重新修改会让报价回到草稿, 改完要再交财务核价才能转订货单。确定重新修改?'**
+  String get salesQuoteStatusReopenConfirmBody;
+
+  /// No description provided for @salesQuoteStatusReverseConfirmBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'作废后这张报价不能再转订货单, 也不能恢复。确定作废?'**
+  String get salesQuoteStatusReverseConfirmBody;
+
+  /// No description provided for @salesQuoteStatusDeleteConfirmBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定删除这张报价草稿? 删除后不能恢复。'**
+  String get salesQuoteStatusDeleteConfirmBody;
+
+  /// No description provided for @salesQuoteStatusConvertConfirmBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'会按财务核定的单价和折扣生成订货单草稿。单价和折扣已由财务核定, 不能修改; 数量和交货信息可以在订货单里补充。确定转入?'**
+  String get salesQuoteStatusConvertConfirmBody;
+
+  /// No description provided for @salesQuoteStatusConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定'**
+  String get salesQuoteStatusConfirm;
+
+  /// No description provided for @salesQuoteStatusCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get salesQuoteStatusCancel;
+
+  /// No description provided for @salesQuoteStatusSubmitted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已提交财务核价'**
+  String get salesQuoteStatusSubmitted;
+
+  /// No description provided for @salesQuoteStatusWithdrawn.
+  ///
+  /// In zh, this message translates to:
+  /// **'已撤回, 可以继续修改'**
+  String get salesQuoteStatusWithdrawn;
+
+  /// No description provided for @salesQuoteStatusReopened.
+  ///
+  /// In zh, this message translates to:
+  /// **'已回到草稿, 改好后请重新提交财务核价'**
+  String get salesQuoteStatusReopened;
+
+  /// No description provided for @salesQuoteStatusReversedDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价已作废'**
+  String get salesQuoteStatusReversedDone;
+
+  /// No description provided for @salesQuoteStatusDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已删除'**
+  String get salesQuoteStatusDeleted;
+
+  /// No description provided for @salesQuoteStatusConvertDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已生成订货单草稿 {billNo}'**
+  String salesQuoteStatusConvertDone(String billNo);
+
+  /// No description provided for @salesQuoteStatusActionFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作没有成功, 请稍后再试'**
+  String get salesQuoteStatusActionFailed;
+
+  /// No description provided for @salesQuoteStatusBusy.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在处理, 请稍候'**
+  String get salesQuoteStatusBusy;
+
+  /// No description provided for @salesQuoteStatusTimelineTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'核价记录'**
+  String get salesQuoteStatusTimelineTitle;
+
+  /// No description provided for @salesQuoteStatusTimelineEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有核价记录'**
+  String get salesQuoteStatusTimelineEmpty;
+
+  /// No description provided for @salesQuoteStatusRevisionSubmit.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交财务核价'**
+  String get salesQuoteStatusRevisionSubmit;
+
+  /// No description provided for @salesQuoteStatusRevisionWithdraw.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售撤回'**
+  String get salesQuoteStatusRevisionWithdraw;
+
+  /// No description provided for @salesQuoteStatusRevisionFinanceEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务修改价格'**
+  String get salesQuoteStatusRevisionFinanceEdit;
+
+  /// No description provided for @salesQuoteStatusRevisionReturn.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务退回'**
+  String get salesQuoteStatusRevisionReturn;
+
+  /// No description provided for @salesQuoteStatusRevisionConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务确认报价'**
+  String get salesQuoteStatusRevisionConfirm;
+
+  /// No description provided for @salesQuoteStatusRevisionReopen.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售重新修改'**
+  String get salesQuoteStatusRevisionReopen;
+
+  /// No description provided for @salesQuoteStatusRevisionFinanceReopen.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务撤销确认'**
+  String get salesQuoteStatusRevisionFinanceReopen;
+
+  /// No description provided for @salesQuoteStatusRevisionOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'其它记录'**
+  String get salesQuoteStatusRevisionOther;
+
+  /// No description provided for @salesQuoteStatusRevisionOperator.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作人'**
+  String get salesQuoteStatusRevisionOperator;
+
+  /// No description provided for @salesQuoteStatusRevisionVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'第 {revision} 版'**
+  String salesQuoteStatusRevisionVersion(int revision);
+
+  /// No description provided for @salesQuoteStatusSourceQuoteConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价已核价'**
+  String get salesQuoteStatusSourceQuoteConfirmed;
+
+  /// No description provided for @salesQuoteStatusSourceQuote.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源报价'**
+  String get salesQuoteStatusSourceQuote;
+
+  /// No description provided for @quoteFinanceHubTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价核价'**
+  String get quoteFinanceHubTitle;
+
+  /// No description provided for @quoteFinanceHubSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售报价由财务定价格和折扣, 确认后销售才能转订货单'**
+  String get quoteFinanceHubSubtitle;
+
+  /// No description provided for @quoteFinanceListTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价核价'**
+  String get quoteFinanceListTitle;
+
+  /// No description provided for @quoteFinanceTabPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'待核价'**
+  String get quoteFinanceTabPending;
+
+  /// No description provided for @quoteFinanceTabConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已核价'**
+  String get quoteFinanceTabConfirmed;
+
+  /// No description provided for @quoteFinanceTabReturned.
+  ///
+  /// In zh, this message translates to:
+  /// **'已退回'**
+  String get quoteFinanceTabReturned;
+
+  /// No description provided for @quoteFinanceSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索单号 / 客户 / 业务员'**
+  String get quoteFinanceSearchHint;
+
+  /// No description provided for @quoteFinanceRowHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'单击选中 · 双击核价'**
+  String get quoteFinanceRowHint;
+
+  /// No description provided for @quoteFinanceColBillNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价单号'**
+  String get quoteFinanceColBillNo;
+
+  /// No description provided for @quoteFinanceColClient.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户'**
+  String get quoteFinanceColClient;
+
+  /// No description provided for @quoteFinanceColSeller.
+  ///
+  /// In zh, this message translates to:
+  /// **'业务员'**
+  String get quoteFinanceColSeller;
+
+  /// No description provided for @quoteFinanceColSubmittedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交时间'**
+  String get quoteFinanceColSubmittedAt;
+
+  /// No description provided for @quoteFinanceColLines.
+  ///
+  /// In zh, this message translates to:
+  /// **'明细行'**
+  String get quoteFinanceColLines;
+
+  /// No description provided for @quoteFinanceColAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价金额'**
+  String get quoteFinanceColAmount;
+
+  /// No description provided for @quoteFinanceColStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'状态 / 说明'**
+  String get quoteFinanceColStatus;
+
+  /// No description provided for @quoteFinanceStatusPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'待核价'**
+  String get quoteFinanceStatusPending;
+
+  /// No description provided for @quoteFinanceStatusResubmitted.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售改后重新提交'**
+  String get quoteFinanceStatusResubmitted;
+
+  /// No description provided for @quoteFinanceStatusNeedPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count, plural, other{有 {count} 行没有标价}}'**
+  String quoteFinanceStatusNeedPrice(int count);
+
+  /// No description provided for @quoteFinanceStatusConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已核价 · {name}'**
+  String quoteFinanceStatusConfirmed(String name);
+
+  /// No description provided for @quoteFinanceStatusConverted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已转订货单 {orderNo}'**
+  String quoteFinanceStatusConverted(String orderNo);
+
+  /// No description provided for @quoteFinanceStatusReturned.
+  ///
+  /// In zh, this message translates to:
+  /// **'已退回: {reason}'**
+  String quoteFinanceStatusReturned(String reason);
+
+  /// No description provided for @quoteFinanceEmptyPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'目前没有等待核价的报价'**
+  String get quoteFinanceEmptyPending;
+
+  /// No description provided for @quoteFinanceEmptyPendingHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售提交核价后会出现在这里; 你定好价格并确认后, 销售才能转订货单。'**
+  String get quoteFinanceEmptyPendingHint;
+
+  /// No description provided for @quoteFinanceEmptyConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有已核价的报价'**
+  String get quoteFinanceEmptyConfirmed;
+
+  /// No description provided for @quoteFinanceEmptyReturned.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有退回给销售的报价'**
+  String get quoteFinanceEmptyReturned;
+
+  /// No description provided for @quoteFinanceEmptyReturnedHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'退回的报价由销售改好后, 会重新回到「待核价」。'**
+  String get quoteFinanceEmptyReturnedHint;
+
+  /// No description provided for @quoteFinanceEmptySearch.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有找到“{keyword}”相关的报价'**
+  String quoteFinanceEmptySearch(String keyword);
+
+  /// No description provided for @quoteFinanceLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价加载失败, 请检查网络后重试'**
+  String get quoteFinanceLoadFailed;
+
+  /// No description provided for @quoteFinanceRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get quoteFinanceRetry;
+
+  /// No description provided for @quoteFinanceRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'刷新'**
+  String get quoteFinanceRefresh;
+
+  /// No description provided for @quoteFinanceOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'核价'**
+  String get quoteFinanceOpen;
+
+  /// No description provided for @quoteFinancePrevPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'上一页'**
+  String get quoteFinancePrevPage;
+
+  /// No description provided for @quoteFinanceNextPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一页'**
+  String get quoteFinanceNextPage;
+
+  /// No description provided for @quoteFinanceUnnamed.
+  ///
+  /// In zh, this message translates to:
+  /// **'未标注'**
+  String get quoteFinanceUnnamed;
+
+  /// No description provided for @quoteFinanceReviewTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价核价'**
+  String get quoteFinanceReviewTitle;
+
+  /// No description provided for @quoteFinanceStripPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'待财务核价'**
+  String get quoteFinanceStripPending;
+
+  /// No description provided for @quoteFinanceStripConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已核价 · {name} · {time}'**
+  String quoteFinanceStripConfirmed(String name, String time);
+
+  /// No description provided for @quoteFinanceStripReturned.
+  ///
+  /// In zh, this message translates to:
+  /// **'已退回销售 · {reason}'**
+  String quoteFinanceStripReturned(String reason);
+
+  /// No description provided for @quoteFinanceStripDraft.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售修改中'**
+  String get quoteFinanceStripDraft;
+
+  /// No description provided for @quoteFinanceStripReversed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已作废'**
+  String get quoteFinanceStripReversed;
+
+  /// No description provided for @quoteFinanceStripConverted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已转订货单 {orderNo}'**
+  String quoteFinanceStripConverted(String orderNo);
+
+  /// No description provided for @quoteFinanceRevisionBadge.
+  ///
+  /// In zh, this message translates to:
+  /// **'第 {revision} 版'**
+  String quoteFinanceRevisionBadge(int revision);
+
+  /// No description provided for @quoteFinanceReadOnlyNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'这张报价现在不需要你处理, 只能查看。'**
+  String get quoteFinanceReadOnlyNotice;
+
+  /// No description provided for @quoteFinanceResubmitNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售改后重新提交。标黄的行, 折扣和你上次确认的不同, 请重点核对。'**
+  String get quoteFinanceResubmitNotice;
+
+  /// No description provided for @quoteFinanceNeedPriceNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count, plural, other{有 {count} 行货品没有标价。请填写成交单价, 或在行菜单里选「设为赠品/0价」, 然后再确认报价。}}'**
+  String quoteFinanceNeedPriceNotice(int count);
+
+  /// No description provided for @quoteFinanceGoMaintainPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'去货品资料维护标价'**
+  String get quoteFinanceGoMaintainPrice;
+
+  /// No description provided for @quoteFinanceInfoTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价信息'**
+  String get quoteFinanceInfoTitle;
+
+  /// No description provided for @quoteFinanceFieldClient.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户'**
+  String get quoteFinanceFieldClient;
+
+  /// No description provided for @quoteFinanceFieldSeller.
+  ///
+  /// In zh, this message translates to:
+  /// **'业务员'**
+  String get quoteFinanceFieldSeller;
+
+  /// No description provided for @quoteFinanceFieldMaker.
+  ///
+  /// In zh, this message translates to:
+  /// **'制单员'**
+  String get quoteFinanceFieldMaker;
+
+  /// No description provided for @quoteFinanceFieldBillDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'单据日期'**
+  String get quoteFinanceFieldBillDate;
+
+  /// No description provided for @quoteFinanceFieldSubmittedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交时间'**
+  String get quoteFinanceFieldSubmittedAt;
+
+  /// No description provided for @quoteFinanceFieldDeliverDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'交货日'**
+  String get quoteFinanceFieldDeliverDate;
+
+  /// No description provided for @quoteFinanceFieldContractNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'合同号'**
+  String get quoteFinanceFieldContractNo;
+
+  /// No description provided for @quoteFinanceFieldCurrency.
+  ///
+  /// In zh, this message translates to:
+  /// **'币种'**
+  String get quoteFinanceFieldCurrency;
+
+  /// No description provided for @quoteFinanceFieldFileCurrency.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户文件币种'**
+  String get quoteFinanceFieldFileCurrency;
+
+  /// No description provided for @quoteFinanceFileRateHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件币种 {currency}, 按财务参考汇率 {rate} 折算成本币'**
+  String quoteFinanceFileRateHint(String currency, String rate);
+
+  /// No description provided for @quoteFinanceFieldRemark.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售备注'**
+  String get quoteFinanceFieldRemark;
+
+  /// No description provided for @quoteFinanceFieldValidUntil.
+  ///
+  /// In zh, this message translates to:
+  /// **'有效期'**
+  String get quoteFinanceFieldValidUntil;
+
+  /// No description provided for @quoteFinanceFieldSettlement.
+  ///
+  /// In zh, this message translates to:
+  /// **'结账方式'**
+  String get quoteFinanceFieldSettlement;
+
+  /// No description provided for @quoteFinanceFieldFinanceRemark.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务备注'**
+  String get quoteFinanceFieldFinanceRemark;
+
+  /// No description provided for @quoteFinanceFinanceRemarkHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'写给销售看的说明(选填)'**
+  String get quoteFinanceFinanceRemarkHint;
+
+  /// No description provided for @quoteFinanceSettlementNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'不指定'**
+  String get quoteFinanceSettlementNone;
+
+  /// No description provided for @quoteFinanceAttachmentsTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户文件和附件'**
+  String get quoteFinanceAttachmentsTitle;
+
+  /// No description provided for @quoteFinanceLinesTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品明细'**
+  String get quoteFinanceLinesTitle;
+
+  /// No description provided for @quoteFinanceColGoods.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品名称'**
+  String get quoteFinanceColGoods;
+
+  /// No description provided for @quoteFinanceColCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'编号'**
+  String get quoteFinanceColCode;
+
+  /// No description provided for @quoteFinanceColColor.
+  ///
+  /// In zh, this message translates to:
+  /// **'颜色'**
+  String get quoteFinanceColColor;
+
+  /// No description provided for @quoteFinanceColQty.
+  ///
+  /// In zh, this message translates to:
+  /// **'数量'**
+  String get quoteFinanceColQty;
+
+  /// No description provided for @quoteFinanceColUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'单位'**
+  String get quoteFinanceColUnit;
+
+  /// No description provided for @quoteFinanceColListPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'标价'**
+  String get quoteFinanceColListPrice;
+
+  /// No description provided for @quoteFinanceColListPriceInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品资料里的售价。没有标价, 或成交单价高于标价时, 由财务直接定成交单价; 低于标价一律算成折扣。'**
+  String get quoteFinanceColListPriceInfo;
+
+  /// No description provided for @quoteFinanceColFilePrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件单价(原币)'**
+  String get quoteFinanceColFilePrice;
+
+  /// No description provided for @quoteFinanceColFilePriceLocal.
+  ///
+  /// In zh, this message translates to:
+  /// **'折合本币'**
+  String get quoteFinanceColFilePriceLocal;
+
+  /// No description provided for @quoteFinanceColDealPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'成交单价'**
+  String get quoteFinanceColDealPrice;
+
+  /// No description provided for @quoteFinanceColDealPriceInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户最终每件付多少钱。改成交单价会自动算出折扣; 改折扣会自动算出成交单价。'**
+  String get quoteFinanceColDealPriceInfo;
+
+  /// No description provided for @quoteFinanceColDiscount.
+  ///
+  /// In zh, this message translates to:
+  /// **'折扣'**
+  String get quoteFinanceColDiscount;
+
+  /// No description provided for @quoteFinanceColDiscountInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'折扣 = 成交单价 ÷ 标价, 保留 4 位小数, 1 表示按标价。'**
+  String get quoteFinanceColDiscountInfo;
+
+  /// No description provided for @quoteFinanceColLineAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'金额'**
+  String get quoteFinanceColLineAmount;
+
+  /// No description provided for @quoteFinanceColFileDiff.
+  ///
+  /// In zh, this message translates to:
+  /// **'与文件差额'**
+  String get quoteFinanceColFileDiff;
+
+  /// No description provided for @quoteFinanceColFileDiffInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'本行金额减去客户文件里的金额(已折合本币)。0 表示和客户文件一致。'**
+  String get quoteFinanceColFileDiffInfo;
+
+  /// No description provided for @quoteFinanceColLastConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'上次确认折扣'**
+  String get quoteFinanceColLastConfirmed;
+
+  /// No description provided for @quoteFinanceColSalesProposed.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售提交折扣'**
+  String get quoteFinanceColSalesProposed;
+
+  /// No description provided for @quoteFinanceColFileModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件型号'**
+  String get quoteFinanceColFileModel;
+
+  /// No description provided for @quoteFinanceColFileName.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件品名'**
+  String get quoteFinanceColFileName;
+
+  /// No description provided for @quoteFinanceColRemark.
+  ///
+  /// In zh, this message translates to:
+  /// **'备注'**
+  String get quoteFinanceColRemark;
+
+  /// No description provided for @quoteFinanceNoListPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'未定价'**
+  String get quoteFinanceNoListPrice;
+
+  /// No description provided for @quoteFinanceFinancePriceChip.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务定价'**
+  String get quoteFinanceFinancePriceChip;
+
+  /// No description provided for @quoteFinanceGiveawayChip.
+  ///
+  /// In zh, this message translates to:
+  /// **'赠品/0价'**
+  String get quoteFinanceGiveawayChip;
+
+  /// No description provided for @quoteFinanceFileMatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'一致'**
+  String get quoteFinanceFileMatch;
+
+  /// No description provided for @quoteFinanceErrorDealPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写大于 0 的数字; 0 价请在行菜单选「设为赠品/0价」'**
+  String get quoteFinanceErrorDealPrice;
+
+  /// No description provided for @quoteFinanceErrorFinancePrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写不小于 0 的数字'**
+  String get quoteFinanceErrorFinancePrice;
+
+  /// No description provided for @quoteFinanceErrorDiscount.
+  ///
+  /// In zh, this message translates to:
+  /// **'折扣要大于 0、不超过 1, 最多 4 位小数'**
+  String get quoteFinanceErrorDiscount;
+
+  /// No description provided for @quoteFinanceErrorNeedPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写成交单价'**
+  String get quoteFinanceErrorNeedPrice;
+
+  /// No description provided for @quoteFinanceMenuMasterMode.
+  ///
+  /// In zh, this message translates to:
+  /// **'按标价打折'**
+  String get quoteFinanceMenuMasterMode;
+
+  /// No description provided for @quoteFinanceMenuGiveaway.
+  ///
+  /// In zh, this message translates to:
+  /// **'设为赠品/0价'**
+  String get quoteFinanceMenuGiveaway;
+
+  /// No description provided for @quoteFinanceMenuRestore.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤销本行修改'**
+  String get quoteFinanceMenuRestore;
+
+  /// No description provided for @quoteFinanceBatchDiscount.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量设折扣'**
+  String get quoteFinanceBatchDiscount;
+
+  /// No description provided for @quoteFinanceBatchDiscountCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量设折扣({count})'**
+  String quoteFinanceBatchDiscountCount(int count);
+
+  /// No description provided for @quoteFinanceBatchDiscountTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count, plural, other{给勾选的 {count} 行设折扣}}'**
+  String quoteFinanceBatchDiscountTitle(int count);
+
+  /// No description provided for @quoteFinanceBatchDiscountHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'例如 0.95 表示按标价的 95%'**
+  String get quoteFinanceBatchDiscountHint;
+
+  /// No description provided for @quoteFinanceBatchApply.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用'**
+  String get quoteFinanceBatchApply;
+
+  /// No description provided for @quoteFinanceBatchApplied.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count, plural, other{已给 {count} 行设好折扣}}'**
+  String quoteFinanceBatchApplied(int count);
+
+  /// No description provided for @quoteFinanceBatchSkipped.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count, plural, other{{count} 行没有标价或由财务定价, 已跳过}}'**
+  String quoteFinanceBatchSkipped(int count);
+
+  /// No description provided for @quoteFinanceBatchNeedSelection.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先勾选要改折扣的行'**
+  String get quoteFinanceBatchNeedSelection;
+
+  /// No description provided for @quoteFinanceCheckedEditHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count, plural, other{本行已勾选: 改折扣会一起改勾选的 {count} 行}}'**
+  String quoteFinanceCheckedEditHint(int count);
+
+  /// No description provided for @quoteFinanceActionSave.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存修改'**
+  String get quoteFinanceActionSave;
+
+  /// No description provided for @quoteFinanceActionSaving.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存中…'**
+  String get quoteFinanceActionSaving;
+
+  /// No description provided for @quoteFinanceActionReturn.
+  ///
+  /// In zh, this message translates to:
+  /// **'退回销售'**
+  String get quoteFinanceActionReturn;
+
+  /// No description provided for @quoteFinanceActionConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认报价'**
+  String get quoteFinanceActionConfirm;
+
+  /// No description provided for @quoteFinanceActionReopen.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤销确认再修改'**
+  String get quoteFinanceActionReopen;
+
+  /// No description provided for @quoteFinanceActionBack.
+  ///
+  /// In zh, this message translates to:
+  /// **'返回'**
+  String get quoteFinanceActionBack;
+
+  /// No description provided for @quoteFinanceSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改已保存'**
+  String get quoteFinanceSaved;
+
+  /// No description provided for @quoteFinanceNothingToSave.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有需要保存的修改'**
+  String get quoteFinanceNothingToSave;
+
+  /// No description provided for @quoteFinanceFixErrors.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count, plural, other{有 {count} 行填写不对, 请先改好}}'**
+  String quoteFinanceFixErrors(int count);
+
+  /// No description provided for @quoteFinanceClaimNotReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有取得这张报价的核价占用, 请点「重新认领并刷新」'**
+  String get quoteFinanceClaimNotReady;
+
+  /// No description provided for @quoteFinanceSaveFirst.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先保存修改, 再确认报价'**
+  String get quoteFinanceSaveFirst;
+
+  /// No description provided for @quoteFinanceConfirmBlocked.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count, plural, other{还有 {count} 行没有价格, 不能确认。请填写成交单价或设为赠品/0价。}}'**
+  String quoteFinanceConfirmBlocked(int count);
+
+  /// No description provided for @quoteFinanceConfirmedDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价已确认, 已通知销售转订货单'**
+  String get quoteFinanceConfirmedDone;
+
+  /// No description provided for @quoteFinanceReturnedDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已退回销售, 销售会收到通知'**
+  String get quoteFinanceReturnedDone;
+
+  /// No description provided for @quoteFinanceReopenedDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已撤销确认, 可以继续修改价格'**
+  String get quoteFinanceReopenedDone;
+
+  /// No description provided for @quoteFinanceLoadDetailFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价详情加载失败, 请检查网络或权限后重试'**
+  String get quoteFinanceLoadDetailFailed;
+
+  /// No description provided for @quoteFinanceActionFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作没有成功, 请稍后再试'**
+  String get quoteFinanceActionFailed;
+
+  /// No description provided for @quoteFinanceUnsavedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'有修改还没保存'**
+  String get quoteFinanceUnsavedTitle;
+
+  /// No description provided for @quoteFinanceUnsavedBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'离开后这些修改会丢失。确定离开?'**
+  String get quoteFinanceUnsavedBody;
+
+  /// No description provided for @quoteFinanceLeave.
+  ///
+  /// In zh, this message translates to:
+  /// **'离开'**
+  String get quoteFinanceLeave;
+
+  /// No description provided for @quoteFinanceStay.
+  ///
+  /// In zh, this message translates to:
+  /// **'继续修改'**
+  String get quoteFinanceStay;
+
+  /// No description provided for @quoteFinanceBusy.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在处理, 请稍候'**
+  String get quoteFinanceBusy;
+
+  /// No description provided for @quoteFinanceSaving.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在保存修改'**
+  String get quoteFinanceSaving;
+
+  /// No description provided for @quoteFinanceSessionChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录身份已变化, 请重新打开报价'**
+  String get quoteFinanceSessionChanged;
+
+  /// No description provided for @quoteFinanceConfirmTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认报价 {billNo}'**
+  String quoteFinanceConfirmTitle(String billNo);
+
+  /// No description provided for @quoteFinanceConfirmBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认后价格和折扣就定下来了, 销售可以转成订货单。以后要改, 可以在转单前「撤销确认再修改」。'**
+  String get quoteFinanceConfirmBody;
+
+  /// No description provided for @quoteFinanceConfirmResponsibility.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价核价确认'**
+  String get quoteFinanceConfirmResponsibility;
+
+  /// No description provided for @quoteFinanceConfirmResponsibilityDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认后系统会记录你是本次核价人。'**
+  String get quoteFinanceConfirmResponsibilityDesc;
+
+  /// No description provided for @quoteFinanceConfirmTotal.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价金额 {amount}'**
+  String quoteFinanceConfirmTotal(String amount);
+
+  /// No description provided for @quoteFinanceReturnTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'退回销售 {billNo}'**
+  String quoteFinanceReturnTitle(String billNo);
+
+  /// No description provided for @quoteFinanceReturnBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'退回后报价回到销售手上, 销售改好再提交。请写明原因, 销售会看到。'**
+  String get quoteFinanceReturnBody;
+
+  /// No description provided for @quoteFinanceReturnChipQty.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户要改数量'**
+  String get quoteFinanceReturnChipQty;
+
+  /// No description provided for @quoteFinanceReturnChipGoods.
+  ///
+  /// In zh, this message translates to:
+  /// **'缺货品需补充'**
+  String get quoteFinanceReturnChipGoods;
+
+  /// No description provided for @quoteFinanceReturnChipPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'价格需销售与客户确认'**
+  String get quoteFinanceReturnChipPrice;
+
+  /// No description provided for @quoteFinanceReturnReasonLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'退回原因(必填)'**
+  String get quoteFinanceReturnReasonLabel;
+
+  /// No description provided for @quoteFinanceReturnReasonRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写退回原因'**
+  String get quoteFinanceReturnReasonRequired;
+
+  /// No description provided for @quoteFinanceReturnSubmit.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认退回'**
+  String get quoteFinanceReturnSubmit;
+
+  /// No description provided for @quoteFinanceReopenTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤销确认再修改'**
+  String get quoteFinanceReopenTitle;
+
+  /// No description provided for @quoteFinanceReopenBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价会回到「待核价」, 你可以继续修改价格, 改好后要重新确认。这期间销售不能转订货单。确定撤销?'**
+  String get quoteFinanceReopenBody;
+
+  /// No description provided for @quoteFinanceCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get quoteFinanceCancel;
+
+  /// No description provided for @quoteFinanceRevisionTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'核价记录'**
+  String get quoteFinanceRevisionTitle;
+
+  /// No description provided for @quoteFinanceTotalQty.
+  ///
+  /// In zh, this message translates to:
+  /// **'合计数量'**
+  String get quoteFinanceTotalQty;
+
+  /// No description provided for @quoteFinanceTotalAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'合计金额'**
+  String get quoteFinanceTotalAmount;
+
+  /// No description provided for @quoteFinanceTotalPreview.
+  ///
+  /// In zh, this message translates to:
+  /// **'合计金额(未保存预览)'**
+  String get quoteFinanceTotalPreview;
+
+  /// No description provided for @quoteFinanceOrderSourceQuote.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源报价 {billNo}'**
+  String quoteFinanceOrderSourceQuote(String billNo);
+
+  /// No description provided for @quoteFinanceOrderQuoteConfirmedBy.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价已核价 · {name}'**
+  String quoteFinanceOrderQuoteConfirmedBy(String name);
+
+  /// No description provided for @quoteFinanceOrderAllMatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价已核价 · 一致'**
+  String get quoteFinanceOrderAllMatch;
+
+  /// No description provided for @quoteFinanceOrderMismatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count, plural, other{有 {count} 行和报价不同}}'**
+  String quoteFinanceOrderMismatch(int count);
+
+  /// No description provided for @quoteFinanceOrderChipHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'这张订单由财务核过价的报价转来, 价格和折扣与报价一致时, 本次只需核对信用和条款。'**
+  String get quoteFinanceOrderChipHint;
+
+  /// No description provided for @quoteFinanceOrderColQuotePrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价单价'**
+  String get quoteFinanceOrderColQuotePrice;
+
+  /// No description provided for @quoteFinanceOrderColQuoteDiscount.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价折扣'**
+  String get quoteFinanceOrderColQuoteDiscount;
+
+  /// No description provided for @quoteFinanceOrderColMatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'与报价'**
+  String get quoteFinanceOrderColMatch;
+
+  /// No description provided for @quoteFinanceOrderMatchYes.
+  ///
+  /// In zh, this message translates to:
+  /// **'一致'**
+  String get quoteFinanceOrderMatchYes;
+
+  /// No description provided for @quoteFinanceOrderMatchNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'不同'**
+  String get quoteFinanceOrderMatchNo;
+
+  /// No description provided for @quoteFinanceOrderColFilePrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件单价({currency})'**
+  String quoteFinanceOrderColFilePrice(String currency);
+
+  /// No description provided for @quoteFinanceOrderFileCurrencyUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'原币'**
+  String get quoteFinanceOrderFileCurrencyUnknown;
+
+  /// No description provided for @quoteFinanceOrderColFileModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件型号'**
+  String get quoteFinanceOrderColFileModel;
+
+  /// No description provided for @quoteFinanceOrderColFileName.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件品名'**
+  String get quoteFinanceOrderColFileName;
+
+  /// No description provided for @quoteFinanceAboveListHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'高于标价, 按财务定价保存(折扣为 1)'**
+  String get quoteFinanceAboveListHint;
+
+  /// No description provided for @quoteFinanceMenuRefreshMaster.
+  ///
+  /// In zh, this message translates to:
+  /// **'按最新标价刷新'**
+  String get quoteFinanceMenuRefreshMaster;
+
+  /// No description provided for @quoteFinanceRefreshMasterChip.
+  ///
+  /// In zh, this message translates to:
+  /// **'按货品资料最新标价 {price} 刷新, 折扣不变; 保存后可再改折扣'**
+  String quoteFinanceRefreshMasterChip(String price);
+
+  /// No description provided for @quoteFinanceListPriceLatest.
+  ///
+  /// In zh, this message translates to:
+  /// **'{price}, 资料已改为 {latest}'**
+  String quoteFinanceListPriceLatest(String price, String latest);
+
+  /// No description provided for @quoteFinanceStatusClaimedBy.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name} 正在核价'**
+  String quoteFinanceStatusClaimedBy(String name);
+
+  /// No description provided for @quoteFinanceStatusClaimedByMe.
+  ///
+  /// In zh, this message translates to:
+  /// **'你正在核价'**
+  String get quoteFinanceStatusClaimedByMe;
+
+  /// No description provided for @quoteFinanceFileRateMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件币种 {currency}, 还没有财务参考汇率, 折合本币先空着'**
+  String quoteFinanceFileRateMissing(String currency);
+
+  /// No description provided for @salesQuoteStatusImportTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择已核价的报价单'**
+  String get salesQuoteStatusImportTitle;
+
+  /// No description provided for @salesQuoteStatusImportEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无已核价、可以转订货单的报价'**
+  String get salesQuoteStatusImportEmpty;
+
+  /// No description provided for @salesQuoteStatusImportLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价加载失败, 请稍后重试'**
+  String get salesQuoteStatusImportLoadFailed;
+
+  /// No description provided for @salesIntakeBannerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别客户文件'**
+  String get salesIntakeBannerTitle;
+
+  /// No description provided for @salesIntakeBannerMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传客户的报价单/形式发票, 自动填好客户和货品'**
+  String get salesIntakeBannerMessage;
+
+  /// No description provided for @salesIntakeBannerButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别客户文件'**
+  String get salesIntakeBannerButton;
+
+  /// No description provided for @salesIntakeBannerAgain.
+  ///
+  /// In zh, this message translates to:
+  /// **'再识别一个文件'**
+  String get salesIntakeBannerAgain;
+
+  /// No description provided for @salesIntakeBannerImported.
+  ///
+  /// In zh, this message translates to:
+  /// **'已从 {file} 导入 {count} 行'**
+  String salesIntakeBannerImported(String file, int count);
+
+  /// No description provided for @salesIntakeToolbarButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别客户文件'**
+  String get salesIntakeToolbarButton;
+
+  /// No description provided for @salesIntakeAiOffHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 未开启, 只能识别常见格式的 Excel'**
+  String get salesIntakeAiOffHint;
+
+  /// No description provided for @salesIntakeApprovedOrderHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'已审核的订单请用改量或修改, 不能整单重新识别'**
+  String get salesIntakeApprovedOrderHint;
+
+  /// No description provided for @salesIntakeReplaceTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'明细里已经有货品'**
+  String get salesIntakeReplaceTitle;
+
+  /// No description provided for @salesIntakeReplaceMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'要用识别结果替换现有明细, 还是追加在后面?'**
+  String get salesIntakeReplaceMessage;
+
+  /// No description provided for @salesIntakeReplace.
+  ///
+  /// In zh, this message translates to:
+  /// **'替换'**
+  String get salesIntakeReplace;
+
+  /// No description provided for @salesIntakeAppend.
+  ///
+  /// In zh, this message translates to:
+  /// **'追加'**
+  String get salesIntakeAppend;
+
+  /// No description provided for @salesIntakeApplied.
+  ///
+  /// In zh, this message translates to:
+  /// **'已导入 {count} 行, 其中 {review} 行有黄色标记, 请核对'**
+  String salesIntakeApplied(int count, int review);
+
+  /// No description provided for @salesIntakeAppliedAllMatched.
+  ///
+  /// In zh, this message translates to:
+  /// **'已导入 {count} 行'**
+  String salesIntakeAppliedAllMatched(int count);
+
+  /// No description provided for @salesIntakeAttachFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'原文件没能加入附件, 可在附件区手动上传'**
+  String get salesIntakeAttachFailed;
+
+  /// No description provided for @salesIntakeProgressTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在识别客户文件'**
+  String get salesIntakeProgressTitle;
+
+  /// No description provided for @salesIntakeStageUpload.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传文件'**
+  String get salesIntakeStageUpload;
+
+  /// No description provided for @salesIntakeStageRead.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取表格'**
+  String get salesIntakeStageRead;
+
+  /// No description provided for @salesIntakeStageLayout.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别表头与列'**
+  String get salesIntakeStageLayout;
+
+  /// No description provided for @salesIntakeStageGoods.
+  ///
+  /// In zh, this message translates to:
+  /// **'匹配货品'**
+  String get salesIntakeStageGoods;
+
+  /// No description provided for @salesIntakeStageClient.
+  ///
+  /// In zh, this message translates to:
+  /// **'匹配客户'**
+  String get salesIntakeStageClient;
+
+  /// No description provided for @salesIntakeStagePricing.
+  ///
+  /// In zh, this message translates to:
+  /// **'计算折扣'**
+  String get salesIntakeStagePricing;
+
+  /// No description provided for @salesIntakeSendWholeFileTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'整份文件会发送给 AI 服务识别'**
+  String get salesIntakeSendWholeFileTitle;
+
+  /// No description provided for @salesIntakeSendWholeFileMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'这是 PDF/图片, 系统需要把整份文件发给 AI 服务来识别。文件里如有银行账号等敏感信息, 请先确认可以发送。'**
+  String get salesIntakeSendWholeFileMessage;
+
+  /// No description provided for @salesIntakeSendWholeFileConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'继续识别'**
+  String get salesIntakeSendWholeFileConfirm;
+
+  /// No description provided for @salesIntakeAiRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'PDF/图片需要开启 AI 才能识别, 请上传 Excel 或联系管理员'**
+  String get salesIntakeAiRequired;
+
+  /// No description provided for @salesIntakeVisionRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'这是图片格式的文件, 需要管理员在 AI 服务设置中启用支持图片识别的模型'**
+  String get salesIntakeVisionRequired;
+
+  /// No description provided for @salesIntakeFileTooLarge.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件太大, 最大 {max}'**
+  String salesIntakeFileTooLarge(String max);
+
+  /// No description provided for @salesIntakeFileUnreadable.
+  ///
+  /// In zh, this message translates to:
+  /// **'没能读取这个文件, 请重新选择'**
+  String get salesIntakeFileUnreadable;
+
+  /// No description provided for @salesIntakeFileTypeUnsupported.
+  ///
+  /// In zh, this message translates to:
+  /// **'只能识别 Excel、CSV、PDF 或图片文件'**
+  String get salesIntakeFileTypeUnsupported;
+
+  /// No description provided for @salesIntakeFailedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'没能识别这个文件'**
+  String get salesIntakeFailedTitle;
+
+  /// No description provided for @salesIntakeResultUnreadable.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别结果无法读取, 请重新识别'**
+  String get salesIntakeResultUnreadable;
+
+  /// No description provided for @salesIntakeNoLines.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件里没找到货品明细, 请确认上传的是报价单或形式发票'**
+  String get salesIntakeNoLines;
+
+  /// No description provided for @salesIntakeCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get salesIntakeCancel;
+
+  /// No description provided for @salesIntakeCreateClientTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'用文件信息新建客户'**
+  String get salesIntakeCreateClientTitle;
+
+  /// No description provided for @salesIntakeCreateClientIntro.
+  ///
+  /// In zh, this message translates to:
+  /// **'将按下面的信息新建客户, 负责人是你, 分类放在「未分类」。'**
+  String get salesIntakeCreateClientIntro;
+
+  /// No description provided for @salesIntakeCreateClientName.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户简称'**
+  String get salesIntakeCreateClientName;
+
+  /// No description provided for @salesIntakeCreateClientNameRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写客户简称'**
+  String get salesIntakeCreateClientNameRequired;
+
+  /// No description provided for @salesIntakeCreateClientConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建客户'**
+  String get salesIntakeCreateClientConfirm;
+
+  /// No description provided for @salesIntakeCreateClientDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已新建客户 {name}'**
+  String salesIntakeCreateClientDone(String name);
+
+  /// No description provided for @salesIntakeCreateClientExists.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个客户已经存在, 已为你选上'**
+  String get salesIntakeCreateClientExists;
+
+  /// No description provided for @salesIntakeCreateClientFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建客户没有成功, 请稍后重试'**
+  String get salesIntakeCreateClientFailed;
+
+  /// No description provided for @salesIntakeFieldFullName.
+  ///
+  /// In zh, this message translates to:
+  /// **'全称'**
+  String get salesIntakeFieldFullName;
+
+  /// No description provided for @salesIntakeFieldNameEn.
+  ///
+  /// In zh, this message translates to:
+  /// **'外文名称'**
+  String get salesIntakeFieldNameEn;
+
+  /// No description provided for @salesIntakeFieldLinkman.
+  ///
+  /// In zh, this message translates to:
+  /// **'联系人'**
+  String get salesIntakeFieldLinkman;
+
+  /// No description provided for @salesIntakeFieldEmail.
+  ///
+  /// In zh, this message translates to:
+  /// **'邮箱'**
+  String get salesIntakeFieldEmail;
+
+  /// No description provided for @salesIntakeFieldPhone.
+  ///
+  /// In zh, this message translates to:
+  /// **'电话'**
+  String get salesIntakeFieldPhone;
+
+  /// No description provided for @salesIntakeFieldAddress.
+  ///
+  /// In zh, this message translates to:
+  /// **'地址'**
+  String get salesIntakeFieldAddress;
+
+  /// No description provided for @salesIntakeFieldTaxId.
+  ///
+  /// In zh, this message translates to:
+  /// **'税号'**
+  String get salesIntakeFieldTaxId;
+
+  /// No description provided for @salesIntakeFieldPlace.
+  ///
+  /// In zh, this message translates to:
+  /// **'国家/地区'**
+  String get salesIntakeFieldPlace;
+
+  /// No description provided for @salesIntakeReviewTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对识别结果'**
+  String get salesIntakeReviewTitle;
+
+  /// No description provided for @salesIntakeReviewSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'{file} · 共 {count} 行明细'**
+  String salesIntakeReviewSubtitle(String file, int count);
+
+  /// No description provided for @salesIntakeClose.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get salesIntakeClose;
+
+  /// No description provided for @salesIntakeStepClient.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户'**
+  String get salesIntakeStepClient;
+
+  /// No description provided for @salesIntakeStepGoods.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品'**
+  String get salesIntakeStepGoods;
+
+  /// No description provided for @salesIntakeClientResolved.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户: {name}'**
+  String salesIntakeClientResolved(String name);
+
+  /// No description provided for @salesIntakeClientChange.
+  ///
+  /// In zh, this message translates to:
+  /// **'换一个'**
+  String get salesIntakeClientChange;
+
+  /// No description provided for @salesIntakeClientPickOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'选其它客户…'**
+  String get salesIntakeClientPickOther;
+
+  /// No description provided for @salesIntakeClientCreate.
+  ///
+  /// In zh, this message translates to:
+  /// **'用文件信息新建客户'**
+  String get salesIntakeClientCreate;
+
+  /// No description provided for @salesIntakeClientBuyer.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件上的买方: {name}'**
+  String salesIntakeClientBuyer(String name);
+
+  /// No description provided for @salesIntakeClientNotFound.
+  ///
+  /// In zh, this message translates to:
+  /// **'没在你的客户里找到这个买方'**
+  String get salesIntakeClientNotFound;
+
+  /// No description provided for @salesIntakeClientSuggestions.
+  ///
+  /// In zh, this message translates to:
+  /// **'像是下面这些客户, 请选一个:'**
+  String get salesIntakeClientSuggestions;
+
+  /// No description provided for @salesIntakeClientNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没选客户, 导入后也可以在表头再选'**
+  String get salesIntakeClientNone;
+
+  /// No description provided for @salesIntakeNoVisibleClients.
+  ///
+  /// In zh, this message translates to:
+  /// **'你名下还没有客户资料, 请联系主管在客户资料里把客户分配给你'**
+  String get salesIntakeNoVisibleClients;
+
+  /// No description provided for @salesIntakeEnrichSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件里有客户的{fields}, 保存时补进客户资料'**
+  String salesIntakeEnrichSummary(String fields);
+
+  /// No description provided for @salesIntakeEnrichShow.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看'**
+  String get salesIntakeEnrichShow;
+
+  /// No description provided for @salesIntakeEnrichHide.
+  ///
+  /// In zh, this message translates to:
+  /// **'收起'**
+  String get salesIntakeEnrichHide;
+
+  /// No description provided for @salesIntakeEnrichDiffers.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件里的值不同, 现在是: {current}'**
+  String salesIntakeEnrichDiffers(String current);
+
+  /// No description provided for @salesIntakeEnrichCurrentEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户资料里还没填'**
+  String get salesIntakeEnrichCurrentEmpty;
+
+  /// No description provided for @salesIntakeFilterReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要核对 ({count})'**
+  String salesIntakeFilterReview(int count);
+
+  /// No description provided for @salesIntakeFilterAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部 ({count})'**
+  String salesIntakeFilterAll(int count);
+
+  /// No description provided for @salesIntakeMatchedCollapsed.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 行已自动对应'**
+  String salesIntakeMatchedCollapsed(int count);
+
+  /// No description provided for @salesIntakeExpand.
+  ///
+  /// In zh, this message translates to:
+  /// **'展开'**
+  String get salesIntakeExpand;
+
+  /// No description provided for @salesIntakeCollapse.
+  ///
+  /// In zh, this message translates to:
+  /// **'收起'**
+  String get salesIntakeCollapse;
+
+  /// No description provided for @salesIntakeNoReviewLines.
+  ///
+  /// In zh, this message translates to:
+  /// **'所有行都已自动对应, 可以直接导入'**
+  String get salesIntakeNoReviewLines;
+
+  /// No description provided for @salesIntakeLineNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'第 {no} 行'**
+  String salesIntakeLineNo(String no);
+
+  /// No description provided for @salesIntakeQty.
+  ///
+  /// In zh, this message translates to:
+  /// **'数量 {qty}'**
+  String salesIntakeQty(String qty);
+
+  /// No description provided for @salesIntakeFilePrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件单价 {price}'**
+  String salesIntakeFilePrice(String price);
+
+  /// No description provided for @salesIntakeFilePriceWithCurrency.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件单价 {price} {currency}'**
+  String salesIntakeFilePriceWithCurrency(String price, String currency);
+
+  /// No description provided for @salesIntakeStatusMatched.
+  ///
+  /// In zh, this message translates to:
+  /// **'已对应'**
+  String get salesIntakeStatusMatched;
+
+  /// No description provided for @salesIntakeStatusConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已确认'**
+  String get salesIntakeStatusConfirmed;
+
+  /// No description provided for @salesIntakeStatusReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'请核对'**
+  String get salesIntakeStatusReview;
+
+  /// No description provided for @salesIntakeStatusUnmatched.
+  ///
+  /// In zh, this message translates to:
+  /// **'没找到'**
+  String get salesIntakeStatusUnmatched;
+
+  /// No description provided for @salesIntakeStatusBlocked.
+  ///
+  /// In zh, this message translates to:
+  /// **'不能导入'**
+  String get salesIntakeStatusBlocked;
+
+  /// No description provided for @salesIntakeGoodsLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'对应货品'**
+  String get salesIntakeGoodsLabel;
+
+  /// No description provided for @salesIntakeGoodsHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择货品'**
+  String get salesIntakeGoodsHint;
+
+  /// No description provided for @salesIntakeConfirmChoice.
+  ///
+  /// In zh, this message translates to:
+  /// **'就是它'**
+  String get salesIntakeConfirmChoice;
+
+  /// No description provided for @salesIntakePickFromMaster.
+  ///
+  /// In zh, this message translates to:
+  /// **'从货品资料选择…'**
+  String get salesIntakePickFromMaster;
+
+  /// No description provided for @salesIntakeSplit.
+  ///
+  /// In zh, this message translates to:
+  /// **'拆成 {count} 行'**
+  String salesIntakeSplit(int count);
+
+  /// No description provided for @salesIntakeMerge.
+  ///
+  /// In zh, this message translates to:
+  /// **'合回一行'**
+  String get salesIntakeMerge;
+
+  /// No description provided for @salesIntakeBundleHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'这一行是组合件, 可以拆开逐个选货品'**
+  String get salesIntakeBundleHint;
+
+  /// No description provided for @salesIntakeSetNameEn.
+  ///
+  /// In zh, this message translates to:
+  /// **'设为货品英文名: {text}'**
+  String salesIntakeSetNameEn(String text);
+
+  /// No description provided for @salesIntakeInclude.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入这一行'**
+  String get salesIntakeInclude;
+
+  /// No description provided for @salesIntakeDiscountPreview.
+  ///
+  /// In zh, this message translates to:
+  /// **'折扣 {discount}'**
+  String salesIntakeDiscountPreview(String discount);
+
+  /// No description provided for @salesIntakeDiscountPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'折扣待定'**
+  String get salesIntakeDiscountPending;
+
+  /// No description provided for @salesIntakePricingNoListPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个货品还没有标价'**
+  String get salesIntakePricingNoListPrice;
+
+  /// No description provided for @salesIntakePricingAboveList.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件单价高于标价'**
+  String get salesIntakePricingAboveList;
+
+  /// No description provided for @salesIntakePricingOutOfRange.
+  ///
+  /// In zh, this message translates to:
+  /// **'折扣异常, 可能对应错货品'**
+  String get salesIntakePricingOutOfRange;
+
+  /// No description provided for @salesIntakePricingAmbiguous.
+  ///
+  /// In zh, this message translates to:
+  /// **'看不出文件是按人民币还是外币报价, 折扣请核对'**
+  String get salesIntakePricingAmbiguous;
+
+  /// No description provided for @salesIntakePricingRateMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'外币参考汇率还没维护, 折扣没能算出'**
+  String get salesIntakePricingRateMissing;
+
+  /// No description provided for @salesIntakeUnmatchedRemarkHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'不导入, 文件原文会写进备注'**
+  String get salesIntakeUnmatchedRemarkHint;
+
+  /// No description provided for @salesIntakeBlockedHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'订货单不能直接导入, 要先做报价单交给财务定价'**
+  String get salesIntakeBlockedHint;
+
+  /// No description provided for @salesIntakeBlockedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'这 {count} 个货品还没有标价(或文件单价高于标价)'**
+  String salesIntakeBlockedTitle(int count);
+
+  /// No description provided for @salesIntakeBlockedMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'订货单不能直接导入这些货品, 要先做报价单交给财务定价。'**
+  String get salesIntakeBlockedMessage;
+
+  /// No description provided for @salesIntakeHandoffToQuote.
+  ///
+  /// In zh, this message translates to:
+  /// **'改为新建报价单'**
+  String get salesIntakeHandoffToQuote;
+
+  /// No description provided for @salesIntakeDuplicateTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个文件可能已经录过'**
+  String get salesIntakeDuplicateTitle;
+
+  /// No description provided for @salesIntakeDuplicateItem.
+  ///
+  /// In zh, this message translates to:
+  /// **'{doc} {billNo} ({date}, {reason})'**
+  String salesIntakeDuplicateItem(
+    String doc,
+    String billNo,
+    String date,
+    String reason,
+  );
+
+  /// No description provided for @salesIntakeDuplicateMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'已有 {items}, 确定还要再建一张吗?'**
+  String salesIntakeDuplicateMessage(String items);
+
+  /// No description provided for @salesIntakeDocTypeQuote.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价单'**
+  String get salesIntakeDocTypeQuote;
+
+  /// No description provided for @salesIntakeDocTypeOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'订货单'**
+  String get salesIntakeDocTypeOrder;
+
+  /// No description provided for @salesIntakeOtherSheets.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件里还有工作表 {sheets} 也像明细表, 这次只识别了「{current}」。如需识别那张表, 请重新上传这个文件, 核对时点那张表即可。'**
+  String salesIntakeOtherSheets(String sheets, String current);
+
+  /// No description provided for @salesIntakeOtherSheetItem.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name}({count} 行)'**
+  String salesIntakeOtherSheetItem(String name, int count);
+
+  /// No description provided for @salesIntakeOtherSheetsLead.
+  ///
+  /// In zh, this message translates to:
+  /// **'这次识别的是工作表「{current}」。点下面的工作表可改为识别那一张 (每次只识别一张, 不会合在一起)。'**
+  String salesIntakeOtherSheetsLead(String current);
+
+  /// No description provided for @salesIntakeOtherSheetChip.
+  ///
+  /// In zh, this message translates to:
+  /// **'另有工作表 {name} 也像明细表 ({count} 行)'**
+  String salesIntakeOtherSheetChip(String name, int count);
+
+  /// No description provided for @salesIntakeOtherSheetTooltip.
+  ///
+  /// In zh, this message translates to:
+  /// **'改为识别这张表'**
+  String get salesIntakeOtherSheetTooltip;
+
+  /// No description provided for @salesIntakeSheetProgressSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'{file} · 工作表 {sheet}'**
+  String salesIntakeSheetProgressSubtitle(String file, String sheet);
+
+  /// No description provided for @salesIntakePriceMaskedNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'你看不到价格, 折扣会在保存时按文件单价自动计算'**
+  String get salesIntakePriceMaskedNotice;
+
+  /// No description provided for @salesIntakeCurrencyNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件是 {currency} 报价, 按财务参考汇率 {rate} 折算, 单据按{base}保存'**
+  String salesIntakeCurrencyNotice(String currency, String rate, String base);
+
+  /// No description provided for @salesIntakeRateMissingNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'{currency} 的参考汇率还没维护, 部分折扣没能算出, 请财务在币种资料中填写'**
+  String salesIntakeRateMissingNotice(String currency);
+
+  /// No description provided for @salesIntakeSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'将导入 {rows} 行 · {review} 行导入后黄色提醒核对 · {skipped} 行不导入'**
+  String salesIntakeSummary(int rows, int review, int skipped);
+
+  /// No description provided for @salesIntakeImportAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部导入 ({count} 行)'**
+  String salesIntakeImportAll(int count);
+
+  /// No description provided for @salesIntakeNothingToImport.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有可导入的货品'**
+  String get salesIntakeNothingToImport;
+
+  /// No description provided for @salesIntakePickedManually.
+  ///
+  /// In zh, this message translates to:
+  /// **'从货品资料选择'**
+  String get salesIntakePickedManually;
+
+  /// No description provided for @salesIntakeRemarkLineItem.
+  ///
+  /// In zh, this message translates to:
+  /// **'{label} × {qty}'**
+  String salesIntakeRemarkLineItem(String label, String qty);
+
+  /// No description provided for @salesIntakeRemarkUnmatched.
+  ///
+  /// In zh, this message translates to:
+  /// **'以下 {count} 行没找到对应货品: {lines}'**
+  String salesIntakeRemarkUnmatched(int count, String lines);
+
+  /// No description provided for @salesIntakeRemarkUnpriced.
+  ///
+  /// In zh, this message translates to:
+  /// **'以下 {count} 行还没有标价(或文件单价高于标价), 没有导入: {lines}'**
+  String salesIntakeRemarkUnpriced(int count, String lines);
+
+  /// No description provided for @salesIntakeRemarkBundlePrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'组合件 {bundle} 整套文件单价 {price}'**
+  String salesIntakeRemarkBundlePrice(String bundle, String price);
+
+  /// No description provided for @salesIntakeMarkerDefault.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别结果需要核对'**
+  String get salesIntakeMarkerDefault;
+
+  /// No description provided for @salesIntakeMarkerUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件数量单位不是个, 请核对数量'**
+  String get salesIntakeMarkerUnit;
+
+  /// No description provided for @salesIntakeMarkerQuotePricing.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个货品还没有标价(或文件单价高于标价), 待财务定价'**
+  String get salesIntakeMarkerQuotePricing;
+
+  /// No description provided for @salesIntakeMarkerQuoteDiscount.
+  ///
+  /// In zh, this message translates to:
+  /// **'折扣没能自动算出, 财务核价时确定'**
+  String get salesIntakeMarkerQuoteDiscount;
+
+  /// No description provided for @salesIntakeMarkerOrderDiscount.
+  ///
+  /// In zh, this message translates to:
+  /// **'折扣没能自动算出, 请按文件单价核对后填写'**
+  String get salesIntakeMarkerOrderDiscount;
+
+  /// No description provided for @salesIntakeQuoteLineReplaced.
+  ///
+  /// In zh, this message translates to:
+  /// **'这一行原来是报价里财务核定的货品, 换成别的货品后不再按报价的单价和折扣, 保存时按货品标价重新计算'**
+  String get salesIntakeQuoteLineReplaced;
+
+  /// No description provided for @salesIntakeMarkerBundlePart.
+  ///
+  /// In zh, this message translates to:
+  /// **'组合件已拆开, 请核对货品和折扣'**
+  String get salesIntakeMarkerBundlePart;
+
+  /// No description provided for @salesIntakeColClientModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件型号'**
+  String get salesIntakeColClientModel;
+
+  /// No description provided for @salesIntakeColClientModelInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户文件里的型号/货号。保存后系统会记住客户的叫法, 下次识别更准。'**
+  String get salesIntakeColClientModelInfo;
+
+  /// No description provided for @salesIntakeColClientGoodsName.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件品名'**
+  String get salesIntakeColClientGoodsName;
+
+  /// No description provided for @salesIntakeColClientGoodsNameInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户文件里的品名。手工选货品时会带出货品的英文名称, 可改。'**
+  String get salesIntakeColClientGoodsNameInfo;
+
+  /// No description provided for @salesIntakeColClientPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件单价'**
+  String get salesIntakeColClientPrice;
+
+  /// No description provided for @salesIntakeColClientPriceWithCurrency.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件单价({currency})'**
+  String salesIntakeColClientPriceWithCurrency(String currency);
+
+  /// No description provided for @salesIntakeColClientPriceInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户文件里的单价(文件币种), 只作核对参考; 单价以货品资料标价为准, 折扣按它计算。'**
+  String get salesIntakeColClientPriceInfo;
+
+  /// No description provided for @salesIntakeQuotePriceHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'单价按货品资料标价带入, 销售不能修改; 没有标价的货品由财务核价时定价。折扣按客户文件单价计算, 也可以留空交财务核价。'**
+  String get salesIntakeQuotePriceHint;
+
+  /// No description provided for @salesIntakeFinancePriced.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务定价'**
+  String get salesIntakeFinancePriced;
+
+  /// No description provided for @salesIntakePendingFinancePrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'待财务定价'**
+  String get salesIntakePendingFinancePrice;
+
+  /// No description provided for @salesIntakeQuoteDiscountPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务核价时填写'**
+  String get salesIntakeQuoteDiscountPending;
+
+  /// No description provided for @salesIntakeMaskedDiscount.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存时自动计算'**
+  String get salesIntakeMaskedDiscount;
+
+  /// No description provided for @salesIntakeQuoteLockedDiscount.
+  ///
+  /// In zh, this message translates to:
+  /// **'(报价核定)'**
+  String get salesIntakeQuoteLockedDiscount;
+
+  /// No description provided for @salesIntakeQuoteLockedDiscountInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'该行折扣已由财务在报价中核定, 如需改价请重新打开报价'**
+  String get salesIntakeQuoteLockedDiscountInfo;
 }
 
 class _AppLocalizationsDelegate

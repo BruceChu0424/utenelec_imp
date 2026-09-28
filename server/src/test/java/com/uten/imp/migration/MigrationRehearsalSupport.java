@@ -111,6 +111,8 @@ public final class MigrationRehearsalSupport {
             "permissions",
             // V543 下架 production.* 面上的停用码并补齐我的车间任务面三码（有意的增删）。
             "permission_surface_permissions",
+            // V742(ADR-134) 新增「销售报价核价」权限面(finance.sales-quote-review)一行。
+            "permission_surfaces",
             "role_permissions",
             // V582 把在途拣货任务拨回待出库时，按追加式事件账补一条
             // PICKING/PICKED/EXCEPTION -> PENDING_PICK 的留证行(只在真实克隆库里
@@ -171,7 +173,9 @@ public final class MigrationRehearsalSupport {
                 // 通知受众改按部门子树 + 权限码。
                 "roles", "user_roles", "role_permissions", "department_roles",
                 // V739(ADR-129) 按颜色的学习累计表由 goods_bom_actual_usages 取代。
-                "goods_bom_learning_material_totals");
+                "goods_bom_learning_material_totals",
+                // V741(ADR-133) 政策情报 AI 退役：外部抓取的政策摘要缓存表整表删除。
+                "official_policy_briefs");
         Set<String> requiredTables = new java.util.HashSet<>(before.tableRows().keySet());
         requiredTables.removeAll(intentionallyDropped);
         // V673(ADR-105) production_plan_costs 由按年分区改为普通单表: 各年分区子表与 default 分区

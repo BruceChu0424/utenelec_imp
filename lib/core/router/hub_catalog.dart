@@ -45,6 +45,7 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
   ],
   RouteName.finance: [
     RouteName.financeAudits,
+    RouteName.financeQuoteReview,
     '/expense/approval',
     '/expense/settings',
     RoutePath.financeDocNew('receipts'),

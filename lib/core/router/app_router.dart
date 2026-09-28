@@ -2,6 +2,7 @@
 // 文档：docs/05-架构/路由设计.md · 全局机制权限见 docs/05-架构/全局机制.md
 // 使用 go_router，扁平路由（静态段声明在 :id 之前避免冲突）
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,6 +11,7 @@ import '../l10n/gen/app_localizations.dart';
 import '../../features/admin/pages/admin_audit_log_page.dart';
 import '../../features/admin/pages/admin_audit_session_detail_page.dart';
 import '../../features/admin/models/audit_session.dart';
+import '../../features/admin/pages/admin_ai_settings_page.dart';
 import '../../features/admin/pages/admin_system_settings_page.dart';
 import '../../features/admin/pages/server_status_page.dart';
 import '../../features/admin/pages/admin_permissions_page.dart';
@@ -60,6 +62,8 @@ import '../../features/finance/pages/finance_sales_order_confirmation_page.dart'
 import '../../features/finance/pages/finance_sales_order_review_page.dart';
 import '../../features/finance/pages/finance_sales_shipment_audit_page.dart';
 import '../../features/finance/pages/finance_sales_shipment_audit_review_page.dart';
+import '../../features/finance/pages/finance_quote_review_list_page.dart';
+import '../../features/finance/pages/finance_quote_review_page.dart';
 import '../../features/finance/pages/finance_reconciliation_page.dart';
 import '../../features/finance/pages/finance_report_table_page.dart';
 import '../../features/finance/pages/finance_ar_ap_overview_page.dart';
@@ -1382,6 +1386,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
               initialOrderId: s.uri.queryParameters['sourceOrderId'],
               initialOrderItems: s.uri.queryParameters['orderItems'],
+              // 订货单识别结果「改为新建报价单」: 同一次识别直接在报价页恢复(ADR-134),
+              // 原文件经 extra 带过来(只在同一次跳转里有)。
+              initialAiJobId: s.uri.queryParameters['aiJobId'],
+              initialAiFile: s.extra is PlatformFile
+                  ? s.extra as PlatformFile
+                  : null,
             ),
           ),
           DraftAwareGoRoute(
@@ -1574,6 +1584,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, state) => FinanceSalesShipmentAuditReviewPage(
               id: state.pathParameters['id']!,
             ),
+          ),
+          // 销售报价财务核价(ADR-134)：队列(?state= 深链分段) + 核价详情。
+          DraftAwareGoRoute(
+            path: RouteName.financeQuoteReview,
+            name: 'finance-quote-review',
+            builder: (_, state) => FinanceQuoteReviewListPage(
+              initialState: state.uri.queryParameters['state'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.financeQuoteReviewDetail,
+            name: 'finance-quote-review-detail',
+            builder: (_, state) =>
+                FinanceQuoteReviewPage(id: state.pathParameters['id']!),
           ),
           DraftAwareGoRoute(
             path: RouteName.financeArrivalExceptions,
@@ -1844,6 +1868,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.adminServerStatus,
             name: 'admin-server-status',
             builder: (_, _) => const ServerStatusPage(),
+          ),
+          // AI 服务设置(ADR-133): 不是表单草稿页, 密钥绝不进草稿快照。
+          DraftAwareGoRoute(
+            path: RouteName.adminAiSettings,
+            name: 'admin-ai-settings',
+            builder: (_, _) => const AdminAiSettingsPage(),
           ),
         ],
       ),

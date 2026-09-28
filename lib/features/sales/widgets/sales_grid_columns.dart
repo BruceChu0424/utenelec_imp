@@ -7,7 +7,13 @@
 // 2026-09-04 口径：实际重量列下线（单位已表达重量；行模型 weight 保留透传），
 // 单位列紧跟数量。折扣列表头 ⓘ 悬停说明「1 = 原价；0.9 = 9折」。
 // salesGridColumns：货品/颜色/数量/单位/单价/金额 + 补列（条件）。
+// 2026-09-27(ADR-134)：报价/订货加「文件型号 / 文件品名 / 文件单价」三列(客户文件原文,
+// 识别客户文件导入或手填; 文件单价只读、仅有值时出现); 报价单价同订货一样锁定、
+// 折扣可编辑(可留空交财务核价); 识别结果里需要核对的行货品格黄框提醒。
 import 'package:flutter/material.dart';
+import '../intake/sales_intake_l10n.dart';
+import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../shared/drafts/form_draft_values.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -17,6 +23,7 @@ import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../intake/sales_intake_apply.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
 import 'sales_doc_link_picker.dart';
@@ -63,6 +70,10 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     price.addListener(_clearFlagged);
     discount.addListener(_clearFlagged);
     remark.addListener(_clearFlagged);
+    // 识别结果黄标：用户改了货品/数量/折扣即视为已核对(只看内容变化，点进输入框不算)。
+    goodsNotifier.addListener(_clearAiReviewIfChanged);
+    qty.addListener(_clearAiReviewIfChanged);
+    discount.addListener(_clearAiReviewIfChanged);
     // 新销售订单默认原价倍率；货品主档折扣或用户输入随后可覆盖。
     if (amountUsesDiscount) discount.text = '1';
   }
@@ -136,6 +147,62 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   /// 行备注（5 类单据通用，网格末列；空文本不随 body 提交）。
   final remark = TextEditingController();
 
+  // ---- 客户文件原文(报价/订货，ADR-134)----
+
+  /// 文件型号(客户的型号/货号，可编辑；保存后系统学习客户叫法)。
+  final clientModel = TextEditingController();
+
+  /// 文件品名(客户的品名，可编辑；手工选货品时带出货品英文名称)。
+  final clientGoodsName = TextEditingController();
+
+  /// 文件单价(文件币种，只读参考；折扣按它反推，单价始终以标价为准)。
+  String? clientPrice;
+
+  /// 手工选货品时自动带出的英文名称(文件品名仍等于它时，换货品会一并更新)。
+  String? prefilledNameEn;
+
+  /// 客户编号(历史字段，不展示，仅随保存原样回传避免被清空)。
+  String? clientNo;
+
+  /// 报价行定价来源：FINANCE = 财务定价(单价格显示「财务定价」)。
+  String? priceSource;
+
+  /// 报价转入的订货行：折扣已由财务在报价中核定，只读。
+  bool quoteDiscountLocked = false;
+
+  /// 识别作业里的行键(保存时回传 intakeLineKey，服务端据此学习)。
+  String? intakeLineKey;
+
+  /// 用户明确选过/改过这一行的货品(学习时算「人工确认」)。
+  bool userConfirmed = false;
+
+  /// 保存后把文件品名写成该货品的英文名称(核对面板里勾的)。
+  bool setNameEn = false;
+
+  /// 识别结果需要核对的原因(非 null = 货品格黄框提醒)。
+  final aiReviewNotifier = ValueNotifier<String?>(null);
+  String? get aiReview => aiReviewNotifier.value;
+  String? _aiReviewGoodsId;
+  String? _aiReviewQty;
+  String? _aiReviewDiscount;
+
+  /// 标记(或清除)识别黄标：记下当前内容，之后内容一变就自动清除。
+  void markAiReview(String? reason) {
+    aiReviewNotifier.value = reason;
+    _aiReviewGoodsId = goods?.id;
+    _aiReviewQty = qty.text;
+    _aiReviewDiscount = discount.text;
+  }
+
+  void _clearAiReviewIfChanged() {
+    if (aiReviewNotifier.value == null) return;
+    if (goods?.id != _aiReviewGoodsId ||
+        qty.text != _aiReviewQty ||
+        discount.text != _aiReviewDiscount) {
+      aiReviewNotifier.value = null;
+    }
+  }
+
   /// 行级校验红标：保存拦截时置 true（货品/数量/单价缺失的格变红），
   /// 用户改货品/数量/单价即自动清除。
   final invalidNotifier = ValueNotifier<bool>(false);
@@ -165,6 +232,31 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
       ..unitRate = li.unitRate;
     r.qty.text = li.qty.toString();
     if (li.price != null) r.price.text = li.price.toString();
+    return r;
+  }
+
+  /// 识别客户文件导入的一行：货品/颜色/单位、数量、标价预览(只读)、折扣、
+  /// 文件原文与学习标记；需要核对的行带黄标。单价永远来自标价，不用文件单价。
+  factory SalesGridRow.fromIntake(
+    SalesIntakePatchRow p, {
+    bool amountUsesDiscount = true,
+  }) {
+    final r = SalesGridRow(amountUsesDiscount: amountUsesDiscount)
+      ..goods = GoodsOption(id: p.goodsId, code: p.goodsCode, name: p.goodsName)
+      ..colorId = p.colorId
+      ..unitId = p.unitId
+      ..unitRate = 1
+      ..clientPrice = p.clientPrice
+      ..intakeLineKey = p.intakeLineKey
+      ..userConfirmed = p.userConfirmed
+      ..setNameEn = p.setNameEn;
+    r.qty.text = p.qty;
+    r.applyLockedPricePreview(num.tryParse(p.listPrice ?? ''));
+    r.discount.text = p.discount ?? '';
+    r.clientModel.text = p.clientModel ?? '';
+    r.clientGoodsName.text = p.clientGoodsName ?? '';
+    r.remark.text = p.remark ?? '';
+    r.markAiReview(p.reviewReason);
     return r;
   }
 
@@ -208,10 +300,13 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     'dieCastPrice': dieCastPrice,
     'discount': discount,
     'remark': remark,
+    'clientModel': clientModel,
+    'clientGoodsName': clientGoodsName,
   };
 
   Iterable<Listenable> get draftListenables => [
     ..._draftTextControllers.values,
+    aiReviewNotifier,
     goodsNotifier,
     colorIdNotifier,
     unitIdNotifier,
@@ -235,6 +330,15 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     'responsible': responsible,
     'amountUsesDiscount': amountUsesDiscount,
     'requiresOrderPriceRefresh': requiresOrderPriceRefresh,
+    'clientPrice': clientPrice,
+    'clientNo': clientNo,
+    'priceSource': priceSource,
+    'quoteDiscountLocked': quoteDiscountLocked,
+    'intakeLineKey': intakeLineKey,
+    'userConfirmed': userConfirmed,
+    'setNameEn': setNameEn,
+    'aiReview': aiReview,
+    'prefilledNameEn': prefilledNameEn,
   };
 
   factory SalesGridRow.fromDraft(Map<String, dynamic> data) {
@@ -250,9 +354,18 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
           ..unitId = data['unitId'] as String?
           ..unitRateExact = data['unitRateExact'] as String?
           ..solution = data['solution'] as String?
-          ..responsible = data['responsible'] as String?;
+          ..responsible = data['responsible'] as String?
+          ..clientPrice = data['clientPrice'] as String?
+          ..clientNo = data['clientNo'] as String?
+          ..priceSource = data['priceSource'] as String?
+          ..quoteDiscountLocked = data['quoteDiscountLocked'] == true
+          ..intakeLineKey = data['intakeLineKey'] as String?
+          ..userConfirmed = data['userConfirmed'] == true
+          ..setNameEn = data['setNameEn'] == true
+          ..prefilledNameEn = data['prefilledNameEn'] as String?;
     restoreDraftTextValues(row._draftTextControllers, draftMap(data['text']));
     row.requiresOrderPriceRefresh = data['requiresOrderPriceRefresh'] == true;
+    row.markAiReview(data['aiReview'] as String?);
     return row;
   }
 
@@ -279,6 +392,10 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     c.dieCastPrice.text = dieCastPrice.text;
     c.discount.text = discount.text;
     c.remark.text = remark.text;
+    // 文件原文随行复制；识别行键/人工确认/英文名勾选/财务定价/报价核定属于原行，不复制。
+    c.clientModel.text = clientModel.text;
+    c.clientGoodsName.text = clientGoodsName.text;
+    c.clientPrice = clientPrice;
     return c;
   }
 
@@ -301,6 +418,9 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     dieCastPrice.dispose();
     discount.dispose();
     remark.dispose();
+    clientModel.dispose();
+    clientGoodsName.dispose();
+    aiReviewNotifier.dispose();
     invalidNotifier.dispose();
     super.dispose();
   }
@@ -309,6 +429,10 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
 /// 销售明细列：货品（点选）/ 颜色 / 单位 / 数量 / 单价 / 金额（自动）+ 报表补列（按
 /// [docType] 条件追加）。[onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
 /// [colorEntries]/[unitEntries] 由编辑页从 SalesMasterNameService 注入（单元格下拉用）。
+///
+/// 报价/订货(ADR-134)：[showClientPrice] 有文件单价时显示「文件单价」列(表头带
+/// [clientFileCurrency])；[priceMasked] 看不到价格的账号单价格显示 ***、折扣格只读
+/// (保存时由服务端按文件单价计算)。
 List<EditableGridColumn<SalesGridRow>> salesGridColumns({
   required BuildContext context,
   required Future<void> Function(SalesGridRow row) onPickGoods,
@@ -316,9 +440,18 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
   required Map<String, String> colorEntries,
   required Map<String, String> unitEntries,
   bool freeCustomerShipment = false,
+  bool showClientPrice = false,
+  String? clientFileCurrency,
+  bool priceMasked = false,
 }) {
+  final isQuote = docType == SalesDocType.quote;
+  final hasClientText = isQuote || docType == SalesDocType.order;
   final priceRequired =
-      docType != SalesDocType.otherShipment && !freeCustomerShipment;
+      docType != SalesDocType.otherShipment &&
+      !isQuote &&
+      !freeCustomerShipment &&
+      !priceMasked;
+  final intakeText = salesIntakeL10n(context);
   // 列说明统一挂表头 ⓘ（2026-09-09 口径）：每行重复的 ⓘ 既冗余又挤占格宽。
   final l10n = workflowFieldText(context);
   final qtyHint = switch (docType) {
@@ -326,8 +459,9 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
     SalesDocType.returnDoc => l10n.workflowReturnQuantityHint,
     _ => l10n.workflowQuantityHint,
   };
-  final priceHint =
-      (docType == SalesDocType.order || docType == SalesDocType.shipment)
+  final priceHint = isQuote
+      ? intakeText.salesIntakeQuotePriceHint
+      : (docType == SalesDocType.order || docType == SalesDocType.shipment)
       ? _lockedPriceHint
       : docType == SalesDocType.returnDoc
       ? l10n.workflowReturnPriceHint
@@ -343,15 +477,37 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       required: true,
       textOf: (r) => r.goods?.name ?? '',
       listenableOf: (r) => r.goodsNotifier,
-      // 格尾搜索图标(16)计入自动加宽量宽，不再吃文本宽。
-      chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
+      // 格尾搜索图标(16)计入自动加宽量宽，不再吃文本宽；识别黄标另占一个状态图标位。
+      chromeWidth: hasClientText
+          ? UtenEditableGridCellSpec.dropdownChevronWidth +
+                UtenEditableGridCellSpec.hintIconWidth
+          : UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.goodsNotifier,
         isEmpty: () => row.goods == null,
         child: InkWell(
           onTap: () => onPickGoods(row),
-          child: InputDecorator(
-            decoration: const InputDecoration(isDense: true),
+          child: ValueListenableBuilder<String?>(
+            valueListenable: row.aiReviewNotifier,
+            builder: (context, review, child) => InputDecorator(
+              key: review == null
+                  ? null
+                  : ValueKey('sales-goods-ai-review-${row.goods?.id}'),
+              decoration: review == null
+                  ? const InputDecoration(isDense: true)
+                  // 原因走 UtenFieldMessage.autofill(格内黄标披露, 与带记忆的框同款)。
+                  : applyAutofillHint(
+                      UtenInputDecoration(
+                        InputDecoration(
+                          isDense: true,
+                          helper: UtenFieldMessage.autofill(review),
+                        ),
+                      ),
+                      Theme.of(context),
+                      autofilled: true,
+                    ),
+              child: child,
+            ),
             child: Row(
               children: [
                 Expanded(
@@ -396,6 +552,33 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       cellBuilder: (context, row) =>
           _readOnlyMasterCell(context, row.colorIdNotifier, colorEntries),
     ),
+    // 报价/订货：客户文件原文(识别导入或手填，可改；保存后系统学习客户叫法)。
+    if (hasClientText) ...[
+      EditableGridColumn<SalesGridRow>(
+        key: 'clientModel',
+        label: intakeText.salesIntakeColClientModel,
+        width: 130,
+        headerInfo: intakeText.salesIntakeColClientModelInfo,
+        textOf: (r) => r.clientModel.text,
+        listenableOf: (r) => r.clientModel,
+        cellBuilder: (context, row) => TextField(
+          controller: row.clientModel,
+          decoration: const InputDecoration(isDense: true),
+        ),
+      ),
+      EditableGridColumn<SalesGridRow>(
+        key: 'clientGoodsName',
+        label: intakeText.salesIntakeColClientGoodsName,
+        width: 180,
+        headerInfo: intakeText.salesIntakeColClientGoodsNameInfo,
+        textOf: (r) => r.clientGoodsName.text,
+        listenableOf: (r) => r.clientGoodsName,
+        cellBuilder: (context, row) => TextField(
+          controller: row.clientGoodsName,
+          decoration: const InputDecoration(isDense: true),
+        ),
+      ),
+    ],
     // 实物出入库单据（出货/其它出货/退货=hasWarehouse）：库位号（主档带出，拣货/上架指引）。
     if (const [
       SalesDocType.otherShipment,
@@ -468,12 +651,28 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
               priceRequired &&
               (row.price.text.trim().isEmpty ||
                   double.tryParse(row.price.text.trim()) == null),
-          // 订单/出货：单价由货品主档或受信任来源单据带入、锁定不可改。
+          // 订单/出货/报价：单价由货品主档或受信任来源单据带入、锁定不可改。
           // 复制订单行会清空冻结价；重新选择货品即可取得当前主档价。
           child:
               (docType == SalesDocType.order ||
-                  docType == SalesDocType.shipment)
-              ? _lockedCell(context, row.price)
+                  docType == SalesDocType.shipment ||
+                  isQuote)
+              ? _lockedCell(
+                  context,
+                  row.price,
+                  // 复制出来的报价行单价已清空、须重新选货取价: 不显示「待财务定价」误导。
+                  hint: priceMasked
+                      ? '***'
+                      : isQuote &&
+                            row.goods != null &&
+                            !row.requiresOrderPriceRefresh
+                      ? intakeText.salesIntakePendingFinancePrice
+                      : null,
+                  tag: row.priceSource == 'FINANCE'
+                      ? intakeText.salesIntakeFinancePriced
+                      : null,
+                  info: isQuote ? intakeText.salesIntakeQuotePriceHint : null,
+                )
               : TextField(
                   controller: row.price,
                   textAlign: TextAlign.right,
@@ -486,28 +685,94 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
                 ),
         ),
       ),
-    // 订单折扣：紧跟单价；货品主档 zk 仅作为初始建议，销售可按订单调整。
+    // 订单/报价折扣：紧跟单价；货品主档 zk 或按文件单价反推的值作为初始建议，销售可调整
+    //(报价可留空交财务核价)。看不到价格的账号只读(保存时服务端按文件单价计算)；
+    // 报价转入的订货行只读(财务已在报价中核定)。
     if (!freeCustomerShipment &&
         (docType == SalesDocType.order ||
-            docType == SalesDocType.customerShipment))
+            docType == SalesDocType.customerShipment ||
+            isQuote))
       EditableGridColumn<SalesGridRow>(
         key: 'discount',
         label: '折扣',
         width: 128,
         numeric: true,
-        required: true,
+        required: !isQuote && !priceMasked,
         // 表头 ⓘ 悬停说明折扣口径（2026-09-04 用户口径）；格内不再重复 ⓘ。
         headerInfo: l10n.workflowDiscountHint,
-        frozenTextOf: (r) => r.discount.text,
-        cellBuilder: (context, row) => RequiredCellFrame(
-          listenable: row.discount,
-          isEmpty: () => !isValidSalesOrderDiscountText(row.discount.text),
-          child: TextField(
-            controller: row.discount,
+        frozenTextOf: (r) => r.quoteDiscountLocked
+            ? '${r.discount.text} ${intakeText.salesIntakeQuoteLockedDiscount}'
+            : r.discount.text,
+        cellBuilder: (context, row) {
+          if (priceMasked) {
+            return _lockedCell(
+              context,
+              row.discount,
+              hint: intakeText.salesIntakeMaskedDiscount,
+              info: intakeText.salesIntakeMaskedDiscount,
+            );
+          }
+          if (row.quoteDiscountLocked) {
+            return _lockedCell(
+              context,
+              row.discount,
+              tag: intakeText.salesIntakeQuoteLockedDiscount,
+              info: intakeText.salesIntakeQuoteLockedDiscountInfo,
+            );
+          }
+          return RequiredCellFrame(
+            listenable: row.discount,
+            isEmpty: () => isQuote
+                ? row.discount.text.trim().isNotEmpty &&
+                      !isValidSalesOrderDiscountText(row.discount.text)
+                : !isValidSalesOrderDiscountText(row.discount.text),
+            child: ValueListenableBuilder<String?>(
+              valueListenable: row.aiReviewNotifier,
+              builder: (context, review, _) => TextField(
+                controller: row.discount,
+                textAlign: TextAlign.right,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: applyAutofillHint(
+                  InputDecoration(
+                    isDense: true,
+                    hintText: isQuote
+                        ? intakeText.salesIntakeQuoteDiscountPending
+                        : null,
+                  ),
+                  Theme.of(context),
+                  autofilled:
+                      review != null && row.discount.text.trim().isEmpty,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    // 文件单价：客户文件里的单价(文件币种)，只读参考，仅在有值时出现。
+    if (hasClientText && showClientPrice)
+      EditableGridColumn<SalesGridRow>(
+        key: 'clientPrice',
+        label: clientFileCurrency == null
+            ? intakeText.salesIntakeColClientPrice
+            : intakeText.salesIntakeColClientPriceWithCurrency(
+                clientFileCurrency,
+              ),
+        width: 120,
+        numeric: true,
+        headerInfo: intakeText.salesIntakeColClientPriceInfo,
+        frozenTextOf: (r) => r.clientPrice ?? '',
+        cellBuilder: (context, row) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Text(
+            row.clientPrice ?? '—',
             textAlign: TextAlign.right,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const UtenInputDecoration(
-              InputDecoration(isDense: true),
+            style: TextStyle(
+              color: row.clientPrice == null
+                  ? Theme.of(context).colorScheme.onSurfaceVariant
+                  : null,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
         ),
@@ -527,7 +792,8 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         frozenTextOf: (r) => r.amountExactNotifier.value == null
             ? ''
             : docType == SalesDocType.order ||
-                  docType == SalesDocType.customerShipment
+                  docType == SalesDocType.customerShipment ||
+                  isQuote
             ? financeExactMoneyDisplay(r.amountExactNotifier.value!)
             : '¥${financeExactMoneyDisplay(r.amountExactNotifier.value!)}',
         cellBuilder: (context, row) => ValueListenableBuilder<String?>(
@@ -536,7 +802,8 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
             v == null
                 ? '—'
                 : docType == SalesDocType.order ||
-                      docType == SalesDocType.customerShipment
+                      docType == SalesDocType.customerShipment ||
+                      isQuote
                 ? financeExactMoneyDisplay(v)
                 : '¥${financeExactMoneyDisplay(v)}',
           ),
@@ -635,17 +902,37 @@ const String _lockedPriceHint =
     '单价由货品资料或来源单据带入，并由服务端锁定，不可在订货单修改。'
     '复制的新行如单价为空，请重新选择货品取得当前价格';
 
-Widget _lockedCell(BuildContext context, TextEditingController ctl) {
+/// [hint] 空值时的占位(默认「重新选货取价」)；[tag] 值后的小字标记(如「财务定价」
+/// 「(报价核定)」)；[info] 点按提示(默认锁定单价说明)。
+Widget _lockedCell(
+  BuildContext context,
+  TextEditingController ctl, {
+  String? hint,
+  String? tag,
+  String? info,
+}) {
   final theme = Theme.of(context);
   return TextField(
     controller: ctl,
     readOnly: true,
     textAlign: TextAlign.right,
     style: TextStyle(color: theme.colorScheme.onSurface),
-    decoration: const UtenInputDecoration(
-      InputDecoration(isDense: true, hintText: '重新选货取价'),
+    decoration: UtenInputDecoration(
+      InputDecoration(
+        isDense: true,
+        hintText: hint ?? '重新选货取价',
+        suffix: tag == null
+            ? null
+            : Text(
+                tag,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+      ),
     ),
-    onTap: () => context.appInfo(_lockedPriceHint),
+    onTap: () => context.appInfo(info ?? _lockedPriceHint),
   );
 }
 

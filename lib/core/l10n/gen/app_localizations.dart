@@ -10330,6 +10330,869 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'报价加载失败, 请稍后重试'**
   String get salesQuoteStatusImportLoadFailed;
+
+  /// No description provided for @salesIntakeBannerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别客户文件'**
+  String get salesIntakeBannerTitle;
+
+  /// No description provided for @salesIntakeBannerMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传客户的报价单/形式发票, 自动填好客户和货品'**
+  String get salesIntakeBannerMessage;
+
+  /// No description provided for @salesIntakeBannerButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别客户文件'**
+  String get salesIntakeBannerButton;
+
+  /// No description provided for @salesIntakeBannerAgain.
+  ///
+  /// In zh, this message translates to:
+  /// **'再识别一个文件'**
+  String get salesIntakeBannerAgain;
+
+  /// No description provided for @salesIntakeBannerImported.
+  ///
+  /// In zh, this message translates to:
+  /// **'已从 {file} 导入 {count} 行'**
+  String salesIntakeBannerImported(String file, int count);
+
+  /// No description provided for @salesIntakeToolbarButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别客户文件'**
+  String get salesIntakeToolbarButton;
+
+  /// No description provided for @salesIntakeAiOffHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 未开启, 只能识别常见格式的 Excel'**
+  String get salesIntakeAiOffHint;
+
+  /// No description provided for @salesIntakeApprovedOrderHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'已审核的订单请用改量或修改, 不能整单重新识别'**
+  String get salesIntakeApprovedOrderHint;
+
+  /// No description provided for @salesIntakeReplaceTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'明细里已经有货品'**
+  String get salesIntakeReplaceTitle;
+
+  /// No description provided for @salesIntakeReplaceMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'要用识别结果替换现有明细, 还是追加在后面?'**
+  String get salesIntakeReplaceMessage;
+
+  /// No description provided for @salesIntakeReplace.
+  ///
+  /// In zh, this message translates to:
+  /// **'替换'**
+  String get salesIntakeReplace;
+
+  /// No description provided for @salesIntakeAppend.
+  ///
+  /// In zh, this message translates to:
+  /// **'追加'**
+  String get salesIntakeAppend;
+
+  /// No description provided for @salesIntakeApplied.
+  ///
+  /// In zh, this message translates to:
+  /// **'已导入 {count} 行, 其中 {review} 行有黄色标记, 请核对'**
+  String salesIntakeApplied(int count, int review);
+
+  /// No description provided for @salesIntakeAppliedAllMatched.
+  ///
+  /// In zh, this message translates to:
+  /// **'已导入 {count} 行'**
+  String salesIntakeAppliedAllMatched(int count);
+
+  /// No description provided for @salesIntakeAttachFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'原文件没能加入附件, 可在附件区手动上传'**
+  String get salesIntakeAttachFailed;
+
+  /// No description provided for @salesIntakeProgressTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在识别客户文件'**
+  String get salesIntakeProgressTitle;
+
+  /// No description provided for @salesIntakeStageUpload.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传文件'**
+  String get salesIntakeStageUpload;
+
+  /// No description provided for @salesIntakeStageRead.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取表格'**
+  String get salesIntakeStageRead;
+
+  /// No description provided for @salesIntakeStageLayout.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别表头与列'**
+  String get salesIntakeStageLayout;
+
+  /// No description provided for @salesIntakeStageGoods.
+  ///
+  /// In zh, this message translates to:
+  /// **'匹配货品'**
+  String get salesIntakeStageGoods;
+
+  /// No description provided for @salesIntakeStageClient.
+  ///
+  /// In zh, this message translates to:
+  /// **'匹配客户'**
+  String get salesIntakeStageClient;
+
+  /// No description provided for @salesIntakeStagePricing.
+  ///
+  /// In zh, this message translates to:
+  /// **'计算折扣'**
+  String get salesIntakeStagePricing;
+
+  /// No description provided for @salesIntakeSendWholeFileTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'整份文件会发送给 AI 服务识别'**
+  String get salesIntakeSendWholeFileTitle;
+
+  /// No description provided for @salesIntakeSendWholeFileMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'这是 PDF/图片, 系统需要把整份文件发给 AI 服务来识别。文件里如有银行账号等敏感信息, 请先确认可以发送。'**
+  String get salesIntakeSendWholeFileMessage;
+
+  /// No description provided for @salesIntakeSendWholeFileConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'继续识别'**
+  String get salesIntakeSendWholeFileConfirm;
+
+  /// No description provided for @salesIntakeAiRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'PDF/图片需要开启 AI 才能识别, 请上传 Excel 或联系管理员'**
+  String get salesIntakeAiRequired;
+
+  /// No description provided for @salesIntakeVisionRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'这是图片格式的文件, 需要管理员在 AI 服务设置中启用支持图片识别的模型'**
+  String get salesIntakeVisionRequired;
+
+  /// No description provided for @salesIntakeFileTooLarge.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件太大, 最大 {max}'**
+  String salesIntakeFileTooLarge(String max);
+
+  /// No description provided for @salesIntakeFileUnreadable.
+  ///
+  /// In zh, this message translates to:
+  /// **'没能读取这个文件, 请重新选择'**
+  String get salesIntakeFileUnreadable;
+
+  /// No description provided for @salesIntakeFileTypeUnsupported.
+  ///
+  /// In zh, this message translates to:
+  /// **'只能识别 Excel、CSV、PDF 或图片文件'**
+  String get salesIntakeFileTypeUnsupported;
+
+  /// No description provided for @salesIntakeFailedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'没能识别这个文件'**
+  String get salesIntakeFailedTitle;
+
+  /// No description provided for @salesIntakeResultUnreadable.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别结果无法读取, 请重新识别'**
+  String get salesIntakeResultUnreadable;
+
+  /// No description provided for @salesIntakeNoLines.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件里没找到货品明细, 请确认上传的是报价单或形式发票'**
+  String get salesIntakeNoLines;
+
+  /// No description provided for @salesIntakeCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get salesIntakeCancel;
+
+  /// No description provided for @salesIntakeCreateClientTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'用文件信息新建客户'**
+  String get salesIntakeCreateClientTitle;
+
+  /// No description provided for @salesIntakeCreateClientIntro.
+  ///
+  /// In zh, this message translates to:
+  /// **'将按下面的信息新建客户, 负责人是你, 分类放在「未分类」。'**
+  String get salesIntakeCreateClientIntro;
+
+  /// No description provided for @salesIntakeCreateClientName.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户简称'**
+  String get salesIntakeCreateClientName;
+
+  /// No description provided for @salesIntakeCreateClientNameRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写客户简称'**
+  String get salesIntakeCreateClientNameRequired;
+
+  /// No description provided for @salesIntakeCreateClientConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建客户'**
+  String get salesIntakeCreateClientConfirm;
+
+  /// No description provided for @salesIntakeCreateClientDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已新建客户 {name}'**
+  String salesIntakeCreateClientDone(String name);
+
+  /// No description provided for @salesIntakeCreateClientExists.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个客户已经存在, 已为你选上'**
+  String get salesIntakeCreateClientExists;
+
+  /// No description provided for @salesIntakeCreateClientFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建客户没有成功, 请稍后重试'**
+  String get salesIntakeCreateClientFailed;
+
+  /// No description provided for @salesIntakeFieldFullName.
+  ///
+  /// In zh, this message translates to:
+  /// **'全称'**
+  String get salesIntakeFieldFullName;
+
+  /// No description provided for @salesIntakeFieldNameEn.
+  ///
+  /// In zh, this message translates to:
+  /// **'外文名称'**
+  String get salesIntakeFieldNameEn;
+
+  /// No description provided for @salesIntakeFieldLinkman.
+  ///
+  /// In zh, this message translates to:
+  /// **'联系人'**
+  String get salesIntakeFieldLinkman;
+
+  /// No description provided for @salesIntakeFieldEmail.
+  ///
+  /// In zh, this message translates to:
+  /// **'邮箱'**
+  String get salesIntakeFieldEmail;
+
+  /// No description provided for @salesIntakeFieldPhone.
+  ///
+  /// In zh, this message translates to:
+  /// **'电话'**
+  String get salesIntakeFieldPhone;
+
+  /// No description provided for @salesIntakeFieldAddress.
+  ///
+  /// In zh, this message translates to:
+  /// **'地址'**
+  String get salesIntakeFieldAddress;
+
+  /// No description provided for @salesIntakeFieldTaxId.
+  ///
+  /// In zh, this message translates to:
+  /// **'税号'**
+  String get salesIntakeFieldTaxId;
+
+  /// No description provided for @salesIntakeFieldPlace.
+  ///
+  /// In zh, this message translates to:
+  /// **'国家/地区'**
+  String get salesIntakeFieldPlace;
+
+  /// No description provided for @salesIntakeReviewTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对识别结果'**
+  String get salesIntakeReviewTitle;
+
+  /// No description provided for @salesIntakeReviewSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'{file} · 共 {count} 行明细'**
+  String salesIntakeReviewSubtitle(String file, int count);
+
+  /// No description provided for @salesIntakeClose.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get salesIntakeClose;
+
+  /// No description provided for @salesIntakeStepClient.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户'**
+  String get salesIntakeStepClient;
+
+  /// No description provided for @salesIntakeStepGoods.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品'**
+  String get salesIntakeStepGoods;
+
+  /// No description provided for @salesIntakeClientResolved.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户: {name}'**
+  String salesIntakeClientResolved(String name);
+
+  /// No description provided for @salesIntakeClientChange.
+  ///
+  /// In zh, this message translates to:
+  /// **'换一个'**
+  String get salesIntakeClientChange;
+
+  /// No description provided for @salesIntakeClientPickOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'选其它客户…'**
+  String get salesIntakeClientPickOther;
+
+  /// No description provided for @salesIntakeClientCreate.
+  ///
+  /// In zh, this message translates to:
+  /// **'用文件信息新建客户'**
+  String get salesIntakeClientCreate;
+
+  /// No description provided for @salesIntakeClientBuyer.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件上的买方: {name}'**
+  String salesIntakeClientBuyer(String name);
+
+  /// No description provided for @salesIntakeClientNotFound.
+  ///
+  /// In zh, this message translates to:
+  /// **'没在你的客户里找到这个买方'**
+  String get salesIntakeClientNotFound;
+
+  /// No description provided for @salesIntakeClientSuggestions.
+  ///
+  /// In zh, this message translates to:
+  /// **'像是下面这些客户, 请选一个:'**
+  String get salesIntakeClientSuggestions;
+
+  /// No description provided for @salesIntakeClientNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没选客户, 导入后也可以在表头再选'**
+  String get salesIntakeClientNone;
+
+  /// No description provided for @salesIntakeNoVisibleClients.
+  ///
+  /// In zh, this message translates to:
+  /// **'你名下还没有客户资料, 请联系主管在客户资料里把客户分配给你'**
+  String get salesIntakeNoVisibleClients;
+
+  /// No description provided for @salesIntakeEnrichSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件里有客户的{fields}, 保存时补进客户资料'**
+  String salesIntakeEnrichSummary(String fields);
+
+  /// No description provided for @salesIntakeEnrichShow.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看'**
+  String get salesIntakeEnrichShow;
+
+  /// No description provided for @salesIntakeEnrichHide.
+  ///
+  /// In zh, this message translates to:
+  /// **'收起'**
+  String get salesIntakeEnrichHide;
+
+  /// No description provided for @salesIntakeEnrichDiffers.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件里的值不同, 现在是: {current}'**
+  String salesIntakeEnrichDiffers(String current);
+
+  /// No description provided for @salesIntakeEnrichCurrentEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户资料里还没填'**
+  String get salesIntakeEnrichCurrentEmpty;
+
+  /// No description provided for @salesIntakeFilterReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要核对 ({count})'**
+  String salesIntakeFilterReview(int count);
+
+  /// No description provided for @salesIntakeFilterAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部 ({count})'**
+  String salesIntakeFilterAll(int count);
+
+  /// No description provided for @salesIntakeMatchedCollapsed.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 行已自动对应 ✓'**
+  String salesIntakeMatchedCollapsed(int count);
+
+  /// No description provided for @salesIntakeExpand.
+  ///
+  /// In zh, this message translates to:
+  /// **'展开'**
+  String get salesIntakeExpand;
+
+  /// No description provided for @salesIntakeCollapse.
+  ///
+  /// In zh, this message translates to:
+  /// **'收起'**
+  String get salesIntakeCollapse;
+
+  /// No description provided for @salesIntakeNoReviewLines.
+  ///
+  /// In zh, this message translates to:
+  /// **'所有行都已自动对应, 可以直接导入'**
+  String get salesIntakeNoReviewLines;
+
+  /// No description provided for @salesIntakeLineNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'第 {no} 行'**
+  String salesIntakeLineNo(String no);
+
+  /// No description provided for @salesIntakeQty.
+  ///
+  /// In zh, this message translates to:
+  /// **'数量 {qty}'**
+  String salesIntakeQty(String qty);
+
+  /// No description provided for @salesIntakeFilePrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件单价 {price}'**
+  String salesIntakeFilePrice(String price);
+
+  /// No description provided for @salesIntakeFilePriceWithCurrency.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件单价 {price} {currency}'**
+  String salesIntakeFilePriceWithCurrency(String price, String currency);
+
+  /// No description provided for @salesIntakeStatusMatched.
+  ///
+  /// In zh, this message translates to:
+  /// **'已对应'**
+  String get salesIntakeStatusMatched;
+
+  /// No description provided for @salesIntakeStatusConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已确认'**
+  String get salesIntakeStatusConfirmed;
+
+  /// No description provided for @salesIntakeStatusReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'请核对'**
+  String get salesIntakeStatusReview;
+
+  /// No description provided for @salesIntakeStatusUnmatched.
+  ///
+  /// In zh, this message translates to:
+  /// **'没找到'**
+  String get salesIntakeStatusUnmatched;
+
+  /// No description provided for @salesIntakeStatusBlocked.
+  ///
+  /// In zh, this message translates to:
+  /// **'不能导入'**
+  String get salesIntakeStatusBlocked;
+
+  /// No description provided for @salesIntakeGoodsLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'对应货品'**
+  String get salesIntakeGoodsLabel;
+
+  /// No description provided for @salesIntakeGoodsHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择货品'**
+  String get salesIntakeGoodsHint;
+
+  /// No description provided for @salesIntakeConfirmChoice.
+  ///
+  /// In zh, this message translates to:
+  /// **'就是它'**
+  String get salesIntakeConfirmChoice;
+
+  /// No description provided for @salesIntakePickFromMaster.
+  ///
+  /// In zh, this message translates to:
+  /// **'从货品资料选择…'**
+  String get salesIntakePickFromMaster;
+
+  /// No description provided for @salesIntakeSplit.
+  ///
+  /// In zh, this message translates to:
+  /// **'拆成 {count} 行'**
+  String salesIntakeSplit(int count);
+
+  /// No description provided for @salesIntakeMerge.
+  ///
+  /// In zh, this message translates to:
+  /// **'合回一行'**
+  String get salesIntakeMerge;
+
+  /// No description provided for @salesIntakeBundleHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'这一行是组合件, 可以拆开逐个选货品'**
+  String get salesIntakeBundleHint;
+
+  /// No description provided for @salesIntakeSetNameEn.
+  ///
+  /// In zh, this message translates to:
+  /// **'设为货品英文名: {text}'**
+  String salesIntakeSetNameEn(String text);
+
+  /// No description provided for @salesIntakeInclude.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入这一行'**
+  String get salesIntakeInclude;
+
+  /// No description provided for @salesIntakeDiscountPreview.
+  ///
+  /// In zh, this message translates to:
+  /// **'折扣 {discount}'**
+  String salesIntakeDiscountPreview(String discount);
+
+  /// No description provided for @salesIntakeDiscountPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'折扣待定'**
+  String get salesIntakeDiscountPending;
+
+  /// No description provided for @salesIntakePricingNoListPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个货品还没有标价'**
+  String get salesIntakePricingNoListPrice;
+
+  /// No description provided for @salesIntakePricingAboveList.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件单价高于标价'**
+  String get salesIntakePricingAboveList;
+
+  /// No description provided for @salesIntakePricingOutOfRange.
+  ///
+  /// In zh, this message translates to:
+  /// **'折扣异常, 可能对应错货品'**
+  String get salesIntakePricingOutOfRange;
+
+  /// No description provided for @salesIntakePricingAmbiguous.
+  ///
+  /// In zh, this message translates to:
+  /// **'看不出文件是按人民币还是外币报价, 折扣请核对'**
+  String get salesIntakePricingAmbiguous;
+
+  /// No description provided for @salesIntakePricingRateMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'外币参考汇率还没维护, 折扣没能算出'**
+  String get salesIntakePricingRateMissing;
+
+  /// No description provided for @salesIntakeUnmatchedRemarkHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'不导入, 文件原文会写进备注'**
+  String get salesIntakeUnmatchedRemarkHint;
+
+  /// No description provided for @salesIntakeBlockedHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'订货单不能直接导入, 要先做报价单交给财务定价'**
+  String get salesIntakeBlockedHint;
+
+  /// No description provided for @salesIntakeBlockedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'这 {count} 个货品还没有标价(或文件单价高于标价)'**
+  String salesIntakeBlockedTitle(int count);
+
+  /// No description provided for @salesIntakeBlockedMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'订货单不能直接导入这些货品, 要先做报价单交给财务定价。'**
+  String get salesIntakeBlockedMessage;
+
+  /// No description provided for @salesIntakeHandoffToQuote.
+  ///
+  /// In zh, this message translates to:
+  /// **'改为新建报价单'**
+  String get salesIntakeHandoffToQuote;
+
+  /// No description provided for @salesIntakeDuplicateTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个文件可能已经录过'**
+  String get salesIntakeDuplicateTitle;
+
+  /// No description provided for @salesIntakeDuplicateItem.
+  ///
+  /// In zh, this message translates to:
+  /// **'{doc} {billNo} ({date}, {reason})'**
+  String salesIntakeDuplicateItem(
+    String doc,
+    String billNo,
+    String date,
+    String reason,
+  );
+
+  /// No description provided for @salesIntakeDuplicateMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'已有 {items}, 确定还要再建一张吗?'**
+  String salesIntakeDuplicateMessage(String items);
+
+  /// No description provided for @salesIntakeDocTypeQuote.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价单'**
+  String get salesIntakeDocTypeQuote;
+
+  /// No description provided for @salesIntakeDocTypeOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'订货单'**
+  String get salesIntakeDocTypeOrder;
+
+  /// No description provided for @salesIntakeOtherSheets.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件里还有工作表 {sheets} 也像明细表, 这次只识别了「{current}」。如需识别那张表, 请把它另存为单独的文件再上传。'**
+  String salesIntakeOtherSheets(String sheets, String current);
+
+  /// No description provided for @salesIntakeOtherSheetItem.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name}({count} 行)'**
+  String salesIntakeOtherSheetItem(String name, int count);
+
+  /// No description provided for @salesIntakePriceMaskedNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'你看不到价格, 折扣会在保存时按文件单价自动计算'**
+  String get salesIntakePriceMaskedNotice;
+
+  /// No description provided for @salesIntakeCurrencyNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件是 {currency} 报价, 按财务参考汇率 {rate} 折算, 单据按{base}保存'**
+  String salesIntakeCurrencyNotice(String currency, String rate, String base);
+
+  /// No description provided for @salesIntakeRateMissingNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'{currency} 的参考汇率还没维护, 部分折扣没能算出, 请财务在币种资料中填写'**
+  String salesIntakeRateMissingNotice(String currency);
+
+  /// No description provided for @salesIntakeSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'将导入 {rows} 行 · {review} 行导入后黄色提醒核对 · {skipped} 行不导入'**
+  String salesIntakeSummary(int rows, int review, int skipped);
+
+  /// No description provided for @salesIntakeImportAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部导入 ({count} 行)'**
+  String salesIntakeImportAll(int count);
+
+  /// No description provided for @salesIntakeNothingToImport.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有可导入的货品'**
+  String get salesIntakeNothingToImport;
+
+  /// No description provided for @salesIntakePickedManually.
+  ///
+  /// In zh, this message translates to:
+  /// **'从货品资料选择'**
+  String get salesIntakePickedManually;
+
+  /// No description provided for @salesIntakeRemarkLineItem.
+  ///
+  /// In zh, this message translates to:
+  /// **'{label} × {qty}'**
+  String salesIntakeRemarkLineItem(String label, String qty);
+
+  /// No description provided for @salesIntakeRemarkUnmatched.
+  ///
+  /// In zh, this message translates to:
+  /// **'以下 {count} 行没找到对应货品: {lines}'**
+  String salesIntakeRemarkUnmatched(int count, String lines);
+
+  /// No description provided for @salesIntakeRemarkUnpriced.
+  ///
+  /// In zh, this message translates to:
+  /// **'以下 {count} 行还没有标价(或文件单价高于标价), 没有导入: {lines}'**
+  String salesIntakeRemarkUnpriced(int count, String lines);
+
+  /// No description provided for @salesIntakeRemarkBundlePrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'组合件 {bundle} 整套文件单价 {price}'**
+  String salesIntakeRemarkBundlePrice(String bundle, String price);
+
+  /// No description provided for @salesIntakeMarkerDefault.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别结果需要核对'**
+  String get salesIntakeMarkerDefault;
+
+  /// No description provided for @salesIntakeMarkerUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件数量单位不是个, 请核对数量'**
+  String get salesIntakeMarkerUnit;
+
+  /// No description provided for @salesIntakeMarkerQuotePricing.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个货品还没有标价(或文件单价高于标价), 待财务定价'**
+  String get salesIntakeMarkerQuotePricing;
+
+  /// No description provided for @salesIntakeMarkerQuoteDiscount.
+  ///
+  /// In zh, this message translates to:
+  /// **'折扣没能自动算出, 财务核价时确定'**
+  String get salesIntakeMarkerQuoteDiscount;
+
+  /// No description provided for @salesIntakeMarkerOrderDiscount.
+  ///
+  /// In zh, this message translates to:
+  /// **'折扣没能自动算出, 请按文件单价核对后填写'**
+  String get salesIntakeMarkerOrderDiscount;
+
+  /// No description provided for @salesIntakeMarkerBundlePart.
+  ///
+  /// In zh, this message translates to:
+  /// **'组合件已拆开, 请核对货品和折扣'**
+  String get salesIntakeMarkerBundlePart;
+
+  /// No description provided for @salesIntakeColClientModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件型号'**
+  String get salesIntakeColClientModel;
+
+  /// No description provided for @salesIntakeColClientModelInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户文件里的型号/货号。保存后系统会记住客户的叫法, 下次识别更准。'**
+  String get salesIntakeColClientModelInfo;
+
+  /// No description provided for @salesIntakeColClientGoodsName.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件品名'**
+  String get salesIntakeColClientGoodsName;
+
+  /// No description provided for @salesIntakeColClientGoodsNameInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户文件里的品名。手工选货品时会带出货品的英文名称, 可改。'**
+  String get salesIntakeColClientGoodsNameInfo;
+
+  /// No description provided for @salesIntakeColClientPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件单价'**
+  String get salesIntakeColClientPrice;
+
+  /// No description provided for @salesIntakeColClientPriceWithCurrency.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件单价({currency})'**
+  String salesIntakeColClientPriceWithCurrency(String currency);
+
+  /// No description provided for @salesIntakeColClientPriceInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户文件里的单价(文件币种), 只作核对参考; 单价以货品资料标价为准, 折扣按它计算。'**
+  String get salesIntakeColClientPriceInfo;
+
+  /// No description provided for @salesIntakeQuotePriceHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'单价按货品资料标价带入, 销售不能修改; 没有标价的货品由财务核价时定价。折扣按客户文件单价计算, 也可以留空交财务核价。'**
+  String get salesIntakeQuotePriceHint;
+
+  /// No description provided for @salesIntakeFinancePriced.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务定价'**
+  String get salesIntakeFinancePriced;
+
+  /// No description provided for @salesIntakePendingFinancePrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'待财务定价'**
+  String get salesIntakePendingFinancePrice;
+
+  /// No description provided for @salesIntakeQuoteDiscountPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务核价时填写'**
+  String get salesIntakeQuoteDiscountPending;
+
+  /// No description provided for @salesIntakeMaskedDiscount.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存时自动计算'**
+  String get salesIntakeMaskedDiscount;
+
+  /// No description provided for @salesIntakeQuoteLockedDiscount.
+  ///
+  /// In zh, this message translates to:
+  /// **'(报价核定)'**
+  String get salesIntakeQuoteLockedDiscount;
+
+  /// No description provided for @salesIntakeQuoteLockedDiscountInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'该行折扣已由财务在报价中核定, 如需改价请重新打开报价'**
+  String get salesIntakeQuoteLockedDiscountInfo;
 }
 
 class _AppLocalizationsDelegate

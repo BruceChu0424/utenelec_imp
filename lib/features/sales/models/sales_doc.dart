@@ -811,6 +811,10 @@ class SalesDocItem {
     this.cartonCount,
     this.clientNo,
     this.clientModel,
+    this.clientGoodsName,
+    this.clientPrice,
+    this.priceSource,
+    this.quoteDiscount,
     this.solution,
     this.responsible,
     this.orderItemId,
@@ -866,7 +870,21 @@ class SalesDocItem {
   final double? parcelQty;
   final double? cartonCount;
   final String? clientNo;
+
+  /// 文件型号(客户文件里的型号/货号, 报价/订货, ADR-134)。
   final String? clientModel;
+
+  /// 文件品名(客户文件里的品名)。
+  final String? clientGoodsName;
+
+  /// 文件单价(文件币种, 只读参考; 单价以标价为准)。
+  final double? clientPrice;
+
+  /// 报价行定价来源: MASTER(货品标价) / FINANCE(财务定价)。
+  final String? priceSource;
+
+  /// 报价转入的订货行: 财务在报价中核定的折扣(非 null 时订货行折扣只读)。
+  final double? quoteDiscount;
   final String? solution;
   final String? responsible;
   final String? orderItemId;
@@ -922,6 +940,10 @@ class SalesDocItem {
     cartonCount: (json['cartonCount'] as num?)?.toDouble(),
     clientNo: json['clientNo'] as String?,
     clientModel: json['clientModel'] as String?,
+    clientGoodsName: json['clientGoodsName'] as String?,
+    clientPrice: (json['clientPrice'] as num?)?.toDouble(),
+    priceSource: json['priceSource'] as String?,
+    quoteDiscount: (json['quoteDiscount'] as num?)?.toDouble(),
     solution: json['solution'] as String?,
     responsible: json['responsible'] as String?,
     orderItemId: json['orderItemId'] as String?,
@@ -1113,6 +1135,7 @@ class SalesDocDetail {
     this.financeRejectedReason,
     this.financeRejectedAt,
     this.financeRejectedByName,
+    this.clientFileCurrency,
   });
   final CustomerShipmentWorkflow shipmentWorkflow;
 
@@ -1127,6 +1150,9 @@ class SalesDocDetail {
   final String? clientId;
   final String? warehouseId;
   final String? currencyId;
+
+  /// 客户文件币种(报价/订货识别客户文件时记录; 单据本身按本位币, ADR-134)。
+  final String? clientFileCurrency;
   final double? exchangeRate;
   final double? taxRate;
   final int? paymentStyleId;
@@ -1304,6 +1330,7 @@ class SalesDocDetail {
     financeRejectedReason: json['financeRejectedReason'] as String?,
     financeRejectedAt: json['financeRejectedAt'] as String?,
     financeRejectedByName: json['financeRejectedByName'] as String?,
+    clientFileCurrency: json['clientFileCurrency'] as String?,
   );
 }
 

@@ -2932,5 +2932,437 @@
   },
   "salesQuoteStatusImportTitle": "选择已核价的报价单",
   "salesQuoteStatusImportEmpty": "暂无已核价、可以转订货单的报价",
-  "salesQuoteStatusImportLoadFailed": "报价加载失败, 请稍后重试"
+  "salesQuoteStatusImportLoadFailed": "报价加载失败, 请稍后重试",
+  "salesIntakeBannerTitle": "识别客户文件",
+  "salesIntakeBannerMessage": "上传客户的报价单/形式发票, 自动填好客户和货品",
+  "salesIntakeBannerButton": "识别客户文件",
+  "salesIntakeBannerAgain": "再识别一个文件",
+  "salesIntakeBannerImported": "已从 {file} 导入 {count} 行",
+  "@salesIntakeBannerImported": {
+    "placeholders": {
+      "file": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeToolbarButton": "识别客户文件",
+  "salesIntakeAiOffHint": "AI 未开启, 只能识别常见格式的 Excel",
+  "salesIntakeApprovedOrderHint": "已审核的订单请用改量或修改, 不能整单重新识别",
+  "salesIntakeReplaceTitle": "明细里已经有货品",
+  "salesIntakeReplaceMessage": "要用识别结果替换现有明细, 还是追加在后面?",
+  "salesIntakeReplace": "替换",
+  "salesIntakeAppend": "追加",
+  "salesIntakeApplied": "已导入 {count} 行, 其中 {review} 行有黄色标记, 请核对",
+  "@salesIntakeApplied": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "review": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeAppliedAllMatched": "已导入 {count} 行",
+  "@salesIntakeAppliedAllMatched": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeAttachFailed": "原文件没能加入附件, 可在附件区手动上传",
+  "salesIntakeProgressTitle": "正在识别客户文件",
+  "salesIntakeStageUpload": "上传文件",
+  "salesIntakeStageRead": "读取表格",
+  "salesIntakeStageLayout": "识别表头与列",
+  "salesIntakeStageGoods": "匹配货品",
+  "salesIntakeStageClient": "匹配客户",
+  "salesIntakeStagePricing": "计算折扣",
+  "salesIntakeSendWholeFileTitle": "整份文件会发送给 AI 服务识别",
+  "salesIntakeSendWholeFileMessage": "这是 PDF/图片, 系统需要把整份文件发给 AI 服务来识别。文件里如有银行账号等敏感信息, 请先确认可以发送。",
+  "salesIntakeSendWholeFileConfirm": "继续识别",
+  "salesIntakeAiRequired": "PDF/图片需要开启 AI 才能识别, 请上传 Excel 或联系管理员",
+  "salesIntakeVisionRequired": "这是图片格式的文件, 需要管理员在 AI 服务设置中启用支持图片识别的模型",
+  "salesIntakeFileTooLarge": "文件太大, 最大 {max}",
+  "@salesIntakeFileTooLarge": {
+    "placeholders": {
+      "max": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeFileUnreadable": "没能读取这个文件, 请重新选择",
+  "salesIntakeFileTypeUnsupported": "只能识别 Excel、CSV、PDF 或图片文件",
+  "salesIntakeFailedTitle": "没能识别这个文件",
+  "salesIntakeResultUnreadable": "识别结果无法读取, 请重新识别",
+  "salesIntakeNoLines": "文件里没找到货品明细, 请确认上传的是报价单或形式发票",
+  "salesIntakeCancel": "取消",
+  "salesIntakeCreateClientTitle": "用文件信息新建客户",
+  "salesIntakeCreateClientIntro": "将按下面的信息新建客户, 负责人是你, 分类放在「未分类」。",
+  "salesIntakeCreateClientName": "客户简称",
+  "salesIntakeCreateClientNameRequired": "请填写客户简称",
+  "salesIntakeCreateClientConfirm": "新建客户",
+  "salesIntakeCreateClientDone": "已新建客户 {name}",
+  "@salesIntakeCreateClientDone": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeCreateClientExists": "这个客户已经存在, 已为你选上",
+  "salesIntakeCreateClientFailed": "新建客户没有成功, 请稍后重试",
+  "salesIntakeFieldFullName": "全称",
+  "salesIntakeFieldNameEn": "外文名称",
+  "salesIntakeFieldLinkman": "联系人",
+  "salesIntakeFieldEmail": "邮箱",
+  "salesIntakeFieldPhone": "电话",
+  "salesIntakeFieldAddress": "地址",
+  "salesIntakeFieldTaxId": "税号",
+  "salesIntakeFieldPlace": "国家/地区",
+  "salesIntakeReviewTitle": "核对识别结果",
+  "salesIntakeReviewSubtitle": "{file} · 共 {count} 行明细",
+  "@salesIntakeReviewSubtitle": {
+    "placeholders": {
+      "file": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeClose": "关闭",
+  "salesIntakeStepClient": "客户",
+  "salesIntakeStepGoods": "货品",
+  "salesIntakeClientResolved": "客户: {name}",
+  "@salesIntakeClientResolved": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeClientChange": "换一个",
+  "salesIntakeClientPickOther": "选其它客户…",
+  "salesIntakeClientCreate": "用文件信息新建客户",
+  "salesIntakeClientBuyer": "文件上的买方: {name}",
+  "@salesIntakeClientBuyer": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeClientNotFound": "没在你的客户里找到这个买方",
+  "salesIntakeClientSuggestions": "像是下面这些客户, 请选一个:",
+  "salesIntakeClientNone": "还没选客户, 导入后也可以在表头再选",
+  "salesIntakeNoVisibleClients": "你名下还没有客户资料, 请联系主管在客户资料里把客户分配给你",
+  "salesIntakeEnrichSummary": "文件里有客户的{fields}, 保存时补进客户资料",
+  "@salesIntakeEnrichSummary": {
+    "placeholders": {
+      "fields": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeEnrichShow": "查看",
+  "salesIntakeEnrichHide": "收起",
+  "salesIntakeEnrichDiffers": "文件里的值不同, 现在是: {current}",
+  "@salesIntakeEnrichDiffers": {
+    "placeholders": {
+      "current": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeEnrichCurrentEmpty": "客户资料里还没填",
+  "salesIntakeFilterReview": "需要核对 ({count})",
+  "@salesIntakeFilterReview": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeFilterAll": "全部 ({count})",
+  "@salesIntakeFilterAll": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeMatchedCollapsed": "{count} 行已自动对应 ✓",
+  "@salesIntakeMatchedCollapsed": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeExpand": "展开",
+  "salesIntakeCollapse": "收起",
+  "salesIntakeNoReviewLines": "所有行都已自动对应, 可以直接导入",
+  "salesIntakeLineNo": "第 {no} 行",
+  "@salesIntakeLineNo": {
+    "placeholders": {
+      "no": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeQty": "数量 {qty}",
+  "@salesIntakeQty": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeFilePrice": "文件单价 {price}",
+  "@salesIntakeFilePrice": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeFilePriceWithCurrency": "文件单价 {price} {currency}",
+  "@salesIntakeFilePriceWithCurrency": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      },
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeStatusMatched": "已对应",
+  "salesIntakeStatusConfirmed": "已确认",
+  "salesIntakeStatusReview": "请核对",
+  "salesIntakeStatusUnmatched": "没找到",
+  "salesIntakeStatusBlocked": "不能导入",
+  "salesIntakeGoodsLabel": "对应货品",
+  "salesIntakeGoodsHint": "请选择货品",
+  "salesIntakeConfirmChoice": "就是它",
+  "salesIntakePickFromMaster": "从货品资料选择…",
+  "salesIntakeSplit": "拆成 {count} 行",
+  "@salesIntakeSplit": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeMerge": "合回一行",
+  "salesIntakeBundleHint": "这一行是组合件, 可以拆开逐个选货品",
+  "salesIntakeSetNameEn": "设为货品英文名: {text}",
+  "@salesIntakeSetNameEn": {
+    "placeholders": {
+      "text": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeInclude": "导入这一行",
+  "salesIntakeDiscountPreview": "折扣 {discount}",
+  "@salesIntakeDiscountPreview": {
+    "placeholders": {
+      "discount": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeDiscountPending": "折扣待定",
+  "salesIntakePricingNoListPrice": "这个货品还没有标价",
+  "salesIntakePricingAboveList": "文件单价高于标价",
+  "salesIntakePricingOutOfRange": "折扣异常, 可能对应错货品",
+  "salesIntakePricingAmbiguous": "看不出文件是按人民币还是外币报价, 折扣请核对",
+  "salesIntakePricingRateMissing": "外币参考汇率还没维护, 折扣没能算出",
+  "salesIntakeUnmatchedRemarkHint": "不导入, 文件原文会写进备注",
+  "salesIntakeBlockedHint": "订货单不能直接导入, 要先做报价单交给财务定价",
+  "salesIntakeBlockedTitle": "这 {count} 个货品还没有标价(或文件单价高于标价)",
+  "@salesIntakeBlockedTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeBlockedMessage": "订货单不能直接导入这些货品, 要先做报价单交给财务定价。",
+  "salesIntakeHandoffToQuote": "改为新建报价单",
+  "salesIntakeDuplicateTitle": "这个文件可能已经录过",
+  "salesIntakeDuplicateItem": "{doc} {billNo} ({date}, {reason})",
+  "@salesIntakeDuplicateItem": {
+    "placeholders": {
+      "doc": {
+        "type": "String"
+      },
+      "billNo": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeDuplicateMessage": "已有 {items}, 确定还要再建一张吗?",
+  "@salesIntakeDuplicateMessage": {
+    "placeholders": {
+      "items": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeDocTypeQuote": "报价单",
+  "salesIntakeDocTypeOrder": "订货单",
+  "salesIntakeOtherSheets": "文件里还有工作表 {sheets} 也像明细表, 这次只识别了「{current}」。如需识别那张表, 请把它另存为单独的文件再上传。",
+  "@salesIntakeOtherSheets": {
+    "placeholders": {
+      "sheets": {
+        "type": "String"
+      },
+      "current": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeOtherSheetItem": "{name}({count} 行)",
+  "@salesIntakeOtherSheetItem": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakePriceMaskedNotice": "你看不到价格, 折扣会在保存时按文件单价自动计算",
+  "salesIntakeCurrencyNotice": "文件是 {currency} 报价, 按财务参考汇率 {rate} 折算, 单据按{base}保存",
+  "@salesIntakeCurrencyNotice": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      },
+      "rate": {
+        "type": "String"
+      },
+      "base": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeRateMissingNotice": "{currency} 的参考汇率还没维护, 部分折扣没能算出, 请财务在币种资料中填写",
+  "@salesIntakeRateMissingNotice": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeSummary": "将导入 {rows} 行 · {review} 行导入后黄色提醒核对 · {skipped} 行不导入",
+  "@salesIntakeSummary": {
+    "placeholders": {
+      "rows": {
+        "type": "int"
+      },
+      "review": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeImportAll": "全部导入 ({count} 行)",
+  "@salesIntakeImportAll": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeNothingToImport": "还没有可导入的货品",
+  "salesIntakePickedManually": "从货品资料选择",
+  "salesIntakeRemarkLineItem": "{label} × {qty}",
+  "@salesIntakeRemarkLineItem": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeRemarkUnmatched": "以下 {count} 行没找到对应货品: {lines}",
+  "@salesIntakeRemarkUnmatched": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "lines": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeRemarkUnpriced": "以下 {count} 行还没有标价(或文件单价高于标价), 没有导入: {lines}",
+  "@salesIntakeRemarkUnpriced": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "lines": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeRemarkBundlePrice": "组合件 {bundle} 整套文件单价 {price}",
+  "@salesIntakeRemarkBundlePrice": {
+    "placeholders": {
+      "bundle": {
+        "type": "String"
+      },
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeMarkerDefault": "识别结果需要核对",
+  "salesIntakeMarkerUnit": "文件数量单位不是个, 请核对数量",
+  "salesIntakeMarkerQuotePricing": "这个货品还没有标价(或文件单价高于标价), 待财务定价",
+  "salesIntakeMarkerQuoteDiscount": "折扣没能自动算出, 财务核价时确定",
+  "salesIntakeMarkerOrderDiscount": "折扣没能自动算出, 请按文件单价核对后填写",
+  "salesIntakeMarkerBundlePart": "组合件已拆开, 请核对货品和折扣",
+  "salesIntakeColClientModel": "文件型号",
+  "salesIntakeColClientModelInfo": "客户文件里的型号/货号。保存后系统会记住客户的叫法, 下次识别更准。",
+  "salesIntakeColClientGoodsName": "文件品名",
+  "salesIntakeColClientGoodsNameInfo": "客户文件里的品名。手工选货品时会带出货品的英文名称, 可改。",
+  "salesIntakeColClientPrice": "文件单价",
+  "salesIntakeColClientPriceWithCurrency": "文件单价({currency})",
+  "@salesIntakeColClientPriceWithCurrency": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeColClientPriceInfo": "客户文件里的单价(文件币种), 只作核对参考; 单价以货品资料标价为准, 折扣按它计算。",
+  "salesIntakeQuotePriceHint": "单价按货品资料标价带入, 销售不能修改; 没有标价的货品由财务核价时定价。折扣按客户文件单价计算, 也可以留空交财务核价。",
+  "salesIntakeFinancePriced": "财务定价",
+  "salesIntakePendingFinancePrice": "待财务定价",
+  "salesIntakeQuoteDiscountPending": "财务核价时填写",
+  "salesIntakeMaskedDiscount": "保存时自动计算",
+  "salesIntakeQuoteLockedDiscount": "(报价核定)",
+  "salesIntakeQuoteLockedDiscountInfo": "该行折扣已由财务在报价中核定, 如需改价请重新打开报价"
 }

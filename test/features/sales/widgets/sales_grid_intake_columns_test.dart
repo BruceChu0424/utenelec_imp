@@ -1,0 +1,296 @@
+// 报价/订货明细的客户文件字段(ADR-134): 行模型的识别导入、草稿往返、复制; 列定义
+// (文件型号/文件品名/文件单价、报价单价锁定与折扣可空、看不到价格时折扣只读)。
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/features/sales/intake/sales_intake_apply.dart';
+import 'package:uten_imp/features/sales/models/sales_doc.dart';
+import 'package:uten_imp/features/sales/widgets/sales_grid_columns.dart';
+
+const _patchRow = SalesIntakePatchRow(
+  goodsId: 'g-1',
+  goodsCode: '280235165',
+  goodsName: '两开多功能三极插座',
+  colorId: 'color-white',
+  unitId: 'unit-pcs',
+  qty: '1800',
+  listPrice: '21',
+  discount: '0.95',
+  clientModel: 'GZ23/D',
+  clientGoodsName: 'DOUBLE 3 PIN SOCKET',
+  clientPrice: '19.95',
+  intakeLineKey: 'S1R9',
+  setNameEn: true,
+  reviewReason: '颜色没对上',
+);
+
+Future<List<EditableGridColumn<SalesGridRow>>> _columns(
+  WidgetTester tester,
+  SalesDocType docType, {
+  bool showClientPrice = false,
+  String? clientFileCurrency,
+  bool priceMasked = false,
+}) async {
+  late List<EditableGridColumn<SalesGridRow>> columns;
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Builder(
+        builder: (context) {
+          columns = salesGridColumns(
+            context: context,
+            onPickGoods: (_) async {},
+            docType: docType,
+            colorEntries: const {},
+            unitEntries: const {},
+            showClientPrice: showClientPrice,
+            clientFileCurrency: clientFileCurrency,
+            priceMasked: priceMasked,
+          );
+          return const SizedBox();
+        },
+      ),
+    ),
+  );
+  return columns;
+}
+
+void main() {
+  test('识别导入的行: 单价只来自标价, 折扣/文件原文/学习键齐全, 需核对行带黄标', () {
+    final row = SalesGridRow.fromIntake(_patchRow);
+    expect(row.goods!.id, 'g-1');
+    expect(row.goods!.code, '280235165');
+    expect(row.price.text, '21');
+    expect(row.discount.text, '0.95');
+    expect(row.clientModel.text, 'GZ23/D');
+    expect(row.clientGoodsName.text, 'DOUBLE 3 PIN SOCKET');
+    expect(row.clientPrice, '19.95');
+    expect(row.intakeLineKey, 'S1R9');
+    expect(row.setNameEn, isTrue);
+    expect(row.unitRate, 1);
+    expect(row.aiReview, '颜色没对上');
+    expect(row.amountExactNotifier.value, isNotNull);
+
+    // 点进输入框(只改光标)不算核对; 改了数量才清黄标。
+    row.qty.selection = const TextSelection.collapsed(offset: 1);
+    expect(row.aiReview, '颜色没对上');
+    row.qty.text = '1900';
+    expect(row.aiReview, isNull);
+    row.dispose();
+  });
+
+  test('组合件拆开的第一行带整套文件单价备注', () {
+    final row = SalesGridRow.fromIntake(
+      const SalesIntakePatchRow(
+        goodsId: 'g-part',
+        qty: '50',
+        discount: '',
+        remark: '组合件 A+B 整套文件单价 25 USD',
+      ),
+    );
+    expect(row.remark.text, '组合件 A+B 整套文件单价 25 USD');
+    expect(row.clientPrice, isNull);
+    row.dispose();
+  });
+
+  testWidgets('复制出来的报价行单价已清空: 提示重新选货取价, 不显示待财务定价', (tester) async {
+    final source = SalesGridRow.fromIntake(_patchRow);
+    final copy = source.clone(requireOrderPriceRefresh: true);
+    source.dispose();
+    final unpriced = SalesGridRow.fromIntake(
+      const SalesIntakePatchRow(goodsId: 'g-2', qty: '1', discount: ''),
+    );
+    // 行随表格控制器一起释放。
+    final controller = UtenEditableGridController<SalesGridRow>(
+      initial: [copy, unpriced],
+    );
+    addTearDown(controller.dispose);
+    await tester.binding.setSurfaceSize(const Size(1900, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 1800,
+            child: Builder(
+              builder: (context) => UtenEditableGrid<SalesGridRow>(
+                controller: controller,
+                columns: salesGridColumns(
+                  context: context,
+                  onPickGoods: (_) async {},
+                  docType: SalesDocType.quote,
+                  colorEntries: const {},
+                  unitEntries: const {},
+                ),
+                showAddRow: false,
+                showRowDelete: false,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    TextField priceOf(SalesGridRow r) => tester.widget<TextField>(
+      find.byWidgetPredicate((w) => w is TextField && w.controller == r.price),
+    );
+    expect(copy.price.text, isEmpty);
+    expect(priceOf(copy).decoration?.hintText, '重新选货取价');
+    expect(priceOf(unpriced).decoration?.hintText, '待财务定价');
+  });
+
+  test('看不到价格/待财务定价的行: 折扣留空', () {
+    final masked = SalesGridRow.fromIntake(
+      const SalesIntakePatchRow(goodsId: 'g', qty: '1'),
+    );
+    expect(masked.discount.text, isEmpty);
+    expect(masked.price.text, isEmpty);
+    expect(masked.aiReview, isNull);
+    masked.dispose();
+  });
+
+  test('草稿往返保留文件字段、学习标记与黄标; 复制只带文件原文', () {
+    final row = SalesGridRow.fromIntake(_patchRow)
+      ..clientNo = 'C-9'
+      ..priceSource = 'FINANCE'
+      ..quoteDiscountLocked = true
+      ..userConfirmed = true
+      ..prefilledNameEn = 'X';
+    final restored = SalesGridRow.fromDraft(row.exportDraft());
+    expect(restored.clientModel.text, 'GZ23/D');
+    expect(restored.clientGoodsName.text, 'DOUBLE 3 PIN SOCKET');
+    expect(restored.clientPrice, '19.95');
+    expect(restored.clientNo, 'C-9');
+    expect(restored.priceSource, 'FINANCE');
+    expect(restored.quoteDiscountLocked, isTrue);
+    expect(restored.intakeLineKey, 'S1R9');
+    expect(restored.userConfirmed, isTrue);
+    expect(restored.setNameEn, isTrue);
+    expect(restored.prefilledNameEn, 'X');
+    expect(restored.aiReview, '颜色没对上');
+    expect(restored.discount.text, '0.95');
+
+    final copy = row.clone(requireOrderPriceRefresh: true);
+    expect(copy.clientModel.text, 'GZ23/D');
+    expect(copy.clientGoodsName.text, 'DOUBLE 3 PIN SOCKET');
+    expect(copy.clientPrice, '19.95');
+    expect(copy.intakeLineKey, isNull);
+    expect(copy.userConfirmed, isFalse);
+    expect(copy.setNameEn, isFalse);
+    expect(copy.priceSource, isNull);
+    expect(copy.quoteDiscountLocked, isFalse);
+    expect(copy.requiresOrderPriceRefresh, isTrue);
+    for (final r in [row, restored, copy]) {
+      r.dispose();
+    }
+  });
+
+  testWidgets('报价/订货有文件型号、文件品名; 文件单价列只在有值时出现并带币种', (tester) async {
+    final quote = await _columns(tester, SalesDocType.quote);
+    final keys = quote.map((c) => c.key).toList();
+    expect(keys, containsAll(<String>['clientModel', 'clientGoodsName']));
+    expect(keys, isNot(contains('clientPrice')));
+    expect(keys.indexOf('clientModel'), keys.indexOf('color') + 1);
+
+    final withPrice = await _columns(
+      tester,
+      SalesDocType.order,
+      showClientPrice: true,
+      clientFileCurrency: 'USD',
+    );
+    final clientPrice = withPrice.singleWhere((c) => c.key == 'clientPrice');
+    expect(clientPrice.label, '文件单价(USD)');
+    expect(clientPrice.headerInfo, contains('只作核对参考'));
+
+    final shipment = await _columns(tester, SalesDocType.shipment);
+    expect(
+      shipment.map((c) => c.key),
+      isNot(contains('clientModel')),
+      reason: '出货沿用订货单, 不录客户文件原文',
+    );
+  });
+
+  testWidgets('报价: 单价不再手填, 折扣列可空(非必填); 订货折扣仍必填', (tester) async {
+    final quote = await _columns(tester, SalesDocType.quote);
+    final price = quote.singleWhere((c) => c.key == 'price');
+    expect(price.required, isFalse);
+    expect(price.headerInfo, contains('销售不能修改'));
+    expect(quote.singleWhere((c) => c.key == 'discount').required, isFalse);
+
+    final order = await _columns(tester, SalesDocType.order);
+    expect(order.singleWhere((c) => c.key == 'discount').required, isTrue);
+    final masked = await _columns(
+      tester,
+      SalesDocType.order,
+      priceMasked: true,
+    );
+    expect(masked.singleWhere((c) => c.key == 'discount').required, isFalse);
+    expect(masked.singleWhere((c) => c.key == 'price').required, isFalse);
+  });
+
+  testWidgets('报价单价格只读; 财务定价行显示标记; 看不到价格时折扣只读', (tester) async {
+    final row = SalesGridRow.fromIntake(_patchRow)..priceSource = 'FINANCE';
+    final masked = SalesGridRow.fromIntake(
+      const SalesIntakePatchRow(goodsId: 'g-2', qty: '1'),
+    );
+    Future<void> pumpGrid(SalesGridRow r, {bool priceMasked = false}) async {
+      final controller = UtenEditableGridController<SalesGridRow>(initial: [r]);
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 1800,
+              child: Builder(
+                builder: (context) => UtenEditableGrid<SalesGridRow>(
+                  controller: controller,
+                  columns: salesGridColumns(
+                    context: context,
+                    onPickGoods: (_) async {},
+                    docType: SalesDocType.quote,
+                    colorEntries: const {},
+                    unitEntries: const {},
+                    priceMasked: priceMasked,
+                  ),
+                  showAddRow: false,
+                  showRowDelete: false,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await tester.binding.setSurfaceSize(const Size(1900, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpGrid(row);
+    final priceField = tester.widget<TextField>(
+      find.byWidgetPredicate(
+        (w) => w is TextField && w.controller == row.price,
+      ),
+    );
+    expect(priceField.readOnly, isTrue);
+    expect(find.text('财务定价'), findsOneWidget);
+    final discountField = tester.widget<TextField>(
+      find.byWidgetPredicate(
+        (w) => w is TextField && w.controller == row.discount,
+      ),
+    );
+    expect(discountField.readOnly, isFalse);
+    // 需要核对的行: 货品格黄框(带原因)。
+    expect(
+      find.byKey(const ValueKey('sales-goods-ai-review-g-1')),
+      findsOneWidget,
+    );
+
+    await pumpGrid(masked, priceMasked: true);
+    final maskedDiscount = tester.widget<TextField>(
+      find.byWidgetPredicate(
+        (w) => w is TextField && w.controller == masked.discount,
+      ),
+    );
+    expect(maskedDiscount.readOnly, isTrue);
+    expect(maskedDiscount.decoration?.hintText, '保存时自动计算');
+  });
+}

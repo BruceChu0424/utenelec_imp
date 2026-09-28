@@ -68,4 +68,8 @@ public class GoodsListItem {
      * 不必为拿版本先逐条拉详情。
      */
     private Long version;
+
+    // ===== 英文名称(ADR-134, V742): 列表「英文名称」列, 关键字搜索同样命中 =====
+    private String nameEn;          // 英文名称; 未维护为 null
+    private String nameEnSource;    // MANUAL 人工维护 / LEARNED 从客户文件学习; 名称为空时为 null
 }

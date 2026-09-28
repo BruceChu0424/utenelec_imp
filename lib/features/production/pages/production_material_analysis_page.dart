@@ -25,6 +25,7 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
@@ -47,9 +48,7 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/uten_tree_row_projection.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
-import '../../basic_data/models/goods_node.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
@@ -79,6 +78,7 @@ import '../widgets/material_borrow_dialog.dart';
 import '../widgets/material_required_reason_dialog.dart';
 import '../widgets/material_supply_progress_dialog.dart';
 import '../widgets/material_supply_submit_confirm.dart';
+import '../widgets/material_manual_demand_editor.dart';
 import '../widgets/material_preparation_route_card.dart';
 import '../widgets/production_overproduction_rate_field.dart';
 
@@ -123,13 +123,6 @@ abstract class _MaterialAnalysisPageBase
   static const int _maxPlansPerPrintJob = 50;
   static const int _maxConcurrentPrintLoads = 5;
   static const Duration _analysisPollInterval = Duration(seconds: 45);
-  static const _manualSourceTypes = <String, String>{
-    'REWORK': '返工',
-    'TRIAL': '试制',
-    'SAMPLE': '样品',
-    'STOCK': '备库',
-    'OTHER': '其他',
-  };
 
   ProductionMaterialAnalysisView? _analysis;
   final _ownerReadGuard = LatestRequestGuard();
@@ -332,17 +325,17 @@ abstract class _MaterialAnalysisPageBase
   String? _candidateOrderNoFilter;
   final _candidateSearch = TextEditingController();
   final _bomSearch = TextEditingController();
-  final _manualSourceRef = TextEditingController();
-  final _manualQty = TextEditingController(text: '1');
-  final _manualReason = TextEditingController();
   Timer? _analysisPollTimer;
   bool _silentAnalysisReloadInFlight = false;
-  GoodsListItem? _manualGoods;
-  bool _manualSourceExpanded = false;
-  String? _manualSourceType;
-  DateTime? _manualDeliveryDate;
-  final List<MaterialAnalysisSourceInput> _manualSources = [];
-  final Map<String, String> _manualSourceLabels = {};
+
+  /// 新建分析页的两个分段：勾选销售订单产品 / 录入手工需求单(ADR-130)。
+  _CandidateTab _candidateTab = _CandidateTab.sales;
+
+  /// 本次分析的手工需求单(每张 = 单头 + 多行货品)，至少一张；页面释放时统一 dispose。
+  final List<MaterialManualDemandDraft> _manualDemandDrafts = [];
+
+  /// 分析结果顶部「手工需求」chip 超过上限时是否展开全部。
+  bool _manualDemandsExpanded = false;
 
   late List<MaterialAnalysisSourceInput> _sources;
   final Map<String, TextEditingController> _sourceQtyControllers = {};
@@ -959,9 +952,9 @@ abstract class _MaterialAnalysisPageBase
     _analysisPollTimer?.cancel();
     _candidateSearch.dispose();
     _bomSearch.dispose();
-    _manualSourceRef.dispose();
-    _manualQty.dispose();
-    _manualReason.dispose();
+    for (final draft in _manualDemandDrafts) {
+      draft.dispose();
+    }
     _disposeMaterialTableInputs();
     for (final controller in _sourceQtyControllers.values) {
       controller.dispose();
@@ -2195,6 +2188,7 @@ class _ProductionMaterialAnalysisPageState
             ],
           ),
           ..._linkedSalesOrdersSection(theme, analysis),
+          ..._manualDemandsSection(theme, analysis),
           const SizedBox(height: UtenSpacing.s8),
           Container(
             key: const Key('material-analysis-next-step'),

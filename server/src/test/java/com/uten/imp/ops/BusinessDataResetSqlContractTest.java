@@ -423,6 +423,7 @@ class BusinessDataResetSqlContractTest {
                 .contains("(721, 650), (722, 651), (723, 652), (724, 653), (725, 654), (726, 655), (727, 656), (728, 657), (729, 658), (730, 659), (731, 660), (732, 661)")
                 .contains("(733, 662)")
                 .contains("(734, 663)")
+                .contains("(738, 664)")
                 // The exact range label follows the independently enumerated classpath head.
                 .contains("V507/469、V508/470及V511至V"
                         + MigrationRehearsalSupport.CURRENT_HEAD_VERSION + "完整目录");

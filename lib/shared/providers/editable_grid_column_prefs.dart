@@ -167,3 +167,17 @@ final materialAnalysisCascadeGridColumnPrefsProvider =
       MaterialAnalysisCascadeGridColumnPrefsNotifier,
       Map<String, EditableGridColumnsPrefs>
     >(MaterialAnalysisCascadeGridColumnPrefsNotifier.new);
+
+/// 物料分析「手工需求单」货品明细表(ADR-130)的列设置。
+/// 桶 key 只有一个('manualDemand')：各张手工需求单共用同一套列布局。
+class MaterialAnalysisManualDemandGridColumnPrefsNotifier
+    extends EditableGridColumnPrefsNotifierBase {
+  @override
+  String get prefKey => 'production.materialAnalysis.manualDemand.gridColumns';
+}
+
+final materialAnalysisManualDemandGridColumnPrefsProvider =
+    NotifierProvider<
+      MaterialAnalysisManualDemandGridColumnPrefsNotifier,
+      Map<String, EditableGridColumnsPrefs>
+    >(MaterialAnalysisManualDemandGridColumnPrefsNotifier.new);

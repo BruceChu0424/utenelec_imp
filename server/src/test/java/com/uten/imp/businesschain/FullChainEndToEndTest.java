@@ -1515,6 +1515,131 @@ class FullChainEndToEndTest {
         assertEquals("PARTIALLY_PLANNED",second.analysis().status());
     }
 
+    /**
+     * ADR-130/V738：一张手工需求单(一个需求编号)挂 3 个货品一起预览、逐行各下达一张生产计划；历史列表按编号
+     * 只出现一次编号、3 个产品。同编号同货品集合重开复用原分析；增减货品或把编号拿去配别的货品给 409、
+     * 不会另建第二份分析：看得到原分析的人得到点名原分析的提示，看不到的计划员只得到中性提示。
+     */
+    @Test
+    void manualDemandDocument_threeGoodsUnderOneNumber_analyzedTogetherAndIssuedPerLine() {
+        World w = seedWorld("manual-multi");
+        UUID material = UUID.randomUUID();
+        insertGoods(material, "M-manual-multi", "多货品手工需求共用料", "采购", w.unitId(), w.unitLegacy());
+        List<UUID> products = new ArrayList<>();
+        for (int index = 1; index <= 4; index++) {
+            UUID product = UUID.randomUUID();
+            insertGoods(product, "P" + index + "-manual-multi", "多货品手工需求成品" + index, "自制",
+                    w.unitId(), w.unitLegacy());
+            insertBom(product, material, "1");
+            products.add(product);
+        }
+        jdbc.update("insert into stock_balances(warehouse_id,goods_id,qty) values (?,?,100)",
+                w.warehouseId(), material);
+        loginAs(w.superAdminUserId());
+        String number = "RW-MULTI-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(java.util.Locale.ROOT);
+        String lowerSpelling = "  " + number.toLowerCase(java.util.Locale.ROOT) + " ";
+        List<PreviewItem> demand = List.of(
+                new PreviewItem("REWORK", null, products.get(0), null, w.unitId(), number,
+                        "返工三款成品", LocalDate.of(2026, 9, 25), new BigDecimal("5")),
+                new PreviewItem("REWORK", null, products.get(1), null, w.unitId(), lowerSpelling,
+                        "返工三款成品", LocalDate.of(2026, 9, 26), new BigDecimal("6")),
+                new PreviewItem("REWORK", null, products.get(2), null, w.unitId(), number,
+                        "返工三款成品", LocalDate.of(2026, 9, 25), new BigDecimal("7")));
+
+        AnalysisView view = analysisService.preview(new PreviewRequest(
+                null, null, null, w.warehouseId(), "manual-multi-preview", demand));
+        UUID analysisId = view.analysisId();
+        assertEquals(3, view.products().size(), "一个需求编号下三个货品各是一条分析来源");
+        assertEquals(List.of(number, number, number),
+                view.products().stream().map(ProductView::sourceRef).toList(), "同一编号统一第一行的写法");
+        assertEquals(1, count("""
+                select count(distinct analysis_id) from production_material_analysis_items
+                where source_type='REWORK' and lower(btrim(source_ref))=lower(?) and is_deleted=false
+                """, number));
+
+        // 同编号、同货品集合(写法不同)重开：复用原分析，不另建。
+        AnalysisView reopened = analysisService.preview(new PreviewRequest(
+                null, null, null, w.warehouseId(), "manual-multi-reopen", List.of(
+                        demand.get(2), demand.get(1),
+                        new PreviewItem("REWORK", null, products.get(0), null, w.unitId(), lowerSpelling,
+                                "返工三款成品", LocalDate.of(2026, 9, 25), new BigDecimal("5")))));
+        assertEquals(analysisId, reopened.analysisId());
+
+        // 增加货品、减少货品、同编号只配别的货品：都点名原分析，只指换编号这条能走通的路，不会出现第二份分析。
+        String expected = "需求编号 " + number + " 已在物料分析 " + view.analysisNo() + " 中(3 个货品)"
+                + "；已建的分析不能增减货品，要增减货品请换一个需求编号(只改数量请打开原分析刷新)";
+        List<List<PreviewItem>> changedSets = List.of(
+                List.of(demand.get(0), demand.get(1), demand.get(2),
+                        new PreviewItem("REWORK", null, products.get(3), null, w.unitId(), number,
+                                "返工三款成品", LocalDate.of(2026, 9, 25), new BigDecimal("1"))),
+                List.of(demand.get(0)),
+                List.of(new PreviewItem("REWORK", null, products.get(3), null, w.unitId(), number,
+                        "另一批返工", LocalDate.of(2026, 9, 25), new BigDecimal("1"))));
+        for (List<PreviewItem> changed : changedSets) {
+            ApiException conflict = assertThrows(ApiException.class, () -> analysisService.preview(
+                    new PreviewRequest(null, null, null, w.warehouseId(),
+                            "manual-multi-changed-" + UUID.randomUUID(), changed)));
+            assertEquals(ErrorCode.CONFLICT, conflict.getCode());
+            assertEquals(expected, conflict.getMessage());
+        }
+        // 换成另一位只看得到本人分析的计划员：同样被拦，但 409 不透露对方的分析号和货品数。
+        UUID outsider = createUserWithPerms(w, "manual-multi-outsider",
+                "production_material_analysis:view", "production_material_analysis:manage");
+        loginAs(outsider);
+        for (List<PreviewItem> changed : changedSets) {
+            ApiException hidden = assertThrows(ApiException.class, () -> analysisService.preview(
+                    new PreviewRequest(null, null, null, w.warehouseId(),
+                            "manual-multi-outsider-" + UUID.randomUUID(), changed)));
+            assertEquals(ErrorCode.CONFLICT, hidden.getCode());
+            assertEquals("需求编号 " + number + " 已被另一份物料分析使用，请换一个需求编号", hidden.getMessage());
+        }
+        loginAs(w.superAdminUserId());
+        // 同一编号下同一货品写两行(大小写不同)是校验错误，不是 500。
+        ApiException duplicate = assertThrows(ApiException.class, () -> analysisService.preview(
+                new PreviewRequest(null, null, null, w.warehouseId(), "manual-multi-duplicate", List.of(
+                        demand.get(0), new PreviewItem("REWORK", null, products.get(0), null, w.unitId(),
+                                lowerSpelling, "返工三款成品", LocalDate.of(2026, 9, 25), new BigDecimal("1"))))));
+        assertEquals(ErrorCode.VALIDATION_FAILED, duplicate.getCode());
+        assertEquals(1, count("""
+                select count(distinct analysis_id) from production_material_analysis_items
+                where source_type='REWORK' and lower(btrim(source_ref))=lower(?) and is_deleted=false
+                """, number));
+
+        view = analysisService.detail(analysisId);
+        List<RouteDecision> rootRoutes = new ArrayList<>();
+        for (ProductView product : view.products()) {
+            MaterialView root = view.flatMaterials().stream()
+                    .filter(row -> row.materialLineId().equals(product.rootMaterialLineId()))
+                    .findFirst().orElseThrow();
+            rootRoutes.add(new RouteDecision(root.materialLineId(), root.actionGroupKey(), "MAKE", null));
+        }
+        analysisService.saveRoutes(analysisId, new RouteRequest(view.version(), view.fingerprint(),
+                "routes-manual-multi", rootRoutes));
+        view = analysisService.detail(analysisId);
+        GenerateResult issued = analysisCommandService.issueWorkshopPlans(analysisId,
+                new IssueWorkshopPlansRequest(view.version(), view.fingerprint(), "manual-multi-issue",
+                        w.warehouseId(), LocalDate.of(2026, 9, 6), null, true,
+                        view.products().stream().map(product -> new IssueWorkshopPlansRequest.IssuePlanLine(
+                                product.analysisLineId(), product.requestedQty())).toList()));
+
+        assertEquals(3, issued.plans().size(), "每个货品行各下达一张生产计划");
+        assertEquals(3, issued.plans().stream().map(GeneratedPlan::planId).distinct().count());
+        assertEquals(3, count("""
+                select count(distinct material_analysis_item_id) from production_plans
+                where material_analysis_id=? and is_deleted=false
+                """, analysisId));
+        assertEquals("PARTIALLY_PLANNED", issued.analysis().status());
+
+        var history = analysisService.list(number.toLowerCase(java.util.Locale.ROOT), null, null, 1, 20).getItems();
+        assertEquals(1, history.size(), "按需求编号找回任务：只有这一份分析");
+        AnalysisListItem row = history.getFirst();
+        assertEquals(analysisId, row.analysisId());
+        assertEquals(List.of(number), row.sourceRefs(), "历史列表里编号只出现一次");
+        assertEquals(List.of("REWORK"), row.sourceTypes());
+        assertEquals(3, row.sourceCount());
+        assertEquals(3, row.productLabels().size());
+    }
+
     @Test
     void materialAnalysis_sameMainWarehouseKitIssuesSeparateDrawsAndCanStart() {
         World w = seedWorld("same-main-kit");

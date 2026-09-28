@@ -93,6 +93,26 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         assertThat(commandWrite).isGreaterThan(exactMatch);
     }
 
+    /**
+     * ADR-130/V738：服务端预取的手工需求编号锁与库里触发器必须是同一把锁(键文本逐字一致)，
+     * 否则同编号不同货品的并发请求在服务端不排队，只能等触发器报冲突。
+     */
+    @Test
+    void manualDemandNumberLockKeyMatchesTheV738TriggerVerbatim() throws Exception {
+        String service = source("features/production/analysis/MaterialAnalysisService.java");
+        String migration = migrationSource("V738__manual_demand_multi_goods_lines.sql");
+
+        assertThat(service).contains(
+                "'MATERIAL-ANALYSIS-MANUAL-REF:' || :sourceType || '|' || lower(btrim(:sourceRef))");
+        assertThat(migration).contains(
+                "'MATERIAL-ANALYSIS-MANUAL-REF:' || NEW.source_type || '|' || lower(btrim(NEW.source_ref))");
+        assertThat(migration)
+                .contains("DROP INDEX uq_production_material_analysis_manual_source_ref;")
+                .contains("ENABLE ALWAYS TRIGGER trg_guard_manual_demand_single_analysis;")
+                .contains("ENABLE ALWAYS TRIGGER trg_guard_manual_demand_single_analysis_upd;")
+                .contains("USING ERRCODE = '23505'");
+    }
+
     @Test
     void committedSourceIncreasePreservesCommitmentsAndRequiresCurrentAdmittedCapacity() throws Exception {
         String source = source("features/production/analysis/MaterialAnalysisService.java");

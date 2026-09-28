@@ -14,6 +14,7 @@ import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/components/inputs/uten_date_field.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
@@ -26,6 +27,8 @@ import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
+import 'package:uten_imp/core/utils/china_datetime.dart';
+import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/department/models/workforce_overview.dart';
 import 'package:uten_imp/features/department/repositories/department_repository.dart';
@@ -35,6 +38,7 @@ import 'package:uten_imp/features/production/pages/production_material_analysis_
 import 'package:uten_imp/features/production/providers/production_department_provider.dart';
 import 'package:uten_imp/features/production/providers/material_analysis_warehouse_prefs_provider.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
+import 'package:uten_imp/features/production/widgets/material_manual_demand_editor.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_picker.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/list_refresh_provider.dart';
@@ -433,34 +437,854 @@ void main() {
     },
   );
 
-  testWidgets('fresh analysis exposes audited manual source types', (
+  testWidgets(
+    'fresh analysis offers sales and manual demand segments with audited types',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
+        seeded: false,
+      );
+
+      expect(find.text('销售订单产品 (已选 0)'), findsOneWidget);
+      expect(find.text('手工需求 (0 行)'), findsOneWidget);
+      expect(find.text('物料分析记录'), findsOneWidget);
+      expect(find.text('生产计划历史'), findsOneWidget);
+      expect(
+        find.byKey(const Key('material-analysis-candidate-table')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('manual-demand-card-0')), findsNothing);
+
+      await _openManualDemandTab(tester);
+      expect(
+        find.byKey(const Key('material-analysis-candidate-table')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('manual-demand-card-0')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('manual-demand-ref-0')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('manual-demand-reason-0')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('manual-demand-date-0')),
+        findsOneWidget,
+      );
+      // 只剩一张单时不给删除入口。
+      expect(
+        find.byKey(const ValueKey('manual-demand-remove-0')),
+        findsNothing,
+      );
+      // 说明收进标签旁 ⓘ 悬停提示(fieldLabel 约定)。
+      expect(find.byTooltip('同一需求请始终使用同一个编号，后续可凭它找回任务'), findsOneWidget);
+      // 货品明细是自家可编辑明细表(与销售订单录入同一个表格组件)。
+      expect(
+        find.byType(UtenEditableGrid<MaterialManualDemandLine>),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('manual-demand-type-0')));
+      await tester.pumpAndSettle();
+      expect(find.text('返工'), findsOneWidget);
+      expect(find.text('试制'), findsOneWidget);
+      expect(find.text('样品'), findsOneWidget);
+      expect(find.text('备库'), findsOneWidget);
+      expect(find.text('其他'), findsOneWidget);
+      expect(find.textContaining('REWORK'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'manual demand multi-picks goods under one number and analyzes them with sales lines',
+    (tester) async {
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
+        seeded: false,
+        deliveryDate: '2026-10-08',
+        responseOverride: (request) =>
+            request.path.endsWith('/sales-candidates')
+            ? _salesCandidatesJson()
+            : null,
+        extraOverrides: [
+          _manualPickerOverride([
+            [_manualGoods('m1'), _manualGoods('m2'), _manualGoods('m3')],
+          ]),
+        ],
+      );
+      final table = find.byKey(const Key('material-analysis-candidate-table'));
+      await tester.tap(
+        find.descendant(of: table, matching: find.byType(Checkbox)).first,
+      );
+      await tester.pump();
+      expect(find.text('联合分析所选 2 项'), findsOneWidget);
+
+      await _openManualDemandTab(tester);
+      await _fillManualDemandHeader(
+        tester,
+        sourceRef: ' RW-20260927-001 ',
+        reason: '客诉返工',
+      );
+      await _pickManualDemandGoods(tester);
+      // 多选三个货品：第一个填点的那一行，其余追加成新行。
+      expect(find.text('手工货品 m1'), findsOneWidget);
+      expect(find.text('手工货品 m2'), findsOneWidget);
+      expect(find.text('手工货品 m3'), findsOneWidget);
+      final qty = _manualDemandQtyFields(0);
+      expect(qty, findsNWidgets(3));
+      await tester.enterText(qty.at(0), '5');
+      await tester.pumpAndSettle();
+      await tester.enterText(qty.at(1), '2');
+      await tester.pumpAndSettle();
+      await tester.enterText(qty.at(2), '1.5');
+      await tester.pumpAndSettle();
+
+      // 第二行单独改需求日(其余行按页面默认需求日)。
+      final today = ChinaDateTime.today();
+      final lineDate = DateTime(today.year, today.month, 20);
+      await tester.tap(
+        find
+            .descendant(
+              of: find.byKey(const ValueKey('manual-demand-grid-0')),
+              matching: find.text('同单头'),
+            )
+            .at(1),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('20'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确定'));
+      await tester.pumpAndSettle();
+      expect(find.text(ChinaDateTime.formatDate(lineDate)), findsOneWidget);
+
+      expect(find.text('手工需求 (3 行)'), findsOneWidget);
+      expect(find.text('已选 5 项'), findsOneWidget);
+      expect(find.text('联合分析所选 5 项'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('material-analysis-start')));
+      await tester.pumpAndSettle();
+
+      final preview = harness.requests.singleWhere(
+        (request) => request.path == '/production/material-analyses/preview',
+      );
+      Map<String, Object> manual(String goodsId, double qty, String date) => {
+        'sourceType': 'REWORK',
+        'sourceRef': 'RW-20260927-001',
+        'goodsId': goodsId,
+        'unitId': 'unit-1',
+        'requestedQty': qty,
+        'sourceReason': '客诉返工',
+        'deliveryDate': date,
+      };
+      expect((preview.data as Map<String, dynamic>)['sources'], [
+        manual('m1', 5, '2026-10-08'),
+        manual('m2', 2, ChinaDateTime.formatDate(lineDate)),
+        manual('m3', 1.5, '2026-10-08'),
+        {'salesOrderItemId': 'sales-line-a', 'requestedQty': 8.0},
+        {'salesOrderItemId': 'sales-line-b', 'requestedQty': 5.0},
+      ]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'picking goods already in the card skips them and fills the new blank row',
+    (tester) async {
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 900),
+        permissions: const {Perm.productionMaterialAnalysisCreate},
+        seeded: false,
+        extraOverrides: [
+          _manualPickerOverride([
+            [_manualGoods('m1'), _manualGoods('m2')],
+            [_manualGoods('m2'), _manualGoods('m3')],
+          ]),
+        ],
+      );
+      await _openManualDemandTab(tester);
+      await _pickManualDemandGoods(tester);
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('manual-demand-card-0')),
+          matching: find.text('添加行'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _pickManualDemandGoods(tester);
+
+      expect(find.text('手工货品 m1'), findsOneWidget);
+      expect(find.text('手工货品 m2'), findsOneWidget);
+      expect(find.text('手工货品 m3'), findsOneWidget);
+      expect(_manualDemandQtyFields(0), findsNWidgets(3));
+      expect(find.text('手工需求 (3 行)'), findsOneWidget);
+      expect(_lastNotice(tester), '已跳过 1 个这张单里已有的货品，同一货品请直接改原行数量');
+      expect(harness.requests.where((r) => r.method == 'POST'), isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('the same demand number in two cards is blocked until merged', (
+    tester,
+  ) async {
+    final harness = await _pumpPage(
+      tester,
+      size: const Size(1400, 900),
+      permissions: const {Perm.productionMaterialAnalysisCreate},
+      seeded: false,
+      extraOverrides: [
+        _manualPickerOverride([
+          [_manualGoods('m1')],
+          [_manualGoods('m2')],
+        ]),
+      ],
+    );
+    await _openManualDemandTab(tester);
+    await _fillManualDemandHeader(tester, sourceRef: 'RW-1', reason: '客诉返工');
+    await _pickManualDemandGoods(tester);
+    await tester.enterText(_manualDemandQtyFields(0).first, '1');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('manual-demand-add-card')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('manual-demand-card-1')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('manual-demand-remove-1')),
+      findsOneWidget,
+    );
+    await _fillManualDemandHeader(
+      tester,
+      card: 1,
+      sourceRef: ' rw-1 ',
+      reason: '客诉返工',
+    );
+    await _pickManualDemandGoods(tester, card: 1);
+    await tester.enterText(_manualDemandQtyFields(1).first, '2');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('material-analysis-start')));
+    await tester.pumpAndSettle();
+    expect(
+      _lastNotice(tester),
+      '第 1 张和第 2 张手工需求单用了同一个需求编号「rw-1」；同一编号的货品请录在同一张单里',
+    );
+    expect(harness.requests.where((r) => r.method == 'POST'), isEmpty);
+
+    // 删掉第二张(有内容先确认)，剩下的单照常分析。
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('manual-demand-remove-1')),
+    );
+    await tester.tap(find.byKey(const ValueKey('manual-demand-remove-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('删除这张手工需求单？'), findsOneWidget);
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('manual-demand-card-1')), findsNothing);
+    expect(find.byKey(const ValueKey('manual-demand-remove-0')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('material-analysis-start')));
+    await tester.pumpAndSettle();
+    final preview = harness.requests.singleWhere(
+      (request) => request.path == '/production/material-analyses/preview',
+    );
+    final sources = (preview.data as Map<String, dynamic>)['sources'] as List;
+    expect(sources.single, containsPair('sourceRef', 'RW-1'));
+    expect(sources.single, containsPair('goodsId', 'm1'));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'missing demand number, reason or quantity is blocked without a request',
+    (tester) async {
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 900),
+        permissions: const {Perm.productionMaterialAnalysisCreate},
+        seeded: false,
+        extraOverrides: [
+          _manualPickerOverride([
+            [_manualGoods('m1')],
+          ]),
+        ],
+      );
+      await _openManualDemandTab(tester);
+      await _fillManualDemandHeader(tester);
+      await _pickManualDemandGoods(tester);
+      final qty = _manualDemandQtyFields(0).first;
+      await tester.enterText(qty, '3');
+      await tester.pumpAndSettle();
+
+      // 从销售分段点分析：出错后自动切回手工需求分段，让人看得到要改哪里。
+      await tester.tap(find.text('销售订单产品 (已选 0)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('material-analysis-start')));
+      await tester.pumpAndSettle();
+      expect(_lastNotice(tester), '手工需求单请填写需求编号');
+      expect(
+        find.byKey(const ValueKey('manual-demand-card-0')),
+        findsOneWidget,
+      );
+
+      await tester.enterText(_manualDemandField('ref'), 'RW-2');
+      await tester.enterText(_manualDemandField('reason'), '返');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('material-analysis-start')));
+      await tester.pumpAndSettle();
+      expect(_lastNotice(tester), '手工需求单请填写来源原因(至少 2 个字)');
+
+      await tester.enterText(_manualDemandField('reason'), '客诉返工');
+      await tester.enterText(_manualDemandQtyFields(0).first, '');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('material-analysis-start')));
+      await tester.pumpAndSettle();
+      expect(_lastNotice(tester), '手工需求单第 1 行「手工货品 m1」的数量必须大于 0');
+      expect(harness.requests.where((r) => r.method == 'POST'), isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'clearing the selection pill asks first when manual lines have goods',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 900),
+        permissions: const {Perm.productionMaterialAnalysisCreate},
+        seeded: false,
+        responseOverride: (request) =>
+            request.path.endsWith('/sales-candidates')
+            ? _salesCandidatesJson()
+            : null,
+        extraOverrides: [
+          _manualPickerOverride([
+            [_manualGoods('m1')],
+          ]),
+        ],
+      );
+      final table = find.byKey(const Key('material-analysis-candidate-table'));
+      await tester.tap(
+        find.descendant(of: table, matching: find.byType(Checkbox)).first,
+      );
+      await tester.pump();
+      await _openManualDemandTab(tester);
+      await _fillManualDemandHeader(tester, sourceRef: 'RW-3', reason: '备库补货');
+      await _pickManualDemandGoods(tester);
+      expect(find.text('已选 3 项'), findsOneWidget);
+
+      final clear = find.byKey(
+        const Key('material-analysis-candidate-clear-selection'),
+      );
+      await tester.tap(clear);
+      await tester.pumpAndSettle();
+      expect(find.text('清空本次分析？'), findsOneWidget);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(find.text('已选 3 项'), findsOneWidget);
+      expect(find.text('手工货品 m1'), findsOneWidget);
+
+      await tester.tap(clear);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('清空'));
+      await tester.pumpAndSettle();
+      expect(find.text('已选 0 项'), findsOneWidget);
+      expect(find.text('手工货品 m1'), findsNothing);
+      expect(find.text('手工需求 (0 行)'), findsOneWidget);
+      expect(find.text('销售订单产品 (已选 0)'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(_manualDemandField('ref')).controller?.text,
+        isEmpty,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('compact 375 manual demand fits and analyzes', (tester) async {
+    final harness = await _pumpPage(
+      tester,
+      size: const Size(375, 900),
+      permissions: const {Perm.productionMaterialAnalysisCreate},
+      seeded: false,
+      extraOverrides: [
+        _manualPickerOverride([
+          [_manualGoods('m1'), _manualGoods('m2')],
+        ]),
+      ],
+    );
+    await _openManualDemandTab(tester);
+    expect(tester.takeException(), isNull);
+    await _fillManualDemandHeader(
+      tester,
+      sourceRef: 'SP-001',
+      type: '样品',
+      reason: '展会样品',
+    );
+    await _pickManualDemandGoods(tester);
+    final qty = _manualDemandQtyFields(0);
+    expect(qty, findsNWidgets(2));
+    await tester.enterText(qty.at(0), '4');
+    await tester.pumpAndSettle();
+    await tester.enterText(qty.at(1), '6');
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    // 窄屏明细表横向滚动，不把卡片撑出屏幕。
+    final card = tester.getRect(
+      find.byKey(const ValueKey('manual-demand-card-0')),
+    );
+    expect(card.right, lessThanOrEqualTo(375));
+
+    await tester.tap(find.byKey(const Key('material-analysis-start')));
+    await tester.pumpAndSettle();
+    final preview = harness.requests.singleWhere(
+      (request) => request.path == '/production/material-analyses/preview',
+    );
+    final sources = (preview.data as Map<String, dynamic>)['sources'] as List;
+    expect(sources.map((source) => (source as Map)['goodsId']), ['m1', 'm2']);
+    expect(
+      sources.every(
+        (source) =>
+            (source as Map)['sourceType'] == 'SAMPLE' &&
+            source['sourceRef'] == 'SP-001',
+      ),
+      isTrue,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'manual picks beyond the 500 analysis items keep what fits and warn',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 900),
+        permissions: const {Perm.productionMaterialAnalysisCreate},
+        seeded: false,
+        responseOverride: (request) =>
+            request.path.endsWith('/sales-candidates')
+            ? _bulkSalesCandidatesJson(498)
+            : null,
+        extraOverrides: [
+          _manualPickerOverride([
+            [_manualGoods('m1'), _manualGoods('m2'), _manualGoods('m3')],
+          ]),
+        ],
+      );
+      // 销售订单产品先占 498 项，手工需求只剩 2 个名额(两边合计 500)。
+      final table = find.byKey(const Key('material-analysis-candidate-table'));
+      await tester.tap(
+        find.descendant(of: table, matching: find.byType(Checkbox)).first,
+      );
+      await tester.pump();
+      expect(find.text('销售订单产品 (已选 498)'), findsOneWidget);
+      await _openManualDemandTab(tester);
+      await _pickManualDemandGoods(tester);
+      expect(find.text('手工货品 m1'), findsOneWidget);
+      expect(find.text('手工货品 m2'), findsOneWidget);
+      expect(find.text('手工货品 m3'), findsNothing);
+      expect(find.text('手工需求 (2 行)'), findsOneWidget);
+      expect(find.text('已选 500 项'), findsOneWidget);
+      expect(
+        _lastNotice(tester),
+        '单次联合分析最多 500 项(销售订单产品与手工需求合计)，'
+        '还有 1 个货品没有加入，请另开一个分析批次',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'manual demand rows are locked while the analysis request is running',
+    (tester) async {
+      final previewGate = Completer<void>();
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 900),
+        permissions: const {Perm.productionMaterialAnalysisCreate},
+        seeded: false,
+        responseOverride: (request) async {
+          if (request.path != '/production/material-analyses/preview') {
+            return null;
+          }
+          await previewGate.future;
+          return null;
+        },
+        extraOverrides: [
+          _manualPickerOverride([
+            [_manualGoods('m1'), _manualGoods('m2')],
+          ]),
+        ],
+      );
+      await _openManualDemandTab(tester);
+      await _fillManualDemandHeader(tester, sourceRef: 'RW-7', reason: '客诉返工');
+      await _pickManualDemandGoods(tester);
+      final qty = _manualDemandQtyFields(0);
+      await tester.enterText(qty.at(0), '1');
+      await tester.pumpAndSettle();
+      await tester.enterText(qty.at(1), '2');
+      await tester.pumpAndSettle();
+      final grid = find.byKey(const ValueKey('manual-demand-grid-0'));
+      final rowDelete = find.descendant(
+        of: grid,
+        matching: find.byTooltip('删除该行'),
+      );
+      expect(rowDelete, findsWidgets);
+
+      await tester.tap(find.byKey(const Key('material-analysis-start')));
+      // 按钮转圈动画不停，不能 pumpAndSettle；推进几帧让请求发出去。
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      // 分析请求已发出、还没回来。
+      expect(
+        harness.requests.where(
+          (request) => request.path == '/production/material-analyses/preview',
+        ),
+        hasLength(1),
+      );
+      // 这期间行尾删除收起、「添加行」点不动：看到的明细就是提交的明细。
+      expect(rowDelete, findsNothing);
+      await tester.tap(
+        find.descendant(of: grid, matching: find.text('添加行')),
+        warnIfMissed: false,
+      );
+      await tester.pump();
+      expect(_manualDemandGrid(tester, 0).length, 2);
+      expect(find.text('手工货品 m1'), findsOneWidget);
+      expect(find.text('手工货品 m2'), findsOneWidget);
+
+      previewGate.complete();
+      await tester.pumpAndSettle();
+      final preview = harness.requests.singleWhere(
+        (request) => request.path == '/production/material-analyses/preview',
+      );
+      final sources = (preview.data as Map<String, dynamic>)['sources'] as List;
+      expect(sources.map((source) => (source as Map)['goodsId']), ['m1', 'm2']);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'stale duplicate highlights clear when the next check fails for another reason',
+    (tester) async {
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 900),
+        permissions: const {Perm.productionMaterialAnalysisCreate},
+        seeded: false,
+        extraOverrides: [
+          _manualPickerOverride([
+            [_manualGoods('m1'), _manualGoods('m2')],
+          ]),
+        ],
+      );
+      await _openManualDemandTab(tester);
+      await _fillManualDemandHeader(tester, sourceRef: 'RW-8', reason: '客诉返工');
+      await _pickManualDemandGoods(tester);
+      final qty = _manualDemandQtyFields(0);
+      await tester.enterText(qty.at(0), '1');
+      await tester.pumpAndSettle();
+      await tester.enterText(qty.at(1), '2');
+      await tester.pumpAndSettle();
+      final grid = _manualDemandGrid(tester, 0);
+      // 右键「粘贴」进来一行同一货品(点选会跳过重复，粘贴不查重)。
+      grid.addRows([
+        MaterialManualDemandLine(goods: _manualGoods('m1'), qty: '3'),
+      ]);
+      await tester.pumpAndSettle();
+      final start = find.byKey(const Key('material-analysis-start'));
+      await tester.tap(start);
+      await tester.pumpAndSettle();
+      expect(_lastNotice(tester), '手工需求单里「手工货品 m1」重复了(第 1、3 行)；同一货品请合并成一行');
+      expect(grid[0].flagged, isTrue);
+      expect(grid[2].flagged, isTrue);
+
+      // 删掉重复的第 3 行，第 1 行本身没动过。
+      grid.removeAt(2);
+      await tester.pumpAndSettle();
+      expect(grid[0].flagged, isTrue);
+
+      // 下一次因为别的原因(来源原因清空)没过：第 1 行不再标红，
+      // 不把人引到一行已经没问题的货品上。
+      await tester.enterText(_manualDemandField('reason'), '');
+      await tester.pumpAndSettle();
+      await tester.tap(start);
+      await tester.pumpAndSettle();
+      expect(_lastNotice(tester), '手工需求单请填写来源原因(至少 2 个字)');
+      expect(grid[0].flagged, isFalse);
+      expect(grid[1].flagged, isFalse);
+      expect(harness.requests.where((r) => r.method == 'POST'), isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'line need-date picker opens when the header date is before 2020',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 900),
+        permissions: const {Perm.productionMaterialAnalysisCreate},
+        seeded: false,
+      );
+      await _openManualDemandTab(tester);
+      // 单头与行日期同一可选范围。
+      final header = tester.widget<UtenDateField>(
+        find.byKey(const ValueKey('manual-demand-date-0')),
+      );
+      expect(header.firstDate, DateTime(2020));
+      expect(header.lastDate, DateTime(2100));
+
+      // 旧草稿等途径带进来的 2019 年单头日期：行「需求日」仍能正常打开选择器。
+      final card = tester.widget<MaterialManualDemandCard>(
+        find.byType(MaterialManualDemandCard),
+      );
+      card.draft.date.value = DateTime(2019, 12, 15);
+      await tester.pump();
+      await tester.tap(
+        find
+            .descendant(
+              of: find.byKey(const ValueKey('manual-demand-grid-0')),
+              matching: find.text('同单头'),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.byType(DatePickerDialog), findsOneWidget);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DatePickerDialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a new manual demand card scrolls into view below a long first card',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        size: const Size(1440, 900),
+        permissions: const {Perm.productionMaterialAnalysisCreate},
+        seeded: false,
+        extraOverrides: [
+          _manualPickerOverride([
+            [for (var i = 1; i <= 12; i++) _manualGoods('m$i')],
+          ]),
+        ],
+      );
+      await _openManualDemandTab(tester);
+      await _pickManualDemandGoods(tester);
+      expect(_manualDemandQtyFields(0), findsNWidgets(12));
+      final list = find.byKey(const Key('material-manual-demand-list'));
+      final viewport = tester.getRect(list);
+      final position = tester
+          .state<ScrollableState>(
+            find.descendant(of: list, matching: find.byType(Scrollable)).first,
+          )
+          .position;
+      position.jumpTo(0);
+      await tester.pump();
+      // 第一张单货品多，整张单已高过列表可视区：新单追加在它下面、首屏看不到。
+      expect(
+        tester
+            .getRect(find.byKey(const ValueKey('manual-demand-card-0')))
+            .height,
+        greaterThan(viewport.height),
+      );
+
+      await tester.tap(find.byKey(const Key('manual-demand-add-card')));
+      await tester.pumpAndSettle();
+      expect(position.pixels, greaterThan(0));
+      final added = tester.getRect(
+        find.byKey(const ValueKey('manual-demand-card-1')),
+      );
+      expect(added.top, greaterThanOrEqualTo(viewport.top - 1));
+      expect(added.bottom, lessThanOrEqualTo(viewport.bottom + 1));
+
+      // 分析时卡在第 1 张单(没选来源类型)：自动滚回第 1 张单的开头。
+      await tester.tap(find.byKey(const Key('material-analysis-start')));
+      await tester.pumpAndSettle();
+      expect(_lastNotice(tester), '第 1 张手工需求单请选择来源类型(返工、试制、样品、备库或其他)');
+      final first = tester.getRect(
+        find.byKey(const ValueKey('manual-demand-card-0')),
+      );
+      expect(first.top, greaterThanOrEqualTo(viewport.top - 1));
+      expect(first.top, lessThan(viewport.top + 40));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('candidate segments stay fully visible in a 640 wide window', (
     tester,
   ) async {
     await _pumpPage(
       tester,
-      size: const Size(1200, 900),
-      permissions: const {
-        Perm.productionMaterialAnalysisCreate,
-        Perm.productionMaterialAnalysisRefresh,
-      },
+      size: const Size(640, 900),
+      permissions: const {Perm.productionMaterialAnalysisCreate},
       seeded: false,
     );
+    final tabs = tester.getRect(
+      find.byKey(const Key('material-analysis-candidate-tabs')),
+    );
+    for (final label in ['销售订单产品 (已选 0)', '手工需求 (0 行)']) {
+      final rect = tester.getRect(find.text(label));
+      expect(rect.left, greaterThanOrEqualTo(tabs.left), reason: label);
+      expect(rect.right, lessThanOrEqualTo(tabs.right), reason: label);
+      expect(rect.right, lessThanOrEqualTo(640), reason: label);
+    }
+    // 放不下同一行时搜索框换到分段下方，仍完整可用。
+    final search = tester.getRect(find.byType(UtenSearchBar));
+    expect(search.top, greaterThanOrEqualTo(tabs.bottom));
+    expect(search.right, lessThanOrEqualTo(640));
 
-    expect(find.text('手工计划(返工 / 试制 / 样品 / 备库)'), findsOneWidget);
-    expect(find.text('物料分析记录'), findsOneWidget);
-    expect(find.text('生产计划历史'), findsOneWidget);
-    expect(find.byKey(const Key('manual-source-ref')), findsOneWidget);
-    // 说明收进标签旁 ⓘ 悬停提示（fieldLabel 约定）。
-    expect(find.byTooltip('同一需求请始终使用同一个编号'), findsOneWidget);
-    expect(find.byKey(const Key('manual-source-goods')), findsOneWidget);
-    expect(find.byKey(const Key('manual-source-reason')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey<String>('manual-source-')));
+    await tester.tap(find.text('手工需求 (0 行)'));
     await tester.pumpAndSettle();
-    expect(find.text('返工'), findsOneWidget);
-    expect(find.text('试制'), findsOneWidget);
-    expect(find.text('样品'), findsOneWidget);
-    expect(find.text('备库'), findsOneWidget);
-    expect(find.text('其他'), findsOneWidget);
+    expect(find.byKey(const ValueKey('manual-demand-card-0')), findsOneWidget);
+    final addCard = tester.getRect(
+      find.byKey(const Key('manual-demand-add-card')),
+    );
+    expect(addCard.right, lessThanOrEqualTo(640));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('compact 375 at 1.5x text keeps both segments readable', (
+    tester,
+  ) async {
+    await _pumpPage(
+      tester,
+      size: const Size(375, 900),
+      permissions: const {Perm.productionMaterialAnalysisCreate},
+      seeded: false,
+      textScale: 1.5,
+    );
+    final tabsFinder = find.byKey(
+      const Key('material-analysis-candidate-tabs'),
+    );
+    final tabs = tester.getRect(tabsFinder);
+    Finder segment(String text) =>
+        find.descendant(of: tabsFinder, matching: find.textContaining(text));
+    for (final label in ['销售订单产品', '手工需求']) {
+      expect(segment(label), findsOneWidget, reason: label);
+      final rect = tester.getRect(segment(label));
+      expect(rect.left, greaterThanOrEqualTo(tabs.left), reason: label);
+      expect(rect.right, lessThanOrEqualTo(tabs.right), reason: label);
+      expect(rect.right, lessThanOrEqualTo(375), reason: label);
+    }
+
+    await tester.tap(segment('手工需求'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('manual-demand-card-0')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('analysis header shows manual demands grouped by number', (
+    tester,
+  ) async {
+    final json = _analysisJson(const ['REFRESH']);
+    json['products'] = <dynamic>[
+      ...(json['products'] as List),
+      for (final id in ['a', 'b', 'c'])
+        {
+          'analysisLineId': 'manual-line-$id',
+          'sourceType': 'REWORK',
+          'sourceRef': 'RW-001',
+          'sourceReason': '客诉返工',
+          'goodsId': 'manual-goods-$id',
+          'unitId': 'unit-1',
+          'goodsName': '返工货品 $id',
+          'requestedQty': 2,
+          'remainingQty': 2,
+          'readyNowQty': 0,
+        },
+      {
+        'analysisLineId': 'manual-line-d',
+        'sourceType': 'SAMPLE',
+        'sourceRef': 'SP-9',
+        'sourceReason': '展会样品',
+        'goodsId': 'manual-goods-d',
+        'unitId': 'unit-1',
+        'goodsName': '样品货品 d',
+        'requestedQty': 1,
+        'remainingQty': 1,
+        'readyNowQty': 0,
+      },
+    ];
+    await _pumpPage(
+      tester,
+      size: const Size(1400, 900),
+      permissions: const {Perm.productionMaterialAnalysisView},
+      allowedActions: const ['REFRESH'],
+      analysisJson: json,
+      analysisId: 'analysis-1',
+    );
+    expect(
+      find.byKey(const Key('material-analysis-manual-demands')),
+      findsOneWidget,
+    );
+    expect(find.text('手工需求 2'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('analysis-manual-demand-RW-001')),
+      findsOneWidget,
+    );
+    expect(find.text('返工 · RW-001 · 3 个货品'), findsOneWidget);
+    expect(find.text('样品 · SP-9 · 1 个货品'), findsOneWidget);
+    expect(find.byTooltip('来源原因：客诉返工'), findsOneWidget);
+    expect(
+      find.byKey(const Key('material-analysis-manual-demands-toggle')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('many manual demand numbers fold behind a toggle', (
+    tester,
+  ) async {
+    final json = _analysisJson(const ['REFRESH']);
+    json['products'] = <dynamic>[
+      for (var index = 1; index <= 8; index++)
+        {
+          'analysisLineId': 'stock-line-$index',
+          'sourceType': 'STOCK',
+          'sourceRef': 'BK-0$index',
+          'sourceReason': '安全备库',
+          'goodsId': 'stock-goods-$index',
+          'unitId': 'unit-1',
+          'goodsName': '备库货品 $index',
+          'requestedQty': 1,
+          'remainingQty': 1,
+          'readyNowQty': 0,
+        },
+    ];
+    await _pumpPage(
+      tester,
+      size: const Size(1400, 900),
+      permissions: const {Perm.productionMaterialAnalysisView},
+      allowedActions: const ['REFRESH'],
+      analysisJson: json,
+      analysisId: 'analysis-1',
+    );
+    expect(find.text('手工需求 8'), findsOneWidget);
+    expect(find.textContaining('备库 · BK-0'), findsNWidgets(6));
+    expect(find.text('备库 · BK-07 · 1 个货品'), findsNothing);
+    final toggle = find.byKey(
+      const Key('material-analysis-manual-demands-toggle'),
+    );
+    expect(find.text('展开其余 2 个'), findsOneWidget);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('备库 · BK-0'), findsNWidgets(8));
+    expect(find.text('收起'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -492,14 +1316,51 @@ void main() {
       await tester.tap(checkboxes.at(0));
       await tester.pump();
       expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isTrue);
-      expect(find.text('已选 2 个产品 · 数量已预填，只需修改例外'), findsOneWidget);
-      expect(find.byKey(const Key('source-qty-sales-line-a')), findsOneWidget);
-      expect(find.byKey(const Key('source-qty-sales-line-b')), findsOneWidget);
+      // ADR-130：本次分析数量是表内一列(勾选即出现输入框，默认 = 待排数量)，
+      // 表格下方不再另挂一块「已选产品」数量列表。
+      expect(find.text('销售订单产品 (已选 2)'), findsOneWidget);
+      final qtyA = find.descendant(
+        of: table,
+        matching: find.byKey(const Key('source-qty-sales-line-a')),
+      );
+      expect(qtyA, findsOneWidget);
+      expect(tester.widget<TextField>(qtyA).controller?.text, '8');
+      // 必填红框与提交校验同口径：清空或填 0 立刻描红，填回正数即消失。
+      expect(
+        find.ancestor(of: qtyA, matching: find.byType(RequiredCellFrame)),
+        findsOneWidget,
+      );
+      bool qtyAFramedRed() {
+        final theme = Theme.of(tester.element(qtyA));
+        return theme.inputDecorationTheme.enabledBorder?.borderSide.color ==
+            theme.colorScheme.error;
+      }
+
+      expect(qtyAFramedRed(), isFalse);
+      for (final invalid in ['', '0', '-1', 'abc']) {
+        await tester.enterText(qtyA, invalid);
+        await tester.pump();
+        expect(qtyAFramedRed(), isTrue, reason: '「$invalid」不能通过联合分析，应当描红');
+      }
+      await tester.enterText(qtyA, '8');
+      await tester.pump();
+      expect(qtyAFramedRed(), isFalse);
+      expect(
+        find.descendant(
+          of: table,
+          matching: find.byKey(const Key('source-qty-sales-line-b')),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('数量已预填'), findsNothing);
+      expect(find.text('联合分析所选 2 项'), findsOneWidget);
 
       await tester.tap(checkboxes.at(1));
       await tester.pump();
       expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isNull);
-      expect(find.text('已选 1 个产品 · 数量已预填，只需修改例外'), findsOneWidget);
+      expect(find.text('销售订单产品 (已选 1)'), findsOneWidget);
+      expect(find.byKey(const Key('source-qty-sales-line-a')), findsNothing);
+      expect(find.byKey(const Key('source-qty-sales-line-b')), findsOneWidget);
 
       // Tri-state header follows Checkbox semantics: partial -> clear page,
       // then unchecked -> select all, then checked -> clear again.
@@ -8250,6 +9111,7 @@ Future<_Harness> _pumpPage(
   List<Map<String, dynamic>> warehouseEntries = const [
     {'id': 'warehouse-1', 'name': '主仓'},
   ],
+  List<Override> extraOverrides = const [],
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -8337,6 +9199,7 @@ Future<_Harness> _pumpPage(
           _TestMaterialAnalysisWarehousePrefsNotifier.new,
         ),
         currentPermissionsProvider.overrideWithValue(permissions),
+        ...extraOverrides,
       ],
       child: router == null
           ? MaterialApp(
@@ -8694,6 +9557,38 @@ Map<String, dynamic> _salesCandidatesJson() => {
   'page': 1,
   'size': 100,
   'total': 1,
+  'totalPages': 1,
+};
+
+/// 一张订单 [count] 条待排行(上限用例：销售订单产品先占满大部分名额)。
+Map<String, dynamic> _bulkSalesCandidatesJson(int count) => {
+  'items': [
+    {
+      'orderId': 'bulk-order',
+      'billNo': 'SO-BULK',
+      'billDate': '2026-08-11',
+      'clientName': '批量客户',
+      'lines': [
+        for (var index = 0; index < count; index++)
+          {
+            'salesOrderItemId': 'bulk-line-$index',
+            'lineNo': index + 1,
+            'goodsId': 'bulk-goods-$index',
+            'goodsCode': 'BULK-$index',
+            'goodsName': '批量产品 $index',
+            'unitId': 'unit-1',
+            'unitName': '个',
+            'orderedQty': 1,
+            'alreadyPlannedQty': 0,
+            'remainingQty': 1,
+            'deliveryDate': '2026-08-20',
+          },
+      ],
+    },
+  ],
+  'page': 1,
+  'size': count,
+  'total': count,
   'totalPages': 1,
 };
 
@@ -10238,6 +11133,102 @@ class _Harness {
   const _Harness(this.requests);
 
   final List<RequestOptions> requests;
+}
+
+// ===== ADR-130 手工需求单(一个需求编号 + 多个货品)测试辅助 =====
+
+GoodsListItem _manualGoods(String id) => GoodsListItem(
+  id: id,
+  code: 'M-$id',
+  name: '手工货品 $id',
+  spec: '规格 $id',
+  unitId: 'unit-1',
+  unitName: '个',
+);
+
+/// 选货滑窗换成按调用次序出结果的桩(每点一次货品格取下一组)。
+Override _manualPickerOverride(List<List<GoodsListItem>> picks) {
+  final queue = [...picks];
+  return materialAnalysisManualGoodsPickerProvider.overrideWithValue(
+    (context, ref) async =>
+        queue.isEmpty ? const <GoodsListItem>[] : queue.removeAt(0),
+  );
+}
+
+/// 点分段条里的「手工需求」段(窄屏大字号时计数换到第二行，按段内文字找)。
+Future<void> _openManualDemandTab(WidgetTester tester) async {
+  await tester.tap(
+    find.descendant(
+      of: find.byKey(const Key('material-analysis-candidate-tabs')),
+      matching: find.textContaining('手工需求'),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+Finder _manualDemandField(String field, {int card = 0}) => find.descendant(
+  of: find.byKey(ValueKey('manual-demand-$field-$card')),
+  matching: find.byType(TextField),
+);
+
+Finder _manualDemandQtyFields(int card) => find.descendant(
+  of: find.byKey(ValueKey('manual-demand-grid-$card')),
+  matching: find.byType(TextField),
+);
+
+/// 第 [card] 张手工需求单的明细表控制器(模拟右键粘贴、删行等表格操作)。
+UtenEditableGridController<MaterialManualDemandLine> _manualDemandGrid(
+  WidgetTester tester,
+  int card,
+) => tester
+    .widget<UtenEditableGrid<MaterialManualDemandLine>>(
+      find.byKey(ValueKey('manual-demand-grid-$card')),
+    )
+    .controller;
+
+Future<void> _fillManualDemandHeader(
+  WidgetTester tester, {
+  int card = 0,
+  String type = '返工',
+  String? sourceRef,
+  String? reason,
+}) async {
+  final dropdown = find.byKey(ValueKey('manual-demand-type-$card'));
+  await tester.ensureVisible(dropdown);
+  await tester.pumpAndSettle();
+  await tester.tap(dropdown);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(type).last);
+  await tester.pumpAndSettle();
+  if (sourceRef != null) {
+    await tester.enterText(_manualDemandField('ref', card: card), sourceRef);
+    await tester.pumpAndSettle();
+  }
+  if (reason != null) {
+    await tester.enterText(_manualDemandField('reason', card: card), reason);
+    await tester.pumpAndSettle();
+  }
+}
+
+/// 点这张单第一个空的「货品名称」格(弹多选选货)。
+Future<void> _pickManualDemandGoods(WidgetTester tester, {int card = 0}) async {
+  final cell = find
+      .descendant(
+        of: find.byKey(ValueKey('manual-demand-grid-$card')),
+        matching: find.text('点击选择'),
+      )
+      .first;
+  await tester.ensureVisible(cell);
+  await tester.pumpAndSettle();
+  await tester.tap(cell);
+  await tester.pumpAndSettle();
+}
+
+String? _lastNotice(WidgetTester tester) {
+  final notices = ProviderScope.containerOf(
+    tester.element(find.byType(ProductionMaterialAnalysisPage)),
+  ).read(appNotificationProvider);
+  return notices.isEmpty ? null : notices.last.message;
 }
 
 /// 点「提交采购/委外」按钮后弹总结确认对话框（品种数+合计；数量编辑

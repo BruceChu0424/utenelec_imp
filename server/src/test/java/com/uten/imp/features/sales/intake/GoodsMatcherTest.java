@@ -132,6 +132,34 @@ class GoodsMatcherTest {
     }
 
     @Test
+    void userCorrectionBeatsAnAutoLearnedAliasForTheSameWording() {
+        // 第一张单系统自动对到黑色并被保存学到(确认 1 次, 没人明确选过);
+        // 第二张单用户把它改成白色(明确选择)。第三次识别应直接对到白色, 不再判成有歧义。
+        AliasRow autoLearned = new AliasRow(UUID.randomUUID(), AliasScope.CLIENT, CLIENT, AliasKind.PART_NO, "GZ23/D",
+                "GZ23/D", "Z9|白", z9Black.id(), 1, 0, OffsetDateTime.now().minusDays(2));
+        AliasRow corrected = new AliasRow(UUID.randomUUID(), AliasScope.CLIENT, CLIENT, AliasKind.PART_NO, "GZ23/D",
+                "GZ23/D", "Z9|白", z9White.id(), 1, 1, OffsetDateTime.now());
+        ClientContext client = new ClientContext(CLIENT, "", "", Map.of(), null);
+        Decision d = decide(line("GZ23/D", "Z9", "WHITE", "白色", null, null, null), List.of(z9White, z9Black),
+                client, List.of(autoLearned, corrected));
+        assertThat(d.status()).isEqualTo(Status.MATCHED);
+        assertThat(d.top().goods).isEqualTo(z9White);
+        assertThat(d.top().evidence).contains(Evidence.ALIAS_AUTHORITATIVE);
+    }
+
+    @Test
+    void twoExplicitChoicesForTheSameWordingStayAmbiguous() {
+        AliasRow a = new AliasRow(UUID.randomUUID(), AliasScope.CLIENT, CLIENT, AliasKind.PART_NO, "X1", "X1", "", z9White.id(),
+                1, 1, OffsetDateTime.now());
+        AliasRow b = new AliasRow(UUID.randomUUID(), AliasScope.CLIENT, CLIENT, AliasKind.PART_NO, "X1", "X1", "", z9Black.id(),
+                1, 1, OffsetDateTime.now());
+        Decision d = decide(line("X1", null, null, null, null, null, null), List.of(z9White, z9Black),
+                new ClientContext(CLIENT, "", "", Map.of(), null), List.of(a, b));
+        assertThat(d.status()).isEqualTo(Status.REVIEW);
+        assertThat(d.reason()).isEqualTo(Reason.ALIAS_AMBIGUOUS);
+    }
+
+    @Test
     void shortChineseDescriptionIsOnlyCorroboration() {
         GoodsRow blankZ9 = goods("Z9-M", "Z9空白面盖", "M/D", "Z9", "白色", null, "6.5");
         GoodsRow blank6M = goods("6M-M", "尼日利亚6M  空白面板", "G-M/D", "6M", "响臻白", null, "6.5");

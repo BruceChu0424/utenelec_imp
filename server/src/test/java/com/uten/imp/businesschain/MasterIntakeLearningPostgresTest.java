@@ -428,18 +428,25 @@ class MasterIntakeLearningPostgresTest {
         assertThat(aliasRow(sunas, "PART_NO", retract, ga)).isNull();
         assertThat(aliasRow(sunas, "PART_NO", retract, gb)).containsEntry("confirm_count", 1);
 
-        // 另一张单据明确改成别的货品: 学习不替用户删别的单据学到的对应(两条并存时识别会提示人工核对,
-        // 错的那条由用户在客户资料「货品对照」里删除)。
+        // 另一张单据明确改成别的货品: 这是用户改正。系统以前自动学到(没人明确选过)的旧对应作废,
+        // 下次识别直接用改正后的货品(ADR-134 §五)。
         UUID weakJob = UUID.randomUUID();
         String weak = "WEAK-" + tag;
         jobResult(weakJob, a, line("S1R9", weak, null, "Z9|白", "MATCHED", ga, null));
         save(a, "quote", UUID.randomUUID(), sunas, weakJob, Map.of(), new LearnedLine(ga, weak, null, "S1R9", false, false));
-        assertThat(aliasRow(sunas, "PART_NO", weak, ga)).isNotNull();
+        assertThat(aliasRow(sunas, "PART_NO", weak, ga)).containsEntry("explicit_count", 0);
         jobResult(weakJob, a, line("S1R9", weak, null, "Z9|白", "REVIEW", ga, null));
         save(a, "quote", UUID.randomUUID(), sunas, weakJob, Map.of(), new LearnedLine(gb, weak, null, "S1R9", true, false));
-        assertThat(aliasRow(sunas, "PART_NO", weak, ga)).containsEntry("confirm_count", 1).containsEntry("explicit_count", 0);
+        assertThat(aliasRow(sunas, "PART_NO", weak, ga)).as("自动学到的错误对应被用户改正后作废").isNull();
         assertThat(aliasRow(sunas, "PART_NO", weak, gb)).containsEntry("explicit_count", 1);
-        assertThat(aliasRow(null, "PART_NO", weak, ga)).isNotNull();
+
+        // 反例: 被人明确选过的对应不会被另一次明确选择删掉(同一叫法确有两种货品, 识别时交给人核对)。
+        String firm = "FIRM-" + tag;
+        jobResult(weakJob, a, line("S1R9", firm, null, "Z9|白", "REVIEW", ga, null));
+        save(a, "quote", UUID.randomUUID(), sunas, weakJob, Map.of(), new LearnedLine(ga, firm, null, "S1R9", true, false));
+        save(a, "quote", UUID.randomUUID(), sunas, weakJob, Map.of(), new LearnedLine(gb, firm, null, "S1R9", true, false));
+        assertThat(aliasRow(sunas, "PART_NO", firm, ga)).containsEntry("explicit_count", 1);
+        assertThat(aliasRow(sunas, "PART_NO", firm, gb)).containsEntry("explicit_count", 1);
     }
 
     @Test

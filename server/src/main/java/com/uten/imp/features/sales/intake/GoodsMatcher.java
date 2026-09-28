@@ -375,6 +375,16 @@ final class GoodsMatcher {
                                           Map<UUID, Scored> cands) {
         Set<UUID> exactContextGoods = new HashSet<>();
         Map<String, Set<UUID>> globalByNorm = new HashMap<>();
+        // 同一叫法同一上下文下被人明确选过的货品: 只有一个时它就是用户改正后的答案, 优先于系统自动学到的对照。
+        Set<UUID> explicitExact = new HashSet<>();
+        for (AliasRow a : aliases) {
+            if (a.scope() == AliasScope.CLIENT && a.kind() == AliasKind.PART_NO && !line.fullPartNorm().isEmpty()
+                    && a.norm().equals(line.fullPartNorm()) && a.context().equals(line.contextNorm())
+                    && a.explicitCount() >= 1 && poolById.containsKey(a.goodsId())) {
+                explicitExact.add(a.goodsId());
+            }
+        }
+        UUID userChoice = explicitExact.size() == 1 ? explicitExact.iterator().next() : null;
         for (AliasRow a : aliases) {
             if (a.kind() != AliasKind.PART_NO || line.fullPartNorm().isEmpty() || !a.norm().equals(line.fullPartNorm())) {
                 continue;
@@ -385,10 +395,16 @@ final class GoodsMatcher {
             }
             if (a.scope() == AliasScope.CLIENT) {
                 boolean exactContext = a.context().equals(line.contextNorm());
+                if (exactContext && userChoice != null && !userChoice.equals(a.goodsId())) {
+                    // 被用户改正掉的旧对照不再加分(它的货品仍可按型号等证据进候选, 但最多 89 分)。
+                    continue;
+                }
                 if (exactContext) {
                     exactContextGoods.add(a.goodsId());
                 }
-                boolean authoritative = exactContext && (a.explicitCount() >= 1 || a.confirmCount() >= 2);
+                boolean authoritative = exactContext && (userChoice != null
+                        ? userChoice.equals(a.goodsId())
+                        : (a.explicitCount() >= 1 || a.confirmCount() >= 2));
                 cand(cands, g).add(authoritative ? ALIAS_AUTHORITATIVE_SCORE : 92,
                         authoritative ? Evidence.ALIAS_AUTHORITATIVE : Evidence.ALIAS);
             } else if (a.confirmCount() >= 2) {

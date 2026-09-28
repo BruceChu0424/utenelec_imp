@@ -132,6 +132,52 @@ class ClientGoodsAliasLedger {
             """;
 
     /**
+     * 用户明确选择(识别面板或明细里亲手选/改成某货品)即改正: 同一客户、同一叫法、同一上下文下
+     * 指向其它货品、且从没被人明确选过(explicit_count = 0, 只是系统自动对上后保存学到的)的旧对照直接作废。
+     * 人明确选过的旧对照保留(同一叫法确有两种货品时由核对界面让人选), 全局对照由证据重算处理。
+     *
+     * @return 受影响的证据键(用于重算全局对照可信度)
+     */
+    @SuppressWarnings("unchecked")
+    Set<EvidenceKey> supersedeAutoLearned(List<SalesLearningPlanner.AliasUpsert> aliases) {
+        List<Map<String, Object>> keys = new ArrayList<>();
+        for (SalesLearningPlanner.AliasUpsert alias : aliases) {
+            if (alias.scope() != AliasScope.CLIENT || !alias.explicit() || alias.clientId() == null) continue;
+            Map<String, Object> key = new LinkedHashMap<>();
+            key.put("client_id", alias.clientId());
+            key.put("kind", alias.kind().name());
+            key.put("norm", alias.norm());
+            key.put("context", alias.context());
+            key.put("goods_id", alias.goodsId());
+            keys.add(key);
+        }
+        if (keys.isEmpty()) return Set.of();
+        List<Object[]> rows = em.createNativeQuery(SUPERSEDE_SQL)
+                .setParameter("keys", json(keys))
+                .getResultList();
+        Set<EvidenceKey> touched = new LinkedHashSet<>();
+        for (Object[] row : rows) {
+            touched.add(new EvidenceKey(AliasKind.valueOf((String) row[0]), (String) row[1], (UUID) row[2]));
+        }
+        return touched;
+    }
+
+    private static final String SUPERSEDE_SQL = """
+            WITH k AS (
+                SELECT *
+                FROM jsonb_to_recordset(CAST(:keys AS jsonb))
+                     AS k(client_id uuid, kind text, norm text, context text, goods_id uuid)
+            )
+            DELETE FROM client_goods_aliases a
+            USING k
+            WHERE a.client_id = k.client_id
+              AND a.alias_kind = k.kind AND a.alias_norm = k.norm AND a.context_norm = k.context
+              AND a.goods_id <> k.goods_id
+              AND a.explicit_count = 0
+            RETURNING a.alias_kind, a.alias_norm, a.goods_id
+            """;
+
+    /**
      * 一条语句写入本次保存的全部对照(按货品 id 顺序加锁): 新叫法确认 1 次; 已有叫法确认次数 +1,
      * 明确选择次数按本次是否明确选择 +1; 同一张单据重复保存只更新原文与时间, 不重复计数。
      * 全局对照的两个次数随后由 {@link #refreshGlobalConfidence} 按客户证据重算。

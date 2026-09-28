@@ -93,9 +93,12 @@ public class SalesMasterLearningApplier {
         }
 
         ClientGoodsAliasLedger.Retraction retraction = aliasLedger.retractChangedMappings(docType, docId, aliases);
+        // 用户明确改正过的叫法: 系统以前自动学到的错误对照作废, 下次识别直接用改正后的货品。
+        Set<ClientGoodsAliasLedger.EvidenceKey> superseded = aliasLedger.supersedeAutoLearned(aliases);
         int written = aliasLedger.upsert(docType, docId, actorUserId, aliases);
         // 全局对照的可信度 = 不同客户的证据数: 本次写到的叫法(客户对照也是证据)与撤回掉的旧对应都要重算。
         Set<ClientGoodsAliasLedger.EvidenceKey> evidence = new LinkedHashSet<>(retraction.touched());
+        evidence.addAll(superseded);
         for (SalesLearningPlanner.AliasUpsert alias : aliases) {
             evidence.add(new ClientGoodsAliasLedger.EvidenceKey(alias.kind(), alias.norm(), alias.goodsId()));
         }

@@ -4156,6 +4156,176 @@ class AppLocalizationsKo extends AppLocalizations {
   String get goodsLearnedPriceTaxRate => '세율';
 
   @override
+  String get goodsNameEnLabel => '영문명';
+
+  @override
+  String get goodsNameEnHint => '예: DOUBLE 3 PIN SOCKET WITH SWITCH';
+
+  @override
+  String get goodsNameEnInfo =>
+      '고객 견적서나 주문서에서 이 품목을 부르는 영문 이름입니다. 고객 파일을 인식할 때 영문 품명을 이 품목과 연결하는 데 사용됩니다.';
+
+  @override
+  String get goodsNameEnColumnInfo =>
+      '고객 파일에서 이 품목을 부르는 영문 이름입니다. 영업이 영문 품명이 있는 문서를 저장하면 자동으로 기억되며, 품목 상세에서 수정할 수 있습니다.';
+
+  @override
+  String get goodsNameEnSearchHint => '품목 검색(이름/영문명/코드/모델/규격/시리즈)';
+
+  @override
+  String get goodsNameEnLearned => '자동 학습';
+
+  @override
+  String get goodsNameEnLearnedTip =>
+      '영업이 고객 파일을 저장할 때 시스템이 자동으로 기억한 영문명입니다. 틀리면 바로 수정하세요.';
+
+  @override
+  String get goodsNameEnEdit => '영문명 수정';
+
+  @override
+  String get goodsNameEnEditDescription =>
+      '고객 파일에 적힌 영문 품명을 입력하세요. 저장 후에는 고객 파일을 이 이름으로 이 품목과 연결합니다. 비워 두면 영문명을 사용하지 않습니다.';
+
+  @override
+  String get goodsNameEnSaving => '저장 중…';
+
+  @override
+  String get goodsNameEnSaved => '영문명을 저장했습니다';
+
+  @override
+  String get goodsNameEnCleared => '영문명을 지웠습니다';
+
+  @override
+  String get goodsNameEnImportHint =>
+      '영문명도 가져올 수 있습니다 (머리글 「英文名称」 또는 「English Name」).';
+
+  @override
+  String goodsNameEnTooLong(int max) {
+    return '영문명은 최대 $max자까지 입력할 수 있습니다';
+  }
+
+  @override
+  String get clientNameEnLabel => '외국어 이름';
+
+  @override
+  String get clientNameEnHint => '예: SUNAS TRADING LIMITED';
+
+  @override
+  String get clientNameEnInfo =>
+      '고객 회사의 영문 또는 기타 외국어 이름입니다. 고객 파일을 인식할 때 이 고객을 찾는 데 사용되며, 영업이 문서를 저장할 때 자동으로 채워집니다.';
+
+  @override
+  String get clientNameEnSearchHint => '고객 검색(약칭/코드/정식명/외국어 이름/담당자/휴대폰/이메일)';
+
+  @override
+  String get clientGoodsAliasTab => '품목 대응';
+
+  @override
+  String get clientGoodsAliasTitle => '고객이 부르는 품목 이름';
+
+  @override
+  String get clientGoodsAliasDescription =>
+      '고객 견적서·주문서의 모델 번호와 품명이 우리 어느 품목에 해당하는지 보여 줍니다. 이 고객의 파일을 인식할 때 여기를 먼저 참고합니다.';
+
+  @override
+  String get clientGoodsAliasSearchHint => '고객 표기, 품목명 또는 코드 검색';
+
+  @override
+  String get clientGoodsAliasEmptyTitle => '아직 품목 대응이 없습니다';
+
+  @override
+  String get clientGoodsAliasEmpty =>
+      '파일 모델 번호가 있는 견적서나 주문서를 저장하면 고객의 표기가 여기에 자동으로 기억됩니다';
+
+  @override
+  String get clientGoodsAliasNoMatch => '찾는 대응이 없습니다. 다른 검색어로 시도하세요.';
+
+  @override
+  String get clientGoodsAliasKindPartNo => '고객 모델';
+
+  @override
+  String get clientGoodsAliasKindDescription => '고객 품명';
+
+  @override
+  String clientGoodsAliasContext(String context) {
+    return '$context에 적용';
+  }
+
+  @override
+  String clientGoodsAliasConfirmCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count회 확인',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String clientGoodsAliasExplicitCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '그중 $count회 직접 선택',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String clientGoodsAliasLastConfirmed(String date) {
+    return '최근 $date';
+  }
+
+  @override
+  String clientGoodsAliasLastConfirmedBy(String date, String name) {
+    return '최근 $date · $name';
+  }
+
+  @override
+  String get clientGoodsAliasGoodsMissing => '품목 자료가 삭제됨';
+
+  @override
+  String get clientGoodsAliasDelete => '이 대응 삭제';
+
+  @override
+  String get clientGoodsAliasDeleteAction => '삭제';
+
+  @override
+  String clientGoodsAliasDeleteConfirm(String alias, String goods) {
+    return '삭제하면 이 고객의 파일을 인식할 때 「$alias」를 「$goods」에 더 이상 연결하지 않습니다. 이후 영업이 문서를 저장하면 다시 기억될 수 있습니다.';
+  }
+
+  @override
+  String get clientGoodsAliasDeleting => '대응을 삭제하는 중';
+
+  @override
+  String get clientGoodsAliasDeleted => '대응을 삭제했습니다';
+
+  @override
+  String get clientGoodsAliasLoadFailed => '품목 대응을 불러오지 못했습니다. 다시 시도하세요.';
+
+  @override
+  String clientGoodsAliasTotal(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '총 $count건',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String clientGoodsAliasPage(int page, int pages) {
+    return '$page / $pages 페이지';
+  }
+
+  @override
+  String get clientGoodsAliasPrevPage => '이전';
+
+  @override
+  String get clientGoodsAliasNextPage => '다음';
+
+  @override
   String get shelfLocationQuantityHint =>
       '보관 위치는 권장 사항입니다. 재고는 실제 창고와 색상별로 집계되며, 해당 위치의 실사 수량을 뜻하지 않습니다.';
 

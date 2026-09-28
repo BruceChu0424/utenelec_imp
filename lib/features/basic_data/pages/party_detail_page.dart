@@ -45,7 +45,9 @@ import '../repositories/master_status_repository.dart';
 import '../repositories/party_directory_repository.dart';
 import '../models/supplier_node.dart';
 import '../repositories/supplier_repository.dart';
+import '../widgets/basic_data_l10n.dart';
 import '../widgets/client_access_panel.dart';
+import '../widgets/client_goods_alias_tab.dart';
 import '../widgets/client_master_edit.dart';
 import '../models/currency_node.dart';
 import '../models/reference_method_option.dart';
@@ -92,7 +94,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   bool _scoreLoaded = false;
 
   late final TabController _tab = TabController(
-    length: _isClient ? 5 : 4,
+    length: _isClient ? 6 : 4,
     vsync: this,
   );
 
@@ -239,7 +241,15 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   }
 
   List<String> get _tabLabels => _isClient
-      ? const ['概览', '销售条款与财务', '联系方式', '地址', '跟进与行为记录']
+      ? [
+          '概览',
+          '销售条款与财务',
+          '联系方式',
+          '地址',
+          '跟进与行为记录',
+          // ADR-134: learned customer wording of our goods.
+          basicDataL10n(context).clientGoodsAliasTab,
+        ]
       : const ['概览', '联系方式', '地址', '跟进记录'];
 
   @override
@@ -344,12 +354,13 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     tabs: [for (final label in _tabLabels) Tab(text: label)],
   );
 
-  /// Tab → 内容：客户 0 概览/1 条款财务/2 联系/3 地址/4 跟进；
+  /// Tab → 内容：客户 0 概览/1 条款财务/2 联系/3 地址/4 跟进/5 货品对照；
   /// 供应商 0 概览/1 联系/2 地址/3 跟进（无条款 Tab）。
   Widget _tabView(ThemeData theme, int index) {
     if (index == 0) return _overviewTab(theme);
     if (_isClient) {
       if (index == 1) return _termsTab(theme);
+      if (index == 5) return ClientGoodsAliasTab(clientId: widget.id);
       index -= 2;
     } else {
       index -= 1;
@@ -656,6 +667,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
           child: UtenFormGrid(
             children: [
               _kv(theme, '全称', d.fullName),
+              _kv(theme, basicDataL10n(context).clientNameEnLabel, d.nameEn),
               _kv(theme, '等级', d.clientRank),
               _kv(theme, '分类', d.categoryName),
               _kv(theme, '当前访问', d.accessReasonLabel),
@@ -964,6 +976,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     'name': d.name ?? '',
     'code': d.code ?? '',
     'fullName': d.fullName ?? '',
+    'nameEn': d.nameEn ?? '',
     'clientRank': d.clientRank ?? '',
     'region': d.region ?? '',
     'placeId': d.placeId ?? '',
@@ -1023,6 +1036,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     return buildClientFields(
       _clientInitialValues(d),
       settlementOptions,
+      l10n: basicDataL10n(context),
       currencies: currencyOptions,
       legacyCreditSnapshot: d.legacyId != null,
     );

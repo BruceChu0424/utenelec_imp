@@ -4058,6 +4058,173 @@ class AppLocalizationsZh extends AppLocalizations {
   String get goodsLearnedPriceTaxRate => '税率';
 
   @override
+  String get goodsNameEnLabel => '英文名称';
+
+  @override
+  String get goodsNameEnHint => '如 DOUBLE 3 PIN SOCKET WITH SWITCH';
+
+  @override
+  String get goodsNameEnInfo =>
+      '客户报价单或订货单上对这个货品的英文叫法。识别客户文件时, 系统用它把英文品名对应到这个货品。';
+
+  @override
+  String get goodsNameEnColumnInfo =>
+      '客户文件里对这个货品的英文叫法。销售保存带英文品名的单据时会自动记住, 也可以在货品详情里修改。';
+
+  @override
+  String get goodsNameEnSearchHint => '搜索货品(名称/英文名称/编号/型号/规格/系列)';
+
+  @override
+  String get goodsNameEnLearned => '系统自动记住';
+
+  @override
+  String get goodsNameEnLearnedTip => '这是销售保存客户文件时系统自动记住的英文名称, 不对可以直接修改。';
+
+  @override
+  String get goodsNameEnEdit => '修改英文名称';
+
+  @override
+  String get goodsNameEnEditDescription =>
+      '填客户文件上写的英文品名。保存后, 以后识别客户文件都按这个名称对应到本货品。留空表示不用英文名称。';
+
+  @override
+  String get goodsNameEnSaving => '正在保存…';
+
+  @override
+  String get goodsNameEnSaved => '英文名称已保存';
+
+  @override
+  String get goodsNameEnCleared => '英文名称已清除';
+
+  @override
+  String get goodsNameEnImportHint => '英文名称也可以导入 (表头写「英文名称」或「English Name」)。';
+
+  @override
+  String goodsNameEnTooLong(int max) {
+    return '英文名称最多 $max 个字';
+  }
+
+  @override
+  String get clientNameEnLabel => '外文名称';
+
+  @override
+  String get clientNameEnHint => '如 SUNAS TRADING LIMITED';
+
+  @override
+  String get clientNameEnInfo =>
+      '客户公司的英文或其他外文名称。识别客户文件时, 系统用它找到这个客户; 销售保存单据时也会自动补上。';
+
+  @override
+  String get clientNameEnSearchHint => '搜索客户(简称/编码/全称/外文名称/联系人/手机/邮箱)';
+
+  @override
+  String get clientGoodsAliasTab => '货品对照';
+
+  @override
+  String get clientGoodsAliasTitle => '客户对货品的叫法';
+
+  @override
+  String get clientGoodsAliasDescription =>
+      '客户报价单、订货单上的型号和品名, 对应到我们的哪个货品。识别这个客户的文件时, 系统优先按这里对应。';
+
+  @override
+  String get clientGoodsAliasSearchHint => '搜索客户的叫法、货品名称或编号';
+
+  @override
+  String get clientGoodsAliasEmptyTitle => '还没有货品对照';
+
+  @override
+  String get clientGoodsAliasEmpty => '保存带有文件型号的报价单或订货单后, 这里会自动记住客户的叫法';
+
+  @override
+  String get clientGoodsAliasNoMatch => '没有找到相关的对照, 换个关键词试试';
+
+  @override
+  String get clientGoodsAliasKindPartNo => '客户型号';
+
+  @override
+  String get clientGoodsAliasKindDescription => '客户品名';
+
+  @override
+  String clientGoodsAliasContext(String context) {
+    return '适用于 $context';
+  }
+
+  @override
+  String clientGoodsAliasConfirmCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '已确认 $count 次',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String clientGoodsAliasExplicitCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '其中 $count 次是手工选的',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String clientGoodsAliasLastConfirmed(String date) {
+    return '最近 $date';
+  }
+
+  @override
+  String clientGoodsAliasLastConfirmedBy(String date, String name) {
+    return '最近 $date · $name';
+  }
+
+  @override
+  String get clientGoodsAliasGoodsMissing => '货品资料已删除';
+
+  @override
+  String get clientGoodsAliasDelete => '删除这条对照';
+
+  @override
+  String get clientGoodsAliasDeleteAction => '删除';
+
+  @override
+  String clientGoodsAliasDeleteConfirm(String alias, String goods) {
+    return '删除后, 识别这个客户的文件时不再把「$alias」对应到「$goods」。以后销售保存单据时, 系统可能会重新记住。';
+  }
+
+  @override
+  String get clientGoodsAliasDeleting => '正在删除对照';
+
+  @override
+  String get clientGoodsAliasDeleted => '已删除这条对照';
+
+  @override
+  String get clientGoodsAliasLoadFailed => '货品对照没有加载出来, 请重试';
+
+  @override
+  String clientGoodsAliasTotal(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '共 $count 条',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String clientGoodsAliasPage(int page, int pages) {
+    return '第 $page / $pages 页';
+  }
+
+  @override
+  String get clientGoodsAliasPrevPage => '上一页';
+
+  @override
+  String get clientGoodsAliasNextPage => '下一页';
+
+  @override
   String get shelfLocationQuantityHint => '库位是存放建议；库存按实际仓库和颜色统计，不代表该库位的盘点数量。';
 
   @override

@@ -17,6 +17,7 @@ class ClientListItem {
     this.code,
     this.name,
     this.fullName,
+    this.nameEn,
     this.clientXz,
     this.tday,
     this.region,
@@ -58,6 +59,10 @@ class ClientListItem {
   final String? code; // 客户编码（Number）
   final String? name; // 客户简称（Client_Name）
   final String? fullName; // 客户全称（Full_Name）
+
+  /// Company name in English or another foreign language (clients.name_en,
+  /// ADR-134); customer-file intake matches clients by it.
+  final String? nameEn;
   final String? clientXz; // 客户性质（ClientXZ）
   final int? tday; // 信用天数（TDay 结算天数）
   final String? region; // 区域（QYName）
@@ -98,6 +103,7 @@ class ClientListItem {
     name: json['name'] as String?,
     // 后端 @JsonProperty("fullName") 输出 fullName；兼容小写兜底。
     fullName: (json['fullName'] ?? json['fullname']) as String?,
+    nameEn: json['nameEn'] as String?,
     clientXz: (json['clientXz'] ?? json['clientxz']) as String?,
     tday: (json['tday'] as num?)?.toInt(),
     region: json['region'] as String?,
@@ -156,6 +162,7 @@ class ClientDetail {
     this.categoryId,
     this.categoryName,
     this.fullName,
+    this.nameEn,
     this.clientRank,
     this.placeId,
     this.empId,
@@ -201,6 +208,9 @@ class ClientDetail {
   final String? categoryId;
   final String? categoryName;
   final String? fullName; // 全称
+
+  /// Company name in English or another foreign language (clients.name_en).
+  final String? nameEn;
   final String? clientRank; // 等级
   final String? placeId; // 地区文本
   final String? empId; // 业务员
@@ -274,6 +284,7 @@ class ClientDetail {
     categoryId: json['categoryId'] as String?,
     categoryName: json['categoryName'] as String?,
     fullName: (json['fullName'] ?? json['fullname']) as String?,
+    nameEn: json['nameEn'] as String?,
     clientRank: json['clientRank'] as String?,
     placeId: (json['placeId'] ?? json['placeid']) as String?,
     empId: (json['empId'] ?? json['empid']) as String?,

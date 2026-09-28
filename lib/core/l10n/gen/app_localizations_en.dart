@@ -4257,6 +4257,183 @@ class AppLocalizationsEn extends AppLocalizations {
   String get goodsLearnedPriceTaxRate => 'Tax rate';
 
   @override
+  String get goodsNameEnLabel => 'English name';
+
+  @override
+  String get goodsNameEnHint => 'e.g. DOUBLE 3 PIN SOCKET WITH SWITCH';
+
+  @override
+  String get goodsNameEnInfo =>
+      'How customer quotations and orders name this item in English. When reading a customer file, the system uses it to match the English description to this item.';
+
+  @override
+  String get goodsNameEnColumnInfo =>
+      'The English name customers use for this item. It is remembered automatically when sales save a document with an English description, and can be edited on the item details.';
+
+  @override
+  String get goodsNameEnSearchHint =>
+      'Search items (name/English name/code/model/spec/series)';
+
+  @override
+  String get goodsNameEnLearned => 'Learned automatically';
+
+  @override
+  String get goodsNameEnLearnedTip =>
+      'The system remembered this English name when sales saved a customer file. Edit it if it is wrong.';
+
+  @override
+  String get goodsNameEnEdit => 'Edit English name';
+
+  @override
+  String get goodsNameEnEditDescription =>
+      'Enter the English description written on customer files. After saving, customer files are matched to this item by this name. Leave it blank to stop using an English name.';
+
+  @override
+  String get goodsNameEnSaving => 'Saving…';
+
+  @override
+  String get goodsNameEnSaved => 'English name saved';
+
+  @override
+  String get goodsNameEnCleared => 'English name cleared';
+
+  @override
+  String get goodsNameEnImportHint =>
+      'English names can be imported too (header \"英文名称\" or \"English Name\").';
+
+  @override
+  String goodsNameEnTooLong(int max) {
+    return 'The English name can have at most $max characters';
+  }
+
+  @override
+  String get clientNameEnLabel => 'Foreign name';
+
+  @override
+  String get clientNameEnHint => 'e.g. SUNAS TRADING LIMITED';
+
+  @override
+  String get clientNameEnInfo =>
+      'The customer\'s company name in English or another foreign language. The system uses it to find this customer when reading customer files, and fills it in automatically when sales save documents.';
+
+  @override
+  String get clientNameEnSearchHint =>
+      'Search customers (short name/code/full name/foreign name/contact/mobile/email)';
+
+  @override
+  String get clientGoodsAliasTab => 'Item names';
+
+  @override
+  String get clientGoodsAliasTitle => 'How this customer names our items';
+
+  @override
+  String get clientGoodsAliasDescription =>
+      'Model numbers and descriptions on this customer\'s quotations and orders, and which of our items they mean. The system uses this list first when reading this customer\'s files.';
+
+  @override
+  String get clientGoodsAliasSearchHint =>
+      'Search the customer\'s wording, item name or code';
+
+  @override
+  String get clientGoodsAliasEmptyTitle => 'No item names yet';
+
+  @override
+  String get clientGoodsAliasEmpty =>
+      'After a quotation or order with the customer\'s model numbers is saved, the customer\'s wording is remembered here automatically';
+
+  @override
+  String get clientGoodsAliasNoMatch => 'Nothing found. Try another keyword.';
+
+  @override
+  String get clientGoodsAliasKindPartNo => 'Customer model';
+
+  @override
+  String get clientGoodsAliasKindDescription => 'Customer description';
+
+  @override
+  String clientGoodsAliasContext(String context) {
+    return 'Applies to $context';
+  }
+
+  @override
+  String clientGoodsAliasConfirmCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Confirmed $count times',
+      one: 'Confirmed once',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String clientGoodsAliasExplicitCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'picked by hand $count times',
+      one: 'picked by hand once',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String clientGoodsAliasLastConfirmed(String date) {
+    return 'Last $date';
+  }
+
+  @override
+  String clientGoodsAliasLastConfirmedBy(String date, String name) {
+    return 'Last $date · $name';
+  }
+
+  @override
+  String get clientGoodsAliasGoodsMissing => 'Item record deleted';
+
+  @override
+  String get clientGoodsAliasDelete => 'Delete this match';
+
+  @override
+  String get clientGoodsAliasDeleteAction => 'Delete';
+
+  @override
+  String clientGoodsAliasDeleteConfirm(String alias, String goods) {
+    return 'After deleting, \"$alias\" is no longer matched to \"$goods\" when reading this customer\'s files. The system may learn it again when sales save documents later.';
+  }
+
+  @override
+  String get clientGoodsAliasDeleting => 'Deleting the match';
+
+  @override
+  String get clientGoodsAliasDeleted => 'Match deleted';
+
+  @override
+  String get clientGoodsAliasLoadFailed =>
+      'Could not load item names. Please try again.';
+
+  @override
+  String clientGoodsAliasTotal(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count matches',
+      one: '1 match',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String clientGoodsAliasPage(int page, int pages) {
+    return 'Page $page of $pages';
+  }
+
+  @override
+  String get clientGoodsAliasPrevPage => 'Previous';
+
+  @override
+  String get clientGoodsAliasNextPage => 'Next';
+
+  @override
   String get shelfLocationQuantityHint =>
       'Locations are storage suggestions. Quantities are totals for the actual warehouse and color, not counts at a specific shelf location.';
 

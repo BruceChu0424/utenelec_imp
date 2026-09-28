@@ -907,7 +907,6 @@ public class AuditEventInterpreter {
         values.put("visitor_accounts", "访客账号");
         values.put("visitor_applications", "访客申请");
         values.put("visitor_approval_steps", "访客审批步骤");
-        values.put("official_policy_briefs", "官方政策简报");
         // 基础资料
         values.put("material_categories", "货品分类");
         values.put("goods", "货品");

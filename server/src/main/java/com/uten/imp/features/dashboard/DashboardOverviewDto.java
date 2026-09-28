@@ -1,9 +1,7 @@
 package com.uten.imp.features.dashboard;
 
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * 工作台首屏的权限化读模型。
@@ -15,8 +13,7 @@ public record DashboardOverviewDto(
         String departmentName,
         Instant generatedAt,
         List<MetricCard> metrics,
-        List<TodoCard> todos,
-        List<PolicyBrief> intelligence) {
+        List<TodoCard> todos) {
 
     public record MetricCard(
             String id,
@@ -40,16 +37,5 @@ public record DashboardOverviewDto(
             String sourceId,
             Instant dueAt,
             boolean completable) {
-    }
-
-    public record PolicyBrief(
-            UUID id,
-            String title,
-            String summary,
-            String category,
-            String sourceName,
-            String sourceUrl,
-            LocalDate publishedOn,
-            Instant capturedAt) {
     }
 }

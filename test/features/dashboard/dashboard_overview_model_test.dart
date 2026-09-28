@@ -33,7 +33,6 @@ void main() {
             'completable': false,
           },
         ],
-        'intelligence': <Map<String, dynamic>>[],
       });
 
       expect(overview.departmentName, '生产部');
@@ -54,43 +53,39 @@ void main() {
     },
   );
 
-  test('parses notice todo completion and verified source link', () {
-    final overview = DashboardOverview.fromJson({
-      'departmentCode': 'DEPT_FIN',
-      'departmentName': '财务部',
-      'generatedAt': '2026-07-31T01:00:00Z',
-      'metrics': <Map<String, dynamic>>[],
-      'todos': [
-        {
-          'id': 'notice-1',
-          'title': '核对出口退税资料',
-          'summary': '请在截止日前完成',
-          'count': 1,
-          'urgentCount': 0,
-          'tone': 'info',
-          'route': '/notice/n1',
-          'sourceType': 'NOTICE',
-          'sourceId': 'n1',
-          'dueAt': '2026-08-03T15:59:00Z',
-          'completable': true,
-        },
-      ],
-      'intelligence': [
-        {
-          'id': 'p1',
-          'title': '出口业务增值税政策',
-          'summary': '按商品代码和申报条件核对。',
-          'category': 'EXPORT',
-          'sourceName': '中华人民共和国财政部',
-          'sourceUrl': 'https://www.mof.gov.cn/example.htm',
-          'publishedOn': '2026-01-30',
-          'capturedAt': '2026-07-31T00:00:00Z',
-        },
-      ],
-    });
+  test(
+    'parses notice todo completion and ignores the retired policy field',
+    () {
+      final overview = DashboardOverview.fromJson({
+        'departmentCode': 'DEPT_FIN',
+        'departmentName': '财务部',
+        'generatedAt': '2026-07-31T01:00:00Z',
+        'metrics': <Map<String, dynamic>>[],
+        'todos': [
+          {
+            'id': 'notice-1',
+            'title': '核对出口退税资料',
+            'summary': '请在截止日前完成',
+            'count': 1,
+            'urgentCount': 0,
+            'tone': 'info',
+            'route': '/notice/n1',
+            'sourceType': 'NOTICE',
+            'sourceId': 'n1',
+            'dueAt': '2026-08-03T15:59:00Z',
+            'completable': true,
+          },
+        ],
+        // 政策与监管动态已下线 (ADR-133): 旧服务端若仍带该字段, 新客户端照常解析、直接忽略。
+        'intelligence': [
+          {'id': 'p1', 'title': '出口业务增值税政策', 'category': 'EXPORT'},
+        ],
+      });
 
-    expect(overview.todos.single.sourceType, 'NOTICE');
-    expect(overview.todos.single.completable, isTrue);
-    expect(overview.intelligence.single.sourceUrl, startsWith('https://'));
-  });
+      expect(overview.todos.single.sourceType, 'NOTICE');
+      expect(overview.todos.single.sourceId, 'n1');
+      expect(overview.todos.single.completable, isTrue);
+      expect(overview.todos.single.dueAt, DateTime.utc(2026, 8, 3, 15, 59));
+    },
+  );
 }

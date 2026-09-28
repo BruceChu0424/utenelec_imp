@@ -13,7 +13,6 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentMatchers;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.ResultSetExtractor;
-import org.springframework.jdbc.core.RowMapper;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -55,7 +54,6 @@ class DashboardOverviewServiceTest {
     private final List<Set<String>> badgeRequests = new java.util.ArrayList<>();
 
     @BeforeEach
-    @SuppressWarnings({"unchecked", "rawtypes"})
     void setUp() {
         currentUser = mock(SecurityContextCurrentUser.class);
         jdbc = mock(JdbcTemplate.class);
@@ -73,8 +71,6 @@ class DashboardOverviewServiceTest {
         when(user.getLoginAccount()).thenReturn("admin");
         when(jdbc.queryForList(anyString(), eq(employeeId))).thenReturn(List.of(
                 Map.of("code", "DEPT_FIN", "name", "财税部", "depth", 0)));
-        when(jdbc.query(anyString(), (RowMapper) any(RowMapper.class)))
-                .thenReturn(List.of());
         badgeTodo.putAll(Map.of(
                 "productionSchedule", 4L,
                 "warehouseDrawCenter", 5L,
@@ -140,8 +136,7 @@ class DashboardOverviewServiceTest {
     void explicitSensitivePermissionsStillDoNotExposeTopLevelFinanceAmounts() {
         when(user.getPermissions()).thenReturn(Set.of(
                 "account:view",
-                "ar_ap_ledger:view",
-                "dashboard:finance_sensitive:view"));
+                "ar_ap_ledger:view"));
 
         DashboardOverviewDto result = service.overview();
 
@@ -155,55 +150,52 @@ class DashboardOverviewServiceTest {
                 ArgumentMatchers.<ResultSetExtractor<Map<String, BigDecimal>>>any());
     }
 
+    /**
+     * 政策与监管动态已下线 (V741 删表, ADR-133): 响应只剩部门、时间、指标与待办五项,
+     * 概览任何一条查询都不再碰已删除的 official_policy_briefs。
+     */
     @Test
-    void financeUserSeesFinanceCategoriesButNotInspectionActivities()
-            throws Exception {
-        when(user.getPermissions())
-                .thenReturn(Set.of("dashboard:finance_sensitive:view"));
-        stubPolicyRows(
-                policyRow("TAX"),
-                policyRow("EXPORT"),
-                policyRow("INSPECTION"),
-                policyRow("SAFETY"),
-                policyRow("QUALITY"));
+    void overviewNoLongerCarriesOrQueriesPolicyIntelligence() {
+        configureDepartment("DEPT_FIN", Set.of("notice:read", "expense:approve"));
+
+        service.overview();
+
+        assertThat(java.util.Arrays.stream(DashboardOverviewDto.class.getRecordComponents())
+                .map(java.lang.reflect.RecordComponent::getName))
+                .containsExactly("departmentCode", "departmentName", "generatedAt", "metrics", "todos");
+        assertThat(org.mockito.Mockito.mockingDetails(jdbc).getInvocations())
+                .flatExtracting(invocation -> java.util.Arrays.asList(invocation.getArguments()))
+                .noneSatisfy(argument -> assertThat(String.valueOf(argument))
+                        .containsIgnoringCase("official_policy_briefs"));
+    }
+
+    /** 总经办本身没有工作台分区(GM 标签只服务过政策受众, 已随之删除): 不去算任何徽章入口。 */
+    @Test
+    void generalManagerOfficeHasNoDepartmentPartitionOfItsOwn() {
+        configureDepartment("GM", Set.of("expense:approve", "visitor:approve"));
 
         DashboardOverviewDto result = service.overview();
 
-        assertThat(result.intelligence())
-                .extracting(DashboardOverviewDto.PolicyBrief::category)
-                .containsExactly("TAX", "EXPORT");
+        assertThat(result.todos()).isEmpty();
+        assertThat(result.metrics()).isEmpty();
+        verifyNoInteractions(badges);
     }
 
+    /** 祖先部门照常贡献自己的标签, 总经办作为共同祖先不再需要按层级特殊剔除。 */
     @Test
-    void gmLeaderSeesInspectionActivitiesAndFinanceCategories() throws Exception {
+    void departmentUnderGeneralManagerOfficeKeepsItsOwnTodosOnly() {
         when(user.getPermissions()).thenReturn(Set.of());
-        when(jdbc.queryForList(anyString(), eq(employeeId))).thenReturn(List.of(
-                Map.of("code", "GM", "name", "总经办", "depth", 0)));
-        stubPolicyRows(
-                policyRow("TAX"),
-                policyRow("INSPECTION"),
-                policyRow("SAFETY"),
-                policyRow("QUALITY"));
-
-        DashboardOverviewDto result = service.overview();
-
-        assertThat(result.intelligence())
-                .extracting(DashboardOverviewDto.PolicyBrief::category)
-                .containsExactlyInAnyOrder("TAX", "INSPECTION", "SAFETY", "QUALITY");
-    }
-
-    @Test
-    void employeeInGmSubDepartmentDoesNotInheritGmAudience() throws Exception {
-        when(user.getPermissions()).thenReturn(Set.of());
-        // 直属部门是总经办的下级部门；祖先链 depth>0 的 GM 标签必须被剔除。
         when(jdbc.queryForList(anyString(), eq(employeeId))).thenReturn(List.of(
                 Map.of("code", "SUB_WH", "name", "仓库组", "depth", 0),
                 Map.of("code", "GM", "name", "总经办", "depth", 1)));
-        stubPolicyRows(policyRow("SAFETY"), policyRow("TAX"));
 
         DashboardOverviewDto result = service.overview();
 
-        assertThat(result.intelligence()).isEmpty();
+        assertThat(badgeRequests).containsExactly(Set.of("warehouseDrawCenter"));
+        assertThat(result.todos())
+                .extracting(DashboardOverviewDto.TodoCard::id)
+                .containsExactly("fulfillment-warehouse");
+        assertThat(result.departmentName()).isEqualTo("仓库组");
     }
 
     @Test
@@ -418,36 +410,5 @@ class DashboardOverviewServiceTest {
                         "code", departmentCode,
                         "name", departmentCode,
                         "depth", 0)));
-    }
-
-
-    private void stubPolicyRows(java.sql.ResultSet... rows) {
-        when(jdbc.query(
-                contains("official_policy_briefs"),
-                ArgumentMatchers.<RowMapper<Object>>any()))
-                .thenAnswer(invocation -> {
-                    RowMapper<Object> mapper = invocation.getArgument(1);
-                    List<Object> mapped = new java.util.ArrayList<>();
-                    for (int i = 0; i < rows.length; i++) {
-                        mapped.add(mapper.mapRow(rows[i], i));
-                    }
-                    return mapped;
-                });
-    }
-
-    private java.sql.ResultSet policyRow(String category) throws Exception {
-        java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
-        when(rs.getObject("id", UUID.class)).thenReturn(UUID.randomUUID());
-        when(rs.getString("title")).thenReturn("标题-" + category);
-        when(rs.getString("summary")).thenReturn("摘要");
-        when(rs.getString("category")).thenReturn(category);
-        when(rs.getString("source_name")).thenReturn("官方来源");
-        when(rs.getString("source_url"))
-                .thenReturn("https://www.gov.cn/zhengce/" + category);
-        when(rs.getObject("published_on", java.time.LocalDate.class))
-                .thenReturn(java.time.LocalDate.of(2026, 4, 2));
-        when(rs.getTimestamp("captured_at"))
-                .thenReturn(new java.sql.Timestamp(0L));
-        return rs;
     }
 }

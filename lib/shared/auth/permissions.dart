@@ -18,10 +18,6 @@ abstract final class Perm {
   /// 锁定、启停账号以及重置一次性临时密码。
   static const accountSupport = 'account:support';
 
-  /// 财务敏感驾驶舱字段查看。
-  static const dashboardFinanceSensitiveView =
-      'dashboard:finance_sensitive:view';
-
   /// 权限、数据范围和系统设置管理；后端同时要求超级管理员身份。
   static const authorizationManage = 'authorization:manage';
 

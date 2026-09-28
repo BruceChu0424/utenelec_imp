@@ -59,8 +59,6 @@ public final class ScheduledTaskCatalog {
                     "每天 03:17 把整月超过在线保留期的审计日志移入归档, 归档再到期后整月清理, 每次运行留一条完成记录。")),
             Map.entry("AuditPartitionMaintainer.ensureUpcoming", new Entry("审计日志月分区预建",
                     "每天 01:07 预先建好当月和之后 3 个月的审计日志存放区, 保证新记录随时有地方写。")),
-            Map.entry("OfficialPolicyIntelligenceScheduler.refresh", new Entry("官方政策资讯刷新",
-                    "每天 06:15 刷新工作台的官方政策资讯, 需要显式开启才运行。")),
             Map.entry("PrimaryHealthIndicator.ping", new Entry("云端主库连通探测",
                     "云端部署下每 10 秒探测主数据库是否可达, 不可达时自动降级为只读。"))
     );

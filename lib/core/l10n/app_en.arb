@@ -1812,5 +1812,310 @@
   "materialPreparationAvailableHint": "Supply available to this line includes stock and issued supply, including incoming and unprocessed quantities. Supply assigned to other orders is excluded. Material issue requires actual stock.",
   "materialPreparationPending": "To order",
   "materialPreparationInProgress": "In progress",
-  "materialPreparationMissingAssignment": "Set the production workshop and responsible person for “{goods}” before ordering"
+  "materialPreparationMissingAssignment": "Set the production workshop and responsible person for “{goods}” before ordering",
+  "aiJobCancel": "Cancel",
+  "aiJobElapsed": "Elapsed {time}",
+  "@aiJobElapsed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiJobQueued": "Waiting in line, starting shortly",
+  "aiJobSlowHint": "Large files can take a minute or two. Please wait, there is no need to click again",
+  "aiJobTimeout": "This took too long, so we stopped waiting. Please try again later or split the file into smaller parts",
+  "aiJobGone": "This task no longer exists (it may have been cleaned up). Please start again",
+  "aiJobFailedGeneric": "That did not work this time. Please try again later",
+  "aiJobConfidenceHigh": "High",
+  "aiJobConfidenceMedium": "Medium",
+  "aiJobConfidenceLow": "Low",
+  "aiJobConfidenceSemantics": "AI confidence: {level}",
+  "@aiJobConfidenceSemantics": {
+    "placeholders": {
+      "level": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsTitle": "AI services",
+  "aiSettingsEntrySubtitle": "Configure model providers, API keys and connection tests",
+  "aiSettingsHeroActive": "In use: {name} · {model}",
+  "@aiSettingsHeroActive": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsHeroReady": "Used to recognize customer files uploaded by sales",
+  "aiSettingsHeroNone": "No AI service is available yet",
+  "aiSettingsHeroNoneHint": "After you add a provider and the test passes, customer files uploaded by sales are recognized automatically",
+  "aiSettingsHeroDefaultDisabled": "The default service is disabled, so AI is not being used",
+  "aiSettingsHeroNeedsKey": "No API key has been entered yet, so AI is not being used",
+  "aiSettingsSecurityNote": "Keys are stored encrypted and only the last characters are shown. Saving, deleting and testing with a stored key ask for your login password again.",
+  "aiSettingsOutboundOff": "This server does not call external AI (the default for test environments). You can save settings, but no calls will be made",
+  "aiSettingsProvidersSection": "Providers",
+  "aiSettingsAdd": "Add AI service",
+  "aiSettingsEditTitle": "Edit AI service",
+  "aiSettingsEmptyTitle": "No AI service configured",
+  "aiSettingsEmptyHint": "Mainland providers such as DeepSeek, Qwen, Kimi and Zhipu are supported, as well as a locally deployed model",
+  "aiSettingsLoadFailed": "Failed to load AI service settings",
+  "aiSettingsNoAccess": "Only super administrators can view and change AI services",
+  "aiSettingsRetry": "Retry",
+  "aiSettingsRefresh": "Refresh",
+  "aiSettingsClose": "Close",
+  "aiSettingsCancel": "Cancel",
+  "aiSettingsRegion": "Region",
+  "aiSettingsRegionMainland": "Mainland",
+  "aiSettingsRegionOverseas": "Overseas",
+  "aiSettingsRegionLocal": "Local",
+  "aiSettingsDefaultBadge": "Default",
+  "aiSettingsDisabledBadge": "Disabled",
+  "aiSettingsModel": "Model",
+  "aiSettingsBaseUrl": "Endpoint URL",
+  "aiSettingsApiKey": "API key",
+  "aiSettingsKeyConfigured": "Set {mask}",
+  "@aiSettingsKeyConfigured": {
+    "placeholders": {
+      "mask": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsKeyMissing": "Not set",
+  "aiSettingsKeyNotNeeded": "Not required",
+  "aiSettingsKeyUnreadable": "The API key cannot be decrypted. Please enter it again",
+  "aiSettingsLastTest": "Last test",
+  "aiSettingsLastTestOk": "Passed · {time}",
+  "@aiSettingsLastTestOk": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsLastTestFailed": "Failed · {time}",
+  "@aiSettingsLastTestFailed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsNeverTested": "Not tested yet",
+  "aiSettingsEnabledSwitch": "Enabled",
+  "aiSettingsEnabledInfo": "A disabled service is never called",
+  "aiSettingsTest": "Test connection",
+  "aiSettingsTesting": "Testing",
+  "aiSettingsEdit": "Edit",
+  "aiSettingsSetDefault": "Set as default",
+  "aiSettingsDelete": "Delete",
+  "aiSettingsDeleteTitle": "Delete this AI service?",
+  "aiSettingsDeleteMessage": "The settings and API key of \"{name}\" will be removed and cannot be restored.",
+  "@aiSettingsDeleteMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsDeleteDefaultBlocked": "The default service cannot be deleted. Set another service as default first",
+  "aiSettingsDeleted": "Deleted",
+  "aiSettingsDefaultSet": "\"{name}\" is now the default",
+  "@aiSettingsDefaultSet": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsEnabledOn": "\"{name}\" enabled",
+  "@aiSettingsEnabledOn": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsEnabledOff": "\"{name}\" disabled",
+  "@aiSettingsEnabledOff": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsBusySaving": "Saving",
+  "aiSettingsBusyDeleting": "Deleting",
+  "aiSettingsUpdatedBy": "Changed by {name} at {time}",
+  "@aiSettingsUpdatedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsTestNeedsKeyEdit": "There is no API key yet. Tap \"Edit\" to enter one, then test",
+  "aiSettingsUsageTitle": "Usage in the last {days} days",
+  "@aiSettingsUsageTitle": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsUsageCalls": "Calls",
+  "aiSettingsUsageSuccessRate": "Success rate",
+  "aiSettingsUsageTokens": "Input / output tokens",
+  "aiSettingsUsageLatency": "Average time",
+  "aiSettingsUsageSeconds": "{value} s",
+  "@aiSettingsUsageSeconds": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsUsageEmpty": "No calls yet",
+  "aiSettingsUsageUnavailable": "Usage is temporarily unavailable. This does not affect the service",
+  "aiSettingsPreset": "Provider",
+  "aiSettingsPresetInfo": "Choosing a provider fills in the endpoint and recommended settings. You can still change every field",
+  "aiSettingsPresetOverseasOff": "{label} (overseas, not enabled)",
+  "@aiSettingsPresetOverseasOff": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsOverseasOffHint": "Overseas providers are off by default. To use one, ask your deployment administrator to enable it in the server configuration and complete the cross-border data assessment",
+  "aiSettingsPresetUnavailable": "{label} (unavailable)",
+  "@aiSettingsPresetUnavailable": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsName": "Display name",
+  "aiSettingsNameHint": "e.g. DeepSeek production account",
+  "aiSettingsNameRequired": "Enter a display name",
+  "aiSettingsTooLong": "At most {max} characters",
+  "@aiSettingsTooLong": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsBaseUrlInfo": "The Base URL from the provider documentation. Only https is allowed; a local deployment may use http://127.0.0.1",
+  "aiSettingsBaseUrlRequired": "Enter the endpoint URL",
+  "aiSettingsBaseUrlInvalid": "The endpoint URL is invalid. It should start with https:// and have no query parameters",
+  "aiSettingsBaseUrlHttpLocalOnly": "Only local deployments may use http. Use https for other providers",
+  "aiSettingsModelHint": "Enter the model name, or tap \"Get models\" to pick from a list",
+  "aiSettingsModelRequired": "Enter a model name",
+  "aiSettingsFetchModels": "Get models",
+  "aiSettingsPickModel": "Pick a model from the list",
+  "aiSettingsModelsLoaded": "Found {count} models",
+  "@aiSettingsModelsLoaded": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsModelsEmpty": "The provider returned no model list. Enter the model name directly",
+  "aiSettingsApiKeyHint": "Paste the key created in the provider console",
+  "aiSettingsApiKeyKeepHint": "Set {mask}. Leave blank to keep it",
+  "@aiSettingsApiKeyKeepHint": {
+    "placeholders": {
+      "mask": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsApiKeyNotNeededHint": "Local deployments usually need no key, so you can leave this blank",
+  "aiSettingsApiKeyRequired": "Enter the API key",
+  "aiSettingsClearKey": "Remove key",
+  "aiSettingsUndoClear": "Keep the key",
+  "aiSettingsKeyWillClear": "The stored key will be removed when you save",
+  "aiSettingsUrlChangedNeedKey": "The endpoint changed, so the API key must be entered again",
+  "aiSettingsUrlChangedNeedKeyDetail": "For security, the stored key is only ever sent to the original address. Paste the key again before saving.",
+  "aiSettingsUrlChangedNeedKeyLocalDetail": "For security, the stored key is only ever sent to the original address. Paste the key again, or tap \"Remove key\" if the new address needs none.",
+  "aiSettingsAdvanced": "Advanced settings",
+  "aiSettingsProtocol": "API protocol",
+  "aiSettingsProtocolInfo": "Mainland providers and local deployments are almost always OpenAI compatible; only Claude uses Anthropic",
+  "aiSettingsProtocolOpenAi": "OpenAI compatible",
+  "aiSettingsProtocolAnthropic": "Anthropic",
+  "aiSettingsJsonMode": "JSON output",
+  "aiSettingsJsonModeInfo": "Asks the model to reply with JSON only so the system can read the result. Choose \"Not required\" if the provider does not support it",
+  "aiSettingsJsonModeNone": "Not required",
+  "aiSettingsJsonModeObject": "JSON object",
+  "aiSettingsJsonModeSchema": "Structured (schema)",
+  "aiSettingsThinking": "Turn off deep thinking",
+  "aiSettingsThinkingInfo": "Reading tables does not need deep thinking; turning it off is faster and cheaper. Each provider uses a different parameter, and choosing the provider selects the right one",
+  "aiSettingsThinkingNone": "Leave as is",
+  "aiSettingsThinkingDeepseek": "DeepSeek style",
+  "aiSettingsThinkingDashscope": "Qwen style",
+  "aiSettingsThinkingOpenAi": "OpenAI style",
+  "aiSettingsTemperature": "Consistent output (temperature 0)",
+  "aiSettingsTemperatureInfo": "Keeps results consistent for the same file. Turn off if the model rejects this parameter",
+  "aiSettingsVision": "Can read images and scans",
+  "aiSettingsVisionInfo": "Turn on if the model can read images; needed for photos and scanned PDFs uploaded by sales",
+  "aiSettingsMaxTokens": "Max output length",
+  "aiSettingsMaxTokensInfo": "256 to 65536; files with many lines need more",
+  "aiSettingsTimeout": "Timeout (seconds)",
+  "aiSettingsTimeoutInfo": "10 to 600; a reply slower than this counts as a failure",
+  "aiSettingsNumberRange": "Enter a whole number from {min} to {max}",
+  "@aiSettingsNumberRange": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsOverseasAck": "Customer data (company names, goods descriptions) will be sent to an overseas provider. I confirm the cross-border data assessment is complete",
+  "aiSettingsOverseasAckRequired": "Tick the confirmation above before using an overseas provider",
+  "aiSettingsSave": "Save",
+  "aiSettingsSaving": "Saving",
+  "aiSettingsSaved": "Saved",
+  "aiSettingsSaveFailed": "Save failed. Please try again later",
+  "aiSettingsFixFields": "Please fix the highlighted fields first",
+  "aiSettingsTestNeedsKey": "Enter the API key before testing",
+  "aiSettingsTestStoredMismatch": "Testing with the stored key requires the saved endpoint and model. Save first, or enter the key again to test",
+  "aiSettingsTestResultTitle": "Connection test",
+  "aiSettingsStepNetwork": "Network",
+  "aiSettingsStepAuth": "API key check",
+  "aiSettingsStepModel": "Model available",
+  "aiSettingsStepJson": "JSON output",
+  "aiSettingsStepSkipped": "Not run",
+  "aiSettingsLatency": "{ms} ms",
+  "@aiSettingsLatency": {
+    "placeholders": {
+      "ms": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsTestPassed": "Connection OK, ready to use",
+  "aiSettingsTestPassedShort": "Passed",
+  "aiSettingsTestFailed": "The connection test failed. Check the hints and try again",
+  "aiSettingsTestFailedShort": "Failed",
+  "aiSettingsTestWarnShort": "Check notes",
+  "aiSettingsTestPassedWithNotes": "Connected, but there is something to check. See the notes above",
+  "aiSettingsTestStoredUnsavedAdvanced": "Advanced settings were changed, and a test with the stored key would not include them. Save first, or enter the key again to test",
+  "aiSettingsModelChoices": "Models:",
+  "aiSettingsOverseasLockedShort": "Overseas providers are not enabled; the deployment administrator must turn them on on the server",
+  "aiSettingsKeyConfiguredPlain": "Set",
+  "aiSettingsApiKeyKeepHintPlain": "Set. Leave blank to keep it"
 }

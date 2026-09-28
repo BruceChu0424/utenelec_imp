@@ -1699,5 +1699,310 @@
   "materialPreparationAvailableHint": "이 항목에 배정 가능한 재고와 이미 지시한 공급량에는 입고 예정 및 미처리 잔량이 포함됩니다. 다른 주문에 배정된 수량은 중복 계산하지 않으며, 실제 출고에는 실물 재고가 필요합니다.",
   "materialPreparationPending": "주문 대기",
   "materialPreparationInProgress": "진행 중",
-  "materialPreparationMissingAssignment": "발주 전에 “{goods}”의 생산 작업장과 담당자를 지정하세요"
+  "materialPreparationMissingAssignment": "발주 전에 “{goods}”의 생산 작업장과 담당자를 지정하세요",
+  "aiJobCancel": "취소",
+  "aiJobElapsed": "경과 시간 {time}",
+  "@aiJobElapsed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiJobQueued": "대기 중입니다. 곧 시작합니다",
+  "aiJobSlowHint": "내용이 많으면 1~2분 걸릴 수 있습니다. 다시 누르지 말고 기다려 주세요",
+  "aiJobTimeout": "처리 시간이 너무 길어 기다리기를 멈췄습니다. 잠시 후 다시 시도하거나 파일을 나눠 주세요",
+  "aiJobGone": "이번 작업이 더 이상 없습니다(정리되었을 수 있음). 다시 시작해 주세요",
+  "aiJobFailedGeneric": "처리하지 못했습니다. 잠시 후 다시 시도해 주세요",
+  "aiJobConfidenceHigh": "높음",
+  "aiJobConfidenceMedium": "보통",
+  "aiJobConfidenceLow": "낮음",
+  "aiJobConfidenceSemantics": "AI 판단 확신도: {level}",
+  "@aiJobConfidenceSemantics": {
+    "placeholders": {
+      "level": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsTitle": "AI 서비스",
+  "aiSettingsEntrySubtitle": "모델 제공업체, API 키, 연결 테스트 설정",
+  "aiSettingsHeroActive": "사용 중: {name} · {model}",
+  "@aiSettingsHeroActive": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsHeroReady": "영업팀이 올린 고객 파일을 자동 인식할 때 사용합니다",
+  "aiSettingsHeroNone": "사용 가능한 AI 서비스가 아직 없습니다",
+  "aiSettingsHeroNoneHint": "제공업체를 추가하고 테스트를 통과하면 영업팀이 올린 고객 파일을 자동으로 인식합니다",
+  "aiSettingsHeroDefaultDisabled": "기본 서비스가 사용 중지되어 현재 AI를 호출하지 않습니다",
+  "aiSettingsHeroNeedsKey": "API 키가 아직 없어 현재 AI를 호출하지 않습니다",
+  "aiSettingsSecurityNote": "API 키는 암호화되어 저장되며 끝자리만 표시됩니다. 저장, 삭제, 저장된 키로 테스트할 때는 로그인 비밀번호를 다시 확인합니다.",
+  "aiSettingsOutboundOff": "이 서버는 외부 AI 호출이 꺼져 있습니다(테스트 환경 기본값). 설정은 저장할 수 있지만 실제 호출은 하지 않습니다",
+  "aiSettingsProvidersSection": "제공업체",
+  "aiSettingsAdd": "AI 서비스 추가",
+  "aiSettingsEditTitle": "AI 서비스 편집",
+  "aiSettingsEmptyTitle": "설정된 AI 서비스가 없습니다",
+  "aiSettingsEmptyHint": "DeepSeek, Qwen, Kimi, Zhipu 등 중국 본토 제공업체와 로컬 배포 모델을 지원합니다",
+  "aiSettingsLoadFailed": "AI 서비스 설정을 불러오지 못했습니다",
+  "aiSettingsNoAccess": "최고 관리자만 AI 서비스를 보고 변경할 수 있습니다",
+  "aiSettingsRetry": "다시 시도",
+  "aiSettingsRefresh": "새로고침",
+  "aiSettingsClose": "닫기",
+  "aiSettingsCancel": "취소",
+  "aiSettingsRegion": "지역",
+  "aiSettingsRegionMainland": "중국 본토",
+  "aiSettingsRegionOverseas": "해외",
+  "aiSettingsRegionLocal": "로컬",
+  "aiSettingsDefaultBadge": "기본",
+  "aiSettingsDisabledBadge": "사용 중지",
+  "aiSettingsModel": "모델",
+  "aiSettingsBaseUrl": "엔드포인트 URL",
+  "aiSettingsApiKey": "API 키",
+  "aiSettingsKeyConfigured": "설정됨 {mask}",
+  "@aiSettingsKeyConfigured": {
+    "placeholders": {
+      "mask": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsKeyMissing": "미설정",
+  "aiSettingsKeyNotNeeded": "필요 없음",
+  "aiSettingsKeyUnreadable": "API 키를 복호화할 수 없습니다. 다시 입력해 주세요",
+  "aiSettingsLastTest": "마지막 테스트",
+  "aiSettingsLastTestOk": "통과 · {time}",
+  "@aiSettingsLastTestOk": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsLastTestFailed": "실패 · {time}",
+  "@aiSettingsLastTestFailed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsNeverTested": "아직 테스트하지 않음",
+  "aiSettingsEnabledSwitch": "사용",
+  "aiSettingsEnabledInfo": "사용 중지하면 이 서비스를 호출하지 않습니다",
+  "aiSettingsTest": "연결 테스트",
+  "aiSettingsTesting": "테스트 중",
+  "aiSettingsEdit": "편집",
+  "aiSettingsSetDefault": "기본으로 설정",
+  "aiSettingsDelete": "삭제",
+  "aiSettingsDeleteTitle": "이 AI 서비스를 삭제할까요?",
+  "aiSettingsDeleteMessage": "\"{name}\"의 설정과 API 키가 삭제되며 복구할 수 없습니다.",
+  "@aiSettingsDeleteMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsDeleteDefaultBlocked": "기본 서비스는 삭제할 수 없습니다. 먼저 다른 서비스를 기본으로 설정해 주세요",
+  "aiSettingsDeleted": "삭제했습니다",
+  "aiSettingsDefaultSet": "\"{name}\"을(를) 기본으로 설정했습니다",
+  "@aiSettingsDefaultSet": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsEnabledOn": "\"{name}\"을(를) 사용합니다",
+  "@aiSettingsEnabledOn": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsEnabledOff": "\"{name}\"을(를) 사용 중지했습니다",
+  "@aiSettingsEnabledOff": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsBusySaving": "저장 중",
+  "aiSettingsBusyDeleting": "삭제 중",
+  "aiSettingsUpdatedBy": "{name} 님이 {time}에 변경",
+  "@aiSettingsUpdatedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsTestNeedsKeyEdit": "API 키가 없습니다. \"편집\"에서 키를 입력한 뒤 테스트해 주세요",
+  "aiSettingsUsageTitle": "최근 {days}일 사용량",
+  "@aiSettingsUsageTitle": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsUsageCalls": "호출 수",
+  "aiSettingsUsageSuccessRate": "성공률",
+  "aiSettingsUsageTokens": "입력 / 출력 토큰",
+  "aiSettingsUsageLatency": "평균 소요 시간",
+  "aiSettingsUsageSeconds": "{value}초",
+  "@aiSettingsUsageSeconds": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsUsageEmpty": "아직 호출 기록이 없습니다",
+  "aiSettingsUsageUnavailable": "사용량을 잠시 불러올 수 없습니다. 서비스에는 영향이 없습니다",
+  "aiSettingsPreset": "제공업체",
+  "aiSettingsPresetInfo": "제공업체를 고르면 엔드포인트와 권장 설정이 자동으로 채워집니다. 모든 항목은 수정할 수 있습니다",
+  "aiSettingsPresetOverseasOff": "{label} (해외, 미개방)",
+  "@aiSettingsPresetOverseasOff": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsOverseasOffHint": "해외 제공업체는 기본적으로 꺼져 있습니다. 사용하려면 배포 담당자에게 서버 설정에서 켜 달라고 요청하고 데이터 국외 이전 평가를 완료해 주세요",
+  "aiSettingsPresetUnavailable": "{label} (사용 불가)",
+  "@aiSettingsPresetUnavailable": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsName": "표시 이름",
+  "aiSettingsNameHint": "예: DeepSeek 운영 계정",
+  "aiSettingsNameRequired": "표시 이름을 입력해 주세요",
+  "aiSettingsTooLong": "최대 {max}자",
+  "@aiSettingsTooLong": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsBaseUrlInfo": "제공업체 문서의 Base URL입니다. https만 사용할 수 있으며 로컬 배포는 http://127.0.0.1을 쓸 수 있습니다",
+  "aiSettingsBaseUrlRequired": "엔드포인트 URL을 입력해 주세요",
+  "aiSettingsBaseUrlInvalid": "엔드포인트 URL 형식이 올바르지 않습니다. https://로 시작하고 물음표 뒤 매개변수가 없어야 합니다",
+  "aiSettingsBaseUrlHttpLocalOnly": "로컬 배포만 http를 쓸 수 있습니다. 다른 제공업체는 https를 사용해 주세요",
+  "aiSettingsModelHint": "모델 이름을 입력하거나 \"모델 가져오기\"로 목록에서 고르세요",
+  "aiSettingsModelRequired": "모델 이름을 입력해 주세요",
+  "aiSettingsFetchModels": "모델 가져오기",
+  "aiSettingsPickModel": "목록에서 모델 선택",
+  "aiSettingsModelsLoaded": "모델 {count}개를 찾았습니다",
+  "@aiSettingsModelsLoaded": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsModelsEmpty": "제공업체가 모델 목록을 주지 않았습니다. 모델 이름을 직접 입력해 주세요",
+  "aiSettingsApiKeyHint": "제공업체 콘솔에서 만든 키를 붙여 넣으세요",
+  "aiSettingsApiKeyKeepHint": "설정됨 {mask}. 바꾸지 않으려면 비워 두세요",
+  "@aiSettingsApiKeyKeepHint": {
+    "placeholders": {
+      "mask": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsApiKeyNotNeededHint": "로컬 배포는 보통 키가 필요 없어 비워 둘 수 있습니다",
+  "aiSettingsApiKeyRequired": "API 키를 입력해 주세요",
+  "aiSettingsClearKey": "키 삭제",
+  "aiSettingsUndoClear": "삭제 취소",
+  "aiSettingsKeyWillClear": "저장하면 저장된 키가 삭제됩니다",
+  "aiSettingsUrlChangedNeedKey": "엔드포인트가 바뀌어 API 키를 다시 입력해야 합니다",
+  "aiSettingsUrlChangedNeedKeyDetail": "보안을 위해 저장된 키는 원래 주소로만 전송됩니다. 저장하기 전에 키를 다시 붙여 넣으세요.",
+  "aiSettingsUrlChangedNeedKeyLocalDetail": "보안을 위해 저장된 키는 원래 주소로만 전송됩니다. 키를 다시 붙여 넣거나, 새 주소에 키가 필요 없으면 \"키 삭제\"를 누르세요.",
+  "aiSettingsAdvanced": "고급 설정",
+  "aiSettingsProtocol": "API 프로토콜",
+  "aiSettingsProtocolInfo": "중국 본토 제공업체와 로컬 배포는 대부분 OpenAI 호환이며, Claude만 Anthropic을 사용합니다",
+  "aiSettingsProtocolOpenAi": "OpenAI 호환",
+  "aiSettingsProtocolAnthropic": "Anthropic",
+  "aiSettingsJsonMode": "JSON 출력 방식",
+  "aiSettingsJsonModeInfo": "모델이 JSON으로만 답하게 해야 시스템이 결과를 읽을 수 있습니다. 제공업체가 지원하지 않으면 \"요구 안 함\"을 고르세요",
+  "aiSettingsJsonModeNone": "요구 안 함",
+  "aiSettingsJsonModeObject": "JSON 객체",
+  "aiSettingsJsonModeSchema": "구조 지정(스키마)",
+  "aiSettingsThinking": "심층 추론 끄기",
+  "aiSettingsThinkingInfo": "표 인식에는 심층 추론이 필요 없어 끄면 더 빠르고 저렴합니다. 제공업체마다 방식이 달라 제공업체를 고르면 자동으로 맞춰집니다",
+  "aiSettingsThinkingNone": "그대로 두기",
+  "aiSettingsThinkingDeepseek": "DeepSeek 방식",
+  "aiSettingsThinkingDashscope": "Qwen 방식",
+  "aiSettingsThinkingOpenAi": "OpenAI 방식",
+  "aiSettingsTemperature": "일정한 출력(온도 0)",
+  "aiSettingsTemperatureInfo": "같은 파일은 매번 비슷한 결과가 나오게 합니다. 모델이 이 매개변수를 거부하면 끄세요",
+  "aiSettingsVision": "이미지와 스캔본 인식 가능",
+  "aiSettingsVisionInfo": "모델이 이미지를 읽을 수 있으면 켜세요. 영업팀이 올린 사진과 스캔 PDF를 인식하려면 필요합니다",
+  "aiSettingsMaxTokens": "최대 출력 길이",
+  "aiSettingsMaxTokensInfo": "256 ~ 65536, 행이 많은 파일은 더 길게 필요합니다",
+  "aiSettingsTimeout": "시간 제한(초)",
+  "aiSettingsTimeoutInfo": "10 ~ 600, 이 시간 안에 응답이 없으면 실패로 처리합니다",
+  "aiSettingsNumberRange": "{min} ~ {max} 사이의 정수를 입력해 주세요",
+  "@aiSettingsNumberRange": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsOverseasAck": "고객 정보(회사명, 품목 설명)가 해외 제공업체로 전송됩니다. 데이터 국외 이전 평가를 완료했음을 확인합니다",
+  "aiSettingsOverseasAckRequired": "해외 제공업체를 사용하기 전에 위의 확인란을 선택해 주세요",
+  "aiSettingsSave": "저장",
+  "aiSettingsSaving": "저장 중",
+  "aiSettingsSaved": "저장했습니다",
+  "aiSettingsSaveFailed": "저장하지 못했습니다. 잠시 후 다시 시도해 주세요",
+  "aiSettingsFixFields": "빨간색으로 표시된 항목을 먼저 고쳐 주세요",
+  "aiSettingsTestNeedsKey": "테스트하기 전에 API 키를 입력해 주세요",
+  "aiSettingsTestStoredMismatch": "저장된 키로 테스트하려면 엔드포인트와 모델이 저장된 값과 같아야 합니다. 먼저 저장하거나 키를 다시 입력해 테스트하세요",
+  "aiSettingsTestResultTitle": "연결 테스트",
+  "aiSettingsStepNetwork": "네트워크 연결",
+  "aiSettingsStepAuth": "API 키 확인",
+  "aiSettingsStepModel": "모델 사용 가능",
+  "aiSettingsStepJson": "JSON 출력",
+  "aiSettingsStepSkipped": "진행 안 함",
+  "aiSettingsLatency": "{ms}ms",
+  "@aiSettingsLatency": {
+    "placeholders": {
+      "ms": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsTestPassed": "연결 정상, 사용할 수 있습니다",
+  "aiSettingsTestPassedShort": "통과",
+  "aiSettingsTestFailed": "연결 테스트에 실패했습니다. 안내를 확인한 뒤 다시 시도해 주세요",
+  "aiSettingsTestFailedShort": "실패",
+  "aiSettingsTestWarnShort": "확인 필요",
+  "aiSettingsTestPassedWithNotes": "연결되었지만 확인할 사항이 있습니다. 위의 안내를 확인해 주세요",
+  "aiSettingsTestStoredUnsavedAdvanced": "고급 설정이 바뀌었습니다. 저장된 키로 테스트하면 바뀐 내용이 반영되지 않습니다. 먼저 저장하거나 키를 다시 입력해 테스트하세요",
+  "aiSettingsModelChoices": "모델:",
+  "aiSettingsOverseasLockedShort": "해외 제공업체는 아직 열려 있지 않습니다. 배포 담당자가 서버에서 켜야 합니다",
+  "aiSettingsKeyConfiguredPlain": "설정됨",
+  "aiSettingsApiKeyKeepHintPlain": "설정됨. 바꾸지 않으려면 비워 두세요"
 }

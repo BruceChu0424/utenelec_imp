@@ -562,6 +562,30 @@ abstract final class ApiEndpoints {
   /// 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const adminSystemSettings = '/admin/system-settings';
 
+  /// AI 服务设置(ADR-133，超管 authorization:manage + superAdmin)。
+  /// 增删改、设默认、启停、用已存密钥测试/取模型要再认证；用本次新填密钥测试免再认证。
+  static const adminAiProviders = '/admin/ai/providers';
+  static String adminAiProvider(String id) => '$adminAiProviders/$id';
+  static String adminAiProviderDefault(String id) =>
+      '$adminAiProviders/$id/default';
+  static String adminAiProviderEnabled(String id) =>
+      '$adminAiProviders/$id/enabled';
+  static String adminAiProviderTest(String id) => '$adminAiProviders/$id/test';
+  static String adminAiProviderModels(String id) =>
+      '$adminAiProviders/$id/models';
+  static const adminAiProvidersTest = '$adminAiProviders/test';
+  static const adminAiProvidersModels = '$adminAiProviders/models';
+  static const adminAiPresets = '/admin/ai/presets';
+  static const adminAiUsage = '/admin/ai/usage';
+
+  /// 公共 AI 作业(ADR-133): 提交原始文件(octet-stream) / 轮询 / 取消；员工账号本人可用。
+  static const aiJobs = '/ai/jobs';
+  static String aiJob(String id) => '$aiJobs/$id';
+  static String aiJobCancel(String id) => '$aiJobs/$id/cancel';
+
+  /// 当前账号能否用 AI(不含服务商/模型细节)。
+  static const aiStatus = '/ai/status';
+
   /// 管理员「切换人 / 模拟身份」：enter(验密码发 modeToken) / start(签发目标 token) / end(审计)。
   /// 仅 superAdmin；start 由 admin token 调，end 由模拟 token 调（主体=目标）。
   static const adminImpersonationEnter = '/admin/impersonation/enter';

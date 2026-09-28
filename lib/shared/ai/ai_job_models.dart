@@ -4,6 +4,8 @@
 /// 不直接解析作业 JSON。
 library;
 
+import 'dart:async';
+
 /// 服务端作业状态。
 enum AiJobStatus {
   pending,
@@ -91,11 +93,7 @@ class AiJobSnapshot {
 
   bool get isTerminal => status.isTerminal;
 
-  AiJobSnapshot copyWith({
-    AiJobStatus? status,
-    String? stage,
-    int? progress,
-  }) =>
+  AiJobSnapshot copyWith({AiJobStatus? status, String? stage, int? progress}) =>
       AiJobSnapshot(
         id: id,
         kind: kind,
@@ -132,21 +130,56 @@ class AiJobRequest {
 }
 
 /// 取消令牌: 用户在进度弹窗里点「取消」。
+///
+/// 轮询等待期间通过 [whenCancelled] 立即醒来, 不必等到下一次轮询。
 class AiJobCancelToken {
   bool _cancelled = false;
+  final Completer<void> _signal = Completer<void>();
 
   bool get isCancelled => _cancelled;
 
-  void cancel() => _cancelled = true;
+  /// 取消后完成(只完成一次); 未取消时永不完成。
+  Future<void> get whenCancelled => _signal.future;
+
+  void cancel() {
+    if (_cancelled) return;
+    _cancelled = true;
+    _signal.complete();
+  }
 }
 
 /// 作业结束但不是成功时抛出, [message] 可直接展示。
+///
+/// [code] 为服务端 errorCode(如 `FILE_UNREADABLE`), 或下列客户端代码之一。
+/// 进度弹窗会把客户端自己写的文案([clientMessage])换成当前语言再抛给调用方。
 class AiJobFailure implements Exception {
-  const AiJobFailure({required this.message, this.code, this.snapshot});
+  const AiJobFailure({
+    required this.message,
+    this.code,
+    this.snapshot,
+    this.clientMessage = false,
+  });
+
+  /// 用户取消(进度弹窗把它当作「返回 null」, 不提示错误)。
+  static const codeCancelled = 'CANCELLED';
+
+  /// 超过 [AiJobRunner.maxDuration] 仍未结束, 客户端已停止等待并请求服务端取消。
+  static const codeClientTimeout = 'CLIENT_TIMEOUT';
+
+  /// 作业已不存在(被清理或系统重置数据), 需要重新识别。
+  static const codeJobGone = 'JOB_GONE';
+
+  /// 服务端判定失败但没有给出错误码。
+  static const codeFailed = 'FAILED';
 
   final String message;
   final String? code;
   final AiJobSnapshot? snapshot;
+
+  /// [message] 是客户端兜底文案(服务端没给原因), 不是服务端的原话。
+  final bool clientMessage;
+
+  bool get isCancelled => code == codeCancelled;
 
   @override
   String toString() => message;

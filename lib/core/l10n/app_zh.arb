@@ -1976,5 +1976,310 @@
         "type": "String"
       }
     }
-  }
+  },
+  "aiJobCancel": "取消",
+  "aiJobElapsed": "已用时 {time}",
+  "@aiJobElapsed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiJobQueued": "正在排队, 马上开始",
+  "aiJobSlowHint": "内容较多时需要一两分钟, 请耐心等待, 不用重复点",
+  "aiJobTimeout": "处理时间太长, 已停止等待。请稍后再试, 或把文件拆小一些",
+  "aiJobGone": "这次处理的任务已不存在(可能已被清理), 请重新开始",
+  "aiJobFailedGeneric": "处理没有成功, 请稍后重试",
+  "aiJobConfidenceHigh": "把握高",
+  "aiJobConfidenceMedium": "把握中",
+  "aiJobConfidenceLow": "把握低",
+  "aiJobConfidenceSemantics": "AI 判断把握: {level}",
+  "@aiJobConfidenceSemantics": {
+    "placeholders": {
+      "level": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsTitle": "AI 服务",
+  "aiSettingsEntrySubtitle": "配置大模型服务商、密钥和连接测试",
+  "aiSettingsHeroActive": "正在使用: {name} · {model}",
+  "@aiSettingsHeroActive": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsHeroReady": "销售上传客户文件时会用它自动识别",
+  "aiSettingsHeroNone": "还没有可用的 AI 服务",
+  "aiSettingsHeroNoneHint": "添加一个服务商并测试通过后, 销售上传客户文件就能自动识别",
+  "aiSettingsHeroDefaultDisabled": "默认服务已停用, 目前不会调用 AI",
+  "aiSettingsHeroNeedsKey": "还没有填写密钥, 目前不会调用 AI",
+  "aiSettingsSecurityNote": "密钥加密保存, 页面只显示尾号; 保存、删除和用已存密钥测试都要再次确认登录密码。",
+  "aiSettingsOutboundOff": "这台服务器关闭了对外调用 AI(测试环境默认如此), 配置可以保存, 但不会真正调用",
+  "aiSettingsProvidersSection": "服务商",
+  "aiSettingsAdd": "添加 AI 服务",
+  "aiSettingsEditTitle": "编辑 AI 服务",
+  "aiSettingsEmptyTitle": "还没有配置 AI 服务",
+  "aiSettingsEmptyHint": "支持 DeepSeek、通义千问、Kimi、智谱等国内服务商, 也可以接本机部署的模型",
+  "aiSettingsLoadFailed": "加载 AI 服务设置失败",
+  "aiSettingsNoAccess": "只有超级管理员可以查看和修改 AI 服务",
+  "aiSettingsRetry": "重试",
+  "aiSettingsRefresh": "刷新",
+  "aiSettingsClose": "关闭",
+  "aiSettingsCancel": "取消",
+  "aiSettingsRegion": "所在区域",
+  "aiSettingsRegionMainland": "国内",
+  "aiSettingsRegionOverseas": "境外",
+  "aiSettingsRegionLocal": "本机",
+  "aiSettingsDefaultBadge": "默认",
+  "aiSettingsDisabledBadge": "已停用",
+  "aiSettingsModel": "模型",
+  "aiSettingsBaseUrl": "接口地址",
+  "aiSettingsApiKey": "密钥",
+  "aiSettingsKeyConfigured": "已配置 {mask}",
+  "@aiSettingsKeyConfigured": {
+    "placeholders": {
+      "mask": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsKeyMissing": "未配置",
+  "aiSettingsKeyNotNeeded": "不需要",
+  "aiSettingsKeyUnreadable": "密钥无法解密, 请重新填写",
+  "aiSettingsLastTest": "上次测试",
+  "aiSettingsLastTestOk": "通过 · {time}",
+  "@aiSettingsLastTestOk": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsLastTestFailed": "未通过 · {time}",
+  "@aiSettingsLastTestFailed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsNeverTested": "还没测试过",
+  "aiSettingsEnabledSwitch": "启用",
+  "aiSettingsEnabledInfo": "停用后不会调用这个服务",
+  "aiSettingsTest": "测试连接",
+  "aiSettingsTesting": "正在测试",
+  "aiSettingsEdit": "编辑",
+  "aiSettingsSetDefault": "设为默认",
+  "aiSettingsDelete": "删除",
+  "aiSettingsDeleteTitle": "删除这个 AI 服务?",
+  "aiSettingsDeleteMessage": "删除后「{name}」的配置和密钥都会清除, 不能恢复。",
+  "@aiSettingsDeleteMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsDeleteDefaultBlocked": "默认服务不能删除, 请先把别的服务设为默认",
+  "aiSettingsDeleted": "已删除",
+  "aiSettingsDefaultSet": "已把「{name}」设为默认",
+  "@aiSettingsDefaultSet": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsEnabledOn": "已启用「{name}」",
+  "@aiSettingsEnabledOn": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsEnabledOff": "已停用「{name}」",
+  "@aiSettingsEnabledOff": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsBusySaving": "正在保存",
+  "aiSettingsBusyDeleting": "正在删除",
+  "aiSettingsUpdatedBy": "{name} 修改于 {time}",
+  "@aiSettingsUpdatedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsTestNeedsKeyEdit": "还没有密钥, 请先点「编辑」填写密钥再测试",
+  "aiSettingsUsageTitle": "近 {days} 天用量",
+  "@aiSettingsUsageTitle": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsUsageCalls": "调用次数",
+  "aiSettingsUsageSuccessRate": "成功率",
+  "aiSettingsUsageTokens": "输入 / 输出 token",
+  "aiSettingsUsageLatency": "平均耗时",
+  "aiSettingsUsageSeconds": "{value} 秒",
+  "@aiSettingsUsageSeconds": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsUsageEmpty": "还没有调用记录",
+  "aiSettingsUsageUnavailable": "用量暂时读不到, 不影响使用",
+  "aiSettingsPreset": "服务商",
+  "aiSettingsPresetInfo": "选好服务商会自动填好接口地址和推荐设置, 每一项都还能改",
+  "aiSettingsPresetOverseasOff": "{label} (境外, 未开放)",
+  "@aiSettingsPresetOverseasOff": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsOverseasOffHint": "境外服务商默认关闭。如需使用, 请联系部署人员在服务器配置中开启, 并完成数据出境评估",
+  "aiSettingsPresetUnavailable": "{label} (暂不可用)",
+  "@aiSettingsPresetUnavailable": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsName": "显示名称",
+  "aiSettingsNameHint": "例如: DeepSeek 正式账号",
+  "aiSettingsNameRequired": "请填写显示名称",
+  "aiSettingsTooLong": "最多 {max} 个字符",
+  "@aiSettingsTooLong": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsBaseUrlInfo": "服务商文档里的 Base URL; 只能用 https, 本机部署可以用 http://127.0.0.1",
+  "aiSettingsBaseUrlRequired": "请填写接口地址",
+  "aiSettingsBaseUrlInvalid": "接口地址格式不对, 应以 https:// 开头, 不带问号后面的参数",
+  "aiSettingsBaseUrlHttpLocalOnly": "只有本机部署可以用 http, 其他服务商请用 https",
+  "aiSettingsModelHint": "填模型名称, 或点「获取模型」从列表选",
+  "aiSettingsModelRequired": "请填写模型名称",
+  "aiSettingsFetchModels": "获取模型",
+  "aiSettingsPickModel": "从列表选择模型",
+  "aiSettingsModelsLoaded": "找到 {count} 个模型",
+  "@aiSettingsModelsLoaded": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsModelsEmpty": "服务商没有返回模型列表, 请直接填写模型名称",
+  "aiSettingsApiKeyHint": "粘贴服务商后台生成的密钥",
+  "aiSettingsApiKeyKeepHint": "已配置 {mask}, 不改就留空",
+  "@aiSettingsApiKeyKeepHint": {
+    "placeholders": {
+      "mask": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsApiKeyNotNeededHint": "本机部署通常不需要密钥, 可以留空",
+  "aiSettingsApiKeyRequired": "请填写密钥",
+  "aiSettingsClearKey": "清除密钥",
+  "aiSettingsUndoClear": "撤销清除",
+  "aiSettingsKeyWillClear": "保存后会清除已存的密钥",
+  "aiSettingsUrlChangedNeedKey": "改了接口地址, 需要重新填写密钥",
+  "aiSettingsUrlChangedNeedKeyDetail": "为了安全, 已存的密钥只会发给原来的地址。请重新粘贴密钥后再保存。",
+  "aiSettingsUrlChangedNeedKeyLocalDetail": "为了安全, 已存的密钥只会发给原来的地址。请重新粘贴密钥; 新地址不需要密钥的, 点「清除密钥」。",
+  "aiSettingsAdvanced": "高级设置",
+  "aiSettingsProtocol": "接口协议",
+  "aiSettingsProtocolInfo": "国内服务商和本机部署基本都是 OpenAI 兼容; 只有 Claude 用 Anthropic",
+  "aiSettingsProtocolOpenAi": "OpenAI 兼容",
+  "aiSettingsProtocolAnthropic": "Anthropic",
+  "aiSettingsJsonMode": "JSON 输出方式",
+  "aiSettingsJsonModeInfo": "要求模型只回一段 JSON, 系统才能读懂结果; 服务商不支持时选「不要求」",
+  "aiSettingsJsonModeNone": "不要求",
+  "aiSettingsJsonModeObject": "JSON 对象",
+  "aiSettingsJsonModeSchema": "按结构输出",
+  "aiSettingsThinking": "关闭深度思考",
+  "aiSettingsThinkingInfo": "识别表格不需要深度思考, 关掉更快更省钱; 各服务商写法不同, 选好服务商会自动选对",
+  "aiSettingsThinkingNone": "不处理",
+  "aiSettingsThinkingDeepseek": "DeepSeek 写法",
+  "aiSettingsThinkingDashscope": "通义千问写法",
+  "aiSettingsThinkingOpenAi": "OpenAI 写法",
+  "aiSettingsTemperature": "固定输出(温度为 0)",
+  "aiSettingsTemperatureInfo": "同一份文件每次识别结果尽量一致; 个别模型不接受这个参数时关掉",
+  "aiSettingsVision": "能识别图片和扫描件",
+  "aiSettingsVisionInfo": "模型支持看图时打开, 销售上传的照片和扫描版 PDF 才能识别",
+  "aiSettingsMaxTokens": "最大输出长度",
+  "aiSettingsMaxTokensInfo": "256 ~ 65536; 行数多的文件需要更长",
+  "aiSettingsTimeout": "超时秒数",
+  "aiSettingsTimeoutInfo": "10 ~ 600; 超过这个时间还没回复就算失败",
+  "aiSettingsNumberRange": "请输入 {min} ~ {max} 之间的整数",
+  "@aiSettingsNumberRange": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsOverseasAck": "客户资料(公司名、货品描述)会发送到境外服务商, 我已确认完成数据出境评估",
+  "aiSettingsOverseasAckRequired": "使用境外服务商前请先勾选上面的确认",
+  "aiSettingsSave": "保存",
+  "aiSettingsSaving": "正在保存",
+  "aiSettingsSaved": "已保存",
+  "aiSettingsSaveFailed": "保存失败, 请稍后重试",
+  "aiSettingsFixFields": "请先改好标红的项",
+  "aiSettingsTestNeedsKey": "测试前请先填写密钥",
+  "aiSettingsTestStoredMismatch": "用已存的密钥测试时, 接口地址和模型要与已保存的一致。请先保存, 或重新填写密钥再测试",
+  "aiSettingsTestResultTitle": "连接测试",
+  "aiSettingsStepNetwork": "网络连通",
+  "aiSettingsStepAuth": "密钥验证",
+  "aiSettingsStepModel": "模型可用",
+  "aiSettingsStepJson": "JSON 输出",
+  "aiSettingsStepSkipped": "未进行",
+  "aiSettingsLatency": "{ms} 毫秒",
+  "@aiSettingsLatency": {
+    "placeholders": {
+      "ms": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsTestPassed": "连接正常, 可以使用",
+  "aiSettingsTestPassedShort": "通过",
+  "aiSettingsTestFailed": "连接没有通过, 请按提示检查后再试",
+  "aiSettingsTestFailedShort": "未通过",
+  "aiSettingsTestWarnShort": "需留意",
+  "aiSettingsTestPassedWithNotes": "连上了, 但有需要留意的地方, 请看上面的黄色提示",
+  "aiSettingsTestStoredUnsavedAdvanced": "高级设置改过了, 用已存的密钥测试不会带上这些改动。请先保存再测试, 或重新填写密钥后测试",
+  "aiSettingsModelChoices": "可选模型:",
+  "aiSettingsOverseasLockedShort": "境外服务商暂未开放, 需要部署人员在服务器上开启",
+  "aiSettingsKeyConfiguredPlain": "已配置",
+  "aiSettingsApiKeyKeepHintPlain": "已配置, 不改就留空"
 }

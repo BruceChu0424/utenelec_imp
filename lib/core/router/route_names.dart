@@ -170,6 +170,8 @@ abstract final class RouteName {
   // 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const String adminSystemSettings = '/admin/system-settings';
   static const String adminServerStatus = '/admin/server-status';
+  // AI 服务设置(ADR-133: 服务商/密钥/连接测试; 超管, 写操作再认证)
+  static const String adminAiSettings = '/admin/ai-settings';
 
   // 财税部主数据别名入口（复用基础资料真实页面）
   static const String financeCustomers = '/finance/customers';

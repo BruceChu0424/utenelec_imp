@@ -4215,4 +4215,539 @@ class AppLocalizationsKo extends AppLocalizations {
   String materialPreparationMissingAssignment(String goods) {
     return '발주 전에 “$goods”의 생산 작업장과 담당자를 지정하세요';
   }
+
+  @override
+  String get aiJobCancel => '취소';
+
+  @override
+  String aiJobElapsed(String time) {
+    return '경과 시간 $time';
+  }
+
+  @override
+  String get aiJobQueued => '대기 중입니다. 곧 시작합니다';
+
+  @override
+  String get aiJobSlowHint => '내용이 많으면 1~2분 걸릴 수 있습니다. 다시 누르지 말고 기다려 주세요';
+
+  @override
+  String get aiJobTimeout =>
+      '처리 시간이 너무 길어 기다리기를 멈췄습니다. 잠시 후 다시 시도하거나 파일을 나눠 주세요';
+
+  @override
+  String get aiJobGone => '이번 작업이 더 이상 없습니다(정리되었을 수 있음). 다시 시작해 주세요';
+
+  @override
+  String get aiJobFailedGeneric => '처리하지 못했습니다. 잠시 후 다시 시도해 주세요';
+
+  @override
+  String get aiJobConfidenceHigh => '높음';
+
+  @override
+  String get aiJobConfidenceMedium => '보통';
+
+  @override
+  String get aiJobConfidenceLow => '낮음';
+
+  @override
+  String aiJobConfidenceSemantics(String level) {
+    return 'AI 판단 확신도: $level';
+  }
+
+  @override
+  String get aiSettingsTitle => 'AI 서비스';
+
+  @override
+  String get aiSettingsEntrySubtitle => '모델 제공업체, API 키, 연결 테스트 설정';
+
+  @override
+  String aiSettingsHeroActive(String name, String model) {
+    return '사용 중: $name · $model';
+  }
+
+  @override
+  String get aiSettingsHeroReady => '영업팀이 올린 고객 파일을 자동 인식할 때 사용합니다';
+
+  @override
+  String get aiSettingsHeroNone => '사용 가능한 AI 서비스가 아직 없습니다';
+
+  @override
+  String get aiSettingsHeroNoneHint =>
+      '제공업체를 추가하고 테스트를 통과하면 영업팀이 올린 고객 파일을 자동으로 인식합니다';
+
+  @override
+  String get aiSettingsHeroDefaultDisabled =>
+      '기본 서비스가 사용 중지되어 현재 AI를 호출하지 않습니다';
+
+  @override
+  String get aiSettingsHeroNeedsKey => 'API 키가 아직 없어 현재 AI를 호출하지 않습니다';
+
+  @override
+  String get aiSettingsSecurityNote =>
+      'API 키는 암호화되어 저장되며 끝자리만 표시됩니다. 저장, 삭제, 저장된 키로 테스트할 때는 로그인 비밀번호를 다시 확인합니다.';
+
+  @override
+  String get aiSettingsOutboundOff =>
+      '이 서버는 외부 AI 호출이 꺼져 있습니다(테스트 환경 기본값). 설정은 저장할 수 있지만 실제 호출은 하지 않습니다';
+
+  @override
+  String get aiSettingsProvidersSection => '제공업체';
+
+  @override
+  String get aiSettingsAdd => 'AI 서비스 추가';
+
+  @override
+  String get aiSettingsEditTitle => 'AI 서비스 편집';
+
+  @override
+  String get aiSettingsEmptyTitle => '설정된 AI 서비스가 없습니다';
+
+  @override
+  String get aiSettingsEmptyHint =>
+      'DeepSeek, Qwen, Kimi, Zhipu 등 중국 본토 제공업체와 로컬 배포 모델을 지원합니다';
+
+  @override
+  String get aiSettingsLoadFailed => 'AI 서비스 설정을 불러오지 못했습니다';
+
+  @override
+  String get aiSettingsNoAccess => '최고 관리자만 AI 서비스를 보고 변경할 수 있습니다';
+
+  @override
+  String get aiSettingsRetry => '다시 시도';
+
+  @override
+  String get aiSettingsRefresh => '새로고침';
+
+  @override
+  String get aiSettingsClose => '닫기';
+
+  @override
+  String get aiSettingsCancel => '취소';
+
+  @override
+  String get aiSettingsRegion => '지역';
+
+  @override
+  String get aiSettingsRegionMainland => '중국 본토';
+
+  @override
+  String get aiSettingsRegionOverseas => '해외';
+
+  @override
+  String get aiSettingsRegionLocal => '로컬';
+
+  @override
+  String get aiSettingsDefaultBadge => '기본';
+
+  @override
+  String get aiSettingsDisabledBadge => '사용 중지';
+
+  @override
+  String get aiSettingsModel => '모델';
+
+  @override
+  String get aiSettingsBaseUrl => '엔드포인트 URL';
+
+  @override
+  String get aiSettingsApiKey => 'API 키';
+
+  @override
+  String aiSettingsKeyConfigured(String mask) {
+    return '설정됨 $mask';
+  }
+
+  @override
+  String get aiSettingsKeyMissing => '미설정';
+
+  @override
+  String get aiSettingsKeyNotNeeded => '필요 없음';
+
+  @override
+  String get aiSettingsKeyUnreadable => 'API 키를 복호화할 수 없습니다. 다시 입력해 주세요';
+
+  @override
+  String get aiSettingsLastTest => '마지막 테스트';
+
+  @override
+  String aiSettingsLastTestOk(String time) {
+    return '통과 · $time';
+  }
+
+  @override
+  String aiSettingsLastTestFailed(String time) {
+    return '실패 · $time';
+  }
+
+  @override
+  String get aiSettingsNeverTested => '아직 테스트하지 않음';
+
+  @override
+  String get aiSettingsEnabledSwitch => '사용';
+
+  @override
+  String get aiSettingsEnabledInfo => '사용 중지하면 이 서비스를 호출하지 않습니다';
+
+  @override
+  String get aiSettingsTest => '연결 테스트';
+
+  @override
+  String get aiSettingsTesting => '테스트 중';
+
+  @override
+  String get aiSettingsEdit => '편집';
+
+  @override
+  String get aiSettingsSetDefault => '기본으로 설정';
+
+  @override
+  String get aiSettingsDelete => '삭제';
+
+  @override
+  String get aiSettingsDeleteTitle => '이 AI 서비스를 삭제할까요?';
+
+  @override
+  String aiSettingsDeleteMessage(String name) {
+    return '\"$name\"의 설정과 API 키가 삭제되며 복구할 수 없습니다.';
+  }
+
+  @override
+  String get aiSettingsDeleteDefaultBlocked =>
+      '기본 서비스는 삭제할 수 없습니다. 먼저 다른 서비스를 기본으로 설정해 주세요';
+
+  @override
+  String get aiSettingsDeleted => '삭제했습니다';
+
+  @override
+  String aiSettingsDefaultSet(String name) {
+    return '\"$name\"을(를) 기본으로 설정했습니다';
+  }
+
+  @override
+  String aiSettingsEnabledOn(String name) {
+    return '\"$name\"을(를) 사용합니다';
+  }
+
+  @override
+  String aiSettingsEnabledOff(String name) {
+    return '\"$name\"을(를) 사용 중지했습니다';
+  }
+
+  @override
+  String get aiSettingsBusySaving => '저장 중';
+
+  @override
+  String get aiSettingsBusyDeleting => '삭제 중';
+
+  @override
+  String aiSettingsUpdatedBy(String name, String time) {
+    return '$name 님이 $time에 변경';
+  }
+
+  @override
+  String get aiSettingsTestNeedsKeyEdit =>
+      'API 키가 없습니다. \"편집\"에서 키를 입력한 뒤 테스트해 주세요';
+
+  @override
+  String aiSettingsUsageTitle(int days) {
+    return '최근 $days일 사용량';
+  }
+
+  @override
+  String get aiSettingsUsageCalls => '호출 수';
+
+  @override
+  String get aiSettingsUsageSuccessRate => '성공률';
+
+  @override
+  String get aiSettingsUsageTokens => '입력 / 출력 토큰';
+
+  @override
+  String get aiSettingsUsageLatency => '평균 소요 시간';
+
+  @override
+  String aiSettingsUsageSeconds(String value) {
+    return '$value초';
+  }
+
+  @override
+  String get aiSettingsUsageEmpty => '아직 호출 기록이 없습니다';
+
+  @override
+  String get aiSettingsUsageUnavailable => '사용량을 잠시 불러올 수 없습니다. 서비스에는 영향이 없습니다';
+
+  @override
+  String get aiSettingsPreset => '제공업체';
+
+  @override
+  String get aiSettingsPresetInfo =>
+      '제공업체를 고르면 엔드포인트와 권장 설정이 자동으로 채워집니다. 모든 항목은 수정할 수 있습니다';
+
+  @override
+  String aiSettingsPresetOverseasOff(String label) {
+    return '$label (해외, 미개방)';
+  }
+
+  @override
+  String get aiSettingsOverseasOffHint =>
+      '해외 제공업체는 기본적으로 꺼져 있습니다. 사용하려면 배포 담당자에게 서버 설정에서 켜 달라고 요청하고 데이터 국외 이전 평가를 완료해 주세요';
+
+  @override
+  String aiSettingsPresetUnavailable(String label) {
+    return '$label (사용 불가)';
+  }
+
+  @override
+  String get aiSettingsName => '표시 이름';
+
+  @override
+  String get aiSettingsNameHint => '예: DeepSeek 운영 계정';
+
+  @override
+  String get aiSettingsNameRequired => '표시 이름을 입력해 주세요';
+
+  @override
+  String aiSettingsTooLong(int max) {
+    return '최대 $max자';
+  }
+
+  @override
+  String get aiSettingsBaseUrlInfo =>
+      '제공업체 문서의 Base URL입니다. https만 사용할 수 있으며 로컬 배포는 http://127.0.0.1을 쓸 수 있습니다';
+
+  @override
+  String get aiSettingsBaseUrlRequired => '엔드포인트 URL을 입력해 주세요';
+
+  @override
+  String get aiSettingsBaseUrlInvalid =>
+      '엔드포인트 URL 형식이 올바르지 않습니다. https://로 시작하고 물음표 뒤 매개변수가 없어야 합니다';
+
+  @override
+  String get aiSettingsBaseUrlHttpLocalOnly =>
+      '로컬 배포만 http를 쓸 수 있습니다. 다른 제공업체는 https를 사용해 주세요';
+
+  @override
+  String get aiSettingsModelHint => '모델 이름을 입력하거나 \"모델 가져오기\"로 목록에서 고르세요';
+
+  @override
+  String get aiSettingsModelRequired => '모델 이름을 입력해 주세요';
+
+  @override
+  String get aiSettingsFetchModels => '모델 가져오기';
+
+  @override
+  String get aiSettingsPickModel => '목록에서 모델 선택';
+
+  @override
+  String aiSettingsModelsLoaded(int count) {
+    return '모델 $count개를 찾았습니다';
+  }
+
+  @override
+  String get aiSettingsModelsEmpty =>
+      '제공업체가 모델 목록을 주지 않았습니다. 모델 이름을 직접 입력해 주세요';
+
+  @override
+  String get aiSettingsApiKeyHint => '제공업체 콘솔에서 만든 키를 붙여 넣으세요';
+
+  @override
+  String aiSettingsApiKeyKeepHint(String mask) {
+    return '설정됨 $mask. 바꾸지 않으려면 비워 두세요';
+  }
+
+  @override
+  String get aiSettingsApiKeyNotNeededHint => '로컬 배포는 보통 키가 필요 없어 비워 둘 수 있습니다';
+
+  @override
+  String get aiSettingsApiKeyRequired => 'API 키를 입력해 주세요';
+
+  @override
+  String get aiSettingsClearKey => '키 삭제';
+
+  @override
+  String get aiSettingsUndoClear => '삭제 취소';
+
+  @override
+  String get aiSettingsKeyWillClear => '저장하면 저장된 키가 삭제됩니다';
+
+  @override
+  String get aiSettingsUrlChangedNeedKey => '엔드포인트가 바뀌어 API 키를 다시 입력해야 합니다';
+
+  @override
+  String get aiSettingsUrlChangedNeedKeyDetail =>
+      '보안을 위해 저장된 키는 원래 주소로만 전송됩니다. 저장하기 전에 키를 다시 붙여 넣으세요.';
+
+  @override
+  String get aiSettingsUrlChangedNeedKeyLocalDetail =>
+      '보안을 위해 저장된 키는 원래 주소로만 전송됩니다. 키를 다시 붙여 넣거나, 새 주소에 키가 필요 없으면 \"키 삭제\"를 누르세요.';
+
+  @override
+  String get aiSettingsAdvanced => '고급 설정';
+
+  @override
+  String get aiSettingsProtocol => 'API 프로토콜';
+
+  @override
+  String get aiSettingsProtocolInfo =>
+      '중국 본토 제공업체와 로컬 배포는 대부분 OpenAI 호환이며, Claude만 Anthropic을 사용합니다';
+
+  @override
+  String get aiSettingsProtocolOpenAi => 'OpenAI 호환';
+
+  @override
+  String get aiSettingsProtocolAnthropic => 'Anthropic';
+
+  @override
+  String get aiSettingsJsonMode => 'JSON 출력 방식';
+
+  @override
+  String get aiSettingsJsonModeInfo =>
+      '모델이 JSON으로만 답하게 해야 시스템이 결과를 읽을 수 있습니다. 제공업체가 지원하지 않으면 \"요구 안 함\"을 고르세요';
+
+  @override
+  String get aiSettingsJsonModeNone => '요구 안 함';
+
+  @override
+  String get aiSettingsJsonModeObject => 'JSON 객체';
+
+  @override
+  String get aiSettingsJsonModeSchema => '구조 지정(스키마)';
+
+  @override
+  String get aiSettingsThinking => '심층 추론 끄기';
+
+  @override
+  String get aiSettingsThinkingInfo =>
+      '표 인식에는 심층 추론이 필요 없어 끄면 더 빠르고 저렴합니다. 제공업체마다 방식이 달라 제공업체를 고르면 자동으로 맞춰집니다';
+
+  @override
+  String get aiSettingsThinkingNone => '그대로 두기';
+
+  @override
+  String get aiSettingsThinkingDeepseek => 'DeepSeek 방식';
+
+  @override
+  String get aiSettingsThinkingDashscope => 'Qwen 방식';
+
+  @override
+  String get aiSettingsThinkingOpenAi => 'OpenAI 방식';
+
+  @override
+  String get aiSettingsTemperature => '일정한 출력(온도 0)';
+
+  @override
+  String get aiSettingsTemperatureInfo =>
+      '같은 파일은 매번 비슷한 결과가 나오게 합니다. 모델이 이 매개변수를 거부하면 끄세요';
+
+  @override
+  String get aiSettingsVision => '이미지와 스캔본 인식 가능';
+
+  @override
+  String get aiSettingsVisionInfo =>
+      '모델이 이미지를 읽을 수 있으면 켜세요. 영업팀이 올린 사진과 스캔 PDF를 인식하려면 필요합니다';
+
+  @override
+  String get aiSettingsMaxTokens => '최대 출력 길이';
+
+  @override
+  String get aiSettingsMaxTokensInfo => '256 ~ 65536, 행이 많은 파일은 더 길게 필요합니다';
+
+  @override
+  String get aiSettingsTimeout => '시간 제한(초)';
+
+  @override
+  String get aiSettingsTimeoutInfo => '10 ~ 600, 이 시간 안에 응답이 없으면 실패로 처리합니다';
+
+  @override
+  String aiSettingsNumberRange(int min, int max) {
+    return '$min ~ $max 사이의 정수를 입력해 주세요';
+  }
+
+  @override
+  String get aiSettingsOverseasAck =>
+      '고객 정보(회사명, 품목 설명)가 해외 제공업체로 전송됩니다. 데이터 국외 이전 평가를 완료했음을 확인합니다';
+
+  @override
+  String get aiSettingsOverseasAckRequired =>
+      '해외 제공업체를 사용하기 전에 위의 확인란을 선택해 주세요';
+
+  @override
+  String get aiSettingsSave => '저장';
+
+  @override
+  String get aiSettingsSaving => '저장 중';
+
+  @override
+  String get aiSettingsSaved => '저장했습니다';
+
+  @override
+  String get aiSettingsSaveFailed => '저장하지 못했습니다. 잠시 후 다시 시도해 주세요';
+
+  @override
+  String get aiSettingsFixFields => '빨간색으로 표시된 항목을 먼저 고쳐 주세요';
+
+  @override
+  String get aiSettingsTestNeedsKey => '테스트하기 전에 API 키를 입력해 주세요';
+
+  @override
+  String get aiSettingsTestStoredMismatch =>
+      '저장된 키로 테스트하려면 엔드포인트와 모델이 저장된 값과 같아야 합니다. 먼저 저장하거나 키를 다시 입력해 테스트하세요';
+
+  @override
+  String get aiSettingsTestResultTitle => '연결 테스트';
+
+  @override
+  String get aiSettingsStepNetwork => '네트워크 연결';
+
+  @override
+  String get aiSettingsStepAuth => 'API 키 확인';
+
+  @override
+  String get aiSettingsStepModel => '모델 사용 가능';
+
+  @override
+  String get aiSettingsStepJson => 'JSON 출력';
+
+  @override
+  String get aiSettingsStepSkipped => '진행 안 함';
+
+  @override
+  String aiSettingsLatency(int ms) {
+    return '${ms}ms';
+  }
+
+  @override
+  String get aiSettingsTestPassed => '연결 정상, 사용할 수 있습니다';
+
+  @override
+  String get aiSettingsTestPassedShort => '통과';
+
+  @override
+  String get aiSettingsTestFailed => '연결 테스트에 실패했습니다. 안내를 확인한 뒤 다시 시도해 주세요';
+
+  @override
+  String get aiSettingsTestFailedShort => '실패';
+
+  @override
+  String get aiSettingsTestWarnShort => '확인 필요';
+
+  @override
+  String get aiSettingsTestPassedWithNotes =>
+      '연결되었지만 확인할 사항이 있습니다. 위의 안내를 확인해 주세요';
+
+  @override
+  String get aiSettingsTestStoredUnsavedAdvanced =>
+      '고급 설정이 바뀌었습니다. 저장된 키로 테스트하면 바뀐 내용이 반영되지 않습니다. 먼저 저장하거나 키를 다시 입력해 테스트하세요';
+
+  @override
+  String get aiSettingsModelChoices => '모델:';
+
+  @override
+  String get aiSettingsOverseasLockedShort =>
+      '해외 제공업체는 아직 열려 있지 않습니다. 배포 담당자가 서버에서 켜야 합니다';
+
+  @override
+  String get aiSettingsKeyConfiguredPlain => '설정됨';
+
+  @override
+  String get aiSettingsApiKeyKeepHintPlain => '설정됨. 바꾸지 않으려면 비워 두세요';
 }

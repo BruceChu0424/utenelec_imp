@@ -4114,4 +4114,523 @@ class AppLocalizationsZh extends AppLocalizations {
   String materialPreparationMissingAssignment(String goods) {
     return '请先补齐“$goods”的生产车间和负责人，再下单';
   }
+
+  @override
+  String get aiJobCancel => '取消';
+
+  @override
+  String aiJobElapsed(String time) {
+    return '已用时 $time';
+  }
+
+  @override
+  String get aiJobQueued => '正在排队, 马上开始';
+
+  @override
+  String get aiJobSlowHint => '内容较多时需要一两分钟, 请耐心等待, 不用重复点';
+
+  @override
+  String get aiJobTimeout => '处理时间太长, 已停止等待。请稍后再试, 或把文件拆小一些';
+
+  @override
+  String get aiJobGone => '这次处理的任务已不存在(可能已被清理), 请重新开始';
+
+  @override
+  String get aiJobFailedGeneric => '处理没有成功, 请稍后重试';
+
+  @override
+  String get aiJobConfidenceHigh => '把握高';
+
+  @override
+  String get aiJobConfidenceMedium => '把握中';
+
+  @override
+  String get aiJobConfidenceLow => '把握低';
+
+  @override
+  String aiJobConfidenceSemantics(String level) {
+    return 'AI 判断把握: $level';
+  }
+
+  @override
+  String get aiSettingsTitle => 'AI 服务';
+
+  @override
+  String get aiSettingsEntrySubtitle => '配置大模型服务商、密钥和连接测试';
+
+  @override
+  String aiSettingsHeroActive(String name, String model) {
+    return '正在使用: $name · $model';
+  }
+
+  @override
+  String get aiSettingsHeroReady => '销售上传客户文件时会用它自动识别';
+
+  @override
+  String get aiSettingsHeroNone => '还没有可用的 AI 服务';
+
+  @override
+  String get aiSettingsHeroNoneHint => '添加一个服务商并测试通过后, 销售上传客户文件就能自动识别';
+
+  @override
+  String get aiSettingsHeroDefaultDisabled => '默认服务已停用, 目前不会调用 AI';
+
+  @override
+  String get aiSettingsHeroNeedsKey => '还没有填写密钥, 目前不会调用 AI';
+
+  @override
+  String get aiSettingsSecurityNote =>
+      '密钥加密保存, 页面只显示尾号; 保存、删除和用已存密钥测试都要再次确认登录密码。';
+
+  @override
+  String get aiSettingsOutboundOff =>
+      '这台服务器关闭了对外调用 AI(测试环境默认如此), 配置可以保存, 但不会真正调用';
+
+  @override
+  String get aiSettingsProvidersSection => '服务商';
+
+  @override
+  String get aiSettingsAdd => '添加 AI 服务';
+
+  @override
+  String get aiSettingsEditTitle => '编辑 AI 服务';
+
+  @override
+  String get aiSettingsEmptyTitle => '还没有配置 AI 服务';
+
+  @override
+  String get aiSettingsEmptyHint =>
+      '支持 DeepSeek、通义千问、Kimi、智谱等国内服务商, 也可以接本机部署的模型';
+
+  @override
+  String get aiSettingsLoadFailed => '加载 AI 服务设置失败';
+
+  @override
+  String get aiSettingsNoAccess => '只有超级管理员可以查看和修改 AI 服务';
+
+  @override
+  String get aiSettingsRetry => '重试';
+
+  @override
+  String get aiSettingsRefresh => '刷新';
+
+  @override
+  String get aiSettingsClose => '关闭';
+
+  @override
+  String get aiSettingsCancel => '取消';
+
+  @override
+  String get aiSettingsRegion => '所在区域';
+
+  @override
+  String get aiSettingsRegionMainland => '国内';
+
+  @override
+  String get aiSettingsRegionOverseas => '境外';
+
+  @override
+  String get aiSettingsRegionLocal => '本机';
+
+  @override
+  String get aiSettingsDefaultBadge => '默认';
+
+  @override
+  String get aiSettingsDisabledBadge => '已停用';
+
+  @override
+  String get aiSettingsModel => '模型';
+
+  @override
+  String get aiSettingsBaseUrl => '接口地址';
+
+  @override
+  String get aiSettingsApiKey => '密钥';
+
+  @override
+  String aiSettingsKeyConfigured(String mask) {
+    return '已配置 $mask';
+  }
+
+  @override
+  String get aiSettingsKeyMissing => '未配置';
+
+  @override
+  String get aiSettingsKeyNotNeeded => '不需要';
+
+  @override
+  String get aiSettingsKeyUnreadable => '密钥无法解密, 请重新填写';
+
+  @override
+  String get aiSettingsLastTest => '上次测试';
+
+  @override
+  String aiSettingsLastTestOk(String time) {
+    return '通过 · $time';
+  }
+
+  @override
+  String aiSettingsLastTestFailed(String time) {
+    return '未通过 · $time';
+  }
+
+  @override
+  String get aiSettingsNeverTested => '还没测试过';
+
+  @override
+  String get aiSettingsEnabledSwitch => '启用';
+
+  @override
+  String get aiSettingsEnabledInfo => '停用后不会调用这个服务';
+
+  @override
+  String get aiSettingsTest => '测试连接';
+
+  @override
+  String get aiSettingsTesting => '正在测试';
+
+  @override
+  String get aiSettingsEdit => '编辑';
+
+  @override
+  String get aiSettingsSetDefault => '设为默认';
+
+  @override
+  String get aiSettingsDelete => '删除';
+
+  @override
+  String get aiSettingsDeleteTitle => '删除这个 AI 服务?';
+
+  @override
+  String aiSettingsDeleteMessage(String name) {
+    return '删除后「$name」的配置和密钥都会清除, 不能恢复。';
+  }
+
+  @override
+  String get aiSettingsDeleteDefaultBlocked => '默认服务不能删除, 请先把别的服务设为默认';
+
+  @override
+  String get aiSettingsDeleted => '已删除';
+
+  @override
+  String aiSettingsDefaultSet(String name) {
+    return '已把「$name」设为默认';
+  }
+
+  @override
+  String aiSettingsEnabledOn(String name) {
+    return '已启用「$name」';
+  }
+
+  @override
+  String aiSettingsEnabledOff(String name) {
+    return '已停用「$name」';
+  }
+
+  @override
+  String get aiSettingsBusySaving => '正在保存';
+
+  @override
+  String get aiSettingsBusyDeleting => '正在删除';
+
+  @override
+  String aiSettingsUpdatedBy(String name, String time) {
+    return '$name 修改于 $time';
+  }
+
+  @override
+  String get aiSettingsTestNeedsKeyEdit => '还没有密钥, 请先点「编辑」填写密钥再测试';
+
+  @override
+  String aiSettingsUsageTitle(int days) {
+    return '近 $days 天用量';
+  }
+
+  @override
+  String get aiSettingsUsageCalls => '调用次数';
+
+  @override
+  String get aiSettingsUsageSuccessRate => '成功率';
+
+  @override
+  String get aiSettingsUsageTokens => '输入 / 输出 token';
+
+  @override
+  String get aiSettingsUsageLatency => '平均耗时';
+
+  @override
+  String aiSettingsUsageSeconds(String value) {
+    return '$value 秒';
+  }
+
+  @override
+  String get aiSettingsUsageEmpty => '还没有调用记录';
+
+  @override
+  String get aiSettingsUsageUnavailable => '用量暂时读不到, 不影响使用';
+
+  @override
+  String get aiSettingsPreset => '服务商';
+
+  @override
+  String get aiSettingsPresetInfo => '选好服务商会自动填好接口地址和推荐设置, 每一项都还能改';
+
+  @override
+  String aiSettingsPresetOverseasOff(String label) {
+    return '$label (境外, 未开放)';
+  }
+
+  @override
+  String get aiSettingsOverseasOffHint =>
+      '境外服务商默认关闭。如需使用, 请联系部署人员在服务器配置中开启, 并完成数据出境评估';
+
+  @override
+  String aiSettingsPresetUnavailable(String label) {
+    return '$label (暂不可用)';
+  }
+
+  @override
+  String get aiSettingsName => '显示名称';
+
+  @override
+  String get aiSettingsNameHint => '例如: DeepSeek 正式账号';
+
+  @override
+  String get aiSettingsNameRequired => '请填写显示名称';
+
+  @override
+  String aiSettingsTooLong(int max) {
+    return '最多 $max 个字符';
+  }
+
+  @override
+  String get aiSettingsBaseUrlInfo =>
+      '服务商文档里的 Base URL; 只能用 https, 本机部署可以用 http://127.0.0.1';
+
+  @override
+  String get aiSettingsBaseUrlRequired => '请填写接口地址';
+
+  @override
+  String get aiSettingsBaseUrlInvalid => '接口地址格式不对, 应以 https:// 开头, 不带问号后面的参数';
+
+  @override
+  String get aiSettingsBaseUrlHttpLocalOnly => '只有本机部署可以用 http, 其他服务商请用 https';
+
+  @override
+  String get aiSettingsModelHint => '填模型名称, 或点「获取模型」从列表选';
+
+  @override
+  String get aiSettingsModelRequired => '请填写模型名称';
+
+  @override
+  String get aiSettingsFetchModels => '获取模型';
+
+  @override
+  String get aiSettingsPickModel => '从列表选择模型';
+
+  @override
+  String aiSettingsModelsLoaded(int count) {
+    return '找到 $count 个模型';
+  }
+
+  @override
+  String get aiSettingsModelsEmpty => '服务商没有返回模型列表, 请直接填写模型名称';
+
+  @override
+  String get aiSettingsApiKeyHint => '粘贴服务商后台生成的密钥';
+
+  @override
+  String aiSettingsApiKeyKeepHint(String mask) {
+    return '已配置 $mask, 不改就留空';
+  }
+
+  @override
+  String get aiSettingsApiKeyNotNeededHint => '本机部署通常不需要密钥, 可以留空';
+
+  @override
+  String get aiSettingsApiKeyRequired => '请填写密钥';
+
+  @override
+  String get aiSettingsClearKey => '清除密钥';
+
+  @override
+  String get aiSettingsUndoClear => '撤销清除';
+
+  @override
+  String get aiSettingsKeyWillClear => '保存后会清除已存的密钥';
+
+  @override
+  String get aiSettingsUrlChangedNeedKey => '改了接口地址, 需要重新填写密钥';
+
+  @override
+  String get aiSettingsUrlChangedNeedKeyDetail =>
+      '为了安全, 已存的密钥只会发给原来的地址。请重新粘贴密钥后再保存。';
+
+  @override
+  String get aiSettingsUrlChangedNeedKeyLocalDetail =>
+      '为了安全, 已存的密钥只会发给原来的地址。请重新粘贴密钥; 新地址不需要密钥的, 点「清除密钥」。';
+
+  @override
+  String get aiSettingsAdvanced => '高级设置';
+
+  @override
+  String get aiSettingsProtocol => '接口协议';
+
+  @override
+  String get aiSettingsProtocolInfo =>
+      '国内服务商和本机部署基本都是 OpenAI 兼容; 只有 Claude 用 Anthropic';
+
+  @override
+  String get aiSettingsProtocolOpenAi => 'OpenAI 兼容';
+
+  @override
+  String get aiSettingsProtocolAnthropic => 'Anthropic';
+
+  @override
+  String get aiSettingsJsonMode => 'JSON 输出方式';
+
+  @override
+  String get aiSettingsJsonModeInfo => '要求模型只回一段 JSON, 系统才能读懂结果; 服务商不支持时选「不要求」';
+
+  @override
+  String get aiSettingsJsonModeNone => '不要求';
+
+  @override
+  String get aiSettingsJsonModeObject => 'JSON 对象';
+
+  @override
+  String get aiSettingsJsonModeSchema => '按结构输出';
+
+  @override
+  String get aiSettingsThinking => '关闭深度思考';
+
+  @override
+  String get aiSettingsThinkingInfo =>
+      '识别表格不需要深度思考, 关掉更快更省钱; 各服务商写法不同, 选好服务商会自动选对';
+
+  @override
+  String get aiSettingsThinkingNone => '不处理';
+
+  @override
+  String get aiSettingsThinkingDeepseek => 'DeepSeek 写法';
+
+  @override
+  String get aiSettingsThinkingDashscope => '通义千问写法';
+
+  @override
+  String get aiSettingsThinkingOpenAi => 'OpenAI 写法';
+
+  @override
+  String get aiSettingsTemperature => '固定输出(温度为 0)';
+
+  @override
+  String get aiSettingsTemperatureInfo => '同一份文件每次识别结果尽量一致; 个别模型不接受这个参数时关掉';
+
+  @override
+  String get aiSettingsVision => '能识别图片和扫描件';
+
+  @override
+  String get aiSettingsVisionInfo => '模型支持看图时打开, 销售上传的照片和扫描版 PDF 才能识别';
+
+  @override
+  String get aiSettingsMaxTokens => '最大输出长度';
+
+  @override
+  String get aiSettingsMaxTokensInfo => '256 ~ 65536; 行数多的文件需要更长';
+
+  @override
+  String get aiSettingsTimeout => '超时秒数';
+
+  @override
+  String get aiSettingsTimeoutInfo => '10 ~ 600; 超过这个时间还没回复就算失败';
+
+  @override
+  String aiSettingsNumberRange(int min, int max) {
+    return '请输入 $min ~ $max 之间的整数';
+  }
+
+  @override
+  String get aiSettingsOverseasAck => '客户资料(公司名、货品描述)会发送到境外服务商, 我已确认完成数据出境评估';
+
+  @override
+  String get aiSettingsOverseasAckRequired => '使用境外服务商前请先勾选上面的确认';
+
+  @override
+  String get aiSettingsSave => '保存';
+
+  @override
+  String get aiSettingsSaving => '正在保存';
+
+  @override
+  String get aiSettingsSaved => '已保存';
+
+  @override
+  String get aiSettingsSaveFailed => '保存失败, 请稍后重试';
+
+  @override
+  String get aiSettingsFixFields => '请先改好标红的项';
+
+  @override
+  String get aiSettingsTestNeedsKey => '测试前请先填写密钥';
+
+  @override
+  String get aiSettingsTestStoredMismatch =>
+      '用已存的密钥测试时, 接口地址和模型要与已保存的一致。请先保存, 或重新填写密钥再测试';
+
+  @override
+  String get aiSettingsTestResultTitle => '连接测试';
+
+  @override
+  String get aiSettingsStepNetwork => '网络连通';
+
+  @override
+  String get aiSettingsStepAuth => '密钥验证';
+
+  @override
+  String get aiSettingsStepModel => '模型可用';
+
+  @override
+  String get aiSettingsStepJson => 'JSON 输出';
+
+  @override
+  String get aiSettingsStepSkipped => '未进行';
+
+  @override
+  String aiSettingsLatency(int ms) {
+    return '$ms 毫秒';
+  }
+
+  @override
+  String get aiSettingsTestPassed => '连接正常, 可以使用';
+
+  @override
+  String get aiSettingsTestPassedShort => '通过';
+
+  @override
+  String get aiSettingsTestFailed => '连接没有通过, 请按提示检查后再试';
+
+  @override
+  String get aiSettingsTestFailedShort => '未通过';
+
+  @override
+  String get aiSettingsTestWarnShort => '需留意';
+
+  @override
+  String get aiSettingsTestPassedWithNotes => '连上了, 但有需要留意的地方, 请看上面的黄色提示';
+
+  @override
+  String get aiSettingsTestStoredUnsavedAdvanced =>
+      '高级设置改过了, 用已存的密钥测试不会带上这些改动。请先保存再测试, 或重新填写密钥后测试';
+
+  @override
+  String get aiSettingsModelChoices => '可选模型:';
+
+  @override
+  String get aiSettingsOverseasLockedShort => '境外服务商暂未开放, 需要部署人员在服务器上开启';
+
+  @override
+  String get aiSettingsKeyConfiguredPlain => '已配置';
+
+  @override
+  String get aiSettingsApiKeyKeepHintPlain => '已配置, 不改就留空';
 }

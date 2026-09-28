@@ -4317,4 +4317,556 @@ class AppLocalizationsEn extends AppLocalizations {
   String materialPreparationMissingAssignment(String goods) {
     return 'Set the production workshop and responsible person for “$goods” before ordering';
   }
+
+  @override
+  String get aiJobCancel => 'Cancel';
+
+  @override
+  String aiJobElapsed(String time) {
+    return 'Elapsed $time';
+  }
+
+  @override
+  String get aiJobQueued => 'Waiting in line, starting shortly';
+
+  @override
+  String get aiJobSlowHint =>
+      'Large files can take a minute or two. Please wait, there is no need to click again';
+
+  @override
+  String get aiJobTimeout =>
+      'This took too long, so we stopped waiting. Please try again later or split the file into smaller parts';
+
+  @override
+  String get aiJobGone =>
+      'This task no longer exists (it may have been cleaned up). Please start again';
+
+  @override
+  String get aiJobFailedGeneric =>
+      'That did not work this time. Please try again later';
+
+  @override
+  String get aiJobConfidenceHigh => 'High';
+
+  @override
+  String get aiJobConfidenceMedium => 'Medium';
+
+  @override
+  String get aiJobConfidenceLow => 'Low';
+
+  @override
+  String aiJobConfidenceSemantics(String level) {
+    return 'AI confidence: $level';
+  }
+
+  @override
+  String get aiSettingsTitle => 'AI services';
+
+  @override
+  String get aiSettingsEntrySubtitle =>
+      'Configure model providers, API keys and connection tests';
+
+  @override
+  String aiSettingsHeroActive(String name, String model) {
+    return 'In use: $name · $model';
+  }
+
+  @override
+  String get aiSettingsHeroReady =>
+      'Used to recognize customer files uploaded by sales';
+
+  @override
+  String get aiSettingsHeroNone => 'No AI service is available yet';
+
+  @override
+  String get aiSettingsHeroNoneHint =>
+      'After you add a provider and the test passes, customer files uploaded by sales are recognized automatically';
+
+  @override
+  String get aiSettingsHeroDefaultDisabled =>
+      'The default service is disabled, so AI is not being used';
+
+  @override
+  String get aiSettingsHeroNeedsKey =>
+      'No API key has been entered yet, so AI is not being used';
+
+  @override
+  String get aiSettingsSecurityNote =>
+      'Keys are stored encrypted and only the last characters are shown. Saving, deleting and testing with a stored key ask for your login password again.';
+
+  @override
+  String get aiSettingsOutboundOff =>
+      'This server does not call external AI (the default for test environments). You can save settings, but no calls will be made';
+
+  @override
+  String get aiSettingsProvidersSection => 'Providers';
+
+  @override
+  String get aiSettingsAdd => 'Add AI service';
+
+  @override
+  String get aiSettingsEditTitle => 'Edit AI service';
+
+  @override
+  String get aiSettingsEmptyTitle => 'No AI service configured';
+
+  @override
+  String get aiSettingsEmptyHint =>
+      'Mainland providers such as DeepSeek, Qwen, Kimi and Zhipu are supported, as well as a locally deployed model';
+
+  @override
+  String get aiSettingsLoadFailed => 'Failed to load AI service settings';
+
+  @override
+  String get aiSettingsNoAccess =>
+      'Only super administrators can view and change AI services';
+
+  @override
+  String get aiSettingsRetry => 'Retry';
+
+  @override
+  String get aiSettingsRefresh => 'Refresh';
+
+  @override
+  String get aiSettingsClose => 'Close';
+
+  @override
+  String get aiSettingsCancel => 'Cancel';
+
+  @override
+  String get aiSettingsRegion => 'Region';
+
+  @override
+  String get aiSettingsRegionMainland => 'Mainland';
+
+  @override
+  String get aiSettingsRegionOverseas => 'Overseas';
+
+  @override
+  String get aiSettingsRegionLocal => 'Local';
+
+  @override
+  String get aiSettingsDefaultBadge => 'Default';
+
+  @override
+  String get aiSettingsDisabledBadge => 'Disabled';
+
+  @override
+  String get aiSettingsModel => 'Model';
+
+  @override
+  String get aiSettingsBaseUrl => 'Endpoint URL';
+
+  @override
+  String get aiSettingsApiKey => 'API key';
+
+  @override
+  String aiSettingsKeyConfigured(String mask) {
+    return 'Set $mask';
+  }
+
+  @override
+  String get aiSettingsKeyMissing => 'Not set';
+
+  @override
+  String get aiSettingsKeyNotNeeded => 'Not required';
+
+  @override
+  String get aiSettingsKeyUnreadable =>
+      'The API key cannot be decrypted. Please enter it again';
+
+  @override
+  String get aiSettingsLastTest => 'Last test';
+
+  @override
+  String aiSettingsLastTestOk(String time) {
+    return 'Passed · $time';
+  }
+
+  @override
+  String aiSettingsLastTestFailed(String time) {
+    return 'Failed · $time';
+  }
+
+  @override
+  String get aiSettingsNeverTested => 'Not tested yet';
+
+  @override
+  String get aiSettingsEnabledSwitch => 'Enabled';
+
+  @override
+  String get aiSettingsEnabledInfo => 'A disabled service is never called';
+
+  @override
+  String get aiSettingsTest => 'Test connection';
+
+  @override
+  String get aiSettingsTesting => 'Testing';
+
+  @override
+  String get aiSettingsEdit => 'Edit';
+
+  @override
+  String get aiSettingsSetDefault => 'Set as default';
+
+  @override
+  String get aiSettingsDelete => 'Delete';
+
+  @override
+  String get aiSettingsDeleteTitle => 'Delete this AI service?';
+
+  @override
+  String aiSettingsDeleteMessage(String name) {
+    return 'The settings and API key of \"$name\" will be removed and cannot be restored.';
+  }
+
+  @override
+  String get aiSettingsDeleteDefaultBlocked =>
+      'The default service cannot be deleted. Set another service as default first';
+
+  @override
+  String get aiSettingsDeleted => 'Deleted';
+
+  @override
+  String aiSettingsDefaultSet(String name) {
+    return '\"$name\" is now the default';
+  }
+
+  @override
+  String aiSettingsEnabledOn(String name) {
+    return '\"$name\" enabled';
+  }
+
+  @override
+  String aiSettingsEnabledOff(String name) {
+    return '\"$name\" disabled';
+  }
+
+  @override
+  String get aiSettingsBusySaving => 'Saving';
+
+  @override
+  String get aiSettingsBusyDeleting => 'Deleting';
+
+  @override
+  String aiSettingsUpdatedBy(String name, String time) {
+    return 'Changed by $name at $time';
+  }
+
+  @override
+  String get aiSettingsTestNeedsKeyEdit =>
+      'There is no API key yet. Tap \"Edit\" to enter one, then test';
+
+  @override
+  String aiSettingsUsageTitle(int days) {
+    return 'Usage in the last $days days';
+  }
+
+  @override
+  String get aiSettingsUsageCalls => 'Calls';
+
+  @override
+  String get aiSettingsUsageSuccessRate => 'Success rate';
+
+  @override
+  String get aiSettingsUsageTokens => 'Input / output tokens';
+
+  @override
+  String get aiSettingsUsageLatency => 'Average time';
+
+  @override
+  String aiSettingsUsageSeconds(String value) {
+    return '$value s';
+  }
+
+  @override
+  String get aiSettingsUsageEmpty => 'No calls yet';
+
+  @override
+  String get aiSettingsUsageUnavailable =>
+      'Usage is temporarily unavailable. This does not affect the service';
+
+  @override
+  String get aiSettingsPreset => 'Provider';
+
+  @override
+  String get aiSettingsPresetInfo =>
+      'Choosing a provider fills in the endpoint and recommended settings. You can still change every field';
+
+  @override
+  String aiSettingsPresetOverseasOff(String label) {
+    return '$label (overseas, not enabled)';
+  }
+
+  @override
+  String get aiSettingsOverseasOffHint =>
+      'Overseas providers are off by default. To use one, ask your deployment administrator to enable it in the server configuration and complete the cross-border data assessment';
+
+  @override
+  String aiSettingsPresetUnavailable(String label) {
+    return '$label (unavailable)';
+  }
+
+  @override
+  String get aiSettingsName => 'Display name';
+
+  @override
+  String get aiSettingsNameHint => 'e.g. DeepSeek production account';
+
+  @override
+  String get aiSettingsNameRequired => 'Enter a display name';
+
+  @override
+  String aiSettingsTooLong(int max) {
+    return 'At most $max characters';
+  }
+
+  @override
+  String get aiSettingsBaseUrlInfo =>
+      'The Base URL from the provider documentation. Only https is allowed; a local deployment may use http://127.0.0.1';
+
+  @override
+  String get aiSettingsBaseUrlRequired => 'Enter the endpoint URL';
+
+  @override
+  String get aiSettingsBaseUrlInvalid =>
+      'The endpoint URL is invalid. It should start with https:// and have no query parameters';
+
+  @override
+  String get aiSettingsBaseUrlHttpLocalOnly =>
+      'Only local deployments may use http. Use https for other providers';
+
+  @override
+  String get aiSettingsModelHint =>
+      'Enter the model name, or tap \"Get models\" to pick from a list';
+
+  @override
+  String get aiSettingsModelRequired => 'Enter a model name';
+
+  @override
+  String get aiSettingsFetchModels => 'Get models';
+
+  @override
+  String get aiSettingsPickModel => 'Pick a model from the list';
+
+  @override
+  String aiSettingsModelsLoaded(int count) {
+    return 'Found $count models';
+  }
+
+  @override
+  String get aiSettingsModelsEmpty =>
+      'The provider returned no model list. Enter the model name directly';
+
+  @override
+  String get aiSettingsApiKeyHint =>
+      'Paste the key created in the provider console';
+
+  @override
+  String aiSettingsApiKeyKeepHint(String mask) {
+    return 'Set $mask. Leave blank to keep it';
+  }
+
+  @override
+  String get aiSettingsApiKeyNotNeededHint =>
+      'Local deployments usually need no key, so you can leave this blank';
+
+  @override
+  String get aiSettingsApiKeyRequired => 'Enter the API key';
+
+  @override
+  String get aiSettingsClearKey => 'Remove key';
+
+  @override
+  String get aiSettingsUndoClear => 'Keep the key';
+
+  @override
+  String get aiSettingsKeyWillClear =>
+      'The stored key will be removed when you save';
+
+  @override
+  String get aiSettingsUrlChangedNeedKey =>
+      'The endpoint changed, so the API key must be entered again';
+
+  @override
+  String get aiSettingsUrlChangedNeedKeyDetail =>
+      'For security, the stored key is only ever sent to the original address. Paste the key again before saving.';
+
+  @override
+  String get aiSettingsUrlChangedNeedKeyLocalDetail =>
+      'For security, the stored key is only ever sent to the original address. Paste the key again, or tap \"Remove key\" if the new address needs none.';
+
+  @override
+  String get aiSettingsAdvanced => 'Advanced settings';
+
+  @override
+  String get aiSettingsProtocol => 'API protocol';
+
+  @override
+  String get aiSettingsProtocolInfo =>
+      'Mainland providers and local deployments are almost always OpenAI compatible; only Claude uses Anthropic';
+
+  @override
+  String get aiSettingsProtocolOpenAi => 'OpenAI compatible';
+
+  @override
+  String get aiSettingsProtocolAnthropic => 'Anthropic';
+
+  @override
+  String get aiSettingsJsonMode => 'JSON output';
+
+  @override
+  String get aiSettingsJsonModeInfo =>
+      'Asks the model to reply with JSON only so the system can read the result. Choose \"Not required\" if the provider does not support it';
+
+  @override
+  String get aiSettingsJsonModeNone => 'Not required';
+
+  @override
+  String get aiSettingsJsonModeObject => 'JSON object';
+
+  @override
+  String get aiSettingsJsonModeSchema => 'Structured (schema)';
+
+  @override
+  String get aiSettingsThinking => 'Turn off deep thinking';
+
+  @override
+  String get aiSettingsThinkingInfo =>
+      'Reading tables does not need deep thinking; turning it off is faster and cheaper. Each provider uses a different parameter, and choosing the provider selects the right one';
+
+  @override
+  String get aiSettingsThinkingNone => 'Leave as is';
+
+  @override
+  String get aiSettingsThinkingDeepseek => 'DeepSeek style';
+
+  @override
+  String get aiSettingsThinkingDashscope => 'Qwen style';
+
+  @override
+  String get aiSettingsThinkingOpenAi => 'OpenAI style';
+
+  @override
+  String get aiSettingsTemperature => 'Consistent output (temperature 0)';
+
+  @override
+  String get aiSettingsTemperatureInfo =>
+      'Keeps results consistent for the same file. Turn off if the model rejects this parameter';
+
+  @override
+  String get aiSettingsVision => 'Can read images and scans';
+
+  @override
+  String get aiSettingsVisionInfo =>
+      'Turn on if the model can read images; needed for photos and scanned PDFs uploaded by sales';
+
+  @override
+  String get aiSettingsMaxTokens => 'Max output length';
+
+  @override
+  String get aiSettingsMaxTokensInfo =>
+      '256 to 65536; files with many lines need more';
+
+  @override
+  String get aiSettingsTimeout => 'Timeout (seconds)';
+
+  @override
+  String get aiSettingsTimeoutInfo =>
+      '10 to 600; a reply slower than this counts as a failure';
+
+  @override
+  String aiSettingsNumberRange(int min, int max) {
+    return 'Enter a whole number from $min to $max';
+  }
+
+  @override
+  String get aiSettingsOverseasAck =>
+      'Customer data (company names, goods descriptions) will be sent to an overseas provider. I confirm the cross-border data assessment is complete';
+
+  @override
+  String get aiSettingsOverseasAckRequired =>
+      'Tick the confirmation above before using an overseas provider';
+
+  @override
+  String get aiSettingsSave => 'Save';
+
+  @override
+  String get aiSettingsSaving => 'Saving';
+
+  @override
+  String get aiSettingsSaved => 'Saved';
+
+  @override
+  String get aiSettingsSaveFailed => 'Save failed. Please try again later';
+
+  @override
+  String get aiSettingsFixFields => 'Please fix the highlighted fields first';
+
+  @override
+  String get aiSettingsTestNeedsKey => 'Enter the API key before testing';
+
+  @override
+  String get aiSettingsTestStoredMismatch =>
+      'Testing with the stored key requires the saved endpoint and model. Save first, or enter the key again to test';
+
+  @override
+  String get aiSettingsTestResultTitle => 'Connection test';
+
+  @override
+  String get aiSettingsStepNetwork => 'Network';
+
+  @override
+  String get aiSettingsStepAuth => 'API key check';
+
+  @override
+  String get aiSettingsStepModel => 'Model available';
+
+  @override
+  String get aiSettingsStepJson => 'JSON output';
+
+  @override
+  String get aiSettingsStepSkipped => 'Not run';
+
+  @override
+  String aiSettingsLatency(int ms) {
+    return '$ms ms';
+  }
+
+  @override
+  String get aiSettingsTestPassed => 'Connection OK, ready to use';
+
+  @override
+  String get aiSettingsTestPassedShort => 'Passed';
+
+  @override
+  String get aiSettingsTestFailed =>
+      'The connection test failed. Check the hints and try again';
+
+  @override
+  String get aiSettingsTestFailedShort => 'Failed';
+
+  @override
+  String get aiSettingsTestWarnShort => 'Check notes';
+
+  @override
+  String get aiSettingsTestPassedWithNotes =>
+      'Connected, but there is something to check. See the notes above';
+
+  @override
+  String get aiSettingsTestStoredUnsavedAdvanced =>
+      'Advanced settings were changed, and a test with the stored key would not include them. Save first, or enter the key again to test';
+
+  @override
+  String get aiSettingsModelChoices => 'Models:';
+
+  @override
+  String get aiSettingsOverseasLockedShort =>
+      'Overseas providers are not enabled; the deployment administrator must turn them on on the server';
+
+  @override
+  String get aiSettingsKeyConfiguredPlain => 'Set';
+
+  @override
+  String get aiSettingsApiKeyKeepHintPlain => 'Set. Leave blank to keep it';
 }

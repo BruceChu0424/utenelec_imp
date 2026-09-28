@@ -10,6 +10,7 @@ import '../l10n/gen/app_localizations.dart';
 import '../../features/admin/pages/admin_audit_log_page.dart';
 import '../../features/admin/pages/admin_audit_session_detail_page.dart';
 import '../../features/admin/models/audit_session.dart';
+import '../../features/admin/pages/admin_ai_settings_page.dart';
 import '../../features/admin/pages/admin_system_settings_page.dart';
 import '../../features/admin/pages/server_status_page.dart';
 import '../../features/admin/pages/admin_permissions_page.dart';
@@ -1788,6 +1789,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.adminServerStatus,
             name: 'admin-server-status',
             builder: (_, _) => const ServerStatusPage(),
+          ),
+          // AI 服务设置(ADR-133): 不是表单草稿页, 密钥绝不进草稿快照。
+          DraftAwareGoRoute(
+            path: RouteName.adminAiSettings,
+            name: 'admin-ai-settings',
+            builder: (_, _) => const AdminAiSettingsPage(),
           ),
         ],
       ),

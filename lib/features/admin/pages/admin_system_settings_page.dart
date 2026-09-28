@@ -31,6 +31,7 @@ import '../../../shared/providers/idle_timeout_controller.dart';
 import '../models/system_setting_entry.dart';
 import '../models/system_updater_status.dart';
 import '../repositories/system_setting_repository.dart';
+import '../widgets/ai_settings_entry_card.dart';
 import '../widgets/system_updater_status_card.dart';
 
 class AdminSystemSettingsPage extends ConsumerStatefulWidget {
@@ -227,6 +228,23 @@ class _AdminSystemSettingsPageState
     }
   }
 
+  /// AI 服务入口不依赖系统设置项: 加载中、出错或没有设置项时也放在顶部, 位置与列表里一致。
+  static Widget _withAiEntry(Widget child) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const Padding(
+        padding: EdgeInsets.fromLTRB(
+          UtenSpacing.s16,
+          UtenSpacing.s16,
+          UtenSpacing.s16,
+          0,
+        ),
+        child: AiSettingsEntryCard(),
+      ),
+      Expanded(child: child),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -236,13 +254,15 @@ class _AdminSystemSettingsPageState
         child: Stack(
           children: [
             _loading && _all == null
-                ? const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                ? _withAiEntry(
+                    const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    ),
                   )
                 : _error != null
-                ? _ErrorState(error: _error!, onRetry: _load)
+                ? _withAiEntry(_ErrorState(error: _error!, onRetry: _load))
                 : _all == null || _all!.isEmpty
-                ? const UtenEmpty(message: '暂无设置项')
+                ? _withAiEntry(const UtenEmpty(message: '暂无设置项'))
                 : RefreshIndicator(
                     onRefresh: _refresh,
                     child: Form(
@@ -250,6 +270,8 @@ class _AdminSystemSettingsPageState
                       child: ListView(
                         padding: const EdgeInsets.all(UtenSpacing.s16),
                         children: [
+                          // AI 服务(ADR-133)有自己的页面: 服务商/密钥/连接测试。
+                          const AiSettingsEntryCard(),
                           _warningBanner(theme),
                           for (final g in _groups)
                             if (_all!.any((e) => e.category == g.$1))

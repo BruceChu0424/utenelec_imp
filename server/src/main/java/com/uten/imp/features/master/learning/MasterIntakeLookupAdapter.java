@@ -342,7 +342,7 @@ public class MasterIntakeLookupAdapter implements MasterIntakeLookupPort {
                         JOIN sales_order_items i ON i.order_id = o.id AND NOT i.is_deleted
                         JOIN goods g ON g.id = i.goods_id
                          AND NOT g.is_deleted AND g.status = '使用' AND NOT g.auto_created
-                        WHERE o.client_id = :clientId AND NOT o.is_deleted AND o.status <> -1
+                        WHERE o.client_id = :clientId AND NOT o.is_deleted AND o.status = 1
                           AND o.bill_date >= current_date - make_interval(months => :months)
                         GROUP BY i.goods_id
                         ORDER BY count(DISTINCT o.id) DESC, max(o.bill_date) DESC, i.goods_id
@@ -377,7 +377,7 @@ public class MasterIntakeLookupAdapter implements MasterIntakeLookupPort {
                             FROM sales_orders o
                             JOIN sales_order_items i ON i.order_id = o.id AND NOT i.is_deleted
                             WHERE o.client_id IN (:clients) AND i.goods_id IN (:goods)
-                              AND NOT o.is_deleted AND o.status <> -1
+                              AND NOT o.is_deleted AND o.status = 1
                             """)
                     .setParameter("clients", clients)
                     .setParameter("goods", chunk)
@@ -405,7 +405,7 @@ public class MasterIntakeLookupAdapter implements MasterIntakeLookupPort {
                     FROM sales_orders o
                     JOIN sales_order_items i ON i.order_id = o.id AND NOT i.is_deleted
                     JOIN clients c ON c.id = o.client_id
-                    WHERE i.goods_id IN (:goods) AND NOT o.is_deleted AND o.status <> -1
+                    WHERE i.goods_id IN (:goods) AND NOT o.is_deleted AND o.status = 1
                       AND ({ACTIVE}) AND {SCOPE}
                 ), ranked AS (
                     SELECT client_id FROM hits

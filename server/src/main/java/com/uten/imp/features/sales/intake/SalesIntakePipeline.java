@@ -1298,11 +1298,20 @@ final class SalesIntakePipeline {
         return "LOW";
     }
 
+    /** 描述后面附带的规格行(「Current: 10A」「Voltage: 250V」…): 作英文名时去掉, 只留品名本身。 */
+    private static final java.util.regex.Pattern TRAILING_SPEC = java.util.regex.Pattern.compile(
+            "\\s+(?:current|voltage|power|rated|rating|size|dimension|material|colou?r|packing|weight)\\s*[:：].*$",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
     static String nameEnText(ExtractedLine line) {
         if (line.description() == null) {
             return null;
         }
         String t = line.description().replaceAll("\\s+", " ").strip();
+        t = TRAILING_SPEC.matcher(t).replaceFirst("").strip();
+        if (t.isEmpty()) {
+            return null;
+        }
         return t.length() > 255 ? t.substring(0, 255).strip() : t;
     }
 

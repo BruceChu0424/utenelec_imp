@@ -68,8 +68,10 @@ class SalesIntakeStore implements IntakeReferenceData {
                        layout.confirm_count
                 FROM sales_intake_layouts layout
                 WHERE layout.fingerprint IN (:fingerprints)
-                  AND (layout.client_id IS NULL OR layout.client_id = CAST(:clientId AS uuid))
-                ORDER BY layout.client_id NULLS LAST, layout.confirm_count DESC
+                  AND (CAST(:clientId AS uuid) IS NULL OR layout.client_id IS NULL
+                       OR layout.client_id = CAST(:clientId AS uuid))
+                ORDER BY (layout.client_id = CAST(:clientId AS uuid)) DESC NULLS LAST,
+                         layout.client_id NULLS LAST, layout.confirm_count DESC
                 """, params, (rs, i) -> new LearnedLayout(rs.getString(1), rs.getObject(2, UUID.class),
                 parseRoles(rs.getString(3)), rs.getInt(4), rs.getInt(5)));
     }

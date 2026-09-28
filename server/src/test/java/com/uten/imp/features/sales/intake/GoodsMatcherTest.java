@@ -148,6 +148,17 @@ class GoodsMatcherTest {
     }
 
     @Test
+    void englishNameDropsTheTrailingSpecLine() {
+        assertThat(SalesIntakePipeline.nameEnText(line("GK42", "Z9", "WHITE", null,
+                "4 GANG 2 WAY SWITCH WITH LED Current: 10A", null, "22"))).isEqualTo("4 GANG 2 WAY SWITCH WITH LED");
+        assertThat(SalesIntakePipeline.nameEnText(line("GK45A", "Z9", "WHITE", null,
+                "45A switch 3*3 Current: 45A", null, "17.85"))).isEqualTo("45A switch 3*3");
+        assertThat(SalesIntakePipeline.nameEnText(line("GZ23/D", "Z9", "WHITE", null,
+                "DOUBLE 3 PIN UNIVERSAL SOCCKET WITH SWITCH", null, "21")))
+                .isEqualTo("DOUBLE 3 PIN UNIVERSAL SOCCKET WITH SWITCH");
+    }
+
+    @Test
     void twoExplicitChoicesForTheSameWordingStayAmbiguous() {
         AliasRow a = new AliasRow(UUID.randomUUID(), AliasScope.CLIENT, CLIENT, AliasKind.PART_NO, "X1", "X1", "", z9White.id(),
                 1, 1, OffsetDateTime.now());

@@ -276,4 +276,23 @@ public class GoodsSaveRequest {
 
     /** 乐观锁版本（编辑时回传详情读到的 version；新建忽略。不符即 409）。 */
     private Long version;
+
+    /**
+     * 英文名称(ADR-134): 请求体带了这个键才改(带 null 或空白 = 清空), 没带 = 保持,
+     * 老客户端保存货品不会误清学习到的英文名。写入后来源记为 MANUAL(人工维护)。
+     */
+    @Size(max = 255)
+    private String nameEn;
+    @JsonIgnore
+    private boolean nameEnPresent;
+
+    @JsonSetter("nameEn")
+    public void setNameEn(String value) {
+        nameEn = value;
+        nameEnPresent = true;
+    }
+
+    public boolean hasNameEn() {
+        return nameEnPresent;
+    }
 }

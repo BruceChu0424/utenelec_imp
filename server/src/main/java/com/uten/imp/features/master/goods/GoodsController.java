@@ -45,6 +45,7 @@ import java.util.UUID;
  * - GET  /api/master/goods/{id}                                                       → 详情
  * - POST /api/master/goods                                                            → 新建（goods:edit）
  * - PUT  /api/master/goods/{id}                                                       → 编辑（goods:edit）
+ * - PUT  /api/master/goods/{id}/name-en                                               → 只改英文名称(goods:name_en:edit 或 goods:edit)
  * - DEL  /api/master/goods/{id} 与批量启停/删除 → 见 MasterLifecycleController(ADR-111，带引用保护)
  *
  * 权限点 goods:view 由种子化（已授予全部未软删部门）；goods:edit 仅超管恒有（未授部门）。
@@ -206,6 +207,17 @@ public class GoodsController {
     @PreAuthorize("hasAnyAuthority('goods:edit', 'goods:status')")
     public GoodsDetail update(@PathVariable UUID id, @Valid @RequestBody GoodsSaveRequest req) {
         return service.update(id, req);
+    }
+
+    /**
+     * 单独修改英文名称(ADR-134): 销售等没有整单编辑权限的人持 goods:name_en:edit 即可维护,
+     * 持 goods:edit 的人同样可以; 页面按详情里的 canEditNameEn 决定是否显示入口。
+     */
+    @PutMapping("/{id}/name-en")
+    @PreAuthorize("hasAnyAuthority('goods:name_en:edit', 'goods:edit')")
+    public GoodsDetail updateNameEn(@PathVariable UUID id,
+                                    @Valid @RequestBody com.uten.imp.features.master.goods.dto.GoodsNameEnRequest req) {
+        return service.updateNameEn(id, req.nameEn(), req.version());
     }
 
     @org.springframework.web.bind.annotation.PatchMapping("/{id}/status")

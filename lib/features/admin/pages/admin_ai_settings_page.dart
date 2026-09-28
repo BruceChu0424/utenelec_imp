@@ -246,7 +246,7 @@ class _AdminAiSettingsPageState extends ConsumerState<AdminAiSettingsPage> {
     if (confirmed != true || !mounted) return;
     await _runBusy(
       l10n.aiSettingsBusyDeleting,
-      () => _repository.delete(provider.id),
+      () => _repository.delete(provider.id, version: provider.version),
       success: l10n.aiSettingsDeleted,
     );
   }
@@ -299,7 +299,8 @@ class _AdminAiSettingsPageState extends ConsumerState<AdminAiSettingsPage> {
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: providers == null
+      // 还没有任何服务时只留空状态卡片里那一个「添加 AI 服务」, 不再叠一个悬浮按钮。
+      floatingActionButton: providers == null || providers.isEmpty
           ? null
           : UtenFloatingActionGroup(
               children: [

@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
@@ -27,6 +28,7 @@ import '../../../shared/ai/ai_progress_dialog.dart';
 import '../models/ai_provider_models.dart';
 import '../repositories/ai_provider_repository.dart';
 import 'ai_connection_test_view.dart';
+import 'ai_masked_key.dart';
 import 'ai_settings_labels.dart';
 
 /// 打开新增([existing] 为空)或编辑面板; 面板关闭后返回是否保存过。
@@ -721,40 +723,43 @@ class _AiProviderEditorState extends ConsumerState<AiProviderEditor> {
     final lockedReasons = _lockedReasons(l10n);
     final preset = _currentPreset;
     return [
-      UtenDropdownField(
-        key: const ValueKey('ai-editor-preset'),
-        label: l10n.aiSettingsPreset,
-        info: anyOverseasLocked
-            ? '${l10n.aiSettingsPresetInfo}\n${l10n.aiSettingsOverseasOffHint}'
-            : l10n.aiSettingsPresetInfo,
-        value: _preset,
-        allowClear: false,
-        searchable: false,
+      _labeled(
+        l10n.aiSettingsPreset,
         required: true,
-        items: [
-          for (final item in _presets)
-            UtenDropdownItem(
-              value: item.code,
-              label: _presetSelectable(item)
-                  ? item.label
-                  : widget.catalog.isOverseasLocked(item)
-                  ? l10n.aiSettingsPresetOverseasOff(item.label)
-                  : l10n.aiSettingsPresetUnavailable(item.label),
-              enabled: _presetSelectable(item),
-            ),
-          // 预设目录缺了这条已保存的预设时也要能显示当前值。
-          if (preset == null)
-            UtenDropdownItem(
-              value: _preset,
-              label: aiPresetLabel(
-                widget.catalog,
-                _preset,
-                fallback: _existing?.presetLabel,
+        UtenDropdownField(
+          key: const ValueKey('ai-editor-preset'),
+          info: anyOverseasLocked
+              ? '${l10n.aiSettingsPresetInfo}\n${l10n.aiSettingsOverseasOffHint}'
+              : l10n.aiSettingsPresetInfo,
+          value: _preset,
+          allowClear: false,
+          searchable: false,
+          required: true,
+          items: [
+            for (final item in _presets)
+              UtenDropdownItem(
+                value: item.code,
+                label: _presetSelectable(item)
+                    ? item.label
+                    : widget.catalog.isOverseasLocked(item)
+                    ? l10n.aiSettingsPresetOverseasOff(item.label)
+                    : l10n.aiSettingsPresetUnavailable(item.label),
+                enabled: _presetSelectable(item),
               ),
-              visible: false,
-            ),
-        ],
-        onChanged: _onPresetChanged,
+            // 预设目录缺了这条已保存的预设时也要能显示当前值。
+            if (preset == null)
+              UtenDropdownItem(
+                value: _preset,
+                label: aiPresetLabel(
+                  widget.catalog,
+                  _preset,
+                  fallback: _existing?.presetLabel,
+                ),
+                visible: false,
+              ),
+          ],
+          onChanged: _onPresetChanged,
+        ),
       ),
       // 为什么有的服务商选不了: 服务端原因原样展示(境外未开放 / 服务器关闭了对外调用)。
       for (final (index, reason) in lockedReasons.indexed)
@@ -786,34 +791,61 @@ class _AiProviderEditorState extends ConsumerState<AiProviderEditor> {
         ),
       if (preset?.regionEditable ?? true) ...[
         const SizedBox(height: UtenSpacing.s16),
-        UtenDropdownField(
-          key: const ValueKey('ai-editor-region'),
-          label: l10n.aiSettingsRegion,
-          value: _region.code,
-          allowClear: false,
-          searchable: false,
+        _labeled(
+          l10n.aiSettingsRegion,
           required: true,
-          items: [
-            for (final region in AiRegion.values)
-              UtenDropdownItem(
-                value: region.code,
-                label:
-                    region == AiRegion.overseas && !widget.catalog.allowOverseas
-                    ? l10n.aiSettingsPresetOverseasOff(region.label(l10n))
-                    : region.label(l10n),
-                enabled:
-                    region != AiRegion.overseas ||
-                    widget.catalog.allowOverseas ||
-                    _existing?.region == AiRegion.overseas,
-              ),
-          ],
-          onChanged: (code) => setState(() {
-            _region = AiRegion.parse(code);
-            _testResult = null;
-          }),
+          UtenDropdownField(
+            key: const ValueKey('ai-editor-region'),
+            value: _region.code,
+            allowClear: false,
+            searchable: false,
+            required: true,
+            items: [
+              for (final region in AiRegion.values)
+                UtenDropdownItem(
+                  value: region.code,
+                  label:
+                      region == AiRegion.overseas &&
+                          !widget.catalog.allowOverseas
+                      ? l10n.aiSettingsPresetOverseasOff(region.label(l10n))
+                      : region.label(l10n),
+                  enabled:
+                      region != AiRegion.overseas ||
+                      widget.catalog.allowOverseas ||
+                      _existing?.region == AiRegion.overseas,
+                ),
+            ],
+            onChanged: (code) => setState(() {
+              _region = AiRegion.parse(code);
+              _testResult = null;
+            }),
+          ),
         ),
       ],
     ];
+  }
+
+  /// 下拉框的名称放在框上方, 与本面板的文本输入框(UtenInput)同一排法、同一字样;
+  /// 说明 ⓘ 仍在框内。
+  Widget _labeled(String label, Widget field, {bool required = false}) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        fieldLabel(
+          label,
+          theme,
+          required: required,
+          base: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w500,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: UtenSpacing.s8),
+        field,
+      ],
+    );
   }
 
   List<Widget> _modelSection(AppLocalizations l10n, bool busy) => [
@@ -899,9 +931,9 @@ class _AiProviderEditorState extends ConsumerState<AiProviderEditor> {
     if (_clearKey) {
       hint = l10n.aiSettingsKeyWillClear;
     } else if (existing != null && existing.apiKeyConfigured) {
-      hint = storedTail == null
-          ? l10n.aiSettingsApiKeyKeepHintPlain
-          : l10n.aiSettingsApiKeyKeepHint(storedTail);
+      // 尾号掩码不放进提示文字(输入框提示只能是纯文字, 圆点会显示成「• • • •」),
+      // 在输入框下方和「清除密钥」同一行紧凑显示。
+      hint = l10n.aiSettingsApiKeyKeepHintPlain;
     } else if (!_keyRequired) {
       hint = l10n.aiSettingsApiKeyNotNeededHint;
     } else {
@@ -945,27 +977,65 @@ class _AiProviderEditorState extends ConsumerState<AiProviderEditor> {
           if (_clearKey && _hasNewKey) setState(() => _clearKey = false);
         },
       ),
-      // 清除: 本机部署不需要密钥, 或密钥泄露要先撤掉(保存后该服务不可用, 直到重新填写)。
+      // 当前密钥尾号 + 清除: 本机部署不需要密钥, 或密钥泄露要先撤掉(保存后该服务不可用,
+      // 直到重新填写)。
       if (existing != null && existing.apiKeyConfigured)
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: UtenButton(
-              key: const ValueKey('ai-editor-clear-key'),
-              type: UtenButtonType.ghost,
-              size: UtenButtonSize.small,
-              height: 48,
-              icon: _clearKey ? Icons.undo_rounded : Icons.key_off_outlined,
-              onPressed: () => setState(() {
-                _clearKey = !_clearKey;
-                if (_clearKey) _apiKey.clear();
-                _testResult = null;
-              }),
-              child: Text(
-                _clearKey ? l10n.aiSettingsUndoClear : l10n.aiSettingsClearKey,
+        Padding(
+          padding: const EdgeInsets.only(top: UtenSpacing.s8),
+          child: Row(
+            children: [
+              Expanded(
+                child: !_clearKey && storedTail != null
+                    ? Row(
+                        children: [
+                          Icon(
+                            Icons.lock_outline_rounded,
+                            size: 16,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: UtenSpacing.s4),
+                          Flexible(
+                            child: Text(
+                              l10n.aiSettingsCurrentKey,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: UtenSpacing.s6),
+                          AiMaskedKey(
+                            storedTail,
+                            key: const ValueKey('ai-editor-key-mask'),
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      )
+                    : const SizedBox.shrink(),
               ),
-            ),
+              const SizedBox(width: UtenSpacing.s8),
+              UtenButton(
+                key: const ValueKey('ai-editor-clear-key'),
+                type: UtenButtonType.ghost,
+                size: UtenButtonSize.small,
+                height: 48,
+                icon: _clearKey ? Icons.undo_rounded : Icons.key_off_outlined,
+                onPressed: () => setState(() {
+                  _clearKey = !_clearKey;
+                  if (_clearKey) _apiKey.clear();
+                  _testResult = null;
+                }),
+                child: Text(
+                  _clearKey
+                      ? l10n.aiSettingsUndoClear
+                      : l10n.aiSettingsClearKey,
+                ),
+              ),
+            ],
           ),
         ),
     ];
@@ -1027,58 +1097,64 @@ class _AiProviderEditorState extends ConsumerState<AiProviderEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        UtenDropdownField(
-          key: const ValueKey('ai-editor-protocol'),
-          label: l10n.aiSettingsProtocol,
-          info: l10n.aiSettingsProtocolInfo,
-          value: _protocol.code,
-          allowClear: false,
-          searchable: false,
-          items: [
-            for (final protocol in AiProtocol.values)
-              UtenDropdownItem(
-                value: protocol.code,
-                label: protocol.label(l10n),
-              ),
-          ],
-          onChanged: (code) => setState(() {
-            _protocol = AiProtocol.parse(code);
-            _testResult = null;
-          }),
+        _labeled(
+          l10n.aiSettingsProtocol,
+          UtenDropdownField(
+            key: const ValueKey('ai-editor-protocol'),
+            info: l10n.aiSettingsProtocolInfo,
+            value: _protocol.code,
+            allowClear: false,
+            searchable: false,
+            items: [
+              for (final protocol in AiProtocol.values)
+                UtenDropdownItem(
+                  value: protocol.code,
+                  label: protocol.label(l10n),
+                ),
+            ],
+            onChanged: (code) => setState(() {
+              _protocol = AiProtocol.parse(code);
+              _testResult = null;
+            }),
+          ),
         ),
         const SizedBox(height: UtenSpacing.s12),
-        UtenDropdownField(
-          key: const ValueKey('ai-editor-json-mode'),
-          label: l10n.aiSettingsJsonMode,
-          info: l10n.aiSettingsJsonModeInfo,
-          value: _jsonMode.code,
-          allowClear: false,
-          searchable: false,
-          items: [
-            for (final mode in AiJsonMode.values)
-              UtenDropdownItem(value: mode.code, label: mode.label(l10n)),
-          ],
-          onChanged: (code) => setState(() {
-            _jsonMode = AiJsonMode.parse(code);
-            _clearProbeState();
-          }),
+        _labeled(
+          l10n.aiSettingsJsonMode,
+          UtenDropdownField(
+            key: const ValueKey('ai-editor-json-mode'),
+            info: l10n.aiSettingsJsonModeInfo,
+            value: _jsonMode.code,
+            allowClear: false,
+            searchable: false,
+            items: [
+              for (final mode in AiJsonMode.values)
+                UtenDropdownItem(value: mode.code, label: mode.label(l10n)),
+            ],
+            onChanged: (code) => setState(() {
+              _jsonMode = AiJsonMode.parse(code);
+              _clearProbeState();
+            }),
+          ),
         ),
         const SizedBox(height: UtenSpacing.s12),
-        UtenDropdownField(
-          key: const ValueKey('ai-editor-thinking'),
-          label: l10n.aiSettingsThinking,
-          info: l10n.aiSettingsThinkingInfo,
-          value: _thinking.code,
-          allowClear: false,
-          searchable: false,
-          items: [
-            for (final mode in AiThinkingControl.values)
-              UtenDropdownItem(value: mode.code, label: mode.label(l10n)),
-          ],
-          onChanged: (code) => setState(() {
-            _thinking = AiThinkingControl.parse(code);
-            _clearProbeState();
-          }),
+        _labeled(
+          l10n.aiSettingsThinking,
+          UtenDropdownField(
+            key: const ValueKey('ai-editor-thinking'),
+            info: l10n.aiSettingsThinkingInfo,
+            value: _thinking.code,
+            allowClear: false,
+            searchable: false,
+            items: [
+              for (final mode in AiThinkingControl.values)
+                UtenDropdownItem(value: mode.code, label: mode.label(l10n)),
+            ],
+            onChanged: (code) => setState(() {
+              _thinking = AiThinkingControl.parse(code);
+              _clearProbeState();
+            }),
+          ),
         ),
         const SizedBox(height: UtenSpacing.s8),
         _SwitchRow(

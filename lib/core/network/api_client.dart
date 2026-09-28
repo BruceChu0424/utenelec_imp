@@ -354,9 +354,10 @@ class ApiClient {
     return <String, dynamic>{};
   }
 
-  Future<void> delete(String path) async {
+  /// [query] 作为查询参数发送(例如乐观锁版本号 `?version=`)。
+  Future<void> delete(String path, {Map<String, dynamic>? query}) async {
     try {
-      await _dio.delete<dynamic>(path);
+      await _dio.delete<dynamic>(path, queryParameters: query);
     } on DioException catch (e) {
       throw _convert(e);
     }

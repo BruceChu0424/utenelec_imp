@@ -108,7 +108,16 @@ class AiProviderPostgresTest extends AiPlatformPostgresTestSupport {
         assertThat(secondSecret).isNotEqualTo(firstSecret);
         ciphertexts.add(secondSecret);
 
-        MvcResult deleted = mvc.perform(authed(delete("/api/admin/ai/providers/" + id), admin)
+        // 删除带页面读到的版本号(查询参数 ?version=, DELETE 没有请求体): 过期版本 409, 当前版本才删。
+        long currentVersion = json(rotation).path("version").asLong();
+        MvcResult stale = mvc.perform(authed(delete("/api/admin/ai/providers/" + id)
+                        .param("version", String.valueOf(currentVersion - 1)), admin)
+                .header(STEP_UP_HEADER, stepUp(admin, ADMIN_PASSWORD))).andReturn();
+        assertEquals(409, stale.getResponse().getStatus(), body(stale));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_providers WHERE id = ?::uuid", Integer.class, id))
+                .isEqualTo(1);
+        MvcResult deleted = mvc.perform(authed(delete("/api/admin/ai/providers/" + id)
+                        .param("version", String.valueOf(currentVersion)), admin)
                 .header(STEP_UP_HEADER, stepUp(admin, ADMIN_PASSWORD))).andReturn();
         assertEquals(200, deleted.getResponse().getStatus(), body(deleted));
 

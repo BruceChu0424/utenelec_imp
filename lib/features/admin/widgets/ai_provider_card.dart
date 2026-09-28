@@ -13,6 +13,7 @@ import '../../../core/utils/display_datetime.dart';
 import '../../../shared/ai/ai_tone.dart';
 import '../models/ai_provider_models.dart';
 import 'ai_connection_test_view.dart';
+import 'ai_masked_key.dart';
 import 'ai_settings_labels.dart';
 
 /// 卡片与表头统一的操作按钮高度(适老化: 触控目标不小于 48)。
@@ -375,17 +376,27 @@ class _KeyStatus extends StatelessWidget {
       );
     }
     if (provider.apiKeyConfigured) {
-      return Align(
-        alignment: AlignmentDirectional.centerStart,
-        child: UtenStatusBadge(
-          key: const ValueKey('ai-provider-key-configured'),
-          label: provider.apiKeyTail == null
-              ? l10n.aiSettingsKeyConfiguredPlain
-              : l10n.aiSettingsKeyConfigured(provider.apiKeyTail!),
-          type: UtenStatusBadgeType.neutral,
-          icon: Icons.lock_outline_rounded,
-          size: UtenStatusBadgeSize.small,
-        ),
+      final tail = provider.apiKeyTail;
+      // 徽章只写「已配置」, 尾号掩码放在旁边紧凑显示(与「上次测试」徽章 + 时间同一排法)。
+      return Wrap(
+        spacing: UtenSpacing.s8,
+        runSpacing: UtenSpacing.s4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          UtenStatusBadge(
+            key: const ValueKey('ai-provider-key-configured'),
+            label: l10n.aiSettingsKeyConfiguredPlain,
+            type: UtenStatusBadgeType.neutral,
+            icon: Icons.lock_outline_rounded,
+            size: UtenStatusBadgeSize.small,
+          ),
+          if (tail != null)
+            AiMaskedKey(
+              tail,
+              key: const ValueKey('ai-provider-key-mask'),
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+        ],
       );
     }
     return Align(

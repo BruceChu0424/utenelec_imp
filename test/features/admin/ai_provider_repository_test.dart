@@ -606,8 +606,12 @@ void main() {
     await repository.setDefault(_id);
     await repository.setEnabled(_id, enabled: false);
     await repository.delete(_id);
+    expect(api.lastQuery, isNull);
     await repository.setDefault(_id, version: 7);
     await repository.setEnabled(_id, enabled: true, version: 7);
+    // 服务端 DELETE /providers/{id}?version=: 版本号走查询参数(DELETE 没有请求体)。
+    await repository.delete(_id, version: 7);
+    expect(api.lastQuery, {'version': 7});
 
     expect(api.calls, [
       'POST ${ApiEndpoints.adminAiProviderDefault(_id)}',
@@ -615,6 +619,7 @@ void main() {
       'DELETE ${ApiEndpoints.adminAiProvider(_id)}',
       'POST ${ApiEndpoints.adminAiProviderDefault(_id)}',
       'POST ${ApiEndpoints.adminAiProviderEnabled(_id)}',
+      'DELETE ${ApiEndpoints.adminAiProvider(_id)}',
     ]);
     // 服务端 VersionRequest{version} / EnabledRequest{enabled, version}: 版本号选填。
     expect(api.bodies[0], isNull);
@@ -712,8 +717,9 @@ class _Api extends ApiClient {
   }
 
   @override
-  Future<void> delete(String path) async {
+  Future<void> delete(String path, {Map<String, dynamic>? query}) async {
     calls.add('DELETE $path');
     bodies.add(null);
+    lastQuery = query;
   }
 }

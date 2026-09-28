@@ -25,7 +25,8 @@ abstract interface class AiProviderRepository {
   /// [version] 为打开编辑时读到的版本号, 期间被别人改过服务端回 409。
   Future<void> update(String id, AiProviderForm form, {required int version});
 
-  Future<void> delete(String id);
+  /// [version] 同 [setDefault]: 作为查询参数 `?version=` 发送, 期间被别人改过服务端回 409。
+  Future<void> delete(String id, {int? version});
 
   /// [version] 为页面读到的版本号(服务端 `{version}`), 期间被别人改过服务端回 409。
   Future<void> setDefault(String id, {int? version});
@@ -100,8 +101,11 @@ class DioAiProviderRepository implements AiProviderRepository {
   }
 
   @override
-  Future<void> delete(String id) async {
-    await api.delete(ApiEndpoints.adminAiProvider(_checkedId(id)));
+  Future<void> delete(String id, {int? version}) async {
+    await api.delete(
+      ApiEndpoints.adminAiProvider(_checkedId(id)),
+      query: version == null ? null : {'version': version},
+    );
   }
 
   @override

@@ -18,6 +18,7 @@ import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/admin/models/ai_provider_models.dart';
 import 'package:uten_imp/features/admin/pages/admin_ai_settings_page.dart';
 import 'package:uten_imp/features/admin/repositories/ai_provider_repository.dart';
+import 'package:uten_imp/features/admin/widgets/ai_masked_key.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -347,7 +348,8 @@ class _Repo implements AiProviderRepository {
   }
 
   @override
-  Future<void> delete(String id) async => calls.add('delete $id');
+  Future<void> delete(String id, {int? version}) async =>
+      calls.add('delete $id v$version');
 
   @override
   Future<void> setDefault(String id, {int? version}) async =>
@@ -483,8 +485,10 @@ void main() {
     await _pump(tester, _Repo());
     expect(find.text(_zh.aiSettingsEmptyTitle), findsOneWidget);
     expect(find.text(_zh.aiSettingsHeroNone), findsOneWidget);
+    // 只有空状态卡片里一个「添加 AI 服务」, 不再叠一个悬浮按钮。
     expect(find.byKey(const ValueKey('ai-settings-empty-add')), findsOneWidget);
-    expect(find.byKey(const ValueKey('ai-settings-add')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-settings-add')), findsNothing);
+    expect(find.text(_zh.aiSettingsAdd), findsOneWidget);
     expect(find.text(_zh.aiSettingsUsageEmpty), findsNothing);
     await _capture(tester, 'empty-light.png');
   });
@@ -516,8 +520,25 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.text(_zh.aiSettingsKeyConfigured('••••ghij')),
+          find.descendant(
+            of: find.byKey(const ValueKey('ai-provider-key-configured')),
+            matching: find.text(_zh.aiSettingsKeyConfiguredPlain),
+          ),
           findsOneWidget,
+        );
+        expect(
+          tester
+              .widget<AiMaskedKey>(
+                find.byKey(const ValueKey('ai-provider-key-mask')),
+              )
+              .mask,
+          '••••ghij',
+        );
+        // 有服务时用右下角悬浮按钮添加, 空状态按钮不出现。
+        expect(find.byKey(const ValueKey('ai-settings-add')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('ai-settings-empty-add')),
+          findsNothing,
         );
         expect(find.text(_zh.aiSettingsKeyNotNeeded), findsOneWidget);
         expect(find.textContaining(_secret), findsNothing);
@@ -564,6 +585,7 @@ void main() {
     await _pump(tester, repo);
     expect(find.text(_zh.aiSettingsKeyConfiguredPlain), findsOneWidget);
     expect(find.textContaining('已配置 已配置'), findsNothing);
+    expect(find.byType(AiMaskedKey), findsNothing);
     await _openEditorFor(tester, _deepseekId);
     expect(find.text(_zh.aiSettingsApiKeyKeepHintPlain), findsOneWidget);
   });
@@ -611,9 +633,15 @@ void main() {
       expect(keyField.controller.text, isEmpty);
       expect(keyField.obscureText, isTrue);
       expect(keyField.autofillHints, isNull);
+      expect(find.text(_zh.aiSettingsApiKeyKeepHintPlain), findsOneWidget);
+      expect(find.text(_zh.aiSettingsCurrentKey), findsOneWidget);
       expect(
-        find.text(_zh.aiSettingsApiKeyKeepHint('••••ghij')),
-        findsOneWidget,
+        tester
+            .widget<AiMaskedKey>(
+              find.byKey(const ValueKey('ai-editor-key-mask')),
+            )
+            .mask,
+        '••••ghij',
       );
       expect(find.text(_zh.aiSettingsUrlChangedNeedKey), findsNothing);
 
@@ -705,8 +733,19 @@ void main() {
 
     final advanced = find.text(_zh.aiSettingsAdvanced);
     await tester.ensureVisible(advanced);
+    double chevronTurns() => tester
+        .widget<AnimatedRotation>(
+          find.descendant(
+            of: find.byKey(const ValueKey('ai-editor-advanced')),
+            matching: find.byType(AnimatedRotation),
+          ),
+        )
+        .turns;
+    // 与全站一致: 收起时箭头朝下, 展开后朝上。
+    expect(chevronTurns(), 0);
     await tester.tap(advanced);
     await tester.pumpAndSettle();
+    expect(chevronTurns(), 0.5);
     await _tapEditor(tester, 'ai-editor-temperature');
 
     // 已存密钥的测试只会按已保存的设置跑: 先说清楚, 不假装测过新设置。
@@ -812,8 +851,7 @@ void main() {
   ) async {
     final repo = _Repo(catalog: _serverCatalog());
     await _pump(tester, repo);
-    await tester.tap(find.byKey(const ValueKey('ai-settings-add')));
-    await tester.pumpAndSettle();
+    await _tapEditor(tester, 'ai-settings-empty-add');
 
     final baseUrl = tester.widget<EditableText>(
       find.descendant(
@@ -844,8 +882,7 @@ void main() {
   ) async {
     final repo = _Repo(catalog: _serverCatalog(outbound: false));
     await _pump(tester, repo);
-    await tester.tap(find.byKey(const ValueKey('ai-settings-add')));
-    await tester.pumpAndSettle();
+    await _tapEditor(tester, 'ai-settings-empty-add');
 
     // 第一个能选的预设是本机部署。
     final baseUrl = tester.widget<EditableText>(
@@ -902,8 +939,7 @@ void main() {
   ) async {
     final repo = _Repo();
     final container = await _pump(tester, repo);
-    await tester.tap(find.byKey(const ValueKey('ai-settings-add')));
-    await tester.pumpAndSettle();
+    await _tapEditor(tester, 'ai-settings-empty-add');
 
     // 第一个可选预设(DeepSeek)已预填。
     final baseUrl = tester.widget<EditableText>(
@@ -962,8 +998,7 @@ void main() {
     'overseas presets are locked when the server does not allow them',
     (tester) async {
       await _pump(tester, _Repo());
-      await tester.tap(find.byKey(const ValueKey('ai-settings-add')));
-      await tester.pumpAndSettle();
+      await _tapEditor(tester, 'ai-settings-empty-add');
       await _tapEditor(tester, 'ai-editor-preset');
       expect(
         find.text(_zh.aiSettingsPresetOverseasOff('OpenAI')),
@@ -984,8 +1019,7 @@ void main() {
     (tester) async {
       final repo = _Repo(catalog: _catalog(allowOverseas: true));
       await _pump(tester, repo);
-      await tester.tap(find.byKey(const ValueKey('ai-settings-add')));
-      await tester.pumpAndSettle();
+      await _tapEditor(tester, 'ai-settings-empty-add');
       await _tapEditor(tester, 'ai-editor-preset');
       await tester.tap(find.text('OpenAI').last);
       await tester.pumpAndSettle();
@@ -1055,7 +1089,8 @@ void main() {
     expect(find.text(_zh.aiSettingsDeleteTitle), findsOneWidget);
     await tester.tap(find.text(_zh.aiSettingsDelete).last);
     await tester.pumpAndSettle();
-    expect(repo.calls, contains('delete $_ollamaId'));
+    // 带上页面读到的版本号(服务端 ?version=), 期间被别人改过就回 409。
+    expect(repo.calls, contains('delete $_ollamaId v7'));
     expect(_messages(container), contains(_zh.aiSettingsDeleted));
   });
 

@@ -434,12 +434,11 @@ class BusinessDataResetSqlContractTest {
                 .contains("(721, 650), (722, 651), (723, 652), (724, 653), (725, 654), (726, 655), (727, 656), (728, 657), (729, 658), (730, 659), (731, 660), (732, 661)")
                 .contains("(733, 662)")
                 .contains("(734, 663)")
-                .contains("(735, 664)")
-                .contains("(738, 665)")
+                .contains("(738, 664)")
                 // V741 政策情报表删除(PRESERVE 102→101)，V742 公共 AI 平台六张新表(PRESERVE 101→104)；
-                // V736、V737、V739、V740 跳号(临时号，合并时顺延并重算)。
-                .contains("(741, 666)")
-                .contains("(742, 667)")
+                // V735至V737、V739、V740 跳号(临时号，合并时顺延并重算)。
+                .contains("(741, 665)")
+                .contains("(742, 666)")
                 .contains("OR (applied_max_version = 741 AND preserve_count <> 101)")
                 .contains("OR (applied_max_version >= 742 AND preserve_count <> 104)")
                 // The exact range label follows the independently enumerated classpath head.

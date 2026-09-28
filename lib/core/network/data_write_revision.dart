@@ -25,6 +25,11 @@ final List<RegExp> _automaticWritePaths = [
   RegExp(r'/auth/'),
   RegExp(r'/preview$'),
   RegExp(r'/resolve-batch$'),
+  // 公共 AI 作业(ADR-133): 提交与取消只进出识别队列，结果要用户确认保存后才落到单据。
+  RegExp(r'/ai/jobs$'),
+  RegExp(r'/ai/jobs/[^/]+/cancel$'),
+  // AI 服务连接测试 / 获取模型列表: 只探测服务商，不改配置(已存配置版只记测试结果)。
+  RegExp(r'/admin/ai/providers(/[^/]+)?/(test|models)$'),
 ];
 
 /// 该请求成功后是否算一次本端写操作。

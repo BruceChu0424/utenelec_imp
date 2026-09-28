@@ -103,6 +103,10 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
     Perm.productionExecutionView,
     Perm.productionExecutionStart,
   ],
+  // 2026-09-27 AI 服务设置(ADR-133): 沿用 /admin/* 的 authorization:manage 单一守卫,
+  // 无组合权限; 服务端另校验 superAdmin。守卫断言见 test/features/admin/admin_ai_settings_page_test.dart
+  // 的 'route inherits the system-administration guard'。
+  '/admin/ai-settings': [],
 };
 
 String _samplePath(String pattern) => pattern

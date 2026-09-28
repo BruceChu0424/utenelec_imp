@@ -7984,6 +7984,942 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'请先补齐“{goods}”的生产车间和负责人，再下单'**
   String materialPreparationMissingAssignment(String goods);
+
+  /// No description provided for @aiJobCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get aiJobCancel;
+
+  /// No description provided for @aiJobElapsed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已用时 {time}'**
+  String aiJobElapsed(String time);
+
+  /// No description provided for @aiJobQueued.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在排队, 马上开始'**
+  String get aiJobQueued;
+
+  /// No description provided for @aiJobSlowHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'内容较多时需要一两分钟, 请耐心等待, 不用重复点'**
+  String get aiJobSlowHint;
+
+  /// No description provided for @aiJobTimeout.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理时间太长, 已停止等待。请稍后再试, 或把文件拆小一些'**
+  String get aiJobTimeout;
+
+  /// No description provided for @aiJobGone.
+  ///
+  /// In zh, this message translates to:
+  /// **'这次处理的任务已不存在(可能已被清理), 请重新开始'**
+  String get aiJobGone;
+
+  /// No description provided for @aiJobFailedGeneric.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理没有成功, 请稍后重试'**
+  String get aiJobFailedGeneric;
+
+  /// No description provided for @aiJobConfidenceHigh.
+  ///
+  /// In zh, this message translates to:
+  /// **'把握高'**
+  String get aiJobConfidenceHigh;
+
+  /// No description provided for @aiJobConfidenceMedium.
+  ///
+  /// In zh, this message translates to:
+  /// **'把握中'**
+  String get aiJobConfidenceMedium;
+
+  /// No description provided for @aiJobConfidenceLow.
+  ///
+  /// In zh, this message translates to:
+  /// **'把握低'**
+  String get aiJobConfidenceLow;
+
+  /// No description provided for @aiJobConfidenceSemantics.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 判断把握: {level}'**
+  String aiJobConfidenceSemantics(String level);
+
+  /// No description provided for @aiSettingsTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 服务'**
+  String get aiSettingsTitle;
+
+  /// No description provided for @aiSettingsEntrySubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'配置大模型服务商、密钥和连接测试'**
+  String get aiSettingsEntrySubtitle;
+
+  /// No description provided for @aiSettingsHeroActive.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在使用: {name} · {model}'**
+  String aiSettingsHeroActive(String name, String model);
+
+  /// No description provided for @aiSettingsHeroReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售上传客户文件时会用它自动识别'**
+  String get aiSettingsHeroReady;
+
+  /// No description provided for @aiSettingsHeroNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有可用的 AI 服务'**
+  String get aiSettingsHeroNone;
+
+  /// No description provided for @aiSettingsHeroNoneHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加一个服务商并测试通过后, 销售上传客户文件就能自动识别'**
+  String get aiSettingsHeroNoneHint;
+
+  /// No description provided for @aiSettingsHeroDefaultDisabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认服务已停用, 目前不会调用 AI'**
+  String get aiSettingsHeroDefaultDisabled;
+
+  /// No description provided for @aiSettingsHeroNeedsKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有填写密钥, 目前不会调用 AI'**
+  String get aiSettingsHeroNeedsKey;
+
+  /// No description provided for @aiSettingsSecurityNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'密钥加密保存, 页面只显示尾号; 保存、删除和用已存密钥测试都要再次确认登录密码。'**
+  String get aiSettingsSecurityNote;
+
+  /// No description provided for @aiSettingsOutboundOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'这台服务器关闭了对外调用 AI(测试环境默认如此), 配置可以保存, 但不会真正调用'**
+  String get aiSettingsOutboundOff;
+
+  /// No description provided for @aiSettingsProvidersSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务商'**
+  String get aiSettingsProvidersSection;
+
+  /// No description provided for @aiSettingsAdd.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加 AI 服务'**
+  String get aiSettingsAdd;
+
+  /// No description provided for @aiSettingsEditTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑 AI 服务'**
+  String get aiSettingsEditTitle;
+
+  /// No description provided for @aiSettingsEmptyTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有配置 AI 服务'**
+  String get aiSettingsEmptyTitle;
+
+  /// No description provided for @aiSettingsEmptyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'支持 DeepSeek、通义千问、Kimi、智谱等国内服务商, 也可以接本机部署的模型'**
+  String get aiSettingsEmptyHint;
+
+  /// No description provided for @aiSettingsLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载 AI 服务设置失败'**
+  String get aiSettingsLoadFailed;
+
+  /// No description provided for @aiSettingsNoAccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'只有超级管理员可以查看和修改 AI 服务'**
+  String get aiSettingsNoAccess;
+
+  /// No description provided for @aiSettingsRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get aiSettingsRetry;
+
+  /// No description provided for @aiSettingsRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'刷新'**
+  String get aiSettingsRefresh;
+
+  /// No description provided for @aiSettingsClose.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get aiSettingsClose;
+
+  /// No description provided for @aiSettingsCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get aiSettingsCancel;
+
+  /// No description provided for @aiSettingsRegion.
+  ///
+  /// In zh, this message translates to:
+  /// **'所在区域'**
+  String get aiSettingsRegion;
+
+  /// No description provided for @aiSettingsRegionMainland.
+  ///
+  /// In zh, this message translates to:
+  /// **'国内'**
+  String get aiSettingsRegionMainland;
+
+  /// No description provided for @aiSettingsRegionOverseas.
+  ///
+  /// In zh, this message translates to:
+  /// **'境外'**
+  String get aiSettingsRegionOverseas;
+
+  /// No description provided for @aiSettingsRegionLocal.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机'**
+  String get aiSettingsRegionLocal;
+
+  /// No description provided for @aiSettingsDefaultBadge.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认'**
+  String get aiSettingsDefaultBadge;
+
+  /// No description provided for @aiSettingsDisabledBadge.
+  ///
+  /// In zh, this message translates to:
+  /// **'已停用'**
+  String get aiSettingsDisabledBadge;
+
+  /// No description provided for @aiSettingsModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'模型'**
+  String get aiSettingsModel;
+
+  /// No description provided for @aiSettingsBaseUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'接口地址'**
+  String get aiSettingsBaseUrl;
+
+  /// No description provided for @aiSettingsApiKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'密钥'**
+  String get aiSettingsApiKey;
+
+  /// No description provided for @aiSettingsKeyConfigured.
+  ///
+  /// In zh, this message translates to:
+  /// **'已配置 {mask}'**
+  String aiSettingsKeyConfigured(String mask);
+
+  /// No description provided for @aiSettingsKeyMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'未配置'**
+  String get aiSettingsKeyMissing;
+
+  /// No description provided for @aiSettingsKeyNotNeeded.
+  ///
+  /// In zh, this message translates to:
+  /// **'不需要'**
+  String get aiSettingsKeyNotNeeded;
+
+  /// No description provided for @aiSettingsKeyUnreadable.
+  ///
+  /// In zh, this message translates to:
+  /// **'密钥无法解密, 请重新填写'**
+  String get aiSettingsKeyUnreadable;
+
+  /// No description provided for @aiSettingsLastTest.
+  ///
+  /// In zh, this message translates to:
+  /// **'上次测试'**
+  String get aiSettingsLastTest;
+
+  /// No description provided for @aiSettingsLastTestOk.
+  ///
+  /// In zh, this message translates to:
+  /// **'通过 · {time}'**
+  String aiSettingsLastTestOk(String time);
+
+  /// No description provided for @aiSettingsLastTestFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'未通过 · {time}'**
+  String aiSettingsLastTestFailed(String time);
+
+  /// No description provided for @aiSettingsNeverTested.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没测试过'**
+  String get aiSettingsNeverTested;
+
+  /// No description provided for @aiSettingsEnabledSwitch.
+  ///
+  /// In zh, this message translates to:
+  /// **'启用'**
+  String get aiSettingsEnabledSwitch;
+
+  /// No description provided for @aiSettingsEnabledInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'停用后不会调用这个服务'**
+  String get aiSettingsEnabledInfo;
+
+  /// No description provided for @aiSettingsTest.
+  ///
+  /// In zh, this message translates to:
+  /// **'测试连接'**
+  String get aiSettingsTest;
+
+  /// No description provided for @aiSettingsTesting.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在测试'**
+  String get aiSettingsTesting;
+
+  /// No description provided for @aiSettingsEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑'**
+  String get aiSettingsEdit;
+
+  /// No description provided for @aiSettingsSetDefault.
+  ///
+  /// In zh, this message translates to:
+  /// **'设为默认'**
+  String get aiSettingsSetDefault;
+
+  /// No description provided for @aiSettingsDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get aiSettingsDelete;
+
+  /// No description provided for @aiSettingsDeleteTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除这个 AI 服务?'**
+  String get aiSettingsDeleteTitle;
+
+  /// No description provided for @aiSettingsDeleteMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除后「{name}」的配置和密钥都会清除, 不能恢复。'**
+  String aiSettingsDeleteMessage(String name);
+
+  /// No description provided for @aiSettingsDeleteDefaultBlocked.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认服务不能删除, 请先把别的服务设为默认'**
+  String get aiSettingsDeleteDefaultBlocked;
+
+  /// No description provided for @aiSettingsDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已删除'**
+  String get aiSettingsDeleted;
+
+  /// No description provided for @aiSettingsDefaultSet.
+  ///
+  /// In zh, this message translates to:
+  /// **'已把「{name}」设为默认'**
+  String aiSettingsDefaultSet(String name);
+
+  /// No description provided for @aiSettingsEnabledOn.
+  ///
+  /// In zh, this message translates to:
+  /// **'已启用「{name}」'**
+  String aiSettingsEnabledOn(String name);
+
+  /// No description provided for @aiSettingsEnabledOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'已停用「{name}」'**
+  String aiSettingsEnabledOff(String name);
+
+  /// No description provided for @aiSettingsBusySaving.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在保存'**
+  String get aiSettingsBusySaving;
+
+  /// No description provided for @aiSettingsBusyDeleting.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在删除'**
+  String get aiSettingsBusyDeleting;
+
+  /// No description provided for @aiSettingsUpdatedBy.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name} 修改于 {time}'**
+  String aiSettingsUpdatedBy(String name, String time);
+
+  /// No description provided for @aiSettingsTestNeedsKeyEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有密钥, 请先点「编辑」填写密钥再测试'**
+  String get aiSettingsTestNeedsKeyEdit;
+
+  /// No description provided for @aiSettingsUsageTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'近 {days} 天用量'**
+  String aiSettingsUsageTitle(int days);
+
+  /// No description provided for @aiSettingsUsageCalls.
+  ///
+  /// In zh, this message translates to:
+  /// **'调用次数'**
+  String get aiSettingsUsageCalls;
+
+  /// No description provided for @aiSettingsUsageSuccessRate.
+  ///
+  /// In zh, this message translates to:
+  /// **'成功率'**
+  String get aiSettingsUsageSuccessRate;
+
+  /// No description provided for @aiSettingsUsageTokens.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入 / 输出 token'**
+  String get aiSettingsUsageTokens;
+
+  /// No description provided for @aiSettingsUsageLatency.
+  ///
+  /// In zh, this message translates to:
+  /// **'平均耗时'**
+  String get aiSettingsUsageLatency;
+
+  /// No description provided for @aiSettingsUsageSeconds.
+  ///
+  /// In zh, this message translates to:
+  /// **'{value} 秒'**
+  String aiSettingsUsageSeconds(String value);
+
+  /// No description provided for @aiSettingsUsageEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有调用记录'**
+  String get aiSettingsUsageEmpty;
+
+  /// No description provided for @aiSettingsUsageUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'用量暂时读不到, 不影响使用'**
+  String get aiSettingsUsageUnavailable;
+
+  /// No description provided for @aiSettingsPreset.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务商'**
+  String get aiSettingsPreset;
+
+  /// No description provided for @aiSettingsPresetInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'选好服务商会自动填好接口地址和推荐设置, 每一项都还能改'**
+  String get aiSettingsPresetInfo;
+
+  /// No description provided for @aiSettingsPresetOverseasOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'{label} (境外, 未开放)'**
+  String aiSettingsPresetOverseasOff(String label);
+
+  /// No description provided for @aiSettingsOverseasOffHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'境外服务商默认关闭。如需使用, 请联系部署人员在服务器配置中开启, 并完成数据出境评估'**
+  String get aiSettingsOverseasOffHint;
+
+  /// No description provided for @aiSettingsPresetUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'{label} (暂不可用)'**
+  String aiSettingsPresetUnavailable(String label);
+
+  /// No description provided for @aiSettingsName.
+  ///
+  /// In zh, this message translates to:
+  /// **'显示名称'**
+  String get aiSettingsName;
+
+  /// No description provided for @aiSettingsNameHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'例如: DeepSeek 正式账号'**
+  String get aiSettingsNameHint;
+
+  /// No description provided for @aiSettingsNameRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写显示名称'**
+  String get aiSettingsNameRequired;
+
+  /// No description provided for @aiSettingsTooLong.
+  ///
+  /// In zh, this message translates to:
+  /// **'最多 {max} 个字符'**
+  String aiSettingsTooLong(int max);
+
+  /// No description provided for @aiSettingsBaseUrlInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务商文档里的 Base URL; 只能用 https, 本机部署可以用 http://127.0.0.1'**
+  String get aiSettingsBaseUrlInfo;
+
+  /// No description provided for @aiSettingsBaseUrlRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写接口地址'**
+  String get aiSettingsBaseUrlRequired;
+
+  /// No description provided for @aiSettingsBaseUrlInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'接口地址格式不对, 应以 https:// 开头, 不带问号后面的参数'**
+  String get aiSettingsBaseUrlInvalid;
+
+  /// No description provided for @aiSettingsBaseUrlHttpLocalOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'只有本机部署可以用 http, 其他服务商请用 https'**
+  String get aiSettingsBaseUrlHttpLocalOnly;
+
+  /// No description provided for @aiSettingsModelHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'填模型名称, 或点「获取模型」从列表选'**
+  String get aiSettingsModelHint;
+
+  /// No description provided for @aiSettingsModelRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写模型名称'**
+  String get aiSettingsModelRequired;
+
+  /// No description provided for @aiSettingsFetchModels.
+  ///
+  /// In zh, this message translates to:
+  /// **'获取模型'**
+  String get aiSettingsFetchModels;
+
+  /// No description provided for @aiSettingsPickModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'从列表选择模型'**
+  String get aiSettingsPickModel;
+
+  /// No description provided for @aiSettingsModelsLoaded.
+  ///
+  /// In zh, this message translates to:
+  /// **'找到 {count} 个模型'**
+  String aiSettingsModelsLoaded(int count);
+
+  /// No description provided for @aiSettingsModelsEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务商没有返回模型列表, 请直接填写模型名称'**
+  String get aiSettingsModelsEmpty;
+
+  /// No description provided for @aiSettingsApiKeyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'粘贴服务商后台生成的密钥'**
+  String get aiSettingsApiKeyHint;
+
+  /// No description provided for @aiSettingsApiKeyKeepHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'已配置 {mask}, 不改就留空'**
+  String aiSettingsApiKeyKeepHint(String mask);
+
+  /// No description provided for @aiSettingsApiKeyNotNeededHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机部署通常不需要密钥, 可以留空'**
+  String get aiSettingsApiKeyNotNeededHint;
+
+  /// No description provided for @aiSettingsApiKeyRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写密钥'**
+  String get aiSettingsApiKeyRequired;
+
+  /// No description provided for @aiSettingsClearKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'清除密钥'**
+  String get aiSettingsClearKey;
+
+  /// No description provided for @aiSettingsUndoClear.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤销清除'**
+  String get aiSettingsUndoClear;
+
+  /// No description provided for @aiSettingsKeyWillClear.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存后会清除已存的密钥'**
+  String get aiSettingsKeyWillClear;
+
+  /// No description provided for @aiSettingsUrlChangedNeedKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'改了接口地址, 需要重新填写密钥'**
+  String get aiSettingsUrlChangedNeedKey;
+
+  /// No description provided for @aiSettingsUrlChangedNeedKeyDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'为了安全, 已存的密钥只会发给原来的地址。请重新粘贴密钥后再保存。'**
+  String get aiSettingsUrlChangedNeedKeyDetail;
+
+  /// No description provided for @aiSettingsUrlChangedNeedKeyLocalDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'为了安全, 已存的密钥只会发给原来的地址。请重新粘贴密钥; 新地址不需要密钥的, 点「清除密钥」。'**
+  String get aiSettingsUrlChangedNeedKeyLocalDetail;
+
+  /// No description provided for @aiSettingsAdvanced.
+  ///
+  /// In zh, this message translates to:
+  /// **'高级设置'**
+  String get aiSettingsAdvanced;
+
+  /// No description provided for @aiSettingsProtocol.
+  ///
+  /// In zh, this message translates to:
+  /// **'接口协议'**
+  String get aiSettingsProtocol;
+
+  /// No description provided for @aiSettingsProtocolInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'国内服务商和本机部署基本都是 OpenAI 兼容; 只有 Claude 用 Anthropic'**
+  String get aiSettingsProtocolInfo;
+
+  /// No description provided for @aiSettingsProtocolOpenAi.
+  ///
+  /// In zh, this message translates to:
+  /// **'OpenAI 兼容'**
+  String get aiSettingsProtocolOpenAi;
+
+  /// No description provided for @aiSettingsProtocolAnthropic.
+  ///
+  /// In zh, this message translates to:
+  /// **'Anthropic'**
+  String get aiSettingsProtocolAnthropic;
+
+  /// No description provided for @aiSettingsJsonMode.
+  ///
+  /// In zh, this message translates to:
+  /// **'JSON 输出方式'**
+  String get aiSettingsJsonMode;
+
+  /// No description provided for @aiSettingsJsonModeInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'要求模型只回一段 JSON, 系统才能读懂结果; 服务商不支持时选「不要求」'**
+  String get aiSettingsJsonModeInfo;
+
+  /// No description provided for @aiSettingsJsonModeNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'不要求'**
+  String get aiSettingsJsonModeNone;
+
+  /// No description provided for @aiSettingsJsonModeObject.
+  ///
+  /// In zh, this message translates to:
+  /// **'JSON 对象'**
+  String get aiSettingsJsonModeObject;
+
+  /// No description provided for @aiSettingsJsonModeSchema.
+  ///
+  /// In zh, this message translates to:
+  /// **'按结构输出'**
+  String get aiSettingsJsonModeSchema;
+
+  /// No description provided for @aiSettingsThinking.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭深度思考'**
+  String get aiSettingsThinking;
+
+  /// No description provided for @aiSettingsThinkingInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别表格不需要深度思考, 关掉更快更省钱; 各服务商写法不同, 选好服务商会自动选对'**
+  String get aiSettingsThinkingInfo;
+
+  /// No description provided for @aiSettingsThinkingNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'不处理'**
+  String get aiSettingsThinkingNone;
+
+  /// No description provided for @aiSettingsThinkingDeepseek.
+  ///
+  /// In zh, this message translates to:
+  /// **'DeepSeek 写法'**
+  String get aiSettingsThinkingDeepseek;
+
+  /// No description provided for @aiSettingsThinkingDashscope.
+  ///
+  /// In zh, this message translates to:
+  /// **'通义千问写法'**
+  String get aiSettingsThinkingDashscope;
+
+  /// No description provided for @aiSettingsThinkingOpenAi.
+  ///
+  /// In zh, this message translates to:
+  /// **'OpenAI 写法'**
+  String get aiSettingsThinkingOpenAi;
+
+  /// No description provided for @aiSettingsTemperature.
+  ///
+  /// In zh, this message translates to:
+  /// **'固定输出(温度为 0)'**
+  String get aiSettingsTemperature;
+
+  /// No description provided for @aiSettingsTemperatureInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'同一份文件每次识别结果尽量一致; 个别模型不接受这个参数时关掉'**
+  String get aiSettingsTemperatureInfo;
+
+  /// No description provided for @aiSettingsVision.
+  ///
+  /// In zh, this message translates to:
+  /// **'能识别图片和扫描件'**
+  String get aiSettingsVision;
+
+  /// No description provided for @aiSettingsVisionInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'模型支持看图时打开, 销售上传的照片和扫描版 PDF 才能识别'**
+  String get aiSettingsVisionInfo;
+
+  /// No description provided for @aiSettingsMaxTokens.
+  ///
+  /// In zh, this message translates to:
+  /// **'最大输出长度'**
+  String get aiSettingsMaxTokens;
+
+  /// No description provided for @aiSettingsMaxTokensInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'256 ~ 65536; 行数多的文件需要更长'**
+  String get aiSettingsMaxTokensInfo;
+
+  /// No description provided for @aiSettingsTimeout.
+  ///
+  /// In zh, this message translates to:
+  /// **'超时秒数'**
+  String get aiSettingsTimeout;
+
+  /// No description provided for @aiSettingsTimeoutInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'10 ~ 600; 超过这个时间还没回复就算失败'**
+  String get aiSettingsTimeoutInfo;
+
+  /// No description provided for @aiSettingsNumberRange.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入 {min} ~ {max} 之间的整数'**
+  String aiSettingsNumberRange(int min, int max);
+
+  /// No description provided for @aiSettingsOverseasAck.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户资料(公司名、货品描述)会发送到境外服务商, 我已确认完成数据出境评估'**
+  String get aiSettingsOverseasAck;
+
+  /// No description provided for @aiSettingsOverseasAckRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用境外服务商前请先勾选上面的确认'**
+  String get aiSettingsOverseasAckRequired;
+
+  /// No description provided for @aiSettingsSave.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存'**
+  String get aiSettingsSave;
+
+  /// No description provided for @aiSettingsSaving.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在保存'**
+  String get aiSettingsSaving;
+
+  /// No description provided for @aiSettingsSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存'**
+  String get aiSettingsSaved;
+
+  /// No description provided for @aiSettingsSaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存失败, 请稍后重试'**
+  String get aiSettingsSaveFailed;
+
+  /// No description provided for @aiSettingsFixFields.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先改好标红的项'**
+  String get aiSettingsFixFields;
+
+  /// No description provided for @aiSettingsTestNeedsKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'测试前请先填写密钥'**
+  String get aiSettingsTestNeedsKey;
+
+  /// No description provided for @aiSettingsTestStoredMismatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'用已存的密钥测试时, 接口地址和模型要与已保存的一致。请先保存, 或重新填写密钥再测试'**
+  String get aiSettingsTestStoredMismatch;
+
+  /// No description provided for @aiSettingsTestResultTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'连接测试'**
+  String get aiSettingsTestResultTitle;
+
+  /// No description provided for @aiSettingsStepNetwork.
+  ///
+  /// In zh, this message translates to:
+  /// **'网络连通'**
+  String get aiSettingsStepNetwork;
+
+  /// No description provided for @aiSettingsStepAuth.
+  ///
+  /// In zh, this message translates to:
+  /// **'密钥验证'**
+  String get aiSettingsStepAuth;
+
+  /// No description provided for @aiSettingsStepModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'模型可用'**
+  String get aiSettingsStepModel;
+
+  /// No description provided for @aiSettingsStepJson.
+  ///
+  /// In zh, this message translates to:
+  /// **'JSON 输出'**
+  String get aiSettingsStepJson;
+
+  /// No description provided for @aiSettingsStepSkipped.
+  ///
+  /// In zh, this message translates to:
+  /// **'未进行'**
+  String get aiSettingsStepSkipped;
+
+  /// No description provided for @aiSettingsLatency.
+  ///
+  /// In zh, this message translates to:
+  /// **'{ms} 毫秒'**
+  String aiSettingsLatency(int ms);
+
+  /// No description provided for @aiSettingsTestPassed.
+  ///
+  /// In zh, this message translates to:
+  /// **'连接正常, 可以使用'**
+  String get aiSettingsTestPassed;
+
+  /// No description provided for @aiSettingsTestPassedShort.
+  ///
+  /// In zh, this message translates to:
+  /// **'通过'**
+  String get aiSettingsTestPassedShort;
+
+  /// No description provided for @aiSettingsTestFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'连接没有通过, 请按提示检查后再试'**
+  String get aiSettingsTestFailed;
+
+  /// No description provided for @aiSettingsTestFailedShort.
+  ///
+  /// In zh, this message translates to:
+  /// **'未通过'**
+  String get aiSettingsTestFailedShort;
+
+  /// No description provided for @aiSettingsTestWarnShort.
+  ///
+  /// In zh, this message translates to:
+  /// **'需留意'**
+  String get aiSettingsTestWarnShort;
+
+  /// No description provided for @aiSettingsTestPassedWithNotes.
+  ///
+  /// In zh, this message translates to:
+  /// **'连上了, 但有需要留意的地方, 请看上面的黄色提示'**
+  String get aiSettingsTestPassedWithNotes;
+
+  /// No description provided for @aiSettingsTestStoredUnsavedAdvanced.
+  ///
+  /// In zh, this message translates to:
+  /// **'高级设置改过了, 用已存的密钥测试不会带上这些改动。请先保存再测试, 或重新填写密钥后测试'**
+  String get aiSettingsTestStoredUnsavedAdvanced;
+
+  /// No description provided for @aiSettingsModelChoices.
+  ///
+  /// In zh, this message translates to:
+  /// **'可选模型:'**
+  String get aiSettingsModelChoices;
+
+  /// No description provided for @aiSettingsOverseasLockedShort.
+  ///
+  /// In zh, this message translates to:
+  /// **'境外服务商暂未开放, 需要部署人员在服务器上开启'**
+  String get aiSettingsOverseasLockedShort;
+
+  /// No description provided for @aiSettingsKeyConfiguredPlain.
+  ///
+  /// In zh, this message translates to:
+  /// **'已配置'**
+  String get aiSettingsKeyConfiguredPlain;
+
+  /// No description provided for @aiSettingsApiKeyKeepHintPlain.
+  ///
+  /// In zh, this message translates to:
+  /// **'已配置, 不改就留空'**
+  String get aiSettingsApiKeyKeepHintPlain;
 }
 
 class _AppLocalizationsDelegate

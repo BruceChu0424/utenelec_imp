@@ -22,6 +22,9 @@ import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 
+import com.uten.imp.common.files.document.DocumentGrid.Sheet;
+import com.uten.imp.common.files.document.DocumentKind;
+import com.uten.imp.common.files.document.SpreadsheetGridReader;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -119,6 +122,9 @@ class SalesIntakePipelineTest {
         assertThat(extraction.get("layoutFingerprint")).isEqualTo(rules.fingerprint());
         assertThat(extraction.get("headerRow")).isEqualTo(10);
         assertThat(lines(result)).hasSize(22);
+        // 名称召回整份文件一次(22 行不再是每行各查一次中文名、一次英文名)。
+        assertThat(lookup.calls.stream().filter("goodsByNameCandidatesEach"::equals).count()).isEqualTo(1);
+        assertThat(lookup.calls.stream().filter("goodsByNameEn"::equals).count()).isEqualTo(1);
     }
 
     @Test
@@ -546,6 +552,48 @@ class SalesIntakePipelineTest {
         own.params.put("clientId", client.toString());
         assertThat(((Map<?, ?>) run(own, false).get("extraction")).get("layoutSource")).as("the client's own layout")
                 .isEqualTo("LEARNED");
+    }
+
+    @Test
+    void anotherClientsLayoutNeverOutranksRulesWhenNoClientIsChosen() {
+        IntakeFixture.FixtureDocument doc = fixture.document("UJ23");
+        IntakeLayout rules = IntakeLayoutDetector.detect(IntakeLayoutAndExtractionTest.fixtureSheet("UJ23"));
+        Map<String, String> wrong = Map.of("A", "LINE_NO", "B", "PART_NO", "C", "DESCRIPTION", "E", "QTY", "G", "AMOUNT");
+        UUID client = fixture.client("CLIENT_B").id();
+        data.layouts.add(new IntakeReferenceData.LearnedLayout(rules.fingerprint(), client, wrong, 0, 7));
+        Map<String, Object> result = run(FakeJobContext.of("UJ23.xlsx", "XLSX", IntakeFixture.toXlsx(doc), "quote"), false);
+        assertThat(((Map<?, ?>) result.get("extraction")).get("layoutSource")).as("rules first, not client B's layout")
+                .isEqualTo("RULES");
+        assertThat(SalesIntakePipeline.trusted(new IntakeReferenceData.LearnedLayout("f", client, wrong, 0, 9), null))
+                .isFalse();
+        assertThat(SalesIntakePipeline.trusted(new IntakeReferenceData.LearnedLayout("f", client, wrong, 0, 1), client))
+                .isTrue();
+        assertThat(SalesIntakePipeline.trusted(new IntakeReferenceData.LearnedLayout("f", null, wrong, 0, 1), client))
+                .isFalse();
+        assertThat(SalesIntakePipeline.trusted(new IntakeReferenceData.LearnedLayout("f", null, wrong, 0, 2), null))
+                .isTrue();
+    }
+
+    @Test
+    void learnedLayoutIsAFallbackAfterRulesOnlyWhenUnambiguous() throws IOException {
+        byte[] xlsx = oddHeaderXlsx();
+        Sheet sheet = SpreadsheetGridReader.read(xlsx, DocumentKind.XLSX).sheets().getFirst();
+        String fp = IntakeLayoutDetector.fingerprintProbes(sheet).stream()
+                .filter(p -> p.headerRow0() == 2 && p.span() == 1).findFirst().orElseThrow().fingerprint();
+        Map<String, String> roles = Map.of("A", "PART_NO", "B", "DESCRIPTION", "C", "QTY", "D", "UNIT_PRICE");
+        UUID clientA = fixture.client("CLIENT_B").id();
+        data.layouts.add(new IntakeReferenceData.LearnedLayout(fp, clientA, roles, 0, 1));
+        data.layouts.add(new IntakeReferenceData.LearnedLayout(fp, null, roles, 0, 1));
+        // 规则认不出, AI 也没开: 同表头只学到过一种列角色 → 直接用, 不必调 AI。
+        Map<String, Object> result = run(FakeJobContext.of("order.xlsx", "XLSX", xlsx, "order"), false);
+        assertThat(((Map<?, ?>) result.get("extraction")).get("layoutSource")).isEqualTo("LEARNED");
+        assertThat(lines(result)).hasSize(2);
+
+        // 两个客户学到的列角色互相矛盾: 不猜, 交给 AI(AI 没开就提示认不出)。
+        data.layouts.add(new IntakeReferenceData.LearnedLayout(fp, UUID.randomUUID(),
+                Map.of("A", "DESCRIPTION", "B", "PART_NO", "C", "QTY", "D", "UNIT_PRICE"), 0, 1));
+        assertThatThrownBy(() -> run(FakeJobContext.of("order.xlsx", "XLSX", xlsx, "order"), false))
+                .isInstanceOf(ApiException.class).hasMessageContaining("AI 未开启");
     }
 
     @Test

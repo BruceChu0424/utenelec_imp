@@ -88,15 +88,21 @@ class SalesIntakeLayoutLearner {
 
     void write(SalesIntakeUsedEvent event, LayoutFacts facts) {
         try {
-            store.upsertLayout(facts.fingerprint(), event.clientId(), facts.headerTexts(), facts.columnRoles(),
-                    facts.headerRowOffset());
+            if (facts.learned()) {
+                // 用的就是学习到的版式: 不是新证据, 只刷新使用时间(否则同一客户反复保存会把自己的版式推成全局可信)。
+                store.touchLayout(facts.fingerprint(), event.clientId());
+            } else {
+                store.upsertLayout(facts.fingerprint(), event.clientId(), facts.headerTexts(), facts.columnRoles(),
+                        facts.headerRowOffset());
+            }
         } catch (RuntimeException e) {
             log.warn("sales intake layout learning failed: job={} reason={}", event.jobId(), e.getClass().getSimpleName());
         }
     }
 
-    /** 从识别结果里取版式(只有表格文件、且版式来自规则/AI/学习时才有)。 */
-    record LayoutFacts(String fingerprint, String headerTexts, Map<String, String> columnRoles, int headerRowOffset) {
+    /** 从识别结果里取版式(只有表格文件、且版式来自规则/AI/学习时才有); {@code learned} = 版式来自学习。 */
+    record LayoutFacts(String fingerprint, String headerTexts, Map<String, String> columnRoles, int headerRowOffset,
+                       boolean learned) {
     }
 
     static LayoutFacts layoutFacts(Map<String, Object> result) {
@@ -120,6 +126,6 @@ class SalesIntakeLayoutLearner {
             }
         }
         int offset = (int) headerTexts.chars().filter(c -> c == '\n').count();
-        return new LayoutFacts(fingerprint, headerTexts, columnRoles, offset);
+        return new LayoutFacts(fingerprint, headerTexts, columnRoles, offset, IntakeLayout.SOURCE_LEARNED.equals(s));
     }
 }

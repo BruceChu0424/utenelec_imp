@@ -738,8 +738,7 @@ public class GoodsService {
                         owningWarehouseIdOf(g) == null
                                 ? null : owningWarehouseNames.get(owningWarehouseIdOf(g)),
                         owningWorkshopIdOf(g) == null
-                                ? null : owningWorkshopNames.get(owningWorkshopIdOf(g)),
-                        g.getNameEn()))
+                                ? null : owningWorkshopNames.get(owningWorkshopIdOf(g))))
                 .toList();
     }
 

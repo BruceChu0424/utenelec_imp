@@ -32,7 +32,8 @@ import java.util.regex.Pattern;
  *   <li>名称包含文件品名的其余货品(较短的优先)。</li>
  * </ol>
  * 只返回货品 id; 可见范围、状态等由调用方再按 id 回表过滤(索引过期也不会越权或返回停用货品)。
- * 索引按货品表的轻量签名(行数、版本和、最后修改时间)失效重建, 另有 10 分钟兜底过期。
+ * 索引按「在索引里的货品及其名称」的签名(行数 + id 与名称的哈希和)失效重建, 另有 10 分钟兜底过期;
+ * 只改英文名称等其它字段不会让索引重建。一份文件用 {@link #searchEach} 一次查完, 签名只算一次。
  */
 @Component
 @RequiredArgsConstructor
@@ -58,7 +59,23 @@ class GoodsNameCatalog {
     /** 按优先级(结尾一致 → 二元组相似 → 包含)返回候选货品 id, 去重, 最多 {@code limit} 个。 */
     List<UUID> search(Collection<String> texts, int limit) {
         if (texts == null || texts.isEmpty() || limit <= 0) return List.of();
+        return searchIn(current(), texts, limit);
+    }
+
+    /** 多组(每组一行的几种写法)一次查完: 每组各自最多 {@code limitPerGroup} 个, 返回并集(按组先后, 去重)。 */
+    List<UUID> searchEach(List<? extends Collection<String>> groups, int limitPerGroup) {
+        if (groups == null || groups.isEmpty() || limitPerGroup <= 0) return List.of();
         Snapshot index = current();
+        Set<UUID> out = new LinkedHashSet<>();
+        for (Collection<String> group : groups) {
+            if (group != null && !group.isEmpty()) {
+                out.addAll(searchIn(index, group, limitPerGroup));
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    private List<UUID> searchIn(Snapshot index, Collection<String> texts, int limit) {
         List<List<Integer>> suffix = new ArrayList<>();
         List<List<Integer>> bigram = new ArrayList<>();
         List<List<Integer>> contains = new ArrayList<>();
@@ -124,14 +141,16 @@ class GoodsNameCatalog {
         }
     }
 
+    /** 只随「哪些货品在索引里、叫什么」变化(不看版本号与修改时间: 学英文名称等改动不必重建)。 */
     private String signature() {
         Object[] row = (Object[]) em.createNativeQuery("""
-                        SELECT count(*), coalesce(sum(version), 0), coalesce(CAST(max(updated_at) AS text), '')
+                        SELECT count(*),
+                               coalesce(sum(hashtextextended(CAST(id AS text) || '|' || coalesce(name, ''), 0)), 0)
                         FROM goods
                         WHERE NOT is_deleted AND status = '使用' AND NOT auto_created
                         """)
                 .getSingleResult();
-        return row[0] + "|" + row[1] + "|" + row[2];
+        return row[0] + "|" + row[1];
     }
 
     @SuppressWarnings("unchecked")

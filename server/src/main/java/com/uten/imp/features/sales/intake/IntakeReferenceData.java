@@ -16,20 +16,27 @@ interface IntakeReferenceData {
     /** 启用中的币种(很小的表, 一次读完)。 */
     List<CurrencyRow> currencies();
 
-    /** 按指纹找学习到的版式: 指定客户的 + 全局的({@code clientIdOrNull} 为空只找全局)。 */
+    /**
+     * 按指纹找学习到的版式。已选客户: 该客户自己的 + 全局的(依次排列); 没选客户: 全局的 + 各客户专属的(依次排列)。
+     * 能不能先于规则使用由流水线判断: 别的客户的专属版式只在规则认不出、且同指纹只学到过一种列角色时兜底。
+     */
     List<LearnedLayout> layouts(Collection<String> fingerprints, UUID clientIdOrNull);
 
     /** 同一文件(SHA-256)以前识别后被保存进了哪些单据: 单据 id → 单据类型(quote/order)。 */
     Map<UUID, String> docsUsingSameFile(String sha256, UUID excludeJobId);
 
     /**
-     * 保存后学习版式: 客户专属一行 + 全局一行, 已有则确认次数加 1 并刷新列角色(独立事务, 单据提交之后调用)。
+     * 保存后学习版式(版式来自规则或 AI; 独立事务, 单据提交之后调用): 客户专属一行(列角色没变确认次数加 1, 变了从 1
+     * 重新数), 再按各客户的证据重算全局一行(列角色 = 最多客户确认过的那种, 确认次数 = 不同客户数)。没有客户不写。
      *
      * @param columnRoles     列字母 → 角色名(只接受合法字母与已知角色)
      * @param headerRowOffset 表头占用的额外行数(单行表头为 0)
      */
     void upsertLayout(String fingerprint, UUID clientId, String headerTexts, Map<String, String> columnRoles,
                       int headerRowOffset);
+
+    /** 保存时用的就是学习到的版式: 只刷新最近使用时间, 不加确认次数(自己确认自己不算新证据)。 */
+    void touchLayout(String fingerprint, UUID clientId);
 
     /** 币种。 */
     record CurrencyRow(UUID id, String code, String name, BigDecimal exchangeRate, boolean base) {

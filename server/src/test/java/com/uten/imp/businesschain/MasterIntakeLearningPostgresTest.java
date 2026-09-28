@@ -312,6 +312,11 @@ class MasterIntakeLearningPostgresTest {
                 .as("名称结尾一致的排在相似召回前面")
                 .isLessThan(byName.indexOf(byName.stream().filter(r -> r.id().equals(fuzzy)).findFirst().orElseThrow()));
         assertThat(byName).extracting(GoodsRow::code).noneMatch(code -> code.startsWith("N4"));
+        // 整份文件一次召回: 各行的候选取并集, 与逐行召回同样的货品。
+        List<GoodsRow> batched = lookup.goodsByNameCandidatesEach(
+                List.of(List.of(tag + "一开13A带A+C 双USB"), List.of("Z9两开" + tag)), 50);
+        assertThat(batched).extracting(GoodsRow::id).contains(nigeria, bracket, fuzzy, english);
+        assertThat(batched).extracting(GoodsRow::code).noneMatch(code -> code.startsWith("N4"));
 
         List<GoodsRow> byEnglish = lookup.goodsByNameEn(
                 List.of("double 3 pin universal soccket with switch " + tag.toLowerCase(Locale.ROOT)), 20);
@@ -812,12 +817,6 @@ class MasterIntakeLearningPostgresTest {
         assertThat(updated.getVersion()).isGreaterThan(detail.getVersion());
         assertThat(catchApi(() -> goodsController.updateNameEn(ga, new GoodsNameEnRequest("Other", detail.getVersion())))
                 .getCode()).isEqualTo(ErrorCode.CONFLICT);
-
-        // 按 id 批量解析(销售单据手工选货品时预填「文件品名」)同样带英文名称。
-        fixture.loginAs(reader.userId());
-        assertThat(goodsController.lookup(Set.of(ga))).singleElement()
-                .satisfies(item -> assertThat(item.getNameEn()).isEqualTo("Double Socket " + tag));
-        fixture.loginAs(editor.userId());
 
         var goodsPage = goodsService.list(goodsFilter("double socket " + tag.toLowerCase(Locale.ROOT)), 1, 20, null, null);
         assertThat(goodsPage.getItems()).extracting(item -> item.getId()).containsExactly(ga);

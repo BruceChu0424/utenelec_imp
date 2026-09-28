@@ -57,6 +57,21 @@ public interface MasterIntakeLookupPort {
      */
     List<GoodsRow> goodsByNameCandidates(Collection<String> cnTexts, int limit);
 
+    /**
+     * 一次召回整份文件每一行的中文名称候选: 每组(一行的几种写法)各自最多 {@code limitPerGroup} 个, 结果取并集
+     * (去重, 按组的先后)。默认逐组调用 {@link #goodsByNameCandidates}; 实现应一次读索引、一次回表, 避免每行几次往返。
+     */
+    default List<GoodsRow> goodsByNameCandidatesEach(List<? extends Collection<String>> cnTextsPerGroup,
+                                                     int limitPerGroup) {
+        java.util.Map<java.util.UUID, GoodsRow> out = new java.util.LinkedHashMap<>();
+        for (Collection<String> group : cnTextsPerGroup) {
+            for (GoodsRow row : goodsByNameCandidates(group, limitPerGroup)) {
+                out.putIfAbsent(row.id(), row);
+            }
+        }
+        return List.copyOf(out.values());
+    }
+
     /** 按英文名称召回(精确与三元组相似, 走 idx_goods_name_en_trgm); {@code limit} 是整批上限。 */
     List<GoodsRow> goodsByNameEn(Collection<String> texts, int limit);
 

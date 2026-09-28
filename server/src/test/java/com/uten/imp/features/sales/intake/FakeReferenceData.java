@@ -29,8 +29,10 @@ final class FakeReferenceData implements IntakeReferenceData {
 
     @Override
     public List<LearnedLayout> layouts(Collection<String> fingerprints, UUID clientIdOrNull) {
+        // 与真实实现同口径: 已选客户 = 自己的 + 全局的; 没选客户 = 全部(全局的 + 各客户的)。
         return layouts.stream().filter(l -> fingerprints.contains(l.fingerprint()))
-                .filter(l -> l.clientId() == null || l.clientId().equals(clientIdOrNull)).toList();
+                .filter(l -> clientIdOrNull == null || l.clientId() == null || l.clientId().equals(clientIdOrNull))
+                .toList();
     }
 
     @Override
@@ -42,5 +44,10 @@ final class FakeReferenceData implements IntakeReferenceData {
     public void upsertLayout(String fingerprint, UUID clientId, String headerTexts, Map<String, String> columnRoles,
                              int headerRowOffset) {
         upserts.add(fingerprint + "|" + clientId + "|" + columnRoles + "|" + headerRowOffset);
+    }
+
+    @Override
+    public void touchLayout(String fingerprint, UUID clientId) {
+        upserts.add("touch|" + fingerprint + "|" + clientId);
     }
 }

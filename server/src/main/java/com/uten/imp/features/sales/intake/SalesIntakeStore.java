@@ -70,8 +70,9 @@ class SalesIntakeStore implements IntakeReferenceData {
                 WHERE layout.fingerprint IN (:fingerprints)
                   AND (CAST(:clientId AS uuid) IS NULL OR layout.client_id IS NULL
                        OR layout.client_id = CAST(:clientId AS uuid))
-                ORDER BY (layout.client_id = CAST(:clientId AS uuid)) DESC NULLS LAST,
-                         layout.client_id NULLS LAST, layout.confirm_count DESC
+                ORDER BY CASE WHEN layout.client_id = CAST(:clientId AS uuid) THEN 0
+                              WHEN layout.client_id IS NULL THEN 1 ELSE 2 END,
+                         layout.confirm_count DESC, layout.client_id
                 """, params, (rs, i) -> new LearnedLayout(rs.getString(1), rs.getObject(2, UUID.class),
                 parseRoles(rs.getString(3)), rs.getInt(4), rs.getInt(5)));
     }
@@ -103,7 +104,7 @@ class SalesIntakeStore implements IntakeReferenceData {
     public void upsertLayout(String fingerprint, UUID clientId, String headerTexts, Map<String, String> columnRoles,
                              int headerRowOffset) {
         if (fingerprint == null || !FINGERPRINT.matcher(fingerprint).matches() || headerTexts == null
-                || columnRoles == null || columnRoles.isEmpty()) {
+                || clientId == null || columnRoles == null || columnRoles.isEmpty()) {
             return;
         }
         Map<String, String> clean = new LinkedHashMap<>();
@@ -124,26 +125,73 @@ class SalesIntakeStore implements IntakeReferenceData {
         }
         String texts = headerTexts.length() > 4000 ? headerTexts.substring(0, 4000) : headerTexts;
         int offset = Math.max(0, Math.min(headerRowOffset, 5));
-        for (UUID scope : clientId == null ? new UUID[]{null} : new UUID[]{clientId, null}) {
-            MapSqlParameterSource params = new MapSqlParameterSource()
-                    .addValue("fingerprint", fingerprint)
-                    .addValue("clientId", scope, Types.OTHER)
-                    .addValue("texts", texts)
-                    .addValue("roles", rolesJson)
-                    .addValue("offset", offset);
-            jdbc.update("""
-                    INSERT INTO sales_intake_layouts (fingerprint, client_id, header_texts, column_roles, header_row_offset,
-                                                      confirm_count, last_used_at, created_at, updated_at)
-                    VALUES (:fingerprint, CAST(:clientId AS uuid), :texts, CAST(:roles AS jsonb), :offset, 1, now(), now(), now())
-                    ON CONFLICT ON CONSTRAINT uq_sales_intake_layouts_key DO UPDATE
-                        SET header_texts = EXCLUDED.header_texts,
-                            column_roles = EXCLUDED.column_roles,
-                            header_row_offset = EXCLUDED.header_row_offset,
-                            confirm_count = sales_intake_layouts.confirm_count + 1,
-                            last_used_at = now(),
-                            updated_at = now()
-                    """, params);
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("fingerprint", fingerprint)
+                .addValue("clientId", clientId, Types.OTHER)
+                .addValue("texts", texts)
+                .addValue("roles", rolesJson)
+                .addValue("offset", offset)
+                .addValue("lockKey", "sales_intake_layouts:" + fingerprint);
+        // 同一表头指纹的写入串行: 全局一行按客户证据重算, 并发保存不能互相覆盖。
+        jdbc.query("SELECT pg_advisory_xact_lock(hashtextextended(:lockKey, 0))", params, rs -> null);
+        // 客户专属一行: 列角色没变确认次数加 1, 变了(这次按规则或 AI 认出的不一样)从 1 重新数。
+        jdbc.update("""
+                INSERT INTO sales_intake_layouts (fingerprint, client_id, header_texts, column_roles, header_row_offset,
+                                                  confirm_count, last_used_at, created_at, updated_at)
+                VALUES (:fingerprint, CAST(:clientId AS uuid), :texts, CAST(:roles AS jsonb), :offset, 1, now(), now(), now())
+                ON CONFLICT ON CONSTRAINT uq_sales_intake_layouts_key DO UPDATE
+                    SET confirm_count = CASE
+                            WHEN sales_intake_layouts.column_roles = EXCLUDED.column_roles
+                             AND sales_intake_layouts.header_row_offset = EXCLUDED.header_row_offset
+                            THEN sales_intake_layouts.confirm_count + 1 ELSE 1 END,
+                        header_texts = EXCLUDED.header_texts,
+                        column_roles = EXCLUDED.column_roles,
+                        header_row_offset = EXCLUDED.header_row_offset,
+                        last_used_at = now(),
+                        updated_at = now()
+                """, params);
+        // 全局一行 = 最多客户确认过的那种列角色, 确认次数 = 确认过它的不同客户数(同一客户保存再多次也只算 1)。
+        jdbc.update("""
+                WITH evidence AS (
+                    SELECT layout.column_roles, layout.header_row_offset,
+                           count(DISTINCT layout.client_id)::int AS clients,
+                           max(layout.last_used_at) AS last_used,
+                           (array_agg(layout.header_texts ORDER BY layout.last_used_at DESC))[1] AS header_texts
+                    FROM sales_intake_layouts layout
+                    WHERE layout.fingerprint = :fingerprint AND layout.client_id IS NOT NULL
+                    GROUP BY layout.column_roles, layout.header_row_offset
+                    ORDER BY clients DESC, last_used DESC
+                    LIMIT 1)
+                INSERT INTO sales_intake_layouts (fingerprint, client_id, header_texts, column_roles, header_row_offset,
+                                                  confirm_count, last_used_at, created_at, updated_at)
+                SELECT :fingerprint, NULL, evidence.header_texts, evidence.column_roles, evidence.header_row_offset,
+                       evidence.clients, evidence.last_used, now(), now()
+                FROM evidence
+                ON CONFLICT ON CONSTRAINT uq_sales_intake_layouts_key DO UPDATE
+                    SET header_texts = EXCLUDED.header_texts,
+                        column_roles = EXCLUDED.column_roles,
+                        header_row_offset = EXCLUDED.header_row_offset,
+                        confirm_count = EXCLUDED.confirm_count,
+                        last_used_at = EXCLUDED.last_used_at,
+                        updated_at = now()
+                """, params);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void touchLayout(String fingerprint, UUID clientId) {
+        if (fingerprint == null || !FINGERPRINT.matcher(fingerprint).matches()) {
+            return;
         }
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("fingerprint", fingerprint)
+                .addValue("clientId", clientId, Types.OTHER);
+        jdbc.update("""
+                UPDATE sales_intake_layouts layout
+                SET last_used_at = now()
+                WHERE layout.fingerprint = :fingerprint
+                  AND (layout.client_id IS NULL OR layout.client_id = CAST(:clientId AS uuid))
+                """, params);
     }
 
     private Map<String, String> parseRoles(String text) {

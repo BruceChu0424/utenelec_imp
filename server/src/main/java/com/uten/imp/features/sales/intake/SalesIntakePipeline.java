@@ -76,7 +76,7 @@ final class SalesIntakePipeline {
     static final int COLUMN_PROMPT_ROWS = 15;
     static final double AI_AGREE_MARGIN = 4;
     static final int SCHEMA_VERSION = 2;
-    /** 全局(不分客户)学习版式至少被保存确认几次才直接使用。 */
+    /** 全局(不分客户)学习版式至少被几个不同客户确认过同样的列角色, 才先于规则直接使用。 */
     static final int GLOBAL_LAYOUT_MIN_CONFIRMS = 2;
     /** AI 抽出的数量/单价/金额上限(超出按看不清的行丢弃)。 */
     static final BigDecimal MAX_AI_NUMBER = new BigDecimal("1000000000");
@@ -222,16 +222,22 @@ final class SalesIntakePipeline {
         }
         run.ctx.progress("LAYOUT", 25);
         List<SheetChoice> choices = new ArrayList<>();
-        Map<String, List<LearnedLayout>> learned = learnedLayouts(grid, run.params.clientId());
+        UUID preselected = run.params.clientId();
+        Map<String, List<LearnedLayout>> learned = learnedLayouts(grid, preselected);
         for (Sheet sheet : grid.sheets()) {
             SheetChoice choice = null;
-            IntakeLayout layout = learnedLayout(sheet, learned);
+            IntakeLayout layout = learnedLayout(sheet, learned, preselected);
             if (layout != null) {
                 choice = choice(sheet, layout);
             }
             if (choice == null) {
-                // 没有学习到的版式, 或按它一行也取不出来: 按规则认。
+                // 没有可信的学习版式, 或按它一行也取不出来: 按规则认。
                 layout = IntakeLayoutDetector.detect(sheet);
+                choice = layout == null ? null : choice(sheet, layout);
+            }
+            if (choice == null) {
+                // 规则也认不出: 同一表头只学到过一种列角色(例如别的客户保存过一次)时先用它, 省一次 AI; 始终排在规则之后。
+                layout = fallbackLearnedLayout(sheet, learned);
                 choice = layout == null ? null : choice(sheet, layout);
             }
             if (choice != null) {
@@ -324,7 +330,8 @@ final class SalesIntakePipeline {
         return out;
     }
 
-    private static IntakeLayout learnedLayout(Sheet sheet, Map<String, List<LearnedLayout>> learned) {
+    /** 先于规则使用的学习版式: 已选客户自己的, 或至少 {@link #GLOBAL_LAYOUT_MIN_CONFIRMS} 个客户各自确认过的全局版式。 */
+    private static IntakeLayout learnedLayout(Sheet sheet, Map<String, List<LearnedLayout>> learned, UUID preselected) {
         if (learned.isEmpty()) {
             return null;
         }
@@ -334,7 +341,7 @@ final class SalesIntakePipeline {
                 continue;
             }
             for (LearnedLayout hit : hits) {
-                if (hit.headerRowOffset() + 1 != probe.span() || !trusted(hit)) {
+                if (hit.headerRowOffset() + 1 != probe.span() || !trusted(hit, preselected)) {
                     continue;
                 }
                 Map<Integer, ColumnRole> roles = IntakeLayoutDetector.rolesFromLetters(hit.columnRoles());
@@ -348,11 +355,46 @@ final class SalesIntakePipeline {
     }
 
     /**
-     * 学习到的版式能不能直接用: 本客户的版式保存过一次就用; 全局版式要被确认过至少
-     * {@link #GLOBAL_LAYOUT_MIN_CONFIRMS} 次 —— 一次保存(可能是认错列后手工改了表格)不会影响所有人。
+     * 规则认不出表头时的兜底(排在规则之后、AI 之前): 同一表头指纹学到的版式(全局的与别的客户的)只有一种列角色时才用;
+     * 学到过互相矛盾的列角色就不猜, 交给 AI。
      */
-    static boolean trusted(LearnedLayout layout) {
-        return layout.clientId() != null || layout.confirmCount() >= GLOBAL_LAYOUT_MIN_CONFIRMS;
+    static IntakeLayout fallbackLearnedLayout(Sheet sheet, Map<String, List<LearnedLayout>> learned) {
+        if (learned.isEmpty()) {
+            return null;
+        }
+        for (FingerprintProbe probe : IntakeLayoutDetector.fingerprintProbes(sheet)) {
+            List<LearnedLayout> hits = learned.get(probe.fingerprint());
+            if (hits == null) {
+                continue;
+            }
+            Set<Map<String, String>> variants = new HashSet<>();
+            for (LearnedLayout hit : hits) {
+                if (hit.headerRowOffset() + 1 == probe.span()) {
+                    variants.add(Map.copyOf(hit.columnRoles()));
+                }
+            }
+            if (variants.size() != 1) {
+                continue;
+            }
+            Map<Integer, ColumnRole> roles = IntakeLayoutDetector.rolesFromLetters(variants.iterator().next());
+            if (IntakeLayoutDetector.usable(roles)) {
+                return IntakeLayoutDetector.withRoles(sheet, probe.headerRow0(), probe.span(), roles,
+                        IntakeLayout.SOURCE_LEARNED);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 学习到的版式能不能先于规则直接用: 已选客户自己的版式保存过一次就用; 全局版式要有至少
+     * {@link #GLOBAL_LAYOUT_MIN_CONFIRMS} 个不同客户各自确认过同样的列角色 —— 一个客户的保存(可能是认错列后手工改了表格)
+     * 不会影响所有人; 别的客户的专属版式从不先于规则。
+     */
+    static boolean trusted(LearnedLayout layout, UUID preselectedClient) {
+        if (layout.clientId() != null) {
+            return layout.clientId().equals(preselectedClient);
+        }
+        return layout.confirmCount() >= GLOBAL_LAYOUT_MIN_CONFIRMS;
     }
 
     /** 规则找不到表头时, 把最像表格的 15 行发给 AI 认列(去掉银行行)。 */

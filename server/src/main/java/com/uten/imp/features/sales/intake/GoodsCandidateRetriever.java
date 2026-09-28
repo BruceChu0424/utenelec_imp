@@ -94,15 +94,24 @@ final class GoodsCandidateRetriever {
         if (!codes.isEmpty()) {
             addAll(rows, chunked(codes, lookup::goodsByCode));
         }
-        // 中文名称(精确/包含)与英文名称
+        // 中文名称(精确/包含)与英文名称: 整份文件一次召回(每行各自限额), 不按行逐次查库。
+        List<List<String>> cnGroups = new ArrayList<>();
+        Set<String> enTexts = new LinkedHashSet<>();
         for (ExtractedLine line : lines) {
             List<String> cn = nameQueries(line);
             if (!cn.isEmpty()) {
-                addAll(rows, lookup.goodsByNameCandidates(cn, NAME_LIMIT_PER_LINE));
+                cnGroups.add(cn);
             }
             if (line.description() != null && line.description().strip().length() >= 3) {
-                addAll(rows, lookup.goodsByNameEn(List.of(line.description().strip()), NAME_EN_LIMIT_PER_LINE));
+                enTexts.add(line.description().strip());
             }
+        }
+        if (!cnGroups.isEmpty()) {
+            addAll(rows, lookup.goodsByNameCandidatesEach(cnGroups, NAME_LIMIT_PER_LINE));
+        }
+        if (!enTexts.isEmpty()) {
+            // 每段文字的相似候选在查询里已各自限量, 整批上限 = 段数 × 每行上限, 不会挤掉后面的行。
+            addAll(rows, chunked(enTexts, chunk -> lookup.goodsByNameEn(chunk, chunk.size() * NAME_EN_LIMIT_PER_LINE)));
         }
         return withAliases(new Retrieval(rows, List.of()), lines, clientIdOrNull);
     }

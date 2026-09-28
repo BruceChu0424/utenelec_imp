@@ -181,6 +181,19 @@ final class FixtureLookup implements MasterIntakeLookupPort {
     }
 
     @Override
+    public List<GoodsRow> goodsByNameCandidatesEach(List<? extends Collection<String>> cnTextsPerGroup,
+                                                    int limitPerGroup) {
+        calls.add("goodsByNameCandidatesEach");
+        Map<UUID, GoodsRow> out = new LinkedHashMap<>();
+        for (Collection<String> group : cnTextsPerGroup) {
+            for (GoodsRow row : goodsByNameCandidates(group, limitPerGroup)) {
+                out.putIfAbsent(row.id(), row);
+            }
+        }
+        return List.copyOf(out.values());
+    }
+
+    @Override
     public List<GoodsRow> goodsByNameEn(Collection<String> texts, int limit) {
         calls.add("goodsByNameEn");
         List<GoodsRow> out = new ArrayList<>();

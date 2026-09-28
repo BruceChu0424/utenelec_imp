@@ -550,6 +550,15 @@ public class MasterIntakeLookupAdapter implements MasterIntakeLookupPort {
         return goodsInOrder(ids);
     }
 
+    /** 整份文件一次: 名称索引只校验/读取一次, 候选并集一次(分块)回表。 */
+    @Override
+    public List<GoodsRow> goodsByNameCandidatesEach(List<? extends Collection<String>> cnTextsPerGroup,
+                                                    int limitPerGroup) {
+        if (cnTextsPerGroup == null || cnTextsPerGroup.isEmpty() || limitPerGroup <= 0) return List.of();
+        List<UUID> ids = nameCatalog.searchEach(cnTextsPerGroup, Math.min(limitPerGroup, 5000));
+        return goodsInOrder(ids);
+    }
+
     @Override
     @SuppressWarnings("unchecked")
     public List<GoodsRow> goodsByNameEn(Collection<String> texts, int limit) {

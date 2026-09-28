@@ -266,7 +266,7 @@ class _AiRepo implements AiProviderRepository {
   }) async {}
 
   @override
-  Future<void> delete(String id) async {}
+  Future<void> delete(String id, {int? version}) async {}
 
   @override
   Future<void> setDefault(String id, {int? version}) async => holdWrite?.future;
@@ -531,6 +531,23 @@ void main() {
       await capture(tester, 'editor-test-running-1440-light');
       repo.holdTest!.complete();
       await tester.pumpAndSettle();
+    }, skip: !kCaptureUi);
+
+    testWidgets('edit panel key mask + advanced settings', (tester) async {
+      await _pumpSettings(tester, _AiRepo(providers: _twoProviders));
+      await _tapKey(tester, 'ai-provider-edit-$_deepseekId');
+      await capture(tester, 'editor-edit-1440-light');
+      final advanced = find.text('高级设置');
+      await tester.ensureVisible(advanced);
+      await tester.pumpAndSettle();
+      await capture(tester, 'editor-advanced-closed-1440-light');
+      await tester.tap(advanced);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('ai-editor-thinking')),
+      );
+      await tester.pumpAndSettle();
+      await capture(tester, 'editor-advanced-open-1440-light');
     }, skip: !kCaptureUi);
 
     testWidgets('edit panel mobile', (tester) async {

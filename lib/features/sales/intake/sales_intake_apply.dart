@@ -202,6 +202,24 @@ int salesIntakeRowCount(
   return importable ? 1 : 0;
 }
 
+/// 「设为货品英文名」只对会整行导入的行给出(§5.8): 没勾上的、订货单不能导入的、没找到货品的、
+/// 拆开的组合件都不给, 保存时也不会带 setNameEn=true。
+bool salesIntakeNameEnOffered(
+  SalesIntakeLine line,
+  SalesIntakeLineDecision decision, {
+  required SalesDocType docType,
+  required bool priceMasked,
+}) =>
+    line.nameEnText != null &&
+    !decision.split &&
+    salesIntakeRowCount(
+          line,
+          decision,
+          docType: docType,
+          priceMasked: priceMasked,
+        ) ==
+        1;
+
 /// 这一行是否还需要用户看一眼(需要核对的、没找到的、订货单不能导入的)。
 bool salesIntakeLineNeedsReview(
   SalesIntakeLine line,
@@ -331,13 +349,23 @@ BigInt _pow10(int n) => BigInt.from(10).pow(n);
   return (num: num, den: den);
 }
 
-bool _inRange(({BigInt num, BigInt den}) r) =>
-    // 0.3 < ratio <= 1
-    r.num * BigInt.from(10) > r.den * BigInt.from(3) && r.num <= r.den;
+/// 比例四舍五入到 4 位后的值, 以万分之一为单位(与服务端 MoneyPolicy 同一取位)。
+BigInt _rounded4Units(({BigInt num, BigInt den}) r) =>
+    (r.num * BigInt.from(10000) * BigInt.two + r.den) ~/ (r.den * BigInt.two);
+
+/// 取 4 位后的折扣落在 (0.3, 1]: 与服务端识别定价、看不到价格的人保存时反推折扣是同一个判断
+/// (判断的是取位后的折扣, 不是原始比例)。
+bool _inRange(({BigInt num, BigInt den}) r) {
+  final q = _rounded4Units(r);
+  return q > BigInt.from(3000) && q <= BigInt.from(10000);
+}
+
+/// 取 4 位后大于 1(高于标价)。
+bool _aboveList(({BigInt num, BigInt den}) r) =>
+    _rounded4Units(r) > BigInt.from(10000);
 
 String _roundHalfUp4(({BigInt num, BigInt den}) r) {
-  final scaled = r.num * BigInt.from(10000);
-  final q = (scaled * BigInt.two + r.den) ~/ (r.den * BigInt.two);
+  final q = _rounded4Units(r);
   final text = q.toString().padLeft(5, '0');
   final whole = text.substring(0, text.length - 4);
   final fraction = text
@@ -404,7 +432,7 @@ SalesIntakeDiscountPreview salesIntakeDiscountPreview({
       flag: SalesIntakePricingFlag.rateMissing,
     );
   }
-  final above = q1.num > q1.den && (qr == null || qr.num > qr.den);
+  final above = _aboveList(q1) && (qr == null || _aboveList(qr));
   return SalesIntakeDiscountPreview(
     flag: above
         ? SalesIntakePricingFlag.aboveList
@@ -755,7 +783,14 @@ SalesIntakePatch buildSalesIntakePatch({
       clientPrice: line.customerUnitPrice,
       intakeLineKey: line.key,
       userConfirmed: decision.userConfirmed,
-      setNameEn: decision.setNameEn && line.nameEnText != null,
+      setNameEn:
+          decision.setNameEn &&
+          salesIntakeNameEnOffered(
+            line,
+            decision,
+            docType: docType,
+            priceMasked: masked,
+          ),
       reasons: [_reviewReasonFor(line, decision, l10n), pricingReason(goods)],
     );
   }

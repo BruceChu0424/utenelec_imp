@@ -45,7 +45,7 @@ Map<String, dynamic> intakeResultJson({
     'sheet': 'Sheet1',
     'sha256': 'abc',
     'otherSheets': [
-      {'name': 'Packing', 'lineCount': 32},
+      {'name': 'Packing', 'index': 1, 'lineCount': 32},
     ],
   },
   'extraction': {'layoutSource': 'RULES', 'aiUsed': false},
@@ -306,4 +306,55 @@ Map<String, dynamic> intakeResultJson({
     'priceMasked': priceMasked,
   },
   'notices': ['AI 未开启, 只识别常见格式的 Excel'],
+};
+
+/// 同一个文件改为识别第 2 张工作表(Packing)后的结果: 只有一行, 原来那张(Sheet1)变成「另有工作表」。
+Map<String, dynamic> intakeSheetResultJson() => {
+  'schemaVersion': 2,
+  'docType': 'order',
+  'file': {
+    'name': 'UJ23 quotation.xlsx',
+    'kind': 'XLSX',
+    'sheet': 'Packing',
+    'sha256': 'abc',
+    'otherSheets': [
+      {'name': 'Sheet1', 'index': 0, 'lineCount': 6},
+    ],
+  },
+  'header': {'buyerName': 'SUNAS TRADING', 'docNo': 'UJ23-P'},
+  'currency': {'baseCurrencyId': 'cny', 'baseCurrencyName': '人民币'},
+  'client': {
+    'status': 'MATCHED',
+    'selectedClientId': 'client-sunas',
+    'candidates': [
+      {'clientId': 'client-sunas', 'code': 'WM057', 'name': '尼日利亚SUNAS'},
+    ],
+  },
+  'lines': [
+    {
+      'key': 'S2R5',
+      'lineNo': '1',
+      'partNo': 'GK12',
+      'description': 'ONE GANG SWITCH',
+      'qty': 40,
+      'customerUnitPrice': 9.45,
+      'status': 'MATCHED',
+      'selectedGoodsId': 'g-gk12',
+      'setNameEnDefault': true,
+      'nameEnText': 'ONE GANG SWITCH',
+      'candidates': [
+        candidate(
+          goodsId: 'g-gk12',
+          code: '280235175',
+          name: '一开双控开关',
+          model: 'GK12',
+          listPrice: '9.45',
+          discount: '1',
+          pricingFlag: 'OK',
+        ),
+      ],
+    },
+  ],
+  'summary': {'lineCount': 1, 'matched': 1, 'review': 0, 'unmatched': 0},
+  'notices': <String>[],
 };

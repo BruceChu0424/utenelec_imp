@@ -2,6 +2,7 @@
 // 文档：docs/05-架构/路由设计.md · 全局机制权限见 docs/05-架构/全局机制.md
 // 使用 go_router，扁平路由（静态段声明在 :id 之前避免冲突）
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -1329,8 +1330,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
               initialOrderId: s.uri.queryParameters['sourceOrderId'],
               initialOrderItems: s.uri.queryParameters['orderItems'],
-              // 订货单识别结果「改为新建报价单」: 同一次识别直接在报价页恢复(ADR-134)。
+              // 订货单识别结果「改为新建报价单」: 同一次识别直接在报价页恢复(ADR-134),
+              // 原文件经 extra 带过来(只在同一次跳转里有)。
               initialAiJobId: s.uri.queryParameters['aiJobId'],
+              initialAiFile: s.extra is PlatformFile
+                  ? s.extra as PlatformFile
+                  : null,
             ),
           ),
           DraftAwareGoRoute(

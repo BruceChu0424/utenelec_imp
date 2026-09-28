@@ -73,7 +73,8 @@ class _QuoteApi extends ApiClient {
   }
 
   @override
-  Future<void> delete(String path) async => deleted.add(path);
+  Future<void> delete(String path, {Map<String, dynamic>? query}) async =>
+      deleted.add(path);
 
   @override
   Future<List<Map<String, dynamic>>> getList(

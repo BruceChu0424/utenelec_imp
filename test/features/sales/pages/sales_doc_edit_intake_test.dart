@@ -17,6 +17,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
@@ -68,10 +69,11 @@ Future<_Env> _pump(
   Set<String> permissions = _quotePerms,
   AiStatus status = AiStatus.unavailable,
   List<GoodsListItem> pickedGoods = const [],
+  Map<String, dynamic>? lastTerms,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1800, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
-  final api = _IntakeApi(detail);
+  final api = _IntakeApi(detail, lastTerms: lastTerms);
   final runner = FakeAiJobRunner(result: intakeResultJson());
   final repo = FakeSalesIntakeRepository();
   final presenter = FakeProgressPresenter();
@@ -368,6 +370,73 @@ void main() {
     expect(items.map((i) => i['discount']), ['0.85', '0.9']);
   });
 
+  testWidgets('报价核定的行重新选同一个货品: 单价折扣与锁定都不变; 换别的货品才解锁并提示', (tester) async {
+    final picked = <GoodsListItem>[
+      const GoodsListItem(
+        id: 'goods-1',
+        code: 'G-1',
+        name: '报价货品',
+        price: 25,
+        unitId: 'unit-pcs',
+      ),
+    ];
+    await _pump(
+      tester,
+      docType: SalesDocType.order,
+      id: 'order-1',
+      permissions: _orderPerms,
+      pickedGoods: picked,
+      detail: _orderDetail(
+        items: [
+          {
+            'id': 'it-1',
+            'goodsId': 'goods-1',
+            'goodsNameSnapshot': '报价货品',
+            'unitId': 'unit-pcs',
+            'unitRate': 1,
+            'qty': 10,
+            'price': 20,
+            'discount': 0.85,
+            'quotePrice': 20,
+            'quoteDiscount': 0.85,
+          },
+        ],
+      ),
+    );
+    final grid = tester
+        .widget<UtenEditableGrid<SalesGridRow>>(
+          find.byType(UtenEditableGrid<SalesGridRow>),
+        )
+        .controller;
+    final row = grid.rows.first;
+    expect(row.quoteDiscountLocked, isTrue);
+    // 测试里货品字典是空的: 给这一行一个可点的名称(同一个货品 id)。
+    row.goods = const GoodsOption(id: 'goods-1', code: 'G-1', name: '报价货品');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('报价货品').first);
+    await tester.pumpAndSettle();
+    expect(row.price.text, '20', reason: '不被当前标价 25 覆盖');
+    expect(row.discount.text, '0.85');
+    expect(row.quoteDiscountLocked, isTrue);
+
+    picked
+      ..clear()
+      ..add(
+        const GoodsListItem(
+          id: 'goods-9',
+          code: 'G-9',
+          name: '别的货品',
+          price: 30,
+          unitId: 'unit-pcs',
+        ),
+      );
+    await tester.tap(find.text('报价货品').first);
+    await tester.pumpAndSettle();
+    expect(row.goods?.id, 'goods-9');
+    expect(row.quoteDiscountLocked, isFalse);
+    expect(find.textContaining('不再按报价的单价和折扣'), findsOneWidget);
+  });
+
   testWidgets('已审核订单不提供识别, 只给一句说明', (tester) async {
     await _pump(
       tester,
@@ -397,6 +466,55 @@ void main() {
     expect(
       find.byKey(const ValueKey('sales-intake-approved-order-hint')),
       findsOneWidget,
+    );
+  });
+
+  testWidgets('新建报价选客户: 不按客户上次订货的外币预填币种, 币种只能选本位币', (tester) async {
+    final env = await _pump(
+      tester,
+      docType: SalesDocType.quote,
+      lastTerms: {'currencyId': 'usd', 'settlementMethodId': null},
+    );
+    tester
+        .widget<ClientPickerField>(find.byType(ClientPickerField))
+        .onChanged('client-b');
+    await tester.pumpAndSettle();
+    final currency = tester.widget<UtenDropdownField>(
+      find.byWidgetPredicate(
+        (w) => w is UtenDropdownField && w.label == '币种',
+      ),
+    );
+    expect(currency.value, isNull, reason: '报价不带客户上次订货的外币');
+    expect(
+      currency.items.where((i) => i.value != null).map((i) => i.value),
+      ['cny'],
+      reason: '报价按标价(本位币)计价, 下拉只列本位币',
+    );
+    expect(currency.onAddNew, isNull, reason: '报价不内联新增币种');
+    expect(env.api.lastPostBody, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('新建订货选客户: 仍按客户上次订货的币种预填', (tester) async {
+    await _pump(
+      tester,
+      docType: SalesDocType.order,
+      permissions: _orderPerms,
+      lastTerms: {'currencyId': 'usd', 'settlementMethodId': null},
+    );
+    tester
+        .widget<ClientPickerField>(find.byType(ClientPickerField))
+        .onChanged('client-b');
+    await tester.pumpAndSettle();
+    final currency = tester.widget<UtenDropdownField>(
+      find.byWidgetPredicate(
+        (w) => w is UtenDropdownField && w.label == '币种',
+      ),
+    );
+    expect(currency.value, 'usd');
+    expect(
+      currency.items.where((i) => i.value != null).map((i) => i.value),
+      containsAll(['cny', 'usd']),
     );
   });
 
@@ -516,6 +634,62 @@ void main() {
     expect(blank.discount.text, '1');
   });
 
+  testWidgets('手工选货品带出的英文名称照常保存, 但不当客户叫法学习(不回传 userConfirmed)', (tester) async {
+    final env = await _pump(
+      tester,
+      docType: SalesDocType.quote,
+      pickedGoods: const [
+        GoodsListItem(
+          id: 'goods-2',
+          code: 'G-2',
+          name: '一开开关',
+          price: 21,
+          unitId: 'unit-pcs',
+          nameEn: 'ONE GANG SWITCH',
+        ),
+        GoodsListItem(
+          id: 'goods-3',
+          code: 'G-3',
+          name: '两开开关',
+          price: 25,
+          unitId: 'unit-pcs',
+          nameEn: 'TWO GANG SWITCH',
+        ),
+      ],
+    );
+    tester
+        .widget<ClientPickerField>(find.byType(ClientPickerField))
+        .onChanged('client-b');
+    await tester.pumpAndSettle();
+    final grid = tester
+        .widget<UtenEditableGrid<SalesGridRow>>(
+          find.byType(UtenEditableGrid<SalesGridRow>),
+        )
+        .controller;
+    await tester.tap(find.text('点击选择').first);
+    await tester.pumpAndSettle();
+    final auto = grid.rows.firstWhere((r) => r.goods?.id == 'goods-2');
+    final typed = grid.rows.firstWhere((r) => r.goods?.id == 'goods-3');
+    expect(auto.clientGoodsName.text, 'ONE GANG SWITCH');
+    expect(typed.clientGoodsName.text, 'TWO GANG SWITCH');
+    // 第二行改成客户自己的叫法。
+    typed.clientGoodsName.text = 'SWITCH 2G';
+    auto.qty.text = '5';
+    typed.qty.text = '6';
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    final items = (env.api.lastPostBody!['items'] as List)
+        .cast<Map<String, dynamic>>();
+    final autoSaved = _item(items, 'goods-2');
+    expect(autoSaved['clientGoodsName'], 'ONE GANG SWITCH');
+    expect(autoSaved.containsKey('userConfirmed'), isFalse);
+    expect(autoSaved.containsKey('setNameEn'), isFalse);
+    final typedSaved = _item(items, 'goods-3');
+    expect(typedSaved['clientGoodsName'], 'SWITCH 2G');
+    expect(typedSaved['userConfirmed'], isTrue);
+  });
+
   testWidgets('重新打开的外币订单换货品: 不知道参考汇率, 折扣留空并黄标', (tester) async {
     await _pump(
       tester,
@@ -571,9 +745,12 @@ class _TestSessionNotifier extends SessionNotifier {
 }
 
 class _IntakeApi extends ApiClient {
-  _IntakeApi(this.detail) : super(Dio());
+  _IntakeApi(this.detail, {this.lastTerms}) : super(Dio());
 
   final Map<String, dynamic>? detail;
+
+  /// 客户上次订货条款(`/sales/orders/last-terms`); 为空时按空分页返回。
+  final Map<String, dynamic>? lastTerms;
   Map<String, dynamic>? lastPutBody;
   Map<String, dynamic>? lastPostBody;
   String? lastPostPath;
@@ -585,6 +762,8 @@ class _IntakeApi extends ApiClient {
   }) async {
     final d = detail;
     if (d != null && path.endsWith('/${d['id']}')) return d;
+    final terms = lastTerms;
+    if (terms != null && path.endsWith('/last-terms')) return terms;
     return const {
       'items': <Map<String, dynamic>>[],
       'page': 1,
@@ -601,7 +780,8 @@ class _IntakeApi extends ApiClient {
   }) async {
     if (path.contains('currencies')) {
       return [
-        {'id': 'cny', 'name': '人民币'},
+        {'id': 'cny', 'name': '人民币', 'baseCurrency': true},
+        {'id': 'usd', 'name': '美元', 'baseCurrency': false},
       ];
     }
     return const [];

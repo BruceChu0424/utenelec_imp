@@ -60,6 +60,29 @@ Map<String, dynamic> sampleIntakeResultClientUnmatched() {
   return json;
 }
 
+/// 同一份结果, 但文件里另有两张工作表也像明细表(可点选改为识别那一张)。
+Map<String, dynamic> sampleIntakeResultWithOtherSheets() {
+  final json = sampleIntakeResult();
+  (json['file'] as Map<String, dynamic>)['otherSheets'] = [
+    {'name': 'Packing', 'index': 1, 'lineCount': 32},
+    {'name': '备件', 'index': 2, 'lineCount': 6},
+  ];
+  return json;
+}
+
+/// 改为识别第 2 张工作表(Packing)后的结果: 行更少, 原来那张(Sheet1)变成「另有工作表」。
+Map<String, dynamic> sampleIntakeResultSecondSheet() {
+  final json = sampleIntakeResult();
+  final file = json['file'] as Map<String, dynamic>;
+  file['sheet'] = 'Packing';
+  file['otherSheets'] = [
+    {'name': 'Sheet1', 'index': 0, 'lineCount': 38},
+    {'name': '备件', 'index': 2, 'lineCount': 6},
+  ];
+  json['lines'] = (json['lines'] as List).take(6).toList();
+  return json;
+}
+
 // ---------------------------------------------------------------- 会话
 
 class VisualSession extends SessionNotifier {

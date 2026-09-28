@@ -119,6 +119,9 @@ class MasterDictionaryService {
   Map<String, WarehouseDictEntry> _warehouseById = {};
   final Map<String, WarehouseDictEntry?> _mainWarehouseCache = {};
   Map<String, String> _currencies = {};
+
+  /// 本位币 id(币种字典里 baseCurrency 为真的那条; 字典未加载或没有本位币时为空)。
+  String? _baseCurrencyId;
   Map<String, String> _colors = {};
   Map<String, String> _units = {};
   final Map<String, String> _goods = {};
@@ -204,10 +207,7 @@ class MasterDictionaryService {
 
   Future<void> ensureCommonLoaded() => Future.wait([
     ensureWarehousesLoaded(),
-    ensureDictionaryLoaded(
-      ApiEndpoints.currenciesDict,
-      (entries) => _currencies = _nameMap(entries),
-    ),
+    ensureDictionaryLoaded(ApiEndpoints.currenciesDict, _applyCurrencies),
     ensureDictionaryLoaded(
       ApiEndpoints.colorsDict,
       (entries) => _colors = _nameMap(entries),
@@ -252,9 +252,20 @@ class MasterDictionaryService {
   /// 单独重载币种字典（单据页内联新增币种后调用，让本实例的下拉选项立即含新值）。
   Future<void> reloadCurrencies() => ensureDictionaryLoaded(
     ApiEndpoints.currenciesDict,
-    (entries) => _currencies = _nameMap(entries),
+    _applyCurrencies,
     reload: true,
   );
+
+  void _applyCurrencies(List<Map<String, dynamic>> entries) {
+    _currencies = _nameMap(entries);
+    _baseCurrencyId = null;
+    for (final entry in entries) {
+      if (entry['baseCurrency'] == true && entry['id'] is String) {
+        _baseCurrencyId = entry['id'] as String;
+        break;
+      }
+    }
+  }
 
   String warehouse(String? id) => resolveName(_warehouses, id);
 
@@ -445,6 +456,9 @@ class MasterDictionaryService {
   }
 
   Map<String, String> get currencyEntries => _currencies;
+
+  /// 本位币 id(货品标价所用币种); 未知时为空。
+  String? get baseCurrencyId => _baseCurrencyId;
   Map<String, String> get colorEntries => _colors;
   Map<String, String> get unitEntries => _units;
 

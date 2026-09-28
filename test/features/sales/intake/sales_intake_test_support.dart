@@ -68,6 +68,7 @@ class FakeAiJobRunner extends AiJobRunner {
     this.failure,
     this.terminal,
     this.jobId = 'job-42',
+    this.sheetResults = const {},
   }) : super(_NoRepository());
 
   final Map<String, dynamic>? result;
@@ -76,16 +77,24 @@ class FakeAiJobRunner extends AiJobRunner {
   /// 直接回放的终态(例如 FAILED 快照, 不抛异常)。
   final AiJobSnapshot? terminal;
   final String jobId;
+
+  /// 带参数 `sheet`(改为识别别的工作表)的提交按序号回放的结果, 作业 id 为 `$jobId-sheet-<序号>`。
+  final Map<String, Map<String, dynamic>> sheetResults;
   AiJobRequest? lastRequest;
+  final requests = <AiJobRequest>[];
   String? resumedJobId;
   final stagesSeen = <String>[];
 
-  Future<AiJobSnapshot> _finish(AiJobProgressCallback? onProgress) async {
+  Future<AiJobSnapshot> _finish(
+    AiJobProgressCallback? onProgress, {
+    String? sheet,
+  }) async {
+    final id = sheet == null ? jobId : '$jobId-sheet-$sheet';
     for (final stage in const ['UPLOADING', 'READING', 'MATCHING_GOODS']) {
       stagesSeen.add(stage);
       onProgress?.call(
         AiJobSnapshot(
-          id: jobId,
+          id: id,
           kind: kSalesIntakeJobKind,
           status: AiJobStatus.running,
           stage: stage,
@@ -97,11 +106,11 @@ class FakeAiJobRunner extends AiJobRunner {
     final t = terminal;
     if (t != null) return t;
     return AiJobSnapshot(
-      id: jobId,
+      id: id,
       kind: kSalesIntakeJobKind,
       status: AiJobStatus.succeeded,
       progress: 100,
-      result: result,
+      result: sheet == null ? result : sheetResults[sheet],
     );
   }
 
@@ -112,7 +121,8 @@ class FakeAiJobRunner extends AiJobRunner {
     AiJobCancelToken? cancelToken,
   }) {
     lastRequest = request;
-    return _finish(onProgress);
+    requests.add(request);
+    return _finish(onProgress, sheet: request.params['sheet']);
   }
 
   @override
@@ -131,6 +141,7 @@ class FakeProgressPresenter {
   int calls = 0;
   List<AiProgressStage>? stages;
   String? title;
+  String? subtitle;
 
   Future<AiJobSnapshot?> call(
     BuildContext context, {
@@ -142,6 +153,7 @@ class FakeProgressPresenter {
     calls++;
     this.stages = stages;
     this.title = title;
+    this.subtitle = subtitle;
     return task((_) {}, AiJobCancelToken());
   }
 }

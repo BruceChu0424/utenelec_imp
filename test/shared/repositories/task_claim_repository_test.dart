@@ -25,7 +25,7 @@ class _ClaimApi extends ApiClient {
   }
 
   @override
-  Future<void> delete(String path) async {
+  Future<void> delete(String path, {Map<String, dynamic>? query}) async {
     this.path = path;
   }
 

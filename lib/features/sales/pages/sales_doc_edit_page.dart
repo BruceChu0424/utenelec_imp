@@ -112,6 +112,7 @@ class SalesDocEditPage extends ConsumerStatefulWidget {
     this.initialOrderId,
     this.initialOrderItems,
     this.initialAiJobId,
+    this.initialAiFile,
   });
   final SalesDocType docType;
   final String? id; // null=新建
@@ -120,6 +121,10 @@ class SalesDocEditPage extends ConsumerStatefulWidget {
 
   /// 订货单「改为新建报价单」带来的识别作业 id：报价新建页打开后直接恢复核对面板。
   final String? initialAiJobId;
+
+  /// 同一次「改为新建报价单」带来的客户原文件(路由 extra，页面刷新后没有)：
+  /// 恢复识别并导入后存进报价的暂存附件(客户确认)，交财务核价时能看到原文件。
+  final PlatformFile? initialAiFile;
 
   @override
   ConsumerState<SalesDocEditPage> createState() => _SalesDocEditPageState();
@@ -858,7 +863,18 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   Future<void> _pickGoods(SalesGridRow row) async {
     final picked = await ref.read(salesGridGoodsPickerProvider)(context, ref);
     if (!mounted || picked.isEmpty) return;
+    var replacedQuoteLine = false;
     void fill(SalesGridRow target, GoodsListItem g) {
+      // 报价核定(折扣锁定)的行重新选了同一个货品(同颜色同单位)：什么都不动，
+      // 否则单价预览、折扣会被当前标价覆盖，保存时与报价核定的条件对不上。
+      if (target.quoteDiscountLocked) {
+        if (target.goods?.id == g.id &&
+            target.colorId == g.colorId &&
+            target.unitId == g.unitId) {
+          return;
+        }
+        replacedQuoteLine = true;
+      }
       target
         ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
         // 颜色/单位直接回填货品主档 UUID，单元格只读显示。
@@ -926,6 +942,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     }
 
     fill(row, picked.first);
+    if (replacedQuoteLine) {
+      context.appWarning(salesIntakeL10n(context).salesIntakeQuoteLineReplaced);
+    }
     final extraRows = <SalesGridRow>[];
     if (picked.length > 1) {
       for (final g in picked.skip(1)) {
@@ -1170,9 +1189,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         last.settlementMethodId,
         settlementIds.contains(last.settlementMethodId),
       );
+      // 报价按货品标价(本位币)计价：不按客户上次订货的币种预填(外币报价转不了订货单)。
       softPrefill(
         'currency',
-        _cfg.hasCurrency,
+        _cfg.hasCurrency && widget.docType != SalesDocType.quote,
         last.currencyId,
         currencyEntries.containsKey(last.currencyId),
       );
@@ -1871,12 +1891,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   /// 报价/订货行的客户文件字段与折扣(SPEC §6.1)：
   /// - 看不到价格：折扣提交 null(服务端按文件单价计算，已有行保留原折扣)；
   /// - 报价折扣留空 = 交财务核价，提交 null；
-  /// - intakeLineKey / userConfirmed / setNameEn 只在请求里用于学习，不落库。
+  /// - intakeLineKey / userConfirmed / setNameEn 只在请求里用于学习，不落库；
+  /// - 手工选货品时自动带出的货品英文名称(没改过)照常保存显示，但不是客户的叫法，
+  ///   不回传 userConfirmed(不当客户对照学习)。
   Map<String, dynamic> _clientLineFields(SalesGridRow r) {
     final discount = r.discount.text.trim();
     final clientModel = r.clientModel.text.trim();
     final clientGoodsName = r.clientGoodsName.text.trim();
-    final learnable = clientModel.isNotEmpty || clientGoodsName.isNotEmpty;
+    final prefilled = r.prefilledNameEn?.trim();
+    final autoName = prefilled != null && clientGoodsName == prefilled;
+    final learnable =
+        clientModel.isNotEmpty || (clientGoodsName.isNotEmpty && !autoName);
     return {
       'discount': _priceMasked || discount.isEmpty ? null : discount,
       'clientModel': clientModel.isEmpty ? null : clientModel,
@@ -1936,7 +1961,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
             : ref.read(salesMasterNameServiceProvider).client(clientId),
       );
       if (!mounted || result == null) return;
-      await _handleIntakeResult(result);
+      // 订货单交过来的原文件随这次识别一起存进附件(恢复作业本身不带文件)。
+      final handedFile = jobId == widget.initialAiJobId ? widget.initialAiFile : null;
+      final patch = result.patch;
+      await _handleIntakeResult(
+        patch != null && result.file == null && handedFile != null
+            ? SalesIntakeLaunchResult.apply(patch: patch, file: handedFile)
+            : result,
+      );
     } finally {
       if (mounted) setState(() => _aiIntakeRunning = false);
     }
@@ -1953,6 +1985,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           path: SalesRoutePath.docNew(SalesDocType.quote.pathSegment),
           queryParameters: {'aiJobId': handoff},
         ).toString(),
+        // 原文件跟着交过去, 报价页导入后存进附件(客户确认)。
+        extra: result.file,
       );
       return;
     }
@@ -2585,7 +2619,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                               _dropdown(
                                                 '币种',
                                                 _currencyId,
-                                                names.currencyEntries,
+                                                _currencyChoices(names),
                                                 (v) {
                                                   setState(
                                                     () => _currencyId = v,
@@ -2603,7 +2637,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                 // 列表没有的币种可内联新增（currency:edit），
                                                 // 新建后字典重载并自动选中新值。
                                                 addNewLabel: '添加币种',
-                                                onAddNew: _canAddCurrency
+                                                onAddNew:
+                                                    _canAddCurrency &&
+                                                        widget.docType !=
+                                                            SalesDocType.quote
                                                     ? () async {
                                                         final id =
                                                             await showCurrencyAddSheet(
@@ -3220,6 +3257,18 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   }
 
   /// 币种/结账方式内联新增按钮可见性（后端 @PreAuthorize 仍是最终授权边界）。
+  /// 币种下拉的选项：报价按货品标价(本位币)计价，只列本位币(已存的其它币种仍列出，
+  /// 便于改回本位币；服务端保存时拒绝外币)；本位币未知时列全部。其余单据列全部。
+  Map<String, String> _currencyChoices(SalesMasterNameService names) {
+    final all = names.currencyEntries;
+    final base = names.baseCurrencyId;
+    if (widget.docType != SalesDocType.quote || base == null) return all;
+    return {
+      for (final entry in all.entries)
+        if (entry.key == base || entry.key == _currencyId) entry.key: entry.value,
+    };
+  }
+
   bool get _canAddCurrency =>
       ref.watch(currentPermissionsProvider).contains(Perm.currencyCreate);
   bool get _canAddSettlement => ref

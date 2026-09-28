@@ -2,6 +2,8 @@
 //   选文件 → (PDF/图片先确认整份发给 AI) → 公共 AI 进度弹窗(分步显示) → 核对面板 → 补丁。
 // 另有「改为新建报价单」: 订货单识别结果里有没标价的货品时, 报价页用同一个作业 id
 // 直接恢复结果(resumeSalesIntake), 不用重新上传。
+// 文件里别的工作表也像明细表时, 核对面板可改为识别那一张: 同一个文件加参数 `sheet`
+// (工作表序号)重新提交, 同一套进度弹窗, 新结果整个替换面板(从不合并几张表)。
 //
 // 识别作业走公共 AI 作业接口(lib/shared/ai), 本文件只负责销售这一种用法。
 import 'dart:typed_data';
@@ -109,9 +111,9 @@ class SalesIntakeLaunchResult {
     this.file,
   }) : handoffJobId = null;
 
-  const SalesIntakeLaunchResult.handoff(String this.handoffJobId)
-    : patch = null,
-      file = null;
+  /// 「改为新建报价单」: 带上作业 id 与本次上传的原文件(报价页恢复识别后把原文件存进附件)。
+  const SalesIntakeLaunchResult.handoff(String this.handoffJobId, {this.file})
+    : patch = null;
 
   final SalesIntakePatch? patch;
 
@@ -221,6 +223,7 @@ Future<SalesIntakeLaunchResult?> launchSalesIntake(
     clientId: clientId,
     clientName: clientName,
     file: file,
+    request: request,
     canHandoffToQuote: canHandoffToQuote,
   );
 }
@@ -293,20 +296,21 @@ Future<AiJobSnapshot?> _runWithProgress(
     }
   } on ApiException catch (error) {
     if (context.mounted) context.appApiError(error);
+  } on Object catch (error, stack) {
+    // 其它意外(网关回了读不懂的应答、解析出错等): 只给销售一句大白话, 细节只进调试日志。
+    debugPrint('sales intake failed: ${error.runtimeType}\n$stack');
+    if (context.mounted) {
+      context.appError(
+        l10n.aiJobFailedGeneric,
+        title: l10n.salesIntakeFailedTitle,
+      );
+    }
   }
   return null;
 }
 
-Future<SalesIntakeLaunchResult?> _review(
-  BuildContext context,
-  WidgetRef ref, {
-  required AiJobSnapshot snapshot,
-  required SalesDocType docType,
-  String? clientId,
-  String? clientName,
-  PlatformFile? file,
-  bool canHandoffToQuote = false,
-}) async {
+/// 读出识别结果; 读不懂或一行明细都没有时提示并返回 null。
+SalesIntakeResult? _readResult(BuildContext context, AiJobSnapshot snapshot) {
   final l10n = salesIntakeL10n(context);
   final SalesIntakeResult result;
   try {
@@ -325,36 +329,94 @@ Future<SalesIntakeLaunchResult?> _review(
     );
     return null;
   }
+  return result;
+}
+
+/// 改为识别另一张工作表: 同一个文件、同样的参数再加 `sheet`(工作表序号), 走同一个
+/// 作业执行器与进度弹窗; 成功返回新作业的结果, 失败/取消返回 null(已提示)。
+Future<SalesIntakeSheetRerun?> _rerunSheet(
+  BuildContext context,
+  WidgetRef ref, {
+  required AiJobRequest source,
+  required SalesIntakeOtherSheet sheet,
+}) async {
+  final index = sheet.index;
+  if (index == null) return null;
+  final l10n = salesIntakeL10n(context);
+  final request = AiJobRequest(
+    kind: source.kind,
+    params: {...source.params, 'sheet': '$index'},
+    bytes: source.bytes,
+    fileName: source.fileName,
+    contentType: source.contentType,
+  );
+  final runner = ref.read(aiJobRunnerProvider);
+  final snapshot = await _runWithProgress(
+    context,
+    ref,
+    subtitle: l10n.salesIntakeSheetProgressSubtitle(
+      source.fileName,
+      sheet.name,
+    ),
+    task: (onProgress, cancelToken) =>
+        runner.run(request, onProgress: onProgress, cancelToken: cancelToken),
+  );
+  if (snapshot == null || !context.mounted) return null;
+  final result = _readResult(context, snapshot);
+  return result == null
+      ? null
+      : SalesIntakeSheetRerun(jobId: snapshot.id, result: result);
+}
+
+Future<SalesIntakeLaunchResult?> _review(
+  BuildContext context,
+  WidgetRef ref, {
+  required AiJobSnapshot snapshot,
+  required SalesDocType docType,
+  String? clientId,
+  String? clientName,
+  PlatformFile? file,
+  AiJobRequest? request,
+  bool canHandoffToQuote = false,
+}) async {
+  final l10n = salesIntakeL10n(context);
+  final result = _readResult(context, snapshot);
+  if (result == null) return null;
   // 进度弹窗刚关, 等一帧再弹面板(避免与弹窗退场动画叠在一起)。
   await WidgetsBinding.instance.endOfFrame;
   if (!context.mounted) return null;
   final outcome = await showSalesIntakeReviewPanel(
     context,
     result: result,
+    jobId: snapshot.id,
     docType: docType,
     presetClientId: clientId,
     presetClientName: clientName,
     actions: salesIntakeReviewActions(
       ref,
       canHandoffToQuote: docType == SalesDocType.order && canHandoffToQuote,
+      rerunSheet: request == null
+          ? null
+          : (panelContext, sheet) =>
+                _rerunSheet(panelContext, ref, source: request, sheet: sheet),
     ),
   );
   if (!context.mounted) return null;
   return switch (outcome) {
     null => null,
-    SalesIntakeReviewHandoffToQuote() => SalesIntakeLaunchResult.handoff(
-      snapshot.id,
-    ),
-    SalesIntakeReviewApply(:final decisions) => SalesIntakeLaunchResult.apply(
-      patch: buildSalesIntakePatch(
-        result: result,
-        decisions: decisions,
-        docType: docType,
-        jobId: snapshot.id,
-        l10n: l10n,
+    SalesIntakeReviewHandoffToQuote(:final jobId) =>
+      SalesIntakeLaunchResult.handoff(jobId ?? snapshot.id, file: file),
+    SalesIntakeReviewApply(:final decisions, :final result, :final jobId) =>
+      SalesIntakeLaunchResult.apply(
+        patch: buildSalesIntakePatch(
+          result: result,
+          decisions: decisions,
+          docType: docType,
+          jobId: jobId ?? snapshot.id,
+          l10n: l10n,
+        ),
+        file: file,
       ),
-      file: file,
-    ),
   };
 }
 
@@ -362,6 +424,11 @@ Future<SalesIntakeLaunchResult?> _review(
 SalesIntakeReviewActions salesIntakeReviewActions(
   WidgetRef ref, {
   bool canHandoffToQuote = false,
+  Future<SalesIntakeSheetRerun?> Function(
+    BuildContext context,
+    SalesIntakeOtherSheet sheet,
+  )?
+  rerunSheet,
 }) => SalesIntakeReviewActions(
   pickClient: (context) async {
     final client = await showUtenClientPicker(context, ref);
@@ -396,6 +463,7 @@ SalesIntakeReviewActions salesIntakeReviewActions(
   createClient: (context, proposal) =>
       _createClientFromDocument(context, ref, proposal),
   canHandoffToQuote: canHandoffToQuote,
+  rerunSheet: rerunSheet,
 );
 
 Future<SalesIntakePickedClient?> _createClientFromDocument(

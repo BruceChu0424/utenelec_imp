@@ -20,6 +20,7 @@ import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/features/sales/widgets/sales_grid_columns.dart';
 import 'package:uten_imp/shared/ai/ai_job_runner.dart';
 import 'package:uten_imp/shared/ai/ai_status_provider.dart';
+import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
@@ -45,6 +46,8 @@ Future<_Env> _pump(
   MemoryFormDraftStorage storage, {
   String location = '/sales/quotes/new',
   bool impersonating = false,
+  Object? extra,
+  Set<String>? permissions,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1800, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -61,12 +64,15 @@ Future<_Env> _pump(
         const AuthenticatedScope(userId: 'sales-person'),
       ),
       formDraftStorageProvider.overrideWithValue(storage),
-      currentPermissionsProvider.overrideWithValue({
-        Perm.salesQuoteView,
-        Perm.salesQuoteCreate,
-        Perm.salesQuoteEdit,
-        Perm.salesOrderPriceView,
-      }),
+      currentPermissionsProvider.overrideWithValue(
+        permissions ??
+            const {
+              Perm.salesQuoteView,
+              Perm.salesQuoteCreate,
+              Perm.salesQuoteEdit,
+              Perm.salesOrderPriceView,
+            },
+      ),
       sharedPreferencesProvider.overrideWithValue(prefs),
       salesMasterNameServiceProvider.overrideWithValue(
         SalesMasterNameService(api),
@@ -86,6 +92,7 @@ Future<_Env> _pump(
   );
   final router = GoRouter(
     initialLocation: location,
+    initialExtra: extra,
     routes: [
       DraftAwareGoRoute(
         path: '/sales/quotes/new',
@@ -93,6 +100,9 @@ Future<_Env> _pump(
           key: state.pageKey,
           docType: SalesDocType.quote,
           initialAiJobId: state.uri.queryParameters['aiJobId'],
+          initialAiFile: state.extra is PlatformFile
+              ? state.extra as PlatformFile
+              : null,
         ),
       ),
       GoRoute(
@@ -186,6 +196,36 @@ void main() {
     await tester.pumpAndSettle();
     // 报价单规则: 没标价的货品也导入(待财务定价)。
     expect(_grid(tester).rows.map((r) => r.intakeLineKey), contains('S1R12'));
+    await tester.pumpWidget(const SizedBox());
+    env.router.dispose();
+    env.container.dispose();
+  });
+
+  testWidgets('「改为新建报价单」带着原文件: 导入后原文件存进报价的暂存附件(客户确认)', (tester) async {
+    final storage = MemoryFormDraftStorage();
+    final env = await _pump(
+      tester,
+      storage,
+      location: '/sales/quotes/new?aiJobId=job-99',
+      extra: fakeFile('UJ23 quotation.xlsx'),
+      permissions: const {
+        Perm.salesQuoteView,
+        Perm.salesQuoteCreate,
+        Perm.salesQuoteEdit,
+        Perm.salesOrderPriceView,
+        Perm.attachmentUpload,
+      },
+    );
+    expect(env.runner.resumedJobId, 'job-99');
+    await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
+    await tester.pumpAndSettle();
+    final controller = tester
+        .widget<BusinessAttachmentSection>(
+          find.byType(BusinessAttachmentSection),
+        )
+        .draftController!;
+    expect(controller.items.single.name, 'UJ23 quotation.xlsx');
+    expect(controller.items.single.category, '客户确认');
     await tester.pumpWidget(const SizedBox());
     env.router.dispose();
     env.container.dispose();

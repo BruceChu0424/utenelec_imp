@@ -42,6 +42,11 @@ bool salesIntakeIsServerBlockingNotice(String notice) =>
 
 final _serverBlockingNotice = RegExp(r'^这 \d+ 个货品还没有标价');
 
+/// 服务端「名下没有客户资料」提示(IntakeTexts.NOTICE_NO_VISIBLE_CLIENTS, 固定中文): 客户这一步已按界面语言
+/// 说明过, 提示区不再重复(按中文原句判断, 不和界面语言的译文比)。
+bool salesIntakeIsNoVisibleClientsNotice(String notice) =>
+    notice.trim().startsWith('你名下还没有客户资料');
+
 /// 客户端上可写回客户资料的字段(§5.8, 服务端同样白名单校验)。
 const Set<String> kSalesIntakeClientFieldKeys = {
   'nameEn',
@@ -164,6 +169,7 @@ class SalesIntakeFileInfo {
             if (_str(sheet['name']) case final name?)
               SalesIntakeOtherSheet(
                 name: name,
+                index: _int(sheet['index']),
                 lineCount: _int(sheet['lineCount']) ?? 0,
               ),
         ],
@@ -177,10 +183,18 @@ class SalesIntakeFileInfo {
 }
 
 class SalesIntakeOtherSheet {
-  const SalesIntakeOtherSheet({required this.name, required this.lineCount});
+  const SalesIntakeOtherSheet({
+    required this.name,
+    required this.lineCount,
+    this.index,
+  });
 
   final String name;
   final int lineCount;
+
+  /// 工作表序号(从 0 起): 改为识别这张表时作为作业参数 `sheet` 重新提交同一个文件。
+  /// 服务端没给序号时为 null(只提示, 不能点选)。
+  final int? index;
 }
 
 /// 表头信息(规则优先, AI 只补空)。

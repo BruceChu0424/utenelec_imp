@@ -224,6 +224,22 @@ void main() {
     expect(env.result, isNull);
   });
 
+  testWidgets('意外错误(应答读不懂等): 大白话提示, 不抛到页面', (tester) async {
+    final env = await _pump(
+      tester,
+      file: fakeFile('a.xlsx'),
+      runner: _ThrowingRunner(
+        const FormatException('AI job submit response has no jobId'),
+      ),
+    );
+    expect(find.text('处理没有成功, 请稍后重试'), findsOneWidget);
+    expect(find.textContaining('jobId'), findsNothing);
+    expect(find.text('核对识别结果'), findsNothing);
+    expect(env.done, isTrue);
+    expect(env.result, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('识别结果里没有明细: 提示后结束', (tester) async {
     final json = intakeResultJson()..['lines'] = <Object>[];
     await _pump(
@@ -244,6 +260,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(env.result!.handoffJobId, 'job-42');
     expect(env.result!.patch, isNull);
+    expect(env.result!.file?.name, 'a.xlsx', reason: '原文件跟着交给报价页');
   });
 
   testWidgets('恢复已有作业: 不选文件不上传, 按报价单规则导入', (tester) async {
@@ -259,6 +276,73 @@ void main() {
     // 报价单: 没标价的货品也导入(待财务定价)。
     expect(patch.rows.map((r) => r.intakeLineKey), contains('S1R12'));
     expect(env.result!.file, isNull);
+  });
+
+  group('另有工作表', () {
+    Future<void> tapSheetChip(WidgetTester tester, int index) async {
+      final chip = find.byKey(ValueKey('sales-intake-other-sheet-$index'));
+      await tester.ensureVisible(chip);
+      await tester.pumpAndSettle();
+      await tester.tap(chip);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('同一个文件加 sheet 重新识别(同一套进度弹窗), 补丁按新表与新作业', (tester) async {
+      final env = await _pump(
+        tester,
+        file: fakeFile('a.xlsx'),
+        runner: FakeAiJobRunner(
+          result: intakeResultJson(),
+          sheetResults: {'1': intakeSheetResultJson()},
+        ),
+      );
+      await tapSheetChip(tester, 1);
+
+      expect(env.runner.requests, hasLength(2));
+      final first = env.runner.requests.first;
+      final again = env.runner.requests.last;
+      expect(first.params.containsKey('sheet'), isFalse);
+      expect(again.params, {...first.params, 'sheet': '1'});
+      expect(again.bytes, first.bytes);
+      expect(again.fileName, first.fileName);
+      expect(again.contentType, first.contentType);
+      expect(env.presenter.calls, 2);
+      expect(env.presenter.subtitle, 'a.xlsx · 工作表 Packing');
+
+      await _importAll(tester);
+      final patch = env.result!.patch!;
+      expect(patch.jobId, 'job-42-sheet-1');
+      expect(patch.rows.map((r) => r.intakeLineKey), ['S2R5']);
+      expect(patch.contractNo, 'UJ23-P');
+      // 原文件照样交给页面存进附件。
+      expect(env.result!.file!.name, 'a.xlsx');
+    });
+
+    testWidgets('新表读不出明细: 提示, 面板保持原来那张表', (tester) async {
+      final empty = intakeSheetResultJson()..['lines'] = <Object>[];
+      final env = await _pump(
+        tester,
+        file: fakeFile('a.xlsx'),
+        runner: FakeAiJobRunner(
+          result: intakeResultJson(),
+          sheetResults: {'1': empty},
+        ),
+      );
+      await tapSheetChip(tester, 1);
+      expect(find.textContaining('文件里没找到货品明细'), findsOneWidget);
+      expect(find.text('全部 (6)'), findsOneWidget);
+      await _importAll(tester);
+      expect(env.result!.patch!.jobId, 'job-42');
+    });
+
+    testWidgets('恢复已有作业(手里没有原文件): 只提示有别的工作表, 不能点选', (tester) async {
+      await _pump(tester, docType: SalesDocType.quote, resumeJobId: 'job-7');
+      expect(
+        find.byKey(const ValueKey('sales-intake-other-sheets')),
+        findsNothing,
+      );
+      expect(find.textContaining('重新上传这个文件'), findsOneWidget);
+    });
   });
 
   testWidgets('非成功终态快照(不抛异常)也按失败提示', (tester) async {
@@ -278,4 +362,18 @@ void main() {
     expect(find.text('核对识别结果'), findsNothing);
     expect(env.result, isNull);
   });
+}
+
+/// 提交就抛出意外错误(不是 AiJobFailure/ApiException)的作业执行器。
+class _ThrowingRunner extends FakeAiJobRunner {
+  _ThrowingRunner(this.error);
+
+  final Object error;
+
+  @override
+  Future<AiJobSnapshot> run(
+    AiJobRequest request, {
+    AiJobProgressCallback? onProgress,
+    AiJobCancelToken? cancelToken,
+  }) async => throw error;
 }

@@ -60,6 +60,14 @@ class SalesIntakePickedGoods {
   final String? price;
 }
 
+/// 改为识别另一张工作表后的新结果(同一个文件重新识别, 新作业 id)。
+class SalesIntakeSheetRerun {
+  const SalesIntakeSheetRerun({required this.jobId, required this.result});
+
+  final String jobId;
+  final SalesIntakeResult result;
+}
+
 /// 面板对外的动作(由启动器注入真实选择器/接口, 测试注入假实现)。
 class SalesIntakeReviewActions {
   const SalesIntakeReviewActions({
@@ -67,6 +75,7 @@ class SalesIntakeReviewActions {
     required this.pickGoods,
     required this.createClient,
     this.canHandoffToQuote = false,
+    this.rerunSheet,
   });
 
   final Future<SalesIntakePickedClient?> Function(BuildContext context)
@@ -83,23 +92,40 @@ class SalesIntakeReviewActions {
 
   /// 订货单上有没标价的货品时, 是否提供「改为新建报价单」。
   final bool canHandoffToQuote;
+
+  /// 文件里还有别的工作表也像明细表时, 改为识别那一张(同一个文件、同一套进度弹窗重新识别,
+  /// 用新结果整个替换面板, 不把几张表合在一起)。失败/取消返回 null(已提示), 面板保持原样。
+  /// 为 null(例如从订货单转来、手里没有原文件)时只提示有别的工作表, 不能点选。
+  final Future<SalesIntakeSheetRerun?> Function(
+    BuildContext context,
+    SalesIntakeOtherSheet sheet,
+  )?
+  rerunSheet;
 }
 
 /// 面板结果。
 sealed class SalesIntakeReviewOutcome {
-  const SalesIntakeReviewOutcome();
+  const SalesIntakeReviewOutcome({this.jobId});
+
+  /// 结果所属的识别作业(改为识别别的工作表后是新作业; 面板没拿到作业 id 时为 null)。
+  final String? jobId;
 }
 
-/// 按选择导入。
+/// 按选择导入。[result] 是选择所对应的识别结果(改过工作表时是新结果)。
 class SalesIntakeReviewApply extends SalesIntakeReviewOutcome {
-  const SalesIntakeReviewApply(this.decisions);
+  const SalesIntakeReviewApply(
+    this.decisions, {
+    required this.result,
+    super.jobId,
+  });
 
   final SalesIntakeDecisions decisions;
+  final SalesIntakeResult result;
 }
 
 /// 改为新建报价单(同一次识别, 不用重新上传)。
 class SalesIntakeReviewHandoffToQuote extends SalesIntakeReviewOutcome {
-  const SalesIntakeReviewHandoffToQuote();
+  const SalesIntakeReviewHandoffToQuote({super.jobId});
 }
 
 /// 打开核对面板; 取消返回 null。
@@ -108,6 +134,7 @@ Future<SalesIntakeReviewOutcome?> showSalesIntakeReviewPanel(
   required SalesIntakeResult result,
   required SalesDocType docType,
   required SalesIntakeReviewActions actions,
+  String? jobId,
   String? presetClientId,
   String? presetClientName,
 }) {
@@ -120,6 +147,7 @@ Future<SalesIntakeReviewOutcome?> showSalesIntakeReviewPanel(
         result: result,
         docType: docType,
         actions: actions,
+        jobId: jobId,
         presetClientId: presetClientId,
         presetClientName: presetClientName,
       );
@@ -146,6 +174,7 @@ class SalesIntakeReviewPanel extends StatefulWidget {
     required this.result,
     required this.docType,
     required this.actions,
+    this.jobId,
     this.presetClientId,
     this.presetClientName,
   });
@@ -153,6 +182,7 @@ class SalesIntakeReviewPanel extends StatefulWidget {
   final SalesIntakeResult result;
   final SalesDocType docType;
   final SalesIntakeReviewActions actions;
+  final String? jobId;
   final String? presetClientId;
   final String? presetClientName;
 
@@ -161,9 +191,12 @@ class SalesIntakeReviewPanel extends StatefulWidget {
 }
 
 class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
-  late final SalesIntakeDecisions _decisions;
-  late final List<SalesIntakeLine> _reviewLines;
-  late final List<SalesIntakeLine> _matchedLines;
+  /// 当前显示的识别结果与作业: 改为识别别的工作表后整个换成新的。
+  late SalesIntakeResult _result;
+  String? _jobId;
+  late SalesIntakeDecisions _decisions;
+  late List<SalesIntakeLine> _reviewLines;
+  late List<SalesIntakeLine> _matchedLines;
   _LineFilter _filter = _LineFilter.review;
   bool _matchedExpanded = false;
   bool _clientEditing = false;
@@ -176,31 +209,66 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
   /// 在「已自动对应」里点了「修改」展开成完整卡片的行。
   final Set<String> _expandedMatched = {};
 
-  SalesIntakeResult get _result => widget.result;
+  final ScrollController _scroll = ScrollController();
+
   bool get _masked => _result.priceMasked;
 
   @override
   void initState() {
     super.initState();
+    _load(widget.result, widget.jobId);
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// 按识别结果重置面板(打开时, 以及改为识别别的工作表后): 默认选择、分组、筛选、展开状态
+  /// 与手工加的候选都从新结果重新开始。
+  void _load(SalesIntakeResult result, String? jobId) {
+    _result = result;
+    _jobId = jobId;
     _decisions = SalesIntakeDecisions.initial(
-      _result,
+      result,
       docType: widget.docType,
       presetClientId: widget.presetClientId,
       presetClientName: widget.presetClientName,
     );
     _reviewLines = [];
     _matchedLines = [];
-    for (final line in _result.lines) {
+    for (final line in result.lines) {
       final needs = salesIntakeLineNeedsReview(
         line,
         _decisions.decisionFor(line),
         docType: widget.docType,
-        priceMasked: _masked,
+        priceMasked: result.priceMasked,
       );
       (needs ? _reviewLines : _matchedLines).add(line);
     }
-    if (_reviewLines.isEmpty) _filter = _LineFilter.all;
-    _clientEditing = !_result.client.status.resolved;
+    _filter = _reviewLines.isEmpty ? _LineFilter.all : _LineFilter.review;
+    _matchedExpanded = false;
+    _enrichmentExpanded = false;
+    _expandedMatched.clear();
+    _extraCandidates.clear();
+    _clientEditing = !result.client.status.resolved;
+  }
+
+  /// 改为识别另一张工作表: 同一个文件重新识别(公共进度弹窗), 成功后用新结果替换面板。
+  Future<void> _rerunSheet(SalesIntakeOtherSheet sheet) async {
+    final rerun = widget.actions.rerunSheet;
+    if (rerun == null || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final next = await rerun(context, sheet);
+      if (!mounted || next == null) return;
+      setState(() => _load(next.result, next.jobId));
+      // 换成新表后从头看起(先看到「这次识别的是工作表 X」与客户)。
+      if (_scroll.hasClients) _scroll.jumpTo(0);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   int get _importRowCount {
@@ -388,6 +456,7 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
           Expanded(
             child: CustomScrollView(
               key: const ValueKey('sales-intake-review-scroll'),
+              controller: _scroll,
               slivers: [
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(
@@ -496,9 +565,13 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
             cancelLabel: l10n.salesIntakeCancel,
             onImport: importCount == 0 || _busy
                 ? null
-                : () => Navigator.of(
-                    context,
-                  ).pop(SalesIntakeReviewApply(_decisions)),
+                : () => Navigator.of(context).pop(
+                    SalesIntakeReviewApply(
+                      _decisions,
+                      result: _result,
+                      jobId: _jobId,
+                    ),
+                  ),
             onCancel: _busy ? null : () => Navigator.of(context).pop(),
           ),
         ],
@@ -532,7 +605,7 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
                   ? null
                   : () => Navigator.of(
                       context,
-                    ).pop(const SalesIntakeReviewHandoffToQuote()),
+                    ).pop(SalesIntakeReviewHandoffToQuote(jobId: _jobId)),
               child: Text(l10n.salesIntakeHandoffToQuote),
             )
           : null;
@@ -601,8 +674,26 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
       );
     }
     if (_masked) infos.add(l10n.salesIntakePriceMaskedNotice);
+    // 别的工作表也像明细表: 能重新识别时给可点的小标签(点了只换成那一张, 不合并);
+    // 手里没有原文件(例如从订货单转来)时只提示一句。
     final otherSheets = _result.file.otherSheets;
-    if (otherSheets.isNotEmpty) {
+    final pickable = [
+      if (widget.actions.rerunSheet != null)
+        for (final sheet in otherSheets)
+          if (sheet.index != null) sheet,
+    ];
+    if (pickable.isNotEmpty) {
+      add(
+        _OtherSheetsCard(
+          lead: l10n.salesIntakeOtherSheetsLead(_result.file.sheet ?? ''),
+          sheets: pickable,
+          chipLabel: (sheet) =>
+              l10n.salesIntakeOtherSheetChip(sheet.name, sheet.lineCount),
+          tooltip: l10n.salesIntakeOtherSheetTooltip,
+          onPick: _busy ? null : _rerunSheet,
+        ),
+      );
+    } else if (otherSheets.isNotEmpty) {
       infos.add(
         l10n.salesIntakeOtherSheets(
           otherSheets
@@ -617,7 +708,7 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
     infos.addAll(
       _result.notices.where(
         (n) =>
-            n != l10n.salesIntakeNoVisibleClients &&
+            !salesIntakeIsNoVisibleClientsNotice(n) &&
             !(widget.docType == SalesDocType.order &&
                 salesIntakeIsServerBlockingNotice(n)),
       ),
@@ -1319,7 +1410,13 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
               ),
           ],
         ),
-        if (goods != null && line.nameEnText != null)
+        // 只给会导入的行(没勾上 / 不能导入 / 没找到货品的行不给, 免得以为会写进货品资料)。
+        if (salesIntakeNameEnOffered(
+          line,
+          d,
+          docType: widget.docType,
+          priceMasked: _masked,
+        ))
           Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s4),
             child: InkWell(
@@ -1847,15 +1944,18 @@ class _Hint extends StatelessWidget {
 /// 理由小标签的语义: 对得上(绿) / 要留意(黄) / 只是说明(灰)。
 enum _ReasonTone { positive, negative, neutral }
 
-/// 服务端理由是固定的中文短语(IntakeTexts): 「不一致 / 不同 / 异常 / 其他客户的」是要留意的,
+/// 服务端理由是固定的中文短语(IntakeTexts): 「不一致 / 不同 / 异常 / 其他客户的(专用货品)」是要留意的;
+/// 「其他客户也这样叫」(别的客户学到的叫法)是对得上的依据, 不算。
+@visibleForTesting
+bool salesIntakeReasonNeedsAttention(String text) =>
+    text.contains('不一致') ||
+    text.contains('不同') ||
+    text.contains('异常') ||
+    text.contains('其他客户的');
+
 /// 「AI 建议」只说明来源, 其余(型号一致、系列相近、该客户买过…)是对得上的依据。
 _ReasonTone _reasonTone(String text) {
-  if (text.contains('不一致') ||
-      text.contains('不同') ||
-      text.contains('异常') ||
-      text.contains('其他客户')) {
-    return _ReasonTone.negative;
-  }
+  if (salesIntakeReasonNeedsAttention(text)) return _ReasonTone.negative;
   if (text.startsWith('AI')) return _ReasonTone.neutral;
   return _ReasonTone.positive;
 }
@@ -1952,6 +2052,76 @@ class _PricingChip extends StatelessWidget {
           color: warn ? AiTone.warning(theme) : theme.colorScheme.primary,
           fontWeight: FontWeight.w700,
         ),
+      ),
+    );
+  }
+}
+
+/// 「另有工作表 X 也像明细表 (N 行)」小标签: 点了用同一个文件改为识别那一张。
+class _OtherSheetsCard extends StatelessWidget {
+  const _OtherSheetsCard({
+    required this.lead,
+    required this.sheets,
+    required this.chipLabel,
+    required this.tooltip,
+    required this.onPick,
+  });
+
+  final String lead;
+  final List<SalesIntakeOtherSheet> sheets;
+  final String Function(SalesIntakeOtherSheet sheet) chipLabel;
+  final String tooltip;
+  final ValueChanged<SalesIntakeOtherSheet>? onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final onPick = this.onPick;
+    return Container(
+      key: const ValueKey('sales-intake-other-sheets'),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(UtenRadius.lg),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s12,
+        UtenSpacing.s12,
+        UtenSpacing.s12,
+        UtenSpacing.s8,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Hint(
+            icon: Icons.table_chart_outlined,
+            text: lead,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: UtenSpacing.s4),
+          Wrap(
+            spacing: UtenSpacing.s8,
+            children: [
+              for (final sheet in sheets)
+                ActionChip(
+                  key: ValueKey('sales-intake-other-sheet-${sheet.index}'),
+                  avatar: Icon(
+                    Icons.swap_horiz_rounded,
+                    size: 18,
+                    color: theme.colorScheme.primary,
+                  ),
+                  label: Text(chipLabel(sheet)),
+                  labelStyle: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  tooltip: tooltip,
+                  materialTapTargetSize: MaterialTapTargetSize.padded,
+                  onPressed: onPick == null ? null : () => onPick(sheet),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }

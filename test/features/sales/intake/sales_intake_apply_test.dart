@@ -56,6 +56,8 @@ void main() {
       ]);
       expect(result.currency.financeRate, '7.1');
       expect(result.file.otherSheets.single.name, 'Packing');
+      expect(result.file.otherSheets.single.index, 1);
+      expect(result.file.otherSheets.single.lineCount, 32);
       expect(result.lines[4].bundleParts, hasLength(2));
     });
 
@@ -624,6 +626,80 @@ void main() {
     });
   });
 
+  group('设为货品英文名只对会导入的行', () {
+    SalesIntakeResult plateWithNameEn() {
+      final json = intakeResultJson();
+      final plate = (json['lines'] as List)
+          .cast<Map<String, dynamic>>()
+          .singleWhere((l) => l['key'] == 'S1R12');
+      plate['nameEnText'] = 'PRESSURE PLATE';
+      plate['setNameEnDefault'] = true;
+      return SalesIntakeResult.fromJson(json);
+    }
+
+    bool offered(
+      SalesIntakeResult result,
+      SalesIntakeDecisions d,
+      String key, {
+      SalesDocType docType = SalesDocType.order,
+    }) {
+      final line = result.lines.singleWhere((l) => l.key == key);
+      return salesIntakeNameEnOffered(
+        line,
+        d.decisionFor(line),
+        docType: docType,
+        priceMasked: result.priceMasked,
+      );
+    }
+
+    test('导入的行给; 取消勾选/订货单不能导入/没找到/拆开的组合件不给', () {
+      final result = plateWithNameEn();
+      final d = SalesIntakeDecisions.initial(
+        result,
+        docType: SalesDocType.order,
+      );
+      expect(offered(result, d, 'S1R9'), isTrue);
+      expect(offered(result, d, 'S1R10'), isTrue);
+      // 订货单上没标价(不能导入)。
+      expect(d.lines['S1R12']!.setNameEn, isTrue);
+      expect(offered(result, d, 'S1R12'), isFalse);
+      // 报价单上同一行照常导入。
+      final quote = SalesIntakeDecisions.initial(
+        result,
+        docType: SalesDocType.quote,
+      );
+      expect(
+        offered(result, quote, 'S1R12', docType: SalesDocType.quote),
+        isTrue,
+      );
+      // 用户取消勾选。
+      d.lines['S1R9']!.include = false;
+      expect(offered(result, d, 'S1R9'), isFalse);
+      // 没找到货品(没有候选)与没有英文品名的行。
+      expect(offered(result, d, 'S1R11'), isFalse);
+      expect(offered(result, d, 'S1R14'), isFalse);
+    });
+
+    test('勾着英文名但行不导入: 补丁里没有这一行, 更不会带 setNameEn', () {
+      final result = plateWithNameEn();
+      final patch = _patch(
+        result,
+        docType: SalesDocType.order,
+        tweak: (d) => d.lines['S1R9']!
+          ..setNameEn = true
+          ..include = false,
+      );
+      expect(patch.rows.map((r) => r.intakeLineKey), isNot(contains('S1R9')));
+      expect(patch.rows.map((r) => r.intakeLineKey), isNot(contains('S1R12')));
+      expect(patch.rows.where((r) => r.setNameEn), isEmpty);
+
+      final kept = _patch(result, docType: SalesDocType.order);
+      expect(_row(kept, 'S1R9').setNameEn, isTrue);
+      final quote = _patch(result, docType: SalesDocType.quote);
+      expect(_row(quote, 'S1R12').setNameEn, isTrue);
+    });
+  });
+
   group('看不到价格的账号在订货单上', () {
     test('服务端保留的「不能导入」标记照样拦下没标价的货品', () {
       final json = intakeResultJson(priceMasked: true);
@@ -678,6 +754,16 @@ void main() {
       expect(third.discount, '0.6667');
       expect(third.flag, SalesIntakePricingFlag.rounded);
       expect(preview('0.99995', '1').discount, '1');
+    });
+
+    test('区间按取 4 位后的折扣判断(与服务端保存时反推同一个判断)', () {
+      final floor = preview('30.004', '100');
+      expect(floor.flag, SalesIntakePricingFlag.outOfRange);
+      expect(floor.discount, isNull);
+      final ceiling = preview('100.004', '100');
+      expect(ceiling.discount, '1');
+      expect(ceiling.flag, SalesIntakePricingFlag.rounded);
+      expect(preview('100.006', '100').flag, SalesIntakePricingFlag.aboveList);
     });
 
     test('没有文件单价 → 不给折扣也不给标记(与服务端一致)', () {

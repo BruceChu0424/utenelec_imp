@@ -358,7 +358,7 @@ class _HistoryApi extends ApiClient {
   }
 
   @override
-  Future<void> delete(String path) async {
+  Future<void> delete(String path, {Map<String, dynamic>? query}) async {
     writes.add('DELETE $path');
     throw StateError('unexpected financial mutation');
   }

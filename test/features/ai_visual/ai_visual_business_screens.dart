@@ -45,6 +45,7 @@ Future<void> _pumpPanel(
   Size size = kDesktop,
   bool dark = false,
   bool canHandoffToQuote = true,
+  Map<String, dynamic>? rerunJson,
 }) async {
   await setCaptureView(tester, size);
   final result = SalesIntakeResult.fromJson(json ?? sampleIntakeResult());
@@ -53,6 +54,12 @@ Future<void> _pumpPanel(
     pickGoods: (_) async => null,
     createClient: (_, _) async => null,
     canHandoffToQuote: canHandoffToQuote,
+    rerunSheet: rerunJson == null
+        ? null
+        : (_, _) async => SalesIntakeSheetRerun(
+            jobId: 'job-sheet',
+            result: SalesIntakeResult.fromJson(rerunJson),
+          ),
   );
   await tester.pumpWidget(
     captureApp(
@@ -255,6 +262,25 @@ void businessScreenTests() {
       await _scrollPanel(tester, 700);
       await capture(tester, 'intake-order-goods-390-light');
     }, skip: !kCaptureUi);
+
+    for (final (size, label) in [(kDesktop, '1440'), (kMobile, '390')]) {
+      testWidgets('other sheets chips $label', (tester) async {
+        await _pumpPanel(
+          tester,
+          docType: SalesDocType.quote,
+          size: size,
+          json: sampleIntakeResultWithOtherSheets(),
+          rerunJson: sampleIntakeResultSecondSheet(),
+        );
+        await capture(tester, 'intake-other-sheets-$label-light');
+        final chip = find.byKey(const ValueKey('sales-intake-other-sheet-1'));
+        await tester.ensureVisible(chip);
+        await tester.pumpAndSettle();
+        await tester.tap(chip);
+        await tester.pumpAndSettle();
+        await capture(tester, 'intake-other-sheets-after-$label-light');
+      }, skip: !kCaptureUi);
+    }
   });
 
   group('编辑页导入后', () {

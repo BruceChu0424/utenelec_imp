@@ -140,6 +140,13 @@ class PurchaseInvoiceMatchHandler implements AiJobHandler {
    - 抛 `ApiException`: 它的中文消息原样显示(处理器自己负责写成通俗说法); 需要前端按原因给出不同的下一步时,
      在 `fieldErrors` 里放 `field = "errorCode"`、`message = 业务码`(大写下划线, 不超过 48 字符, 例如销售识别的
      `AI_REQUIRED`、`AI_VISION_UNAVAILABLE`), 平台写进任务的 `errorCode`; 没有时 `errorCode` 为 `ApiException` 的错误类别名;
+     平台(`AiJobWorker.errorCodeOf`)把它存进 `ai_jobs.error_code`, 查询接口原样返回 `errorCode`, 前端 `AiJobFailure.code` 就是它。
+     业务码必须匹配 `^[A-Z][A-Z0-9_]{0,47}$`, 不匹配(小写、带空格、超长)时静默退回错误类别名(如 `BUSINESS`), 前端就分不出原因 ——
+     建议像销售识别那样写一个小工具方法统一构造:
+     `new ApiException(ErrorCode.BUSINESS, message, List.of(new ApiError.FieldError("errorCode", code)))`
+     (`SalesIntakePipeline.fail(message, code)`; 销售识别现有 `UNSUPPORTED_FILE` / `NO_TABLE` / `NO_LINES` / `AI_REQUIRED` /
+     `AI_VISION_UNAVAILABLE` / `AI_FAILED`)。业务码不要与平台自己的 `AI_<类别>`(如 `AI_TIMEOUT`、`AI_RATE_LIMIT`)或平台保留码
+     (`INTERNAL`、`RESETTING`、`RESULT_TOO_LARGE`、`UNKNOWN_KIND`、`PRINCIPAL_CHANGED`、`UNPARSABLE`、`INTERRUPTED`、`QUEUE_TIMEOUT`)重名;
    - 没接住的 `AiCallException`: 错误码记 `AI_<类别>`(给管理员与日志), 显示的消息按类别换成通俗说法 ——
      RATE_LIMIT / QUOTA →「AI 服务暂时繁忙或今日额度已用完, 请稍后再试」; AUTH / NOT_FOUND / BAD_REQUEST / UNAVAILABLE /
      BLOCKED →「AI 服务暂时不可用, 请联系管理员」; TIMEOUT / NETWORK / SERVER / INVALID_RESPONSE →「识别失败, 请稍后重试」。

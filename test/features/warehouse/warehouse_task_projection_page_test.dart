@@ -205,6 +205,7 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
     String? reason,
     Map<String, String>? stockPlaces,
     Map<String, String?>? lineWarehouses,
+    Map<String, double>? lineWeights,
   }) async => _salesDetail;
 }
 

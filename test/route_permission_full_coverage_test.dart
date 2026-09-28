@@ -105,6 +105,14 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
   ],
 };
 
+/// 2026-09-28 ADR-135 新增的 any-of 守卫页面：逐条核对精确路径与权限码。
+/// 库存分析是管理口径 (呆滞/供应商少数)，只给 stock_report:view；
+/// 独立称重计数页库存查看即可进 (保存抽样的称样权限由页面与后端另行把关)。
+const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
+  '/warehouse/insights': [Perm.stockReportView],
+  '/warehouse/weigh-count': [Perm.stockView],
+};
+
 String _samplePath(String pattern) => pattern
     .split('/')
     .map((segment) => segment.startsWith(':') ? 'sample' : segment)
@@ -150,9 +158,10 @@ void main() {
         }
       }
 
-      final reviewedSamples = _reviewedNewGuardedRoutes.keys
-          .map(_samplePath)
-          .toSet();
+      final reviewedSamples = {
+        ..._reviewedNewGuardedRoutes.keys.map(_samplePath),
+        ..._reviewedNewAnyGuardedRoutes.keys.map(_samplePath),
+      };
       for (final route in _reviewedNewGuardedRoutes.entries) {
         expect(
           paths.where((path) => path == route.key),
@@ -165,6 +174,24 @@ void main() {
           reason: '${route.key} 不得放松已核对的组合权限',
         );
         expect(guarded, contains(_samplePath(route.key)));
+      }
+      for (final route in _reviewedNewAnyGuardedRoutes.entries) {
+        expect(
+          paths.where((path) => path == route.key),
+          hasLength(1),
+          reason: '${route.key} 必须只注册一次',
+        );
+        expect(
+          requiredAnyPermFor(route.key),
+          orderedEquals(route.value),
+          reason: '${route.key} 不得放松或改换已核对的守卫',
+        );
+        expect(
+          requiredAllPermsFor(route.key),
+          isEmpty,
+          reason: '${route.key} 是单一 any-of 守卫',
+        );
+        expect(guarded, contains(route.key));
       }
       // 新路径按精确身份和组合权限比较；原清单仍按原数量锁定，禁止只抬总数。
       expect(
@@ -195,6 +222,34 @@ void main() {
         isEmpty,
         reason: '以下路由在豁免清单里却挂了权限码——文档与代码漂移，二者取其一改齐。',
       );
+    },
+  );
+
+  test(
+    'ADR-135 static warehouse pages are matched before /warehouse/:code',
+    () {
+      final container = ProviderContainer(
+        overrides: [
+          sessionProvider.overrideWith(() => _StubSessionNotifier()),
+          visitorSessionProvider.overrideWith(
+            () => _StubVisitorSessionNotifier(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final router = container.read(appRouterProvider);
+      const expected = {
+        '/warehouse/insights': 'warehouse-insights',
+        '/warehouse/insights?segment=learning': 'warehouse-insights',
+        '/warehouse/weigh-count': 'warehouse-weigh-count',
+        '/warehouse/CHECK/new': 'stock-doc-new',
+        '/stock/item/goods-1?tab=ledger': 'stock-item-detail',
+      };
+      for (final entry in expected.entries) {
+        final match = router.configuration.findMatch(Uri.parse(entry.key));
+        expect(match.isError, isFalse, reason: entry.key);
+        expect(match.last.route.name, entry.value, reason: entry.key);
+      }
     },
   );
 }

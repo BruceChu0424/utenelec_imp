@@ -345,6 +345,16 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     private com.uten.imp.features.notice.ChainNoticeService chainNotice;
 
     /**
+     * 收货红冲时把到货登记的称重观测一并红冲(ADR-135 §3.1); setter 注入, 直构测试不注入时跳过。
+     */
+    @Autowired(required = false)
+    void setWeightObservations(com.uten.imp.features.stock.weight.GoodsWeightObservationService value) {
+        this.weightObservations = value;
+    }
+
+    private com.uten.imp.features.stock.weight.GoodsWeightObservationService weightObservations;
+
+    /**
      * Fail-closed gate run before a receipt is approved: every receipt line must trace to a
      * finance-approved order line; declared qty exceeding the remaining approved capacity is
      * recorded as a PENDING_FINANCE exception and the approve is blocked (the
@@ -558,6 +568,23 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                     Map.of("approvedExcessQty", allowance.approvedExcessQty()));
         }
         refreshExpectationAccepted(orderType, receiptId);
+        reverseReceiptWeightObservations(orderType, receiptId);
+    }
+
+    /**
+     * 收货单红冲 = 这次到货登记作废: 按 'RECEIPT:' + 收货明细 id 把登记时记下的称重观测标记红冲,
+     * 单重学习随之重算(没有观测的明细什么也不做)。
+     */
+    private void reverseReceiptWeightObservations(String orderType, UUID receiptId) {
+        if (weightObservations == null) return;
+        String receiptItemTable = PURCHASE.equals(orderType)
+                ? "purchase_receipt_items" : "subcontract_receipt_items";
+        for (UUID itemId : jdbc.queryForList(
+                "SELECT id FROM %s WHERE receipt_id = ? ORDER BY id".formatted(receiptItemTable),
+                UUID.class, receiptId)) {
+            weightObservations.reverseByCaptureKey(
+                    WarehouseArrivalRegistrationService.RECEIPT_CAPTURE_PREFIX + itemId);
+        }
     }
 
     @Override

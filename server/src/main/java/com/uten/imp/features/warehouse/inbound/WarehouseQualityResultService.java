@@ -725,8 +725,6 @@ public class WarehouseQualityResultService {
                                COALESCE(event_stocked.stocked_qty, 0),
                                event.base_qty - COALESCE(event_stocked.stocked_qty, 0),
                                event.released_weight,
-                               event.released_weight_unit_id,
-                               weight_unit.name,
                                COALESCE(preference.place,
                                         NULLIF(BTRIM(goods.stock_place), '')),
                                event.reason,
@@ -746,8 +744,6 @@ public class WarehouseQualityResultService {
                         LEFT JOIN units source_unit
                           ON source_unit.id = inspection.unit_id
                         LEFT JOIN units base_unit ON base_unit.id = goods.unit_id
-                        LEFT JOIN units weight_unit
-                          ON weight_unit.id = event.released_weight_unit_id
                         LEFT JOIN warehouse_goods_place_preferences preference
                           ON preference.warehouse_id = inspection.warehouse_id
                          AND preference.goods_id = inspection.goods_id
@@ -786,9 +782,9 @@ public class WarehouseQualityResultService {
                 uuid(row[6]), str(row[7]), str(row[8]),
                 decimal(row[9]), decimal(row[10]), decimal(row[11]),
                 decimal(row[12]), decimal(row[13]), decimal(row[14]),
-                nullableDecimal(row[15]), uuid(row[16]), str(row[17]),
-                str(row[18]), str(row[19]), str(row[20]),
-                offsetDateTime(row[21]),List.of(),uuid(row[22]),str(row[23]))).toList();
+                nullableDecimal(row[15]),
+                str(row[16]), str(row[17]), str(row[18]),
+                offsetDateTime(row[19]),List.of(),uuid(row[20]),str(row[21]))).toList();
         Map<UUID, List<PreplanInboundAllocationReadPort.AllocationView>> expected =
                 inboundAllocationRead.expectedForPassEvents(
                         receiptType, receiptId,
@@ -800,7 +796,7 @@ public class WarehouseQualityResultService {
                 slice.receivedBaseQty(), slice.qualityPassedBaseQty(),
                 slice.warehouseStockedBaseQty(), slice.releasedBaseQty(),
                 slice.stockedForReleaseBaseQty(), slice.remainingBaseQty(),
-                slice.releasedWeight(), slice.weightUnitId(), slice.weightUnitName(),
+                slice.releasedWeight(),
                 slice.placeHint(), slice.releaseNote(), slice.releasedBy(),
                 slice.releasedAt(), expected.getOrDefault(slice.passEventId(), List.of())
                         .stream().map(WarehouseQualityResultService::toAllocation)
@@ -829,7 +825,7 @@ public class WarehouseQualityResultService {
                         SELECT item.id, batch.id, item.pass_event_id,
                                item.goods_id, goods.code, goods.name,
                                color.name, COALESCE(base_unit.name, source_unit.name),
-                               item.base_qty, item.weight, weight_unit.name,
+                               item.base_qty, item.weight,
                                item.place_snapshot, employee.full_name,
                                batch.confirmed_at,item.warehouse_id,actual_warehouse.name,
                                batch.origin
@@ -844,8 +840,6 @@ public class WarehouseQualityResultService {
                         LEFT JOIN units source_unit
                           ON source_unit.id = inspection.unit_id
                         LEFT JOIN units base_unit ON base_unit.id = goods.unit_id
-                        LEFT JOIN units weight_unit
-                          ON weight_unit.id = item.weight_unit_id
                         LEFT JOIN employees employee
                           ON employee.id = batch.actor_employee_id
                         WHERE batch.receipt_type = :receiptType
@@ -859,9 +853,9 @@ public class WarehouseQualityResultService {
         return rows.stream().map(row -> new StockInHistoryItem(
                 uuid(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]),
                 str(row[4]), str(row[5]), str(row[6]), str(row[7]),
-                decimal(row[8]), nullableDecimal(row[9]), str(row[10]),
-                str(row[11]), str(row[12]), offsetDateTime(row[13]),List.of(),uuid(row[14]),str(row[15]),
-                str(row[16]))).toList();
+                decimal(row[8]), nullableDecimal(row[9]),
+                str(row[10]), str(row[11]), offsetDateTime(row[12]),List.of(),uuid(row[13]),str(row[14]),
+                str(row[15]))).toList();
     }
 
     /** 检查不合格的实物退回案件（V440 拒收案件在仓库侧的投影）。 */

@@ -139,6 +139,7 @@ class SubcontractDocItem {
     this.wasteRate,
     this.cause,
     this.weight,
+    this.qtyFromWeight = false,
     this.girthQty,
     this.boxQty,
     this.parentGoodsId,
@@ -196,6 +197,9 @@ class SubcontractDocItem {
   final double? wasteRate;
   final String? cause;
   final double? weight;
+
+  /// 委外出仓明细: 数量是按称重推算的 (ADR-135 §3.8, 这行不进单重学习); 其它单据恒为 false。
+  final bool qtyFromWeight;
   // 围数（进仓/退货/材料退）/ 胶箱数量（材料出）
   final double? girthQty;
   final double? boxQty;
@@ -262,6 +266,7 @@ class SubcontractDocItem {
         wasteRate: (json['wasteRate'] as num?)?.toDouble(),
         cause: json['cause'] as String?,
         weight: (json['weight'] as num?)?.toDouble(),
+        qtyFromWeight: json['qtyFromWeight'] == true,
         girthQty: (json['girthQty'] as num?)?.toDouble(),
         boxQty: (json['boxQty'] as num?)?.toDouble(),
         parentGoodsId: json['parentGoodsId'] as String?,

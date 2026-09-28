@@ -1,11 +1,16 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空(支持至 V732；保留主档、人事、权限与治理证据)
+-- 本地/测试库业务数据一键清空(支持至 V745；保留主档、人事、权限与治理证据)
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
 --       干净测试起点。只允许在可丢弃的本地/测试库停写后运行。
 --
 -- 唯一范围事实：
+--   · V745 仓库重量账与单重学习(ADR-135)：退役 V442 采集偏好学习七张表(四张 CLEAR 采集投影/证据、
+--     三张 PRESERVE 旧库计量证据)，新增重量调整账 stock_weight_adjustments(CLEAR，进入当前业务来源登记)
+--     与单重学习三表 goods_weight_profiles/observations/estimates(PRESERVE，随主档保留)；
+--     PRESERVE 仍为 102 张，CLEAR 恒等式基数 229→225。V745 之前的目录仍含 V442 七张表，
+--     本脚本不再为它们分类(与 V590/V677 删表同口径)，只支持 V745 及之后的目录清空。
 --   · V572 当前目录：CLEAR 276 张、PRESERVE 96 张；V560三张退料事实表、V561一张分批谱系表、V568一张让料补自制事实表、V569两张在途转拨事实表；V562至V567仅补列、函数、索引与守卫，V570仅新增权限与默认授权，V571前向补齐在途规则且不增加表，V572只补审计触发器不增加表。
 --   · V552 历史目录：CLEAR 269 张、PRESERVE 96 张（V547/V548 三张新表已计入；
 --     V549–V551 只改函数/视图，V552 只加权限码与默认授权）；下列历史说明用于旧版本兼容。
@@ -643,20 +648,25 @@ FROM (VALUES
 ) AS optional(table_name, disposition)
 WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
 
--- V442 measurement learning adds four business-derived projections/events and
--- four governed migration/unit-evidence tables. Keep the script usable before
--- and after V442, but reject a partially applied catalog.
+-- V442 unit governance survives as the unit measurement profile (V745 adds the
+-- mass unit code). The seven V442 capture-learning tables were retired by V745
+-- (ADR-135) and are no longer classified here.
 INSERT INTO reset_business_table_policy(table_name, disposition)
 SELECT optional.table_name, optional.disposition
 FROM (VALUES
-('legacy_measurement_exceptions', 'PRESERVE'),
-('legacy_measurement_profile_snapshots', 'PRESERVE'),
-('legacy_measurement_source_registry', 'PRESERVE'),
-('measurement_capture_decision_events', 'CLEAR'),
-('measurement_capture_evidence', 'CLEAR'),
-('measurement_capture_line_snapshots', 'CLEAR'),
-('measurement_capture_profiles', 'CLEAR'),
 ('unit_measurement_profiles', 'PRESERVE')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
+
+-- V745 仓库重量账与单重学习(ADR-135)：重量调整账是库存业务事实，随业务清空；
+-- 货品称重设置、称重观测与学习结果是主档附属知识，随主档保留(观测的来源单据清空后读侧显示「来源单据已清空」)。
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition
+FROM (VALUES
+('stock_weight_adjustments', 'CLEAR'),
+('goods_weight_profiles', 'PRESERVE'),
+('goods_weight_observations', 'PRESERVE'),
+('goods_weight_estimates', 'PRESERVE')
 ) AS optional(table_name, disposition)
 WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
 
@@ -749,7 +759,6 @@ DECLARE
     invalid_policy_tables TEXT;
     clear_count BIGINT;
     preserve_count BIGINT;
-    measurement_table_count BIGINT;
     v440_business_table_count BIGINT;
     v443_business_table_count BIGINT;
     v446_business_table_count BIGINT;
@@ -833,26 +842,6 @@ BEGIN
            count(*) FILTER (WHERE disposition = 'PRESERVE')
     INTO clear_count, preserve_count
     FROM reset_business_table_policy;
-
-    SELECT count(*)
-    INTO measurement_table_count
-    FROM reset_business_table_policy
-    WHERE table_name IN (
-        'legacy_measurement_exceptions',
-        'legacy_measurement_profile_snapshots',
-        'legacy_measurement_source_registry',
-        'measurement_capture_decision_events',
-        'measurement_capture_evidence',
-        'measurement_capture_line_snapshots',
-        'measurement_capture_profiles',
-        'unit_measurement_profiles'
-    );
-
-    IF measurement_table_count <> 8 THEN
-        RAISE EXCEPTION
-            'V443/V446 要求 V442 计量学习表完整存在，当前 %/8',
-            measurement_table_count;
-    END IF;
 
     SELECT count(*)
     INTO v440_business_table_count
@@ -1283,10 +1272,14 @@ BEGIN
         -- V734 领料申请 LQ 取号触发器按 ADR-106 标准模式重建: 不加表; 本迁移 662→663。
         (734, 663),
         -- V738 手工需求单多货品(ADR-130): 手工来源唯一索引拆成系统来源/手工货品行两条 + 一编号一分析触发器, 不加表; V735至V737 为并行会话在途号, 本工作树跳号; 本迁移 663→664(合并时按真实目录重算)。
-        (738, 664)
+        (738, 664),
+        -- V745 仓库重量账与单重学习(ADR-135): 退役 V442 七张表, 新增重量调整账(CLEAR)与单重学习三表(PRESERVE)。
+        -- 本工作树磁盘上另有并行会话未提交的 V735__draw_batch_no.sql(已应用到克隆库), 目录数出 666;
+        -- 已提交目录(无 V735)为 V745/665。合并时按 main 头重编号并按真实目录重算本对。
+        (745, 666)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V738完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669、V735至V737 跳号)，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V745完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669、V735至V737、V739至V744 跳号)，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -1481,7 +1474,12 @@ BEGIN
             ('preplan_aggregate_material_aliases', 712),
             ('preplan_aggregate_direct_transfer_slices', 715),
             ('preplan_make_public_claims', 722),
-            ('preplan_make_public_claim_cancellations', 722)
+            ('preplan_make_public_claim_cancellations', 722),
+            -- V745 仓库重量账与单重学习(ADR-135): 只有 CLEAR 的重量调整账计入恒等式扣减。
+            ('stock_weight_adjustments', 745),
+            ('goods_weight_profiles', 745),
+            ('goods_weight_observations', 745),
+            ('goods_weight_estimates', 745)
     )
     SELECT string_agg(required.table_name, ', ' ORDER BY required.table_name) FILTER (
                WHERE (to_regclass(format('public.%I', required.table_name)) IS NOT NULL)
@@ -1512,7 +1510,9 @@ BEGIN
        OR (applied_max_version BETWEEN 677 AND 685 AND preserve_count <> 98)
        OR (applied_max_version BETWEEN 686 AND 692 AND preserve_count <> 99)
        OR (applied_max_version BETWEEN 693 AND 710 AND preserve_count <> 100)
-       OR (applied_max_version >= 711 AND preserve_count <> 102)
+       OR (applied_max_version BETWEEN 711 AND 744 AND preserve_count <> 102)
+       -- V745 退役 V442 三张旧库计量证据表(-3)，新增单重学习三表(+3)：PRESERVE 仍为 102。
+       OR (applied_max_version >= 745 AND preserve_count <> 102)
        OR NOT (
            (v446_business_table_count = 0
                 AND v447_business_table_count = 0
@@ -1557,13 +1557,17 @@ BEGIN
            -- V500 eight value tables; V503 three source revision tables.
            -- V608 报销链路完整化：发票登记表 + 审批事件表进 current_operational_
            -- table_count 清单（clear_count 同步 +2，恒等式仍为 229）。
-           OR (applied_max_version>=500 AND v446_business_table_count=2
+           OR (applied_max_version BETWEEN 500 AND 744 AND v446_business_table_count=2
                 AND v447_business_table_count=5
                 AND clear_count-v454_celebration_table_count-v500_value_table_count-v503_source_revision_table_count-v506_opening_table_count-current_operational_table_count=229)
+           -- V745 退役 V442 四张 CLEAR 采集表(229→225)；新增的重量调整账在 current_operational_table_count 里扣减。
+           OR (applied_max_version>=745 AND v446_business_table_count=2
+                AND v447_business_table_count=5
+                AND clear_count-v454_celebration_table_count-v500_value_table_count-v503_source_revision_table_count-v506_opening_table_count-current_operational_table_count=225)
        ) THEN
         RAISE EXCEPTION
-            'V443/V446/V447 白名单数量异常：CLEAR %，PRESERVE %，V442表 %/8，V440表 %/6，V443表 %/1，V446表 %/2，V447表 %/5，V454表 %/1',
-            clear_count, preserve_count, measurement_table_count,
+            'V443/V446/V447 白名单数量异常：CLEAR %，PRESERVE %，V440表 %/6，V443表 %/1，V446表 %/2，V447表 %/5，V454表 %/1',
+            clear_count, preserve_count,
             v440_business_table_count, v443_business_table_count,
             v446_business_table_count, v447_business_table_count,
             v454_celebration_table_count;

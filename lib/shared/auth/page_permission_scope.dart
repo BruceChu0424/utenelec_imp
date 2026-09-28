@@ -300,6 +300,10 @@ PagePermissionScope? _warehouseScopeFor(String path, List<String> segments) {
     return _warehouseReportScope;
   }
   if (path == '/warehouse/shelf-labels') return _shelfLabelScope;
+  // 库存分析 (ADR-135) 与仓库报表同一张权限面 (stock_report:view/export)。
+  if (path == '/warehouse/insights') return _warehouseReportScope;
+  // 独立称重计数页挂库存详情面 (stock:view + 单重管理 stock:weight:manage)。
+  if (path == '/warehouse/weigh-count') return _stockItemScope;
   if (path == '/warehouse/subcontract-outbound' ||
       _isDescendant(path, '/warehouse/subcontract-outbound')) {
     return _subcontractOutboundScope;

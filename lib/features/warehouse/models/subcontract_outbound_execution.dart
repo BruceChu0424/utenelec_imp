@@ -32,6 +32,7 @@ String subcontractOutboundDraftFingerprint(SubcontractDocDetail document) {
           'unitRate': item.unitRate,
           'qty': item.qty,
           'weight': item.weight,
+          'qtyFromWeight': item.qtyFromWeight,
           'remark': item.remark,
         },
     ],

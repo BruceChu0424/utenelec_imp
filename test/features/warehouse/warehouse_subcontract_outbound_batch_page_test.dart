@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/cards/uten_card.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/widgets/warehouse_hierarchy_dropdown.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -20,6 +21,7 @@ import 'package:uten_imp/features/warehouse/pages/warehouse_outbound_task_center
 import 'package:uten_imp/features/warehouse/widgets/subcontract_outbound_detail_table.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'outbound_weight_fakes.dart';
 
 const _permissions = {
   Perm.subcontractOutboundView,
@@ -94,6 +96,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            fakeWeightRepositoryOverride(),
             apiClientProvider.overrideWithValue(api),
             masterNameServiceProvider.overrideWithValue(_Names(api)),
             currentPermissionsProvider.overrideWithValue(_permissions),
@@ -123,6 +126,37 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('实称重量列紧跟单位，录入的千克随草稿保存且不改数量', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _BatchApi();
+    await tester.pumpWidget(_app(api));
+    await tester.pumpAndSettle();
+    final grid = tester.widget<UtenEditableGrid<SubcontractOutboundTableRow>>(
+      find.byType(UtenEditableGrid<SubcontractOutboundTableRow>),
+    );
+    final order = grid.initialColumnOrder!;
+    expect(order.indexOf('weight'), order.indexOf('unit') + 1);
+    expect(find.text('实称重量(kg)'), findsOneWidget);
+    final table = tester.widget<SubcontractOutboundDetailTable>(
+      find.byType(SubcontractOutboundDetailTable),
+    );
+    final qtyBefore = table.rows.first.draft.qty.text;
+    await tester.enterText(
+      find.byKey(const ValueKey('weight-cell-input')).first,
+      '1500g',
+    );
+    await tester.pump();
+    expect(table.rows.first.draft.weight.kg, 1.5);
+    expect(table.rows.first.draft.qty.text, qtyBefore, reason: '数量不按称重改');
+    await _confirm(tester);
+    final items = (api.savedBodies.first['items'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(items.first['weight'], 1.5);
+    expect(items.first['qtyFromWeight'], isFalse);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('顶部卡片不含发出仓和备注，表内默认仓及备注按原单同步并准确提交', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1440, 1200));
@@ -310,6 +344,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          fakeWeightRepositoryOverride(),
           apiClientProvider.overrideWithValue(api),
           masterNameServiceProvider.overrideWithValue(_Names(api)),
           currentPermissionsProvider.overrideWithValue(_permissions),
@@ -481,6 +516,7 @@ Future<void> _confirm(WidgetTester tester) async {
 Widget _app(_BatchApi api, {Set<String> permissions = _permissions}) =>
     ProviderScope(
       overrides: [
+        fakeWeightRepositoryOverride(),
         apiClientProvider.overrideWithValue(api),
         masterNameServiceProvider.overrideWithValue(_Names(api)),
         currentPermissionsProvider.overrideWithValue(permissions),

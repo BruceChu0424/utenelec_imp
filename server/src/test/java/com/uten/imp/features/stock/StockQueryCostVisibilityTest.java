@@ -29,67 +29,45 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+/**
+ * 库存查询的成本脱敏 (goods:cost:view): 余额金额、即时库存台账金额 (含合计与 facet 的每一条 SQL)。
+ * 货品出入库流水的金额与往来方脱敏见 ledger.StockLedgerRowMaskingTest。
+ */
 class StockQueryCostVisibilityTest {
 
     private final StockBalanceRepository balanceRepo = mock(StockBalanceRepository.class);
-    private final StockMovementRepository movementRepo = mock(StockMovementRepository.class);
     private final EntityManager entityManager = mock(EntityManager.class);
 
     @Test
-    void viewerWithoutCostPermissionGetsNullBalanceAndMovementAmounts() {
+    void viewerWithoutCostPermissionGetsNullBalanceAmounts() {
         StockBalance balance = balance();
-        StockMovement movement = movement();
         when(balanceRepo.findAll(
                 org.mockito.ArgumentMatchers.<Specification<StockBalance>>any(),
                 any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(balance)));
-        when(movementRepo.findAll(
-                org.mockito.ArgumentMatchers.<Specification<StockMovement>>any(),
-                any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(movement)));
 
-        StockQueryService service = service(false);
-        var balanceRow = service.balances(null, null, 1, 20, null, null)
-                .getItems().getFirst();
-        var movementRow = service.movements(
-                        null, null, null, null, null, 1, 20, null, null)
+        var balanceRow = service(false).balances(null, null, 1, 20, null, null)
                 .getItems().getFirst();
 
         assertNull(balanceRow.getAmountLocal());
         assertTrue(balanceRow.isCostMasked());
         assertEquals(balance.getWeight(), balanceRow.getWeight());
-        assertNull(movementRow.getAmountLocal());
-        assertEquals(movement.getUnitId(), movementRow.getUnitId());
-        assertEquals(movement.getUnitRate(), movementRow.getUnitRate());
-        assertEquals(movement.getWeight(), movementRow.getWeight());
-        assertTrue(movementRow.isCostMasked());
+        assertTrue(balanceRow.isWeightEstimated());
     }
 
     @Test
-    void viewerWithCostPermissionKeepsBalanceAndMovementAmounts() {
+    void viewerWithCostPermissionKeepsBalanceAmounts() {
         StockBalance balance = balance();
-        StockMovement movement = movement();
         when(balanceRepo.findAll(
                 org.mockito.ArgumentMatchers.<Specification<StockBalance>>any(),
                 any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(balance)));
-        when(movementRepo.findAll(
-                org.mockito.ArgumentMatchers.<Specification<StockMovement>>any(),
-                any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(movement)));
 
-        StockQueryService service = service(true);
-        var balanceRow = service.balances(null, null, 1, 20, null, null)
-                .getItems().getFirst();
-        var movementRow = service.movements(
-                        null, null, null, null, null, 1, 20, null, null)
+        var balanceRow = service(true).balances(null, null, 1, 20, null, null)
                 .getItems().getFirst();
 
         assertEquals(balance.getAmountLocal(), balanceRow.getAmountLocal());
         assertFalse(balanceRow.isCostMasked());
-        assertEquals(movement.getAmountLocal(), movementRow.getAmountLocal());
-        assertEquals(movement.getWeight(), movementRow.getWeight());
-        assertFalse(movementRow.isCostMasked());
     }
 
     @Test
@@ -110,12 +88,7 @@ class StockQueryCostVisibilityTest {
         when(entityManager.createNativeQuery(anyString())).thenReturn(dataQuery, countQuery);
         when(dataQuery.setParameter(anyString(), any())).thenReturn(dataQuery);
         when(countQuery.setParameter(anyString(), any())).thenReturn(countQuery);
-        when(dataQuery.getResultList()).thenReturn(Collections.singletonList(new Object[]{
-                UUID.randomUUID(), UUID.randomUUID(), "五金", "M1", "C1", "螺丝", "S1",
-                "银色", "件", "外购", new BigDecimal("2.5"), new BigDecimal("10"),
-                new BigDecimal("999.99"), new BigDecimal("3"), "MAT-001", "五金件", "A-01",
-                new BigDecimal("4"), new BigDecimal("2")
-        }));
+        when(dataQuery.getResultList()).thenReturn(Collections.singletonList(instantRow(new BigDecimal("999.99"))));
         when(countQuery.getSingleResult()).thenReturn(1L);
 
         var row = service(false).instantInventory(
@@ -142,12 +115,7 @@ class StockQueryCostVisibilityTest {
         when(entityManager.createNativeQuery(anyString())).thenReturn(dataQuery, countQuery);
         when(dataQuery.setParameter(anyString(), any())).thenReturn(dataQuery);
         when(countQuery.setParameter(anyString(), any())).thenReturn(countQuery);
-        when(dataQuery.getResultList()).thenReturn(Collections.singletonList(new Object[]{
-                UUID.randomUUID(), UUID.randomUUID(), "五金", "M1", "C1", "螺丝", "S1",
-                "银色", "件", "外购", new BigDecimal("2.5"), new BigDecimal("10"),
-                new BigDecimal("123.45"), new BigDecimal("3"), "MAT-001", "五金件", "A-01",
-                new BigDecimal("4"), new BigDecimal("2")
-        }));
+        when(dataQuery.getResultList()).thenReturn(Collections.singletonList(instantRow(new BigDecimal("123.45"))));
         when(countQuery.getSingleResult()).thenReturn(1L);
 
         var row = service(true).instantInventory(
@@ -156,6 +124,11 @@ class StockQueryCostVisibilityTest {
 
         assertEquals(new BigDecimal("123.45"), row.getCostAmount());
         assertFalse(row.isCostMasked());
+        // 重量扩展列(ADR-135)追加在投影末尾, 按位置映射。
+        assertTrue(row.isWeightEstimated());
+        assertFalse(row.isWeightUnknown());
+        assertEquals(new BigDecimal("0.002500000000"), row.getUnitWeightKg());
+        assertEquals("YELLOW", row.getWeightTier());
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         // 同上：列表 + 计数 + 两条合计 + 归属 facet 两桶 + 颜色/系列/单位三列 facet
         // 共 9 条，成本口径（台账聚合而非主档单价×数量）全部一致。
@@ -173,7 +146,18 @@ class StockQueryCostVisibilityTest {
     private StockQueryService service(boolean canViewCost) {
         StockCostMasker masker = mock(StockCostMasker.class);
         when(masker.canView()).thenReturn(canViewCost);
-        return new StockQueryService(balanceRepo, movementRepo, entityManager, masker);
+        return new StockQueryService(balanceRepo, entityManager, masker);
+    }
+
+    /** 即时库存 SELECT 的一行 (前 19 列为原口径, 其后 5 列为 ADR-135 重量扩展)。 */
+    private static Object[] instantRow(BigDecimal costAmount) {
+        return new Object[]{
+                UUID.randomUUID(), UUID.randomUUID(), "五金", "M1", "C1", "螺丝", "S1",
+                "银色", "件", "外购", new BigDecimal("2.5"), new BigDecimal("10"),
+                costAmount, new BigDecimal("3"), "MAT-001", "五金件", "A-01",
+                new BigDecimal("4"), new BigDecimal("2"),
+                Boolean.TRUE, 0, 1, new BigDecimal("0.002500000000"), "YELLOW"
+        };
     }
 
     private static StockBalance balance() {
@@ -184,25 +168,8 @@ class StockQueryCostVisibilityTest {
         balance.setQty(new BigDecimal("10"));
         balance.setAmountLocal(new BigDecimal("123.45"));
         balance.setWeight(new BigDecimal("2.5"));
+        balance.setWeightEstimated(true);
         balance.setLastMovementDate(OffsetDateTime.now());
         return balance;
-    }
-
-    private static StockMovement movement() {
-        StockMovement movement = new StockMovement();
-        movement.setId(UUID.randomUUID());
-        movement.setTransactionDate(OffsetDateTime.now());
-        movement.setMovementType((short) 1);
-        movement.setSourceDocType("PURCHASE_RECEIPT");
-        movement.setSourceDocId(UUID.randomUUID());
-        movement.setGoodsId(UUID.randomUUID());
-        movement.setWarehouseId(UUID.randomUUID());
-        movement.setDirection((short) 1);
-        movement.setQty(new BigDecimal("10"));
-        movement.setUnitId(UUID.randomUUID());
-        movement.setUnitRate(new BigDecimal("2.500000"));
-        movement.setWeight(new BigDecimal("7.2500"));
-        movement.setAmountLocal(new BigDecimal("123.45"));
-        return movement;
     }
 }

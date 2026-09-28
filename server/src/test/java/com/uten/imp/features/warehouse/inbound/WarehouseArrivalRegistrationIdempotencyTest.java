@@ -114,6 +114,27 @@ class WarehouseArrivalRegistrationIdempotencyTest {
                 .isNotEqualTo(WarehouseArrivalRegistrationService.requestHash(changed));
     }
 
+    @Test
+    void canonicalHashIncludesWeighCountFlagOnlyWhenSet() {
+        WarehouseArrivalRegisterRequest unset = request(
+                "arrival-retry-key-006", "同一内容", new BigDecimal("120"),
+                new BigDecimal("2.5"), null);
+        WarehouseArrivalRegisterRequest explicitFalse = request(
+                "arrival-retry-key-006", "同一内容", new BigDecimal("120"),
+                new BigDecimal("2.5"), Boolean.FALSE);
+        WarehouseArrivalRegisterRequest fromWeight = request(
+                "arrival-retry-key-006", "同一内容", new BigDecimal("120"),
+                new BigDecimal("2.5"), Boolean.TRUE);
+
+        // 不勾「按称重改数量」的老请求哈希逐字不变; 勾了是另一份登记事实, 同键重发要 409。
+        assertThat(WarehouseArrivalRegistrationService.requestHash(unset))
+                .isEqualTo(WarehouseArrivalRegistrationService.requestHash(explicitFalse))
+                .isEqualTo(WarehouseArrivalRegistrationService.requestHash(request(
+                        "arrival-retry-key-006", "同一内容", new BigDecimal("120"),
+                        new BigDecimal("2.5"))))
+                .isNotEqualTo(WarehouseArrivalRegistrationService.requestHash(fromWeight));
+    }
+
     private static WarehouseArrivalRegisterRequest request(
             String key, String remark, BigDecimal qty) {
         return request(key, remark, qty, null);
@@ -121,6 +142,11 @@ class WarehouseArrivalRegistrationIdempotencyTest {
 
     private static WarehouseArrivalRegisterRequest request(
             String key, String remark, BigDecimal qty, BigDecimal weight) {
+        return request(key, remark, qty, weight, null);
+    }
+
+    private static WarehouseArrivalRegisterRequest request(
+            String key, String remark, BigDecimal qty, BigDecimal weight, Boolean qtyFromWeight) {
         return new WarehouseArrivalRegisterRequest(
                 key,
                 "PURCHASE",
@@ -138,7 +164,7 @@ class WarehouseArrivalRegistrationIdempotencyTest {
                         UUID.fromString("00000000-0000-0000-0000-000000000107"),
                         BigDecimal.ONE,
                         weight,
-                        "PO-001")));
+                        "PO-001", null, null, qtyFromWeight)));
     }
 
     private static final class ReplayJdbcTemplate extends JdbcTemplate {

@@ -37,7 +37,7 @@ class SubcontractOutboundWakeHookContractTest {
         assertThat(branch).isGreaterThan(stock.indexOf("upsertBalance("));
         assertThat(wake).isGreaterThan(branch);
         assertThat(stock.substring(branch, wake)).doesNotContain("return ");
-        assertThat(stock.indexOf("return m.getId();", wake)).isGreaterThan(wake);
+        assertThat(stock.indexOf("return new PostedMovement(m.getId(),", wake)).isGreaterThan(wake);
         assertThat(stock).contains("void beforeCommit(boolean readOnly)");
         int delivery = stock.indexOf("wakeOutboundAfterStockIn(");
         assertThat(stock.indexOf("wakeOutboundAfterStockIn(", delivery + 1)).isEqualTo(-1);

@@ -121,6 +121,94 @@ class ProductionDrawDiscoveryBatchContractTest {
         rejected(new Request(KEY,List.of(),List.of(new Discovery(REQUEST_A,0L,null)),null));
     }
 
+    @Test void weighedMaterialsAndExistingDrawLinesJoinTheHashOnlyWhenEntered() {
+        Material line=material(GOODS_A,null,LEAF_A,"2");
+        Request plain=new Request(KEY,List.of(DRAW_A),List.of(discovery(REQUEST_A,1,line)),null);
+        Request zero=new Request(KEY,List.of(DRAW_A),List.of(new Discovery(REQUEST_A,1L,List.of(line),
+                List.of(new IssueWeight(GOODS_A,null,LEAF_A,BigDecimal.ZERO,false)))),null,
+                List.of(new com.uten.imp.features.stock.dto.StockDocIssueBatchRequest.ItemWeight(DRAW_B,null,null)));
+        assertEquals(hash(plain),hash(zero),"没称(空或 0)的条目丢弃, 哈希与原口径一致");
+
+        Request weighed=new Request(KEY,List.of(DRAW_A),List.of(new Discovery(REQUEST_A,1L,List.of(line),
+                List.of(new IssueWeight(GOODS_A,null,LEAF_A,new BigDecimal("1.50"),null)))),null);
+        Request sameScale=new Request(KEY,List.of(DRAW_A),List.of(new Discovery(REQUEST_A,1L,List.of(line),
+                List.of(new IssueWeight(GOODS_A,null,LEAF_A,new BigDecimal("1.5000"),false)))),null);
+        assertNotEquals(hash(plain),hash(weighed));
+        assertEquals(hash(weighed),hash(sameScale));
+        assertNotEquals(hash(weighed),hash(new Request(KEY,List.of(DRAW_A),List.of(new Discovery(REQUEST_A,1L,List.of(line),
+                List.of(new IssueWeight(GOODS_A,null,LEAF_A,new BigDecimal("1.5"),true)))),null)));
+
+        UUID item=id(30);
+        Request itemWeighed=new Request(KEY,List.of(DRAW_A),List.of(discovery(REQUEST_A,1,line)),null,
+                List.of(new com.uten.imp.features.stock.dto.StockDocIssueBatchRequest.ItemWeight(item,new BigDecimal("3"),null)));
+        assertNotEquals(hash(plain),hash(itemWeighed));
+        Request normalized=ProductionDrawDiscoveryBatchService.normalize(itemWeighed);
+        assertEquals(new BigDecimal("3.0000"),normalized.weights().getFirst().weightKg());
+        assertEquals(Boolean.FALSE,normalized.weights().getFirst().qtyFromWeight());
+    }
+
+    @Test void weightsMustNameAnActualMaterialOfTheRequestOnce() {
+        Material line=material(GOODS_A,COLOR,LEAF_A,"2");
+        rejected(new Request(KEY,List.of(),List.of(new Discovery(REQUEST_A,0L,List.of(line),
+                List.of(new IssueWeight(GOODS_A,COLOR,LEAF_B,BigDecimal.ONE,null)))),null));
+        rejected(new Request(KEY,List.of(),List.of(new Discovery(REQUEST_A,0L,List.of(line),
+                List.of(new IssueWeight(GOODS_A,null,LEAF_A,BigDecimal.ONE,null)))),null));
+        rejected(new Request(KEY,List.of(),List.of(new Discovery(REQUEST_A,0L,List.of(line),
+                List.of(new IssueWeight(GOODS_A,COLOR,LEAF_A,BigDecimal.ONE,null),
+                        new IssueWeight(GOODS_A,COLOR,LEAF_A,BigDecimal.TEN,null)))),null));
+        rejected(new Request(KEY,List.of(),List.of(new Discovery(REQUEST_A,0L,List.of(line),
+                List.of(new IssueWeight(GOODS_A,COLOR,LEAF_A,new BigDecimal("-1"),null)))),null));
+        rejected(new Request(KEY,List.of(),List.of(new Discovery(REQUEST_A,0L,List.of(line),
+                List.of(new IssueWeight(GOODS_A,COLOR,LEAF_A,new BigDecimal("0.00001"),null)))),null));
+        UUID item=id(31);
+        rejected(new Request(KEY,List.of(DRAW_A),List.of(),null,List.of(
+                new com.uten.imp.features.stock.dto.StockDocIssueBatchRequest.ItemWeight(item,BigDecimal.ONE,null),
+                new com.uten.imp.features.stock.dto.StockDocIssueBatchRequest.ItemWeight(item,BigDecimal.TEN,null))));
+
+        Request accepted=ProductionDrawDiscoveryBatchService.normalize(new Request(KEY,List.of(),List.of(
+                new Discovery(REQUEST_A,0L,List.of(line),List.of(new IssueWeight(GOODS_A,COLOR,LEAF_A,new BigDecimal("0.25"),null)))),null));
+        IssueWeight weight=accepted.discoveries().getFirst().weights().getFirst();
+        assertEquals(new BigDecimal("0.2500"),weight.weightKg());
+        assertEquals(Boolean.FALSE,weight.qtyFromWeight());
+    }
+
+    /**
+     * 客户端 /issue-discovery-batch 请求体原样反序列化(未知字段即失败; 线上 Jackson 静默丢弃未知字段):
+     * 顶层 weights 是已有领料明细的重量, discoveries[].weights 是待确认材料的重量, 两者都进哈希;
+     * 不带这两个键 = 都没称, 哈希与原口径一致(lib/features/warehouse/repositories/production_draw_task_repository.dart)。
+     */
+    @Test void clientJsonBindsTopLevelAndDiscoveryWeightsAndMissingKeysMeanUnweighed() throws Exception {
+        var strict=com.fasterxml.jackson.databind.json.JsonMapper.builder().findAndAddModules()
+                .enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
+        UUID item=id(32);
+        String discovery="{\"requestId\":\"%s\",\"expectedVersion\":1,"
+                +"\"items\":[{\"goodsId\":\"%s\",\"colorId\":null,\"unitId\":\"%s\",\"warehouseId\":\"%s\",\"qty\":\"2\"}]%s}";
+        String materialWeights=(",\"weights\":[{\"goodsId\":\"%s\",\"colorId\":null,\"warehouseId\":\"%s\","
+                +"\"weightKg\":0.85,\"qtyFromWeight\":true}]").formatted(GOODS_A,LEAF_A);
+        Request weighed=strict.readValue("""
+                {"idempotencyKey":"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed","docIds":["%s"],
+                 "discoveries":[%s],
+                 "weights":[{"itemId":"%s","weightKg":1.25,"qtyFromWeight":false}],"reason":"交接"}
+                """.formatted(DRAW_A,discovery.formatted(REQUEST_A,GOODS_A,UNIT,LEAF_A,materialWeights),item),
+                Request.class);
+        Request normalized=ProductionDrawDiscoveryBatchService.normalize(weighed);
+        assertEquals(new BigDecimal("1.2500"),normalized.weights().getFirst().weightKg());
+        assertEquals(item,normalized.weights().getFirst().itemId());
+        IssueWeight material=normalized.discoveries().getFirst().weights().getFirst();
+        assertEquals(new BigDecimal("0.8500"),material.weightKg());
+        assertEquals(Boolean.TRUE,material.qtyFromWeight());
+
+        Request plain=strict.readValue("""
+                {"idempotencyKey":"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed","docIds":["%s"],"discoveries":[%s],"reason":"交接"}
+                """.formatted(DRAW_A,discovery.formatted(REQUEST_A,GOODS_A,UNIT,LEAF_A,"")),Request.class);
+        assertNull(plain.weights());
+        assertNull(plain.discoveries().getFirst().weights());
+        Material line=material(GOODS_A,null,LEAF_A,"2");
+        assertEquals(hash(new Request("1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",List.of(DRAW_A),
+                List.of(discovery(REQUEST_A,1,line)),"交接")),hash(plain));
+        assertNotEquals(hash(plain),hash(weighed));
+    }
+
     private static Request request(UUID draw,UUID requestId,long version,Material material,String reason) {
         return new Request(KEY,List.of(draw),List.of(discovery(requestId,version,material)),reason);
     }

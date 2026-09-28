@@ -1,5 +1,7 @@
-// 库存查询模型（余额行 + 流水行），对应后端 BalanceRow / MovementRow。
-// 名称（仓库/货品/颜色）前端按 id 解析。日期：OffsetDateTime → ISO 字符串。
+// 库存查询模型 (余额行 + 即时库存行), 对应后端 BalanceRow / InstantInventoryRow。
+// 名称 (仓库/货品/颜色) 余额行由前端按 id 解析。日期: OffsetDateTime → ISO 字符串。
+// 重量一律千克 (ADR-135): null = 没称/未知, 绝不当 0; weightEstimated = 含估算 (显示「≈」)。
+// 出入库流水已并入单货品库存面板 (lib/shared/stock_ledger), 本文件不再有流水行。
 
 class BalanceRow {
   const BalanceRow({
@@ -10,6 +12,7 @@ class BalanceRow {
     this.qty,
     this.amountLocal,
     this.weight,
+    this.weightEstimated = false,
     this.lastMovementDate,
   });
 
@@ -19,7 +22,12 @@ class BalanceRow {
   final String? colorId;
   final double? qty;
   final double? amountLocal;
+
+  /// 库存重量 (千克); null = 未知。
   final double? weight;
+
+  /// 库存重量含估算 (按库存均重/单重估算过)。
+  final bool weightEstimated;
   final String? lastMovementDate;
 
   factory BalanceRow.fromJson(Map<String, dynamic> json) => BalanceRow(
@@ -30,6 +38,7 @@ class BalanceRow {
     qty: (json['qty'] as num?)?.toDouble(),
     amountLocal: (json['amountLocal'] as num?)?.toDouble(),
     weight: (json['weight'] as num?)?.toDouble(),
+    weightEstimated: json['weightEstimated'] == true,
     lastMovementDate: json['lastMovementDate'] as String?,
   );
 }
@@ -44,6 +53,7 @@ class StockBalanceAdjustmentResult {
     this.adjustedByEmployeeId,
     required this.adjustedByName,
     required this.adjustedAt,
+    this.afterWeightKg,
   });
 
   final String documentId;
@@ -55,6 +65,9 @@ class StockBalanceAdjustmentResult {
   final String adjustedByName;
   final String adjustedAt;
 
+  /// 本次一并定下的库存重量 (千克); null = 本次没有改重量。
+  final double? afterWeightKg;
+
   factory StockBalanceAdjustmentResult.fromJson(Map<String, dynamic> json) =>
       StockBalanceAdjustmentResult(
         documentId: json['documentId'] as String,
@@ -65,83 +78,8 @@ class StockBalanceAdjustmentResult {
         adjustedByEmployeeId: json['adjustedByEmployeeId'] as String?,
         adjustedByName: json['adjustedByName'] as String? ?? '',
         adjustedAt: json['adjustedAt'] as String? ?? '',
+        afterWeightKg: (json['afterWeightKg'] as num?)?.toDouble(),
       );
-}
-
-class MovementRow {
-  const MovementRow({
-    required this.id,
-    this.transactionDate,
-    this.movementType,
-    this.sourceDocType,
-    this.sourceDocId,
-    this.goodsId,
-    this.colorId,
-    this.warehouseId,
-    this.direction,
-    this.qty,
-    this.unitId,
-    this.unitRate,
-    this.weight,
-    this.amountLocal,
-    this.remark,
-  });
-
-  final String id;
-  final String? transactionDate;
-  final int? movementType;
-  final String? sourceDocType;
-  final String? sourceDocId;
-  final String? goodsId;
-  final String? colorId;
-  final String? warehouseId;
-  final int? direction;
-  final double? qty;
-  final String? unitId;
-  final double? unitRate;
-  final double? weight;
-  final double? amountLocal;
-  final String? remark;
-
-  factory MovementRow.fromJson(Map<String, dynamic> json) => MovementRow(
-    id: json['id'] as String,
-    transactionDate: json['transactionDate'] as String?,
-    movementType: (json['movementType'] as num?)?.toInt(),
-    sourceDocType: json['sourceDocType'] as String?,
-    sourceDocId: json['sourceDocId'] as String?,
-    goodsId: json['goodsId'] as String?,
-    colorId: json['colorId'] as String?,
-    warehouseId: json['warehouseId'] as String?,
-    direction: (json['direction'] as num?)?.toInt(),
-    qty: (json['qty'] as num?)?.toDouble(),
-    unitId: json['unitId'] as String?,
-    unitRate: (json['unitRate'] as num?)?.toDouble(),
-    weight: (json['weight'] as num?)?.toDouble(),
-    amountLocal: (json['amountLocal'] as num?)?.toDouble(),
-    remark: json['remark'] as String?,
-  );
-}
-
-/// movement_type 中文（1采购入 2采购退 3销售出 4销售退 5领料 6退料 7调拨入 8调拨出
-/// 9盘盈 10盘亏 11其它入 12其它出 13产成品进仓 14产成品出仓）。
-String movementTypeLabel(int? t) {
-  const m = {
-    1: '采购入库',
-    2: '采购退货',
-    3: '销售出库',
-    4: '销售退货',
-    5: '生产领料',
-    6: '生产退料',
-    7: '调拨入',
-    8: '调拨出',
-    9: '盘盈入',
-    10: '盘亏出',
-    11: '其它入',
-    12: '其它出',
-    13: '产成品进仓',
-    14: '产成品出仓',
-  };
-  return t == null ? '—' : (m[t] ?? '类型$t');
 }
 
 /// 即时库存行（对标老系统「即时库存」窗口），对应后端 InstantInventoryRow。
@@ -159,6 +97,10 @@ class InstantInventoryRow {
     this.unitName,
     this.remark,
     this.weight,
+    this.weightEstimated = false,
+    this.weightUnknown = false,
+    this.unitWeightKg,
+    this.weightTier,
     this.qty,
     this.costAmount,
     this.moreQty,
@@ -181,7 +123,20 @@ class InstantInventoryRow {
   final String? colorName; // 颜色
   final String? unitName; // 单位
   final String? remark; // 备注（老库 B_Goods.Paper，如 外购）
-  final double? weight; // 库存重量
+  /// 库存重量 (千克, 多仓合计); null = 有维度重量未知 (显示「未称」, 不当 0)。
+  final double? weight;
+
+  /// 库存重量含估算 (显示「≈」)。
+  final bool weightEstimated;
+
+  /// 本行重量未知 (有库存但没称过)。
+  final bool weightUnknown;
+
+  /// 当前学到的单重 (千克/基本单位); 本页不显示, 供流水/分析口径对齐。
+  final double? unitWeightKg;
+
+  /// 单重可靠度 GREEN / YELLOW / RED。
+  final String? weightTier;
   final double? qty; // 库存数量
   /// 当前筛选仓范围内 stock_balances.amount_local 的库存台账金额聚合。
   ///
@@ -214,6 +169,10 @@ class InstantInventoryRow {
         unitName: json['unitName'] as String?,
         remark: json['remark'] as String?,
         weight: (json['weight'] as num?)?.toDouble(),
+        weightEstimated: json['weightEstimated'] == true,
+        weightUnknown: json['weightUnknown'] == true,
+        unitWeightKg: (json['unitWeightKg'] as num?)?.toDouble(),
+        weightTier: json['weightTier'] as String?,
         qty: (json['qty'] as num?)?.toDouble(),
         costAmount: (json['costAmount'] as num?)?.toDouble(),
         moreQty: (json['moreQty'] as num?)?.toDouble(),

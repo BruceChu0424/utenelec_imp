@@ -9,6 +9,11 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.StockDocument;
 import com.uten.imp.features.stock.StockDocumentItem;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.features.stock.weight.CapturedWeight;
+import com.uten.imp.features.stock.weight.GoodsWeightObservationService;
+import com.uten.imp.features.stock.weight.SourceKind;
+import com.uten.imp.features.stock.weight.WeightMath;
+import com.uten.imp.features.stock.weight.WeightSource;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -26,15 +31,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** Actual receiving moves physical stock and the exact original material rights together. */
+/**
+ * Actual receiving moves physical stock and the exact original material rights together.
+ *
+ * <p>重量(ADR-135 §3.9): 收料时实称的行登记一次退料称重观测(往来方 = 退料车间), 红冲时标成已红冲。
+ */
 @Service
 @RequiredArgsConstructor
 public class ProductionMaterialReturnReceiptService {
+    private static final String SOURCE_DOC_TYPE = "STOCK_DOC";
+
     private final EntityManager em;
     private final StockService stock;
     private final ProductionMaterialStockLedgerService ledger;
     private final SecurityContextCurrentUser user;
     private final TxSessionVars tx;
+    private final GoodsWeightObservationService weightObservations;
 
     /** The document service has acquired the merged source/destination footprint and document locks. */
     @Transactional(propagation = Propagation.MANDATORY)
@@ -56,19 +68,28 @@ public class ProductionMaterialReturnReceiptService {
     private void receive(StockDocument document, List<StockDocumentItem> items,
             Map<UUID, Source> sources, List<ProductionMaterialStockLedgerService.MaterialLine> issued, UUID actor) {
         Map<UUID, UUID> issueMovements = new LinkedHashMap<>();
+        // ADR-135: 仓库收料确认时逐行实称的重量; 直送退回的调入腿沿用调出腿的重量(库存账 COUNTERPART)。
+        Map<UUID, BigDecimal> receivedWeights = receivedWeights(document.getId());
+        OffsetDateTime observedAt = OffsetDateTime.now();
         for (StockDocumentItem item : items) {
             Source source = sources.get(item.getId());
+            CapturedWeight received = CapturedWeight.measured(receivedWeights.get(item.getId()));
+            // 带着实称重量的那笔流水: 领料退回是退料入库本身, 直送退回是线边仓调出腿(调入腿沿用它的重量)。
+            StockService.PostedMovement weighed;
             if (source.issuePosting() != null) {
-                issueMovements.put(item.getId(), move(document, item, source, document.getWarehouseId(),
-                        (short) 6, StockService.DIR_IN, WorkshopReturnKind.RETURN_IN, null));
+                weighed = move(document, item, source, document.getWarehouseId(),
+                        (short) 6, StockService.DIR_IN, WorkshopReturnKind.RETURN_IN, null, received);
+                issueMovements.put(item.getId(), weighed.movementId());
             } else {
                 prepare(source.requestItem(), null, actor);
-                UUID outgoing = move(document, item, source, source.warehouse(), (short) 8,
-                        StockService.DIR_OUT, WorkshopReturnKind.DIRECT_OUT, null);
+                weighed = move(document, item, source, source.warehouse(), (short) 8,
+                        StockService.DIR_OUT, WorkshopReturnKind.DIRECT_OUT, null, received);
+                UUID outgoing = weighed.movementId();
                 UUID incoming = move(document, item, source, document.getWarehouseId(), (short) 7,
-                        StockService.DIR_IN, WorkshopReturnKind.DIRECT_IN, outgoing);
+                        StockService.DIR_IN, WorkshopReturnKind.DIRECT_IN, outgoing, null).movementId();
                 complete(source.requestItem(), null, incoming, outgoing, actor);
             }
+            observeReturn(document, item, weighed, actor, observedAt);
         }
         if (issued.isEmpty()) return;
         var result = ledger.goodReturn(document.getId(), document.getWarehouseId(), issued, actor);
@@ -111,12 +132,15 @@ public class ProductionMaterialReturnReceiptService {
                 em.createNativeQuery("SELECT fn_prepare_reverse_workshop_return_custody(:request,NULL,:actor)")
                         .setParameter("request", source.requestItem()).setParameter("actor", actor).getSingleResult();
             }
+            // 红冲两腿都不带重量: 库存账按同一来源行的原流水镜像回去; 本行的退料称重观测标成已红冲。
             UUID incomingCounter = move(document, item, source, original.warehouse(),
                     (short) (wasIssued ? 6 : 7), StockService.DIR_OUT,
                     wasIssued ? WorkshopReturnKind.RETURN_REVERSE : WorkshopReturnKind.DIRECT_IN_REVERSE,
-                    original.id());
+                    original.id(), null).movementId();
             UUID outgoingCounter = wasIssued ? null : move(document, item, source, source.warehouse(),
-                    (short) 8, StockService.DIR_IN, WorkshopReturnKind.DIRECT_OUT_REVERSE, incomingCounter);
+                    (short) 8, StockService.DIR_IN, WorkshopReturnKind.DIRECT_OUT_REVERSE, incomingCounter, null)
+                    .movementId();
+            weightObservations.reverseBySourceItem(SOURCE_DOC_TYPE, item.getId(), SourceKind.RETURN);
             em.createNativeQuery("SELECT fn_reverse_workshop_return_custody(:request,:incoming,:outgoing,:event,:actor)")
                     .setParameter("request", source.requestItem()).setParameter("incoming", incomingCounter)
                     .setParameter("outgoing", outgoingCounter)
@@ -217,14 +241,49 @@ public class ProductionMaterialReturnReceiptService {
                 .setParameter("outgoing", outgoing).setParameter("actor", actor).getResultList();
     }
 
-    private UUID move(StockDocument document, StockDocumentItem item, Source source, UUID warehouse,
-            short type, short direction, WorkshopReturnKind kind, UUID linkedMovement) {
+    private StockService.PostedMovement move(StockDocument document, StockDocumentItem item, Source source,
+            UUID warehouse, short type, short direction, WorkshopReturnKind kind, UUID linkedMovement,
+            CapturedWeight weight) {
         OffsetDateTime date = document.getBillDate() == null ? OffsetDateTime.now()
                 : document.getBillDate().atStartOfDay(BusinessTime.ZONE).toOffsetDateTime();
-        return stock.recordMovement(new StockService.MovementRequest(date, type, "STOCK_DOC", document.getId(),
+        return stock.recordMovement(new StockService.MovementRequest(date, type, SOURCE_DOC_TYPE, document.getId(),
                 item.getId(), item.getGoodsId(), item.getColorId(), warehouse, direction, baseQty(item),
-                item.getUnitId(), item.getUnitRate(), null, item.getRemark(), item.getWeight(), null,
+                item.getUnitId(), item.getUnitRate(), null, item.getRemark(), weight,
                 new InventoryMovementCostReference.WorkshopReturn(source.requestItem(), kind, linkedMovement)));
+    }
+
+    /**
+     * 收料实称的一行登记退料称重观测(ADR-135 §3.9, 核对角色): 只收库存账定为实称的流水, 往来方是退料车间
+     * (退料单的部门), 幂等键 'RETURN:' + 流水 id。按重量计的货品、行单位是重量单位等由观测服务自己跳过。
+     */
+    private void observeReturn(StockDocument document, StockDocumentItem item, StockService.PostedMovement weighed,
+            UUID actor, OffsetDateTime observedAt) {
+        if (weighed == null || weighed.weightSource() != WeightSource.MEASURED
+                || !WeightMath.positive(weighed.weightKg())) {
+            return;
+        }
+        weightObservations.record(new GoodsWeightObservationService.ObservationCommand(
+                item.getGoodsId(), item.getColorId(), document.getWarehouseId(), SourceKind.RETURN, baseQty(item),
+                weighed.weightKg(), null, "WORKSHOP", document.getDepartmentId(), SOURCE_DOC_TYPE,
+                document.getId(), item.getId(), weighed.movementId(), "RETURN:" + weighed.movementId(),
+                observedAt, null, null, null, false, item.getUnitId(), false, null, actor));
+    }
+
+    /**
+     * 收料确认记录上的逐行实称重量(千克), 键为退料单明细 id; 没称的行不在里面。
+     * 列 line_weights 为 JSONB 对象 {"明细id": 千克数}, 由收料确认一次写定(ADR-135 §3.9)。
+     */
+    private Map<UUID, BigDecimal> receivedWeights(UUID document) {
+        Map<UUID, BigDecimal> result = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT CAST(entry.key AS uuid), CAST(entry.value AS numeric)
+                FROM production_material_return_receiving_confirmations confirmation
+                CROSS JOIN LATERAL jsonb_each_text(confirmation.line_weights) entry
+                WHERE confirmation.stock_document_id=:document
+                """).setParameter("document", document))) {
+            if (row[0] != null && row[1] != null) result.put((UUID) row[0], (BigDecimal) row[1]);
+        }
+        return result;
     }
 
     private static BigDecimal baseQty(StockDocumentItem item) {

@@ -111,6 +111,11 @@ class StockDocItem {
     this.executionSegmentSalesAllocationId,
     this.sourceDailyReportItemId,
     this.sourceDocNo,
+    this.qtyFromWeight = false,
+    this.countWeight,
+    this.bookWeight,
+    this.issuedWeightKg,
+    this.issuedWeightEstimated = false,
   });
   final String? id;
   final int? lineNo;
@@ -122,7 +127,25 @@ class StockDocItem {
   final double? baseQty;
   final double? price;
   final double? amountLocal;
+
+  /// 本行实称重量 (千克, ADR-135); null = 没称。
   final double? weight;
+
+  /// 本行数量是按称重折算的 (盘点时指实盘数量; 不参与单重学习)。
+  final bool qtyFromWeight;
+
+  /// 盘点实盘重量 (千克, 可选; 只有 CHECK 行有)。
+  final double? countWeight;
+
+  /// 盘点保存时的账面重量快照 (千克, 只读; null = 账面重量未知)。
+  final double? bookWeight;
+
+  /// 已出/已收重量 (千克, 服务端按本行库存流水累计, 恒为正数或 0): 领料行 = 发出减取消出库,
+  /// 生产退料行 = 实收减红冲; 其余单据为 null; 有任一笔重量未知或还没有流水时也为 null。
+  final double? issuedWeightKg;
+
+  /// 已出库重量里含估算 (显示「≈」)。
+  final bool issuedWeightEstimated;
   final double? surplusQty;
   final double? countQty;
   final String? place;
@@ -169,6 +192,11 @@ class StockDocItem {
     executionSegmentSalesAllocationId:
         json['executionSegmentSalesAllocationId'] as String?,
     sourceDailyReportItemId: json['sourceDailyReportItemId'] as String?,
+    qtyFromWeight: json['qtyFromWeight'] == true,
+    countWeight: (json['countWeight'] as num?)?.toDouble(),
+    bookWeight: (json['bookWeight'] as num?)?.toDouble(),
+    issuedWeightKg: (json['issuedWeightKg'] as num?)?.toDouble(),
+    issuedWeightEstimated: json['issuedWeightEstimated'] == true,
   );
 }
 

@@ -23,6 +23,7 @@ import '../../../components/layout/uten_sticky_header.dart';
 import '../../../components/layout/uten_table_column_kit.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/measurement/weight_unit.dart';
 import '../models/master_facet.dart';
 
 /// Actual table selection and foreground for custom cell builders.
@@ -94,8 +95,10 @@ class MasterColumnDef<T> {
   /// 默认 false，既有列一字不变。
   final bool fillsCellHeight;
 
-  /// 列类型，对齐后端 ReportColumn.type：text / date / number / money / bool。
-  /// 用于决定排序菜单文案（date=从远到近/从近到远，数值=从小到大/从大到小）。
+  /// 列类型，对齐后端 ReportColumn.type：text / date / number / money / bool /
+  /// count / weight。用于决定排序菜单文案 (date=从远到近/从近到远, 数值=从小到大/
+  /// 从大到小) 与就地排序口径 (number/money/count 按数值; weight 按换算成千克后的值,
+  /// 显示文本可带单位与「≈」, 「未称」排末尾)。
   final String type;
 
   /// 该列是否允许点表头排序（日期/金额/数量等可排序列置 true）。
@@ -112,6 +115,15 @@ class MasterColumnDef<T> {
   /// 单元格语义底色（如待处理步骤用浅警示色）；null = 跟随所在行底色。
   /// 选中行仍由表格统一使用深绿高亮，避免颜色叠加后文字对比不足。
   final Color? Function(BuildContext context, T item)? cellColor;
+}
+
+/// 按数值排序的列类型 (与后端 ReportColumn.type 同名; weight 另按千克换算)。
+const Set<String> _numericColumnTypes = {'number', 'money', 'count', 'weight'};
+
+/// 重量列显示文本 (如「≈3.52 t」「850 g」) -> 千克; 不是重量 (如「未称」) 返回 null。
+double? _weightSortValue(String text) {
+  final plain = text.replaceAll('≈', '').trim();
+  return parseWithSuffix(plain, WeightUnit.kg)?.kg;
 }
 
 /// 一个可折叠的「前导分组」：渲染在表头之下、主数据行之上（如货品页的「禁用货品」
@@ -1506,19 +1518,26 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (sortKey != null && widget.onSortChange == null) {
       final def = _columnByKey[sortKey];
       if (def != null && def.sortable) {
-        final numeric = def.type == 'number' || def.type == 'money';
+        final numeric = _numericColumnTypes.contains(def.type);
+        final weight = def.type == 'weight';
         final asc = _localSortAscending;
         int compare(T a, T b) {
           final left = def.value(a)?.trim() ?? '';
           final right = def.value(b)?.trim() ?? '';
-          // 空值/「—」恒排末尾，不随升降序翻到最前。
-          final leftBlank = left.isEmpty || left == '—';
-          final rightBlank = right.isEmpty || right == '—';
+          // 空值/「—」恒排末尾，不随升降序翻到最前；重量列的「未称」同样视为空。
+          bool blank(String text) =>
+              text.isEmpty ||
+              text == '—' ||
+              (weight && _weightSortValue(text) == null);
+          final leftBlank = blank(left);
+          final rightBlank = blank(right);
           if (leftBlank && rightBlank) return 0;
           if (leftBlank) return 1;
           if (rightBlank) return -1;
           int base;
-          if (numeric) {
+          if (weight) {
+            base = _weightSortValue(left)!.compareTo(_weightSortValue(right)!);
+          } else if (numeric) {
             final x = double.tryParse(left.replaceAll(',', ''));
             final y = double.tryParse(right.replaceAll(',', ''));
             base = x == null || y == null

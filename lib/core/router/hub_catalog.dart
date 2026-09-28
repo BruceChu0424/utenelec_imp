@@ -38,6 +38,9 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     RoutePath.stockDocNew('CHECK'),
     RouteName.stockInstantInventory,
     RouteName.warehouseShelfLabels,
+    // ADR-135：库存分析 (stock_report:view) + 独立称重计数 (stock:view)。
+    RouteName.warehouseInsights,
+    RouteName.warehouseWeighCount,
     '${RouteName.warehouseReport}/detail',
     '${RouteName.warehouseReport}/summary',
   ],

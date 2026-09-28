@@ -55,17 +55,41 @@ class SalesShipmentWarehouseReservationSqlContractTest {
     /**
      * 出库事件必须带上库位证据；退回 6 参重载会让「实际库位号」静默丢失，
      * 而且 V582 的取证触发器只认挂在 SHIPPED 事件上的库位。
+     * ADR-135：同一条事件还要带出库实称重量(line_weights), 过账用的是同一份 lineWeights。
      */
     @Test
     void outboundEventCarriesTheReviewedStockPlaces() throws Exception {
         String source = service();
         int confirm = source.indexOf("public ShipmentDetail transitionWarehouseWork(");
         int event = source.indexOf("recordWarehouseEvent(", confirm);
-        int end = source.indexOf("approveLocked(s, WAREHOUSE_WORK_AUTHORITY)", event);
+        int end = source.indexOf("approveLocked(s, lineWeights, WAREHOUSE_WORK_AUTHORITY)", event);
 
         assertThat(end).isGreaterThan(event);
         assertThat(source.substring(event, end))
                 .contains("SalesShipment.WORK_SHIPPED")
-                .contains("stockPlaces");
+                .contains("stockPlaces")
+                .contains("lineWeights");
+    }
+
+    /**
+     * ADR-135：出库实称只进库存重量账(MEASURED)和出库事件证据, 从不写回销售明细的重量
+     * (那是财务放行时冻结的商业快照, 改了会撞放行快照闸)。
+     */
+    @Test
+    void warehouseWeightNeverWritesTheCommercialShipmentLine() throws Exception {
+        String source = service();
+        int confirm = source.indexOf("public ShipmentDetail transitionWarehouseWork(");
+        int end = source.indexOf("private static void requireWarehouseTransition(", confirm);
+        assertThat(end).isGreaterThan(confirm);
+        assertThat(source.substring(confirm, end)).doesNotContain("setWeight(");
+
+        int apply = source.indexOf("private StockService.PostedMovement applyMovement(");
+        int applyEnd = source.indexOf("private static BigDecimal shipmentBaseQty(", apply);
+        assertThat(apply).isGreaterThanOrEqualTo(0);
+        assertThat(source.substring(apply, applyEnd))
+                .contains("CapturedWeight.measured(measuredKg)")
+                .doesNotContain("it.getWeight()");
+        assertThat(source).contains("CAST(:lineWeights AS jsonb)")
+                .contains("\"SHIPMENT:\" + posted.movementId()");
     }
 }

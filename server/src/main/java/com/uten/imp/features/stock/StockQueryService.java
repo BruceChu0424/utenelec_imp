@@ -7,8 +7,8 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.stock.dto.BalanceRow;
 import com.uten.imp.features.stock.dto.InstantInventoryRow;
-import com.uten.imp.features.stock.dto.MovementRow;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -21,7 +21,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -29,9 +28,10 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 库存查询服务：余额分页（按仓库/货品过滤）+ 流水分页（按仓库/货品/类型/日期过滤）。
+ * 库存查询服务：余额分页(按仓库/货品过滤)+ 即时库存 + 货架清单。
  *
- * <p>名称（仓库/货品/颜色）不在此 JOIN，由前端按 id 用 master dict 解析（与采购单据同款）。
+ * <p>货品的出入库流水在 {@code ledger.StockLedgerQueryService}(GET /api/stock/goods/{goodsId}/ledger)。
+ * 余额行的名称(仓库/货品/颜色)不在此 JOIN，由前端按 id 用 master dict 解析(与采购单据同款)。
  */
 @Service
 @RequiredArgsConstructor
@@ -41,44 +41,15 @@ public class StockQueryService {
     private static final Map<String, String> BALANCE_ALLOWED_SORT = Map.of(
             "qty", "qty", "weight", "weight");
 
-    /** 流水列排序白名单：前端列 key → JPA 实体属性名（日期/数量/重量可排序）。 */
-    private static final Map<String, String> MOVEMENT_ALLOWED_SORT = Map.of(
-            "date", "transactionDate", "qty", "qty", "weight", "weight");
-
     private final StockBalanceRepository balanceRepo;
-    private final StockMovementRepository movementRepo;
     private final EntityManager em;
     private final StockCostMasker costMasker;
-
-    /**
-     * warehouseId → 查询范围（V476：自身+全部未软删后代；叶子仓=精确单仓旧行为）。
-     * 递归 CTE 直查而不注入 master 侧组件——stock→master 是 ArchitectureBoundary
-     * 未放行的新依赖边（ADR-017）。锚点查不到（未知/已软删仓）退化为精确单仓。
-     */
-    private Set<UUID> warehouseScopeOf(UUID warehouseId) {
-        if (warehouseId == null) {
-            return null;
-        }
-        @SuppressWarnings("unchecked")
-        List<UUID> ids = em.createNativeQuery("""
-                WITH RECURSIVE wh AS (
-                    SELECT id FROM warehouses WHERE id = :rootId AND is_deleted = false
-                    UNION ALL
-                    SELECT w.id FROM warehouses w JOIN wh ON w.parent_id = wh.id
-                    WHERE w.is_deleted = false
-                )
-                SELECT id FROM wh
-                """)
-                .setParameter("rootId", warehouseId)
-                .getResultList();
-        return ids.isEmpty() ? Set.of(warehouseId) : Set.copyOf(ids);
-    }
 
     @Transactional(readOnly = true)
     public PageResponse<BalanceRow> balances(UUID warehouseId, UUID goodsId, int page, int size,
                                              String sort, String order) {
         // V476：选父仓=自身+全部后代聚合；叶子仓为单元素集合，等价旧精确匹配。
-        Set<UUID> warehouseScope = warehouseScopeOf(warehouseId);
+        Set<UUID> warehouseScope = StockWarehouseScope.subtreeOf(em, warehouseId);
         Specification<StockBalance> spec = (Root<StockBalance> root,
                                             jakarta.persistence.criteria.CriteriaQuery<?> q,
                                             CriteriaBuilder cb) -> {
@@ -95,32 +66,26 @@ public class StockQueryService {
                 p.getTotalElements(), p.getTotalPages());
     }
 
-    @Transactional(readOnly = true)
-    public PageResponse<MovementRow> movements(UUID warehouseId, UUID goodsId, Short movementType,
-                                               OffsetDateTime dateFrom, OffsetDateTime dateTo,
-                                               int page, int size, String sort, String order) {
-        // V476：同 balances——父仓查询按子树聚合。
-        Set<UUID> warehouseScope = warehouseScopeOf(warehouseId);
-        Specification<StockMovement> spec = (Root<StockMovement> root,
-                                            jakarta.persistence.criteria.CriteriaQuery<?> q,
-                                            CriteriaBuilder cb) -> {
-            List<Predicate> ps = new ArrayList<>();
-            if (warehouseScope != null) ps.add(root.get("warehouseId").in(warehouseScope));
-            if (goodsId != null) ps.add(cb.equal(root.get("goodsId"), goodsId));
-            if (movementType != null) ps.add(cb.equal(root.get("movementType"), movementType));
-            if (dateFrom != null) ps.add(cb.greaterThanOrEqualTo(root.get("transactionDate"), dateFrom));
-            if (dateTo != null) ps.add(cb.lessThanOrEqualTo(root.get("transactionDate"), dateTo));
-            return cb.and(ps.toArray(new Predicate[0]));
-        };
-        Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "transactionDate"), MOVEMENT_ALLOWED_SORT));
-        Page<StockMovement> p = movementRepo.findAll(spec, pageable);
-        boolean canViewCost = costMasker.canView();
-        return new PageResponse<>(p.map(movement -> toMovementRow(movement, canViewCost)).getContent(), page, size,
-                p.getTotalElements(), p.getTotalPages());
-    }
+    // ======================== 即时库存(对标老系统「即时库存」窗口) ========================
 
-    // ======================== 即时库存（对标老系统「即时库存」窗口） ========================
+    /**
+     * 即时库存筛选条件(页面 GET 与导出共用同一份口径)。
+     *
+     * @param categoryId          货品分类 id(含全部后代，递归 CTE)；null=全部
+     * @param warehouseId         仓库 id；null=全部(仅 is_accountable 参与核算仓库)；选父仓=自身+全部子仓聚合
+     * @param includeDefective    是否含不良品仓(仓库=全部或父仓聚合时生效)
+     * @param includeLineSide     是否含线边仓(V595；仓库=全部或父仓聚合时默认剔除)
+     * @param keyword             名称/编号/型号/客户型号 模糊；null=不筛
+     * @param owningWarehouse     V587/V590 所属仓库表头筛选
+     * @param owningWarehouseNull 筛「所属仓库未登记」
+     * @param colorId             颜色表头筛选
+     * @param series              物料系列表头筛选
+     * @param unitId              单位表头筛选
+     */
+    public record InstantInventoryFilter(UUID categoryId, UUID warehouseId, boolean includeDefective,
+                                         boolean includeLineSide, String keyword, UUID owningWarehouse,
+                                         Boolean owningWarehouseNull, UUID colorId, String series, UUID unitId) {
+    }
 
     /**
      * 即时库存列排序白名单：前端列 key → SQL 投影别名（命中才排序，否则默认 qty DESC + name ASC）。
@@ -142,16 +107,7 @@ public class StockQueryService {
      * 多排数量 = production_plan_items 可排余量（老库 View_ProductMore 同口径）。
      *
      * <p>行粒度 = 货品×（有余额的颜色）；无余额货品一行、颜色空、库存 0。
-     * 数据量：goods 3.5 万 LEFT JOIN 余额聚合（8.6k→按仓+货+色）+ 计划明细 7 万预聚合，
-     * 全部走 (goods_id) 索引，分页 LIMIT/OFFSET——毫秒级。
-     * 可选过滤（categoryId 子树 / warehouseId / keyword）为 null 时不拼对应子句
-     * （避免 native query null 参数类型推断问题，也让执行计划更干净）。
-     *
-     * @param categoryId 货品分类 id（含全部后代，递归 CTE）；null=全部
-     * @param warehouseId 仓库 id；null=全部（仅 is_accountable 参与核算仓库）；
-     *                    V476 起选父仓=自身+全部子仓聚合（核算/不良仓口径同「全部」）
-     * @param includeDefective 是否含不良品仓（仓库=全部**或父仓聚合**时生效，默认 true=老系统口径）
-     * @param keyword 名称/编号/型号/客户型号 模糊；null=不筛
+     * 可选过滤为 null 时不拼对应子句(避免 native query null 参数类型推断问题，也让执行计划更干净)。
      */
     @Transactional(readOnly = true)
     public PageResponse<InstantInventoryRow> instantInventory(UUID categoryId, UUID warehouseId,
@@ -184,6 +140,8 @@ public class StockQueryService {
     }
 
     /**
+     * 页面 GET：列表 + 计数 + 表格下方合计 + 表头 facet 桶。
+     *
      * @param includeLineSide 是否含线边仓(V595)。线边仓是车间内部直送的料架，现实里不是仓库：
      *                        仓库=全部或父仓聚合时默认剔除；显式选中某个线边仓仍按单仓精确显示。
      */
@@ -198,56 +156,195 @@ public class StockQueryService {
                                                               UUID unitId,
                                                               int page, int size,
                                                               String sort, String order) {
+        InstantInventoryFilter filter = new InstantInventoryFilter(categoryId, warehouseId, includeDefective,
+                includeLineSide, keyword, owningWarehouse, owningWarehouseNull, colorId, series, unitId);
+        InstantSql sql = instantSql(filter, sort);
+        PageResponse<InstantInventoryRow> rows = instantPage(sql, page, size, sort, order);
+
+        // 表格下方合计：把 core(= 列表查询本体，已含分类子树/仓库范围/含不良品仓开关/关键字
+        // 全部过滤条件)原样包成派生表再聚合——**和表格显示的是同一批行**，不带 LIMIT/OFFSET，
+        // 所以是整个结果集的合计而不是当前这一页。绑定参数与 dataQ/countQ 逐个对齐，
+        // 任何一个筛选变化都会同时改变列表和合计，不可能对不上。
+        List<com.uten.imp.common.report.ReportTotal> totals =
+                com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                        em, sql.core(), "", "", sql::bindAll, INSTANT_TOTAL_SPECS);
+        // 归属仓库 facet：在同一口径(未应用归属筛选本身)的 core 上聚合，
+        // 行粒度=货品×颜色(与列表行一致)，空归属由 nullCounts 单独计。
+        var facetQ = em.createNativeQuery(
+                "SELECT ow.id AS v, COALESCE(ow.name, '') AS label, COUNT(*) AS c "
+                        + "FROM (" + sql.coreFacet() + ") t "
+                        + "JOIN goods g2 ON g2.id = t.goods_id "
+                        + "LEFT JOIN warehouses ow ON ow.id = g2.owning_warehouse_id "
+                        + "WHERE g2.owning_warehouse_id IS NOT NULL "
+                        + "GROUP BY ow.id, ow.name ORDER BY c DESC, label ASC LIMIT 50");
+        sql.bindBase(facetQ);
+        List<Object[]> facetRows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(facetQ);
+        List<com.uten.imp.common.web.FacetBucket> owningBuckets = new ArrayList<>(facetRows.size());
+        for (Object[] r : facetRows) {
+            owningBuckets.add(new com.uten.imp.common.web.FacetBucket(
+                    String.valueOf(r[0]), ((Number) r[2]).longValue(), String.valueOf(r[1])));
+        }
+        var nullQ = em.createNativeQuery(
+                "SELECT COUNT(*) FROM (" + sql.coreFacet() + ") t "
+                        + "JOIN goods g2 ON g2.id = t.goods_id "
+                        + "WHERE g2.owning_warehouse_id IS NULL");
+        sql.bindBase(nullQ);
+        long owningNullCount = ((Number) nullQ.getSingleResult()).longValue();
+
+        // 颜色/物料系列/单位 三列 facet：与 owningWarehouse 同范式——在 coreFacet
+        // (未应用归属与这三列筛选本身)的同一口径上聚合；空值桶不下发(前端无对应
+        // null 筛选参数)，按值筛选走 colorId/series/unitId。
+        var colorFacetQ = em.createNativeQuery(
+                "SELECT t.color_id AS v, COALESCE(t.color_name, '') AS label, COUNT(*) AS c "
+                        + "FROM (" + sql.coreFacet() + ") t "
+                        + "WHERE t.color_id IS NOT NULL "
+                        + "GROUP BY t.color_id, t.color_name ORDER BY c DESC, label ASC LIMIT 50");
+        var seriesFacetQ = em.createNativeQuery(
+                "SELECT t.series AS v, t.series AS label, COUNT(*) AS c "
+                        + "FROM (" + sql.coreFacet() + ") t "
+                        + "WHERE t.series IS NOT NULL AND t.series <> '' "
+                        + "GROUP BY t.series ORDER BY c DESC, v ASC LIMIT 50");
+        var unitFacetQ = em.createNativeQuery(
+                "SELECT u2.id AS v, COALESCE(u2.name, '') AS label, COUNT(*) AS c "
+                        + "FROM (" + sql.coreFacet() + ") t "
+                        + "JOIN goods g2 ON g2.id = t.goods_id "
+                        + "LEFT JOIN units u2 ON (u2.id = g2.unit_id "
+                        + "    OR (g2.unit_id IS NULL AND u2.legacy_id = NULLIF(g2.unit_legacy_id, 0))) "
+                        + "WHERE u2.id IS NOT NULL "
+                        + "GROUP BY u2.id, u2.name ORDER BY c DESC, label ASC LIMIT 50");
+        for (var q : List.of(colorFacetQ, seriesFacetQ, unitFacetQ)) {
+            sql.bindBase(q);
+        }
+        List<com.uten.imp.common.web.FacetBucket> colorBuckets = facetBuckets(colorFacetQ);
+        List<com.uten.imp.common.web.FacetBucket> seriesBuckets = facetBuckets(seriesFacetQ);
+        List<com.uten.imp.common.web.FacetBucket> unitBuckets = facetBuckets(unitFacetQ);
+        return new com.uten.imp.common.web.TotaledPageResponse<>(
+                rows, totals,
+                java.util.Map.of(
+                        "owningWarehouse", owningBuckets,
+                        "color", colorBuckets,
+                        "series", seriesBuckets,
+                        "unit", unitBuckets),
+                java.util.Map.of("owningWarehouse", owningNullCount));
+    }
+
+    /**
+     * 导出/打印用：与页面同一口径的一页行(列表 + 计数)，**不跑合计与 facet**——导出按页循环时
+     * 每页只多一条计数查询，不会把整套合计/筛选桶重跑 N 遍。
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<InstantInventoryRow> instantInventoryRows(InstantInventoryFilter filter, int page, int size,
+                                                                  String sort, String order) {
+        return instantPage(instantSql(filter, sort), page, size, sort, order);
+    }
+
+    private PageResponse<InstantInventoryRow> instantPage(InstantSql sql, int page, int size,
+                                                          String sort, String order) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(Math.max(1, size), 500);
+        long offset = (long) (safePage - 1) * safeSize;
+        String orderBy = "qty DESC, name ASC";
+        if (sort != null && INSTANT_ALLOWED_SORT.containsKey(sort)) {
+            String dir = "asc".equalsIgnoreCase(order) ? "ASC" : "DESC";
+            orderBy = INSTANT_ALLOWED_SORT.get(sort) + " " + dir + " NULLS LAST, name ASC";
+        }
+        var dataQ = em.createNativeQuery(
+                sql.core() + " ORDER BY " + orderBy + " LIMIT :__limit OFFSET :__offset");
+        var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (" + sql.core() + ") t");
+        sql.bindAll(dataQ);
+        sql.bindAll(countQ);
+        dataQ.setParameter("__limit", safeSize);
+        dataQ.setParameter("__offset", offset);
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = dataQ.getResultList();
+        boolean canViewCost = sql.canViewCost();
+        List<InstantInventoryRow> items = new ArrayList<>(rows.size());
+        for (Object[] r : rows) {
+            // 位置映射：列序见 instantSql 的 SELECT；重量扩展列(ADR-135)一律追加在末尾。
+            items.add(new InstantInventoryRow(
+                    (UUID) r[0], (UUID) r[1],
+                    (String) r[2], (String) r[3], (String) r[4], (String) r[5], (String) r[6],
+                    (String) r[7], (String) r[8], (String) r[9],
+                    (BigDecimal) r[10], (BigDecimal) r[11],
+                    canViewCost ? (BigDecimal) r[12] : null, (BigDecimal) r[13],
+                    (String) r[14], (String) r[15], (String) r[16],
+                    (BigDecimal) r[17], (BigDecimal) r[18],
+                    Boolean.TRUE.equals(r[19]),
+                    r[20] != null && ((Number) r[20]).intValue() > 0,
+                    decimal(r[22]),
+                    r[23] == null ? null : r[23].toString(),
+                    !canViewCost));
+        }
+        long total = ((Number) countQ.getSingleResult()).longValue();
+        int totalPages = (int) ((total + safeSize - 1) / safeSize);
+        return new PageResponse<>(items, safePage, safeSize, total, totalPages);
+    }
+
+    /** 即时库存 SQL 与参数绑定(列表/计数/合计绑全部筛选；facet 只绑范围 + 分类 + 关键字)。 */
+    private record InstantSql(String core, String coreFacet, boolean canViewCost, Set<UUID> warehouseScope,
+                              InstantInventoryFilter filter, String seriesFilter) {
+
+        void bindAll(Query q) {
+            bindBase(q);
+            if (filter.owningWarehouse() != null) q.setParameter("ownWh", filter.owningWarehouse());
+            if (filter.colorId() != null) q.setParameter("colorId", filter.colorId());
+            if (seriesFilter != null) q.setParameter("series", seriesFilter);
+            if (filter.unitId() != null) q.setParameter("unitId", filter.unitId());
+        }
+
+        void bindBase(Query q) {
+            if (warehouseScope != null && warehouseScope.size() == 1) {
+                q.setParameter("warehouseId", filter.warehouseId());
+            }
+            if (warehouseScope != null && warehouseScope.size() > 1) {
+                q.setParameter("scopeIds", warehouseScope);
+            }
+            if (filter.categoryId() != null) q.setParameter("categoryId", filter.categoryId());
+            if (filter.keyword() != null && !filter.keyword().isBlank()) {
+                q.setParameter("kw", "%" + filter.keyword().trim() + "%");
+            }
+        }
+    }
+
+    private InstantSql instantSql(InstantInventoryFilter filter, String sort) {
         boolean canViewCost = costMasker.canView();
         if (!canViewCost && "costAmount".equals(sort)) {
             throw new ApiException(
                     ErrorCode.FORBIDDEN,
                     "无查看货品成本权限(" + StockCostMasker.PERMISSION + ")");
         }
-        int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 500);
-        long offset = (long) (safePage - 1) * safeSize;
 
         // ---- 条件拼接（参数化，值永远走 setParameter） ----
         StringBuilder balWhere = new StringBuilder(" WHERE 1=1");
         StringBuilder iqcWhere = new StringBuilder();
         StringBuilder stockInWhere = new StringBuilder();
         // V476：warehouseId 展开成查询范围——叶子仓=精确单仓（旧行为），父仓=子树聚合。
-        Set<UUID> warehouseScope = warehouseScopeOf(warehouseId);
+        Set<UUID> warehouseScope = StockWarehouseScope.subtreeOf(em, filter.warehouseId());
         // 先入库后检(V596)：已上架的待检品按实际上架仓统计，未上架的仍按收货参考仓。
         String iqcWarehouse = "COALESCE(i.pre_stocked_warehouse_id, i.warehouse_id)";
         if (warehouseScope != null && warehouseScope.size() == 1) {
             balWhere.append(" AND b.warehouse_id = :warehouseId");
             iqcWhere.append(" AND " + iqcWarehouse + " = :warehouseId");
             stockInWhere.append(" AND i.warehouse_id = :warehouseId");
-        } else if (warehouseScope != null) {
-            balWhere.append(" AND b.warehouse_id IN (:scopeIds) AND w.is_accountable");
-            iqcWhere.append(" AND " + iqcWarehouse + " IN (:scopeIds) AND w.is_accountable");
-            stockInWhere.append(" AND i.warehouse_id IN (:scopeIds) AND w.is_accountable");
-            // 父仓聚合与「全部」同口径：开关关掉则剔除不良品子仓。
-            if (!includeDefective) {
-                balWhere.append(" AND NOT w.is_defective");
-                iqcWhere.append(" AND NOT w.is_defective");
-                stockInWhere.append(" AND NOT w.is_defective");
-            }
-            if (!includeLineSide) {
-                balWhere.append(" AND NOT w.is_line_side");
-                iqcWhere.append(" AND NOT w.is_line_side");
-                stockInWhere.append(" AND NOT w.is_line_side");
-            }
         } else {
-            // 仓库=全部：只统计参与库存核算的仓库（老库 B_Storage.IsCal=0 口径）。
+            if (warehouseScope != null) {
+                balWhere.append(" AND b.warehouse_id IN (:scopeIds)");
+                iqcWhere.append(" AND " + iqcWarehouse + " IN (:scopeIds)");
+                stockInWhere.append(" AND i.warehouse_id IN (:scopeIds)");
+            }
+            // 仓库=全部或父仓聚合：只统计参与库存核算的仓库(老库 B_Storage.IsCal=0 口径)。
             balWhere.append(" AND w.is_accountable");
             iqcWhere.append(" AND w.is_accountable");
             stockInWhere.append(" AND w.is_accountable");
             // 「含不良品仓」开关：关掉则剔除不良品仓（默认开=老系统口径，不良仓计入全部）。
-            if (!includeDefective) {
+            if (!filter.includeDefective()) {
                 balWhere.append(" AND NOT w.is_defective");
                 iqcWhere.append(" AND NOT w.is_defective");
                 stockInWhere.append(" AND NOT w.is_defective");
             }
             // 「含线边仓」开关(V595)：线边仓是车间料架，默认不算进现实库存。
-            if (!includeLineSide) {
+            if (!filter.includeLineSide()) {
                 balWhere.append(" AND NOT w.is_line_side");
                 iqcWhere.append(" AND NOT w.is_line_side");
                 stockInWhere.append(" AND NOT w.is_line_side");
@@ -259,35 +356,35 @@ public class StockQueryService {
         stockInWhere.insert(0,
                 " AND i.passed_base_qty - i.warehouse_stocked_base_qty > 0");
         StringBuilder goodsWhere = new StringBuilder(" WHERE g.is_deleted = false");
-        if (categoryId != null) {
+        if (filter.categoryId() != null) {
             goodsWhere.append(" AND g.category_id IN (SELECT id FROM cat)");
         }
-        if (keyword != null && !keyword.isBlank()) {
+        if (filter.keyword() != null && !filter.keyword().isBlank()) {
             goodsWhere.append(
                     " AND (g.name ILIKE :kw OR g.code ILIKE :kw OR g.model ILIKE :kw OR g.c_number ILIKE :kw)");
         }
         // V587/V590 归属筛选 + 颜色/系列/单位列筛选只作用于列表本体；
         // facet 桶在未应用这些筛选的口径（goodsWhereBase）上聚合。
         String goodsWhereBase = goodsWhere.toString();
-        if (owningWarehouse != null) {
+        if (filter.owningWarehouse() != null) {
             goodsWhere.append(" AND g.owning_warehouse_id = :ownWh");
         }
-        if (Boolean.TRUE.equals(owningWarehouseNull)) {
+        if (Boolean.TRUE.equals(filter.owningWarehouseNull())) {
             goodsWhere.append(" AND g.owning_warehouse_id IS NULL");
         }
-        String seriesFilter = (series == null || series.isBlank()) ? null : series.trim();
-        if (colorId != null) {
+        String seriesFilter = (filter.series() == null || filter.series().isBlank()) ? null : filter.series().trim();
+        if (filter.colorId() != null) {
             goodsWhere.append(" AND base.color_id = :colorId");
         }
         if (seriesFilter != null) {
             goodsWhere.append(" AND g.series = :series");
         }
-        if (unitId != null) {
+        if (filter.unitId() != null) {
             goodsWhere.append(" AND u.id = :unitId");
         }
 
         // 递归 CTE：仅 categoryId 过滤时才声明（锚为参数，无过滤时整段不出现，计划更简）。
-        String cte = categoryId == null ? "" : """
+        String cte = filter.categoryId() == null ? "" : """
                 WITH RECURSIVE cat AS (
                     SELECT id FROM material_categories WHERE id = :categoryId AND is_deleted = false
                     UNION ALL
@@ -299,11 +396,14 @@ public class StockQueryService {
         String costExpression = canViewCost
                 ? "COALESCE(base.amount_local, 0)"
                 : "CAST(NULL AS NUMERIC)";
+        // 库存重量(ADR-135, 千克): 任一有数量的余额行重量未知则整行未知(NULL, 前端「未称」, 绝不当 0);
+        // 待检/待入库占位行重量为 NULL 且数量 0, 不影响判断; 没有余额的货品数量 0 → 重量 0。
+        // 新增投影一律追加在 SELECT 末尾 (行映射按位置)。
         String core = cte + """
                 SELECT g.id AS goods_id, base.color_id, mc.name AS category_name,
                        g.model, g.c_number, g.name, g.spec,
                        c.name AS color_name, u.name AS unit_name, g.paper AS remark,
-                       COALESCE(base.weight, 0) AS weight,
+                       CASE WHEN base.goods_id IS NULL THEN 0 ELSE base.weight END AS weight,
                        COALESCE(base.qty, 0) AS qty,
                 """ + costExpression + """
                        AS cost_amount,
@@ -311,29 +411,37 @@ public class StockQueryService {
                        g.code AS goods_code, g.series, g.stock_place,
                        COALESCE(iqc.pending_qty, 0) AS pending_qty,
                        COALESCE(stock_in.pending_stock_in_qty, 0)
-                           AS pending_stock_in_qty
+                           AS pending_stock_in_qty,
+                       (base.weight IS NOT NULL AND COALESCE(base.weight_estimated, false)) AS weight_estimated,
+                       CASE WHEN base.goods_id IS NOT NULL AND base.weight IS NULL THEN 1 ELSE 0 END
+                           AS weight_unknown_rows,
+                       CASE WHEN base.weight IS NOT NULL AND COALESCE(base.weight_estimated, false) THEN 1 ELSE 0 END
+                           AS weight_estimated_rows,
+                       est.unit_weight_kg, est.tier AS weight_tier
                 FROM goods g
                 LEFT JOIN (
                     SELECT u.goods_id, u.color_id,
                            SUM(u.qty) AS qty,
-                           SUM(u.weight) AS weight,
+                           CASE WHEN bool_or(u.qty <> 0 AND u.weight IS NULL) THEN NULL
+                                ELSE COALESCE(SUM(u.weight), 0) END AS weight,
+                           COALESCE(bool_or(u.weight_estimated), false) AS weight_estimated,
                            SUM(u.amount_local) AS amount_local
                     FROM (
-                        (SELECT b.goods_id, b.color_id, b.qty, b.weight, b.amount_local
+                        (SELECT b.goods_id, b.color_id, b.qty, b.weight, b.weight_estimated, b.amount_local
                          FROM stock_balances b
                          JOIN warehouses w ON w.id = b.warehouse_id
                 """ + balWhere + """
                         )
                         UNION ALL
                         -- 待检品尚无余额行：并入 0 量占位行，保证「货在待检」在即时库存可见(行粒度=货品×颜色)。
-                        (SELECT i.goods_id, i.color_id, 0, 0, 0
+                        (SELECT i.goods_id, i.color_id, 0, CAST(NULL AS NUMERIC), false, 0
                          FROM procurement_inspection_items i
                          JOIN warehouses w ON w.id = COALESCE(i.pre_stocked_warehouse_id, i.warehouse_id)
                 """ + iqcWhere + """
                         )
                         UNION ALL
                         -- 品质已放行但仓库尚未确认：仍无余额行，也必须留在即时库存视图。
-                        (SELECT i.goods_id, i.color_id, 0, 0, 0
+                        (SELECT i.goods_id, i.color_id, 0, CAST(NULL AS NUMERIC), false, 0
                          FROM procurement_inspection_items i
                          JOIN warehouses w ON w.id = i.warehouse_id
                 """ + stockInWhere + """
@@ -347,6 +455,7 @@ public class StockQueryService {
                   ON (u.id = g.unit_id
                       OR (g.unit_id IS NULL
                           AND u.legacy_id = NULLIF(g.unit_legacy_id, 0)))
+                LEFT JOIN goods_weight_estimates est ON est.goods_id = g.id AND est.supplier_id IS NULL
                 LEFT JOIN (
                     SELECT i.goods_id, i.color_id,
                            SUM(i.received_base_qty - i.passed_base_qty - i.failed_base_qty) AS pending_qty
@@ -374,159 +483,7 @@ public class StockQueryService {
                 ) pm ON pm.goods_id = g.id AND pm.color_id IS NOT DISTINCT FROM base.color_id
                 """ + goodsWhere;
         String coreFacet = core.replace(goodsWhere.toString(), goodsWhereBase);
-
-        String orderBy = "qty DESC, name ASC";
-        if (sort != null && INSTANT_ALLOWED_SORT.containsKey(sort)) {
-            String dir = "asc".equalsIgnoreCase(order) ? "ASC" : "DESC";
-            orderBy = INSTANT_ALLOWED_SORT.get(sort) + " " + dir + " NULLS LAST, name ASC";
-        }
-
-        var dataQ = em.createNativeQuery(
-                core + " ORDER BY " + orderBy + " LIMIT :__limit OFFSET :__offset");
-        var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (" + core + ") t");
-        for (var q : List.of(dataQ, countQ)) {
-            if (warehouseScope != null && warehouseScope.size() == 1) {
-                q.setParameter("warehouseId", warehouseId);
-            }
-            if (warehouseScope != null && warehouseScope.size() > 1) {
-                q.setParameter("scopeIds", warehouseScope);
-            }
-            if (categoryId != null) q.setParameter("categoryId", categoryId);
-            if (keyword != null && !keyword.isBlank()) q.setParameter("kw", "%" + keyword.trim() + "%");
-            if (owningWarehouse != null) q.setParameter("ownWh", owningWarehouse);
-            if (colorId != null) q.setParameter("colorId", colorId);
-            if (seriesFilter != null) q.setParameter("series", seriesFilter);
-            if (unitId != null) q.setParameter("unitId", unitId);
-        }
-        dataQ.setParameter("__limit", safeSize);
-        dataQ.setParameter("__offset", offset);
-
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = dataQ.getResultList();
-        List<InstantInventoryRow> items = new ArrayList<>(rows.size());
-        for (Object[] r : rows) {
-            items.add(new InstantInventoryRow(
-                    (UUID) r[0], (UUID) r[1],
-                    (String) r[2], (String) r[3], (String) r[4], (String) r[5], (String) r[6],
-                    (String) r[7], (String) r[8], (String) r[9],
-                    (BigDecimal) r[10], (BigDecimal) r[11],
-                    canViewCost ? (BigDecimal) r[12] : null, (BigDecimal) r[13],
-                    (String) r[14], (String) r[15], (String) r[16],
-                    (BigDecimal) r[17], (BigDecimal) r[18],
-                    !canViewCost));
-        }
-        long total = ((Number) countQ.getSingleResult()).longValue();
-        int totalPages = (int) ((total + safeSize - 1) / safeSize);
-
-        // 表格下方合计：把 core（= 列表查询本体，已含分类子树/仓库范围/含不良品仓开关/关键字
-        // 全部过滤条件）原样包成派生表再聚合——**和表格显示的是同一批行**，不带 LIMIT/OFFSET，
-        // 所以是整个结果集的合计而不是当前这一页。绑定参数与 dataQ/countQ 逐个对齐，
-        // 任何一个筛选变化都会同时改变列表和合计，不可能对不上。
-        List<com.uten.imp.common.report.ReportTotal> totals =
-                com.uten.imp.common.report.ReportTotalsCalculator.compute(
-                        em, core, "", "",
-                        q -> {
-                            if (warehouseScope != null && warehouseScope.size() == 1) {
-                                q.setParameter("warehouseId", warehouseId);
-                            }
-                            if (warehouseScope != null && warehouseScope.size() > 1) {
-                                q.setParameter("scopeIds", warehouseScope);
-                            }
-                            if (categoryId != null) q.setParameter("categoryId", categoryId);
-                            if (keyword != null && !keyword.isBlank()) {
-                                q.setParameter("kw", "%" + keyword.trim() + "%");
-                            }
-                            if (owningWarehouse != null) q.setParameter("ownWh", owningWarehouse);
-                            if (colorId != null) q.setParameter("colorId", colorId);
-                            if (seriesFilter != null) q.setParameter("series", seriesFilter);
-                            if (unitId != null) q.setParameter("unitId", unitId);
-                        },
-                        INSTANT_TOTAL_SPECS);
-        // 归属仓库 facet：在同一口径（未应用归属筛选本身）的 core 上聚合，
-        // 行粒度=货品×颜色（与列表行一致），空归属由 nullCounts 单独计。
-        var facetQ = em.createNativeQuery(
-                "SELECT ow.id AS v, COALESCE(ow.name, '') AS label, COUNT(*) AS c "
-                        + "FROM (" + coreFacet + ") t "
-                        + "JOIN goods g2 ON g2.id = t.goods_id "
-                        + "LEFT JOIN warehouses ow ON ow.id = g2.owning_warehouse_id "
-                        + "WHERE g2.owning_warehouse_id IS NOT NULL "
-                        + "GROUP BY ow.id, ow.name ORDER BY c DESC, label ASC LIMIT 50");
-        if (warehouseScope != null && warehouseScope.size() == 1) {
-            facetQ.setParameter("warehouseId", warehouseId);
-        }
-        if (warehouseScope != null && warehouseScope.size() > 1) {
-            facetQ.setParameter("scopeIds", warehouseScope);
-        }
-        if (categoryId != null) facetQ.setParameter("categoryId", categoryId);
-        if (keyword != null && !keyword.isBlank()) {
-            facetQ.setParameter("kw", "%" + keyword.trim() + "%");
-        }
-        List<Object[]> facetRows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(facetQ);
-        List<com.uten.imp.common.web.FacetBucket> owningBuckets = new ArrayList<>(facetRows.size());
-        for (Object[] r : facetRows) {
-            owningBuckets.add(new com.uten.imp.common.web.FacetBucket(
-                    String.valueOf(r[0]), ((Number) r[2]).longValue(), String.valueOf(r[1])));
-        }
-        var nullQ = em.createNativeQuery(
-                "SELECT COUNT(*) FROM (" + coreFacet + ") t "
-                        + "JOIN goods g2 ON g2.id = t.goods_id "
-                        + "WHERE g2.owning_warehouse_id IS NULL");
-        if (warehouseScope != null && warehouseScope.size() == 1) {
-            nullQ.setParameter("warehouseId", warehouseId);
-        }
-        if (warehouseScope != null && warehouseScope.size() > 1) {
-            nullQ.setParameter("scopeIds", warehouseScope);
-        }
-        if (categoryId != null) nullQ.setParameter("categoryId", categoryId);
-        if (keyword != null && !keyword.isBlank()) {
-            nullQ.setParameter("kw", "%" + keyword.trim() + "%");
-        }
-        long owningNullCount = ((Number) nullQ.getSingleResult()).longValue();
-
-        // 颜色/物料系列/单位 三列 facet：与 owningWarehouse 同范式——在 coreFacet
-        // （未应用归属与这三列筛选本身）的同一口径上聚合；空值桶不下发（前端无对应
-        // null 筛选参数），按值筛选走 colorId/series/unitId。
-        var colorFacetQ = em.createNativeQuery(
-                "SELECT t.color_id AS v, COALESCE(t.color_name, '') AS label, COUNT(*) AS c "
-                        + "FROM (" + coreFacet + ") t "
-                        + "WHERE t.color_id IS NOT NULL "
-                        + "GROUP BY t.color_id, t.color_name ORDER BY c DESC, label ASC LIMIT 50");
-        var seriesFacetQ = em.createNativeQuery(
-                "SELECT t.series AS v, t.series AS label, COUNT(*) AS c "
-                        + "FROM (" + coreFacet + ") t "
-                        + "WHERE t.series IS NOT NULL AND t.series <> '' "
-                        + "GROUP BY t.series ORDER BY c DESC, v ASC LIMIT 50");
-        var unitFacetQ = em.createNativeQuery(
-                "SELECT u2.id AS v, COALESCE(u2.name, '') AS label, COUNT(*) AS c "
-                        + "FROM (" + coreFacet + ") t "
-                        + "JOIN goods g2 ON g2.id = t.goods_id "
-                        + "LEFT JOIN units u2 ON (u2.id = g2.unit_id "
-                        + "    OR (g2.unit_id IS NULL AND u2.legacy_id = NULLIF(g2.unit_legacy_id, 0))) "
-                        + "WHERE u2.id IS NOT NULL "
-                        + "GROUP BY u2.id, u2.name ORDER BY c DESC, label ASC LIMIT 50");
-        for (var q : List.of(colorFacetQ, seriesFacetQ, unitFacetQ)) {
-            if (warehouseScope != null && warehouseScope.size() == 1) {
-                q.setParameter("warehouseId", warehouseId);
-            }
-            if (warehouseScope != null && warehouseScope.size() > 1) {
-                q.setParameter("scopeIds", warehouseScope);
-            }
-            if (categoryId != null) q.setParameter("categoryId", categoryId);
-            if (keyword != null && !keyword.isBlank()) {
-                q.setParameter("kw", "%" + keyword.trim() + "%");
-            }
-        }
-        List<com.uten.imp.common.web.FacetBucket> colorBuckets = facetBuckets(colorFacetQ);
-        List<com.uten.imp.common.web.FacetBucket> seriesBuckets = facetBuckets(seriesFacetQ);
-        List<com.uten.imp.common.web.FacetBucket> unitBuckets = facetBuckets(unitFacetQ);
-        return new com.uten.imp.common.web.TotaledPageResponse<>(
-                new PageResponse<>(items, safePage, safeSize, total, totalPages), totals,
-                java.util.Map.of(
-                        "owningWarehouse", owningBuckets,
-                        "color", colorBuckets,
-                        "series", seriesBuckets,
-                        "unit", unitBuckets),
-                java.util.Map.of("owningWarehouse", owningNullCount));
+        return new InstantSql(core, coreFacet, canViewCost, warehouseScope, filter, seriesFilter);
     }
 
     /** facet 聚合查询 → 桶列表（v=值、label=展示名、c=命中数；label 列可为 null）。 */
@@ -542,15 +499,23 @@ public class StockQueryService {
         return buckets;
     }
 
+    private static BigDecimal decimal(Object value) {
+        if (value == null) return null;
+        if (value instanceof BigDecimal d) return d;
+        return new BigDecimal(value.toString());
+    }
+
     /**
      * 即时库存合计声明（列名 = core 派生表里的投影别名）。
      *
-     * <p><b>为什么只有这三个数量 + 重量</b>：
+     * <p><b>为什么是这几项</b>：
      * <ul>
      *   <li>库存数量 / 待检量 / 合格待入库 都是<b>基本单位</b>量（stock_balances.qty 由单据
      *       base_qty 累加，procurement_inspection_items 存的就是 *_base_qty），与行上的
      *       「单位」列（货品主档单位）同一口径，所以按 unit_name 分组相加成立；</li>
-     *   <li>库存重量只有一个口径（kg），不分组；</li>
+     *   <li>库存重量只有一个口径(千克，ADR-135)，不分组，类型 weight(前端换算到显示单位)；
+     *       未知重量的行不计入(SUM 跳过 NULL)，另用两个 count 伴随项下发「另有 N 项未称」与
+     *       「含估算」(前端并进重量项显示为「≈3.52 t (另有 12 项未称)」)；三项同为不分组，同一条聚合；</li>
      *   <li><b>多排数量不声明</b>：它来自 production_plan_items 的 qty/oqty/iqty，是<b>计划行单位</b>
      *       的量，与本行「单位」列（货品主档单位）不是同一口径，按 unit_name 分组会贴错单位标签；</li>
      *   <li><b>库存金额不声明</b>：该列受 goods:cost:view 脱敏（无权限时投影为 NULL），
@@ -560,7 +525,14 @@ public class StockQueryService {
     private static final List<com.uten.imp.common.report.ReportTotalsCalculator.Spec> INSTANT_TOTAL_SPECS =
             List.of(
                     new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
-                            "weight", "合计库存重量", "number", null),
+                            "weight", "合计库存重量", com.uten.imp.common.report.ReportTotalsCalculator.TYPE_WEIGHT,
+                            null),
+                    new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
+                            "weight_unknown_rows", "重量未知", com.uten.imp.common.report.ReportTotalsCalculator.TYPE_COUNT,
+                            null),
+                    new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
+                            "weight_estimated_rows", "重量含估算",
+                            com.uten.imp.common.report.ReportTotalsCalculator.TYPE_COUNT, null),
                     new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
                             "qty", "合计库存数量", "number", "unit_name"),
                     new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
@@ -691,14 +663,6 @@ public class StockQueryService {
     private BalanceRow toBalanceRow(StockBalance b, boolean canViewCost) {
         return new BalanceRow(b.getId(), b.getWarehouseId(), b.getGoodsId(), b.getColorId(),
                 b.getQty(), canViewCost ? b.getAmountLocal() : null,
-                b.getWeight(), b.getLastMovementDate(), !canViewCost);
-    }
-
-    private MovementRow toMovementRow(StockMovement m, boolean canViewCost) {
-        return new MovementRow(m.getId(), m.getTransactionDate(), m.getMovementType(),
-                m.getSourceDocType(), m.getSourceDocId(), m.getGoodsId(), m.getColorId(),
-                m.getWarehouseId(), m.getDirection(), m.getQty(),
-                m.getUnitId(), m.getUnitRate(), m.getWeight(),
-                canViewCost ? m.getAmountLocal() : null, m.getRemark(), !canViewCost);
+                b.getWeight(), b.isWeightEstimated(), b.getLastMovementDate(), !canViewCost);
     }
 }

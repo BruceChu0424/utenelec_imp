@@ -60,7 +60,7 @@ class ProcurementIqcStockInApiContractTest {
                 new BigDecimal("10.0000"), new BigDecimal("8.0000"),
                 new BigDecimal("3.0000"), new BigDecimal("5.0000"),
                 new BigDecimal("3.0000"), new BigDecimal("2.0000"),
-                null, null, "", "A01-01", "合格", "品质员", now);
+                null, "A01-01", "合格", "品质员", now);
         TaskDetail detail = new TaskDetail(
                 "PURCHASE", receiptId, "CJ-001", LocalDate.of(2026, 8, 31),
                 UUID.randomUUID(), "供应商", warehouseId, "原料仓",

@@ -121,8 +121,13 @@ public class SubcontractMaterialIssueItem extends BaseEntity {
     @Column(name = "parent_color_id")
     private UUID parentColorId;          // MColorID 父件颜色
 
+    /** 出仓实称净重(千克); NULL = 没称; 审核时按它记委外发料流水(实称)。 */
     @Column(name = "weight", precision = 18, scale = 4)
     private BigDecimal weight;
+
+    /** 数量是否由称重计数推算(V745/ADR-135); 为真时该行不登记称重核对观测。 */
+    @Column(name = "qty_from_weight", nullable = false)
+    private boolean qtyFromWeight;
 
     @Column(name = "source_doc_no")
     private String sourceDocNo;

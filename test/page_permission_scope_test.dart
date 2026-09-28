@@ -38,6 +38,21 @@ void main() {
       expect(warehouse?.surfaceKey, 'warehouse.sales-outbound');
       expect(warehouse?.title, '仓库销售出库');
     });
+
+    test('ADR-135 insights and weigh-count reuse existing surfaces', () {
+      // 库存分析与仓库报表同一张权限面 (stock_report:view/export)；
+      // 独立称重计数页挂库存详情面 (stock:view + 单重管理)。
+      final insights = pagePermissionScopeFor('/warehouse/insights');
+      final insightsDeepLink = pagePermissionScopeFor(
+        '/warehouse/insights?segment=learning',
+      );
+      final weighCount = pagePermissionScopeFor('/warehouse/weigh-count');
+
+      expect(insights?.surfaceKey, 'warehouse.report');
+      expect(insightsDeepLink?.surfaceKey, 'warehouse.report');
+      expect(weighCount?.surfaceKey, 'warehouse.stock-item');
+      expect(weighCount?.title, '库存详情');
+    });
   });
 
   group('pagePermissionScopeFor', () {
@@ -254,6 +269,8 @@ Iterable<String> _businessPaths() sync* {
     '/warehouse/report/detail',
     '/warehouse/report/summary',
     '/warehouse/shelf-labels',
+    '/warehouse/insights',
+    '/warehouse/weigh-count',
     '/warehouse/subcontract-outbound',
     '/warehouse/subcontract-outbound/plan-1',
     '/warehouse/sales-outbound',

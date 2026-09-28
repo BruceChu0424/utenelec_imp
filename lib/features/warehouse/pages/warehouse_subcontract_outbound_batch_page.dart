@@ -26,6 +26,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
@@ -194,6 +195,7 @@ class _WarehouseSubcontractOutboundBatchPageState
       ]);
       if (!mounted || generation != _loadGeneration) return;
       final bundles = results[1] as List<SubcontractOutboundReadBundle>;
+      final weightUnit = ref.read(warehouseWeightUnitsPrefsProvider).entry;
       for (final bundle in bundles) {
         final detail = bundle.task;
         if (detail.status != 'OPEN') {
@@ -225,6 +227,8 @@ class _WarehouseSubcontractOutboundBatchPageState
                 existing?.qty ?? line.freeIssuableQty,
               ),
               weight: existing?.weight,
+              qtyFromWeight: existing?.qtyFromWeight ?? false,
+              weightUnit: weightUnit,
               remark: existing?.remark,
               unitRate: existing?.unitRate,
             );
@@ -273,8 +277,16 @@ class _WarehouseSubcontractOutboundBatchPageState
             for (final line in draft.lines) {
               final oldLine = byItem[line.draftItemId];
               if (oldLine != null) {
-                // 重量不再由页面录入, 重读后直接用原单值, 不需要从旧草稿搬回。
-                line.qty.text = oldLine.qty.text;
+                if (oldLine.qty.autofilled) {
+                  line.qty.setAutomaticText(oldLine.qty.text);
+                } else {
+                  line.qty.text = oldLine.qty.text;
+                }
+                // 实称重量 (含「数量按称重推算」标记) 随未保存的编辑一起搬回。
+                line.weight.weight.setKg(
+                  oldLine.weight.kg,
+                  qtyFromWeight: oldLine.weight.qtyFromWeight,
+                );
                 line.remarkController.text = oldLine.remarkController.text;
                 line.selected = oldLine.selected;
               }

@@ -33,12 +33,14 @@ abstract interface class WarehouseSalesOutboundGateway {
 
   /// 一步确认出库：逐行实际库位 [stockPlaces] 与逐行实际发出仓 [lineWarehouses]
   /// (行 id → 仓 id，V631)；服务端按行解析发出仓，缺一行即拒绝。
+  /// [lineWeights] = 逐行实称千克 (行 id → kg, 4 位; 没称的行不带, ADR-135 §3.7)。
   Future<WarehouseSalesOutboundDetail> transition(
     String id, {
     required String targetStatus,
     String? reason,
     Map<String, String>? stockPlaces,
     Map<String, String?>? lineWarehouses,
+    Map<String, double>? lineWeights,
   });
 }
 
@@ -116,17 +118,23 @@ class WarehouseSalesOutboundRepository
     String? reason,
     Map<String, String>? stockPlaces,
     Map<String, String?>? lineWarehouses,
+    Map<String, double>? lineWeights,
   }) async {
-    final lineIds = <String>{...?stockPlaces?.keys, ...?lineWarehouses?.keys};
+    final lineIds = <String>{
+      ...?stockPlaces?.keys,
+      ...?lineWarehouses?.keys,
+      ...?lineWeights?.keys,
+    };
     final body = <String, dynamic>{
       'targetStatus': targetStatus.trim().toUpperCase(),
-      if (stockPlaces != null || lineWarehouses != null)
+      if (stockPlaces != null || lineWarehouses != null || lineWeights != null)
         'stockPlaces': [
           for (final lineId in lineIds)
             {
               'shipmentItemId': lineId,
               'stockPlace': stockPlaces?[lineId]?.trim() ?? '',
               'warehouseId': ?_trimmed(lineWarehouses?[lineId]),
+              'weightKg': ?lineWeights?[lineId],
             },
         ],
     };

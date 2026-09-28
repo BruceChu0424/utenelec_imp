@@ -63,7 +63,7 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: const MaterialApp(
-          home: GoodsDetailPage(goodsId: 'goods-1', initialTab: 1),
+          home: GoodsDetailPage(goodsId: 'goods-1', initialTab: 'bom'),
         ),
       ),
     );

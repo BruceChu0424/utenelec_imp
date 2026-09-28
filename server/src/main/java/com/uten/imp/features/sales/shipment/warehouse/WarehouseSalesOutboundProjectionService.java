@@ -10,6 +10,7 @@ import com.uten.imp.features.sales.shipment.dto.ShipmentItemDto;
 import com.uten.imp.features.sales.shipment.dto.ShipmentListItem;
 import com.uten.imp.features.sales.shipment.dto.ShipmentQueryFilter;
 import com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest;
+import com.uten.imp.features.stock.StockService;
 import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -225,6 +226,7 @@ public class WarehouseSalesOutboundProjectionService {
                 SELECT id,warehouse_id FROM sales_shipment_items
                 WHERE shipment_id=:id AND NOT is_deleted AND warehouse_id IS NOT NULL
                 """).setParameter("id",source.getId())))lineWarehouses.put((UUID)row[0],(UUID)row[1]);
+        Map<UUID,OutboundWeight> weights=outboundWeights(source.getId());
         List<String> allowedTargets = source.isCanManageWarehouseWork()
                 ? SalesShipmentService.allowedWarehouseTransitionTargets(
                         source.getWarehouseWorkStatus())
@@ -233,7 +235,8 @@ public class WarehouseSalesOutboundProjectionService {
                 allowedTargets.contains(SalesShipment.WORK_SHIPPED)?lineWarehouseChoices(source):Map.of();
         List<WarehouseSalesOutboundLine> lines = source.getItems().stream()
                 .map(item -> toLine(item, names, stockPlaces.get(item.getId()), lineWarehouses.get(item.getId()),
-                        choices.getOrDefault(item.getId(),List.of()), source.getWarehouseId()))
+                        choices.getOrDefault(item.getId(),List.of()), source.getWarehouseId(),
+                        weights.getOrDefault(item.getId(),OutboundWeight.NONE)))
                 .toList();
         return new WarehouseSalesOutboundDetail(
                 source.getId(),
@@ -257,10 +260,41 @@ public class WarehouseSalesOutboundProjectionService {
                 lines);
     }
 
+    /**
+     * 各出货行销售出库流水的重量(ADR-135 §3.7): 每行取最近一笔出库(方向 -1)流水的千克数与来历;
+     * 旧流水有重量没来历时按实称。未出库的行没有流水, 不在结果里。
+     */
+    private Map<UUID,OutboundWeight> outboundWeights(UUID shipmentId) {
+        Map<UUID,OutboundWeight> weights=new HashMap<>();
+        for(Object[] row:com.uten.imp.common.util.NativeQueryResults.objectArrayRows(entityManager.createNativeQuery("""
+                SELECT DISTINCT ON (movement.source_item_id)
+                       movement.source_item_id, movement.weight,
+                       COALESCE(movement.weight_source,
+                                CASE WHEN movement.weight IS NOT NULL THEN 'MEASURED' END) AS weight_source
+                FROM stock_movements movement
+                WHERE movement.source_doc_type = :sourceType
+                  AND movement.source_doc_id = :shipmentId
+                  AND movement.movement_type = :movementType
+                  AND movement.direction = -1
+                  AND movement.source_item_id IS NOT NULL
+                ORDER BY movement.source_item_id, movement.ledger_seq DESC
+                """).setParameter("sourceType",StockService.SRC_SALES_SHIPMENT)
+                .setParameter("shipmentId",shipmentId)
+                .setParameter("movementType",StockService.TYPE_SALES_OUT)))
+            weights.put((UUID)row[0],new OutboundWeight((BigDecimal)row[1],(String)row[2]));
+        return weights;
+    }
+
+    /** 一行出库流水的重量(千克)与来历; NONE = 还没出库。 */
+    private record OutboundWeight(BigDecimal weightKg, String weightSource) {
+        private static final OutboundWeight NONE = new OutboundWeight(null, null);
+    }
+
     private WarehouseSalesOutboundLine toLine(
             ShipmentItemDto source,
             NameDirectory names,String actualStockPlace,UUID actualWarehouse,
-            List<WarehouseSalesOutboundWarehouseChoice> choices,UUID headerWarehouse) {
+            List<WarehouseSalesOutboundWarehouseChoice> choices,UUID headerWarehouse,
+            OutboundWeight weight) {
         GoodsIdentity goods = names.goods(source.getGoodsId());
         return new WarehouseSalesOutboundLine(
                 source.getId(),
@@ -273,8 +307,10 @@ public class WarehouseSalesOutboundProjectionService {
                 names.color(source.getColorId()),
                 source.getUnitId(),
                 names.unit(source.getUnitId()),
+                source.getUnitRate() == null ? BigDecimal.ONE : source.getUnitRate(),
                 source.getQty(),
-                source.getWeight(),
+                weight.weightKg(),
+                weight.weightSource(),
                 source.getParcelQty(),
                 source.getCartonCount(),
                 source.getClientNo(),

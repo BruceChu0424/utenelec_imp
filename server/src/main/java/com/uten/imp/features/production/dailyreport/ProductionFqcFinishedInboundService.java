@@ -77,7 +77,7 @@ public class ProductionFqcFinishedInboundService
                                inspection.id,
                                decision.id,
                                registration_item.place_snapshot,
-                               report_item.weight,
+                               registration_item.weight,
                                COALESCE((
                                    SELECT SUM(prior.pass_qty)
                                    FROM production_fqc_decision_events prior
@@ -181,6 +181,8 @@ public class ProductionFqcFinishedInboundService
         item.setQty(quantity);
         item.setReportedQty(quantity);
         item.setBaseQty(quantity.multiply(unitRate));
+        // 重量只认仓库登记时的实称(ADR-135 §3.2): 按本次放行在报工量里的累计区间分摊,
+        // 没称的登记行草稿重量为空, 由库存账按均重/单重推算; 报工单自己的重量列不进库存账。
         item.setWeight(proratedActualWeight(
                 (BigDecimal) row[21], (BigDecimal) row[16],
                 (BigDecimal) row[22], quantity));
@@ -216,7 +218,7 @@ public class ProductionFqcFinishedInboundService
                 || priorPassQty == null || priorPassQty.signum() < 0
                 || passQty == null || passQty.signum() <= 0
                 || priorPassQty.add(passQty).compareTo(reportedQty) > 0) {
-            throw conflict("报工实际总重量或 FQC 放行比例无效");
+            throw conflict("登记实称重量或 FQC 放行比例无效");
         }
         BigDecimal previous = totalWeight.multiply(priorPassQty)
                 .divide(reportedQty, 4, RoundingMode.HALF_UP);

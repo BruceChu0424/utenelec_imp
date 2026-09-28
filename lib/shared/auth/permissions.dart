@@ -193,6 +193,11 @@ abstract final class Perm {
   /// 领导或库存负责人明确授权后，可直接把库存余额修正为目标值。
   static const stockBalanceAdjust = 'stock:balance:adjust';
 
+  /// 单重管理 (ADR-135)：单重设置 (默认皮重/核对容差/参与学习/换批方式)、人工设定单重、
+  /// 称重记录排除/恢复、从今天起重新学习、核重 (只改库存重量不动数量)；
+  /// 也可称样校准，并能看到按供应商的单重对比。
+  static const stockWeightManage = 'stock:weight:manage';
+
   /// 仓库管理单据（view 全员 / edit 归 PMC）
   static const stockDocView = 'stock_doc:view';
   static const stockDocEdit = 'stock_doc:edit';

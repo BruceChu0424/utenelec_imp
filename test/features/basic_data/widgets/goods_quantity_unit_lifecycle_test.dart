@@ -118,7 +118,6 @@ Future<void> _pump(WidgetTester tester, _GoodsRepository repository) async {
           body: GoodsDetailBody(
             initialDetail: repository.detailValue,
             initialCategoryId: 'category-1',
-            initialTab: 0,
             canCreate: false,
             canEdit: true,
             canStatus: true,
@@ -127,7 +126,6 @@ Future<void> _pump(WidgetTester tester, _GoodsRepository repository) async {
             canBomDelete: false,
             onToggleStatus: null,
             onDelete: null,
-            onViewMovements: null,
             onDataChanged: null,
           ),
         ),

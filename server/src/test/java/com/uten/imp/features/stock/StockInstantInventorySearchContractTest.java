@@ -26,7 +26,7 @@ class StockInstantInventorySearchContractTest {
         UUID categoryId = UUID.randomUUID();
         when(query.getResultList()).thenReturn(List.of(categoryId));
         StockQueryService service = new StockQueryService(
-                null, null, em, mock(StockCostMasker.class));
+                null, em, mock(StockCostMasker.class));
 
         var result = service.instantInventoryMatchingCategoryIds(
                 "  G-001  ", Set.of(UUID.randomUUID()));
@@ -45,7 +45,7 @@ class StockInstantInventorySearchContractTest {
     @Test
     void locationQueryFailsClosedWithoutABoundedTreeScope() {
         StockQueryService service = new StockQueryService(
-                null, null, mock(EntityManager.class), mock(StockCostMasker.class));
+                null, mock(EntityManager.class), mock(StockCostMasker.class));
         assertThatThrownBy(() -> service.instantInventoryMatchingCategoryIds("G", Set.of()))
                 .isInstanceOf(com.uten.imp.common.web.ApiException.class);
         assertThatThrownBy(() -> service.instantInventoryMatchingCategoryIds(
@@ -62,7 +62,7 @@ class StockInstantInventorySearchContractTest {
         when(query.setParameter(anyString(), org.mockito.ArgumentMatchers.any())).thenReturn(query);
         when(query.getResultList()).thenReturn(List.of());
         StockQueryService service = new StockQueryService(
-                null, null, em, mock(StockCostMasker.class));
+                null, em, mock(StockCostMasker.class));
 
         service.shelfLabelRows(" A31 ", null, null, false);
 
@@ -89,7 +89,7 @@ class StockInstantInventorySearchContractTest {
         when(query.setParameter(anyString(), org.mockito.ArgumentMatchers.any())).thenReturn(query);
         when(query.getResultList()).thenReturn(List.of());
         StockQueryService service = new StockQueryService(
-                null, null, em, mock(StockCostMasker.class));
+                null, em, mock(StockCostMasker.class));
         UUID warehouseId = UUID.randomUUID();
 
         service.shelfLabelRows(null, " 风扇 ", warehouseId, true);
@@ -132,7 +132,7 @@ class StockInstantInventorySearchContractTest {
                 new Object[] {g2, "Y12", "GL-2", null, "残值件", "", "", null, Boolean.TRUE, Boolean.TRUE,
                         null, null, null, "GOODS_MASTER"}));
         StockQueryService service = new StockQueryService(
-                null, null, em, mock(StockCostMasker.class));
+                null, em, mock(StockCostMasker.class));
 
         var rows = service.shelfLabelRows(null, null, null, true);
 
@@ -182,7 +182,7 @@ class StockInstantInventorySearchContractTest {
                 new Object[] {"A30", 2, 9, 4L},
                 new Object[] {"", null, null, java.math.BigInteger.valueOf(2)}));
         StockQueryService service = new StockQueryService(
-                null, null, em, mock(StockCostMasker.class));
+                null, em, mock(StockCostMasker.class));
 
         var layout = service.shelfLabelLayout(null, false);
 
@@ -211,7 +211,7 @@ class StockInstantInventorySearchContractTest {
         when(query.setParameter(anyString(), org.mockito.ArgumentMatchers.any())).thenReturn(query);
         when(query.getResultList()).thenReturn(List.of("A30", "A31"));
         StockQueryService service = new StockQueryService(
-                null, null, em, mock(StockCostMasker.class));
+                null, em, mock(StockCostMasker.class));
 
         var racks = service.shelfLabelRacks(null, false);
 

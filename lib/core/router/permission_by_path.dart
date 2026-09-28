@@ -338,6 +338,15 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (location == RouteName.warehouseShelfLabels) {
     return const [Perm.stockView];
   }
+  // 库存分析 (ADR-135)：呆滞/库龄/盘点建议/供应商少数等管理口径，与仓库报表同权
+  // (stock_report:view)；不放给只有 stock:view 的品质/研发等部门。
+  if (location == RouteName.warehouseInsights) {
+    return const [Perm.stockReportView];
+  }
+  // 独立称重计数页 (ADR-135)：库存查看即可进；保存抽样的称样权限由页面与后端另行把关。
+  if (location == RouteName.warehouseWeighCount) {
+    return const [Perm.stockView];
+  }
   // 委外目标件出仓工作台（V436；LEGACY_BOM_COMPONENT 历史兼容）：独立权限点，
   // 权限管理授权后才可见/可操作。
   if (location == RouteName.warehouseSubcontractOutbound ||

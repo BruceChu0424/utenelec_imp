@@ -455,42 +455,75 @@ public class GoodsService {
     }
 
     /**
-     * 单货品即时库存汇总（货品详情「库存量」用）：聚合 stock_balances（仅 warehouses.is_accountable
-     * 参与核算仓库），返回合计数量/重量 + 按仓库（×颜色）明细。口径同即时库存。
+     * 单货品即时库存按仓库×颜色展开(货品详情「库存量」用)：stock_balances 仅 warehouses.is_accountable
+     * 参与核算仓库，一个仓库×颜色一行(UNIQUE (warehouse_id, goods_id, color_id)，不同颜色同名也不合并)。
+     * 重量是千克(ADR-135)：有数量却没有重量的行投影为 NULL(绝不当 0)，估算重量带标记。
      * 直接查 stock_balances 表（表访问非跨特性 Java 依赖，规避 master→stock 架构边界）。
      */
+    static final String STOCK_SUMMARY_SQL = """
+            SELECT b.warehouse_id, w.code AS warehouse_code, w.name AS warehouse_name,
+                   b.color_id, c.name AS color_name,
+                   SUM(b.qty) AS qty,
+                   CASE WHEN bool_or(b.qty <> 0 AND b.weight IS NULL) THEN NULL
+                        ELSE COALESCE(SUM(b.weight), 0) END AS weight,
+                   COALESCE(bool_or(b.weight_estimated), false) AS weight_estimated,
+                   w.is_line_side
+            FROM stock_balances b
+            JOIN warehouses w ON w.id = b.warehouse_id
+            LEFT JOIN colors c ON c.id = b.color_id
+            WHERE b.goods_id = :goodsId AND w.is_accountable
+            GROUP BY b.warehouse_id, w.code, w.name, w.is_line_side, b.color_id, c.name
+            ORDER BY w.is_line_side, w.code, c.name NULLS FIRST
+            """;
+
     private GoodsStockSummary stockSummaryForGoods(UUID goodsId) {
-        String sql = """
-                SELECT b.warehouse_id, w.code AS warehouse_code, w.name AS warehouse_name,
-                       c.name AS color_name,
-                       SUM(b.qty) AS qty, SUM(b.weight) AS weight
-                FROM stock_balances b
-                JOIN warehouses w ON w.id = b.warehouse_id
-                LEFT JOIN colors c ON c.id = b.color_id
-                WHERE b.goods_id = :goodsId AND w.is_accountable
-                GROUP BY b.warehouse_id, w.code, w.name, c.name
-                ORDER BY w.code
-                """;
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery(sql)
+        List<Object[]> rows = em.createNativeQuery(STOCK_SUMMARY_SQL)
                 .setParameter("goodsId", goodsId)
                 .getResultList();
-        BigDecimal totalQty = BigDecimal.ZERO;
-        BigDecimal totalWeight = BigDecimal.ZERO;
-        List<GoodsStockRow> out = new ArrayList<>();
-        for (Object[] r : rows) {
-            BigDecimal qty = toBd(r[4]);
-            BigDecimal weight = toBd(r[5]);
-            totalQty = totalQty.add(qty);
-            totalWeight = totalWeight.add(weight);
-            out.add(new GoodsStockRow(toUuid(r[0]), (String) r[1], (String) r[2],
-                    (String) r[3], qty, weight));
-        }
-        return new GoodsStockSummary(totalQty, totalWeight, out);
+        return summarizeStock(rows);
     }
 
-    private static BigDecimal toBd(Object o) {
-        if (o == null) return BigDecimal.ZERO;
+    /**
+     * 行 → 汇总：线边仓(V595 车间料架)行照常列出但不计入合计。
+     * 重量合计口径同即时库存合计条(ADR-135)：只加非线边行的已知重量，有数量却重量未知的行另计
+     * weightUnknownRows(前端「≈28.9 kg (另有 2 处未称)」)；有量的行重量全都未知时合计为 null
+     * (前端「未称」)，绝不把未知当 0。含估算的已知重量行让合计带「≈」。
+     *
+     * @param rows {@link #STOCK_SUMMARY_SQL} 的结果行
+     */
+    static GoodsStockSummary summarizeStock(List<Object[]> rows) {
+        BigDecimal totalQty = BigDecimal.ZERO;
+        BigDecimal totalWeight = BigDecimal.ZERO;
+        int weightUnknownRows = 0;
+        boolean knownStockWeight = false;
+        boolean weightEstimated = false;
+        List<GoodsStockRow> out = new ArrayList<>(rows.size());
+        for (Object[] r : rows) {
+            BigDecimal qty = r[5] == null ? BigDecimal.ZERO : decimalOf(r[5]);
+            BigDecimal weight = r[6] == null ? null : decimalOf(r[6]);
+            boolean estimated = weight != null && Boolean.TRUE.equals(r[7]);
+            boolean lineSide = Boolean.TRUE.equals(r[8]);
+            out.add(new GoodsStockRow(toUuid(r[0]), (String) r[1], (String) r[2],
+                    toUuid(r[3]), (String) r[4], qty, weight, estimated, lineSide));
+            if (lineSide) {
+                continue;
+            }
+            totalQty = totalQty.add(qty);
+            if (weight == null) {
+                if (qty.signum() != 0) weightUnknownRows++;
+            } else {
+                totalWeight = totalWeight.add(weight);
+                knownStockWeight = knownStockWeight || qty.signum() != 0;
+                weightEstimated = weightEstimated || estimated;
+            }
+        }
+        boolean allUnknown = weightUnknownRows > 0 && !knownStockWeight;
+        return new GoodsStockSummary(totalQty, allUnknown ? null : totalWeight, weightUnknownRows,
+                !allUnknown && weightEstimated, out);
+    }
+
+    private static BigDecimal decimalOf(Object o) {
         if (o instanceof BigDecimal bd) return bd;
         return new BigDecimal(o.toString());
     }
@@ -1219,7 +1252,8 @@ public class GoodsService {
                         ? g.getThicknessUnitLegacyId() : g.getThicknessUnit().getLegacyId(),
                 g.getMWeightUnit() == null
                         ? g.getMWeightUnitLegacyId() : g.getMWeightUnit().getLegacyId(),
-                false, false, false, stock.getTotalQty(), stock.getRows(), g.getVersion(),
+                false, false, false, stock.getTotalQty(), stock.getRows(),
+                stock.getTotalWeight(), stock.getWeightUnknownRows(), stock.isWeightEstimated(), g.getVersion(),
                 g.getSeries(), g.getStockPlace(),
                 g.getThicknessUnit() == null ? null : g.getThicknessUnit().getId(),
                 g.getMWeightUnit() == null ? null : g.getMWeightUnit().getId(),

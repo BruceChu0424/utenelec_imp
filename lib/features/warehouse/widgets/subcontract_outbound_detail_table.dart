@@ -1,13 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../shared/measurement/weight_params.dart';
+import '../../../shared/measurement/weight_prefs.dart';
+import '../../../shared/measurement/weight_unit.dart';
+import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
+import '../models/outbound_weight_entry.dart';
 import '../models/subcontract_outbound.dart';
+import 'outbound_weight_columns.dart';
 
 String subcontractOutboundQuantity(double value) =>
     value == value.roundToDouble()
@@ -28,19 +37,42 @@ class SubcontractOutboundLineDraft {
     this.line,
     this.draftItemId,
     String initialQty, {
-    this.weight,
+    double? weight,
+    bool qtyFromWeight = false,
+    WeightUnit weightUnit = WeightUnit.kg,
     String? remark,
     this.unitRate,
-  }) : qty = TextEditingController(text: initialQty),
+  }) : qty = UtenAutofillTextController(text: initialQty, autofilled: false),
        remarkController = TextEditingController(text: remark ?? ''),
-       ownDraftQty = draftItemId == null ? 0 : double.tryParse(initialQty) ?? 0;
+       ownDraftQty = draftItemId == null
+           ? 0
+           : double.tryParse(initialQty) ?? 0 {
+    this.weight = OutboundWeightEntry(
+      goodsId: line.goodsId,
+      qtyOf: () => double.tryParse(qty.text.trim()),
+      qtyController: qty,
+      unitRate: unitRate ?? 1,
+      kg: weight,
+      qtyFromWeight: qtyFromWeight,
+      unit: weightUnit,
+    );
+    // 已保存草稿里「数量按称重推算」的行：数量保留黄框并说明来源(与仓库单据编辑页同口径)。
+    if (this.weight.qtyFromWeight &&
+        this.weight.kg != null &&
+        initialQty.trim().isNotEmpty) {
+      qty.setAutomaticText(initialQty);
+      this.weight.weight.markQtyDerived(initialQty, note: '保存时按称重折算的数量');
+    }
+  }
 
   final OutboundPlanLine line;
   final String? draftItemId;
-  final TextEditingController qty;
 
-  /// 原单已记的重量，仅原样回传，页面不再录入(单位已表达重量，全站实际重量列已下线)。
-  final double? weight;
+  /// 本次出仓数量 (空着时可按称重推算, 黄框预填)。
+  final UtenAutofillTextController qty;
+
+  /// 仓库实称重量 (ADR-135 §3.8): 随草稿保存, 审核出仓时落委外出仓流水。
+  late final OutboundWeightEntry weight;
   final double ownDraftQty;
   final TextEditingController remarkController;
   String? get remark => remarkController.text.trim().isEmpty
@@ -79,23 +111,29 @@ class SubcontractOutboundLineDraft {
         quantity - maxEditableQty > 0.0000001) {
       return l10n.warehouseSubcontractOutboundQuantityInvalid;
     }
+    if (weight.weight.hasError) return subcontractOutboundWeightInvalid;
     return null;
   }
 
   Map<String, dynamic> toPayload() => {
     ...line.toMaterialIssueItemPayload(
       qty: double.parse(qty.text.trim()),
-      weight: weight,
+      weight: weight.kg,
+      qtyFromWeight: weight.qtyFromWeight,
     ),
     'remark': remark,
     if (unitRate != null) 'unitRate': unitRate,
   };
 
   void dispose() {
+    weight.dispose();
     qty.dispose();
     remarkController.dispose();
   }
 }
+
+/// 实称重量格里有看不懂的输入。
+const String subcontractOutboundWeightInvalid = '实称重量看不懂，请改成如 12.5 或 850g';
 
 class SubcontractOutboundTableRow extends EditableGridRow {
   SubcontractOutboundTableRow({
@@ -127,7 +165,11 @@ class SubcontractOutboundTableRow extends EditableGridRow {
 
 /// Shared by single-plan picking and batch picking. It uses the same compact,
 /// horizontally scrollable table as the inbound confirmation pages.
-class SubcontractOutboundDetailTable extends StatefulWidget {
+///
+/// 实称重量 (ADR-135 §3.8) 紧跟「单位」: 选填, 占位「应称 X」, 偏差框只提醒;
+/// 本次出仓数量空着时填重量按称重推算数量 (黄框, 行打上 qtyFromWeight)。
+/// 单重参数由表格自己按行批量取 (页内缓存, 离开页面释放)。
+class SubcontractOutboundDetailTable extends ConsumerStatefulWidget {
   const SubcontractOutboundDetailTable({
     super.key,
     required this.rows,
@@ -161,24 +203,39 @@ class SubcontractOutboundDetailTable extends StatefulWidget {
   final VoidCallback onChanged;
 
   @override
-  State<SubcontractOutboundDetailTable> createState() =>
+  ConsumerState<SubcontractOutboundDetailTable> createState() =>
       _SubcontractOutboundDetailTableState();
 }
 
 class _SubcontractOutboundDetailTableState
-    extends State<SubcontractOutboundDetailTable> {
+    extends ConsumerState<SubcontractOutboundDetailTable> {
   final _grid = UtenEditableGridController<SubcontractOutboundTableRow>();
+
+  /// 本次 build 盯住的页内单重参数缓存 (有明细行时才建)。
+  WeightParamsCache? _weightCache;
 
   @override
   void initState() {
     super.initState();
     _grid.replaceAll(widget.rows);
+    _ensureWeightParams();
   }
 
   @override
   void didUpdateWidget(covariant SubcontractOutboundDetailTable oldWidget) {
     super.didUpdateWidget(oldWidget);
     _grid.replaceAll(widget.rows);
+    _ensureWeightParams();
+  }
+
+  /// 下一帧 (缓存已在 build 里盯住) 补齐缺的单重参数; 已有/在途的不重复取。
+  void _ensureWeightParams() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ensureOutboundWeightParams(_weightCache, [
+        for (final row in widget.rows) row.draft.weight,
+      ]);
+    });
   }
 
   @override
@@ -192,6 +249,16 @@ class _SubcontractOutboundDetailTableState
     final l10n =
         Localizations.of<AppLocalizations>(context, AppLocalizations) ??
         AppLocalizationsZh();
+    final weightUnits = ref.watch(warehouseWeightUnitsPrefsProvider);
+    _weightCache = widget.rows.isEmpty
+        ? null
+        : ref.watch(weightParamsCacheProvider);
+    final weightCache = _weightCache;
+    bool rowEditable(SubcontractOutboundTableRow row) =>
+        widget.editable &&
+        row.editable &&
+        row.draft.selected &&
+        !row.draft.waitingComponentStock;
     EditableGridColumn<SubcontractOutboundTableRow> textColumn(
       String key,
       String label,
@@ -228,6 +295,13 @@ class _SubcontractOutboundDetailTableState
       showRowDelete: false,
       showSelectAllToggle: false,
       showRemoveRowsAction: false,
+      toolbarActions: const [WeightEntryUnitButton()],
+      footer: widget.rows.isEmpty
+          ? null
+          : OutboundWeightSummaryBar(
+              entries: [for (final row in widget.rows) row.draft.weight],
+              params: weightCache,
+            ),
       // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
       // 不再「编号 名称」拼一格；历史父件同样拆名称 + 编号。
       // 委外发料最容易错的就是同名不同色（自制白色 / 委外香槟金）——
@@ -240,6 +314,8 @@ class _SubcontractOutboundDetailTableState
         'warehouse',
         'quantity',
         'unit',
+        // 实称重量紧跟数量组 (数量 + 单位) 之后 (ADR-135 §3.8)。
+        'weight',
         // 「建议发料仓」→「仓内可动用」→「本次最多」：上限被库存压住时，仓库一眼看出
         // 是计划没量还是仓里没货、货在哪个仓，不用靠保存被打回来才知道。
         'suggestedWarehouse',
@@ -338,6 +414,36 @@ class _SubcontractOutboundDetailTableState
           80,
           (row) => row.draft.line.unitName ?? '—',
         ),
+        weightGridColumn<SubcontractOutboundTableRow>(
+          controllerOf: (row) => row.draft.weight.weight,
+          entryUnit: weightUnits.entry,
+          mode: WeightCaptureMode.outbound,
+          paramsOf: weightCache == null
+              ? null
+              : (row) => row.draft.weight.paramsIn(weightCache),
+          paramsListenable: weightCache,
+          qtyBaseOf: (row) => row.draft.weight.qtyBase,
+          qtyListenableOf: (row) => row.draft.qty,
+          enabledOf: rowEditable,
+          qtyAutofill: WeightQtyAutofill<SubcontractOutboundTableRow>(
+            qtyControllerOf: (row) => row.draft.qty,
+            unitRateOf: (row) => row.draft.unitRate ?? 1,
+            enabledOf: rowEditable,
+          ),
+          onWeighCount: (context, row) => weighOutboundEntry(
+            context,
+            entry: row.draft.weight,
+            goodsTitle: [
+              row.draft.line.goodsName,
+              row.draft.line.goodsCode,
+              row.draft.line.colorName,
+            ].whereType<String>().join(' '),
+            cache: weightCache,
+            lineUnitName: row.draft.line.unitName,
+            warehouseId: row.warehouseId,
+            sampleRemark: row.documentNo,
+          ),
+        ),
         quantityColumn(
           'planned',
           l10n.warehouseSubcontractOutboundPlanned,
@@ -423,11 +529,9 @@ class _SubcontractOutboundDetailTableState
                             value <= 0 ||
                             value - row.draft.maxEditableQty > 0.0000001);
                   },
-                  child: _field(
+                  child: _quantityField(
                     row,
-                    row.draft.qty,
                     l10n.warehouseSubcontractOutboundQuantity,
-                    'quantity',
                   ),
                 ),
         ),
@@ -516,26 +620,40 @@ class _SubcontractOutboundDetailTableState
     ),
   );
 
-  Widget _field(
+  /// 本次出仓数量格: 按称重推算的数量黄框预填, ⓘ 说明推算区间。
+  Widget _quantityField(
     SubcontractOutboundTableRow row,
-    TextEditingController controller,
     String label,
-    String suffix,
   ) => Semantics(
     textField: true,
     label: label,
-    child: TextField(
-      key: ValueKey(
-        'subcontract-outbound-${row.draft.draftItemId ?? row.draft.line.planItemId}-$suffix',
-      ),
-      controller: controller,
-      enabled: widget.editable && row.editable && row.draft.selected,
-      textAlign: TextAlign.right,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      inputFormatters: [
-        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,4}$')),
-      ],
-      decoration: const UtenInputDecoration(InputDecoration(isDense: true)),
+    child: ValueListenableBuilder<TextEditingValue>(
+      valueListenable: row.draft.qty,
+      builder: (context, _, _) {
+        final autofilled = row.draft.qty.autofilled;
+        return TextField(
+          key: ValueKey(
+            'subcontract-outbound-${row.draft.draftItemId ?? row.draft.line.planItemId}-quantity',
+          ),
+          controller: row.draft.qty,
+          enabled: widget.editable && row.editable && row.draft.selected,
+          textAlign: TextAlign.right,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,4}$')),
+          ],
+          decoration: applyAutofillHint(
+            UtenInputDecoration(
+              const InputDecoration(isDense: true),
+              info: autofilled
+                  ? (row.draft.weight.weight.qtyEstimateNote ?? '按称重推算')
+                  : null,
+            ),
+            Theme.of(context),
+            autofilled: autofilled,
+          ),
+        );
+      },
     ),
   );
 }

@@ -93,7 +93,7 @@ class AuditTriggerCoverageMigrationContractTest {
                     "系统设置与全局配置: 改动影响全平台运行口径",
                     Set.of(
                         "business_identifier_namespaces", "expense_claim_settings",
-                        "measurement_capture_profiles", "system_master_category_registry",
+                        "system_master_category_registry",
                         "system_posting_style_roles", "system_settings",
                         "unit_measurement_profiles")),
             new FullGroup("master", "data_change", false,
@@ -102,6 +102,7 @@ class AuditTriggerCoverageMigrationContractTest {
                         "accounts", "client_categories", "client_ship_addresses", "clients",
                         "colors", "currencies", "finance_payment_methods", "goods",
                         "goods_bom_items", "goods_bom_learning_profiles", "goods_bom_learning_material_totals",
+                        "goods_weight_profiles",
                         "goods_import_batches", "goods_import_creations",
                         "master_code_change_batches", "material_categories", "mould_categories",
                         "moulds", "official_policy_briefs", "party_activity_records",
@@ -214,7 +215,11 @@ class AuditTriggerCoverageMigrationContractTest {
             new ScopedTable("preplan_material_reallocations", "data_change", false,
                     List.of("status", "closed_by", "closed_at", "close_reason"),
                     "物料改挪记录: 新建时行内已带发起人与原因, 之后会被人工撤回/取消、随优先履约推进状态: "
-                            + "只记状态与关闭人、关闭时间、关闭原因"));
+                            + "只记状态与关闭人、关闭时间、关闭原因"),
+            new ScopedTable("goods_weight_observations", "data_change", false,
+                    List.of("excluded_reason"),
+                    "称重观测(V745/ADR-135): 插入由仓库采集自动产生, 行内带称重人与来源; 红冲标记是系统随单据撤回写的; "
+                            + "只记人工排除/恢复这一个人为决定"));
 
     /** NONE: 不挂行级审计。分组即理由。 */
     static final List<NoneGroup> NONE = List.of(
@@ -266,6 +271,7 @@ class AuditTriggerCoverageMigrationContractTest {
                     Set.of(
                         "account_flow_monthly_summaries", "da_amortization_log",
                         "execution_segment_sales_allocations", "fa_depreciation_log",
+                        "goods_weight_estimates",
                         "inbound_expectation_items", "inbound_expectations", "mrp_generations",
                         "preplan_analysis_stock_exact_pegs", "preplan_future_supply_transfers",
                         "preplan_make_entitlement_delegations",
@@ -314,8 +320,7 @@ class AuditTriggerCoverageMigrationContractTest {
                         "ar_ap_source_refs", "client_access_change_events",
                         "employee_offboarding_events", "expense_claim_events",
                         "finance_asset_approval_steps", "finance_asset_events",
-                        "measurement_capture_decision_events", "measurement_capture_evidence",
-                        "measurement_capture_line_snapshots", "production_material_discovery_lines",
+                        "production_material_discovery_lines",
                         "preplan_future_supply_transfer_cancellations",
                         "preplan_make_public_claims", "preplan_make_public_claim_cancellations",
                         "preplan_aggregate_batch_events", "preplan_aggregate_material_aliases", "preplan_aggregate_direct_transfer_slices",
@@ -385,7 +390,8 @@ class AuditTriggerCoverageMigrationContractTest {
                         "stock_value_legacy_balance_case_events", "stock_value_openings",
                         "stock_value_position_transfers", "stock_value_postings",
                         "stock_value_production_cost_inputs",
-                        "stock_value_production_cost_revisions", "subcontract_component_stock_handoffs",
+                        "stock_value_production_cost_revisions", "stock_weight_adjustments",
+                        "subcontract_component_stock_handoffs",
                         "subcontract_loss_events",
                         "subcontract_short_delivery_case_events",
                         "supplier_settlement_batch_events",
@@ -395,9 +401,7 @@ class AuditTriggerCoverageMigrationContractTest {
                     "老系统导入的只读数据与迁移核对证据: 由导入对账脚本核对, 不经在线写路径",
                     Set.of(
                         "client_default_settlement_migration_issues", "legacy_departments",
-                        "legacy_finance_import_sources", "legacy_measurement_exceptions",
-                        "legacy_measurement_profile_snapshots",
-                        "legacy_measurement_source_registry",
+                        "legacy_finance_import_sources",
                         "legacy_procurement_receipt_import_sources",
                         "legacy_subcontract_order_import_sources",
                         "legacy_warehouse_workshop_links", "production_fqc_legacy_exemptions",
@@ -567,7 +571,10 @@ class AuditTriggerCoverageMigrationContractTest {
             declaredScoped.put(scoped.group(1), new ScopedTable(scoped.group(1), scoped.group(2),
                     Boolean.parseBoolean(scoped.group(5)), columns, expected.reason()));
         }
-        assertEquals(scopedTables(), declaredScoped, "V670 COLUMN_SCOPED calls must equal the list");
+        // 基线之后新建的 COLUMN_SCOPED 表(如 V745 称重观测)由建表迁移登记, 形态见下一个用例。
+        Map<String, ScopedTable> baselineScoped = new LinkedHashMap<>(scopedTables());
+        baselineScoped.keySet().removeIf(t -> created.getOrDefault(t, 0) > POLICY_BASELINE_VERSION);
+        assertEquals(baselineScoped, declaredScoped, "V670 COLUMN_SCOPED calls must equal the list");
 
         String normalized = sql.replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
         assertTrue(normalized.contains("when (old.* is distinct from new.*)"),
@@ -593,15 +600,34 @@ class AuditTriggerCoverageMigrationContractTest {
     void tablesCreatedAfterTheBaselineRegisterTheirPolicyInMigrations() throws IOException {
         Map<String, Integer> created = liveTableVersions();
         Map<String, String> registered = new HashMap<>();
+        Map<String, ScopedTable> registeredScoped = new HashMap<>();
         for (MigrationSource migration : migrations()) {
             if (migration.version() <= POLICY_BASELINE_VERSION) {
                 continue;
             }
-            Matcher registration = REGISTRATION.matcher(stripSqlComments(migration.sql()));
+            String sql = stripSqlComments(migration.sql());
+            Matcher registration = REGISTRATION.matcher(sql);
             while (registration.find()) {
                 registered.put(registration.group(1), registration.group(2));
             }
+            Matcher scoped = SCOPED_CALL.matcher(sql);
+            while (scoped.find()) {
+                List<String> columns = new ArrayList<>();
+                Matcher column = QUOTED.matcher(scoped.group(4));
+                while (column.find()) {
+                    columns.add(column.group(1));
+                }
+                ScopedTable expected = scopedTables().get(scoped.group(1));
+                registeredScoped.put(scoped.group(1), new ScopedTable(scoped.group(1), scoped.group(2),
+                        Boolean.parseBoolean(scoped.group(5)), columns,
+                        expected == null ? "" : expected.reason()));
+            }
         }
+        // 基线之后新建的 COLUMN_SCOPED 表: 建表迁移里的类别、列清单与插入/删除开关必须与清单逐项一致。
+        Map<String, ScopedTable> laterScoped = new LinkedHashMap<>(scopedTables());
+        laterScoped.keySet().removeIf(t -> created.getOrDefault(t, 0) <= POLICY_BASELINE_VERSION);
+        laterScoped.forEach((table, expected) -> assertEquals(expected, registeredScoped.get(table),
+                table + " must register fn_audit_track_table('" + table + "', 'COLUMN_SCOPED', ...) exactly as listed"));
         List<String> missing = new ArrayList<>();
         created.forEach((table, version) -> {
             if (version <= POLICY_BASELINE_VERSION) {

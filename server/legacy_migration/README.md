@@ -58,16 +58,18 @@ V630(2026-09-20)退役了 V443 的客户货款类别标签：首导不再按 `B_
 
 销售 AR 对账必须把正式应收与客户预收分层：未转销 `CUSTOMER_PREPAYMENT` 负余额不得净掉正式 AR 未收；只有已审预收转销才冲减目标 AR。铺底只在客户汇总展示，`超出铺底额=正式 AR 未收-铺底额` 保留负数，不参与核销。这 23 项结构对账不能替代这组金额/来源人工对账或后续自动守卫。
 
-V442 候选在采购、仓库、销售、委外和生产物理单据导入后运行
-migrate_measurement_profiles.sql。它只消费已审核目标 UUID 事实：正重量模式形成
-PROVISIONAL 建议；旧 Weight 没有单位，不得自动 CONFIRMED。异常进入
-legacy_measurement_exceptions。画像必须绑定同一 formatVersion 4 manifest 的备份摘要、
-批准引用和 Git commit；原来明确为空且尚无导入映射的生产日报、委外询价/申请及银行单 CSV 必须仍为空；非空来源在写库前拒绝，必须先补受审映射，不能静默丢弃。当前未绑定的本地 CSV 只允许运行
-profile_measurement_evidence.py 做聚合诊断。
+重量(V745/ADR-135)：库存与仓库单据重量统一按千克存储。老库 Weight/FactWeight 没有可证明的单位，
+仓库单据明细重量与 StockGoods 余额重量一律不导入(NULL=不知道，上线后从第一次称重/盘点起建立重量账)；
+只有基本单位本身是质量单位的货品按「数量 x 系数」精确得出余额重量，质量单位只按受审 legacy 主键
+(`migrate_unit.sql`：108=KG、109=G、241=JIN)标注，不按名称猜。原 V442 计量画像步骤
+(`--measurement-profiles`、`migrate_measurement_profiles.sql`、`profile_measurement_evidence.py`)已随 V745 退役，
+单重改由上线后的仓库称重自学习。
+
+原来明确为空且尚无导入映射的生产日报、委外询价/申请及银行单 CSV 必须仍为空；非空来源在写库前拒绝，必须先补受审映射，不能静默丢弃。
 
 来源辅助文件也必须被消费并核验：`b_pstyle.csv` 与受审结算 UUID 字典逐项核对，不按名称猜测新增业务角色；`b_worker_columns.csv` 保留源字段结构证据，不作为员工业务数据；`m_bank.csv` 在交付非空映射前必须为空。
 
-主档按源 CSV 的精确 legacy 主键集合对账，历史缺档占位必须有实际业务 CSV 的行/字段引用证据。孤儿 BOM 保留逐行排除原因，满足源数=有效导入+明确排除；不能进入现役 BOM。仅 StockGoods 留存的余额也按仓/货/实际色或无色保留，不会因缺少出入库明细丢行或合并颜色；源数量、金额、重量不改写。源 B_Goods.StockPlace 残值不写入库位主档。
+主档按源 CSV 的精确 legacy 主键集合对账，历史缺档占位必须有实际业务 CSV 的行/字段引用证据。孤儿 BOM 保留逐行排除原因，满足源数=有效导入+明确排除；不能进入现役 BOM。仅 StockGoods 留存的余额也按仓/货/实际色或无色保留，不会因缺少出入库明细丢行或合并颜色；源数量、金额不改写，重量不导入(见上)。源 B_Goods.StockPlace 残值不写入库位主档。
 
 受验采购/委外收货通过 V627 恢复旧历史 `consideration_required=false` 口径，保持原 header/item 来源、金额与单位证据，不造对价分段、库存或 AP。P Total 是原币；E STotal 是本币成本。只有原单明确正汇率才转换商业原币到本币；E 成本只有基准币且原率 1 才能等值为原币，否则未知维度保持 NULL。所有源单位/汇率 NULL/0 不填 1、不借当前货品默认单位。原 header Total 的真实 0 不能被明细成本合计替换；源头/明细只读，详见采购/委外迁移文档当前覆盖说明。
 

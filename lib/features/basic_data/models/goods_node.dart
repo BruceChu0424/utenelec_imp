@@ -209,6 +209,9 @@ class GoodsDetail {
     this.discountMasked = false,
     this.priceMasked = false,
     this.stockQty,
+    this.stockWeightKg,
+    this.stockWeightUnknown = 0,
+    this.stockWeightEstimated = false,
     this.stockByWarehouse = const [],
     this.series,
     this.stockPlace,
@@ -309,6 +312,16 @@ class GoodsDetail {
 
   // ===== 即时库存（聚合 stock_balances，仅参与核算仓库；详情展示+关联仓库） =====
   final double? stockQty; // 各参与核算仓库余量合计
+
+  /// 已知库存重量合计 (千克, 服务端按参与核算且非线边的仓库算好; 前端不再逐行相加)。
+  /// null = 有量的维度重量全都未知; 与 [stockWeightUnknown] 一起显示「≈28.9 kg (另有 2 处未称)」。
+  final double? stockWeightKg;
+
+  /// 有库存但重量未知的维度数 (仓库 x 颜色, 不含线边仓)。
+  final int stockWeightUnknown;
+
+  /// 重量合计含估算 (显示「≈」)。
+  final bool stockWeightEstimated;
   final List<GoodsStockRow> stockByWarehouse; // 按仓库（×颜色）展开
 
   final String? series; // 物料系列（如塑胶件/五金件）
@@ -404,6 +417,9 @@ class GoodsDetail {
     priceMasked: json['priceMasked'] as bool? ?? false,
     writable: json['writable'] == true,
     stockQty: (json['stockQty'] as num?)?.toDouble(),
+    stockWeightKg: (json['stockWeightKg'] as num?)?.toDouble(),
+    stockWeightUnknown: (json['stockWeightUnknown'] as num?)?.toInt() ?? 0,
+    stockWeightEstimated: json['stockWeightEstimated'] == true,
     stockByWarehouse:
         (json['stockByWarehouse'] as List?)
             ?.map((e) => GoodsStockRow.fromJson(e as Map<String, dynamic>))
@@ -541,30 +557,46 @@ String resolveGoodsSaveCategoryId({
 }
 
 /// 货品在某仓库（×颜色）的即时库存行（聚合 stock_balances，仅参与核算仓库）。
+/// 线边仓行单独列出、不计入合计 ([lineSide])。
 class GoodsStockRow {
   const GoodsStockRow({
     this.warehouseId,
     this.warehouseCode,
     this.warehouseName,
+    this.colorId,
     this.colorName,
     this.qty,
     this.weight,
+    this.weightEstimated = false,
+    this.lineSide = false,
   });
 
   final String? warehouseId;
   final String? warehouseCode;
   final String? warehouseName;
+  final String? colorId;
   final String? colorName; // 颜色名（无色货品为 null）
   final double? qty; // 当前余量（基本单位）
-  final double? weight; // 当前库存重量
+
+  /// 当前库存重量 (千克); null = 未知 (没称过)。
+  final double? weight;
+
+  /// 重量含估算 (显示「≈」)。
+  final bool weightEstimated;
+
+  /// 线边仓 (车间直送料架) 行: 只列出, 不计入合计。
+  final bool lineSide;
 
   factory GoodsStockRow.fromJson(Map<String, dynamic> json) => GoodsStockRow(
     warehouseId: json['warehouseId'] as String?,
     warehouseCode: json['warehouseCode'] as String?,
     warehouseName: json['warehouseName'] as String?,
+    colorId: json['colorId'] as String?,
     colorName: json['colorName'] as String?,
     qty: (json['qty'] as num?)?.toDouble(),
     weight: (json['weight'] as num?)?.toDouble(),
+    weightEstimated: json['weightEstimated'] == true,
+    lineSide: json['lineSide'] == true,
   );
 }
 

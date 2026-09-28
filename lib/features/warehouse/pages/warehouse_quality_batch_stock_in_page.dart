@@ -5,6 +5,8 @@
 // 剩余量全额入库；可取消勾选/改小数量（批量部分入库）、改实际库位；底部
 // 「确认批量入库」按收货单分组整批同事务提交（每单独立幂等键，重试不重复）。
 // 提交失败保留原表单与幂等键，原地重试。
+// 「本次实收」后只读「放行重量」(ADR-135)：按到货实称分摊，入库时就按它记库存重量；
+// 本页不录重量(重量在到货登记时称)。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -28,6 +30,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/measurement/weight_prefs.dart';
 import '../models/warehouse_quality_result.dart';
 import '../repositories/warehouse_quality_result_repository.dart';
 import '../widgets/warehouse_quality_merged_table.dart';
@@ -407,6 +410,8 @@ class _WarehouseQualityBatchStockInPageState
           onPickWarehouse: _pickWarehouse,
           showReceipt: true,
           stickyHeaderPinned: _gridPinned,
+          // 「放行重量」按用户的重量显示单位(自动/千克/...)。
+          weightDisplay: ref.watch(warehouseWeightUnitsPrefsProvider).display,
         ),
         if (_error != null) ...[
           const SizedBox(height: UtenSpacing.s8),

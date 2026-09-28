@@ -1,16 +1,16 @@
-// 货品详情整页（基础资料-货品资料）：列表双击行 / 「添加货品」/ 研发任务 /
-// 物料反查统一入口，路由 /basicinfo/goods/new、/basicinfo/goods/:id（?tab= 指定页签）。
+// 货品详情整页 (基础资料-货品资料): 列表双击行 / 「添加货品」/ 研发任务 /
+// 物料反查统一入口, 路由 /basicinfo/goods/new、/basicinfo/goods/:id
+// (?tab=basic|bom|cost|files|stock 指定页签; 旧深链的数字 0/1/2 仍认)。
 //
-// 取代原来的居中弹窗（920 宽，用户反馈太小看不清）：三页签（基本信息 /
-// 组装信息 / 成本预算）铺满整页，组装信息表格吃满全宽，表单/只读网格限宽
-// 960 居中。增删改、BOM、成本、预览逻辑全部在 GoodsDetailBody 里，本页只负责：
+// 取代原来的居中弹窗 (920 宽, 用户反馈太小看不清): 页签 (基本信息 / 组装信息 /
+// 成本预算 / 图片和文件 / 库存与出入库) 铺满整页, 组装信息表格吃满全宽, 表单/只读网格
+// 限宽 960 居中。增删改、BOM、成本、预览、库存面板全部在 GoodsDetailBody 里, 本页只负责:
 // - 按 goodsId 拉详情（含加载/失败重试），或 categoryId 进入新增态；
 // - canEdit 按 goods:edit 权限（或超管）自算，不再由调用方传入；
-// - 删除：确认 → 删 → 返回来源页（popOrBackTo，深链兜底回货品资料）；
-// - 「出入库流水」：有 stock:view 权限才显示，push 流水页压栈，返回回本详情页。
+// - 删除：确认 → 删 → 返回来源页（popOrBackTo，深链兜底回货品资料）。
+// 「出入库流水」按钮 (stock:view) 由主体直接切到「库存与出入库」页签的流水分段。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/feedback/uten_empty.dart';
 import '../../../core/network/api_endpoints.dart';
@@ -30,7 +30,7 @@ class GoodsDetailPage extends ConsumerStatefulWidget {
     super.key,
     this.goodsId,
     this.categoryId,
-    this.initialTab = 0,
+    this.initialTab,
   });
 
   /// 既有货品 id：查看/编辑态。为空则进入新增态（[categoryId] 应有值，
@@ -40,8 +40,9 @@ class GoodsDetailPage extends ConsumerStatefulWidget {
   /// 新增态所属分类 id（基本信息表单提交时随 body 上送）。
   final String? categoryId;
 
-  /// 初始页签：0=基本信息，1=组装信息，2=成本预算（研发任务/反查直达 BOM）。
-  final int initialTab;
+  /// 初始页签 (路由 ?tab= 原样传入): basic / bom / cost / files / stock;
+  /// 旧深链数字 0=基本信息、1=组装信息、2=成本预算仍认; 空或认不出 = 基本信息。
+  final String? initialTab;
 
   @override
   ConsumerState<GoodsDetailPage> createState() => _GoodsDetailPageState();
@@ -157,7 +158,6 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
     final canBomCreate = can(Perm.goodsBomCreate);
     final canBomEdit = can(Perm.goodsBomEdit);
     final canBomDelete = can(Perm.goodsBomDelete);
-    final canViewStock = can(Perm.stockView);
 
     if (_isCreate && widget.categoryId == null) {
       return Scaffold(
@@ -190,7 +190,7 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
           ),
           initialDetail: _detail,
           initialCategoryId: widget.categoryId,
-          initialTab: widget.initialTab,
+          initialTab: GoodsDetailTab.parse(widget.initialTab),
           canCreate: canCreate,
           canEdit: canEdit,
           canStatus: canStatus,
@@ -199,14 +199,6 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
           canBomDelete: canBomDelete,
           onToggleStatus: canStatus && !_isCreate ? _toggleStatus : null,
           onDelete: canDelete && !_isCreate ? _delete : null,
-          onViewMovements: canViewStock && !_isCreate
-              ? () {
-                  final id = _detail?.id;
-                  if (id != null && id.isNotEmpty) {
-                    context.push('${RouteName.stockMovement}?goodsId=$id');
-                  }
-                }
-              : null,
           // 整页语义下来源页刷新由「返回时重载」统一承担（各入口 push 后
           // await 恢复即刷新），此处无需回调。
           onDataChanged: null,

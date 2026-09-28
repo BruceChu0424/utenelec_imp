@@ -31,6 +31,7 @@ void main() {
       'colorId': 'color-1',
       'unitId': 'unit-1',
       'qty': 5,
+      'qtyFromWeight': false,
       'unitRate': 1,
       'orderItemId': 'order-item-1',
       'planItemId': 'plan-item-1',

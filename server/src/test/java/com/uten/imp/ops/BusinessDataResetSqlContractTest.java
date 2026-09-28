@@ -138,7 +138,9 @@ class BusinessDataResetSqlContractTest {
             Map.entry("preplan_aggregate_material_aliases", 712),
             Map.entry("preplan_aggregate_direct_transfer_slices", 715),
             Map.entry("preplan_make_public_claims", 722),
-            Map.entry("preplan_make_public_claim_cancellations", 722));
+            Map.entry("preplan_make_public_claim_cancellations", 722),
+            // V745 仓库重量账(ADR-135)：只改重量的库存账行随库存业务数据清空。
+            Map.entry("stock_weight_adjustments", 745));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
@@ -158,19 +160,32 @@ class BusinessDataResetSqlContractTest {
             // V693 仓库负责人(ADR-115): 仓库的附属设置随主档保留。
             Map.entry("warehouse_keepers", 693),
             Map.entry("goods_bom_learning_profiles", 711),
-            Map.entry("goods_bom_learning_material_totals", 711));
+            Map.entry("goods_bom_learning_material_totals", 711),
+            // V745 单重学习(ADR-135)：称重设置、称重观测与学习结果随主档保留。
+            Map.entry("goods_weight_profiles", 745),
+            Map.entry("goods_weight_observations", 745),
+            Map.entry("goods_weight_estimates", 745));
 
     /**
      * V590 起整表废弃并从清空策略移除的表（「读取已安装定义 + 锚点替换删除」
      * 补丁）。新增删除时同步登记，并保持 ops 脚本与 V590 补丁锚点一致。
+     * 表原来的 CLEAR/PRESERVE 归类取自冻结的 V464 基线，计数公式按归类分别扣减。
      */
-    private static final Map<String, Integer> REMOVED_RESET_TABLES = Map.of(
-            "production_goods_workshop_preferences", 590,
+    private static final Map<String, Integer> REMOVED_RESET_TABLES = Map.ofEntries(
+            Map.entry("production_goods_workshop_preferences", 590),
             // V677 / ADR-109：角色体系删除，四张角色表从清单两侧同时移除。
-            "roles", 677,
-            "user_roles", 677,
-            "role_permissions", 677,
-            "department_roles", 677);
+            Map.entry("roles", 677),
+            Map.entry("user_roles", 677),
+            Map.entry("role_permissions", 677),
+            Map.entry("department_roles", 677),
+            // V745 / ADR-135：V442 采集偏好学习退役(四张 CLEAR 采集表 + 三张 PRESERVE 旧库计量证据)。
+            Map.entry("measurement_capture_decision_events", 745),
+            Map.entry("measurement_capture_evidence", 745),
+            Map.entry("measurement_capture_line_snapshots", 745),
+            Map.entry("measurement_capture_profiles", 745),
+            Map.entry("legacy_measurement_exceptions", 745),
+            Map.entry("legacy_measurement_profile_snapshots", 745),
+            Map.entry("legacy_measurement_source_registry", 745));
 
     private String opsScript;
     private String migrationSql;
@@ -206,15 +221,22 @@ class BusinessDataResetSqlContractTest {
     void appTwinFunctionClassifiesExactlyTheOpsScriptTables() {
         Map<String, String> opsPolicy = policy(opsScript);
         Map<String, String> twinPolicy = policy(migrationSql);
+        // 废弃表按它在冻结 V464 基线里的归类分别扣减(V590/V677 删的都是 PRESERVE，V745 两类都有)。
+        long removedClear = REMOVED_RESET_TABLES.keySet().stream()
+                .filter(table -> "CLEAR".equals(twinPolicy.get(table))).count();
+        long removedPreserve = REMOVED_RESET_TABLES.keySet().stream()
+                .filter(table -> "PRESERVE".equals(twinPolicy.get(table))).count();
+        assertThat(removedClear + removedPreserve)
+                .as("every retired table must be classified in the frozen V464 baseline")
+                .isEqualTo(REMOVED_RESET_TABLES.size());
 
         assertThat(opsPolicy).hasSize(
                 320 + RUNTIME_RESET_EXTENSIONS.size() + PRESERVE_RESET_EXTENSIONS.size()
                         - REMOVED_RESET_TABLES.size());
         assertThat(opsPolicy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(224 + RUNTIME_RESET_EXTENSIONS.size());
+                .isEqualTo(224 + RUNTIME_RESET_EXTENSIONS.size() - removedClear);
         assertThat(opsPolicy.values().stream().filter("PRESERVE"::equals).count())
-                .isEqualTo(96 + PRESERVE_RESET_EXTENSIONS.size()
-                        - REMOVED_RESET_TABLES.size());
+                .isEqualTo(96 + PRESERVE_RESET_EXTENSIONS.size() - removedPreserve);
 
         // V464 基础清单逐表一致：任何一侧漂移（新增/删除/改分类）都失败关闭。
         // V590 起废弃表从两侧同时移除（twin 基线文件按历史字节保留，比较前扣除）。
@@ -424,6 +446,9 @@ class BusinessDataResetSqlContractTest {
                 .contains("(733, 662)")
                 .contains("(734, 663)")
                 .contains("(738, 664)")
+                // V745 仓库重量账与单重学习(ADR-135)：本工作树磁盘另有在途 V735，目录数出 666；
+                // 已提交目录(无 V735)为 V745/665，合并时按真实目录重算。
+                .contains("(745, 666)")
                 // The exact range label follows the independently enumerated classpath head.
                 .contains("V507/469、V508/470及V511至V"
                         + MigrationRehearsalSupport.CURRENT_HEAD_VERSION + "完整目录");
@@ -460,6 +485,15 @@ class BusinessDataResetSqlContractTest {
         assertThat(extensionSql)
                 .contains("RAISE EXCEPTION 'V590 cannot drop retired preference policy row from business_data_reset'")
                 .contains("(''production_goods_workshop_preferences'', ''PRESERVE''),");
+        // V745：同一个补丁块里先按单行 needle 删掉 V442 七行，再在 stock_movements 锚点后插入四行。
+        assertThat(extensionSql(745))
+                .contains("RAISE EXCEPTION 'V745 cannot drop retired measurement policy row % from business_data_reset'")
+                .contains("RAISE EXCEPTION 'V745 cannot extend business-data reset policy safely'")
+                .contains("(''measurement_capture_profiles'', ''CLEAR''),")
+                .contains("(''legacy_measurement_source_registry'', ''PRESERVE''),")
+                .contains("(''goods_weight_profiles'', ''PRESERVE'')")
+                .contains("(''goods_weight_observations'', ''PRESERVE'')")
+                .contains("(''goods_weight_estimates'', ''PRESERVE'')");
     }
 
     @Test

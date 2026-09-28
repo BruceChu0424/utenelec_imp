@@ -28,6 +28,9 @@ import com.uten.imp.features.stock.StockReservation;
 import com.uten.imp.features.stock.StockReservationService;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.features.stock.weight.GoodsWeightObservationService;
+import com.uten.imp.features.stock.weight.SourceKind;
+import com.uten.imp.features.stock.weight.WeightSource;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -109,6 +112,9 @@ public class SalesShipmentService {
     // V476：叶子仓落库校验。字段注入+可空——单测手工构造时缺省跳过，Spring 环境恒注入。
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
+    // ADR-135 出库称重核对观测: 同上字段注入+可空, 单测手工构造时不登记观测(观测不承载过账事实)。
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private GoodsWeightObservationService weightObservations;
     private final StockReservationService reservationService;
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
@@ -1232,6 +1238,9 @@ public class SalesShipmentService {
         // 并发的第二张单会排队后按已扣减的余额重算，不存在"都校验通过再一起扣"的窗口。
         if (CustomerShipmentPolicy.direct(s)) customerInventory.reservePicking(id,s.getReviewRevision(),customerInventoryLines(items));
         else assertWarehousePickCapacity(items);
+        // ADR-135：出库实称重量(千克)只进库存重量账和本次出库事件证据, 从不写回销售明细。
+        // 放在可发量校验之后、交接事实之前: 它的查询不会让交接字段提前落盘。
+        Map<UUID,BigDecimal> lineWeights=warehouseLineWeights(req,items);
         s.setWarehouseExceptionReason(null);
         s.setHandedOverAt(now);
         s.setHandedOverBy(actor);
@@ -1242,8 +1251,9 @@ public class SalesShipmentService {
         // warehouse_work_status 只能由 approveLocked 末尾与 status=1 一起落盘——
         // 中途任何一次 flush 把它提前写成 SHIPPED，都会撞 V511「已出库事实不可变」闸。
         recordWarehouseEvent(
-                s, current, SalesShipment.WORK_SHIPPED, reason, actor, now, stockPlaces, lineWarehouses);
-        ShipmentDetail shipped = approveLocked(s, WAREHOUSE_WORK_AUTHORITY);
+                s, current, SalesShipment.WORK_SHIPPED, reason, actor, now, stockPlaces, lineWarehouses,
+                lineWeights);
+        ShipmentDetail shipped = approveLocked(s, lineWeights, WAREHOUSE_WORK_AUTHORITY);
         // 「待出库」待办到此办结（原来挂在开始拣货那一跳）。
         chainNotice.resolveReviewNotices("SALES_SHIPMENT", id, "WAREHOUSE_SHIPPED");
         return shipped;
@@ -1486,7 +1496,7 @@ public class SalesShipmentService {
             String reason,
             UUID actor,
             OffsetDateTime occurredAt) {
-        recordWarehouseEvent(shipment,fromStatus,toStatus,reason,actor,occurredAt,Map.of(),Map.of());
+        recordWarehouseEvent(shipment,fromStatus,toStatus,reason,actor,occurredAt,Map.of(),Map.of(),Map.of());
     }
 
     private Map<UUID,String> warehouseStockPlaces(com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest request,
@@ -1504,24 +1514,66 @@ public class SalesShipmentService {
         return places;
     }
 
+    /**
+     * 出库实称重量(ADR-135 §3.7): 出货明细 id -> 千克(4 位小数)。只收大于 0 的值(0 = 没称);
+     * 按重量计的行(货品基本单位或本行单位是重量单位)丢弃, 库存账按数量精确换算。
+     * 行归属与重复已由 {@link #warehouseStockPlaces} 核过(同一列表)。
+     */
+    private Map<UUID,BigDecimal> warehouseLineWeights(com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest request,
+                                                      List<SalesShipmentItem> items) {
+        if(request.getStockPlaces()==null)return Map.of();
+        Map<UUID,BigDecimal> weights=new LinkedHashMap<>();
+        for(var line:request.getStockPlaces()) {
+            BigDecimal kg=normalizedLineWeightKg(line.weightKg());
+            if(kg!=null)weights.put(line.shipmentItemId(),kg);
+        }
+        if(weights.isEmpty())return Map.of();
+        List<UUID> exact=com.uten.imp.common.util.NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT item.id
+                FROM sales_shipment_items item
+                JOIN goods goods_row ON goods_row.id = item.goods_id
+                LEFT JOIN unit_measurement_profiles goods_profile ON goods_profile.unit_id = goods_row.unit_id
+                LEFT JOIN unit_measurement_profiles line_profile ON line_profile.unit_id = item.unit_id
+                WHERE item.id IN (:ids)
+                  AND (goods_profile.mass_unit_code IS NOT NULL OR line_profile.mass_unit_code IS NOT NULL)
+                """).setParameter("ids",List.copyOf(weights.keySet())),UUID.class);
+        exact.forEach(weights::remove);
+        return weights;
+    }
+
+    /** 出库实称重量: 千克, 非负, 最多 14 位整数和 4 位小数; 0 = 没称(null); 返回去尾零的普通小数。 */
+    static BigDecimal normalizedLineWeightKg(BigDecimal kg) {
+        if(kg==null)return null;
+        BigDecimal value=kg.stripTrailingZeros();
+        if(value.signum()<0||value.scale()>4||value.precision()-value.scale()>14)
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"出库实称重量必须为非负数，最多 14 位整数和 4 位小数(千克)");
+        if(value.signum()==0)return null;
+        return value.scale()<0?value.setScale(0):value;
+    }
+
     private void recordWarehouseEvent(SalesShipment shipment,String fromStatus,String toStatus,String reason,
                                       UUID actor,OffsetDateTime occurredAt,Map<UUID,String> stockPlaces,
-                                      Map<UUID,UUID> lineWarehouses) {
+                                      Map<UUID,UUID> lineWarehouses,Map<UUID,BigDecimal> lineWeights) {
         String places;
         String warehouses;
+        String weights;
         try {
             var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
             places=mapper.writeValueAsString(stockPlaces);
             warehouses=mapper.writeValueAsString(lineWarehouses);
+            // 值是去尾零、非负小数位的 BigDecimal, 序列化为普通 JSON 数字(库里 fn_weight_kg_map_is_valid 校验形状)。
+            weights=mapper.writeValueAsString(lineWeights);
         }
         catch(com.fasterxml.jackson.core.JsonProcessingException failure){throw new IllegalStateException("Cannot encode warehouse location evidence",failure);}
         em.createNativeQuery("""
                 INSERT INTO sales_shipment_warehouse_events (
                     id, shipment_id, from_status, to_status,
-                    reason, actor_employee_id, occurred_at,warehouse_id,review_revision,line_stock_places,line_warehouses
+                    reason, actor_employee_id, occurred_at,warehouse_id,review_revision,line_stock_places,line_warehouses,
+                    line_weights
                 ) VALUES (
                     gen_random_uuid(), :shipmentId, :fromStatus, :toStatus,
-                    :reason, :actor, :occurredAt,:warehouse,:revision,CAST(:places AS jsonb),CAST(:lineWarehouses AS jsonb)
+                    :reason, :actor, :occurredAt,:warehouse,:revision,CAST(:places AS jsonb),CAST(:lineWarehouses AS jsonb),
+                    CAST(:lineWeights AS jsonb)
                 )
                 """)
                 .setParameter("shipmentId", shipment.getId())
@@ -1537,6 +1589,7 @@ public class SalesShipmentService {
                 .setParameter("revision",shipment.getReviewRevision())
                 .setParameter("places",places)
                 .setParameter("lineWarehouses",warehouses)
+                .setParameter("lineWeights",weights)
                 .executeUpdate();
     }
 
@@ -1615,8 +1668,12 @@ public class SalesShipmentService {
                 "当前出货单须由仓库在出库任务中心确认出库");
     }
 
+    /**
+     * @param lineWeights 本次出库实称重量(出货明细 id -> 千克, 已校验且与出库事件证据同一份);
+     *                    没称的行不在里面, 由库存账按均重/单重推算
+     */
     private ShipmentDetail approveLocked(
-            SalesShipment s, String... operationAuthorities) {
+            SalesShipment s, Map<UUID, BigDecimal> lineWeights, String... operationAuthorities) {
         UUID id = s.getId();
         if (s.getStatus() == null || s.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -1684,7 +1741,9 @@ public class SalesShipmentService {
                             "订单预留不在当前出货仓或已被占用，请刷新仓库任务");
                 }
             }
-            applyMovement(s, it, StockService.DIR_OUT, now, null);
+            StockService.PostedMovement posted =
+                    applyMovement(s, it, StockService.DIR_OUT, now, null, lineWeights.get(it.getId()));
+            recordShipmentObservation(s, it, posted, now);
             if (it.getOrderItemId() != null) {
                 addShippedQty(it.getOrderItemId(), it.getQty()); // +qty
                 applyReservedAndChainOnShip(it.getOrderItemId(), it.getQty().negate()); // 预留扣减 + 行状态推进
@@ -2146,7 +2205,11 @@ public class SalesShipmentService {
         // 若再 negate() 金额 → (-amt)×(+1) 与原 (+amt)×(-1) 同号 → 库存金额无法回滚（design §一决策）。
         OffsetDateTime now = OffsetDateTime.now();
         for (SalesShipmentItem it : items) {
-            applyMovement(s, it, StockService.DIR_IN, now, null);
+            applyMovement(s, it, StockService.DIR_IN, now, null, null);
+            if (weightObservations != null) {
+                weightObservations.reverseBySourceItem(
+                        StockService.SRC_SALES_SHIPMENT, it.getId(), SourceKind.SHIPMENT);
+            }
             if (it.getOrderItemId() != null) {
                 addShippedQty(it.getOrderItemId(), it.getQty().negate()); // -qty
                 // 货退回仓库：链上行重新挂预留（绑定原出货仓），恢复可发货量与行状态
@@ -2177,20 +2240,55 @@ public class SalesShipmentService {
         return detail(id);
     }
 
-    /** 写一笔库存流水（方向由调用方给）。qty 为明细量，baseQty = qty×unit_rate。 */
-    private void applyMovement(SalesShipment s, SalesShipmentItem it, short direction,
-                               OffsetDateTime ts, BigDecimal overrideAmount) {
+    /**
+     * 写一笔库存流水（方向由调用方给）。qty 为明细量，baseQty = qty×unit_rate。
+     *
+     * <p>重量(ADR-135): 出库只认仓库出库作业时实称的 measuredKg(千克), 从不取销售明细上的实际重量;
+     * 没称由库存账按均重推算。红冲不带重量, 库存账按原流水镜像。
+     */
+    private StockService.PostedMovement applyMovement(
+            SalesShipment s, SalesShipmentItem it, short direction,
+            OffsetDateTime ts, BigDecimal overrideAmount, BigDecimal measuredKg) {
+        BigDecimal baseQty = shipmentBaseQty(s, it);
+        BigDecimal amt = overrideAmount != null ? overrideAmount : it.getAmountLocal();
+        return stockService.recordMovement(new StockService.MovementRequest(
+                ts, StockService.TYPE_SALES_OUT, StockService.SRC_SALES_SHIPMENT,
+                s.getId(), it.getId(), it.getGoodsId(), it.getColorId(), movementWarehouse(s, it),
+                direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
+                direction < 0 ? null : "红冲",
+                direction < 0 ? com.uten.imp.features.stock.weight.CapturedWeight.measured(measuredKg) : null));
+    }
+
+    /** 过账基本数量 = qty × unit_rate; 客户零星发货按数量口径取 4 位。 */
+    private static BigDecimal shipmentBaseQty(SalesShipment s, SalesShipmentItem it) {
         BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
         BigDecimal baseQty = it.getQty().multiply(rate);
-        if (CustomerShipmentPolicy.direct(s)) baseQty=MoneyPolicy.quantity(baseQty);
-        BigDecimal amt = overrideAmount != null ? overrideAmount : it.getAmountLocal();
-        // V631：按行的实际发出仓过账；没有行仓的历史行回落到表头仓。
-        UUID movementWarehouse = it.getWarehouseId() != null ? it.getWarehouseId() : s.getWarehouseId();
-        stockService.recordMovement(new StockService.MovementRequest(
-                ts, StockService.TYPE_SALES_OUT, StockService.SRC_SALES_SHIPMENT,
-                s.getId(), it.getId(), it.getGoodsId(), it.getColorId(), movementWarehouse,
-                direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
-                direction < 0 ? null : "红冲", it.getWeight()));
+        return CustomerShipmentPolicy.direct(s) ? MoneyPolicy.quantity(baseQty) : baseQty;
+    }
+
+    /** V631：按行的实际发出仓过账；没有行仓的历史行回落到表头仓。 */
+    private static UUID movementWarehouse(SalesShipment s, SalesShipmentItem it) {
+        return it.getWarehouseId() != null ? it.getWarehouseId() : s.getWarehouseId();
+    }
+
+    /**
+     * 出库称重核对(ADR-135 §3.7): 销售出库流水按实称记账(MEASURED)后登记一条 SHIPMENT 观测,
+     * 往来方 = 客户, 幂等键 'SHIPMENT:' + 流水 id。它只核对拣货(CHECK), 不教单重; 数量是财务放行的出货数,
+     * 没有「按称重改数量」。没称、按重量计的货品、流水没按实称记账时不登记。
+     */
+    private void recordShipmentObservation(SalesShipment s, SalesShipmentItem it,
+                                           StockService.PostedMovement posted, OffsetDateTime ts) {
+        if (weightObservations == null || posted == null || posted.movementId() == null
+                || posted.weightSource() != WeightSource.MEASURED || posted.weightKg() == null) {
+            return;
+        }
+        weightObservations.record(new GoodsWeightObservationService.ObservationCommand(
+                it.getGoodsId(), it.getColorId(), movementWarehouse(s, it), SourceKind.SHIPMENT,
+                shipmentBaseQty(s, it), posted.weightKg(), null,
+                s.getClientId() == null ? null : "CLIENT", s.getClientId(),
+                StockService.SRC_SALES_SHIPMENT, s.getId(), it.getId(), posted.movementId(),
+                "SHIPMENT:" + posted.movementId(), ts, null, null, null,
+                false, it.getUnitId(), false, null, currentUser.requireId()));
     }
 
     /** sales_order_items.shipped_qty += delta（delta=±qty）。 */

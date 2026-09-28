@@ -26,7 +26,6 @@ import static org.mockito.Mockito.when;
 class InstantInventoryColumnFacetFilterTest {
 
     private final StockBalanceRepository balanceRepo = mock(StockBalanceRepository.class);
-    private final StockMovementRepository movementRepo = mock(StockMovementRepository.class);
     private final EntityManager em = mock(EntityManager.class);
     private final StockCostMasker costMasker = mock(StockCostMasker.class);
 
@@ -41,7 +40,7 @@ class InstantInventoryColumnFacetFilterTest {
 
         UUID colorId = UUID.randomUUID();
         UUID unitId = UUID.randomUUID();
-        new StockQueryService(balanceRepo, movementRepo, em, costMasker)
+        new StockQueryService(balanceRepo, em, costMasker)
                 .instantInventory(null, null, true, null,
                         null, null, colorId, "X系列", unitId, 1, 20, null, null);
 
@@ -79,7 +78,7 @@ class InstantInventoryColumnFacetFilterTest {
         lenient().when(costMasker.canView()).thenReturn(false);
 
         UUID colorId = UUID.randomUUID();
-        new StockQueryService(balanceRepo, movementRepo, em, costMasker)
+        new StockQueryService(balanceRepo, em, costMasker)
                 .instantInventory(null, null, true, null,
                         null, null, colorId, null, null, 1, 20, null, null);
 

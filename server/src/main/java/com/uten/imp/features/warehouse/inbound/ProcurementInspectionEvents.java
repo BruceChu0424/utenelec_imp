@@ -30,22 +30,22 @@ final class ProcurementInspectionEvents {
     static void append(EntityManager em, UUID eventId, UUID inspectionItemId, String action,
                        BigDecimal baseQty, String reason, UUID actorEmployeeId, OffsetDateTime occurredAt) {
         append(em, eventId, inspectionItemId, action, baseQty, reason, actorEmployeeId, occurredAt,
-                null, null, null, null);
+                null, null, null);
     }
 
+    /** releasedWeight 为放行重量切片(千克), 到货没称时为空。 */
     static void append(EntityManager em, UUID eventId, UUID inspectionItemId, String action,
                        BigDecimal baseQty, String reason, UUID actorEmployeeId, OffsetDateTime occurredAt,
-                       BigDecimal releasedAmountLocal, BigDecimal releasedWeight,
-                       UUID releasedWeightUnitId, String batchRequestHash) {
+                       BigDecimal releasedAmountLocal, BigDecimal releasedWeight, String batchRequestHash) {
         em.createNativeQuery("""
                 INSERT INTO procurement_inspection_events (
                     id, inspection_item_id, action, base_qty, reason,
                     actor_employee_id, occurred_at, requires_warehouse_stock_in,
-                    released_amount_local, released_weight, released_weight_unit_id, batch_request_hash
+                    released_amount_local, released_weight, batch_request_hash
                 ) VALUES (
                     :id, :iid, :action, :qty, :reason,
                     :actor, :at, :requiresWarehouseStockIn,
-                    :releasedAmountLocal, :releasedWeight, :releasedWeightUnitId, :batchRequestHash)
+                    :releasedAmountLocal, :releasedWeight, :batchRequestHash)
                 """)
                 .setParameter("id", eventId)
                 .setParameter("iid", inspectionItemId)
@@ -57,7 +57,6 @@ final class ProcurementInspectionEvents {
                 .setParameter("requiresWarehouseStockIn", PASS.equals(action))
                 .setParameter("releasedAmountLocal", releasedAmountLocal)
                 .setParameter("releasedWeight", releasedWeight)
-                .setParameter("releasedWeightUnitId", releasedWeightUnitId)
                 .setParameter("batchRequestHash", batchRequestHash)
                 .executeUpdate();
     }

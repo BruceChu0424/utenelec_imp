@@ -41,6 +41,19 @@ public final class ReportTotalsCalculator {
      */
     private static final Pattern SAFE_IDENT = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
 
+    /** 普通数量(按 groupKey 指向的单位名分组)。 */
+    public static final String TYPE_NUMBER = "number";
+    /** 金额(按币种分组；受成本/价格脱敏的列不得声明)。 */
+    public static final String TYPE_MONEY = "money";
+    /**
+     * 重量(ADR-135)：值恒为千克、不分组，前端换算到用户的显示单位；未知重量(NULL)的行
+     * 由 SUM 跳过——绝不当 0 计入。常与两个 count 伴随项成对声明：
+     * {@code <key>_unknown_rows}(另有 N 项未称)与 {@code <key>_estimated_rows}(&gt; 0 时加「≈」)。
+     */
+    public static final String TYPE_WEIGHT = "weight";
+    /** 行数计数(整数，每行 0/1 投影后求和；为 0 时前端隐藏)。 */
+    public static final String TYPE_COUNT = "count";
+
     private ReportTotalsCalculator() {}
 
     /**
@@ -48,8 +61,9 @@ public final class ReportTotalsCalculator {
      *
      * @param key      要聚合的列 key（= dataSelect 里的双引号别名）
      * @param label    合计项标题（如「合计数量」）
-     * @param type     number / money
-     * @param groupKey 分组列 key（单位名/币种名）；null = 不分组
+     * @param type     {@link #TYPE_NUMBER} / {@link #TYPE_MONEY} / {@link #TYPE_WEIGHT} / {@link #TYPE_COUNT}
+     *                 (原样下发，只决定前端格式化口径；聚合一律 SUM)
+     * @param groupKey 分组列 key(单位名/币种名)；null = 不分组(重量与计数恒不分组)
      */
     public record Spec(String key, String label, String type, String groupKey) {}
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
+import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/stock_doc.dart';
@@ -128,12 +129,15 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
           type: 'number',
           value: (r) => _quantity(r.item.qty),
         ),
+        // 单据行重量 (千克) 按用户显示单位带单位显示; 没称「未称」, 不显示成 0。
         MasterColumnDef(
           key: 'weight',
           label: l10n.warehouseOutboundWeight,
-          width: 100,
+          width: 110,
           type: 'number',
-          value: (r) => _quantity(r.item.weight),
+          value: (r) => formatWeightValue(r.item.weight),
+          cellBuilder: (context, r) =>
+              WeightText(kg: r.item.weight, textAlign: TextAlign.right),
         ),
         MasterColumnDef(
           key: 'source',

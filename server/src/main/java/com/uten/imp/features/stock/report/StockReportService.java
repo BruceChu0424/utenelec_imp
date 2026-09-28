@@ -8,7 +8,9 @@ import com.uten.imp.common.report.ReportQueryKit.WhereBuilder;
 import com.uten.imp.common.report.ReportSort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.measure.WeightUnit;
 import com.uten.imp.features.stock.StockCostMasker;
+import com.uten.imp.features.stock.StockQueryService;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import jakarta.persistence.EntityManager;
@@ -58,6 +60,12 @@ public class StockReportService {
     public static final String DOC_FINISHED_OUT = "FINISHED_OUT";
     public static final String DOC_CHECK = "CHECK";
 
+    /**
+     * 重量列类型(ADR-135)：单据行重量都是千克(NUMERIC(18,4))，前端按用户的显示单位换算；
+     * 合计同样不分组(ReportTotalsCalculator.TYPE_WEIGHT)。
+     */
+    private static final String WEIGHT = com.uten.imp.common.report.ReportTotalsCalculator.TYPE_WEIGHT;
+
     private static final java.util.Set<String> DOC_TYPES = java.util.Set.of(
             DOC_TRANSFER, DOC_OTHER_IN, DOC_DRAW, DOC_WDRAW, DOC_FINISHED_IN, DOC_FINISHED_OUT, DOC_CHECK);
 
@@ -69,7 +77,7 @@ public class StockReportService {
 
     private final EntityManager em;
     private final SystemSettingsService settings;
-    private final com.uten.imp.features.stock.StockQueryService stockQueryService;
+    private final StockQueryService stockQueryService;
     private final StockCostMasker costMasker;
 
     // ======================== 明细 / 汇总 派发 ========================
@@ -128,7 +136,7 @@ public class StockReportService {
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("unitName", "单位", "text", 70, "un.name"),
-                    ct("weight", "重量", "number", null, "i.weight", "合计重量", null),
+                    ct("weight", "重量", WEIGHT, null, "i.weight", "合计重量", null),
                     ct("qty", "数量", "number", null, "i.qty", "合计数量", "unitName"));
             case DOC_OTHER_IN -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
@@ -146,7 +154,7 @@ public class StockReportService {
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("unitName", "单位", "text", 70, "un.name"),
-                    ct("weight", "重量", "number", null, "i.weight", "合计重量", null),
+                    ct("weight", "重量", WEIGHT, null, "i.weight", "合计重量", null),
                     ct("qty", "数量", "number", null, "i.qty", "合计数量", "unitName"));
             case DOC_DRAW -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
@@ -167,7 +175,7 @@ public class StockReportService {
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
                     c("unitName", "单位", "text", 70, "un.name"),
-                    ct("weight", "重量", "number", null, "i.weight", "合计重量", null),
+                    ct("weight", "重量", WEIGHT, null, "i.weight", "合计重量", null),
                     ct("drawQty", "领料数量", "number", null, "i.qty", "合计领料数量", "unitName"),
                     ct("issuedQty", "已出库", "number", null, "i.issued_qty", "合计已出库", "unitName"),
                     // 实发数量 = base_qty = qty x unit_rate，是**库存基本单位**量，与本行 unitName
@@ -189,7 +197,7 @@ public class StockReportService {
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("unitName", "单位", "text", 70, "un.name"),
-                    ct("weight", "重量", "number", null, "i.weight", "合计重量", null),
+                    ct("weight", "重量", WEIGHT, null, "i.weight", "合计重量", null),
                     ct("returnQty", "清退数量", "number", null, "i.qty", "合计清退数量", "unitName"));
             case DOC_FINISHED_IN -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
@@ -209,7 +217,7 @@ public class StockReportService {
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("unitName", "单位", "text", 70, "un.name"),
                     c("material", "材质", "text", 90, "g.material"),
-                    ct("netWeight", "净重", "number", null, "i.weight", "合计净重", null),
+                    ct("netWeight", "净重", WEIGHT, null, "i.weight", "合计净重", null),
                     ct("qty", "数量", "number", null, "i.qty", "合计数量", "unitName"));
             case DOC_FINISHED_OUT -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
@@ -226,7 +234,7 @@ public class StockReportService {
                     c("model", "型号", "text", 100, "g.model"),
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("unitName", "单位", "text", 70, "un.name"),
-                    ct("weight", "重量", "number", null, "i.weight", "合计重量", null),
+                    ct("weight", "重量", WEIGHT, null, "i.weight", "合计重量", null),
                     ct("qty", "数量", "number", null, "i.qty", "合计数量", "unitName"));
             case DOC_CHECK -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
@@ -245,10 +253,11 @@ public class StockReportService {
                     c("unitName", "单位", "text", 70, "un.name"),
                     ct("bookQty", "帐面数量", "number", null, "COALESCE(i.count_qty,0) - COALESCE(i.surplus_qty,0)",
                             "合计帐面数量", "unitName"),
-                    // 帐面重量投影是字面量 NULL（老库无此列）：SUM 恒 NULL，声明了也只会被整项丢弃，故不声明。
-                    c("bookWeight", "帐面重量", "number", null, "NULL"),
+                    // 帐面重量 = 保存盘点单时的余额重量快照(V745 book_weight，只读展示)；
+                    // 实际重量 = 实盘重量(count_weight，可选)。两者都是千克，老单据为空。
+                    ct("bookWeight", "帐面重量", WEIGHT, null, "i.book_weight", "合计帐面重量", null),
                     ct("actualQty", "实际数量", "number", null, "i.count_qty", "合计实际数量", "unitName"),
-                    ct("actualWeight", "实际重量", "number", null, "i.weight", "合计实际重量", null));
+                    ct("actualWeight", "实际重量", WEIGHT, null, "i.count_weight", "合计实际重量", null));
             default -> throw new ApiException(ErrorCode.BUSINESS, "未知 docType：" + dt);
         };
     }
@@ -419,49 +428,81 @@ public class StockReportService {
         return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
                 ReportTableResponse::total,
                 r -> r.columns() == null ? null : r.columns().stream()
-                        .map(c -> new ExportColumn(c.key(), c.label(), c.type())).toList(),
+                        .map(StockReportService::exportColumn).toList(),
                 ReportTableResponse::rows);
     }
 
-    /** 即时库存导出列（与页面完整业务列一致；成本列按 goods:cost:view 动态裁剪）。 */
-    private static final List<ReportColumn> INSTANT_EXPORT_COLUMNS = List.of(
-            ReportColumn.text("category", "所属类型", 120),
-            // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布（与即时库存页列序一致）。
-            ReportColumn.text("name", "货品名称", 220),
-            ReportColumn.text("goodsCode", "物料编码", 120),
-            ReportColumn.text("color", "颜色", 90),
-            ReportColumn.text("series", "物料系列", 90),
-            ReportColumn.text("stockPlace", "库位号", 90),
-            ReportColumn.text("model", "型号", 110),
-            ReportColumn.text("cNumber", "客户型号", 120),
-            ReportColumn.text("spec", "规格", 120),
-            ReportColumn.text("unit", "单位", 70),
-            ReportColumn.text("remark", "备注", 90),
-            ReportColumn.number("weight", "库存重量"),
-            ReportColumn.number("qty", "库存数量"),
-            ReportColumn.number("pendingQty", "待检量"),
-            ReportColumn.money("costAmount", "库存台账金额"),
-            ReportColumn.number("moreQty", "多排数量"));
+    /**
+     * 报表列 → Excel 列。重量列(千克)按数值单元格导出并在表头标明「(千克)」，计数列按数值导出；
+     * 其余类型原样(Excel 只认 text/date/money/number/bool)。
+     */
+    static ExportColumn exportColumn(ReportColumn c) {
+        if (WEIGHT.equals(c.type())) {
+            return new ExportColumn(c.key(), c.label() + "(" + WeightUnit.KG.label() + ")", ExportColumn.NUMBER);
+        }
+        if (com.uten.imp.common.report.ReportTotalsCalculator.TYPE_COUNT.equals(c.type())) {
+            return new ExportColumn(c.key(), c.label(), ExportColumn.NUMBER);
+        }
+        return new ExportColumn(c.key(), c.label(), c.type());
+    }
 
     /**
-     * 即时库存导出（report='instant-inventory'）：复用 {@code StockQueryService.instantInventory}
-     * 同口径查询（分类子树/仓库/含不良仓/关键字/排序），分页循环全量 → ExportPayload。
-     * 参数：categoryId/warehouseId/includeDefective(默认 true)/keyword + sort/order。
+     * 即时库存导出列(与页面完整业务列一致；重量紧跟库存数量，表头带导出单位，另附「重量状态」
+     * 说明估算/未称；成本列按 goods:cost:view 动态裁剪)。
+     */
+    static List<ReportColumn> instantExportColumns(WeightUnit weightUnit, boolean canViewCost) {
+        List<ReportColumn> columns = new ArrayList<>(List.of(
+                ReportColumn.text("category", "所属类型", 120),
+                // 2026-09-14 用户口径(全站表格统一)：名称 → 编号 → 颜色 紧邻排布(与即时库存页列序一致)。
+                ReportColumn.text("name", "货品名称", 220),
+                ReportColumn.text("goodsCode", "物料编码", 120),
+                ReportColumn.text("color", "颜色", 90),
+                ReportColumn.text("series", "物料系列", 90),
+                ReportColumn.text("stockPlace", "库位号", 90),
+                ReportColumn.text("model", "型号", 110),
+                ReportColumn.text("cNumber", "客户型号", 120),
+                ReportColumn.text("spec", "规格", 120),
+                ReportColumn.text("unit", "单位", 70),
+                ReportColumn.text("remark", "备注", 90),
+                ReportColumn.number("qty", "库存数量"),
+                // 文件里不混单位：整列按一个导出单位(默认千克)写数值，估算/未称另列说明。
+                ReportColumn.number("weight", "库存重量(" + weightUnit.label() + ")"),
+                ReportColumn.text("weightStatus", "重量状态", 80),
+                ReportColumn.number("pendingQty", "待检量")));
+        if (canViewCost) {
+            columns.add(ReportColumn.money("costAmount", "库存台账金额"));
+        }
+        columns.add(ReportColumn.number("moreQty", "多排数量"));
+        return List.copyOf(columns);
+    }
+
+    /**
+     * 即时库存导出(report='instant-inventory')：与页面 GET /api/stock/instant-inventory 同一口径
+     * (分类子树/仓库/含不良仓/含线边仓/关键字/所属仓库/颜色/系列/单位表头筛选/排序)，
+     * 走只取行的 {@code instantInventoryRows}(不重跑合计与 facet)分页循环全量 → ExportPayload。
+     *
+     * <p>参数：categoryId/warehouseId/includeDefective(默认 true)/includeLineSide(默认 false)/keyword/
+     * owningWarehouse/owningWarehouseNull/colorId/series/unitId + weightUnit(G/KG/T/JIN/LB/OZ，
+     * 不给按 KG；文件不做自动单位，前端把「自动」换成具体单位再传)+ sort/order。
      */
     private ExportPayload exportInstantInventory(Map<String, String> p, String sort, String order) {
-        UUID categoryId = ReportQueryKit.parseUuid(p == null ? null : p.get("categoryId"));
-        UUID warehouseId = ReportQueryKit.parseUuid(p == null ? null : p.get("warehouseId"));
-        boolean includeDefective = !"false".equalsIgnoreCase(p == null ? null : p.get("includeDefective"));
-        String kw = p == null ? null : p.get("keyword");
+        Map<String, String> params = p == null ? Map.of() : p;
+        StockQueryService.InstantInventoryFilter filter = new StockQueryService.InstantInventoryFilter(
+                ReportQueryKit.parseUuid(params.get("categoryId")),
+                ReportQueryKit.parseUuid(params.get("warehouseId")),
+                !"false".equalsIgnoreCase(params.get("includeDefective")),
+                "true".equalsIgnoreCase(params.get("includeLineSide")),
+                params.get("keyword"),
+                ReportQueryKit.parseUuid(params.get("owningWarehouse")),
+                "true".equalsIgnoreCase(params.get("owningWarehouseNull")) ? Boolean.TRUE : null,
+                ReportQueryKit.parseUuid(params.get("colorId")),
+                params.get("series"),
+                ReportQueryKit.parseUuid(params.get("unitId")));
+        WeightUnit weightUnit = exportWeightUnit(params.get("weightUnit"));
         boolean canViewCost = costMasker.canView();
-        List<ReportColumn> columns = canViewCost
-                ? INSTANT_EXPORT_COLUMNS
-                : INSTANT_EXPORT_COLUMNS.stream()
-                        .filter(column -> !"costAmount".equals(column.key()))
-                        .toList();
+        List<ReportColumn> columns = instantExportColumns(weightUnit, canViewCost);
         BiFunction<Integer, Integer, ReportTableResponse> loader = (pg, sz) -> {
-            var r = stockQueryService.instantInventory(categoryId, warehouseId, includeDefective,
-                    kw, pg, sz, sort, order);
+            var r = stockQueryService.instantInventoryRows(filter, pg, sz, sort, order);
             List<Map<String, Object>> rows = new ArrayList<>(r.getItems().size());
             for (var it : r.getItems()) {
                 Map<String, Object> m = new LinkedHashMap<>();
@@ -476,8 +517,10 @@ public class StockReportService {
                 m.put("color", it.getColorName());
                 m.put("unit", it.getUnitName());
                 m.put("remark", it.getRemark());
-                m.put("weight", it.getWeight());
                 m.put("qty", it.getQty());
+                m.put("weight", it.getWeight() == null ? null
+                        : weightUnit.fromKg(it.getWeight(), exportWeightScale(weightUnit)));
+                m.put("weightStatus", it.getWeight() == null ? "未称" : it.isWeightEstimated() ? "估算" : "");
                 m.put("pendingQty", it.getPendingQty());
                 if (canViewCost) {
                     m.put("costAmount", it.getCostAmount());
@@ -493,6 +536,24 @@ public class StockReportService {
                 r -> r.columns() == null ? null : r.columns().stream()
                         .map(c -> new ExportColumn(c.key(), c.label(), c.type())).toList(),
                 ReportTableResponse::rows);
+    }
+
+    /** 导出重量单位：不给按千克(文件里整列一个单位)，给了必须是 G/KG/T/JIN/LB/OZ(代码/符号/中文名)，自动单位不收。 */
+    static WeightUnit exportWeightUnit(String value) {
+        if (value == null || value.isBlank()) {
+            return WeightUnit.KG;
+        }
+        return WeightUnit.tryParse(value).orElseThrow(() -> new ApiException(
+                ErrorCode.VALIDATION_FAILED, "不认识的重量单位: " + value.strip()));
+    }
+
+    /** 千克 4 位 (0.1 克) 换成导出单位后保留的小数位：克 1 位、吨 7 位、其余 4 位。 */
+    static int exportWeightScale(WeightUnit unit) {
+        return switch (unit) {
+            case G -> 1;
+            case T -> 7;
+            default -> 4;
+        };
     }
 
     /**

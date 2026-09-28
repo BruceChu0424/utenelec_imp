@@ -817,7 +817,8 @@ public class AuditEventInterpreter {
         values.put("/api/stock/documents", "仓库 · 库存单据");
         values.put("/api/stock/docs", "仓库 · 库存单据");
         values.put("/api/stock/balances", "仓库 · 即时库存");
-        values.put("/api/stock/movements", "仓库 · 库存流水");
+        values.put("/api/stock/goods", "仓库 · 货品出入库流水");
+        values.put("/api/stock/insights", "仓库 · 库存分析");
         values.put("/api/stock", "仓库");
         values.put("/api/finance/fixed-assets", "财务 · 固定资产");
         values.put("/api/finance/deferred-expenses", "财务 · 待摊费用");
@@ -1226,7 +1227,8 @@ public class AuditEventInterpreter {
         values.put("/api/stock/documents", "库存单据");
         values.put("/api/stock/docs", "库存单据");
         values.put("/api/stock/balances", "即时库存");
-        values.put("/api/stock/movements", "库存流水");
+        values.put("/api/stock/goods", "货品出入库流水");
+        values.put("/api/stock/insights", "库存分析");
         values.put("/api/finance/fixed-assets", "固定资产");
         values.put("/api/finance/deferred-expenses", "待摊费用");
         values.put("/api/finance/receipts", "收款单");

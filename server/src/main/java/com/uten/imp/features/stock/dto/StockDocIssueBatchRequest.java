@@ -1,11 +1,16 @@
 package com.uten.imp.features.stock.dto;
 
+import com.uten.imp.common.validation.RequestLimits;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -33,4 +38,19 @@ public class StockDocIssueBatchRequest {
     /** 统一备注（选填）：随本批每张领料单的出库追加到单据备注留痕，单条 ≤200 字。 */
     @Size(max = 200, message = "统一备注最多 200 字")
     private String reason;
+
+    /**
+     * 逐行实称重量(选填, ADR-135): 领料行 id -> 本次出库的实称重量(千克)与「数量按称重推算」标记。
+     * 行必须属于本批所选领料单; 本次没有剩余可出的行忽略其重量。
+     */
+    @Valid
+    @Size(max = RequestLimits.DOCUMENT_LINES, message = "逐行重量最多 500 行")
+    private List<ItemWeight> weights;
+
+    /** 一行领料的本次实称重量(千克, 空或 0 = 没称)。 */
+    public record ItemWeight(
+            @NotNull UUID itemId,
+            @DecimalMin("0") @Digits(integer = 14, fraction = 4) BigDecimal weightKg,
+            Boolean qtyFromWeight) {
+    }
 }

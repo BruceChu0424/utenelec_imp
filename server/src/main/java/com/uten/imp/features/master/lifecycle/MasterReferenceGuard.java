@@ -55,7 +55,6 @@ public class MasterReferenceGuard {
         BOM_ROW("以下货品的 BOM 还在用它", "请先在这些货品的 BOM 里改掉它"),
         GOODS("以下货品还在用它", "请先修改这些货品"),
         CHILD_WAREHOUSE("它下面还有下级仓库", "请先删除或移走下级仓库"),
-        UNIT_PROFILE("以下单位的换算基准是它", "请先修改这些单位的换算设置"),
         SALES_QUOTE("还有未审核的报价单", "请先审核或删除这些报价单"),
         SALES_ORDER("还有未结案的销售订单", "请等单据结案，或先把它从单据里去掉"),
         SHIPMENT("还有未完成的出货单", "请先处理完这些出货单"),

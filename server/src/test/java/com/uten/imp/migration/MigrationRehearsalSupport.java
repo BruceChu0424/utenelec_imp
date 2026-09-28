@@ -119,6 +119,8 @@ public final class MigrationRehearsalSupport {
             "supplier_categories",
             // V681 按 SystemSettingKey 登记补齐 7 个设置行 (ON CONFLICT DO NOTHING, 不改已有值; ADR-110)。
             "system_settings",
+            // V745(ADR-135) 按单位名精确匹配(kg/g/斤等)播种质量单位编码, 真实克隆库上会新增单位计量档案行。
+            "unit_measurement_profiles",
             "user_permission_overrides");
 
     private MigrationRehearsalSupport() {
@@ -165,7 +167,13 @@ public final class MigrationRehearsalSupport {
                 "production_goods_workshop_preferences",
                 // V677(ADR-109) 角色体系四张表删除：全员基础包平移到 permissions.baseline，
                 // 通知受众改按部门子树 + 权限码。
-                "roles", "user_roles", "role_permissions", "department_roles");
+                "roles", "user_roles", "role_permissions", "department_roles",
+                // V745(ADR-135) 退役 V442 采集偏好学习: 四张采集投影/证据表与三张旧库计量证据表,
+                // 单重改由仓库称重自学习(goods_weight_*), 单位质量编码留在 unit_measurement_profiles。
+                "measurement_capture_decision_events", "measurement_capture_evidence",
+                "measurement_capture_line_snapshots", "measurement_capture_profiles",
+                "legacy_measurement_exceptions", "legacy_measurement_profile_snapshots",
+                "legacy_measurement_source_registry");
         Set<String> requiredTables = new java.util.HashSet<>(before.tableRows().keySet());
         requiredTables.removeAll(intentionallyDropped);
         // V673(ADR-105) production_plan_costs 由按年分区改为普通单表: 各年分区子表与 default 分区

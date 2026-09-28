@@ -27,7 +27,7 @@ import static org.mockito.Mockito.when;
  * 且派生表不带 LIMIT/OFFSET —— 所以它是整个结果集的合计，不是当前这一页的。
  *
  * <p>同样重要的是<b>哪些列故意没有合计</b>：领料单的「实发数量」是 base_qty（库存基本单位），
- * 与行上的「单位」列不是一个口径，按单位分组会贴错标签；盘点的「帐面重量」投影是字面量 NULL。
+ * 与行上的「单位」列不是一个口径，按单位分组会贴错标签。重量列(千克)不分组，类型 weight。
  */
 class StockReportTotalsTest {
 
@@ -58,15 +58,30 @@ class StockReportTotalsTest {
     }
 
     @Test
-    void checkDetailRefusesBookWeightBecauseItIsProjectedAsNull() {
+    void checkDetailTotalsBookAndCountWeightsFromTheirOwnColumns() {
         String aggregate = aggregateSqlOf(() -> service().detail(
                 StockReportService.DOC_CHECK, null, null, null, null, null,
                 null, null, null, Map.of(), 1, 50, null, null));
 
         assertThat(aggregate).contains("SUM(t.\"bookQty\")");
         assertThat(aggregate).contains("SUM(t.\"actualQty\")");
-        // 帐面重量投影是字面量 NULL（老库无此列），SUM 恒 NULL，不声明。
-        assertThat(aggregate).doesNotContain("SUM(t.\"bookWeight\")");
+        // 帐面重量 = 保存时的余额重量快照 (book_weight), 实际重量 = 实盘重量 (count_weight), 都是千克、不分组。
+        assertThat(aggregate).contains("i.book_weight AS \"bookWeight\"");
+        assertThat(aggregate).contains("i.count_weight AS \"actualWeight\"");
+        assertThat(aggregate).contains("SUM(t.\"bookWeight\")");
+        assertThat(aggregate).contains("SUM(t.\"actualWeight\")");
+    }
+
+    @Test
+    void weightColumnsAreTypedWeightSoTheClientConvertsKilograms() {
+        Query query = emptyQuery();
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+
+        var response = service().detail(StockReportService.DOC_OTHER_IN, null, null, null, null, null,
+                null, null, null, Map.of(), 1, 50, null, null);
+
+        assertThat(response.columns()).filteredOn(c -> "weight".equals(c.key())).singleElement()
+                .extracting(ReportColumn::type).isEqualTo("weight");
     }
 
     @Test

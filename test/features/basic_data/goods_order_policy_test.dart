@@ -175,7 +175,6 @@ Widget _host(GoodsDetail detail) => ProviderScope(
       body: GoodsDetailBody(
         initialDetail: detail,
         initialCategoryId: null,
-        initialTab: 0,
         canCreate: false,
         canEdit: true,
         canStatus: true,
@@ -184,7 +183,6 @@ Widget _host(GoodsDetail detail) => ProviderScope(
         canBomDelete: false,
         onToggleStatus: null,
         onDelete: null,
-        onViewMovements: null,
         onDataChanged: null,
       ),
     ),

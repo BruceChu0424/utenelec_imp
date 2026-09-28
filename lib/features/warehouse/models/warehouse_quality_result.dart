@@ -468,8 +468,6 @@ class WarehouseQualityReleasedSlice {
     this.unitName,
     this.sourceOrderNo,
     this.releasedWeight,
-    this.weightUnitId,
-    this.weightUnitName,
     this.placeHint,
     this.releaseNote,
     this.releasedBy,
@@ -494,9 +492,9 @@ class WarehouseQualityReleasedSlice {
   final double releasedBaseQty;
   final double stockedForReleaseBaseQty;
   final double remainingBaseQty;
+
+  /// 放行重量(千克), 按到货实称累计切片; null = 到货没称(ADR-135 重量一律按千克存)。
   final double? releasedWeight;
-  final String? weightUnitId;
-  final String? weightUnitName;
   final String? placeHint;
   final String? releaseNote;
   final String? releasedBy;
@@ -532,8 +530,6 @@ class WarehouseQualityReleasedSlice {
         stockedForReleaseBaseQty: _decimal(json['stockedForReleaseBaseQty']),
         remainingBaseQty: _decimal(json['remainingBaseQty']),
         releasedWeight: _nullableDecimal(json['releasedWeight']),
-        weightUnitId: _text(json['weightUnitId']),
-        weightUnitName: _text(json['weightUnitName']),
         placeHint: _text(json['placeHint']),
         releaseNote: _text(json['releaseNote']),
         releasedBy: _text(json['releasedBy']),
@@ -558,7 +554,6 @@ class WarehouseQualityStockInHistoryItem {
     this.colorName,
     this.unitName,
     this.weight,
-    this.weightUnitName,
     this.confirmedBy,
     this.confirmedAt,
     this.warehouseId,
@@ -576,8 +571,9 @@ class WarehouseQualityStockInHistoryItem {
   final String? colorName;
   final String? unitName;
   final double baseQty;
+
+  /// 本批入库重量(千克); null = 没称。
   final double? weight;
-  final String? weightUnitName;
   final String place;
   final String? confirmedBy;
   final String? confirmedAt;
@@ -612,7 +608,6 @@ class WarehouseQualityStockInHistoryItem {
     unitName: _text(json['unitName']),
     baseQty: _decimal(json['baseQty']),
     weight: _nullableDecimal(json['weight']),
-    weightUnitName: _text(json['weightUnitName']),
     place: _text(json['place']) ?? '—',
     confirmedBy: _text(json['confirmedBy']),
     confirmedAt: _text(json['confirmedAt']),

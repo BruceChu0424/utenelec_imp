@@ -21,10 +21,10 @@ class StockBalanceWeightQueryTest {
     @Test
     void balanceRowsExposeWeightAndAcceptWeightSorting() {
         StockBalanceRepository balances = mock(StockBalanceRepository.class);
-        StockMovementRepository movements = mock(StockMovementRepository.class);
         StockBalance balance = new StockBalance();
         balance.setQty(new BigDecimal("12.5000"));
         balance.setWeight(new BigDecimal("7.2500"));
+        balance.setWeightEstimated(true);
         when(balances.findAll(
                 Mockito.<Specification<StockBalance>>notNull(),
                 any(Pageable.class)))
@@ -33,7 +33,7 @@ class StockBalanceWeightQueryTest {
         when(costMasker.canView()).thenReturn(true);
 
         StockQueryService service = new StockQueryService(
-                balances, movements, mock(EntityManager.class), costMasker);
+                balances, mock(EntityManager.class), costMasker);
 
         var result = service.balances(
                 null, null, 1, 20, "weight", "desc");
@@ -43,6 +43,8 @@ class StockBalanceWeightQueryTest {
                 .isEqualByComparingTo("12.5000");
         assertThat(result.getItems().getFirst().getWeight())
                 .isEqualByComparingTo("7.2500");
+        // ADR-135: 余额行带「重量含估算」标记, 前端据此加「≈」。
+        assertThat(result.getItems().getFirst().isWeightEstimated()).isTrue();
 
         var pageable = org.mockito.ArgumentCaptor.forClass(Pageable.class);
         verify(balances).findAll(

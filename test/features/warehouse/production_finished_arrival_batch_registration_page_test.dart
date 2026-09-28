@@ -242,6 +242,8 @@ void main() {
       '颜色',
       '报工数量',
       '单位',
+      '实称重量(kg)',
+      '称重核对',
       '入库仓库',
       '库位号',
     ]);
@@ -300,9 +302,11 @@ void main() {
         (reports.firstWhere((r) => r['reportId'] == _reportB)['items'] as List)
             .cast<Map<String, dynamic>>();
     expect(itemsB.single['place'], 'CP-B-02');
-    // 记忆随登记事务在服务端完成：除库位建议与登记本身外不再有单独的记忆请求。
+    // 记忆随登记事务在服务端完成：除库位建议、单重参数(称重核对，ADR-135)与登记本身外
+    // 不再有单独的记忆请求。
     expect(api.postPaths.toSet(), {
       '/warehouse/place-suggestions',
+      '/stock/weight/params',
       '/warehouse/production-finished-in/arrival-registrations/batch',
     });
     expect(tester.takeException(), isNull);
@@ -375,7 +379,8 @@ void main() {
   });
 
   testWidgets('同一报工单的行选了不同仓会被拦下', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    // 实称重量/称重核对两列加宽了表格：放宽视口让入库仓库格落在屏内。
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     // 报工 A 有两行明细；无账号记忆仓 → 行上仓为空，逐行选择不同仓。
     final api = _BatchArrivalApi(twoItemsInFirstReport: true);
@@ -527,6 +532,8 @@ void main() {
       '报工数量',
       '本次实收',
       '单位',
+      '实称重量(kg)',
+      '称重核对',
       '入库仓库',
       '库位号',
     ]);

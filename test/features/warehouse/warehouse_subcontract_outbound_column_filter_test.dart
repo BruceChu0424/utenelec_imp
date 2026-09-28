@@ -10,6 +10,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/warehouse/models/subcontract_outbound.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_subcontract_outbound_workbench.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'outbound_weight_fakes.dart';
 
 void main() {
   testWidgets('subcontract outbound headers push filters to API', (
@@ -22,6 +23,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          fakeWeightRepositoryOverride(),
           apiClientProvider.overrideWithValue(api),
           currentPermissionsProvider.overrideWithValue(const <String>{
             Perm.subcontractOutboundView,

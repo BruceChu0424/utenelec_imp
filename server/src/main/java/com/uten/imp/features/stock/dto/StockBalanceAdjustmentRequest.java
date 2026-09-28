@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.dto;
 
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -47,6 +48,14 @@ public class StockBalanceAdjustmentRequest {
     @PositiveOrZero
     @Digits(integer = 14, fraction = 4)
     private BigDecimal targetQty;
+
+    /**
+     * 调整后的库存重量(千克, 选填, ADR-135): 与数量一起定下本维度的实际重量(记为盘点定重, 原因「授权调整」);
+     * 空或 0 = 不改重量。数量不变时只要重量与当前不同也可以提交。
+     */
+    @DecimalMin("0")
+    @Digits(integer = 14, fraction = 4)
+    private BigDecimal targetWeightKg;
 
     @NotBlank
     @Size(max = 500)

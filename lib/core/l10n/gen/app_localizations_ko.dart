@@ -4522,11 +4522,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiSettingsApiKey => 'API 키';
 
   @override
-  String aiSettingsKeyConfigured(String mask) {
-    return '설정됨 $mask';
-  }
-
-  @override
   String get aiSettingsKeyMissing => '미설정';
 
   @override
@@ -4718,11 +4713,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get aiSettingsApiKeyHint => '제공업체 콘솔에서 만든 키를 붙여 넣으세요';
-
-  @override
-  String aiSettingsApiKeyKeepHint(String mask) {
-    return '설정됨 $mask. 바꾸지 않으려면 비워 두세요';
-  }
 
   @override
   String get aiSettingsApiKeyNotNeededHint => '로컬 배포는 보통 키가 필요 없어 비워 둘 수 있습니다';
@@ -4920,6 +4910,9 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get aiSettingsApiKeyKeepHintPlain => '설정됨. 바꾸지 않으려면 비워 두세요';
+
+  @override
+  String get aiSettingsCurrentKey => '현재 키';
 
   @override
   String get salesQuoteStatusDraft => '초안';
@@ -6162,12 +6155,30 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String salesIntakeOtherSheets(String sheets, String current) {
-    return '파일에 명세처럼 보이는 시트 $sheets도 있지만 이번에는 「$current」만 인식했습니다. 그 시트를 인식하려면 별도 파일로 저장해 올리세요.';
+    return '파일에 명세처럼 보이는 시트 $sheets도 있지만 이번에는 「$current」만 인식했습니다. 그 시트를 인식하려면 파일을 다시 올린 뒤 확인 화면에서 그 시트를 누르세요.';
   }
 
   @override
   String salesIntakeOtherSheetItem(String name, int count) {
     return '$name($count행)';
+  }
+
+  @override
+  String salesIntakeOtherSheetsLead(String current) {
+    return '이번에는 「$current」 시트를 인식했습니다. 아래 시트를 누르면 그 시트로 바꿔 인식합니다 (한 번에 한 시트만, 합치지 않음).';
+  }
+
+  @override
+  String salesIntakeOtherSheetChip(String name, int count) {
+    return '시트 $name도 명세처럼 보입니다 ($count행)';
+  }
+
+  @override
+  String get salesIntakeOtherSheetTooltip => '이 시트로 바꿔 인식';
+
+  @override
+  String salesIntakeSheetProgressSubtitle(String file, String sheet) {
+    return '$file · 시트 $sheet';
   }
 
   @override
@@ -6237,6 +6248,10 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get salesIntakeMarkerOrderDiscount =>
       '할인율을 자동 계산하지 못했습니다. 파일 단가를 보고 입력하세요';
+
+  @override
+  String get salesIntakeQuoteLineReplaced =>
+      '이 줄은 견적에서 재무가 확정한 품목입니다. 다른 품목으로 바꾸면 견적 단가와 할인율을 쓰지 않고, 저장할 때 표준 단가로 다시 계산합니다';
 
   @override
   String get salesIntakeMarkerBundlePart => '세트를 나눴습니다. 품목과 할인율을 확인하세요';

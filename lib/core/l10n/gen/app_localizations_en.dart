@@ -4638,11 +4638,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSettingsApiKey => 'API key';
 
   @override
-  String aiSettingsKeyConfigured(String mask) {
-    return 'Set $mask';
-  }
-
-  @override
   String get aiSettingsKeyMissing => 'Not set';
 
   @override
@@ -4838,11 +4833,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get aiSettingsApiKeyHint =>
       'Paste the key created in the provider console';
-
-  @override
-  String aiSettingsApiKeyKeepHint(String mask) {
-    return 'Set $mask. Leave blank to keep it';
-  }
 
   @override
   String get aiSettingsApiKeyNotNeededHint =>
@@ -5046,6 +5036,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiSettingsApiKeyKeepHintPlain => 'Set. Leave blank to keep it';
+
+  @override
+  String get aiSettingsCurrentKey => 'Current key';
 
   @override
   String get salesQuoteStatusDraft => 'Draft';
@@ -6376,7 +6369,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String salesIntakeOtherSheets(String sheets, String current) {
-    return 'The file also has sheet $sheets that looks like a goods list; only \"$current\" was read. To read that sheet, save it as a separate file and upload it.';
+    return 'The file also has sheet $sheets that looks like a goods list; only \"$current\" was read. To read that sheet, upload the file again and pick that sheet while reviewing.';
   }
 
   @override
@@ -6388,6 +6381,30 @@ class AppLocalizationsEn extends AppLocalizations {
       one: '1 line',
     );
     return '$name ($_temp0)';
+  }
+
+  @override
+  String salesIntakeOtherSheetsLead(String current) {
+    return 'Sheet \"$current\" was read. Tap another sheet below to read that one instead (one sheet at a time, never combined).';
+  }
+
+  @override
+  String salesIntakeOtherSheetChip(String name, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return 'Sheet $name also looks like a goods list ($_temp0)';
+  }
+
+  @override
+  String get salesIntakeOtherSheetTooltip => 'Read this sheet instead';
+
+  @override
+  String salesIntakeSheetProgressSubtitle(String file, String sheet) {
+    return '$file · sheet $sheet';
   }
 
   @override
@@ -6464,6 +6481,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get salesIntakeMarkerOrderDiscount =>
       'The discount could not be worked out; check it against the file price and fill it in';
+
+  @override
+  String get salesIntakeQuoteLineReplaced =>
+      'This line was priced by finance on the quote. After switching to other goods it no longer uses the quoted price and discount; it is recalculated from the list price when saved';
 
   @override
   String get salesIntakeMarkerBundlePart =>

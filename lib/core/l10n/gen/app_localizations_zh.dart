@@ -4415,11 +4415,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSettingsApiKey => '密钥';
 
   @override
-  String aiSettingsKeyConfigured(String mask) {
-    return '已配置 $mask';
-  }
-
-  @override
   String get aiSettingsKeyMissing => '未配置';
 
   @override
@@ -4605,11 +4600,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiSettingsApiKeyHint => '粘贴服务商后台生成的密钥';
-
-  @override
-  String aiSettingsApiKeyKeepHint(String mask) {
-    return '已配置 $mask, 不改就留空';
-  }
 
   @override
   String get aiSettingsApiKeyNotNeededHint => '本机部署通常不需要密钥, 可以留空';
@@ -4800,6 +4790,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiSettingsApiKeyKeepHintPlain => '已配置, 不改就留空';
+
+  @override
+  String get aiSettingsCurrentKey => '当前密钥';
 
   @override
   String get salesQuoteStatusDraft => '草稿';
@@ -6020,12 +6013,30 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String salesIntakeOtherSheets(String sheets, String current) {
-    return '文件里还有工作表 $sheets 也像明细表, 这次只识别了「$current」。如需识别那张表, 请把它另存为单独的文件再上传。';
+    return '文件里还有工作表 $sheets 也像明细表, 这次只识别了「$current」。如需识别那张表, 请重新上传这个文件, 核对时点那张表即可。';
   }
 
   @override
   String salesIntakeOtherSheetItem(String name, int count) {
     return '$name($count 行)';
+  }
+
+  @override
+  String salesIntakeOtherSheetsLead(String current) {
+    return '这次识别的是工作表「$current」。点下面的工作表可改为识别那一张 (每次只识别一张, 不会合在一起)。';
+  }
+
+  @override
+  String salesIntakeOtherSheetChip(String name, int count) {
+    return '另有工作表 $name 也像明细表 ($count 行)';
+  }
+
+  @override
+  String get salesIntakeOtherSheetTooltip => '改为识别这张表';
+
+  @override
+  String salesIntakeSheetProgressSubtitle(String file, String sheet) {
+    return '$file · 工作表 $sheet';
   }
 
   @override
@@ -6091,6 +6102,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get salesIntakeMarkerOrderDiscount => '折扣没能自动算出, 请按文件单价核对后填写';
+
+  @override
+  String get salesIntakeQuoteLineReplaced =>
+      '这一行原来是报价里财务核定的货品, 换成别的货品后不再按报价的单价和折扣, 保存时按货品标价重新计算';
 
   @override
   String get salesIntakeMarkerBundlePart => '组合件已拆开, 请核对货品和折扣';

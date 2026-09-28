@@ -2201,14 +2201,6 @@
   "aiSettingsModel": "模型",
   "aiSettingsBaseUrl": "接口地址",
   "aiSettingsApiKey": "密钥",
-  "aiSettingsKeyConfigured": "已配置 {mask}",
-  "@aiSettingsKeyConfigured": {
-    "placeholders": {
-      "mask": {
-        "type": "String"
-      }
-    }
-  },
   "aiSettingsKeyMissing": "未配置",
   "aiSettingsKeyNotNeeded": "不需要",
   "aiSettingsKeyUnreadable": "密钥无法解密, 请重新填写",
@@ -2356,14 +2348,6 @@
   },
   "aiSettingsModelsEmpty": "服务商没有返回模型列表, 请直接填写模型名称",
   "aiSettingsApiKeyHint": "粘贴服务商后台生成的密钥",
-  "aiSettingsApiKeyKeepHint": "已配置 {mask}, 不改就留空",
-  "@aiSettingsApiKeyKeepHint": {
-    "placeholders": {
-      "mask": {
-        "type": "String"
-      }
-    }
-  },
   "aiSettingsApiKeyNotNeededHint": "本机部署通常不需要密钥, 可以留空",
   "aiSettingsApiKeyRequired": "请填写密钥",
   "aiSettingsClearKey": "清除密钥",
@@ -2441,6 +2425,7 @@
   "aiSettingsOverseasLockedShort": "境外服务商暂未开放, 需要部署人员在服务器上开启",
   "aiSettingsKeyConfiguredPlain": "已配置",
   "aiSettingsApiKeyKeepHintPlain": "已配置, 不改就留空",
+  "aiSettingsCurrentKey": "当前密钥",
   "salesQuoteStatusDraft": "草稿",
   "salesQuoteStatusPendingFinance": "待财务核价",
   "salesQuoteStatusReturned": "财务退回",
@@ -3225,7 +3210,7 @@
   },
   "salesIntakeDocTypeQuote": "报价单",
   "salesIntakeDocTypeOrder": "订货单",
-  "salesIntakeOtherSheets": "文件里还有工作表 {sheets} 也像明细表, 这次只识别了「{current}」。如需识别那张表, 请把它另存为单独的文件再上传。",
+  "salesIntakeOtherSheets": "文件里还有工作表 {sheets} 也像明细表, 这次只识别了「{current}」。如需识别那张表, 请重新上传这个文件, 核对时点那张表即可。",
   "@salesIntakeOtherSheets": {
     "placeholders": {
       "sheets": {
@@ -3244,6 +3229,37 @@
       },
       "count": {
         "type": "int"
+      }
+    }
+  },
+  "salesIntakeOtherSheetsLead": "这次识别的是工作表「{current}」。点下面的工作表可改为识别那一张 (每次只识别一张, 不会合在一起)。",
+  "@salesIntakeOtherSheetsLead": {
+    "placeholders": {
+      "current": {
+        "type": "String"
+      }
+    }
+  },
+  "salesIntakeOtherSheetChip": "另有工作表 {name} 也像明细表 ({count} 行)",
+  "@salesIntakeOtherSheetChip": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "salesIntakeOtherSheetTooltip": "改为识别这张表",
+  "salesIntakeSheetProgressSubtitle": "{file} · 工作表 {sheet}",
+  "@salesIntakeSheetProgressSubtitle": {
+    "placeholders": {
+      "file": {
+        "type": "String"
+      },
+      "sheet": {
+        "type": "String"
       }
     }
   },
@@ -3343,6 +3359,7 @@
   "salesIntakeMarkerQuotePricing": "这个货品还没有标价(或文件单价高于标价), 待财务定价",
   "salesIntakeMarkerQuoteDiscount": "折扣没能自动算出, 财务核价时确定",
   "salesIntakeMarkerOrderDiscount": "折扣没能自动算出, 请按文件单价核对后填写",
+  "salesIntakeQuoteLineReplaced": "这一行原来是报价里财务核定的货品, 换成别的货品后不再按报价的单价和折扣, 保存时按货品标价重新计算",
   "salesIntakeMarkerBundlePart": "组合件已拆开, 请核对货品和折扣",
   "salesIntakeColClientModel": "文件型号",
   "salesIntakeColClientModelInfo": "客户文件里的型号/货号。保存后系统会记住客户的叫法, 下次识别更准。",

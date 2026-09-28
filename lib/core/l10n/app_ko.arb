@@ -1852,14 +1852,6 @@
   "aiSettingsModel": "모델",
   "aiSettingsBaseUrl": "엔드포인트 URL",
   "aiSettingsApiKey": "API 키",
-  "aiSettingsKeyConfigured": "설정됨 {mask}",
-  "@aiSettingsKeyConfigured": {
-    "placeholders": {
-      "mask": {
-        "type": "String"
-      }
-    }
-  },
   "aiSettingsKeyMissing": "미설정",
   "aiSettingsKeyNotNeeded": "필요 없음",
   "aiSettingsKeyUnreadable": "API 키를 복호화할 수 없습니다. 다시 입력해 주세요",
@@ -2007,14 +1999,6 @@
   },
   "aiSettingsModelsEmpty": "제공업체가 모델 목록을 주지 않았습니다. 모델 이름을 직접 입력해 주세요",
   "aiSettingsApiKeyHint": "제공업체 콘솔에서 만든 키를 붙여 넣으세요",
-  "aiSettingsApiKeyKeepHint": "설정됨 {mask}. 바꾸지 않으려면 비워 두세요",
-  "@aiSettingsApiKeyKeepHint": {
-    "placeholders": {
-      "mask": {
-        "type": "String"
-      }
-    }
-  },
   "aiSettingsApiKeyNotNeededHint": "로컬 배포는 보통 키가 필요 없어 비워 둘 수 있습니다",
   "aiSettingsApiKeyRequired": "API 키를 입력해 주세요",
   "aiSettingsClearKey": "키 삭제",
@@ -2092,6 +2076,7 @@
   "aiSettingsOverseasLockedShort": "해외 제공업체는 아직 열려 있지 않습니다. 배포 담당자가 서버에서 켜야 합니다",
   "aiSettingsKeyConfiguredPlain": "설정됨",
   "aiSettingsApiKeyKeepHintPlain": "설정됨. 바꾸지 않으려면 비워 두세요",
+  "aiSettingsCurrentKey": "현재 키",
   "salesQuoteStatusDraft": "초안",
   "salesQuoteStatusPendingFinance": "재무 가격 검토 대기",
   "salesQuoteStatusReturned": "재무 반려",
@@ -2437,8 +2422,12 @@
   "salesIntakeDuplicateMessage": "이미 있습니다: {items}. 그래도 새로 만들까요?",
   "salesIntakeDocTypeQuote": "견적서",
   "salesIntakeDocTypeOrder": "주문서",
-  "salesIntakeOtherSheets": "파일에 명세처럼 보이는 시트 {sheets}도 있지만 이번에는 「{current}」만 인식했습니다. 그 시트를 인식하려면 별도 파일로 저장해 올리세요.",
+  "salesIntakeOtherSheets": "파일에 명세처럼 보이는 시트 {sheets}도 있지만 이번에는 「{current}」만 인식했습니다. 그 시트를 인식하려면 파일을 다시 올린 뒤 확인 화면에서 그 시트를 누르세요.",
   "salesIntakeOtherSheetItem": "{name}({count}행)",
+  "salesIntakeOtherSheetsLead": "이번에는 「{current}」 시트를 인식했습니다. 아래 시트를 누르면 그 시트로 바꿔 인식합니다 (한 번에 한 시트만, 합치지 않음).",
+  "salesIntakeOtherSheetChip": "시트 {name}도 명세처럼 보입니다 ({count}행)",
+  "salesIntakeOtherSheetTooltip": "이 시트로 바꿔 인식",
+  "salesIntakeSheetProgressSubtitle": "{file} · 시트 {sheet}",
   "salesIntakePriceMaskedNotice": "가격을 볼 수 없으므로 저장할 때 파일 단가로 할인율을 자동 계산합니다",
   "salesIntakeCurrencyNotice": "파일은 {currency} 견적으로 재무 참고 환율 {rate}로 환산하며 문서는 {base}로 저장합니다",
   "salesIntakeRateMissingNotice": "{currency} 참고 환율이 없어 일부 할인율을 계산하지 못했습니다. 재무에서 통화 자료에 입력하도록 요청하세요",
@@ -2455,6 +2444,7 @@
   "salesIntakeMarkerQuotePricing": "표준가가 없거나 파일 단가가 더 높아 재무에서 가격을 정합니다",
   "salesIntakeMarkerQuoteDiscount": "할인율을 자동 계산하지 못했습니다. 재무 가격 검토 때 정합니다",
   "salesIntakeMarkerOrderDiscount": "할인율을 자동 계산하지 못했습니다. 파일 단가를 보고 입력하세요",
+  "salesIntakeQuoteLineReplaced": "이 줄은 견적에서 재무가 확정한 품목입니다. 다른 품목으로 바꾸면 견적 단가와 할인율을 쓰지 않고, 저장할 때 표준 단가로 다시 계산합니다",
   "salesIntakeMarkerBundlePart": "세트를 나눴습니다. 품목과 할인율을 확인하세요",
   "salesIntakeColClientModel": "파일 모델",
   "salesIntakeColClientModelInfo": "고객 파일의 모델/품번입니다. 저장하면 고객이 부르는 이름을 기억해 다음 인식이 더 정확해집니다.",

@@ -1965,14 +1965,6 @@
   "aiSettingsModel": "Model",
   "aiSettingsBaseUrl": "Endpoint URL",
   "aiSettingsApiKey": "API key",
-  "aiSettingsKeyConfigured": "Set {mask}",
-  "@aiSettingsKeyConfigured": {
-    "placeholders": {
-      "mask": {
-        "type": "String"
-      }
-    }
-  },
   "aiSettingsKeyMissing": "Not set",
   "aiSettingsKeyNotNeeded": "Not required",
   "aiSettingsKeyUnreadable": "The API key cannot be decrypted. Please enter it again",
@@ -2120,14 +2112,6 @@
   },
   "aiSettingsModelsEmpty": "The provider returned no model list. Enter the model name directly",
   "aiSettingsApiKeyHint": "Paste the key created in the provider console",
-  "aiSettingsApiKeyKeepHint": "Set {mask}. Leave blank to keep it",
-  "@aiSettingsApiKeyKeepHint": {
-    "placeholders": {
-      "mask": {
-        "type": "String"
-      }
-    }
-  },
   "aiSettingsApiKeyNotNeededHint": "Local deployments usually need no key, so you can leave this blank",
   "aiSettingsApiKeyRequired": "Enter the API key",
   "aiSettingsClearKey": "Remove key",
@@ -2205,6 +2189,7 @@
   "aiSettingsOverseasLockedShort": "Overseas providers are not enabled; the deployment administrator must turn them on on the server",
   "aiSettingsKeyConfiguredPlain": "Set",
   "aiSettingsApiKeyKeepHintPlain": "Set. Leave blank to keep it",
+  "aiSettingsCurrentKey": "Current key",
   "salesQuoteStatusDraft": "Draft",
   "salesQuoteStatusPendingFinance": "Awaiting finance pricing",
   "salesQuoteStatusReturned": "Returned by finance",
@@ -2550,8 +2535,12 @@
   "salesIntakeDuplicateMessage": "Already entered: {items}. Create another one anyway?",
   "salesIntakeDocTypeQuote": "Quotation",
   "salesIntakeDocTypeOrder": "Order",
-  "salesIntakeOtherSheets": "The file also has sheet {sheets} that looks like a goods list; only \"{current}\" was read. To read that sheet, save it as a separate file and upload it.",
+  "salesIntakeOtherSheets": "The file also has sheet {sheets} that looks like a goods list; only \"{current}\" was read. To read that sheet, upload the file again and pick that sheet while reviewing.",
   "salesIntakeOtherSheetItem": "{name} ({count, plural, =1{1 line} other{{count} lines}})",
+  "salesIntakeOtherSheetsLead": "Sheet \"{current}\" was read. Tap another sheet below to read that one instead (one sheet at a time, never combined).",
+  "salesIntakeOtherSheetChip": "Sheet {name} also looks like a goods list ({count, plural, =1{1 line} other{{count} lines}})",
+  "salesIntakeOtherSheetTooltip": "Read this sheet instead",
+  "salesIntakeSheetProgressSubtitle": "{file} · sheet {sheet}",
   "salesIntakePriceMaskedNotice": "You cannot see prices; discounts are worked out from the file prices when you save",
   "salesIntakeCurrencyNotice": "The file is priced in {currency}; it is converted at the finance reference rate {rate} and the document is saved in {base}",
   "salesIntakeRateMissingNotice": "The reference rate for {currency} is not set, so some discounts could not be worked out. Ask finance to fill it in Currencies",
@@ -2568,6 +2557,7 @@
   "salesIntakeMarkerQuotePricing": "No list price (or file price above it); finance will set the price",
   "salesIntakeMarkerQuoteDiscount": "The discount could not be worked out; finance will decide it",
   "salesIntakeMarkerOrderDiscount": "The discount could not be worked out; check it against the file price and fill it in",
+  "salesIntakeQuoteLineReplaced": "This line was priced by finance on the quote. After switching to other goods it no longer uses the quoted price and discount; it is recalculated from the list price when saved",
   "salesIntakeMarkerBundlePart": "The set was split; check the goods and discount",
   "salesIntakeColClientModel": "File model",
   "salesIntakeColClientModelInfo": "The model or item number on the customer's file. After saving, the system remembers what the customer calls it so the next file is read more accurately.",

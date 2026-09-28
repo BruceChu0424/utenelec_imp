@@ -8231,12 +8231,6 @@ abstract class AppLocalizations {
   /// **'密钥'**
   String get aiSettingsApiKey;
 
-  /// No description provided for @aiSettingsKeyConfigured.
-  ///
-  /// In zh, this message translates to:
-  /// **'已配置 {mask}'**
-  String aiSettingsKeyConfigured(String mask);
-
   /// No description provided for @aiSettingsKeyMissing.
   ///
   /// In zh, this message translates to:
@@ -8554,12 +8548,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'粘贴服务商后台生成的密钥'**
   String get aiSettingsApiKeyHint;
-
-  /// No description provided for @aiSettingsApiKeyKeepHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'已配置 {mask}, 不改就留空'**
-  String aiSettingsApiKeyKeepHint(String mask);
 
   /// No description provided for @aiSettingsApiKeyNotNeededHint.
   ///
@@ -8920,6 +8908,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已配置, 不改就留空'**
   String get aiSettingsApiKeyKeepHintPlain;
+
+  /// No description provided for @aiSettingsCurrentKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前密钥'**
+  String get aiSettingsCurrentKey;
 
   /// No description provided for @salesQuoteStatusDraft.
   ///
@@ -10999,7 +10993,7 @@ abstract class AppLocalizations {
   /// No description provided for @salesIntakeOtherSheets.
   ///
   /// In zh, this message translates to:
-  /// **'文件里还有工作表 {sheets} 也像明细表, 这次只识别了「{current}」。如需识别那张表, 请把它另存为单独的文件再上传。'**
+  /// **'文件里还有工作表 {sheets} 也像明细表, 这次只识别了「{current}」。如需识别那张表, 请重新上传这个文件, 核对时点那张表即可。'**
   String salesIntakeOtherSheets(String sheets, String current);
 
   /// No description provided for @salesIntakeOtherSheetItem.
@@ -11007,6 +11001,30 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'{name}({count} 行)'**
   String salesIntakeOtherSheetItem(String name, int count);
+
+  /// No description provided for @salesIntakeOtherSheetsLead.
+  ///
+  /// In zh, this message translates to:
+  /// **'这次识别的是工作表「{current}」。点下面的工作表可改为识别那一张 (每次只识别一张, 不会合在一起)。'**
+  String salesIntakeOtherSheetsLead(String current);
+
+  /// No description provided for @salesIntakeOtherSheetChip.
+  ///
+  /// In zh, this message translates to:
+  /// **'另有工作表 {name} 也像明细表 ({count} 行)'**
+  String salesIntakeOtherSheetChip(String name, int count);
+
+  /// No description provided for @salesIntakeOtherSheetTooltip.
+  ///
+  /// In zh, this message translates to:
+  /// **'改为识别这张表'**
+  String get salesIntakeOtherSheetTooltip;
+
+  /// No description provided for @salesIntakeSheetProgressSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'{file} · 工作表 {sheet}'**
+  String salesIntakeSheetProgressSubtitle(String file, String sheet);
 
   /// No description provided for @salesIntakePriceMaskedNotice.
   ///
@@ -11103,6 +11121,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'折扣没能自动算出, 请按文件单价核对后填写'**
   String get salesIntakeMarkerOrderDiscount;
+
+  /// No description provided for @salesIntakeQuoteLineReplaced.
+  ///
+  /// In zh, this message translates to:
+  /// **'这一行原来是报价里财务核定的货品, 换成别的货品后不再按报价的单价和折扣, 保存时按货品标价重新计算'**
+  String get salesIntakeQuoteLineReplaced;
 
   /// No description provided for @salesIntakeMarkerBundlePart.
   ///

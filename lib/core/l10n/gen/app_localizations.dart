@@ -7625,6 +7625,264 @@ abstract class AppLocalizations {
   /// **'税率'**
   String get goodsLearnedPriceTaxRate;
 
+  /// No description provided for @goodsNameEnLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'英文名称'**
+  String get goodsNameEnLabel;
+
+  /// No description provided for @goodsNameEnHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'如 DOUBLE 3 PIN SOCKET WITH SWITCH'**
+  String get goodsNameEnHint;
+
+  /// No description provided for @goodsNameEnInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户报价单或订货单上对这个货品的英文叫法。识别客户文件时, 系统用它把英文品名对应到这个货品。'**
+  String get goodsNameEnInfo;
+
+  /// No description provided for @goodsNameEnColumnInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户文件里对这个货品的英文叫法。销售保存带英文品名的单据时会自动记住, 也可以在货品详情里修改。'**
+  String get goodsNameEnColumnInfo;
+
+  /// No description provided for @goodsNameEnSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索货品(名称/英文名称/编号/型号/规格/系列)'**
+  String get goodsNameEnSearchHint;
+
+  /// No description provided for @goodsNameEnLearned.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统自动记住'**
+  String get goodsNameEnLearned;
+
+  /// No description provided for @goodsNameEnLearnedTip.
+  ///
+  /// In zh, this message translates to:
+  /// **'这是销售保存客户文件时系统自动记住的英文名称, 不对可以直接修改。'**
+  String get goodsNameEnLearnedTip;
+
+  /// No description provided for @goodsNameEnEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改英文名称'**
+  String get goodsNameEnEdit;
+
+  /// No description provided for @goodsNameEnEditDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'填客户文件上写的英文品名。保存后, 以后识别客户文件都按这个名称对应到本货品。留空表示不用英文名称。'**
+  String get goodsNameEnEditDescription;
+
+  /// No description provided for @goodsNameEnSaving.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在保存…'**
+  String get goodsNameEnSaving;
+
+  /// No description provided for @goodsNameEnSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'英文名称已保存'**
+  String get goodsNameEnSaved;
+
+  /// No description provided for @goodsNameEnCleared.
+  ///
+  /// In zh, this message translates to:
+  /// **'英文名称已清除'**
+  String get goodsNameEnCleared;
+
+  /// No description provided for @goodsNameEnImportHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'英文名称也可以导入 (表头写「英文名称」或「English Name」)。'**
+  String get goodsNameEnImportHint;
+
+  /// No description provided for @goodsNameEnTooLong.
+  ///
+  /// In zh, this message translates to:
+  /// **'英文名称最多 {max} 个字'**
+  String goodsNameEnTooLong(int max);
+
+  /// No description provided for @clientNameEnLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'外文名称'**
+  String get clientNameEnLabel;
+
+  /// No description provided for @clientNameEnHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'如 SUNAS TRADING LIMITED'**
+  String get clientNameEnHint;
+
+  /// No description provided for @clientNameEnInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户公司的英文或其他外文名称。识别客户文件时, 系统用它找到这个客户; 销售保存单据时也会自动补上。'**
+  String get clientNameEnInfo;
+
+  /// No description provided for @clientNameEnSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索客户(简称/编码/全称/外文名称/联系人/手机/邮箱)'**
+  String get clientNameEnSearchHint;
+
+  /// No description provided for @clientGoodsAliasTab.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品对照'**
+  String get clientGoodsAliasTab;
+
+  /// No description provided for @clientGoodsAliasTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户对货品的叫法'**
+  String get clientGoodsAliasTitle;
+
+  /// No description provided for @clientGoodsAliasDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户报价单、订货单上的型号和品名, 对应到我们的哪个货品。识别这个客户的文件时, 系统优先按这里对应。'**
+  String get clientGoodsAliasDescription;
+
+  /// No description provided for @clientGoodsAliasSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索客户的叫法、货品名称或编号'**
+  String get clientGoodsAliasSearchHint;
+
+  /// No description provided for @clientGoodsAliasEmptyTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有货品对照'**
+  String get clientGoodsAliasEmptyTitle;
+
+  /// No description provided for @clientGoodsAliasEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存带有文件型号的报价单或订货单后, 这里会自动记住客户的叫法'**
+  String get clientGoodsAliasEmpty;
+
+  /// No description provided for @clientGoodsAliasNoMatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有找到相关的对照, 换个关键词试试'**
+  String get clientGoodsAliasNoMatch;
+
+  /// No description provided for @clientGoodsAliasKindPartNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户型号'**
+  String get clientGoodsAliasKindPartNo;
+
+  /// No description provided for @clientGoodsAliasKindDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户品名'**
+  String get clientGoodsAliasKindDescription;
+
+  /// No description provided for @clientGoodsAliasContext.
+  ///
+  /// In zh, this message translates to:
+  /// **'适用于 {context}'**
+  String clientGoodsAliasContext(String context);
+
+  /// No description provided for @clientGoodsAliasConfirmCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count, plural, other{已确认 {count} 次}}'**
+  String clientGoodsAliasConfirmCount(int count);
+
+  /// No description provided for @clientGoodsAliasExplicitCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count, plural, other{其中 {count} 次是手工选的}}'**
+  String clientGoodsAliasExplicitCount(int count);
+
+  /// No description provided for @clientGoodsAliasLastConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近 {date}'**
+  String clientGoodsAliasLastConfirmed(String date);
+
+  /// No description provided for @clientGoodsAliasLastConfirmedBy.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近 {date} · {name}'**
+  String clientGoodsAliasLastConfirmedBy(String date, String name);
+
+  /// No description provided for @clientGoodsAliasGoodsMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品资料已删除'**
+  String get clientGoodsAliasGoodsMissing;
+
+  /// No description provided for @clientGoodsAliasDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除这条对照'**
+  String get clientGoodsAliasDelete;
+
+  /// No description provided for @clientGoodsAliasDeleteAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get clientGoodsAliasDeleteAction;
+
+  /// No description provided for @clientGoodsAliasDeleteConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除后, 识别这个客户的文件时不再把「{alias}」对应到「{goods}」。以后销售保存单据时, 系统可能会重新记住。'**
+  String clientGoodsAliasDeleteConfirm(String alias, String goods);
+
+  /// No description provided for @clientGoodsAliasDeleting.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在删除对照'**
+  String get clientGoodsAliasDeleting;
+
+  /// No description provided for @clientGoodsAliasDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已删除这条对照'**
+  String get clientGoodsAliasDeleted;
+
+  /// No description provided for @clientGoodsAliasLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品对照没有加载出来, 请重试'**
+  String get clientGoodsAliasLoadFailed;
+
+  /// No description provided for @clientGoodsAliasTotal.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count, plural, other{共 {count} 条}}'**
+  String clientGoodsAliasTotal(int count);
+
+  /// No description provided for @clientGoodsAliasPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'第 {page} / {pages} 页'**
+  String clientGoodsAliasPage(int page, int pages);
+
+  /// No description provided for @clientGoodsAliasPrevPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'上一页'**
+  String get clientGoodsAliasPrevPage;
+
+  /// No description provided for @clientGoodsAliasNextPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一页'**
+  String get clientGoodsAliasNextPage;
+
   /// No description provided for @shelfLocationQuantityHint.
   ///
   /// In zh, this message translates to:

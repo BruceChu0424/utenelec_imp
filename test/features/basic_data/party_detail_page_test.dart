@@ -8,16 +8,19 @@ import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/features/basic_data/models/client_goods_alias.dart';
 import 'package:uten_imp/features/basic_data/models/client_node.dart';
 import 'package:uten_imp/features/basic_data/models/currency_node.dart';
 import 'package:uten_imp/features/basic_data/models/party_directory_models.dart';
 import 'package:uten_imp/features/basic_data/models/reference_method_option.dart';
 import 'package:uten_imp/features/basic_data/pages/party_detail_page.dart';
+import 'package:uten_imp/features/basic_data/repositories/client_goods_alias_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/client_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/currency_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/party_directory_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
@@ -271,9 +274,116 @@ void main() {
     expect(find.textContaining('请填写「名称」'), findsWidgets);
     expect(_labeledField('名称'), findsOneWidget);
   });
+
+  // ADR-134: foreign company name on the overview + learned 货品对照 tab.
+  testWidgets('客户详情页：外文名称展示 + 货品对照 Tab 读取学习到的叫法', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1500, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final aliases = _FakeAliasRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(
+            await SharedPreferences.getInstance(),
+          ),
+          apiClientProvider.overrideWithValue(_EmptyApi()),
+          currentPermissionsProvider.overrideWithValue({Perm.clientView}),
+          isSuperAdminProvider.overrideWithValue(false),
+          clientRepositoryProvider.overrideWithValue(
+            _FakeClientRepository(nameEn: 'SUNAS TRADING LIMITED'),
+          ),
+          clientDirectoryRepositoryProvider.overrideWithValue(
+            _FakePartyDirectoryRepository(),
+          ),
+          clientGoodsAliasRepositoryProvider.overrideWithValue(aliases),
+        ],
+        child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: PartyDetailPage(partyType: 'client', id: 'client-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('外文名称'), findsOneWidget);
+    expect(find.text('SUNAS TRADING LIMITED'), findsOneWidget);
+    // The tab reads lazily: nothing is fetched before it is opened.
+    expect(aliases.listCalls, isEmpty);
+
+    await tester.tap(find.text('货品对照'));
+    await tester.pumpAndSettle();
+
+    expect(aliases.listCalls, ['client-1']);
+    expect(find.text('客户对货品的叫法'), findsOneWidget);
+    expect(find.text('GZ23/D'), findsOneWidget);
+    expect(find.text('两开多功能三极插座(280235165) · 白色'), findsOneWidget);
+    // Read-only viewer: the server row capability hides deletion.
+    expect(
+      find.byKey(const ValueKey('client-goods-alias-delete-alias-1')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('客户详情页就地编辑：外文名称随整套字段一起提交', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1500, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repo = _FakeClientRepository(nameEn: 'SUNAS TRADING');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(
+            await SharedPreferences.getInstance(),
+          ),
+          apiClientProvider.overrideWithValue(_EmptyApi()),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.clientView,
+            Perm.clientEdit,
+            Perm.clientStatus,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          clientRepositoryProvider.overrideWithValue(repo),
+          clientDirectoryRepositoryProvider.overrideWithValue(
+            _FakePartyDirectoryRepository(),
+          ),
+          referenceMethodRepositoryProvider.overrideWithValue(
+            _FakeReferenceMethodRepository(),
+          ),
+          currencyRepositoryProvider.overrideWithValue(
+            _FakeCurrencyRepository(),
+          ),
+        ],
+        child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: PartyDetailPage(partyType: 'client', id: 'client-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('party-detail-edit')));
+    await tester.pumpAndSettle();
+    final field = _labeledField('外文名称');
+    expect(field, findsOneWidget);
+    expect(tester.widget<TextField>(field).controller?.text, 'SUNAS TRADING');
+    await tester.enterText(field, 'SUNAS TRADING LIMITED');
+    await tester.tap(find.byKey(const Key('party-detail-save')));
+    await tester.pumpAndSettle();
+
+    expect(repo.lastUpdateId, 'client-1');
+    expect(repo.lastUpdateBody?['nameEn'], 'SUNAS TRADING LIMITED');
+    expect(repo.lastUpdateBody?['name'], '中山测试客户');
+  });
 }
 
 class _FakeClientRepository implements ClientRepository {
+  _FakeClientRepository({this.nameEn});
+
+  final String? nameEn;
   String? lastUpdateId;
   Map<String, dynamic>? lastUpdateBody;
 
@@ -284,6 +394,7 @@ class _FakeClientRepository implements ClientRepository {
   Future<ClientDetail> detail(String id) async => ClientDetail(
     id: id,
     name: '中山测试客户',
+    nameEn: nameEn,
     code: 'C-001',
     status: '使用',
     linkman: '张三',
@@ -352,6 +463,45 @@ class _FakePartyDirectoryRepository implements PartyDirectoryRepository {
   }) async {
     addedContacts.add((kind: kind, value: value));
   }
+}
+
+class _FakeAliasRepository implements ClientGoodsAliasRepository {
+  final listCalls = <String>[];
+
+  @override
+  Future<PagedResult<ClientGoodsAlias>> list(
+    String clientId, {
+    int page = 1,
+    int size = 20,
+    String? keyword,
+  }) async {
+    listCalls.add(clientId);
+    return PagedResult(
+      items: const [
+        ClientGoodsAlias(
+          id: 'alias-1',
+          scope: ClientGoodsAliasScope.client,
+          aliasKind: ClientGoodsAliasKind.partNo,
+          aliasText: 'GZ23/D',
+          goods: ClientGoodsAliasGoods(
+            id: 'goods-1',
+            code: '280235165',
+            name: '两开多功能三极插座',
+            colorName: '白色',
+          ),
+          confirmCount: 2,
+        ),
+      ],
+      page: page,
+      size: size,
+      total: 1,
+      totalPages: 1,
+    );
+  }
+
+  @override
+  Future<void> delete(String clientId, String aliasId) async =>
+      throw StateError('read-only viewer must not delete');
 }
 
 class _FakeReferenceMethodRepository extends ReferenceMethodRepository {

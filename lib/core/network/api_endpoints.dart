@@ -279,6 +279,10 @@ abstract final class ApiEndpoints {
   static const goodsSearchCategoryIds = '$goods/search-category-ids';
   static String good(String id) => '/master/goods/$id';
 
+  /// Goods English name only (ADR-134): goods:name_en:edit or goods:edit;
+  /// body {nameEn, version}, the server marks the value as manually maintained.
+  static String goodNameEn(String id) => '${good(id)}/name-en';
+
   // 货品组装信息（BOM）—— 详情「组装信息」页签 + 配件清单导出
   static String goodsBom(String id) => '/master/goods/$id/bom';
   static String goodsBomItem(String id, String itemId) =>
@@ -339,6 +343,12 @@ abstract final class ApiEndpoints {
   static const clientsAccessCandidates = '$clients/access-candidates';
   static String client(String id) => '/master/clients/$id';
   static String clientAccess(String id) => '${client(id)}/access';
+
+  /// Learned customer goods cross reference (ADR-134): GET paged list
+  /// (?page&size&keyword), DELETE one row.
+  static String clientGoodsAliases(String id) => '${client(id)}/goods-aliases';
+  static String clientGoodsAlias(String id, String aliasId) =>
+      '${clientGoodsAliases(id)}/$aliasId';
 
   /// 多选客户批量设负责人/可见人（字面段 access 与 UUID 路径参数不冲突）。
   static const clientsAccessBatch = '$clients/access/batch';

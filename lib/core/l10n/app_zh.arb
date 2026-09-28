@@ -1946,6 +1946,121 @@
   "expenseFlowItemPurposeRequired": "请填写费用用途",
   "goodsLearnedPriceUnconfirmed": "计价单位与币种待核对",
   "goodsLearnedPriceTaxRate": "税率",
+  "goodsNameEnLabel": "英文名称",
+  "goodsNameEnHint": "如 DOUBLE 3 PIN SOCKET WITH SWITCH",
+  "goodsNameEnInfo": "客户报价单或订货单上对这个货品的英文叫法。识别客户文件时, 系统用它把英文品名对应到这个货品。",
+  "goodsNameEnColumnInfo": "客户文件里对这个货品的英文叫法。销售保存带英文品名的单据时会自动记住, 也可以在货品详情里修改。",
+  "goodsNameEnSearchHint": "搜索货品(名称/英文名称/编号/型号/规格/系列)",
+  "goodsNameEnLearned": "系统自动记住",
+  "goodsNameEnLearnedTip": "这是销售保存客户文件时系统自动记住的英文名称, 不对可以直接修改。",
+  "goodsNameEnEdit": "修改英文名称",
+  "goodsNameEnEditDescription": "填客户文件上写的英文品名。保存后, 以后识别客户文件都按这个名称对应到本货品。留空表示不用英文名称。",
+  "goodsNameEnSaving": "正在保存…",
+  "goodsNameEnSaved": "英文名称已保存",
+  "goodsNameEnCleared": "英文名称已清除",
+  "goodsNameEnImportHint": "英文名称也可以导入 (表头写「英文名称」或「English Name」)。",
+  "goodsNameEnTooLong": "英文名称最多 {max} 个字",
+  "@goodsNameEnTooLong": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "clientNameEnLabel": "外文名称",
+  "clientNameEnHint": "如 SUNAS TRADING LIMITED",
+  "clientNameEnInfo": "客户公司的英文或其他外文名称。识别客户文件时, 系统用它找到这个客户; 销售保存单据时也会自动补上。",
+  "clientNameEnSearchHint": "搜索客户(简称/编码/全称/外文名称/联系人/手机/邮箱)",
+  "clientGoodsAliasTab": "货品对照",
+  "clientGoodsAliasTitle": "客户对货品的叫法",
+  "clientGoodsAliasDescription": "客户报价单、订货单上的型号和品名, 对应到我们的哪个货品。识别这个客户的文件时, 系统优先按这里对应。",
+  "clientGoodsAliasSearchHint": "搜索客户的叫法、货品名称或编号",
+  "clientGoodsAliasEmptyTitle": "还没有货品对照",
+  "clientGoodsAliasEmpty": "保存带有文件型号的报价单或订货单后, 这里会自动记住客户的叫法",
+  "clientGoodsAliasNoMatch": "没有找到相关的对照, 换个关键词试试",
+  "clientGoodsAliasKindPartNo": "客户型号",
+  "clientGoodsAliasKindDescription": "客户品名",
+  "clientGoodsAliasContext": "适用于 {context}",
+  "@clientGoodsAliasContext": {
+    "placeholders": {
+      "context": {
+        "type": "String"
+      }
+    }
+  },
+  "clientGoodsAliasConfirmCount": "{count, plural, other{已确认 {count} 次}}",
+  "@clientGoodsAliasConfirmCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clientGoodsAliasExplicitCount": "{count, plural, other{其中 {count} 次是手工选的}}",
+  "@clientGoodsAliasExplicitCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clientGoodsAliasLastConfirmed": "最近 {date}",
+  "@clientGoodsAliasLastConfirmed": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "clientGoodsAliasLastConfirmedBy": "最近 {date} · {name}",
+  "@clientGoodsAliasLastConfirmedBy": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "clientGoodsAliasGoodsMissing": "货品资料已删除",
+  "clientGoodsAliasDelete": "删除这条对照",
+  "clientGoodsAliasDeleteAction": "删除",
+  "clientGoodsAliasDeleteConfirm": "删除后, 识别这个客户的文件时不再把「{alias}」对应到「{goods}」。以后销售保存单据时, 系统可能会重新记住。",
+  "@clientGoodsAliasDeleteConfirm": {
+    "placeholders": {
+      "alias": {
+        "type": "String"
+      },
+      "goods": {
+        "type": "String"
+      }
+    }
+  },
+  "clientGoodsAliasDeleting": "正在删除对照",
+  "clientGoodsAliasDeleted": "已删除这条对照",
+  "clientGoodsAliasLoadFailed": "货品对照没有加载出来, 请重试",
+  "clientGoodsAliasTotal": "{count, plural, other{共 {count} 条}}",
+  "@clientGoodsAliasTotal": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clientGoodsAliasPage": "第 {page} / {pages} 页",
+  "@clientGoodsAliasPage": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      },
+      "pages": {
+        "type": "int"
+      }
+    }
+  },
+  "clientGoodsAliasPrevPage": "上一页",
+  "clientGoodsAliasNextPage": "下一页",
   "shelfLocationQuantityHint": "库位是存放建议；库存按实际仓库和颜色统计，不代表该库位的盘点数量。",
   "shelfActualWarehouse": "实际仓库",
   "shelfMasterOnly": "主档建议(未指定仓库)",

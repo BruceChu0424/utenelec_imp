@@ -267,6 +267,9 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     final body = <String, dynamic>{
       'categoryId': d.categoryId,
       'name': d.name,
+      // ADR-134 English name travels with the full save so a cost save never
+      // clears a name learned from customer files.
+      'nameEn': d.nameEn,
       'code': d.code,
       'shortName': d.shortName,
       'model': d.model,

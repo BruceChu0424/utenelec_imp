@@ -34,9 +34,11 @@ import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../models/goods_node.dart';
 import '../providers/color_unit_dict.dart';
 import '../repositories/goods_repository.dart';
+import 'basic_data_l10n.dart';
 import 'goods_bom_preview.dart';
 import 'goods_bom_tab.dart';
 import 'goods_cost_tab.dart';
+import 'goods_name_en_field.dart';
 import 'master_detail_sheet.dart';
 import 'master_edit_dialog.dart';
 import 'mould_picker_field.dart';
@@ -46,6 +48,20 @@ import 'uten_goods_picker.dart';
 import 'uten_detail_tab_bar.dart';
 
 enum _GoodsDetailMode { create, edit, view }
+
+/// View-mode row for the goods English name (ADR-134): rendered by
+/// [GoodsNameEnViewCell] with the learned badge and the name-only edit action.
+class _GoodsNameEnDetailRow extends MasterDetailRow {
+  const _GoodsNameEnDetailRow({
+    required String label,
+    required String? value,
+    required this.learned,
+    required this.onEdit,
+  }) : super(label, value);
+
+  final bool learned;
+  final VoidCallback? onEdit;
+}
 
 /// 查看态详情的一个分组（标题 + 字段行），用于把扁平字段切成带小标题的区块。
 class _DetailSection {
@@ -286,11 +302,21 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     final permissions = ref.watch(currentPermissionsProvider);
     final canAddColor = permissions.contains(Perm.colorCreate);
     final canAddUnit = permissions.contains(Perm.unitCreate);
+    final l10n = basicDataL10n(context);
     return [
       const MasterFieldDef(
         key: 'name',
         label: '货品名称',
         required: true,
+        group: '基础',
+      ),
+      // ADR-134: English name used to match customer files. Always part of the
+      // full save body so a goods:edit save never drops a learned value.
+      MasterFieldDef(
+        key: 'nameEn',
+        label: l10n.goodsNameEnLabel,
+        hint: l10n.goodsNameEnHint,
+        info: l10n.goodsNameEnInfo,
         group: '基础',
       ),
       const MasterFieldDef(
@@ -510,6 +536,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     String s(Object? v) => v == null ? '' : '$v';
     return {
       'name': d.name ?? '',
+      'nameEn': d.nameEn ?? '',
       'code': d.code ?? '',
       'shortName': d.shortName ?? '',
       'status': d.status ?? '使用',
@@ -619,6 +646,18 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     } finally {
       if (mounted) setState(() => _savingBasic = false);
     }
+  }
+
+  /// Name-only edit (ADR-134) for users whose detail carries canEditNameEn,
+  /// typically sales without goods:edit. Reloads the detail afterwards so the
+  /// badge, the value and the optimistic-lock version are current.
+  Future<void> _editNameEn() async {
+    final d = _detail;
+    if (d == null) return;
+    final reload = await showGoodsNameEnDialog(context, detail: d);
+    if (!reload || !mounted) return;
+    await _refreshDetail();
+    widget.onDataChanged?.call();
   }
 
   Future<void> _refreshDetail() async {
@@ -866,19 +905,23 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         bodyChildren.add(
           Padding(
             padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _cell(theme, first)),
-                if (colCount > 1) ...[
-                  const SizedBox(width: UtenSpacing.s8),
-                  Expanded(
-                    child: second != null
-                        ? _cell(theme, second)
-                        : const SizedBox.shrink(),
-                  ),
+            // Equal-height pair: a tile with an action button (English name)
+            // must not leave its neighbour visibly shorter.
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: _cell(theme, first)),
+                  if (colCount > 1) ...[
+                    const SizedBox(width: UtenSpacing.s8),
+                    Expanded(
+                      child: second != null
+                          ? _cell(theme, second)
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         );
@@ -1014,6 +1057,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       _DetailSection('基础', [
         MasterDetailRow('编号', d.code),
         MasterDetailRow('货品名称', d.name),
+        _GoodsNameEnDetailRow(
+          label: basicDataL10n(context).goodsNameEnLabel,
+          value: d.nameEn,
+          learned: d.nameEnLearned,
+          onEdit: d.canEditNameEn ? _editNameEn : null,
+        ),
         MasterDetailRow('简称', d.shortName),
         MasterDetailRow('状态', d.status),
         MasterDetailRow('来源', d.sourceType),
@@ -1102,6 +1151,13 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
   }
 
   Widget _cell(ThemeData theme, MasterDetailRow r) {
+    if (r is _GoodsNameEnDetailRow) {
+      return GoodsNameEnViewCell(
+        nameEn: r.value,
+        learned: r.learned,
+        onEdit: r.onEdit,
+      );
+    }
     final hasValue = r.value != null && r.value!.isNotEmpty;
     return Container(
       width: double.infinity,

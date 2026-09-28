@@ -21,6 +21,11 @@ public final class ScheduledTaskCatalog {
     public record Entry(String label, String purpose) {}
 
     private static final Map<String, Entry> ENTRIES = Map.ofEntries(
+            Map.entry("AiJobHousekeeping.purge", new Entry("AI 数据清理",
+                    "每 10 分钟清理 AI 数据: 排队太久没开始的识别判失败, 用过或超过 48 小时的识别结果清空,"
+                            + " 7 天前的识别任务与 180 天前的调用记录删除。")),
+            Map.entry("AiJobScheduler.poll", new Entry("AI 识别任务",
+                    "每 5 秒接手排队中的 AI 识别(销售上传的客户文件), 并把处理中断的识别重新排队或判失败。")),
             Map.entry("AttachmentObjectOutboxScheduler.drain", new Entry("附件文件清理",
                     "把已确认删除或已过期的附件文件从文件存储里真正删掉, 释放磁盘空间。")),
             Map.entry("AttachmentUploadExpiryScheduler.expire", new Entry("附件上传超时清理",

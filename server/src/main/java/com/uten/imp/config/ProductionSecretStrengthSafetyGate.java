@@ -41,6 +41,11 @@ public class ProductionSecretStrengthSafetyGate {
         if (StringUtils.hasText(environment.getProperty("uten.website.inquiry-ingest-token"))) {
             requireSecret("uten.website.inquiry-ingest-token", 32);
         }
+        // AI 服务商密钥的专用加密密钥 (ADR-133) 可选: 未配置时由 HMAC 密钥派生;
+        // 一旦配置就必须是 32 字节以上的非占位强密钥。
+        if (StringUtils.hasText(environment.getProperty("uten.crypto.secret-cipher-key"))) {
+            requireSecret("uten.crypto.secret-cipher-key", 32);
+        }
     }
 
     private void requireSecret(String key, int minimumUtf8Bytes) {

@@ -280,6 +280,28 @@ class ArchitectureBoundaryTest {
     }
 
     /**
+     * ADR-094 仍然有效(ADR-133 重申): 报销发票与票据绝不发往外部 AI。报销模块不得引用公共 AI 平台的
+     * 补全出口或任务处理器接口; 发票识别只用本机 OCR。
+     */
+    @Test
+    void expenseClaimNeverReachesTheSharedAiPlatform() throws IOException {
+        Pattern aiPlatform = Pattern.compile(
+                "\\bAi(?:CompletionPort|JobHandler)\\b|com\\.uten\\.imp\\.features\\.ai\\.");
+        List<String> violations = new ArrayList<>();
+        Path expenseClaim = FEATURE_SOURCE.resolve("expenseclaim");
+        if (Files.exists(expenseClaim)) {
+            for (Path file : javaFiles(expenseClaim)) {
+                if (aiPlatform.matcher(stripComments(Files.readString(file))).find()) {
+                    violations.add(relative(file));
+                }
+            }
+        }
+        assertTrue(violations.isEmpty(),
+                () -> "报销模块不得接入公共 AI 平台(ADR-094/ADR-133, 发票不发往外部 AI):\n"
+                        + String.join("\n", violations));
+    }
+
+    /**
      * ADR-110: /api/admin/** 下的每个写端点 (POST/PUT/PATCH/DELETE) 必须显式声明再认证
      * ({@code @RequiresStepUp}) 或写明理由的豁免 ({@code @StepUpExempt("...")})。
      * 新增管理端写接口时忘记考虑再认证会直接变红。
@@ -330,7 +352,12 @@ class ArchitectureBoundaryTest {
                 "features/admin/impersonation/ImpersonationController.java", List.of("\"/enter\""),
                 "features/admin/systemsetting/SystemSettingController.java", List.of("@PutMapping"),
                 "features/admin/systemtest/SystemTestController.java", List.of(
-                        "\"/business-data/reset\"", "\"/business-data/attachments/prepare\""));
+                        "\"/business-data/reset\"", "\"/business-data/attachments/prepare\""),
+                // ADR-133: AI 服务配置的写入与「用已保存密钥」的探测都必须再认证。
+                "features/ai/provider/AiProviderController.java", List.of(
+                        "\"/providers\"", "\"/providers/{id}\"", "\"/providers/{id}/default\"",
+                        "\"/providers/{id}/enabled\"", "\"/providers/{id}/test\"",
+                        "\"/providers/{id}/models\""));
         List<String> missing = new ArrayList<>();
         for (Map.Entry<String, List<String>> entry : required.entrySet()) {
             String[] lines = Files.readString(MAIN_SOURCE.resolve(entry.getKey())).split("\\R");

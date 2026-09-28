@@ -173,9 +173,8 @@ class PeriodicEdgeReadersPostgresTest {
         String tag = id.toString().substring(0, 8);
         db.update("INSERT INTO units(id, code, name, status) VALUES (?, ?, '千克', '使用')", kg, "KG-" + tag);
         db.update("""
-                INSERT INTO unit_measurement_profiles(unit_id, measurement_dimension, canonical_unit_id,
-                                                      to_canonical_factor, provenance)
-                VALUES (?, 'MASS', ?, 1, 'MANUAL_GOVERNANCE')""", kg, kg);
+                INSERT INTO unit_measurement_profiles(unit_id, measurement_dimension, mass_unit_code, provenance)
+                    VALUES (?, 'MASS', 'KG', 'MANUAL_GOVERNANCE')""", kg);
         // 颗粒标成自制: 验证 MRP 自制层数也不把它算一层
         db.update("""
                 INSERT INTO goods(id, code, name, source_type, status, unit_id, price, code_sequence,

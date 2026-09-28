@@ -327,7 +327,8 @@ public class PurchaseReturnService {
                 ts, StockService.TYPE_PURCHASE_RETURN, StockService.SRC_PURCHASE_RETURN,
                 r.getId(), it.getId(), it.getGoodsId(), it.getColorId(), r.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
-                direction < 0 ? "红冲" : null, it.getWeight()));
+                // 退货单不是仓库称重单据: 不带重量, 由库存账推算; 红冲按原流水镜像(ADR-135)。
+                direction < 0 ? "红冲" : null, null));
     }
 
     /** 逐行校验退量不超过来源收货明细可退余量（已收 − 已退），超退给业务 409。 */

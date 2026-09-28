@@ -325,7 +325,7 @@ Future<void> _pump(
           body: GoodsDetailBody(
             initialDetail: goods.detailValue,
             initialCategoryId: 'category-1',
-            initialTab: 0,
+
             canCreate: false,
             canEdit: canEdit,
             canStatus: false,
@@ -334,7 +334,6 @@ Future<void> _pump(
             canBomDelete: false,
             onToggleStatus: null,
             onDelete: null,
-            onViewMovements: null,
             onDataChanged: null,
           ),
         ),

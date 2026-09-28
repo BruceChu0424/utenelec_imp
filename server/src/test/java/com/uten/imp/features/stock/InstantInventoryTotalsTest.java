@@ -29,7 +29,6 @@ import static org.mockito.Mockito.when;
 class InstantInventoryTotalsTest {
 
     private final StockBalanceRepository balanceRepo = mock(StockBalanceRepository.class);
-    private final StockMovementRepository movementRepo = mock(StockMovementRepository.class);
     private final EntityManager em = mock(EntityManager.class);
     private final StockCostMasker costMasker = mock(StockCostMasker.class);
 
@@ -42,8 +41,9 @@ class InstantInventoryTotalsTest {
         assertThat(aggregate).contains("SUM(t.\"pending_qty\")");
         assertThat(aggregate).contains("SUM(t.\"pending_stock_in_qty\")");
         assertThat(aggregate).contains("GROUP BY t.\"unit_name\"");
-        // 重量只有一个口径，不分组。
-        assertThat(aggregate).contains("SUM(t.\"weight\")");
+        // 重量只有一个口径(千克)，不分组；未称/估算两个计数伴随项与它同一条聚合。
+        assertThat(aggregate).contains("SUM(t.\"weight\"), SUM(t.\"weight_unknown_rows\"), "
+                + "SUM(t.\"weight_estimated_rows\")");
 
         // 与表格同一批行：关键字、含不良品仓开关（关=剔除不良仓）、参与核算仓库口径全在派生表里。
         assertThat(aggregate).contains("g.name ILIKE :kw");
@@ -72,6 +72,32 @@ class InstantInventoryTotalsTest {
         assertThat(aggregate).doesNotContain("SUM(t.\"more_qty\")");
     }
 
+    @Test
+    void unknownWeightIsNeverTotalledAsZeroAndTravelsWithCompanionCounts() {
+        String aggregate = aggregateSql(true, null);
+        String core = coreSql();
+
+        // 任一有数量的余额行重量未知 → 整行未知(NULL)，SUM 跳过它，另由计数伴随项报「另有 N 项未称」。
+        assertThat(core).contains("CASE WHEN bool_or(u.qty <> 0 AND u.weight IS NULL) THEN NULL");
+        assertThat(core).doesNotContain("COALESCE(base.weight, 0)");
+        // 待检/待入库占位行的重量是 NULL(数量 0)，不再注入 0 kg。
+        assertThat(core).contains("SELECT i.goods_id, i.color_id, 0, CAST(NULL AS NUMERIC), false, 0");
+        // 新投影追加在末尾(行映射按位置)，并带货品级单重与可靠度。
+        assertThat(core.indexOf("AS pending_stock_in_qty")).isLessThan(core.indexOf("AS weight_estimated"));
+        assertThat(core).contains("est.unit_weight_kg, est.tier AS weight_tier");
+        assertThat(core).contains("LEFT JOIN goods_weight_estimates est ON est.goods_id = g.id AND est.supplier_id IS NULL");
+        assertThat(aggregate).contains("SUM(t.\"weight_unknown_rows\")");
+    }
+
+    private String coreSql() {
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em, atLeastOnce()).createNativeQuery(sql.capture());
+        return sql.getAllValues().stream()
+                .filter(s -> s.contains("LIMIT :__limit"))
+                .findFirst()
+                .orElseThrow();
+    }
+
     private String aggregateSql(boolean includeDefective, String keyword) {
         Query query = mock(Query.class);
         when(query.setParameter(anyString(), any())).thenReturn(query);
@@ -80,7 +106,7 @@ class InstantInventoryTotalsTest {
         when(em.createNativeQuery(anyString())).thenReturn(query);
         lenient().when(costMasker.canView()).thenReturn(false);
 
-        new StockQueryService(balanceRepo, movementRepo, em, costMasker)
+        new StockQueryService(balanceRepo, em, costMasker)
                 .instantInventory(null, null, includeDefective, keyword, 1, 20, null, null);
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);

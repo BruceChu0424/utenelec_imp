@@ -15,22 +15,6 @@ abstract final class ApiEndpoints {
   /// 敏感操作再认证：输入登录密码换一次性凭证 (ADR-110)。
   static const authStepUp = '/auth/step-up';
 
-  // 货品×业务场景计量采集偏好；只读解析必须批量，避免明细行 N+1。
-  static const measurementProfilesResolveBatch =
-      '/measurement/profiles/resolve-batch';
-  static String measurementProfileOverride(
-    String goodsId,
-    String operationFamily,
-  ) =>
-      '/measurement/profiles/${Uri.encodeComponent(goodsId)}/'
-      '${Uri.encodeComponent(operationFamily)}/override';
-  static String measurementProfileClearOverride(
-    String goodsId,
-    String operationFamily,
-  ) =>
-      '/measurement/profiles/${Uri.encodeComponent(goodsId)}/'
-      '${Uri.encodeComponent(operationFamily)}/clear-override';
-
   // 工作台权限化聚合读模型
   static const dashboardOverview = '/dashboard/overview';
 
@@ -456,10 +440,9 @@ abstract final class ApiEndpoints {
   static const purchaseReportMonthly = '/purchase/reports/monthly';
   static const purchaseReportPending = '/purchase/reports/pending';
 
-  // 库存查询（库存管理）：当前余额 + 出入库流水。
+  // 库存查询 (库存管理): 当前余额 + 授权余额调整 (出入库流水见下方 stockGoodsLedger)。
   static const stockBalances = '/stock/balances';
   static const stockBalanceAdjust = '/stock/balances/adjust';
-  static const stockMovements = '/stock/movements';
   // 即时库存（货品+颜色聚合余额 + 分类树/仓库过滤；仓库管理 hub 入口）。
   static const stockInstantInventory = '/stock/instant-inventory';
   static const stockInstantInventorySearchCategoryIds =
@@ -468,6 +451,38 @@ abstract final class ApiEndpoints {
   static const stockShelfLabels = '/stock/shelf-labels';
   static const stockShelfLabelRacks = '/stock/shelf-labels/racks';
   static const stockShelfLabelLayout = '/stock/shelf-labels/layout';
+
+  // 单货品出入库流水 (库存明细账：流水行 + 重量调整行，服务端算结存/期初期末，ADR-135 §7.1)。
+  static String stockGoodsLedger(String goodsId) =>
+      '/stock/goods/${Uri.encodeComponent(goodsId)}/ledger';
+
+  // 仓库重量账与单重学习 (ADR-135 §7.2)：单重参数批量取 (一页一次，客户端自算件数/偏差)、
+  // 单货品单重详情/称重记录、称样校准、单重设置、排除/恢复记录、重新学习、核重。
+  static const stockWeightParams = '/stock/weight/params';
+  static String stockWeightGoods(String goodsId) =>
+      '/stock/weight/goods/${Uri.encodeComponent(goodsId)}';
+  static String stockWeightGoodsObservations(String goodsId) =>
+      '${stockWeightGoods(goodsId)}/observations';
+  static String stockWeightGoodsSamples(String goodsId) =>
+      '${stockWeightGoods(goodsId)}/samples';
+  static String stockWeightGoodsProfile(String goodsId) =>
+      '${stockWeightGoods(goodsId)}/profile';
+  static String stockWeightGoodsResetRegime(String goodsId) =>
+      '${stockWeightGoods(goodsId)}/reset-regime';
+  static String stockWeightObservationExclude(String observationId) =>
+      '/stock/weight/observations/${Uri.encodeComponent(observationId)}/exclude';
+  static String stockWeightObservationInclude(String observationId) =>
+      '/stock/weight/observations/${Uri.encodeComponent(observationId)}/include';
+  static const stockWeightBalanceSet = '/stock/weight/balances/set';
+
+  // 库存分析 (ADR-135 §7.4，stock_report:view；单货品 KPI 条为 stock:view)：
+  // 呆滞与库龄 / 盘点建议 / 称重异常 / 单重学习。
+  static const stockInsightsHealth = '/stock/insights/health';
+  static const stockInsightsCycleCount = '/stock/insights/cycle-count';
+  static const stockInsightsWeightAlerts = '/stock/insights/weight-alerts';
+  static const stockInsightsLearning = '/stock/insights/learning';
+  static String stockInsightsGoods(String goodsId) =>
+      '/stock/insights/goods/${Uri.encodeComponent(goodsId)}';
 
   // 仓库管理单据（8 类统一，端点 /api/stock/docs，docType 区分）：CRUD + 审核 + 红冲。
   static const stockDocsBase = '/stock/docs';

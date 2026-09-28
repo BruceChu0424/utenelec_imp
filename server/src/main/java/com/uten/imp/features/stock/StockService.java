@@ -5,6 +5,11 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.TxSessionVars;
 import com.uten.imp.application.port.InventoryMovementCostReference;
 import com.uten.imp.application.port.SubcontractOutboundWakePort;
+import com.uten.imp.features.stock.weight.CapturedWeight;
+import com.uten.imp.features.stock.weight.StockWeightAdjustmentRepository;
+import com.uten.imp.features.stock.weight.StockWeightContextReader;
+import com.uten.imp.features.stock.weight.StockWeightResolver;
+import com.uten.imp.features.stock.weight.WeightSource;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
@@ -28,6 +33,10 @@ import java.util.UUID;
  *
  * <p>幂等性：调用方负责不重复调用（单据审核状态机保证 status 仅 0→1 一次）。
  * 红冲（1→-1）由调用方以反方向 movement 冲销。
+ *
+ * <p>仓库重量账(ADR-135): 重量是仓库自己的平行账, 永远不挡数量过账。每笔流水在同一把库存锁下按
+ * 精确换算 > 调拨对应 > 红冲镜像 > 实称/切片 > 均重/单重估算 定出重量与来历, 余额重量整值改写,
+ * 需要时先补「重量起算 / 尾差调整」行(见 weight.StockWeightResolver)。
  */
 @Service
 @RequiredArgsConstructor
@@ -92,6 +101,13 @@ public class StockService {
      * 是因为纯单测手工 new 时没有委外模块; 生产环境由 SubcontractMaterialPlanService 实现。
      */
     private final ObjectProvider<SubcontractOutboundWakePort> subcontractOutboundWake;
+    /**
+     * ADR-135 重量上下文(重量系数/红冲镜像/调拨对应/单重)。手工 new 的纯单测没有它时只按余额快照算
+     * (不精确换算、不镜像、不估算单重), 数量照常过账。
+     */
+    private final ObjectProvider<StockWeightContextReader> weightContexts;
+    /** ADR-135 只改重量的调整流水(起算/尾差); 纯单测没有这张表时不写。 */
+    private final ObjectProvider<StockWeightAdjustmentRepository> weightAdjustments;
 
     /**
      * Pre-locks all dimensions of a multi-line document in stable order.
@@ -106,9 +122,12 @@ public class StockService {
         valuation.bindProductionMovements(event,movements);
     }
 
-    /** 出入库请求值对象。qty 为基本单位量（已乘 unit_rate）；amountLocal 为本币金额。
-     *  weight 为本次流水切片的实际总重量，不乘 unit_rate；null=来源未提供/不维护重量。
-     *  weightUnitId 是 V442 显式重量单位；旧来源尚未迁移时允许为空。 */
+    /**
+     * 出入库请求值对象。qty 为基本单位量（已乘 unit_rate）；amountLocal 为本币金额。
+     *
+     * <p>weight 是调用方带来的重量证据(千克): 仓库实称 {@link CapturedWeight#measured} 或来源单据实称的累计切片
+     * {@link CapturedWeight#slice}; null = 没有证据, 由库存账按规则推算。红冲一律传 null(按原流水镜像)。
+     */
     public record MovementRequest(
             OffsetDateTime transactionDate,
             short movementType,
@@ -124,60 +143,23 @@ public class StockService {
             BigDecimal unitRate,
             BigDecimal amountLocal,
             String remark,
-            BigDecimal weight,
-            UUID weightUnitId,
+            CapturedWeight weight,
             InventoryMovementCostReference costReference) {
 
-        public MovementRequest(OffsetDateTime transactionDate,short movementType,String sourceDocType,
-                UUID sourceDocId,UUID sourceItemId,UUID goodsId,UUID colorId,UUID warehouseId,short direction,
-                BigDecimal qty,UUID unitId,BigDecimal unitRate,BigDecimal amountLocal,String remark,
-                BigDecimal weight,UUID weightUnitId){
-            this(transactionDate,movementType,sourceDocType,sourceDocId,sourceItemId,goodsId,colorId,warehouseId,direction,
-                    qty,unitId,unitRate,amountLocal,remark,weight,weightUnitId,null);
+        /** 没有成本来源引用的出入库。 */
+        public MovementRequest(OffsetDateTime transactionDate, short movementType, String sourceDocType,
+                UUID sourceDocId, UUID sourceItemId, UUID goodsId, UUID colorId, UUID warehouseId, short direction,
+                BigDecimal qty, UUID unitId, BigDecimal unitRate, BigDecimal amountLocal, String remark,
+                CapturedWeight weight) {
+            this(transactionDate, movementType, sourceDocType, sourceDocId, sourceItemId, goodsId, colorId,
+                    warehouseId, direction, qty, unitId, unitRate, amountLocal, remark, weight, null);
         }
+    }
 
-        /** 兼容已传重量但尚未传 V442 显式重量单位的调用方。 */
-        public MovementRequest(
-                OffsetDateTime transactionDate,
-                short movementType,
-                String sourceDocType,
-                UUID sourceDocId,
-                UUID sourceItemId,
-                UUID goodsId,
-                UUID colorId,
-                UUID warehouseId,
-                short direction,
-                BigDecimal qty,
-                UUID unitId,
-                BigDecimal unitRate,
-                BigDecimal amountLocal,
-                String remark,
-                BigDecimal weight) {
-            this(transactionDate, movementType, sourceDocType, sourceDocId, sourceItemId,
-                    goodsId, colorId, warehouseId, direction, qty, unitId, unitRate,
-                    amountLocal, remark, weight, null);
-        }
-
-        /** 兼容旧签名（无重量）：weight=null，余额重量保持不变。 */
-        public MovementRequest(
-                OffsetDateTime transactionDate,
-                short movementType,
-                String sourceDocType,
-                UUID sourceDocId,
-                UUID sourceItemId,
-                UUID goodsId,
-                UUID colorId,
-                UUID warehouseId,
-                short direction,
-                BigDecimal qty,
-                UUID unitId,
-                BigDecimal unitRate,
-                BigDecimal amountLocal,
-                String remark) {
-            this(transactionDate, movementType, sourceDocType, sourceDocId, sourceItemId,
-                    goodsId, colorId, warehouseId, direction, qty, unitId, unitRate,
-                    amountLocal, remark, null, null);
-        }
+    /**
+     * 过账结果: 流水 id, 以及库存账定下的本笔重量(千克, null = 未知)与来历; replayed = 估值幂等重放(未重复记账)。
+     */
+    public record PostedMovement(UUID movementId, BigDecimal weightKg, WeightSource weightSource, boolean replayed) {
     }
 
     /**
@@ -186,20 +168,20 @@ public class StockService {
      * @param req 方向已体现在 direction（+1/-1），qty/amountLocal 传正数
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    public UUID recordMovement(MovementRequest req) {
+    public PostedMovement recordMovement(MovementRequest req) {
         return recordMovementInternal(null,req);
     }
 
     /** Reserved for a real IQC item which is inserted before its deferred physical FK is completed. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    public UUID recordMovementWithId(UUID reservedMovementId,MovementRequest req){
+    public PostedMovement recordMovementWithId(UUID reservedMovementId,MovementRequest req){
         if(reservedMovementId==null||req==null||!(req.costReference() instanceof InventoryMovementCostReference.ProcurementStockIn stock)
                 ||stock.stockInItemId()==null||!stock.stockInItemId().equals(req.sourceItemId()))
             throw new IllegalArgumentException("a reserved movement requires its exact procurement stock-in reference");
         return recordMovementInternal(reservedMovementId,req);
     }
 
-    private UUID recordMovementInternal(UUID reservedMovementId,MovementRequest req){
+    private PostedMovement recordMovementInternal(UUID reservedMovementId,MovementRequest req){
         tx.bind();
         if (req == null || req.goodsId() == null || req.warehouseId() == null
                 || req.sourceDocType() == null || req.sourceDocType().isBlank()) {
@@ -211,12 +193,8 @@ public class StockService {
         if (req.qty() == null || req.qty().signum() <= 0) {
             throw new IllegalArgumentException("inventory movement quantity must be positive");
         }
-        if (req.weight() != null && req.weight().signum() < 0) {
+        if (req.weight() != null && req.weight().kg() != null && req.weight().kg().signum() < 0) {
             throw new IllegalArgumentException("inventory movement weight must not be negative");
-        }
-        if (req.weight() == null && req.weightUnitId() != null) {
-            throw new IllegalArgumentException(
-                    "inventory movement weight unit requires an actual weight");
         }
         InventoryMovementCostReference.WorkshopMaterialBin bin = workshopMaterialBin(req);
         // Re-entrant when the top-level document already batch-locked its keys;
@@ -244,17 +222,7 @@ public class StockService {
                         "目标仓库存不足：当前 " + available.stripTrailingZeros().toPlainString()
                                 + "，本次出库 " + req.qty().stripTrailingZeros().toPlainString());
             }
-            BigDecimal availableWeight = physical == null ? null : physical.getWeight();
-            if (req.weight() != null
-                    && availableWeight != null
-                    && availableWeight.compareTo(req.weight()) < 0) {
-                throw new ApiException(
-                        ErrorCode.CONFLICT,
-                        "目标仓库存重量不足：当前 "
-                                + availableWeight.stripTrailingZeros().toPlainString()
-                                + "，本次出库 "
-                                + req.weight().stripTrailingZeros().toPlainString());
-            }
+            // 重量永远不挡数量过账(ADR-135): 实称比账面重就按实称出, 余额用尾差行纠正。
             // A physical count loss records reality and must not be blocked by
             // an operational reservation policy. Every normal outbound path,
             // including returns, transfers and subcontract issues, may only
@@ -324,20 +292,24 @@ public class StockService {
         m.setUnitRate(req.unitRate());
         BigDecimal quantityBefore=physical==null?BigDecimal.ZERO:physical.getQty();
         var valued=valuation.value(m.getId(),req,quantityBefore,ts);
-        if(valued.replayed())return valued.movementId();
+        if(valued.replayed())return replayedMovement(valued.movementId());
         m.setAmountLocal(valued.knownValueLocal());
-        m.setWeight(req.weight());
-        m.setActualWeightUnitId(req.weightUnitId());
+        // ADR-135 仓库重量账: 估值重放检查之后才定重量; 起算/尾差行先写(ledger_seq 在流水之前),
+        // 流水行记含纠正的最终余额重量。
+        StockWeightResolver.WeightResolution weight =
+                StockWeightResolver.resolve(weightContext(req, physical), req);
+        writeWeightAdjustments(m, req, ts, weight.before());
+        m.setWeight(weight.weightKg());
+        m.setWeightSource(weight.source() == null ? null : weight.source().name());
+        m.setBalanceWeightAfter(weight.balanceWeightAfter());
         m.setRemark(req.remark());
         movementRepo.save(m);
 
         BigDecimal dir = BigDecimal.valueOf(req.direction());
         BigDecimal signedQty = req.qty().multiply(dir);
         BigDecimal signedAmt = valued.knownValueLocal().multiply(dir);
-        // 重量：null=调用方不维护（旧调用方/无重量业务），upsert 内部保持原值；非 null 才按方向增减。
-        BigDecimal signedWgt = req.weight() == null ? null : req.weight().multiply(dir);
         balanceRepo.upsertBalance(req.warehouseId(), req.goodsId(), req.colorId(),
-                signedQty, signedAmt, signedWgt, ts);
+                signedQty, signedAmt, weight.balanceWeightAfter(), weight.estimatedAfter(), ts);
         // 货品「归属仓」单一事实源（V590）：任何入库自动回写为最新入库仓。
         // 出库/红冲不翻转；值没变不写。见 GoodsOwningWarehouseSyncService。
         if (req.direction() == DIR_IN) {
@@ -348,7 +320,41 @@ public class StockService {
             enqueueSubcontractWake(new SubcontractOutboundWakePort.StockedDimension(
                     req.goodsId(), req.colorId(), req.warehouseId()));
         }
-        return m.getId();
+        return new PostedMovement(m.getId(), weight.weightKg(), weight.source(), false);
+    }
+
+    /** 估值幂等重放: 不再记账, 按已落库的原流水回报重量。 */
+    private PostedMovement replayedMovement(UUID movementId) {
+        StockMovement stored = movementRepo.findById(movementId).orElse(null);
+        if (stored == null) return new PostedMovement(movementId, null, null, true);
+        WeightSource source = WeightSource.fromColumn(stored.getWeightSource());
+        return new PostedMovement(movementId, stored.getWeight(),
+                source == null && stored.getWeight() != null ? WeightSource.MEASURED : source, true);
+    }
+
+    /** 本维度的重量上下文; 没有读取器(手工 new 的纯单测)时只用余额快照。 */
+    private StockWeightResolver.WeightContext weightContext(
+            MovementRequest req, StockBalanceRepository.PhysicalSnapshot physical) {
+        BigDecimal qty = physical == null ? BigDecimal.ZERO : physical.getQty();
+        BigDecimal weight = physical == null ? null : physical.getWeight();
+        boolean estimated = physical != null && Boolean.TRUE.equals(physical.getWeightEstimated());
+        StockWeightContextReader reader = weightContexts.getIfAvailable();
+        return reader == null
+                ? StockWeightResolver.WeightContext.balanceOnly(qty, weight, estimated, physical != null)
+                : reader.read(req, qty, weight, estimated, physical != null);
+    }
+
+    private void writeWeightAdjustments(StockMovement m, MovementRequest req, OffsetDateTime ts,
+                                        List<StockWeightResolver.AdjustmentDraft> drafts) {
+        if (drafts.isEmpty()) return;
+        StockWeightAdjustmentRepository repository = weightAdjustments.getIfAvailable();
+        if (repository == null) return;
+        for (StockWeightResolver.AdjustmentDraft draft : drafts) {
+            repository.insert(new StockWeightAdjustmentRepository.NewAdjustment(
+                    draft.kind(), ts, req.warehouseId(), req.goodsId(), req.colorId(),
+                    draft.before(), draft.after(), m.getId(), null,
+                    req.sourceDocType(), req.sourceDocId(), req.sourceItemId(), null, null, null));
+        }
     }
 
     /**

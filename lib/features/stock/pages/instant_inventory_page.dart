@@ -6,14 +6,17 @@
 //   自动隐藏；仓库「全部」= 参与核算仓库聚合，选主仓 = 自身 + 全部子仓聚合；
 // - 右侧工具栏：当前分类 + 仓库字段 + 库存范围开关 + 共 N 项；
 // - 表格 = 统一 MasterDataTableView：所属类型 / 物料编码 / 物料系列 / 库位号 /
-//   型号 / 客户型号 / 货品名称 / 规格 / 颜色 / 单位 / 备注 / 库存重量 / 库存数量 /
+//   型号 / 客户型号 / 货品名称 / 规格 / 颜色 / 单位 / 备注 / 库存数量 / 库存重量 /
 //   待检量 / 合格待入库 / 多排数量。库存台账金额列已从页面与预览打印移除
 //  （加密导出 Excel 仍由服务端按 goods:cost:view 独立裁列，口径不受本页影响）。
 //
 // 数据口径（后端 /api/stock/instant-inventory）：
-//   数量/重量 = stock_balances 按货品+颜色聚合（历史=StockGoods 最新年 FactQTY/FactWeight 迁移，
-//   增量=单据审核同事务联动，仓库单据含重量）；多排数量 = 生产计划明细可排余量
+//   数量 = stock_balances 按货品+颜色聚合；多排数量 = 生产计划明细可排余量
 //  （老库 View_ProductMore 同口径）。
+//   重量 (ADR-135) = 仓库重量账 (千克), 紧跟库存数量: 含估算的前缀「≈」, 有库存但没称过
+//   显示「未称」(绝不当 0); 表格工具条「重量单位: 自动▾」切显示单位 (用户级偏好, 与流水/
+//   分析页共用)。合计「合计库存重量 ≈3.52 t (另有 12 项未称)」由服务端算好。
+//   导出文件的重量列用固定单位 (自动档按千克), 表头带单位, 不混单位。
 // 性能：后端一次聚合分页（LIMIT/OFFSET + 排序白名单），前端不拉全量，万级数据秒开。
 import 'dart:async';
 
@@ -40,6 +43,8 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/measurement/weight_prefs.dart';
+import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
@@ -227,13 +232,25 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     _load(1); // 表头筛选变化回第 1 页（与主档页同口径）
   }
 
-  /// 导出查询参数（与 _load 一致，不含 page/size；report 固定 'instant-inventory' 走后端独立分支）。
+  /// 导出查询参数 (与 _load 同一口径含表头筛选, 不含 page/size; report 固定
+  /// 'instant-inventory' 走后端独立分支)。重量单位用用户显示单位, 「自动」按千克
+  /// (文件里的数值列不混单位)。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
     if (_categoryId != null) 'categoryId': _categoryId,
     if (_warehouseId != null) 'warehouseId': _warehouseId,
     'includeDefective': ref.read(instantInventoryPrefsProvider),
     if (_includeLineSide) 'includeLineSide': true,
     if (_keyword.isNotEmpty) 'keyword': _keyword,
+    'owningWarehouse': ?_owningFilterUuid,
+    if (_owningFilterIsNull) 'owningWarehouseNull': true,
+    'colorId': ?_columnFilter('color'),
+    'series': ?_columnFilter('series'),
+    'unitId': ?_columnFilter('unit'),
+    'weightUnit': ref
+        .read(warehouseWeightUnitsPrefsProvider)
+        .display
+        .exportUnit
+        .code,
     if (_sortKey != null) 'sort': _sortKey,
     if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
   };
@@ -247,6 +264,10 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         : s;
   }
 
+  /// 库存重量没有值时的文案：有库存却没称过 =「未称」；本行本就没有库存 =「—」。
+  static String _unknownWeightText(InstantInventoryRow r) =>
+      r.weightUnknown || (r.qty ?? 0) != 0 ? weightUnknownText : '—';
+
   /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
     final r = await ref
@@ -258,6 +279,11 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           includeDefective: ref.read(instantInventoryPrefsProvider),
           includeLineSide: _includeLineSide,
           keyword: _keyword.isEmpty ? null : _keyword,
+          owningWarehouse: _owningFilterUuid,
+          owningWarehouseNull: _owningFilterIsNull,
+          colorId: _columnFilter('color'),
+          series: _columnFilter('series'),
+          unitId: _columnFilter('unit'),
           sort: _sortKey,
           order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
         );
@@ -295,130 +321,144 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     await ref.read(masterNameServiceProvider).loadGoodsDetails(ids);
   }
 
-  List<MasterColumnDef<InstantInventoryRow>> _columns() =>
-      <MasterColumnDef<InstantInventoryRow>>[
-        MasterColumnDef(
-          key: 'category',
-          label: '所属类型',
-          width: 120,
-          value: (r) => r.categoryName ?? '—',
+  List<MasterColumnDef<InstantInventoryRow>> _columns() {
+    final weightDisplay = ref.read(warehouseWeightUnitsPrefsProvider).display;
+    return <MasterColumnDef<InstantInventoryRow>>[
+      MasterColumnDef(
+        key: 'category',
+        label: '所属类型',
+        width: 120,
+        value: (r) => r.categoryName ?? '—',
+      ),
+      // 2026-09-14 全站表格统一：名称 → 编号 → 颜色 三列排在最前，
+      // 型号/系列/库位等次要属性排在后面。
+      MasterColumnDef(
+        key: 'name',
+        label: '货品名称',
+        width: 220,
+        sortable: true,
+        value: (r) => r.name ?? '',
+      ),
+      MasterColumnDef(
+        key: 'goodsCode',
+        label: '编号',
+        width: 130,
+        value: (r) => r.goodsCode ?? '',
+      ),
+      MasterColumnDef(
+        key: 'color',
+        label: '颜色',
+        width: 90,
+        value: (r) => r.colorName ?? '',
+      ),
+      MasterColumnDef(
+        key: 'series',
+        label: '物料系列',
+        width: 90,
+        value: (r) => r.series ?? '',
+      ),
+      MasterColumnDef(
+        key: 'stockPlace',
+        label: '库位号',
+        width: 90,
+        value: (r) => r.stockPlace ?? '',
+      ),
+      // 所属仓库 (V587)：货品平时归哪个仓管的主档归属，只读。
+      // 列 key 是 owningWarehouse，不能叫 warehouse —— 本页顶部的仓库筛选是
+      // 另一回事 (那是本次看盘的范围仓)，两者绝不是同一个概念。
+      MasterColumnDef(
+        key: 'owningWarehouse',
+        label: '所属仓库',
+        width: 120,
+        info: '货品平时归哪个仓管的主档归属，不是这行库存所在的仓，也不是上面的仓库筛选值。',
+        value: (r) => _owningWarehouseName(r) ?? '',
+      ),
+      MasterColumnDef(
+        key: 'model',
+        label: '型号',
+        width: 110,
+        value: (r) => r.model ?? '',
+      ),
+      MasterColumnDef(
+        key: 'cNumber',
+        label: '客户型号',
+        width: 120,
+        value: (r) => r.cNumber ?? '',
+      ),
+      MasterColumnDef(
+        key: 'spec',
+        label: '规格',
+        width: 120,
+        value: (r) => r.spec ?? '',
+      ),
+      MasterColumnDef(
+        key: 'unit',
+        label: '单位',
+        width: 70,
+        value: (r) => r.unitName ?? '',
+      ),
+      MasterColumnDef(
+        key: 'remark',
+        label: '备注',
+        width: 90,
+        value: (r) => r.remark ?? '',
+      ),
+      MasterColumnDef(
+        key: 'qty',
+        label: '库存数量',
+        width: 110,
+        type: 'number',
+        sortable: true,
+        value: (r) => _num(r.qty),
+      ),
+      // 重量紧跟数量 (ADR-135)：千克按用户显示单位换算，估算「≈」、没称「未称」。
+      MasterColumnDef(
+        key: 'weight',
+        label: '库存重量',
+        width: 120,
+        type: 'weight',
+        sortable: true,
+        value: (r) => formatWeightValue(
+          r.weight,
+          display: weightDisplay,
+          estimated: r.weightEstimated,
+          unknownText: _unknownWeightText(r),
         ),
-        // 2026-09-14 全站表格统一：名称 → 编号 → 颜色 三列排在最前，
-        // 型号/系列/库位等次要属性排在后面。
-        MasterColumnDef(
-          key: 'name',
-          label: '货品名称',
-          width: 220,
-          sortable: true,
-          value: (r) => r.name ?? '',
+        cellBuilder: (_, r) => WeightText(
+          kg: r.weight,
+          estimated: r.weightEstimated,
+          display: weightDisplay,
+          unknownText: _unknownWeightText(r),
         ),
-        MasterColumnDef(
-          key: 'goodsCode',
-          label: '编号',
-          width: 130,
-          value: (r) => r.goodsCode ?? '',
-        ),
-        MasterColumnDef(
-          key: 'color',
-          label: '颜色',
-          width: 90,
-          value: (r) => r.colorName ?? '',
-        ),
-        MasterColumnDef(
-          key: 'series',
-          label: '物料系列',
-          width: 90,
-          value: (r) => r.series ?? '',
-        ),
-        MasterColumnDef(
-          key: 'stockPlace',
-          label: '库位号',
-          width: 90,
-          value: (r) => r.stockPlace ?? '',
-        ),
-        // 所属仓库 (V587)：货品平时归哪个仓管的主档归属，只读。
-        // 列 key 是 owningWarehouse，不能叫 warehouse —— 本页顶部的仓库筛选是
-        // 另一回事 (那是本次看盘的范围仓)，两者绝不是同一个概念。
-        MasterColumnDef(
-          key: 'owningWarehouse',
-          label: '所属仓库',
-          width: 120,
-          info: '货品平时归哪个仓管的主档归属，不是这行库存所在的仓，也不是上面的仓库筛选值。',
-          value: (r) => _owningWarehouseName(r) ?? '',
-        ),
-        MasterColumnDef(
-          key: 'model',
-          label: '型号',
-          width: 110,
-          value: (r) => r.model ?? '',
-        ),
-        MasterColumnDef(
-          key: 'cNumber',
-          label: '客户型号',
-          width: 120,
-          value: (r) => r.cNumber ?? '',
-        ),
-        MasterColumnDef(
-          key: 'spec',
-          label: '规格',
-          width: 120,
-          value: (r) => r.spec ?? '',
-        ),
-        MasterColumnDef(
-          key: 'unit',
-          label: '单位',
-          width: 70,
-          value: (r) => r.unitName ?? '',
-        ),
-        MasterColumnDef(
-          key: 'remark',
-          label: '备注',
-          width: 90,
-          value: (r) => r.remark ?? '',
-        ),
-        MasterColumnDef(
-          key: 'weight',
-          label: '库存重量',
-          width: 110,
-          type: 'number',
-          sortable: true,
-          value: (r) => _num(r.weight),
-        ),
-        MasterColumnDef(
-          key: 'qty',
-          label: '库存数量',
-          width: 110,
-          type: 'number',
-          sortable: true,
-          value: (r) => _num(r.qty),
-        ),
-        MasterColumnDef(
-          key: 'pendingQty',
-          label: '待检量',
-          width: 100,
-          type: 'number',
-          sortable: true,
-          // 待检量>0 = 采购/委外已收货但 IQC 未放行（货在待检隔离区，不在库存内）。
-          value: (r) => _num(r.pendingQty),
-        ),
-        MasterColumnDef(
-          key: 'pendingStockInQty',
-          label: '合格待入库',
-          width: 120,
-          type: 'number',
-          sortable: true,
-          // 品质 PASS 只形成仓库任务；仓库确认前不进入库存数量。
-          value: (r) => _num(r.pendingStockInQty),
-        ),
-        MasterColumnDef(
-          key: 'moreQty',
-          label: '多排数量',
-          width: 100,
-          type: 'number',
-          sortable: true,
-          value: (r) => _num(r.moreQty),
-        ),
-      ];
+      ),
+      MasterColumnDef(
+        key: 'pendingQty',
+        label: '待检量',
+        width: 100,
+        type: 'number',
+        sortable: true,
+        // 待检量>0 = 采购/委外已收货但 IQC 未放行（货在待检隔离区，不在库存内）。
+        value: (r) => _num(r.pendingQty),
+      ),
+      MasterColumnDef(
+        key: 'pendingStockInQty',
+        label: '合格待入库',
+        width: 120,
+        type: 'number',
+        sortable: true,
+        // 品质 PASS 只形成仓库任务；仓库确认前不进入库存数量。
+        value: (r) => _num(r.pendingStockInQty),
+      ),
+      MasterColumnDef(
+        key: 'moreQty',
+        label: '多排数量',
+        width: 100,
+        type: 'number',
+        sortable: true,
+        value: (r) => _num(r.moreQty),
+      ),
+    ];
+  }
 
   void _onSearchInput(String raw) {
     _searchDebounce?.cancel();
@@ -646,6 +686,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     final includeDefective = ref.watch(instantInventoryPrefsProvider);
+    final weightDisplay = ref.watch(warehouseWeightUnitsPrefsProvider).display;
     final total = _page?.total ?? 0;
     // 「含不良品仓」只在聚合口径下生效：全部（null）或父仓（多仓聚合）；
     // 选定叶子仓时开关置灰（单仓口径开关无意义）。
@@ -733,6 +774,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             columns: _columns(),
             items: _page?.items ?? const [],
             toolbarActions: [
+              // 「重量单位: 自动▾」: 用户级显示偏好 (与库存详情/分析页共用), 只改显示。
+              const WeightDisplayUnitButton(),
               // 导出仍受独立权限、限流、行数上限和审计约束；文件密码可选。
               // 预览打印（A4 预览 → 系统打印；与导出口径一致，上限 2000 行）
               UtenPrintPreviewButton(
@@ -778,8 +821,12 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             emptyMessage: '暂无库存', // TODO(l10n): 补 arb
             // 合计条：值全部来自服务端（/stock/instant-inventory 的 totals），口径与本页
             // 当前的分类/仓库/含不良品仓/关键字筛选完全一致，且覆盖整个结果集而不是当前这一页；
-            // 前端一个加法都不做，数量按单位分组显示「12 个 · 3 箱」。
-            summaryBar: reportTotalsBar(_page?.totals ?? const []),
+            // 前端一个加法都不做，数量按单位分组显示「12 个 · 3 箱」；重量按显示单位换算，
+            // 含估算加「≈」，有未称项追加「(另有 N 项未称)」。
+            summaryBar: reportTotalsBar(
+              _page?.totals ?? const [],
+              weightDisplay: weightDisplay,
+            ),
             currentPage: _page?.page ?? 1,
             totalPages: _page?.totalPages ?? 1,
             onPageChange: (p) => _load(p),

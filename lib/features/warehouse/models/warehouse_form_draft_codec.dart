@@ -1,5 +1,45 @@
 import 'stock_doc.dart';
+import '../../../components/inputs/uten_autofill_text_controller.dart';
+import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../../shared/models/production_material_discovery.dart';
+
+/// 一格实称重量的草稿 (ADR-135): 千克 + 是否按称重改了数量 + 数量黄框说明。
+///
+/// [qty] 给了就一并记下「数量格仍是按这次重量预填的黄框值」, 恢复后黄框与 ⓘ 说明原样回来;
+/// 草稿只存千克, 录入单位以恢复时的用户偏好为准 (千克值不变)。
+Map<String, dynamic> weightEntryDraft(
+  WeightEntryController weight, {
+  UtenAutofillTextController? qty,
+}) => {
+  'kg': weight.kg,
+  'qtyFromWeight': weight.qtyFromWeight,
+  'qtyNote': weight.qtyEstimateNote,
+  if (qty != null)
+    'qtyDerived':
+        qty.autofilled &&
+        weight.derivedQtyText != null &&
+        weight.derivedQtyText == qty.text,
+};
+
+/// 按 [weightEntryDraft] 的记录恢复重量格; 数量文本须先于本函数恢复。
+void restoreWeightEntryDraft(
+  WeightEntryController weight,
+  Object? raw, {
+  UtenAutofillTextController? qty,
+}) {
+  if (raw is! Map) return;
+  final kg = raw['kg'];
+  final fromWeight = raw['qtyFromWeight'] == true;
+  final note = raw['qtyNote'];
+  weight.setKg(kg is num ? kg.toDouble() : null, qtyFromWeight: fromWeight);
+  if (qty != null && raw['qtyDerived'] == true && qty.text.isNotEmpty) {
+    final text = qty.text;
+    qty.setAutomaticText(text);
+    weight.markQtyDerived(text, note: note is String ? note : null);
+  } else if (fromWeight && note is String) {
+    weight.qtyEstimateNote = note;
+  }
+}
 
 /// Read-only reviewed facts retained solely for replaying the identical interrupted request.
 Map<String, dynamic> stockDocumentDraftFacts(StockDocDetail doc) => {
@@ -61,6 +101,11 @@ Map<String, dynamic> stockDocumentDraftFacts(StockDocDetail doc) => {
         'sourceDocNo': item.sourceDocNo,
         'issuedQty': item.issuedQty,
         'requestedQty': item.requestedQty,
+        'qtyFromWeight': item.qtyFromWeight,
+        'countWeight': item.countWeight,
+        'bookWeight': item.bookWeight,
+        'issuedWeightKg': item.issuedWeightKg,
+        'issuedWeightEstimated': item.issuedWeightEstimated,
       },
   ],
 };

@@ -527,6 +527,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 }
                 case EVENT_BOM_UPDATED -> notifyBomUpdated(aggregateId);
                 case EVENT_PRODUCTION_PLANNING_URGED -> deliverProductionPlanningUrged(aggregateId);
+                case "STOCK_WEIGHT_OBSERVATION_CHANGED" -> {
+                    // 单重学习重算(ADR-135)由库存模块的领域处理器在同一事务完成, 这里不发通知。
+                    // 用字面量而非常量: notice 模块不得引用 stock 模块。
+                }
                 default -> throw new IllegalArgumentException(
                         "Unsupported business outbox event: " + eventType);
             }

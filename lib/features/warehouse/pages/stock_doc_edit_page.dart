@@ -5,10 +5,27 @@
 // - 单据号系统自动生成（后端 DocNumberService），本页只读显示（新增态占位"保存后自动生成"）。
 // - 日期统一 UtenDateField（outlined，与其它字段同款）。
 // 明细改 Excel 表：货品/数量（+账面/实盘/盘盈亏 当 CHECK）+ 添加行/添加多行 + 行尾删除 + sticky 表头。
+// 实称重量(ADR-135)：数量后是「实称重量」(可选，永不阻断保存)；盘点在实盘后加只读「账面重量」
+// 与可选「实盘重量」(审核后账面重量按它定)。其它入库/产成品进仓与盘点的数量空着时可按称重
+// 推算(黄框、qtyFromWeight)；出库类单据的 ⚖ 称重计数反推「秤上应显示多少」。
+// 新建盘点可带 [StockCheckPrefill](库存分析「生成盘点单」经 GoRouter extra 传入)：预填仓库与
+// 明细行(未保存)，账面数量/重量照常按仓库读取。
 // 保存组装 body 调 create/update，成功后跳详情。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/inputs/uten_autofill_text_controller.dart';
+import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/measurement/weight_mass_units.dart';
+import '../../../shared/measurement/weight_params.dart';
+import '../../../shared/measurement/weight_prefs.dart';
+import '../../../shared/measurement/weight_unit.dart';
+import '../../../shared/measurement/widgets/weigh_count_dialog.dart';
+import '../../../shared/measurement/widgets/weight_grid_column.dart';
+import '../../../shared/measurement/widgets/weight_sample_dialog.dart';
+import '../../../shared/measurement/widgets/weight_totals.dart';
 import '../../../shared/widgets/saved_document_fields.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
@@ -50,14 +67,25 @@ import '../../stock/repositories/stock_query_repository.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
+import '../models/stock_check_prefill.dart';
 import '../models/stock_doc.dart';
+import '../models/warehouse_form_draft_codec.dart';
 import '../repositories/stock_doc_repository.dart';
+import '../widgets/inbound_registration_widgets.dart';
 import '../widgets/stock_grid_columns.dart';
 
 class StockDocEditPage extends ConsumerStatefulWidget {
-  const StockDocEditPage({super.key, required this.docType, this.id});
+  const StockDocEditPage({
+    super.key,
+    required this.docType,
+    this.id,
+    this.checkPrefill,
+  });
   final StockDocType docType;
   final String? id; // null=新建
+
+  /// 新建盘点的预填(仓库 + 建议盘点的货品行)；null 时读路由 extra。
+  final StockCheckPrefill? checkPrefill;
 
   @override
   ConsumerState<StockDocEditPage> createState() => _StockDocEditPageState();
@@ -132,6 +160,8 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       row.weight,
       row.bookQty,
       row.checkQty,
+      row.countWeight,
+      row.bookWeightKg,
     ],
   ];
   @override
@@ -152,9 +182,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
           'goods': draftGoods(row.goods),
           'unitRate': row.unitRate,
           'qty': row.qty.text,
-          'weight': row.weight.text,
+          'weight': weightEntryDraft(row.weight, qty: row.qty),
           'bookQty': row.bookQty.text,
           'checkQty': row.checkQty.text,
+          'countWeight': weightEntryDraft(row.countWeight, qty: row.checkQty),
+          'bookWeightKg': row.bookWeightKg.value,
+          'bookWeightEstimated': row.bookWeightEstimated,
           'upstreamItemId': row.upstreamItemId,
           'executionSegmentId': row.executionSegmentId,
           'executionSegmentSalesAllocationId':
@@ -203,14 +236,176 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
           row.colorName = item['colorName'] as String?;
           row.unitName = item['unitName'] as String?;
           row.qty.text = draftText(item, 'qty');
-          row.weight.text = draftText(item, 'weight');
           row.bookQty.text = draftText(item, 'bookQty');
           row.checkQty.text = draftText(item, 'checkQty');
+          restoreWeightEntryDraft(row.weight, item['weight'], qty: row.qty);
+          restoreWeightEntryDraft(
+            row.countWeight,
+            item['countWeight'],
+            qty: row.checkQty,
+          );
+          row.bookWeightEstimated = item['bookWeightEstimated'] == true;
+          row.bookWeightKg.value = (item['bookWeightKg'] as num?)?.toDouble();
           return row;
         })(),
     ]);
     restoreDraftGridSelection(_grid, data['selected']);
+    _ensureWeightParams();
     if (mounted) setState(() {});
+  }
+
+  // ---- 实称重量(ADR-135) ----
+
+  /// 页面级单重参数缓存(build 里 watch，离开页面释放)。
+  WeightParamsCache get _weightCache => ref.read(weightParamsCacheProvider);
+
+  /// 入库(其它入库/产成品进仓) / 出库(其它出库/产成品出仓/调拨/领料) / 盘点。
+  WeightCaptureMode get _weightMode => switch (widget.docType) {
+    StockDocType.check => WeightCaptureMode.count,
+    StockDocType.otherIn ||
+    StockDocType.finishedIn ||
+    StockDocType.wdraw => WeightCaptureMode.inbound,
+    StockDocType.transfer ||
+    StockDocType.otherOut ||
+    StockDocType.draw ||
+    StockDocType.finishedOut => WeightCaptureMode.outbound,
+  };
+
+  WeightParams? _paramsOf(StockGridRow row) => _weightCache.of(row.goods?.id);
+
+  Iterable<WeightParamsLine> _weightParamsLines() => [
+    for (final row in _grid.rows)
+      if (row.goods case final goods?) WeightParamsLine(goodsId: goods.id),
+  ];
+
+  void _ensureWeightParams() {
+    if (!mounted) return;
+    unawaited(_weightCache.ensure(_weightParamsLines()));
+  }
+
+  /// 货品或行单位按重量计时由数量精确换算(只读、不提交重量)；需要实称时为 null。
+  double? _exactKg(StockGridRow row) => warehouseExactLineKg(
+    lineQty: double.tryParse(row.activeQty.text.trim()),
+    lineMassUnit:
+        (ref.read(warehouseUnitMassUnitsProvider).valueOrNull ??
+        const {})[row.unitId],
+    unitRate: row.isCheck ? 1 : row.unitRate,
+    params: _paramsOf(row),
+  );
+
+  /// 随明细提交的重量(千克)：精确换算行与没称的行不带。
+  double? _sentKg(StockGridRow row) =>
+      _exactKg(row) == null ? row.activeWeight.kg : null;
+
+  String _goodsTitle(StockGridRow row) => warehouseWeighGoodsTitle(
+    row.goods?.name ?? '',
+    row.goodsCode,
+    row.colorName,
+  );
+
+  /// 称重计数：入库与盘点「填入数量和重量」，出库反推「秤上应显示多少」只填重量。
+  Future<void> _weighCount(BuildContext context, StockGridRow row) async {
+    final goods = row.goods;
+    if (goods == null) {
+      context.appWarning('请先选择货品');
+      return;
+    }
+    final outbound = _weightMode == WeightCaptureMode.outbound;
+    await warehouseWeighCount(
+      context,
+      request: WeighCountRequest(
+        mode: outbound ? WeighCountContext.outbound : WeighCountContext.count,
+        goodsId: goods.id,
+        goodsTitle: _goodsTitle(row),
+        params: _paramsOf(row),
+        warehouseId: _warehouseId,
+        baseUnitName: row.isCheck || row.unitRate == 1 ? row.unitName : null,
+        lineUnitName: row.unitName,
+        unitRate: row.isCheck ? 1 : row.unitRate,
+        currentQty: double.tryParse(row.activeQty.text.trim()),
+        initialNetKg: row.activeWeight.kg,
+        sampleRemark: _billNo.text.trim().isEmpty
+            ? widget.docType.label
+            : '${widget.docType.label} ${_billNo.text.trim()}',
+      ),
+      weight: row.activeWeight,
+      qty: outbound ? null : row.activeQty,
+      cache: _weightCache,
+      refetch: _weightParamsLines(),
+    );
+  }
+
+  /// 称样校准(行右键)：保存后刷新该货品单重。
+  Future<void> _sampleCalibrate(StockGridRow row) async {
+    final goods = row.goods;
+    if (goods == null) return;
+    final detail = await showWeightSampleDialog(
+      context,
+      goodsId: goods.id,
+      goodsTitle: _goodsTitle(row),
+      baseUnitName: row.isCheck || row.unitRate == 1 ? row.unitName : null,
+      warehouseId: _warehouseId,
+      params: _paramsOf(row),
+      remark: widget.docType.label,
+    );
+    if (detail == null || !mounted) return;
+    _weightCache.invalidateGoods(goods.id);
+    _ensureWeightParams();
+  }
+
+  /// 行右键的称重条目(只对单行、已选货品)。
+  List<UtenContextMenuEntry> _rowWeightMenu(
+    BuildContext context,
+    List<StockGridRow> selected,
+  ) {
+    if (selected.length != 1 || selected.single.goods == null) return const [];
+    final row = selected.single;
+    return weightRowMenuEntries(
+      onWeighCount: () => _weighCount(context, row),
+      onSample: () => _sampleCalibrate(row),
+      sampleEnabled: ref.read(weightSampleAllowedProvider),
+    );
+  }
+
+  /// 新建盘点的预填：构造参数优先，否则读路由 extra(库存分析「生成盘点单」)。
+  StockCheckPrefill? _routeCheckPrefill() {
+    if (!_isCheck || widget.id != null) return null;
+    final direct = widget.checkPrefill;
+    if (direct != null) return direct;
+    final extra = goRouterPageStateOrNull(context)?.extra;
+    return extra is StockCheckPrefill ? extra : null;
+  }
+
+  /// 按预填建明细行(未保存)：货品名称/编号/单位按主档带出，账面随后按仓库读取。
+  Future<void> _applyCheckPrefill(StockCheckPrefill prefill) async {
+    final names = ref.read(masterNameServiceProvider);
+    final selectable = WarehouseSelection(
+      names.warehouseHierarchy,
+    ).selectableIds;
+    if (selectable.contains(prefill.warehouseId)) {
+      _warehouseId = prefill.warehouseId;
+    }
+    final goodsIds = {for (final line in prefill.lines) line.goodsId};
+    await names.loadGoodsNamesWithCodes(goodsIds);
+    if (!mounted) return;
+    final rows = <StockGridRow>[];
+    final seen = <String>{};
+    for (final line in prefill.lines) {
+      // 同一货品同一颜色只盘一行。
+      if (!seen.add('${line.goodsId}|${line.colorId ?? ''}')) continue;
+      final info = names.goodsInfo(line.goodsId);
+      final row = StockGridRow(isCheck: true)
+        ..goods = names.goodsOptionOf(line.goodsId)
+        ..colorId = line.colorId
+        ..unitId = info?.unitId
+        ..goodsCode = info?.code
+        ..goodsSeries = info?.series
+        ..goodsStockPlace = info?.stockPlace
+        ..colorName = line.colorId == null ? null : names.color(line.colorId)
+        ..unitName = info?.unitId == null ? null : names.unit(info!.unitId);
+      rows.add(row);
+    }
+    if (rows.isNotEmpty) _grid.replaceAll(rows);
   }
 
   @override
@@ -234,6 +429,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   Future<void> _init() async {
     setState(() => _loading = true);
     await ref.read(masterNameServiceProvider).ensureLoaded();
+    if (!mounted) return;
+    // 库存分析「生成盘点单」：预填仓库与明细行(未保存)，保存前照常读账面。
+    final checkPrefill = _routeCheckPrefill();
+    if (checkPrefill != null) await _applyCheckPrefill(checkPrefill);
     if (widget.id == null && _warehouseId == null) {
       // 仓库预填「本类型最近一张单的仓库」（与销售 D1 同款），减少手选。
       try {
@@ -328,12 +527,25 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
             ..colorName = ref.read(masterNameServiceProvider).color(it.colorId)
             ..unitName = ref.read(masterNameServiceProvider).unit(it.unitId);
           if (_isCheck) {
-            // 盘点：账面 = items.qty，实盘 = items.countQty
+            // 盘点：账面 = items.qty，实盘 = items.countQty；账面重量 = 保存时快照，
+            // 实盘重量 = items.countWeight(按称重推算的实盘数量保留黄框)。
             row.bookQty.text = it.qty?.toString() ?? '';
-            row.checkQty.text = it.countQty?.toString() ?? '';
+            row.bookWeightKg.value = it.bookWeight;
+            _restoreSavedWeight(
+              row.countWeight,
+              row.checkQty,
+              it.countQty?.toString() ?? '',
+              it.countWeight,
+              it.qtyFromWeight,
+            );
           } else {
-            row.qty.text = it.qty?.toString() ?? '';
-            row.weight.text = it.weight?.toString() ?? '';
+            _restoreSavedWeight(
+              row.weight,
+              row.qty,
+              it.qty?.toString() ?? '',
+              it.weight,
+              it.qtyFromWeight,
+            );
           }
           rows.add(row);
         }
@@ -345,9 +557,28 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     if (_grid.isEmpty) {
       _grid.addRow(StockGridRow(isCheck: _isCheck));
     }
+    _ensureWeightParams();
+    // 预填的盘点行先读账面，草稿基线里就是读好账面的样子(不算用户改动)。
+    if (checkPrefill != null && mounted) await _refreshCheckBooks();
     if (mounted) {
       setState(() => _loading = false);
       await initializeFormDraft();
+    }
+  }
+
+  /// 回显已保存行的数量与重量：数量是按称重折算的保留黄框(说明来源)。
+  void _restoreSavedWeight(
+    WeightEntryController weight,
+    UtenAutofillTextController qty,
+    String qtyText,
+    double? kg,
+    bool qtyFromWeight,
+  ) {
+    qty.text = qtyText;
+    weight.setKg(kg, qtyFromWeight: qtyFromWeight);
+    if (qtyFromWeight && qtyText.isNotEmpty) {
+      qty.setAutomaticText(qtyText);
+      weight.markQtyDerived(qtyText, note: '保存时按称重折算的数量');
     }
   }
 
@@ -390,6 +621,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         .goodsInfo(g.id)
         ?.stockPlace;
     if (mounted) setState(() {});
+    _ensureWeightParams();
     if (_isCheck) {
       await _loadCheckBookQty(row);
     }
@@ -400,17 +632,23 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     final goods = row.goods;
     if (!_isCheck || warehouseId == null || goods == null) {
       row.bookQty.clear();
+      row.bookWeightKg.value = null;
       return;
     }
     try {
       final result = await ref
           .read(stockQueryRepositoryProvider)
           .balances(size: 100, warehouseId: warehouseId, goodsId: goods.id);
+      // 没有余额行 = 账面 0 个、0 重量。
       var qty = 0.0;
+      double? weightKg = 0;
+      var estimated = false;
       var found = false;
       for (final balance in result.items) {
         if (balance.colorId == row.colorId) {
           qty = balance.qty ?? 0;
+          weightKg = balance.weight;
+          estimated = balance.weightEstimated;
           found = true;
           break;
         }
@@ -420,10 +658,16 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         final balance = result.items.single;
         row.colorId = balance.colorId;
         qty = balance.qty ?? 0;
+        weightKg = balance.weight;
+        estimated = balance.weightEstimated;
       }
       row.bookQty.text = _qtyText(qty);
+      // 账面重量只作核对展示；保存时服务端按锁定的余额重新快照。
+      row.bookWeightEstimated = estimated;
+      row.bookWeightKg.value = weightKg;
     } catch (error) {
       row.bookQty.clear();
+      row.bookWeightKg.value = null;
       if (mounted) {
         context.appApiError(error, fallback: '读取账面库存失败，请重试');
       }
@@ -509,16 +753,14 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       if (r.colorId != null) m['colorId'] = r.colorId;
       if (r.unitId != null) m['unitId'] = r.unitId;
       m['unitRate'] = r.unitRate;
-      if (!_isCheck) {
-        final weightText = r.weight.text.trim();
-        if (weightText.isNotEmpty) {
-          final weight = double.tryParse(weightText);
-          if (weight == null || weight <= 0) {
-            return context.appError('${r.goods!.name} 的实际重量必须大于 0');
-          }
-          m['weight'] = weight;
-        }
+      // 重量(ADR-135)：可选，千克 4 位；看不懂的输入拦下，没称不带，货品按重量计不带。
+      if (r.activeWeight.hasError) {
+        return context.appError(
+          '${r.goods!.name} 的${_isCheck ? '实盘重量' : '实称重量'}看不懂，'
+          '例：850g、1.2t、3斤、12',
+        );
       }
+      final sentKg = _sentKg(r);
       if (_isCheck) {
         final bookQty = double.tryParse(r.bookQty.text);
         if (bookQty == null) {
@@ -528,18 +770,25 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         if (countQty == null || countQty < 0) {
           return context.appError('${r.goods!.name} 的实盘数量必须填写且不能小于 0');
         }
+        if (countQty == 0 && sentKg != null) {
+          return context.appError('${r.goods!.name} 的实盘数量为 0，不能再填实盘重量');
+        }
         m['qty'] = bookQty; // 账面写入 items.qty
         m['countQty'] = countQty;
         // 仅作前端预览；后端会按权威账面快照重新计算盈亏。
         m['surplusQty'] = countQty - bookQty;
+        if (sentKg != null) m['countWeight'] = sentKg;
       } else {
         m['qty'] = double.tryParse(r.qty.text) ?? 0;
+        if (sentKg != null) m['weight'] = sentKg;
       }
       // 回收料按 0 成本进仓：显式单价 0、金额 0 (不留空，留空是「成本未定」)。
       if (_isOtherIn && _zeroCostGoodsIds.contains(r.goods!.id)) {
         m['price'] = 0;
         m['amountLocal'] = 0;
       }
+
+      if (r.activeWeight.qtyFromWeight) m['qtyFromWeight'] = true;
       if (r.upstreamItemId != null) m['upstreamItemId'] = r.upstreamItemId;
       if (r.executionSegmentId != null) {
         m['executionSegmentId'] = r.executionSegmentId;
@@ -631,6 +880,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
+    // 单重参数缓存与单位字典随页面存活；录入/显示单位是用户偏好。
+    ref.watch(weightParamsCacheProvider);
+    ref.watch(warehouseUnitMassUnitsProvider);
+    final weightUnits = ref.watch(warehouseWeightUnitsPrefsProvider);
     return withFormDraft(
       Scaffold(
         appBar: UtenAppBar(
@@ -848,10 +1101,23 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                                 columns: stockGridColumns(
                                   _pickGoods,
                                   isCheck: _isCheck,
+                                  weight: StockGridWeightWiring(
+                                    entryUnit: weightUnits.entry,
+                                    mode: _weightMode,
+                                    paramsOf: _paramsOf,
+                                    paramsListenable: _weightCache,
+                                    exactKgOf: _exactKg,
+                                    onWeighCount: _weighCount,
+                                    display: weightUnits.display,
+                                  ),
                                 ),
                                 createBlankRow: () =>
                                     StockGridRow(isCheck: _isCheck),
                                 cloneRow: (r) => r.clone(),
+                                // 「称重单位: 千克▾」：录入单位是用户级偏好。
+                                toolbarActions: const [WeightEntryUnitButton()],
+                                rowMenuExtraBuilder: _rowWeightMenu,
+                                footer: _gridTotals(weightUnits.display),
                               ),
                             ),
                           ],
@@ -874,6 +1140,52 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       ),
     );
   }
+
+  /// 明细表尾：「明细 N 行 · 数量(按单位分组) · 实称 125.3 kg (未称 3 行) · 称重偏差 N 行」；
+  /// 盘点口径为实盘数量与实盘重量。行集变化、逐格输入与单重参数到达都即时刷新。
+  Widget _gridTotals(WeightDisplay display) => ListenableBuilder(
+    listenable: _grid,
+    builder: (context, _) {
+      final rows = _grid.rows
+          .where((row) => row.goods != null)
+          .toList(growable: false);
+      return ListenableBuilder(
+        listenable: Listenable.merge([
+          _weightCache,
+          for (final row in rows) ...[row.activeQty, row.activeWeight],
+        ]),
+        builder: (context, _) => UtenTotalsSummaryBar(
+          key: const Key('stock-doc-edit-totals'),
+          density: true,
+          entries: [
+            UtenTotalEntry('明细', '${rows.length} 行'),
+            utenQuantityTotalEntry(
+              rows.map(
+                (row) => MeasuredAmount(
+                  value: double.tryParse(row.activeQty.text.trim()) ?? 0,
+                  unitId: row.unitId,
+                  unitName: row.unitName,
+                ),
+              ),
+              label: _isCheck ? '实盘' : '数量',
+            ),
+            ...weightTotalEntries(
+              warehouseWeightTotals<StockGridRow>(
+                rows,
+                weightOf: (row) => row.activeWeight,
+                exactKgOf: _exactKg,
+                paramsOf: _paramsOf,
+                qtyBaseOf: (row) => row.qtyBase,
+                mode: _weightMode,
+              ),
+              label: _isCheck ? '实盘重量' : '实称',
+              display: display,
+            ),
+          ],
+        ),
+      );
+    },
+  );
 
   /// 右下角悬浮「取消 / 保存」。
   ///

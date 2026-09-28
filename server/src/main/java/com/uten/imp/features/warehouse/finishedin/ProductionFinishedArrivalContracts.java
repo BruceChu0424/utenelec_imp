@@ -2,6 +2,8 @@ package com.uten.imp.features.warehouse.finishedin;
 
 import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -55,10 +57,20 @@ public final class ProductionFinishedArrivalContracts {
     public record ArrivalRegistrationItemRequest(
             @NotNull UUID reportItemId,
             @NotBlank @Size(max = 100) String place,
-            BigDecimal countedQty) {
+            BigDecimal countedQty,
+            /**
+             * 仓库登记时实称的本行净重(千克, 4 位小数; ADR-135 §3.2); 空或 0 = 没称。
+             * 只写登记行, 合格入库草稿按放行数量从它分摊; 报工单自己的重量列不再进库存账。
+             */
+            @DecimalMin(value = "0", inclusive = true)
+            @Digits(integer = 14, fraction = 4) BigDecimal weight) {
         /** Standard registration keeps its existing request shape. */
         public ArrivalRegistrationItemRequest(UUID reportItemId, String place) {
-            this(reportItemId, place, null);
+            this(reportItemId, place, null, null);
+        }
+
+        public ArrivalRegistrationItemRequest(UUID reportItemId, String place, BigDecimal countedQty) {
+            this(reportItemId, place, countedQty, null);
         }
     }
 
@@ -210,6 +222,13 @@ public final class ProductionFinishedArrivalContracts {
             String placeHint,
             UUID lastWarehouseId,
             String lastWarehouseName,
-            BigDecimal countedQty) {
+            BigDecimal countedQty,
+            /** 已登记批次: 登记时实称的净重(千克); 待登记行与没称的行为空。 */
+            BigDecimal weight,
+            /**
+             * 1 个报工单位 = 多少货品基本单位(报工行 unit_rate, 空按 1)。页面按
+             * 报工数量 x unitRate 核对实称重量与换算按重量计的精确重量(ADR-135 §3.2)。
+             */
+            BigDecimal unitRate) {
     }
 }

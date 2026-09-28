@@ -835,8 +835,6 @@ Map<String, dynamic> _detailJsonFor(String receiptId) {
         'stockedForReleaseBaseQty': 0,
         'remainingBaseQty': 5,
         'releasedWeight': 2.5,
-        'weightUnitId': 'kg',
-        'weightUnitName': 'kg',
         'placeHint': 'A-01',
         'releaseNote': '抽检合格',
         'releasedBy': '品质员',

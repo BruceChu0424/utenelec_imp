@@ -55,7 +55,8 @@ void main() {
   testWidgets('warehouse hub filters task centers, documents and queries', (
     tester,
   ) async {
-    // 仅库存查看：任务中心、新建区与报表全部隐藏，只留库存查询两张卡。
+    // 仅库存查看：任务中心、新建区与报表全部隐藏，只留库存查询三张卡
+    // (ADR-135 称重计数随 stock:view；库存分析是管理口径，要 stock_report:view)。
     await tester.pumpWidget(
       _app(const WarehouseHubPage(), const {Perm.stockView}),
     );
@@ -63,6 +64,8 @@ void main() {
 
     expect(find.text('即时库存'), findsOneWidget);
     expect(find.text('货架目视化清单'), findsOneWidget);
+    expect(find.text('称重计数'), findsOneWidget);
+    expect(find.text('库存分析'), findsNothing);
     expect(find.text('仓库任务中心'), findsNothing);
     expect(find.text('新建调拨单'), findsNothing);
     expect(find.text('新建盘点单'), findsNothing);
@@ -87,6 +90,19 @@ void main() {
     expect(find.text('新建盘点单'), findsOneWidget);
     expect(find.text('新建其它出库'), findsOneWidget);
     expect(find.text('采购收货单'), findsNothing);
+  });
+
+  testWidgets('warehouse insights card follows the stock report permission', (
+    tester,
+  ) async {
+    // 库存分析 (ADR-135) 与仓库报表同权：只持 stock_report:view 也能看到这张卡。
+    await tester.pumpWidget(
+      _app(const WarehouseHubPage(), const {Perm.stockReportView}),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('库存分析'), findsOneWidget);
+    expect(find.text('称重计数'), findsNothing);
+    expect(find.text('即时库存'), findsNothing);
   });
 
   testWidgets('warehouse quality-result card follows either view permission', (

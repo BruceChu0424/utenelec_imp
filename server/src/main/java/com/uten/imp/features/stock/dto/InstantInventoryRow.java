@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -13,7 +14,7 @@ import java.util.UUID;
  * 口径与老库一致：
  * <ul>
  *   <li>库存数量 = StockGoods 最新年 FactQTY（迁移）+ 单据审核增量 → stock_balances.qty</li>
- *   <li>库存重量 = FactWeight + 行实际总重量增量 → stock_balances.weight</li>
+ *   <li>库存重量 = stock_balances.weight(千克，ADR-135 仓库重量账；任一有量余额行未知则整行未知)</li>
  *   <li>库存台账金额 = stock_balances.amount_local（多仓时按货品+颜色 SUM）</li>
  *   <li>多排数量 = production_plan_items 可排余量聚合（老库 View_ProductMore）</li>
  *   <li>备注 = goods.paper（老库 B_Goods.Paper，如「外购」）</li>
@@ -41,7 +42,7 @@ public class InstantInventoryRow {
     private String unitName;
     /** 备注（goods.paper，老库 B_Goods.Paper）。 */
     private String remark;
-    /** 库存重量（多仓=SUM）。 */
+    /** 库存重量(千克，多仓=SUM)；null = 有数量的余额行里有重量未知的(前端「未称」，绝不当 0)。 */
     private BigDecimal weight;
     /** 库存数量（多仓=SUM）。 */
     private BigDecimal qty;
@@ -59,33 +60,20 @@ public class InstantInventoryRow {
     private BigDecimal pendingQty;
     /** 品质已放行但仓库尚未确认入库的基本单位量；不属于可用库存。 */
     private BigDecimal pendingStockInQty;
+    /** 库存重量含估算(按库存均重或单重估出, 前端加「≈」)；重量未知时恒 false。 */
+    private boolean weightEstimated;
+    /** 库存重量未知(有数量却没有可信重量)。 */
+    private boolean weightUnknown;
+    /** 学到的货品级单重(千克/基本单位，goods_weight_estimates 货品级行)；没学过为 null。 */
+    private BigDecimal unitWeightKg;
+    /** 单重可靠度 GREEN / YELLOW / RED；没学过为 null。 */
+    private String weightTier;
     /** 当前用户无 goods:cost:view 时库存台账金额已由服务端置空。 */
     private boolean costMasked;
 
-    /** Compatibility constructor for callers created before the V446 pending-stock-in column. */
-    public InstantInventoryRow(
-            UUID goodsId,
-            UUID colorId,
-            String categoryName,
-            String model,
-            String cNumber,
-            String name,
-            String spec,
-            String colorName,
-            String unitName,
-            String remark,
-            BigDecimal weight,
-            BigDecimal qty,
-            BigDecimal costAmount,
-            BigDecimal moreQty,
-            String goodsCode,
-            String series,
-            String stockPlace,
-            BigDecimal pendingQty,
-            boolean costMasked) {
-        this(goodsId, colorId, categoryName, model, cNumber, name, spec,
-                colorName, unitName, remark, weight, qty, costAmount, moreQty,
-                goodsCode, series, stockPlace, pendingQty, BigDecimal.ZERO,
-                costMasked);
+    /** 字段名首字母后紧跟大写, Jackson 按 getter 推名会得到 cnumber; 固定为前端读的 cNumber。 */
+    @JsonProperty("cNumber")
+    public String getCNumber() {
+        return cNumber;
     }
 }

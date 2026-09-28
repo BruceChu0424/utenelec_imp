@@ -13,6 +13,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/warehouse/models/subcontract_outbound.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_subcontract_outbound_page.dart';
+import 'outbound_weight_fakes.dart';
 
 void main() {
   testWidgets('shared task table uses single selection and double-click open', (
@@ -163,6 +164,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          fakeWeightRepositoryOverride(),
           apiClientProvider.overrideWithValue(api),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
@@ -192,7 +194,10 @@ void main() {
 
 Widget _app({required _OutboundTaskApi api, required GoRouter router}) {
   return ProviderScope(
-    overrides: [apiClientProvider.overrideWithValue(api)],
+    overrides: [
+      fakeWeightRepositoryOverride(),
+      apiClientProvider.overrideWithValue(api),
+    ],
     child: MaterialApp.router(routerConfig: router),
   );
 }

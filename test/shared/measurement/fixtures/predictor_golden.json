@@ -1,0 +1,373 @@
+{
+  "config": {
+    "gamma": 0.02,
+    "scaleResKg": 5e-05,
+    "t975": "z + 2.37228/df + 2.82202/df^2 + 2.55605/df^3, z=1.959963985",
+    "eps": {
+      "SAMPLE": 0.0,
+      "COUNT": 0.005,
+      "RECEIPT": 0.01,
+      "FINISHED": 0.01,
+      "OTHER_IN": 0.02,
+      "DRAW": 0.01,
+      "ISSUE": 0.01,
+      "SHIPMENT": 0.01,
+      "RETURN": 0.02,
+      "OTHER_OUT": 0.01,
+      "TRANSFER": 0.01
+    }
+  },
+  "cases": [
+    {
+      "name": "S1-supA-count10kg",
+      "params": {
+        "basis": "LEARNED",
+        "logMean": -6.214278592520042,
+        "lotPrior": 3.8887989719325926e-05,
+        "df": 17.0
+      },
+      "op": "count",
+      "weightKg": 10.0,
+      "expect": {
+        "estimatedQty": 4998.352741894791,
+        "qtyLow": 4932.95472368123,
+        "qtyHigh": 5064.617765995458,
+        "logHalfWidth": 0.013170262574805539,
+        "relHalfWidth": 0.01325737248298875,
+        "exactUpToQty": 33.20680524309039,
+        "fusedLogMean": -6.214278592520042,
+        "fusedLotPrior": 3.8887989719325926e-05
+      }
+    },
+    {
+      "name": "S1-supA-count20g",
+      "params": {
+        "basis": "LEARNED",
+        "logMean": -6.214278592520042,
+        "lotPrior": 3.8887989719325926e-05,
+        "df": 17.0
+      },
+      "op": "count",
+      "weightKg": 0.02,
+      "expect": {
+        "estimatedQty": 9.996705483789581,
+        "qtyLow": 9.808695117273759,
+        "qtyHigh": 10.188319581229322,
+        "logHalfWidth": 0.018986337930403854,
+        "relHalfWidth": 0.019167724581909296,
+        "exactUpToQty": 33.20680524309039,
+        "fusedLogMean": -6.214278592520042,
+        "fusedLotPrior": 3.8887989719325926e-05
+      }
+    },
+    {
+      "name": "S1-pool-count10kg",
+      "params": {
+        "basis": "LEARNED",
+        "logMean": -6.200391424815487,
+        "lotPrior": 0.0010493382184772963,
+        "df": 17.0
+      },
+      "op": "count",
+      "weightKg": 10.0,
+      "expect": {
+        "estimatedQty": 4929.419530485479,
+        "qtyLow": 4603.767431567956,
+        "qtyHigh": 5278.106956687828,
+        "logHalfWidth": 0.06834626367285801,
+        "relHalfWidth": 0.07073600127680901,
+        "exactUpToQty": 7.127857725799902,
+        "fusedLogMean": -6.200391424815487,
+        "fusedLotPrior": 0.0010493382184772963
+      }
+    },
+    {
+      "name": "S1-pool-count20g",
+      "params": {
+        "basis": "LEARNED",
+        "logMean": -6.200391424815487,
+        "lotPrior": 0.0010493382184772963,
+        "df": 17.0
+      },
+      "op": "count",
+      "weightKg": 0.02,
+      "expect": {
+        "estimatedQty": 9.85883906097096,
+        "qtyLow": 9.194905091933073,
+        "qtyHigh": 10.570713526494137,
+        "logHalfWidth": 0.06971888308817893,
+        "relHalfWidth": 0.07220672344082946,
+        "exactUpToQty": 7.127857725799902,
+        "fusedLogMean": -6.200391424815487,
+        "fusedLotPrior": 0.0010493382184772963
+      }
+    },
+    {
+      "name": "S9-count20kg",
+      "params": {
+        "basis": "LEARNED",
+        "logMean": -6.214608098422191,
+        "lotPrior": 0.00022052083333333337,
+        "df": 4.0
+      },
+      "op": "count",
+      "weightKg": 20.0,
+      "expect": {
+        "estimatedQty": 9999.999999999998,
+        "qtyLow": 9597.058959329215,
+        "qtyHigh": 10419.858877994164,
+        "logHalfWidth": 0.041128399860783864,
+        "relHalfWidth": 0.04198588779941659,
+        "exactUpToQty": 11.284988514620727,
+        "fusedLogMean": -6.214608098422191,
+        "fusedLotPrior": 0.00022052083333333337
+      }
+    },
+    {
+      "name": "S9-count20kg-sample30",
+      "params": {
+        "basis": "LEARNED",
+        "logMean": -6.214608098422191,
+        "lotPrior": 0.00022052083333333337,
+        "df": 4.0
+      },
+      "op": "count",
+      "weightKg": 20.0,
+      "sample": {
+        "qty": 30,
+        "weightKg": 0.0603
+      },
+      "expect": {
+        "estimatedQty": 9953.124518551453,
+        "qtyLow": 9854.932176313781,
+        "qtyHigh": 10052.29522734727,
+        "logHalfWidth": 0.009914465419833268,
+        "relHalfWidth": 0.009963776561920268,
+        "exactUpToQty": 37.227091805808506,
+        "fusedLogMean": -6.20990952926904,
+        "fusedLotPrior": 1.2776720761225539e-05
+      }
+    },
+    {
+      "name": "S18-weight-19.6",
+      "params": {
+        "basis": "LEARNED",
+        "logMean": -6.214979467174846,
+        "lotPrior": 3.869930380683166e-05,
+        "df": 15.0
+      },
+      "op": "expected",
+      "kind": "RECEIPT",
+      "qty": 10000,
+      "weightKg": 19.6,
+      "tolerancePct": 3.0,
+      "expect": {
+        "expectedWeightKg": 19.99257400392371,
+        "deviationPct": -1.9635991035804712,
+        "z": -1.5482183556733082,
+        "alert": "NONE"
+      }
+    },
+    {
+      "name": "S18-weight-19.3",
+      "params": {
+        "basis": "LEARNED",
+        "logMean": -6.214979467174846,
+        "lotPrior": 3.869930380683166e-05,
+        "df": 15.0
+      },
+      "op": "expected",
+      "kind": "RECEIPT",
+      "qty": 10000,
+      "weightKg": 19.3,
+      "tolerancePct": 3.0,
+      "expect": {
+        "expectedWeightKg": 19.99257400392371,
+        "deviationPct": -3.4641562601583242,
+        "z": -2.7523956729634818,
+        "alert": "WARN"
+      }
+    },
+    {
+      "name": "S18-weight-19.0",
+      "params": {
+        "basis": "LEARNED",
+        "logMean": -6.214979467174846,
+        "lotPrior": 3.869930380683166e-05,
+        "df": 15.0
+      },
+      "op": "expected",
+      "kind": "RECEIPT",
+      "qty": 10000,
+      "weightKg": 19.0,
+      "tolerancePct": 3.0,
+      "expect": {
+        "expectedWeightKg": 19.99257400392371,
+        "deviationPct": -4.964713416736178,
+        "z": -3.9754381519315842,
+        "alert": "WARN"
+      }
+    },
+    {
+      "name": "S18-weight-18.5",
+      "params": {
+        "basis": "LEARNED",
+        "logMean": -6.214979467174846,
+        "lotPrior": 3.869930380683166e-05,
+        "df": 15.0
+      },
+      "op": "expected",
+      "kind": "RECEIPT",
+      "qty": 10000,
+      "weightKg": 18.5,
+      "tolerancePct": 3.0,
+      "expect": {
+        "expectedWeightKg": 19.99257400392371,
+        "deviationPct": -7.465642011032603,
+        "z": -6.057409040368042,
+        "alert": "ALERT"
+      }
+    },
+    {
+      "name": "S18-weight-20.0",
+      "params": {
+        "basis": "LEARNED",
+        "logMean": -6.214979467174846,
+        "lotPrior": 3.869930380683166e-05,
+        "df": 15.0
+      },
+      "op": "expected",
+      "kind": "RECEIPT",
+      "qty": 10000,
+      "weightKg": 20.0,
+      "tolerancePct": 3.0,
+      "expect": {
+        "expectedWeightKg": 19.99257400392371,
+        "deviationPct": 0.037143771856640306,
+        "z": 0.028992491751381338,
+        "alert": "NONE"
+      }
+    },
+    {
+      "name": "S18-weight-21.5",
+      "params": {
+        "basis": "LEARNED",
+        "logMean": -6.214979467174846,
+        "lotPrior": 3.869930380683166e-05,
+        "df": 15.0
+      },
+      "op": "expected",
+      "kind": "RECEIPT",
+      "qty": 10000,
+      "weightKg": 21.5,
+      "tolerancePct": 3.0,
+      "expect": {
+        "expectedWeightKg": 19.99257400392371,
+        "deviationPct": 7.539929554745894,
+        "z": 5.675014596322887,
+        "alert": "ALERT"
+      }
+    },
+    {
+      "name": "S18-draw-500-1.0",
+      "params": {
+        "basis": "LEARNED",
+        "logMean": -6.214979467174846,
+        "lotPrior": 3.886011706155694e-05,
+        "df": 15.0
+      },
+      "op": "expected",
+      "kind": "DRAW",
+      "qty": 500,
+      "weightKg": 1.0,
+      "tolerancePct": 3.0,
+      "expect": {
+        "expectedWeightKg": 0.9996287001961855,
+        "deviationPct": 0.037143771856640306,
+        "z": 0.028896670405743712,
+        "alert": "NONE"
+      }
+    },
+    {
+      "name": "S18-draw-500-1.03",
+      "params": {
+        "basis": "LEARNED",
+        "logMean": -6.214979467174846,
+        "lotPrior": 3.886011706155694e-05,
+        "df": 15.0
+      },
+      "op": "expected",
+      "kind": "DRAW",
+      "qty": 500,
+      "weightKg": 1.03,
+      "tolerancePct": 3.0,
+      "expect": {
+        "expectedWeightKg": 0.9996287001961855,
+        "deviationPct": 3.0382580850123464,
+        "z": 2.328904702793596,
+        "alert": "WARN"
+      }
+    },
+    {
+      "name": "S18-draw-500-1.08",
+      "params": {
+        "basis": "LEARNED",
+        "logMean": -6.214979467174846,
+        "lotPrior": 3.886011706155694e-05,
+        "df": 15.0
+      },
+      "op": "expected",
+      "kind": "DRAW",
+      "qty": 500,
+      "weightKg": 1.08,
+      "tolerancePct": 3.0,
+      "expect": {
+        "expectedWeightKg": 0.9996287001961855,
+        "deviationPct": 8.040115273605197,
+        "z": 6.0173347794437335,
+        "alert": "ALERT"
+      }
+    },
+    {
+      "name": "manual-expected",
+      "params": {
+        "basis": "MANUAL",
+        "logMean": -6.18991548583182,
+        "lotPrior": 2.6666666666666667e-05,
+        "df": 15.0
+      },
+      "op": "expected",
+      "kind": "RECEIPT",
+      "qty": 10000,
+      "weightKg": 20.0,
+      "tolerancePct": 3.0,
+      "expect": {
+        "expectedWeightKg": 20.5,
+        "deviationPct": -2.4390243902439046,
+        "z": -2.0171920514557033,
+        "alert": "NONE"
+      }
+    },
+    {
+      "name": "manual-count",
+      "params": {
+        "basis": "MANUAL",
+        "logMean": -6.18991548583182,
+        "lotPrior": 2.6666666666666667e-05,
+        "df": 15.0
+      },
+      "op": "count",
+      "weightKg": 5.0,
+      "expect": {
+        "estimatedQty": 2439.0243902439024,
+        "qtyLow": 2412.244727028386,
+        "qtyHigh": 2466.1013493158057,
+        "logHalfWidth": 0.011040383282051725,
+        "relHalfWidth": 0.011101553219480254,
+        "exactUpToQty": 38.542316904524895,
+        "fusedLogMean": -6.18991548583182,
+        "fusedLotPrior": 2.6666666666666667e-05
+      }
+    }
+  ]
+}

@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *       部分索引都算(等值探针必然满足这个条件)，其它条件的部分索引不算。</li>
  * </ol>
  *
- * <p>另外钉住 V675 按需检查单位引用的两条并发前提(来源列都有不可延迟外键、带行条件的来源只追加)，并在一笔回滚
+ * <p>另外钉住 V675 按需检查单位引用的两条并发前提(来源列都有不可延迟外键、来源不带行条件)，并在一笔回滚
  * 事务里用样本表自检规则 1、3 的判定本身。
  *
  * <p>白名单只收「有意保留」且写明原因的条目；新迁移再加出冗余索引或热点外键漏建索引会当场红。
@@ -249,8 +249,9 @@ class SchemaIndexHygieneContractTest {
 
     /**
      * V675 的并发前提：改单位守卫对货品行取 FOR UPDATE，靠的是「一行变成数量引用」必经外键检查(对货品行取
-     * FOR KEY SHARE)。所以每个来源货品列都要有指向货品的不可延迟外键；带行条件的来源只能是只追加表
-     * (已有行不能被 UPDATE 成「已使用」)。新加来源不满足时先在这里红。
+     * FOR KEY SHARE)。所以每个来源货品列都要有指向货品的不可延迟外键；来源不能带行条件(带条件的行可以被
+     * UPDATE 成「已使用」而不过外键检查)。唯一带条件的旧库计量画像快照已随 V743(ADR-135)退役，
+     * 取而代之的称重观测按基本单位记数量、无条件计入。新加来源不满足时先在这里红。
      */
     @Test
     void everyGoodsQuantitySourceBecomesAReferenceOnlyThroughAForeignKeyCheck() throws SQLException {
@@ -271,13 +272,11 @@ class SchemaIndexHygieneContractTest {
         assertThat(strings("""
                 SELECT relation_name FROM fn_goods_quantity_reference_sources()
                 WHERE row_predicate <> 'true' ORDER BY 1
-                """)).as("带行条件的来源只有旧库计量画像快照").containsExactly("legacy_measurement_profile_snapshots");
+                """)).as("数量来源不带行条件(V743 起旧库计量画像快照已退役)").isEmpty();
         assertThat(strings("""
-                SELECT t.tgname FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
-                WHERE t.tgrelid = 'legacy_measurement_profile_snapshots'::regclass AND NOT t.tgisinternal
-                  AND t.tgenabled = 'A' AND (t.tgtype & 2) <> 0 AND (t.tgtype & 16) <> 0 AND (t.tgtype & 8) <> 0
-                  AND p.proname = 'fn_reject_measurement_append_only_mutation'
-                """)).as("快照表只追加：UPDATE/DELETE 一律拒绝(复制角色下也拒)，已有行不能被改成「已使用」").hasSize(1);
+                SELECT relation_name FROM fn_goods_quantity_reference_sources()
+                WHERE relation_name = 'goods_weight_observations'
+                """)).as("称重观测按货品基本单位记数量，是数量来源(V743)").containsExactly("goods_weight_observations");
     }
 
     @Test

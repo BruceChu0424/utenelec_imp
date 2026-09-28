@@ -172,7 +172,7 @@ class WorkshopMaterialStockGateway {
         UUID movementId = WorkshopMaterialGuards.guarded(() -> stock.recordMovement(new StockService.MovementRequest(
                 BusinessTime.startOfDay(businessDate), type, StockService.SRC_WORKSHOP_MATERIAL_COUNT, countId,
                 periodLineId, goodsId, colorId, binWarehouseId, direction, qty, unitId, BigDecimal.ONE, null,
-                remark(kind), null, null, new WorkshopMaterialBin(postingId, binKind))));
+                remark(kind), null, new WorkshopMaterialBin(postingId, binKind))).movementId());
         db.update("UPDATE workshop_material_count_postings SET movement_id = :movement WHERE id = :id",
                 new MapSqlParameterSource("movement", movementId).addValue("id", postingId));
         return postingId;

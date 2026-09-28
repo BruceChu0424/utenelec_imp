@@ -60,7 +60,8 @@ class ProductionFqcFinishedInboundServiceTest {
         UUID documentItemId = UUID.randomUUID();
         BigDecimal reportedQty = new BigDecimal("1000.0000");
         BigDecimal quantity = new BigDecimal("400.0000");
-        BigDecimal reportWeight = new BigDecimal("25.0000");
+        // 仓库登记时实称的整批净重(ADR-135 §3.2), 按本次放行的累计区间 [200, 600) 分摊。
+        BigDecimal registrationWeight = new BigDecimal("25.0000");
         BigDecimal priorPassQty = new BigDecimal("200.0000");
 
         Query source = query();
@@ -72,7 +73,7 @@ class ProductionFqcFinishedInboundServiceTest {
                         allocationId, goodsId, null, unitId,
                         BigDecimal.ONE, planId, "SJ202608280001",
                         reportedQty, "IN_PROGRESS", inspectionId,
-                        decisionId, "A31-3-1", reportWeight, priorPassQty
+                        decisionId, "A31-3-1", registrationWeight, priorPassQty
                 }));
         Query goods = query();
         when(goods.getResultList()).thenReturn(
@@ -130,6 +131,13 @@ class ProductionFqcFinishedInboundServiceTest {
                 .isEqualByComparingTo("10.0000");
         assertThat(item.getValue().getPlace()).isEqualTo("A31-3-1");
         verify(notices).notifyFinishedInboundPending(documentId);
+
+        // 草稿重量只从仓库登记行读, 报工单自己的重量列不再进库存账。
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em, org.mockito.Mockito.atLeastOnce()).createNativeQuery(sql.capture());
+        assertThat(sql.getAllValues().getFirst())
+                .contains("registration_item.weight")
+                .doesNotContain("report_item.weight");
     }
 
     @Test

@@ -37,11 +37,18 @@
 | 销售 | 订单与财务审核、现货预留、分批出货、出货财审与仓库作业、退货品质处置、应收 | `lib/features/sales`、`server/.../features/sales` |
 | 生产计划 | 物料分析(一张表直接下单、BOM 展开、缺口与下达)、自底向上计划、车间任务与三种供料路线 | `lib/features/production`、`server/.../features/production` |
 | 采购与委外 | 申请、订货、到货登记、IQC、退换货、委外出仓回厂、短交判定与损耗结清 | `lib/features/purchase`、`lib/features/subcontract` |
-| 仓库与品质 | 入库、领料、调拨、线边仓直送、先入库后质检、质检处置、库存实际成本 | `lib/features/warehouse`、`lib/features/quality`、`server/.../features/stock` |
+| 仓库与品质 | 入库、领料、调拨、线边仓直送、先入库后质检、质检处置、库存实际成本；仓库重量账(数量后称重、六种重量单位自动换算、估算带「≈」未称不当 0、每个货品完整出入库明细账)、单重自学习与称重计数、库存分析(呆滞与库龄、盘点建议、称重异常) | `lib/features/warehouse`、`lib/features/quality`、`lib/shared/measurement`、`lib/shared/stock_ledger`、`server/.../features/stock` |
 | 财务 | 收付款、应收应付结算、银行账户流水、报销、工资、总账附表 | `lib/features/finance`、`lib/features/expense`、`lib/features/payroll` |
 | 组织与平台 | 员工与人事档案、部门树、访客、通知、工作台徽章、页面与数据范围权限、审计、系统设置 | `lib/features/admin`、`lib/features/dashboard`、`server/.../features/admin` |
 
 每条业务规则到页面、服务函数、迁移与测试的对照表见[文档索引](docs/README.md#业务到实现)。
+
+仓库重量账只给仓库用，数量仍是计划、成本、预留与财务的唯一事实，重量永不拦截数量过账：
+到货登记、产成品登记、仓库单据与盘点、领料 / 退料、销售出库、委外出仓在数量后加「实称重量」列(可直接输 850g、1.2t、3斤)；
+即时库存重量按显示单位换算并由服务端合计；库存详情与货品详情共用「库存余额 | 出入库流水 | 单重学习」面板；
+系统从称样、盘点、到货等独立点数的称重里按供应商学单重(稳健剔除离群、换批检测、给出可靠度)，称重计数按单重折算件数并给区间；
+新页面「库存分析」(`/warehouse/insights`)与手机用的「称重计数」(`/warehouse/weigh-count`)。决策见
+[ADR-135](docs/99-决策记录-ADR/ADR-135-仓库重量账与单重自学习.md)，迁移见 [V743 说明](docs/数据迁移/261-V743-仓库重量账与单重学习.md)(临时号，合并时按 main 头重编号)。
 
 ## 技术架构
 

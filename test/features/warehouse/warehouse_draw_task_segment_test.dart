@@ -120,6 +120,7 @@ class _FakeRepository extends ProductionDrawTaskRepository {
   Future<WarehouseDrawBatchIssueResult> issueFullBatch({
     required String idempotencyKey,
     required List<String> docIds,
+    List<Map<String, dynamic>> weights = const [],
     String? reason,
   }) async {
     batchKeys.add(idempotencyKey);

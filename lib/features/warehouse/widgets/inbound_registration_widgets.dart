@@ -1,23 +1,134 @@
 // 入库登记共用界面件(2026-09-27 用户口径：产成品入库与采购/委外入库 UI、逻辑、表格、
 // 格式一致，能公用的都公用)。两类任务中心的多选路线按钮、两类批量/单张登记页的提交
 // 按钮、确认弹窗要点、批量校验汇总句式、明细表共用列(货品 / 编号 / 颜色 / 单位 /
-// 数量 / 入库仓库 / 库位号)与库位建议提示条都从这里取，改一处两边同步。
+// 数量 / 实称重量 / 称重核对 / 入库仓库 / 库位号)与库位建议提示条都从这里取，改一处两边同步。
+//
+// 仓库采集表格的重量接线(ADR-135)也放在这里，仓库单据编辑页共用：带黄框的数量格
+// ([WarehouseQtyInputField])、称重计数回填([warehouseWeighCount])与幂等键重量指纹；
+// 按重量计的单位与精确重量在 lib/shared/measurement/weight_mass_units.dart。
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/measurement/weight_params.dart';
+import '../../../shared/measurement/weight_predictor.dart';
+import '../../../shared/measurement/weight_unit.dart';
+import '../../../shared/measurement/widgets/weigh_count_dialog.dart';
+import '../../../shared/measurement/widgets/weight_grid_column.dart';
+import '../../../shared/measurement/widgets/weight_text.dart';
+import '../../../shared/measurement/widgets/weight_totals.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../models/inbound_registration_line.dart';
 import 'warehouse_autofill_text_field.dart';
+
+/// 称重计数弹窗标题里的货品身份「货品名 编号 颜色」。
+String warehouseWeighGoodsTitle(String name, String? code, String? color) => [
+  name,
+  code,
+  color,
+].whereType<String>().where((part) => part.trim().isNotEmpty).join(' ');
+
+/// 打开称重计数并把结果写回一行(只记重量 / 按称重改数量 / 填入数量和重量)；
+/// 弹窗里保存了抽样就作废该货品的单重参数并重取 [refetch]。取消什么都不改。
+Future<void> warehouseWeighCount(
+  BuildContext context, {
+  required WeighCountRequest request,
+  required WeightEntryController weight,
+  UtenAutofillTextController? qty,
+  required WeightParamsCache cache,
+  required Iterable<WeightParamsLine> refetch,
+}) async {
+  final result = await showWeighCountDialog(context, request: request);
+  if (result == null) return;
+  applyWeighCountResult(result, weight: weight, qty: qty);
+  if (result.sample?.saved ?? false) {
+    cache.invalidateGoods(request.goodsId);
+    await cache.ensure(refetch);
+  }
+}
+
+/// 幂等键的重量指纹后缀(ADR-135：键覆盖到的行都要带上实称千克与「按称重改数量」)。
+///
+/// [parts] 为每行 `行键=千克|0/1`(没称又没按称重改数量的行不必给)；一行都没有时返回空串
+/// (键与不称重时完全一样)，否则返回 `:w-<16 位指纹>`：改了重量就是另一个请求。
+String warehouseWeightKeySuffix(Iterable<String> parts) {
+  final list = parts.toList(growable: false);
+  if (list.isEmpty) return '';
+  return ':${businessIdempotencyKey('w', list.join('|'))}';
+}
+
+/// 一行实际要提交的重量片段 `行键=千克|0/1`；不提交重量也没按称重改数量时返回 null。
+String? warehouseWeightKeyPart(
+  String lineKey,
+  double? sentKg,
+  bool fromWeight,
+) {
+  if (sentKg == null && !fromWeight) return null;
+  return '$lineKey=${weightKeyPart(sentKg)}|${fromWeight ? 1 : 0}';
+}
+
+/// 仓库采集表格的数量输入格(入库登记与仓库单据共用)：右对齐数字键盘；控制器是
+/// [UtenAutofillTextController] 且当前值是系统预填(如按称重折算)时描黄框，ⓘ 说明来源。
+class WarehouseQtyInputField extends StatelessWidget {
+  const WarehouseQtyInputField({
+    super.key,
+    required this.controller,
+    this.fieldKey,
+    this.enabled = true,
+    this.hintText,
+    this.sourceOf,
+    this.onChanged,
+  });
+
+  final TextEditingController controller;
+
+  /// 挂在内部输入框上的键(测试与自动化按键取输入框)。
+  final Key? fieldKey;
+  final bool enabled;
+  final String? hintText;
+
+  /// 黄框 ⓘ 的来源说明(每次重绘现取，如「按称重推算 5,373~5,449个」)。
+  final String? Function()? sourceOf;
+  final ValueChanged<String>? onChanged;
+
+  @override
+  Widget build(BuildContext context) =>
+      ValueListenableBuilder<TextEditingValue>(
+        valueListenable: controller,
+        builder: (context, _, _) {
+          final field = controller;
+          final autofilled =
+              field is UtenAutofillTextController && field.autofilled;
+          return TextField(
+            key: fieldKey,
+            controller: controller,
+            enabled: enabled,
+            onChanged: onChanged,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            textAlign: TextAlign.right,
+            decoration: applyAutofillHint(
+              UtenInputDecoration(
+                InputDecoration(hintText: hintText, isDense: true),
+                info: autofilled ? (sourceOf?.call() ?? '系统预填，请核对') : null,
+              ),
+              Theme.of(context),
+              autofilled: autofilled,
+            ),
+          );
+        },
+      );
+}
 
 /// 入库登记数量的唯一显示口径(最多 4 位小数，去尾零)。
 String inboundQty(num value) => procurementQty(value);
@@ -258,6 +369,7 @@ class InboundPlaceSuggestionStatus extends StatelessWidget {
 }
 
 /// 明细表下方合计条：数量严格按单位分组(不同单位绝不相加)；仓库不看价格故无金额。
+/// [weight] 给了就接上「实称 125.3 kg (未称 3 行) · 称重偏差 2 行」(一行都没称时不显示)。
 Widget inboundTotalsBar<T extends InboundRegistrationLine>({
   required Key key,
   required List<T> lines,
@@ -265,6 +377,8 @@ Widget inboundTotalsBar<T extends InboundRegistrationLine>({
   required double Function(T line) qtyOf,
   required String? Function(T line) unitIdOf,
   required String? Function(T line) unitNameOf,
+  WeightTotalsSummary? weight,
+  WeightDisplay weightDisplay = WeightDisplay.auto,
 }) => UtenTotalsSummaryBar(
   key: key,
   density: true,
@@ -280,8 +394,53 @@ Widget inboundTotalsBar<T extends InboundRegistrationLine>({
       ),
       label: qtyLabel,
     ),
+    if (weight != null) ...weightTotalEntries(weight, display: weightDisplay),
   ],
 );
+
+/// 采集表格的重量汇总：精确换算行按精确重量计，其余按实称；偏差行数按单重参数逐行核对
+/// (按称重改过数量的行不算)。
+WeightTotalsSummary warehouseWeightTotals<T>(
+  Iterable<T> lines, {
+  required WeightEntryController Function(T line) weightOf,
+  required double? Function(T line) exactKgOf,
+  required WeightParams? Function(T line) paramsOf,
+  required double? Function(T line) qtyBaseOf,
+  WeightCaptureMode mode = WeightCaptureMode.inbound,
+}) {
+  final list = lines.toList(growable: false);
+  return WeightTotalsSummary.of(
+    list.map((line) => exactKgOf(line) ?? weightOf(line).kg),
+    deviationRows: weightDeviationRowCount(
+      list.where((line) => exactKgOf(line) == null),
+      controllerOf: weightOf,
+      paramsOf: paramsOf,
+      qtyBaseOf: qtyBaseOf,
+      mode: mode,
+    ),
+  );
+}
+
+/// 称重核对短句：给了 [against] 就说「比报工少约 238个 (-4.8%)」，否则用默认的入库口径
+/// 「偏少约238个 (-4.8%)」。
+String warehouseWeightCheckText(
+  WeightCheck check, {
+  String? against,
+  String? unitName,
+  WeightCaptureMode mode = WeightCaptureMode.inbound,
+}) {
+  if (against == null) {
+    return weightCheckShortText(check, mode: mode, unitName: unitName);
+  }
+  final diff = check.qtyDiff;
+  final amount = formatWeighQtyWithUnit(
+    diff.abs(),
+    unitName: unitName,
+    integer: check.integerQty,
+  );
+  return '$against${diff > 0 ? '多' : '少'}约 $amount '
+      '(${formatSignedPct(check.deviationPct)})';
+}
 
 /// 表头筛选桶标签：空白与主档未解析的「—」不建桶(返回 null → 计入「未填」)。
 String? inboundBucket(String? value) {
@@ -292,8 +451,9 @@ String? inboundBucket(String? value) {
 
 /// 明细表共用列：列名、宽度、格式、交互在两类登记页完全一致。
 ///
-/// 列序口径(2026-09-27 统一)：来源单号 → 货品名称 → 编号 → 颜色 → 应收数量 →
-/// 本次实收 → 单位 → 入库仓库 → 库位号 →(采购另有物料系列)。
+/// 列序口径(2026-09-27 统一；2026-09-28 ADR-135 加重量)：来源单号 → 货品名称 → 编号 →
+/// 颜色 → 应收数量 → 本次实收 → 单位 → 实称重量 → 称重核对 → 入库仓库 → 库位号 →
+/// (采购另有物料系列)。重量跟在数量组(数量 + 单位)之后，不把数量与单位拆开。
 class InboundGridColumns<T extends InboundRegistrationLine> {
   const InboundGridColumns({
     required this.names,
@@ -381,6 +541,9 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
   );
 
   /// 「本次实收」录入列(必填、大于 0；空或非正数红框)。
+  ///
+  /// 控制器是 [UtenAutofillTextController] 时，按称重改过的数量描黄框待核对，
+  /// ⓘ 说明取本行重量格的推算区间。
   EditableGridColumn<T> receivedQuantity({
     required TextEditingController? Function(T line) controllerOf,
     required bool Function(T line) enabled,
@@ -396,6 +559,8 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
     textOf: (line) =>
         controllerOf(line)?.text ?? readOnlyTextOf?.call(line) ?? '',
     listenableOf: controllerOf,
+    // 按称重预填的黄标 ⓘ(44)计入量宽。
+    chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
     cellBuilder: (context, line) {
       final controller = controllerOf(line);
       if (controller == null) {
@@ -410,20 +575,109 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
         child: Semantics(
           textField: true,
           label: '${line.goodsName} 本次实收',
-          child: TextField(
-            key: ValueKey('$keyPrefix-qty-${lineKeyOf(line)}'),
+          child: WarehouseQtyInputField(
+            fieldKey: ValueKey('$keyPrefix-qty-${lineKeyOf(line)}'),
             controller: controller,
             enabled: enabled(line),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            textAlign: TextAlign.right,
-            decoration: const UtenInputDecoration(
-              InputDecoration(hintText: '大于 0', isDense: true),
-            ),
+            hintText: '大于 0',
+            sourceOf: () => line.weight.qtyEstimateNote ?? '按称重推算的数量，请核对',
           ),
         ),
       );
     },
   );
+
+  /// 「实称重量」录入列(可选；逐行各记各的，永不批量)。
+  ///
+  /// 货品或行单位按重量计时只读「=25 kg」；[onWeighCount] 给了就在格内挂 ⚖ 称重计数。
+  EditableGridColumn<T> weight({
+    required WeightUnit entryUnit,
+    required bool Function(T line) enabled,
+    required WeightParams? Function(T line) paramsOf,
+    required Listenable paramsListenable,
+    required double? Function(T line) qtyBaseOf,
+    Listenable? Function(T line)? qtyListenableOf,
+    double? Function(T line)? exactKgOf,
+    String? Function(T line)? baseUnitNameOf,
+    Future<void> Function(BuildContext context, T line)? onWeighCount,
+  }) => weightGridColumn<T>(
+    controllerOf: (line) => line.weight,
+    entryUnit: entryUnit,
+    paramsOf: paramsOf,
+    paramsListenable: paramsListenable,
+    qtyBaseOf: qtyBaseOf,
+    qtyListenableOf: qtyListenableOf,
+    exactKgOf: exactKgOf,
+    baseUnitNameOf: baseUnitNameOf,
+    enabledOf: (line) => enabled(line) && !line.locked,
+    onWeighCount: onWeighCount,
+  );
+
+  /// 「称重核对」只读列：按学到的单重核对实称与数量，超出容差才出标签
+  /// (琥珀 = 偏差，红 = 偏差较大)；单重未学准、按称重改过数量、没称的行空着。
+  /// [against] 覆盖默认句式(产成品登记页 =「比报工」)。
+  EditableGridColumn<T> weightCheck({
+    required WeightParams? Function(T line) paramsOf,
+    required Listenable paramsListenable,
+    required double? Function(T line) qtyBaseOf,
+    Listenable? Function(T line)? qtyListenableOf,
+    String? Function(T line)? baseUnitNameOf,
+    String? against,
+  }) {
+    WeightCheck? checkOf(T line) {
+      if (line.weight.qtyFromWeight) return null;
+      final params = paramsOf(line);
+      if (params == null || !params.alertsEnabled) return null;
+      return params.check(qtyBase: qtyBaseOf(line), weightKg: line.weight.kg);
+    }
+
+    String textOf(T line) {
+      final check = checkOf(line);
+      if (check == null || check.level == WeightAlertLevel.none) return '';
+      return warehouseWeightCheckText(
+        check,
+        against: against,
+        unitName: baseUnitNameOf?.call(line),
+      );
+    }
+
+    return EditableGridColumn(
+      key: 'weightCheck',
+      label: '称重核对',
+      width: 150,
+      headerInfo:
+          '按学到的单重核对实称重量与数量；超出容差才提示(琥珀 = 有偏差，红 = 偏差较大)，'
+          '悬停看折算件数与依据。单重还没学准时不核对，可在行右键「称样校准」。',
+      textOf: textOf,
+      cellBuilder: (context, line) => ListenableBuilder(
+        listenable: Listenable.merge([
+          line.weight,
+          paramsListenable,
+          qtyListenableOf?.call(line),
+        ]),
+        builder: (context, _) {
+          final check = checkOf(line);
+          final params = paramsOf(line);
+          if (check == null || params == null) return const SizedBox.shrink();
+          final unitName = baseUnitNameOf?.call(line);
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: WeightDeviationChip(
+              key: ValueKey('$keyPrefix-weight-check-${lineKeyOf(line)}'),
+              check: check,
+              unitName: unitName,
+              text: warehouseWeightCheckText(
+                check,
+                against: against,
+                unitName: unitName,
+              ),
+              tooltip: weightCheckTooltip(check, params, unitName: unitName),
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   /// 入库仓库(行级必填)：未选红框、预填黄框；勾选多行时点任一行改仓 = 整批落值。
   ///

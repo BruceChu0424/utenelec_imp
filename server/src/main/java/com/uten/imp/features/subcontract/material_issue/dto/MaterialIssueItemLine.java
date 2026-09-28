@@ -1,6 +1,8 @@
 package com.uten.imp.features.subcontract.material_issue.dto;
 
 import com.uten.imp.common.finance.ServerDerivedAmounts;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -38,7 +40,17 @@ public class MaterialIssueItemLine implements ServerDerivedAmounts {
 
     private UUID parentGoodsId;
     private UUID parentColorId;
+
+    /**
+     * 仓库出仓时实称的本行净重(千克, 4 位小数; ADR-135 §3.8); 空或 0 = 没称。
+     * 按重量计的货品/单位由服务端按数量换算, 这里填的丢弃。
+     */
+    @DecimalMin(value = "0", inclusive = true)
+    @Digits(integer = 14, fraction = 4)
     private BigDecimal weight;
+
+    /** 数量是按称重推算的(称重计数「按称重改数量」): 为真时本行不进单重核对观测。空 = 否。 */
+    private Boolean qtyFromWeight;
 
     private String sourceDocNo;
     private String remark;

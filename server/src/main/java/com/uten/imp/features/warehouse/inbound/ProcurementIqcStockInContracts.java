@@ -60,9 +60,8 @@ public final class ProcurementIqcStockInContracts {
             BigDecimal releasedBaseQty,
             BigDecimal stockedForReleaseBaseQty,
             BigDecimal remainingBaseQty,
+            /** 放行重量(千克), 按到货实称累计切片; null = 到货没称。 */
             BigDecimal releasedWeight,
-            @JsonSerialize(using = ToStringSerializer.class) UUID weightUnitId,
-            String weightUnitName,
             String placeHint,
             String releaseNote,
             String releasedBy,
@@ -83,14 +82,14 @@ public final class ProcurementIqcStockInContracts {
                 BigDecimal receivedBaseQty, BigDecimal qualityPassedBaseQty,
                 BigDecimal warehouseStockedBaseQty, BigDecimal releasedBaseQty,
                 BigDecimal stockedForReleaseBaseQty, BigDecimal remainingBaseQty,
-                BigDecimal releasedWeight, UUID weightUnitId, String weightUnitName,
+                BigDecimal releasedWeight,
                 String placeHint, String releaseNote, String releasedBy,
                 OffsetDateTime releasedAt) {
             this(passEventId, inspectionItemId, goodsId, goodsCode, goodsName,
                     colorName, unitId, unitName, sourceOrderNo, receivedBaseQty,
                     qualityPassedBaseQty, warehouseStockedBaseQty, releasedBaseQty,
                     stockedForReleaseBaseQty, remainingBaseQty, releasedWeight,
-                    weightUnitId, weightUnitName, placeHint, releaseNote, releasedBy,
+                    placeHint, releaseNote, releasedBy,
                     releasedAt, List.of(), null, null);
         }
     }
@@ -109,8 +108,8 @@ public final class ProcurementIqcStockInContracts {
             String colorName,
             String unitName,
             BigDecimal baseQty,
+            /** 本批入库的重量(千克); null = 没称。 */
             BigDecimal weight,
-            String weightUnitName,
             String place,
             String confirmedBy,
             OffsetDateTime confirmedAt,
@@ -128,11 +127,11 @@ public final class ProcurementIqcStockInContracts {
         public StockInHistoryItem(
                 UUID stockInItemId, UUID batchId, UUID passEventId, UUID goodsId,
                 String goodsCode, String goodsName, String colorName, String unitName,
-                BigDecimal baseQty, BigDecimal weight, String weightUnitName,
+                BigDecimal baseQty, BigDecimal weight,
                 String place, String confirmedBy, OffsetDateTime confirmedAt,
                 List<InboundAllocation> actualAllocations, UUID warehouseId, String warehouseName) {
             this(stockInItemId, batchId, passEventId, goodsId, goodsCode, goodsName,
-                    colorName, unitName, baseQty, weight, weightUnitName, place,
+                    colorName, unitName, baseQty, weight, place,
                     confirmedBy, confirmedAt, actualAllocations, warehouseId, warehouseName,
                     ORIGIN_WAREHOUSE_CONFIRM);
         }
@@ -140,10 +139,10 @@ public final class ProcurementIqcStockInContracts {
         public StockInHistoryItem(
                 UUID stockInItemId, UUID batchId, UUID passEventId, UUID goodsId,
                 String goodsCode, String goodsName, String colorName, String unitName,
-                BigDecimal baseQty, BigDecimal weight, String weightUnitName,
+                BigDecimal baseQty, BigDecimal weight,
                 String place, String confirmedBy, OffsetDateTime confirmedAt) {
             this(stockInItemId, batchId, passEventId, goodsId, goodsCode, goodsName,
-                    colorName, unitName, baseQty, weight, weightUnitName, place,
+                    colorName, unitName, baseQty, weight, place,
                     confirmedBy, confirmedAt, List.of(), null, null, ORIGIN_WAREHOUSE_CONFIRM);
         }
     }

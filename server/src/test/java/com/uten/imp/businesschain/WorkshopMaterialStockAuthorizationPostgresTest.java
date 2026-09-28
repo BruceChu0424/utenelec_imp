@@ -203,7 +203,7 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
             lock(granule);
             return stockService.recordMovement(new StockService.MovementRequest(null,StockService.TYPE_WORKSHOP_MATERIAL_GAIN,
                     StockService.SRC_WORKSHOP_MATERIAL_COUNT,count,line,granule,null,b.bin(),StockService.DIR_IN,BigDecimal.ONE,
-                    b.kg(),BigDecimal.ONE,null,"未登记的盘盈",null,null,null));
+                    b.kg(),BigDecimal.ONE,null,"未登记的盘盈",null,null));
         }));
         // 种类与流水方向不一致: 编码错误
         assertThrows(IllegalArgumentException.class,()->inTx(()->{
@@ -223,7 +223,7 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
             lock(granule);
             return stockService.recordMovement(new StockService.MovementRequest(null,(short)8,"STOCK_DOC",UUID.randomUUID(),
                     UUID.randomUUID(),granule,null,b.leaf(),StockService.DIR_OUT,BigDecimal.ONE,b.kg(),BigDecimal.ONE,null,
-                    "冒充发料",null,null,new WorkshopMaterialBin(UUID.randomUUID(),WorkshopMaterialBinKind.ISSUE_OUT)));
+                    "冒充发料",null,new WorkshopMaterialBin(UUID.randomUUID(),WorkshopMaterialBinKind.ISSUE_OUT)));
         }));
         assertTrue(forgedIssue.getMessage().contains("缺少本次登记的来源"),forgedIssue.getMessage());
         assertEquals(0,db.queryForObject("SELECT count(*) FROM stock_movements WHERE warehouse_id=? AND goods_id=?",
@@ -247,8 +247,8 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
         db.update("INSERT INTO units(id,legacy_id,code,name,status) VALUES (?,?,?,'千克','使用')",
                 kg,900_000_000+ThreadLocalRandom.current().nextInt(90_000_000),"KG-"+unique);
         db.update("""
-                INSERT INTO unit_measurement_profiles(unit_id,measurement_dimension,canonical_unit_id,to_canonical_factor,provenance)
-                VALUES (?,'MASS',?,1,'MANUAL_GOVERNANCE')""",kg,kg);
+                INSERT INTO unit_measurement_profiles(unit_id, measurement_dimension, mass_unit_code, provenance)
+                VALUES (?, 'MASS', 'KG', 'MANUAL_GOVERNANCE')""",kg);
         UUID period=UUID.randomUUID();
         UUID bin=inTx(()->{
             UUID created=lineSide.ensure(workshop,world.warehouseId());
@@ -432,7 +432,7 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
         short type=kind.startsWith("CONSUME")?StockService.TYPE_WORKSHOP_MATERIAL_CONSUME:StockService.TYPE_WORKSHOP_MATERIAL_GAIN;
         short direction="CONSUME".equals(kind)||"GAIN_REVERSE".equals(kind)?StockService.DIR_OUT:StockService.DIR_IN;
         UUID movement=stockService.recordMovement(countMovement(b,goods,count,line,type,direction,new BigDecimal(qty),
-                new WorkshopMaterialBin(posting,WorkshopMaterialBinKind.valueOf(kind))));
+                new WorkshopMaterialBin(posting,WorkshopMaterialBinKind.valueOf(kind)))).movementId();
         db.update("UPDATE workshop_material_count_postings SET movement_id=? WHERE id=?",movement,posting);
         return new Posting(posting,movement);
     }
@@ -441,7 +441,7 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
     private static StockService.MovementRequest countMovement(Bin b,UUID goods,UUID count,UUID line,short type,short direction,
             BigDecimal qty,WorkshopMaterialBin reference){
         return new StockService.MovementRequest(null,type,StockService.SRC_WORKSHOP_MATERIAL_COUNT,count,line,goods,null,
-                b.bin(),direction,qty,b.kg(),BigDecimal.ONE,null,"盘点过账",null,null,reference);
+                b.bin(),direction,qty,b.kg(),BigDecimal.ONE,null,"盘点过账",null,reference);
     }
 
     private void lock(UUID... goods){

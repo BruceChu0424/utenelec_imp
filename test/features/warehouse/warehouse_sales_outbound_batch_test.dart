@@ -19,6 +19,8 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
+import 'outbound_weight_fakes.dart';
+
 late SharedPreferences _preferences;
 
 void main() {
@@ -105,6 +107,54 @@ void main() {
     });
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'batch outbound sends each document its own line weights and soft-confirms weight alerts',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1800, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final a = _detail('1', unitRate: 1);
+      final b = _detail('2', unitRate: 1);
+      final gateway = _Gateway([a, b]);
+      await _pump(
+        tester,
+        gateway,
+        WarehouseSalesOutboundBatchPage(
+          targets: [a.header, b.header],
+          action: WarehouseSalesOutboundAction.confirmShipment,
+        ),
+        weights: FakeWeightRepository(
+          byGoods: {'goods-1': learnedWeightParams('goods-1')},
+        ),
+      );
+      // 第一单 10 件约 20 g, 实称 1.5 kg: 偏差告警; 第二单不称。
+      await tester.enterText(
+        find.byKey(const ValueKey('weight-cell-input')).first,
+        '1.5',
+      );
+      await tester.pump();
+      expect(find.byKey(const Key('outbound-weight-summary')), findsOneWidget);
+      expect(find.textContaining('未称 1 行'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const Key('warehouse-sales-outbound-batch-submit')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('warehouse-sales-outbound-weight-alerts')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const Key('warehouse-sales-outbound-batch-confirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(gateway.weights, {
+        '1': {'line-1': 1.5},
+        '2': <String, double>{},
+      });
+      expect(gateway.commands, ['1:SHIPPED', '2:SHIPPED']);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'select all reviews eligible documents and confirms one stage only',
@@ -399,12 +449,18 @@ void main() {
   );
 }
 
-Future<void> _pump(WidgetTester tester, _Gateway gateway, Widget page) async {
+Future<void> _pump(
+  WidgetTester tester,
+  _Gateway gateway,
+  Widget page, {
+  FakeWeightRepository? weights,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(_preferences),
         warehouseSalesOutboundRepositoryProvider.overrideWithValue(gateway),
+        fakeWeightRepositoryOverride(weights),
       ],
       child: MaterialApp(
         locale: const Locale('zh'),
@@ -434,6 +490,7 @@ WarehouseSalesOutboundDetail _detail(
   List<String>? targets,
   String quantity = '10.0000',
   bool warehouseSelectable = false,
+  double? unitRate,
 }) => WarehouseSalesOutboundDetail.fromJson({
   'id': id,
   'billNo': 'SHIP-$id',
@@ -458,6 +515,7 @@ WarehouseSalesOutboundDetail _detail(
       'goodsName': '货品$id',
       'currentStockPlaceHint': 'A01',
       'unitName': '件',
+      'unitRate': ?unitRate,
       'quantity': quantity,
       // V631：逐行候选发出仓与建议仓(推迟选仓的单据表头仓为空，建议仓来自库存所在叶仓)。
       if (status == 'PENDING_PICK') ...{
@@ -489,6 +547,7 @@ class _Gateway implements WarehouseSalesOutboundGateway {
   final List<String?> reasons = [];
   final Map<String, Map<String, String?>?> warehouses = {};
   final Map<String, Map<String, String>?> places = {};
+  final Map<String, Map<String, double>?> weights = {};
   String? failId;
   int listReads = 0;
   final List<String?> workStatuses = [];
@@ -546,11 +605,13 @@ class _Gateway implements WarehouseSalesOutboundGateway {
     String? reason,
     Map<String, String>? stockPlaces,
     Map<String, String?>? lineWarehouses,
+    Map<String, double>? lineWeights,
   }) async {
     commands.add('$id:$targetStatus');
     reasons.add(reason);
     warehouses[id] = lineWarehouses;
     places[id] = stockPlaces;
+    weights[id] = lineWeights;
     if (id == failId) {
       throw ApiException('CONFLICT', '库存数量已变化');
     }

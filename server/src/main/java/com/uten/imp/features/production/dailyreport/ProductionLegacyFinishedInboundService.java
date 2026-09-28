@@ -101,9 +101,7 @@ public class ProductionLegacyFinishedInboundService {
                     : reportItem.getUnitRate();
             if (reportItem.getQty() == null
                     || reportItem.getQty().signum() <= 0
-                    || unitRate.signum() <= 0
-                    || (reportItem.getWeight() != null
-                        && reportItem.getWeight().signum() < 0)) {
+                    || unitRate.signum() <= 0) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
                         "历史兼容报工数量或单位换算率无效");
@@ -126,7 +124,7 @@ public class ProductionLegacyFinishedInboundService {
             item.setQty(reportItem.getQty());
             item.setReportedQty(reportItem.getQty());
             item.setBaseQty(reportItem.getQty().multiply(unitRate));
-            item.setWeight(reportItem.getWeight());
+            // 报工重量是生产侧口径, 不进库存重量账(ADR-135): 草稿不带重量, 由库存账按均重/单重推算。
             item.setUpstreamItemId(reportItem.getPlanItemId());
             item.setSourceDailyReportItemId(reportItem.getId());
             item.setSourceDocNo(report.getBillNo());

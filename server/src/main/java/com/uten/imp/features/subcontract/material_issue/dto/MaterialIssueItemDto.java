@@ -44,7 +44,10 @@ public class MaterialIssueItemDto {
     private String parentGoodsSnapshotSource;
     private OffsetDateTime parentGoodsSnapshotLockedAt;
     private UUID parentColorId;
+    /** 出仓实称净重(千克); 空 = 没称。 */
     private BigDecimal weight;
+    /** 数量是否由称重计数推算(ADR-135)。 */
+    private boolean qtyFromWeight;
     private String sourceDocNo;
     private String remark;
 

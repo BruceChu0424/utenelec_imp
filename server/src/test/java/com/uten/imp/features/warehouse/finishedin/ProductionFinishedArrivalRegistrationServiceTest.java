@@ -69,6 +69,71 @@ class ProductionFinishedArrivalRegistrationServiceTest {
     }
 
     @Test
+    void registrationWeightIsKilogramsAndPartOfTheIdempotencyHash() {
+        UUID warehouse=UUID.randomUUID(), first=UUID.randomUUID(), second=UUID.randomUUID();
+        var unweighed=ProductionFinishedArrivalRegistrationService.normalize(new ArrivalRegistrationRequest(
+                "weight-check-hash",warehouse,List.of(new ArrivalRegistrationItemRequest(first,"A01"),
+                new ArrivalRegistrationItemRequest(second,"B01")),null,false));
+        var zero=ProductionFinishedArrivalRegistrationService.normalize(new ArrivalRegistrationRequest(
+                "weight-check-hash",warehouse,List.of(new ArrivalRegistrationItemRequest(first,"A01",null,BigDecimal.ZERO),
+                new ArrivalRegistrationItemRequest(second,"B01")),null,false));
+        var weighed=ProductionFinishedArrivalRegistrationService.normalize(new ArrivalRegistrationRequest(
+                "weight-check-hash",warehouse,List.of(new ArrivalRegistrationItemRequest(first,"A01",null,new BigDecimal("12.5000")),
+                new ArrivalRegistrationItemRequest(second,"B01")),null,false));
+        var sameScale=ProductionFinishedArrivalRegistrationService.normalize(new ArrivalRegistrationRequest(
+                "weight-check-hash",warehouse,List.of(new ArrivalRegistrationItemRequest(second,"B01"),
+                new ArrivalRegistrationItemRequest(first,"A01",null,new BigDecimal("12.5"))),null,false));
+        var changed=ProductionFinishedArrivalRegistrationService.normalize(new ArrivalRegistrationRequest(
+                "weight-check-hash",warehouse,List.of(new ArrivalRegistrationItemRequest(first,"A01",null,new BigDecimal("12.6")),
+                new ArrivalRegistrationItemRequest(second,"B01")),null,false));
+
+        // 0 = 没称: 与不填同一份登记事实, 老哈希逐字不变。
+        assertThat(zero.requestHash()).isEqualTo(unweighed.requestHash());
+        assertThat(zero.weights()).isEmpty();
+        assertThat(weighed.weights()).containsOnlyKeys(first);
+        assertThat(weighed.weights().get(first)).isEqualByComparingTo("12.5");
+        assertThat(weighed.requestHash()).isEqualTo(sameScale.requestHash())
+                .isNotEqualTo(unweighed.requestHash())
+                .isNotEqualTo(changed.requestHash());
+        for (String invalid : List.of("-0.0001", "1.00001", "100000000000000")) {
+            assertThatThrownBy(() -> ProductionFinishedArrivalRegistrationService.normalizedWeight(
+                    new BigDecimal(invalid)))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("千克");
+        }
+        assertThat(ProductionFinishedArrivalRegistrationService.normalizedWeight(new BigDecimal("1E+1")))
+                .isEqualByComparingTo("10");
+    }
+
+    @Test
+    void registrationRecordsFinishedObservationsAndReversalMarksThemReversed() throws Exception {
+        String source = Files.readString(Path.of("src/main/java/com/uten/imp/features/warehouse/finishedin/ProductionFinishedArrivalRegistrationService.java"));
+        // 登记行带实称重量入库(只在 INSERT 时写), 同事务记 FINISHED 观测; 撤回登记按同一幂等键红冲。
+        assertThat(source).contains("counted_qty, weight)")
+                .contains("SourceKind.FINISHED")
+                .contains("FINISHED_CAPTURE_PREFIX + registrationItemId")
+                .contains("counted != null ? COUNTED_QTY_EPS : REPORTED_QTY_EPS")
+                .contains("line_profile.mass_unit_code IS NOT NULL")
+                .containsSubsequence("cancelForReversedRegistration(", "reverseFinishedObservations(registrationId);");
+        assertThat(ProductionFinishedArrivalRegistrationService.FINISHED_CAPTURE_PREFIX).isEqualTo("FINISHED:");
+    }
+
+    @Test
+    void itemViewReturnsRegisteredWeightAndReportUnitRate() throws Exception {
+        String source = Files.readString(Path.of("src/main/java/com/uten/imp/features/warehouse/finishedin/ProductionFinishedArrivalRegistrationService.java"));
+        // 待登记与已登记两条明细查询都带报工行换算率(空按 1), 已登记行另带登记时的实称重量;
+        // 页面按 报工数量 x unitRate 核对重量, 已登记行只读显示登记重量。
+        assertThat(source).containsSubsequence("NULL::numeric AS weight,",
+                "COALESCE(report_item.unit_rate, 1) AS unit_rate");
+        assertThat(source).containsSubsequence("registration_item.weight,",
+                "COALESCE(report_item.unit_rate, 1) AS unit_rate");
+        assertThat(source).contains("(BigDecimal) row[19], decimal(row[20])))");
+        assertThat(java.util.Arrays.stream(
+                ProductionFinishedArrivalContracts.ArrivalRegistrationItemView.class.getRecordComponents())
+                .map(java.lang.reflect.RecordComponent::getName).toList())
+                .endsWith("countedQty", "weight", "unitRate");
+    }
+
+    @Test
     void batchLocksEveryReportBeforeAnyWarehouseAndReplaysBeforeCurrentReferenceChecks() throws Exception {
         String source = Files.readString(Path.of("src/main/java/com/uten/imp/features/warehouse/finishedin/ProductionFinishedArrivalRegistrationService.java"));
         int start = source.indexOf("public BatchArrivalRegistrationResult batchRegister(");

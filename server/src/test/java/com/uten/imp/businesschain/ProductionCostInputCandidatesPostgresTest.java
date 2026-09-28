@@ -212,8 +212,8 @@ class ProductionCostInputCandidatesPostgresTest {
         db.update("INSERT INTO units(id,legacy_id,code,name,status) VALUES (?,?,?,'千克','使用')",
                 kg,900_000_000+ThreadLocalRandom.current().nextInt(90_000_000),"KG-"+kg.toString().substring(0,8));
         db.update("""
-                INSERT INTO unit_measurement_profiles(unit_id,measurement_dimension,canonical_unit_id,to_canonical_factor,provenance)
-                VALUES (?,'MASS',?,1,'MANUAL_GOVERNANCE')""",kg,kg);
+                INSERT INTO unit_measurement_profiles(unit_id, measurement_dimension, mass_unit_code, provenance)
+                VALUES (?, 'MASS', 'KG', 'MANUAL_GOVERNANCE')""",kg);
         return kg;
     }
 

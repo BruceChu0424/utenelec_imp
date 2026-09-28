@@ -5,7 +5,8 @@ package com.uten.imp.features.stock.report;
  *
  * @param key   列键（= SQL SELECT 别名 = 行 Map 的 key = facet 的 key）
  * @param label 列标题（中文）
- * @param type  text / date / number / money / bool / int —— 前端按类型格式化与对齐
+ * @param type  text / date / number / money / bool / int / weight (千克, 前端按显示单位换算, ADR-135) / count
+ *              —— 前端按类型格式化与对齐
  * @param width 建议列宽（px），可空
  */
 public record ReportColumn(String key, String label, String type, Integer width,

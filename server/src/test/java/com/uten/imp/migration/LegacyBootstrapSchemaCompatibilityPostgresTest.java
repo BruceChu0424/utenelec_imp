@@ -85,8 +85,8 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
         assertFalse(scripts.isEmpty(), "bootstrap-all must resolve at least one SQL script");
 
         // 真实 migrate.sh 在执行任何 bootstrap SQL 前先登记 manifest 绑定的
-        // RUNNING 运行（record_run_start）；migrate_measurement_profiles.sql 的
-        // 守卫要求该运行存在，这里按同形结构补一条测试运行。真实 migrate.sh 会先
+        // RUNNING 运行（record_run_start）；来源证明注册等守卫要求该运行存在
+        // (原 V442 计量画像步骤已随 V743 退役)，这里按同形结构补一条测试运行。真实 migrate.sh 会先
         // SET LOCAL uten.bootstrap_run_id=<run_id> 再执行模块，采购/委外的来源
         // 证明注册按该 GUC 关联运行，executeScript 用同一固定 run_id 注入。
         scalar("""

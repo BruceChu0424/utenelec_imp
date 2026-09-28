@@ -11,8 +11,11 @@
 //     （2026-09-11 起不再有表头上方的批量按钮），并记住上次所落仓与库位下次自动带；
 //   - 提交时按行级仓库分组，每仓一张收货单顺序登记（幂等键按「仓库+行+数量」内容
 //     派生：响应丢失重试复用同键安全重放，部分失败时已成功仓不会重复登记）；
-//   - 单位紧跟「本次实收」列展示；不设「实际重量」列——2026-09-05 起重量统计走
-//     单位的数量/重量维度（基础资料-单位），重量型单位的数量本身即重量；
+//   - 单位紧跟「本次实收」列展示；数量组之后是「实称重量」列(ADR-135，可选，永不阻断
+//     登记)：到货过磅填净重，按本供应商学到的单重核对「称重核对」；格内 ⚖ 称重计数默认
+//     「只记重量」，「按称重改数量」需显式点(按估算数量入账，影响对账)。货品或行单位本身
+//     是重量单位时重量由数量精确换算、只读不提交。重量(千克 4 位)与「按称重改数量」随
+//     明细提交，并计入幂等键；
 //   - 「先质检后入库」(2026-09-20 前叫「登记并送检」)一步完成：保存（服务端按订货单
 //     回填币族并建收货单草稿）+ 审核
 //     （转品质部待检 IQC）同事务；实到超量时服务端隔离并通知财务，返回隔离结果。
@@ -29,7 +32,14 @@ import 'package:uuid/uuid.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_values.dart';
+import '../../../shared/measurement/weight_mass_units.dart';
+import '../../../shared/measurement/weight_params.dart';
+import '../../../shared/measurement/weight_prefs.dart';
+import '../../../shared/measurement/weight_unit.dart';
+import '../../../shared/measurement/widgets/weigh_count_dialog.dart';
+import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../models/arrival_form_draft_codec.dart';
+import '../models/warehouse_form_draft_codec.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -118,6 +128,7 @@ class _WarehouseArrivalReceiptPageState
     _lineGrid,
     for (final line in _lines) ...[
       line.qty,
+      line.weight,
       line.warehouse,
       line.place,
       line.series,
@@ -139,6 +150,7 @@ class _WarehouseArrivalReceiptPageState
       (line) => {
         'item': arrivalItemDraft(line.item),
         'qty': line.qty.text,
+        'weight': weightEntryDraft(line.weight, qty: line.qty),
         'warehouseId': line.warehouseId,
         'warehouseAutofilled': line.warehouseAutofilled,
         'stockPlace': line.place.text,
@@ -192,7 +204,9 @@ class _WarehouseArrivalReceiptPageState
         draftText(row, 'series'),
         row['seriesAutofilled'] == true,
       );
+      restoreWeightEntryDraft(line.weight, row['weight'], qty: line.qty);
     }
+    _ensureWeightParams();
   }
 
   final _remark = TextEditingController();
@@ -306,6 +320,86 @@ class _WarehouseArrivalReceiptPageState
     allocations: _lineProjectedAllocations(line),
   );
 
+  // ---- 实称重量(ADR-135)：单重参数按「货品 × 本单供应商」取，页面生命周期内缓存 ----
+
+  /// 页面级单重参数缓存(build 里 watch，离开页面释放)。
+  WeightParamsCache get _weightCache => ref.read(weightParamsCacheProvider);
+
+  /// 单位 -> 重量单位(行单位本身按重量计时精确换算)。
+  Map<String, WeightUnit> get _massUnits =>
+      ref.read(warehouseUnitMassUnitsProvider).valueOrNull ?? const {};
+
+  WeightParams? _paramsOf(_ArrivalReceiptLine line) =>
+      _weightCache.of(line.goodsId, supplierId: _prefill?.supplierId);
+
+  Iterable<WeightParamsLine> _weightParamsLines() => [
+    for (final line in _lines)
+      WeightParamsLine(goodsId: line.goodsId, supplierId: _prefill?.supplierId),
+  ];
+
+  void _ensureWeightParams() {
+    if (!mounted) return;
+    unawaited(_weightCache.ensure(_weightParamsLines()));
+  }
+
+  /// 按数量精确换算的重量(货品或行单位是重量单位)；需要实称时为 null。
+  double? _exactKg(_ArrivalReceiptLine line) => warehouseExactLineKg(
+    lineQty: double.tryParse(line.qty.text.trim()),
+    lineMassUnit: _massUnits[line.item.unitId],
+    unitRate: line.unitRate,
+    params: _paramsOf(line),
+  );
+
+  /// 实际随明细提交的重量：精确换算行不带(服务端按数量算)，其余带实称千克。
+  double? _sentKg(_ArrivalReceiptLine line) =>
+      _exactKg(line) == null ? line.weight.kg : null;
+
+  /// 幂等键的行重量片段(没称又没按称重改数量时为空串，键与不称重时一致)。
+  String _weightKeyPart(_ArrivalReceiptLine line) {
+    final part = warehouseWeightKeyPart(
+      'w',
+      _sentKg(line),
+      line.weight.qtyFromWeight,
+    );
+    return part == null ? '' : ':$part';
+  }
+
+  String? _baseUnitName(_ArrivalReceiptLine line) {
+    final base = line.item.baseUnitName?.trim();
+    if (base != null && base.isNotEmpty) return base;
+    return line.unitRate == 1 ? line.item.unitName : null;
+  }
+
+  /// 称重计数(到货口径)：默认「只记重量」，「按称重改数量」需显式点。
+  Future<void> _weighCount(BuildContext context, _ArrivalReceiptLine line) =>
+      warehouseWeighCount(
+        context,
+        request: WeighCountRequest(
+          mode: WeighCountContext.receipt,
+          goodsId: line.goodsId,
+          goodsTitle: warehouseWeighGoodsTitle(
+            line.item.goodsName,
+            line.item.goodsCode,
+            line.item.colorName,
+          ),
+          params: _paramsOf(line),
+          supplierId: _prefill?.supplierId,
+          warehouseId: line.warehouseId,
+          baseUnitName: _baseUnitName(line),
+          lineUnitName: line.item.unitName,
+          unitRate: line.unitRate,
+          currentQty: double.tryParse(line.qty.text.trim()),
+          initialNetKg: line.weight.kg,
+          sampleRemark: _prefill == null
+              ? null
+              : '到货登记 ${_prefill!.orderBillNo}',
+        ),
+        weight: line.weight,
+        qty: line.qty,
+        cache: _weightCache,
+        refetch: _weightParamsLines(),
+      );
+
   @override
   void initState() {
     super.initState();
@@ -359,6 +453,7 @@ class _WarehouseArrivalReceiptPageState
     // 进页默认全选（2026-09-17，与批量登记页同款）：勾选=本次要登记送检的行，
     // 右下两个提交按钮只认勾选行；默认全选让「进来直接提交」行为不变。
     _lineGrid.setSelected(_lineGrid.rows, true);
+    _ensureWeightParams();
     final selectable = WarehouseSelection(
       ref.read(masterNameServiceProvider).warehouseHierarchy,
     ).selectableIds;
@@ -638,15 +733,16 @@ class _WarehouseArrivalReceiptPageState
       final repo = ref.read(procurementInboundRepositoryProvider);
       for (final entry in groups.entries) {
         final lines = entry.value;
-        // 幂等键按「仓库+行+数量」内容派生：响应丢失重试复用同键安全重放；
-        // 部分仓库失败后原地重试，已成功仓按同键重放、不会重复登记。
+        // 幂等键按「仓库+行+数量(+实称重量)」内容派生：响应丢失重试复用同键安全重放；
+        // 部分仓库失败后原地重试，已成功仓按同键重放、不会重复登记；改了重量是另一个请求。
         final canonical = [
           _registrationId,
           entry.key,
           if (stockInFirst) 'stock-in-first',
           for (final line in lines)
             '${line.item.orderItemId}:${(double.tryParse(line.qty.text.trim()) ?? 0)}'
-                '${line.source.apiValue == null ? '' : ':${line.source.apiValue}'}',
+                '${line.source.apiValue == null ? '' : ':${line.source.apiValue}'}'
+                '${_weightKeyPart(line)}',
         ].join('|');
         final body = <String, dynamic>{
           'idempotencyKey': businessIdempotencyKey(
@@ -680,8 +776,10 @@ class _WarehouseArrivalReceiptPageState
                 if (line.item.unitId != null) 'unitId': line.item.unitId,
                 // 委外进仓明细带单位换算率（与委外编辑页口径一致）；采购收货不需要。
                 if (!_isPurchase) 'unitRate': line.item.unitRate,
-                // 不带 price/weight：价格对仓库不可见（审核时服务端按订货明细权威
-                // 回填）；重量统计走单位的数量/重量维度，不在登记页录实称重量。
+                // 实称净重(千克 4 位；没称不带，精确换算行不带)与「按称重改数量」。
+                // 不带 price：价格对仓库不可见(审核时服务端按订货明细权威回填)。
+                'weight': ?_sentKg(line),
+                if (line.weight.qtyFromWeight) 'qtyFromWeight': true,
               },
           ],
         };
@@ -784,6 +882,9 @@ class _WarehouseArrivalReceiptPageState
 
   @override
   Widget build(BuildContext context) {
+    // 单重参数缓存与单位字典随页面存活；录入/显示单位是用户偏好。
+    ref.watch(weightParamsCacheProvider);
+    ref.watch(warehouseUnitMassUnitsProvider);
     final prefill = _prefill;
     final theme = Theme.of(context);
     final permissionSnapshot = widget.canRegister == null
@@ -877,6 +978,7 @@ class _WarehouseArrivalReceiptPageState
     ProcurementReceiptPrefill prefill,
     bool canRegister,
   ) {
+    final weightUnits = ref.watch(warehouseWeightUnitsPrefsProvider);
     return UtenGridPageScrollbar(
       pinned: _gridPinned,
       controller: _scrollCtl,
@@ -964,7 +1066,7 @@ class _WarehouseArrivalReceiptPageState
               key: const Key('warehouse-arrival-lines-grid'),
               controller: _lineGrid,
               stickyHeaderPinned: _gridPinned,
-              columns: _arrivalLineColumns(canRegister),
+              columns: _arrivalLineColumns(canRegister, weightUnits.entry),
               createBlankRow: () => throw UnsupportedError('到货任务明细由订货单固定带入'),
               showAddRow: false,
               showRowDelete: false,
@@ -1004,17 +1106,33 @@ class _WarehouseArrivalReceiptPageState
                     ]
                   : null,
               emptyMessage: '该任务没有可登记明细，请返回任务中心刷新',
+              // 「称重单位: 千克▾」：录入单位是用户级偏好，表头与已填重量跟着换。
+              toolbarActions: const [WeightEntryUnitButton()],
               footer: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  inboundTotalsBar<_ArrivalReceiptLine>(
-                    key: const Key('warehouse-arrival-totals'),
-                    lines: _lines,
-                    qtyLabel: '本次实收',
-                    qtyOf: (line) => double.tryParse(line.qty.text.trim()) ?? 0,
-                    unitIdOf: (line) => line.item.unitId,
-                    unitNameOf: (line) => line.item.unitName,
+                  // 单重参数到达后「称重偏差 N 行」随之刷新。
+                  ListenableBuilder(
+                    listenable: _weightCache,
+                    builder: (context, _) =>
+                        inboundTotalsBar<_ArrivalReceiptLine>(
+                          key: const Key('warehouse-arrival-totals'),
+                          lines: _lines,
+                          qtyLabel: '本次实收',
+                          qtyOf: (line) =>
+                              double.tryParse(line.qty.text.trim()) ?? 0,
+                          unitIdOf: (line) => line.item.unitId,
+                          unitNameOf: (line) => line.item.unitName,
+                          weight: warehouseWeightTotals<_ArrivalReceiptLine>(
+                            _lines,
+                            weightOf: (line) => line.weight,
+                            exactKgOf: _exactKg,
+                            paramsOf: _paramsOf,
+                            qtyBaseOf: (line) => line.qtyBase,
+                          ),
+                          weightDisplay: weightUnits.display,
+                        ),
                   ),
                   const SizedBox(height: UtenSpacing.s4),
                   Text(
@@ -1150,10 +1268,11 @@ class _WarehouseArrivalReceiptPageState
   }
 
   // 明细表列(与批量登记页、产成品登记页同一套共用列，列名/列序/格式一致)：
-  // 货品名称 → 编号 → 颜色 → 批准剩余 → 到货来源 → 本次实收 → 单位 → 入库仓库 →
-  // 预计去向 → 库位号 → 物料系列。
+  // 货品名称 → 编号 → 颜色 → 批准剩余 → 到货来源 → 本次实收 → 单位 → 实称重量 →
+  // 称重核对 → 入库仓库 → 预计去向 → 库位号 → 物料系列。
   List<EditableGridColumn<_ArrivalReceiptLine>> _arrivalLineColumns(
     bool canRegister,
+    WeightUnit weightEntryUnit,
   ) {
     final names = ref.read(masterNameServiceProvider);
     final shared = InboundGridColumns<_ArrivalReceiptLine>(
@@ -1197,6 +1316,25 @@ class _WarehouseArrivalReceiptPageState
       ),
       // 单位紧跟「本次实收」：数量的含义(数量/重量)由基础资料-单位的维度决定。
       shared.unit(),
+      // 实称重量跟在数量组之后；按本供应商学到的单重核对(称重核对列)。
+      shared.weight(
+        entryUnit: weightEntryUnit,
+        enabled: editable,
+        paramsOf: _paramsOf,
+        paramsListenable: _weightCache,
+        qtyBaseOf: (line) => line.qtyBase,
+        qtyListenableOf: (line) => line.qty,
+        exactKgOf: _exactKg,
+        baseUnitNameOf: _baseUnitName,
+        onWeighCount: _weighCount,
+      ),
+      shared.weightCheck(
+        paramsOf: _paramsOf,
+        paramsListenable: _weightCache,
+        qtyBaseOf: (line) => line.qtyBase,
+        qtyListenableOf: (line) => line.qty,
+        baseUnitNameOf: _baseUnitName,
+      ),
       shared.warehouse(
         required: true,
         enabled: editable,
@@ -1353,11 +1491,12 @@ class _WarehouseArrivalReceiptPageState
   }
 }
 
-/// 一行到货登记明细：共用的入库仓库/库位状态 + 数量/来源/系列。
+/// 一行到货登记明细：共用的入库仓库/库位/实称重量状态 + 数量/来源/系列。
 class _ArrivalReceiptLine extends InboundRegistrationLine {
   _ArrivalReceiptLine(this.item, {String? warehouseId, required this.onChanged})
-    : qty = TextEditingController(
+    : qty = UtenAutofillTextController(
         text: procurementQty(item.approvedRemainingQty),
+        autofilled: false,
       ),
       series = UtenAutofillTextController(text: item.goodsSeries ?? ''),
       super(
@@ -1366,13 +1505,28 @@ class _ArrivalReceiptLine extends InboundRegistrationLine {
         place: item.goodsStockPlace ?? '',
       ) {
     qty.addListener(onChanged);
+    weight.addListener(onChanged);
   }
 
   final ProcurementReceiptPrefillItem item;
   final VoidCallback onChanged;
-  final TextEditingController qty;
+
+  /// 本次实收(行单位)；按称重改过时黄框待核对。
+  final UtenAutofillTextController qty;
   WarehouseArrivalSource source = WarehouseArrivalSource.automatic;
   final UtenAutofillTextController series;
+
+  /// 1 个行单位 = 多少基本单位(无效值按 1)。
+  double get unitRate {
+    final rate = item.unitRate.toDouble();
+    return rate.isFinite && rate > 0 ? rate : 1;
+  }
+
+  /// 本次实收折成基本单位(称重核对用)；没填为 null。
+  double? get qtyBase {
+    final value = double.tryParse(qty.text.trim());
+    return value == null ? null : value * unitRate;
+  }
 
   @override
   String get goodsId => item.goodsId;
@@ -1384,6 +1538,7 @@ class _ArrivalReceiptLine extends InboundRegistrationLine {
   @override
   void dispose() {
     qty.removeListener(onChanged);
+    weight.removeListener(onChanged);
     qty.dispose();
     series.dispose();
     super.dispose();

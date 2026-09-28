@@ -19,10 +19,15 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../shared/measurement/weight_params.dart';
+import '../../../shared/measurement/weight_prefs.dart';
+import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../models/outbound_weight_entry.dart';
 import '../models/warehouse_sales_outbound.dart';
 import '../repositories/warehouse_sales_outbound_repository.dart';
 import '../providers/warehouse_count_refresh.dart';
+import '../widgets/outbound_weight_columns.dart';
 import '../widgets/warehouse_sales_outbound_table_columns.dart';
 import '../widgets/warehouse_sales_picking_fields.dart';
 
@@ -47,6 +52,9 @@ class _WarehouseSalesOutboundDetailPageState
   int _requestVersion = 0;
   WarehouseSalesPickingDraft? _picking;
 
+  /// 本次 build 盯住的页内单重参数缓存 (待出库且行带货品时才建)。
+  WeightParamsCache? _weightCache;
+
   @override
   void dispose() {
     _picking?.dispose();
@@ -56,7 +64,19 @@ class _WarehouseSalesOutboundDetailPageState
   void _replaceDetail(WarehouseSalesOutboundDetail detail) {
     _picking?.dispose();
     _detail = detail;
-    _picking = WarehouseSalesPickingDraft(detail);
+    _picking = WarehouseSalesPickingDraft(
+      detail,
+      weightUnit: ref.read(warehouseWeightUnitsPrefsProvider).entry,
+    );
+    // 缓存在 build 里按需盯住: 下一帧再按行批量取单重参数。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ensureOutboundWeightParams(
+          _weightCache,
+          _picking?.weights.values ?? const <OutboundWeightEntry>[],
+        );
+      }
+    });
   }
 
   @override
@@ -113,7 +133,17 @@ class _WarehouseSalesOutboundDetailPageState
     }
     setState(() => _confirming = true);
     try {
-      final reason = await _confirmAction(action);
+      final reason = await _confirmAction(
+        action,
+        weightAlerts: [
+          for (final alert
+              in _picking?.weightAlerts(_weightCache) ??
+                  const <
+                    ({WarehouseSalesOutboundLine line, WeightCheck check})
+                  >[])
+            warehouseSalesWeightAlertText(alert.line, alert.check),
+        ],
+      );
       if (reason == null || !mounted) return;
       setState(() {
         _confirming = false;
@@ -148,6 +178,7 @@ class _WarehouseSalesOutboundDetailPageState
             reason: reason,
             stockPlaces: _picking?.stockPlaces,
             lineWarehouses: _picking?.lineWarehouses,
+            lineWeights: _picking?.lineWeights,
           );
       if (!mounted) return;
       if (updated.header.id != widget.id ||
@@ -191,7 +222,11 @@ class _WarehouseSalesOutboundDetailPageState
   }
 
   /// 返回 null = 取消；返回字符串 = 确认，内容是选填的出库备注（可为空串）。
-  Future<String?> _confirmAction(WarehouseSalesOutboundAction action) async {
+  /// [weightAlerts] 为称重明显偏离应发数量的行 (只提醒复核, 不拦截)。
+  Future<String?> _confirmAction(
+    WarehouseSalesOutboundAction action, {
+    List<String> weightAlerts = const [],
+  }) async {
     final controller = TextEditingController();
     final result = await showDialog<String?>(
       context: context,
@@ -204,6 +239,11 @@ class _WarehouseSalesOutboundDetailPageState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(_actionDescription(action)),
+              if (warehouseSalesWeightAlertNotice(dialogContext, weightAlerts)
+                  case final notice?) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                notice,
+              ],
               const SizedBox(height: UtenSpacing.s12),
               TextField(
                 key: const Key('warehouse-sales-outbound-action-reason'),
@@ -248,6 +288,13 @@ class _WarehouseSalesOutboundDetailPageState
         for (final line in detail.lines)
           WarehouseSalesOutboundTableRow(detail, line),
     ];
+    final weightUnits = ref.watch(warehouseWeightUnitsPrefsProvider);
+    final weightEntries =
+        _picking?.weights.values.toList() ?? const <OutboundWeightEntry>[];
+    // 待出库且行带货品时才盯住页内单重参数缓存 (离开页面随之释放)。
+    _weightCache = weightEntries.any((entry) => entry.paramsLine != null)
+        ? ref.watch(weightParamsCacheProvider)
+        : null;
     final actions = detail == null
         ? const <WarehouseSalesOutboundAction>[]
         : WarehouseSalesOutboundAction.values
@@ -348,7 +395,18 @@ class _WarehouseSalesOutboundDetailPageState
                                     : null,
                                 editingEnabled:
                                     !_acting && !_confirming && !_needsReview,
+                                weightParams: _weightCache,
+                                weightEntryUnit: weightUnits.entry,
                               ),
+                              toolbarActions: weightEntries.isEmpty
+                                  ? null
+                                  : const [WeightEntryUnitButton()],
+                              summaryBar: weightEntries.isEmpty
+                                  ? null
+                                  : OutboundWeightSummaryBar(
+                                      entries: weightEntries,
+                                      params: _weightCache,
+                                    ),
                               items: rows,
                               rowKeyOf: (row) => row.key,
                               facets: const {},

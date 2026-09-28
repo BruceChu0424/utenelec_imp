@@ -780,9 +780,8 @@ class WorkshopMaterialClosePostgresTest {
             db.update("INSERT INTO units(id, legacy_id, code, name, status) VALUES (?, ?, ?, '千克', '使用')",
                     id, 900_000_000 + ThreadLocalRandom.current().nextInt(90_000_000), "KG-" + id.toString().substring(0, 8));
             db.update("""
-                    INSERT INTO unit_measurement_profiles(unit_id, measurement_dimension, canonical_unit_id,
-                                                          to_canonical_factor, provenance)
-                    VALUES (?, 'MASS', ?, 1, 'MANUAL_GOVERNANCE')""", id, id);
+                    INSERT INTO unit_measurement_profiles(unit_id, measurement_dimension, mass_unit_code, provenance)
+                    VALUES (?, 'MASS', 'KG', 'MANUAL_GOVERNANCE')""", id);
             return id;
         }
     }

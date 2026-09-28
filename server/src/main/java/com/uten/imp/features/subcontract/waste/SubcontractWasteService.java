@@ -479,7 +479,8 @@ public class SubcontractWasteService {
                 ts, StockService.TYPE_SUBCONTRACT_WASTE, StockService.SRC_SUBCONTRACT_WASTE,
                 r.getId(), it.getId(), it.getGoodsId(), it.getColorId(), r.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
-                direction < 0 ? null : "红冲", it.getWeight()));
+                // 委外损耗不是仓库称重单据: 不带重量, 由库存账推算; 红冲按原流水镜像(ADR-135)。
+                direction < 0 ? null : "红冲", null));
     }
 
     private SubcontractLossClaimPort.ApprovedWaste toApprovedWaste(

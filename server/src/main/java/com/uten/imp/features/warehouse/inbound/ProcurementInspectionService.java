@@ -278,7 +278,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                         SELECT id, warehouse_id, goods_id, color_id, unit_id, unit_rate,
                                received_base_qty, received_amount_local,
                                passed_base_qty, failed_base_qty, status, receipt_type,
-                               received_weight, received_weight_unit_id,
+                               received_weight,
                                pre_stocked_warehouse_id, pre_stocked_place
                         FROM procurement_inspection_items
                         WHERE receipt_type = :rt AND receipt_id = :rid
@@ -340,14 +340,12 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         BigDecimal releasedAmount = "PASS".equals(action)
                 ? releasedAmountSlice(dec(row[7]), received, resolvedBefore, requested)
                 : null;
-        UUID receivedWeightUnitId = (UUID) row[13];
+        // 到货实称重量(千克)按处置顺序累计切片; 没称则放行切片也为空。
         BigDecimal trustedReceivedWeight = nullableDec(row[12]);
         BigDecimal releasedWeight = "PASS".equals(action)
                 ? releasedWeightSlice(
                         trustedReceivedWeight, received, resolvedBefore, requested)
                 : null;
-        UUID releasedWeightUnitId = releasedWeight == null
-                ? null : receivedWeightUnitId;
         if ("PASS".equals(action)) {
             passed = passed.add(requested);
         } else {
@@ -376,8 +374,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         }
         appendEvent(
                 eventId, inspectionItemId, action, requested, reason, actor, now,
-                releasedAmount, releasedWeight, releasedWeightUnitId, batchRequestHash);
-        UUID preStockedWarehouseId = (UUID) row[14];
+                releasedAmount, releasedWeight, batchRequestHash);
+        UUID preStockedWarehouseId = (UUID) row[13];
         if ("PASS".equals(action)) {
             if (preStockedWarehouseId != null) {
                 // 先入库后检(V596)：实物早已在上架仓/库位，合格即按记录的位置自动完成正式入库
@@ -385,7 +383,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 // 已上架合格行在收尾合成一个自动批次(completeReceiptDisposition)，上架仓已不可用
                 // (极少数运维情形)的行在那里退回「待仓库确认入库」原流程。
                 preStocked.add(new ProcurementIqcStockInService.PreStockedRelease(
-                        eventId, inspectionItemId, preStockedWarehouseId, (String) row[15]));
+                        eventId, inspectionItemId, preStockedWarehouseId, (String) row[14]));
             } else {
                 publishIqcStockInPending(
                         receiptType, receiptId, inspectionItemId, eventId);
@@ -504,7 +502,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                                warehouse_stocked_base_qty,
                                warehouse_stocked_amount_local,
                                warehouse_stocked_weight,
-                               status, received_weight_unit_id
+                               status
                         FROM procurement_inspection_items
                         WHERE receipt_type = :rt AND receipt_id = :rid
                         ORDER BY id
@@ -518,7 +516,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         @SuppressWarnings("unchecked")
         List<Object[]> stockedItems=em.createNativeQuery("""
                 SELECT stocked.id,stocked.inspection_item_id,stocked.warehouse_id,stocked.goods_id,stocked.color_id,
-                    inspection.unit_id,inspection.unit_rate,stocked.base_qty,stocked.weight,stocked.weight_unit_id
+                    inspection.unit_id,inspection.unit_rate,stocked.base_qty
                 FROM procurement_iqc_stock_in_batch_items stocked
                 JOIN procurement_inspection_items inspection ON inspection.id=stocked.inspection_item_id
                 LEFT JOIN stock_value_events value_event ON value_event.movement_id=stocked.stock_movement_id AND value_event.operation='POSITION_STORE'
@@ -531,10 +529,11 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                     .map(item->dec(item[7])).reduce(BigDecimal.ZERO,BigDecimal::add);
             if(exactStocked.compareTo(dec(row[6]))!=0)throw new ApiException(ErrorCode.CONFLICT,"已入库数量缺少完整的原批次流水，不能猜测撤回来源");
         }
+        // 撤回不带重量: 库存账按同一入库批次行的原流水镜像回去(ADR-135)。
         for(Object[] item:stockedItems){
             stockService.recordMovement(new StockService.MovementRequest(now,movementType(receiptType),sourceDocType(receiptType),
                     receiptId,(UUID)item[0],(UUID)item[3],(UUID)item[4],(UUID)item[2],StockService.DIR_OUT,dec(item[7]),
-                    (UUID)item[5],dec(item[6]),null,"红冲收货，按原合格入库批次撤回",nullableDec(item[8]),(UUID)item[9],
+                    (UUID)item[5],dec(item[6]),null,"红冲收货，按原合格入库批次撤回",null,
                     new com.uten.imp.application.port.InventoryMovementCostReference.ProcurementStockIn((UUID)item[0])));
         }
         for (Object[] row : rows) {
@@ -798,27 +797,12 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 null, null, null);
     }
 
-    private void appendEvent(
-            UUID eventId,
-            UUID inspectionItemId,
-            String action,
-            BigDecimal baseQty,
-            String reason,
-            UUID actor,
-            OffsetDateTime occurredAt,
-            BigDecimal releasedAmountLocal,
-            BigDecimal releasedWeight,
-            UUID releasedWeightUnitId) {
-        appendEvent(eventId, inspectionItemId, action, baseQty, reason, actor, occurredAt,
-                releasedAmountLocal, releasedWeight, releasedWeightUnitId, null);
-    }
-
     private void appendEvent(UUID eventId, UUID inspectionItemId, String action,
                              BigDecimal baseQty, String reason, UUID actor, OffsetDateTime occurredAt,
                              BigDecimal releasedAmountLocal, BigDecimal releasedWeight,
-                             UUID releasedWeightUnitId, String batchRequestHash) {
+                             String batchRequestHash) {
         ProcurementInspectionEvents.append(em, eventId, inspectionItemId, action, baseQty, reason, actor,
-                occurredAt, releasedAmountLocal, releasedWeight, releasedWeightUnitId, batchRequestHash);
+                occurredAt, releasedAmountLocal, releasedWeight, batchRequestHash);
         if("PASS".equals(action)||"FAIL".equals(action)){
             consideration.freezeQuality(inspectionItemId);
             procurementValue.qualityRecorded(eventId,currentUser.requireId());

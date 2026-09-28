@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../../../shared/measurement/weight_unit.dart';
 import '../models/warehouse_iqc_stock_in.dart'
     show WarehouseIqcStockInConfirmItem;
 import '../models/warehouse_quality_result.dart';
@@ -75,6 +76,21 @@ class WarehouseQualitySliceDraft {
   double get previewQuantity {
     final value = double.tryParse(quantity.text.trim());
     return value != null && value.isFinite && value > 0 ? value : 0;
+  }
+
+  /// 本次实收对应的放行重量(千克，只读预览；ADR-135 §3.10)。
+  ///
+  /// 放行重量来自到货实称，按「已入库量 → 已入库量 + 本次」的累计份额差分摊，
+  /// 与服务端入库时的切片同一口径(4 位四舍五入，末批取余)；到货没称为 null。
+  double? get previewWeightKg {
+    final total = slice.releasedWeight;
+    final whole = slice.releasedBaseQty;
+    final qty = previewQuantity;
+    if (total == null || whole <= 0 || qty <= 0) return null;
+    final before = slice.stockedForReleaseBaseQty;
+    final previous = roundKgLine(total * before / whole) ?? 0;
+    final next = roundKgLine(total * (before + qty) / whole) ?? 0;
+    return roundKgLine(next - previous);
   }
 
   WarehouseQualitySliceSnapshot get snapshot => WarehouseQualitySliceSnapshot(

@@ -1005,7 +1005,7 @@ class _WorkshopMaterialReportsPageState
       onRowTap: (r) {
         final id = r.productGoodsId;
         if (id == null) return;
-        context.push(RoutePath.basicinfoGoodsDetail(id, tab: 1));
+        context.push(RoutePath.basicinfoGoodsDetail(id, tab: 'bom'));
       },
       canOpenRow: (r) => r.productGoodsId != null,
       isLoading: _loadingData && _missing == null,

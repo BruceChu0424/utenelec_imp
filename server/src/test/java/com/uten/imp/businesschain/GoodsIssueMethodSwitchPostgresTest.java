@@ -478,9 +478,8 @@ class GoodsIssueMethodSwitchPostgresTest {
                 id, 900_000_000 + ThreadLocalRandom.current().nextInt(90_000_000), code, name);
         if (mass) {
             db.update("""
-                    INSERT INTO unit_measurement_profiles(unit_id, measurement_dimension, canonical_unit_id,
-                                                          to_canonical_factor, provenance)
-                    VALUES (?, 'MASS', ?, 1, 'MANUAL_GOVERNANCE')""", id, id);
+                    INSERT INTO unit_measurement_profiles(unit_id, measurement_dimension, mass_unit_code, provenance)
+                    VALUES (?, 'MASS', 'KG', 'MANUAL_GOVERNANCE')""", id);
         }
         return id;
     }

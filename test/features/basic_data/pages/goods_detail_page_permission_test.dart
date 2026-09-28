@@ -67,7 +67,7 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           locale: Locale('zh'),
-          home: GoodsDetailPage(goodsId: 'goods-1', initialTab: 1),
+          home: GoodsDetailPage(goodsId: 'goods-1', initialTab: 'bom'),
         ),
       ),
     );

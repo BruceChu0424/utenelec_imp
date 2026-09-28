@@ -33,7 +33,8 @@ final class StockDocOutboundReviewFingerprint {
         for (StockDocumentItem item : items) {
             add(parts, "item:" + item.getId(), item.getId(), item.getDocId(), item.getLineNo(),
                     item.getGoodsId(), item.getColorId(), item.getUnitId(), item.getQty(),
-                    item.getUnitRate(), item.getBaseQty(), item.getWeight(), item.getGiftQty(),
+                    item.getUnitRate(), item.getBaseQty(), item.getWeight(), item.isQtyFromWeight(),
+                    item.getCountWeight(), item.getGiftQty(),
                     item.getPlace(), item.getUpstreamItemId(), item.getExecutionSegmentId(),
                     item.getExecutionSegmentSalesAllocationId(), item.getSourceDailyReportItemId(),
                     item.getSourceDocNo(), item.getRemark(), item.isDeleted(), item.getUpdatedAt());

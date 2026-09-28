@@ -2,6 +2,7 @@ package com.uten.imp.audit;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -551,6 +552,8 @@ class AuditEventInterpreterTest {
                 Map.entry("/api/production/material-analyses", "生产物料分析"),
                 Map.entry("/api/production/quality-inspections", "成品检验"),
                 Map.entry("/api/stock/docs", "库存单据"),
+                Map.entry("/api/stock/goods", "货品出入库流水"),
+                Map.entry("/api/stock/insights", "库存分析"),
                 Map.entry("/api/finance/incomes", "其他收入单"),
                 Map.entry("/api/finance/ar-ap", "应收应付台账"),
                 Map.entry("/api/finance/payments", "付款单"),
@@ -574,6 +577,16 @@ class AuditEventInterpreterTest {
             assertTrue(!event.summary().contains("其他业务对象"), event.summary());
             assertTrue(!event.summary().contains("/api/"), event.summary());
         });
+    }
+
+    @Test
+    void labelsStockInsightsAsTheWarehouseAnalysisPage() {
+        for (String path : List.of("/api/stock/insights/health", "/api/stock/insights/cycle-count",
+                "/api/stock/insights/goods/3e27d660-5c36-41c8-8ea1-7f777f52a9cc")) {
+            AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(request("http_get", path));
+            assertEquals("仓库 · 库存分析", event.pageLabel(), path);
+            assertEquals("库存分析", event.objectLabel(), path);
+        }
     }
 
     @Test

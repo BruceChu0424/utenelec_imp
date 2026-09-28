@@ -86,7 +86,6 @@ void main() {
         ? GoodsDetail(id: 'goods-a', name: '测试货品', writable: writable)
         : null,
     initialCategoryId: null,
-    initialTab: 0,
     canCreate: true,
     canEdit: edit,
     canStatus: actions,
@@ -95,7 +94,6 @@ void main() {
     canBomDelete: false,
     onToggleStatus: actions ? () {} : null,
     onDelete: actions ? () {} : null,
-    onViewMovements: null,
     onDataChanged: null,
   );
 

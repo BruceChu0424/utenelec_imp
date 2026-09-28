@@ -20,9 +20,11 @@ import 'package:uten_imp/features/warehouse/pages/production_finished_arrival_re
 import 'package:uten_imp/features/warehouse/repositories/warehouse_place_suggestion_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/shared/measurement/weight_unit.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import 'arrival_weight_test_support.dart';
 
 const _reportId = '20000000-0000-0000-0000-000000000001';
 const _row1 = '30000000-0000-0000-0000-000000000001';
@@ -34,6 +36,180 @@ const _registrationPath =
 const _placeSuggestionPath = '/warehouse/place-suggestions';
 
 void main() {
+  testWidgets('实称重量: 随登记行提交千克并进幂等键，按报工数量核对 (ADR-135)', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1800, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _ArrivalRegistrationApi(
+      warehouseId: 'warehouse-1',
+      placeHint: 'CP-01',
+    );
+    final weights = FakeWeightRepository(
+      api,
+      byGoods: const {_goods1: learnedTwoGramParams},
+    );
+    await _openPage(
+      tester,
+      api: api,
+      canRegister: true,
+      clearSelection: false,
+      overrides: warehouseWeightTestOverrides(api, repository: weights),
+    );
+    // 车间产出没有供应商：单重参数只按货品取。
+    expect(weights.requests.first.single.goodsId, _goods1);
+    expect(weights.requests.first.single.supplierId, isNull);
+    // 本页只核对不回填数量：重量格里没有称重计数按钮。
+    final grid = find.byKey(
+      const Key('production-finished-arrival-registration-grid'),
+    );
+    expect(
+      find.descendant(
+        of: grid,
+        matching: find.byKey(const ValueKey('weight-cell-weigh')),
+      ),
+      findsNothing,
+    );
+
+    // 报工 10 只 × 约 2 g = 约 20 g；称了 30 g → 比报工多约 5 只。
+    await tester.enterText(
+      find.descendant(
+        of: grid,
+        matching: find.byKey(const ValueKey('weight-cell-input')),
+      ),
+      '30g',
+    );
+    await tester.pump();
+    final chip = find.byKey(
+      const ValueKey('production-finished-arrival-weight-check-$_row1'),
+    );
+    expect(
+      find.descendant(of: chip, matching: find.textContaining('比报工多约')),
+      findsOneWidget,
+    );
+
+    await _submit(tester);
+    final body = api.postBodies.single;
+    final item = (body['items'] as List).single as Map;
+    expect(item['weight'], 0.03);
+    // 幂等键带重量指纹：改了重量是另一个请求。
+    expect(
+      body['idempotencyKey'] as String,
+      matches(RegExp(r':w-[0-9a-f]{16}$')),
+    );
+  });
+
+  testWidgets('实称重量按 报工数量 x unitRate 的基本数量核对 (报工单位不是基本单位)', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1800, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    // 报工 10 × 12 (unitRate) = 120 个基本单位 × 约 2 g = 约 240 g。
+    final api = _ArrivalRegistrationApi(
+      warehouseId: 'warehouse-1',
+      placeHint: 'CP-01',
+      unitRate: 12,
+    );
+    final weights = FakeWeightRepository(
+      api,
+      byGoods: const {_goods1: learnedTwoGramParams},
+    );
+    await _openPage(
+      tester,
+      api: api,
+      canRegister: true,
+      clearSelection: false,
+      overrides: warehouseWeightTestOverrides(api, repository: weights),
+    );
+    final grid = find.byKey(
+      const Key('production-finished-arrival-registration-grid'),
+    );
+    final input = find.descendant(
+      of: grid,
+      matching: find.byKey(const ValueKey('weight-cell-input')),
+    );
+    final chip = find.byKey(
+      const ValueKey('production-finished-arrival-weight-check-$_row1'),
+    );
+    await tester.enterText(input, '240g');
+    await tester.pump();
+    expect(
+      find.descendant(of: grid, matching: find.textContaining('比报工')),
+      findsNothing,
+      reason: '240 g 正好是 120 个基本单位, 不该当成 10 个报偏差',
+    );
+
+    await tester.enterText(input, '200g');
+    await tester.pump();
+    expect(
+      find.descendant(of: chip, matching: find.textContaining('比报工少约')),
+      findsOneWidget,
+    );
+    // 报工单位(本例名「只」, 1 个 = 12 基本单位)不是基本单位：偏差件数不借用它的名字。
+    expect(
+      find.descendant(of: chip, matching: find.textContaining('只')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('报工单位本身按重量计时只读精确换算, 提交不带重量', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1800, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _ArrivalRegistrationApi(
+      warehouseId: 'warehouse-1',
+      placeHint: 'CP-01',
+    );
+    await _openPage(
+      tester,
+      api: api,
+      canRegister: true,
+      clearSelection: false,
+      overrides: warehouseWeightTestOverrides(
+        api,
+        massUnits: const {
+          'b0000000-0000-0000-0000-000000000001': WeightUnit.kg,
+        },
+      ),
+    );
+    final grid = find.byKey(
+      const Key('production-finished-arrival-registration-grid'),
+    );
+    expect(
+      find.descendant(
+        of: grid,
+        matching: find.byKey(const ValueKey('weight-cell-exact')),
+      ),
+      findsOneWidget,
+    );
+    await _submit(tester);
+    final item = (api.postBodies.single['items'] as List).single as Map;
+    expect(item.containsKey('weight'), isFalse);
+  });
+
+  testWidgets('已登记批次只读显示登记时的实称重量', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1800, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _ArrivalRegistrationApi(
+      registered: true,
+      warehouseId: 'warehouse-1',
+      place: 'CP-A-01',
+      registeredWeightKg: 0.03,
+    );
+    await _openPage(
+      tester,
+      api: api,
+      canRegister: true,
+      overrides: warehouseWeightTestOverrides(api),
+    );
+    final field = tester.widget<TextField>(
+      find.descendant(
+        of: find.byKey(
+          const Key('production-finished-arrival-registration-grid'),
+        ),
+        matching: find.byKey(const ValueKey('weight-cell-input')),
+      ),
+    );
+    expect(field.controller?.text, '0.03');
+    expect(field.enabled, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('先入库后质检按钮：需独立权限，提交带上架标记与独立幂等键', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -1176,8 +1352,16 @@ class _ArrivalRegistrationApi extends ApiClient {
     this.rememberedPlaces = const {},
     Set<String>? failWarehouses,
     this.reversible = false,
+    this.unitRate,
+    this.registeredWeightKg,
   }) : failWarehouses = failWarehouses ?? <String>{},
        super(Dio());
+
+  /// 报工行换算率 (1 个报工单位 = 多少基本单位)；null = 不下发 (按 1)。
+  final double? unitRate;
+
+  /// 已登记行登记时的实称重量 (千克)；待登记行恒为空。
+  final double? registeredWeightKg;
 
   bool registered;
 
@@ -1393,6 +1577,8 @@ class _ArrivalRegistrationApi extends ApiClient {
       'placeHint': placeHint,
       // 货品主档归属仓：只在待登记时作为预填来源带回。
       'lastWarehouseId': pending ? master : null,
+      'weight': pending ? null : registeredWeightKg,
+      'unitRate': ?unitRate,
     };
   }
 }

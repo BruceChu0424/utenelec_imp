@@ -101,12 +101,26 @@ public final class ProcurementArrivalContracts {
                 UUID colorId,
                 UUID unitId,
                 BigDecimal unitRate,
+                /** 本行实称净重(千克, 4 位小数); 空或 0 = 没称; 按重量计的货品/单位由服务端换算, 这里填的丢弃。 */
                 @DecimalMin(value = "0", inclusive = true)
                 @Digits(integer = 14, fraction = 4) BigDecimal weight,
                 @Size(max = 64) String sourceDocNo,
                 @Pattern(regexp = "NORMAL|RETURN_REPLACEMENT") String replacementIntent,
                 /** 先入库后质检时本行实物上架的库位(1..100 字符)；原流程忽略。 */
-                @Size(max = 100) String preStockPlace) {
+                @Size(max = 100) String preStockPlace,
+                /**
+                 * 数量是按称重推算的(称重计数「按称重改数量」, ADR-135): 为真时本行不进单重学习
+                 * (数量本身来自单重, 再拿来学单重是循环论证)。空 = 否。
+                 */
+                Boolean qtyFromWeight) {
+
+            public ArrivalLine(UUID goodsId, BigDecimal qty, UUID orderItemId,
+                               UUID colorId, UUID unitId, BigDecimal unitRate,
+                               BigDecimal weight, String sourceDocNo, String replacementIntent,
+                               String preStockPlace) {
+                this(goodsId, qty, orderItemId, colorId, unitId, unitRate, weight, sourceDocNo,
+                        replacementIntent, preStockPlace, null);
+            }
 
             public ArrivalLine(UUID goodsId, BigDecimal qty, UUID orderItemId,
                                UUID colorId, UUID unitId, BigDecimal unitRate,
@@ -127,6 +141,10 @@ public final class ProcurementArrivalContracts {
                                String sourceDocNo) {
                 this(goodsId, qty, orderItemId, colorId, unitId, unitRate,
                         null, sourceDocNo,null,null);
+            }
+
+            public boolean qtyFromWeightRequested() {
+                return Boolean.TRUE.equals(qtyFromWeight);
             }
         }
     }

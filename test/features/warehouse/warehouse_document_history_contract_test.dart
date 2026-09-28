@@ -86,6 +86,16 @@ void main() {
       final line = detail.items.single;
       expect(line.lineNo, 1);
       expect(line.qty, '10.1250');
+      // 重量原文保留服务端精度; 显示用千克数值, 0 / 空 = 没称 (null)。
+      expect(line.weight, '25.5000');
+      expect(line.weightKg, 25.5);
+      expect(
+        WarehouseDocumentPhysicalItem.fromJson(const {
+          'id': 'w0',
+          'weight': '0.0000',
+        }).weightKg,
+        isNull,
+      );
       expect(line.returnedQty, '1.0000');
       expect(line.passedBaseQty, '9.0000');
       expect(line.failedBaseQty, '1.1250');

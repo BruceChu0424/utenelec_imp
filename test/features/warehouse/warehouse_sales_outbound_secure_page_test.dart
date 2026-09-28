@@ -8,6 +8,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations_zh.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_sales_outbound.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_page.dart';
@@ -18,6 +19,8 @@ import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
+
+import 'outbound_weight_fakes.dart';
 
 void main() {
   final summary = WarehouseSalesOutboundSummary.fromJson(_detailJson);
@@ -338,6 +341,113 @@ void main() {
       await tester.pumpAndSettle();
       expect(gateway.selectedLineWarehouses, {'line-1': 'leaf-1'});
       expect(gateway.selectedPlaces, {'line-1': 'B02-08'});
+      expect(gateway.selectedWeights, isEmpty, reason: '没称的行不带重量');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'picking weighs each line after the quantity group, soft-confirms an alert and sends weightKg per line',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1800, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final pending = WarehouseSalesOutboundDetail.fromJson({
+        ..._detailJson,
+        'lines': [
+          {
+            ...(_detailJson['lines'] as List).single as Map<String, dynamic>,
+            'goodsId': 'screw',
+            'unitRate': 1,
+          },
+        ],
+      });
+      final gateway = _SalesGateway(pending.header, pending);
+      final weights = FakeWeightRepository(
+        byGoods: {'screw': learnedWeightParams('screw')},
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            warehouseSalesOutboundRepositoryProvider.overrideWithValue(gateway),
+            fakeWeightRepositoryOverride(weights),
+          ],
+          child: const MaterialApp(
+            home: WarehouseSalesOutboundDetailPage(id: 'shipment-1'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(weights.requests.single, ['screw']);
+      final table = tester
+          .widget<MasterDataTableView<WarehouseSalesOutboundTableRow>>(
+            find.byKey(const Key('warehouse-sales-outbound-detail-table')),
+          );
+      final keys = table.columns.map((column) => column.key).toList();
+      expect(keys.indexOf('weight'), keys.indexOf('unitName') + 1);
+      expect(keys.indexOf('weightCheck'), keys.indexOf('weight') + 1);
+      // 10 件 x 约 2 g: 占位「应称 0.02」(千克)。
+      expect(find.text('应称 0.02'), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('weight-cell-input')),
+        '30g',
+      );
+      await tester.pump();
+      expect(find.textContaining('比应发多约'), findsWidgets);
+      await tester.tap(
+        find.byKey(const Key('warehouse-sales-outbound-action-SHIPPED')),
+      );
+      await tester.pumpAndSettle();
+      final alerts = find.byKey(
+        const Key('warehouse-sales-outbound-weight-alerts'),
+      );
+      expect(alerts, findsOneWidget);
+      expect(
+        find.descendant(of: alerts, matching: find.textContaining('请复核拣货')),
+        findsOneWidget,
+      );
+      // 只提醒不拦截: 照样能确认出库。
+      await tester.tap(find.text('确认'));
+      await tester.pumpAndSettle();
+      expect(gateway.selectedWeights, {'line-1': 0.03});
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'shipped lines show the outbound movement weight read-only, estimates marked with ≈',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1800, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final shipped = WarehouseSalesOutboundDetail.fromJson({
+        ..._detailJson,
+        'warehouseWorkStatus': 'SHIPPED',
+        'allowedWarehouseTargets': <String>[],
+        'lines': [
+          {
+            ...(_detailJson['lines'] as List).single as Map<String, dynamic>,
+            'goodsId': 'screw',
+            'weightKg': 12.5,
+            'weightSource': 'AVERAGE',
+          },
+        ],
+      });
+      expect(shipped.lines.single.weightKg, 12.5);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            warehouseSalesOutboundRepositoryProvider.overrideWithValue(
+              _SalesGateway(shipped.header, shipped),
+            ),
+          ],
+          child: const MaterialApp(
+            home: WarehouseSalesOutboundDetailPage(id: 'shipment-1'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('≈12.5 kg'), findsOneWidget);
+      expect(find.byKey(const ValueKey('weight-cell-input')), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -368,7 +478,6 @@ const _detailJson = <String, dynamic>{
       'colorName': '本色',
       'unitName': '件',
       'quantity': '10.0000',
-      'weight': '20.0000',
       'price': 999,
       'amountLocal': 9990,
       'suggestedWarehouseId': 'leaf-1',
@@ -392,6 +501,7 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
   final WarehouseSalesOutboundDetail value;
   Map<String, String?>? selectedLineWarehouses;
   Map<String, String>? selectedPlaces;
+  Map<String, double>? selectedWeights;
 
   @override
   Future<PagedResult<WarehouseSalesOutboundSummary>> list({
@@ -432,9 +542,11 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
     String? reason,
     Map<String, String>? stockPlaces,
     Map<String, String?>? lineWarehouses,
+    Map<String, double>? lineWeights,
   }) async {
     selectedLineWarehouses = lineWarehouses;
     selectedPlaces = stockPlaces;
+    selectedWeights = lineWeights;
     final warehouseId = lineWarehouses?.values.firstOrNull;
     return WarehouseSalesOutboundDetail.fromJson({
       ..._detailJson,

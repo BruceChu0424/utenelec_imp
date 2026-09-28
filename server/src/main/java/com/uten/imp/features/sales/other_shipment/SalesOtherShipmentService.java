@@ -196,7 +196,8 @@ public class SalesOtherShipmentService {
                 ts, StockService.TYPE_SALES_OTHER_OUT, StockService.SRC_SALES_OTHER_SHIPMENT,
                 s.getId(), it.getId(), it.getGoodsId(), it.getColorId(), s.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
-                direction < 0 ? null : "红冲", it.getWeight()));
+                // 只剩红冲走这里: 不带重量, 库存账按原流水镜像或按均重推算(ADR-135)。
+                direction < 0 ? null : "红冲", null));
     }
 
     private Set<UUID> readableOrderItemIds(List<UUID> ids) {

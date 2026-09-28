@@ -1,3 +1,11 @@
+// 仓库专属重量口径契约 (ADR-135, 2026-09-28 用户拍板, 取代 2026-08-30 审计的 NO-GO 清单):
+//
+// 1. 数量 (数量 + 单位 + 换算率) 仍是计划/采购/销售/生产/财务唯一的事实; 这些业务单据
+//    编辑页不加重量录入, 历史隐藏重量字段原样透传不清零。
+// 2. 仓库每条录入/确认数量的执行行都有「实称重量」列 (共用 weightGridColumn), 放在数量组之后;
+//    重量以千克 4 位提交, 连同「按称重改数量」计入幂等键; 货品/行单位按重量计时只读、不提交
+//    (服务端按数量精确换算), 单据上绝不写估算重量。
+// 3. 销售侧「实际重量」输入照旧 (不再进库存账, 由仓库出库实称代替)。
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -5,13 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   String source(String path) => File(path).readAsStringSync();
 
-  test('physical document editors preserve optional actual line weight', () {
-    final stockGrid = source(
-      'lib/features/warehouse/widgets/stock_grid_columns.dart',
-    );
-    final stockEdit = source(
-      'lib/features/warehouse/pages/stock_doc_edit_page.dart',
-    );
+  test('business documents keep quantity as the only planning fact', () {
     final purchaseGrid = source(
       'lib/features/purchase/widgets/purchase_grid_columns.dart',
     );
@@ -24,56 +26,110 @@ void main() {
     final salesEdit = source(
       'lib/features/sales/pages/sales_doc_edit_page.dart',
     );
-    final arrival = source(
-      'lib/features/warehouse/pages/warehouse_arrival_receipt_page.dart',
-    );
     final dailyGrid = source(
       'lib/features/production/widgets/production_daily_grid_columns.dart',
     );
     final dailyEdit = source(
       'lib/features/production/pages/production_daily_report_edit_page.dart',
     );
-    final subcontractOutbound = source(
-      'lib/features/warehouse/widgets/subcontract_outbound_detail_table.dart',
-    );
 
-    // 2026-09-04 口径：采购/销售单据编辑网格下线「实际重量」列（单位已表达重量）；
-    // 行模型 weight 字段保留，编辑既有单回填并随保存透传。仓库/生产等实物单据
-    // （过磅/收发料）仍保留重量录入。
-    // 2026-09-05 补充：仓库「登记实际到货」页同样下线实称重量列（走单位的
-    // 计量维度：重量型单位实收数量本身即重量），保存不再提交 weight；
-    // 过磅（stock）保留重量录入。2026-09-12 生产日报同样按用户要求撤出新建
-    // 表格的重量列，历史重量仍回填、复制、校验并随原单提交，不能被静默清零。
-    expect(stockGrid, contains("key: 'weight'"));
-    expect(stockGrid, contains("label: '实际重量'"));
+    // 采购/销售/生产日报编辑网格没有重量列 (单位已表达数量含义, 重量是仓库的事)。
     for (final grid in [purchaseGrid, salesGrid, dailyGrid]) {
       expect(grid, isNot(contains("key: 'weight'")));
       expect(grid, isNot(contains("label: '实际重量'")));
+      expect(grid, isNot(contains('weightGridColumn')));
     }
+    // 历史重量仍回填、复制、校验并随原单提交, 不能被静默清零。
     expect(dailyGrid, contains('c.weight.text = weight.text;'));
-    // 2026-09-24 WIP：日报草稿回填按执行段分组取数（group.weight 汇集了组内
-    // 行的历史重量），「回填不清零」口径不变。
     expect(
       dailyEdit,
       contains("row.weight.text = group.weight?.toString() ?? '';"),
     );
     expect(dailyEdit, contains("'weight': ?weight"));
-    for (final edit in [stockEdit, purchaseEdit, salesEdit, dailyEdit]) {
+    for (final edit in [purchaseEdit, salesEdit, dailyEdit]) {
       expect(edit, contains("'weight'"));
       expect(edit, contains('实际重量必须大于 0'));
     }
-    expect(arrival, isNot(contains("'weight': ?weight")));
-    expect(arrival, isNot(contains('实际重量必须大于 0')));
-    // 2026-09-21 委外出仓明细表(单张拣货出仓页与批量出库详情共用)同样撤出实际重量
-    // 录入列；原单 weight 降为只读透传字段，保存仍原样回传，不能被静默清零。
-    expect(subcontractOutbound, isNot(contains("key: 'weight'")));
-    // 该表的列名走 l10n 而不是字面量, 所以钉的是文案 key 已随列一起退役。
-    expect(
-      subcontractOutbound,
-      isNot(contains('warehouseSubcontractOutboundWeight')),
+  });
+
+  test(
+    'warehouse capture grids share the weight cell after the quantity group',
+    () {
+      final inbound = source(
+        'lib/features/warehouse/widgets/inbound_registration_widgets.dart',
+      );
+      final stockGrid = source(
+        'lib/features/warehouse/widgets/stock_grid_columns.dart',
+      );
+      final arrival = source(
+        'lib/features/warehouse/pages/warehouse_arrival_receipt_page.dart',
+      );
+      final arrivalBatch = source(
+        'lib/features/warehouse/pages/warehouse_arrival_batch_receipt_page.dart',
+      );
+
+      // 入库登记与仓库单据都用共用的实称重量格 (后缀换算、永不批量、按重量计只读)。
+      expect(inbound, contains('weightGridColumn<T>('));
+      expect(stockGrid, contains('weightGridColumn<StockGridRow>('));
+      // 盘点: 实盘后是只读账面重量与可选实盘重量。
+      expect(stockGrid, contains("key: 'bookWeight'"));
+      expect(stockGrid, contains("key: 'countWeight'"));
+      // 列序: 单位 → 实称重量 (数量组之后, 不把数量与单位拆开)。
+      for (final page in [arrival, arrivalBatch]) {
+        final unit = page.indexOf('shared.unit(),');
+        final weight = page.indexOf('shared.weight(');
+        final warehouse = page.indexOf('shared.warehouse(');
+        expect(unit, greaterThan(0));
+        expect(weight, greaterThan(unit));
+        expect(warehouse, greaterThan(weight));
+      }
+    },
+  );
+
+  test('warehouse requests send measured kg only and key it for idempotency', () {
+    final arrival = source(
+      'lib/features/warehouse/pages/warehouse_arrival_receipt_page.dart',
     );
-    expect(subcontractOutbound, contains('final double? weight;'));
-    expect(subcontractOutbound, contains('weight: weight,'));
+    final arrivalBatch = source(
+      'lib/features/warehouse/pages/warehouse_arrival_batch_receipt_page.dart',
+    );
+    final finished = source(
+      'lib/features/warehouse/pages/production_finished_arrival_registration_page.dart',
+    );
+    final finishedBatch = source(
+      'lib/features/warehouse/pages/production_finished_arrival_batch_registration_page.dart',
+    );
+    final stockEdit = source(
+      'lib/features/warehouse/pages/stock_doc_edit_page.dart',
+    );
+
+    for (final page in [arrival, arrivalBatch]) {
+      expect(page, contains("'weight': ?_sentKg(line),"));
+      expect(page, contains("'qtyFromWeight': true"));
+      // 内容派生的幂等键带上行重量片段。
+      expect(page, contains(r"'${_weightKeyPart(line)}'"));
+      // 精确换算行不带重量 (服务端按数量算 EXACT)。
+      expect(page, contains('_exactKg(line) == null ? line.weight.kg : null'));
+    }
+    for (final page in [finished, finishedBatch]) {
+      expect(page, contains("'weight': ?_sentKg(row),"));
+      expect(page, contains('warehouseWeightKeySuffix('));
+      // 产成品登记只核对不回填数量 (没有称重计数按钮)。
+      expect(page, isNot(contains('onWeighCount')));
+    }
+    expect(stockEdit, contains("m['weight'] = sentKg"));
+    expect(stockEdit, contains("m['countWeight'] = sentKg"));
+    expect(stockEdit, contains("m['qtyFromWeight'] = true"));
+    // 单据上绝不写估算: 只提交格子里的实称值, 没有单重乘数量的回写。
+    for (final page in [
+      arrival,
+      arrivalBatch,
+      finished,
+      finishedBatch,
+      stockEdit,
+    ]) {
+      expect(page, isNot(contains('expectedKgFor(')));
+    }
   });
 
   test('business quantity keeps unit rate and never derives parcel count', () {
@@ -92,9 +148,8 @@ void main() {
     expect(salesEdit, contains("'unitRate': r.unitRate"));
     expect(salesEdit, isNot(contains('_computedParcelCount')));
     expect(salesEdit, contains("labelText: '物流件数'"));
-    // 2026-09-11：底部合计条统一走 UtenTotalsSummaryBar，数量项由 utenQuantityTotalEntry
-    // 构造——它内部就是 measurementTotalsText(groupMeasurementTotals(...))，同样按单位分组、
-    // 绝不跨单位相加。两种写法都满足本契约。
+    // 底部合计条统一走 UtenTotalsSummaryBar，数量项由 utenQuantityTotalEntry 构造
+    // (按单位分组、绝不跨单位相加)。两种写法都满足本契约。
     expect(
       salesEdit.contains('measurementTotalsText(') ||
           salesEdit.contains('utenQuantityTotalEntry('),
@@ -103,18 +158,11 @@ void main() {
     );
   });
 
-  test('arrival, batch shipment and stock ledger expose weight', () {
+  test('sales-side batch shipment weight stays as is', () {
     final batch = source(
       'lib/features/sales/widgets/sales_batch_ship_panel.dart',
     );
-    final movementModel = source('lib/features/stock/models/stock_query.dart');
-    final movementPage = source(
-      'lib/features/stock/pages/stock_item_detail_page.dart',
-    );
-
+    // 销售侧实际重量输入原样保留 (ADR-135 §3.7: 不再进库存账)。
     expect(batch, contains("'weight': ?weight"));
-    expect(movementModel, contains("weight: (json['weight'] as num?)"));
-    expect(movementModel, contains("unitId: json['unitId'] as String?"));
-    expect(movementPage, contains("label: '实际重量'"));
   });
 }

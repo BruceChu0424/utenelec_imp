@@ -70,7 +70,6 @@ class ProcurementIqcDispositionAmountBehaviorTest {
         UUID goodsId = UUID.randomUUID();
         UUID colorId = UUID.randomUUID();
         UUID unitId = UUID.randomUUID();
-        UUID weightUnitId = UUID.randomUUID();
         UUID firstStockItemId = UUID.randomUUID();
         UUID secondStockItemId = UUID.randomUUID();
         UUID actor = UUID.randomUUID();
@@ -87,7 +86,7 @@ class ProcurementIqcDispositionAmountBehaviorTest {
                             inspectionItemId, warehouseId, goodsId, colorId,
                             unitId, BigDecimal.ONE, new BigDecimal("2"),
                             new BigDecimal("0.0164"), new BigDecimal("3"),
-                            "RESOLVED", null});
+                            "RESOLVED"});
                 }
                 if (sql.contains("from procurement_inspection_events")) {
                     if(sql.startsWith("select id from procurement_inspection_events")){
@@ -101,9 +100,9 @@ class ProcurementIqcDispositionAmountBehaviorTest {
                 if (sql.contains("from procurement_iqc_stock_in_batch_items stocked")) {
                     return completeBatchEvidence ? List.of(
                             new Object[]{firstStockItemId, inspectionItemId, warehouseId, goodsId, colorId,
-                                    unitId, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, weightUnitId},
+                                    unitId, BigDecimal.ONE, BigDecimal.ONE},
                             new Object[]{secondStockItemId, inspectionItemId, warehouseId, goodsId, colorId,
-                                    unitId, BigDecimal.ONE, BigDecimal.ONE, new BigDecimal("2"), weightUnitId})
+                                    unitId, BigDecimal.ONE, BigDecimal.ONE})
                             : List.of();
                 }
                 return List.of();
@@ -158,12 +157,11 @@ class ProcurementIqcDispositionAmountBehaviorTest {
             assertThat(request.warehouseId()).isEqualTo(warehouseId);
             assertThat(request.goodsId()).isEqualTo(goodsId);
             assertThat(request.colorId()).isEqualTo(colorId);
-            assertThat(request.weightUnitId()).isEqualTo(weightUnitId);
+            // ADR-135: 撤回不带重量, 库存账按同一入库批次行的原流水镜像回去。
+            assertThat(request.weight()).isNull();
         });
         assertThat(movement.getAllValues().stream().map(StockService.MovementRequest::qty)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)).isEqualByComparingTo("2");
-        assertThat(movement.getAllValues().stream().map(StockService.MovementRequest::weight)
-                .reduce(BigDecimal.ZERO, BigDecimal::add)).isEqualByComparingTo("3");
         for (UUID event : qualityEvents) verify(procurementValue).qualityReversed(event, actor);
     }
 

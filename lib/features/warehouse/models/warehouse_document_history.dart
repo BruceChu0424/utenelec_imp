@@ -236,6 +236,8 @@ class WarehouseDocumentPhysicalItem {
   final String? unitName;
   final String? unitRate;
   final String? qty;
+
+  /// 行重量原文 (千克, 服务端精度原样保留); 显示走 [weightKg] 按用户显示单位换算。
   final String? weight;
   final String? returnedQty;
   final String? giftQty;
@@ -273,6 +275,12 @@ class WarehouseDocumentPhysicalItem {
 
   String get inspectionStatusLabel =>
       warehouseInspectionStatusLabel(inspectionStatus);
+
+  /// 行重量 (千克); 没称 (空) 或 0 返回 null —— 仓库重量 0 即「没称」, 不当 0 显示。
+  double? get weightKg {
+    final value = double.tryParse(weight ?? '');
+    return value == null || value <= 0 ? null : value;
+  }
 
   factory WarehouseDocumentPhysicalItem.fromJson(Map<String, dynamic> json) {
     return WarehouseDocumentPhysicalItem(

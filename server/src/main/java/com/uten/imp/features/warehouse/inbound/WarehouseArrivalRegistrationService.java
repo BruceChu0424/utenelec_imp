@@ -7,6 +7,9 @@ import com.uten.imp.features.purchase.receipt.PurchaseReceiptService;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptDetail;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest;
+import com.uten.imp.features.stock.StockService;
+import com.uten.imp.features.stock.weight.GoodsWeightObservationService;
+import com.uten.imp.features.stock.weight.SourceKind;
 import com.uten.imp.features.subcontract.receipt.SubcontractReceiptService;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalBatchCompleteItemResult;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalBatchCompleteRequest;
@@ -15,6 +18,7 @@ import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.Wareh
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterResult;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,12 +27,16 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -59,6 +67,8 @@ public class WarehouseArrivalRegistrationService {
 
     private static final String PURCHASE = "PURCHASE";
     private static final String SUBCONTRACT = "SUBCONTRACT";
+    /** 到货称重观测的幂等键前缀: 'RECEIPT:' + 收货明细 id (ADR-135 §3.1)。 */
+    static final String RECEIPT_CAPTURE_PREFIX = "RECEIPT:";
 
     private final JdbcTemplate jdbc;
     private final TxSessionVars tx;
@@ -87,6 +97,17 @@ public class WarehouseArrivalRegistrationService {
         this.preStockIn = preStockIn;
         this.shortDelivery = shortDelivery;
     }
+
+    /**
+     * 到货称重进单重学习(ADR-135)。setter 注入避免构造器签名变化牵连直构测试;
+     * 直构不注入时为 null, 只是不登记观测——观测不承载任何过账事实。
+     */
+    @Autowired(required = false)
+    void setWeightObservations(GoodsWeightObservationService value) {
+        this.weightObservations = value;
+    }
+
+    private GoodsWeightObservationService weightObservations;
 
     @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
     public WarehouseArrivalRegisterResult register(WarehouseArrivalRegisterRequest request) {
@@ -131,21 +152,35 @@ public class WarehouseArrivalRegistrationService {
         }
         mutationGuard.verifyUnchanged();
         UUID commandId = insertPendingCommand(makerId,idempotencyKey,requestHash,orderType);
+        List<BigDecimal> weights = capturedWeights(request.items());
         UUID receiptId;
         String billNo;
+        List<ReceiptLine> receiptLines;
         if (PURCHASE.equals(orderType)) {
             ReceiptDetail created =
                     purchaseReceiptService.createFromWarehouseArrival(
-                            purchaseRequest(request, header));
+                            purchaseRequest(request, header, weights));
             receiptId = created.getId();
             billNo = created.getBillNo();
+            receiptLines = created.getItems() == null ? List.of() : created.getItems().stream()
+                    .map(item -> new ReceiptLine(item.getId(), item.getLineNo(), item.getGoodsId(),
+                            item.getColorId(), item.getUnitId(), item.getUnitRate(), item.getQty(),
+                            item.getWeight()))
+                    .toList();
         } else {
             com.uten.imp.features.subcontract.receipt.dto.ReceiptDetail created =
                     subcontractReceiptService.createFromWarehouseArrival(
-                            subcontractRequest(request, header));
+                            subcontractRequest(request, header, weights));
             receiptId = created.getId();
             billNo = created.getBillNo();
+            receiptLines = created.getItems() == null ? List.of() : created.getItems().stream()
+                    .map(item -> new ReceiptLine(item.getId(), item.getLineNo(), item.getGoodsId(),
+                            item.getColorId(), item.getUnitId(), item.getUnitRate(), item.getQty(),
+                            item.getWeight()))
+                    .toList();
         }
+        // 称的是实到的货: 在送检审核之前记, 超量隔离(草稿保留)时同样留下观测。
+        recordReceiptObservations(orderType, receiptId, receiptLines, request, header.supplierId());
         WarehouseArrivalRegisterResult result =
                 approveAsArrival(orderType, receiptId, billNo);
         if (stockInFirst && OUTCOME_INSPECTED.equals(result.outcome())) {
@@ -475,7 +510,7 @@ public class WarehouseArrivalRegistrationService {
     }
 
     private ReceiptSaveRequest purchaseRequest(
-            WarehouseArrivalRegisterRequest request, OrderHeader header) {
+            WarehouseArrivalRegisterRequest request, OrderHeader header, List<BigDecimal> weights) {
         ReceiptSaveRequest req = new ReceiptSaveRequest();
         req.setBillDate(request.billDate());
         req.setSupplierId(header.supplierId());
@@ -487,23 +522,25 @@ public class WarehouseArrivalRegistrationService {
         req.setPurchaserId(request.purchaserId());
         req.setReceiverId(request.receiverEmployeeId());
         req.setRemark(request.remark());
-        req.setItems(purchaseLines(request));
+        req.setItems(purchaseLines(request, weights));
         return req;
     }
 
-    private List<ReceiptItemLine> purchaseLines(WarehouseArrivalRegisterRequest request) {
+    private List<ReceiptItemLine> purchaseLines(
+            WarehouseArrivalRegisterRequest request, List<BigDecimal> weights) {
         List<ReceiptItemLine> lines = new ArrayList<>(request.items().size());
         int autoLine = 1;
         for (var line : request.items()) {
             ReceiptItemLine item = new ReceiptItemLine();
-            item.setLineNo(autoLine++);
+            item.setLineNo(autoLine);
             item.setGoodsId(line.goodsId());
             item.setColorId(line.colorId());
             item.setUnitId(line.unitId());
             item.setUnitRate(line.unitRate());
             item.setQty(line.qty());
             item.setReplacementIntent(line.replacementIntent());
-            item.setWeight(line.weight());
+            item.setWeight(weights.get(autoLine - 1));
+            autoLine++;
             item.setOrderItemId(line.orderItemId());
             item.setSourceDocNo(line.sourceDocNo());
             lines.add(item);
@@ -512,7 +549,7 @@ public class WarehouseArrivalRegistrationService {
     }
 
     private com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest subcontractRequest(
-            WarehouseArrivalRegisterRequest request, OrderHeader header) {
+            WarehouseArrivalRegisterRequest request, OrderHeader header, List<BigDecimal> weights) {
         var req = new com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest();
         req.setBillDate(request.billDate());
         req.setSupplierId(header.supplierId());
@@ -524,31 +561,115 @@ public class WarehouseArrivalRegistrationService {
         // 委外进仓单主档仅 sender_id 一个人员列，服务端按「收货人」语义解析。
         req.setSenderId(request.receiverEmployeeId());
         req.setRemark(request.remark());
-        req.setItems(subcontractLines(request));
+        req.setItems(subcontractLines(request, weights));
         return req;
     }
 
     private List<com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine> subcontractLines(
-            WarehouseArrivalRegisterRequest request) {
+            WarehouseArrivalRegisterRequest request, List<BigDecimal> weights) {
         List<com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine> lines =
                 new ArrayList<>(request.items().size());
         int autoLine = 1;
         for (var line : request.items()) {
             var item =
                     new com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine();
-            item.setLineNo(autoLine++);
+            item.setLineNo(autoLine);
             item.setGoodsId(line.goodsId());
             item.setColorId(line.colorId());
             item.setUnitId(line.unitId());
             item.setUnitRate(line.unitRate());
             item.setQty(line.qty());
             item.setReplacementIntent(line.replacementIntent());
-            item.setWeight(line.weight());
+            item.setWeight(weights.get(autoLine - 1));
+            autoLine++;
             item.setOrderItemId(line.orderItemId());
             item.setSourceDocNo(line.sourceDocNo());
             lines.add(item);
         }
         return lines;
+    }
+
+    /**
+     * 登记行真正写进收货单的实称重量(千克, 与 items 一一对应): 0 视为没称(null);
+     * 按重量计的行(货品基本单位或本行单位登记了重量单位)丢弃手填重量, 由库存账按数量精确换算,
+     * 不让一份手填重量切成 IQC 放行切片去和精确换算打架(ADR-135 §2.6)。
+     */
+    private List<BigDecimal> capturedWeights(List<WarehouseArrivalRegisterRequest.ArrivalLine> items) {
+        Set<UUID> goodsIds = new LinkedHashSet<>();
+        Set<UUID> unitIds = new LinkedHashSet<>();
+        for (var line : items) {
+            if (weighed(line)) {
+                goodsIds.add(line.goodsId());
+                if (line.unitId() != null) unitIds.add(line.unitId());
+            }
+        }
+        MassUnits mass = goodsIds.isEmpty() ? MassUnits.NONE : massUnits(goodsIds, unitIds);
+        List<BigDecimal> weights = new ArrayList<>(items.size());
+        for (var line : items) {
+            weights.add(weighed(line) && !mass.exact(line.goodsId(), line.unitId()) ? line.weight() : null);
+        }
+        return weights;
+    }
+
+    private static boolean weighed(WarehouseArrivalRegisterRequest.ArrivalLine line) {
+        return line != null && line.weight() != null && line.weight().signum() > 0;
+    }
+
+    /** 基本单位登记了重量单位的货品 + 本身是重量单位的行单位, 一条 SQL 查完。 */
+    private MassUnits massUnits(Collection<UUID> goodsIds, Collection<UUID> unitIds) {
+        List<Object> args = new ArrayList<>(goodsIds);
+        String sql = """
+                SELECT 'GOODS' AS kind, goods_row.id AS id
+                FROM goods goods_row
+                JOIN unit_measurement_profiles profile ON profile.unit_id = goods_row.unit_id
+                WHERE profile.mass_unit_code IS NOT NULL AND goods_row.id IN (%s)
+                """.formatted(String.join(", ", Collections.nCopies(goodsIds.size(), "?")));
+        if (!unitIds.isEmpty()) {
+            sql += """
+                    UNION ALL
+                    SELECT 'UNIT' AS kind, profile.unit_id AS id
+                    FROM unit_measurement_profiles profile
+                    WHERE profile.mass_unit_code IS NOT NULL AND profile.unit_id IN (%s)
+                    """.formatted(String.join(", ", Collections.nCopies(unitIds.size(), "?")));
+            args.addAll(unitIds);
+        }
+        Set<UUID> goods = new HashSet<>();
+        Set<UUID> units = new HashSet<>();
+        jdbc.query(sql, rs -> {
+            UUID id = rs.getObject("id", UUID.class);
+            if ("GOODS".equals(rs.getString("kind"))) goods.add(id);
+            else units.add(id);
+        }, args.toArray());
+        return new MassUnits(goods, units);
+    }
+
+    /**
+     * 到货称重进单重学习(ADR-135 §3.1): 每个称了重的收货明细一条 RECEIPT 观测, 与登记同一事务。
+     * 数量 = 收货明细数量 x 换算率(基本单位); 供应商 = 来源订货单供应商(委外即加工商)。
+     * 按称重推算数量的行、按重量计的货品/单位、关闭学习的货品由观测服务自己跳过。
+     */
+    private void recordReceiptObservations(String orderType, UUID receiptId, List<ReceiptLine> lines,
+                                           WarehouseArrivalRegisterRequest request, UUID supplierId) {
+        if (weightObservations == null || lines.stream().noneMatch(line -> line.weight() != null)) {
+            return;
+        }
+        String sourceType = PURCHASE.equals(orderType)
+                ? StockService.SRC_PURCHASE_RECEIPT : StockService.SRC_SUBCONTRACT_RECEIPT;
+        UUID recordedBy = currentUser.requireId();
+        OffsetDateTime observedAt = OffsetDateTime.now();
+        for (ReceiptLine line : lines) {
+            if (line.weight() == null || line.qty() == null || line.id() == null) continue;
+            BigDecimal rate = line.unitRate() == null ? BigDecimal.ONE : line.unitRate();
+            // 收货明细行号 = 登记行顺序(autoLine), 按它找回本行的「数量按称重推算」标记。
+            int index = line.lineNo() == null ? -1 : line.lineNo() - 1;
+            boolean qtyFromWeight = index >= 0 && index < request.items().size()
+                    && request.items().get(index).qtyFromWeightRequested();
+            weightObservations.record(new GoodsWeightObservationService.ObservationCommand(
+                    line.goodsId(), line.colorId(), request.warehouseId(), SourceKind.RECEIPT,
+                    line.qty().multiply(rate), line.weight(), supplierId, null, null,
+                    sourceType, receiptId, line.id(), null, RECEIPT_CAPTURE_PREFIX + line.id(),
+                    observedAt, null, null, null, qtyFromWeight, line.unitId(), false, null, recordedBy));
+        }
     }
 
     /**
@@ -786,6 +907,10 @@ public class WarehouseArrivalRegistrationService {
                 appendHash(canonical,"replacementIntent");
                 appendHash(canonical,item.replacementIntent());
             }
+            // ADR-135: 数量是否按称重推算决定这行进不进单重学习, 同键不同选择要 409; 不勾时不写, 老哈希逐字不变。
+            if (item != null && item.qtyFromWeightRequested()) {
+                appendHash(canonical, "qtyFromWeight");
+            }
         }
         // 先入库后质检(V596)：只在勾选时进入指纹，老客户端/老请求的哈希逐字不变。
         if (request.stockInBeforeInspectionRequested()) {
@@ -849,6 +974,22 @@ public class WarehouseArrivalRegistrationService {
     /** 待完成的草稿收货单定位：id + 类型 + 单号 + 关联的订货明细。 */
     private record DraftReceipt(
             UUID receiptId, String orderType, String billNo, List<UUID> orderItemIds) {
+    }
+
+    /** 刚建好的收货明细(采购/委外两种 DTO 的共同投影), 用来登记到货称重观测。 */
+    private record ReceiptLine(
+            UUID id, Integer lineNo, UUID goodsId, UUID colorId, UUID unitId,
+            BigDecimal unitRate, BigDecimal qty, BigDecimal weight) {
+    }
+
+    /** 按重量计的货品(基本单位是重量单位)与本身是重量单位的行单位。 */
+    record MassUnits(Set<UUID> goods, Set<UUID> units) {
+        static final MassUnits NONE = new MassUnits(Set.of(), Set.of());
+
+        /** 行单位为空时按货品基本单位收货(PurchaseLineUnitPolicy), 只看货品本身。 */
+        boolean exact(UUID goodsId, UUID lineUnitId) {
+            return goods.contains(goodsId) || (lineUnitId != null && units.contains(lineUnitId));
+        }
     }
 
     static record ArrivalCommand(

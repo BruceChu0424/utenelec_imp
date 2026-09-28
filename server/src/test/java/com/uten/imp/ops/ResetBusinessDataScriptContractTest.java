@@ -74,6 +74,11 @@ class ResetBusinessDataScriptContractTest {
                 "('ai_providers', 742)",
                 "('client_goods_aliases', 742)",
                 "('sales_intake_layouts', 742)",
+                // V743(ADR-135)：重量调整账是 CLEAR 业务来源；单重学习三表 PRESERVE，只登记存在性。
+                "('stock_weight_adjustments', 745)",
+                "('goods_weight_profiles', 745)",
+                "('goods_weight_observations', 745)",
+                "('goods_weight_estimates', 745)",
                 "IS DISTINCT FROM (applied_max_version >= required.introduced_version)",
                 "count(*) FILTER (WHERE policy.disposition = 'CLEAR')",
                 "INTO incomplete_operational_tables, current_operational_table_count",
@@ -234,11 +239,18 @@ class ResetBusinessDataScriptContractTest {
                 "preplan_subcontract_requirement_supply_claims", "CLEAR",
                 "preplan_subcontract_entitlement_handoff_slices", "CLEAR",
                 "preplan_subcontract_requirement_handoff_events", "CLEAR"));
+        // V743(ADR-135)：V442 采集偏好学习七张表退役，重量调整账随业务清空，单重学习三表随主档保留。
+        assertThat(policy).doesNotContainKeys(
+                "measurement_capture_profiles", "measurement_capture_line_snapshots",
+                "measurement_capture_evidence", "measurement_capture_decision_events",
+                "legacy_measurement_exceptions", "legacy_measurement_profile_snapshots",
+                "legacy_measurement_source_registry");
         assertThat(policy).containsAllEntriesOf(Map.of(
-                "measurement_capture_profiles", "CLEAR",
-                "measurement_capture_line_snapshots", "CLEAR",
-                "measurement_capture_evidence", "CLEAR",
-                "measurement_capture_decision_events", "CLEAR"));
+                "stock_weight_adjustments", "CLEAR",
+                "goods_weight_profiles", "PRESERVE",
+                "goods_weight_observations", "PRESERVE",
+                "goods_weight_estimates", "PRESERVE",
+                "unit_measurement_profiles", "PRESERVE"));
         assertThat(policy).containsAllEntriesOf(Map.ofEntries(
                 Map.entry("account_balance_adjustment_batches", "CLEAR"),
                 Map.entry("account_balance_adjustment_items", "CLEAR"),
@@ -295,9 +307,6 @@ class ResetBusinessDataScriptContractTest {
                 "legacy_migration_reconciliation_items",
                 "legacy_migration_rejects", "legacy_migration_run_files",
                 "legacy_migration_runs",
-                "legacy_measurement_exceptions",
-                "legacy_measurement_profile_snapshots",
-                "legacy_measurement_source_registry",
                 "unit_measurement_profiles",
                 "client_default_settlement_migration_issues",
                 "profile_change_requests",
@@ -309,8 +318,12 @@ class ResetBusinessDataScriptContractTest {
                 assertThat(policy).containsEntry(table, "PRESERVE"));
         assertThat(policy).containsEntry(
                 "production_product_no_sequences", "CLEAR");
+        // V743 删掉了 V442 计量学习表的完整性计数(七张表已退役，只剩 unit_measurement_profiles)。
+        assertThat(sql).doesNotContain("measurement_table_count");
         assertThat(sql)
-                .contains("measurement_table_count <> 8")
+                .contains("(applied_max_version BETWEEN 711 AND 744 AND preserve_count <> 102)")
+                .contains("(applied_max_version >= 745 AND preserve_count <> 102)")
+                .contains("current_operational_table_count=225)")
                 .contains("v440_business_table_count <> 6")
                 .contains("v443_business_table_count <> 1")
                 .contains("v446_business_table_count NOT IN (0, 2)")

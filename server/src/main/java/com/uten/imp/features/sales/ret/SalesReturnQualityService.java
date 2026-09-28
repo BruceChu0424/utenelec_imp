@@ -285,7 +285,8 @@ public class SalesReturnQualityService {
             stockService.recordMovement(new StockService.MovementRequest(
                     now,StockService.TYPE_SALES_RETURN,StockService.SRC_SALES_RETURN,
                     returnId,eventId,goodsId,colorId,warehouseId,StockService.DIR_IN,requested,unitId,unitRate,
-                    null,"退货质检良品释放："+reason,releasedWeight,null,
+                    null,"退货质检良品释放："+reason,
+                    com.uten.imp.features.stock.weight.CapturedWeight.slice(releasedWeight),
                     new com.uten.imp.application.port.InventoryMovementCostReference.SalesReturnQuality(qualityItemId,eventId)));
         }
         inventoryValue.qualityEventRecorded(eventId,currentUser.requireId());
@@ -439,7 +440,9 @@ public class SalesReturnQualityService {
             stockService.recordMovement(new StockService.MovementRequest(
                     now,StockService.TYPE_SALES_RETURN,StockService.SRC_SALES_RETURN,
                     returnId,eventId,goodsId,colorId,warehouseId,StockService.DIR_OUT,requested,unitId,unitRate,
-                    null,"退货质检良品释放撤回："+reason,revokedWeight,null,
+                    null,"退货质检良品释放撤回："+reason,
+                    // 撤回与释放用同一累计切片口径(ADR-135), 退货没称重时由库存账按均重推算。
+                    com.uten.imp.features.stock.weight.CapturedWeight.slice(revokedWeight),
                     new com.uten.imp.application.port.InventoryMovementCostReference.SalesReturnQuality(qualityItemId,eventId)));
         }
         inventoryValue.qualityEventRecorded(eventId,currentUser.requireId());

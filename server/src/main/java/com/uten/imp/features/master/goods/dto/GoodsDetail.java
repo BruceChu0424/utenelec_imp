@@ -100,8 +100,15 @@ public class GoodsDetail {
     private boolean priceMasked;
 
     // ===== 即时库存（聚合 stock_balances，仅参与核算仓库；详情展示+关联仓库） =====
-    private BigDecimal stockQty;                 // 各参与核算仓库余量合计
-    private List<GoodsStockRow> stockByWarehouse; // 按仓库（×颜色）展开
+    private BigDecimal stockQty;                 // 非线边核算仓余量合计
+    private List<GoodsStockRow> stockByWarehouse; // 按仓库×颜色展开(线边仓行标 lineSide，不计入合计)
+    /**
+     * 非线边核算仓已知库存重量合计(千克，ADR-135)；未知的行不计入而另计 {@link #stockWeightUnknown}；
+     * null = 有量的行重量全都未知(前端「未称」，绝不当 0)。
+     */
+    private BigDecimal stockWeightKg;
+    private int stockWeightUnknown;               // 有数量却重量未知的仓库×颜色行数(前端「另有 N 处未称」)
+    private boolean stockWeightEstimated;         // 合计含估算重量(前端加「≈」)
 
     private Long version;                        // 乐观锁版本（编辑回传）
 

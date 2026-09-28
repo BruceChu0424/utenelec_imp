@@ -303,7 +303,18 @@ class ProductionMaterialDiscoveryEndToEndTest {
         reports.approve(reports.create(request).getId(),com.uten.imp.support.DailyReportApproveRequests.freshKey());
         assertEquals(0,db.queryForObject("SELECT count(*) FROM goods_bom_items WHERE goods_id=? AND NOT is_deleted",Integer.class,world.goodsC()),"待仓库接收的余料尚未减少实际用料");
         UUID returned=db.queryForObject("SELECT id FROM stock_documents WHERE doc_type='WDRAW' AND plan_no=(SELECT bill_no FROM production_plans WHERE id=?) AND NOT is_deleted",UUID.class,plan);
-        stock.confirmProductionMaterialReturn(returned,new ProductionMaterialReturnConfirmRequest(world.warehouseId(),"third-return-"+segment));
+        UUID returnedItem=db.queryForObject("SELECT id FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",UUID.class,returned);
+        // ADR-135 §3.9: 收料时逐行实称 -> 确认记录留证, 退料入库流水记实称, 登记退料观测(往来方 = 退料车间)。
+        stock.confirmProductionMaterialReturn(returned,new ProductionMaterialReturnConfirmRequest(world.warehouseId(),"third-return-"+segment,
+                List.of(new ProductionMaterialReturnConfirmRequest.Line(returnedItem,new BigDecimal("0.05")))));
+        Map<String,Object> receivedMovement=db.queryForMap("""
+                SELECT weight,weight_source FROM stock_movements WHERE source_item_id=? AND direction=1 AND movement_type IN (6,7)""",returnedItem);
+        assertEquals(0,new BigDecimal("0.05").compareTo((BigDecimal)receivedMovement.get("weight")));
+        assertEquals("MEASURED",receivedMovement.get("weight_source"));
+        assertEquals("WORKSHOP",db.queryForObject("SELECT counterpart_kind FROM goods_weight_observations WHERE source_item_id=? AND source_kind='RETURN'",String.class,returnedItem));
+        assertEquals(0,new BigDecimal("0.05").compareTo(stock.detail(returned).getItems().getFirst().getIssuedWeightKg()));
+        assertThrows(ApiException.class,()->stock.confirmProductionMaterialReturn(returned,new ProductionMaterialReturnConfirmRequest(world.warehouseId(),"third-return-"+segment,
+                List.of(new ProductionMaterialReturnConfirmRequest.Line(returnedItem,new BigDecimal("0.06"))))),"同一确认键换了收料重量是另一份请求");
         assertEquals(0,new BigDecimal("0.6").compareTo(db.queryForObject("SELECT qty FROM goods_bom_items WHERE goods_id=? AND component_goods_id=? AND NOT is_deleted",BigDecimal.class,world.goodsC(),world.goodsD())));
         assertEquals(0,new BigDecimal("3").compareTo(db.queryForObject("SELECT total_output_qty FROM goods_bom_learning_profiles WHERE goods_id=?",BigDecimal.class,world.goodsC())));
         assertEquals(0,new BigDecimal("1.8").compareTo(db.queryForObject("SELECT net_qty FROM goods_bom_actual_usages WHERE goods_id=?",BigDecimal.class,world.goodsC())));

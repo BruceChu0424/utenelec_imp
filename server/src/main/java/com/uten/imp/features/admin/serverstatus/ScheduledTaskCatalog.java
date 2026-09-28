@@ -62,6 +62,8 @@ public final class ScheduledTaskCatalog {
                     "每天 08:53 提醒判定为分批到货、过了预计到齐日却还没到齐的委外回厂短交。")),
             Map.entry("StockReconciliationScheduler.scan", new Entry("库存余额对账",
                     "每天 08:51 核对库存余额与出入库流水是否一致, 只告警不改账。")),
+            Map.entry("GoodsWeightRefreshScheduler.refresh", new Entry("单重学习刷新",
+                    "每天 02:13 按最新称重记录补算各货品的单重学习结果, 只更新学习结果, 不改库存和货品资料。")),
             Map.entry("AuditRetentionScheduler.runScheduled", new Entry("审计日志归档",
                     "每天 03:17 把整月超过在线保留期的审计日志移入归档, 归档再到期后整月清理, 每次运行留一条完成记录。")),
             Map.entry("AuditPartitionMaintainer.ensureUpcoming", new Entry("审计日志月分区预建",

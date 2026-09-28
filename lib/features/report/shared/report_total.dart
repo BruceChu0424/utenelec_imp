@@ -6,12 +6,18 @@
 //
 // 为什么是 groups 而不是单个数：数量不得跨单位相加、金额不得跨币种相加。服务端按分组列
 // （单位名/币种名）分好组下发，前端只负责拼成「12 个 · 3 箱」，本文件不做任何加法。
+//
+// 重量 (ADR-135)：type 'weight' 的值一律是千克，前端只按用户显示单位换算 (自动/克/千克/吨…)，
+// 不做加法；同一报表里 key 为「<重量key>_unknown_rows」的 'count' 项并进重量项显示为
+// 「≈3.52 t (另有 12 项未称)」，「<重量key>_estimated_rows」> 0 时重量前缀「≈」——这两项
+// 不再单独占位。其余 'count' 项按整数显示、为 0 时整项隐藏。
 
 import 'package:flutter/widgets.dart';
 
 import '../../../core/formatters/china_number_format.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/measurement/weight_unit.dart';
 
 /// 一个合计项的一组值（一个单位 / 一个币种）。
 class ReportTotalGroup {
@@ -40,7 +46,8 @@ class ReportTotal {
   final String key;
   final String label;
 
-  /// number / money —— 决定数值格式化口径（金额固定两位小数，数量去掉多余的 0）。
+  /// number / money / weight / count —— 决定数值格式化口径 (金额固定两位小数，数量去掉
+  /// 多余的 0，重量为千克按显示单位换算，计数取整且为 0 时隐藏)。
   final String type;
 
   /// 分组列 key；null = 该报表无分组维度，[groups] 只有一组且 unit 为 null。
@@ -70,7 +77,35 @@ class ReportTotal {
 /// - 有分组维度但某组的分组值为空：那是「该行单位/币种没维护」，照常渲染「单位未维护」；
 /// - 无任何分组（服务端聚合结果全为 NULL，即没有数据）：返回值为空串，由合计条整体隐藏该项，
 ///   **不伪造 0**。
-UtenTotalEntry reportTotalEntry(ReportTotal total, {bool danger = false}) {
+///
+/// 重量项 (type 'weight')：千克按 [weightDisplay] 换算；[weightEstimated] 加「≈」前缀；
+/// [weightUnknownRows] > 0 时追加「(另有 N 项未称)」——全都没称时显示「N 项未称」。
+/// 计数项 (type 'count')：整数，0 时值留空 (整项隐藏)。
+UtenTotalEntry reportTotalEntry(
+  ReportTotal total, {
+  bool danger = false,
+  WeightDisplay weightDisplay = WeightDisplay.auto,
+  bool weightEstimated = false,
+  int weightUnknownRows = 0,
+}) {
+  if (total.type == 'weight') {
+    return _weightTotalEntry(
+      total,
+      danger: danger,
+      display: weightDisplay,
+      estimated: weightEstimated,
+      unknownRows: weightUnknownRows,
+    );
+  }
+  if (total.type == 'count') {
+    final value = total.groups.isEmpty ? 0 : total.groups.first.value.round();
+    return UtenTotalEntry(
+      total.label,
+      value == 0 ? '' : formatChinaNumber(value, decimalDigits: 0),
+      danger: danger,
+    );
+  }
+
   String fmt(double v) =>
       total.type == 'money' ? formatChinaNumber(v) : formatMeasurementValue(v);
 
@@ -102,18 +137,80 @@ UtenTotalEntry reportTotalEntry(ReportTotal total, {bool danger = false}) {
   );
 }
 
+UtenTotalEntry _weightTotalEntry(
+  ReportTotal total, {
+  required bool danger,
+  required WeightDisplay display,
+  required bool estimated,
+  required int unknownRows,
+}) {
+  final prefix = estimated ? '≈' : '';
+  final String value;
+  if (total.groups.isEmpty) {
+    // 全都没称 (服务端 SUM 为 NULL)：只报未称项数；也没有未称项就整项隐藏。
+    value = unknownRows > 0 ? '$unknownRows 项未称' : '';
+  } else {
+    final known = total.grouped
+        ? total.groups
+              .map(
+                (g) =>
+                    '$prefix${formatWeight(g.value, display: display)}'
+                    ' (${g.unit ?? '—'})',
+              )
+              .join(' · ')
+        : '$prefix${formatWeight(total.groups.first.value, display: display)}';
+    value = unknownRows > 0 ? '$known (另有 $unknownRows 项未称)' : known;
+  }
+  return UtenTotalEntry(total.label, value, danger: danger);
+}
+
 /// 一组服务端合计项 → 合计条的项列表（空值项由合计条自行隐藏）。
-List<UtenTotalEntry> reportTotalEntries(Iterable<ReportTotal> totals) => [
-  for (final t in totals) reportTotalEntry(t),
-];
+///
+/// 重量伴随项 (「<重量key>_unknown_rows」「<重量key>_estimated_rows」两个 count 项)
+/// 并进对应重量项，不单独占位。
+List<UtenTotalEntry> reportTotalEntries(
+  Iterable<ReportTotal> totals, {
+  WeightDisplay weightDisplay = WeightDisplay.auto,
+}) {
+  final list = totals.toList(growable: false);
+  final byKey = {for (final t in list) t.key: t};
+  int companion(String weightKey, String suffix) {
+    final t = byKey['${weightKey}_$suffix'];
+    if (t == null || t.type != 'count' || t.groups.isEmpty) return 0;
+    return t.groups.first.value.round();
+  }
+
+  final folded = <String>{
+    for (final t in list)
+      if (t.type == 'weight') ...[
+        '${t.key}_unknown_rows',
+        '${t.key}_estimated_rows',
+      ],
+  };
+  return [
+    for (final t in list)
+      if (t.type == 'weight')
+        reportTotalEntry(
+          t,
+          weightDisplay: weightDisplay,
+          weightEstimated: companion(t.key, 'estimated_rows') > 0,
+          weightUnknownRows: companion(t.key, 'unknown_rows'),
+        )
+      else if (!(t.type == 'count' && folded.contains(t.key)))
+        reportTotalEntry(t),
+  ];
+}
 
 /// 报表表格下方合计条；该报表没声明合计列时返回 null（整条不渲染）。
 ///
 /// 直接喂给 `MasterDataTableView.summaryBar`，由表格统一挂在表体与翻页条之间——
-/// 各报表页不自己摆位置，全站间距/字号因此一致。
-Widget? reportTotalsBar(List<ReportTotal> totals) {
+/// 各报表页不自己摆位置，全站间距/字号因此一致。[weightDisplay] = 用户重量显示单位。
+Widget? reportTotalsBar(
+  List<ReportTotal> totals, {
+  WeightDisplay weightDisplay = WeightDisplay.auto,
+}) {
   if (totals.isEmpty) return null;
-  final entries = reportTotalEntries(totals);
+  final entries = reportTotalEntries(totals, weightDisplay: weightDisplay);
   if (entries.every((e) => e.value.trim().isEmpty)) return null;
   return UtenTotalsSummaryBar(density: true, compact: true, entries: entries);
 }

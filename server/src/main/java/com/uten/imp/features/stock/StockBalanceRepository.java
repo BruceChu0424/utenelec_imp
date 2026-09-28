@@ -39,14 +39,17 @@ public interface StockBalanceRepository
 
     Optional<StockBalance> findByWarehouseIdAndGoodsIdAndColorId(UUID warehouseId, UUID goodsId, UUID colorId);
 
+    /** 余额快照: 数量(基本单位)、重量(千克, null = 未知)、重量是否估算(ADR-135)。 */
     interface PhysicalSnapshot {
         BigDecimal getQty();
         BigDecimal getWeight();
+        Boolean getWeightEstimated();
     }
 
     /** Native scalar projection deliberately bypasses cached entities after same-transaction upserts. */
     @Query(value="""
-            SELECT qty,weight FROM stock_balances WHERE warehouse_id=:warehouse AND goods_id=:goods
+            SELECT qty,weight,weight_estimated AS weightEstimated FROM stock_balances
+            WHERE warehouse_id=:warehouse AND goods_id=:goods
                 AND color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
             """,nativeQuery=true)
     java.util.List<PhysicalSnapshot> readPhysicalSnapshot(@Param("warehouse") UUID warehouseId,
@@ -147,27 +150,28 @@ public interface StockBalanceRepository
             @Param("gid") UUID goodsId, @Param("cid") UUID colorId);
 
     /**
-     * 增量 upsert 余额：不存在则插入，存在则 qty/amount_local/weight 累加已带方向符号的增量。
+     * upsert 余额：不存在则插入，存在则 qty/amount_local 累加已带方向符号的增量；重量与估算标记由库存账在锁下
+     * 算好后整值写入(ADR-135 §2.4)。最近出入库日期只往后走(补录的旧日期单据不把它拉回去)。
      *
-     * @param delta 已乘 direction(+1/-1) 的数量增量
-     * @param amt   已乘 direction 的金额增量
-     * @param wgt   行实际总重量乘 direction 后的增量（null 不改动既有重量）
+     * @param delta          已乘 direction(+1/-1) 的数量增量
+     * @param amt            已乘 direction 的金额增量
+     * @param weightAfter    过账后余额重量(千克), null = 未知
+     * @param estimatedAfter 过账后余额重量是否估算
      */
     @Modifying
     @Query(value = """
-            INSERT INTO stock_balances (id, warehouse_id, goods_id, color_id, qty, amount_local, weight, last_movement_date, created_at, updated_at)
-            VALUES (gen_random_uuid(), :wid, :gid, :cid, :delta, :amt, :wgt, :ts, now(), now())
+            INSERT INTO stock_balances (id, warehouse_id, goods_id, color_id, qty, amount_local, weight,
+                                        weight_estimated, last_movement_date, created_at, updated_at)
+            VALUES (gen_random_uuid(), :wid, :gid, :cid, :delta, :amt,
+                    CASE WHEN CAST(:delta AS numeric) > 0 THEN CAST(:weightAfter AS numeric)
+                         WHEN CAST(:delta AS numeric) = 0 THEN 0 END,
+                    CASE WHEN CAST(:delta AS numeric) > 0 THEN :estimatedAfter ELSE FALSE END, :ts, now(), now())
             ON CONFLICT (warehouse_id, goods_id, color_id) DO UPDATE
             SET qty = stock_balances.qty + :delta,
                 amount_local = COALESCE(stock_balances.amount_local, 0) + :amt,
-                weight = CASE
-                    WHEN :wgt IS NULL THEN stock_balances.weight
-                    WHEN stock_balances.weight IS NOT NULL
-                        THEN stock_balances.weight + :wgt
-                    WHEN stock_balances.qty = 0 AND :wgt >= 0 THEN :wgt
-                    ELSE NULL
-                END,
-                last_movement_date = :ts,
+                weight = CAST(:weightAfter AS numeric),
+                weight_estimated = :estimatedAfter,
+                last_movement_date = GREATEST(stock_balances.last_movement_date, :ts),
                 updated_at = now()
             """, nativeQuery = true)
     void upsertBalance(@Param("wid") UUID warehouseId,
@@ -175,6 +179,7 @@ public interface StockBalanceRepository
                        @Param("cid") UUID colorId,
                        @Param("delta") BigDecimal delta,
                        @Param("amt") BigDecimal amt,
-                       @Param("wgt") BigDecimal wgt,
+                       @Param("weightAfter") BigDecimal weightAfter,
+                       @Param("estimatedAfter") boolean estimatedAfter,
                        @Param("ts") OffsetDateTime ts);
 }

@@ -1976,5 +1976,497 @@
         "type": "String"
       }
     }
-  }
+  },
+  "salesQuoteStatusDraft": "草稿",
+  "salesQuoteStatusPendingFinance": "待财务核价",
+  "salesQuoteStatusReturned": "财务退回",
+  "salesQuoteStatusConfirmed": "已核价",
+  "salesQuoteStatusReversed": "作废",
+  "salesQuoteStatusConverted": "已转订货单",
+  "salesQuoteStatusToConvert": "已核价, 待转订货单",
+  "salesQuoteStatusReadOnly": "{status} · 只读",
+  "@salesQuoteStatusReadOnly": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "salesQuoteStatusHistory": "历史记录",
+  "salesQuoteStatusBannerDraft": "草稿: 填好后点「提交财务核价」, 财务定好价格和折扣后才能转订货单。",
+  "salesQuoteStatusBannerPending": "已提交财务核价, 正在等财务定价格。需要改内容请先「撤回」。",
+  "salesQuoteStatusBannerReturned": "财务退回: {reason}。改好后再提交财务核价。",
+  "@salesQuoteStatusBannerReturned": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "salesQuoteStatusBannerConfirmed": "财务已核价({name} · {time}), 可以转订货单了。",
+  "@salesQuoteStatusBannerConfirmed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "salesQuoteStatusBannerConverted": "已转成订货单 {orderNo}, 报价不能再修改。",
+  "@salesQuoteStatusBannerConverted": {
+    "placeholders": {
+      "orderNo": {
+        "type": "String"
+      }
+    }
+  },
+  "salesQuoteStatusBannerReversed": "这张报价已作废, 只能查看。",
+  "salesQuoteStatusFinanceFallback": "财务",
+  "salesQuoteStatusFieldReturnReason": "退回原因",
+  "salesQuoteStatusFieldSubmittedAt": "提交核价时间",
+  "salesQuoteStatusFieldConfirmedBy": "核价人",
+  "salesQuoteStatusFieldConvertedOrder": "转入订货单",
+  "salesQuoteStatusFieldFinanceRemark": "财务备注",
+  "salesQuoteStatusActionSubmit": "提交财务核价",
+  "salesQuoteStatusActionWithdraw": "撤回",
+  "salesQuoteStatusActionReopen": "重新修改",
+  "salesQuoteStatusActionConvert": "转订货单",
+  "salesQuoteStatusActionReverse": "作废",
+  "salesQuoteStatusActionEdit": "编辑",
+  "salesQuoteStatusActionDelete": "删除",
+  "salesQuoteStatusActionFinanceReview": "去核价",
+  "salesQuoteStatusActionViewOrder": "查看订货单",
+  "salesQuoteStatusActionBack": "返回列表",
+  "salesQuoteStatusSubmitConfirmBody": "提交后财务会逐行定价格和折扣, 这期间你不能修改这张报价。确定提交?",
+  "salesQuoteStatusWithdrawConfirmBody": "撤回后报价回到草稿, 可以继续修改; 改好后需要重新提交财务核价。确定撤回?",
+  "salesQuoteStatusReopenConfirmBody": "财务已经核好价格。重新修改会让报价回到草稿, 改完要再交财务核价才能转订货单。确定重新修改?",
+  "salesQuoteStatusReverseConfirmBody": "作废后这张报价不能再转订货单, 也不能恢复。确定作废?",
+  "salesQuoteStatusDeleteConfirmBody": "确定删除这张报价草稿? 删除后不能恢复。",
+  "salesQuoteStatusConvertConfirmBody": "会按财务核定的单价和折扣生成订货单草稿。单价和折扣已由财务核定, 不能修改; 数量和交货信息可以在订货单里补充。确定转入?",
+  "salesQuoteStatusConfirm": "确定",
+  "salesQuoteStatusCancel": "取消",
+  "salesQuoteStatusSubmitted": "已提交财务核价",
+  "salesQuoteStatusWithdrawn": "已撤回, 可以继续修改",
+  "salesQuoteStatusReopened": "已回到草稿, 改好后请重新提交财务核价",
+  "salesQuoteStatusReversedDone": "报价已作废",
+  "salesQuoteStatusDeleted": "已删除",
+  "salesQuoteStatusConvertDone": "已生成订货单草稿 {billNo}",
+  "@salesQuoteStatusConvertDone": {
+    "placeholders": {
+      "billNo": {
+        "type": "String"
+      }
+    }
+  },
+  "salesQuoteStatusActionFailed": "操作没有成功, 请稍后再试",
+  "salesQuoteStatusBusy": "正在处理, 请稍候",
+  "salesQuoteStatusTimelineTitle": "核价记录",
+  "salesQuoteStatusTimelineEmpty": "还没有核价记录",
+  "salesQuoteStatusRevisionSubmit": "提交财务核价",
+  "salesQuoteStatusRevisionWithdraw": "销售撤回",
+  "salesQuoteStatusRevisionFinanceEdit": "财务修改价格",
+  "salesQuoteStatusRevisionReturn": "财务退回",
+  "salesQuoteStatusRevisionConfirm": "财务确认报价",
+  "salesQuoteStatusRevisionReopen": "销售重新修改",
+  "salesQuoteStatusRevisionFinanceReopen": "财务撤销确认",
+  "salesQuoteStatusRevisionOther": "其它记录",
+  "salesQuoteStatusRevisionOperator": "操作人",
+  "salesQuoteStatusRevisionVersion": "第 {revision} 版",
+  "@salesQuoteStatusRevisionVersion": {
+    "placeholders": {
+      "revision": {
+        "type": "int"
+      }
+    }
+  },
+  "salesQuoteStatusSourceQuoteConfirmed": "报价已核价",
+  "salesQuoteStatusSourceQuote": "来源报价",
+  "quoteFinanceHubTitle": "报价核价",
+  "quoteFinanceHubSubtitle": "销售报价由财务定价格和折扣, 确认后销售才能转订货单",
+  "quoteFinanceListTitle": "报价核价",
+  "quoteFinanceTabPending": "待核价",
+  "quoteFinanceTabConfirmed": "已核价",
+  "quoteFinanceTabReturned": "已退回",
+  "quoteFinanceSearchHint": "搜索单号 / 客户 / 业务员",
+  "quoteFinanceRowHint": "单击选中 · 双击核价",
+  "quoteFinanceColBillNo": "报价单号",
+  "quoteFinanceColClient": "客户",
+  "quoteFinanceColSeller": "业务员",
+  "quoteFinanceColSubmittedAt": "提交时间",
+  "quoteFinanceColLines": "明细行",
+  "quoteFinanceColAmount": "报价金额",
+  "quoteFinanceColStatus": "状态 / 说明",
+  "quoteFinanceStatusPending": "待核价",
+  "quoteFinanceStatusResubmitted": "销售改后重新提交",
+  "quoteFinanceStatusNeedPrice": "{count, plural, other{有 {count} 行没有标价}}",
+  "@quoteFinanceStatusNeedPrice": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceStatusConfirmed": "已核价 · {name}",
+  "@quoteFinanceStatusConfirmed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceStatusConverted": "已转订货单 {orderNo}",
+  "@quoteFinanceStatusConverted": {
+    "placeholders": {
+      "orderNo": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceStatusReturned": "已退回: {reason}",
+  "@quoteFinanceStatusReturned": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceEmptyPending": "目前没有等待核价的报价",
+  "quoteFinanceEmptyPendingHint": "销售提交核价后会出现在这里; 你定好价格并确认后, 销售才能转订货单。",
+  "quoteFinanceEmptyConfirmed": "还没有已核价的报价",
+  "quoteFinanceEmptyReturned": "没有退回给销售的报价",
+  "quoteFinanceEmptyReturnedHint": "退回的报价由销售改好后, 会重新回到「待核价」。",
+  "quoteFinanceEmptySearch": "没有找到“{keyword}”相关的报价",
+  "@quoteFinanceEmptySearch": {
+    "placeholders": {
+      "keyword": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceLoadFailed": "报价加载失败, 请检查网络后重试",
+  "quoteFinanceRetry": "重试",
+  "quoteFinanceRefresh": "刷新",
+  "quoteFinanceOpen": "核价",
+  "quoteFinancePrevPage": "上一页",
+  "quoteFinanceNextPage": "下一页",
+  "quoteFinanceUnnamed": "未标注",
+  "quoteFinanceReviewTitle": "报价核价",
+  "quoteFinanceStripPending": "待财务核价",
+  "quoteFinanceStripConfirmed": "已核价 · {name} · {time}",
+  "@quoteFinanceStripConfirmed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceStripReturned": "已退回销售 · {reason}",
+  "@quoteFinanceStripReturned": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceStripDraft": "销售修改中",
+  "quoteFinanceStripReversed": "已作废",
+  "quoteFinanceStripConverted": "已转订货单 {orderNo}",
+  "@quoteFinanceStripConverted": {
+    "placeholders": {
+      "orderNo": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceRevisionBadge": "第 {revision} 版",
+  "@quoteFinanceRevisionBadge": {
+    "placeholders": {
+      "revision": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceReadOnlyNotice": "这张报价现在不需要你处理, 只能查看。",
+  "quoteFinanceResubmitNotice": "销售改后重新提交。标黄的行, 折扣和你上次确认的不同, 请重点核对。",
+  "quoteFinanceNeedPriceNotice": "{count, plural, other{有 {count} 行货品没有标价。请填写成交单价, 或在行菜单里选「设为赠品/0价」, 然后再确认报价。}}",
+  "@quoteFinanceNeedPriceNotice": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceGoMaintainPrice": "去货品资料维护标价",
+  "quoteFinanceInfoTitle": "报价信息",
+  "quoteFinanceFieldClient": "客户",
+  "quoteFinanceFieldSeller": "业务员",
+  "quoteFinanceFieldMaker": "制单员",
+  "quoteFinanceFieldBillDate": "单据日期",
+  "quoteFinanceFieldSubmittedAt": "提交时间",
+  "quoteFinanceFieldDeliverDate": "交货日",
+  "quoteFinanceFieldContractNo": "合同号",
+  "quoteFinanceFieldCurrency": "币种",
+  "quoteFinanceFieldFileCurrency": "客户文件币种",
+  "quoteFinanceFileRateHint": "文件币种 {currency}, 按财务参考汇率 {rate} 折算成本币",
+  "@quoteFinanceFileRateHint": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      },
+      "rate": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceFieldRemark": "销售备注",
+  "quoteFinanceFieldValidUntil": "有效期",
+  "quoteFinanceFieldSettlement": "结账方式",
+  "quoteFinanceFieldFinanceRemark": "财务备注",
+  "quoteFinanceFinanceRemarkHint": "写给销售看的说明(选填)",
+  "quoteFinanceSettlementNone": "不指定",
+  "quoteFinanceAttachmentsTitle": "客户文件和附件",
+  "quoteFinanceLinesTitle": "货品明细",
+  "quoteFinanceColGoods": "货品名称",
+  "quoteFinanceColCode": "编号",
+  "quoteFinanceColColor": "颜色",
+  "quoteFinanceColQty": "数量",
+  "quoteFinanceColUnit": "单位",
+  "quoteFinanceColListPrice": "标价",
+  "quoteFinanceColListPriceInfo": "货品资料里的售价。没有标价, 或成交单价高于标价时, 由财务直接定成交单价; 低于标价一律算成折扣。",
+  "quoteFinanceColFilePrice": "文件单价(原币)",
+  "quoteFinanceColFilePriceLocal": "折合本币",
+  "quoteFinanceColDealPrice": "成交单价",
+  "quoteFinanceColDealPriceInfo": "客户最终每件付多少钱。改成交单价会自动算出折扣; 改折扣会自动算出成交单价。",
+  "quoteFinanceColDiscount": "折扣",
+  "quoteFinanceColDiscountInfo": "折扣 = 成交单价 ÷ 标价, 保留 4 位小数, 1 表示按标价。",
+  "quoteFinanceColLineAmount": "金额",
+  "quoteFinanceColFileDiff": "与文件差额",
+  "quoteFinanceColFileDiffInfo": "本行金额减去客户文件里的金额(已折合本币)。0 表示和客户文件一致。",
+  "quoteFinanceColLastConfirmed": "上次确认折扣",
+  "quoteFinanceColSalesProposed": "销售提交折扣",
+  "quoteFinanceColFileModel": "文件型号",
+  "quoteFinanceColFileName": "文件品名",
+  "quoteFinanceColRemark": "备注",
+  "quoteFinanceNoListPrice": "未定价",
+  "quoteFinanceFinancePriceChip": "财务定价",
+  "quoteFinanceGiveawayChip": "赠品/0价",
+  "quoteFinanceFileMatch": "一致",
+  "quoteFinanceErrorDealPrice": "请填写大于 0 的数字; 0 价请在行菜单选「设为赠品/0价」",
+  "quoteFinanceErrorFinancePrice": "请填写不小于 0 的数字",
+  "quoteFinanceErrorDiscount": "折扣要大于 0、不超过 1, 最多 4 位小数",
+  "quoteFinanceErrorNeedPrice": "请填写成交单价",
+  "quoteFinanceMenuMasterMode": "按标价打折",
+  "quoteFinanceMenuGiveaway": "设为赠品/0价",
+  "quoteFinanceMenuRestore": "撤销本行修改",
+  "quoteFinanceBatchDiscount": "批量设折扣",
+  "quoteFinanceBatchDiscountCount": "批量设折扣({count})",
+  "@quoteFinanceBatchDiscountCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceBatchDiscountTitle": "{count, plural, other{给勾选的 {count} 行设折扣}}",
+  "@quoteFinanceBatchDiscountTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceBatchDiscountHint": "例如 0.95 表示按标价的 95%",
+  "quoteFinanceBatchApply": "应用",
+  "quoteFinanceBatchApplied": "{count, plural, other{已给 {count} 行设好折扣}}",
+  "@quoteFinanceBatchApplied": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceBatchSkipped": "{count, plural, other{{count} 行没有标价或由财务定价, 已跳过}}",
+  "@quoteFinanceBatchSkipped": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceBatchNeedSelection": "请先勾选要改折扣的行",
+  "quoteFinanceCheckedEditHint": "{count, plural, other{本行已勾选: 改折扣会一起改勾选的 {count} 行}}",
+  "@quoteFinanceCheckedEditHint": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceActionSave": "保存修改",
+  "quoteFinanceActionSaving": "保存中…",
+  "quoteFinanceActionReturn": "退回销售",
+  "quoteFinanceActionConfirm": "确认报价",
+  "quoteFinanceActionReopen": "撤销确认再修改",
+  "quoteFinanceActionBack": "返回",
+  "quoteFinanceSaved": "修改已保存",
+  "quoteFinanceNothingToSave": "没有需要保存的修改",
+  "quoteFinanceFixErrors": "{count, plural, other{有 {count} 行填写不对, 请先改好}}",
+  "@quoteFinanceFixErrors": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceClaimNotReady": "还没有取得这张报价的核价占用, 请点「重新认领并刷新」",
+  "quoteFinanceSaveFirst": "请先保存修改, 再确认报价",
+  "quoteFinanceConfirmBlocked": "{count, plural, other{还有 {count} 行没有价格, 不能确认。请填写成交单价或设为赠品/0价。}}",
+  "@quoteFinanceConfirmBlocked": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceConfirmedDone": "报价已确认, 已通知销售转订货单",
+  "quoteFinanceReturnedDone": "已退回销售, 销售会收到通知",
+  "quoteFinanceReopenedDone": "已撤销确认, 可以继续修改价格",
+  "quoteFinanceLoadDetailFailed": "报价详情加载失败, 请检查网络或权限后重试",
+  "quoteFinanceActionFailed": "操作没有成功, 请稍后再试",
+  "quoteFinanceUnsavedTitle": "有修改还没保存",
+  "quoteFinanceUnsavedBody": "离开后这些修改会丢失。确定离开?",
+  "quoteFinanceLeave": "离开",
+  "quoteFinanceStay": "继续修改",
+  "quoteFinanceBusy": "正在处理, 请稍候",
+  "quoteFinanceSaving": "正在保存修改",
+  "quoteFinanceSessionChanged": "登录身份已变化, 请重新打开报价",
+  "quoteFinanceConfirmTitle": "确认报价 {billNo}",
+  "@quoteFinanceConfirmTitle": {
+    "placeholders": {
+      "billNo": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceConfirmBody": "确认后价格和折扣就定下来了, 销售可以转成订货单。以后要改, 可以在转单前「撤销确认再修改」。",
+  "quoteFinanceConfirmResponsibility": "报价核价确认",
+  "quoteFinanceConfirmResponsibilityDesc": "确认后系统会记录你是本次核价人。",
+  "quoteFinanceConfirmTotal": "报价金额 {amount}",
+  "@quoteFinanceConfirmTotal": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceReturnTitle": "退回销售 {billNo}",
+  "@quoteFinanceReturnTitle": {
+    "placeholders": {
+      "billNo": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceReturnBody": "退回后报价回到销售手上, 销售改好再提交。请写明原因, 销售会看到。",
+  "quoteFinanceReturnChipQty": "客户要改数量",
+  "quoteFinanceReturnChipGoods": "缺货品需补充",
+  "quoteFinanceReturnChipPrice": "价格需销售与客户确认",
+  "quoteFinanceReturnReasonLabel": "退回原因(必填)",
+  "quoteFinanceReturnReasonRequired": "请填写退回原因",
+  "quoteFinanceReturnSubmit": "确认退回",
+  "quoteFinanceReopenTitle": "撤销确认再修改",
+  "quoteFinanceReopenBody": "报价会回到「待核价」, 你可以继续修改价格, 改好后要重新确认。这期间销售不能转订货单。确定撤销?",
+  "quoteFinanceCancel": "取消",
+  "quoteFinanceRevisionTitle": "核价记录",
+  "quoteFinanceTotalQty": "合计数量",
+  "quoteFinanceTotalAmount": "合计金额",
+  "quoteFinanceTotalPreview": "合计金额(未保存预览)",
+  "quoteFinanceOrderSourceQuote": "来源报价 {billNo}",
+  "@quoteFinanceOrderSourceQuote": {
+    "placeholders": {
+      "billNo": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceOrderQuoteConfirmedBy": "报价已核价 · {name}",
+  "@quoteFinanceOrderQuoteConfirmedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceOrderAllMatch": "报价已核价 · 一致",
+  "quoteFinanceOrderMismatch": "{count, plural, other{有 {count} 行和报价不同}}",
+  "@quoteFinanceOrderMismatch": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quoteFinanceOrderChipHint": "这张订单由财务核过价的报价转来, 价格和折扣与报价一致时, 本次只需核对信用和条款。",
+  "quoteFinanceOrderColQuotePrice": "报价单价",
+  "quoteFinanceOrderColQuoteDiscount": "报价折扣",
+  "quoteFinanceOrderColMatch": "与报价",
+  "quoteFinanceOrderMatchYes": "一致",
+  "quoteFinanceOrderMatchNo": "不同",
+  "quoteFinanceOrderColFilePrice": "文件单价({currency})",
+  "@quoteFinanceOrderColFilePrice": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceOrderFileCurrencyUnknown": "原币",
+  "quoteFinanceOrderColFileModel": "文件型号",
+  "quoteFinanceOrderColFileName": "文件品名",
+  "quoteFinanceAboveListHint": "高于标价, 按财务定价保存(折扣为 1)",
+  "quoteFinanceMenuRefreshMaster": "按最新标价刷新",
+  "quoteFinanceRefreshMasterChip": "按货品资料最新标价 {price} 刷新, 折扣不变; 保存后可再改折扣",
+  "@quoteFinanceRefreshMasterChip": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceListPriceLatest": "{price}, 资料已改为 {latest}",
+  "@quoteFinanceListPriceLatest": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      },
+      "latest": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceStatusClaimedBy": "{name} 正在核价",
+  "@quoteFinanceStatusClaimedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "quoteFinanceStatusClaimedByMe": "你正在核价",
+  "quoteFinanceFileRateMissing": "文件币种 {currency}, 还没有财务参考汇率, 折合本币先空着",
+  "@quoteFinanceFileRateMissing": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "salesQuoteStatusImportTitle": "选择已核价的报价单",
+  "salesQuoteStatusImportEmpty": "暂无已核价、可以转订货单的报价",
+  "salesQuoteStatusImportLoadFailed": "报价加载失败, 请稍后重试"
 }

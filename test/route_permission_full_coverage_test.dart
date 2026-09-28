@@ -103,6 +103,10 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
     Perm.productionExecutionView,
     Perm.productionExecutionStart,
   ],
+  // 2026-09-27 报价财务核价(ADR-134)：列表与详情只挂 any 守卫
+  // sales_quote_finance:view(无组合门槛)，改价/退回/确认按服务端 allowedActions。
+  '/finance/quote-review': <String>[],
+  '/finance/quote-review/:id': <String>[],
 };
 
 String _samplePath(String pattern) => pattern

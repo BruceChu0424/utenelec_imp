@@ -6,6 +6,11 @@
 //  - 产品明细保持全局统一表格（MasterDataTableView 嵌入模式）；
 //  - 底栏双决策：驳回（必填原因，通知归属销售修正）/ 确认通过（选填备注，放行计划部）。
 // 本页不出现销售端运营操作（改量/排产进度/取消订单/红冲），职责分离。
+//
+// 2026-09-27 报价核价(ADR-134)：报价转入的订单在状态条下显示「来源报价 · 报价已核价 · 一致」
+// 条带；明细多出报价单价/报价折扣/与报价三列(单价与折扣都由财务在报价里核定，
+// 一致时本次只需核对信用与条款)，带客户文件信息的行再显示文件单价/文件型号/文件品名。
+// 新增文字走 arb；只在有来源报价或文件信息时才取本地化实例(老订单照旧)。
 import '../../../shared/attachments/business_attachment_section.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
@@ -16,6 +21,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/data_display/uten_revision_table.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../widgets/sales_order_revision_table.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
@@ -28,6 +34,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -496,6 +503,10 @@ class _FinanceSalesOrderReviewPageState
                               const SizedBox(height: UtenSpacing.s12),
                             ],
                             _statusStrip(theme, _review!),
+                            if (_review!.sourceQuote != null) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              _sourceQuoteStrip(theme, _review!),
+                            ],
                             const SizedBox(height: UtenSpacing.s12),
                             _clientFinanceCard(theme, _review!),
                             const SizedBox(height: UtenSpacing.s12),
@@ -703,6 +714,76 @@ class _FinanceSalesOrderReviewPageState
     );
   }
 
+  /// 来源报价条带(ADR-134)：来源报价单号 + 核价人 + 与报价是否一致。
+  Widget _sourceQuoteStrip(ThemeData theme, SalesOrderFinanceReview r) {
+    final l10n = AppLocalizations.of(context);
+    final quote = r.sourceQuote!;
+    final mismatched = r.items.where((it) => it.matchesQuote == false).length;
+    final allMatch = r.matchesQuote ?? (mismatched == 0);
+    final confirmedBy = quote.financeConfirmedByName;
+    final confirmedLabel = confirmedBy == null
+        ? l10n.salesQuoteStatusSourceQuoteConfirmed
+        : quote.financeConfirmedAt == null
+        ? l10n.quoteFinanceOrderQuoteConfirmedBy(confirmedBy)
+        : '${l10n.quoteFinanceOrderQuoteConfirmedBy(confirmedBy)}'
+              ' · ${utenFmtIsoTime(quote.financeConfirmedAt)}';
+    return Container(
+      key: const Key('finance-review-source-quote'),
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.06),
+        borderRadius: UtenRadius.lgAll,
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                l10n.quoteFinanceOrderSourceQuote(quote.billNo ?? '—'),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              UtenStatusBadge(
+                label: confirmedLabel,
+                type: UtenStatusBadgeType.success,
+                icon: Icons.verified_rounded,
+              ),
+              UtenStatusBadge(
+                key: const Key('finance-review-quote-match'),
+                label: allMatch
+                    ? l10n.quoteFinanceOrderAllMatch
+                    : l10n.quoteFinanceOrderMismatch(mismatched),
+                type: allMatch
+                    ? UtenStatusBadgeType.success
+                    : UtenStatusBadgeType.warning,
+                icon: allMatch
+                    ? Icons.check_circle_outline_rounded
+                    : Icons.warning_amber_rounded,
+              ),
+            ],
+          ),
+          if (allMatch) ...[
+            const SizedBox(height: UtenSpacing.s4),
+            Text(
+              l10n.quoteFinanceOrderChipHint,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   /// 客户财务快照卡：应收余额 / 信用额度 / 铺底额 + 超信用告警。
   Widget _clientFinanceCard(ThemeData theme, SalesOrderFinanceReview r) {
     final over = r.clientOverCredit;
@@ -896,6 +977,15 @@ class _FinanceSalesOrderReviewPageState
         summaryBar: _itemsSummary(r),
       );
     }
+    final hasQuote = r.sourceQuote != null;
+    final hasFile = r.items.any(
+      (it) =>
+          it.clientPrice != null ||
+          it.clientModel != null ||
+          it.clientGoodsName != null,
+    );
+    // 老订单(无来源报价、无客户文件信息)不取本地化实例，列与文案保持原样。
+    final l10n = hasQuote || hasFile ? AppLocalizations.of(context) : null;
     return MasterDataTableView<SalesOrderFinanceReviewLine>(
       primary: true,
       bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
@@ -960,6 +1050,58 @@ class _FinanceSalesOrderReviewPageState
           type: 'money',
           value: (it) => _trimNum(it.amountOriginal),
         ),
+        if (l10n != null && hasQuote) ...[
+          MasterColumnDef(
+            key: 'quotePrice',
+            label: l10n.quoteFinanceOrderColQuotePrice,
+            width: 110,
+            type: 'money',
+            value: (it) => _trimNum(it.quotePrice),
+          ),
+          MasterColumnDef(
+            key: 'quoteDiscount',
+            label: l10n.quoteFinanceOrderColQuoteDiscount,
+            width: 96,
+            type: 'number',
+            value: (it) => _trimNum(it.quoteDiscount),
+          ),
+          MasterColumnDef(
+            key: 'matchesQuote',
+            label: l10n.quoteFinanceOrderColMatch,
+            width: 96,
+            value: (it) => switch (it.matchesQuote) {
+              true => l10n.quoteFinanceOrderMatchYes,
+              false => l10n.quoteFinanceOrderMatchNo,
+              null => null,
+            },
+            cellColor: (context, it) => it.matchesQuote == false
+                ? Theme.of(context).colorScheme.errorContainer
+                : null,
+          ),
+        ],
+        if (l10n != null && hasFile) ...[
+          MasterColumnDef(
+            key: 'clientPrice',
+            label: l10n.quoteFinanceOrderColFilePrice(
+              r.clientFileCurrency ?? l10n.quoteFinanceOrderFileCurrencyUnknown,
+            ),
+            width: 120,
+            type: 'money',
+            value: (it) => _trimNum(it.clientPrice),
+          ),
+          MasterColumnDef(
+            key: 'clientModel',
+            label: l10n.quoteFinanceOrderColFileModel,
+            width: 130,
+            value: (it) => it.clientModel,
+          ),
+          MasterColumnDef(
+            key: 'clientGoodsName',
+            label: l10n.quoteFinanceOrderColFileName,
+            width: 200,
+            value: (it) => it.clientGoodsName,
+          ),
+        ],
         MasterColumnDef(
           key: 'remark',
           label: '备注',

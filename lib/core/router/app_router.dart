@@ -60,6 +60,8 @@ import '../../features/finance/pages/finance_sales_order_confirmation_page.dart'
 import '../../features/finance/pages/finance_sales_order_review_page.dart';
 import '../../features/finance/pages/finance_sales_shipment_audit_page.dart';
 import '../../features/finance/pages/finance_sales_shipment_audit_review_page.dart';
+import '../../features/finance/pages/finance_quote_review_list_page.dart';
+import '../../features/finance/pages/finance_quote_review_page.dart';
 import '../../features/finance/pages/finance_reconciliation_page.dart';
 import '../../features/finance/pages/finance_report_table_page.dart';
 import '../../features/finance/pages/finance_ar_ap_overview_page.dart';
@@ -1518,6 +1520,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, state) => FinanceSalesShipmentAuditReviewPage(
               id: state.pathParameters['id']!,
             ),
+          ),
+          // 销售报价财务核价(ADR-134)：队列(?state= 深链分段) + 核价详情。
+          DraftAwareGoRoute(
+            path: RouteName.financeQuoteReview,
+            name: 'finance-quote-review',
+            builder: (_, state) => FinanceQuoteReviewListPage(
+              initialState: state.uri.queryParameters['state'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.financeQuoteReviewDetail,
+            name: 'finance-quote-review-detail',
+            builder: (_, state) =>
+                FinanceQuoteReviewPage(id: state.pathParameters['id']!),
           ),
           DraftAwareGoRoute(
             path: RouteName.financeArrivalExceptions,

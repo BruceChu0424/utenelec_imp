@@ -4215,4 +4215,849 @@ class AppLocalizationsKo extends AppLocalizations {
   String materialPreparationMissingAssignment(String goods) {
     return '발주 전에 “$goods”의 생산 작업장과 담당자를 지정하세요';
   }
+
+  @override
+  String get salesQuoteStatusDraft => '초안';
+
+  @override
+  String get salesQuoteStatusPendingFinance => '재무 가격 검토 대기';
+
+  @override
+  String get salesQuoteStatusReturned => '재무 반려';
+
+  @override
+  String get salesQuoteStatusConfirmed => '가격 확정';
+
+  @override
+  String get salesQuoteStatusReversed => '무효';
+
+  @override
+  String get salesQuoteStatusConverted => '주문으로 전환됨';
+
+  @override
+  String get salesQuoteStatusToConvert => '가격 확정, 주문 전환 대기';
+
+  @override
+  String salesQuoteStatusReadOnly(String status) {
+    return '$status · 읽기 전용';
+  }
+
+  @override
+  String get salesQuoteStatusHistory => '이력';
+
+  @override
+  String get salesQuoteStatusBannerDraft =>
+      '초안: 작성 후 \"재무 가격 검토 요청\"을 누르세요. 재무가 가격과 할인을 확정해야 주문으로 전환할 수 있습니다.';
+
+  @override
+  String get salesQuoteStatusBannerPending =>
+      '재무 가격 검토를 요청했으며 재무의 가격 확정을 기다리는 중입니다. 수정하려면 먼저 \"회수\"하세요.';
+
+  @override
+  String salesQuoteStatusBannerReturned(String reason) {
+    return '재무 반려: $reason. 수정한 뒤 다시 가격 검토를 요청하세요.';
+  }
+
+  @override
+  String salesQuoteStatusBannerConfirmed(String name, String time) {
+    return '재무 가격 확정($name · $time). 이제 주문으로 전환할 수 있습니다.';
+  }
+
+  @override
+  String salesQuoteStatusBannerConverted(String orderNo) {
+    return '주문 $orderNo(으)로 전환되어 견적을 더 이상 수정할 수 없습니다.';
+  }
+
+  @override
+  String get salesQuoteStatusBannerReversed => '이 견적은 무효 처리되어 조회만 가능합니다.';
+
+  @override
+  String get salesQuoteStatusFinanceFallback => '재무';
+
+  @override
+  String get salesQuoteStatusFieldReturnReason => '반려 사유';
+
+  @override
+  String get salesQuoteStatusFieldSubmittedAt => '가격 검토 요청 시각';
+
+  @override
+  String get salesQuoteStatusFieldConfirmedBy => '가격 확정자';
+
+  @override
+  String get salesQuoteStatusFieldConvertedOrder => '전환된 주문';
+
+  @override
+  String get salesQuoteStatusFieldFinanceRemark => '재무 메모';
+
+  @override
+  String get salesQuoteStatusActionSubmit => '재무 가격 검토 요청';
+
+  @override
+  String get salesQuoteStatusActionWithdraw => '회수';
+
+  @override
+  String get salesQuoteStatusActionReopen => '다시 수정';
+
+  @override
+  String get salesQuoteStatusActionConvert => '주문으로 전환';
+
+  @override
+  String get salesQuoteStatusActionReverse => '무효 처리';
+
+  @override
+  String get salesQuoteStatusActionEdit => '편집';
+
+  @override
+  String get salesQuoteStatusActionDelete => '삭제';
+
+  @override
+  String get salesQuoteStatusActionFinanceReview => '가격 검토 열기';
+
+  @override
+  String get salesQuoteStatusActionViewOrder => '주문 보기';
+
+  @override
+  String get salesQuoteStatusActionBack => '목록으로';
+
+  @override
+  String get salesQuoteStatusSubmitConfirmBody =>
+      '재무가 품목별로 가격과 할인을 정합니다. 그동안 견적을 수정할 수 없습니다. 요청할까요?';
+
+  @override
+  String get salesQuoteStatusWithdrawConfirmBody =>
+      '회수하면 초안으로 돌아가 계속 수정할 수 있으며, 수정 후 다시 가격 검토를 요청해야 합니다. 회수할까요?';
+
+  @override
+  String get salesQuoteStatusReopenConfirmBody =>
+      '재무가 이미 가격을 확정했습니다. 다시 수정하면 초안으로 돌아가며, 다시 가격 검토를 받아야 주문으로 전환할 수 있습니다. 계속할까요?';
+
+  @override
+  String get salesQuoteStatusReverseConfirmBody =>
+      '무효 처리하면 주문으로 전환할 수 없고 되돌릴 수도 없습니다. 무효 처리할까요?';
+
+  @override
+  String get salesQuoteStatusDeleteConfirmBody =>
+      '이 견적 초안을 삭제할까요? 삭제 후에는 복구할 수 없습니다.';
+
+  @override
+  String get salesQuoteStatusConvertConfirmBody =>
+      '재무가 확정한 단가와 할인으로 주문 초안을 만듭니다. 단가와 할인은 바꿀 수 없고 수량과 납기 정보는 주문에서 보완할 수 있습니다. 전환할까요?';
+
+  @override
+  String get salesQuoteStatusConfirm => '확인';
+
+  @override
+  String get salesQuoteStatusCancel => '취소';
+
+  @override
+  String get salesQuoteStatusSubmitted => '재무 가격 검토를 요청했습니다';
+
+  @override
+  String get salesQuoteStatusWithdrawn => '회수했습니다. 계속 수정할 수 있습니다';
+
+  @override
+  String get salesQuoteStatusReopened => '초안으로 돌아왔습니다. 수정 후 다시 가격 검토를 요청하세요';
+
+  @override
+  String get salesQuoteStatusReversedDone => '견적을 무효 처리했습니다';
+
+  @override
+  String get salesQuoteStatusDeleted => '삭제했습니다';
+
+  @override
+  String salesQuoteStatusConvertDone(String billNo) {
+    return '주문 초안 $billNo을(를) 만들었습니다';
+  }
+
+  @override
+  String get salesQuoteStatusActionFailed => '처리하지 못했습니다. 잠시 후 다시 시도하세요.';
+
+  @override
+  String get salesQuoteStatusBusy => '처리 중입니다. 잠시만 기다려 주세요';
+
+  @override
+  String get salesQuoteStatusTimelineTitle => '가격 검토 기록';
+
+  @override
+  String get salesQuoteStatusTimelineEmpty => '아직 가격 검토 기록이 없습니다';
+
+  @override
+  String get salesQuoteStatusRevisionSubmit => '가격 검토 요청';
+
+  @override
+  String get salesQuoteStatusRevisionWithdraw => '영업 회수';
+
+  @override
+  String get salesQuoteStatusRevisionFinanceEdit => '재무 가격 수정';
+
+  @override
+  String get salesQuoteStatusRevisionReturn => '재무 반려';
+
+  @override
+  String get salesQuoteStatusRevisionConfirm => '재무 견적 확정';
+
+  @override
+  String get salesQuoteStatusRevisionReopen => '영업 다시 수정';
+
+  @override
+  String get salesQuoteStatusRevisionFinanceReopen => '재무 확정 취소';
+
+  @override
+  String get salesQuoteStatusRevisionOther => '기타 기록';
+
+  @override
+  String get salesQuoteStatusRevisionOperator => '처리자';
+
+  @override
+  String salesQuoteStatusRevisionVersion(int revision) {
+    return '$revision번째 버전';
+  }
+
+  @override
+  String get salesQuoteStatusSourceQuoteConfirmed => '견적 가격 확정';
+
+  @override
+  String get salesQuoteStatusSourceQuote => '원본 견적';
+
+  @override
+  String get quoteFinanceHubTitle => '견적 가격 검토';
+
+  @override
+  String get quoteFinanceHubSubtitle =>
+      '영업 견적의 가격과 할인을 재무가 정하며, 확정 후 영업이 주문으로 전환합니다';
+
+  @override
+  String get quoteFinanceListTitle => '견적 가격 검토';
+
+  @override
+  String get quoteFinanceTabPending => '검토 대기';
+
+  @override
+  String get quoteFinanceTabConfirmed => '확정됨';
+
+  @override
+  String get quoteFinanceTabReturned => '반려됨';
+
+  @override
+  String get quoteFinanceSearchHint => '번호 / 고객 / 영업 담당 검색';
+
+  @override
+  String get quoteFinanceRowHint => '탭하여 선택 · 두 번 탭하여 검토';
+
+  @override
+  String get quoteFinanceColBillNo => '견적 번호';
+
+  @override
+  String get quoteFinanceColClient => '고객';
+
+  @override
+  String get quoteFinanceColSeller => '영업 담당';
+
+  @override
+  String get quoteFinanceColSubmittedAt => '요청 시각';
+
+  @override
+  String get quoteFinanceColLines => '품목 수';
+
+  @override
+  String get quoteFinanceColAmount => '견적 금액';
+
+  @override
+  String get quoteFinanceColStatus => '상태 / 설명';
+
+  @override
+  String get quoteFinanceStatusPending => '검토 대기';
+
+  @override
+  String get quoteFinanceStatusResubmitted => '영업이 수정 후 재요청';
+
+  @override
+  String quoteFinanceStatusNeedPrice(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '표준가 없는 품목 $count개',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String quoteFinanceStatusConfirmed(String name) {
+    return '확정 · $name';
+  }
+
+  @override
+  String quoteFinanceStatusConverted(String orderNo) {
+    return '주문 $orderNo(으)로 전환됨';
+  }
+
+  @override
+  String quoteFinanceStatusReturned(String reason) {
+    return '반려: $reason';
+  }
+
+  @override
+  String get quoteFinanceEmptyPending => '가격 검토를 기다리는 견적이 없습니다';
+
+  @override
+  String get quoteFinanceEmptyPendingHint =>
+      '영업이 가격 검토를 요청하면 여기에 표시됩니다. 가격을 확정해야 영업이 주문으로 전환할 수 있습니다.';
+
+  @override
+  String get quoteFinanceEmptyConfirmed => '아직 확정된 견적이 없습니다';
+
+  @override
+  String get quoteFinanceEmptyReturned => '영업에 반려한 견적이 없습니다';
+
+  @override
+  String get quoteFinanceEmptyReturnedHint =>
+      '반려된 견적은 영업이 수정하면 다시 \"검토 대기\"로 돌아옵니다.';
+
+  @override
+  String quoteFinanceEmptySearch(String keyword) {
+    return '\"$keyword\"와(과) 일치하는 견적이 없습니다';
+  }
+
+  @override
+  String get quoteFinanceLoadFailed => '견적을 불러오지 못했습니다. 네트워크를 확인한 후 다시 시도하세요.';
+
+  @override
+  String get quoteFinanceRetry => '다시 시도';
+
+  @override
+  String get quoteFinanceRefresh => '새로 고침';
+
+  @override
+  String get quoteFinanceOpen => '검토';
+
+  @override
+  String get quoteFinancePrevPage => '이전 페이지';
+
+  @override
+  String get quoteFinanceNextPage => '다음 페이지';
+
+  @override
+  String get quoteFinanceUnnamed => '미지정';
+
+  @override
+  String get quoteFinanceReviewTitle => '견적 가격 검토';
+
+  @override
+  String get quoteFinanceStripPending => '재무 가격 검토 대기';
+
+  @override
+  String quoteFinanceStripConfirmed(String name, String time) {
+    return '확정 · $name · $time';
+  }
+
+  @override
+  String quoteFinanceStripReturned(String reason) {
+    return '영업에 반려 · $reason';
+  }
+
+  @override
+  String get quoteFinanceStripDraft => '영업 수정 중';
+
+  @override
+  String get quoteFinanceStripReversed => '무효';
+
+  @override
+  String quoteFinanceStripConverted(String orderNo) {
+    return '주문 $orderNo(으)로 전환됨';
+  }
+
+  @override
+  String quoteFinanceRevisionBadge(int revision) {
+    return '$revision번째 버전';
+  }
+
+  @override
+  String get quoteFinanceReadOnlyNotice => '지금은 이 견적에서 처리할 일이 없어 조회만 가능합니다.';
+
+  @override
+  String get quoteFinanceResubmitNotice =>
+      '영업이 수정 후 다시 요청했습니다. 노란색 줄은 지난번 확정한 할인과 다르니 확인하세요.';
+
+  @override
+  String quoteFinanceNeedPriceNotice(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '표준가가 없는 품목이 $count개 있습니다. 확정 전에 거래 단가를 입력하거나 행 메뉴에서 \"무상/0원으로 설정\"을 선택하세요.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceGoMaintainPrice => '품목 정보에서 표준가 관리';
+
+  @override
+  String get quoteFinanceInfoTitle => '견적 정보';
+
+  @override
+  String get quoteFinanceFieldClient => '고객';
+
+  @override
+  String get quoteFinanceFieldSeller => '영업 담당';
+
+  @override
+  String get quoteFinanceFieldMaker => '작성자';
+
+  @override
+  String get quoteFinanceFieldBillDate => '일자';
+
+  @override
+  String get quoteFinanceFieldSubmittedAt => '요청 시각';
+
+  @override
+  String get quoteFinanceFieldDeliverDate => '납기일';
+
+  @override
+  String get quoteFinanceFieldContractNo => '계약 번호';
+
+  @override
+  String get quoteFinanceFieldCurrency => '통화';
+
+  @override
+  String get quoteFinanceFieldFileCurrency => '고객 파일 통화';
+
+  @override
+  String quoteFinanceFileRateHint(String currency, String rate) {
+    return '파일 통화 $currency, 재무 참고 환율 $rate로 기준 통화 환산';
+  }
+
+  @override
+  String get quoteFinanceFieldRemark => '영업 메모';
+
+  @override
+  String get quoteFinanceFieldValidUntil => '유효 기한';
+
+  @override
+  String get quoteFinanceFieldSettlement => '결제 방식';
+
+  @override
+  String get quoteFinanceFieldFinanceRemark => '재무 메모';
+
+  @override
+  String get quoteFinanceFinanceRemarkHint => '영업에 전할 설명(선택)';
+
+  @override
+  String get quoteFinanceSettlementNone => '지정 안 함';
+
+  @override
+  String get quoteFinanceAttachmentsTitle => '고객 파일 및 첨부';
+
+  @override
+  String get quoteFinanceLinesTitle => '품목 내역';
+
+  @override
+  String get quoteFinanceColGoods => '품목명';
+
+  @override
+  String get quoteFinanceColCode => '코드';
+
+  @override
+  String get quoteFinanceColColor => '색상';
+
+  @override
+  String get quoteFinanceColQty => '수량';
+
+  @override
+  String get quoteFinanceColUnit => '단위';
+
+  @override
+  String get quoteFinanceColListPrice => '표준가';
+
+  @override
+  String get quoteFinanceColListPriceInfo =>
+      '품목 정보의 판매가입니다. 표준가가 없거나 거래 단가가 표준가보다 높으면 재무가 거래 단가를 직접 정하고, 낮으면 항상 할인으로 계산합니다.';
+
+  @override
+  String get quoteFinanceColFilePrice => '파일 단가(원통화)';
+
+  @override
+  String get quoteFinanceColFilePriceLocal => '기준 통화 환산';
+
+  @override
+  String get quoteFinanceColDealPrice => '거래 단가';
+
+  @override
+  String get quoteFinanceColDealPriceInfo =>
+      '고객이 개당 최종 지불하는 금액입니다. 거래 단가를 바꾸면 할인이, 할인을 바꾸면 거래 단가가 자동 계산됩니다.';
+
+  @override
+  String get quoteFinanceColDiscount => '할인율';
+
+  @override
+  String get quoteFinanceColDiscountInfo =>
+      '할인율 = 거래 단가 ÷ 표준가, 소수 4자리, 1은 표준가 그대로입니다.';
+
+  @override
+  String get quoteFinanceColLineAmount => '금액';
+
+  @override
+  String get quoteFinanceColFileDiff => '파일과의 차이';
+
+  @override
+  String get quoteFinanceColFileDiffInfo =>
+      '이 줄 금액에서 고객 파일 금액(기준 통화 환산)을 뺀 값입니다. 0이면 파일과 같습니다.';
+
+  @override
+  String get quoteFinanceColLastConfirmed => '지난 확정 할인';
+
+  @override
+  String get quoteFinanceColSalesProposed => '영업 제안 할인';
+
+  @override
+  String get quoteFinanceColFileModel => '파일 모델';
+
+  @override
+  String get quoteFinanceColFileName => '파일 품명';
+
+  @override
+  String get quoteFinanceColRemark => '비고';
+
+  @override
+  String get quoteFinanceNoListPrice => '가격 없음';
+
+  @override
+  String get quoteFinanceFinancePriceChip => '재무 가격';
+
+  @override
+  String get quoteFinanceGiveawayChip => '무상/0원';
+
+  @override
+  String get quoteFinanceFileMatch => '일치';
+
+  @override
+  String get quoteFinanceErrorDealPrice =>
+      '0보다 큰 숫자를 입력하세요. 무상/0원은 행 메뉴의 \"무상/0원으로 설정\"을 사용하세요.';
+
+  @override
+  String get quoteFinanceErrorFinancePrice => '0 이상의 숫자를 입력하세요';
+
+  @override
+  String get quoteFinanceErrorDiscount => '할인율은 0보다 크고 1 이하, 소수 4자리까지입니다';
+
+  @override
+  String get quoteFinanceErrorNeedPrice => '거래 단가를 입력하세요';
+
+  @override
+  String get quoteFinanceMenuMasterMode => '표준가 기준 할인';
+
+  @override
+  String get quoteFinanceMenuGiveaway => '무상/0원으로 설정';
+
+  @override
+  String get quoteFinanceMenuRestore => '이 줄 변경 취소';
+
+  @override
+  String get quoteFinanceBatchDiscount => '선택 줄 할인 설정';
+
+  @override
+  String quoteFinanceBatchDiscountCount(int count) {
+    return '할인 설정($count)';
+  }
+
+  @override
+  String quoteFinanceBatchDiscountTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '선택한 $count개 줄의 할인 설정',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceBatchDiscountHint => '예: 0.95는 표준가의 95%';
+
+  @override
+  String get quoteFinanceBatchApply => '적용';
+
+  @override
+  String quoteFinanceBatchApplied(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count개 줄의 할인을 설정했습니다',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String quoteFinanceBatchSkipped(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '표준가가 없거나 재무 가격인 $count개 줄은 건너뛰었습니다',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceBatchNeedSelection => '먼저 할인을 바꿀 줄을 선택하세요';
+
+  @override
+  String quoteFinanceCheckedEditHint(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '선택된 줄입니다: 할인을 바꾸면 선택한 $count개 줄이 함께 바뀝니다',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceActionSave => '변경 저장';
+
+  @override
+  String get quoteFinanceActionSaving => '저장 중…';
+
+  @override
+  String get quoteFinanceActionReturn => '영업에 반려';
+
+  @override
+  String get quoteFinanceActionConfirm => '견적 확정';
+
+  @override
+  String get quoteFinanceActionReopen => '확정 취소 후 수정';
+
+  @override
+  String get quoteFinanceActionBack => '돌아가기';
+
+  @override
+  String get quoteFinanceSaved => '변경을 저장했습니다';
+
+  @override
+  String get quoteFinanceNothingToSave => '저장할 변경이 없습니다';
+
+  @override
+  String quoteFinanceFixErrors(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '잘못 입력된 줄이 $count개 있습니다. 먼저 수정하세요',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceClaimNotReady =>
+      '아직 이 견적의 검토 점유를 얻지 못했습니다. \"다시 점유 후 새로 고침\"을 누르세요.';
+
+  @override
+  String get quoteFinanceSaveFirst => '확정하기 전에 변경을 저장하세요';
+
+  @override
+  String quoteFinanceConfirmBlocked(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '가격이 없는 줄이 $count개 있어 확정할 수 없습니다. 거래 단가를 입력하거나 무상/0원으로 설정하세요.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceConfirmedDone => '견적을 확정했으며 영업에 주문 전환을 알렸습니다';
+
+  @override
+  String get quoteFinanceReturnedDone => '영업에 반려했으며 알림이 전송됩니다';
+
+  @override
+  String get quoteFinanceReopenedDone => '확정을 취소했습니다. 가격을 다시 수정할 수 있습니다';
+
+  @override
+  String get quoteFinanceLoadDetailFailed =>
+      '견적 상세를 불러오지 못했습니다. 네트워크나 권한을 확인한 후 다시 시도하세요.';
+
+  @override
+  String get quoteFinanceActionFailed => '처리하지 못했습니다. 잠시 후 다시 시도하세요.';
+
+  @override
+  String get quoteFinanceUnsavedTitle => '저장하지 않은 변경이 있습니다';
+
+  @override
+  String get quoteFinanceUnsavedBody => '나가면 변경 내용이 사라집니다. 나갈까요?';
+
+  @override
+  String get quoteFinanceLeave => '나가기';
+
+  @override
+  String get quoteFinanceStay => '계속 수정';
+
+  @override
+  String get quoteFinanceBusy => '처리 중입니다. 잠시만 기다려 주세요';
+
+  @override
+  String get quoteFinanceSaving => '변경을 저장하는 중';
+
+  @override
+  String get quoteFinanceSessionChanged => '로그인 정보가 바뀌었습니다. 견적을 다시 여세요.';
+
+  @override
+  String quoteFinanceConfirmTitle(String billNo) {
+    return '견적 $billNo 확정';
+  }
+
+  @override
+  String get quoteFinanceConfirmBody =>
+      '확정하면 가격과 할인이 고정되고 영업이 주문으로 전환할 수 있습니다. 나중에 바꾸려면 전환 전에 \"확정 취소 후 수정\"을 사용하세요.';
+
+  @override
+  String get quoteFinanceConfirmResponsibility => '견적 가격 확정';
+
+  @override
+  String get quoteFinanceConfirmResponsibilityDesc => '확정하면 이번 가격 확정자로 기록됩니다.';
+
+  @override
+  String quoteFinanceConfirmTotal(String amount) {
+    return '견적 금액 $amount';
+  }
+
+  @override
+  String quoteFinanceReturnTitle(String billNo) {
+    return '$billNo 영업에 반려';
+  }
+
+  @override
+  String get quoteFinanceReturnBody =>
+      '반려하면 견적이 영업에게 돌아가 수정 후 다시 요청됩니다. 사유를 적어 주세요. 영업이 보게 됩니다.';
+
+  @override
+  String get quoteFinanceReturnChipQty => '고객이 수량 변경 요청';
+
+  @override
+  String get quoteFinanceReturnChipGoods => '누락 품목 보완 필요';
+
+  @override
+  String get quoteFinanceReturnChipPrice => '가격은 영업이 고객과 확인 필요';
+
+  @override
+  String get quoteFinanceReturnReasonLabel => '반려 사유(필수)';
+
+  @override
+  String get quoteFinanceReturnReasonRequired => '반려 사유를 입력하세요';
+
+  @override
+  String get quoteFinanceReturnSubmit => '반려';
+
+  @override
+  String get quoteFinanceReopenTitle => '확정 취소 후 수정';
+
+  @override
+  String get quoteFinanceReopenBody =>
+      '견적이 \"검토 대기\"로 돌아가 가격을 다시 수정할 수 있으며, 수정 후 다시 확정해야 합니다. 그동안 영업은 주문으로 전환할 수 없습니다. 취소할까요?';
+
+  @override
+  String get quoteFinanceCancel => '취소';
+
+  @override
+  String get quoteFinanceRevisionTitle => '가격 검토 기록';
+
+  @override
+  String get quoteFinanceTotalQty => '합계 수량';
+
+  @override
+  String get quoteFinanceTotalAmount => '합계 금액';
+
+  @override
+  String get quoteFinanceTotalPreview => '합계 금액(저장 전 미리보기)';
+
+  @override
+  String quoteFinanceOrderSourceQuote(String billNo) {
+    return '원본 견적 $billNo';
+  }
+
+  @override
+  String quoteFinanceOrderQuoteConfirmedBy(String name) {
+    return '견적 가격 확정 · $name';
+  }
+
+  @override
+  String get quoteFinanceOrderAllMatch => '견적 가격 확정 · 일치';
+
+  @override
+  String quoteFinanceOrderMismatch(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '견적과 다른 줄 $count개',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceOrderChipHint =>
+      '이 주문은 재무가 가격을 확정한 견적에서 전환되었습니다. 가격과 할인이 견적과 같으면 이번에는 신용과 조건만 확인하면 됩니다.';
+
+  @override
+  String get quoteFinanceOrderColQuotePrice => '견적 단가';
+
+  @override
+  String get quoteFinanceOrderColQuoteDiscount => '견적 할인';
+
+  @override
+  String get quoteFinanceOrderColMatch => '견적 대비';
+
+  @override
+  String get quoteFinanceOrderMatchYes => '일치';
+
+  @override
+  String get quoteFinanceOrderMatchNo => '다름';
+
+  @override
+  String quoteFinanceOrderColFilePrice(String currency) {
+    return '파일 단가($currency)';
+  }
+
+  @override
+  String get quoteFinanceOrderFileCurrencyUnknown => '원통화';
+
+  @override
+  String get quoteFinanceOrderColFileModel => '파일 모델';
+
+  @override
+  String get quoteFinanceOrderColFileName => '파일 품명';
+
+  @override
+  String get quoteFinanceAboveListHint => '표준가보다 높아 재무 지정가로 저장됩니다(할인 1)';
+
+  @override
+  String get quoteFinanceMenuRefreshMaster => '최신 표준가로 갱신';
+
+  @override
+  String quoteFinanceRefreshMasterChip(String price) {
+    return '최신 표준가 $price(으)로 갱신하고 할인은 유지합니다. 저장한 뒤 할인을 다시 바꿀 수 있습니다';
+  }
+
+  @override
+  String quoteFinanceListPriceLatest(String price, String latest) {
+    return '$price, 품목 정보는 $latest(으)로 변경됨';
+  }
+
+  @override
+  String quoteFinanceStatusClaimedBy(String name) {
+    return '$name 님이 검토 중';
+  }
+
+  @override
+  String get quoteFinanceStatusClaimedByMe => '내가 검토 중';
+
+  @override
+  String quoteFinanceFileRateMissing(String currency) {
+    return '파일 통화 $currency, 재무 참고 환율이 아직 없어 기준 통화 환산값은 비워 둡니다';
+  }
+
+  @override
+  String get salesQuoteStatusImportTitle => '재무가 가격을 확정한 견적 선택';
+
+  @override
+  String get salesQuoteStatusImportEmpty => '주문으로 전환할 수 있는 가격 확정 견적이 없습니다';
+
+  @override
+  String get salesQuoteStatusImportLoadFailed =>
+      '견적을 불러오지 못했습니다. 잠시 후 다시 시도하세요.';
 }

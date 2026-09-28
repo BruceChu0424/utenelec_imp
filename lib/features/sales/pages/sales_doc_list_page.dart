@@ -37,10 +37,12 @@ import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/drafts/form_draft_category_table.dart';
 import '../../../shared/mixins/draft_bulk_delete_mixin.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
@@ -57,6 +59,7 @@ import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
 import '../services/sales_draft_delete.dart';
 import '../widgets/sales_batch_ship_panel.dart';
+import '../widgets/sales_quote_status_chip.dart';
 
 /// 订货单大类的「草稿」段值（链路阶段之外的第 5 段）。
 const String _kDraftStage = 'draft';
@@ -77,7 +80,8 @@ class _SalesDocSeg {
 
   final int? status;
 
-  /// 出货/客户零星发货的真实阶段（[SalesShipmentStage]）；status 分段对它们没有意义。
+  /// 出货/客户零星发货的真实阶段([SalesShipmentStage])，或报价的分桶
+  ///([SalesQuoteStage]，ADR-134)；status 分段对它们没有意义。
   final String? shipmentStage;
   final bool history;
 
@@ -173,6 +177,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       widget.docType == SalesDocType.shipment ||
       widget.docType == SalesDocType.customerShipment;
 
+  /// 报价按财务核价分桶分段(ADR-134)：草稿与财务退回同是 status 0，按 status
+  /// 分段会把退回件混进草稿，所以走服务端 bucket 参数(出货走 stage 参数)。
+  bool get _quoteStaged => widget.docType == SalesDocType.quote;
+
+  /// 按服务端阶段/分桶分段的单据(出货类 stage + 报价 bucket)；两者的草稿键都是 'DRAFT'。
+  bool get _staged => _shipmentStaged || _quoteStaged;
+
   /// 币种筛选走 orders / shipments 端点的 currencyId 参数（客户零星发货共用
   /// shipments 端点）；其它单据端点（报价/其它出货/退货）暂无该参数。
   bool get _currencyFilterable =>
@@ -188,7 +199,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       !_isHistory &&
       (_isOrder
           ? _isDraftStage
-          : _shipmentStaged
+          : _staged
           ? _statusSeg?.shipmentStage == SalesShipmentStage.draft
           : _statusSeg?.status == kSalesStatusDraft);
 
@@ -197,7 +208,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       !_isHistory &&
       (_isOrder
           ? _isDraftStage
-          : _shipmentStaged
+          : _staged
           ? _statusSeg?.shipmentStage == SalesShipmentStage.draft
           : _statusSeg?.status == kSalesStatusDraft) &&
       _hasPermission(_cfg.deletePerm);
@@ -244,6 +255,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     if (isDraftStatusQuery(widget.initialStatus)) {
       if (_isOrder) {
         _stage = _kDraftStage;
+      } else if (_quoteStaged) {
+        _statusSeg = const _SalesDocSeg.shipment(SalesQuoteStage.draft);
       } else if (_shipmentStaged) {
         _statusSeg = const _SalesDocSeg.shipment(SalesShipmentStage.draft);
       } else {
@@ -339,7 +352,19 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         _ => UtenSegmentCountForm.browsing,
       };
 
-  /// 报价/退货的状态分段 → 分桶键。
+  /// 报价分桶的分段计数形态(ADR-100 三形态 / ADR-134)：草稿与财务退回要本人动手 → 红；
+  /// 已核价段的红数只数「已核价、还没转订货单」(徽章入口 salesQuoteAwaitingConversion，
+  /// 与任务中心报价大类红数同源)；待财务核价在财务手上 → 黄；作废是终态 → 括号。
+  static UtenSegmentCountForm _quoteStageCountForm(String stage) =>
+      switch (stage) {
+        SalesQuoteStage.draft ||
+        SalesQuoteStage.financeRejected ||
+        SalesQuoteStage.approved => UtenSegmentCountForm.actionable,
+        SalesQuoteStage.pendingFinance => UtenSegmentCountForm.inProgress,
+        _ => UtenSegmentCountForm.browsing,
+      };
+
+  /// 退货的状态分段 → 分桶键(报价自 ADR-134 起直接用分桶键分段)。
   static String _bucketOfStatus(int status) => switch (status) {
     kSalesStatusDraft => DocumentStatusBucket.draft,
     kSalesStatusApproved => DocumentStatusBucket.approved,
@@ -367,32 +392,46 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     context.push(SalesRoutePath.list(SalesDocType.shipment.pathSegment));
   }
 
-  /// 从报价引入（SOP §三1）：弹窗列已审报价 → 选择转入 → 生成订货草稿并打开编辑页。
+  /// 从报价引入(SOP §三1)：弹窗列「已核价、还没转订货单」的报价 → 选择转入 → 生成订货草稿
+  /// 并打开编辑页。筛选在服务端(bucket=AWAITING_CONVERSION，与「报价已核价待转订货」徽章同一
+  /// 口径)，已转单的报价不占分页；再按服务端 allowedActions 只留本人能转的(ADR-134)。
   Future<void> _importFromQuote() async {
     final names = ref.read(salesMasterNameServiceProvider);
     await names.ensureLoaded();
     if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
     final quote = await showDialog<SalesDocListItem>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('选择已审核报价单'),
+        title: Text(l10n.salesQuoteStatusImportTitle),
         content: SizedBox(
           width: 420,
           height: 380,
           child: FutureBuilder<PagedResult<SalesDocListItem>>(
             future: ref
                 .read(salesRepositoryProvider(SalesDocType.quote))
-                .list(size: 50, filter: const SalesDocFilter(status: 1)),
+                .list(
+                  size: 50,
+                  filter: const SalesDocFilter(
+                    bucket: SalesQuoteStage.awaitingConversion,
+                  ),
+                ),
             builder: (_, snap) {
               if (snap.hasError) {
-                return const Center(child: Text('报价加载失败'));
+                return Center(
+                  child: Text(l10n.salesQuoteStatusImportLoadFailed),
+                );
               }
               if (!snap.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
-              final quotes = snap.data!.items;
+              final quotes = snap.data!.items
+                  .where(
+                    (q) => q.quoteWorkflow.allows(SalesQuoteAction.convert),
+                  )
+                  .toList(growable: false);
               if (quotes.isEmpty) {
-                return const UtenEmpty(message: '暂无已审核报价单');
+                return UtenEmpty(message: l10n.salesQuoteStatusImportEmpty);
               }
               return ListView.separated(
                 itemCount: quotes.length,
@@ -419,7 +458,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
+            child: Text(l10n.salesQuoteStatusCancel),
           ),
         ],
       ),
@@ -457,8 +496,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       status: _isDraftStage
           ? kSalesStatusDraft
           : (_isHistory ? null : _statusSeg?.status),
-      // 出货真实阶段（草稿/等待财务审核/…）走 stage，历史记录不限阶段。
-      stage: _isHistory ? null : _statusSeg?.shipmentStage,
+      // 出货真实阶段(草稿/等待财务审核/…)走 stage，报价分桶走 bucket，历史记录不限。
+      stage: _isHistory || _quoteStaged ? null : _statusSeg?.shipmentStage,
+      bucket: _isHistory || !_quoteStaged ? null : _statusSeg?.shipmentStage,
       chain: _isOrder && !_isHistory ? _cardChain() : null,
       chainGroup: _isOrder && !_isHistory ? _cardChainGroup() : null,
       closed: _isOrder && _stage == 'monthDone' && !_isHistory ? true : null,
@@ -581,7 +621,15 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       !it.closed &&
       !it.stopped;
 
-  String _statusText(SalesDocListItem it) {
+  String _statusText(SalesDocListItem it, AppLocalizations? l10n) {
+    if (_quoteStaged && l10n != null) {
+      final text = salesQuoteStatusText(
+        l10n,
+        stage: salesQuoteStageOf(it),
+        converted: it.quoteWorkflow.isConverted,
+      );
+      return it.writable ? text : l10n.salesQuoteStatusReadOnly(text);
+    }
     if (_shipmentStaged) {
       final text = salesShipmentStatusText(it);
       return it.writable ? text : '$text · 只读';
@@ -600,6 +648,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   /// 状态徽章语义（与 [_statusText] 同一分支）：审核驳回/财务驳回=危险红，
   /// 待财务确认=警告黄，其余按单据 0/1/-1（草稿中性/已审绿/红冲红）。
   UtenStatusBadgeType _statusBadgeType(SalesDocListItem it) {
+    if (_quoteStaged) return salesQuoteStageBadgeType(salesQuoteStageOf(it));
     if (it.rejected) return UtenStatusBadgeType.danger;
     if (_shipmentStaged) {
       return switch (salesShipmentStageOf(it)) {
@@ -619,6 +668,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
 
   List<MasterColumnDef<SalesDocListItem>> _columns(
     SalesMasterNameService names,
+    AppLocalizations? l10n,
   ) {
     return <MasterColumnDef<SalesDocListItem>>[
       MasterColumnDef(
@@ -701,10 +751,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         key: 'status',
         label: '状态',
         width: 130,
-        value: _statusText,
+        value: (it) => _statusText(it, l10n),
         // 状态徽章；value 仍是纯文本供列宽/排序/筛选。
         cellBuilder: (_, it) => UtenStatusBadge(
-          label: _statusText(it),
+          label: _statusText(it, l10n),
           type: _statusBadgeType(it),
           size: UtenStatusBadgeSize.small,
         ),
@@ -738,7 +788,14 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       if (_isOrder) _loadStats();
     }, refreshKeys: [_cfg.refreshKey]);
     final seg = _statusSeg;
-    // 分段计数(出货六阶段 / 报价退货三状态); 加载中或无权限为 null, 不渲染数字。
+    // 报价分段/状态文字走 arb(ADR-134)；其它单据沿用原有文案。
+    final l10n = _quoteStaged ? AppLocalizations.of(context) : null;
+    final quoteToConvert = _quoteStaged
+        ? ref.watch(
+            badgeEntryTodoProvider(BadgeEntry.salesQuoteAwaitingConversion),
+          )
+        : null;
+    // 分段计数(出货六阶段 / 报价五分桶 / 退货三状态); 加载中或无权限为 null, 不渲染数字。
     final statusScope = _statusScope;
     final statusCounts = statusScope == null
         ? null
@@ -887,6 +944,16 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                                   count: statusCounts?[stage],
                                   countForm: _shipmentStageCountForm(stage),
                                 )
+                            else if (l10n != null)
+                              for (final stage in SalesQuoteStage.segments)
+                                UtenFilterSegment(
+                                  value: _SalesDocSeg.shipment(stage),
+                                  label: salesQuoteStageLabel(l10n, stage),
+                                  count: stage == SalesQuoteStage.approved
+                                      ? quoteToConvert
+                                      : statusCounts?[stage],
+                                  countForm: _quoteStageCountForm(stage),
+                                )
                             else
                               for (final status in [
                                 kSalesStatusDraft,
@@ -988,7 +1055,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                               ),
                               const SizedBox(width: UtenSpacing.s8),
                             ],
-                            // 报价引入（SOP §三1，仅订货单）：弹窗选已审报价 → 一键转订货草稿
+                            // 报价引入(SOP §三1，仅订货单)：弹窗选已核价报价 → 一键转订货草稿
                             if (_canConvertQuote) ...[
                               UtenButton(
                                 type: UtenButtonType.secondary,
@@ -1054,9 +1121,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                           : null,
                       // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
                       primary: true,
-                      columns: _columns(names),
+                      columns: _columns(names, l10n),
                       items: _list.page?.items ?? const [],
-                      facets: _statusFacets(names),
+                      facets: _statusFacets(names, l10n),
                       nullCounts: const {},
                       filters: _statusFilterMap,
                       onFilterChanged: _onColumnFilterChanged,
@@ -1134,6 +1201,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     if (key == 'status') {
       if (_isDraftStage) return;
       if (value == null) return;
+      if (_quoteStaged) {
+        _selectStatusSeg(_SalesDocSeg.shipment(value));
+        return;
+      }
       final status = int.tryParse(value);
       if (status != null) {
         _selectStatusSeg(_SalesDocSeg.stage(status));
@@ -1190,6 +1261,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       return <String, String?>{'status': '$kSalesStatusDraft', ...extra};
     }
     final seg = _statusSeg;
+    if (_quoteStaged && seg?.shipmentStage != null && !seg!.history) {
+      return <String, String?>{'status': seg.shipmentStage, ...extra};
+    }
     if (seg == null || seg.history || seg.status == null) return extra;
     return <String, String?>{'status': '${seg.status}', ...extra};
   }
@@ -1200,11 +1274,22 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   /// 历史其它出货/退货）按各段列与后端参数开放。
   Map<String, List<MasterFacetBucket>> _statusFacets(
     SalesMasterNameService names,
+    AppLocalizations? l10n,
   ) => {
     // 单据号桶与列表同一过滤口径（2026-09-25 单号列统一）。
     'billNo': _columnFilters.bucketOf('billNo'),
+    // 报价状态列按财务核价分桶(ADR-134)，值即分段键。
+    if (_quoteStaged && l10n != null)
+      'status': [
+        for (final stage in SalesQuoteStage.segments)
+          MasterFacetBucket(
+            value: stage,
+            count: 0,
+            label: salesQuoteStageLabel(l10n, stage),
+          ),
+      ]
     // 出货类状态列显示真实阶段，0/1/-1 桶对它没有意义（阶段在分段行）。
-    if (!_shipmentStaged)
+    else if (!_shipmentStaged)
       'status': const [
         MasterFacetBucket(value: '0', count: 0, label: '草稿'),
         MasterFacetBucket(value: '1', count: 0, label: '已审'),

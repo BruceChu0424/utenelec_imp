@@ -439,6 +439,12 @@ abstract final class RouteName {
   /// 出货财务审核详情（财务专用审核视图，与销售端出货详情分离）。
   static const String financeSalesShipmentAuditReview =
       '/finance/sales-shipment-audits/:id';
+
+  /// 销售报价财务核价(ADR-134)：待核价 / 已核价 / 已退回 三个分段。
+  static const String financeQuoteReview = '/finance/quote-review';
+
+  /// 报价核价详情：认领后可改价、退回销售、确认报价、撤销确认。
+  static const String financeQuoteReviewDetail = '/finance/quote-review/:id';
   static const String financeArAp = '/finance/ar-ap';
   static const String financePayables = '/finance/payables';
   static const String financeReconciliations = '/finance/reconciliations';
@@ -633,6 +639,10 @@ abstract final class RoutePath {
       ).toString();
   static String financeArrivalException(String id) =>
       '/finance/procurement-arrival-exceptions/$id';
+
+  /// 报价核价详情(ADR-134)。
+  static String financeQuoteReview(String id) =>
+      '/finance/quote-review/${Uri.encodeComponent(id)}';
 
   /// 员工修改审批单批详情（HR 端）。
   static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';

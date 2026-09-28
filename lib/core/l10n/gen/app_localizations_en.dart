@@ -4317,4 +4317,881 @@ class AppLocalizationsEn extends AppLocalizations {
   String materialPreparationMissingAssignment(String goods) {
     return 'Set the production workshop and responsible person for “$goods” before ordering';
   }
+
+  @override
+  String get salesQuoteStatusDraft => 'Draft';
+
+  @override
+  String get salesQuoteStatusPendingFinance => 'Awaiting finance pricing';
+
+  @override
+  String get salesQuoteStatusReturned => 'Returned by finance';
+
+  @override
+  String get salesQuoteStatusConfirmed => 'Priced by finance';
+
+  @override
+  String get salesQuoteStatusReversed => 'Voided';
+
+  @override
+  String get salesQuoteStatusConverted => 'Converted to order';
+
+  @override
+  String get salesQuoteStatusToConvert => 'Priced, ready to convert';
+
+  @override
+  String salesQuoteStatusReadOnly(String status) {
+    return '$status · read only';
+  }
+
+  @override
+  String get salesQuoteStatusHistory => 'History';
+
+  @override
+  String get salesQuoteStatusBannerDraft =>
+      'Draft: when ready, tap \"Submit for finance pricing\". It can become an order only after finance sets the prices and discounts.';
+
+  @override
+  String get salesQuoteStatusBannerPending =>
+      'Submitted for finance pricing and waiting for finance. To change it, withdraw it first.';
+
+  @override
+  String salesQuoteStatusBannerReturned(String reason) {
+    return 'Returned by finance: $reason. Fix it and submit for finance pricing again.';
+  }
+
+  @override
+  String salesQuoteStatusBannerConfirmed(String name, String time) {
+    return 'Priced by finance ($name · $time). You can convert it to an order now.';
+  }
+
+  @override
+  String salesQuoteStatusBannerConverted(String orderNo) {
+    return 'Converted to order $orderNo; the quote can no longer be changed.';
+  }
+
+  @override
+  String get salesQuoteStatusBannerReversed =>
+      'This quote has been voided and is view only.';
+
+  @override
+  String get salesQuoteStatusFinanceFallback => 'Finance';
+
+  @override
+  String get salesQuoteStatusFieldReturnReason => 'Return reason';
+
+  @override
+  String get salesQuoteStatusFieldSubmittedAt => 'Submitted for pricing';
+
+  @override
+  String get salesQuoteStatusFieldConfirmedBy => 'Priced by';
+
+  @override
+  String get salesQuoteStatusFieldConvertedOrder => 'Converted order';
+
+  @override
+  String get salesQuoteStatusFieldFinanceRemark => 'Finance note';
+
+  @override
+  String get salesQuoteStatusActionSubmit => 'Submit for finance pricing';
+
+  @override
+  String get salesQuoteStatusActionWithdraw => 'Withdraw';
+
+  @override
+  String get salesQuoteStatusActionReopen => 'Edit again';
+
+  @override
+  String get salesQuoteStatusActionConvert => 'Convert to order';
+
+  @override
+  String get salesQuoteStatusActionReverse => 'Void';
+
+  @override
+  String get salesQuoteStatusActionEdit => 'Edit';
+
+  @override
+  String get salesQuoteStatusActionDelete => 'Delete';
+
+  @override
+  String get salesQuoteStatusActionFinanceReview => 'Open pricing review';
+
+  @override
+  String get salesQuoteStatusActionViewOrder => 'View order';
+
+  @override
+  String get salesQuoteStatusActionBack => 'Back to list';
+
+  @override
+  String get salesQuoteStatusSubmitConfirmBody =>
+      'Finance will set the price and discount line by line. You cannot change the quote meanwhile. Submit now?';
+
+  @override
+  String get salesQuoteStatusWithdrawConfirmBody =>
+      'The quote goes back to draft so you can keep editing; submit it for pricing again afterwards. Withdraw now?';
+
+  @override
+  String get salesQuoteStatusReopenConfirmBody =>
+      'Finance has already priced this quote. Editing again returns it to draft, and it must be priced again before it can become an order. Continue?';
+
+  @override
+  String get salesQuoteStatusReverseConfirmBody =>
+      'A voided quote can no longer be converted and cannot be restored. Void it?';
+
+  @override
+  String get salesQuoteStatusDeleteConfirmBody =>
+      'Delete this draft quote? This cannot be undone.';
+
+  @override
+  String get salesQuoteStatusConvertConfirmBody =>
+      'An order draft will be created with the price and discount set by finance. Those cannot be changed; quantity and delivery details can still be completed on the order. Convert now?';
+
+  @override
+  String get salesQuoteStatusConfirm => 'OK';
+
+  @override
+  String get salesQuoteStatusCancel => 'Cancel';
+
+  @override
+  String get salesQuoteStatusSubmitted => 'Submitted for finance pricing';
+
+  @override
+  String get salesQuoteStatusWithdrawn => 'Withdrawn; you can keep editing';
+
+  @override
+  String get salesQuoteStatusReopened =>
+      'Back to draft; submit for pricing again when ready';
+
+  @override
+  String get salesQuoteStatusReversedDone => 'Quote voided';
+
+  @override
+  String get salesQuoteStatusDeleted => 'Deleted';
+
+  @override
+  String salesQuoteStatusConvertDone(String billNo) {
+    return 'Order draft $billNo created';
+  }
+
+  @override
+  String get salesQuoteStatusActionFailed =>
+      'That did not work. Please try again later.';
+
+  @override
+  String get salesQuoteStatusBusy => 'Working on it, please wait';
+
+  @override
+  String get salesQuoteStatusTimelineTitle => 'Pricing history';
+
+  @override
+  String get salesQuoteStatusTimelineEmpty => 'No pricing history yet';
+
+  @override
+  String get salesQuoteStatusRevisionSubmit => 'Submitted for pricing';
+
+  @override
+  String get salesQuoteStatusRevisionWithdraw => 'Withdrawn by sales';
+
+  @override
+  String get salesQuoteStatusRevisionFinanceEdit => 'Prices changed by finance';
+
+  @override
+  String get salesQuoteStatusRevisionReturn => 'Returned by finance';
+
+  @override
+  String get salesQuoteStatusRevisionConfirm => 'Confirmed by finance';
+
+  @override
+  String get salesQuoteStatusRevisionReopen => 'Reopened by sales';
+
+  @override
+  String get salesQuoteStatusRevisionFinanceReopen =>
+      'Confirmation withdrawn by finance';
+
+  @override
+  String get salesQuoteStatusRevisionOther => 'Other record';
+
+  @override
+  String get salesQuoteStatusRevisionOperator => 'By';
+
+  @override
+  String salesQuoteStatusRevisionVersion(int revision) {
+    return 'Version $revision';
+  }
+
+  @override
+  String get salesQuoteStatusSourceQuoteConfirmed => 'Quote priced by finance';
+
+  @override
+  String get salesQuoteStatusSourceQuote => 'Source quote';
+
+  @override
+  String get quoteFinanceHubTitle => 'Quote pricing';
+
+  @override
+  String get quoteFinanceHubSubtitle =>
+      'Finance sets prices and discounts on sales quotes; sales can convert them to orders once confirmed';
+
+  @override
+  String get quoteFinanceListTitle => 'Quote pricing';
+
+  @override
+  String get quoteFinanceTabPending => 'To price';
+
+  @override
+  String get quoteFinanceTabConfirmed => 'Priced';
+
+  @override
+  String get quoteFinanceTabReturned => 'Returned';
+
+  @override
+  String get quoteFinanceSearchHint => 'Search number / customer / salesperson';
+
+  @override
+  String get quoteFinanceRowHint => 'Tap to select · double-tap to price';
+
+  @override
+  String get quoteFinanceColBillNo => 'Quote No.';
+
+  @override
+  String get quoteFinanceColClient => 'Customer';
+
+  @override
+  String get quoteFinanceColSeller => 'Salesperson';
+
+  @override
+  String get quoteFinanceColSubmittedAt => 'Submitted';
+
+  @override
+  String get quoteFinanceColLines => 'Lines';
+
+  @override
+  String get quoteFinanceColAmount => 'Quote amount';
+
+  @override
+  String get quoteFinanceColStatus => 'Status / note';
+
+  @override
+  String get quoteFinanceStatusPending => 'To price';
+
+  @override
+  String get quoteFinanceStatusResubmitted => 'Resubmitted by sales';
+
+  @override
+  String quoteFinanceStatusNeedPrice(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines have no list price',
+      one: '1 line has no list price',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String quoteFinanceStatusConfirmed(String name) {
+    return 'Priced · $name';
+  }
+
+  @override
+  String quoteFinanceStatusConverted(String orderNo) {
+    return 'Converted to order $orderNo';
+  }
+
+  @override
+  String quoteFinanceStatusReturned(String reason) {
+    return 'Returned: $reason';
+  }
+
+  @override
+  String get quoteFinanceEmptyPending => 'No quotes waiting for pricing';
+
+  @override
+  String get quoteFinanceEmptyPendingHint =>
+      'Quotes appear here after sales submit them. Sales can convert a quote to an order only after you confirm the prices.';
+
+  @override
+  String get quoteFinanceEmptyConfirmed => 'No priced quotes yet';
+
+  @override
+  String get quoteFinanceEmptyReturned => 'No quotes returned to sales';
+
+  @override
+  String get quoteFinanceEmptyReturnedHint =>
+      'After sales fix a returned quote it comes back to \"To price\".';
+
+  @override
+  String quoteFinanceEmptySearch(String keyword) {
+    return 'No quotes match \"$keyword\"';
+  }
+
+  @override
+  String get quoteFinanceLoadFailed =>
+      'Could not load quotes. Check the network and try again.';
+
+  @override
+  String get quoteFinanceRetry => 'Retry';
+
+  @override
+  String get quoteFinanceRefresh => 'Refresh';
+
+  @override
+  String get quoteFinanceOpen => 'Price';
+
+  @override
+  String get quoteFinancePrevPage => 'Previous page';
+
+  @override
+  String get quoteFinanceNextPage => 'Next page';
+
+  @override
+  String get quoteFinanceUnnamed => 'Not set';
+
+  @override
+  String get quoteFinanceReviewTitle => 'Quote pricing';
+
+  @override
+  String get quoteFinanceStripPending => 'Waiting for finance pricing';
+
+  @override
+  String quoteFinanceStripConfirmed(String name, String time) {
+    return 'Priced · $name · $time';
+  }
+
+  @override
+  String quoteFinanceStripReturned(String reason) {
+    return 'Returned to sales · $reason';
+  }
+
+  @override
+  String get quoteFinanceStripDraft => 'Being edited by sales';
+
+  @override
+  String get quoteFinanceStripReversed => 'Voided';
+
+  @override
+  String quoteFinanceStripConverted(String orderNo) {
+    return 'Converted to order $orderNo';
+  }
+
+  @override
+  String quoteFinanceRevisionBadge(int revision) {
+    return 'Version $revision';
+  }
+
+  @override
+  String get quoteFinanceReadOnlyNotice =>
+      'You have nothing to do on this quote right now; it is view only.';
+
+  @override
+  String get quoteFinanceResubmitNotice =>
+      'Resubmitted by sales. Highlighted lines have a discount different from the one you last confirmed; please check them.';
+
+  @override
+  String quoteFinanceNeedPriceNotice(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count lines have no list price. Enter a deal price, or choose \"Mark as free / zero price\" from the line menu, before confirming.',
+      one:
+          '1 line has no list price. Enter a deal price, or choose \"Mark as free / zero price\" from the line menu, before confirming.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceGoMaintainPrice => 'Maintain list price in goods data';
+
+  @override
+  String get quoteFinanceInfoTitle => 'Quote details';
+
+  @override
+  String get quoteFinanceFieldClient => 'Customer';
+
+  @override
+  String get quoteFinanceFieldSeller => 'Salesperson';
+
+  @override
+  String get quoteFinanceFieldMaker => 'Prepared by';
+
+  @override
+  String get quoteFinanceFieldBillDate => 'Date';
+
+  @override
+  String get quoteFinanceFieldSubmittedAt => 'Submitted';
+
+  @override
+  String get quoteFinanceFieldDeliverDate => 'Delivery date';
+
+  @override
+  String get quoteFinanceFieldContractNo => 'Contract No.';
+
+  @override
+  String get quoteFinanceFieldCurrency => 'Currency';
+
+  @override
+  String get quoteFinanceFieldFileCurrency => 'Customer file currency';
+
+  @override
+  String quoteFinanceFileRateHint(String currency, String rate) {
+    return 'File currency $currency, converted to base currency at the finance reference rate $rate';
+  }
+
+  @override
+  String get quoteFinanceFieldRemark => 'Sales note';
+
+  @override
+  String get quoteFinanceFieldValidUntil => 'Valid until';
+
+  @override
+  String get quoteFinanceFieldSettlement => 'Settlement method';
+
+  @override
+  String get quoteFinanceFieldFinanceRemark => 'Finance note';
+
+  @override
+  String get quoteFinanceFinanceRemarkHint => 'Note for sales (optional)';
+
+  @override
+  String get quoteFinanceSettlementNone => 'Not specified';
+
+  @override
+  String get quoteFinanceAttachmentsTitle => 'Customer files and attachments';
+
+  @override
+  String get quoteFinanceLinesTitle => 'Goods lines';
+
+  @override
+  String get quoteFinanceColGoods => 'Goods';
+
+  @override
+  String get quoteFinanceColCode => 'Code';
+
+  @override
+  String get quoteFinanceColColor => 'Color';
+
+  @override
+  String get quoteFinanceColQty => 'Qty';
+
+  @override
+  String get quoteFinanceColUnit => 'Unit';
+
+  @override
+  String get quoteFinanceColListPrice => 'List price';
+
+  @override
+  String get quoteFinanceColListPriceInfo =>
+      'The selling price in goods data. When there is none, or the deal price is above it, finance sets the deal price directly; below it, the price always becomes a discount.';
+
+  @override
+  String get quoteFinanceColFilePrice => 'File unit price (original)';
+
+  @override
+  String get quoteFinanceColFilePriceLocal => 'In base currency';
+
+  @override
+  String get quoteFinanceColDealPrice => 'Deal price';
+
+  @override
+  String get quoteFinanceColDealPriceInfo =>
+      'What the customer finally pays per unit. Changing the deal price recalculates the discount, and vice versa.';
+
+  @override
+  String get quoteFinanceColDiscount => 'Discount';
+
+  @override
+  String get quoteFinanceColDiscountInfo =>
+      'Discount = deal price ÷ list price, 4 decimal places; 1 means the list price.';
+
+  @override
+  String get quoteFinanceColLineAmount => 'Amount';
+
+  @override
+  String get quoteFinanceColFileDiff => 'Difference from file';
+
+  @override
+  String get quoteFinanceColFileDiffInfo =>
+      'This line amount minus the amount in the customer file (converted to base currency). 0 means it matches the file.';
+
+  @override
+  String get quoteFinanceColLastConfirmed => 'Last confirmed discount';
+
+  @override
+  String get quoteFinanceColSalesProposed => 'Discount from sales';
+
+  @override
+  String get quoteFinanceColFileModel => 'File model';
+
+  @override
+  String get quoteFinanceColFileName => 'File description';
+
+  @override
+  String get quoteFinanceColRemark => 'Note';
+
+  @override
+  String get quoteFinanceNoListPrice => 'No price';
+
+  @override
+  String get quoteFinanceFinancePriceChip => 'Finance price';
+
+  @override
+  String get quoteFinanceGiveawayChip => 'Free / zero';
+
+  @override
+  String get quoteFinanceFileMatch => 'Matches';
+
+  @override
+  String get quoteFinanceErrorDealPrice =>
+      'Enter a number greater than 0. For a free or zero-price line, use \"Set as free / zero price\" in the line menu.';
+
+  @override
+  String get quoteFinanceErrorFinancePrice => 'Enter a number of 0 or more';
+
+  @override
+  String get quoteFinanceErrorDiscount =>
+      'Discount must be above 0 and at most 1, with up to 4 decimals';
+
+  @override
+  String get quoteFinanceErrorNeedPrice => 'Enter the deal price';
+
+  @override
+  String get quoteFinanceMenuMasterMode => 'Discount from list price';
+
+  @override
+  String get quoteFinanceMenuGiveaway => 'Mark as free / zero price';
+
+  @override
+  String get quoteFinanceMenuRestore => 'Undo changes on this line';
+
+  @override
+  String get quoteFinanceBatchDiscount => 'Set discount for selected';
+
+  @override
+  String quoteFinanceBatchDiscountCount(int count) {
+    return 'Set discount ($count)';
+  }
+
+  @override
+  String quoteFinanceBatchDiscountTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Set the discount for $count selected lines',
+      one: 'Set the discount for 1 selected line',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceBatchDiscountHint =>
+      'For example, 0.95 means 95% of the list price';
+
+  @override
+  String get quoteFinanceBatchApply => 'Apply';
+
+  @override
+  String quoteFinanceBatchApplied(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Discount set for $count lines',
+      one: 'Discount set for 1 line',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String quoteFinanceBatchSkipped(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines without a list price were skipped',
+      one: '1 line without a list price was skipped',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceBatchNeedSelection =>
+      'Select the lines to change first';
+
+  @override
+  String quoteFinanceCheckedEditHint(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'This line is selected: changing the discount updates all $count selected lines',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceActionSave => 'Save changes';
+
+  @override
+  String get quoteFinanceActionSaving => 'Saving…';
+
+  @override
+  String get quoteFinanceActionReturn => 'Return to sales';
+
+  @override
+  String get quoteFinanceActionConfirm => 'Confirm quote';
+
+  @override
+  String get quoteFinanceActionReopen => 'Undo confirmation to edit';
+
+  @override
+  String get quoteFinanceActionBack => 'Back';
+
+  @override
+  String get quoteFinanceSaved => 'Changes saved';
+
+  @override
+  String get quoteFinanceNothingToSave => 'Nothing to save';
+
+  @override
+  String quoteFinanceFixErrors(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines have invalid values; please fix them first',
+      one: '1 line has an invalid value; please fix it first',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceClaimNotReady =>
+      'You do not hold this quote for pricing yet. Tap \"Claim again and refresh\".';
+
+  @override
+  String get quoteFinanceSaveFirst => 'Save your changes before confirming';
+
+  @override
+  String quoteFinanceConfirmBlocked(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count lines still have no price, so the quote cannot be confirmed. Enter deal prices or mark them as free / zero.',
+      one:
+          '1 line still has no price, so the quote cannot be confirmed. Enter a deal price or mark it as free / zero.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceConfirmedDone =>
+      'Quote confirmed; sales have been told they can convert it';
+
+  @override
+  String get quoteFinanceReturnedDone =>
+      'Returned to sales; they will be notified';
+
+  @override
+  String get quoteFinanceReopenedDone =>
+      'Confirmation undone; you can edit the prices again';
+
+  @override
+  String get quoteFinanceLoadDetailFailed =>
+      'Could not load the quote. Check the network or your access and try again.';
+
+  @override
+  String get quoteFinanceActionFailed =>
+      'That did not work. Please try again later.';
+
+  @override
+  String get quoteFinanceUnsavedTitle => 'You have unsaved changes';
+
+  @override
+  String get quoteFinanceUnsavedBody =>
+      'These changes will be lost if you leave. Leave anyway?';
+
+  @override
+  String get quoteFinanceLeave => 'Leave';
+
+  @override
+  String get quoteFinanceStay => 'Keep editing';
+
+  @override
+  String get quoteFinanceBusy => 'Working on it, please wait';
+
+  @override
+  String get quoteFinanceSaving => 'Saving changes';
+
+  @override
+  String get quoteFinanceSessionChanged =>
+      'Your sign-in changed. Please open the quote again.';
+
+  @override
+  String quoteFinanceConfirmTitle(String billNo) {
+    return 'Confirm quote $billNo';
+  }
+
+  @override
+  String get quoteFinanceConfirmBody =>
+      'Once confirmed, the prices and discounts are fixed and sales can convert the quote to an order. To change them later, undo the confirmation before it is converted.';
+
+  @override
+  String get quoteFinanceConfirmResponsibility => 'Quote pricing confirmation';
+
+  @override
+  String get quoteFinanceConfirmResponsibilityDesc =>
+      'The system records you as the person who priced this quote.';
+
+  @override
+  String quoteFinanceConfirmTotal(String amount) {
+    return 'Quote amount $amount';
+  }
+
+  @override
+  String quoteFinanceReturnTitle(String billNo) {
+    return 'Return $billNo to sales';
+  }
+
+  @override
+  String get quoteFinanceReturnBody =>
+      'The quote goes back to sales to fix and resubmit. Write the reason; sales will see it.';
+
+  @override
+  String get quoteFinanceReturnChipQty => 'Customer wants to change quantity';
+
+  @override
+  String get quoteFinanceReturnChipGoods => 'Goods missing, please add';
+
+  @override
+  String get quoteFinanceReturnChipPrice =>
+      'Price needs confirming with the customer';
+
+  @override
+  String get quoteFinanceReturnReasonLabel => 'Return reason (required)';
+
+  @override
+  String get quoteFinanceReturnReasonRequired => 'Please enter a return reason';
+
+  @override
+  String get quoteFinanceReturnSubmit => 'Return';
+
+  @override
+  String get quoteFinanceReopenTitle => 'Undo confirmation to edit';
+
+  @override
+  String get quoteFinanceReopenBody =>
+      'The quote goes back to \"To price\" so you can edit prices; confirm it again afterwards. Sales cannot convert it meanwhile. Undo now?';
+
+  @override
+  String get quoteFinanceCancel => 'Cancel';
+
+  @override
+  String get quoteFinanceRevisionTitle => 'Pricing history';
+
+  @override
+  String get quoteFinanceTotalQty => 'Total qty';
+
+  @override
+  String get quoteFinanceTotalAmount => 'Total amount';
+
+  @override
+  String get quoteFinanceTotalPreview => 'Total amount (unsaved preview)';
+
+  @override
+  String quoteFinanceOrderSourceQuote(String billNo) {
+    return 'Source quote $billNo';
+  }
+
+  @override
+  String quoteFinanceOrderQuoteConfirmedBy(String name) {
+    return 'Quote priced · $name';
+  }
+
+  @override
+  String get quoteFinanceOrderAllMatch => 'Quote priced · matches';
+
+  @override
+  String quoteFinanceOrderMismatch(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines differ from the quote',
+      one: '1 line differs from the quote',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceOrderChipHint =>
+      'This order comes from a finance-priced quote. When prices and discounts match the quote, only credit and terms need checking now.';
+
+  @override
+  String get quoteFinanceOrderColQuotePrice => 'Quote price';
+
+  @override
+  String get quoteFinanceOrderColQuoteDiscount => 'Quote discount';
+
+  @override
+  String get quoteFinanceOrderColMatch => 'vs quote';
+
+  @override
+  String get quoteFinanceOrderMatchYes => 'Matches';
+
+  @override
+  String get quoteFinanceOrderMatchNo => 'Differs';
+
+  @override
+  String quoteFinanceOrderColFilePrice(String currency) {
+    return 'File price ($currency)';
+  }
+
+  @override
+  String get quoteFinanceOrderFileCurrencyUnknown => 'original';
+
+  @override
+  String get quoteFinanceOrderColFileModel => 'File model';
+
+  @override
+  String get quoteFinanceOrderColFileName => 'File description';
+
+  @override
+  String get quoteFinanceAboveListHint =>
+      'Above the list price, so it is saved as a finance price (discount 1)';
+
+  @override
+  String get quoteFinanceMenuRefreshMaster =>
+      'Refresh from the latest list price';
+
+  @override
+  String quoteFinanceRefreshMasterChip(String price) {
+    return 'Refreshed from the latest list price $price with the same discount; save first to change the discount again';
+  }
+
+  @override
+  String quoteFinanceListPriceLatest(String price, String latest) {
+    return '$price, now $latest in goods data';
+  }
+
+  @override
+  String quoteFinanceStatusClaimedBy(String name) {
+    return '$name is pricing it';
+  }
+
+  @override
+  String get quoteFinanceStatusClaimedByMe => 'You are pricing it';
+
+  @override
+  String quoteFinanceFileRateMissing(String currency) {
+    return 'File currency $currency; there is no finance reference rate yet, so base-currency values are left blank';
+  }
+
+  @override
+  String get salesQuoteStatusImportTitle => 'Choose a quote priced by finance';
+
+  @override
+  String get salesQuoteStatusImportEmpty =>
+      'No priced quotes are ready to become orders';
+
+  @override
+  String get salesQuoteStatusImportLoadFailed =>
+      'Could not load quotes. Please try again later.';
 }

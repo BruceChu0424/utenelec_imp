@@ -33,6 +33,7 @@ class SalesDocFilter {
     this.financeRejected,
     this.warehouseWorkStatus,
     this.stage,
+    this.bucket,
     this.billNo,
   });
   final String? keyword;
@@ -51,6 +52,9 @@ class SalesDocFilter {
   final String? warehouseWorkStatus; // 出货仓库作业状态
   /// 出货单真实阶段分段（shipments 端点 stage 参数，见 [SalesShipmentStage]，2026-09-20）。
   final String? stage;
+
+  /// 报价分桶(quotes 端点 bucket 参数，见 [SalesQuoteStage]，ADR-134)：与分段计数同一口径。
+  final String? bucket;
 
   /// 单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
   final String? billNo;
@@ -95,6 +99,8 @@ class SalesRepository {
         'warehouseWorkStatus': filter.warehouseWorkStatus!.trim(),
       if (filter.stage != null && filter.stage!.trim().isNotEmpty)
         'stage': filter.stage!.trim(),
+      if (filter.bucket != null && filter.bucket!.trim().isNotEmpty)
+        'bucket': filter.bucket!.trim(),
       if (filter.chain != null && filter.chain!.isNotEmpty)
         'chain': filter.chain!.join(','),
       if (filter.chainGroup != null) 'chainGroup': filter.chainGroup,
@@ -132,6 +138,8 @@ class SalesRepository {
         'warehouseWorkStatus': filter.warehouseWorkStatus!.trim(),
       if (filter.stage != null && filter.stage!.trim().isNotEmpty)
         'stage': filter.stage!.trim(),
+      if (filter.bucket != null && filter.bucket!.trim().isNotEmpty)
+        'bucket': filter.bucket!.trim(),
       if (filter.chain != null && filter.chain!.isNotEmpty)
         'chain': filter.chain!.join(','),
       if (filter.chainGroup != null) 'chainGroup': filter.chainGroup,
@@ -487,9 +495,36 @@ class SalesRepository {
   }
 
   /// 报价转订货（POST /quotes/{id}/convert；SOP §三1，仅 quote 类型可用）。
-  /// 返回新建订货草稿（行带入货品/数量/价格 + sourceDocNo 回联来源报价）。
+  /// 只接受财务已核价的报价；返回新建订货草稿(单价与财务核定折扣锁定带入 +
+  /// sourceDocNo 回联来源报价，ADR-134)。
   Future<SalesDocDetail> convertToOrder(String id) async {
     final json = await api.post('${_doc(id)}/convert');
+    return SalesDocDetail.fromJson(json);
+  }
+
+  /// 报价提交财务核价(0 → 2，ADR-134)：[expectedRevision] 是详情里看到的 reviewRevision，
+  /// 服务端核对不一致即拒绝(别人刚改过)。仅 quote 类型可用。
+  Future<SalesDocDetail> submitQuote(String id, int expectedRevision) =>
+      _quoteTransition(id, 'submit', expectedRevision);
+
+  /// 撤回财务核价(2 → 0)：财务还没认领时销售可撤回继续修改。
+  Future<SalesDocDetail> withdrawQuote(String id, int expectedRevision) =>
+      _quoteTransition(id, 'withdraw', expectedRevision);
+
+  /// 已核价报价重新修改(1 → 0，未转订货单前)：回草稿，改完须重新提交核价。
+  Future<SalesDocDetail> reopenQuote(String id, int expectedRevision) =>
+      _quoteTransition(id, 'reopen', expectedRevision);
+
+  Future<SalesDocDetail> _quoteTransition(
+    String id,
+    String action,
+    int expectedRevision,
+  ) async {
+    assert(type == SalesDocType.quote, '仅报价单有财务核价流转');
+    final json = await api.post(
+      '${_doc(id)}/$action',
+      body: {'expectedRevision': expectedRevision},
+    );
     return SalesDocDetail.fromJson(json);
   }
 

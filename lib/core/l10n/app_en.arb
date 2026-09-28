@@ -2511,7 +2511,7 @@
   "salesIntakeEnrichCurrentEmpty": "Not filled in the customer data yet",
   "salesIntakeFilterReview": "To check ({count})",
   "salesIntakeFilterAll": "All ({count})",
-  "salesIntakeMatchedCollapsed": "{count, plural, =1{1 line} other{{count} lines}} matched automatically ✓",
+  "salesIntakeMatchedCollapsed": "{count, plural, =1{1 line} other{{count} lines}} matched automatically",
   "salesIntakeExpand": "Show",
   "salesIntakeCollapse": "Hide",
   "salesIntakeNoReviewLines": "All lines matched automatically. You can import right away",

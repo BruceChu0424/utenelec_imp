@@ -711,6 +711,18 @@ class _FinanceQuoteReviewPageState
       (l) => l.lastFinanceConfirmedDiscount != null,
     );
     final permissions = ref.watch(currentPermissionsProvider);
+    final compact = MediaQuery.sizeOf(context).width < 700;
+    final maintainPrice =
+        needPrice.isNotEmpty &&
+            review.canMaintainGoodsPrice &&
+            needPrice.first.goodsId != null
+        ? TextButton.icon(
+            key: const Key('quote-finance-maintain-price'),
+            icon: const Icon(Icons.open_in_new_rounded, size: 18),
+            label: Text(l10n.quoteFinanceGoMaintainPrice),
+            onPressed: () => _openGoods(needPrice.first.goodsId!),
+          )
+        : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -741,16 +753,16 @@ class _FinanceQuoteReviewPageState
             key: const Key('quote-finance-need-price-notice'),
             level: UtenInlineNoticeLevel.error,
             message: l10n.quoteFinanceNeedPriceNotice(needPrice.length),
-            trailing:
-                review.canMaintainGoodsPrice && needPrice.first.goodsId != null
-                ? TextButton.icon(
-                    key: const Key('quote-finance-maintain-price'),
-                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                    label: Text(l10n.quoteFinanceGoMaintainPrice),
-                    onPressed: () => _openGoods(needPrice.first.goodsId!),
-                  )
-                : null,
+            trailing: compact ? null : maintainPrice,
           ),
+          // 窄屏把「去货品资料维护标价」放到提示下面, 不把提示文字挤成一条窄列。
+          if (compact && maintainPrice != null) ...[
+            const SizedBox(height: UtenSpacing.s4),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: maintainPrice,
+            ),
+          ],
           const SizedBox(height: UtenSpacing.s12),
         ],
         _infoCard(theme, l10n, review),
@@ -1037,11 +1049,15 @@ class _FinanceQuoteReviewPageState
           ? (line) => _rowMenu(l10n, review, line, editable)
           : null,
       columns: [
+        // 名称用全站货品身份格(正文色), 不落成表格默认的次要灰字: 名称是核价时最先要看的一列。
         MasterColumnDef(
           key: 'goods',
           label: l10n.quoteFinanceColGoods,
           width: 200,
           value: (line) => line.goodsName ?? line.goodsCode ?? '—',
+          cellBuilderHandlesSemantics: true,
+          cellBuilder: (_, line) =>
+              UtenGoodsIdentityCell(name: line.goodsName ?? line.goodsCode),
         ),
         MasterColumnDef(
           key: 'goodsCode',
@@ -1068,7 +1084,8 @@ class _FinanceQuoteReviewPageState
           key: 'unitName',
           label: l10n.quoteFinanceColUnit,
           width: 80,
-          value: (line) => line.unitName,
+          value: (line) => UtenGoodsAttributeCell.text(line.unitName),
+          cellBuilder: (_, line) => UtenGoodsAttributeCell(line.unitName),
         ),
         MasterColumnDef(
           key: 'listPrice',

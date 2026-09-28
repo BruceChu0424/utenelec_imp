@@ -8,6 +8,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/ai/ai_tone.dart';
 import '../models/ai_provider_models.dart';
 import 'ai_settings_labels.dart';
 
@@ -143,7 +144,7 @@ Color _statusColor(AiTestStepStatus status, ThemeData theme) {
     AiTestStepStatus.warning =>
       dark ? UtenColors.warningOnDark : UtenColors.warning,
     AiTestStepStatus.failed => dark ? UtenColors.errorOnDark : UtenColors.error,
-    AiTestStepStatus.skipped => theme.colorScheme.outline,
+    AiTestStepStatus.skipped => AiTone.muted(theme),
   };
 }
 

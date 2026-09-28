@@ -3097,7 +3097,7 @@
       }
     }
   },
-  "salesIntakeMatchedCollapsed": "{count} 行已自动对应 ✓",
+  "salesIntakeMatchedCollapsed": "{count} 行已自动对应",
   "@salesIntakeMatchedCollapsed": {
     "placeholders": {
       "count": {

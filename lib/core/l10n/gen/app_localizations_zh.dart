@@ -5876,7 +5876,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String salesIntakeMatchedCollapsed(int count) {
-    return '$count 行已自动对应 ✓';
+    return '$count 行已自动对应';
   }
 
   @override

@@ -20,6 +20,7 @@ import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/ai/ai_progress_dialog.dart';
@@ -67,6 +68,10 @@ class AiProviderEditor extends ConsumerStatefulWidget {
 
 class _AiProviderEditorState extends ConsumerState<AiProviderEditor> {
   final _formKey = GlobalKey<FormState>();
+
+  /// 面板底部的探测反馈(提示条 / 连接测试结果): 出现或更新时滚到能看见的位置,
+  /// 否则点了底栏「测试连接」, 结果落在滚动区下方, 用户以为没反应。
+  final _probeFeedbackKey = GlobalKey();
   late final TextEditingController _name;
   late final TextEditingController _baseUrl;
   late final TextEditingController _model;
@@ -429,6 +434,7 @@ class _AiProviderEditorState extends ConsumerState<AiProviderEditor> {
     final blocker = _probeBlocker(probe, l10n);
     if (blocker != null) {
       setState(() => _probeNotice = blocker);
+      _revealProbeFeedback();
       return;
     }
     if (probe == _Probe.form && !_endpointFieldsValid(l10n, withModel: true)) {
@@ -440,12 +446,14 @@ class _AiProviderEditorState extends ConsumerState<AiProviderEditor> {
       _testResult = null;
       _probeNotice = null;
     });
+    _revealProbeFeedback();
     try {
       final result = probe == _Probe.stored
           ? await repository.testStored(_existing!.id, current: _form())
           : await repository.testForm(_form());
       if (!mounted) return;
       setState(() => _testResult = result);
+      _revealProbeFeedback();
     } on ApiException catch (error) {
       if (!mounted) return;
       context.appApiError(error);
@@ -457,12 +465,29 @@ class _AiProviderEditorState extends ConsumerState<AiProviderEditor> {
     }
   }
 
+  /// 下一帧把探测反馈滚进可见区(系统「减少动画」时直接跳到位)。
+  void _revealProbeFeedback() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = _probeFeedbackKey.currentContext;
+      if (!mounted || target == null) return;
+      final reduceMotion =
+          MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+      Scrollable.ensureVisible(
+        target,
+        duration: reduceMotion ? Duration.zero : UtenAnim.normal,
+        curve: UtenAnim.standard,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
+    });
+  }
+
   Future<void> _fetchModels() async {
     final l10n = AppLocalizations.of(context);
     final probe = _probeVariant(forModels: true);
     final blocker = _probeBlocker(probe, l10n);
     if (blocker != null) {
       setState(() => _probeNotice = blocker);
+      _revealProbeFeedback();
       return;
     }
     if (probe == _Probe.form && !_endpointFieldsValid(l10n, withModel: false)) {
@@ -488,6 +513,8 @@ class _AiProviderEditorState extends ConsumerState<AiProviderEditor> {
       });
       if (models.isNotEmpty) {
         context.appSuccess(l10n.aiSettingsModelsLoaded(models.length));
+      } else {
+        _revealProbeFeedback();
       }
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -619,21 +646,29 @@ class _AiProviderEditorState extends ConsumerState<AiProviderEditor> {
                         setState(() => _advancedOpen = open),
                     child: _advancedFields(l10n),
                   ),
-                  if (_probeNotice != null) ...[
-                    const SizedBox(height: UtenSpacing.s12),
-                    UtenInlineNotice(
-                      key: const ValueKey('ai-editor-probe-notice'),
-                      level: UtenInlineNoticeLevel.warning,
-                      message: _probeNotice!,
+                  KeyedSubtree(
+                    key: _probeFeedbackKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (_probeNotice != null) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          UtenInlineNotice(
+                            key: const ValueKey('ai-editor-probe-notice'),
+                            level: UtenInlineNoticeLevel.warning,
+                            message: _probeNotice!,
+                          ),
+                        ],
+                        if (_testing || _testResult != null) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          AiConnectionTestView(
+                            result: _testResult,
+                            running: _testing,
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
-                  if (_testing || _testResult != null) ...[
-                    const SizedBox(height: UtenSpacing.s12),
-                    AiConnectionTestView(
-                      result: _testResult,
-                      running: _testing,
-                    ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -915,7 +950,7 @@ class _AiProviderEditorState extends ConsumerState<AiProviderEditor> {
         Align(
           alignment: AlignmentDirectional.centerStart,
           child: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s4),
+            padding: const EdgeInsets.only(top: UtenSpacing.s8),
             child: UtenButton(
               key: const ValueKey('ai-editor-clear-key'),
               type: UtenButtonType.ghost,

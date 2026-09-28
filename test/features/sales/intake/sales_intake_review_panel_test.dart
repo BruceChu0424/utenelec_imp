@@ -151,7 +151,7 @@ void main() {
     await _reveal(tester, find.text('需要核对 (5)'));
     expect(find.text('全部 (6)'), findsOneWidget);
     await _reveal(tester, _line('S1R10'));
-    await _reveal(tester, find.text('1 行已自动对应 ✓'));
+    await _reveal(tester, find.text('1 行已自动对应'));
     expect(_line('S1R9'), findsNothing);
 
     await _tap(
@@ -162,7 +162,7 @@ void main() {
 
     await _tap(tester, find.text('全部 (6)'));
     await _reveal(tester, _line('S1R9'));
-    expect(find.text('1 行已自动对应 ✓'), findsNothing);
+    expect(find.text('1 行已自动对应'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

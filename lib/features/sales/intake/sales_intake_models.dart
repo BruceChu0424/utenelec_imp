@@ -35,6 +35,13 @@ abstract final class SalesIntakeWarningCode {
   static const aboveList = 'ABOVE_LIST';
 }
 
+/// 订货单识别时服务端整体提示「这 N 个货品还没有标价(或客户价高于标价), 要先做报价单交给财务定价」
+/// (SalesIntakePipeline 定价一步)。核对面板有自己按当前选择实时计数的同义提示, 用这个判断去重。
+bool salesIntakeIsServerBlockingNotice(String notice) =>
+    _serverBlockingNotice.hasMatch(notice.trim());
+
+final _serverBlockingNotice = RegExp(r'^这 \d+ 个货品还没有标价');
+
 /// 客户端上可写回客户资料的字段(§5.8, 服务端同样白名单校验)。
 const Set<String> kSalesIntakeClientFieldKeys = {
   'nameEn',

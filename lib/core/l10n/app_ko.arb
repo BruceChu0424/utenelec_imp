@@ -2398,7 +2398,7 @@
   "salesIntakeEnrichCurrentEmpty": "고객 자료에 아직 없습니다",
   "salesIntakeFilterReview": "확인 필요 ({count})",
   "salesIntakeFilterAll": "전체 ({count})",
-  "salesIntakeMatchedCollapsed": "{count}행 자동으로 맞춤 ✓",
+  "salesIntakeMatchedCollapsed": "{count}행 자동으로 맞춤",
   "salesIntakeExpand": "펼치기",
   "salesIntakeCollapse": "접기",
   "salesIntakeNoReviewLines": "모든 행이 자동으로 맞춰졌습니다. 바로 가져올 수 있습니다",

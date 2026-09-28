@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/ai/ai_tone.dart';
 import 'sales_intake_l10n.dart';
 
 class SalesIntakeEntryCard extends StatelessWidget {
@@ -67,10 +68,10 @@ class SalesIntakeEntryCard extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
+              Icon(
                 Icons.info_outline_rounded,
                 size: 16,
-                color: UtenColors.warningText,
+                color: AiTone.warning(theme),
               ),
               const SizedBox(width: UtenSpacing.s4),
               Flexible(
@@ -78,7 +79,7 @@ class SalesIntakeEntryCard extends StatelessWidget {
                   l10n.salesIntakeAiOffHint,
                   key: const ValueKey('sales-intake-ai-off-hint'),
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: UtenColors.warningText,
+                    color: AiTone.warning(theme),
                   ),
                 ),
               ),

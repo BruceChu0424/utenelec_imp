@@ -14,6 +14,7 @@ import '../../core/theme/uten_tokens.dart';
 import '../providers/performance_provider.dart';
 import 'ai_job_models.dart';
 import 'ai_job_runner.dart';
+import 'ai_tone.dart';
 
 /// 进度弹窗里的一步。[serverStages] 是这一步覆盖的服务端阶段键(见 [AiJobSnapshot.stage])。
 ///
@@ -319,6 +320,8 @@ class _AiProgressDialogState extends State<_AiProgressDialog> {
                             const SizedBox(height: UtenSpacing.s4),
                             Text(
                               widget.subtitle!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant,
                               ),
@@ -426,6 +429,8 @@ class _StageRow extends StatelessWidget {
     final scheme = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;
     final success = dark ? UtenColors.successOnDark : UtenColors.success;
+    // 还没轮到的步骤: 深色主题下边框色当文字几乎看不见, 用文字三级色。
+    final muted = AiTone.muted(theme);
     const dot = 24.0;
     final Widget indicator = switch (state) {
       _StageState.done => Container(
@@ -452,7 +457,7 @@ class _StageRow extends StatelessWidget {
         height: dot,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: scheme.outlineVariant, width: 2),
+          border: Border.all(color: muted.withValues(alpha: 0.6), width: 2),
         ),
       ),
     };
@@ -464,9 +469,7 @@ class _StageRow extends StatelessWidget {
         fontWeight: FontWeight.w600,
         color: scheme.onSurface,
       ),
-      _StageState.pending => theme.textTheme.bodyMedium?.copyWith(
-        color: scheme.outline,
-      ),
+      _StageState.pending => theme.textTheme.bodyMedium?.copyWith(color: muted),
     };
     return IntrinsicHeight(
       child: Row(
@@ -487,7 +490,7 @@ class _StageRow extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: state == _StageState.done
                             ? success.withValues(alpha: 0.5)
-                            : scheme.outlineVariant,
+                            : muted.withValues(alpha: 0.35),
                         borderRadius: UtenRadius.pillAll,
                       ),
                     ),

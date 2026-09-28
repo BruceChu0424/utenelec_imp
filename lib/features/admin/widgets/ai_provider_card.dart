@@ -10,6 +10,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/display_datetime.dart';
+import '../../../shared/ai/ai_tone.dart';
 import '../models/ai_provider_models.dart';
 import 'ai_connection_test_view.dart';
 import 'ai_settings_labels.dart';
@@ -209,7 +210,7 @@ class AiProviderCard extends StatelessWidget {
                 DisplayDateTime.beijing(provider.updatedAt),
               ),
               style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.outline,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -315,7 +316,7 @@ class _InfoLine extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 1),
-            child: Icon(icon, size: 16, color: theme.colorScheme.outline),
+            child: Icon(icon, size: 16, color: AiTone.muted(theme)),
           ),
           const SizedBox(width: UtenSpacing.s8),
           SizedBox(
@@ -420,13 +421,30 @@ class _LastTest extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        UtenStatusBadge(
-          label: ok
-              ? l10n.aiSettingsLastTestOk(time)
-              : l10n.aiSettingsLastTestFailed(time),
-          type: ok ? UtenStatusBadgeType.success : UtenStatusBadgeType.danger,
-          icon: ok ? Icons.check_rounded : Icons.close_rounded,
-          size: UtenStatusBadgeSize.small,
+        // 徽章只写结论, 时间放在旁边的普通文字里: 窄屏时间自动换行, 不被省略号吃掉。
+        Wrap(
+          spacing: UtenSpacing.s8,
+          runSpacing: UtenSpacing.s4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            UtenStatusBadge(
+              key: const ValueKey('ai-provider-last-test-badge'),
+              label: ok
+                  ? l10n.aiSettingsTestPassedShort
+                  : l10n.aiSettingsTestFailedShort,
+              type: ok
+                  ? UtenStatusBadgeType.success
+                  : UtenStatusBadgeType.danger,
+              icon: ok ? Icons.check_rounded : Icons.close_rounded,
+              size: UtenStatusBadgeSize.small,
+            ),
+            Text(
+              time,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ),
         if (!ok && provider.lastTestMessage != null)
           Padding(

@@ -10760,7 +10760,7 @@ abstract class AppLocalizations {
   /// No description provided for @salesIntakeMatchedCollapsed.
   ///
   /// In zh, this message translates to:
-  /// **'{count} 行已自动对应 ✓'**
+  /// **'{count} 行已自动对应'**
   String salesIntakeMatchedCollapsed(int count);
 
   /// No description provided for @salesIntakeExpand.

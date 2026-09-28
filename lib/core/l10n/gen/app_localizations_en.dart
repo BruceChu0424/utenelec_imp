@@ -6215,7 +6215,7 @@ class AppLocalizationsEn extends AppLocalizations {
       other: '$count lines',
       one: '1 line',
     );
-    return '$_temp0 matched automatically ✓';
+    return '$_temp0 matched automatically';
   }
 
   @override

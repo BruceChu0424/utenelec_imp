@@ -6015,7 +6015,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String salesIntakeMatchedCollapsed(int count) {
-    return '$count행 자동으로 맞춤 ✓';
+    return '$count행 자동으로 맞춤';
   }
 
   @override

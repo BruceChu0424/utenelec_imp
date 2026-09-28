@@ -264,15 +264,18 @@ class _GoodsNameEnDialogState extends ConsumerState<_GoodsNameEnDialog> {
           ),
         ),
         actionsAlignment: MainAxisAlignment.center,
+        // 适老化触控基线: 弹窗两个按钮都用大号(52), 不小于 48。
         actions: [
           UtenButton(
             key: const ValueKey('goods-name-en-cancel'),
             type: UtenButtonType.ghost,
+            size: UtenButtonSize.large,
             onPressed: _saving ? null : () => Navigator.of(context).pop(false),
             child: Text(l10n.commonCancel),
           ),
           UtenActionButton(
             key: const ValueKey('goods-name-en-save'),
+            size: UtenActionButtonSize.large,
             icon: Icons.save_outlined,
             label: Text(l10n.commonSave),
             loadingLabel: Text(l10n.goodsNameEnSaving),

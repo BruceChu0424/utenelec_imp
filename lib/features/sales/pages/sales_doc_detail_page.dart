@@ -48,9 +48,11 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/currency_display.dart';
+import '../../../shared/ai/ai_tone.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/measurement/measurement_totals.dart';
@@ -1218,23 +1220,29 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     final wf = d.quoteWorkflow;
     final stage = salesQuoteDetailStage(d);
     final converted = wf.isConverted;
-    final (color, text) = switch (stage) {
+    // 横幅与右侧状态徽章同一语义色(适老化基线: 黄=在财务手上、红=退回要本人改、
+    // 绿=已核价、灰=草稿/作废); 底色和边框取语义主色, 文字取深浅主题各自够对比度的一档。
+    final (Color accent, Color color, String text) = switch (stage) {
       SalesQuoteStage.financeRejected => (
-        theme.colorScheme.error,
+        UtenColors.error,
+        AiTone.error(theme),
         l10n.salesQuoteStatusBannerReturned(
           wf.financeReturnReason ?? l10n.salesQuoteStatusReturned,
         ),
       ),
       SalesQuoteStage.pendingFinance => (
-        theme.colorScheme.tertiary,
+        UtenColors.warning,
+        AiTone.warning(theme),
         l10n.salesQuoteStatusBannerPending,
       ),
       SalesQuoteStage.approved when converted => (
-        theme.colorScheme.primary,
+        UtenColors.success,
+        AiTone.success(theme),
         l10n.salesQuoteStatusBannerConverted(wf.convertedOrderNo ?? ''),
       ),
       SalesQuoteStage.approved => (
-        theme.colorScheme.primary,
+        UtenColors.success,
+        AiTone.success(theme),
         l10n.salesQuoteStatusBannerConfirmed(
           wf.financeConfirmedByName ??
               d.financeConfirmedByName ??
@@ -1243,18 +1251,23 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         ),
       ),
       SalesQuoteStage.reversed => (
+        theme.colorScheme.outline,
         theme.colorScheme.onSurfaceVariant,
         l10n.salesQuoteStatusBannerReversed,
       ),
-      _ => (theme.colorScheme.tertiary, l10n.salesQuoteStatusBannerDraft),
+      _ => (
+        theme.colorScheme.outline,
+        theme.colorScheme.onSurfaceVariant,
+        l10n.salesQuoteStatusBannerDraft,
+      ),
     };
     return Container(
       key: const Key('sales-quote-status-strip'),
       padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
+        color: accent.withValues(alpha: 0.10),
         borderRadius: UtenRadius.lgAll,
-        border: Border.all(color: color.withValues(alpha: 0.35)),
+        border: Border.all(color: accent.withValues(alpha: 0.45)),
       ),
       child: Row(
         children: [

@@ -17,6 +17,7 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/ai/ai_tone.dart';
 import '../models/sales_doc.dart';
 import 'sales_intake_apply.dart';
 import 'sales_intake_l10n.dart';
@@ -521,25 +522,38 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
       docType: widget.docType,
     );
     if (blocked > 0) {
+      final handoff = widget.actions.canHandoffToQuote
+          ? UtenButton(
+              key: const ValueKey('sales-intake-handoff-quote'),
+              type: UtenButtonType.secondary,
+              height: 48,
+              icon: Icons.request_quote_outlined,
+              onPressed: _busy
+                  ? null
+                  : () => Navigator.of(
+                      context,
+                    ).pop(const SalesIntakeReviewHandoffToQuote()),
+              child: Text(l10n.salesIntakeHandoffToQuote),
+            )
+          : null;
+      // 窄屏把按钮放到提示下面, 不把提示文字挤成一条窄列。
+      final compact = MediaQuery.sizeOf(context).width < 700;
       add(
-        UtenInlineNotice(
-          key: const ValueKey('sales-intake-blocked-notice'),
-          level: UtenInlineNoticeLevel.warning,
-          title: l10n.salesIntakeBlockedTitle(blocked),
-          message: l10n.salesIntakeBlockedMessage,
-          trailing: widget.actions.canHandoffToQuote
-              ? UtenButton(
-                  key: const ValueKey('sales-intake-handoff-quote'),
-                  type: UtenButtonType.secondary,
-                  height: 48,
-                  onPressed: _busy
-                      ? null
-                      : () => Navigator.of(
-                          context,
-                        ).pop(const SalesIntakeReviewHandoffToQuote()),
-                  child: Text(l10n.salesIntakeHandoffToQuote),
-                )
-              : null,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UtenInlineNotice(
+              key: const ValueKey('sales-intake-blocked-notice'),
+              level: UtenInlineNoticeLevel.warning,
+              title: l10n.salesIntakeBlockedTitle(blocked),
+              message: l10n.salesIntakeBlockedMessage,
+              trailing: compact ? null : handoff,
+            ),
+            if (compact && handoff != null) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              handoff,
+            ],
+          ],
         ),
       );
     }
@@ -598,9 +612,15 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
         ),
       );
     }
-    // 「名下没有客户」已在客户这一步说明, 服务端同句提示不再重复。
+    // 「名下没有客户」已在客户这一步说明, 服务端同句提示不再重复; 订货单「这 N 个货品还没有标价」
+    // 由上面的提示按当前选择实时计数(并带「改为新建报价单」), 服务端那句同义提示也不再重复。
     infos.addAll(
-      _result.notices.where((n) => n != l10n.salesIntakeNoVisibleClients),
+      _result.notices.where(
+        (n) =>
+            n != l10n.salesIntakeNoVisibleClients &&
+            !(widget.docType == SalesDocType.order &&
+                salesIntakeIsServerBlockingNotice(n)),
+      ),
     );
     if (infos.isNotEmpty) {
       add(
@@ -864,7 +884,7 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
                                   : l10n.salesIntakeEnrichCurrentEmpty,
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: field.differs
-                                    ? UtenColors.warningText
+                                    ? AiTone.warning(theme)
                                     : theme.colorScheme.onSurfaceVariant,
                               ),
                             ),
@@ -1029,6 +1049,41 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
                 ? l10n.salesIntakeBundleHint
                 : l10n.salesIntakeMarkerDefault),
     };
+    final compact = MediaQuery.sizeOf(context).width < 700;
+    final qtyText = qty == null
+        ? null
+        : Text(
+            l10n.salesIntakeQty(qty),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          );
+    final priceText = price == null
+        ? null
+        : Text(
+            fileCurrency == null
+                ? l10n.salesIntakeFilePrice(price)
+                : l10n.salesIntakeFilePriceWithCurrency(price, fileCurrency),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          );
+    // 同一句话只说一次: 服务端常把原因同时放在 reasonText 与 warnings 里; 不能导入的行
+    // 已有「不能导入」的原因和定价小标签(没有标价/高于标价), 定价提醒不再逐条重复。
+    final shownHints = <String>{?reasonText};
+    final extraHints = <String>[
+      for (final warning in line.warnings)
+        if (warning.message != null &&
+            warning.code != SalesIntakeWarningCode.bundleLine &&
+            !(blocked &&
+                !_masked &&
+                (warning.code == SalesIntakeWarningCode.noListPrice ||
+                    warning.code == SalesIntakeWarningCode.aboveList)) &&
+            shownHints.add(warning.message!))
+          warning.message!,
+    ];
     return Container(
       key: ValueKey('sales-intake-line-${line.key}'),
       decoration: BoxDecoration(
@@ -1089,37 +1144,36 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
                           ),
                         ),
                         const SizedBox(width: UtenSpacing.s8),
-                        _StatusPill(state: state, l10n: l10n),
-                        const Spacer(),
-                        if (qty != null)
-                          Text(
-                            l10n.salesIntakeQty(qty),
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              fontFeatures: const [
-                                FontFeature.tabularFigures(),
-                              ],
-                            ),
-                          ),
-                        if (price != null) ...[
-                          const SizedBox(width: UtenSpacing.s12),
-                          Text(
-                            fileCurrency == null
-                                ? l10n.salesIntakeFilePrice(price)
-                                : l10n.salesIntakeFilePriceWithCurrency(
-                                    price,
-                                    fileCurrency,
-                                  ),
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                              fontFeatures: const [
-                                FontFeature.tabularFigures(),
-                              ],
-                            ),
-                          ),
+                        if (compact)
+                          Flexible(
+                            child: _StatusPill(state: state, l10n: l10n),
+                          )
+                        else
+                          _StatusPill(state: state, l10n: l10n),
+                        if (!compact) ...[
+                          const Spacer(),
+                          ?qtyText,
+                          if (priceText != null) ...[
+                            const SizedBox(width: UtenSpacing.s12),
+                            priceText,
+                          ],
                         ],
                       ],
                     ),
+                    // 手机上数量/单价换到第二行, 不和行号、状态挤在一行里溢出。
+                    if (compact && (qtyText != null || priceText != null))
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(
+                          start: UtenSpacing.s12,
+                          bottom: UtenSpacing.s4,
+                        ),
+                        child: Wrap(
+                          spacing: UtenSpacing.s12,
+                          runSpacing: UtenSpacing.s4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [?qtyText, ?priceText],
+                        ),
+                      ),
                     Padding(
                       padding: const EdgeInsetsDirectional.only(
                         start: UtenSpacing.s12,
@@ -1138,24 +1192,22 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
                               : Icons.lightbulb_outline_rounded,
                           text: reasonText,
                           color: state == _LineState.unmatched
-                              ? UtenColors.errorText
-                              : UtenColors.warningText,
+                              ? AiTone.error(theme)
+                              : AiTone.warning(theme),
                         ),
                       ),
-                    for (final warning in line.warnings)
-                      if (warning.message != null &&
-                          warning.code != SalesIntakeWarningCode.bundleLine)
-                        Padding(
-                          padding: const EdgeInsetsDirectional.only(
-                            start: UtenSpacing.s12,
-                            top: UtenSpacing.s4,
-                          ),
-                          child: _Hint(
-                            icon: Icons.info_outline_rounded,
-                            text: warning.message!,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
+                    for (final hint in extraHints)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(
+                          start: UtenSpacing.s12,
+                          top: UtenSpacing.s4,
                         ),
+                        child: _Hint(
+                          icon: Icons.info_outline_rounded,
+                          text: hint,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     const SizedBox(height: UtenSpacing.s8),
                     Padding(
                       padding: const EdgeInsetsDirectional.only(
@@ -1229,7 +1281,7 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
               key: ValueKey('sales-intake-pricing-note-${line.key}'),
               icon: Icons.info_outline_rounded,
               text: goods.pricingNote!,
-              color: UtenColors.warningText,
+              color: AiTone.warning(theme),
             ),
           ],
         ],
@@ -1328,7 +1380,7 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
                       ),
                       icon: Icons.lightbulb_outline_rounded,
                       text: l10n.salesIntakeBlockedHint,
-                      color: UtenColors.warningText,
+                      color: AiTone.warning(theme),
                     ),
                   ),
               ],
@@ -1503,7 +1555,8 @@ class _PanelHeader extends StatelessWidget {
                 const SizedBox(height: UtenSpacing.s2),
                 Text(
                   subtitle,
-                  maxLines: 1,
+                  // 手机上文件名常常很长: 给两行, 「共 N 行明细」不被省略号吃掉。
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
@@ -1709,10 +1762,9 @@ class _StatusPill extends StatelessWidget {
         label,
         style: theme.textTheme.labelMedium?.copyWith(
           color: switch (state) {
-            _LineState.matched ||
-            _LineState.confirmed => UtenColors.successText,
-            _LineState.review => UtenColors.warningText,
-            _LineState.unmatched => UtenColors.errorText,
+            _LineState.matched || _LineState.confirmed => AiTone.success(theme),
+            _LineState.review => AiTone.warning(theme),
+            _LineState.unmatched => AiTone.error(theme),
             _LineState.blocked => theme.colorScheme.onSurfaceVariant,
           },
           fontWeight: FontWeight.w700,
@@ -1792,6 +1844,22 @@ class _Hint extends StatelessWidget {
   }
 }
 
+/// 理由小标签的语义: 对得上(绿) / 要留意(黄) / 只是说明(灰)。
+enum _ReasonTone { positive, negative, neutral }
+
+/// 服务端理由是固定的中文短语(IntakeTexts): 「不一致 / 不同 / 异常 / 其他客户的」是要留意的,
+/// 「AI 建议」只说明来源, 其余(型号一致、系列相近、该客户买过…)是对得上的依据。
+_ReasonTone _reasonTone(String text) {
+  if (text.contains('不一致') ||
+      text.contains('不同') ||
+      text.contains('异常') ||
+      text.contains('其他客户')) {
+    return _ReasonTone.negative;
+  }
+  if (text.startsWith('AI')) return _ReasonTone.neutral;
+  return _ReasonTone.positive;
+}
+
 class _ReasonChip extends StatelessWidget {
   const _ReasonChip({required this.text});
 
@@ -1800,22 +1868,32 @@ class _ReasonChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final negative = text.contains('不一致') || text.contains('不同');
-    final color = negative ? UtenColors.warningText : UtenColors.successText;
+    final (Color foreground, Color background) = switch (_reasonTone(text)) {
+      _ReasonTone.negative => (
+        AiTone.warning(theme),
+        UtenColors.warning.withValues(alpha: 0.12),
+      ),
+      _ReasonTone.positive => (
+        AiTone.success(theme),
+        UtenColors.success.withValues(alpha: 0.10),
+      ),
+      _ReasonTone.neutral => (
+        theme.colorScheme.onSurfaceVariant,
+        theme.colorScheme.surfaceContainerHigh,
+      ),
+    };
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: UtenSpacing.s8,
         vertical: UtenSpacing.s2,
       ),
       decoration: BoxDecoration(
-        color: (negative ? UtenColors.warning : UtenColors.success).withValues(
-          alpha: 0.10,
-        ),
+        color: background,
         borderRadius: BorderRadius.circular(UtenRadius.pill),
       ),
       child: Text(
         text,
-        style: theme.textTheme.labelMedium?.copyWith(color: color),
+        style: theme.textTheme.labelMedium?.copyWith(color: foreground),
       ),
     );
   }
@@ -1871,7 +1949,7 @@ class _PricingChip extends StatelessWidget {
       child: Text(
         text,
         style: theme.textTheme.labelMedium?.copyWith(
-          color: warn ? UtenColors.warningText : theme.colorScheme.primary,
+          color: warn ? AiTone.warning(theme) : theme.colorScheme.primary,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -1918,7 +1996,7 @@ class _MatchedToggle extends StatelessWidget {
                     label,
                     style: theme.textTheme.bodyLarge?.copyWith(
                       fontWeight: FontWeight.w600,
-                      color: UtenColors.successText,
+                      color: AiTone.success(theme),
                     ),
                   ),
                 ),

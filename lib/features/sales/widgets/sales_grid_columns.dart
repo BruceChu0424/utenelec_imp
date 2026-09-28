@@ -695,7 +695,9 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       EditableGridColumn<SalesGridRow>(
         key: 'discount',
         label: '折扣',
-        width: 128,
+        // 报价的空折扣格显示「财务核价时填写」, 识别导入的行还带黄标图标(占 44):
+        // 默认列宽要把这句话和图标一起装下, 不被省略号吃成「财…」。
+        width: isQuote ? 188 : 128,
         numeric: true,
         required: !isQuote && !priceMasked,
         // 表头 ⓘ 悬停说明折扣口径（2026-09-04 用户口径）；格内不再重复 ⓘ。

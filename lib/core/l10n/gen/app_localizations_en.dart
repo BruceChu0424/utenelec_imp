@@ -4317,4 +4317,598 @@ class AppLocalizationsEn extends AppLocalizations {
   String materialPreparationMissingAssignment(String goods) {
     return 'Set the production workshop and responsible person for “$goods” before ordering';
   }
+
+  @override
+  String get salesIntakeBannerTitle => 'Read customer file';
+
+  @override
+  String get salesIntakeBannerMessage =>
+      'Upload the customer\'s quotation or proforma invoice to fill in the customer and goods automatically';
+
+  @override
+  String get salesIntakeBannerButton => 'Read customer file';
+
+  @override
+  String get salesIntakeBannerAgain => 'Read another file';
+
+  @override
+  String salesIntakeBannerImported(String file, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return 'Imported $_temp0 from $file';
+  }
+
+  @override
+  String get salesIntakeToolbarButton => 'Read customer file';
+
+  @override
+  String get salesIntakeAiOffHint =>
+      'AI is off: only common Excel layouts can be read';
+
+  @override
+  String get salesIntakeApprovedOrderHint =>
+      'Approved orders are changed with quantity change or edit; they cannot be re-read from a file';
+
+  @override
+  String get salesIntakeReplaceTitle => 'The lines already have goods';
+
+  @override
+  String get salesIntakeReplaceMessage =>
+      'Replace the existing lines with the result, or add it after them?';
+
+  @override
+  String get salesIntakeReplace => 'Replace';
+
+  @override
+  String get salesIntakeAppend => 'Add after';
+
+  @override
+  String salesIntakeApplied(int count, int review) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return 'Imported $_temp0; $review marked yellow need checking';
+  }
+
+  @override
+  String salesIntakeAppliedAllMatched(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return 'Imported $_temp0';
+  }
+
+  @override
+  String get salesIntakeAttachFailed =>
+      'The original file could not be attached; you can upload it in the attachments area';
+
+  @override
+  String get salesIntakeProgressTitle => 'Reading the customer file';
+
+  @override
+  String get salesIntakeStageUpload => 'Upload file';
+
+  @override
+  String get salesIntakeStageRead => 'Read the sheet';
+
+  @override
+  String get salesIntakeStageLayout => 'Find headers and columns';
+
+  @override
+  String get salesIntakeStageGoods => 'Match goods';
+
+  @override
+  String get salesIntakeStageClient => 'Match customer';
+
+  @override
+  String get salesIntakeStagePricing => 'Work out discounts';
+
+  @override
+  String get salesIntakeSendWholeFileTitle =>
+      'The whole file will be sent to the AI service';
+
+  @override
+  String get salesIntakeSendWholeFileMessage =>
+      'This is a PDF or image, so the whole file must be sent to the AI service to be read. If it contains sensitive details such as bank accounts, make sure it can be sent.';
+
+  @override
+  String get salesIntakeSendWholeFileConfirm => 'Continue';
+
+  @override
+  String get salesIntakeAiRequired =>
+      'PDFs and images need AI to be read. Upload an Excel file or contact the administrator';
+
+  @override
+  String get salesIntakeVisionRequired =>
+      'This is an image. The administrator needs to enable a model that can read images in AI settings';
+
+  @override
+  String salesIntakeFileTooLarge(String max) {
+    return 'The file is too large (max $max)';
+  }
+
+  @override
+  String get salesIntakeFileUnreadable =>
+      'Could not read this file. Please choose it again';
+
+  @override
+  String get salesIntakeFileTypeUnsupported =>
+      'Only Excel, CSV, PDF or image files can be read';
+
+  @override
+  String get salesIntakeFailedTitle => 'Could not read this file';
+
+  @override
+  String get salesIntakeResultUnreadable =>
+      'The result could not be loaded. Please read the file again';
+
+  @override
+  String get salesIntakeNoLines =>
+      'No goods lines were found. Make sure this is a quotation or proforma invoice';
+
+  @override
+  String get salesIntakeCancel => 'Cancel';
+
+  @override
+  String get salesIntakeCreateClientTitle => 'Create customer from file';
+
+  @override
+  String get salesIntakeCreateClientIntro =>
+      'A new customer will be created from the details below, owned by you, in the Uncategorized group.';
+
+  @override
+  String get salesIntakeCreateClientName => 'Customer short name';
+
+  @override
+  String get salesIntakeCreateClientNameRequired =>
+      'Enter the customer short name';
+
+  @override
+  String get salesIntakeCreateClientConfirm => 'Create customer';
+
+  @override
+  String salesIntakeCreateClientDone(String name) {
+    return 'Customer $name created';
+  }
+
+  @override
+  String get salesIntakeCreateClientExists =>
+      'This customer already exists and has been selected';
+
+  @override
+  String get salesIntakeCreateClientFailed =>
+      'The customer was not created. Please try again later';
+
+  @override
+  String get salesIntakeFieldFullName => 'Full name';
+
+  @override
+  String get salesIntakeFieldNameEn => 'Foreign name';
+
+  @override
+  String get salesIntakeFieldLinkman => 'Contact';
+
+  @override
+  String get salesIntakeFieldEmail => 'Email';
+
+  @override
+  String get salesIntakeFieldPhone => 'Phone';
+
+  @override
+  String get salesIntakeFieldAddress => 'Address';
+
+  @override
+  String get salesIntakeFieldTaxId => 'Tax number';
+
+  @override
+  String get salesIntakeFieldPlace => 'Country/region';
+
+  @override
+  String get salesIntakeReviewTitle => 'Check the result';
+
+  @override
+  String salesIntakeReviewSubtitle(String file, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return '$file · $_temp0';
+  }
+
+  @override
+  String get salesIntakeClose => 'Close';
+
+  @override
+  String get salesIntakeStepClient => 'Customer';
+
+  @override
+  String get salesIntakeStepGoods => 'Goods';
+
+  @override
+  String salesIntakeClientResolved(String name) {
+    return 'Customer: $name';
+  }
+
+  @override
+  String get salesIntakeClientChange => 'Change';
+
+  @override
+  String get salesIntakeClientPickOther => 'Choose another customer…';
+
+  @override
+  String get salesIntakeClientCreate => 'Create customer from file';
+
+  @override
+  String salesIntakeClientBuyer(String name) {
+    return 'Buyer on the file: $name';
+  }
+
+  @override
+  String get salesIntakeClientNotFound =>
+      'This buyer is not among your customers';
+
+  @override
+  String get salesIntakeClientSuggestions =>
+      'It looks like one of these customers. Choose one:';
+
+  @override
+  String get salesIntakeClientNone =>
+      'No customer chosen yet; you can also choose one in the header after importing';
+
+  @override
+  String get salesIntakeNoVisibleClients =>
+      'You have no customers yet. Ask your supervisor to assign customers to you in Customer data';
+
+  @override
+  String salesIntakeEnrichSummary(String fields) {
+    return 'The file has the customer\'s $fields; add them to the customer data when saving';
+  }
+
+  @override
+  String get salesIntakeEnrichShow => 'Show';
+
+  @override
+  String get salesIntakeEnrichHide => 'Hide';
+
+  @override
+  String salesIntakeEnrichDiffers(String current) {
+    return 'Differs from the current value: $current';
+  }
+
+  @override
+  String get salesIntakeEnrichCurrentEmpty =>
+      'Not filled in the customer data yet';
+
+  @override
+  String salesIntakeFilterReview(int count) {
+    return 'To check ($count)';
+  }
+
+  @override
+  String salesIntakeFilterAll(int count) {
+    return 'All ($count)';
+  }
+
+  @override
+  String salesIntakeMatchedCollapsed(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return '$_temp0 matched automatically ✓';
+  }
+
+  @override
+  String get salesIntakeExpand => 'Show';
+
+  @override
+  String get salesIntakeCollapse => 'Hide';
+
+  @override
+  String get salesIntakeNoReviewLines =>
+      'All lines matched automatically. You can import right away';
+
+  @override
+  String salesIntakeLineNo(String no) {
+    return 'Line $no';
+  }
+
+  @override
+  String salesIntakeQty(String qty) {
+    return 'Qty $qty';
+  }
+
+  @override
+  String salesIntakeFilePrice(String price) {
+    return 'File price $price';
+  }
+
+  @override
+  String salesIntakeFilePriceWithCurrency(String price, String currency) {
+    return 'File price $price $currency';
+  }
+
+  @override
+  String get salesIntakeStatusMatched => 'Matched';
+
+  @override
+  String get salesIntakeStatusConfirmed => 'Confirmed';
+
+  @override
+  String get salesIntakeStatusReview => 'Check';
+
+  @override
+  String get salesIntakeStatusUnmatched => 'Not found';
+
+  @override
+  String get salesIntakeStatusBlocked => 'Cannot import';
+
+  @override
+  String get salesIntakeGoodsLabel => 'Our goods';
+
+  @override
+  String get salesIntakeGoodsHint => 'Choose goods';
+
+  @override
+  String get salesIntakeConfirmChoice => 'That\'s it';
+
+  @override
+  String get salesIntakePickFromMaster => 'Choose from goods data…';
+
+  @override
+  String salesIntakeSplit(int count) {
+    return 'Split into $count lines';
+  }
+
+  @override
+  String get salesIntakeMerge => 'Merge back into one line';
+
+  @override
+  String get salesIntakeBundleHint =>
+      'This line is a set; you can split it and choose goods one by one';
+
+  @override
+  String salesIntakeSetNameEn(String text) {
+    return 'Use as the goods English name: $text';
+  }
+
+  @override
+  String get salesIntakeInclude => 'Import this line';
+
+  @override
+  String salesIntakeDiscountPreview(String discount) {
+    return 'Discount $discount';
+  }
+
+  @override
+  String get salesIntakeDiscountPending => 'Discount to be decided';
+
+  @override
+  String get salesIntakePricingNoListPrice =>
+      'This goods has no list price yet';
+
+  @override
+  String get salesIntakePricingAboveList =>
+      'The file price is above the list price';
+
+  @override
+  String get salesIntakePricingOutOfRange =>
+      'Unusual discount; the goods may be wrong';
+
+  @override
+  String get salesIntakePricingAmbiguous =>
+      'Cannot tell which currency the file uses; check the discount';
+
+  @override
+  String get salesIntakePricingRateMissing =>
+      'The reference exchange rate is not set, so the discount could not be worked out';
+
+  @override
+  String get salesIntakeUnmatchedRemarkHint =>
+      'Not imported; the file text goes into the remark';
+
+  @override
+  String get salesIntakeBlockedHint =>
+      'Cannot go straight into an order; make a quotation for finance to price first';
+
+  @override
+  String salesIntakeBlockedTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count goods have',
+      one: '1 goods has',
+    );
+    return '$_temp0 no list price (or the file price is above it)';
+  }
+
+  @override
+  String get salesIntakeBlockedMessage =>
+      'They cannot go straight into an order. Make a quotation first so finance can price them.';
+
+  @override
+  String get salesIntakeHandoffToQuote => 'Make a quotation instead';
+
+  @override
+  String get salesIntakeDuplicateTitle =>
+      'This file may already have been entered';
+
+  @override
+  String salesIntakeDuplicateItem(
+    String doc,
+    String billNo,
+    String date,
+    String reason,
+  ) {
+    return '$doc $billNo ($date, $reason)';
+  }
+
+  @override
+  String salesIntakeDuplicateMessage(String items) {
+    return 'Already entered: $items. Create another one anyway?';
+  }
+
+  @override
+  String get salesIntakeDocTypeQuote => 'Quotation';
+
+  @override
+  String get salesIntakeDocTypeOrder => 'Order';
+
+  @override
+  String salesIntakeOtherSheets(String sheets, String current) {
+    return 'The file also has sheet $sheets that looks like a goods list; only \"$current\" was read. To read that sheet, save it as a separate file and upload it.';
+  }
+
+  @override
+  String salesIntakeOtherSheetItem(String name, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return '$name ($_temp0)';
+  }
+
+  @override
+  String get salesIntakePriceMaskedNotice =>
+      'You cannot see prices; discounts are worked out from the file prices when you save';
+
+  @override
+  String salesIntakeCurrencyNotice(String currency, String rate, String base) {
+    return 'The file is priced in $currency; it is converted at the finance reference rate $rate and the document is saved in $base';
+  }
+
+  @override
+  String salesIntakeRateMissingNotice(String currency) {
+    return 'The reference rate for $currency is not set, so some discounts could not be worked out. Ask finance to fill it in Currencies';
+  }
+
+  @override
+  String salesIntakeSummary(int rows, int review, int skipped) {
+    return 'Import: $rows · Marked yellow to check: $review · Not imported: $skipped';
+  }
+
+  @override
+  String salesIntakeImportAll(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return 'Import all ($_temp0)';
+  }
+
+  @override
+  String get salesIntakeNothingToImport => 'Nothing to import yet';
+
+  @override
+  String get salesIntakePickedManually => 'Chosen from goods data';
+
+  @override
+  String salesIntakeRemarkLineItem(String label, String qty) {
+    return '$label × $qty';
+  }
+
+  @override
+  String salesIntakeRemarkUnmatched(int count, String lines) {
+    return 'No matching goods for these $count lines: $lines';
+  }
+
+  @override
+  String salesIntakeRemarkUnpriced(int count, String lines) {
+    return 'Not imported, no list price (or file price above it) for these $count lines: $lines';
+  }
+
+  @override
+  String salesIntakeRemarkBundlePrice(String bundle, String price) {
+    return 'Set $bundle: file price $price for the whole set';
+  }
+
+  @override
+  String get salesIntakeMarkerDefault => 'Please check this match';
+
+  @override
+  String get salesIntakeMarkerUnit =>
+      'The file quantity is not in pieces; check the quantity';
+
+  @override
+  String get salesIntakeMarkerQuotePricing =>
+      'No list price (or file price above it); finance will set the price';
+
+  @override
+  String get salesIntakeMarkerQuoteDiscount =>
+      'The discount could not be worked out; finance will decide it';
+
+  @override
+  String get salesIntakeMarkerOrderDiscount =>
+      'The discount could not be worked out; check it against the file price and fill it in';
+
+  @override
+  String get salesIntakeMarkerBundlePart =>
+      'The set was split; check the goods and discount';
+
+  @override
+  String get salesIntakeColClientModel => 'File model';
+
+  @override
+  String get salesIntakeColClientModelInfo =>
+      'The model or item number on the customer\'s file. After saving, the system remembers what the customer calls it so the next file is read more accurately.';
+
+  @override
+  String get salesIntakeColClientGoodsName => 'File description';
+
+  @override
+  String get salesIntakeColClientGoodsNameInfo =>
+      'The description on the customer\'s file. Choosing goods by hand fills in the goods English name; you can change it.';
+
+  @override
+  String get salesIntakeColClientPrice => 'File price';
+
+  @override
+  String salesIntakeColClientPriceWithCurrency(String currency) {
+    return 'File price ($currency)';
+  }
+
+  @override
+  String get salesIntakeColClientPriceInfo =>
+      'The unit price on the customer\'s file (in the file currency), for reference only. The unit price always comes from the goods list price; the discount is worked out from this price.';
+
+  @override
+  String get salesIntakeQuotePriceHint =>
+      'The unit price comes from the goods list price and sales cannot change it; goods without a list price are priced by finance. The discount is worked out from the customer\'s file price, or can be left empty for finance to decide.';
+
+  @override
+  String get salesIntakeFinancePriced => 'Finance price';
+
+  @override
+  String get salesIntakePendingFinancePrice => 'Finance to price';
+
+  @override
+  String get salesIntakeQuoteDiscountPending => 'Finance fills in';
+
+  @override
+  String get salesIntakeMaskedDiscount => 'Worked out on save';
+
+  @override
+  String get salesIntakeQuoteLockedDiscount => '(set in quotation)';
+
+  @override
+  String get salesIntakeQuoteLockedDiscountInfo =>
+      'Finance set this discount in the quotation. To change it, reopen the quotation';
 }

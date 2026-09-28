@@ -1326,6 +1326,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
               initialOrderId: s.uri.queryParameters['sourceOrderId'],
               initialOrderItems: s.uri.queryParameters['orderItems'],
+              // 订货单识别结果「改为新建报价单」: 同一次识别直接在报价页恢复(ADR-134)。
+              initialAiJobId: s.uri.queryParameters['aiJobId'],
             ),
           ),
           DraftAwareGoRoute(

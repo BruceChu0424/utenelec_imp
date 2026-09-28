@@ -343,6 +343,9 @@ abstract final class ApiEndpoints {
   /// 多选客户批量设负责人/可见人（字面段 access 与 UUID 路径参数不冲突）。
   static const clientsAccessBatch = '$clients/access/batch';
 
+  /// 销售识别客户文件: 用文件信息新建客户(服务端先跨范围查重, ADR-134)。
+  static const clientFromDocument = '$clients/from-document';
+
   // 供应商资料分类（基础资料 / master-data）—— 与货品/模具分类同构，独立端点
   static const supplierCategories = '/master/supplier-categories';
   static const supplierCategoryTree = '$supplierCategories/tree';

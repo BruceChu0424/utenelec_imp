@@ -4114,4 +4114,513 @@ class AppLocalizationsZh extends AppLocalizations {
   String materialPreparationMissingAssignment(String goods) {
     return '请先补齐“$goods”的生产车间和负责人，再下单';
   }
+
+  @override
+  String get salesIntakeBannerTitle => '识别客户文件';
+
+  @override
+  String get salesIntakeBannerMessage => '上传客户的报价单/形式发票, 自动填好客户和货品';
+
+  @override
+  String get salesIntakeBannerButton => '识别客户文件';
+
+  @override
+  String get salesIntakeBannerAgain => '再识别一个文件';
+
+  @override
+  String salesIntakeBannerImported(String file, int count) {
+    return '已从 $file 导入 $count 行';
+  }
+
+  @override
+  String get salesIntakeToolbarButton => '识别客户文件';
+
+  @override
+  String get salesIntakeAiOffHint => 'AI 未开启, 只能识别常见格式的 Excel';
+
+  @override
+  String get salesIntakeApprovedOrderHint => '已审核的订单请用改量或修改, 不能整单重新识别';
+
+  @override
+  String get salesIntakeReplaceTitle => '明细里已经有货品';
+
+  @override
+  String get salesIntakeReplaceMessage => '要用识别结果替换现有明细, 还是追加在后面?';
+
+  @override
+  String get salesIntakeReplace => '替换';
+
+  @override
+  String get salesIntakeAppend => '追加';
+
+  @override
+  String salesIntakeApplied(int count, int review) {
+    return '已导入 $count 行, 其中 $review 行有黄色标记, 请核对';
+  }
+
+  @override
+  String salesIntakeAppliedAllMatched(int count) {
+    return '已导入 $count 行';
+  }
+
+  @override
+  String get salesIntakeAttachFailed => '原文件没能加入附件, 可在附件区手动上传';
+
+  @override
+  String get salesIntakeProgressTitle => '正在识别客户文件';
+
+  @override
+  String get salesIntakeStageUpload => '上传文件';
+
+  @override
+  String get salesIntakeStageRead => '读取表格';
+
+  @override
+  String get salesIntakeStageLayout => '识别表头与列';
+
+  @override
+  String get salesIntakeStageGoods => '匹配货品';
+
+  @override
+  String get salesIntakeStageClient => '匹配客户';
+
+  @override
+  String get salesIntakeStagePricing => '计算折扣';
+
+  @override
+  String get salesIntakeSendWholeFileTitle => '整份文件会发送给 AI 服务识别';
+
+  @override
+  String get salesIntakeSendWholeFileMessage =>
+      '这是 PDF/图片, 系统需要把整份文件发给 AI 服务来识别。文件里如有银行账号等敏感信息, 请先确认可以发送。';
+
+  @override
+  String get salesIntakeSendWholeFileConfirm => '继续识别';
+
+  @override
+  String get salesIntakeAiRequired => 'PDF/图片需要开启 AI 才能识别, 请上传 Excel 或联系管理员';
+
+  @override
+  String get salesIntakeVisionRequired =>
+      '这是图片格式的文件, 需要管理员在 AI 服务设置中启用支持图片识别的模型';
+
+  @override
+  String salesIntakeFileTooLarge(String max) {
+    return '文件太大, 最大 $max';
+  }
+
+  @override
+  String get salesIntakeFileUnreadable => '没能读取这个文件, 请重新选择';
+
+  @override
+  String get salesIntakeFileTypeUnsupported => '只能识别 Excel、CSV、PDF 或图片文件';
+
+  @override
+  String get salesIntakeFailedTitle => '没能识别这个文件';
+
+  @override
+  String get salesIntakeResultUnreadable => '识别结果无法读取, 请重新识别';
+
+  @override
+  String get salesIntakeNoLines => '文件里没找到货品明细, 请确认上传的是报价单或形式发票';
+
+  @override
+  String get salesIntakeCancel => '取消';
+
+  @override
+  String get salesIntakeCreateClientTitle => '用文件信息新建客户';
+
+  @override
+  String get salesIntakeCreateClientIntro => '将按下面的信息新建客户, 负责人是你, 分类放在「未分类」。';
+
+  @override
+  String get salesIntakeCreateClientName => '客户简称';
+
+  @override
+  String get salesIntakeCreateClientNameRequired => '请填写客户简称';
+
+  @override
+  String get salesIntakeCreateClientConfirm => '新建客户';
+
+  @override
+  String salesIntakeCreateClientDone(String name) {
+    return '已新建客户 $name';
+  }
+
+  @override
+  String get salesIntakeCreateClientExists => '这个客户已经存在, 已为你选上';
+
+  @override
+  String get salesIntakeCreateClientFailed => '新建客户没有成功, 请稍后重试';
+
+  @override
+  String get salesIntakeFieldFullName => '全称';
+
+  @override
+  String get salesIntakeFieldNameEn => '外文名称';
+
+  @override
+  String get salesIntakeFieldLinkman => '联系人';
+
+  @override
+  String get salesIntakeFieldEmail => '邮箱';
+
+  @override
+  String get salesIntakeFieldPhone => '电话';
+
+  @override
+  String get salesIntakeFieldAddress => '地址';
+
+  @override
+  String get salesIntakeFieldTaxId => '税号';
+
+  @override
+  String get salesIntakeFieldPlace => '国家/地区';
+
+  @override
+  String get salesIntakeReviewTitle => '核对识别结果';
+
+  @override
+  String salesIntakeReviewSubtitle(String file, int count) {
+    return '$file · 共 $count 行明细';
+  }
+
+  @override
+  String get salesIntakeClose => '关闭';
+
+  @override
+  String get salesIntakeStepClient => '客户';
+
+  @override
+  String get salesIntakeStepGoods => '货品';
+
+  @override
+  String salesIntakeClientResolved(String name) {
+    return '客户: $name';
+  }
+
+  @override
+  String get salesIntakeClientChange => '换一个';
+
+  @override
+  String get salesIntakeClientPickOther => '选其它客户…';
+
+  @override
+  String get salesIntakeClientCreate => '用文件信息新建客户';
+
+  @override
+  String salesIntakeClientBuyer(String name) {
+    return '文件上的买方: $name';
+  }
+
+  @override
+  String get salesIntakeClientNotFound => '没在你的客户里找到这个买方';
+
+  @override
+  String get salesIntakeClientSuggestions => '像是下面这些客户, 请选一个:';
+
+  @override
+  String get salesIntakeClientNone => '还没选客户, 导入后也可以在表头再选';
+
+  @override
+  String get salesIntakeNoVisibleClients => '你名下还没有客户资料, 请联系主管在客户资料里把客户分配给你';
+
+  @override
+  String salesIntakeEnrichSummary(String fields) {
+    return '文件里有客户的$fields, 保存时补进客户资料';
+  }
+
+  @override
+  String get salesIntakeEnrichShow => '查看';
+
+  @override
+  String get salesIntakeEnrichHide => '收起';
+
+  @override
+  String salesIntakeEnrichDiffers(String current) {
+    return '文件里的值不同, 现在是: $current';
+  }
+
+  @override
+  String get salesIntakeEnrichCurrentEmpty => '客户资料里还没填';
+
+  @override
+  String salesIntakeFilterReview(int count) {
+    return '需要核对 ($count)';
+  }
+
+  @override
+  String salesIntakeFilterAll(int count) {
+    return '全部 ($count)';
+  }
+
+  @override
+  String salesIntakeMatchedCollapsed(int count) {
+    return '$count 行已自动对应 ✓';
+  }
+
+  @override
+  String get salesIntakeExpand => '展开';
+
+  @override
+  String get salesIntakeCollapse => '收起';
+
+  @override
+  String get salesIntakeNoReviewLines => '所有行都已自动对应, 可以直接导入';
+
+  @override
+  String salesIntakeLineNo(String no) {
+    return '第 $no 行';
+  }
+
+  @override
+  String salesIntakeQty(String qty) {
+    return '数量 $qty';
+  }
+
+  @override
+  String salesIntakeFilePrice(String price) {
+    return '文件单价 $price';
+  }
+
+  @override
+  String salesIntakeFilePriceWithCurrency(String price, String currency) {
+    return '文件单价 $price $currency';
+  }
+
+  @override
+  String get salesIntakeStatusMatched => '已对应';
+
+  @override
+  String get salesIntakeStatusConfirmed => '已确认';
+
+  @override
+  String get salesIntakeStatusReview => '请核对';
+
+  @override
+  String get salesIntakeStatusUnmatched => '没找到';
+
+  @override
+  String get salesIntakeStatusBlocked => '不能导入';
+
+  @override
+  String get salesIntakeGoodsLabel => '对应货品';
+
+  @override
+  String get salesIntakeGoodsHint => '请选择货品';
+
+  @override
+  String get salesIntakeConfirmChoice => '就是它';
+
+  @override
+  String get salesIntakePickFromMaster => '从货品资料选择…';
+
+  @override
+  String salesIntakeSplit(int count) {
+    return '拆成 $count 行';
+  }
+
+  @override
+  String get salesIntakeMerge => '合回一行';
+
+  @override
+  String get salesIntakeBundleHint => '这一行是组合件, 可以拆开逐个选货品';
+
+  @override
+  String salesIntakeSetNameEn(String text) {
+    return '设为货品英文名: $text';
+  }
+
+  @override
+  String get salesIntakeInclude => '导入这一行';
+
+  @override
+  String salesIntakeDiscountPreview(String discount) {
+    return '折扣 $discount';
+  }
+
+  @override
+  String get salesIntakeDiscountPending => '折扣待定';
+
+  @override
+  String get salesIntakePricingNoListPrice => '这个货品还没有标价';
+
+  @override
+  String get salesIntakePricingAboveList => '文件单价高于标价';
+
+  @override
+  String get salesIntakePricingOutOfRange => '折扣异常, 可能对应错货品';
+
+  @override
+  String get salesIntakePricingAmbiguous => '看不出文件是按人民币还是外币报价, 折扣请核对';
+
+  @override
+  String get salesIntakePricingRateMissing => '外币参考汇率还没维护, 折扣没能算出';
+
+  @override
+  String get salesIntakeUnmatchedRemarkHint => '不导入, 文件原文会写进备注';
+
+  @override
+  String get salesIntakeBlockedHint => '订货单不能直接导入, 要先做报价单交给财务定价';
+
+  @override
+  String salesIntakeBlockedTitle(int count) {
+    return '这 $count 个货品还没有标价(或文件单价高于标价)';
+  }
+
+  @override
+  String get salesIntakeBlockedMessage => '订货单不能直接导入这些货品, 要先做报价单交给财务定价。';
+
+  @override
+  String get salesIntakeHandoffToQuote => '改为新建报价单';
+
+  @override
+  String get salesIntakeDuplicateTitle => '这个文件可能已经录过';
+
+  @override
+  String salesIntakeDuplicateItem(
+    String doc,
+    String billNo,
+    String date,
+    String reason,
+  ) {
+    return '$doc $billNo ($date, $reason)';
+  }
+
+  @override
+  String salesIntakeDuplicateMessage(String items) {
+    return '已有 $items, 确定还要再建一张吗?';
+  }
+
+  @override
+  String get salesIntakeDocTypeQuote => '报价单';
+
+  @override
+  String get salesIntakeDocTypeOrder => '订货单';
+
+  @override
+  String salesIntakeOtherSheets(String sheets, String current) {
+    return '文件里还有工作表 $sheets 也像明细表, 这次只识别了「$current」。如需识别那张表, 请把它另存为单独的文件再上传。';
+  }
+
+  @override
+  String salesIntakeOtherSheetItem(String name, int count) {
+    return '$name($count 行)';
+  }
+
+  @override
+  String get salesIntakePriceMaskedNotice => '你看不到价格, 折扣会在保存时按文件单价自动计算';
+
+  @override
+  String salesIntakeCurrencyNotice(String currency, String rate, String base) {
+    return '文件是 $currency 报价, 按财务参考汇率 $rate 折算, 单据按$base保存';
+  }
+
+  @override
+  String salesIntakeRateMissingNotice(String currency) {
+    return '$currency 的参考汇率还没维护, 部分折扣没能算出, 请财务在币种资料中填写';
+  }
+
+  @override
+  String salesIntakeSummary(int rows, int review, int skipped) {
+    return '将导入 $rows 行 · $review 行导入后黄色提醒核对 · $skipped 行不导入';
+  }
+
+  @override
+  String salesIntakeImportAll(int count) {
+    return '全部导入 ($count 行)';
+  }
+
+  @override
+  String get salesIntakeNothingToImport => '还没有可导入的货品';
+
+  @override
+  String get salesIntakePickedManually => '从货品资料选择';
+
+  @override
+  String salesIntakeRemarkLineItem(String label, String qty) {
+    return '$label × $qty';
+  }
+
+  @override
+  String salesIntakeRemarkUnmatched(int count, String lines) {
+    return '以下 $count 行没找到对应货品: $lines';
+  }
+
+  @override
+  String salesIntakeRemarkUnpriced(int count, String lines) {
+    return '以下 $count 行还没有标价(或文件单价高于标价), 没有导入: $lines';
+  }
+
+  @override
+  String salesIntakeRemarkBundlePrice(String bundle, String price) {
+    return '组合件 $bundle 整套文件单价 $price';
+  }
+
+  @override
+  String get salesIntakeMarkerDefault => '识别结果需要核对';
+
+  @override
+  String get salesIntakeMarkerUnit => '文件数量单位不是个, 请核对数量';
+
+  @override
+  String get salesIntakeMarkerQuotePricing => '这个货品还没有标价(或文件单价高于标价), 待财务定价';
+
+  @override
+  String get salesIntakeMarkerQuoteDiscount => '折扣没能自动算出, 财务核价时确定';
+
+  @override
+  String get salesIntakeMarkerOrderDiscount => '折扣没能自动算出, 请按文件单价核对后填写';
+
+  @override
+  String get salesIntakeMarkerBundlePart => '组合件已拆开, 请核对货品和折扣';
+
+  @override
+  String get salesIntakeColClientModel => '文件型号';
+
+  @override
+  String get salesIntakeColClientModelInfo =>
+      '客户文件里的型号/货号。保存后系统会记住客户的叫法, 下次识别更准。';
+
+  @override
+  String get salesIntakeColClientGoodsName => '文件品名';
+
+  @override
+  String get salesIntakeColClientGoodsNameInfo =>
+      '客户文件里的品名。手工选货品时会带出货品的英文名称, 可改。';
+
+  @override
+  String get salesIntakeColClientPrice => '文件单价';
+
+  @override
+  String salesIntakeColClientPriceWithCurrency(String currency) {
+    return '文件单价($currency)';
+  }
+
+  @override
+  String get salesIntakeColClientPriceInfo =>
+      '客户文件里的单价(文件币种), 只作核对参考; 单价以货品资料标价为准, 折扣按它计算。';
+
+  @override
+  String get salesIntakeQuotePriceHint =>
+      '单价按货品资料标价带入, 销售不能修改; 没有标价的货品由财务核价时定价。折扣按客户文件单价计算, 也可以留空交财务核价。';
+
+  @override
+  String get salesIntakeFinancePriced => '财务定价';
+
+  @override
+  String get salesIntakePendingFinancePrice => '待财务定价';
+
+  @override
+  String get salesIntakeQuoteDiscountPending => '财务核价时填写';
+
+  @override
+  String get salesIntakeMaskedDiscount => '保存时自动计算';
+
+  @override
+  String get salesIntakeQuoteLockedDiscount => '(报价核定)';
+
+  @override
+  String get salesIntakeQuoteLockedDiscountInfo =>
+      '该行折扣已由财务在报价中核定, 如需改价请重新打开报价';
 }

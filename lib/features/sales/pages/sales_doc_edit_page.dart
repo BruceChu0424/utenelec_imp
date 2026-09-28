@@ -8,12 +8,17 @@
 //  - 「从上游引入」按 hasUpstreamLink 显隐（出货→订货，退货→出货）。
 //  - 明细改 Excel 表：货品/颜色/单位/数量/单价→金额自动 + 报表补列 + 添加行/添加多行 + 行尾删除。
 //
+// 报价/订货(ADR-134)：表头上方「识别客户文件」入口卡 + 明细工具条按钮(新建与草稿态),
+// 识别流程/核对面板/补丁映射在 ../intake/，本页只负责套用补丁、保存时提交 aiIntake 与
+// 文件型号/品名/单价等行字段。
+//
 // 单据号系统自动生成（后端 DocNumberService），本页只读显示（新增态占位"保存后自动生成"）。
 // 保存组装 body 调 create/update，成功后跳详情。
 // 路由用 SalesRoutePath 字面量（route_names.dart 由上层统一加 sales_*）。
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/attachments/pending_attachment_controller.dart';
 import '../../../shared/attachments/pending_attachment_flow.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/widgets/saved_document_fields.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
@@ -28,6 +33,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_edit_floating_actions.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/buttons/uten_drafts_button.dart';
@@ -65,7 +71,15 @@ import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/editable_grid_column_prefs.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/ai/ai_status_provider.dart';
 import '../config/sales_doc_config.dart';
+import '../intake/sales_intake_apply.dart';
+import '../intake/sales_intake_attachment.dart';
+import '../intake/sales_intake_l10n.dart';
+import '../intake/sales_intake_entry_card.dart';
+import '../intake/sales_intake_launcher.dart';
+import '../intake/sales_intake_models.dart';
+import '../intake/sales_intake_repository.dart';
 import '../models/sales_doc.dart';
 import '../models/sales_shipment_prefill.dart';
 import '../providers/master_name_provider.dart';
@@ -78,6 +92,19 @@ import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../widgets/sales_grid_columns.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 
+/// 明细「选货品」弹窗(多选)。编辑页经它打开货品选择器，测试可替换成直接返回货品。
+typedef SalesGridGoodsPicker =
+    Future<List<GoodsListItem>> Function(BuildContext context, WidgetRef ref);
+
+final salesGridGoodsPickerProvider = Provider<SalesGridGoodsPicker>(
+  (ref) =>
+      (context, ref) => showUtenGoodsPickerMulti(
+        context,
+        ref,
+        scope: UtenGoodsPickerScope.allExceptUncategorized,
+      ),
+);
+
 class SalesDocEditPage extends ConsumerStatefulWidget {
   const SalesDocEditPage({
     super.key,
@@ -85,11 +112,15 @@ class SalesDocEditPage extends ConsumerStatefulWidget {
     this.id,
     this.initialOrderId,
     this.initialOrderItems,
+    this.initialAiJobId,
   });
   final SalesDocType docType;
   final String? id; // null=新建
   final String? initialOrderId;
   final String? initialOrderItems;
+
+  /// 订货单「改为新建报价单」带来的识别作业 id：报价新建页打开后直接恢复核对面板。
+  final String? initialAiJobId;
 
   @override
   ConsumerState<SalesDocEditPage> createState() => _SalesDocEditPageState();
@@ -111,9 +142,19 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   final _freeReason = TextEditingController();
   int _shipmentRevision = 0;
 
-  /// 订单：金额 = 数量 × 只读单价 × 可编辑折扣；其它单据仍 = 数量 × 单价。
+  /// 订单/报价：金额 = 数量 × 只读单价 × 可编辑折扣；其它单据仍 = 数量 × 单价。
   bool get _amountUsesDiscount =>
-      widget.docType == SalesDocType.order || _isCustomerShipment;
+      widget.docType == SalesDocType.order ||
+      widget.docType == SalesDocType.quote ||
+      _isCustomerShipment;
+
+  /// 单价由货品资料标价锁定(服务端权威)的单据：订货、报价(ADR-134)。
+  bool get _lockedPrice =>
+      widget.docType == SalesDocType.order ||
+      widget.docType == SalesDocType.quote;
+
+  /// 支持「识别客户文件」的单据：报价、订货。
+  bool get _aiIntakeSupported => _lockedPrice;
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
   final _rate = TextEditingController(text: '1');
@@ -134,6 +175,20 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
 
   /// 退货原因（销售退货专属）。
   final _returnReason = TextEditingController();
+
+  /// 本单来自哪次「识别客户文件」(保存时提交 aiIntake；新建页随草稿保存)。
+  SalesIntakeSession? _aiIntake;
+
+  /// 客户文件币种(文件单价的币种；单据本身按本位币)。
+  String? _clientFileCurrency;
+
+  /// 识别面板里选定/新建的客户显示名：新建的客户还不在客户字典里时表头先用它。
+  String? _intakeClientName;
+  String? _intakeClientId;
+  bool _aiIntakeRunning = false;
+
+  /// 上一次识别追加进备注的那一段：「替换」重新导入时先去掉它，备注不重复。
+  String? _intakeRemark;
 
   String? _clientId;
   String? _warehouseId;
@@ -174,16 +229,25 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
 
   SalesDocDetail? _attachmentDocument;
 
-  bool get _canViewAttachments {
-    final permissions = ref.watch(currentPermissionsProvider);
+  /// 能看销售单价(与服务端 SalesPriceMasker 同一权限点；看不到时报价/订货折扣交服务端算)。
+  static bool _salesPriceVisible(Set<String> permissions) =>
+      permissions.contains(Perm.salesOrderPriceView);
+
+  bool get _canViewAttachments =>
+      _canViewAttachmentsFor(ref.watch(currentPermissionsProvider));
+
+  bool _canViewAttachmentsFor(Set<String> permissions) {
     final needsPrice = _cfg.type == SalesDocType.order || _cfg.type.isShipment;
     return permissions.contains(_cfg.listPerm) &&
-        (!needsPrice || permissions.contains(Perm.salesOrderPriceView));
+        (!needsPrice || _salesPriceVisible(permissions));
   }
 
-  bool get _canManageAttachments {
-    final permissions = ref.watch(currentPermissionsProvider);
-    if (!_canViewAttachments || !permissions.contains(_cfg.editPerm)) {
+  bool get _canManageAttachments =>
+      _canManageAttachmentsFor(ref.watch(currentPermissionsProvider));
+
+  bool _canManageAttachmentsFor(Set<String> permissions) {
+    if (!_canViewAttachmentsFor(permissions) ||
+        !permissions.contains(_cfg.editPerm)) {
       return false;
     }
     final document = _attachmentDocument;
@@ -205,6 +269,43 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
               !document.financeConfirmed);
     }
     return document.status == 0;
+  }
+
+  /// 报价/订货当前账号看不到价格：已有单据以服务端 priceMasked 为准，新建单按权限判断。
+  bool get _priceMasked {
+    if (!_lockedPrice) return false;
+    final document = _attachmentDocument;
+    if (document != null) return document.priceMasked;
+    if (_aiIntake?.priceMasked ?? false) return true;
+    return !_salesPriceVisible(ref.read(currentPermissionsProvider));
+  }
+
+  /// 「识别客户文件」入口：报价/订货的新建单与草稿(含财务退回的草稿)；已审核订单、
+  /// 模拟身份(只读)与单据已创建待补传附件时不提供。
+  bool get _canUseAiIntake => _aiIntakeAllowed(
+    impersonating: ref.watch(sessionProvider).isImpersonating,
+    permissions: ref.watch(currentPermissionsProvider),
+  );
+
+  /// 同 [_canUseAiIntake]，供 build 之外(如打开页面时恢复识别)读取，不订阅。
+  bool get _canUseAiIntakeNow => _aiIntakeAllowed(
+    impersonating: ref.read(sessionProvider).isImpersonating,
+    permissions: ref.read(currentPermissionsProvider),
+  );
+
+  bool _aiIntakeAllowed({
+    required bool impersonating,
+    required Set<String> permissions,
+  }) {
+    if (!_aiIntakeSupported || _hasCreatedDocuments || impersonating) {
+      return false;
+    }
+    if (widget.id == null) return permissions.contains(_cfg.createPerm);
+    final document = _attachmentDocument;
+    return document != null &&
+        document.status == 0 &&
+        document.writable &&
+        permissions.contains(_cfg.editPerm);
   }
 
   /// 新建订货单保存前暂存的附件（ADR-074：保存拿到 UUID 后逐个确认上传）。
@@ -309,6 +410,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     ],
     'autofilled': _autofilled.toList(),
     'autofillValues': {..._autofillValues},
+    'aiIntake': _aiIntake?.toJson(),
+    'clientFileCurrency': _clientFileCurrency,
+    'intakeClientId': _intakeClientId,
+    'intakeClientName': _intakeClientName,
+    'intakeRemark': _intakeRemark,
   };
 
   @override
@@ -349,6 +455,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     _autofillValues
       ..clear()
       ..addAll(draftMap(data['autofillValues']).cast<String, String>());
+    final intake = data['aiIntake'];
+    final session = intake is Map
+        ? SalesIntakeSession.fromJson(Map<String, dynamic>.from(intake))
+        : null;
+    _aiIntake = (session?.isValid ?? false) ? session : null;
+    _clientFileCurrency = data['clientFileCurrency'] as String?;
+    _intakeClientId = data['intakeClientId'] as String?;
+    _intakeClientName = data['intakeClientName'] as String?;
+    _intakeRemark = data['intakeRemark'] as String?;
     _clientPrefillGeneration++;
   }
 
@@ -362,6 +477,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     _shipLinkPhone.addListener(
       () => _onAutofillTextEdited('shipPhone', _shipLinkPhone),
     );
+    // 识别客户文件带入的合同号/备注：改到与带入值不同即视为已核对。
+    _contractNo.addListener(
+      () => _onAutofillTextEdited('contractNo', _contractNo),
+    );
+    _remark.addListener(() => _onAutofillTextEdited('remark', _remark));
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
@@ -496,6 +616,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         _returnReason.text = d.returnReason ?? '';
         _makerName = d.makerName;
         _createdAt = d.createdAt;
+        _clientFileCurrency = d.clientFileCurrency;
         _financeRejected = d.financeRejected;
         _editingApprovedOrder =
             widget.docType == SalesDocType.order && d.status == 1;
@@ -588,6 +709,23 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                         it.exactDecimals['discount'] ?? discount.toString(),
                       ) ??
                       '';
+          } else if (widget.docType == SalesDocType.quote || d.priceMasked) {
+            // 报价折扣可空(交财务核价)；看不到价格时折扣留空、保存提交 null，
+            // 绝不默认 1(否则会把财务/服务端算好的折扣改回原价)。
+            row.discount.clear();
+          }
+          if (_lockedPrice) {
+            row
+              ..clientPrice = financeExactTrimmed(
+                it.exactDecimals['clientPrice'] ?? it.clientPrice?.toString(),
+              )
+              ..clientNo = it.clientNo
+              ..priceSource = it.priceSource
+              ..quoteDiscountLocked =
+                  widget.docType == SalesDocType.order &&
+                  it.quoteDiscount != null;
+            row.clientModel.text = it.clientModel ?? '';
+            row.clientGoodsName.text = it.clientGoodsName ?? '';
           }
           row.remark.text = it.remark ?? '';
           rows.add(row);
@@ -606,6 +744,19 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         await _prefillSelectedOrder();
       }
       if (mounted && widget.id == null) await initializeFormDraft();
+      final aiJobId = widget.initialAiJobId;
+      if (mounted &&
+          widget.id == null &&
+          aiJobId != null &&
+          aiJobId.isNotEmpty &&
+          _aiIntake == null &&
+          _canUseAiIntakeNow) {
+        // 订货单「改为新建报价单」：同一次识别直接恢复核对面板(草稿恢复过的不再重复)；
+        // 与入口同一道门——模拟身份(只读)或没有新建权限时不恢复。
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _resumeAiIntake(aiJobId),
+        );
+      }
     } on ApiException catch (e) {
       _initializationError = e.message;
     } on FormatException catch (e) {
@@ -706,12 +857,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   /// 点货品：滑窗除未分类外全部分类都展示（含原材料，问题 #17），支持多选——
   /// 选中的第一个填当前行，其余各自追加一新行，一次选完不用逐个重复"加行→选货品"。
   Future<void> _pickGoods(SalesGridRow row) async {
-    final picked = await showUtenGoodsPickerMulti(
-      context,
-      ref,
-      scope: UtenGoodsPickerScope.allExceptUncategorized,
-    );
-    if (picked.isEmpty) return;
+    final picked = await ref.read(salesGridGoodsPickerProvider)(context, ref);
+    if (!mounted || picked.isEmpty) return;
     void fill(SalesGridRow target, GoodsListItem g) {
       target
         ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
@@ -720,21 +867,62 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         ..unitId = g.unitId
         ..unitRate = 1
         ..stockPlaceNotifier.value = g.stockPlace;
-      // 订单/出货：单价由货品主档自动带入、锁定(出货亦可由来源订货单引入)。
-      if (widget.docType == SalesDocType.order ||
-          widget.docType == SalesDocType.shipment) {
+      // 订单/报价/出货：单价由货品主档自动带入、锁定(出货亦可由来源订货单引入)。
+      if (_lockedPrice || widget.docType == SalesDocType.shipment) {
         target.applyLockedPricePreview(g.price);
       }
-      // 订单折扣：货品 zk 倍率仅作建议初值(1=原价；空/0→1)，销售可逐行调整。
-      if (widget.docType == SalesDocType.order) {
-        final disc = (g.discount == null || g.discount == 0) ? 1.0 : g.discount;
-        target.discount.text = financeExactTrimmed(disc.toString()) ?? '';
+      // 订单/报价折扣：货品 zk 倍率仅作建议初值(1=原价；空/0→1)，销售可逐行调整；
+      // 看不到价格的账号留空(保存时服务端按文件单价计算)。
+      if (_lockedPrice) {
+        // 上一个货品带出的英文名随换货清掉(客户自己的品名保留)。
+        final autoName = target.prefilledNameEn;
+        if (autoName != null && target.clientGoodsName.text == autoName) {
+          target.clientGoodsName.clear();
+        }
+        target.prefilledNameEn = null;
+        String? pricingReason;
+        if (_priceMasked) {
+          target.discount.clear();
+        } else if (target.clientPrice != null) {
+          // 有文件单价的行：换货后按新货品标价重新反推折扣(与服务端同一规则)。
+          // 外币文件但不知道识别时的参考汇率(重新打开的单据没有识别会话)时不猜，
+          // 留空并黄标请销售核对；选择器没给标价时同样留空(不当成「没有标价」)。
+          final rateUnknown = _clientFileCurrency != null && _aiIntake == null;
+          final preview = g.price == null || rateUnknown
+              ? null
+              : salesIntakeDiscountPreview(
+                  customerUnitPrice: target.clientPrice,
+                  listPrice: financeExactTrimmed(g.price?.toString()),
+                  fileCurrency: _clientFileCurrency,
+                  financeRate: _aiIntake?.financeRate,
+                  rateMissing: _aiIntake?.rateMissing ?? false,
+                );
+          target.discount.text = preview?.discount ?? '';
+          if (preview?.discount == null) {
+            final l10n = salesIntakeL10n(context);
+            pricingReason = widget.docType == SalesDocType.quote
+                ? l10n.salesIntakeMarkerQuoteDiscount
+                : l10n.salesIntakeMarkerOrderDiscount;
+          }
+        } else {
+          final disc = (g.discount == null || g.discount == 0)
+              ? 1.0
+              : g.discount;
+          target.discount.text = financeExactTrimmed(disc.toString()) ?? '';
+        }
+        // 识别导入的行换了货品 = 人工确认；英文名勾选只对原来那个货品有效。
+        target
+          ..priceSource = null
+          ..quoteDiscountLocked = false
+          ..userConfirmed = true
+          ..setNameEn = false
+          ..markAiReview(pricingReason);
       }
     }
 
     fill(row, picked.first);
+    final extraRows = <SalesGridRow>[];
     if (picked.length > 1) {
-      final extraRows = <SalesGridRow>[];
       for (final g in picked.skip(1)) {
         final r = SalesGridRow(amountUsesDiscount: _amountUsesDiscount);
         fill(r, g);
@@ -745,6 +933,31 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     _recalcQtyTotal();
     // 选了货品 = 「有内容」：驱动右下保存按钮从灰转红（2026-09-14 口径）。
     if (mounted) setState(() {});
+    if (_lockedPrice) await _prefillClientGoodsNames([row, ...extraRows]);
+  }
+
+  /// 手工选货品后「文件品名」为空的行带出货品英文名称(可改；取不到就不带)。
+  Future<void> _prefillClientGoodsNames(Iterable<SalesGridRow> rows) async {
+    final targets = rows
+        .where((r) => r.goods != null && r.clientGoodsName.text.trim().isEmpty)
+        .toList();
+    if (targets.isEmpty) return;
+    Map<String, String> names;
+    try {
+      names = await ref
+          .read(salesIntakeRepositoryProvider)
+          .goodsNameEn(targets.map((r) => r.goods!.id));
+    } on Object {
+      return;
+    }
+    if (!mounted) return;
+    for (final r in targets) {
+      final nameEn = names[r.goods?.id];
+      if (nameEn != null && r.clientGoodsName.text.trim().isEmpty) {
+        r.clientGoodsName.text = nameEn;
+        r.prefilledNameEn = nameEn;
+      }
+    }
   }
 
   /// 实物出入库单据（出货/其它出货/退货）：按货品主档补全各行库位号（拣货/上架指引）。
@@ -1089,7 +1302,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     if (_cfg.clientRequired && _clientId == null) fail('client', '请选择客户');
     if (_cfg.sellerRequired && _sellerId == null) fail('seller', '请选择业务员');
     if (_cfg.hasWarehouse && _warehouseId == null) fail('warehouse', '请选择仓库');
-    if (_cfg.hasCurrency && !_freeCustomerShipment && _currencyId == null) {
+    if (_cfg.hasCurrency &&
+        _cfg.currencyRequired &&
+        !_freeCustomerShipment &&
+        _currencyId == null) {
       fail('currency', '请选择币种');
     }
     if (_isCustomerShipment) {
@@ -1102,7 +1318,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     if (_cfg.settlementRequired && _settlementMethodId == null) {
       fail('settlementMethod', '请选择结账方式');
     }
-    if (_cfg.hasDeliverDate && _deliverDate == null) {
+    if (_cfg.hasDeliverDate &&
+        _cfg.deliverDateRequired &&
+        _deliverDate == null) {
       fail('deliverDate', '请选择交货日期');
     }
     // 发运策略必选（与后端同口径）：历史「未指定/客户确认」只读保留，不算未选。
@@ -1132,9 +1350,13 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     } else if (rows.isEmpty) {
       fail('items', '请至少添加一条明细(选择货品)');
     } else {
+      // 报价单价可空(没有标价的货品待财务定价)；看不到价格的账号单价显示 ***。
+      final masked = _priceMasked;
       final priceRequired =
           widget.docType != SalesDocType.otherShipment &&
-          !_freeCustomerShipment;
+          widget.docType != SalesDocType.quote &&
+          !_freeCustomerShipment &&
+          !masked;
       var badRow = 0;
       var badDiscountRow = 0;
       var copiedPriceRow = 0;
@@ -1149,20 +1371,31 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           r.invalidNotifier.value = true;
           badRow = badRow == 0 ? i + 1 : badRow;
         }
-        if (widget.docType == SalesDocType.order &&
-            r.requiresOrderPriceRefresh) {
+        if (_lockedPrice && r.requiresOrderPriceRefresh) {
           r.invalidNotifier.value = true;
           copiedPriceRow = copiedPriceRow == 0 ? i + 1 : copiedPriceRow;
         }
-        if (widget.docType == SalesDocType.order) {
-          if (!isValidSalesOrderDiscountText(r.discount.text)) {
-            r.invalidNotifier.value = true;
-            badDiscountRow = badDiscountRow == 0 ? i + 1 : badDiscountRow;
-          }
+        // 订货折扣必填；报价折扣可空(交财务核价)，填了就要合规；看不到价格时不校验。
+        final discountText = r.discount.text.trim();
+        final discountBad = switch (widget.docType) {
+          SalesDocType.order =>
+            !masked && !isValidSalesOrderDiscountText(discountText),
+          SalesDocType.quote =>
+            !masked &&
+                discountText.isNotEmpty &&
+                !isValidSalesOrderDiscountText(discountText),
+          _ => false,
+        };
+        if (discountBad) {
+          r.invalidNotifier.value = true;
+          badDiscountRow = badDiscountRow == 0 ? i + 1 : badDiscountRow;
         }
       }
       if (copiedPriceRow > 0) {
-        fail('items', '第 $copiedPriceRow 行是复制的新订货明细，请重新选择货品以取得当前主档单价');
+        fail(
+          'items',
+          '第 $copiedPriceRow 行是复制的新${_cfg.shortLabel}明细，请重新选择货品以取得当前主档单价',
+        );
       } else if (badRow > 0) {
         fail('items', '第 $badRow 行明细：数量须大于 0${priceRequired ? '，单价必填' : ''}');
       } else if (badDiscountRow > 0) {
@@ -1207,9 +1440,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     final groups = collectDuplicateGoodsGroups<SalesGridRow>(
       rows: gridRows.where((r) => r.goods != null),
       rowNoOf: (r) => gridRows.indexOf(r) + 1,
+      // 折扣或文件单价不同的行分开保留，不算重复(合并会丢掉其中一行的折扣/文件单价)。
       groupKey: (r) =>
           '${r.goods!.id}|${r.colorId ?? ''}|${r.unitId ?? ''}|'
-          '${r.unitRateExact ?? r.unitRate ?? 1}',
+          '${r.unitRateExact ?? r.unitRate ?? 1}|'
+          '${financeExactTrimmed(r.discount.text) ?? r.discount.text.trim()}|'
+          '${r.clientPrice ?? ''}',
       identityLabel: (r) {
         final parts = <String>[
           if ((r.goods!.name ?? '').isNotEmpty) r.goods!.name!,
@@ -1318,8 +1554,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       }
 
       final body = <String, dynamic>{
-        if ((widget.docType == SalesDocType.order ||
-                widget.docType.isShipment) &&
+        if ((_lockedPrice || widget.docType.isShipment) &&
             (r.documentItemId?.isNotEmpty ?? false))
           'id': r.documentItemId,
         'goodsId': r.goods!.id,
@@ -1337,16 +1572,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         // 行备注：5 类单据通用（空文本不传，后端按 null 处理）。
         if (r.remark.text.trim().isNotEmpty) 'remark': r.remark.text.trim(),
       };
+      if (_lockedPrice) body.addAll(_clientLineFields(r));
       switch (widget.docType) {
         case SalesDocType.order:
           final mp = parseExtra(r.machiningPrice);
           final circ = parseExtra(r.circumference);
           final inb = parseExtra(r.inboundQty);
-          final disc = parseExtra(r.discount);
           if (mp != null) body['machiningPrice'] = mp;
           if (circ != null) body['circumference'] = circ;
           if (inb != null) body['inboundQty'] = inb;
-          if (disc != null) body['discount'] = disc;
           break;
         case SalesDocType.shipment:
         case SalesDocType.customerShipment:
@@ -1390,7 +1624,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       if (_cfg.hasCurrency && _currencyId != null) 'currencyId': _currencyId,
       if (_cfg.hasCurrency && _cfg.hasExchangeRate)
         'exchangeRate': _rate.text.trim().isEmpty ? '1' : _rate.text.trim(),
-      if (_cfg.hasCurrency && _taxRate.text.isNotEmpty)
+      if (_cfg.hasCurrency && _cfg.hasTaxRate && _taxRate.text.isNotEmpty)
         'taxRate': _taxRate.text.trim(),
       if (_cfg.hasSettlement && _settlementMethodId != null)
         'settlementMethodId': _settlementMethodId,
@@ -1404,9 +1638,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           _shipmentPolicy != null &&
           SalesShipmentPolicy.selectable.contains(_shipmentPolicy))
         'shipmentPolicy': _shipmentPolicy,
+      if (_cfg.hasContractNo && _contractNo.text.trim().isNotEmpty)
+        'contractNo': _contractNo.text.trim(),
       if (_cfg.hasContractInfo) ...{
-        if (_contractNo.text.trim().isNotEmpty)
-          'contractNo': _contractNo.text.trim(),
         if (_linkPhone.text.trim().isNotEmpty)
           'linkPhone': _linkPhone.text.trim(),
         if (_signAddr.text.trim().isNotEmpty) 'signAddr': _signAddr.text.trim(),
@@ -1428,6 +1662,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       if (widget.docType == SalesDocType.returnDoc &&
           _returnReason.text.trim().isNotEmpty)
         'returnReason': _returnReason.text.trim(),
+      if (_lockedPrice && _clientFileCurrency != null)
+        'clientFileCurrency': _clientFileCurrency,
+      // 导入后换了表头客户：文件里的客户信息只补给识别时的那个客户，换了就不补。
+      if (_lockedPrice && (_aiIntake?.isValid ?? false))
+        'aiIntake': _aiIntake!.toSaveJson(currentClientId: _clientId),
       'items': itemsBody,
     };
     if (widget.id == null &&
@@ -1649,17 +1888,284 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     }
   }
 
+  /// 报价/订货行的客户文件字段与折扣(SPEC §6.1)：
+  /// - 看不到价格：折扣提交 null(服务端按文件单价计算，已有行保留原折扣)；
+  /// - 报价折扣留空 = 交财务核价，提交 null；
+  /// - intakeLineKey / userConfirmed / setNameEn 只在请求里用于学习，不落库。
+  Map<String, dynamic> _clientLineFields(SalesGridRow r) {
+    final discount = r.discount.text.trim();
+    final clientModel = r.clientModel.text.trim();
+    final clientGoodsName = r.clientGoodsName.text.trim();
+    final learnable = clientModel.isNotEmpty || clientGoodsName.isNotEmpty;
+    return {
+      'discount': _priceMasked || discount.isEmpty ? null : discount,
+      'clientModel': clientModel.isEmpty ? null : clientModel,
+      'clientGoodsName': clientGoodsName.isEmpty ? null : clientGoodsName,
+      'clientPrice': ?r.clientPrice,
+      'clientNo': ?r.clientNo,
+      if (r.intakeLineKey != null) 'intakeLineKey': r.intakeLineKey,
+      if (r.intakeLineKey != null || learnable) ...{
+        'userConfirmed': r.userConfirmed,
+        'setNameEn': r.setNameEn && r.intakeLineKey != null,
+      },
+    };
+  }
+
+  // ---------------------------------------------------------------- 识别客户文件
+
+  Future<void> _runAiIntake() async {
+    if (_aiIntakeRunning || _saving) return;
+    setState(() => _aiIntakeRunning = true);
+    try {
+      final permissions = ref.read(currentPermissionsProvider);
+      final clientId = _clientId;
+      final result = await launchSalesIntake(
+        context,
+        ref,
+        docType: widget.docType,
+        clientId: clientId,
+        clientName: clientId == null
+            ? null
+            : ref.read(salesMasterNameServiceProvider).client(clientId),
+        docId: widget.id,
+        canHandoffToQuote:
+            widget.docType == SalesDocType.order &&
+            permissions.contains(SalesDocConfig.quote.createPerm),
+      );
+      if (!mounted || result == null) return;
+      await _handleIntakeResult(result);
+    } finally {
+      if (mounted) setState(() => _aiIntakeRunning = false);
+    }
+  }
+
+  Future<void> _resumeAiIntake(String jobId) async {
+    if (!mounted || _aiIntakeRunning) return;
+    setState(() => _aiIntakeRunning = true);
+    try {
+      final clientId = _clientId;
+      final result = await resumeSalesIntake(
+        context,
+        ref,
+        docType: widget.docType,
+        jobId: jobId,
+        clientId: clientId,
+        clientName: clientId == null
+            ? null
+            : ref.read(salesMasterNameServiceProvider).client(clientId),
+      );
+      if (!mounted || result == null) return;
+      await _handleIntakeResult(result);
+    } finally {
+      if (mounted) setState(() => _aiIntakeRunning = false);
+    }
+  }
+
+  Future<void> _handleIntakeResult(SalesIntakeLaunchResult result) async {
+    final handoff = result.handoffJobId;
+    if (handoff != null) {
+      // 弹窗刚关，等一帧再跳页(跑批遮罩/弹窗退场不压住新页面)。
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      context.push(
+        Uri(
+          path: SalesRoutePath.docNew(SalesDocType.quote.pathSegment),
+          queryParameters: {'aiJobId': handoff},
+        ).toString(),
+      );
+      return;
+    }
+    final patch = result.patch;
+    if (patch != null) await _applyIntakePatch(patch, file: result.file);
+  }
+
+  bool _rowHasContent(SalesGridRow r) =>
+      r.goods != null ||
+      r.qty.text.trim().isNotEmpty ||
+      r.remark.text.trim().isNotEmpty ||
+      r.clientModel.text.trim().isNotEmpty;
+
+  /// 明细已有内容时问一句：替换(true) / 追加(false) / 取消(null)。
+  Future<bool?> _askReplaceOrAppend() {
+    final l10n = salesIntakeL10n(context);
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.salesIntakeReplaceTitle),
+        content: Text(l10n.salesIntakeReplaceMessage),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          UtenButton(
+            type: UtenButtonType.ghost,
+            height: 48,
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n.salesIntakeCancel),
+          ),
+          UtenButton(
+            key: const ValueKey('sales-intake-append'),
+            type: UtenButtonType.secondary,
+            height: 48,
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.salesIntakeAppend),
+          ),
+          UtenButton(
+            key: const ValueKey('sales-intake-replace'),
+            height: 48,
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.salesIntakeReplace),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 套用识别补丁：客户(联动条款预填)→ 本位币 / 合同号 / 备注(黄框提醒)→ 明细行。
+  Future<void> _applyIntakePatch(
+    SalesIntakePatch patch, {
+    PlatformFile? file,
+  }) async {
+    final l10n = salesIntakeL10n(context);
+    var replace = true;
+    if (_grid.rows.any(_rowHasContent)) {
+      final choice = await _askReplaceOrAppend();
+      if (!mounted || choice == null) return;
+      replace = choice;
+    }
+    final clientId = patch.clientId;
+    if (clientId != null) {
+      _intakeClientId = clientId;
+      _intakeClientName = patch.clientName;
+    }
+    if (clientId != null && clientId != _clientId) {
+      await _onClientChanged(clientId);
+      if (!mounted) return;
+    }
+    final names = ref.read(salesMasterNameServiceProvider);
+    final rows = [
+      for (final p in patch.rows)
+        SalesGridRow.fromIntake(p, amountUsesDiscount: _amountUsesDiscount),
+    ];
+    setState(() {
+      // 单据币种 = 本位币(标价所用币种)，晚于客户条款预填，避免被客户默认外币覆盖。
+      final currencyId = patch.currencyId;
+      if (_cfg.hasCurrency &&
+          currencyId != null &&
+          names.currencyEntries.containsKey(currencyId)) {
+        _currencyId = currencyId;
+        _autofilled.add('currency');
+        _errors.remove('currency');
+      }
+      final contractNo = patch.contractNo;
+      if (_cfg.hasContractNo &&
+          contractNo != null &&
+          (_contractNo.text.trim().isEmpty ||
+              _autofilled.contains('contractNo'))) {
+        _contractNo.text = contractNo;
+        _markAutofilled('contractNo', contractNo);
+      }
+      final remark = patch.remark;
+      if (remark != null) {
+        final merged = _mergeIntakeRemark(remark, replace: replace);
+        if (merged != _remark.text) {
+          _remark.text = merged;
+          _markAutofilled('remark', merged);
+        }
+      }
+      _clientFileCurrency = patch.clientFileCurrency ?? _clientFileCurrency;
+      _aiIntake = patch.toSession();
+    });
+    if (replace) {
+      _grid.replaceAll(rows);
+    } else {
+      // 追加：清掉占位空行；旧行的识别行键属于上一次识别，保存时不再回传。
+      _grid.removeWhere((r) => !_rowHasContent(r) && r.price.text.isEmpty);
+      for (final r in _grid.rows) {
+        r.intakeLineKey = null;
+        r.setNameEn = false;
+      }
+      _grid.addRows(rows);
+    }
+    if (_grid.isEmpty) {
+      _grid.addRow(SalesGridRow(amountUsesDiscount: _amountUsesDiscount));
+    }
+    _recalcQtyTotal();
+    if (mounted) setState(() {});
+    await _attachOriginalFile(file);
+    if (!mounted) return;
+    context.appSuccess(
+      patch.reviewRowCount > 0
+          ? l10n.salesIntakeApplied(patch.rows.length, patch.reviewRowCount)
+          : l10n.salesIntakeAppliedAllMatched(patch.rows.length),
+    );
+  }
+
+  /// 识别带来的备注并进现有备注：「替换」时先去掉上一次识别追加的那一段；
+  /// 已经在备注里的行(同一份文件再导入一次)不重复追加。
+  String _mergeIntakeRemark(String addition, {required bool replace}) {
+    var base = _remark.text.trim();
+    final previous = _intakeRemark?.trim();
+    if (replace && previous != null && previous.isNotEmpty) {
+      final at = base.lastIndexOf(previous);
+      if (at >= 0) {
+        base = (base.substring(0, at) + base.substring(at + previous.length))
+            .trim();
+      }
+    }
+    final existing = {
+      for (final line in base.split('\n'))
+        if (line.trim().isNotEmpty) line.trim(),
+    };
+    final fresh = [
+      for (final line in addition.split('\n'))
+        if (line.trim().isNotEmpty && existing.add(line.trim())) line.trim(),
+    ].join('\n');
+    if (fresh.isEmpty) return base;
+    _intakeRemark = fresh;
+    return base.isEmpty ? fresh : '$base\n$fresh';
+  }
+
+  /// 表头客户名：字典里有就用字典；识别时新建的客户还没进字典，先用面板里的名字。
+  String _clientDisplayName(SalesMasterNameService names) {
+    final id = _clientId;
+    final fallback = _intakeClientName;
+    if (id != null &&
+        id == _intakeClientId &&
+        fallback != null &&
+        !names.clientEntries.containsKey(id)) {
+      return fallback;
+    }
+    return names.client(id);
+  }
+
+  /// 原文件存进附件(分类「客户确认」)：新建单暂存、保存后随单上传；草稿直接上传。
+  Future<void> _attachOriginalFile(PlatformFile? file) async {
+    final ownerType = _cfg.attachmentOwnerType;
+    if (file == null || ownerType == null) return;
+    final outcome = await salesIntakeKeepOriginalFile(
+      ref,
+      file: file,
+      ownerType: ownerType,
+      documentId: widget.id,
+      pending: _pendingFiles,
+      canManage: _canManageAttachmentsFor(ref.read(currentPermissionsProvider)),
+    );
+    if (mounted && outcome == SalesIntakeAttachOutcome.failed) {
+      context.appWarning(salesIntakeL10n(context).salesIntakeAttachFailed);
+    }
+  }
+
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   /// 明细表底部合计条的金额项标签：订单/客户出货按单据币种，其余内部出库为本币。
   String _totalAmountLabel(SalesMasterNameService names) {
     const base = '总金额';
-    if (_freeCustomerShipment ||
-        (widget.docType != SalesDocType.order && !_isCustomerShipment)) {
+    if (_freeCustomerShipment || (!_lockedPrice && !_isCustomerShipment)) {
       return base;
     }
     final resolved = names.currency(_currencyId);
+    // 报价币种选填：没选时不在合计上标币种。
+    if (resolved == '—' && widget.docType == SalesDocType.quote) return base;
     return '$base(${resolved == '—' ? (_isCustomerShipment ? '发货币种' : '订单币种') : resolved})';
   }
 
@@ -1869,6 +2375,36 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                 ),
                                 const SizedBox(height: UtenSpacing.s12),
                               ],
+                              // 识别客户文件入口(报价/订货新建与草稿)；已审核订单只给一句说明。
+                              if (_canUseAiIntake) ...[
+                                SalesIntakeEntryCard(
+                                  aiOff:
+                                      ref
+                                          .watch(aiStatusProvider)
+                                          .valueOrNull
+                                          ?.usable ==
+                                      false,
+                                  lastFileName: _aiIntake?.fileName,
+                                  importedRows: _aiIntake?.importedRows ?? 0,
+                                  onStart: _saving || _aiIntakeRunning
+                                      ? null
+                                      : _runAiIntake,
+                                ),
+                                const SizedBox(height: UtenSpacing.s12),
+                              ] else if (_editingApprovedOrder) ...[
+                                Text(
+                                  salesIntakeL10n(
+                                    context,
+                                  ).salesIntakeApprovedOrderHint,
+                                  key: const ValueKey(
+                                    'sales-intake-approved-order-hint',
+                                  ),
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: UtenSpacing.s8),
+                              ],
                               SavedDocumentFields(
                                 locked: _hasCreatedDocuments,
                                 child: Card(
@@ -1924,8 +2460,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                             ),
                                             ClientPickerField(
                                               initialId: _clientId,
-                                              initialName: names.client(
-                                                _clientId,
+                                              initialName: _clientDisplayName(
+                                                names,
                                               ),
                                               required: _cfg.clientRequired,
                                               errorMessage:
@@ -2076,7 +2612,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                   _clearError('currency');
                                                   _markConfirmed('currency');
                                                 },
-                                                required: true,
+                                                required: _cfg.currencyRequired,
                                                 autofilled: _autofilled
                                                     .contains('currency'),
                                                 errorMessage:
@@ -2118,17 +2654,18 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                         labelText: '汇率',
                                                       ),
                                                 ),
-                                              TextField(
-                                                controller: _taxRate,
-                                                keyboardType:
-                                                    const TextInputType.numberWithOptions(
-                                                      decimal: true,
-                                                    ),
-                                                decoration:
-                                                    const InputDecoration(
-                                                      labelText: '税率(%)',
-                                                    ),
-                                              ),
+                                              if (_cfg.hasTaxRate)
+                                                TextField(
+                                                  controller: _taxRate,
+                                                  keyboardType:
+                                                      const TextInputType.numberWithOptions(
+                                                        decimal: true,
+                                                      ),
+                                                  decoration:
+                                                      const InputDecoration(
+                                                        labelText: '税率(%)',
+                                                      ),
+                                                ),
                                             ],
                                             if (_cfg.hasSettlement &&
                                                 !_freeCustomerShipment)
@@ -2218,7 +2755,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                             if (_cfg.hasDeliverDate)
                                               UtenDateField(
                                                 label: '交货日期',
-                                                required: true,
+                                                required:
+                                                    _cfg.deliverDateRequired,
                                                 value: _deliverDate,
                                                 errorMessage:
                                                     _errors.contains(
@@ -2236,14 +2774,19 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                             if (widget.docType ==
                                                 SalesDocType.order)
                                               _shipmentPolicyField(),
-                                            if (_cfg.hasContractInfo) ...[
+                                            if (_cfg.hasContractNo)
                                               TextField(
                                                 controller: _contractNo,
-                                                decoration:
-                                                    const InputDecoration(
-                                                      labelText: '合同号',
-                                                    ),
+                                                decoration: applyAutofillHint(
+                                                  const InputDecoration(
+                                                    labelText: '合同号',
+                                                  ),
+                                                  theme,
+                                                  autofilled: _autofilled
+                                                      .contains('contractNo'),
+                                                ),
                                               ),
+                                            if (_cfg.hasContractInfo) ...[
                                               TextField(
                                                 controller: _signAddr,
                                                 decoration:
@@ -2347,10 +2890,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                         ],
                                         TextField(
                                           controller: _remark,
-                                          decoration: const InputDecoration(
-                                            labelText: '备注',
+                                          decoration: applyAutofillHint(
+                                            const InputDecoration(
+                                              labelText: '备注',
+                                            ),
+                                            theme,
+                                            autofilled: _autofilled.contains(
+                                              'remark',
+                                            ),
                                           ),
-                                          maxLines: 2,
+                                          minLines: 2,
+                                          maxLines: 5,
                                         ),
                                       ],
                                     ),
@@ -2443,14 +2993,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                         docType: _cfg.type,
                                         colorEntries: names.colorEntries,
                                         unitEntries: names.unitEntries,
+                                        showClientPrice: _grid.rows.any(
+                                          (r) => r.clientPrice != null,
+                                        ),
+                                        clientFileCurrency: _clientFileCurrency,
+                                        priceMasked: _priceMasked,
                                       ),
                                       createBlankRow: () => SalesGridRow(
                                         amountUsesDiscount: _amountUsesDiscount,
                                       ),
                                       cloneRow: (r) => r.clone(
-                                        requireOrderPriceRefresh:
-                                            widget.docType ==
-                                            SalesDocType.order,
+                                        requireOrderPriceRefresh: _lockedPrice,
                                       ),
                                       toolbarActions: [
                                         if (_cfg.hasUpstreamLink)
@@ -2459,6 +3012,20 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                             onPressed: _saving
                                                 ? null
                                                 : _importFromUpstream,
+                                          ),
+                                        if (_canUseAiIntake)
+                                          UtenImportButton(
+                                            key: const ValueKey(
+                                              'sales-intake-toolbar-button',
+                                            ),
+                                            label: salesIntakeL10n(
+                                              context,
+                                            ).salesIntakeToolbarButton,
+                                            icon: Icons.auto_awesome_rounded,
+                                            onPressed:
+                                                _saving || _aiIntakeRunning
+                                                ? null
+                                                : _runAiIntake,
                                           ),
                                       ],
                                       initialColumnOrder: columnPrefs?.order,

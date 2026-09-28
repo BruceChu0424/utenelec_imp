@@ -294,8 +294,9 @@ class MaterialAnalysisServiceBehaviorTest {
         UUID analysisId = UUID.randomUUID();
         PreviewItem requested = manualItem("req-2026-001");
 
-        Query matches = query(Collections.singletonList(
-                new Object[]{analysisId, MaterialAnalysisService.STATUS_ACTIVE}));
+        Query matches = query(Collections.singletonList(new Object[]{
+                analysisId, MaterialAnalysisService.STATUS_ACTIVE, "WL20260808000001",
+                requested.goodsId(), requested.colorId(), requested.unitId()}));
         Query identities = query(Collections.singletonList(new Object[]{
                 requested.sourceType(), null, requested.goodsId(), requested.colorId(),
                 requested.unitId(), "  REQ-2026-001  "}));
@@ -306,6 +307,196 @@ class MaterialAnalysisServiceBehaviorTest {
 
         assertThat(reused).isEqualTo(analysisId);
         verify(matches).setParameter("sourceRef", "req-2026-001");
+    }
+
+    /** ADR-130：一个手工需求编号挂多个货品；大小写/空白不同的写法统一成第一行的写法。 */
+    @Test
+    void manualDemandNumberCarriesSeveralGoodsUnderOneDisplaySpelling() {
+        MaterialAnalysisService service = service(mock(EntityManager.class),
+                mock(ProductionDocumentAccessPolicy.class));
+        UUID goodsA = UUID.randomUUID(), goodsB = UUID.randomUUID(), goodsC = UUID.randomUUID();
+
+        List<PreviewItem> normalized = invokePrivate(service, "normalizePreviewItems",
+                new Class<?>[]{List.class, boolean.class, UUID.class},
+                List.of(manualItem("REWORK", goodsA, "RW-7"),
+                        manualItem("rework", goodsB, "  rw-7 "),
+                        manualItem("REWORK", goodsC, "Rw-7"),
+                        // 同一货品换一个编号或换一个来源类型都是另一张需求单，不算重复
+                        manualItem("REWORK", goodsA, "RW-8"),
+                        manualItem("SAMPLE", goodsA, "RW-7")), false, null);
+
+        assertThat(normalized).extracting(PreviewItem::sourceRef)
+                .containsExactly("RW-7", "RW-7", "RW-7", "RW-8", "RW-7");
+        assertThat(normalized).extracting(PreviewItem::sourceType)
+                .containsExactly("REWORK", "REWORK", "REWORK", "REWORK", "SAMPLE");
+        assertThat(normalized).extracting(PreviewItem::goodsId)
+                .containsExactly(goodsA, goodsB, goodsC, goodsA, goodsA);
+    }
+
+    /** 同一编号下同一货品只能一行：大小写/空白不同的重复是校验错误，不再漏到 Map 建键变 500。 */
+    @Test
+    void sameGoodsTwiceUnderOneManualNumberIsAValidationError() {
+        MaterialAnalysisService service = service(mock(EntityManager.class),
+                mock(ProductionDocumentAccessPolicy.class));
+        UUID goods = UUID.randomUUID();
+
+        ApiException error = assertThrows(ApiException.class, () -> invokePrivate(
+                service, "normalizePreviewItems",
+                new Class<?>[]{List.class, boolean.class, UUID.class},
+                List.of(manualItem("REWORK", goods, "RW-1"),
+                        manualItem("REWORK", goods, " rw-1 ")), false, null));
+
+        assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
+        assertThat(error.getMessage()).isEqualTo("需求编号 RW-1 下货品重复，请合并为一行");
+    }
+
+    @Test
+    void reopeningAManualNumberWithTheSameGoodsSetReusesTheAnalysisWithOneLookupPerNumber() {
+        EntityManager em = mock(EntityManager.class);
+        MaterialAnalysisService service = service(em, mock(ProductionDocumentAccessPolicy.class));
+        UUID analysisId = UUID.randomUUID();
+        PreviewItem first = manualItem("REWORK", UUID.randomUUID(), "RW-2");
+        PreviewItem second = manualItem("REWORK", UUID.randomUUID(), "RW-2");
+        Query matches = query(List.of(
+                new Object[]{analysisId, MaterialAnalysisService.STATUS_PARTIAL, "WL20260927000001",
+                        first.goodsId(), null, first.unitId()},
+                new Object[]{analysisId, MaterialAnalysisService.STATUS_PARTIAL, "WL20260927000001",
+                        second.goodsId(), null, second.unitId()}));
+        Query identities = query(List.of(
+                new Object[]{"REWORK", null, first.goodsId(), null, first.unitId(), "rw-2"},
+                new Object[]{"REWORK", null, second.goodsId(), null, second.unitId(), "rw-2"}));
+        List<String> statements = new ArrayList<>();
+        when(em.createNativeQuery(anyString())).thenAnswer(call -> {
+            statements.add(call.getArgument(0, String.class));
+            return statements.size() == 1 ? matches : identities;
+        });
+
+        UUID reused = invokePrivate(service, "findReusableAnalysis",
+                new Class<?>[]{List.class}, List.of(first, second));
+
+        assertThat(reused).isEqualTo(analysisId);
+        assertThat(statements).hasSize(2);
+        assertThat(statements.getFirst())
+                .contains("source.source_type IN ('REWORK','TRIAL','SAMPLE','STOCK','OTHER')")
+                .contains("source.source_ref LIKE 'SC-ORDER:%'");
+    }
+
+    /**
+     * 已建分析的来源集合只能刷新数量，增减货品只能换编号(C1)。看得到原分析(本人负责，或数据范围授权只读可见)
+     * 才点名分析号与货品数；分析号缺失时不留空位。
+     */
+    @Test
+    void changingTheGoodsOfAnOpenManualNumberNamesTheOriginalAnalysis() {
+        UUID maker = UUID.randomUUID(), self = UUID.randomUUID();
+        PreviewItem a = manualItem("TRIAL", UUID.randomUUID(), "TR-9");
+        PreviewItem b = manualItem("TRIAL", UUID.randomUUID(), "TR-9");
+        PreviewItem added = manualItem("TRIAL", UUID.randomUUID(), "tr-9");
+        String hint = "；已建的分析不能增减货品，要增减货品请换一个需求编号(只改数量请打开原分析刷新)";
+        for (OwnerVisibility.OwnerScope visible : List.of(
+                new OwnerVisibility.OwnerScope(false, Set.of(maker)),
+                new OwnerVisibility.OwnerScope(false, Set.of(self, maker), Set.of(self)),
+                new OwnerVisibility.OwnerScope(true, Set.of()))) {
+            EntityManager em = mock(EntityManager.class);
+            MaterialAnalysisService service = service(em, accessWithScope(visible));
+            when(em.createNativeQuery(anyString())).thenAnswer(ignored -> manualGoodsRows(
+                    UUID.randomUUID(), "WL20260927000002", maker, a, b));
+
+            ApiException grown = assertThrows(ApiException.class, () -> invokePrivate(
+                    service, "findReusableAnalysis", new Class<?>[]{List.class}, List.of(a, b, added)));
+            ApiException shrunk = assertThrows(ApiException.class, () -> invokePrivate(
+                    service, "findReusableAnalysis", new Class<?>[]{List.class}, List.of(a)));
+
+            for (ApiException error : List.of(grown, shrunk)) {
+                assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
+                assertThat(error.getMessage())
+                        .isEqualTo("需求编号 TR-9 已在物料分析 WL20260927000002 中(2 个货品)" + hint);
+            }
+        }
+
+        EntityManager em = mock(EntityManager.class);
+        MaterialAnalysisService service = service(
+                em, accessWithScope(new OwnerVisibility.OwnerScope(false, Set.of(maker))));
+        when(em.createNativeQuery(anyString())).thenAnswer(ignored -> manualGoodsRows(
+                UUID.randomUUID(), null, maker, a, b));
+        ApiException unnumbered = assertThrows(ApiException.class, () -> invokePrivate(
+                service, "findReusableAnalysis", new Class<?>[]{List.class}, List.of(a)));
+        assertThat(unnumbered.getMessage()).isEqualTo("需求编号 TR-9 已在物料分析中(2 个货品)" + hint);
+    }
+
+    /** C5：这一步先于打开分析的归属校验；另一位负责人、又没有查看全部权限的人不能从 409 里看到对方的分析号和货品数。 */
+    @Test
+    void anotherMakersManualNumberGetsANeutralConflictWithoutTheAnalysisNumber() {
+        UUID owner = UUID.randomUUID(), otherMaker = UUID.randomUUID();
+        UUID analysisId = UUID.randomUUID();
+        PreviewItem a = manualItem("REWORK", UUID.randomUUID(), "RW-1");
+        PreviewItem b = manualItem("REWORK", UUID.randomUUID(), "RW-1");
+        PreviewItem other = manualItem("REWORK", UUID.randomUUID(), "RW-1");
+        EntityManager em = mock(EntityManager.class);
+        MaterialAnalysisService service = service(
+                em, accessWithScope(new OwnerVisibility.OwnerScope(false, Set.of(otherMaker))));
+        when(em.createNativeQuery(anyString())).thenAnswer(ignored -> manualGoodsRows(
+                analysisId, "WL20260927000001", owner, a, b));
+
+        ApiException error = assertThrows(ApiException.class, () -> invokePrivate(
+                service, "findReusableAnalysis", new Class<?>[]{List.class}, List.of(other)));
+
+        assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
+        assertThat(error.getMessage()).isEqualTo("需求编号 RW-1 已被另一份物料分析使用，请换一个需求编号");
+        // 委外前置池的旁路与打开分析同一套判定：本例不在池里，照样看不到。
+        verify(draftPreparationAccessOf(service)).canAccess(analysisId);
+    }
+
+    private static ProductionDocumentAccessPolicy accessWithScope(OwnerVisibility.OwnerScope scope) {
+        ProductionDocumentAccessPolicy access = mock(ProductionDocumentAccessPolicy.class);
+        when(access.scope()).thenReturn(scope);
+        when(access.canRead(any(UUID.class), any(OwnerVisibility.OwnerScope.class))).thenCallRealMethod();
+        return access;
+    }
+
+    private static com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy draftPreparationAccessOf(
+            MaterialAnalysisService service) {
+        return (com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy)
+                org.springframework.test.util.ReflectionTestUtils.getField(service, "draftPreparationAccess");
+    }
+
+    /** findReusableAnalysis 手工编号分组查询的行：id, status, analysis_no, goods, color, unit, maker_id。 */
+    private static Query manualGoodsRows(UUID analysisId, String analysisNo, UUID maker, PreviewItem... lines) {
+        List<Object[]> rows = new ArrayList<>();
+        for (PreviewItem line : lines) {
+            rows.add(new Object[]{analysisId, MaterialAnalysisService.STATUS_ACTIVE, analysisNo,
+                    line.goodsId(), null, line.unitId(), maker});
+        }
+        return query(rows);
+    }
+
+    @Test
+    void manualNumberLockUsesTheTriggerKeyOnceAndAllLocksRunInOneSortedPass() {
+        EntityManager em = mock(EntityManager.class);
+        MaterialAnalysisService service = service(em, mock(ProductionDocumentAccessPolicy.class));
+        List<String> statements = new ArrayList<>();
+        List<Object> refs = new ArrayList<>();
+        when(em.createNativeQuery(anyString())).thenAnswer(call -> {
+            statements.add(call.getArgument(0, String.class));
+            Query lock = mock(Query.class);
+            when(lock.setParameter(anyString(), any())).thenAnswer(parameter -> {
+                if ("sourceRef".equals(parameter.getArgument(0))) refs.add(parameter.getArgument(1));
+                return parameter.getMock();
+            });
+            return lock;
+        });
+
+        invokePrivate(service, "lockSourceIdentities", new Class<?>[]{List.class},
+                List.of(manualItem("STOCK", UUID.randomUUID(), "BK-3"),
+                        manualItem("STOCK", UUID.randomUUID(), "BK-3"),
+                        manualItem("OTHER", UUID.randomUUID(), "BK-3")));
+
+        // 两个编号锁(STOCK|bk-3、OTHER|bk-3)排在三把来源身份锁之前，同一编号只取一次。
+        assertThat(statements).hasSize(5);
+        assertThat(statements.subList(0, 2)).allSatisfy(sql -> assertThat(sql)
+                .contains("'MATERIAL-ANALYSIS-MANUAL-REF:' || :sourceType || '|' || lower(btrim(:sourceRef))"));
+        assertThat(statements.subList(2, 5)).allSatisfy(sql -> assertThat(sql)
+                .contains("hashtextextended(:lockKey,0)"));
+        assertThat(refs).containsExactly("BK-3", "BK-3");
     }
 
     @Test
@@ -2316,6 +2507,14 @@ class MaterialAnalysisServiceBehaviorTest {
                 null, UUID.fromString("20000000-0000-0000-0000-000000000001"),
                 sourceRef, "manual production demand", LocalDate.of(2026, 8, 20),
                 bd("100"));
+    }
+
+    private static PreviewItem manualItem(String sourceType, UUID goodsId, String sourceRef) {
+        return new PreviewItem(
+                sourceType, null, goodsId, null,
+                UUID.fromString("20000000-0000-0000-0000-000000000001"),
+                sourceRef, "manual production demand", LocalDate.of(2026, 9, 27),
+                bd("5"));
     }
 
     private static Object[] sourceRow(UUID itemId, UUID goodsId, UUID unitId) {

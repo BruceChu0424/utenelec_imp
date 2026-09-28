@@ -2,7 +2,7 @@
 
 > 位置：`lib/features/basic_data/widgets/uten_goods_picker.dart`（跨模块共享，同 `MasterDataTableView` 一样放在 basic_data 域）
 > 入口：`showUtenGoodsPicker(...)`（单选）/ `showUtenGoodsPickerMulti(...)`（多选）
-> 最后核对：2026-09-24
+> 最后核对：2026-09-27
 > 决策背景：[ADR-015 统一货品选择器与 legacy→UUID 桥接](../99-决策记录-ADR/ADR-015-统一货品选择器与legacy到UUID桥接.md)
 > 统一搜索契约：[UtenHierarchySearch](UtenHierarchySearch.md)
 
@@ -45,9 +45,10 @@
 | `all` | 全部：不过滤（未分类默认收起） | 仓库调拨/其它入库/其它出库/盘点 |
 | `component` | 组件类：只保留原材料/半成品/辅料/OEM成品/OEM物料/OEM功能件子树（白名单 6 分类，仿 `material`） | **货品 BOM 组装信息「添加组件」**（`goods_bom_tab.dart`） |
 | `rawMaterial` | 原材料：只保留原材料子树 | 货品详情“包装材料”字段（`requireConfirm=true`） |
-| `allExceptUncategorized` | 除未分类外的全部货品分类 | 销售 5 类单据多选；生产物料分析手工货品（`requireConfirm=true`） |
+| `allExceptUncategorized` | 除未分类外的全部货品分类 | 销售 5 类单据多选；生产物料分析手工需求单货品多选(`showUtenGoodsPickerMulti`，2026-09-27 ADR-130 起由单选改多选) |
 
 - docType→scope 映射封装在各编辑页 `_pickerScope` getter，不泄漏到 picker。
+- 2026-09-27 ADR-130：生产物料分析新建页的手工需求单明细改为可编辑表格，点货品名称单元格经 `materialAnalysisManualGoodsPickerProvider` 调 `showUtenGoodsPickerMulti(scope: allExceptUncategorized)`；第一个选中的货品填入所点行，其余依次填入其后的空行，不够再追加新行，本单已有的货品跳过并提示。经 Provider 注入是为了测试可替换选择器，与 BOM 组装的 `bomComponentPickerProvider` 同一做法。
 - 左侧使用一个统一搜索框，同时匹配分类名称/编号和货品名称/编号等字段；货品命中后展开完整分类路径并定位首个分类，右侧直接显示结果。
 - 六种 scope 都可跨当前可见分类搜索。前端把可见根作为 `categoryRootIds` 交给后端展开、合并并分页；服务端单次最大 32 个根，repository 会按 32 个一组完整拉取、按货品 ID 去重后重新分页，定位 ID 同样分批取并集。任一批失败则整体失败，不返回部分结果；无效根零命中，不能退化成全库。前端还会校验每条结果及定位 `categoryId` 都属于当前树。
 - **滑窗默认隐藏已禁用货品 + 迁移兜底 stub**（内部 `list`/`search` 传 `excludeDisabled: true` + `excludeStub: true`，后者排除 `goods.auto_created=true` 的历史外键锚，V177）；货品资料管理页把这两类收拢到顶部集合行（见 [基础资料页](../03-页面/基础资料页.md)），不进滑窗。V181 进一步把活动 BOM 的 stub 端点清零并加数据库/API 守卫，因此该排除是持续业务规则，不是等待“补全货品”后的临时筛选。

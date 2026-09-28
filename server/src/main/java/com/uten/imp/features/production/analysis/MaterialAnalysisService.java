@@ -39,6 +39,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -64,6 +65,11 @@ public class MaterialAnalysisService {
     static final String SOURCE_SUBCONTRACT_PREPARATION =
             "SUBCONTRACT_PREPARATION";
     static final String SOURCE_SUBCONTRACT_MAKE = "SUBCONTRACT_MAKE";
+    /**
+     * 手工生产来源五类(ADR-130/V738)：一个需求编号 = 一张手工需求单，可挂多个货品行；
+     * 同一编号只属于一份物料分析，同一编号下同一货品(货品+颜色+单位)只占一行。
+     */
+    static final Set<String> MANUAL_SOURCE_TYPES = Set.of("REWORK", "TRIAL", "SAMPLE", "STOCK", "OTHER");
     static final String STAGE_START = "START";
     static final String STAGE_ASSEMBLY = "ASSEMBLY";
     static final String STAGE_FINISH = "FINISH";
@@ -96,9 +102,19 @@ public class MaterialAnalysisService {
     private com.uten.imp.common.docnumber.DocNumberService docNumbers;
 
     OwnerVisibility.OwnerScope scopeForAnalysis(AnalysisHeader header){
+        return scopeForAnalysis(header.id(),header.makerId());
+    }
+
+    private OwnerVisibility.OwnerScope scopeForAnalysis(UUID analysisId,UUID makerId){
         var normal=access.scope();
-        if(normal==null||normal.seeAll()||normal.writableOwners().contains(header.makerId()))return normal;
-        return draftPreparationAccess.canAccess(header.id())?new OwnerVisibility.OwnerScope(true,Set.of()):normal;
+        if(normal==null||normal.seeAll()||normal.writableOwners().contains(makerId))return normal;
+        return draftPreparationAccess.canAccess(analysisId)?new OwnerVisibility.OwnerScope(true,Set.of()):normal;
+    }
+
+    /** 调用人能否看见这份分析：与打开/刷新同一套归属判定；没有当前用户的系统路径按可见。 */
+    private boolean canSeeAnalysis(UUID analysisId,UUID makerId){
+        var scope=scopeForAnalysis(analysisId,makerId);
+        return scope==null||access.canRead(makerId,scope);
     }
 
     /**
@@ -4747,6 +4763,8 @@ public class MaterialAnalysisService {
             UUID requestedAnalysisId) {
         List<PreviewItem> result = new ArrayList<>();
         Set<String> keys = new HashSet<>();
+        // ADR-130：同一 (来源类型, 需求编号) 的各货品行统一落第一行的写法，历史列表不会出现两种拼写。
+        Map<String, String> manualRefSpelling = new HashMap<>();
         for (PreviewItem item : raw) {
             if (item == null || item.requestedQty() == null
                     || item.requestedQty().signum() <= 0) {
@@ -4793,13 +4811,28 @@ public class MaterialAnalysisService {
                             "SC-(?:PREP|ORDER):[0-9a-fA-F-]{36}"))) {
                 throw validation("委外前置自制来源必须绑定真实订货行 UUID");
             }
-            String key = SOURCE_SALES.equals(source)
-                    ? source + ":" + item.salesOrderItemId()
-                    : source + ":" + item.goodsId() + ":" + Objects.toString(item.colorId(), "")
-                        + ":" + item.unitId() + ":" + Objects.toString(item.sourceRef(), "");
-            if (!keys.add(key)) throw validation("生产需求来源重复");
+            String sourceRef = blankToNull(item.sourceRef());
+            String key;
+            if (SOURCE_SALES.equals(source)) {
+                key = source + ":" + item.salesOrderItemId();
+            } else {
+                // 去重键与 SourceIdentity 同一规范形(去首尾空白+小写)：'RW-1' 与 ' rw-1' 是同一个编号，
+                // 否则会一路漏到按来源身份建 Map 的地方变成 500。
+                String canonicalRef = canonicalSourceRef(sourceRef);
+                if (MANUAL_SOURCE_TYPES.contains(source)) {
+                    String spelling = manualRefSpelling.putIfAbsent(source + "|" + canonicalRef, sourceRef);
+                    if (spelling != null) sourceRef = spelling;
+                }
+                key = source + ":" + item.goodsId() + ":" + Objects.toString(item.colorId(), "")
+                        + ":" + item.unitId() + ":" + canonicalRef;
+            }
+            if (!keys.add(key)) {
+                throw validation(MANUAL_SOURCE_TYPES.contains(source)
+                        ? "需求编号 " + sourceRef + " 下货品重复，请合并为一行"
+                        : "生产需求来源重复");
+            }
             result.add(new PreviewItem(source, item.salesOrderItemId(), item.goodsId(),
-                    item.colorId(), item.unitId(), blankToNull(item.sourceRef()),
+                    item.colorId(), item.unitId(), sourceRef,
                     blankToNull(item.sourceReason()), item.deliveryDate(),
                     scaleQty(item.requestedQty())));
         }
@@ -4821,37 +4854,81 @@ public class MaterialAnalysisService {
 
     private UUID findReusableAnalysis(List<PreviewItem> items) {
         Set<UUID> analyses = new LinkedHashSet<>();
+        // 非销售来源按 (来源类型, 规范化编号) 分组：一张手工需求单的多个货品行只查一次(ADR-130)。
+        Map<String, List<PreviewItem>> refGroups = new LinkedHashMap<>();
         for (PreviewItem item : items) {
-            boolean sales = SOURCE_SALES.equals(sourceType(item));
-            List<Object[]> matches = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                    SELECT DISTINCT analysis.id, analysis.status
+            if (!SOURCE_SALES.equals(sourceType(item))) {
+                refGroups.computeIfAbsent(sourceType(item) + "|" + canonicalSourceRef(item.sourceRef()),
+                        ignored -> new ArrayList<>()).add(item);
+                continue;
+            }
+            List<?> matches = em.createNativeQuery("""
+                    SELECT DISTINCT analysis.id
                     FROM production_material_analysis_items source
                     JOIN production_material_analyses analysis
                       ON analysis.id = source.analysis_id
                      AND analysis.is_deleted = FALSE
                     WHERE source.is_deleted = FALSE
-                      AND NOT(source.source_type='SUBCONTRACT_PREPARATION' AND source.source_ref LIKE 'SC-ORDER:%' AND analysis.status='CANCELLED')
-                      AND ((:sales = TRUE
-                            AND source.source_type = 'SALES_ORDER_ITEM'
-                            AND source.sales_order_item_id = :salesOrderItemId
-                            AND analysis.status IN ('ACTIVE','PARTIALLY_PLANNED'))
-                           OR
-                           (:sales = FALSE
-                            AND source.source_type = :sourceType
-                            AND lower(btrim(source.source_ref)) = lower(btrim(:sourceRef))))
+                      AND source.source_type = 'SALES_ORDER_ITEM'
+                      AND source.sales_order_item_id = :salesOrderItemId
+                      AND analysis.status IN ('ACTIVE','PARTIALLY_PLANNED')
                     ORDER BY analysis.id
                     """)
-                    .setParameter("sales", sales)
                     .setParameter("salesOrderItemId", item.salesOrderItemId())
-                    .setParameter("sourceType", sourceType(item))
-                    .setParameter("sourceRef", item.sourceRef()));
+                    .getResultList();
+            for (Object match : matches) analyses.add(uuid(match));
+        }
+        for (List<PreviewItem> group : refGroups.values()) {
+            PreviewItem first = group.getFirst();
+            boolean manual = MANUAL_SOURCE_TYPES.contains(sourceType(first));
+            // 手工五类写死字面量，规划器才能用上 V738 的 uq_production_material_analysis_manual_source_line。
+            List<Object[]> matches = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT analysis.id, analysis.status, analysis.analysis_no,
+                           source.goods_id, source.color_id, source.unit_id,
+                           analysis.maker_id
+                    FROM production_material_analysis_items source
+                    JOIN production_material_analyses analysis
+                      ON analysis.id = source.analysis_id
+                     AND analysis.is_deleted = FALSE
+                    WHERE source.is_deleted = FALSE
+                      AND NOT(source.source_type='SUBCONTRACT_PREPARATION' AND source.source_ref LIKE 'SC-ORDER:%%' AND analysis.status='CANCELLED')
+                      AND source.source_type = :sourceType
+                      AND lower(btrim(source.source_ref)) = lower(btrim(:sourceRef))%s
+                    ORDER BY analysis.id
+                    """.formatted(manual
+                            ? "\n  AND source.source_type IN ('REWORK','TRIAL','SAMPLE','STOCK','OTHER')" : ""))
+                    .setParameter("sourceType", sourceType(first))
+                    .setParameter("sourceRef", first.sourceRef()));
+            Map<UUID, List<Object[]>> linesByAnalysis = new LinkedHashMap<>();
             for (Object[] match : matches) {
-                if (!sales && !List.of(STATUS_ACTIVE, STATUS_PARTIAL)
-                        .contains(string(match[1]))) {
+                if (!List.of(STATUS_ACTIVE, STATUS_PARTIAL).contains(string(match[1]))) {
                     throw conflict("手工需求编号已有历史物料分析，请打开历史记录或使用新的需求编号");
                 }
-                analyses.add(uuid(match[0]));
+                linesByAnalysis.computeIfAbsent(uuid(match[0]), ignored -> new ArrayList<>()).add(match);
             }
+            if (manual && linesByAnalysis.size() == 1) {
+                List<Object[]> lines = linesByAnalysis.values().iterator().next();
+                Set<SourceIdentity> existingGoods = lines.stream()
+                        .map(line -> new SourceIdentity(sourceType(first), null, uuid(line[3]),
+                                uuid(line[4]), uuid(line[5]), first.sourceRef()))
+                        .collect(Collectors.toSet());
+                Set<SourceIdentity> requestedGoods = group.stream()
+                        .map(this::sourceIdentity).collect(Collectors.toSet());
+                if (!existingGoods.equals(requestedGoods)) {
+                    Object[] owner = lines.getFirst();
+                    // 这里先于打开分析时的归属校验：看不见原分析的人只得到中性提示，不透露编号和货品数。
+                    if (!canSeeAnalysis(uuid(owner[0]), uuid(owner[6]))) {
+                        throw conflict("需求编号 " + first.sourceRef()
+                                + " 已被另一份物料分析使用，请换一个需求编号");
+                    }
+                    // 已建分析的来源集合只能刷新数量(requireSameSources/syncRequestedQuantities)，增减货品只能换编号。
+                    String analysisNo = blankToNull(string(owner[2]));
+                    throw conflict("需求编号 " + first.sourceRef() + " 已在物料分析"
+                            + (analysisNo == null ? "" : " " + analysisNo + " ") + "中(" + existingGoods.size()
+                            + " 个货品)；已建的分析不能增减货品，要增减货品请换一个需求编号(只改数量请打开原分析刷新)");
+                }
+            }
+            analyses.addAll(linesByAnalysis.keySet());
         }
         if (analyses.isEmpty()) return null;
         if (analyses.size() != 1) {
@@ -4952,12 +5029,15 @@ public class MaterialAnalysisService {
     }
 
     private void insertSourceItems(UUID analysisId, List<PreviewItem> items) {
+        requireManualSourceMasters(items.stream()
+                .filter(item -> !SOURCE_SALES.equals(sourceType(item)))
+                .map(this::sourceIdentity).toList());
         int priority = 0;
         for (PreviewItem item : items) {
             priority++;
             SourceMaster master = SOURCE_SALES.equals(sourceType(item))
                     ? salesSourceMaster(item.salesOrderItemId())
-                    : manualSourceMaster(item.goodsId(), item.colorId(), item.unitId());
+                    : new SourceMaster(item.goodsId(), item.colorId(), item.unitId(), null);
             em.createNativeQuery("""
                     INSERT INTO production_material_analysis_items (
                         id, analysis_id, source_type, sales_order_item_id,
@@ -5478,6 +5558,8 @@ public class MaterialAnalysisService {
                 }
             }
         }
+        requireManualSourceMasters(requestedByIdentity.keySet().stream()
+                .filter(identity -> !SOURCE_SALES.equals(identity.sourceType())).toList());
         for (Object[] row : rows) {
             SourceIdentity identity = new SourceIdentity(
                     string(row[1]), uuid(row[2]), uuid(row[3]), uuid(row[4]),
@@ -5487,9 +5569,7 @@ public class MaterialAnalysisService {
                 throw conflict("刷新不能改变物料分析的来源集合");
             }
             LocalDate deliveryDate = requestedItem.deliveryDate();
-            if (!SOURCE_SALES.equals(identity.sourceType())) {
-                manualSourceMaster(identity.goodsId(), identity.colorId(), identity.unitId());
-            } else if (deliveryDate == null) {
+            if (SOURCE_SALES.equals(identity.sourceType()) && deliveryDate == null) {
                 deliveryDate = salesSourceMaster(identity.salesOrderItemId()).deliveryDate();
             }
             BigDecimal requested = requestedItem.requestedQty();
@@ -5537,6 +5617,11 @@ public class MaterialAnalysisService {
         }
     }
 
+    /** 需求编号的规范形：与 {@link SourceIdentity} 相同(去首尾空白+小写)，去重键、分组与冲突判定共用。 */
+    static String canonicalSourceRef(String sourceRef) {
+        return sourceRef == null ? "" : sourceRef.strip().toLowerCase(Locale.ROOT);
+    }
+
     private SourceIdentity sourceIdentity(PreviewItem item) {
         String source = sourceType(item);
         return SOURCE_SALES.equals(source)
@@ -5545,13 +5630,28 @@ public class MaterialAnalysisService {
                         item.unitId(), blankToNull(item.sourceRef()));
     }
 
+    /**
+     * 按一个固定顺序一次取齐本次请求的全部来源锁：每个来源身份一把；每个手工需求编号再加一把编号锁
+     * (ADR-130)，同一编号下不同货品的并发请求也在这里排队，不会各建一份分析。编号锁的键由 SQL 用与
+     * V738 触发器 fn_guard_manual_demand_single_analysis 逐字相同的表达式拼出，落库时触发器重入同一把锁。
+     */
     private void lockSourceIdentities(List<PreviewItem> items) {
-        items.stream().map(this::sourceIdentity).distinct().sorted()
-                .forEach(identity -> em.createNativeQuery("""
-                        SELECT pg_advisory_xact_lock(hashtextextended(:lockKey,0))
-                        """).setParameter("lockKey",
-                                "MATERIAL-ANALYSIS-SOURCE:" + identity.canonical())
-                        .getSingleResult());
+        Map<String, Runnable> locks = new TreeMap<>();
+        for (PreviewItem item : items) {
+            SourceIdentity identity = sourceIdentity(item);
+            String identityKey = "MATERIAL-ANALYSIS-SOURCE:" + identity.canonical();
+            locks.putIfAbsent(identityKey, () -> em.createNativeQuery("""
+                    SELECT pg_advisory_xact_lock(hashtextextended(:lockKey,0))
+                    """).setParameter("lockKey", identityKey).getSingleResult());
+            if (!MANUAL_SOURCE_TYPES.contains(identity.sourceType())) continue;
+            locks.putIfAbsent("MATERIAL-ANALYSIS-MANUAL-REF:" + identity.sourceType() + "|" + identity.sourceRef(),
+                    () -> em.createNativeQuery("""
+                            SELECT pg_advisory_xact_lock(hashtextextended(
+                                'MATERIAL-ANALYSIS-MANUAL-REF:' || :sourceType || '|' || lower(btrim(:sourceRef)), 0))
+                            """).setParameter("sourceType", identity.sourceType())
+                            .setParameter("sourceRef", item.sourceRef()).getSingleResult());
+        }
+        locks.values().forEach(Runnable::run);
     }
 
     private void lockSalesSources(List<UUID> ids) {
@@ -8251,20 +8351,41 @@ public class MaterialAnalysisService {
                 date(row[3]));
     }
 
-    private SourceMaster manualSourceMaster(UUID goodsId, UUID colorId, UUID unitId) {
-        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockForQuantityUse(em, java.util.Collections.singleton(goodsId));
-        Object[] row = oneRow(em.createNativeQuery("""
-                SELECT g.id, :colorId, u.id,
-                       g.unit_id AS base_unit_id
+    /**
+     * 非销售来源的主档校验(批量)：一次按 id 排序锁住全部货品的数量基准(FOR KEY SHARE)，再各用一条查询读回
+     * 货品基本单位与有效单位——一张手工需求单挂多少货品都是固定三条语句(ADR-130)，不再每行两条。
+     */
+    private void requireManualSourceMasters(Collection<SourceIdentity> sources) {
+        if (sources.isEmpty()) return;
+        List<UUID> goodsIds = sources.stream().map(SourceIdentity::goodsId)
+                .filter(Objects::nonNull).distinct().sorted().toList();
+        List<UUID> unitIds = sources.stream().map(SourceIdentity::unitId)
+                .filter(Objects::nonNull).distinct().sorted().toList();
+        if (goodsIds.isEmpty() || unitIds.isEmpty()) throw notFound("手工生产来源的货品或单位不存在");
+        com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockForQuantityUse(em, goodsIds);
+        Map<UUID, UUID> baseUnitByGoods = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT g.id, g.unit_id AS base_unit_id
                 FROM goods g
-                JOIN units u ON u.id = :unitId AND u.is_deleted = FALSE
-                WHERE g.id = :goodsId AND g.is_deleted = FALSE
-                """).setParameter("colorId", colorId).setParameter("unitId", unitId)
-                .setParameter("goodsId", goodsId), "手工生产来源的货品或单位不存在");
-        if (row[3] == null || !Objects.equals(uuid(row[2]), uuid(row[3]))) {
-            throw validation("手工生产来源只能使用货品主档的基本单位");
+                WHERE g.id IN (:goodsIds) AND g.is_deleted = FALSE
+                """).setParameter("goodsIds", goodsIds))) {
+            baseUnitByGoods.put(uuid(row[0]), uuid(row[1]));
         }
-        return new SourceMaster(uuid(row[0]), uuid(row[1]), uuid(row[2]), null);
+        Set<UUID> liveUnits = new HashSet<>();
+        for (Object unit : em.createNativeQuery("""
+                SELECT u.id FROM units u
+                WHERE u.id IN (:unitIds) AND u.is_deleted = FALSE
+                """).setParameter("unitIds", unitIds).getResultList()) {
+            liveUnits.add(uuid(unit));
+        }
+        for (SourceIdentity source : sources) {
+            if (!baseUnitByGoods.containsKey(source.goodsId()) || !liveUnits.contains(source.unitId())) {
+                throw notFound("手工生产来源的货品或单位不存在");
+            }
+            if (!Objects.equals(baseUnitByGoods.get(source.goodsId()), source.unitId())) {
+                throw validation("手工生产来源只能使用货品主档的基本单位");
+            }
+        }
     }
 
     private AnalysisHeader readHeader(UUID analysisId) {

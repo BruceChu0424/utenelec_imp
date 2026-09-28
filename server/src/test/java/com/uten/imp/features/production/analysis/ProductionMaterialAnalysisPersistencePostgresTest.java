@@ -14,10 +14,12 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.time.LocalDate;
+import java.util.Locale;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** PostgreSQL evidence for V234 conservation and deferred aggregate guards. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
@@ -249,22 +251,147 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
         }
     }
 
+    /**
+     * ADR-130/V738：一个手工需求编号可挂多个货品，但只属于一份物料分析；同编号同货品(忽略大小写与首尾空格)
+     * 只能一行；系统来源(自制备料等)仍按 (类型, 编号) 全局唯一；SC-ORDER 直接委外准备的排除不变。
+     * 整段在一个事务里做、最后回滚，预期失败用保存点隔开。
+     */
     @Test
-    void manualSourceReferenceIsRequiredAndUniqueIgnoringCaseAndWhitespace() throws Exception {
+    void manualDemandNumberHoldsManyGoodsButBelongsToExactlyOneAnalysis() throws Exception {
         try (Connection connection = connection()) {
-            String sourceRef = "REQ-" + UUID.randomUUID();
-            Fixture fixture = fixture(connection, new BigDecimal("10.0000"),
-                    new BigDecimal("10.0000"), sourceRef);
+            connection.setAutoCommit(false);
+            try {
+                String sourceRef = "REQ-" + UUID.randomUUID();
+                Fixture fixture = fixture(connection, new BigDecimal("10.0000"),
+                        new BigDecimal("10.0000"), sourceRef);
 
-            PSQLException missing = assertThrows(PSQLException.class, () -> update(connection,
-                    "UPDATE production_material_analysis_items SET source_ref=NULL WHERE id=?",
-                    fixture.itemId()));
-            assertEquals("23514", missing.getSQLState());
+                PSQLException missing = rejected(connection, () -> update(connection,
+                        "UPDATE production_material_analysis_items SET source_ref=NULL WHERE id=?",
+                        fixture.itemId()));
+                assertEquals("23514", missing.getSQLState());
 
-            PSQLException duplicate = assertThrows(PSQLException.class, () -> fixture(
-                    connection, new BigDecimal("3.0000"), new BigDecimal("3.0000"),
-                    "  " + sourceRef.toLowerCase() + "  "));
-            assertEquals("23505", duplicate.getSQLState());
+                // 同一编号在同一份分析里再挂两个货品(写法不同也是同一个编号)：一张需求单共 3 个货品。
+                UUID goodsB = insertGoods(connection, fixture.unitId());
+                UUID goodsC = insertGoods(connection, fixture.unitId());
+                insertManualSource(connection, fixture, fixture.analysisId(), "OTHER", goodsB,
+                        "  " + sourceRef.toLowerCase(Locale.ROOT) + "  ");
+                insertManualSource(connection, fixture, fixture.analysisId(), "OTHER", goodsC, sourceRef);
+                assertEquals(3L, scalarLong(connection, """
+                        SELECT count(*) FROM production_material_analysis_items
+                        WHERE analysis_id=? AND is_deleted=FALSE
+                        """, fixture.analysisId()));
+
+                PSQLException sameGoods = rejected(connection, () -> insertManualSource(
+                        connection, fixture, fixture.analysisId(), "OTHER", goodsB,
+                        sourceRef.toUpperCase(Locale.ROOT)));
+                assertEquals("23505", sameGoods.getSQLState());
+                assertEquals("uq_production_material_analysis_manual_source_line",
+                        sameGoods.getServerErrorMessage().getConstraint());
+
+                // 同一编号放进第二份分析：触发器拒绝，错误码与旧唯一索引相同。
+                PSQLException secondAnalysis = rejected(connection, () -> fixture(
+                        connection, new BigDecimal("3.0000"), new BigDecimal("3.0000"),
+                        "  " + sourceRef.toLowerCase(Locale.ROOT) + "  "));
+                assertEquals("23505", secondAnalysis.getSQLState());
+                assertTrue(secondAnalysis.getMessage().contains("已属于另一份物料分析"),
+                        secondAnalysis.getMessage());
+
+                // 另一份分析的行改成这个编号，同样被 _upd 触发器拒绝；换一个来源类型则是另一张需求单。
+                Fixture other = fixture(connection, new BigDecimal("3.0000"), new BigDecimal("3.0000"));
+                PSQLException renamed = rejected(connection, () -> update(connection,
+                        "UPDATE production_material_analysis_items SET source_ref=? WHERE id=?",
+                        sourceRef, other.itemId()));
+                assertEquals("23505", renamed.getSQLState());
+                assertTrue(renamed.getMessage().contains("已属于另一份物料分析"), renamed.getMessage());
+                insertManualSource(connection, other, other.analysisId(), "SAMPLE",
+                        other.goodsId(), sourceRef);
+
+                // 系统来源：同类型同编号(忽略大小写与首尾空格)跨分析仍全局唯一。
+                String makeRef = "自制备料 V738 " + UUID.randomUUID();
+                UUID makeMaterial = UUID.randomUUID();
+                insertAnalysisMaterial(connection, fixture, makeMaterial, "v738-make", null, 1,
+                        "1", "10", "0", "PER_UNIT", "1", "1", true);
+                insertMakeComponent(connection, fixture, makeMaterial, makeRef);
+                UUID otherMaterial = UUID.randomUUID();
+                insertAnalysisMaterial(connection, other, otherMaterial, "v738-make", null, 1,
+                        "1", "10", "0", "PER_UNIT", "1", "1", true);
+                PSQLException systemRef = rejected(connection, () -> insertMakeComponent(
+                        connection, other, otherMaterial, "  " + makeRef.toLowerCase(Locale.ROOT) + " "));
+                assertEquals("23505", systemRef.getSQLState());
+                assertEquals("uq_production_material_analysis_system_source_ref",
+                        systemRef.getServerErrorMessage().getConstraint());
+
+                String systemIndex = scalarIndexDefinition(connection,
+                        "uq_production_material_analysis_system_source_ref");
+                assertTrue(systemIndex.contains("CREATE UNIQUE INDEX"), systemIndex);
+                assertTrue(systemIndex.contains("'SC-ORDER:%'"), systemIndex);
+                assertTrue(systemIndex.contains("'REWORK'") && systemIndex.contains("'OTHER'"), systemIndex);
+                String manualIndex = scalarIndexDefinition(connection,
+                        "uq_production_material_analysis_manual_source_line");
+                assertTrue(manualIndex.contains("NULLS NOT DISTINCT"), manualIndex);
+                assertEquals("", scalarIndexDefinition(connection,
+                        "uq_production_material_analysis_manual_source_ref"));
+
+                // 原分析的手工行全部软删除后，编号不再占用(与旧索引一样只看未删除行)。
+                update(connection, """
+                        UPDATE production_material_analysis_items SET is_deleted=TRUE, deleted_at=now()
+                        WHERE analysis_id=? AND source_type='OTHER'
+                        """, fixture.analysisId());
+                update(connection, "UPDATE production_material_analysis_items SET source_ref=? WHERE id=?",
+                        sourceRef, other.itemId());
+            } finally {
+                connection.rollback();
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    /** 在保存点里执行预期失败的语句，失败后回到保存点，事务可继续。 */
+    private static PSQLException rejected(Connection connection,
+            org.junit.jupiter.api.function.Executable statement) throws Exception {
+        java.sql.Savepoint savepoint = connection.setSavepoint();
+        PSQLException failure = assertThrows(PSQLException.class, statement);
+        connection.rollback(savepoint);
+        return failure;
+    }
+
+    private static UUID insertGoods(Connection connection, UUID unitId) throws Exception {
+        UUID goodsId = UUID.randomUUID();
+        insert(connection, "INSERT INTO goods(id,code,name,unit_id,code_sequence) "
+                        + "VALUES(?,?,?,?,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
+                goodsId, "V738-G-" + goodsId, "V738 product", unitId);
+        return goodsId;
+    }
+
+    private static void insertManualSource(Connection connection, Fixture owner, UUID analysisId,
+            String sourceType, UUID goodsId, String sourceRef) throws Exception {
+        insert(connection, """
+                INSERT INTO production_material_analysis_items(
+                    id,analysis_id,source_type,goods_id,unit_id,source_ref,source_reason,
+                    requested_qty,line_priority,created_by,updated_by
+                ) VALUES(?,?,?,?,?,?,'V738 multi-goods demand',2,2,?,?)
+                """, UUID.randomUUID(), analysisId, sourceType, goodsId, owner.unitId(),
+                sourceRef, owner.userId(), owner.userId());
+    }
+
+    private static void insertMakeComponent(Connection connection, Fixture owner, UUID parentMaterialId,
+            String sourceRef) throws Exception {
+        insert(connection, """
+                INSERT INTO production_material_analysis_items(
+                    id,analysis_id,source_type,goods_id,unit_id,source_ref,source_reason,
+                    requested_qty,line_priority,parent_analysis_material_id,created_by,updated_by
+                ) VALUES(?,?,'MAKE_COMPONENT',?,?,?,'V738 system reference',10,3,?,?,?)
+                """, UUID.randomUUID(), owner.analysisId(), owner.goodsId(), owner.unitId(),
+                sourceRef, parentMaterialId, owner.userId(), owner.userId());
+    }
+
+    private static String scalarIndexDefinition(Connection connection, String indexName) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT indexdef FROM pg_indexes WHERE indexname=?")) {
+            statement.setString(1, indexName);
+            try (ResultSet rows = statement.executeQuery()) {
+                return rows.next() ? rows.getString(1) : "";
+            }
         }
     }
 

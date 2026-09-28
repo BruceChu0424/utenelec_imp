@@ -493,8 +493,8 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(708, 637),")
                 .contains("(709, 638), (710, 639), (711, 640), (712, 641), (713, 642), (714, 643), (715, 644),")
                 .contains("(716, 645)")
-                .contains("(741, 665)")
-                .contains("(742, 666)")
+                .contains("(741, 666)")
+                .contains("(742, 667)")
                 // Preserve the exact range label without a second hardcoded current head.
                 .contains("V507/469、V508/470及V511至V"
                         + MigrationRehearsalSupport.CURRENT_HEAD_VERSION + "完整目录")

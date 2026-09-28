@@ -1,7 +1,27 @@
 part of 'production_material_analysis_page.dart';
 
+/// 新建物料分析页的两个分段(ADR-130)：勾选销售订单产品 / 录入手工需求单。
+/// 两边录入的内容一起构成「本次分析」，由右下角同一个按钮联合分析。
+enum _CandidateTab { sales, manual }
+
+/// 分析结果顶部「手工需求」chip 的一组：同一(来源类型, 需求编号)下的货品。
+class _ManualDemandSummary {
+  _ManualDemandSummary(this.sourceType, this.sourceRef);
+
+  final String sourceType;
+  final String sourceRef;
+  final Set<String> goods = {};
+  final List<String> reasons = [];
+}
+
 abstract class _MaterialAnalysisCandidatesState
     extends _MaterialAnalysisPageBase {
+  @override
+  void initState() {
+    super.initState();
+    _manualDemandDrafts.add(_createManualDemandDraft());
+  }
+
   /// 候选搜索：防抖由 UtenSearchBar 内置（300ms），停止输入后再检索。
   void _searchCandidates(String value) {
     _candidateKeyword = value.trim();
@@ -11,12 +31,27 @@ abstract class _MaterialAnalysisCandidatesState
   bool _candidateSelected(MaterialAnalysisSalesCandidateLine line) =>
       _sourceQtyControllers.containsKey(line.salesOrderItemId);
 
+  /// 各张手工需求单里已选货品的行数(每行 = 一个分析来源)。
+  int get _manualGoodsLineCount {
+    var count = 0;
+    for (final draft in _manualDemandDrafts) {
+      count += draft.goodsLineCount;
+    }
+    return count;
+  }
+
+  /// 本次分析项数 = 勾选的销售订单产品 + 手工需求里已选货品的行(合计上限 500)。
   int get _selectedAnalysisSourceCount =>
-      _sourceQtyControllers.length + _manualSources.length;
+      _sourceQtyControllers.length + _manualGoodsLineCount;
 
   int get _remainingSalesSourceSlots =>
-      (_MaterialAnalysisPageBase._maxAnalysisItems - _manualSources.length)
+      (_MaterialAnalysisPageBase._maxAnalysisItems - _manualGoodsLineCount)
           .clamp(0, _MaterialAnalysisPageBase._maxAnalysisItems);
+
+  void _showCandidateTab(_CandidateTab tab) {
+    if (_candidateTab == tab) return;
+    setState(() => _candidateTab = tab);
+  }
 
   void _toggleCandidate(
     MaterialAnalysisSalesCandidateLine line,
@@ -30,7 +65,7 @@ abstract class _MaterialAnalysisCandidatesState
         !_sourceQtyControllers.containsKey(line.salesOrderItemId) &&
         _selectedAnalysisSourceCount >=
             _MaterialAnalysisPageBase._maxAnalysisItems) {
-      context.appWarning('单次联合分析最多 500 个产品，其余请另开一个批次');
+      context.appWarning('单次联合分析最多 500 项(销售订单产品与手工需求合计)，其余请另开一个批次');
       return;
     }
     setState(() {
@@ -49,7 +84,7 @@ abstract class _MaterialAnalysisCandidatesState
   }
 
   /// 桌面候选表使用与调度台一致的受控多选：表头可全选当前页，翻页后旧选择保留。
-  /// 数量默认带入当前待排量，员工只需在下方“已选产品”区改例外数量。
+  /// 数量默认带入当前待排量，员工只需在表内「本次分析数量」列改例外数量。
   void _replaceCandidateIds(
     Set<String> nextIds,
     List<MaterialAnalysisSalesCandidateLine> visibleLines,
@@ -88,7 +123,7 @@ abstract class _MaterialAnalysisCandidatesState
     });
     if (capped) {
       context.appWarning(
-        '单次联合分析最多 500 个来源(含手工计划)，已保留可加入的前 $salesSourceLimit 项；其余请另开一个批次',
+        '单次联合分析最多 500 项(销售订单产品与手工需求合计)，已保留可加入的前 $salesSourceLimit 项；其余请另开一个批次',
       );
     }
   }
@@ -99,135 +134,193 @@ abstract class _MaterialAnalysisCandidatesState
     line.spec,
   ].whereType<String>().where((value) => value.trim().isNotEmpty).join(' · ');
 
+  /// 销售订单产品「本次分析数量」的合格值：能解析、有限且大于 0，否则 null。
+  /// 提交校验与表内必填红框共用这一个口径。
+  double? _positiveAnalysisQty(String text) {
+    final quantity = double.tryParse(text.trim());
+    return quantity == null || !quantity.isFinite || quantity <= 0
+        ? null
+        : quantity;
+  }
+
+  /// 本次分析的全部来源：手工需求单的每行货品 + 勾选的销售订单产品。
+  /// 任一处不合格就提示原因、切到出问题的分段，并返回 null(不发请求)。
   List<MaterialAnalysisSourceInput>? _candidateSources() {
-    final result = <MaterialAnalysisSourceInput>[..._manualSources];
+    // 每次分析前重新判定标红：上一次标红的行即使本人没动(比如删掉的是另一条
+    // 重复行)，这次也先清掉，只留这次真正有问题的行。
+    for (final draft in _manualDemandDrafts) {
+      for (var i = 0; i < draft.grid.length; i++) {
+        draft.grid[i].flagged = false;
+      }
+    }
+    final salesSources = <MaterialAnalysisSourceInput>[];
     for (final entry in _sourceQtyControllers.entries) {
-      final quantity = double.tryParse(entry.value.text.trim());
-      if (quantity == null || !quantity.isFinite || quantity <= 0) {
-        context.appWarning('所选产品的分析数量必须大于 0');
+      final quantity = _positiveAnalysisQty(entry.value.text);
+      if (quantity == null) {
+        _showCandidateTab(_CandidateTab.sales);
+        context.appWarning(
+          '「${_selectedCandidateLabels[entry.key] ?? '所选销售订单产品'}」的本次分析数量必须大于 0',
+        );
         return null;
       }
-      result.add(
+      salesSources.add(
         MaterialAnalysisSourceInput(
           salesOrderItemId: entry.key,
           requestedQty: quantity,
         ),
       );
     }
-    if (result.isEmpty) {
-      context.appWarning('请至少选择一个待分析产品');
+    final manual = buildMaterialManualDemandSources(
+      _manualDemandDrafts,
+      defaultDeliveryDate: _deliveryDate,
+      otherSourceCount: salesSources.length,
+    );
+    if (!manual.isValid) {
+      for (final line in manual.flaggedLines) {
+        line.flagged = true;
+      }
+      final draftIndex = manual.draftIndex;
+      if (draftIndex != null) {
+        _showCandidateTab(_CandidateTab.manual);
+        _revealManualDemandDraft(_manualDemandDrafts[draftIndex]);
+      }
+      context.appWarning(manual.error!);
       return null;
     }
-    if (result.length > _MaterialAnalysisPageBase._maxAnalysisItems) {
-      context.appWarning('单次联合分析最多 500 个来源(销售产品与手工计划合计)');
-      return null;
-    }
-    return result;
+    return [...manual.sources, ...salesSources];
   }
 
-  Future<void> _pickManualGoods() async {
-    if (_busy) return;
-    final goods = await showUtenGoodsPicker(
+  /// 每张手工需求单卡片的定位锚点：新建一张或校验卡在某一张时把它滚进视野。
+  /// 随单释放(见 [_releaseManualDemandDrafts])。
+  final Map<MaterialManualDemandDraft, GlobalKey> _manualDemandCardKeys = {};
+
+  MaterialManualDemandDraft _createManualDemandDraft() {
+    final draft = MaterialManualDemandDraft();
+    draft.grid.rowsListenable.addListener(_onManualDemandRowsChanged);
+    return draft;
+  }
+
+  /// 下一帧把 [draft] 的卡片滚到列表可视区顶部(桌面列表与窄屏滚动页通用)。
+  /// 卡片还没建出来(比如不在手工需求分段)就不动。
+  void _revealManualDemandDraft(MaterialManualDemandDraft draft) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final cardContext = _manualDemandCardKeys[draft]?.currentContext;
+      if (cardContext == null || !cardContext.mounted) return;
+      // 默认对齐 = 卡片顶部贴可视区顶部。
+      Scrollable.ensureVisible(
+        cardContext,
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+      );
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  /// 手工需求单增删行(含右键粘贴/删除)后刷新分段计数与「本次分析 N 项」。
+  void _onManualDemandRowsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// 摘下监听后在本帧之后释放：卸载中的表格与输入框还要对这些控制器解除订阅。
+  void _releaseManualDemandDrafts(List<MaterialManualDemandDraft> drafts) {
+    if (drafts.isEmpty) return;
+    for (final draft in drafts) {
+      draft.grid.rowsListenable.removeListener(_onManualDemandRowsChanged);
+      _manualDemandCardKeys.remove(draft);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final draft in drafts) {
+        draft.dispose();
+      }
+    });
+  }
+
+  /// 清空后仍保留一张空白手工需求单(调用方负责 setState)。
+  void _resetManualDemandDrafts() {
+    final previous = List<MaterialManualDemandDraft>.of(_manualDemandDrafts);
+    _manualDemandDrafts
+      ..clear()
+      ..add(_createManualDemandDraft());
+    _releaseManualDemandDrafts(previous);
+  }
+
+  /// 新单追加在列表末尾：第一张单货品多时它落在首屏以下，点了像没反应，
+  /// 所以建好后把它滚进视野。
+  void _addManualDemandDraft() {
+    if (_busy || !_canManage) return;
+    final draft = _createManualDemandDraft();
+    setState(() => _manualDemandDrafts.add(draft));
+    _revealManualDemandDraft(draft);
+  }
+
+  Future<void> _removeManualDemandDraft(MaterialManualDemandDraft draft) async {
+    if (_busy || _manualDemandDrafts.length <= 1) return;
+    if (draft.hasInput) {
+      final goodsCount = draft.goodsLineCount;
+      final confirmed = await UtenDialog.show(
+        context,
+        title: '删除这张手工需求单？',
+        content: Text(
+          goodsCount > 0
+              ? '单里已选的 $goodsCount 个货品和填写的单头会一起删除。'
+              : '单里填写的内容会一起删除。',
+        ),
+        confirmLabel: '删除',
+        danger: true,
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    if (!_manualDemandDrafts.contains(draft) ||
+        _manualDemandDrafts.length <= 1) {
+      return;
+    }
+    setState(() => _manualDemandDrafts.remove(draft));
+    _releaseManualDemandDrafts([draft]);
+  }
+
+  void _setManualDemandSourceType(
+    MaterialManualDemandDraft draft,
+    String? sourceType,
+  ) {
+    setState(() => draft.sourceType = sourceType);
+  }
+
+  /// 点「货品名称」格：多选选货，第一个填这一行，其余依次填后面的空行、不够再追加；
+  /// 本单已有的货品跳过；超过本次分析 500 项上限的部分不加入并提示。
+  Future<void> _pickManualDemandGoods(
+    MaterialManualDemandDraft draft,
+    MaterialManualDemandLine line,
+  ) async {
+    if (_busy || !_canManage) return;
+    final picked = await ref.read(materialAnalysisManualGoodsPickerProvider)(
       context,
       ref,
-      scope: UtenGoodsPickerScope.allExceptUncategorized,
     );
-    if (goods == null || !mounted) return;
-    setState(() => _manualGoods = goods);
-  }
-
-  Future<void> _pickManualDeliveryDate() async {
-    final selected = await showDatePicker(
-      context: context,
-      initialDate: _manualDeliveryDate ?? _deliveryDate ?? _billDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
+    if (!mounted || picked.isEmpty) return;
+    if (!_manualDemandDrafts.contains(draft) ||
+        !draft.grid.rows.contains(line)) {
+      return;
+    }
+    final result = applyMaterialManualDemandPick(
+      draft,
+      line,
+      picked,
+      remainingSlots:
+          _MaterialAnalysisPageBase._maxAnalysisItems -
+          _selectedAnalysisSourceCount,
     );
-    if (selected != null && mounted) {
-      setState(() => _manualDeliveryDate = selected);
-    }
-  }
-
-  void _addManualSource() {
-    final goods = _manualGoods;
-    final sourceType = _manualSourceType;
-    final sourceRef = _manualSourceRef.text.trim();
-    final quantity = double.tryParse(_manualQty.text.trim());
-    final reason = _manualReason.text.trim();
-    if (sourceType == null) {
-      context.appWarning('请选择返工、试制、样品、备库或其他来源');
-      return;
-    }
-    if (sourceRef.isEmpty) {
-      context.appWarning('手工计划需求编号必填');
-      return;
-    }
-    if (sourceRef.length > 200) {
-      context.appWarning('手工计划需求编号不能超过 200 个字符');
-      return;
-    }
-    if (goods == null) {
-      context.appWarning('请选择手工计划货品');
-      return;
-    }
-    if (quantity == null || !quantity.isFinite || quantity <= 0) {
-      context.appWarning('手工计划数量必须大于 0');
-      return;
-    }
-    if (reason.isEmpty) {
-      context.appWarning('手工计划来源原因必填');
-      return;
-    }
-    final source = MaterialAnalysisSourceInput(
-      sourceType: sourceType,
-      sourceRef: sourceRef,
-      goodsId: goods.id,
-      colorId: goods.colorId,
-      unitId: goods.unitId,
-      requestedQty: quantity,
-      sourceReason: reason,
-      deliveryDate: _dateText(_manualDeliveryDate ?? _deliveryDate),
-    );
-    final replacesExisting = _manualSources.any(
-      (existing) => existing.canonicalKey == source.canonicalKey,
-    );
-    if (!replacesExisting &&
-        _selectedAnalysisSourceCount >=
-            _MaterialAnalysisPageBase._maxAnalysisItems) {
-      context.appWarning('单次联合分析最多 500 个来源；请先移除一个已选产品或手工计划');
-      return;
-    }
-    final conflictingReference = _manualSources.any(
-      (existing) =>
-          existing.sourceType == sourceType &&
-          existing.sourceRef?.trim().toLowerCase() == sourceRef.toLowerCase() &&
-          existing.canonicalKey != source.canonicalKey,
-    );
-    if (conflictingReference) {
-      context.appWarning('同一来源类型下，一个需求编号只能对应一个产品需求');
-      return;
-    }
-    setState(() {
-      _manualSources.removeWhere(
-        (existing) => existing.canonicalKey == source.canonicalKey,
-      );
-      _manualSources.add(source);
-      _manualSourceLabels[source.canonicalKey] =
-          '${goods.code ?? ''} ${goods.name ?? ''}'.trim();
-      _manualGoods = null;
-      _manualDeliveryDate = null;
-    });
-    _manualSourceRef.clear();
-    _manualReason.clear();
-    _manualQty.text = '1';
-    context.appSuccess('已加入手工分析来源');
-  }
-
-  void _removeManualSource(MaterialAnalysisSourceInput source) {
-    setState(() {
-      _manualSources.remove(source);
-      _manualSourceLabels.remove(source.canonicalKey);
-    });
+    setState(() {});
+    final notes = <String>[
+      if (result.duplicates > 0)
+        '已跳过 ${result.duplicates} 个这张单里已有的货品，同一货品请直接改原行数量',
+      if (result.capped > 0)
+        '单次联合分析最多 500 项(销售订单产品与手工需求合计)，'
+            '还有 ${result.capped} 个货品没有加入，请另开一个分析批次',
+    ];
+    if (notes.isNotEmpty) context.appWarning(notes.join('；'));
   }
 
   Future<void> _startCandidateAnalysis() async {
@@ -267,8 +360,10 @@ abstract class _MaterialAnalysisCandidatesState
         _analysis?.version ?? widget.seed.analysisVersion ?? 0,
         warehouseId,
         warehouseIds.join(','),
+        // 行需求日也是来源内容：只改日期的两次提交不能复用同一个幂等键。
         for (final source in canonicalSources)
-          '${source.canonicalKey}:${source.requestedQty}:${source.sourceReason ?? ''}',
+          '${source.canonicalKey}:${source.requestedQty}:'
+              '${source.sourceReason ?? ''}:${source.deliveryDate ?? ''}',
       ].join('|'),
     );
     setState(() {
@@ -325,118 +420,301 @@ abstract class _MaterialAnalysisCandidatesState
     if (context.breakpoint.isCompact) {
       return _compactCandidateBody(theme, page, lines);
     }
+    final salesTab = _candidateTab == _CandidateTab.sales;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _introCard(theme),
-          const SizedBox(height: UtenSpacing.s8),
-          _manualSourceCard(theme),
-          const SizedBox(height: UtenSpacing.s8),
-          _candidateToolbar(theme),
-          const SizedBox(height: UtenSpacing.s8),
-          if (_error != null)
-            _inlineError(theme, _error!, () => _loadCandidates()),
-          Expanded(
-            child: MasterDataTableView<MaterialAnalysisSalesCandidateLine>(
-              key: const Key('material-analysis-candidate-table'),
-              columns: _candidateColumns,
-              items: lines,
-              selectable: _canManage,
-              idOf: (line) =>
-                  (line.remainingQty ?? 0) > 0 ? line.salesOrderItemId : null,
-              selectedIds: _sourceQtyControllers.keys.toSet(),
-              showSelectionSummary: false,
-              bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-              onSelectedIdsChanged: (ids) => _replaceCandidateIds(ids, lines),
-              // 2026-09-25 单号列统一：销售单号值来自服务端 facets
-              //（与列表同一过滤上下文），值筛选走服务端精确匹配。
-              facets: {'orderNo': _candidateDocNoFacets['orderNo'] ?? const []},
-              nullCounts: const {},
-              filters: {'orderNo': _candidateOrderNoFilter},
-              onFilterChanged: (key, value) {
-                if (key != 'orderNo') return;
-                setState(() {
-                  final next = value?.trim();
-                  _candidateOrderNoFilter = next == null || next.isEmpty
-                      ? null
-                      : next;
-                });
-                _loadCandidates(page: 1);
-              },
-              // 2026-09-25 单号列统一：表头排序走服务端白名单（orderNo）。
-              sortColumn: _candidateSortColumn,
-              sortAscending: _candidateSortAscending,
-              onSortChange: (column, ascending) {
-                setState(() {
-                  _candidateSortColumn = column;
-                  _candidateSortAscending = ascending;
-                });
-                _loadCandidates(page: 1);
-              },
-              isLoading: _loadingCandidates,
-              emptyMessage: '暂无可分析的已审销售订单产品',
-              currentPage: page?.page ?? _candidatePageNo,
-              totalPages: page?.totalPages ?? 1,
-              onPageChange: (value) => _loadCandidates(page: value),
-            ),
+          Row(
+            children: [
+              Expanded(child: _candidateGuidance(theme)),
+              const SizedBox(width: UtenSpacing.s12),
+              SizedBox(width: 260, child: _warehouseField()),
+            ],
           ),
-          if (_sourceQtyControllers.isNotEmpty) ...[
+          const SizedBox(height: UtenSpacing.s8),
+          // 分段 + 搜索框(手工需求分段为「再建一张」按钮)：一行放得下就左右分开，
+          // 窄窗口(约 600-900 宽)放不下时右侧整体换到下一行，分段始终完整可见。
+          Wrap(
+            key: const Key('material-analysis-candidate-tab-row'),
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: UtenSpacing.s12,
+            runSpacing: UtenSpacing.s8,
+            children: [
+              _candidateTabs(),
+              if (salesTab)
+                SizedBox(width: 320, child: _candidateSearchBar())
+              else if (_canManage)
+                _addManualDemandButton(),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          if (_error != null) ...[
+            _inlineError(theme, _error!, () => _loadCandidates()),
             const SizedBox(height: UtenSpacing.s8),
-            _selectedSourceEditor(theme),
           ],
+          Expanded(
+            child: salesTab
+                ? _salesCandidateTable(page, lines)
+                // 卡片一次全建出来(不按可视区懒建)：新建或校验出错的卡片即使在
+                // 首屏以下，也能按锚点滚过去。每张卡片的明细表本身就是整表展开。
+                : SingleChildScrollView(
+                    key: const Key('material-manual-demand-list'),
+                    padding: const EdgeInsets.only(
+                      bottom: UtenFloatingActionGroup.scrollClearance,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _manualDemandIntro(theme),
+                        const SizedBox(height: UtenSpacing.s8),
+                        ..._manualDemandCards(compact: false),
+                      ],
+                    ),
+                  ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _candidateStartButton() {
-    final selectedCount = _sourceQtyControllers.length + _manualSources.length;
-    return UtenButton(
-      key: const Key('material-analysis-start'),
-      size: UtenButtonSize.large,
-      type: UtenButtonType.danger,
-      icon: Icons.insights_outlined,
-      isLoading: _previewingAnalysis,
-      onPressed: !_canManage || selectedCount == 0 || _previewingAnalysis
-          ? null
-          : _startCandidateAnalysis,
-      onDisabledTap: !_canManage
-          ? () => context.appWarning('没有新建或刷新物料分析权限')
-          : selectedCount == 0
-          ? () => context.appWarning('请先选择销售产品或添加手工需求')
-          : null,
-      child: Text(selectedCount == 0 ? '联合分析所选产品' : '联合分析所选产品($selectedCount)'),
+  /// 顶部一行说明：两个分段录入的内容合在一起联合分析。
+  Widget _candidateGuidance(ThemeData theme) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Padding(
+        padding: const EdgeInsets.only(top: 1),
+        child: Icon(
+          Icons.info_outline_rounded,
+          size: 20,
+          color: theme.colorScheme.primary,
+        ),
+      ),
+      const SizedBox(width: UtenSpacing.s8),
+      Expanded(
+        child: Text(
+          '勾选销售订单产品，或在「手工需求」录入返工、试制、样品、备库需求，'
+          '再点右下角「联合分析」一起分析。',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    ],
+  );
+
+  /// 两个分段的文字；[twoLine] 时计数换到第二行(窄屏大字号用)。
+  List<String> _candidateTabLabels({bool twoLine = false}) {
+    final gap = twoLine ? '\n' : ' ';
+    return [
+      '销售订单产品$gap(已选 ${_sourceQtyControllers.length})',
+      '手工需求$gap($_manualGoodsLineCount 行)',
+    ];
+  }
+
+  Widget _candidateTabs({bool twoLine = false}) {
+    final labels = _candidateTabLabels(twoLine: twoLine);
+    return UtenSegmentedFilter<_CandidateTab>(
+      key: const Key('material-analysis-candidate-tabs'),
+      segments: [
+        UtenSegment(value: _CandidateTab.sales, label: labels[0]),
+        UtenSegment(value: _CandidateTab.manual, label: labels[1]),
+      ],
+      selected: _candidateTab,
+      onChanged: _showCandidateTab,
     );
   }
 
+  /// 窄屏分段：一行放不下(手机 + 大字号)时计数换到第二行，两段都完整可见、
+  /// 点按区不缩小；分段条本身不带滚动条，不能指望用户横着拖出被遮住的那段。
+  Widget _compactCandidateTabs() => LayoutBuilder(
+    builder: (context, constraints) => _candidateTabs(
+      twoLine: !_candidateTabsFitOneLine(context, constraints.maxWidth),
+    ),
+  );
+
+  /// 按实际字号估算两段单行铺开的宽度(文字实测 + 选中段左右留白按偏大取)。
+  bool _candidateTabsFitOneLine(BuildContext context, double maxWidth) {
+    final style = Theme.of(context).textTheme.titleSmall?.copyWith(
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    final scaler = MediaQuery.textScalerOf(context);
+    var total = 8.0 + 4.0; // 分段条内边距 4×2 + 余量
+    for (final label in _candidateTabLabels()) {
+      final painter = TextPainter(
+        text: TextSpan(text: label, style: style),
+        textScaler: scaler,
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+      total += painter.width + 40; // 选中段左右各 20
+      painter.dispose();
+    }
+    return total <= maxWidth;
+  }
+
+  Widget _candidateSearchBar() => UtenSearchBar(
+    controller: _candidateSearch,
+    hint: '搜索销售单号或货品',
+    onChanged: _searchCandidates,
+  );
+
+  Widget _salesCandidateTable(
+    MaterialAnalysisSalesCandidatePage? page,
+    List<MaterialAnalysisSalesCandidateLine> lines,
+  ) => MasterDataTableView<MaterialAnalysisSalesCandidateLine>(
+    key: const Key('material-analysis-candidate-table'),
+    columns: _candidateColumns,
+    items: lines,
+    selectable: _canManage,
+    idOf: (line) => (line.remainingQty ?? 0) > 0 ? line.salesOrderItemId : null,
+    selectedIds: _sourceQtyControllers.keys.toSet(),
+    showSelectionSummary: false,
+    bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+    onSelectedIdsChanged: (ids) => _replaceCandidateIds(ids, lines),
+    // 2026-09-25 单号列统一：销售单号值来自服务端 facets
+    // (与列表同一过滤上下文)，值筛选走服务端精确匹配。
+    facets: {'orderNo': _candidateDocNoFacets['orderNo'] ?? const []},
+    nullCounts: const {},
+    filters: {'orderNo': _candidateOrderNoFilter},
+    onFilterChanged: (key, value) {
+      if (key != 'orderNo') return;
+      setState(() {
+        final next = value?.trim();
+        _candidateOrderNoFilter = next == null || next.isEmpty ? null : next;
+      });
+      _loadCandidates(page: 1);
+    },
+    // 2026-09-25 单号列统一：表头排序走服务端白名单(orderNo)。
+    sortColumn: _candidateSortColumn,
+    sortAscending: _candidateSortAscending,
+    onSortChange: (column, ascending) {
+      setState(() {
+        _candidateSortColumn = column;
+        _candidateSortAscending = ascending;
+      });
+      _loadCandidates(page: 1);
+    },
+    isLoading: _loadingCandidates,
+    emptyMessage: '暂无可分析的已审销售订单产品',
+    currentPage: page?.page ?? _candidatePageNo,
+    totalPages: page?.totalPages ?? 1,
+    onPageChange: (value) => _loadCandidates(page: value),
+  );
+
+  Widget _manualDemandIntro(ThemeData theme) => Text(
+    '一张手工需求单 = 一个需求编号 + 多个货品。同一编号的货品录在同一张单里，'
+    '不同编号请再建一张单；需求编号用于后续找回任务，来源原因随分析留痕。',
+    style: theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    ),
+  );
+
+  List<Widget> _manualDemandCards({required bool compact}) {
+    if (!_canManage) {
+      return const [UtenEmpty(message: '没有新建物料分析权限，不能录入手工需求')];
+    }
+    return [
+      for (var index = 0; index < _manualDemandDrafts.length; index++) ...[
+        if (index > 0) const SizedBox(height: UtenSpacing.s12),
+        _manualDemandCard(_manualDemandDrafts[index], index, compact: compact),
+      ],
+    ];
+  }
+
+  Widget _manualDemandCard(
+    MaterialManualDemandDraft draft,
+    int index, {
+    required bool compact,
+  }) => KeyedSubtree(
+    key: _manualDemandCardKeys.putIfAbsent(
+      draft,
+      () => GlobalKey(debugLabel: 'manual-demand-card'),
+    ),
+    child: MaterialManualDemandCard(
+      key: ObjectKey(draft),
+      draft: draft,
+      index: index,
+      cardCount: _manualDemandDrafts.length,
+      compact: compact,
+      enabled: !_busy,
+      onSourceTypeChanged: (value) => _setManualDemandSourceType(draft, value),
+      onPickGoods: (line) => _pickManualDemandGoods(draft, line),
+      onRemove: _manualDemandDrafts.length > 1
+          ? () => _removeManualDemandDraft(draft)
+          : null,
+    ),
+  );
+
+  Widget _addManualDemandButton({bool expanded = false}) => UtenButton(
+    key: const Key('manual-demand-add-card'),
+    type: UtenButtonType.tonal,
+    icon: Icons.add_rounded,
+    isExpanded: expanded,
+    onPressed: _busy ? null : _addManualDemandDraft,
+    child: const Text('再建一张手工需求单'),
+  );
+
+  Widget _candidateStartButton(int selectedCount) => UtenButton(
+    key: const Key('material-analysis-start'),
+    size: UtenButtonSize.large,
+    type: UtenButtonType.danger,
+    icon: Icons.insights_outlined,
+    isLoading: _previewingAnalysis,
+    onPressed: selectedCount == 0 || _previewingAnalysis
+        ? null
+        : _startCandidateAnalysis,
+    onDisabledTap: selectedCount == 0
+        ? () => context.appWarning('请先勾选销售订单产品，或在「手工需求」里选择货品')
+        : null,
+    child: Text(selectedCount == 0 ? '联合分析' : '联合分析所选 $selectedCount 项'),
+  );
+
   Widget? _candidateFloatingAction() {
     if (!_canManage) return null;
+    final selectedCount = _selectedAnalysisSourceCount;
     return UtenFloatingActionGroup(
       children: [
         UtenSelectionSummaryPill(
           key: const Key('material-analysis-candidate-selected-total'),
           clearKey: const Key('material-analysis-candidate-clear-selection'),
-          count: _selectedAnalysisSourceCount,
-          onClear: _selectedAnalysisSourceCount == 0 || _busy
+          count: selectedCount,
+          onClear: selectedCount == 0 || _busy
               ? null
               : _clearCandidateSelection,
         ),
-        _candidateStartButton(),
+        _candidateStartButton(selectedCount),
       ],
     );
   }
 
-  void _clearCandidateSelection() {
+  /// 胶囊「✕」清空本次分析：销售勾选与手工需求单一起清。手工需求里已选了货品时
+  /// 先确认——那是一行行录进去的内容，误点一下全没了代价太大。
+  Future<void> _clearCandidateSelection() async {
     if (_busy) return;
+    final manualCount = _manualGoodsLineCount;
+    if (manualCount > 0) {
+      final confirmed = await UtenDialog.show(
+        context,
+        title: '清空本次分析？',
+        content: Text(
+          '会同时清空已勾选的 ${_sourceQtyControllers.length} 个销售订单产品，'
+          '以及手工需求单里已选的 $manualCount 个货品和单头。',
+        ),
+        confirmLabel: '清空',
+        danger: true,
+      );
+      if (confirmed != true || !mounted || _busy) return;
+    }
     setState(() {
       for (final controller in _sourceQtyControllers.values) {
         controller.dispose();
       }
       _sourceQtyControllers.clear();
       _selectedCandidateLabels.clear();
-      _manualSources.clear();
+      _resetManualDemandDrafts();
     });
   }
 
@@ -444,94 +722,71 @@ abstract class _MaterialAnalysisCandidatesState
     ThemeData theme,
     MaterialAnalysisSalesCandidatePage? page,
     List<MaterialAnalysisSalesCandidateLine> lines,
-  ) => CustomScrollView(
-    key: const Key('material-analysis-candidate-mobile-list'),
-    slivers: [
-      const SliverToBoxAdapter(child: SizedBox(height: UtenSpacing.s8)),
-      SliverToBoxAdapter(child: _introCard(theme)),
-      const SliverToBoxAdapter(child: SizedBox(height: UtenSpacing.s8)),
-      SliverToBoxAdapter(child: _compactManualSourceSection(theme)),
-      const SliverToBoxAdapter(child: SizedBox(height: UtenSpacing.s8)),
-      SliverToBoxAdapter(child: _candidateToolbar(theme)),
-      if (_loadingCandidates)
-        const SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.only(top: UtenSpacing.s8),
-            child: LinearProgressIndicator(),
-          ),
-        ),
-      if (_error != null)
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: _inlineError(theme, _error!, () => _loadCandidates()),
-          ),
-        ),
-      const SliverToBoxAdapter(child: SizedBox(height: UtenSpacing.s8)),
-      if (lines.isEmpty)
-        const SliverToBoxAdapter(child: UtenEmpty(message: '暂无可分析的已审销售订单产品'))
-      else
-        SliverList(
-          delegate: SliverChildBuilderDelegate((_, index) {
-            if (index.isOdd) {
-              return const SizedBox(height: UtenSpacing.s8);
-            }
-            return _candidateMobileCard(theme, lines[index ~/ 2]);
-          }, childCount: lines.length * 2 - 1),
-        ),
-      if (page != null)
-        SliverToBoxAdapter(child: _compactCandidatePager(theme, page)),
-      if (_sourceQtyControllers.isNotEmpty) ...[
-        const SliverToBoxAdapter(child: SizedBox(height: UtenSpacing.s8)),
-        SliverToBoxAdapter(child: _compactSelectedSourceSummary(theme)),
-      ],
-      const SliverToBoxAdapter(
-        child: SizedBox(height: UtenFloatingActionGroup.scrollClearance),
-      ),
-    ],
-  );
-
-  Widget _compactManualSourceSection(ThemeData theme) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      OutlinedButton.icon(
-        key: const Key('material-manual-source-toggle'),
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size.fromHeight(56),
-          alignment: Alignment.centerLeft,
-          textStyle: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        onPressed: () =>
-            setState(() => _manualSourceExpanded = !_manualSourceExpanded),
-        icon: Icon(
-          _manualSourceExpanded
-              ? Icons.expand_less_rounded
-              : Icons.add_business_outlined,
-        ),
-        label: Text(
-          _manualSources.isEmpty
-              ? '其他需求(返工 / 试制 / 样品 / 备库)'
-              : '其他需求(已加入 ${_manualSources.length} 项)',
-        ),
-      ),
-      if (!_manualSourceExpanded)
-        Padding(
-          padding: const EdgeInsets.only(top: UtenSpacing.s4),
-          child: Text(
-            '销售订单产品不用打开这里，直接在下方勾选。',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+  ) {
+    const gap = SliverToBoxAdapter(child: SizedBox(height: UtenSpacing.s8));
+    final salesTab = _candidateTab == _CandidateTab.sales;
+    return CustomScrollView(
+      key: const Key('material-analysis-candidate-mobile-list'),
+      slivers: [
+        gap,
+        SliverToBoxAdapter(child: _candidateGuidance(theme)),
+        gap,
+        SliverToBoxAdapter(child: _warehouseField()),
+        gap,
+        SliverToBoxAdapter(child: _compactCandidateTabs()),
+        if (_error != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              child: _inlineError(theme, _error!, () => _loadCandidates()),
             ),
           ),
+        gap,
+        if (salesTab) ...[
+          SliverToBoxAdapter(child: _candidateSearchBar()),
+          if (_loadingCandidates)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.only(top: UtenSpacing.s8),
+                child: LinearProgressIndicator(),
+              ),
+            ),
+          gap,
+          if (lines.isEmpty)
+            const SliverToBoxAdapter(
+              child: UtenEmpty(message: '暂无可分析的已审销售订单产品'),
+            )
+          else
+            SliverList(
+              delegate: SliverChildBuilderDelegate((_, index) {
+                if (index.isOdd) {
+                  return const SizedBox(height: UtenSpacing.s8);
+                }
+                return _candidateMobileCard(theme, lines[index ~/ 2]);
+              }, childCount: lines.length * 2 - 1),
+            ),
+          if (page != null)
+            SliverToBoxAdapter(child: _compactCandidatePager(theme, page)),
+          if (_sourceQtyControllers.isNotEmpty) ...[
+            gap,
+            SliverToBoxAdapter(child: _compactSelectedSourceSummary(theme)),
+          ],
+        ] else ...[
+          SliverToBoxAdapter(child: _manualDemandIntro(theme)),
+          gap,
+          for (final card in _manualDemandCards(compact: true))
+            SliverToBoxAdapter(child: card),
+          if (_canManage) ...[
+            const SliverToBoxAdapter(child: SizedBox(height: UtenSpacing.s12)),
+            SliverToBoxAdapter(child: _addManualDemandButton(expanded: true)),
+          ],
+        ],
+        const SliverToBoxAdapter(
+          child: SizedBox(height: UtenFloatingActionGroup.scrollClearance),
         ),
-      if (_manualSourceExpanded) ...[
-        const SizedBox(height: UtenSpacing.s8),
-        _manualSourceCard(theme),
       ],
-    ],
-  );
+    );
+  }
 
   Widget _compactSelectedSourceSummary(ThemeData theme) => Container(
     key: const Key('material-compact-selected-summary'),
@@ -679,229 +934,6 @@ abstract class _MaterialAnalysisCandidatesState
     if (mounted) setState(() {});
   }
 
-  Widget _introCard(ThemeData theme) => Container(
-    padding: const EdgeInsets.all(UtenSpacing.s12),
-    decoration: BoxDecoration(
-      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
-      borderRadius: UtenRadius.mdAll,
-      border: Border.all(color: theme.colorScheme.outlineVariant),
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(Icons.info_outline_rounded, color: theme.colorScheme.primary),
-        const SizedBox(width: UtenSpacing.s8),
-        const Expanded(
-          child: Text(
-            '先选择销售订单产品和分析仓库。系统会一次加载完整组装树；'
-            '结果默认显示完整 BOM，可搜索或切换“只看缺料”“缺少供应方式”。'
-            '生产计划只从服务端确认可生产的批次数量生成。',
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _manualSourceCard(ThemeData theme) {
-    final compact = context.breakpoint.isCompact;
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: UtenRadius.mdAll,
-        side: BorderSide(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.add_business_outlined,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    '手工计划(返工 / 试制 / 样品 / 备库)',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              '手工计划也必须先做物料分析；需求编号用于后续找回任务，来源原因会随分析留痕。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                SizedBox(
-                  width: compact ? double.infinity : 180,
-                  child: UtenDropdownField(
-                    key: ValueKey('manual-source-${_manualSourceType ?? ''}'),
-                    label: '来源类型',
-                    required: true,
-                    value: _manualSourceType,
-                    enabled: !_busy && _canManage,
-                    items: [
-                      for (final entry
-                          in _MaterialAnalysisPageBase
-                              ._manualSourceTypes
-                              .entries)
-                        UtenDropdownItem(value: entry.key, label: entry.value),
-                    ],
-                    onChanged: (value) =>
-                        setState(() => _manualSourceType = value),
-                  ),
-                ),
-                SizedBox(
-                  width: compact ? double.infinity : 220,
-                  child: TextField(
-                    key: const Key('manual-source-ref'),
-                    controller: _manualSourceRef,
-                    maxLength: 200,
-                    decoration: UtenInputDecoration(
-                      InputDecoration(
-                        label: fieldLabel(
-                          '需求编号',
-                          theme,
-                          required: true,
-                          info: '同一需求请始终使用同一个编号',
-                        ),
-                        hintText: '例：RW-20260808-001',
-                        counterText: '',
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: compact ? double.infinity : 280,
-                  child: OutlinedButton.icon(
-                    key: const Key('manual-source-goods'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(48, 52),
-                      alignment: Alignment.centerLeft,
-                    ),
-                    onPressed: _busy || !_canManage ? null : _pickManualGoods,
-                    icon: const Icon(Icons.inventory_2_outlined),
-                    label: Text(
-                      _manualGoods == null
-                          ? '选择货品 *'
-                          : '${_manualGoods!.code ?? ''} ${_manualGoods!.name ?? ''}'
-                                .trim(),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: compact ? double.infinity : 140,
-                  child: TextField(
-                    key: const Key('manual-source-qty'),
-                    controller: _manualQty,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(labelText: '数量 *'),
-                  ),
-                ),
-                SizedBox(
-                  width: compact ? double.infinity : 220,
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(48, 52),
-                    ),
-                    onPressed: _busy || !_canManage
-                        ? null
-                        : _pickManualDeliveryDate,
-                    icon: const Icon(Icons.event_outlined),
-                    label: Text(
-                      '需求日 ${_dateText(_manualDeliveryDate) ?? '未设置'}',
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: compact ? double.infinity : 300,
-                  child: TextField(
-                    key: const Key('manual-source-reason'),
-                    controller: _manualReason,
-                    decoration: const InputDecoration(
-                      labelText: '来源原因 *',
-                      hintText: '例：客诉返工、展会样品、安全备库',
-                    ),
-                  ),
-                ),
-                UtenButton(
-                  key: const Key('manual-source-add'),
-                  type: UtenButtonType.tonal,
-                  size: UtenButtonSize.large,
-                  icon: Icons.add_rounded,
-                  onPressed: _busy || !_canManage ? null : _addManualSource,
-                  child: const Text('加入分析'),
-                ),
-              ],
-            ),
-            if (_manualSources.isNotEmpty) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              for (final source in _manualSources)
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.fact_check_outlined),
-                  title: Text(
-                    _manualSourceLabels[source.canonicalKey] ??
-                        source.goodsId ??
-                        '手工货品',
-                  ),
-                  subtitle: Text(
-                    '${_MaterialAnalysisPageBase._manualSourceTypes[source.sourceType] ?? source.sourceType} · '
-                    '${source.sourceRef} · ${_qty(source.requestedQty)} · '
-                    '${source.sourceReason}',
-                  ),
-                  trailing: IconButton(
-                    constraints: const BoxConstraints(
-                      minWidth: 48,
-                      minHeight: 48,
-                    ),
-                    tooltip: '移除手工来源',
-                    onPressed: _busy ? null : () => _removeManualSource(source),
-                    icon: const Icon(Icons.delete_outline_rounded),
-                  ),
-                ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _candidateToolbar(ThemeData theme) => Wrap(
-    spacing: UtenSpacing.s8,
-    runSpacing: UtenSpacing.s8,
-    crossAxisAlignment: WrapCrossAlignment.center,
-    children: [
-      SizedBox(
-        width: context.breakpoint.isCompact ? double.infinity : 320,
-        child: UtenSearchBar(
-          controller: _candidateSearch,
-          hint: '搜索销售单号或货品',
-          onChanged: _searchCandidates,
-        ),
-      ),
-      SizedBox(width: 260, child: _warehouseField()),
-    ],
-  );
-
   @override
   bool _normalizeNewWarehouseScope() {
     final names = ref.read(masterNameServiceProvider);
@@ -1005,6 +1037,52 @@ abstract class _MaterialAnalysisCandidatesState
       width: 110,
       type: 'number',
       value: (line) => _qty(line.remainingQty),
+    ),
+    // ADR-130：勾选即出现本次分析数量输入框(默认 = 待排数量)，只改例外；
+    // 取代原先表格下方单独一块「已选产品」数量列表。
+    MasterColumnDef(
+      key: 'analysisQty',
+      label: '本次分析数量',
+      width: 136,
+      type: 'number',
+      info: '勾选后默认等于待排数量，只需改要分析的例外数量',
+      value: (line) => _sourceQtyControllers[line.salesOrderItemId]?.text,
+      cellBuilder: (context, line) {
+        final controller = _sourceQtyControllers[line.salesOrderItemId];
+        if (controller == null) {
+          return Text(
+            '—',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          );
+        }
+        // 必填红框与提交校验同一口径(空 / 非数字 / 不大于 0 都算没填好)：
+        // 红框出现的时候，点「联合分析」一定会被拦下。
+        return RequiredCellFrame(
+          listenable: controller,
+          isEmpty: () => _positiveAnalysisQty(controller.text) == null,
+          child: TextField(
+            key: Key('source-qty-${line.salesOrderItemId}'),
+            controller: controller,
+            enabled: !_busy,
+            textAlign: TextAlign.right,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: Theme.of(context).textTheme.bodyMedium,
+            decoration: const UtenInputDecoration(
+              InputDecoration(
+                isDense: true,
+                hintText: '0',
+                // 收紧到与纯文本行同高：勾选/取消时整行不跳高。
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     ),
     MasterColumnDef(
       key: 'deliveryDate',
@@ -1147,58 +1225,123 @@ abstract class _MaterialAnalysisCandidatesState
     );
   }
 
-  Widget _selectedSourceEditor(ThemeData theme) {
-    final entries = _sourceQtyControllers.entries.toList(growable: false);
-    return Container(
-      constraints: const BoxConstraints(maxHeight: 240),
-      padding: const EdgeInsets.all(UtenSpacing.s8),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: UtenRadius.mdAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '已选 ${entries.length} 个产品 · 数量已预填，只需修改例外',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.only(
-                bottom: UtenFloatingActionGroup.scrollClearance,
+  /// 顶部卡片「手工需求」区块(ADR-130)：按(来源类型, 需求编号)分组的只读 chip，
+  /// 如「返工 · RW-001 · 3 个货品」，悬停看来源原因。与「关联销售订单」并列，
+  /// 让计划员一眼看出这张分析里有哪些手工需求单。
+  List<Widget> _manualDemandsSection(
+    ThemeData theme,
+    ProductionMaterialAnalysisView analysis,
+  ) {
+    final demands = _manualDemandSummaries(analysis);
+    if (demands.isEmpty) return const [];
+    final refCounts = <String, int>{};
+    for (final demand in demands) {
+      final ref = demand.sourceRef.toLowerCase();
+      refCounts[ref] = (refCounts[ref] ?? 0) + 1;
+    }
+    // 编号多时默认只露前几个，其余点开再看：顶部卡片不能被几十个 chip 撑高，
+    // 把下面的任务入口和主表挤出首屏。
+    const chipLimit = 6;
+    final folded = !_manualDemandsExpanded && demands.length > chipLimit;
+    final visible = folded ? demands.take(chipLimit) : demands;
+    return [
+      const SizedBox(height: UtenSpacing.s8),
+      Align(
+        key: const Key('material-analysis-manual-demands'),
+        alignment: Alignment.centerLeft,
+        child: Wrap(
+          spacing: UtenSpacing.s8,
+          runSpacing: UtenSpacing.s8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(right: UtenSpacing.s4),
+              child: Text(
+                '手工需求 ${demands.length}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-              itemCount: entries.length,
-              itemBuilder: (_, index) {
-                final entry = entries[index];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                  child: TextField(
-                    key: Key('source-qty-${entry.key}'),
-                    controller: entry.value,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
+            ),
+            for (final demand in visible)
+              ConstrainedBox(
+                // 与销售订单 chip 同一护栏：硬封宽 + 省略号，窄屏靠 Wrap 换行。
+                constraints: const BoxConstraints(maxWidth: 300),
+                child: Tooltip(
+                  message: demand.reasons.isEmpty
+                      ? '需求编号 ${demand.sourceRef}'
+                      : '来源原因：${demand.reasons.join('；')}',
+                  child: Chip(
+                    // 同一编号挂在两种来源类型下时带上类型，保证 key 唯一。
+                    key: ValueKey(
+                      (refCounts[demand.sourceRef.toLowerCase()] ?? 0) > 1
+                          ? 'analysis-manual-demand-${demand.sourceRef}-${demand.sourceType}'
+                          : 'analysis-manual-demand-${demand.sourceRef}',
                     ),
-                    decoration: UtenInputDecoration(
-                      InputDecoration(
-                        label: fieldLabel(
-                          _selectedCandidateLabels[entry.key] ?? '所选产品',
-                          theme,
-                          info: '本次分析数量',
-                        ),
-                      ),
+                    avatar: Icon(
+                      Icons.assignment_outlined,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    label: Text(
+                      '${materialManualDemandSourceTypes[demand.sourceType]} · '
+                      '${demand.sourceRef} · ${demand.goods.length} 个货品',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                );
-              },
-            ),
-          ),
-        ],
+                ),
+              ),
+            if (demands.length > chipLimit)
+              TextButton(
+                key: const Key('material-analysis-manual-demands-toggle'),
+                onPressed: () => setState(
+                  () => _manualDemandsExpanded = !_manualDemandsExpanded,
+                ),
+                child: Text(
+                  folded ? '展开其余 ${demands.length - chipLimit} 个' : '收起',
+                ),
+              ),
+          ],
+        ),
       ),
-    );
+    ];
+  }
+
+  /// 来源行按(来源类型, 需求编号)分组；排序按来源类型固定顺序再按编号，保证稳定。
+  List<_ManualDemandSummary> _manualDemandSummaries(
+    ProductionMaterialAnalysisView analysis,
+  ) {
+    final groups = <String, _ManualDemandSummary>{};
+    for (final product in analysis.products) {
+      final sourceType = product.sourceType;
+      if (sourceType == null ||
+          !materialManualDemandSourceTypes.containsKey(sourceType)) {
+        continue;
+      }
+      final sourceRef = product.sourceRef?.trim();
+      if (sourceRef == null || sourceRef.isEmpty) continue;
+      final summary = groups.putIfAbsent(
+        '$sourceType|${sourceRef.toLowerCase()}',
+        () => _ManualDemandSummary(sourceType, sourceRef),
+      );
+      summary.goods.add(
+        '${product.goodsId}|${product.colorId}|${product.unitId}',
+      );
+      final reason = product.sourceReason?.trim();
+      if (reason != null &&
+          reason.isNotEmpty &&
+          !summary.reasons.contains(reason)) {
+        summary.reasons.add(reason);
+      }
+    }
+    final typeOrder = materialManualDemandSourceTypes.keys.toList();
+    return groups.values.toList()..sort((left, right) {
+      final byType = typeOrder
+          .indexOf(left.sourceType)
+          .compareTo(typeOrder.indexOf(right.sourceType));
+      return byType != 0 ? byType : left.sourceRef.compareTo(right.sourceRef);
+    });
   }
 }

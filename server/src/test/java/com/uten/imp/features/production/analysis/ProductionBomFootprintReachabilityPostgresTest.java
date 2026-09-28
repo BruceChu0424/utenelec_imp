@@ -97,7 +97,7 @@ class ProductionBomFootprintReachabilityPostgresTest {
         connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword());
         try (var sql = connection.createStatement()) {
             sql.execute("""
-                    CREATE TABLE goods(id uuid PRIMARY KEY,color_id uuid,is_deleted boolean NOT NULL DEFAULT FALSE, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6));
+                    CREATE TABLE goods(id uuid PRIMARY KEY,color_id uuid,is_deleted boolean NOT NULL DEFAULT FALSE, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8));
                     CREATE TABLE goods_bom_items(
                         id uuid PRIMARY KEY,goods_id uuid NOT NULL REFERENCES goods(id),
                         component_goods_id uuid NOT NULL REFERENCES goods(id),color_id uuid,

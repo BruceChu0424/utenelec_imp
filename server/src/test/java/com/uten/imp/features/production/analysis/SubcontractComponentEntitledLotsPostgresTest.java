@@ -35,7 +35,7 @@ class SubcontractComponentEntitledLotsPostgresTest {
         connection.setAutoCommit(false);
         execute("CREATE SCHEMA entitled_lots_test; SET LOCAL search_path TO entitled_lots_test; SET LOCAL jit TO off");
         execute("""
-                CREATE TABLE goods(id uuid PRIMARY KEY, is_deleted boolean DEFAULT false, auto_created boolean DEFAULT false, production_overproduction_rate numeric(9,6));
+                CREATE TABLE goods(id uuid PRIMARY KEY, is_deleted boolean DEFAULT false, auto_created boolean DEFAULT false, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8));
                 CREATE TABLE goods_bom_items(id uuid PRIMARY KEY, goods_id uuid, component_goods_id uuid,
                     color_id uuid, qty numeric, consumption_basis text, control_stage text, is_deleted boolean DEFAULT false, learning_profile_goods_id uuid, learning_unit_id uuid);
                 CREATE TABLE warehouses(id uuid PRIMARY KEY, is_deleted boolean DEFAULT false,

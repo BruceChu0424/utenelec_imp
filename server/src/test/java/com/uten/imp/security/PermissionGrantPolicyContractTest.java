@@ -30,8 +30,10 @@ class PermissionGrantPolicyContractTest {
             "finance_asset_period:manage", "production_material_analysis:view",
             "production_material_analysis:cross_reallocate", "sales_order:priority", "sales_order:reallocate",
             "supplier_return_task:view", "supplier_return_task:complete", "attachment:reconcile:view",
-            "attachment:reconcile:approve_delete", "payroll:export", "dashboard:finance_sensitive:view",
+            "attachment:reconcile:approve_delete", "payroll:export",
             "audit_log:view", "audit_log:export");
+
+    // dashboard:finance_sensitive:view 已随政策情报 AI 退役(V741, ADR-133)从目录删除, 不再列在下面两份名单里。
 
     /** 原前端 authorize_all_excluded 名单里仍存在的码：合并后必须全部不随「全部授权」发放。 */
     private static final List<String> FORMER_BULK_EXCLUDED = List.of(
@@ -43,7 +45,7 @@ class PermissionGrantPolicyContractTest {
             "sales_order:priority", "sales_order:reallocate", "production_material_analysis:cross_reallocate",
             "supplier_return_task:view", "supplier_return_task:complete", "goods:cost:view",
             "sales_order:price:view", "production_direct_transfer:approve",
-            "production_material_analysis:over_supply", "dashboard:finance_sensitive:view");
+            "production_material_analysis:over_supply");
 
     @Test
     void everyCodeFollowsTheNamingRuleAndHasAValidPolicy() {

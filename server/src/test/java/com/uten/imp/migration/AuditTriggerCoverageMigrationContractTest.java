@@ -104,7 +104,7 @@ class AuditTriggerCoverageMigrationContractTest {
                         "goods_bom_items", "goods_bom_learning_profiles", "goods_bom_learning_material_totals",
                         "goods_import_batches", "goods_import_creations",
                         "master_code_change_batches", "material_categories", "mould_categories",
-                        "moulds", "official_policy_briefs", "party_activity_records",
+                        "moulds", "party_activity_records",
                         "party_addresses", "party_contact_methods", "payment_styles",
                         "settlement_methods", "supplier_categories", "suppliers", "units",
                         "warehouse_keepers", "warehouses")),
@@ -214,7 +214,13 @@ class AuditTriggerCoverageMigrationContractTest {
             new ScopedTable("preplan_material_reallocations", "data_change", false,
                     List.of("status", "closed_by", "closed_at", "close_reason"),
                     "物料改挪记录: 新建时行内已带发起人与原因, 之后会被人工撤回/取消、随优先履约推进状态: "
-                            + "只记状态与关闭人、关闭时间、关闭原因"));
+                            + "只记状态与关闭人、关闭时间、关闭原因"),
+            new ScopedTable("ai_providers", "system", false,
+                    List.of("name", "preset", "region", "protocol", "base_url", "model", "json_mode",
+                            "thinking_control", "send_temperature", "supports_vision", "max_output_tokens",
+                            "timeout_seconds", "enabled", "is_default"),
+                    "AI 服务商配置(V742, ADR-133): 只记超管改的非密钥列; 不挂新增/删除触发器(整行会带上密钥密文), "
+                            + "新建、删除、换密钥、设为默认由 AuditService 显式事件记录, 密文与尾号从不进审计"));
 
     /** NONE: 不挂行级审计。分组即理由。 */
     static final List<NoneGroup> NONE = List.of(
@@ -232,7 +238,9 @@ class AuditTriggerCoverageMigrationContractTest {
                         "legacy_migration_runs", "master_code_sequences", "password_history",
                         "production_product_no_sequences", "refresh_tokens",
                         "report_materialized_view_refresh_state", "visitor_refresh_tokens",
-                        "visitor_sms_codes")),
+                        "visitor_sms_codes",
+                        // V742 AI 调用技术记录: 只有用途/服务商/token/耗时, 不含提示词、回复与密钥。
+                        "ai_call_logs")),
             new NoneGroup("notice",
                     "通知投递与互动机制: 人工发布、确认、祝福已有显式业务事件",
                     Set.of(
@@ -249,7 +257,9 @@ class AuditTriggerCoverageMigrationContractTest {
                         "production_planning_drafts", "production_planning_urges", "production_bom_learning_refresh_queue", "stock_value_jobs",
                         "stock_value_production_cost_dirty", "stock_value_production_cost_tasks",
                         "stock_value_tasks", "subcontract_outbound_preparation_commands",
-                        "task_claims", "warehouse_arrival_registration_commands")),
+                        "task_claims", "warehouse_arrival_registration_commands",
+                        // V742 AI 识别任务队列: 上传与结果只给提交人本人, 终态即清空文件。
+                        "ai_jobs")),
             new NoneGroup("reservation",
                     "编号终身预留、冲突证据与改号历史: 只追加, 行本身就是占用/改号记录",
                     Set.of(
@@ -260,7 +270,9 @@ class AuditTriggerCoverageMigrationContractTest {
             new NoneGroup("preference",
                     "使用偏好与自动学习: 系统按使用习惯自动写入, 不是业务决定",
                     Set.of(
-                        "user_preferences", "warehouse_goods_place_preferences")),
+                        "user_preferences", "warehouse_goods_place_preferences",
+                        // V742 客户货品对照与客户文件版式: 保存单据后自动学习; 用户删除对照另写显式审计事件。
+                        "client_goods_aliases", "sales_intake_layouts")),
             new NoneGroup("derived",
                     "派生投影与计算结果: 可由单据和流水重算, 每次重算整行复制只是噪声",
                     Set.of(
@@ -378,7 +390,8 @@ class AuditTriggerCoverageMigrationContractTest {
                         "production_workshop_material_custody_reversals",
                         "production_workshop_material_return_slices",
                         "production_workshop_return_preplan_events", "sales_order_qty_change_logs",
-                        "sales_order_revision_logs", "sales_return_disposition_events",
+                        "sales_order_revision_logs", "sales_quote_revision_logs",
+                        "sales_return_disposition_events",
                         "sales_return_quality_events", "sales_shipment_finance_release_events",
                         "sales_shipment_submission_events", "sales_shipment_warehouse_events",
                         "stock_movements", "stock_value_acquisition_sources", "stock_value_events",
@@ -567,7 +580,10 @@ class AuditTriggerCoverageMigrationContractTest {
             declaredScoped.put(scoped.group(1), new ScopedTable(scoped.group(1), scoped.group(2),
                     Boolean.parseBoolean(scoped.group(5)), columns, expected.reason()));
         }
-        assertEquals(scopedTables(), declaredScoped, "V670 COLUMN_SCOPED calls must equal the list");
+        // 基线之后新建的 COLUMN_SCOPED 表(如 V742 ai_providers)由各自建表迁移登记, 形状在下一个用例核对。
+        Map<String, ScopedTable> baselineScoped = new LinkedHashMap<>(scopedTables());
+        baselineScoped.keySet().removeIf(t -> created.getOrDefault(t, 0) > POLICY_BASELINE_VERSION);
+        assertEquals(baselineScoped, declaredScoped, "V670 COLUMN_SCOPED calls must equal the list");
 
         String normalized = sql.replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
         assertTrue(normalized.contains("when (old.* is distinct from new.*)"),
@@ -615,6 +631,36 @@ class AuditTriggerCoverageMigrationContractTest {
             }
         });
         assertEquals(List.of(), missing);
+
+        // 基线之后新建的 COLUMN_SCOPED 表: 迁移里的列清单、类别与是否挂新增/删除触发器必须与清单逐项一致
+        // (例如 V742 ai_providers 不挂新增/删除触发器, 否则整行带着密钥密文进审计)。
+        Map<String, ScopedTable> declaredScoped = new LinkedHashMap<>();
+        for (MigrationSource migration : migrations()) {
+            if (migration.version() <= POLICY_BASELINE_VERSION) {
+                continue;
+            }
+            Matcher scoped = SCOPED_CALL.matcher(stripSqlComments(migration.sql()));
+            while (scoped.find()) {
+                ScopedTable expected = scopedTables().get(scoped.group(1));
+                assertTrue(expected != null, scoped.group(1) + " is scoped in "
+                        + migration.path().getFileName() + " but not listed");
+                List<String> columns = new ArrayList<>();
+                Matcher column = QUOTED.matcher(scoped.group(4));
+                while (column.find()) {
+                    columns.add(column.group(1));
+                }
+                declaredScoped.put(scoped.group(1), new ScopedTable(scoped.group(1), scoped.group(2),
+                        Boolean.parseBoolean(scoped.group(5)), columns, expected.reason()));
+            }
+        }
+        Map<String, ScopedTable> listed = new LinkedHashMap<>(scopedTables());
+        listed.keySet().retainAll(declaredScoped.keySet());
+        assertEquals(listed, declaredScoped,
+                "post-baseline COLUMN_SCOPED registrations must equal the list (columns, category, insert/delete)");
+        Set<String> laterScoped = new TreeSet<>(scopedTables().keySet());
+        laterScoped.removeIf(t -> created.getOrDefault(t, 0) <= POLICY_BASELINE_VERSION);
+        laterScoped.removeAll(declaredScoped.keySet());
+        assertEquals(Set.of(), laterScoped, "post-baseline COLUMN_SCOPED tables must be registered by a migration");
     }
 
     @Test

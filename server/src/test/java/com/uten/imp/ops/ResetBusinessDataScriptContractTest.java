@@ -68,6 +68,12 @@ class ResetBusinessDataScriptContractTest {
                 "('preplan_make_public_claims', 722)",
                 "('preplan_make_public_claim_cancellations', 722)",
                 "('production_draw_issue_batches', 727)",
+                "('ai_jobs', 742)",
+                "('ai_call_logs', 742)",
+                "('sales_quote_revision_logs', 742)",
+                "('ai_providers', 742)",
+                "('client_goods_aliases', 742)",
+                "('sales_intake_layouts', 742)",
                 "IS DISTINCT FROM (applied_max_version >= required.introduced_version)",
                 "count(*) FILTER (WHERE policy.disposition = 'CLEAR')",
                 "INTO incomplete_operational_tables, current_operational_table_count",
@@ -108,6 +114,8 @@ class ResetBusinessDataScriptContractTest {
         // V703 +1 车间催计划记录(ADR-117, 协调提醒随业务流程数据清空): 412 表。
         // V710/V711: four business tables and two preserved learning aggregates.
         // V712/V715: shared batches, events, exact aliases and direct-transfer slices.
+        // V741 -1 政策情报表(ADR-133, PRESERVE 102→101)；V742 +3 PRESERVE(AI 服务商配置/客户货品对照/
+        // 客户文件版式) +3 CLEAR(识别任务/调用技术记录/报价核价修订记录)：430 表, CLEAR 326/PRESERVE 104。
         // Reconcile exact identities/dispositions against the frozen baseline plus the reviewed
         // extension registry. A drifting hand-maintained count cannot detect table substitutions.
         Map<String, String> expected = BusinessDataResetSqlContractTest.expectedCurrentPolicy();
@@ -128,6 +136,13 @@ class ResetBusinessDataScriptContractTest {
         assertThat(policy).containsEntry("production_planning_urges", "CLEAR");
         assertThat(policy).containsEntry("finance_report_line_bindings", "PRESERVE");
         assertThat(policy).containsEntry("warehouse_keepers", "PRESERVE");
+        assertThat(policy).containsEntry("ai_providers", "PRESERVE")
+                .containsEntry("client_goods_aliases", "PRESERVE")
+                .containsEntry("sales_intake_layouts", "PRESERVE")
+                .containsEntry("ai_jobs", "CLEAR")
+                .containsEntry("ai_call_logs", "CLEAR")
+                .containsEntry("sales_quote_revision_logs", "CLEAR")
+                .doesNotContainKey("official_policy_briefs");
         assertThat(policy).containsEntry("subcontract_component_stock_handoffs", "CLEAR");
         assertThat(policy).containsEntry("production_execution_segment_growth_events", "CLEAR");
         assertThat(policy).containsEntry("auth_sessions", "CLEAR");
@@ -478,6 +493,8 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(708, 637),")
                 .contains("(709, 638), (710, 639), (711, 640), (712, 641), (713, 642), (714, 643), (715, 644),")
                 .contains("(716, 645)")
+                .contains("(741, 665)")
+                .contains("(742, 666)")
                 // Preserve the exact range label without a second hardcoded current head.
                 .contains("V507/469、V508/470及V511至V"
                         + MigrationRehearsalSupport.CURRENT_HEAD_VERSION + "完整目录")

@@ -73,7 +73,8 @@ class TaskClaimMutationConcurrencyPostgresTest {
                 CREATE TABLE sales_orders(id uuid PRIMARY KEY, status smallint NOT NULL DEFAULT 1,
                   is_deleted boolean NOT NULL DEFAULT FALSE, finance_confirmed boolean NOT NULL DEFAULT FALSE,
                   finance_rejected boolean NOT NULL DEFAULT FALSE, is_stopped boolean NOT NULL DEFAULT FALSE,
-                  is_closed boolean NOT NULL DEFAULT FALSE,finance_review_revision bigint NOT NULL DEFAULT 0)
+                  is_closed boolean NOT NULL DEFAULT FALSE,finance_review_revision bigint NOT NULL DEFAULT 0,
+                  client_file_currency VARCHAR(8))
                 """);
     }
 

@@ -138,7 +138,12 @@ class BusinessDataResetSqlContractTest {
             Map.entry("preplan_aggregate_material_aliases", 712),
             Map.entry("preplan_aggregate_direct_transfer_slices", 715),
             Map.entry("preplan_make_public_claims", 722),
-            Map.entry("preplan_make_public_claim_cancellations", 722));
+            Map.entry("preplan_make_public_claim_cancellations", 722),
+            // V742 公共 AI 平台与销售客户文件识别(ADR-133/ADR-134)：识别任务、调用技术记录与
+            // 报价核价修订记录随业务数据清空。
+            Map.entry("ai_jobs", 742),
+            Map.entry("ai_call_logs", 742),
+            Map.entry("sales_quote_revision_logs", 742));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
@@ -158,7 +163,11 @@ class BusinessDataResetSqlContractTest {
             // V693 仓库负责人(ADR-115): 仓库的附属设置随主档保留。
             Map.entry("warehouse_keepers", 693),
             Map.entry("goods_bom_learning_profiles", 711),
-            Map.entry("goods_bom_learning_material_totals", 711));
+            Map.entry("goods_bom_learning_material_totals", 711),
+            // V742(ADR-133/ADR-134): AI 服务商配置、客户货品对照与客户文件版式是配置/学习知识。
+            Map.entry("ai_providers", 742),
+            Map.entry("client_goods_aliases", 742),
+            Map.entry("sales_intake_layouts", 742));
 
     /**
      * V590 起整表废弃并从清空策略移除的表（「读取已安装定义 + 锚点替换删除」
@@ -170,7 +179,9 @@ class BusinessDataResetSqlContractTest {
             "roles", 677,
             "user_roles", 677,
             "role_permissions", 677,
-            "department_roles", 677);
+            "department_roles", 677,
+            // V741 / ADR-133：政策情报 AI 退役，外部抓取的政策摘要表整表删除。
+            "official_policy_briefs", 741);
 
     private String opsScript;
     private String migrationSql;
@@ -423,6 +434,13 @@ class BusinessDataResetSqlContractTest {
                 .contains("(721, 650), (722, 651), (723, 652), (724, 653), (725, 654), (726, 655), (727, 656), (728, 657), (729, 658), (730, 659), (731, 660), (732, 661)")
                 .contains("(733, 662)")
                 .contains("(734, 663)")
+                .contains("(735, 664)")
+                // V741 政策情报表删除(PRESERVE 102→101)，V742 公共 AI 平台六张新表(PRESERVE 101→104)；
+                // V736 至 V740 跳号(临时号，合并时顺延并重算)。
+                .contains("(741, 665)")
+                .contains("(742, 666)")
+                .contains("OR (applied_max_version = 741 AND preserve_count <> 101)")
+                .contains("OR (applied_max_version >= 742 AND preserve_count <> 104)")
                 // The exact range label follows the independently enumerated classpath head.
                 .contains("V507/469、V508/470及V511至V"
                         + MigrationRehearsalSupport.CURRENT_HEAD_VERSION + "完整目录");
@@ -454,11 +472,23 @@ class BusinessDataResetSqlContractTest {
         assertThat(extensionSql)
                 .contains("RAISE EXCEPTION 'V693 cannot extend business-data reset policy safely'")
                 .contains("(''warehouse_keepers'', ''PRESERVE'')");
+        assertThat(extensionSql(742))
+                .contains("RAISE EXCEPTION 'V742 cannot extend business-data reset policy safely'")
+                .contains("(''ai_providers'', ''PRESERVE'')")
+                .contains("(''client_goods_aliases'', ''PRESERVE'')")
+                .contains("(''sales_intake_layouts'', ''PRESERVE'')")
+                .contains("(''ai_jobs'', ''CLEAR'')")
+                .contains("(''ai_call_logs'', ''CLEAR'')")
+                .contains("(''sales_quote_revision_logs'', ''CLEAR'')");
         // V590：整表废弃走「读已安装定义 + 锚点替换删除」补丁；锚点单行无换行，
         // 不受迁移文件 CRLF/LF 差异影响（V588 教训）。
         assertThat(extensionSql)
                 .contains("RAISE EXCEPTION 'V590 cannot drop retired preference policy row from business_data_reset'")
                 .contains("(''production_goods_workshop_preferences'', ''PRESERVE''),");
+        assertThat(extensionSql(741))
+                .contains("RAISE EXCEPTION 'V741 cannot drop retired official_policy_briefs from business_data_reset'")
+                .contains("(''official_policy_briefs'', ''PRESERVE''),")
+                .contains("DROP TABLE official_policy_briefs;");
     }
 
     @Test

@@ -591,18 +591,18 @@ abstract final class RoutePath {
   }
 
   /// 多报工单汇总登记深链：reportIds 逗号拼接进 query（正式导航也走 URL，可恢复）。
+  /// [stockInBeforeInspection] = 任务中心点的是「先入库后质检(N)」(`preStock=1`，
+  /// 与采购/委外批量登记页同一参数)，页面只显示所选路线的提交按钮。
   static String warehouseProductionFinishedArrivalBatchRegistration(
     List<String> reportIds, {
     String? returnTo,
+    bool stockInBeforeInspection = false,
   }) {
     final ids = reportIds
         .map((id) => Uri.encodeComponent(id.trim()))
-  /// [stockInBeforeInspection] = 任务中心点的是「先入库后质检(N)」(`preStock=1`，
-  /// 与采购/委外批量登记页同一参数)，页面只显示所选路线的提交按钮。
         .where((id) => id.isNotEmpty)
         .join(',');
     final path =
-    bool stockInBeforeInspection = false,
         '${RouteName.warehouseProductionFinishedArrivalBatchRegistration}'
         '?reportIds=$ids${stockInBeforeInspection ? '&preStock=1' : ''}';
     final safeReturnTo = sanitizeReturnTo(

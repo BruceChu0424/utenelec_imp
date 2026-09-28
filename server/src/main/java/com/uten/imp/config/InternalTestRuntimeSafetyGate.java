@@ -95,11 +95,12 @@ public class InternalTestRuntimeSafetyGate
         requireValue("uten.jwt.issuer");
         requireSecret("uten.crypto.pgp-master-key", 32);
         requireSecret("uten.crypto.hmac-key", 32);
+        requireOptionalSecret("uten.crypto.secret-cipher-key", 32);
 
         requireExact("uten.sms.provider", "disabled");
         requireExact("uten.sms.expose-code", "false");
-        requireExact("uten.policy-intelligence.enabled", "false");
-        requireBlank("uten.policy-intelligence.api-key");
+        // The unit denies outbound IP traffic; external AI providers must stay unreachable (ADR-133).
+        requireExact("uten.ai.outbound-enabled", "false");
         requireBlank("uten.website.inquiry-ingest-token");
         requireExact("app.legacy.enabled", "false");
 
@@ -246,6 +247,13 @@ public class InternalTestRuntimeSafetyGate
         if (value.getBytes(StandardCharsets.UTF_8).length < minimumUtf8Bytes) {
             throw new IllegalStateException(
                     "internal-test secret is too short: " + key);
+        }
+    }
+
+    /** Optional secrets are accepted when absent, but a configured value must be strong. */
+    private void requireOptionalSecret(String key, int minimumUtf8Bytes) {
+        if (StringUtils.hasText(environment.getProperty(key))) {
+            requireSecret(key, minimumUtf8Bytes);
         }
     }
 

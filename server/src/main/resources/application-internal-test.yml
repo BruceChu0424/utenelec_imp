@@ -48,9 +48,9 @@ uten:
   sms:
     provider: disabled
     expose-code: false
-  policy-intelligence:
-    enabled: false
-    api-key: ""
+  ai:
+    # The unit denies outbound IP traffic; only local (loopback) AI deployments may run here.
+    outbound-enabled: false
   storage:
     provider: local
     # Intake stays closed until scanner/quota/recovery acceptance is approved.

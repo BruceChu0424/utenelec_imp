@@ -126,6 +126,19 @@ public class AuditEventInterpreter {
             Map.entry("view_production_material_discovery_detail", "查看实际领料登记详情"),
             Map.entry("view_production_overproduction_rate_detail", "查看超产比例申请详情"),
             Map.entry("view_stock_document_detail", "查看库存单据详情"));
+    /** 公共 AI 平台的语义/显式事件(ADR-133): 按「资源.方法」给出具体中文动作。 */
+    private static final Map<String, String> AI_ACTION_LABELS = Map.ofEntries(
+            Map.entry("ai_provider.create", "新增 AI 服务"),
+            Map.entry("ai_provider.update", "修改 AI 服务"),
+            Map.entry("ai_provider.delete", "删除 AI 服务"),
+            Map.entry("ai_provider.set_default", "设为默认 AI 服务"),
+            Map.entry("ai_provider.set_enabled", "启用或停用 AI 服务"),
+            Map.entry("ai_provider.test_typed", "测试 AI 服务连接"),
+            Map.entry("ai_provider.models_typed", "获取 AI 模型列表"),
+            Map.entry("ai_provider.test_stored", "用已保存密钥测试 AI 服务连接"),
+            Map.entry("ai_provider.models_stored", "用已保存密钥获取 AI 模型列表"),
+            Map.entry("ai_job.submit", "提交 AI 识别"),
+            Map.entry("ai_job.cancel", "取消 AI 识别"));
     private static final Set<String> MASTER_HISTORY_ACTIONS = Set.of(
             "view_client_detail", "view_supplier_detail", "view_account_detail",
             "view_goods_detail", "view_mould_detail", "view_currency_detail",
@@ -211,6 +224,8 @@ public class AuditEventInterpreter {
     }
 
     private String actionLabel(String action, String path, String httpMethod) {
+        String aiLabel = AI_ACTION_LABELS.get(action);
+        if (aiLabel != null) return aiLabel;
         String semanticVerb = AuditActionNames.verbOf(action);
         if (semanticVerb != null) {
             return semanticActionLabel(semanticVerb, path, httpMethod);
@@ -762,6 +777,8 @@ public class AuditEventInterpreter {
         values.put("/api/admin/audit-logs", "系统管理 · 审计中心");
         values.put("/api/admin/audit-sessions", "系统管理 · 登录会话审计");
         values.put("/api/admin/system-settings", "系统管理 · 系统设置");
+        values.put("/api/admin/ai", "系统管理 · AI 服务");
+        values.put("/api/ai", "AI 识别");
         values.put("/api/admin/departments", "系统管理 · 部门权限");
         values.put("/api/admin/permissions", "系统管理 · 权限配置");
         values.put("/api/admin/users", "系统管理 · 用户账号");
@@ -967,6 +984,13 @@ public class AuditEventInterpreter {
         values.put("expense_claim_invoices", "报销凭证登记");
         values.put("expense_claim_events", "报销流转记录");
         values.put("expense_claim_settings", "报销业务设置");
+        // 公共 AI 平台与客户文件识别(ADR-133 / ADR-134)
+        values.put("ai_providers", "AI 服务配置");
+        values.put("ai_jobs", "AI 识别任务");
+        values.put("ai_call_logs", "AI 调用记录");
+        values.put("client_goods_aliases", "客户货品对照");
+        values.put("sales_intake_layouts", "客户文件版式");
+        values.put("sales_quote_revision_logs", "报价修订记录");
         values.put("payroll_batches", "工资批次");
         values.put("payroll_items", "工资项目");
         values.put("payroll_slips", "工资条");
@@ -1180,6 +1204,8 @@ public class AuditEventInterpreter {
         values.put("/api/admin/permissions", "权限配置");
         values.put("/api/admin/users", "用户账号");
         values.put("/api/admin/system-settings", "系统设置");
+        values.put("/api/admin/ai", "AI 服务配置");
+        values.put("/api/ai/jobs", "AI 识别任务");
         values.put("/api/system-settings", "系统设置");
         values.put("/api/master/material-categories", "货品分类");
         values.put("/api/master/goods", "货品");

@@ -1444,20 +1444,28 @@
   "visitorBatchLimitError": "한 번에 최대 {limit}건까지 처리할 수 있습니다. 나누어 처리해 주세요(현재 {count}건)",
   "@visitorBatchLimitError": {
     "placeholders": {
-      "limit": {"type": "int"},
-      "count": {"type": "int"}
+      "limit": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveTitle": "일괄 승인({count})",
   "@visitorBatchApproveTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveMessage": "선택한 {count}건의 방문 신청을 건별로 승인하며, 승인 시 출입 QR 코드가 발급됩니다. 담당자와 방문 목적을 확인하려면 행을 더블클릭하여 상세를 검토하세요.",
   "@visitorBatchApproveMessage": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveConfirm": "일괄 승인 확인",
@@ -1465,7 +1473,9 @@
   "visitorBatchApproveResponsibility": "확인 시 선택한 {count}건의 방문 신청에 대한 심사 책임이 현재 로그인 계정으로 기록됩니다.",
   "@visitorBatchApproveResponsibility": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchVerbApprove": "승인",
@@ -1475,19 +1485,25 @@
   "@visitorBatchResult": {
     "placeholders": {
       "verb": {},
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchResultFailures": ", {count}건 실패",
   "@visitorBatchResultFailures": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchResultSkipped": ", {count}건 건너뜀",
   "@visitorBatchResultSkipped": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchIncomplete": "일괄 {verb}이(가) 완료되지 않았습니다: {reason}",
@@ -1500,13 +1516,17 @@
   "visitorBatchRejectTitle": "일괄 거부({count})",
   "@visitorBatchRejectTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchRejectDescription": "거부 사유가 {count}명의 방문자에게 전달됩니다. 구체적인 문제를 설명해 주세요.",
   "@visitorBatchRejectDescription": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchRejectConfirm": "거부 확인",
@@ -1515,44 +1535,58 @@
   "visitorBatchForwardTitle": "일괄 담당자 확인 전달({count})",
   "@visitorBatchForwardTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardMessage": "선택한 {count}건의 방문 신청이 각 담당자에게 전달되며, 담당자 확인 후 최종 승인을 위해 이 대기열로 돌아옵니다.",
   "@visitorBatchForwardMessage": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardSkippedNote": " (추가 {count}건은 이미 담당자 확인 중이므로 건너뛰었습니다)",
   "@visitorBatchForwardSkippedNote": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardConfirm": "일괄 전달 확인",
   "visitorBatchForwardResponsibility": "확인 시 선택한 {count}건의 방문 신청 전달 작업이 현재 로그인 계정으로 기록됩니다.",
   "@visitorBatchForwardResponsibility": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveButton": "승인({count})",
   "@visitorBatchApproveButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardButton": "전달({count})",
   "@visitorBatchForwardButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchRejectButton": "거부({count})",
   "@visitorBatchRejectButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorApprovalDoneApprove": "방문 신청이 승인되었습니다",
@@ -1569,26 +1603,34 @@
   "myVisitorsBatchTitle": "일괄 담당 확정({count})",
   "@myVisitorsBatchTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchMessage": "선택한 {count}명의 방문자를 건별로 담당 확정하며, 신청은 최종 승인을 위해 HR로 돌아갑니다.",
   "@myVisitorsBatchMessage": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchSkippedNote": " (추가 {count}건은 확인 대기 상태가 아니므로 건너뛰었습니다)",
   "@myVisitorsBatchSkippedNote": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchConfirm": "확인",
   "myVisitorsBatchResult": "{count}명의 방문자를 담당 확정했습니다",
   "@myVisitorsBatchResult": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchIncomplete": "일괄 확인이 완료되지 않았습니다: {reason}",
@@ -1600,7 +1642,9 @@
   "myVisitorsBatchButton": "확정({count})",
   "@myVisitorsBatchButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsStatusColInfo": "기본적으로 '확인 대기' 항목만 표시합니다. 헤더 필터로 전달됨/승인됨/거부됨으로 전환할 수 있습니다(백엔드 전달).",
@@ -1683,6 +1727,23 @@
   "expenseFlowItemPurposeRequired": "경비 용도를 입력하세요",
   "goodsLearnedPriceUnconfirmed": "가격 단위 및 통화 확인 필요",
   "goodsLearnedPriceTaxRate": "세율",
+  "shelfLocationQuantityHint": "보관 위치는 권장 사항입니다. 재고는 실제 창고와 색상별로 집계되며, 해당 위치의 실사 수량을 뜻하지 않습니다.",
+  "shelfActualWarehouse": "실제 창고",
+  "shelfMasterOnly": "품목 기본 권장 위치(창고 미지정)",
+  "shelfChooseWarehouseForRack": "현재 여러 창고가 포함되어 있습니다. 선반 배치도를 보려면 창고를 선택하세요. 아래 표는 실제 창고별로 표시됩니다.",
+  "warehouseGoodsMasterDefaultHint": "품목 기본 정보의 기본 보관 창고를 불러왔습니다. 이번 실제 창고를 확인하세요",
+  "warehouseSuggestedDestinationHint": "권장 보관 창고를 불러왔습니다. 이번 실제 창고를 확인하세요",
+  "warehouseBatchRegistrationHelp": "완제품 창고와 보관 위치 번호는 각 행에 필수입니다. 품목 기본 창고를 우선 적용하고, 없는 항목은 개인 창고 선택 정보를 참고합니다. 여러 행을 선택한 후 창고나 위치를 변경하면 일괄 적용할 수 있습니다. 생산 실적 보고서별로 검사 의뢰를 생성하며, 품질 승인 후 최종 실수량을 확인하여 입고합니다.",
+  "materialPreparationReview": "확인 후 발주",
+  "materialPreparationApproveNow": "승인 및 작업 지시",
+  "materialPreparationViewPlans": "지시한 계획 보기",
+  "materialPreparationOrdering": "발주 중…",
+  "materialPreparationOrderCount": "발주({count})",
+  "materialPreparationNoActions": "현재 처리할 자재가 없습니다",
+  "materialPreparationAvailableHint": "이 항목에 배정 가능한 재고와 이미 지시한 공급량에는 입고 예정 및 미처리 잔량이 포함됩니다. 다른 주문에 배정된 수량은 중복 계산하지 않으며, 실제 출고에는 실물 재고가 필요합니다.",
+  "materialPreparationPending": "주문 대기",
+  "materialPreparationInProgress": "진행 중",
+  "materialPreparationMissingAssignment": "발주 전에 “{goods}”의 생산 작업장과 담당자를 지정하세요",
   "goodsNameEnLabel": "영문명",
   "goodsNameEnHint": "예: DOUBLE 3 PIN SOCKET WITH SWITCH",
   "goodsNameEnInfo": "고객 견적서나 주문서에서 이 품목을 부르는 영문 이름입니다. 고객 파일을 인식할 때 영문 품명을 이 품목과 연결하는 데 사용됩니다.",
@@ -1726,23 +1787,6 @@
   "clientGoodsAliasPage": "{page} / {pages} 페이지",
   "clientGoodsAliasPrevPage": "이전",
   "clientGoodsAliasNextPage": "다음",
-  "shelfLocationQuantityHint": "보관 위치는 권장 사항입니다. 재고는 실제 창고와 색상별로 집계되며, 해당 위치의 실사 수량을 뜻하지 않습니다.",
-  "shelfActualWarehouse": "실제 창고",
-  "shelfMasterOnly": "품목 기본 권장 위치(창고 미지정)",
-  "shelfChooseWarehouseForRack": "현재 여러 창고가 포함되어 있습니다. 선반 배치도를 보려면 창고를 선택하세요. 아래 표는 실제 창고별로 표시됩니다.",
-  "warehouseGoodsMasterDefaultHint": "품목 기본 정보의 기본 보관 창고를 불러왔습니다. 이번 실제 창고를 확인하세요",
-  "warehouseSuggestedDestinationHint": "권장 보관 창고를 불러왔습니다. 이번 실제 창고를 확인하세요",
-  "warehouseBatchRegistrationHelp": "완제품 창고와 보관 위치 번호는 각 행에 필수입니다. 품목 기본 창고를 우선 적용하고, 없는 항목은 개인 창고 선택 정보를 참고합니다. 여러 행을 선택한 후 창고나 위치를 변경하면 일괄 적용할 수 있습니다. 생산 실적 보고서별로 검사 의뢰를 생성하며, 품질 승인 후 최종 실수량을 확인하여 입고합니다.",
-  "materialPreparationReview": "확인 후 발주",
-  "materialPreparationApproveNow": "승인 및 작업 지시",
-  "materialPreparationViewPlans": "지시한 계획 보기",
-  "materialPreparationOrdering": "발주 중…",
-  "materialPreparationOrderCount": "발주({count})",
-  "materialPreparationNoActions": "현재 처리할 자재가 없습니다",
-  "materialPreparationAvailableHint": "이 항목에 배정 가능한 재고와 이미 지시한 공급량에는 입고 예정 및 미처리 잔량이 포함됩니다. 다른 주문에 배정된 수량은 중복 계산하지 않으며, 실제 출고에는 실물 재고가 필요합니다.",
-  "materialPreparationPending": "주문 대기",
-  "materialPreparationInProgress": "진행 중",
-  "materialPreparationMissingAssignment": "발주 전에 “{goods}”의 생산 작업장과 담당자를 지정하세요",
   "aiJobCancel": "취소",
   "aiJobElapsed": "경과 시간 {time}",
   "@aiJobElapsed": {
@@ -2047,5 +2091,240 @@
   "aiSettingsModelChoices": "모델:",
   "aiSettingsOverseasLockedShort": "해외 제공업체는 아직 열려 있지 않습니다. 배포 담당자가 서버에서 켜야 합니다",
   "aiSettingsKeyConfiguredPlain": "설정됨",
-  "aiSettingsApiKeyKeepHintPlain": "설정됨. 바꾸지 않으려면 비워 두세요"
+  "aiSettingsApiKeyKeepHintPlain": "설정됨. 바꾸지 않으려면 비워 두세요",
+  "salesQuoteStatusDraft": "초안",
+  "salesQuoteStatusPendingFinance": "재무 가격 검토 대기",
+  "salesQuoteStatusReturned": "재무 반려",
+  "salesQuoteStatusConfirmed": "가격 확정",
+  "salesQuoteStatusReversed": "무효",
+  "salesQuoteStatusConverted": "주문으로 전환됨",
+  "salesQuoteStatusToConvert": "가격 확정, 주문 전환 대기",
+  "salesQuoteStatusReadOnly": "{status} · 읽기 전용",
+  "salesQuoteStatusHistory": "이력",
+  "salesQuoteStatusBannerDraft": "초안: 작성 후 \"재무 가격 검토 요청\"을 누르세요. 재무가 가격과 할인을 확정해야 주문으로 전환할 수 있습니다.",
+  "salesQuoteStatusBannerPending": "재무 가격 검토를 요청했으며 재무의 가격 확정을 기다리는 중입니다. 수정하려면 먼저 \"회수\"하세요.",
+  "salesQuoteStatusBannerReturned": "재무 반려: {reason}. 수정한 뒤 다시 가격 검토를 요청하세요.",
+  "salesQuoteStatusBannerConfirmed": "재무 가격 확정({name} · {time}). 이제 주문으로 전환할 수 있습니다.",
+  "salesQuoteStatusBannerConverted": "주문 {orderNo}(으)로 전환되어 견적을 더 이상 수정할 수 없습니다.",
+  "salesQuoteStatusBannerReversed": "이 견적은 무효 처리되어 조회만 가능합니다.",
+  "salesQuoteStatusFinanceFallback": "재무",
+  "salesQuoteStatusFieldReturnReason": "반려 사유",
+  "salesQuoteStatusFieldSubmittedAt": "가격 검토 요청 시각",
+  "salesQuoteStatusFieldConfirmedBy": "가격 확정자",
+  "salesQuoteStatusFieldConvertedOrder": "전환된 주문",
+  "salesQuoteStatusFieldFinanceRemark": "재무 메모",
+  "salesQuoteStatusActionSubmit": "재무 가격 검토 요청",
+  "salesQuoteStatusActionWithdraw": "회수",
+  "salesQuoteStatusActionReopen": "다시 수정",
+  "salesQuoteStatusActionConvert": "주문으로 전환",
+  "salesQuoteStatusActionReverse": "무효 처리",
+  "salesQuoteStatusActionEdit": "편집",
+  "salesQuoteStatusActionDelete": "삭제",
+  "salesQuoteStatusActionFinanceReview": "가격 검토 열기",
+  "salesQuoteStatusActionViewOrder": "주문 보기",
+  "salesQuoteStatusActionBack": "목록으로",
+  "salesQuoteStatusSubmitConfirmBody": "재무가 품목별로 가격과 할인을 정합니다. 그동안 견적을 수정할 수 없습니다. 요청할까요?",
+  "salesQuoteStatusWithdrawConfirmBody": "회수하면 초안으로 돌아가 계속 수정할 수 있으며, 수정 후 다시 가격 검토를 요청해야 합니다. 회수할까요?",
+  "salesQuoteStatusReopenConfirmBody": "재무가 이미 가격을 확정했습니다. 다시 수정하면 초안으로 돌아가며, 다시 가격 검토를 받아야 주문으로 전환할 수 있습니다. 계속할까요?",
+  "salesQuoteStatusReverseConfirmBody": "무효 처리하면 주문으로 전환할 수 없고 되돌릴 수도 없습니다. 무효 처리할까요?",
+  "salesQuoteStatusDeleteConfirmBody": "이 견적 초안을 삭제할까요? 삭제 후에는 복구할 수 없습니다.",
+  "salesQuoteStatusConvertConfirmBody": "재무가 확정한 단가와 할인으로 주문 초안을 만듭니다. 단가와 할인은 바꿀 수 없고 수량과 납기 정보는 주문에서 보완할 수 있습니다. 전환할까요?",
+  "salesQuoteStatusConfirm": "확인",
+  "salesQuoteStatusCancel": "취소",
+  "salesQuoteStatusSubmitted": "재무 가격 검토를 요청했습니다",
+  "salesQuoteStatusWithdrawn": "회수했습니다. 계속 수정할 수 있습니다",
+  "salesQuoteStatusReopened": "초안으로 돌아왔습니다. 수정 후 다시 가격 검토를 요청하세요",
+  "salesQuoteStatusReversedDone": "견적을 무효 처리했습니다",
+  "salesQuoteStatusDeleted": "삭제했습니다",
+  "salesQuoteStatusConvertDone": "주문 초안 {billNo}을(를) 만들었습니다",
+  "salesQuoteStatusActionFailed": "처리하지 못했습니다. 잠시 후 다시 시도하세요.",
+  "salesQuoteStatusBusy": "처리 중입니다. 잠시만 기다려 주세요",
+  "salesQuoteStatusTimelineTitle": "가격 검토 기록",
+  "salesQuoteStatusTimelineEmpty": "아직 가격 검토 기록이 없습니다",
+  "salesQuoteStatusRevisionSubmit": "가격 검토 요청",
+  "salesQuoteStatusRevisionWithdraw": "영업 회수",
+  "salesQuoteStatusRevisionFinanceEdit": "재무 가격 수정",
+  "salesQuoteStatusRevisionReturn": "재무 반려",
+  "salesQuoteStatusRevisionConfirm": "재무 견적 확정",
+  "salesQuoteStatusRevisionReopen": "영업 다시 수정",
+  "salesQuoteStatusRevisionFinanceReopen": "재무 확정 취소",
+  "salesQuoteStatusRevisionOther": "기타 기록",
+  "salesQuoteStatusRevisionOperator": "처리자",
+  "salesQuoteStatusRevisionVersion": "{revision}번째 버전",
+  "salesQuoteStatusSourceQuoteConfirmed": "견적 가격 확정",
+  "salesQuoteStatusSourceQuote": "원본 견적",
+  "quoteFinanceHubTitle": "견적 가격 검토",
+  "quoteFinanceHubSubtitle": "영업 견적의 가격과 할인을 재무가 정하며, 확정 후 영업이 주문으로 전환합니다",
+  "quoteFinanceListTitle": "견적 가격 검토",
+  "quoteFinanceTabPending": "검토 대기",
+  "quoteFinanceTabConfirmed": "확정됨",
+  "quoteFinanceTabReturned": "반려됨",
+  "quoteFinanceSearchHint": "번호 / 고객 / 영업 담당 검색",
+  "quoteFinanceRowHint": "탭하여 선택 · 두 번 탭하여 검토",
+  "quoteFinanceColBillNo": "견적 번호",
+  "quoteFinanceColClient": "고객",
+  "quoteFinanceColSeller": "영업 담당",
+  "quoteFinanceColSubmittedAt": "요청 시각",
+  "quoteFinanceColLines": "품목 수",
+  "quoteFinanceColAmount": "견적 금액",
+  "quoteFinanceColStatus": "상태 / 설명",
+  "quoteFinanceStatusPending": "검토 대기",
+  "quoteFinanceStatusResubmitted": "영업이 수정 후 재요청",
+  "quoteFinanceStatusNeedPrice": "{count, plural, other{표준가 없는 품목 {count}개}}",
+  "quoteFinanceStatusConfirmed": "확정 · {name}",
+  "quoteFinanceStatusConverted": "주문 {orderNo}(으)로 전환됨",
+  "quoteFinanceStatusReturned": "반려: {reason}",
+  "quoteFinanceEmptyPending": "가격 검토를 기다리는 견적이 없습니다",
+  "quoteFinanceEmptyPendingHint": "영업이 가격 검토를 요청하면 여기에 표시됩니다. 가격을 확정해야 영업이 주문으로 전환할 수 있습니다.",
+  "quoteFinanceEmptyConfirmed": "아직 확정된 견적이 없습니다",
+  "quoteFinanceEmptyReturned": "영업에 반려한 견적이 없습니다",
+  "quoteFinanceEmptyReturnedHint": "반려된 견적은 영업이 수정하면 다시 \"검토 대기\"로 돌아옵니다.",
+  "quoteFinanceEmptySearch": "\"{keyword}\"와(과) 일치하는 견적이 없습니다",
+  "quoteFinanceLoadFailed": "견적을 불러오지 못했습니다. 네트워크를 확인한 후 다시 시도하세요.",
+  "quoteFinanceRetry": "다시 시도",
+  "quoteFinanceRefresh": "새로 고침",
+  "quoteFinanceOpen": "검토",
+  "quoteFinancePrevPage": "이전 페이지",
+  "quoteFinanceNextPage": "다음 페이지",
+  "quoteFinanceUnnamed": "미지정",
+  "quoteFinanceReviewTitle": "견적 가격 검토",
+  "quoteFinanceStripPending": "재무 가격 검토 대기",
+  "quoteFinanceStripConfirmed": "확정 · {name} · {time}",
+  "quoteFinanceStripReturned": "영업에 반려 · {reason}",
+  "quoteFinanceStripDraft": "영업 수정 중",
+  "quoteFinanceStripReversed": "무효",
+  "quoteFinanceStripConverted": "주문 {orderNo}(으)로 전환됨",
+  "quoteFinanceRevisionBadge": "{revision}번째 버전",
+  "quoteFinanceReadOnlyNotice": "지금은 이 견적에서 처리할 일이 없어 조회만 가능합니다.",
+  "quoteFinanceResubmitNotice": "영업이 수정 후 다시 요청했습니다. 노란색 줄은 지난번 확정한 할인과 다르니 확인하세요.",
+  "quoteFinanceNeedPriceNotice": "{count, plural, other{표준가가 없는 품목이 {count}개 있습니다. 확정 전에 거래 단가를 입력하거나 행 메뉴에서 \"무상/0원으로 설정\"을 선택하세요.}}",
+  "quoteFinanceGoMaintainPrice": "품목 정보에서 표준가 관리",
+  "quoteFinanceInfoTitle": "견적 정보",
+  "quoteFinanceFieldClient": "고객",
+  "quoteFinanceFieldSeller": "영업 담당",
+  "quoteFinanceFieldMaker": "작성자",
+  "quoteFinanceFieldBillDate": "일자",
+  "quoteFinanceFieldSubmittedAt": "요청 시각",
+  "quoteFinanceFieldDeliverDate": "납기일",
+  "quoteFinanceFieldContractNo": "계약 번호",
+  "quoteFinanceFieldCurrency": "통화",
+  "quoteFinanceFieldFileCurrency": "고객 파일 통화",
+  "quoteFinanceFileRateHint": "파일 통화 {currency}, 재무 참고 환율 {rate}로 기준 통화 환산",
+  "quoteFinanceFieldRemark": "영업 메모",
+  "quoteFinanceFieldValidUntil": "유효 기한",
+  "quoteFinanceFieldSettlement": "결제 방식",
+  "quoteFinanceFieldFinanceRemark": "재무 메모",
+  "quoteFinanceFinanceRemarkHint": "영업에 전할 설명(선택)",
+  "quoteFinanceSettlementNone": "지정 안 함",
+  "quoteFinanceAttachmentsTitle": "고객 파일 및 첨부",
+  "quoteFinanceLinesTitle": "품목 내역",
+  "quoteFinanceColGoods": "품목명",
+  "quoteFinanceColCode": "코드",
+  "quoteFinanceColColor": "색상",
+  "quoteFinanceColQty": "수량",
+  "quoteFinanceColUnit": "단위",
+  "quoteFinanceColListPrice": "표준가",
+  "quoteFinanceColListPriceInfo": "품목 정보의 판매가입니다. 표준가가 없거나 거래 단가가 표준가보다 높으면 재무가 거래 단가를 직접 정하고, 낮으면 항상 할인으로 계산합니다.",
+  "quoteFinanceColFilePrice": "파일 단가(원통화)",
+  "quoteFinanceColFilePriceLocal": "기준 통화 환산",
+  "quoteFinanceColDealPrice": "거래 단가",
+  "quoteFinanceColDealPriceInfo": "고객이 개당 최종 지불하는 금액입니다. 거래 단가를 바꾸면 할인이, 할인을 바꾸면 거래 단가가 자동 계산됩니다.",
+  "quoteFinanceColDiscount": "할인율",
+  "quoteFinanceColDiscountInfo": "할인율 = 거래 단가 ÷ 표준가, 소수 4자리, 1은 표준가 그대로입니다.",
+  "quoteFinanceColLineAmount": "금액",
+  "quoteFinanceColFileDiff": "파일과의 차이",
+  "quoteFinanceColFileDiffInfo": "이 줄 금액에서 고객 파일 금액(기준 통화 환산)을 뺀 값입니다. 0이면 파일과 같습니다.",
+  "quoteFinanceColLastConfirmed": "지난 확정 할인",
+  "quoteFinanceColSalesProposed": "영업 제안 할인",
+  "quoteFinanceColFileModel": "파일 모델",
+  "quoteFinanceColFileName": "파일 품명",
+  "quoteFinanceColRemark": "비고",
+  "quoteFinanceNoListPrice": "가격 없음",
+  "quoteFinanceFinancePriceChip": "재무 가격",
+  "quoteFinanceGiveawayChip": "무상/0원",
+  "quoteFinanceFileMatch": "일치",
+  "quoteFinanceErrorDealPrice": "0보다 큰 숫자를 입력하세요. 무상/0원은 행 메뉴의 \"무상/0원으로 설정\"을 사용하세요.",
+  "quoteFinanceErrorFinancePrice": "0 이상의 숫자를 입력하세요",
+  "quoteFinanceErrorDiscount": "할인율은 0보다 크고 1 이하, 소수 4자리까지입니다",
+  "quoteFinanceErrorNeedPrice": "거래 단가를 입력하세요",
+  "quoteFinanceMenuMasterMode": "표준가 기준 할인",
+  "quoteFinanceMenuGiveaway": "무상/0원으로 설정",
+  "quoteFinanceMenuRestore": "이 줄 변경 취소",
+  "quoteFinanceBatchDiscount": "선택 줄 할인 설정",
+  "quoteFinanceBatchDiscountCount": "할인 설정({count})",
+  "quoteFinanceBatchDiscountTitle": "{count, plural, other{선택한 {count}개 줄의 할인 설정}}",
+  "quoteFinanceBatchDiscountHint": "예: 0.95는 표준가의 95%",
+  "quoteFinanceBatchApply": "적용",
+  "quoteFinanceBatchApplied": "{count, plural, other{{count}개 줄의 할인을 설정했습니다}}",
+  "quoteFinanceBatchSkipped": "{count, plural, other{표준가가 없거나 재무 가격인 {count}개 줄은 건너뛰었습니다}}",
+  "quoteFinanceBatchNeedSelection": "먼저 할인을 바꿀 줄을 선택하세요",
+  "quoteFinanceCheckedEditHint": "{count, plural, other{선택된 줄입니다: 할인을 바꾸면 선택한 {count}개 줄이 함께 바뀝니다}}",
+  "quoteFinanceActionSave": "변경 저장",
+  "quoteFinanceActionSaving": "저장 중…",
+  "quoteFinanceActionReturn": "영업에 반려",
+  "quoteFinanceActionConfirm": "견적 확정",
+  "quoteFinanceActionReopen": "확정 취소 후 수정",
+  "quoteFinanceActionBack": "돌아가기",
+  "quoteFinanceSaved": "변경을 저장했습니다",
+  "quoteFinanceNothingToSave": "저장할 변경이 없습니다",
+  "quoteFinanceFixErrors": "{count, plural, other{잘못 입력된 줄이 {count}개 있습니다. 먼저 수정하세요}}",
+  "quoteFinanceClaimNotReady": "아직 이 견적의 검토 점유를 얻지 못했습니다. \"다시 점유 후 새로 고침\"을 누르세요.",
+  "quoteFinanceSaveFirst": "확정하기 전에 변경을 저장하세요",
+  "quoteFinanceConfirmBlocked": "{count, plural, other{가격이 없는 줄이 {count}개 있어 확정할 수 없습니다. 거래 단가를 입력하거나 무상/0원으로 설정하세요.}}",
+  "quoteFinanceConfirmedDone": "견적을 확정했으며 영업에 주문 전환을 알렸습니다",
+  "quoteFinanceReturnedDone": "영업에 반려했으며 알림이 전송됩니다",
+  "quoteFinanceReopenedDone": "확정을 취소했습니다. 가격을 다시 수정할 수 있습니다",
+  "quoteFinanceLoadDetailFailed": "견적 상세를 불러오지 못했습니다. 네트워크나 권한을 확인한 후 다시 시도하세요.",
+  "quoteFinanceActionFailed": "처리하지 못했습니다. 잠시 후 다시 시도하세요.",
+  "quoteFinanceUnsavedTitle": "저장하지 않은 변경이 있습니다",
+  "quoteFinanceUnsavedBody": "나가면 변경 내용이 사라집니다. 나갈까요?",
+  "quoteFinanceLeave": "나가기",
+  "quoteFinanceStay": "계속 수정",
+  "quoteFinanceBusy": "처리 중입니다. 잠시만 기다려 주세요",
+  "quoteFinanceSaving": "변경을 저장하는 중",
+  "quoteFinanceSessionChanged": "로그인 정보가 바뀌었습니다. 견적을 다시 여세요.",
+  "quoteFinanceConfirmTitle": "견적 {billNo} 확정",
+  "quoteFinanceConfirmBody": "확정하면 가격과 할인이 고정되고 영업이 주문으로 전환할 수 있습니다. 나중에 바꾸려면 전환 전에 \"확정 취소 후 수정\"을 사용하세요.",
+  "quoteFinanceConfirmResponsibility": "견적 가격 확정",
+  "quoteFinanceConfirmResponsibilityDesc": "확정하면 이번 가격 확정자로 기록됩니다.",
+  "quoteFinanceConfirmTotal": "견적 금액 {amount}",
+  "quoteFinanceReturnTitle": "{billNo} 영업에 반려",
+  "quoteFinanceReturnBody": "반려하면 견적이 영업에게 돌아가 수정 후 다시 요청됩니다. 사유를 적어 주세요. 영업이 보게 됩니다.",
+  "quoteFinanceReturnChipQty": "고객이 수량 변경 요청",
+  "quoteFinanceReturnChipGoods": "누락 품목 보완 필요",
+  "quoteFinanceReturnChipPrice": "가격은 영업이 고객과 확인 필요",
+  "quoteFinanceReturnReasonLabel": "반려 사유(필수)",
+  "quoteFinanceReturnReasonRequired": "반려 사유를 입력하세요",
+  "quoteFinanceReturnSubmit": "반려",
+  "quoteFinanceReopenTitle": "확정 취소 후 수정",
+  "quoteFinanceReopenBody": "견적이 \"검토 대기\"로 돌아가 가격을 다시 수정할 수 있으며, 수정 후 다시 확정해야 합니다. 그동안 영업은 주문으로 전환할 수 없습니다. 취소할까요?",
+  "quoteFinanceCancel": "취소",
+  "quoteFinanceRevisionTitle": "가격 검토 기록",
+  "quoteFinanceTotalQty": "합계 수량",
+  "quoteFinanceTotalAmount": "합계 금액",
+  "quoteFinanceTotalPreview": "합계 금액(저장 전 미리보기)",
+  "quoteFinanceOrderSourceQuote": "원본 견적 {billNo}",
+  "quoteFinanceOrderQuoteConfirmedBy": "견적 가격 확정 · {name}",
+  "quoteFinanceOrderAllMatch": "견적 가격 확정 · 일치",
+  "quoteFinanceOrderMismatch": "{count, plural, other{견적과 다른 줄 {count}개}}",
+  "quoteFinanceOrderChipHint": "이 주문은 재무가 가격을 확정한 견적에서 전환되었습니다. 가격과 할인이 견적과 같으면 이번에는 신용과 조건만 확인하면 됩니다.",
+  "quoteFinanceOrderColQuotePrice": "견적 단가",
+  "quoteFinanceOrderColQuoteDiscount": "견적 할인",
+  "quoteFinanceOrderColMatch": "견적 대비",
+  "quoteFinanceOrderMatchYes": "일치",
+  "quoteFinanceOrderMatchNo": "다름",
+  "quoteFinanceOrderColFilePrice": "파일 단가({currency})",
+  "quoteFinanceOrderFileCurrencyUnknown": "원통화",
+  "quoteFinanceOrderColFileModel": "파일 모델",
+  "quoteFinanceOrderColFileName": "파일 품명",
+  "quoteFinanceAboveListHint": "표준가보다 높아 재무 지정가로 저장됩니다(할인 1)",
+  "quoteFinanceMenuRefreshMaster": "최신 표준가로 갱신",
+  "quoteFinanceRefreshMasterChip": "최신 표준가 {price}(으)로 갱신하고 할인은 유지합니다. 저장한 뒤 할인을 다시 바꿀 수 있습니다",
+  "quoteFinanceListPriceLatest": "{price}, 품목 정보는 {latest}(으)로 변경됨",
+  "quoteFinanceStatusClaimedBy": "{name} 님이 검토 중",
+  "quoteFinanceStatusClaimedByMe": "내가 검토 중",
+  "quoteFinanceFileRateMissing": "파일 통화 {currency}, 재무 참고 환율이 아직 없어 기준 통화 환산값은 비워 둡니다",
+  "salesQuoteStatusImportTitle": "재무가 가격을 확정한 견적 선택",
+  "salesQuoteStatusImportEmpty": "주문으로 전환할 수 있는 가격 확정 견적이 없습니다",
+  "salesQuoteStatusImportLoadFailed": "견적을 불러오지 못했습니다. 잠시 후 다시 시도하세요."
 }

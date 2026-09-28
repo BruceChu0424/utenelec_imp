@@ -65,6 +65,20 @@ abstract final class ApiEndpoints {
   static String salesOrderFinanceReject(String orderId) =>
       '/sales/orders/$orderId/finance-confirmation/reject';
 
+  // 销售报价财务核价(ADR-134)：队列(state=pending|confirmed|returned) / 核价详情 /
+  // 改价保存 / 退回销售 / 确认报价 / 撤销确认。动作都带 expectedRevision + expectedClaimId。
+  static const salesQuoteFinanceReviewList = '/sales/quotes/finance-review';
+  static String salesQuoteFinanceReview(String quoteId) =>
+      '/sales/quotes/${Uri.encodeComponent(quoteId)}/finance-review';
+  static String salesQuoteFinanceEdit(String quoteId) =>
+      '/sales/quotes/${Uri.encodeComponent(quoteId)}/finance';
+  static String salesQuoteFinanceReturn(String quoteId) =>
+      '/sales/quotes/${Uri.encodeComponent(quoteId)}/finance-return';
+  static String salesQuoteFinanceConfirm(String quoteId) =>
+      '/sales/quotes/${Uri.encodeComponent(quoteId)}/finance-confirm';
+  static String salesQuoteFinanceReopen(String quoteId) =>
+      '/sales/quotes/${Uri.encodeComponent(quoteId)}/finance-reopen';
+
   // 财务批准后形成的仓储预计到货，以及超量到货隔离任务。
   static const warehouseInboundExpectations = '/warehouse/inbound/expectations';
   static const warehouseInboundExpectationFacets =

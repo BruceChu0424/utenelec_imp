@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -13,6 +14,9 @@ import 'package:uten_imp/features/sales/pages/sales_task_center_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/shared/providers/document_status_counts_provider.dart';
+import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
 
@@ -65,6 +69,10 @@ void main() {
       ],
       child: MaterialApp(
         // 任务中心页自身不依赖 GoRouter（无 context.go）；直接挂 home。
+        // 报价大类嵌入的列表分段文字走 arb(ADR-134)。
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('zh'),
         home: page,
       ),
     );
@@ -112,16 +120,78 @@ void main() {
       expect(find.text(label), findsOneWidget, reason: label);
     }
 
-    // 切到「报价单」大类：嵌入的列表页状态行出现（草稿/已审/红冲/历史记录）。
+    // 切到「报价单」大类：嵌入的列表页按财务核价分桶分段(ADR-134)：
+    // 草稿/财务退回/待财务核价/已核价/作废/历史记录。
     await tester.tap(find.text('报价单'));
     await tester.pump();
     await tester.pump();
-    expect(find.text('草稿'), findsOneWidget);
-    expect(find.text('已审'), findsOneWidget);
-    expect(find.text('红冲'), findsOneWidget);
-    expect(find.text('历史记录'), findsOneWidget);
+    for (final label in ['草稿', '财务退回', '待财务核价', '已核价', '作废', '历史记录']) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+    expect(find.text('已审'), findsNothing);
+    expect(find.text('红冲'), findsNothing);
     // 状态默认不选：列表引导占位，不发请求。
     expect(find.text('在上方选择状态或历史记录后开始浏览'), findsOneWidget);
+  });
+
+  testWidgets('报价大类红数 = 草稿 + 财务退回 + 已核价待转订货；黄数 = 待财务核价', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(_FakeApi()),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.salesQuoteView,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          salesMasterNameServiceProvider.overrideWithValue(
+            SalesMasterNameService(_FakeApi()),
+          ),
+          documentStatusCountsProvider.overrideWith(
+            (ref, scope) async => {
+              'DRAFT': 2,
+              'FINANCE_REJECTED': 1,
+              'PENDING_FINANCE': 4,
+              'APPROVED': 9,
+            },
+          ),
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(
+              entries: {BadgeEntry.salesQuoteAwaitingConversion: (3, 0)},
+            ),
+          ),
+        ],
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
+          home: SalesTaskCenterPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final quotes = tester.widget<UtenSegmentBadgeLabel>(
+      find.byWidgetPredicate(
+        (w) => w is UtenSegmentBadgeLabel && w.label == '报价单',
+      ),
+    );
+    expect(quotes.count, 6);
+    expect(quotes.inProgressCount, 4);
+
+    // 进入报价大类：分段红数与大类同源(草稿 2 + 退回 1 + 已核价待转 3)。
+    await tester.tap(find.text('报价单'));
+    await tester.pumpAndSettle();
+    int? countOf(String label) => tester
+        .widget<UtenSegmentBadgeLabel>(
+          find.byWidgetPredicate(
+            (w) => w is UtenSegmentBadgeLabel && w.label == label,
+          ),
+        )
+        .count;
+    expect(countOf('草稿'), 2);
+    expect(countOf('财务退回'), 1);
+    expect(countOf('待财务核价'), 4);
+    expect(countOf('已核价'), 3);
   });
 
   testWidgets('历史其它出货大类进入即预选历史段（时间门控）', (tester) async {

@@ -1557,20 +1557,28 @@
   "visitorBatchLimitError": "A single batch handles at most {limit} items; please split it (currently {count})",
   "@visitorBatchLimitError": {
     "placeholders": {
-      "limit": {"type": "int"},
-      "count": {"type": "int"}
+      "limit": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveTitle": "Batch Approve ({count})",
   "@visitorBatchApproveTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveMessage": "Each of the {count} selected applications will be approved one by one; approval issues the entry QR code. To double-check hosts and purposes, open details by double-clicking a row.",
   "@visitorBatchApproveMessage": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveConfirm": "Confirm Batch Approve",
@@ -1578,7 +1586,9 @@
   "visitorBatchApproveResponsibility": "On confirmation, the selected {count} applications will be recorded under your account as approver.",
   "@visitorBatchApproveResponsibility": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchVerbApprove": "approved",
@@ -1588,19 +1598,25 @@
   "@visitorBatchResult": {
     "placeholders": {
       "verb": {},
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchResultFailures": ", {count} failed",
   "@visitorBatchResultFailures": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchResultSkipped": ", {count} skipped",
   "@visitorBatchResultSkipped": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchIncomplete": "Batch {verb} did not fully complete: {reason}",
@@ -1613,13 +1629,17 @@
   "visitorBatchRejectTitle": "Batch Reject ({count})",
   "@visitorBatchRejectTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchRejectDescription": "The rejection reason will be shared with {count} visitors; please describe the problem.",
   "@visitorBatchRejectDescription": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchRejectConfirm": "Confirm Reject",
@@ -1628,44 +1648,58 @@
   "visitorBatchForwardTitle": "Batch Forward to Hosts ({count})",
   "@visitorBatchForwardTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardMessage": "The {count} selected applications will be forwarded to their hosts; after confirmation they return to this queue for your final approval.",
   "@visitorBatchForwardMessage": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardSkippedNote": " ({count} more already with their hosts, skipped)",
   "@visitorBatchForwardSkippedNote": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardConfirm": "Confirm Batch Forward",
   "visitorBatchForwardResponsibility": "On confirmation, forwarding the {count} selected applications will be recorded under your account.",
   "@visitorBatchForwardResponsibility": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveButton": "Approve ({count})",
   "@visitorBatchApproveButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardButton": "Forward ({count})",
   "@visitorBatchForwardButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchRejectButton": "Reject ({count})",
   "@visitorBatchRejectButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorApprovalDoneApprove": "Visitor application approved",
@@ -1682,26 +1716,34 @@
   "myVisitorsBatchTitle": "Batch Confirm ({count})",
   "@myVisitorsBatchTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchMessage": "Each of the {count} selected visitors will be confirmed as hosted; applications then return to HR for final approval.",
   "@myVisitorsBatchMessage": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchSkippedNote": " ({count} more not awaiting your confirmation, skipped)",
   "@myVisitorsBatchSkippedNote": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchConfirm": "Confirm",
   "myVisitorsBatchResult": "{count} visitors confirmed as hosted",
   "@myVisitorsBatchResult": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchIncomplete": "Batch confirmation did not fully complete: {reason}",
@@ -1713,7 +1755,9 @@
   "myVisitorsBatchButton": "Confirm ({count})",
   "@myVisitorsBatchButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsStatusColInfo": "Shows only items awaiting your confirmation by default; the header filter switches to forwarded / approved / rejected (pushed to the backend).",
@@ -1796,6 +1840,23 @@
   "expenseFlowItemPurposeRequired": "Enter the expense purpose",
   "goodsLearnedPriceUnconfirmed": "Verify the price unit and currency",
   "goodsLearnedPriceTaxRate": "Tax rate",
+  "shelfLocationQuantityHint": "Locations are storage suggestions. Quantities are totals for the actual warehouse and color, not counts at a specific shelf location.",
+  "shelfActualWarehouse": "Actual warehouse",
+  "shelfMasterOnly": "Master suggestion (no warehouse)",
+  "shelfChooseWarehouseForRack": "Select one physical warehouse to view its rack diagram. The table lists each warehouse separately.",
+  "warehouseGoodsMasterDefaultHint": "The goods master default warehouse was filled in. Verify the actual destination for this receipt.",
+  "warehouseSuggestedDestinationHint": "A suggested warehouse was filled in. Verify the actual destination.",
+  "warehouseBatchRegistrationHelp": "Each line needs a warehouse and location. Goods master defaults take precedence over personal warehouse context. Selected lines can be edited together. Each report creates its own inspection submission; final receipt follows quality release.",
+  "materialPreparationReview": "Review and order",
+  "materialPreparationApproveNow": "Approve and release",
+  "materialPreparationViewPlans": "View issued plans",
+  "materialPreparationOrdering": "Placing orders…",
+  "materialPreparationOrderCount": "Order ({count})",
+  "materialPreparationNoActions": "No materials available for processing",
+  "materialPreparationAvailableHint": "Supply available to this line includes stock and issued supply, including incoming and unprocessed quantities. Supply assigned to other orders is excluded. Material issue requires actual stock.",
+  "materialPreparationPending": "To order",
+  "materialPreparationInProgress": "In progress",
+  "materialPreparationMissingAssignment": "Set the production workshop and responsible person for “{goods}” before ordering",
   "goodsNameEnLabel": "English name",
   "goodsNameEnHint": "e.g. DOUBLE 3 PIN SOCKET WITH SWITCH",
   "goodsNameEnInfo": "How customer quotations and orders name this item in English. When reading a customer file, the system uses it to match the English description to this item.",
@@ -1839,23 +1900,6 @@
   "clientGoodsAliasPage": "Page {page} of {pages}",
   "clientGoodsAliasPrevPage": "Previous",
   "clientGoodsAliasNextPage": "Next",
-  "shelfLocationQuantityHint": "Locations are storage suggestions. Quantities are totals for the actual warehouse and color, not counts at a specific shelf location.",
-  "shelfActualWarehouse": "Actual warehouse",
-  "shelfMasterOnly": "Master suggestion (no warehouse)",
-  "shelfChooseWarehouseForRack": "Select one physical warehouse to view its rack diagram. The table lists each warehouse separately.",
-  "warehouseGoodsMasterDefaultHint": "The goods master default warehouse was filled in. Verify the actual destination for this receipt.",
-  "warehouseSuggestedDestinationHint": "A suggested warehouse was filled in. Verify the actual destination.",
-  "warehouseBatchRegistrationHelp": "Each line needs a warehouse and location. Goods master defaults take precedence over personal warehouse context. Selected lines can be edited together. Each report creates its own inspection submission; final receipt follows quality release.",
-  "materialPreparationReview": "Review and order",
-  "materialPreparationApproveNow": "Approve and release",
-  "materialPreparationViewPlans": "View issued plans",
-  "materialPreparationOrdering": "Placing orders…",
-  "materialPreparationOrderCount": "Order ({count})",
-  "materialPreparationNoActions": "No materials available for processing",
-  "materialPreparationAvailableHint": "Supply available to this line includes stock and issued supply, including incoming and unprocessed quantities. Supply assigned to other orders is excluded. Material issue requires actual stock.",
-  "materialPreparationPending": "To order",
-  "materialPreparationInProgress": "In progress",
-  "materialPreparationMissingAssignment": "Set the production workshop and responsible person for “{goods}” before ordering",
   "aiJobCancel": "Cancel",
   "aiJobElapsed": "Elapsed {time}",
   "@aiJobElapsed": {
@@ -2160,5 +2204,240 @@
   "aiSettingsModelChoices": "Models:",
   "aiSettingsOverseasLockedShort": "Overseas providers are not enabled; the deployment administrator must turn them on on the server",
   "aiSettingsKeyConfiguredPlain": "Set",
-  "aiSettingsApiKeyKeepHintPlain": "Set. Leave blank to keep it"
+  "aiSettingsApiKeyKeepHintPlain": "Set. Leave blank to keep it",
+  "salesQuoteStatusDraft": "Draft",
+  "salesQuoteStatusPendingFinance": "Awaiting finance pricing",
+  "salesQuoteStatusReturned": "Returned by finance",
+  "salesQuoteStatusConfirmed": "Priced by finance",
+  "salesQuoteStatusReversed": "Voided",
+  "salesQuoteStatusConverted": "Converted to order",
+  "salesQuoteStatusToConvert": "Priced, ready to convert",
+  "salesQuoteStatusReadOnly": "{status} · read only",
+  "salesQuoteStatusHistory": "History",
+  "salesQuoteStatusBannerDraft": "Draft: when ready, tap \"Submit for finance pricing\". It can become an order only after finance sets the prices and discounts.",
+  "salesQuoteStatusBannerPending": "Submitted for finance pricing and waiting for finance. To change it, withdraw it first.",
+  "salesQuoteStatusBannerReturned": "Returned by finance: {reason}. Fix it and submit for finance pricing again.",
+  "salesQuoteStatusBannerConfirmed": "Priced by finance ({name} · {time}). You can convert it to an order now.",
+  "salesQuoteStatusBannerConverted": "Converted to order {orderNo}; the quote can no longer be changed.",
+  "salesQuoteStatusBannerReversed": "This quote has been voided and is view only.",
+  "salesQuoteStatusFinanceFallback": "Finance",
+  "salesQuoteStatusFieldReturnReason": "Return reason",
+  "salesQuoteStatusFieldSubmittedAt": "Submitted for pricing",
+  "salesQuoteStatusFieldConfirmedBy": "Priced by",
+  "salesQuoteStatusFieldConvertedOrder": "Converted order",
+  "salesQuoteStatusFieldFinanceRemark": "Finance note",
+  "salesQuoteStatusActionSubmit": "Submit for finance pricing",
+  "salesQuoteStatusActionWithdraw": "Withdraw",
+  "salesQuoteStatusActionReopen": "Edit again",
+  "salesQuoteStatusActionConvert": "Convert to order",
+  "salesQuoteStatusActionReverse": "Void",
+  "salesQuoteStatusActionEdit": "Edit",
+  "salesQuoteStatusActionDelete": "Delete",
+  "salesQuoteStatusActionFinanceReview": "Open pricing review",
+  "salesQuoteStatusActionViewOrder": "View order",
+  "salesQuoteStatusActionBack": "Back to list",
+  "salesQuoteStatusSubmitConfirmBody": "Finance will set the price and discount line by line. You cannot change the quote meanwhile. Submit now?",
+  "salesQuoteStatusWithdrawConfirmBody": "The quote goes back to draft so you can keep editing; submit it for pricing again afterwards. Withdraw now?",
+  "salesQuoteStatusReopenConfirmBody": "Finance has already priced this quote. Editing again returns it to draft, and it must be priced again before it can become an order. Continue?",
+  "salesQuoteStatusReverseConfirmBody": "A voided quote can no longer be converted and cannot be restored. Void it?",
+  "salesQuoteStatusDeleteConfirmBody": "Delete this draft quote? This cannot be undone.",
+  "salesQuoteStatusConvertConfirmBody": "An order draft will be created with the price and discount set by finance. Those cannot be changed; quantity and delivery details can still be completed on the order. Convert now?",
+  "salesQuoteStatusConfirm": "OK",
+  "salesQuoteStatusCancel": "Cancel",
+  "salesQuoteStatusSubmitted": "Submitted for finance pricing",
+  "salesQuoteStatusWithdrawn": "Withdrawn; you can keep editing",
+  "salesQuoteStatusReopened": "Back to draft; submit for pricing again when ready",
+  "salesQuoteStatusReversedDone": "Quote voided",
+  "salesQuoteStatusDeleted": "Deleted",
+  "salesQuoteStatusConvertDone": "Order draft {billNo} created",
+  "salesQuoteStatusActionFailed": "That did not work. Please try again later.",
+  "salesQuoteStatusBusy": "Working on it, please wait",
+  "salesQuoteStatusTimelineTitle": "Pricing history",
+  "salesQuoteStatusTimelineEmpty": "No pricing history yet",
+  "salesQuoteStatusRevisionSubmit": "Submitted for pricing",
+  "salesQuoteStatusRevisionWithdraw": "Withdrawn by sales",
+  "salesQuoteStatusRevisionFinanceEdit": "Prices changed by finance",
+  "salesQuoteStatusRevisionReturn": "Returned by finance",
+  "salesQuoteStatusRevisionConfirm": "Confirmed by finance",
+  "salesQuoteStatusRevisionReopen": "Reopened by sales",
+  "salesQuoteStatusRevisionFinanceReopen": "Confirmation withdrawn by finance",
+  "salesQuoteStatusRevisionOther": "Other record",
+  "salesQuoteStatusRevisionOperator": "By",
+  "salesQuoteStatusRevisionVersion": "Version {revision}",
+  "salesQuoteStatusSourceQuoteConfirmed": "Quote priced by finance",
+  "salesQuoteStatusSourceQuote": "Source quote",
+  "quoteFinanceHubTitle": "Quote pricing",
+  "quoteFinanceHubSubtitle": "Finance sets prices and discounts on sales quotes; sales can convert them to orders once confirmed",
+  "quoteFinanceListTitle": "Quote pricing",
+  "quoteFinanceTabPending": "To price",
+  "quoteFinanceTabConfirmed": "Priced",
+  "quoteFinanceTabReturned": "Returned",
+  "quoteFinanceSearchHint": "Search number / customer / salesperson",
+  "quoteFinanceRowHint": "Tap to select · double-tap to price",
+  "quoteFinanceColBillNo": "Quote No.",
+  "quoteFinanceColClient": "Customer",
+  "quoteFinanceColSeller": "Salesperson",
+  "quoteFinanceColSubmittedAt": "Submitted",
+  "quoteFinanceColLines": "Lines",
+  "quoteFinanceColAmount": "Quote amount",
+  "quoteFinanceColStatus": "Status / note",
+  "quoteFinanceStatusPending": "To price",
+  "quoteFinanceStatusResubmitted": "Resubmitted by sales",
+  "quoteFinanceStatusNeedPrice": "{count, plural, =1{1 line has no list price} other{{count} lines have no list price}}",
+  "quoteFinanceStatusConfirmed": "Priced · {name}",
+  "quoteFinanceStatusConverted": "Converted to order {orderNo}",
+  "quoteFinanceStatusReturned": "Returned: {reason}",
+  "quoteFinanceEmptyPending": "No quotes waiting for pricing",
+  "quoteFinanceEmptyPendingHint": "Quotes appear here after sales submit them. Sales can convert a quote to an order only after you confirm the prices.",
+  "quoteFinanceEmptyConfirmed": "No priced quotes yet",
+  "quoteFinanceEmptyReturned": "No quotes returned to sales",
+  "quoteFinanceEmptyReturnedHint": "After sales fix a returned quote it comes back to \"To price\".",
+  "quoteFinanceEmptySearch": "No quotes match \"{keyword}\"",
+  "quoteFinanceLoadFailed": "Could not load quotes. Check the network and try again.",
+  "quoteFinanceRetry": "Retry",
+  "quoteFinanceRefresh": "Refresh",
+  "quoteFinanceOpen": "Price",
+  "quoteFinancePrevPage": "Previous page",
+  "quoteFinanceNextPage": "Next page",
+  "quoteFinanceUnnamed": "Not set",
+  "quoteFinanceReviewTitle": "Quote pricing",
+  "quoteFinanceStripPending": "Waiting for finance pricing",
+  "quoteFinanceStripConfirmed": "Priced · {name} · {time}",
+  "quoteFinanceStripReturned": "Returned to sales · {reason}",
+  "quoteFinanceStripDraft": "Being edited by sales",
+  "quoteFinanceStripReversed": "Voided",
+  "quoteFinanceStripConverted": "Converted to order {orderNo}",
+  "quoteFinanceRevisionBadge": "Version {revision}",
+  "quoteFinanceReadOnlyNotice": "You have nothing to do on this quote right now; it is view only.",
+  "quoteFinanceResubmitNotice": "Resubmitted by sales. Highlighted lines have a discount different from the one you last confirmed; please check them.",
+  "quoteFinanceNeedPriceNotice": "{count, plural, =1{1 line has no list price. Enter a deal price, or choose \"Mark as free / zero price\" from the line menu, before confirming.} other{{count} lines have no list price. Enter a deal price, or choose \"Mark as free / zero price\" from the line menu, before confirming.}}",
+  "quoteFinanceGoMaintainPrice": "Maintain list price in goods data",
+  "quoteFinanceInfoTitle": "Quote details",
+  "quoteFinanceFieldClient": "Customer",
+  "quoteFinanceFieldSeller": "Salesperson",
+  "quoteFinanceFieldMaker": "Prepared by",
+  "quoteFinanceFieldBillDate": "Date",
+  "quoteFinanceFieldSubmittedAt": "Submitted",
+  "quoteFinanceFieldDeliverDate": "Delivery date",
+  "quoteFinanceFieldContractNo": "Contract No.",
+  "quoteFinanceFieldCurrency": "Currency",
+  "quoteFinanceFieldFileCurrency": "Customer file currency",
+  "quoteFinanceFileRateHint": "File currency {currency}, converted to base currency at the finance reference rate {rate}",
+  "quoteFinanceFieldRemark": "Sales note",
+  "quoteFinanceFieldValidUntil": "Valid until",
+  "quoteFinanceFieldSettlement": "Settlement method",
+  "quoteFinanceFieldFinanceRemark": "Finance note",
+  "quoteFinanceFinanceRemarkHint": "Note for sales (optional)",
+  "quoteFinanceSettlementNone": "Not specified",
+  "quoteFinanceAttachmentsTitle": "Customer files and attachments",
+  "quoteFinanceLinesTitle": "Goods lines",
+  "quoteFinanceColGoods": "Goods",
+  "quoteFinanceColCode": "Code",
+  "quoteFinanceColColor": "Color",
+  "quoteFinanceColQty": "Qty",
+  "quoteFinanceColUnit": "Unit",
+  "quoteFinanceColListPrice": "List price",
+  "quoteFinanceColListPriceInfo": "The selling price in goods data. When there is none, or the deal price is above it, finance sets the deal price directly; below it, the price always becomes a discount.",
+  "quoteFinanceColFilePrice": "File unit price (original)",
+  "quoteFinanceColFilePriceLocal": "In base currency",
+  "quoteFinanceColDealPrice": "Deal price",
+  "quoteFinanceColDealPriceInfo": "What the customer finally pays per unit. Changing the deal price recalculates the discount, and vice versa.",
+  "quoteFinanceColDiscount": "Discount",
+  "quoteFinanceColDiscountInfo": "Discount = deal price ÷ list price, 4 decimal places; 1 means the list price.",
+  "quoteFinanceColLineAmount": "Amount",
+  "quoteFinanceColFileDiff": "Difference from file",
+  "quoteFinanceColFileDiffInfo": "This line amount minus the amount in the customer file (converted to base currency). 0 means it matches the file.",
+  "quoteFinanceColLastConfirmed": "Last confirmed discount",
+  "quoteFinanceColSalesProposed": "Discount from sales",
+  "quoteFinanceColFileModel": "File model",
+  "quoteFinanceColFileName": "File description",
+  "quoteFinanceColRemark": "Note",
+  "quoteFinanceNoListPrice": "No price",
+  "quoteFinanceFinancePriceChip": "Finance price",
+  "quoteFinanceGiveawayChip": "Free / zero",
+  "quoteFinanceFileMatch": "Matches",
+  "quoteFinanceErrorDealPrice": "Enter a number greater than 0. For a free or zero-price line, use \"Set as free / zero price\" in the line menu.",
+  "quoteFinanceErrorFinancePrice": "Enter a number of 0 or more",
+  "quoteFinanceErrorDiscount": "Discount must be above 0 and at most 1, with up to 4 decimals",
+  "quoteFinanceErrorNeedPrice": "Enter the deal price",
+  "quoteFinanceMenuMasterMode": "Discount from list price",
+  "quoteFinanceMenuGiveaway": "Mark as free / zero price",
+  "quoteFinanceMenuRestore": "Undo changes on this line",
+  "quoteFinanceBatchDiscount": "Set discount for selected",
+  "quoteFinanceBatchDiscountCount": "Set discount ({count})",
+  "quoteFinanceBatchDiscountTitle": "{count, plural, =1{Set the discount for 1 selected line} other{Set the discount for {count} selected lines}}",
+  "quoteFinanceBatchDiscountHint": "For example, 0.95 means 95% of the list price",
+  "quoteFinanceBatchApply": "Apply",
+  "quoteFinanceBatchApplied": "{count, plural, =1{Discount set for 1 line} other{Discount set for {count} lines}}",
+  "quoteFinanceBatchSkipped": "{count, plural, =1{1 line without a list price was skipped} other{{count} lines without a list price were skipped}}",
+  "quoteFinanceBatchNeedSelection": "Select the lines to change first",
+  "quoteFinanceCheckedEditHint": "{count, plural, other{This line is selected: changing the discount updates all {count} selected lines}}",
+  "quoteFinanceActionSave": "Save changes",
+  "quoteFinanceActionSaving": "Saving…",
+  "quoteFinanceActionReturn": "Return to sales",
+  "quoteFinanceActionConfirm": "Confirm quote",
+  "quoteFinanceActionReopen": "Undo confirmation to edit",
+  "quoteFinanceActionBack": "Back",
+  "quoteFinanceSaved": "Changes saved",
+  "quoteFinanceNothingToSave": "Nothing to save",
+  "quoteFinanceFixErrors": "{count, plural, =1{1 line has an invalid value; please fix it first} other{{count} lines have invalid values; please fix them first}}",
+  "quoteFinanceClaimNotReady": "You do not hold this quote for pricing yet. Tap \"Claim again and refresh\".",
+  "quoteFinanceSaveFirst": "Save your changes before confirming",
+  "quoteFinanceConfirmBlocked": "{count, plural, =1{1 line still has no price, so the quote cannot be confirmed. Enter a deal price or mark it as free / zero.} other{{count} lines still have no price, so the quote cannot be confirmed. Enter deal prices or mark them as free / zero.}}",
+  "quoteFinanceConfirmedDone": "Quote confirmed; sales have been told they can convert it",
+  "quoteFinanceReturnedDone": "Returned to sales; they will be notified",
+  "quoteFinanceReopenedDone": "Confirmation undone; you can edit the prices again",
+  "quoteFinanceLoadDetailFailed": "Could not load the quote. Check the network or your access and try again.",
+  "quoteFinanceActionFailed": "That did not work. Please try again later.",
+  "quoteFinanceUnsavedTitle": "You have unsaved changes",
+  "quoteFinanceUnsavedBody": "These changes will be lost if you leave. Leave anyway?",
+  "quoteFinanceLeave": "Leave",
+  "quoteFinanceStay": "Keep editing",
+  "quoteFinanceBusy": "Working on it, please wait",
+  "quoteFinanceSaving": "Saving changes",
+  "quoteFinanceSessionChanged": "Your sign-in changed. Please open the quote again.",
+  "quoteFinanceConfirmTitle": "Confirm quote {billNo}",
+  "quoteFinanceConfirmBody": "Once confirmed, the prices and discounts are fixed and sales can convert the quote to an order. To change them later, undo the confirmation before it is converted.",
+  "quoteFinanceConfirmResponsibility": "Quote pricing confirmation",
+  "quoteFinanceConfirmResponsibilityDesc": "The system records you as the person who priced this quote.",
+  "quoteFinanceConfirmTotal": "Quote amount {amount}",
+  "quoteFinanceReturnTitle": "Return {billNo} to sales",
+  "quoteFinanceReturnBody": "The quote goes back to sales to fix and resubmit. Write the reason; sales will see it.",
+  "quoteFinanceReturnChipQty": "Customer wants to change quantity",
+  "quoteFinanceReturnChipGoods": "Goods missing, please add",
+  "quoteFinanceReturnChipPrice": "Price needs confirming with the customer",
+  "quoteFinanceReturnReasonLabel": "Return reason (required)",
+  "quoteFinanceReturnReasonRequired": "Please enter a return reason",
+  "quoteFinanceReturnSubmit": "Return",
+  "quoteFinanceReopenTitle": "Undo confirmation to edit",
+  "quoteFinanceReopenBody": "The quote goes back to \"To price\" so you can edit prices; confirm it again afterwards. Sales cannot convert it meanwhile. Undo now?",
+  "quoteFinanceCancel": "Cancel",
+  "quoteFinanceRevisionTitle": "Pricing history",
+  "quoteFinanceTotalQty": "Total qty",
+  "quoteFinanceTotalAmount": "Total amount",
+  "quoteFinanceTotalPreview": "Total amount (unsaved preview)",
+  "quoteFinanceOrderSourceQuote": "Source quote {billNo}",
+  "quoteFinanceOrderQuoteConfirmedBy": "Quote priced · {name}",
+  "quoteFinanceOrderAllMatch": "Quote priced · matches",
+  "quoteFinanceOrderMismatch": "{count, plural, =1{1 line differs from the quote} other{{count} lines differ from the quote}}",
+  "quoteFinanceOrderChipHint": "This order comes from a finance-priced quote. When prices and discounts match the quote, only credit and terms need checking now.",
+  "quoteFinanceOrderColQuotePrice": "Quote price",
+  "quoteFinanceOrderColQuoteDiscount": "Quote discount",
+  "quoteFinanceOrderColMatch": "vs quote",
+  "quoteFinanceOrderMatchYes": "Matches",
+  "quoteFinanceOrderMatchNo": "Differs",
+  "quoteFinanceOrderColFilePrice": "File price ({currency})",
+  "quoteFinanceOrderFileCurrencyUnknown": "original",
+  "quoteFinanceOrderColFileModel": "File model",
+  "quoteFinanceOrderColFileName": "File description",
+  "quoteFinanceAboveListHint": "Above the list price, so it is saved as a finance price (discount 1)",
+  "quoteFinanceMenuRefreshMaster": "Refresh from the latest list price",
+  "quoteFinanceRefreshMasterChip": "Refreshed from the latest list price {price} with the same discount; save first to change the discount again",
+  "quoteFinanceListPriceLatest": "{price}, now {latest} in goods data",
+  "quoteFinanceStatusClaimedBy": "{name} is pricing it",
+  "quoteFinanceStatusClaimedByMe": "You are pricing it",
+  "quoteFinanceFileRateMissing": "File currency {currency}; there is no finance reference rate yet, so base-currency values are left blank",
+  "salesQuoteStatusImportTitle": "Choose a quote priced by finance",
+  "salesQuoteStatusImportEmpty": "No priced quotes are ready to become orders",
+  "salesQuoteStatusImportLoadFailed": "Could not load quotes. Please try again later."
 }

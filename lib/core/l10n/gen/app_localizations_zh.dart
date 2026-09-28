@@ -4058,6 +4058,64 @@ class AppLocalizationsZh extends AppLocalizations {
   String get goodsLearnedPriceTaxRate => '税率';
 
   @override
+  String get shelfLocationQuantityHint => '库位是存放建议；库存按实际仓库和颜色统计，不代表该库位的盘点数量。';
+
+  @override
+  String get shelfActualWarehouse => '实际仓库';
+
+  @override
+  String get shelfMasterOnly => '主档建议(未指定仓库)';
+
+  @override
+  String get shelfChooseWarehouseForRack =>
+      '当前包含多个仓库，请选择具体仓库查看货架图。下表按实际仓库分别列示。';
+
+  @override
+  String get warehouseGoodsMasterDefaultHint => '已带入货品主档的默认存放仓，请核对本次实际仓库';
+
+  @override
+  String get warehouseSuggestedDestinationHint => '已带入建议存放仓，请核对本次实际仓库';
+
+  @override
+  String get warehouseBatchRegistrationHelp =>
+      '成品仓、库位号逐行必填；优先带入货品主档默认仓，缺项再参考个人选仓上下文。勾选多行后改仓或填写库位可批量应用。每张报工单各生成一份送检，品质放行后再最终点收。';
+
+  @override
+  String get materialPreparationReview => '核对并下单';
+
+  @override
+  String get materialPreparationApproveNow => '同时审核下达';
+
+  @override
+  String get materialPreparationViewPlans => '查看已下达计划';
+
+  @override
+  String get materialPreparationOrdering => '正在下单…';
+
+  @override
+  String materialPreparationOrderCount(int count) {
+    return '下单($count)';
+  }
+
+  @override
+  String get materialPreparationNoActions => '当前没有可办理的物料';
+
+  @override
+  String get materialPreparationAvailableHint =>
+      '本行可安排的现货和已下达供给，包含在途及未办理余量；其它订单已占用的量不重复计入，实际领料以实物为准。';
+
+  @override
+  String get materialPreparationPending => '待下单';
+
+  @override
+  String get materialPreparationInProgress => '进行中';
+
+  @override
+  String materialPreparationMissingAssignment(String goods) {
+    return '请先补齐“$goods”的生产车间和负责人，再下单';
+  }
+
+  @override
   String get goodsNameEnLabel => '英文名称';
 
   @override
@@ -4223,64 +4281,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get clientGoodsAliasNextPage => '下一页';
-
-  @override
-  String get shelfLocationQuantityHint => '库位是存放建议；库存按实际仓库和颜色统计，不代表该库位的盘点数量。';
-
-  @override
-  String get shelfActualWarehouse => '实际仓库';
-
-  @override
-  String get shelfMasterOnly => '主档建议(未指定仓库)';
-
-  @override
-  String get shelfChooseWarehouseForRack =>
-      '当前包含多个仓库，请选择具体仓库查看货架图。下表按实际仓库分别列示。';
-
-  @override
-  String get warehouseGoodsMasterDefaultHint => '已带入货品主档的默认存放仓，请核对本次实际仓库';
-
-  @override
-  String get warehouseSuggestedDestinationHint => '已带入建议存放仓，请核对本次实际仓库';
-
-  @override
-  String get warehouseBatchRegistrationHelp =>
-      '成品仓、库位号逐行必填；优先带入货品主档默认仓，缺项再参考个人选仓上下文。勾选多行后改仓或填写库位可批量应用。每张报工单各生成一份送检，品质放行后再最终点收。';
-
-  @override
-  String get materialPreparationReview => '核对并下单';
-
-  @override
-  String get materialPreparationApproveNow => '同时审核下达';
-
-  @override
-  String get materialPreparationViewPlans => '查看已下达计划';
-
-  @override
-  String get materialPreparationOrdering => '正在下单…';
-
-  @override
-  String materialPreparationOrderCount(int count) {
-    return '下单($count)';
-  }
-
-  @override
-  String get materialPreparationNoActions => '当前没有可办理的物料';
-
-  @override
-  String get materialPreparationAvailableHint =>
-      '本行可安排的现货和已下达供给，包含在途及未办理余量；其它订单已占用的量不重复计入，实际领料以实物为准。';
-
-  @override
-  String get materialPreparationPending => '待下单';
-
-  @override
-  String get materialPreparationInProgress => '进行中';
-
-  @override
-  String materialPreparationMissingAssignment(String goods) {
-    return '请先补齐“$goods”的生产车间和负责人，再下单';
-  }
 
   @override
   String get aiJobCancel => '取消';
@@ -4800,4 +4800,838 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiSettingsApiKeyKeepHintPlain => '已配置, 不改就留空';
+
+  @override
+  String get salesQuoteStatusDraft => '草稿';
+
+  @override
+  String get salesQuoteStatusPendingFinance => '待财务核价';
+
+  @override
+  String get salesQuoteStatusReturned => '财务退回';
+
+  @override
+  String get salesQuoteStatusConfirmed => '已核价';
+
+  @override
+  String get salesQuoteStatusReversed => '作废';
+
+  @override
+  String get salesQuoteStatusConverted => '已转订货单';
+
+  @override
+  String get salesQuoteStatusToConvert => '已核价, 待转订货单';
+
+  @override
+  String salesQuoteStatusReadOnly(String status) {
+    return '$status · 只读';
+  }
+
+  @override
+  String get salesQuoteStatusHistory => '历史记录';
+
+  @override
+  String get salesQuoteStatusBannerDraft =>
+      '草稿: 填好后点「提交财务核价」, 财务定好价格和折扣后才能转订货单。';
+
+  @override
+  String get salesQuoteStatusBannerPending => '已提交财务核价, 正在等财务定价格。需要改内容请先「撤回」。';
+
+  @override
+  String salesQuoteStatusBannerReturned(String reason) {
+    return '财务退回: $reason。改好后再提交财务核价。';
+  }
+
+  @override
+  String salesQuoteStatusBannerConfirmed(String name, String time) {
+    return '财务已核价($name · $time), 可以转订货单了。';
+  }
+
+  @override
+  String salesQuoteStatusBannerConverted(String orderNo) {
+    return '已转成订货单 $orderNo, 报价不能再修改。';
+  }
+
+  @override
+  String get salesQuoteStatusBannerReversed => '这张报价已作废, 只能查看。';
+
+  @override
+  String get salesQuoteStatusFinanceFallback => '财务';
+
+  @override
+  String get salesQuoteStatusFieldReturnReason => '退回原因';
+
+  @override
+  String get salesQuoteStatusFieldSubmittedAt => '提交核价时间';
+
+  @override
+  String get salesQuoteStatusFieldConfirmedBy => '核价人';
+
+  @override
+  String get salesQuoteStatusFieldConvertedOrder => '转入订货单';
+
+  @override
+  String get salesQuoteStatusFieldFinanceRemark => '财务备注';
+
+  @override
+  String get salesQuoteStatusActionSubmit => '提交财务核价';
+
+  @override
+  String get salesQuoteStatusActionWithdraw => '撤回';
+
+  @override
+  String get salesQuoteStatusActionReopen => '重新修改';
+
+  @override
+  String get salesQuoteStatusActionConvert => '转订货单';
+
+  @override
+  String get salesQuoteStatusActionReverse => '作废';
+
+  @override
+  String get salesQuoteStatusActionEdit => '编辑';
+
+  @override
+  String get salesQuoteStatusActionDelete => '删除';
+
+  @override
+  String get salesQuoteStatusActionFinanceReview => '去核价';
+
+  @override
+  String get salesQuoteStatusActionViewOrder => '查看订货单';
+
+  @override
+  String get salesQuoteStatusActionBack => '返回列表';
+
+  @override
+  String get salesQuoteStatusSubmitConfirmBody =>
+      '提交后财务会逐行定价格和折扣, 这期间你不能修改这张报价。确定提交?';
+
+  @override
+  String get salesQuoteStatusWithdrawConfirmBody =>
+      '撤回后报价回到草稿, 可以继续修改; 改好后需要重新提交财务核价。确定撤回?';
+
+  @override
+  String get salesQuoteStatusReopenConfirmBody =>
+      '财务已经核好价格。重新修改会让报价回到草稿, 改完要再交财务核价才能转订货单。确定重新修改?';
+
+  @override
+  String get salesQuoteStatusReverseConfirmBody =>
+      '作废后这张报价不能再转订货单, 也不能恢复。确定作废?';
+
+  @override
+  String get salesQuoteStatusDeleteConfirmBody => '确定删除这张报价草稿? 删除后不能恢复。';
+
+  @override
+  String get salesQuoteStatusConvertConfirmBody =>
+      '会按财务核定的单价和折扣生成订货单草稿。单价和折扣已由财务核定, 不能修改; 数量和交货信息可以在订货单里补充。确定转入?';
+
+  @override
+  String get salesQuoteStatusConfirm => '确定';
+
+  @override
+  String get salesQuoteStatusCancel => '取消';
+
+  @override
+  String get salesQuoteStatusSubmitted => '已提交财务核价';
+
+  @override
+  String get salesQuoteStatusWithdrawn => '已撤回, 可以继续修改';
+
+  @override
+  String get salesQuoteStatusReopened => '已回到草稿, 改好后请重新提交财务核价';
+
+  @override
+  String get salesQuoteStatusReversedDone => '报价已作废';
+
+  @override
+  String get salesQuoteStatusDeleted => '已删除';
+
+  @override
+  String salesQuoteStatusConvertDone(String billNo) {
+    return '已生成订货单草稿 $billNo';
+  }
+
+  @override
+  String get salesQuoteStatusActionFailed => '操作没有成功, 请稍后再试';
+
+  @override
+  String get salesQuoteStatusBusy => '正在处理, 请稍候';
+
+  @override
+  String get salesQuoteStatusTimelineTitle => '核价记录';
+
+  @override
+  String get salesQuoteStatusTimelineEmpty => '还没有核价记录';
+
+  @override
+  String get salesQuoteStatusRevisionSubmit => '提交财务核价';
+
+  @override
+  String get salesQuoteStatusRevisionWithdraw => '销售撤回';
+
+  @override
+  String get salesQuoteStatusRevisionFinanceEdit => '财务修改价格';
+
+  @override
+  String get salesQuoteStatusRevisionReturn => '财务退回';
+
+  @override
+  String get salesQuoteStatusRevisionConfirm => '财务确认报价';
+
+  @override
+  String get salesQuoteStatusRevisionReopen => '销售重新修改';
+
+  @override
+  String get salesQuoteStatusRevisionFinanceReopen => '财务撤销确认';
+
+  @override
+  String get salesQuoteStatusRevisionOther => '其它记录';
+
+  @override
+  String get salesQuoteStatusRevisionOperator => '操作人';
+
+  @override
+  String salesQuoteStatusRevisionVersion(int revision) {
+    return '第 $revision 版';
+  }
+
+  @override
+  String get salesQuoteStatusSourceQuoteConfirmed => '报价已核价';
+
+  @override
+  String get salesQuoteStatusSourceQuote => '来源报价';
+
+  @override
+  String get quoteFinanceHubTitle => '报价核价';
+
+  @override
+  String get quoteFinanceHubSubtitle => '销售报价由财务定价格和折扣, 确认后销售才能转订货单';
+
+  @override
+  String get quoteFinanceListTitle => '报价核价';
+
+  @override
+  String get quoteFinanceTabPending => '待核价';
+
+  @override
+  String get quoteFinanceTabConfirmed => '已核价';
+
+  @override
+  String get quoteFinanceTabReturned => '已退回';
+
+  @override
+  String get quoteFinanceSearchHint => '搜索单号 / 客户 / 业务员';
+
+  @override
+  String get quoteFinanceRowHint => '单击选中 · 双击核价';
+
+  @override
+  String get quoteFinanceColBillNo => '报价单号';
+
+  @override
+  String get quoteFinanceColClient => '客户';
+
+  @override
+  String get quoteFinanceColSeller => '业务员';
+
+  @override
+  String get quoteFinanceColSubmittedAt => '提交时间';
+
+  @override
+  String get quoteFinanceColLines => '明细行';
+
+  @override
+  String get quoteFinanceColAmount => '报价金额';
+
+  @override
+  String get quoteFinanceColStatus => '状态 / 说明';
+
+  @override
+  String get quoteFinanceStatusPending => '待核价';
+
+  @override
+  String get quoteFinanceStatusResubmitted => '销售改后重新提交';
+
+  @override
+  String quoteFinanceStatusNeedPrice(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '有 $count 行没有标价',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String quoteFinanceStatusConfirmed(String name) {
+    return '已核价 · $name';
+  }
+
+  @override
+  String quoteFinanceStatusConverted(String orderNo) {
+    return '已转订货单 $orderNo';
+  }
+
+  @override
+  String quoteFinanceStatusReturned(String reason) {
+    return '已退回: $reason';
+  }
+
+  @override
+  String get quoteFinanceEmptyPending => '目前没有等待核价的报价';
+
+  @override
+  String get quoteFinanceEmptyPendingHint =>
+      '销售提交核价后会出现在这里; 你定好价格并确认后, 销售才能转订货单。';
+
+  @override
+  String get quoteFinanceEmptyConfirmed => '还没有已核价的报价';
+
+  @override
+  String get quoteFinanceEmptyReturned => '没有退回给销售的报价';
+
+  @override
+  String get quoteFinanceEmptyReturnedHint => '退回的报价由销售改好后, 会重新回到「待核价」。';
+
+  @override
+  String quoteFinanceEmptySearch(String keyword) {
+    return '没有找到“$keyword”相关的报价';
+  }
+
+  @override
+  String get quoteFinanceLoadFailed => '报价加载失败, 请检查网络后重试';
+
+  @override
+  String get quoteFinanceRetry => '重试';
+
+  @override
+  String get quoteFinanceRefresh => '刷新';
+
+  @override
+  String get quoteFinanceOpen => '核价';
+
+  @override
+  String get quoteFinancePrevPage => '上一页';
+
+  @override
+  String get quoteFinanceNextPage => '下一页';
+
+  @override
+  String get quoteFinanceUnnamed => '未标注';
+
+  @override
+  String get quoteFinanceReviewTitle => '报价核价';
+
+  @override
+  String get quoteFinanceStripPending => '待财务核价';
+
+  @override
+  String quoteFinanceStripConfirmed(String name, String time) {
+    return '已核价 · $name · $time';
+  }
+
+  @override
+  String quoteFinanceStripReturned(String reason) {
+    return '已退回销售 · $reason';
+  }
+
+  @override
+  String get quoteFinanceStripDraft => '销售修改中';
+
+  @override
+  String get quoteFinanceStripReversed => '已作废';
+
+  @override
+  String quoteFinanceStripConverted(String orderNo) {
+    return '已转订货单 $orderNo';
+  }
+
+  @override
+  String quoteFinanceRevisionBadge(int revision) {
+    return '第 $revision 版';
+  }
+
+  @override
+  String get quoteFinanceReadOnlyNotice => '这张报价现在不需要你处理, 只能查看。';
+
+  @override
+  String get quoteFinanceResubmitNotice => '销售改后重新提交。标黄的行, 折扣和你上次确认的不同, 请重点核对。';
+
+  @override
+  String quoteFinanceNeedPriceNotice(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '有 $count 行货品没有标价。请填写成交单价, 或在行菜单里选「设为赠品/0价」, 然后再确认报价。',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceGoMaintainPrice => '去货品资料维护标价';
+
+  @override
+  String get quoteFinanceInfoTitle => '报价信息';
+
+  @override
+  String get quoteFinanceFieldClient => '客户';
+
+  @override
+  String get quoteFinanceFieldSeller => '业务员';
+
+  @override
+  String get quoteFinanceFieldMaker => '制单员';
+
+  @override
+  String get quoteFinanceFieldBillDate => '单据日期';
+
+  @override
+  String get quoteFinanceFieldSubmittedAt => '提交时间';
+
+  @override
+  String get quoteFinanceFieldDeliverDate => '交货日';
+
+  @override
+  String get quoteFinanceFieldContractNo => '合同号';
+
+  @override
+  String get quoteFinanceFieldCurrency => '币种';
+
+  @override
+  String get quoteFinanceFieldFileCurrency => '客户文件币种';
+
+  @override
+  String quoteFinanceFileRateHint(String currency, String rate) {
+    return '文件币种 $currency, 按财务参考汇率 $rate 折算成本币';
+  }
+
+  @override
+  String get quoteFinanceFieldRemark => '销售备注';
+
+  @override
+  String get quoteFinanceFieldValidUntil => '有效期';
+
+  @override
+  String get quoteFinanceFieldSettlement => '结账方式';
+
+  @override
+  String get quoteFinanceFieldFinanceRemark => '财务备注';
+
+  @override
+  String get quoteFinanceFinanceRemarkHint => '写给销售看的说明(选填)';
+
+  @override
+  String get quoteFinanceSettlementNone => '不指定';
+
+  @override
+  String get quoteFinanceAttachmentsTitle => '客户文件和附件';
+
+  @override
+  String get quoteFinanceLinesTitle => '货品明细';
+
+  @override
+  String get quoteFinanceColGoods => '货品名称';
+
+  @override
+  String get quoteFinanceColCode => '编号';
+
+  @override
+  String get quoteFinanceColColor => '颜色';
+
+  @override
+  String get quoteFinanceColQty => '数量';
+
+  @override
+  String get quoteFinanceColUnit => '单位';
+
+  @override
+  String get quoteFinanceColListPrice => '标价';
+
+  @override
+  String get quoteFinanceColListPriceInfo =>
+      '货品资料里的售价。没有标价, 或成交单价高于标价时, 由财务直接定成交单价; 低于标价一律算成折扣。';
+
+  @override
+  String get quoteFinanceColFilePrice => '文件单价(原币)';
+
+  @override
+  String get quoteFinanceColFilePriceLocal => '折合本币';
+
+  @override
+  String get quoteFinanceColDealPrice => '成交单价';
+
+  @override
+  String get quoteFinanceColDealPriceInfo =>
+      '客户最终每件付多少钱。改成交单价会自动算出折扣; 改折扣会自动算出成交单价。';
+
+  @override
+  String get quoteFinanceColDiscount => '折扣';
+
+  @override
+  String get quoteFinanceColDiscountInfo =>
+      '折扣 = 成交单价 ÷ 标价, 保留 4 位小数, 1 表示按标价。';
+
+  @override
+  String get quoteFinanceColLineAmount => '金额';
+
+  @override
+  String get quoteFinanceColFileDiff => '与文件差额';
+
+  @override
+  String get quoteFinanceColFileDiffInfo =>
+      '本行金额减去客户文件里的金额(已折合本币)。0 表示和客户文件一致。';
+
+  @override
+  String get quoteFinanceColLastConfirmed => '上次确认折扣';
+
+  @override
+  String get quoteFinanceColSalesProposed => '销售提交折扣';
+
+  @override
+  String get quoteFinanceColFileModel => '文件型号';
+
+  @override
+  String get quoteFinanceColFileName => '文件品名';
+
+  @override
+  String get quoteFinanceColRemark => '备注';
+
+  @override
+  String get quoteFinanceNoListPrice => '未定价';
+
+  @override
+  String get quoteFinanceFinancePriceChip => '财务定价';
+
+  @override
+  String get quoteFinanceGiveawayChip => '赠品/0价';
+
+  @override
+  String get quoteFinanceFileMatch => '一致';
+
+  @override
+  String get quoteFinanceErrorDealPrice => '请填写大于 0 的数字; 0 价请在行菜单选「设为赠品/0价」';
+
+  @override
+  String get quoteFinanceErrorFinancePrice => '请填写不小于 0 的数字';
+
+  @override
+  String get quoteFinanceErrorDiscount => '折扣要大于 0、不超过 1, 最多 4 位小数';
+
+  @override
+  String get quoteFinanceErrorNeedPrice => '请填写成交单价';
+
+  @override
+  String get quoteFinanceMenuMasterMode => '按标价打折';
+
+  @override
+  String get quoteFinanceMenuGiveaway => '设为赠品/0价';
+
+  @override
+  String get quoteFinanceMenuRestore => '撤销本行修改';
+
+  @override
+  String get quoteFinanceBatchDiscount => '批量设折扣';
+
+  @override
+  String quoteFinanceBatchDiscountCount(int count) {
+    return '批量设折扣($count)';
+  }
+
+  @override
+  String quoteFinanceBatchDiscountTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '给勾选的 $count 行设折扣',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceBatchDiscountHint => '例如 0.95 表示按标价的 95%';
+
+  @override
+  String get quoteFinanceBatchApply => '应用';
+
+  @override
+  String quoteFinanceBatchApplied(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '已给 $count 行设好折扣',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String quoteFinanceBatchSkipped(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count 行没有标价或由财务定价, 已跳过',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceBatchNeedSelection => '请先勾选要改折扣的行';
+
+  @override
+  String quoteFinanceCheckedEditHint(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '本行已勾选: 改折扣会一起改勾选的 $count 行',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceActionSave => '保存修改';
+
+  @override
+  String get quoteFinanceActionSaving => '保存中…';
+
+  @override
+  String get quoteFinanceActionReturn => '退回销售';
+
+  @override
+  String get quoteFinanceActionConfirm => '确认报价';
+
+  @override
+  String get quoteFinanceActionReopen => '撤销确认再修改';
+
+  @override
+  String get quoteFinanceActionBack => '返回';
+
+  @override
+  String get quoteFinanceSaved => '修改已保存';
+
+  @override
+  String get quoteFinanceNothingToSave => '没有需要保存的修改';
+
+  @override
+  String quoteFinanceFixErrors(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '有 $count 行填写不对, 请先改好',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceClaimNotReady => '还没有取得这张报价的核价占用, 请点「重新认领并刷新」';
+
+  @override
+  String get quoteFinanceSaveFirst => '请先保存修改, 再确认报价';
+
+  @override
+  String quoteFinanceConfirmBlocked(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '还有 $count 行没有价格, 不能确认。请填写成交单价或设为赠品/0价。',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceConfirmedDone => '报价已确认, 已通知销售转订货单';
+
+  @override
+  String get quoteFinanceReturnedDone => '已退回销售, 销售会收到通知';
+
+  @override
+  String get quoteFinanceReopenedDone => '已撤销确认, 可以继续修改价格';
+
+  @override
+  String get quoteFinanceLoadDetailFailed => '报价详情加载失败, 请检查网络或权限后重试';
+
+  @override
+  String get quoteFinanceActionFailed => '操作没有成功, 请稍后再试';
+
+  @override
+  String get quoteFinanceUnsavedTitle => '有修改还没保存';
+
+  @override
+  String get quoteFinanceUnsavedBody => '离开后这些修改会丢失。确定离开?';
+
+  @override
+  String get quoteFinanceLeave => '离开';
+
+  @override
+  String get quoteFinanceStay => '继续修改';
+
+  @override
+  String get quoteFinanceBusy => '正在处理, 请稍候';
+
+  @override
+  String get quoteFinanceSaving => '正在保存修改';
+
+  @override
+  String get quoteFinanceSessionChanged => '登录身份已变化, 请重新打开报价';
+
+  @override
+  String quoteFinanceConfirmTitle(String billNo) {
+    return '确认报价 $billNo';
+  }
+
+  @override
+  String get quoteFinanceConfirmBody =>
+      '确认后价格和折扣就定下来了, 销售可以转成订货单。以后要改, 可以在转单前「撤销确认再修改」。';
+
+  @override
+  String get quoteFinanceConfirmResponsibility => '报价核价确认';
+
+  @override
+  String get quoteFinanceConfirmResponsibilityDesc => '确认后系统会记录你是本次核价人。';
+
+  @override
+  String quoteFinanceConfirmTotal(String amount) {
+    return '报价金额 $amount';
+  }
+
+  @override
+  String quoteFinanceReturnTitle(String billNo) {
+    return '退回销售 $billNo';
+  }
+
+  @override
+  String get quoteFinanceReturnBody => '退回后报价回到销售手上, 销售改好再提交。请写明原因, 销售会看到。';
+
+  @override
+  String get quoteFinanceReturnChipQty => '客户要改数量';
+
+  @override
+  String get quoteFinanceReturnChipGoods => '缺货品需补充';
+
+  @override
+  String get quoteFinanceReturnChipPrice => '价格需销售与客户确认';
+
+  @override
+  String get quoteFinanceReturnReasonLabel => '退回原因(必填)';
+
+  @override
+  String get quoteFinanceReturnReasonRequired => '请填写退回原因';
+
+  @override
+  String get quoteFinanceReturnSubmit => '确认退回';
+
+  @override
+  String get quoteFinanceReopenTitle => '撤销确认再修改';
+
+  @override
+  String get quoteFinanceReopenBody =>
+      '报价会回到「待核价」, 你可以继续修改价格, 改好后要重新确认。这期间销售不能转订货单。确定撤销?';
+
+  @override
+  String get quoteFinanceCancel => '取消';
+
+  @override
+  String get quoteFinanceRevisionTitle => '核价记录';
+
+  @override
+  String get quoteFinanceTotalQty => '合计数量';
+
+  @override
+  String get quoteFinanceTotalAmount => '合计金额';
+
+  @override
+  String get quoteFinanceTotalPreview => '合计金额(未保存预览)';
+
+  @override
+  String quoteFinanceOrderSourceQuote(String billNo) {
+    return '来源报价 $billNo';
+  }
+
+  @override
+  String quoteFinanceOrderQuoteConfirmedBy(String name) {
+    return '报价已核价 · $name';
+  }
+
+  @override
+  String get quoteFinanceOrderAllMatch => '报价已核价 · 一致';
+
+  @override
+  String quoteFinanceOrderMismatch(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '有 $count 行和报价不同',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceOrderChipHint =>
+      '这张订单由财务核过价的报价转来, 价格和折扣与报价一致时, 本次只需核对信用和条款。';
+
+  @override
+  String get quoteFinanceOrderColQuotePrice => '报价单价';
+
+  @override
+  String get quoteFinanceOrderColQuoteDiscount => '报价折扣';
+
+  @override
+  String get quoteFinanceOrderColMatch => '与报价';
+
+  @override
+  String get quoteFinanceOrderMatchYes => '一致';
+
+  @override
+  String get quoteFinanceOrderMatchNo => '不同';
+
+  @override
+  String quoteFinanceOrderColFilePrice(String currency) {
+    return '文件单价($currency)';
+  }
+
+  @override
+  String get quoteFinanceOrderFileCurrencyUnknown => '原币';
+
+  @override
+  String get quoteFinanceOrderColFileModel => '文件型号';
+
+  @override
+  String get quoteFinanceOrderColFileName => '文件品名';
+
+  @override
+  String get quoteFinanceAboveListHint => '高于标价, 按财务定价保存(折扣为 1)';
+
+  @override
+  String get quoteFinanceMenuRefreshMaster => '按最新标价刷新';
+
+  @override
+  String quoteFinanceRefreshMasterChip(String price) {
+    return '按货品资料最新标价 $price 刷新, 折扣不变; 保存后可再改折扣';
+  }
+
+  @override
+  String quoteFinanceListPriceLatest(String price, String latest) {
+    return '$price, 资料已改为 $latest';
+  }
+
+  @override
+  String quoteFinanceStatusClaimedBy(String name) {
+    return '$name 正在核价';
+  }
+
+  @override
+  String get quoteFinanceStatusClaimedByMe => '你正在核价';
+
+  @override
+  String quoteFinanceFileRateMissing(String currency) {
+    return '文件币种 $currency, 还没有财务参考汇率, 折合本币先空着';
+  }
+
+  @override
+  String get salesQuoteStatusImportTitle => '选择已核价的报价单';
+
+  @override
+  String get salesQuoteStatusImportEmpty => '暂无已核价、可以转订货单的报价';
+
+  @override
+  String get salesQuoteStatusImportLoadFailed => '报价加载失败, 请稍后重试';
 }

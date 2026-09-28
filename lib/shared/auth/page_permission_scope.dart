@@ -229,6 +229,7 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _financeOrderApprovalScope,
   _salesFinanceScope,
   _financeShipmentAuditScope,
+  _financeQuoteReviewScope,
   _financeReportScope,
   _arApScope,
   _financePayablesScope,
@@ -408,6 +409,10 @@ PagePermissionScope? _financeScopeFor(String path, List<String> segments) {
   if (path == '/finance/sales-shipment-audits' ||
       _isDescendant(path, '/finance/sales-shipment-audits')) {
     return _financeShipmentAuditScope;
+  }
+  if (path == '/finance/quote-review' ||
+      _isDescendant(path, '/finance/quote-review')) {
+    return _financeQuoteReviewScope;
   }
   if (path == '/finance/procurement-arrival-exceptions' ||
       _isDescendant(path, '/finance/procurement-arrival-exceptions')) {
@@ -887,6 +892,11 @@ const _salesFinanceScope = PagePermissionScope(
 const _financeShipmentAuditScope = PagePermissionScope(
   surfaceKey: 'finance.sales-shipment-audit',
   title: '出货财务审核',
+);
+// 销售报价财务核价(ADR-134，V742 播种的权限面)。
+const _financeQuoteReviewScope = PagePermissionScope(
+  surfaceKey: 'finance.sales-quote-review',
+  title: '销售报价核价',
 );
 const _financeReportScope = PagePermissionScope(
   surfaceKey: 'finance.report',

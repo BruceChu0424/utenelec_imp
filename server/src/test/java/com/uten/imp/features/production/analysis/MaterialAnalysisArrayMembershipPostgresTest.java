@@ -82,7 +82,8 @@ class MaterialAnalysisArrayMembershipPostgresTest {
                 """);
         jdbc.execute("""
                 CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY,analysis_id uuid,
-                    analysis_item_id uuid,node_key text,unit_id uuid)
+                    analysis_item_id uuid,node_key text,unit_id uuid,
+                    design_bom_qty numeric,actual_bom_qty numeric,usage_basis text NOT NULL DEFAULT 'DESIGN',usage_reason text,usage_sample_count bigint,usage_defect_rate numeric)
                 """);
         jdbc.execute("""
                 CREATE TABLE entitlement_evidence(stock_reservation_id uuid,beneficiary_analysis_id uuid,

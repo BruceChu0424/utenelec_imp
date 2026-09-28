@@ -31,7 +31,12 @@ public record ScheduleOrderLine(
         String clientName,
         List<BomComponent> bom) {
 
-    /** 货品一层 BOM 零件：单件用量 × 待排产缺口 = 需求小计；onhand 为全仓即时库存。 */
+    /**
+     * 货品一层 BOM 零件：perQty 为计算采用的每件用量(有真实数据用真实使用数量，否则设计使用数量)；
+     * needQty 按计量规则(整包/固定批次向上取整)算出的待排产缺口需求；颜色为 BOM 行颜色(缺省取组件颜色)；
+     * onhand 为全仓即时库存。BOM 行用量不大于零(存量坏数据)时 perQty 与 needQty 为空，
+     * 由物料分析给出原因。
+     */
     public record BomComponent(
             UUID goodsId,
             String code,

@@ -16,10 +16,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
- * 生产日报审核/红冲 → 材料结算与余料退仓的写侧适配器(V583)。
+ * 生产日报审核/红冲 → 材料结算与余料退仓的写侧适配器(V583；实盘收尾的账面可用见 ADR-129 §2.7)。
  *
  * <p>这里只做编排，记账规则全部留在 {@link ProductionMaterialSettlementService} 和
  * {@link ProductionMaterialReturnRequestService} 里：两者的权限、对象范围、幂等、FIFO 摊分和
@@ -72,25 +73,37 @@ public class ProductionDailyReportMaterialWriteAdapter
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
+    public Map<UUID, BigDecimal> bookAvailableByDemand(UUID planId, UUID executionSegmentId) {
+        return settlements.bookAvailableByDemand(planId, executionSegmentId);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
     public int requestSurplusReturnForDailyReport(
             UUID planId,
             UUID executionSegmentId,
             UUID dailyReportId,
             String idempotencyKey,
             String reason) {
-        // 可退量与单位换算全部由服务端给：clearance 是基本量，退料单走原领料单位
-        // (unit_rate 不为 1 时两者不等)，前端和这里都不得自己换算差额。
-        List<ProductionMaterialReturnRequest.Item> items = returns
-                .sources(planId, executionSegmentId).stream()
-                .filter(source -> source.returnBlockedReason() == null)
-                .filter(source -> source.availableQty() != null
-                        && source.availableQty().signum() > 0)
+        List<ProductionMaterialReturnRequest.Item> items = returnableSources(planId, executionSegmentId).stream()
                 .map(source -> new ProductionMaterialReturnRequest.Item(
-                        source.issuePostingId(), source.availableQty()))
+                        source.issuePostingId(), source.availableQty(), source.directTransferItemId()))
                 .toList();
         if (items.isEmpty()) return 0;
         return returns.submit(planId, new ProductionMaterialReturnRequest.Submit(
                 executionSegmentId, idempotencyKey, reason, items)).size();
+    }
+
+    /**
+     * 该执行段当前可退的余料来源(原领料过账或线边仓直送批次)。可退量与单位换算全部由服务端给：
+     * clearance 是基本量，退料单走原领料单位(unit_rate 不为 1 时两者不等)，调用方不得自己换算差额。
+     */
+    private List<ProductionMaterialReturnRequest.Source> returnableSources(UUID planId, UUID executionSegmentId) {
+        return returns.sources(planId, executionSegmentId).stream()
+                .filter(source -> source.returnBlockedReason() == null)
+                .filter(source -> source.availableQty() != null
+                        && source.availableQty().signum() > 0)
+                .toList();
     }
 
     @Override

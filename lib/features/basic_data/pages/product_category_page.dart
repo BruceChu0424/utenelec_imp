@@ -672,9 +672,11 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   }
 
   /// BOM 行 → 粘贴请求行(字段与后端 BomItemSaveRequest 对齐)。
+  /// 只复制设计值(ADR-129)：qty 是设计使用数量；真实使用数量属于源货品自己的
+  /// 生产学习累计，不随复制带走，目标货品按自己的生产重新累计。
   Map<String, dynamic> _bomSaveBody(GoodsBomItem it) => <String, dynamic>{
     'componentGoodsId': it.componentGoodsId,
-    'qty': it.qty ?? 1,
+    'qty': it.qty,
     'price': it.price,
     'total': it.total,
     'summary': it.summary,

@@ -12,6 +12,7 @@ import com.uten.imp.security.CurrentAuthorityGuard;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.EncryptedDocumentException;
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -30,6 +31,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -40,7 +42,7 @@ import java.util.regex.Pattern;
  * 组装信息导入（goods:bom:create，与「粘贴组件信息」同一权限口径；替换模式另需
  * goods:bom:delete，与粘贴命令一致）。
  *
- * <p>格式 = 配件清单导出的 13 列；序号列的级联段（1 / 2 / 2.1）表达层级。检测只读，
+ * <p>格式 = 配件清单导出的 14 列；序号列的级联段(1 / 2 / 2.1)表达层级。检测只读，
  * 提交前重新解析并全量复检（导入是原子事务：任何一层写入被数据库拒绝，整体回滚），
  * 所以不需要货品导入那种「计划 TTL」——所有校验都以提交时刻的库内状态为准。</p>
  *
@@ -48,6 +50,10 @@ import java.util.regex.Pattern;
  * 粘到目标货品，第 2 层起按父序号分组粘到对应组件货品；同一层内重复、成环、组件
  * 停用等校验全部由粘贴命令承担，这里只补「文件侧」的校验（序号合法/唯一、父序号
  * 存在、编号能匹配到货品、数值可解析、目标货品自身不能出现在文件里）。</p>
+ *
+ * <p>「真实使用数量」列只读(ADR-129：由学习引擎按实物净耗算，人只能「重新学习」)，导入时认得、
+ * 但不读；写入的是「设计使用数量」(旧表头「数量」同义)，留空按错误报，不再静默按 1。
+ * 数值单元格按存的值读，不按显示格式读：导出的文件原样导回，数量一位不差(学习边不会因此变成人工边)。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -76,7 +82,8 @@ public class GoodsBomImportService {
         putAlias("计量方式", "consumptionBasis");
         putAlias("基准产量", "basisOutputQty");
         putAlias("尾包", "allowPartialPackage");
-        putAlias("数量", "qty");
+        for (String a : new String[]{"设计使用数量", "数量"}) putAlias(a, "qty");
+        putAlias("真实使用数量", "actualQty"); // 只读列：导出带出，导入不读
         for (String a : new String[]{"备注", "摘要"}) putAlias(a, "summary");
     }
 
@@ -115,7 +122,7 @@ public class GoodsBomImportService {
     @Transactional
     public BomImportResult commit(UUID goodsId, byte[] xlsx, BomPasteRequest.Mode mode) {
         if (mode == BomPasteRequest.Mode.REPLACE) {
-            // 替换 = 删现有组件再写入，与粘贴命令同口径要删除权（paste 内也会再查）。
+            // 替换会删掉文件外的现有组件，与粘贴命令同口径要删除权(paste 内也会再查)。
             CurrentAuthorityGuard.requireAll("goods:bom:delete");
         }
         Parsed parsed = parseAndValidate(goodsId, xlsx);
@@ -123,6 +130,16 @@ public class GoodsBomImportService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "文件仍有 " + parsed.errors().size() + " 个未修正的问题，请先按检测报告修改后重试");
         }
+        // 先按 id 顺序一次锁住本次要写的所有父件，再写任何一行：与粘贴命令、学习引擎同一锁序
+        // (父件行在前、组装图锁在后)，多层导入不会与报工审核的学习发布互相等待。
+        Set<UUID> parents = new LinkedHashSet<>();
+        parents.add(goodsId);
+        for (int level = 1; level < parsed.levels.size(); level++) {
+            for (ParsedRow row : parsed.levels.get(level)) {
+                parents.add(parsed.bySeq().get(row.parentSeq).goodsId);
+            }
+        }
+        goodsRepo.lockBomParents(parents);
         int targets = 0;
         int added = 0;
         int removed = 0;
@@ -263,19 +280,17 @@ public class GoodsBomImportService {
             parsed.parentSeq = parsed.level == 0
                     ? null : seq.substring(0, seq.lastIndexOf('.'));
         }
-        String qtyRaw = trim(df, row, col, "qty");
-        if (isBlank(qtyRaw)) {
-            parsed.qty = BigDecimal.ONE;
-        } else {
-            try {
-                parsed.qty = new BigDecimal(qtyRaw.replaceAll("[^0-9.\\-]", ""));
-            } catch (NumberFormatException e) {
-                errors.add(new GoodsImportError(rowNum, "数量", "数量「" + qtyRaw + "」不是有效数字"));
-                parsed.qty = BigDecimal.ONE;
+        String qtyLabel = labelOf("qty");
+        try {
+            parsed.qty = number(df, row, col, "qty");
+            if (parsed.qty == null) {
+                errors.add(new GoodsImportError(rowNum, qtyLabel, qtyLabel + "不能为空"));
+            } else if (parsed.qty.signum() <= 0) {
+                errors.add(new GoodsImportError(rowNum, qtyLabel, qtyLabel + "必须大于 0"));
             }
-        }
-        if (parsed.qty == null || parsed.qty.signum() <= 0) {
-            errors.add(new GoodsImportError(rowNum, "数量", "数量必须大于 0"));
+        } catch (NumberFormatException e) {
+            errors.add(new GoodsImportError(rowNum, qtyLabel,
+                    qtyLabel + "「" + trim(df, row, col, "qty") + "」不是有效数字"));
         }
         String basisRaw = normKey(trim(df, row, col, "consumptionBasis"));
         if (isBlank(basisRaw)) {
@@ -287,19 +302,15 @@ public class GoodsBomImportService {
                     "计量方式必须为 按每件/按包装/固定批耗（当前「" + basisRaw + "」）"));
             parsed.basisCode = "PER_UNIT";
         }
-        String basisQtyRaw = trim(df, row, col, "basisOutputQty");
-        if (isBlank(basisQtyRaw)) {
+        try {
+            BigDecimal basisOutputQty = number(df, row, col, "basisOutputQty");
+            parsed.basisOutputQty = basisOutputQty == null ? BigDecimal.ONE : basisOutputQty;
+        } catch (NumberFormatException e) {
+            errors.add(new GoodsImportError(rowNum, "基准产量",
+                    "基准产量「" + trim(df, row, col, "basisOutputQty") + "」不是有效数字"));
             parsed.basisOutputQty = BigDecimal.ONE;
-        } else {
-            try {
-                parsed.basisOutputQty = new BigDecimal(basisQtyRaw.replaceAll("[^0-9.\\-]", ""));
-            } catch (NumberFormatException e) {
-                errors.add(new GoodsImportError(rowNum, "基准产量",
-                        "基准产量「" + basisQtyRaw + "」不是有效数字"));
-                parsed.basisOutputQty = BigDecimal.ONE;
-            }
         }
-        if (parsed.basisOutputQty == null || parsed.basisOutputQty.signum() <= 0) {
+        if (parsed.basisOutputQty.signum() <= 0) {
             errors.add(new GoodsImportError(rowNum, "基准产量", "基准产量必须大于 0"));
         }
         String partialRaw = trim(df, row, col, "allowPartialPackage");
@@ -422,6 +433,23 @@ public class GoodsBomImportService {
         return value == null ? "" : value.trim();
     }
 
+    /**
+     * 数值单元格按存的值读(不按「#,##0.00」之类的显示格式，否则 0.03125 会读成 0.03)；
+     * 文本单元格照旧宽松解析(去掉千分位等杂字符)。留空返回 null，不是数字抛 NumberFormatException。
+     * 公式单元格到不了这里：文件检查(GoodsImportWorkbookSecurity)已整份拒收。
+     */
+    private static BigDecimal number(DataFormatter df, Row row, Map<String, Integer> col, String key) {
+        Integer index = col.get(key);
+        Cell cell = index == null ? null : row.getCell(index);
+        if (cell == null) return null;
+        if (cell.getCellType() == CellType.NUMERIC) {
+            // BigDecimal.valueOf 取 double 的最短十进制写法(0.03125、1.0E-5)；不能再过下面的字符过滤。
+            return BigDecimal.valueOf(cell.getNumericCellValue());
+        }
+        String raw = trim(df, row, col, key);
+        return isBlank(raw) ? null : new BigDecimal(raw.replaceAll("[^0-9.\\-]", ""));
+    }
+
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
@@ -434,7 +462,7 @@ public class GoodsBomImportService {
         return switch (key) {
             case "seq" -> "序号";
             case "code" -> "物料编号";
-            case "qty" -> "数量";
+            case "qty" -> "设计使用数量";
             default -> key;
         };
     }

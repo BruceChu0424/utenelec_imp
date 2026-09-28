@@ -613,8 +613,14 @@ final class MasterReferenceCatalog {
                 "goods_id");
         exempt(out, ExemptReason.OWN_CONFIG, "BOM学习所属父件与原单位快照，停用主档后不再发布", "goods_bom_learning_profiles",
                 "goods_id", "output_unit_id");
-        exempt(out, ExemptReason.HISTORY, "累计实际耗用的历史身份；当前使用由有效BOM边覆盖", "goods_bom_learning_material_totals",
-                "component_goods_id", "color_id", "unit_id");
+        // V739(ADR-129): 真实使用数量累计按 (父件, 组件, 组件单位) 一行；父件与原单位同学习档案口径，
+        // 组件与单位是累计的历史身份(当前使用由有效BOM边覆盖)。
+        exempt(out, ExemptReason.OWN_CONFIG, "父件自己的真实使用数量累计与学习时的父件单位快照，停用主档后不再发布",
+                "goods_bom_actual_usages", "goods_id", "output_unit_id");
+        exempt(out, ExemptReason.HISTORY, "真实使用数量累计的历史身份；当前使用由有效BOM边覆盖", "goods_bom_actual_usages",
+                "component_goods_id", "unit_id");
+        exempt(out, ExemptReason.HISTORY, "BOM学习排队记录(同一事务提交前排空，不留行)",
+                "production_bom_learning_refresh_queue", "goods_id");
         exempt(out, ExemptReason.COVERED, "仓库选料冻结证据；配置同事务生成真实需求，其主档在办引用由需求覆盖", "production_material_discovery_lines",
                 "goods_id", "color_id", "unit_id", "warehouse_id");
         exempt(out, ExemptReason.HISTORY, "学习来源父件与原基础单位快照；有效BOM组件由既有目录覆盖", "goods_bom_items",

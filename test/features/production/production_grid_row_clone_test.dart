@@ -11,7 +11,8 @@ void main() {
     final src = ProductionGridRow()
       ..goods = const GoodsOption(id: 'g1', name: '货品1')
       ..colorId = 'c1'
-      ..unitId = 'u1';
+      ..unitId = 'u1'
+      ..sourceItemId = 'item-1';
     src.productNo.text = 'P01';
     src.qty.text = '120';
     src.overproductionPercent.text = '25';
@@ -21,6 +22,8 @@ void main() {
     expect(c.goods?.id, 'g1');
     expect(c.colorId, 'c1');
     expect(c.unitId, 'u1');
+    // 复制的比例沿用原行来源：读回行的原明细 id 一并带上(ADR-129 §2.10)。
+    expect(c.sourceItemId, 'item-1');
     expect(c.productNo.text, 'P01');
     expect(c.qty.text, '120');
     expect(c.overproductionPercent.text, '25');

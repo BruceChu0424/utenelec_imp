@@ -52,12 +52,8 @@ class ProductionMaterialClearanceRow {
     this.requiredForProductQty,
     this.directSupply = false,
     this.requirementMode = 'LINEAR',
-    double? availableToSettleQty,
-  }) : availableToSettleQty =
-           availableToSettleQty ??
-           (unclearedQty > pendingReturnQty
-               ? unclearedQty - pendingReturnQty
-               : 0);
+    required this.availableToSettleQty,
+  });
 
   final String planId;
   final String demandId;
@@ -120,12 +116,7 @@ class ProductionMaterialClearanceRow {
       maxReturnQty: number('maxReturnQty'),
       unclearedQty: number('unclearedQty'),
       pendingReturnQty: number('pendingReturnQty'),
-      availableToSettleQty: json['availableToSettleQty'] == null
-          ? (number('unclearedQty') - number('pendingReturnQty')).clamp(
-              0,
-              double.infinity,
-            )
-          : number('availableToSettleQty'),
+      availableToSettleQty: number('availableToSettleQty'),
       canClose: json['canClose'] == true,
     );
   }

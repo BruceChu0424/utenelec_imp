@@ -430,7 +430,8 @@ void main() {
       expect(input['materialLineIds'], ['make-path-1']);
       expect(input['sourceRequestedQtyByMaterialLineId'], {'make-path-1': '8'});
       expect(input['qty'], '8');
-      expect(input['allowedOverproductionRate'], 0);
+      // ADR-129 §2.10：没人改过的比例不带，由服务端按货品默认填写且不记住。
+      expect(input.containsKey('allowedOverproductionRate'), isFalse);
       expect(input['departmentId'], 'workshop-1');
       expect(input['workerId'], 'worker-1');
       expect(tester.takeException(), isNull);
@@ -5099,7 +5100,8 @@ void main() {
       expect(input['materialLineIds'], ['make-path-1']);
       expect(input['sourceRequestedQtyByMaterialLineId'], {'make-path-1': '8'});
       expect(input['qty'], '8');
-      expect(input['allowedOverproductionRate'], 0);
+      // ADR-129 §2.10：没人改过的比例不带，由服务端按货品默认填写且不记住。
+      expect(input.containsKey('allowedOverproductionRate'), isFalse);
       expect(input['departmentId'], 'workshop-1');
       expect(input['workerId'], 'worker-1');
       expect(tester.takeException(), isNull);

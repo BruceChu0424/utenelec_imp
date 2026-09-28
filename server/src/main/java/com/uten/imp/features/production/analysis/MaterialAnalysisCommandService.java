@@ -66,6 +66,8 @@ public class MaterialAnalysisCommandService {
     private static final String OP_CANCEL_ANALYSIS = "CANCEL_ANALYSIS";
     private static final String OP_CANCEL_ACTION = "CANCEL_ACTION";
     private static final String OP_CLAIM_SHARED_FUTURE = "CLAIM_SHARED_FUTURE";
+    /** V707 前的下达命令不带比例、按 10% 下达；明确的 10% 不进指纹，旧命令的重放身份保持不变。 */
+    private static final BigDecimal V707_UNHASHED_RATE = new BigDecimal("0.10");
 
     private final EntityManager em;
     private final MaterialAnalysisService analysisService;
@@ -916,23 +918,26 @@ public class MaterialAnalysisCommandService {
 
     /** Shared batch entry keeps the ordinary plan/package/stock chain and its one-item identity intact. */
     GeneratedPlan issueAggregateAnchor(UUID analysisId,UUID batchId,UUID anchorId,
-            AggregateMaterialOrderContracts.GroupPreview group,UUID warehouse,boolean approveNow,String key) {
+            AggregateMaterialOrderContracts.GroupPreview group,BigDecimal requestedRate,UUID warehouse,boolean approveNow,String key) {
         MaterialAnalysisPlanSource product=analysisService.aggregatePlanSources(analysisId,Set.of(anchorId)).get(anchorId);
-        return issueAggregateAnchor(analysisId,batchId,anchorId,group,warehouse,approveNow,key,product);
+        return issueAggregateAnchor(analysisId,batchId,anchorId,group,requestedRate,warehouse,approveNow,key,product);
     }
 
     GeneratedPlan issueAggregateAnchor(UUID analysisId,UUID batchId,UUID anchorId,
-            AggregateMaterialOrderContracts.GroupPreview group,UUID warehouse,boolean approveNow,String key,MaterialAnalysisPlanSource product) {
+            AggregateMaterialOrderContracts.GroupPreview group,BigDecimal requestedRate,UUID warehouse,boolean approveNow,String key,
+            MaterialAnalysisPlanSource product) {
         if(product==null||!anchorId.equals(product.analysisLineId()))throw conflict("共享生产锚点尚未形成有效物料快照");
         PlanQuantity quantity=new PlanQuantity(anchorId,group.requestedQty(),group.billDate(),group.deliveryDate(),
-                group.departmentId(),null,group.workerId(),group.teamDepartmentId(),group.productNo(),group.allowedOverproductionRate());
+                group.departmentId(),null,group.workerId(),group.teamDepartmentId(),group.productNo(),requestedRate);
         PlanScheduleDefaults defaults=new PlanScheduleDefaults(group.billDate(),group.deliveryDate());
         validatePlanSchedule(quantity,defaults);
+        // requestedRate 是下单请求里人填的比例；空=按货品默认(DEFAULT，不记住)，填了=EXPLICIT(ADR-129 §2.10)。
+        var allowance=ProductionOverproductionAllowance.allowance(em,product.goodsId(),requestedRate);
         UUID existingPlan=scalarUuid("SELECT plan_id FROM preplan_aggregate_batches WHERE id=:id",batchId);
         if(existingPlan!=null) {
-            GrowablePlan growable=growablePlanFor(analysisId,anchorId,group.departmentId(),approveNow,group.allowedOverproductionRate());
+            GrowablePlan growable=growablePlanFor(analysisId,anchorId,group.departmentId(),approveNow,allowance.rate());
             if(growable==null||!existingPlan.equals(growable.planId()))throw conflict("共享生产批次已进入执行，追加须生成新批次");
-            return growPlan(analysisId,product,growable,quantity,defaults,group.requestedQty().subtract(group.publicExtraQty()),group.publicExtraQty(),
+            return growPlan(analysisId,product,growable,quantity,allowance,defaults,group.requestedQty().subtract(group.publicExtraQty()),group.publicExtraQty(),
                     new IssueWorkshopPlansRequest(0L,"0".repeat(64),key,warehouse,group.billDate(),group.deliveryDate(),approveNow,List.of()));
         }
         CommandResult plan=createDraftPlan(analysisId,product,quantity,defaults,group.publicExtraQty());
@@ -1254,19 +1259,22 @@ public class MaterialAnalysisCommandService {
                 // 的容量与执行段销售分摊都只覆盖归本需求的量（ProductionPlanService
                 // / ProductionExecutionPackageCommandService / DB 断言触发器同步
                 // 放宽），「排产量 ≤ 订单未满足」原样成立。
+                // 计划行比例保持请求原样：空 = 按货品默认(不记忆)，填了 = 人确认过(ADR-129 §2.10)。
                 PlanQuantity quantity = new PlanQuantity(lineId, effectiveQty,
                         line.billDate(), line.deliveryDate(), line.departmentId(),
                         line.workshopName(), line.workerId(), line.teamDepartmentId(),
-                        line.productNo(), ProductionOverproductionAllowance.resolve(em, product.goodsId(), line.allowedOverproductionRate()));
+                        line.productNo(), line.allowedOverproductionRate());
                 validatePlanSchedule(quantity, defaults);
+                ProductionOverproductionAllowance.Allowance allowance = ProductionOverproductionAllowance
+                        .allowance(em, product.goodsId(), quantity.allowedOverproductionRate());
                 // ADR-104：同一分析行已有一张还没开工的计划(草稿, 或已审核但车间没领料没开工)
                 // 时, 追加量并进那张计划——同一单号、明细加量、关联行加量, 已审核的在同一个
                 // 原工单同步加量。已提交领料或执行的计划照旧另立新单。
                 GrowablePlan growable = growablePlanFor(
                         analysisId, lineId, quantity.departmentId(), request.approveNow(),
-                        quantity.allowedOverproductionRate());
+                        allowance.rate());
                 if (growable != null) {
-                    generated.add(growPlan(analysisId, product, growable, quantity, defaults,
+                    generated.add(growPlan(analysisId, product, growable, quantity, allowance, defaults,
                             demandQty, surplusQty, request));
                     continue;
                 }
@@ -1315,18 +1323,20 @@ public class MaterialAnalysisCommandService {
      * 未审核未发料的草稿)，再加两条应用侧口径——请求指定了生产车间时车间必须一致(换车间
      * = 另一张单)；没有「立即审核」的请求只并入草稿计划，不能把追加量悄悄并进一张已审核的
      * 计划绕过审核。找不到返回 null，由调用方照旧新建。
+     *
+     * @param allowedRate 已解析的比例(空请求已按货品默认填好)；计划的全部明细与工单都须是同一比例
      */
     private GrowablePlan growablePlanFor(
             UUID analysisId, UUID analysisLineId, UUID departmentId, boolean approveNow,
-            BigDecimal allowedOverproductionRate) {
+            BigDecimal allowedRate) {
         return growablePlanFor(analysisId, analysisLineId, departmentId, approveNow,
-                allowedOverproductionRate, true);
+                allowedRate, true);
     }
 
     /** [lock] = false 供下达预览(ADR-116): 同一谓词只读判定, 不锁计划行。 */
     private GrowablePlan growablePlanFor(
             UUID analysisId, UUID analysisLineId, UUID departmentId, boolean approveNow,
-            BigDecimal allowedOverproductionRate, boolean lock) {
+            BigDecimal allowedRate, boolean lock) {
         String sql = """
                 SELECT plan.id, plan.bill_no, plan.status, link.id, item.id, item.qty,
                        link.submitted_qty, COALESCE(link.public_surplus_qty, 0), item.sales_order_item_id
@@ -1359,7 +1369,7 @@ public class MaterialAnalysisCommandService {
         var query = em.createNativeQuery(sql)
                 .setParameter("analysisId", analysisId)
                 .setParameter("analysisLineId", analysisLineId)
-                .setParameter("allowedRate", ProductionOverproductionAllowance.normalize(allowedOverproductionRate));
+                .setParameter("allowedRate", allowedRate);
         if (departmentId != null) query.setParameter("departmentId", departmentId);
         List<Object[]> rows = NativeQueryResults.objectArrayRows(query);
         if (rows.isEmpty()) return null;
@@ -1371,11 +1381,26 @@ public class MaterialAnalysisCommandService {
                         "SELECT fn_material_analysis_plan_growable(CAST(:planId AS uuid)) "
                                 + "AND fn_plan_accepts_overproduction_allowance(CAST(:planId AS uuid), CAST(:allowedRate AS numeric))")
                 .setParameter("planId", row[0])
-                .setParameter("allowedRate", ProductionOverproductionAllowance.normalize(allowedOverproductionRate))
+                .setParameter("allowedRate", allowedRate)
                 .getSingleResult())) return null;
         return new GrowablePlan((UUID) row[0], Objects.toString(row[1], null),
                 ((Number) row[2]).shortValue(), (UUID) row[3], (UUID) row[4],
                 decimalOf(row[5]), decimalOf(row[6]), decimalOf(row[7]), (UUID) row[8]);
+    }
+
+    /**
+     * ADR-129 §2.10：并入原计划时带了明确比例 = 有人确认过。明细来源单独改——被钉成供给来源的明细
+     * 只放行 qty 改量(V645)；比例与来源都没变时明细的记忆触发器不会起跳，所以显式记一次。
+     */
+    private void rememberConfirmedAllowance(GrowablePlan target, UUID goodsId,
+                                            ProductionOverproductionAllowance.Allowance allowance) {
+        em.createNativeQuery("""
+                        UPDATE production_plan_items SET allowed_overproduction_rate_source = 'EXPLICIT'
+                        WHERE id = :itemId AND allowed_overproduction_rate_source <> 'EXPLICIT'
+                        """)
+                .setParameter("itemId", target.planItemId())
+                .executeUpdate();
+        ProductionOverproductionAllowance.remember(em, target.planId(), goodsId, allowance);
     }
 
     private static BigDecimal decimalOf(Object value) {
@@ -1386,9 +1411,12 @@ public class MaterialAnalysisCommandService {
      * ADR-104 并入追加：计划明细与关联行只增不减地改大(V645 放行；关联行触发器顺手把分析行的
      * submitted/approved 与版本推进)；草稿计划重排预排草案(立即审核时整张审核)，已审核计划先把
      * 销售分摊容量扩大，再同步增加原车间工单及其冻结物料需求。
+     *
+     * <p>ADR-129 §2.10：并入时带了明确比例即有人确认过，记成货品下次的默认；空比例并入沿用原来源。
      */
     private GeneratedPlan growPlan(
             UUID analysisId, MaterialAnalysisPlanSource product, GrowablePlan target, PlanQuantity quantity,
+            ProductionOverproductionAllowance.Allowance allowance,
             PlanScheduleDefaults defaults, BigDecimal demandQty, BigDecimal surplusQty,
             IssueWorkshopPlansRequest request) {
         BigDecimal added = quantity.qty();
@@ -1401,7 +1429,7 @@ public class MaterialAnalysisCommandService {
                           AND qty = CAST(:expectedQty AS numeric)
                         """)
                 .setParameter("added", added)
-                .setParameter("allowedRate", quantity.allowedOverproductionRate())
+                .setParameter("allowedRate", allowance.rate())
                 .setParameter("actorId", currentUser.requireId())
                 .setParameter("itemId", target.planItemId())
                 .setParameter("planId", target.planId())
@@ -1410,6 +1438,9 @@ public class MaterialAnalysisCommandService {
         if (items != 1) {
             throw conflict("「" + product.goodsName() + "」原计划 " + target.billNo()
                     + " 的数量已变化，请刷新后重试");
+        }
+        if (allowance.explicit()) {
+            rememberConfirmedAllowance(target, product.goodsId(), allowance);
         }
         int links = em.createNativeQuery("""
                         UPDATE production_material_analysis_plan_links
@@ -1813,13 +1844,15 @@ public class MaterialAnalysisCommandService {
             if (Boolean.TRUE.equals(line.publicSurplusOnly())) {
                 itemHash += "|PUBLIC_SURPLUS_ONLY|true";
             }
-            BigDecimal allowedRate = ProductionOverproductionAllowance.normalize(line.allowedOverproductionRate());
-            // Omission now means the current goods default, not an explicit historical 10%.
+            // Omission means the current goods default, not an explicit historical 10%.
             // Keep the explicit 10% hash stable, but never treat different intentions as one retry.
             if (line.allowedOverproductionRate() == null) {
                 itemHash += "|ALLOWED_OVERPRODUCTION_RATE|DEFAULT_BY_GOODS";
-            } else if (allowedRate.compareTo(ProductionOverproductionAllowance.DEFAULT_RATE) != 0) {
-                itemHash += "|ALLOWED_OVERPRODUCTION_RATE|" + MaterialAnalysisService.decimalText(allowedRate);
+            } else {
+                BigDecimal allowedRate = ProductionOverproductionAllowance.normalize(line.allowedOverproductionRate());
+                if (allowedRate.compareTo(V707_UNHASHED_RATE) != 0) {
+                    itemHash += "|ALLOWED_OVERPRODUCTION_RATE|" + MaterialAnalysisService.decimalText(allowedRate);
+                }
             }
             parts.add(itemHash);
         });
@@ -2823,7 +2856,8 @@ public class MaterialAnalysisCommandService {
             throw validation("生产计划数量最多保留四位小数");
         }
         line.setQty(normalizedQty);
-        line.setAllowedOverproductionRate(ProductionOverproductionAllowance.resolve(em, product.goodsId(), quantity.allowedOverproductionRate()));
+        // 空 = 计划服务按货品默认填写并标 DEFAULT；填了 = EXPLICIT(ADR-129 §2.10)。
+        line.setAllowedOverproductionRate(quantity.allowedOverproductionRate());
         line.setOrderDate(product.orderDate());
         line.setOutboundDate(product.deliveryDate());
         line.setPlanBeginDate(billDate);
@@ -2946,7 +2980,9 @@ public class MaterialAnalysisCommandService {
 
     private static void validatePlanSchedule(
             PlanQuantity quantity, PlanScheduleDefaults defaults) {
-        ProductionOverproductionAllowance.normalize(quantity.allowedOverproductionRate());
+        if (quantity.allowedOverproductionRate() != null) {
+            ProductionOverproductionAllowance.normalize(quantity.allowedOverproductionRate());
+        }
         LocalDate billDate = itemBillDate(quantity, defaults);
         LocalDate deliveryDate = itemDeliveryDate(quantity, defaults);
         if (deliveryDate != null && deliveryDate.isBefore(billDate)) {

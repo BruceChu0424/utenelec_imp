@@ -20,6 +20,13 @@ import java.util.UUID;
  * Parameterized lateral edge reads retain the current root/frontier bound when
  * PostgreSQL estimates a large recursive forest; unrelated historical BOMs must
  * not become the recursive step's input. OFFSET 0 preserves that query boundary.
+ *
+ * <p>ADR-129: each edge carries the results of {@code v_goods_bom_item_usage} as they
+ * are: design usage, the live actual usage (the view's own rounded effective value,
+ * null unless the view uses it), status, linearity, sample count and the defect rate
+ * that goes with that actual usage. Which one a node
+ * adopts, and its per-product quantity, is decided in Java
+ * ({@code MaterialAnalysisService.bomNodes}); no usage rule is re-derived here.</p>
  */
 final class MaterialAnalysisBomSnapshotReader {
     private final EntityManager em;
@@ -38,14 +45,13 @@ final class MaterialAnalysisBomSnapshotReader {
         for (int i = 0; i < sources.size(); i++) {
             if (i > 0) roots.append(',');
             roots.append("(CAST(:source").append(i).append(" AS uuid),CAST(:goods")
-                    .append(i).append(" AS uuid),CAST(:rate").append(i).append(" AS numeric))");
+                    .append(i).append(" AS uuid))");
         }
         Query query = em.createNativeQuery(TREE_SQL.formatted(roots));
         for (int i = 0; i < sources.size(); i++) {
             var source = sources.get(i);
             query.setParameter("source" + i, source.analysisItemId())
-                    .setParameter("goods" + i, source.goodsId())
-                    .setParameter("rate" + i, source.unitRate());
+                    .setParameter("goods" + i, source.goodsId());
         }
         Map<UUID, List<Object[]>> result = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
@@ -111,7 +117,8 @@ final class MaterialAnalysisBomSnapshotReader {
                     "请检查这几层 BOM，去掉把上层货品加成下层组件的那一行"),
             "TOO_DEEP", new Problem("组装层级超过十层",
                     "请检查是否误把上层货品加成了下层组件，或合并中间层"),
-            "QTY", new Problem("用量小于或等于 0", "请在父件的 BOM 里把这一行的用量改成大于 0"),
+            "QTY", new Problem(MaterialConsumptionMath.NON_POSITIVE_BOM_QTY_REASON,
+                    MaterialConsumptionMath.NON_POSITIVE_BOM_QTY_FIX),
             "COMPONENT_DELETED", new Problem("组件货品已被删除", "请在父件的 BOM 里移除或换掉这个组件"),
             "UNIT_MISSING", new Problem("组件没有设置基本单位", "请到货品资料里给组件设置基本单位"),
             "UNIT_DELETED", new Problem("组件的基本单位已被删除", "请到货品资料里给组件换一个有效的基本单位"),
@@ -127,19 +134,20 @@ final class MaterialAnalysisBomSnapshotReader {
 
     private static ApiException conflict(String message) { return new ApiException(ErrorCode.CONFLICT, message); }
 
+    /**
+     * 列序：0-7 边与层级路径；8 设计使用数量(b.qty)；9 现时真实使用数量(视图算好的采用值，
+     * 不采用真实值时为 NULL)；10 真实使用数量状态；11-23 组件与计量规则；24 来源行；25 有效批次；
+     * 26 该边是否线性(视图口径)；27 与真实值一起的报工不良率(没有真实值时为 NULL)。用量按边做参数化
+     * LATERAL 读取，与递归边读取一样不把无关的历史 BOM 拉进来。
+     */
     private static final String TREE_SQL = """
-                WITH RECURSIVE roots(analysis_item_id, goods_id, unit_rate) AS (%s), exp AS (
+                WITH RECURSIVE roots(analysis_item_id, goods_id) AS (%s), exp AS (
                     SELECT roots.analysis_item_id AS source_id, b.id AS bom_item_id, b.goods_id AS parent_goods_id,
                            b.component_goods_id AS goods_id,
                            resolved_color.id AS color_id,
                            component_unit.id AS unit_id,
                            1 AS depth, ARRAY[b.id]::uuid[] AS bom_path,
-                           roots.unit_rate AS parent_per_product_qty,
-                           b.qty AS bom_qty,
-                           (roots.unit_rate * b.qty /
-                                CASE WHEN b.consumption_basis = 'PER_UNIT' THEN 1
-                                     ELSE b.basis_output_qty END
-                           )::numeric AS per_product_qty,
+                           b.qty AS design_qty,
                            component.code, component.name, component.spec,
                            resolved_color.name AS color_name,
                            component_unit.name AS unit_name,
@@ -169,12 +177,7 @@ final class MaterialAnalysisBomSnapshotReader {
                            resolved_color.id,
                            component_unit.id,
                            exp.depth + 1, exp.bom_path || b.id,
-                           exp.per_product_qty,
                            b.qty,
-                           (exp.per_product_qty * b.qty /
-                                CASE WHEN b.consumption_basis = 'PER_UNIT' THEN 1
-                                     ELSE b.basis_output_qty END
-                           )::numeric,
                            component.code, component.name, component.spec,
                            resolved_color.name,
                            component_unit.name,
@@ -200,18 +203,43 @@ final class MaterialAnalysisBomSnapshotReader {
                                                    AND component_unit.is_deleted = FALSE
                     WHERE exp.depth < 10 AND NOT b.id = ANY(exp.bom_path)
                 )
-                SELECT bom_item_id, parent_goods_id, goods_id, color_id, unit_id,
-                       depth, array_to_string(bom_path, '/'),
-                        CASE WHEN depth = 1 THEN NULL
-                             ELSE array_to_string(trim_array(bom_path, 1), '/') END,
-                       parent_per_product_qty, bom_qty, per_product_qty,
-                       code, name, spec, color_name, unit_name,
-                       safety_stock, source_type, has_children,
-                       control_stage, consumption_basis, basis_output_qty,
-                       allow_partial_package, hard_gate, source_id
+                SELECT exp.bom_item_id, exp.parent_goods_id, exp.goods_id, exp.color_id, exp.unit_id,
+                       exp.depth, array_to_string(exp.bom_path, '/'),
+                        CASE WHEN exp.depth = 1 THEN NULL
+                             ELSE array_to_string(trim_array(exp.bom_path, 1), '/') END,
+                       exp.design_qty, edge_usage.actual_qty, edge_usage.actual_status,
+                       exp.code, exp.name, exp.spec, exp.color_name, exp.unit_name,
+                       exp.safety_stock, exp.source_type, exp.has_children,
+                       exp.control_stage, exp.consumption_basis, exp.basis_output_qty,
+                       exp.allow_partial_package, exp.hard_gate, exp.source_id,
+                       edge_usage.sample_count, edge_usage.linear, edge_usage.defect_rate
                 FROM exp
-                ORDER BY source_id, bom_path
+                """ + edgeUsageLateral("exp.bom_item_id") + """
+                ORDER BY exp.source_id, exp.bom_path
                 """;
+
+    /**
+     * 一条 BOM 边的现时用量，别名 edge_usage，全部原样取 {@code v_goods_bom_item_usage} 的结果：
+     * 设计使用数量、真实使用数量(视图采用真实值时的 effective_qty，即视图的取整结果；否则为 NULL)、
+     * 状态、线性、有效批次，以及与真实值一起的报工不良率(同一条件，没有真实值时为 NULL；按落库的
+     * NUMERIC(9,6) 在这里四舍五入到 6 位，只此一处)。快照读取与人工刷新采用
+     * ({@code MaterialAnalysisService.adoptLatestBomUsage}) 共用这一段；取整、线性与状态规则只在视图里
+     * 定义一次。视图只按边主键参数化读取(OFFSET 0 保住查询边界)，不作 FOR UPDATE 目标。
+     */
+    static String edgeUsageLateral(String bomItemIdExpression) {
+        return """
+                LEFT JOIN LATERAL (
+                    SELECT usage_row.design_qty,
+                           CASE WHEN usage_row.usage_basis = 'ACTUAL' THEN usage_row.effective_qty END AS actual_qty,
+                           usage_row.actual_status, usage_row.sample_count, usage_row.linear,
+                           CASE WHEN usage_row.usage_basis = 'ACTUAL' THEN round(usage_row.defect_rate, 6) END
+                               AS defect_rate
+                    FROM v_goods_bom_item_usage usage_row
+                    WHERE usage_row.bom_item_id = %s
+                    OFFSET 0
+                ) edge_usage ON TRUE
+                """.formatted(bomItemIdExpression);
+    }
 
     /**
      * 每条边自己的问题代号(逗号分隔，没问题为 NULL)。锚点与递归两段共用同一表达式，

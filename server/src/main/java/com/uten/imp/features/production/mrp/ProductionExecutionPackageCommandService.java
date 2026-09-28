@@ -191,8 +191,9 @@ public class ProductionExecutionPackageCommandService {
                         planId, request.getWarehouseId(), routes);
         if (!locked.fingerprint().equalsIgnoreCase(
                 request.getPreviewFingerprint())) {
-            throw conflict(
-                    "排产预览已过期：目标仓库存、占用、计划行或 BOM 已变化");
+            throw ProductionExecutionPlanningService.stalePreview(
+                    ProductionExecutionPlanningService.STALE_PREVIEW,
+                    plan.materialAnalysisId() == null);
         }
         CompleteKitAllocator.Allocation allocation = requestValidator
                 .validateAgainstSnapshot(request, locked)

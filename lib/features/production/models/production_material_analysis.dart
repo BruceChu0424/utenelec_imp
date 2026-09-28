@@ -1162,6 +1162,12 @@ class ProductionMaterialAnalysisMaterial {
     this.sourceRequiredQty,
     this.perProductQty = 0,
     this.bomQty,
+    this.designBomQty,
+    this.actualBomQty,
+    this.usageBasis = 'DESIGN',
+    this.usageReason,
+    this.usageSampleCount,
+    this.usageDefectRate,
     this.parentPerProductQty,
     this.availableQty = 0,
     this.allocatedAvailableQty = 0,
@@ -1303,7 +1309,28 @@ class ProductionMaterialAnalysisMaterial {
   final double perProductQty;
 
   /// Frozen direct BOM edge. Cumulative averages cannot reproduce package rounding.
+  /// ADR-129：本节点计算实际采用的用量(真实或设计)，分析新建或人工刷新时锁定。
   final double? bomQty;
+
+  /// 采用时的设计使用数量(goods_bom_items.qty)；旧快照等于 [bomQty]。
+  final double? designBomQty;
+
+  /// 采用时的真实使用数量(与设计值同一计量口径)；没有可用真实数据时为 null。
+  final double? actualBomQty;
+
+  /// [bomQty] 取自哪个数：`ACTUAL` 真实使用数量 / `DESIGN` 设计使用数量。
+  final String usageBasis;
+
+  /// 按设计算的原因代码(NO_DATA / NOT_LINEAR / OUTPUT_UNIT_CHANGED /
+  /// SUBCONTRACT_OUTBOUND)。只给 bom_usage_basis_text 翻成人话，界面不直接显示。
+  final String? usageReason;
+
+  /// 真实使用数量依据的有效生产批次数。
+  final int? usageSampleCount;
+
+  /// 与真实使用数量一起采用的不良率(0..1，不良数 / (良品数 + 不良数))，随节点锁定；
+  /// 只作说明，不参与用量计算。按设计算或统计窗口内没有产出时为 null。
+  final double? usageDefectRate;
   final double? parentPerProductQty;
 
   /// Qualified stock in the selected warehouse before this analysis allocates
@@ -1495,6 +1522,12 @@ class ProductionMaterialAnalysisMaterial {
     materialKey: _string(json['materialKey']),
     perProductQty: _double(json['perProductQty']) ?? 0,
     bomQty: _double(json['bomQty']),
+    designBomQty: _double(json['designBomQty']),
+    actualBomQty: _double(json['actualBomQty']),
+    usageBasis: _string(json['usageBasis']) ?? 'DESIGN',
+    usageReason: _string(json['usageReason']),
+    usageSampleCount: _int(json['usageSampleCount']),
+    usageDefectRate: _double(json['usageDefectRate']),
     parentPerProductQty: _double(json['parentPerProductQty']),
     requiredQty: _double(json['requiredQty']) ?? 0,
     sourceRequiredQty: _double(json['sourceRequiredQty']),

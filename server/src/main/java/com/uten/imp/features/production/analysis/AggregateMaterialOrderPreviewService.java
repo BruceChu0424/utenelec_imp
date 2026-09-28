@@ -173,7 +173,7 @@ public class AggregateMaterialOrderPreviewService {
             if(manufacture&&request.approveNow()&&!access.hasAuthority("production_plan:approve"))reason="生成并审核需要生产计划审核权限";
         }
         BigDecimal rate=manufacture?(input.allowedOverproductionRate()==null
-                ?rateDefaults.getOrDefault(first.goodsId(),BigDecimal.ZERO):input.allowedOverproductionRate()):null;
+                ?defaultOverproductionRate(rateDefaults,first.goodsId()):input.allowedOverproductionRate()):null;
         if(rate!=null&&(rate.signum()<0||rate.compareTo(new BigDecimal("1000"))>=0||rate.stripTrailingZeros().scale()>6))throw invalid("允许超产比例无效");
         List<AggregateQuantityAllocator.SourceCapacity> capacities=new ArrayList<>();
         Map<UUID,BigDecimal> ordered=new LinkedHashMap<>();
@@ -338,13 +338,18 @@ public class AggregateMaterialOrderPreviewService {
         return recipe(parent,children,new HashSet<>());
     }
 
+    /**
+     * 配方键按设计使用数量(ADR-129 §2.5)：真实使用数量随学习变化，按它做键会让后续追加找不到
+     * 原批次；本批的子件需求仍按各行实际采用的用量(bomQty)展开。
+     */
     private static List<String> recipe(MaterialView parent,Map<String,List<MaterialView>> children,Set<UUID> visiting) {
         if(!visiting.add(parent.materialLineId()))throw conflict("组件结构存在循环，请先刷新并核对组件表");
         List<String> result=new ArrayList<>();
         for(MaterialView child:children.getOrDefault(nodeRef(parent.analysisLineId(),parent.nodeKey()),List.of())) {
             List<String> fields=new ArrayList<>();
             add(fields,relativePath(parent.nodeKey(),child.nodeKey()),child.goodsId(),child.colorId(),child.unitId(),child.controlStage(),
-                    child.consumptionBasis(),child.bomQty(),child.basisOutputQty(),child.allowPartialPackage(),child.hardGate(),child.sourceConfirmed(),child.routeConfirmed());
+                    child.consumptionBasis(),child.designBomQty()==null?child.bomQty():child.designBomQty(),
+                    child.basisOutputQty(),child.allowPartialPackage(),child.hardGate(),child.sourceConfirmed(),child.routeConfirmed());
             fields.addAll(recipe(child,children,visiting));result.add(CanonicalFingerprint.sha256(fields));
         }
         visiting.remove(parent.materialLineId());
@@ -389,6 +394,16 @@ public class AggregateMaterialOrderPreviewService {
         long count=groups.stream().filter(Objects::nonNull).mapToLong(group->group.materialLineIds().size()).sum();
         if(count>RequestLimits.MATERIAL_AGGREGATE_SOURCE_PATHS)
             throw invalid("单次汇总最多核对10000条原来源路径，请分次选择物料；同一物料的来源请保留在一组");
+    }
+
+    /**
+     * 没填允许超产比例 = 按货品默认(ADR-129 §2.10，{@code ProductionOverproductionAllowance.defaults}
+     * 随分析视图一次取回)，不再静默按 0。默认表里没有该货品说明货品已删除或停用。
+     */
+    private static BigDecimal defaultOverproductionRate(Map<UUID,BigDecimal> defaults,UUID goodsId) {
+        BigDecimal rate=defaults.get(goodsId);
+        if(rate==null)throw conflict("货品不存在或已停用，无法读取允许超产比例");
+        return rate;
     }
 
     private static String relativePath(String parent,String child) {

@@ -76,6 +76,7 @@ class MaterialAnalysisAllocationSnapshotPostgresTest {
                   lower_level_pending boolean NOT NULL DEFAULT FALSE,available_qty numeric NOT NULL DEFAULT 0,
                   reserved_qty numeric NOT NULL DEFAULT 0,safety_stock_qty numeric NOT NULL DEFAULT 0,
                   inbound_qty numeric NOT NULL DEFAULT 0,expected_ready_date date,updated_at timestamptz,updated_by uuid,
+                  design_bom_qty numeric,actual_bom_qty numeric,usage_basis text NOT NULL DEFAULT 'DESIGN',usage_reason text,usage_sample_count bigint,usage_defect_rate numeric,
                   UNIQUE(analysis_id,id),UNIQUE(analysis_item_id,node_key))
                 """);
         for (String definition : List.of(

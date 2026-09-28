@@ -1597,12 +1597,26 @@ abstract class _MaterialAnalysisMaterialTableState
       // 编号/还缺数量/下单数量」同属「表头只显示那几个字」的五列。2026-09-23
       // 并行会话 WIP 曾带回一条 info，因非交互列不渲染而沉睡；列头 ⓘ 机制
       // 补齐非交互列后会真的显示，与该口径冲突，故移除。
-      cellBuilder: (_, row) => Text(
-        _qty(_materialTableRequiredQty(row)),
-        key: ValueKey('material-analysis-source-required-${row.key}'),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      // ADR-129 §2.11：本行按哪个用量算(真实/设计、几批、设计值)放在单元格悬停里。
+      cellBuilder: (_, row) {
+        final quantity = Text(
+          _qty(_materialTableRequiredQty(row)),
+          key: ValueKey('material-analysis-source-required-${row.key}'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+        final material = row.material;
+        final usage = material == null
+            ? null
+            : materialAnalysisUsageBasisText(_l10n, material);
+        return usage == null
+            ? quantity
+            : Tooltip(
+                key: ValueKey('material-analysis-usage-basis-${row.key}'),
+                message: usage,
+                child: quantity,
+              );
+      },
     ),
     // 可用 = 本行私有份额 + 公共余量；有效选中输入只临时预占公共部分。
     // 正式下达后的库存、已下单和在途事实仍由服务端返回。
@@ -1672,7 +1686,9 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'allowedOverproductionRate',
       label: '允许超产比例',
       width: 152,
-      info: '本次下达计划允许的超产比例，默认 10%。不增加计划数量或自动多领料。已下达工单的比例修改仍须计划部审批。',
+      info:
+          '本次下达允许的超产比例：制造底层默认 10%，上层 0%；改过的按最近一次确认的比例记住。'
+          '已下达工单的比例修改仍须计划部审批。',
       value: (row) {
         if (row.aggregate case final aggregate?) {
           return _aggregateTable.rateText(aggregate);
@@ -1697,12 +1713,12 @@ abstract class _MaterialAnalysisMaterialTableState
             '${_overproductionPercentController(materialLineId: group.representative.materialLineId).text}%',
           );
         }
-        // 已下达比例随工单锁定，新增来源尚未下达时仍可设置。
+        // 已下达比例随工单锁定，新增来源尚未下达时仍可设置；快照刷新不改它的显示值。
         if (_tableGroupIssued(group)) {
           return Tooltip(
             message: '这一行已下达，允许超产比例随工单锁定；要改已下达工单的比例须计划部审批。',
             child: Text(
-              '${_overproductionPercentController(materialLineId: group.representative.materialLineId).text}%',
+              '${_overproductionPercentController(materialLineId: group.representative.materialLineId, issued: true).text}%',
             ),
           );
         }
@@ -5058,7 +5074,7 @@ abstract class _MaterialAnalysisMaterialTableState
           _BucketPlanDraft(
             analysisLineId: rootMakeLineId,
             qty: _tableRootPlanQty(group, pending[group]!)!,
-            allowedOverproductionRate: _overproductionRate(
+            allowedOverproductionRate: _submittedOverproductionRate(
               materialLineId: group.representative.materialLineId,
             ),
             departmentId: _tableWorkshopFor(group).id,
@@ -5073,7 +5089,7 @@ abstract class _MaterialAnalysisMaterialTableState
         _BucketCandidatePlanInput(
           materialLineId: group.representative.materialLineId,
           qty: pending[group]!,
-          allowedOverproductionRate: _overproductionRate(
+          allowedOverproductionRate: _submittedOverproductionRate(
             materialLineId: group.representative.materialLineId,
           ),
           departmentId: _tableWorkshopFor(group).id,

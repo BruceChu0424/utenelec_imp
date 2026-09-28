@@ -96,6 +96,12 @@ public class ProductionPlanItem extends BaseEntity {
     /** Initial plan allowance; later workshop approvals belong to the execution segment. */
     @Column(name = "allowed_overproduction_rate", precision = 9, scale = 6, nullable = false)
     private BigDecimal allowedOverproductionRate;
+    /**
+     * ADR-129 §2.10：DEFAULT = 系统按货品默认填写；EXPLICIT = 有人确认过该比例(只有它会被记成货品下次的默认)。
+     * MRP 子计划、报工补产、实产追加都停在 DEFAULT。
+     */
+    @Column(name = "allowed_overproduction_rate_source", nullable = false)
+    private String allowedOverproductionRateSource = ProductionOverproductionAllowance.SOURCE_DEFAULT;
     @Column(name = "lqty", precision = 18, scale = 4)
     private BigDecimal lqty = BigDecimal.ZERO;
     @Column(name = "iqty", precision = 18, scale = 4)

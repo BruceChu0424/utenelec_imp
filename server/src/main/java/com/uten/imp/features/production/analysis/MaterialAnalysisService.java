@@ -280,6 +280,8 @@ public class MaterialAnalysisService {
                     .executeUpdate();
         }
         validateSourceCapacity(loadSourceLines(analysisId, false));
+        // 刷新前先把 BOM 侧最新的设计/真实使用数量采纳进分析 (ADR-129)。
+        adoptLatestBomUsage(analysisId);
         // 页面发起的新建/刷新在同一次重算里按货品档案确认供应方式 (ADR-102); 委外前置自制由
         // 别的业务流程顺带建分析, 不替人确认, 留给打开分析的人刷新时确认.
         RefreshOutcome refreshed = refreshWithAnchorGrowth(analysisId, previousMakeAnchorRequirements,
@@ -1254,7 +1256,11 @@ public class MaterialAnalysisService {
                 : "ORDER BY o.deliver_date NULLS LAST, o.bill_date, o.bill_no, o.id\n";
     }
 
-    /** Fail closed when the direct production structure changed after the analysis snapshot. */
+    /**
+     * Fail closed when the direct production structure changed after the analysis snapshot.
+     * 只比结构(ADR-129 §2.5)：组件/颜色/单位/层级路径/控制段/计量规则/第一层单位换算率；
+     * 设计或真实使用数量的变化不拦下达/审批，随下一次人工刷新生效。
+     */
     public void requireCurrentBomSnapshot(UUID analysisId, Set<UUID> analysisItemIds) {
         if (analysisItemIds == null || analysisItemIds.isEmpty()) {
             throw validation("必须指定要校验的物料分析产品");
@@ -1281,28 +1287,20 @@ public class MaterialAnalysisService {
         }
         Map<UUID, Set<String>> snapshotBySource = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT bom_item_id, goods_id, color_id, unit_id,
-                       parent_per_product_qty, bom_qty, per_product_qty,
-                       control_stage, consumption_basis, basis_output_qty,
-                       allow_partial_package, hard_gate, source_suggestion,
-                       calculation_mode, analysis_item_id
+                SELECT analysis_item_id, calculation_mode, %s
                 FROM production_material_analysis_materials
                 WHERE analysis_id = :analysisId
                   AND analysis_item_id IN (:analysisItemIds)
                   AND active = TRUE AND depth = 1
                 ORDER BY analysis_item_id, node_key
-                """)
+                """.formatted(columnList(DIRECT_BOM_SIGNATURE)))
                 .setParameter("analysisId", analysisId)
                 .setParameter("analysisItemIds", roots.stream().map(SourceLine::analysisItemId).toList()))) {
-            if (!"EDGE_RULE".equals(string(row[13]))) {
+            if (!"EDGE_RULE".equals(string(row[1]))) {
                 throw conflict("历史物料快照必须先刷新，才能生成生产计划");
             }
-            snapshotBySource.computeIfAbsent(uuid(row[14]), ignored -> new TreeSet<>())
-                    .add(bomSignaturePart(
-                            uuid(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]),
-                            decimal(row[4]), decimal(row[5]), decimal(row[6]),
-                            string(row[7]), string(row[8]), decimal(row[9]),
-                            Boolean.TRUE.equals(row[10]), Boolean.TRUE.equals(row[11]), string(row[12])));
+            snapshotBySource.computeIfAbsent(uuid(row[0]), ignored -> new TreeSet<>())
+                    .add(bomSignature(java.util.Arrays.copyOfRange(row, 2, row.length)));
         }
         for (SourceLine source : roots) {
             if (!currentBySource.getOrDefault(source.analysisItemId(), Set.of()).equals(
@@ -1313,27 +1311,14 @@ public class MaterialAnalysisService {
     }
 
     private static String bomSignaturePart(BomNode node) {
-        return bomSignaturePart(node.bomItemId(), node.goodsId(), node.colorId(),
-                node.unitId(), node.parentPerProductQty(), node.bomQty(),
-                node.perProductQty(), node.controlStage(), node.consumptionBasis(),
-                node.basisOutputQty(), node.allowPartialPackage(), node.hardGate(),
-                node.suggestion());
+        return bomSignature(nodeValues(node, DIRECT_BOM_SIGNATURE));
     }
 
-    private static String bomSignaturePart(
-            UUID bomItemId, UUID goodsId, UUID colorId, UUID unitId,
-            BigDecimal parentPerProductQty, BigDecimal bomQty,
-            BigDecimal perProductQty, String controlStage,
-            String consumptionBasis, BigDecimal basisOutputQty,
-            boolean allowPartialPackage, boolean hardGate, String suggestion) {
-        return String.join("|", Objects.toString(bomItemId, ""),
-                Objects.toString(goodsId, ""), Objects.toString(colorId, ""),
-                Objects.toString(unitId, ""), decimalText(parentPerProductQty),
-                decimalText(bomQty), decimalText(perProductQty),
-                Objects.toString(controlStage, ""),
-                Objects.toString(consumptionBasis, ""), decimalText(basisOutputQty),
-                Boolean.toString(allowPartialPackage), Boolean.toString(hardGate),
-                Objects.toString(suggestion, ""));
+    /** 第一层签名：库内快照行与现时 BOM 节点按同一组列、同一文本口径比较(数值去尾零)。 */
+    private static String bomSignature(Object[] values) {
+        return java.util.Arrays.stream(values).map(value -> value == null ? ""
+                        : value instanceof BigDecimal number ? decimalText(number) : value.toString())
+                .collect(Collectors.joining("|"));
     }
 
     AnalysisHeader lockHeader(UUID analysisId) {
@@ -1485,6 +1470,16 @@ public class MaterialAnalysisService {
         boolean structureChanged = upsertNodeSnapshots(analysisId, snapshotRows, baseline);
         int routeResets = structureChanged && !confirmedBefore.isEmpty()
                 ? clearedConfirmations(analysisId, nodes, confirmedBefore) : 0;
+        // 分配读写入后的路线；选用量用的路线若已被这次写入改掉，按写入后的路线再选一次用量，
+        // 同一次刷新里需求与分配看同一条路线。结构与建议已写好，第二遍只改用量列，不会再清确认。
+        if (usageRoutesChanged(nodes, tree.usageRoutes(), loadEffectiveRoutes(analysisId))) {
+            tree = refreshTree(analysisId, true, typedOutputByMaterialLine, MaterialAnalysisIssuePreviewOverlay.NONE);
+            nodes = tree.nodes();
+            sources = tree.sources();
+            snapshotRows = nodeSnapshotRows(tree, availability);
+            upsertNodeSnapshots(analysisId, snapshotRows,
+                    MaterialAnalysisSnapshotBaseline.load(em, analysisId, NODE_STRUCTURE_COLUMNS));
+        }
         validateActiveBorrowEndpointsAfterRefresh(analysisId);
         AllocationSnapshot allocation = computeAllocationSnapshot(
                 analysisId, header.warehouseId(), sources, nodes, availability, snapshotRows,
@@ -1517,8 +1512,29 @@ public class MaterialAnalysisService {
         return cleared;
     }
 
-    /** 刷新的来源行与 BOM 树(第 1 层已按来源计划产出量展开)。 */
-    private record RefreshTree(List<SourceLine> sources, Map<UUID, SourceLine> sourcesById, List<BomNode> nodes) {}
+    /**
+     * 刷新的来源行与 BOM 树(第 1 层已按来源计划产出量展开)；[usageRoutes] 是选用量时读到的
+     * 各节点有效路线(写入本次快照之前的库内值)。
+     */
+    private record RefreshTree(List<SourceLine> sources, Map<UUID, SourceLine> sourcesById, List<BomNode> nodes,
+            Map<String, String> usageRoutes) {}
+
+    /**
+     * 选用量时看的路线与写入快照后的有效路线是否不同(ADR-129 §2.5)。子节点用量按父节点路线选，
+     * 所以只看有子节点的节点；库里还没有的节点选用量时按现时建议，写入后仍是它。写入会刷新主档
+     * 建议、事实变化会清掉人工确认，分配读的是写入后的路线，两者不同时须按写入后的路线再选一次。
+     */
+    static boolean usageRoutesChanged(List<BomNode> nodes, Map<String, String> usageRoutes,
+            Map<String, String> routesAfterWrite) {
+        for (BomNode node : nodes) {
+            if (!node.hasChildren()) continue;
+            String ref = nodeRef(node.analysisItemId(), node.nodeKey());
+            if (!Objects.equals(usageRoutes.getOrDefault(ref, node.suggestion()), routesAfterWrite.get(ref))) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     /**
      * 刷新第一段(只读): 来源行、BOM 树、计划批次与第 1 层按「计划产出量」展开。
@@ -1531,7 +1547,9 @@ public class MaterialAnalysisService {
         // sales amendment must not roll back a real receipt merely because new
         // planning now needs another finance review. Commands check admission
         // for their selected source lines before creating any new commitment.
-        List<BomNode> nodes = loadBomTrees(sources);
+        // 已有节点沿用快照锁定的用量，只按当前路线重新选择(ADR-129 §2.5)。
+        BomUsageContext usageContext = bomUsageContext(analysisId);
+        List<BomNode> nodes = loadBomTrees(sources, usageContext);
         Map<UUID, SourceLine> sourcesById = sources.stream()
                 .collect(Collectors.toMap(SourceLine::analysisItemId, source -> source));
         Map<String,List<BigDecimal>> plannedBatches = plannedMaterialBatches(analysisId, overlay);
@@ -1573,7 +1591,7 @@ public class MaterialAnalysisService {
                     : batched;
         }).toList();
         validateExactPegRefreshCompatibility(analysisId, nodes);
-        return new RefreshTree(sources, sourcesById, nodes);
+        return new RefreshTree(sources, sourcesById, nodes, usageContext.routes());
     }
 
     /** 刷新第二段(纯计算): 每个节点的库存/在途/缺口初值。 */
@@ -1628,21 +1646,72 @@ public class MaterialAnalysisService {
     /** 每块至多 500 行；快照通过一个明确字段类型的 JSON 参数传递。 */
     private static final int NODE_WRITE_CHUNK = 500;
 
-    private static final List<String> NODE_STRUCTURE_COLUMNS = List.of(
-            "parent_node_key", "bom_item_id", "goods_id", "color_id", "unit_id", "depth", "path", "per_product_qty",
-            "control_stage", "consumption_basis", "basis_output_qty", "allow_partial_package", "hard_gate", "bom_qty",
-            "parent_per_product_qty", "calculation_mode", "source_suggestion", "active");
-    private static final MaterialSnapshotInput NODE_INPUT = new MaterialSnapshotInput(
-            "id uuid", "analysis_id uuid", "analysis_item_id uuid", "node_key varchar", "parent_node_key varchar",
-            "bom_item_id uuid", "goods_id uuid", "color_id uuid", "unit_id uuid", "depth integer", "path text",
-            "per_product_qty numeric", "required_qty numeric", "available_qty numeric", "reserved_qty numeric",
-            "allocated_available_qty numeric", "safety_stock_qty numeric", "inbound_qty numeric",
-            "allocated_start_qty numeric", "allocated_finish_qty numeric", "allocated_ship_qty numeric", "shortage_qty numeric",
-            "expected_ready_date date", "control_stage varchar", "consumption_basis varchar", "basis_output_qty numeric",
-            "allow_partial_package boolean", "hard_gate boolean", "bom_qty numeric", "parent_per_product_qty numeric",
-            "calculation_mode varchar", "source_suggestion varchar", "lower_level_pending boolean", "active boolean",
-            "created_by uuid", "updated_by uuid");
+    /**
+     * 节点快照的一列：列名、JSON 输入类型、从节点取值，以及它是不是用量(ADR-129 §2.5)。
+     * 用量列(含按所选用量逐层算出的单耗)变化照常写入，但不是结构：预览/下达/审批的守卫与
+     * 路线确认重置都不看它。
+     */
+    record NodeColumn(String name, String type, java.util.function.Function<BomNode, Object> value, boolean usage) {}
+
+    private static NodeColumn structure(String name, String type, java.util.function.Function<BomNode, Object> value) {
+        return new NodeColumn(name, type, value, false);
+    }
+
+    private static NodeColumn usage(String name, String type, java.util.function.Function<BomNode, Object> value) {
+        return new NodeColumn(name, type, value, true);
+    }
+
+    /** 节点快照列只在这里定义一次：刷新比较、写入过滤、upsert、JSON 输入与守卫都由它派生。 */
+    private static final List<NodeColumn> NODE_COLUMNS = List.of(
+            structure("parent_node_key", "varchar", BomNode::parentNodeKey),
+            structure("bom_item_id", "uuid", BomNode::bomItemId),
+            structure("goods_id", "uuid", BomNode::goodsId),
+            structure("color_id", "uuid", BomNode::colorId),
+            structure("unit_id", "uuid", BomNode::unitId),
+            structure("depth", "integer", BomNode::depth),
+            structure("path", "text", BomNode::path),
+            usage("per_product_qty", "numeric", BomNode::perProductQty),
+            structure("control_stage", "varchar", BomNode::controlStage),
+            structure("consumption_basis", "varchar", BomNode::consumptionBasis),
+            structure("basis_output_qty", "numeric", BomNode::basisOutputQty),
+            structure("allow_partial_package", "boolean", BomNode::allowPartialPackage),
+            structure("hard_gate", "boolean", BomNode::hardGate),
+            usage("bom_qty", "numeric", BomNode::bomQty),
+            usage("parent_per_product_qty", "numeric", BomNode::parentPerProductQty),
+            structure("calculation_mode", "varchar", node -> "EDGE_RULE"),
+            structure("source_suggestion", "varchar", BomNode::suggestion),
+            structure("active", "boolean", node -> true),
+            usage("design_bom_qty", "numeric", node -> node.usage().designQty()),
+            usage("actual_bom_qty", "numeric", node -> node.usage().actualQty()),
+            usage("usage_basis", "varchar", node -> node.usage().basis()),
+            usage("usage_reason", "varchar", node -> node.usage().reason()),
+            usage("usage_sample_count", "bigint", node -> node.usage().sampleCount()),
+            usage("usage_defect_rate", "numeric", node -> node.usage().defectRate()));
+    private static final List<String> NODE_STRUCTURE_COLUMNS = NODE_COLUMNS.stream().map(NodeColumn::name).toList();
+    /** 守卫只比结构(ADR-129 §2.5)：预览「结构已变化」不再比任何用量。 */
+    private static final List<NodeColumn> NODE_GUARD = NODE_COLUMNS.stream().filter(column -> !column.usage()).toList();
+    /** 下达/审批「BOM 直接层已变更」：结构列加第一层单位换算率(第一层的父件单耗就是来源换算率)。 */
+    private static final List<NodeColumn> DIRECT_BOM_SIGNATURE = java.util.stream.Stream.concat(NODE_GUARD.stream(),
+            NODE_COLUMNS.stream().filter(column -> column.name().equals("parent_per_product_qty"))).toList();
+    /** JSON 输入：身份列、{@link #NODE_COLUMNS}、刷新初值列，与 {@link #nodeSnapshotValues} 逐段对应。 */
+    private static final MaterialSnapshotInput NODE_INPUT = new MaterialSnapshotInput(java.util.stream.Stream.of(
+                    java.util.stream.Stream.of("id uuid", "analysis_id uuid", "analysis_item_id uuid", "node_key varchar"),
+                    NODE_COLUMNS.stream().map(column -> column.name() + " " + column.type()),
+                    java.util.stream.Stream.of("required_qty numeric", "available_qty numeric", "reserved_qty numeric",
+                            "allocated_available_qty numeric", "safety_stock_qty numeric", "inbound_qty numeric",
+                            "allocated_start_qty numeric", "allocated_finish_qty numeric", "allocated_ship_qty numeric",
+                            "shortage_qty numeric", "expected_ready_date date", "lower_level_pending boolean",
+                            "created_by uuid", "updated_by uuid"))
+            .flatMap(columns -> columns).toArray(String[]::new));
     private static final List<String> NODE_INPUT_COLUMNS = NODE_INPUT.columns();
+
+    private static String columnList(List<NodeColumn> columns) {
+        return columns.stream().map(NodeColumn::name).collect(Collectors.joining(", "));
+    }
+
+    private static Object[] nodeValues(BomNode node, List<NodeColumn> columns) {
+        return columns.stream().map(column -> column.value().apply(node)).toArray();
+    }
 
     private static String nodeStructureComparison(String left, String right, boolean distinct) {
         String leftFields = NODE_STRUCTURE_COLUMNS.stream().map(column -> left + "." + column).collect(Collectors.joining(", "));
@@ -1665,9 +1734,12 @@ public class MaterialAnalysisService {
      * （{@code PreplanReallocationMakeSupplementEndToEndTest} 的让料用例正踩在这里：
      * 让出方与借入方两份分析共用同一个货品、路线各不相同。）
      *
-     * <p>结构性事实（货品 / 颜色 / 单位 / 父节点 / 路径 / 单耗 / 控制段 / BOM 数量）一条
-     * 没删，真改了照旧清确认并计入 {@code routeResetCount}。只有「来源」这一项交还给人：
-     * 它现在就是人填的，系统不该反过来替人作废。
+     * <p><b>2026-09-27(ADR-129)：单耗(per_product_qty)与 BOM 数量(bom_qty)也移出本条件</b>。
+     * 节点用量现在按设计/真实使用数量与父节点路线逐节点选择：学习更新真实值、人工刷新采用新值、
+     * 父节点改路线换用设计值，都只是用量变化，不是配方变了，不能作废人工确认的路线。
+     *
+     * <p>结构性事实(货品 / 颜色 / 单位 / 父节点 / 路径 / 控制段 / 计量规则)一条没删，
+     * 真改了照旧清确认并计入 {@code routeResetCount}。
      */
     private static final String NODE_FACT_CHANGED_CONDITION = """
             production_material_analysis_materials.goods_id
@@ -1680,8 +1752,6 @@ public class MaterialAnalysisService {
                 IS DISTINCT FROM EXCLUDED.parent_node_key
             OR production_material_analysis_materials.path
                 IS DISTINCT FROM EXCLUDED.path
-            OR production_material_analysis_materials.per_product_qty
-                IS DISTINCT FROM EXCLUDED.per_product_qty
             OR production_material_analysis_materials.control_stage
                 IS DISTINCT FROM EXCLUDED.control_stage
             OR production_material_analysis_materials.consumption_basis
@@ -1692,8 +1762,6 @@ public class MaterialAnalysisService {
                 IS DISTINCT FROM EXCLUDED.allow_partial_package
             OR production_material_analysis_materials.hard_gate
                 IS DISTINCT FROM EXCLUDED.hard_gate
-            OR production_material_analysis_materials.bom_qty
-                IS DISTINCT FROM EXCLUDED.bom_qty
             """;
 
     private static String resetUnlessFactsUnchanged(String column) {
@@ -1703,28 +1771,12 @@ public class MaterialAnalysisService {
 
     private static final String NODE_UPSERT_ON_CONFLICT =
             "ON CONFLICT (analysis_item_id, node_key) DO UPDATE SET\n"
-            + "    parent_node_key = EXCLUDED.parent_node_key,\n"
-            + "    bom_item_id = EXCLUDED.bom_item_id,\n"
-            + "    goods_id = EXCLUDED.goods_id,\n"
-            + "    color_id = EXCLUDED.color_id,\n"
-            + "    unit_id = EXCLUDED.unit_id,\n"
-            + "    depth = EXCLUDED.depth,\n"
-            + "    path = EXCLUDED.path,\n"
-            + "    per_product_qty = EXCLUDED.per_product_qty,\n"
-            + "    control_stage = EXCLUDED.control_stage,\n"
-            + "    consumption_basis = EXCLUDED.consumption_basis,\n"
-            + "    basis_output_qty = EXCLUDED.basis_output_qty,\n"
-            + "    allow_partial_package = EXCLUDED.allow_partial_package,\n"
-            + "    hard_gate = EXCLUDED.hard_gate,\n"
-            + "    bom_qty = EXCLUDED.bom_qty,\n"
-            + "    parent_per_product_qty = EXCLUDED.parent_per_product_qty,\n"
-            + "    calculation_mode = EXCLUDED.calculation_mode,\n"
-            + "    source_suggestion = EXCLUDED.source_suggestion,\n"
+            + NODE_STRUCTURE_COLUMNS.stream().map(column -> "    " + column + " = EXCLUDED." + column + ",\n")
+                    .collect(Collectors.joining())
             + "    confirmed_route = " + resetUnlessFactsUnchanged("confirmed_route") + ",\n"
             + "    route_reason = " + resetUnlessFactsUnchanged("route_reason") + ",\n"
             + "    route_confirmed_by = " + resetUnlessFactsUnchanged("route_confirmed_by") + ",\n"
             + "    route_confirmed_at = " + resetUnlessFactsUnchanged("route_confirmed_at") + ",\n"
-            + "    active = TRUE,\n"
             + "    updated_at = now(), updated_by = EXCLUDED.updated_by"
             + "\nWHERE " + nodeStructureComparison("production_material_analysis_materials", "EXCLUDED", true);
 
@@ -1742,25 +1794,18 @@ public class MaterialAnalysisService {
     /** Same complete input row as the former VALUES form; exact numeric values never pass through double. */
     private static Object[] nodeSnapshotValues(UUID analysisId, UUID actorId, NodeSnapshotRow row) {
         BomNode node = row.node();
-        return new Object[] {
-                UUID.randomUUID(), analysisId, node.analysisItemId(), node.nodeKey(), node.parentNodeKey(),
-                node.bomItemId(), node.goodsId(), node.colorId(), node.unitId(), node.depth(), node.path(),
-                node.perProductQty(), row.required(), row.available(), row.reserved(), BigDecimal.ZERO,
-                node.safetyStock(), row.inbound(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, row.shortage(),
-                row.expectedReadyDate(), node.controlStage(), node.consumptionBasis(), node.basisOutputQty(),
-                node.allowPartialPackage(), node.hardGate(), node.bomQty(), node.parentPerProductQty(),
-                "EDGE_RULE", node.suggestion(), row.lowerPending(), true, actorId, actorId
-        };
+        return java.util.stream.Stream.of(
+                new Object[] {UUID.randomUUID(), analysisId, node.analysisItemId(), node.nodeKey()},
+                nodeStructure(node),
+                new Object[] {row.required(), row.available(), row.reserved(), BigDecimal.ZERO,
+                        node.safetyStock(), row.inbound(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        row.shortage(), row.expectedReadyDate(), row.lowerPending(), actorId, actorId})
+                .flatMap(java.util.Arrays::stream).toArray();
     }
 
-    /** Deduplicate the same source/path key before one statement; retain the original encounter order. */
-    /** 与 {@link #NODE_STRUCTURE_COLUMNS} 逐列对应的结构值。 */
+    /** 与 {@link #NODE_STRUCTURE_COLUMNS} 逐列对应的快照值。 */
     private static Object[] nodeStructure(BomNode node) {
-        return new Object[] {
-                node.parentNodeKey(), node.bomItemId(), node.goodsId(), node.colorId(), node.unitId(), node.depth(), node.path(),
-                node.perProductQty(), node.controlStage(), node.consumptionBasis(), node.basisOutputQty(),
-                node.allowPartialPackage(), node.hardGate(), node.bomQty(), node.parentPerProductQty(),
-                "EDGE_RULE", node.suggestion(), true};
+        return nodeValues(node, NODE_COLUMNS);
     }
 
     private boolean upsertNodeSnapshots(UUID analysisId, List<NodeSnapshotRow> rows, MaterialAnalysisSnapshotBaseline baseline) {
@@ -5455,13 +5500,17 @@ public class MaterialAnalysisService {
         overlay.replaceSnapshots(nodes, ready, roots);
     }
 
-    /** 预览不做结构决定: 需要新增/停用节点或改写结构列时, 请先刷新分析。 */
+    /**
+     * 预览不做结构决定: 需要新增/停用节点或改写结构列时, 请先刷新分析。
+     * 只比结构列(ADR-129 §2.5)：用量锁定在快照里，预览按同一锁定值展开，用量不同不拦。
+     */
     private void requireStoredStructure(UUID analysisId, List<BomNode> nodes) {
-        MaterialAnalysisSnapshotBaseline baseline = MaterialAnalysisSnapshotBaseline.load(em, analysisId, NODE_STRUCTURE_COLUMNS);
+        MaterialAnalysisSnapshotBaseline baseline = MaterialAnalysisSnapshotBaseline.load(em, analysisId,
+                NODE_GUARD.stream().map(NodeColumn::name).toList());
         Set<String> refs = new HashSet<>();
         for (BomNode node : nodes) {
             refs.add(nodeRef(node.analysisItemId(), node.nodeKey()));
-            if (!baseline.unchangedStructure(node.analysisItemId(), node.nodeKey(), nodeStructure(node))) {
+            if (!baseline.unchangedStructure(node.analysisItemId(), node.nodeKey(), nodeValues(node, NODE_GUARD))) {
                 throw conflict("物料分析的 BOM 结构已变化，请先刷新分析再预览下达");
             }
         }
@@ -5975,7 +6024,12 @@ public class MaterialAnalysisService {
         return Map.copyOf(blocked);
     }
 
+    /** 不带分析快照的读取(下达/审批的第一层结构签名、结构测试)：全部按新节点取现时用量。 */
     private List<BomNode> loadBomTrees(List<SourceLine> sources) {
+        return loadBomTrees(sources, BomUsageContext.LIVE);
+    }
+
+    private List<BomNode> loadBomTrees(List<SourceLine> sources, BomUsageContext usageContext) {
         // BUY roots own external supply; child items only anchor plans and never
         // duplicate the material tree retained on their original source item.
         List<SourceLine> roots = sources.stream()
@@ -5984,14 +6038,23 @@ public class MaterialAnalysisService {
                         && !SOURCE_SUBCONTRACT_MAKE.equals(source.sourceType()))
                 .toList();
         Map<UUID, List<Object[]>> rows = new MaterialAnalysisBomSnapshotReader(em).read(roots);
+        Set<String> outboundNodes = subcontractOutboundNodes(roots, rows, usageContext.routes());
         List<BomNode> result = new ArrayList<>();
         for (SourceLine source : roots) {
-            result.addAll(bomNodes(source, rows.getOrDefault(source.analysisItemId(), List.of())));
+            result.addAll(bomNodes(source, rows.getOrDefault(source.analysisItemId(), List.of()),
+                    usageContext, outboundNodes));
         }
         return List.copyOf(result);
     }
 
-    private List<BomNode> bomNodes(SourceLine source, List<Object[]> rows) {
+    /**
+     * 由快照读取行建节点(ADR-129 §2.5)。已有节点(同一节点键、同一条 BOM 边且组件、单位与计量
+     * 规则都没变)沿用快照锁定的设计/真实使用数量(连同有效批次与不良率)；原地改了组件或计量规则的边
+     * 按新节点整组取现时值，锁定值只在原规则下有意义，锁定值与现时值不混用。每个节点再按父节点路线选用量。单耗在这里逐层算
+     * (6 位向上取整)并作为下一层的父件单耗，与写入列的精度一致，刷新不会误判变化。
+     */
+    static List<BomNode> bomNodes(SourceLine source, List<Object[]> rows,
+            BomUsageContext usageContext, Set<String> subcontractOutboundNodes) {
         List<BomNode> result = new ArrayList<>();
         Map<String, BomNode> byNodeKey = new LinkedHashMap<>();
         for (Object[] row : rows) {
@@ -6001,40 +6064,261 @@ public class MaterialAnalysisService {
             int depth = integer(row[5]);
             String nodeKey = string(row[6]);
             String parentNodeKey = string(row[7]);
+            BigDecimal parentPerProductQty;
             BigDecimal parentOutputQty;
             if (depth == 1) {
+                parentPerProductQty = source.unitRate();
                 parentOutputQty = source.plannedOutputQty().multiply(source.unitRate());
             } else {
                 BomNode parent = byNodeKey.get(parentNodeKey);
                 if (parent == null) {
                     throw conflict("BOM 层级路径不完整，无法计算子件需求");
                 }
+                parentPerProductQty = parent.perProductQty();
                 // Gross first pass: this discovers every downstream stock dimension. The
                 // persisted tree is rebased from each parent's stock-backed shortage later.
                 parentOutputQty = parent.snapshotRequiredQty();
             }
+            UUID bomItemId = uuid(row[0]);
+            String ref = nodeRef(source.analysisItemId(), nodeKey);
+            String consumptionBasis = string(row[20]);
+            BigDecimal basisOutputQty = decimal(row[21]);
+            boolean allowPartialPackage = Boolean.TRUE.equals(row[22]);
+            PinnedUsage pinned = usageContext.pinned().get(ref);
+            if (pinned != null && !pinned.sameEdgeRule(bomItemId, uuid(row[2]), uuid(row[4]),
+                    consumptionBasis, basisOutputQty, allowPartialPackage)) pinned = null;
+            BomUsage usage = BomUsage.choose(
+                    pinned == null ? decimal(row[8]) : pinned.designQty(),
+                    pinned == null ? optionalDecimal(row[9]) : pinned.actualQty(),
+                    pinned == null ? longValue(row[25]) : pinned.sampleCount(),
+                    pinned == null ? optionalDecimal(row[27]) : pinned.defectRate(),
+                    string(row[10]), Boolean.TRUE.equals(row[26]),
+                    subcontractOutboundNodes.contains(ref));
+            BigDecimal perProductQty;
             BigDecimal snapshotRequired;
             try {
+                perProductQty = MaterialConsumptionMath.effectivePerProduct(
+                        parentPerProductQty, usage.usedQty(), consumptionBasis, basisOutputQty);
                 snapshotRequired = MaterialConsumptionMath.required(
-                        parentOutputQty, decimal(row[9]), string(row[20]),
-                        decimal(row[21]), Boolean.TRUE.equals(row[22]));
+                        parentOutputQty, usage.usedQty(), consumptionBasis,
+                        basisOutputQty, allowPartialPackage);
             } catch (IllegalArgumentException ex) {
                 throw conflict("BOM 包装/批次计量数据无效，不能进行物料分析");
             }
+            boolean hasChildren = Boolean.TRUE.equals(row[18]);
             BomNode node = new BomNode(
-                    source.analysisItemId(), uuid(row[0]), uuid(row[1]),
+                    source.analysisItemId(), bomItemId, uuid(row[1]),
                     uuid(row[2]), uuid(row[3]), uuid(row[4]), depth,
-                    nodeKey, parentNodeKey, decimal(row[8]), decimal(row[9]),
-                    decimal(row[10]), snapshotRequired,
+                    nodeKey, parentNodeKey, parentPerProductQty, usage,
+                    perProductQty, snapshotRequired,
                     string(row[11]), string(row[12]), string(row[13]), string(row[14]),
-                    string(row[15]), decimal(row[16]), suggestion(string(row[17]), Boolean.TRUE.equals(row[18])),
-                    Boolean.TRUE.equals(row[18]), string(row[19]), string(row[20]),
-                    decimal(row[21]), Boolean.TRUE.equals(row[22]),
-                    Boolean.TRUE.equals(row[23]));
+                    string(row[15]), decimal(row[16]), suggestion(string(row[17]), hasChildren),
+                    hasChildren, string(row[19]), consumptionBasis,
+                    basisOutputQty, allowPartialPackage,
+                    Boolean.TRUE.equals(row[23]), List.of());
             result.add(node);
             byNodeKey.put(nodeKey, node);
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * 父节点有效路线是委外、且父件是单一子件委外货品的节点(ADR-129 §2.5)：我方把这个子件发给
+     * 委外商，按设计使用数量，与委外发料计划一致。第 1 层的父节点是来源行的根产品，看根产品确认的
+     * 路线；下层看父节点的有效路线(与分配同一口径，新节点按建议)。不看会被路线确认回写的
+     * goods.source_type。候选父件一次批量判定。
+     */
+    private Set<String> subcontractOutboundNodes(List<SourceLine> roots, Map<UUID, List<Object[]>> rows,
+            Map<String, String> routes) {
+        Map<String, UUID> parentGoodsByNode = new LinkedHashMap<>();
+        for (SourceLine source : roots) {
+            Map<String, String> routeByNodeKey = new HashMap<>();
+            for (Object[] row : rows.getOrDefault(source.analysisItemId(), List.of())) {
+                String nodeKey = string(row[6]);
+                String ref = nodeRef(source.analysisItemId(), nodeKey);
+                routeByNodeKey.put(nodeKey, routes.getOrDefault(ref,
+                        suggestion(string(row[17]), Boolean.TRUE.equals(row[18]))));
+                String parentRoute = integer(row[5]) == 1
+                        ? source.rootRoute() : routeByNodeKey.get(string(row[7]));
+                if ("SUBCONTRACT".equals(parentRoute)) parentGoodsByNode.put(ref, uuid(row[1]));
+            }
+        }
+        if (parentGoodsByNode.isEmpty()) return Set.of();
+        Set<UUID> soleComponent = soleComponentSubcontractGoodsIds(parentGoodsByNode.values());
+        return parentGoodsByNode.entrySet().stream()
+                .filter(entry -> soleComponent.contains(entry.getValue()))
+                .map(Map.Entry::getKey).collect(Collectors.toUnmodifiableSet());
+    }
+
+    /**
+     * 快照里已锁定的用量与锁定时这条边的规则(组件、单位、计量规则)。锁定值只在原规则下有意义：
+     * 同一节点键、同一条 BOM 边且规则没变才沿用。不良率与真实使用数量一起锁定、一起沿用。
+     */
+    record PinnedUsage(UUID bomItemId, UUID goodsId, UUID unitId, String consumptionBasis,
+            BigDecimal basisOutputQty, boolean allowPartialPackage,
+            BigDecimal designQty, BigDecimal actualQty, Long sampleCount, BigDecimal defectRate) {
+        /** 同一条边、同一计量规则：只有这样，锁定的用量才是按现时这条边的口径表达的。 */
+        boolean sameEdgeRule(UUID bomItemId, UUID goodsId, UUID unitId, String consumptionBasis,
+                BigDecimal basisOutputQty, boolean allowPartialPackage) {
+            return Objects.equals(this.bomItemId, bomItemId) && Objects.equals(this.goodsId, goodsId)
+                    && Objects.equals(this.unitId, unitId)
+                    && Objects.equals(this.consumptionBasis, consumptionBasis)
+                    && (this.basisOutputQty == null ? basisOutputQty == null
+                            : basisOutputQty != null && this.basisOutputQty.compareTo(basisOutputQty) == 0)
+                    && this.allowPartialPackage == allowPartialPackage;
+        }
+    }
+
+    /**
+     * 按节点选用量所需的库内事实：已锁定用量(键 analysis_item_id|node_key)与各节点的有效路线
+     * (确认路线，未确认按建议，与分配同一口径)。{@link #LIVE} = 不带快照，全部取现时值。
+     */
+    record BomUsageContext(Map<String, PinnedUsage> pinned, Map<String, String> routes) {
+        static final BomUsageContext LIVE = new BomUsageContext(Map.of(), Map.of());
+    }
+
+    private BomUsageContext bomUsageContext(UUID analysisId) {
+        Map<UUID, Map<String, PinnedUsage>> byItem = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT analysis_item_id, node_key, bom_item_id, goods_id, unit_id, consumption_basis,
+                       basis_output_qty, allow_partial_package,
+                       COALESCE(design_bom_qty, bom_qty), actual_bom_qty, usage_sample_count, usage_defect_rate
+                FROM production_material_analysis_materials
+                WHERE analysis_id = :analysisId AND active = TRUE AND node_role = 'BOM_COMPONENT'
+                """).setParameter("analysisId", analysisId))) {
+            byItem.computeIfAbsent(uuid(row[0]), ignored -> new HashMap<>()).put(string(row[1]), new PinnedUsage(
+                    uuid(row[2]), uuid(row[3]), uuid(row[4]), string(row[5]), decimal(row[6]),
+                    Boolean.TRUE.equals(row[7]), decimal(row[8]), optionalDecimal(row[9]), longValue(row[10]),
+                    optionalDecimal(row[11])));
+        }
+        return new BomUsageContext(withAggregateAnchorPins(byItem, aggregateMemberSubtrees(analysisId)),
+                loadEffectiveRoutes(analysisId));
+    }
+
+    /**
+     * 已锁定用量按节点键展开，并给共享制造锚点(AGGREGATE_MAKE)还没有自己锁定值的节点补上批次成员
+     * 子树里同一相对 BOM 路径(同一条边)的锁定值(ADR-129 §2.5)：汇总预览按第一个成员的子件用量
+     * 算需求，锚点第一次展开就得到同一个数，写进计划的也是它。成员按行 id 排序(与预览同序)，
+     * 第一个有该节点的成员优先；锚点自己已锁定的节点不动。
+     */
+    static Map<String, PinnedUsage> withAggregateAnchorPins(Map<UUID, Map<String, PinnedUsage>> byItem,
+            Map<UUID, List<AggregateMemberSubtree>> anchorMembers) {
+        Map<String, PinnedUsage> pinned = new HashMap<>();
+        byItem.forEach((itemId, nodes) -> nodes.forEach((nodeKey, usage) -> pinned.put(nodeRef(itemId, nodeKey), usage)));
+        anchorMembers.forEach((anchorId, members) -> {
+            for (AggregateMemberSubtree member : members) {
+                byItem.getOrDefault(member.analysisItemId(), Map.of()).forEach((nodeKey, usage) -> {
+                    String relative = member.relativeNodeKey(nodeKey);
+                    if (relative != null) pinned.putIfAbsent(nodeRef(anchorId, relative), usage);
+                });
+            }
+        });
+        return Map.copyOf(pinned);
+    }
+
+    /**
+     * 共享制造批次的一个成员行(汇总时选中的物料行)。锚点树与成员子树按相对 BOM 路径对应：锚点
+     * 节点键就是从锚点货品往下的边路径，成员子树节点键是成员节点键加同一段路径(成员是顶层供给行时
+     * 就是同一段路径)，与 fn_aggregate_relative_bom_path 同义。
+     */
+    record AggregateMemberSubtree(UUID materialLineId, UUID analysisItemId, String nodeKey, boolean rootSupply) {
+        /** 成员子树里的节点键 → 相对路径；不在本成员子树里为 null。 */
+        String relativeNodeKey(String memberTreeNodeKey) {
+            if (rootSupply) return memberTreeNodeKey;
+            String prefix = nodeKey + "/";
+            return memberTreeNodeKey.startsWith(prefix) ? memberTreeNodeKey.substring(prefix.length()) : null;
+        }
+
+        /** 相对路径 → 成员子树里的节点键(空路径 = 成员自己；顶层供给行的「自己」对应第 1 层的空父键)。 */
+        String memberNodeKey(String relativeNodeKey) {
+            if (rootSupply) return relativeNodeKey;
+            return relativeNodeKey.isEmpty() ? nodeKey : nodeKey + "/" + relativeNodeKey;
+        }
+    }
+
+    /** 共享批次的全部成员行 id(建立时的配置加上每次建立/追加事件)，别名 intent(id)；外层须有 batch。 */
+    private static final String AGGREGATE_BATCH_MEMBER_IDS = """
+                CROSS JOIN LATERAL (
+                    SELECT value::uuid AS id FROM jsonb_array_elements_text(batch.configuration_snapshot->'materialLineIds')
+                    UNION SELECT value::uuid FROM preplan_aggregate_batch_events event
+                        CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(event.intent_snapshot->'materialLineIds','[]'::jsonb))
+                        WHERE event.batch_id=batch.id AND event.event_type IN('CREATE','APPEND')
+                ) intent
+                """;
+
+    /** 未撤回共享制造批次的锚点 → 仍有效的成员行，按行 id 排序(与汇总预览取第一个成员同序)。 */
+    private Map<UUID, List<AggregateMemberSubtree>> aggregateMemberSubtrees(UUID analysisId) {
+        Map<UUID, List<AggregateMemberSubtree>> result = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT batch.anchor_analysis_item_id, member.id, member.analysis_item_id, member.node_key,
+                       member.node_role = 'ROOT_SUPPLY'
+                FROM preplan_aggregate_batches batch
+                JOIN preplan_supply_actions action ON action.id=batch.action_id AND action.status<>'CANCELLED'
+                """ + AGGREGATE_BATCH_MEMBER_IDS + """
+                JOIN production_material_analysis_materials member ON member.id=intent.id
+                    AND member.analysis_id=batch.analysis_id AND member.active
+                WHERE batch.analysis_id=:analysisId AND batch.anchor_analysis_item_id IS NOT NULL
+                """).setParameter("analysisId", analysisId))) {
+            result.computeIfAbsent(uuid(row[0]), ignored -> new ArrayList<>()).add(new AggregateMemberSubtree(
+                    uuid(row[1]), uuid(row[2]), string(row[3]), Boolean.TRUE.equals(row[4])));
+        }
+        result.values().forEach(members -> members.sort(
+                Comparator.comparing(member -> member.materialLineId().toString())));
+        return result;
+    }
+
+    /**
+     * 人工刷新时保持原值的父键(analysis_item_id|父节点键)：父节点已有下达计划批次的子节点与已冻结
+     * 的车间需求一致；共享制造锚点冻结的父键同步到每个批次成员子树的同一相对路径，同一批次的成员树
+     * 与锚点树始终是同一个数(追加预览按成员子件算，追加计划按锚点子件长)。
+     */
+    static Set<String> frozenUsageParents(Set<String> plannedParents, Map<UUID, List<AggregateMemberSubtree>> anchorMembers) {
+        Set<String> result = new HashSet<>(plannedParents);
+        anchorMembers.forEach((anchorId, members) -> {
+            String anchorPrefix = nodeRef(anchorId, "");
+            for (String parent : plannedParents) {
+                if (!parent.startsWith(anchorPrefix)) continue;
+                String relative = parent.substring(anchorPrefix.length());
+                for (AggregateMemberSubtree member : members) {
+                    result.add(nodeRef(member.analysisItemId(), member.memberNodeKey(relative)));
+                }
+            }
+        });
+        return Set.copyOf(result);
+    }
+
+    /**
+     * 人工刷新采用最新的设计/真实使用数量(ADR-129 §2.5)，只由人工刷新入口调用；保存路线、下达、
+     * 审批、唤醒等内部重算沿用快照值。冻结的父键({@link #frozenUsageParents})下的子节点保持原值。
+     * 只写真正变了的行；采用哪一个仍由随后的刷新按路线逐节点决定。
+     */
+    private void adoptLatestBomUsage(UUID analysisId) {
+        Set<String> frozenParents = frozenUsageParents(plannedMaterialBatches(
+                analysisId, MaterialAnalysisIssuePreviewOverlay.NONE).keySet(), aggregateMemberSubtrees(analysisId));
+        em.createNativeQuery("""
+                UPDATE production_material_analysis_materials material
+                SET design_bom_qty = latest.design_qty, actual_bom_qty = latest.actual_qty,
+                    usage_sample_count = latest.sample_count, usage_defect_rate = latest.defect_rate,
+                    updated_at = now(), updated_by = :actorId
+                FROM (
+                    SELECT candidate.id, edge_usage.design_qty, edge_usage.actual_qty, edge_usage.sample_count,
+                           edge_usage.defect_rate
+                    FROM production_material_analysis_materials candidate
+                    %s
+                    WHERE candidate.analysis_id = :analysisId AND candidate.active = TRUE
+                      AND candidate.node_role = 'BOM_COMPONENT' AND edge_usage.design_qty > 0
+                      AND NOT (candidate.analysis_item_id::text || '|' || COALESCE(candidate.parent_node_key, '')
+                               = ANY(string_to_array(:frozenParents, ',')))
+                ) latest
+                WHERE material.id = latest.id
+                  AND (material.design_bom_qty, material.actual_bom_qty, material.usage_sample_count,
+                       material.usage_defect_rate)
+                      IS DISTINCT FROM (latest.design_qty, latest.actual_qty, latest.sample_count, latest.defect_rate)
+                """.formatted(MaterialAnalysisBomSnapshotReader.edgeUsageLateral("candidate.bom_item_id")))
+                .setParameter("analysisId", analysisId)
+                .setParameter("frozenParents", String.join(",", frozenParents))
+                .setParameter("actorId", currentUser.requireId())
+                .executeUpdate();
     }
 
     /** Expanded trees use one typed array parameter, avoiding JDBC's scalar parameter ceiling. */
@@ -6590,7 +6874,9 @@ public class MaterialAnalysisService {
                        m.lower_level_pending,
                        g.min_order_qty, g.order_multiple_qty,
                        g.owning_warehouse_id, owning_warehouse.name,
-                       g.owning_workshop_department_id, owning_workshop.name
+                       g.owning_workshop_department_id, owning_workshop.name,
+                       m.design_bom_qty, m.actual_bom_qty, m.usage_basis,
+                       m.usage_reason, m.usage_sample_count, m.usage_defect_rate
                 FROM production_material_analysis_materials m
                 JOIN goods g ON g.id = m.goods_id
                 JOIN units u ON u.id = m.unit_id
@@ -6644,14 +6930,20 @@ public class MaterialAnalysisService {
                         ? row.confirmedRoute() : row.suggestion()))
                 .map(MaterialRow::goodsId)
                 .filter(Objects::nonNull)
-                .distinct().sorted().toList();
-        if (goodsIds.isEmpty()) return Set.of();
+                .toList();
+        return soleComponentSubcontractGoodsIds(goodsIds);
+    }
+
+    /** 单一子件委外货品的批量判定(fn_subcontract_sole_component_goods)；视图与按节点选用量共用。 */
+    private Set<UUID> soleComponentSubcontractGoodsIds(Collection<UUID> goodsIds) {
+        List<UUID> distinct = goodsIds.stream().distinct().sorted().toList();
+        if (distinct.isEmpty()) return Set.of();
         return Set.copyOf(NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT goods.id
                 FROM goods
                 WHERE goods.id IN (:goodsIds)
                   AND fn_subcontract_sole_component_goods(goods.id)
-                """, UUID.class).setParameter("goodsIds", goodsIds), UUID.class));
+                """, UUID.class).setParameter("goodsIds", distinct), UUID.class));
     }
 
     /** 物料行 → 其计划锚点子件行（MAKE_COMPONENT / SUBCONTRACT_MAKE）。 */
@@ -7270,12 +7562,7 @@ public class MaterialAnalysisService {
                 SELECT source.id,target.id,0::numeric
                 FROM preplan_aggregate_batches batch
                 JOIN preplan_supply_actions action ON action.id=batch.action_id AND action.status<>'CANCELLED'
-                CROSS JOIN LATERAL (
-                    SELECT value::uuid AS id FROM jsonb_array_elements_text(batch.configuration_snapshot->'materialLineIds')
-                    UNION SELECT value::uuid FROM preplan_aggregate_batch_events event
-                        CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(event.intent_snapshot->'materialLineIds','[]'::jsonb))
-                        WHERE event.batch_id=batch.id AND event.event_type IN('CREATE','APPEND')
-                ) intent
+                """ + AGGREGATE_BATCH_MEMBER_IDS + """
                 JOIN production_material_analysis_materials parent ON parent.id=intent.id AND parent.analysis_id=batch.analysis_id
                 JOIN production_material_analysis_materials source ON source.analysis_item_id=parent.analysis_item_id AND source.active
                     AND ((parent.node_role='ROOT_SUPPLY' AND source.depth=1) OR source.parent_node_key=parent.node_key)
@@ -9304,17 +9591,59 @@ public class MaterialAnalysisService {
                 BigDecimal.ZERO, false, null, null);
      }
 
+    /**
+     * 节点采用的用量(ADR-129 §2.5)：设计使用数量、真实使用数量(该边计量口径)、实际采用哪一个
+     * (basis)、没用真实值的原因(reason)、真实值依据的有效批次，以及与真实值一起的报工不良率
+     * (defectRate，0..1，6 位；没有真实值时为空，只作说明，不参与计算)。快照原样落这六个值。
+     */
+    record BomUsage(BigDecimal designQty, BigDecimal actualQty, String basis, String reason, Long sampleCount,
+            BigDecimal defectRate) {
+        static final String ACTUAL = "ACTUAL";
+        static final String DESIGN = "DESIGN";
+
+        /** 只有设计值的节点(没有用量来源的调用方)。 */
+        static BomUsage design(BigDecimal designQty) {
+            return new BomUsage(designQty, null, DESIGN, null, null, null);
+        }
+
+        /**
+         * 逐节点选用量：父节点按委外把这个子件发给单一子件委外商 → 设计值(与委外发料合同一致)；
+         * 边不是线性规则(整包/固定批次，平均单耗不能近似) → 设计值；其余有真实值用真实值，否则设计值。
+         * [linear] 与 [liveStatus] 都是 v_goods_bom_item_usage 对这条边的现时结果，Java 不再重判；
+         * 锁定的真实值只在计量规则没变时沿用(见 {@link PinnedUsage#sameEdgeRule})，这里仍按现时线性
+         * 把关。[liveStatus] 只用来说明没有真实值的原因(父件单位变了还是没有数据)，锁定的真实值
+         * 为空而现时已学到数据时仍记「没有数据」，等人工刷新再采用。[defectRate] 始终跟着真实使用数量走：
+         * 真实值留着(含按委外发出时留作路线改回的依据)它就留着，没有真实值时为空。
+         */
+        static BomUsage choose(BigDecimal designQty, BigDecimal actualQty, Long sampleCount, BigDecimal defectRate,
+                String liveStatus, boolean linear, boolean subcontractOutbound) {
+            if (subcontractOutbound) {
+                return new BomUsage(designQty, actualQty, DESIGN, "SUBCONTRACT_OUTBOUND", sampleCount, defectRate);
+            }
+            if (!linear) return new BomUsage(designQty, actualQty, DESIGN, "NOT_LINEAR", sampleCount, defectRate);
+            if (actualQty != null) return new BomUsage(designQty, actualQty, ACTUAL, null, sampleCount, defectRate);
+            return new BomUsage(designQty, null, DESIGN,
+                    "OUTPUT_UNIT_CHANGED".equals(liveStatus) ? liveStatus : "NO_DATA", sampleCount, null);
+        }
+
+        /** 本节点实际采用的每父件用量。 */
+        BigDecimal usedQty() {
+            return ACTUAL.equals(basis) ? actualQty : designQty;
+        }
+    }
+
     record BomNode(
             UUID analysisItemId, UUID bomItemId, UUID parentGoodsId,
             UUID goodsId, UUID colorId, UUID unitId, int depth,
             String nodeKey, String parentNodeKey,
-            BigDecimal parentPerProductQty, BigDecimal bomQty,
+            BigDecimal parentPerProductQty, BomUsage usage,
             BigDecimal perProductQty, BigDecimal snapshotRequiredQty,
             String goodsCode, String goodsName, String spec, String colorName,
             String unitName, BigDecimal safetyStock, String suggestion,
             boolean hasChildren, String controlStage, String consumptionBasis,
             BigDecimal basisOutputQty, boolean allowPartialPackage,
             boolean hardGate, List<BigDecimal> outputBatches) {
+        /** 用量只有设计值的节点。 */
         BomNode(UUID analysisItemId, UUID bomItemId, UUID parentGoodsId,
                 UUID goodsId, UUID colorId, UUID unitId, int depth,
                 String nodeKey, String parentNodeKey,
@@ -9325,10 +9654,14 @@ public class MaterialAnalysisService {
                 boolean hasChildren, String controlStage, String consumptionBasis,
                 BigDecimal basisOutputQty, boolean allowPartialPackage, boolean hardGate) {
             this(analysisItemId,bomItemId,parentGoodsId,goodsId,colorId,unitId,depth,
-                    nodeKey,parentNodeKey,parentPerProductQty,bomQty,perProductQty,snapshotRequiredQty,
+                    nodeKey,parentNodeKey,parentPerProductQty,BomUsage.design(bomQty),perProductQty,snapshotRequiredQty,
                     goodsCode,goodsName,spec,colorName,unitName,safetyStock,suggestion,
                     hasChildren,controlStage,consumptionBasis,basisOutputQty,allowPartialPackage,
                     hardGate,List.of());
+        }
+        /** 本节点实际采用的每父件用量(真实或设计，见 {@link BomUsage#choose})。 */
+        BigDecimal bomQty() {
+            return usage.usedQty();
         }
         MaterialDimension dimension() {
             return new MaterialDimension(goodsId, colorId, unitId);
@@ -9350,7 +9683,7 @@ public class MaterialAnalysisService {
         BigDecimal requiredForSingleParentOutput(BigDecimal parentOutputQty) {
             try {
                 return MaterialConsumptionMath.required(
-                        parentOutputQty, bomQty,
+                        parentOutputQty, bomQty(),
                         consumptionBasis, basisOutputQty, allowPartialPackage);
             } catch (IllegalArgumentException ex) {
                 throw conflict("BOM 包装/批次计量数据无效，不能计算齐套数量");
@@ -9360,14 +9693,14 @@ public class MaterialAnalysisService {
             return new BomNode(
                     analysisItemId, bomItemId, parentGoodsId,
                     goodsId, colorId, unitId, depth, nodeKey, parentNodeKey,
-                    parentPerProductQty, bomQty, perProductQty, requiredQty,
+                    parentPerProductQty, usage, perProductQty, requiredQty,
                     goodsCode, goodsName, spec, colorName, unitName, safetyStock,
                     suggestion, hasChildren, controlStage, consumptionBasis,
                     basisOutputQty, allowPartialPackage, hardGate,outputBatches);
         }
         BomNode withOutputBatches(List<BigDecimal> batches) {
             return new BomNode(analysisItemId,bomItemId,parentGoodsId,goodsId,colorId,unitId,depth,
-                    nodeKey,parentNodeKey,parentPerProductQty,bomQty,perProductQty,snapshotRequiredQty,
+                    nodeKey,parentNodeKey,parentPerProductQty,usage,perProductQty,snapshotRequiredQty,
                     goodsCode,goodsName,spec,colorName,unitName,safetyStock,suggestion,
                     hasChildren,controlStage,consumptionBasis,basisOutputQty,allowPartialPackage,
                     hardGate,List.copyOf(batches));
@@ -9506,6 +9839,8 @@ public class MaterialAnalysisService {
             boolean allowPartialPackage, boolean hardGate,
             BigDecimal bomQty, BigDecimal parentPerProductQty,
             BigDecimal perProductQty,
+            /** 快照锁定的设计/真实使用数量与采用依据(ADR-129)；顶层供给行只有默认的 DESIGN。 */
+            BomUsage usage,
             BigDecimal requiredQty, BigDecimal availableQty,
             BigDecimal allocatedAvailableQty, BigDecimal reservedQty,
             BigDecimal safetyStockQty, BigDecimal inboundQty, BigDecimal shortageQty,
@@ -9525,6 +9860,8 @@ public class MaterialAnalysisService {
                     string(row[15]), string(row[16]), decimal(row[17]),
                     Boolean.TRUE.equals(row[18]), Boolean.TRUE.equals(row[19]),
                     decimal(row[20]), decimal(row[21]), decimal(row[22]),
+                    new BomUsage(optionalDecimal(row[41]), optionalDecimal(row[42]),
+                            string(row[43]), string(row[44]), longValue(row[45]), optionalDecimal(row[46])),
                     decimal(row[23]), decimal(row[24]), decimal(row[25]),
                     decimal(row[26]), decimal(row[27]), decimal(row[28]),
                     decimal(row[29]), date(row[30]), string(row[31]), string(row[32]),
@@ -9552,7 +9889,7 @@ public class MaterialAnalysisService {
             return new MaterialRow(id, analysisItemId, nodeKey, goodsId, goodsCode, goodsName, spec,
                     colorId, colorName, unitId, unitName, depth, path, parentNodeKey, parentGoodsId,
                     controlStage, consumptionBasis, basisOutputQty, allowPartialPackage, hardGate,
-                    bomQty, parentPerProductQty, perProductQty,
+                    bomQty, parentPerProductQty, perProductQty, usage,
                     required, available, allocated, reserved, safety, inbound, shortage,
                     expectedReady, suggestion, confirmedRoute, routeReason, lowerPending,
                     minOrderQty, orderMultipleQty, owningWarehouseId, owningWarehouseName,
@@ -9631,7 +9968,8 @@ public class MaterialAnalysisService {
                     parentNodeKey, parentGoodsId, parentLabel,
                     controlStage, consumptionBasis, basisOutputQty,
                     allowPartialPackage, hardGate, bomQty, parentPerProductQty,
-                    perProductQty, requiredQty,
+                    perProductQty, usage.designQty(), usage.actualQty(), usage.basis(),
+                    usage.reason(), usage.sampleCount(), usage.defectRate(), requiredQty,
                     availableQty, exactPeggedQty, allocatedAvailableQty, reservedQty,
                     safetyStockQty, inboundQty, shortageQty,
                     demandGap,

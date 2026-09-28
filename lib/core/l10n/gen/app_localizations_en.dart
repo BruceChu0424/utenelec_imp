@@ -12,26 +12,158 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bomLearningTitle => 'BOM learning';
 
   @override
+  String get bomLearningHelp =>
+      'Actual usage = cumulative net consumption of completed, reconciled production ÷ cumulative output of the batches that used the material. Material analysis and workshop material issue use the actual usage first and fall back to the design usage when there is no data. Released tasks keep the quantities frozen at release. Defects recorded in daily reports are kept for reference only and do not count as output; usage per produced unit counts good plus defective pieces.';
+
+  @override
+  String get bomLearningInactive =>
+      'No learning record yet. Accumulation starts when in-house production of this item is completed and leftover material is reconciled.';
+
+  @override
+  String bomLearningPaused(String reason) {
+    return 'No learned components were created: $reason. Actual usage keeps accumulating.';
+  }
+
+  @override
+  String get bomDesignQty => 'Design usage';
+
+  @override
+  String get bomActualQty => 'Actual usage';
+
+  @override
+  String get bomLearnedEdge => 'Learned';
+
+  @override
+  String bomActualTipActual(int samples, String net, String output) {
+    return 'Accumulated from $samples completed production batches: net consumption $net / output $output';
+  }
+
+  @override
+  String bomActualTipAverage(String qty) {
+    return 'Actual average per unit: $qty';
+  }
+
+  @override
+  String get bomActualTipUsed =>
+      'Material analysis and workshop material issue use the actual usage.';
+
+  @override
+  String bomUsesDesignBecause(String reason) {
+    return '$reason; calculations use the design usage.';
+  }
+
+  @override
+  String get bomDesignReasonNoData =>
+      'No completed production with counted leftover material yet';
+
+  @override
+  String get bomDesignReasonNotLinear =>
+      'Whole packages or fixed batches cannot use an average';
+
+  @override
+  String get bomDesignReasonOutputUnitChanged =>
+      'The parent item\'s unit changed and relearning is needed';
+
+  @override
+  String get bomDesignReasonSubcontractOutbound =>
+      'This time the material is issued through a single-component subcontract and uses the subcontract quantity';
+
+  @override
+  String get bomDesignReasonOther => 'No usable actual data';
+
+  @override
+  String bomRelearnedSince(String date) {
+    return 'Accumulating again since $date';
+  }
+
+  @override
+  String get bomDesignQtyRequired => 'Enter the design usage';
+
+  @override
+  String get bomDesignQtyInvalid =>
+      'Design usage must be a number greater than 0';
+
+  @override
+  String get bomLearnedEdgeEditHint =>
+      'This component was learned from actual material use. Changing the design usage makes it manually maintained; actual usage keeps accumulating.';
+
+  @override
+  String bomLearnedEdgeDeleteNote(int count) {
+    return '$count of them were learned by the system and will not be added back automatically after deletion.';
+  }
+
+  @override
+  String get bomLearningMaterial => 'Material';
+
+  @override
+  String get bomLearningExposure => 'Cumulative output';
+
+  @override
+  String get bomLearningSampleCount => 'Valid batches';
+
+  @override
+  String get bomLearningBasis => 'Calculation uses';
+
+  @override
+  String get bomLearningOutsideBom => 'Used outside the BOM';
+
+  @override
+  String get bomLearningReleased => 'Deleted, not added back automatically';
+
+  @override
+  String get bomLearningRelearn => 'Relearn from now';
+
+  @override
+  String bomLearningRelearnConfirm(String name) {
+    return 'Relearn \"$name\" from now?\nEarlier accumulation no longer counts. Until new production data arrives, calculations use the design usage.';
+  }
+
+  @override
+  String get bomLearningRelearnDone => 'Relearning started';
+
+  @override
+  String get bomLearningRelearnFailed =>
+      'Relearning failed. Please try again later.';
+
+  @override
+  String get bomLearningLoadFailed =>
+      'Failed to load the learning record. Please retry.';
+
+  @override
+  String get bomLearningEmpty => 'No components and no materials used yet';
+
+  @override
+  String get bomLearningAction => 'Action';
+
+  @override
+  String get bomLearningBlockedOutputIdentity =>
+      'the parent item\'s unit or identity changed';
+
+  @override
+  String get bomLearningBlockedMaterialIdentity =>
+      'a material was deleted or its unit changed';
+
+  @override
+  String get bomLearningBlockedColorConflict =>
+      'the same material was issued in several colors; decide it manually in the assembly information';
+
+  @override
+  String get bomLearningBlockedPrecision =>
+      'a usage is outside the recordable range';
+
+  @override
+  String get bomLearningBlockedCycle => 'it would create an assembly loop';
+
+  @override
+  String get bomLearningBlockedOther =>
+      'maintain the components manually in the assembly information';
+
+  @override
   String get materialDiscoveryBatchHelp =>
       'Select continuous or full-kit production to identify materials before arranging batches.';
 
   @override
   String get materialDiscoveryCancel => 'Withdraw material definition request';
-
-  @override
-  String get bomLearningHelp =>
-      'After production and material reconciliation, usage is updated from cumulative net consumption divided by actual output. Existing work orders keep their frozen requirements.';
-
-  @override
-  String get bomLearningInactive =>
-      'No learning record yet. Learning begins when a manufactured leaf item completes material issue and production.';
-
-  @override
-  String get bomLearningAuto => 'BOM updates automatically';
-
-  @override
-  String get bomLearningPaused =>
-      'Automatic updates are paused to protect a manual BOM or resolve material, unit or color conflicts. Accumulated records are retained. Review the component records.';
 
   @override
   String get bomLearningOutput => 'Cumulative actual output';
@@ -43,7 +175,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bomLearningNet => 'Cumulative net consumption';
 
   @override
-  String get bomLearningAverage => 'Average usage per unit';
+  String bomActualTipDefect(String defect, String perProduced, String rate) {
+    return 'Plus $defect defective: counting good plus defective pieces, usage is $perProduced; defect rate $rate';
+  }
+
+  @override
+  String get bomLearningDefect => 'Defects';
+
+  @override
+  String get bomLearningPerProduced => 'Usage per produced unit';
+
+  @override
+  String get bomLearningDefectRate => 'Defect rate';
+
+  @override
+  String get bomLearningTotalDefect => 'Cumulative defects';
 
   @override
   String get materialDiscoveryTitle => 'Record materials to issue';

@@ -45,6 +45,16 @@ String _groupKey(String line) => 'NODE|a-$line|$line';
 String _qtyText(WidgetTester tester, Finder field) =>
     tester.widget<TextField>(field).controller!.text;
 
+/// 主表这一行的「允许超产比例」输入框。
+Finder _rateField(String line) => find.descendant(
+  of: find.byKey(
+    ValueKey('material-analysis-overproduction-rate-${_groupKey(line)}'),
+  ),
+  matching: find.byType(TextField),
+);
+String _rateText(WidgetTester tester, String line) =>
+    _qtyText(tester, _rateField(line));
+
 Finder _orderQty(String line) =>
     find.byKey(ValueKey('material-analysis-order-qty-${_groupKey(line)}'));
 Finder _appendQty(String line) =>
@@ -3934,6 +3944,283 @@ void main() {
     expect(_aggregateSubmits(), hasLength(1));
     final line = _records(_aggregateSubmits().single.body!['groups']).single;
     expect(line['allowedOverproductionRate'], 0);
+  });
+
+  // ADR-129 §2.10：只有人确认过的比例才记住。没人改过的格子送空值，由服务端
+  // 按货品默认填写(DEFAULT)；人改过的按所填值明确提交(EXPLICIT)。
+  testWidgets('允许超产比例没人改过：汇总下单不带比例，由服务端按货品默认填写', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        return data;
+      },
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-6']),
+    );
+    expect(_rateText(tester, 'm-6'), '10');
+    await _check(tester, _rowCheckbox('m-6'));
+    await tester.pumpAndSettle();
+    await _submitSelected(tester);
+    final group = _records(_aggregateSubmits().single.body!['groups']).single;
+    expect(group['materialLineIds'], ['m-6']);
+    expect(group['route'], 'MAKE');
+    expect(group.containsKey('allowedOverproductionRate'), isFalse);
+  });
+
+  for (final typed in const [null, '12.5']) {
+    testWidgets('顶层自制下达车间：比例${typed == null ? '没人改过不带' : '改过按所填值明确提交'}', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+        mutate: (data) {
+          (data['allowedActions'] as List).add('GENERATE_PLAN');
+          return data;
+        },
+        defaultWorkshops: _workshopDefaultsFor(const ['g-m-root']),
+      );
+      expect(_rateText(tester, 'm-root'), '0');
+      if (typed != null) {
+        await tester.enterText(_rateField('m-root'), typed);
+        await tester.pumpAndSettle();
+      }
+      await _onlyRoot(tester);
+      await tester.pumpAndSettle();
+      await _submitSelected(tester);
+      final plans = _submits()
+          .where((request) => request.path.endsWith('/issue-plans'))
+          .toList();
+      final line = _records(plans.single.body!['lines']).single;
+      expect(line['analysisLineId'], 'product-1');
+      if (typed == null) {
+        expect(line.containsKey('allowedOverproductionRate'), isFalse);
+      } else {
+        expect(line['allowedOverproductionRate'], 0.125);
+      }
+    });
+  }
+
+  testWidgets('同料两来源比例按数值比较：10 与 10.0 是同一比例，按人改过的明确提交', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        (data['flatMaterials'] as List).add({
+          ..._fixtureMaterial(data, 'm-6'),
+          'materialLineId': 'm-6-copy',
+          'nodeKey': 'n-m-6-copy',
+          'actionGroupKey': 'a-m-6-copy',
+        });
+        return data;
+      },
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-6']),
+    );
+    await tester.enterText(_rateField('m-6-copy'), '10.0');
+    await tester.pumpAndSettle();
+    await _check(tester, _rowCheckbox('m-6'));
+    await _check(tester, _rowCheckbox('m-6-copy'));
+    await tester.pumpAndSettle();
+    await _submitSelected(tester);
+    final group = _records(_aggregateSubmits().single.body!['groups']).single;
+    expect(group['materialLineIds'], ['m-6', 'm-6-copy']);
+    expect(group['allowedOverproductionRate'], 0.1);
+    expect(find.textContaining('各来源超产比例不同'), findsNothing);
+  });
+
+  // 汇总草稿开着时新快照带来新的默认比例：汇总比例格跟着没人改过的来源刷新(提交
+  // 按来源送空值，服务端填的就是新默认)；撤销草稿时预填的来源回到当前默认，仍不带比例。
+  // 草稿里先在汇总比例格改过(来源成了人填的、不跟着刷新)再撤销，也回到当前默认，
+  // 而不是草稿前的旧默认。
+  for (final typedInDraft in const [false, true]) {
+    testWidgets(
+      '汇总草稿期间默认比例变了：${typedInDraft ? '汇总比例格改过的' : '汇总比例格跟着刷新'}，撤销后仍按当前默认不带比例',
+      (tester) async {
+        var newDefaults = false;
+        await _pump(
+          tester,
+          permissions: {
+            ..._permissions,
+            Perm.productionMaterialAnalysisGenerate,
+          },
+          mutate: (data) {
+            (data['allowedActions'] as List).add('GENERATE_PLAN');
+            (data['flatMaterials'] as List).add({
+              ..._fixtureMaterial(data, 'm-6'),
+              'materialLineId': 'm-6-copy',
+              'nodeKey': 'n-m-6-copy',
+              'actionGroupKey': 'a-m-6-copy',
+            });
+            return data;
+          },
+          detailResponse: (data, _) {
+            if (newDefaults) {
+              data['overproductionDefaults'] = {
+                ...(data['overproductionDefaults'] as Map),
+                'g-m-6': 0.15,
+              };
+            }
+            return data;
+          },
+          defaultWorkshops: _workshopDefaultsFor(const ['g-m-6']),
+        );
+        await tester.tap(
+          find.byKey(const ValueKey('material-bom-layout-material')),
+        );
+        await tester.pumpAndSettle();
+        final aggregateRate = find.descendant(
+          of: find.byKey(
+            const ValueKey('material-aggregate-rate-g-m-6|本色|unit-1'),
+          ),
+          matching: find.byType(TextField),
+        );
+        expect(tester.widget<TextField>(aggregateRate).controller!.text, '10');
+        await tester.enterText(
+          find.byKey(const ValueKey('material-aggregate-qty-g-m-6|本色|unit-1')),
+          '500',
+        );
+        await tester.pump(const Duration(milliseconds: 350));
+        await tester.pumpAndSettle();
+        if (typedInDraft) {
+          await tester.enterText(aggregateRate, '12');
+          await tester.pump(const Duration(milliseconds: 350));
+          await tester.pumpAndSettle();
+        }
+
+        newDefaults = true;
+        await tester.pump(const Duration(seconds: 46));
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<TextField>(aggregateRate).controller!.text,
+          typedInDraft ? '12' : '15',
+        );
+
+        await tester.tap(
+          find.byKey(const Key('material-aggregate-cancel-drafts')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(
+            of: find.byType(AlertDialog),
+            matching: find.text('撤销草稿'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('material-bom-layout-product')),
+        );
+        await tester.pumpAndSettle();
+        expect(_rateText(tester, 'm-6'), '15');
+        expect(_rateText(tester, 'm-6-copy'), '15');
+        await _check(tester, _rowCheckbox('m-6'));
+        await _check(tester, _rowCheckbox('m-6-copy'));
+        await tester.pumpAndSettle();
+        await _submitSelected(tester);
+        final group = _records(
+          _aggregateSubmits().single.body!['groups'],
+        ).single;
+        expect(group['materialLineIds'], ['m-6', 'm-6-copy']);
+        expect(group.containsKey('allowedOverproductionRate'), isFalse);
+      },
+    );
+  }
+
+  for (final typed in const [false, true]) {
+    testWidgets('新快照带来新的默认比例：${typed ? '改过的格子不动' : '没改过的格子跟着刷新'}，已下达的不动', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+        mutate: _withIssuedMakeRow,
+        afterWrite: (data) => data
+          ..['overproductionDefaults'] = {
+            'g-m-root': 0,
+            'g-m-6': 0.15,
+            'g-m-7': 0.2,
+          },
+        defaultWorkshops: _workshopDefaultsFor(const ['g-m-6', 'g-m-7']),
+      );
+      Finder locked() => find.descendant(
+        of: find.byWidgetPredicate(
+          (widget) =>
+              widget is Tooltip &&
+              widget.message?.startsWith('这一行已下达，允许超产比例随工单锁定') == true,
+        ),
+        matching: find.byType(Text),
+      );
+      expect(tester.widget<Text>(locked()).data, '10%');
+      if (typed) {
+        await tester.enterText(_rateField('m-6'), '12');
+        await tester.pumpAndSettle();
+      }
+      // 只下一条采购行：回包是带新默认比例的新快照。
+      await _check(tester, _rowCheckbox('m-2'));
+      await tester.pumpAndSettle();
+      await _submitSelected(tester);
+      expect(
+        _records(_aggregateSubmits().single.body!['groups']).single['route'],
+        'BUY',
+      );
+      expect(_rateText(tester, 'm-6'), typed ? '12' : '15');
+      expect(tester.widget<Text>(locked()).data, '10%');
+    });
+  }
+
+  testWidgets('需要数量悬停说明本行按哪个用量算；表头仍不加说明', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) {
+        _fixtureMaterial(data, 'm-6').addAll({
+          'bomQty': 0.105,
+          'designBomQty': 0.1,
+          'actualBomQty': 0.105,
+          'usageBasis': 'ACTUAL',
+          'usageSampleCount': 12,
+          'usageDefectRate': 0.0325,
+        });
+        _fixtureMaterial(data, 'm-2').addAll({
+          'bomQty': 2,
+          'designBomQty': 2,
+          'usageBasis': 'DESIGN',
+          'usageReason': 'NO_DATA',
+        });
+        _fixtureMaterial(data, 'm-root')['bomQty'] = 1;
+        return data;
+      },
+    );
+    String usage(String rowKey) => tester
+        .widget<Tooltip>(
+          find.byKey(ValueKey('material-analysis-usage-basis-$rowKey')),
+        )
+        .message!;
+    expect(
+      usage('MATERIAL|m-6'),
+      '每件按真实使用数量 0.105 计算(12 批累计，设计 0.1，不良率 3.25%)',
+    );
+    // 原因文案与组装信息页同一份多语言映射。
+    expect(
+      usage('MATERIAL|m-2'),
+      '每件按设计使用数量 2 计算：'
+      '${lookupAppLocalizations(const Locale('zh')).bomDesignReasonNoData}',
+    );
+    // 顶层供给行没有 BOM 边，不给用量说明；数字本身照旧。
+    expect(
+      find.byKey(
+        const ValueKey('material-analysis-usage-basis-PRODUCT|product-1'),
+      ),
+      findsNothing,
+    );
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-6'), '1000');
+    final required = tester
+        .widget<MasterDataTableView<dynamic>>(
+          find.byKey(const Key('material-analysis-material-table')),
+        )
+        .columns
+        .singleWhere((column) => column.key == 'requiredQty');
+    expect(required.info, isNull, reason: 'ADR-102 §12.8：需要数量表头只显示那几个字');
   });
 
   testWidgets('顶层已下达后追加：走产品行 planDrafts 且声明纯公共备货', (tester) async {

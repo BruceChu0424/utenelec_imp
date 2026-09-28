@@ -24,14 +24,16 @@ public class ProductionPlanningRequestValidator {
     private final ProductionAssignmentValidator assignmentValidator;
 
     public Validated validateCurrent(
-            java.util.UUID planId,
+            UUID planId,
             GeneratePlanningPackageRequest request) {
         validateRequestShape(request);
         ProductionExecutionPlanningService.Snapshot snapshot =
                 planning.preview(planId, request.getWarehouseId());
         if (!snapshot.fingerprint().equalsIgnoreCase(
                 request.getPreviewFingerprint())) {
-            throw conflict("预排草案已过期：目标仓库存、占用、计划明细或 BOM 已变化，请重新计算");
+            throw ProductionExecutionPlanningService.stalePreview(
+                    ProductionExecutionPlanningService.STALE_PREVIEW,
+                    !planning.fromMaterialAnalysis(planId));
         }
         return validateAgainstSnapshot(request, snapshot);
     }
@@ -51,21 +53,8 @@ public class ProductionPlanningRequestValidator {
         // generate another purchase request would either reject a legitimate
         // WAITING work order or duplicate the planner's existing request.
         requirePurchaseGeneration(
-                request, allocation, !analysisManagesSupply(snapshot.planId()));
+                request, allocation, !planning.fromMaterialAnalysis(snapshot.planId()));
         return new Validated(snapshot, routes, allocation);
-    }
-
-    private boolean analysisManagesSupply(UUID planId) {
-        Number count = (Number) em.createNativeQuery("""
-                        SELECT COUNT(*)
-                        FROM production_plans
-                        WHERE id = :planId
-                          AND material_analysis_id IS NOT NULL
-                          AND is_deleted = FALSE
-                        """)
-                .setParameter("planId", planId)
-                .getSingleResult();
-        return count.longValue() > 0;
     }
 
     public void validateRequestShape(GeneratePlanningPackageRequest request) {

@@ -66,6 +66,13 @@ public class ProductionDailyReportItem extends BaseEntity {
     @Column(name = "qty", precision = 18, scale = 4)
     private BigDecimal qty;
 
+    /**
+     * 不良数(ADR-129，与完工量同单位)：只记录，不进良品数、库存、FQC、超产与分流。
+     * 一次录入被拆成多份时整笔只挂在第一份上(库里 daily_report_defect_first_slice 把关)。
+     */
+    @Column(name = "defect_qty", nullable = false, precision = 18, scale = 4)
+    private BigDecimal defectQty = BigDecimal.ZERO;
+
     @Column(name = "price", precision = 18, scale = 4)
     private BigDecimal price;
 

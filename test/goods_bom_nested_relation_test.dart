@@ -9,9 +9,12 @@ import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 class _FakeGoodsBomRepository implements GoodsBomRepository {
-  _FakeGoodsBomRepository({this.empty = false});
+  _FakeGoodsBomRepository({this.empty = false, this.nestedLearned = false});
 
   final bool empty;
+
+  /// 嵌套组件是系统学出的组件(ADR-129 编辑/删除提示用例)。
+  final bool nestedLearned;
   final listCalls = <String>[];
   final parent = const GoodsBomItem(
     id: 'row-b',
@@ -22,7 +25,7 @@ class _FakeGoodsBomRepository implements GoodsBomRepository {
     qty: 1,
   );
 
-  final nested = const GoodsBomItem(
+  late final nested = GoodsBomItem(
     id: 'row-c',
     componentGoodsId: 'goods-c',
     componentCode: 'C',
@@ -35,6 +38,7 @@ class _FakeGoodsBomRepository implements GoodsBomRepository {
     basisOutputQty: 100,
     allowPartialPackage: false,
     hardGate: false,
+    systemLearned: nestedLearned,
   );
 
   /// 批量删除调用记录：(父货品 id, 提交的关系行 id)。
@@ -93,7 +97,23 @@ class _FakeGoodsBomRepository implements GoodsBomRepository {
     required List<BomPasteTarget> targets,
     required List<Map<String, dynamic>> items,
   }) async => throw UnimplementedError();
+
+  @override
+  Future<GoodsBomLearningSummary> learning(String goodsId) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<GoodsBomLearningSummary> relearn(
+    String goodsId,
+    String componentGoodsId,
+  ) async => throw UnimplementedError();
 }
+
+/// 编辑弹窗的「设计使用数量」输入框。
+final _editQtyField = find.descendant(
+  of: find.byKey(const Key('goods-bom-edit-qty')),
+  matching: find.byType(TextField),
+);
 
 Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
   await tester.binding.setSurfaceSize(const Size(1600, 900));
@@ -258,7 +278,16 @@ void main() {
 
     await tester.tap(find.text('编辑').first);
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).first, '3');
+    // 字段名「设计使用数量」，打开时按 6 位去尾零回填原值。
+    expect(
+      find.descendant(
+        of: find.byType(Dialog),
+        matching: find.textContaining('设计使用数量'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.widget<TextField>(_editQtyField).controller?.text, '2');
+    await tester.enterText(_editQtyField, '3');
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
@@ -273,6 +302,59 @@ void main() {
     // 故保存体不再包含 controlStage/consumptionBasis 等。
     expect(repo.updatedBody?.containsKey('controlStage'), isFalse);
     expect(repo.updatedBody?.containsKey('hardGate'), isFalse);
+  });
+
+  testWidgets('edit sends the design qty only when the user changed it', (
+    tester,
+  ) async {
+    final repo = _FakeGoodsBomRepository(nestedLearned: true);
+    await _pumpBom(tester, repo);
+
+    await tester.tap(find.text('编辑').first);
+    await tester.pumpAndSettle();
+    // 系统学出的组件：先用黄色提示说清改数量的后果。
+    expect(
+      find.text('这是系统按真实用料学出的组件；改设计使用数量后转为人工维护，真实使用数量照常累计'),
+      findsOneWidget,
+    );
+    // 只改备注：请求里没有 qty，服务端保留原设计使用数量(学习组件不被接管)。
+    await tester.enterText(find.widgetWithText(TextField, '备注'), '换供应商试产');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(repo.updatedBody?.containsKey('qty'), isFalse);
+    expect(repo.updatedBody?['summary'], '换供应商试产');
+  });
+
+  testWidgets('clearing the design qty is rejected instead of defaulting', (
+    tester,
+  ) async {
+    final repo = _FakeGoodsBomRepository();
+    await _pumpBom(tester, repo);
+
+    await tester.tap(find.text('编辑').first);
+    await tester.pumpAndSettle();
+    await tester.enterText(_editQtyField, '');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(repo.updatedBody, isNull, reason: '空的设计使用数量不能提交');
+    expect(find.text('请填写设计使用数量'), findsOneWidget);
+  });
+
+  testWidgets('deleting a learned component explains it will not come back', (
+    tester,
+  ) async {
+    final repo = _FakeGoodsBomRepository(nestedLearned: true);
+    await _pumpBom(tester, repo);
+
+    await tester.tap(find.text('删除').first);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('goods-bom-delete-learned-note')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('删除后系统不会再自动加回'), findsOneWidget);
   });
 
   testWidgets('audit mode marks row audited on single tap', (tester) async {

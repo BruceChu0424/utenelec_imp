@@ -40,6 +40,10 @@ import java.util.stream.Collectors;
  * 一条都不写并逐条说明；全部合格才动手，写入中途数据库拒绝也整体回滚。
  *
  * <p>查询按批：目标与组件一次取、现有组件一次取、成环检查按层批量下探(不逐个节点查)。
+ *
+ * <p>替换模式按组件对齐(ADR-129)：目标里已有的同一组件原地覆盖成粘贴行的内容(行 id 不变)，
+ * 粘贴清单里没有的组件才删、目标里没有的组件才新建。写入后的清单与「全删再全建」完全一样，
+ * 但内容没变的行保留审核标记，系统学习边保留系统所有权(人工删除会让学习不再自动加回该组件)。
  */
 @Service
 @RequiredArgsConstructor
@@ -63,7 +67,7 @@ public class GoodsBomPasteService {
         tx.bind();
         boolean replace = request.mode() == BomPasteRequest.Mode.REPLACE;
         if (replace) {
-            // 替换 = 删掉现有组件再写入，要同时有删除组件的权限。
+            // 替换会删掉粘贴清单外的现有组件，要同时有删除组件的权限。
             CurrentAuthorityGuard.requireAll("goods:bom:delete");
         }
         Map<UUID, List<UUID>> expected = new LinkedHashMap<>();
@@ -153,10 +157,25 @@ public class GoodsBomPasteService {
         }
 
         // ---- 写入(全部合格才到这里) ----
-        List<UUID> removing = replace
-                ? targets.stream().flatMap(t -> existing.getOrDefault(t.getId(), List.of()).stream())
-                        .map(Edge::itemId).toList()
-                : List.of();
+        // 替换：同一组件原地覆盖，粘贴清单里没有的组件才删。
+        Set<UUID> pastedComponents = lineComponents.values().stream().map(Goods::getId)
+                .collect(Collectors.toSet());
+        List<UUID> removing = new ArrayList<>();
+        List<UUID> keeping = new ArrayList<>();
+        if (replace) {
+            for (Goods target : targets) {
+                for (Edge edge : existing.getOrDefault(target.getId(), List.of())) {
+                    (pastedComponents.contains(edge.componentId()) ? keeping : removing).add(edge.itemId());
+                }
+            }
+        }
+        Map<UUID, Map<UUID, GoodsBomItem>> kept = new HashMap<>();
+        if (!keeping.isEmpty()) {
+            for (GoodsBomItem row : bomRepo.findAllById(keeping)) {
+                kept.computeIfAbsent(row.getGoods().getId(), ignored -> new HashMap<>())
+                        .put(row.getComponent().getId(), row);
+            }
+        }
         if (!removing.isEmpty()) {
             // 原生 UPDATE 立即执行：新行插入(提交前 flush)时部分唯一索引已看不到旧行。
             em.createNativeQuery("""
@@ -173,6 +192,7 @@ public class GoodsBomPasteService {
         List<BomPasteResult.Target> results = new ArrayList<>();
         for (Goods target : targets) {
             List<Edge> current = existing.getOrDefault(target.getId(), List.of());
+            Map<UUID, GoodsBomItem> same = kept.getOrDefault(target.getId(), Map.of());
             int sort = replace ? 0 : current.stream()
                     .mapToInt(edge -> edge.sortOrder() == null ? 0 : edge.sortOrder()).max().orElse(0);
             for (var entry : lineComponents.entrySet()) {
@@ -180,15 +200,25 @@ public class GoodsBomPasteService {
                 row.setGoods(target);
                 bom.apply(items.get(entry.getKey()), row, entry.getValue());
                 row.setSortOrder(++sort);
-                created.add(row);
+                GoodsBomItem existingRow = same.get(entry.getValue().getId());
+                if (existingRow == null) {
+                    created.add(row);
+                    continue;
+                }
+                // 与新建行同一份内容：内容变了整体覆盖(原审核结论作废)，没变只挪排序。
+                if (!existingRow.sameContentAs(row)) existingRow.takeContentFrom(row);
+                existingRow.setSortOrder(row.getSortOrder());
             }
+            // 替换模式按「原有几个组件被替换、写入几个」报(同一组件原地覆盖也算替换)，与全删再全建同口径。
             results.add(new BomPasteResult.Target(target.getId(), label(target),
                     replace ? current.size() : 0, lineComponents.size()));
         }
         // 新行 id 由 Java 端预生成，走 save 会被当成「可能已存在」先查一次再插；这里直接 persist。
         created.forEach(em::persist);
         targets.forEach(bom::recalcSourceE);
-        return new BomPasteResult(targets.size(), created.size(), removing.size(), results);
+        int replaced = results.stream().mapToInt(BomPasteResult.Target::removed).sum();
+        int written = results.stream().mapToInt(BomPasteResult.Target::added).sum();
+        return new BomPasteResult(targets.size(), written, replaced, results);
     }
 
     /**

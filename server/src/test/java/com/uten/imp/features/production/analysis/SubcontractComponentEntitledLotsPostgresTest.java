@@ -37,7 +37,8 @@ class SubcontractComponentEntitledLotsPostgresTest {
         execute("""
                 CREATE TABLE goods(id uuid PRIMARY KEY, is_deleted boolean DEFAULT false, auto_created boolean DEFAULT false, production_overproduction_rate numeric(9,6));
                 CREATE TABLE goods_bom_items(id uuid PRIMARY KEY, goods_id uuid, component_goods_id uuid,
-                    color_id uuid, qty numeric, consumption_basis text, control_stage text, is_deleted boolean DEFAULT false, learning_profile_goods_id uuid, learning_unit_id uuid);
+                    color_id uuid, qty numeric, consumption_basis text, control_stage text, is_deleted boolean DEFAULT false, learning_profile_goods_id uuid, learning_unit_id uuid,
+                    learning_released_at timestamptz);
                 CREATE TABLE warehouses(id uuid PRIMARY KEY, is_deleted boolean DEFAULT false,
                     is_defective boolean DEFAULT false, is_line_side boolean DEFAULT false);
                 CREATE TABLE subcontract_application_items(id uuid PRIMARY KEY, goods_id uuid, color_id uuid,
@@ -50,7 +51,8 @@ class SubcontractComponentEntitledLotsPostgresTest {
                     analysis_material_id uuid, external_item_id uuid, allocated_qty numeric(18,4));
                 CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY, analysis_id uuid,
                     analysis_item_id uuid, node_key text, parent_node_key text, bom_item_id uuid,
-                    goods_id uuid, color_id uuid, active boolean DEFAULT true);
+                    goods_id uuid, color_id uuid, active boolean DEFAULT true,
+                    design_bom_qty numeric,actual_bom_qty numeric,usage_basis text NOT NULL DEFAULT 'DESIGN',usage_reason text,usage_sample_count bigint,usage_defect_rate numeric);
                 CREATE TABLE stock_reservations(id uuid PRIMARY KEY, warehouse_id uuid, goods_id uuid, color_id uuid,
                     owner_type text, status smallint DEFAULT 0, is_deleted boolean DEFAULT false,
                     qty numeric(18,4), consumed_qty numeric(18,4) DEFAULT 0, released_qty numeric(18,4) DEFAULT 0);

@@ -4,6 +4,7 @@ import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/components/inputs/uten_field_message.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/models/production_plan.dart';
+import 'package:uten_imp/features/production/repositories/production_overproduction_rate_repository.dart';
 import 'package:uten_imp/features/production/widgets/production_overproduction_rate_field.dart';
 
 void main() {
@@ -63,6 +64,70 @@ void main() {
       ]) {
         expect(parseProductionOverproductionPercent(invalid), isNull);
       }
+    },
+  );
+
+  test('rate labels use the same percent formatting as the input', () {
+    expect(productionRateText(null), '—');
+    expect(productionRateText(double.nan), '—');
+    for (final rate in const [0.0, 0.1, 0.125, 2.5, 0.291234]) {
+      expect(
+        productionRateText(rate),
+        '${productionOverproductionPercentText(rate)}%',
+      );
+    }
+  });
+
+  test(
+    'system prefilled rates: untouched submits null, anything else is explicit',
+    () {
+      final rates = SystemPrefilledRates();
+      final a = TextEditingController(), b = TextEditingController();
+      addTearDown(a.dispose);
+      addTearDown(b.dispose);
+
+      rates.fill(a, 0.1, goodsId: 'g');
+      expect(a.text, '10');
+      expect(rates.isExplicit(a), isFalse);
+      expect(rates.submitted(a), isNull);
+      a.text = '12';
+      expect(rates.submitted(a), 0.12);
+      a.text = '10';
+      expect(rates.submitted(a), isNull);
+
+      // 复制行沿用预填记录；换货品后忘掉，之后与旧默认相同的输入也按人填的算。
+      b.text = a.text;
+      rates.copy(a, b);
+      expect(rates.submitted(b), isNull);
+      rates.forget(b);
+      expect(rates.submitted(b), 0.1);
+
+      // 新默认只刷没人改过、也没被跳过的格子。
+      final typed = TextEditingController(), issued = TextEditingController();
+      addTearDown(typed.dispose);
+      addTearDown(issued.dispose);
+      rates
+        ..fill(typed, 0.1, goodsId: 'g')
+        ..fill(issued, 0.1, goodsId: 'g');
+      typed.text = '11';
+      rates.reseed([a, typed, issued], {'g': 0.05}, skip: (c) => c == issued);
+      expect([a.text, typed.text, issued.text], ['5', '11', '10']);
+      expect(rates.submitted(a), isNull);
+      // 改过的格子只换预填记录：改回旧默认 10 是人定的(服务端会填 5)，改成新默认 5
+      // 才按默认送空值。
+      typed.text = '10';
+      expect(rates.submitted(typed), 0.1);
+      typed.text = '5';
+      expect(rates.submitted(typed), isNull);
+      typed.text = '11';
+
+      // 撤销：快照时是预填的回到当前预填值，人填过的照原文放回。
+      a.text = '20';
+      rates.restore(a, '10', explicit: false);
+      expect(a.text, '5');
+      expect(rates.isExplicit(a), isFalse);
+      rates.restore(a, '10', explicit: true);
+      expect(rates.submitted(a), 0.1);
     },
   );
 
@@ -168,9 +233,18 @@ void main() {
         }).allowedOverproductionRate,
         0,
       );
+      // 比例由服务端权威下发；缺失就是缺失，客户端不再自拟 10%。
       expect(
         ProductionPlanItem.fromJson({'id': 'p2'}).allowedOverproductionRate,
-        0.1,
+        isNull,
+      );
+      expect(
+        ProductionPlanItem.fromJson({
+          'id': 'p3',
+          'allowedOverproductionRate': 0.1,
+          'allowedOverproductionRateSource': 'DEFAULT',
+        }).allowedOverproductionRateSource,
+        'DEFAULT',
       );
     },
   );

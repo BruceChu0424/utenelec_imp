@@ -101,7 +101,13 @@ class MaterialAnalysisMaterialDefaults {
     'owningWorkshopId',
     'owningWorkshopName',
     'nodeRole',
+    'usageBasis',
+    'usageReason',
   };
+  static const _integers = {'level', 'usageSampleCount'};
+
+  /// 名字不以 Qty 结尾的数值字段。
+  static const _decimals = {'usageDefectRate'};
 
   static void _validate(Map<String, dynamic> values) {
     for (final entry in values.entries) {
@@ -114,8 +120,8 @@ class MaterialAnalysisMaterialDefaults {
       // existing null semantics; transport must never replace null with a default.
       if (value == null) continue;
       final valid = switch (key) {
-        'level' => value is int,
-        _ when key.endsWith('Qty') || key == 'qty' =>
+        _ when _integers.contains(key) => value is int,
+        _ when key.endsWith('Qty') || key == 'qty' || _decimals.contains(key) =>
           value is num && value.isFinite,
         _ when _flags.contains(key) => value is bool,
         _ when _textFields.contains(key) => value is String,

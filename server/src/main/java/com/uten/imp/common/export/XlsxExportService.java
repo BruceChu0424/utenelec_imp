@@ -21,7 +21,8 @@ import java.util.Objects;
 /**
  * 把「列定义 + 行」导出为 .xlsx 字节（SXSSF 流式，防几万行 OOM）。
  *
- * <p>格式约定（对齐前端 formatReportCell）：金额/数量 = 2 位小数、日期 = yyyy-MM-dd、布尔 = 是/否、其余文本。
+ * <p>格式约定(对齐前端 formatReportCell)：金额/数量 = 2 位小数、用量 (qty) = 常规格式按存储值全精度、
+ * 日期 = yyyy-MM-dd、布尔 = 是/否、其余文本。
  * 表头加粗灰底居中、冻结首行、列宽按表头长度估。数值右对齐 + 千分位。
  *
  * <p>输入约定：报表行由 {@code execute().norm()} 归一化——日期已转 yyyy-MM-dd 字符串、金额为 BigDecimal/Number。
@@ -45,6 +46,9 @@ public class XlsxExportService {
             headerStyle.setAlignment(HorizontalAlignment.CENTER);
             CellStyle numStyle = wb.createCellStyle();
             numStyle.setDataFormat(wb.createDataFormat().getFormat("#,##0.00"));
+            // 用量：常规格式，整数不带小数点、小数不补零也不截断(与 BOM 导入按值读取互为往返)
+            CellStyle qtyStyle = wb.createCellStyle();
+            qtyStyle.setDataFormat(wb.createDataFormat().getFormat("General"));
             // 文本格式（DataFormat "@"）：强制 Excel/WPS 把字符串当字面文本，防 =cmd|'/c calc'!A1 / =HYPERLINK()
             // 公式注入（安全策略 §10.1「单元格按文本写防 =CMD() 公式注入」）。POI setCellValue(String) 虽写为
             // STRING 类型，但部分表格（WPS/旧 Excel）仍可能对前导 = + - @ \t \r 自动公式化；显式文本格式是权威防御，
@@ -70,7 +74,7 @@ public class XlsxExportService {
                 for (int i = 0; i < columns.size(); i++) {
                     ExportColumn col = columns.get(i);
                     Object v = row == null ? null : row.get(col.key());
-                    writeCell(R.createCell(i), col.type(), v, numStyle, textStyle);
+                    writeCell(R.createCell(i), col.type(), v, numStyle, qtyStyle, textStyle);
                 }
             }
             sheet.createFreezePane(0, 1); // 冻结首行
@@ -81,14 +85,15 @@ public class XlsxExportService {
         }
     }
 
-    private static void writeCell(Cell cell, String type, Object v, CellStyle numStyle, CellStyle textStyle) {
+    private static void writeCell(Cell cell, String type, Object v, CellStyle numStyle, CellStyle qtyStyle,
+                                  CellStyle textStyle) {
         if (v == null) return;
         switch (type == null ? ExportColumn.TEXT : type) {
-            case ExportColumn.MONEY, ExportColumn.NUMBER -> {
+            case ExportColumn.MONEY, ExportColumn.NUMBER, ExportColumn.QTY -> {
                 BigDecimal d = toBigDecimal(v);
                 if (d != null) {
                     cell.setCellValue(d.doubleValue());
-                    cell.setCellStyle(numStyle);
+                    cell.setCellStyle(ExportColumn.QTY.equals(type) ? qtyStyle : numStyle);
                 } else {
                     // 非数值回退：按文本写，防公式注入
                     cell.setCellValue(Objects.toString(v));

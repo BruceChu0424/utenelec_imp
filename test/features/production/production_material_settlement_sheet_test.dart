@@ -304,6 +304,7 @@ class _Fixture {
     'requiredQty': issued,
     'issuedQty': issued,
     'unclearedQty': pending,
+    'availableToSettleQty': pending,
     'consumedQty': issued - pending,
     'maxReturnQty': pending,
     'canClose': pending == 0,

@@ -1609,6 +1609,10 @@ public class ProductionDailyReportService {
             addCanonical(parts, path + ".unitId", line.getUnitId());
             addCanonical(parts, path + ".unitRate", line.getUnitRate());
             addCanonical(parts, path + ".qty", line.getQty());
+            // 不良数为 0 与不填是同一份申报，指纹相同；填了才入指纹，改了不良数的重试不会被当成重放。
+            if (line.getDefectQty() != null && line.getDefectQty().signum() != 0) {
+                addCanonical(parts, path + ".defectQty", line.getDefectQty());
+            }
             addCanonical(parts, path + ".price", line.getPrice());
             addCanonical(parts, path + ".total", line.getTotal());
             addCanonical(parts, path + ".stotal", line.getStotal());
@@ -1676,6 +1680,10 @@ public class ProductionDailyReportService {
                 }
                 addCanonical(parts, path + ".demandId", line.getDemandId());
                 addCanonical(parts, path + ".qtyBase", line.getQtyBase());
+                // 只在填了实际剩余时入指纹：旧请求指纹不变，改了清点数的重试不会被当成重放。
+                if (line.getCountedLeftoverQty() != null) {
+                    addCanonical(parts, path + ".countedLeftoverQty", line.getCountedLeftoverQty());
+                }
             }
         }
         if (Boolean.TRUE.equals(request.getSurplusReturnRequested())) {
@@ -1765,19 +1773,7 @@ public class ProductionDailyReportService {
 
         List<UUID> demandIds = new ArrayList<>();
         for (DailyReportMaterialUsageLine line : lines) {
-            if (line == null || line.getDemandId() == null
-                    || line.getQtyBase() == null) {
-                throw new ApiException(
-                        ErrorCode.VALIDATION_FAILED, "本次实际用料缺少物料需求或数量");
-            }
-            if (line.getQtyBase().signum() < 0) {
-                throw new ApiException(
-                        ErrorCode.VALIDATION_FAILED, "本次实际用料不能为负");
-            }
-            if (line.getQtyBase().stripTrailingZeros().scale() > 4) {
-                throw new ApiException(
-                        ErrorCode.VALIDATION_FAILED, "本次实际用料最多 4 位小数");
-            }
+            requireValidMaterialLine(line);
             if (demandIds.contains(line.getDemandId())) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
@@ -1831,9 +1827,10 @@ public class ProductionDailyReportService {
             em.createNativeQuery("""
                             INSERT INTO production_daily_report_material_usages(
                                 report_id, line_no, plan_id, demand_id,
-                                material_execution_segment_id, qty_base, created_by)
+                                material_execution_segment_id, qty_base,
+                                counted_leftover_qty, created_by)
                             VALUES (:reportId, :lineNo, :planId, :demandId,
-                                    :segmentId, :qty, :actorId)
+                                    :segmentId, :qty, CAST(:counted AS numeric), :actorId)
                             """)
                     .setParameter("reportId", r.getId())
                     .setParameter("lineNo", lineNo++)
@@ -1841,8 +1838,49 @@ public class ProductionDailyReportService {
                     .setParameter("demandId", line.getDemandId())
                     .setParameter("segmentId", demandSegments.get(line.getDemandId()))
                     .setParameter("qty", line.getQtyBase())
+                    .setParameter("counted", line.getCountedLeftoverQty())
                     .setParameter("actorId", actorId)
                     .executeUpdate();
+        }
+    }
+
+    /** 一条用料行的字段校验(不查库)：需求与数量必填，数量与实际剩余都不为负、最多 4 位小数。 */
+    static void requireValidMaterialLine(DailyReportMaterialUsageLine line) {
+        if (line == null || line.getDemandId() == null
+                || line.getQtyBase() == null) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "本次实际用料缺少物料需求或数量");
+        }
+        requireReportedQuantity(line.getQtyBase(), "本次实际用料");
+        if (line.getCountedLeftoverQty() != null) {
+            requireReportedQuantity(line.getCountedLeftoverQty(), "实际剩余");
+        }
+    }
+
+    /**
+     * 一行报工的不良数(ADR-129)：不为负、最多 4 位小数，且只能随良品一起记在已选车间任务的行上。
+     * 不良数只记录，良品数、库存、FQC、超产与分流都不读它。
+     */
+    static void requireValidDefect(DailyReportItemLine line) {
+        BigDecimal defect = line.getDefectQty();
+        if (defect == null || defect.signum() == 0) return;
+        requireReportedQuantity(defect, "不良数");
+        if (line.getExecutionSegmentId() == null
+                || line.getQty() == null || line.getQty().signum() <= 0) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "不良数只能填在已选车间任务且良品数大于 0 的报工行上");
+        }
+    }
+
+    /** 报工里登记的数量：不为负、最多 4 位小数(与库里的 4 位小数一致)。 */
+    private static void requireReportedQuantity(BigDecimal quantity, String label) {
+        if (quantity.signum() < 0) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, label + "不能为负");
+        }
+        if (quantity.stripTrailingZeros().scale() > 4) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, label + "最多 4 位小数");
         }
     }
 
@@ -1852,26 +1890,77 @@ public class ProductionDailyReportService {
      *
      * <p>顺序不可颠倒：退仓申请一提交就冻结领料过账额度，先冻后结会让实耗登记撞
      * 「超过准确原领料未耗用数量」。
+     *
+     * <p>实盘收尾(ADR-129 §2.7)：填了实际剩余的行，在记账前按「本次用料 = 审核时的账面可用 −
+     * 实际剩余」覆盖本单登记的用料，结完后该需求剩下的账面可用恰好等于实际剩余，可退就按它退；
+     * 被后续生产批次承接等不许退的料，实际剩余留在车间。
      */
     private void settleMaterialUsageOnApprove(ProductionDailyReport r) {
-        Map<List<UUID>, List<ProductionMaterialConsumptionWritePort.ConsumptionLine>>
-                groups = new LinkedHashMap<>();
+        Map<List<UUID>, List<MaterialUsageRow>> rows = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                        SELECT plan_id, material_execution_segment_id, demand_id, qty_base
-                        FROM production_daily_report_material_usages
-                        WHERE report_id = :reportId
-                        ORDER BY line_no
+                        SELECT usage.plan_id, usage.material_execution_segment_id, usage.demand_id,
+                               usage.qty_base, usage.counted_leftover_qty, goods.name
+                        FROM production_daily_report_material_usages usage
+                        JOIN production_material_demands demand ON demand.id = usage.demand_id
+                        LEFT JOIN goods ON goods.id = demand.goods_id
+                        WHERE usage.report_id = :reportId
+                        ORDER BY usage.line_no
                         """).setParameter("reportId", r.getId()))) {
-            groups.computeIfAbsent(
+            rows.computeIfAbsent(
                             List.of((UUID) row[0], (UUID) row[1]),
                             ignored -> new ArrayList<>())
-                    .add(new ProductionMaterialConsumptionWritePort.ConsumptionLine(
+                    .add(new MaterialUsageRow(
                             (UUID) row[2],
-                            row[3] == null
-                                    ? BigDecimal.ZERO
-                                    : new BigDecimal(row[3].toString())));
+                            row[3] == null ? BigDecimal.ZERO : new BigDecimal(row[3].toString()),
+                            row[4] == null ? null : new BigDecimal(row[4].toString()),
+                            (String) row[5]));
         }
-        if (groups.isEmpty()) return;
+        if (rows.isEmpty()) return;
+
+        Map<List<UUID>, List<ProductionMaterialConsumptionWritePort.ConsumptionLine>>
+                groups = new LinkedHashMap<>();
+        boolean counted = false;
+        // 实盘只随「退回仓库」生效；选「留在车间」照旧按登记的实耗过账(ADR-129 §2.7)。
+        boolean closeOut = r.isSurplusReturnRequested();
+        for (var group : rows.entrySet()) {
+            Map<UUID, BigDecimal> bookAvailable = closeOut && group.getValue().stream()
+                    .anyMatch(row -> row.countedLeftoverQty() != null)
+                    ? materialConsumption.bookAvailableByDemand(
+                            group.getKey().getFirst(), group.getKey().get(1))
+                    : Map.of();
+            List<ProductionMaterialConsumptionWritePort.ConsumptionLine> lines = new ArrayList<>();
+            for (MaterialUsageRow row : group.getValue()) {
+                BigDecimal qty = row.qtyBase();
+                BigDecimal book = row.countedLeftoverQty() == null ? null : bookAvailable.get(row.demandId());
+                // 账上已没有这条料时清点无从抵扣，照登记的用料过账，交给结算按真实账面把关。
+                if (book != null) {
+                    qty = countedCloseoutConsumption(row.materialName(), book, row.countedLeftoverQty());
+                    em.createNativeQuery("""
+                                    UPDATE production_daily_report_material_usages
+                                    SET qty_base = :qty, updated_by = :actorId, updated_at = now()
+                                    WHERE report_id = :reportId AND demand_id = :demandId
+                                    """)
+                            .setParameter("qty", qty)
+                            .setParameter("actorId", currentUser.requireId())
+                            .setParameter("reportId", r.getId())
+                            .setParameter("demandId", row.demandId())
+                            .executeUpdate();
+                    counted = true;
+                }
+                lines.add(new ProductionMaterialConsumptionWritePort.ConsumptionLine(row.demandId(), qty));
+            }
+            groups.put(group.getKey(), lines);
+        }
+        if (counted) {
+            // 审核开头已按登记数核过「有产出就要有本批实耗」；按实际剩余改完后再核一次，
+            // 用人话拒绝，而不是到提交时撞数据库的实耗守卫。
+            try {
+                outputAllocation.requireMaterialDeclarations(r.getId());
+            } catch (ApiException noConsumption) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "按实际剩余算下来，本次报工没有用掉任何物料，但本批有产出、之前也没有登记过用料，请核对实际剩余");
+            }
+        }
 
         String billNo = r.getBillNo() == null ? "" : r.getBillNo();
         for (var group : groups.entrySet()) {
@@ -1892,6 +1981,26 @@ public class ProductionDailyReportService {
                     "DRRET-" + r.getId() + "-" + segmentId,
                     "生产日报 " + billNo + " 收尾余料退仓");
         }
+    }
+
+    /** 本单登记的一条用料；countedLeftoverQty 为空 = 没有实盘清点。 */
+    private record MaterialUsageRow(
+            UUID demandId, BigDecimal qtyBase, BigDecimal countedLeftoverQty, String materialName) {
+    }
+
+    /**
+     * 实盘收尾(ADR-129 §2.7)：本次用料 = 审核时的账面可用 − 实际剩余。实际剩余比账面可用还多，
+     * 说明之前的报工多登记了用料，拒绝并请车间先核对，不能把账面补成负数。
+     */
+    static BigDecimal countedCloseoutConsumption(
+            String materialName, BigDecimal bookAvailable, BigDecimal countedLeftover) {
+        if (countedLeftover.compareTo(bookAvailable) > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "「" + (materialName == null ? "物料" : materialName) + "」实际剩余 "
+                            + countedLeftover.stripTrailingZeros().toPlainString() + " 超过账面可用 "
+                            + bookAvailable.stripTrailingZeros().toPlainString() + "，请先核对之前报工登记的用料");
+        }
+        return bookAvailable.subtract(countedLeftover);
     }
 
     /** 红冲同事务退掉本单审核时登记的实际用料；已提交的退仓申请不动(料确实已交回仓库)。 */
@@ -1917,7 +2026,7 @@ public class ProductionDailyReportService {
                         SELECT usage.id, usage.line_no, usage.plan_id, usage.demand_id,
                                usage.material_execution_segment_id, segment.segment_code,
                                demand.goods_id, goods.code, goods.name, color.name,
-                               unit.name, usage.qty_base
+                               unit.name, usage.qty_base, usage.counted_leftover_qty
                         FROM production_daily_report_material_usages usage
                         JOIN production_material_demands demand
                           ON demand.id = usage.demand_id
@@ -1938,7 +2047,8 @@ public class ProductionDailyReportService {
                         (String) row[9], (String) row[10],
                         row[11] == null
                                 ? BigDecimal.ZERO
-                                : new BigDecimal(row[11].toString())))
+                                : new BigDecimal(row[11].toString()),
+                        row[12] == null ? null : new BigDecimal(row[12].toString())))
                 .toList();
     }
 
@@ -2011,6 +2121,7 @@ public class ProductionDailyReportService {
                     ErrorCode.VALIDATION_FAILED,
                     "生产日报只记录数量事实；客户端单价/金额不是计件工资依据，已停止写入");
         }
+        lines.stream().filter(Objects::nonNull).forEach(ProductionDailyReportService::requireValidDefect);
         lines = outputAllocation.split(r.getId(), outputSupplements.expand(r.getId(),lines));
         outputAllocation.requireAllowance(r.getId(),lines);
         executionSegments.validateDraft(r.getId(), r.getDepartmentId(), lines);
@@ -2033,6 +2144,7 @@ public class ProductionDailyReportService {
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
             it.setQty(l.getQty());
+            it.setDefectQty(l.getDefectQty() == null ? BigDecimal.ZERO : l.getDefectQty());
             it.setSalesOrderItemId(l.getSalesOrderItemId());
             it.setSalesOrderNo(l.getSalesOrderNo());
             it.setPlanItemId(l.getPlanItemId());
@@ -2161,7 +2273,8 @@ public class ProductionDailyReportService {
             Map<UUID, String[]> goodsIdentities) {
         String[] identity = goodsIdentities.get(it.getId());
         return new DailyReportItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
-                it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getTotal(), it.getStotal(),
+                it.getUnitId(), it.getUnitRate(), it.getQty(), it.getDefectQty(),
+                it.getPrice(), it.getTotal(), it.getStotal(),
                 it.getSalesOrderItemId(), it.getSalesOrderNo(), it.getPlanItemId(),
                 it.getExecutionSegmentId(),
                 it.getExecutionSegmentSalesAllocationId(),

@@ -74,6 +74,16 @@ class _RecordingBomRepo implements GoodsBomRepository {
     String itemId,
     bool audited,
   ) async => throw UnimplementedError();
+
+  @override
+  Future<GoodsBomLearningSummary> learning(String goodsId) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<GoodsBomLearningSummary> relearn(
+    String goodsId,
+    String componentGoodsId,
+  ) async => throw UnimplementedError();
 }
 
 const _picked = [
@@ -156,16 +166,55 @@ void main() {
     expect(repo.listCalls, greaterThan(reloadsBefore), reason: '成功后重载组装树');
   });
 
-  testWidgets('数量不合法在本地拦下，不发任何请求', (tester) async {
+  testWidgets('设计使用数量不合法在本地拦下，不发任何请求', (tester) async {
     final repo = _RecordingBomRepo(rejectFirst: false);
     await _openAddDialog(tester, repo);
 
-    await tester.enterText(find.widgetWithText(TextField, '数量').first, '0');
+    // 输入框标签是「设计使用数量 *」(必填)。
+    expect(find.textContaining('设计使用数量'), findsNWidgets(2));
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const Key('goods-bom-add-qty-goods-x')),
+        matching: find.byType(TextField),
+      ),
+      '0',
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
     expect(repo.pasteCalls, isEmpty);
-    expect(find.textContaining('数量必须大于 0'), findsOneWidget);
+    expect(find.text('「外壳」设计使用数量必须是大于 0 的数字'), findsOneWidget);
+  });
+
+  testWidgets('设计使用数量清空即报错，不再静默按 1 提交', (tester) async {
+    final repo = _RecordingBomRepo(rejectFirst: false);
+    await _openAddDialog(tester, repo);
+
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const Key('goods-bom-add-qty-goods-y')),
+        matching: find.byType(TextField),
+      ),
+      '',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(repo.pasteCalls, isEmpty);
+    expect(find.text('「螺丝」请填写设计使用数量'), findsOneWidget);
+
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const Key('goods-bom-add-qty-goods-y')),
+        matching: find.byType(TextField),
+      ),
+      '0.25',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(repo.pasteCalls.single.items.map((i) => i['qty']), [1.0, 0.25]);
   });
 }

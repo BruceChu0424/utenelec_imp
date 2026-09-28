@@ -4,6 +4,7 @@ import com.uten.imp.common.inventory.MainWarehouseStockBudget;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.production.analysis.MaterialConsumptionMath;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionSegment;
 import com.uten.imp.features.production.fulfillment.ProductionMaterialDemand;
@@ -27,7 +28,9 @@ import java.util.UUID;
 
 /**
  * Loads and fingerprints the direct, single-level BOM snapshot used by
- * complete-kit execution planning.
+ * complete-kit execution planning. Each edge is computed with the quantity the
+ * plan actually uses (ADR-129): the node quantity pinned by the source material
+ * analysis, otherwise {@code v_goods_bom_item_usage.effective_qty}.
  */
 @Service
 @RequiredArgsConstructor
@@ -43,9 +46,36 @@ public class ProductionExecutionPlanningService {
             "START", "ASSEMBLY", "FINISH");
     private static final Set<String> SUPPORTED_CONSUMPTION_BASES = Set.of(
             "PER_UNIT", "PER_PACKAGE", "FIXED_BATCH");
-    private static final String CONSUMPTION_BASIS_PER_UNIT = "PER_UNIT";
 
     private final CompleteKitAllocator allocator = new CompleteKitAllocator();
+
+    /** 整份排产快照指纹不符(草案保存、正式确认)。 */
+    static final String STALE_PREVIEW = "排产预览已过期：目标仓库存、占用、计划行或 BOM 已变化";
+    /** 提交的执行分段 BOM 指纹与当前快照不符。 */
+    static final String STALE_SEGMENT_BOM = "执行分段 BOM 已变化";
+
+    /**
+     * 排产预览过期的提示，草案保存、正式确认与分段核对三处共用(ADR-129 §2.6)。手工计划
+     * (没有来源物料分析)按 v_goods_bom_item_usage 的计算用量排产，别的批次实盘收尾后真实使用数量
+     * 一更新，预览就过期，所以多说这一种原因；分析计划沿用锁定的用量，不会因此过期。
+     */
+    static ApiException stalePreview(String what, boolean manualPlan) {
+        return conflict(what + (manualPlan ? "，或用量已按真实数据更新" : "") + "，请重新预览");
+    }
+
+    /** 计划是否由物料分析下达；否则是手工计划。 */
+    public boolean fromMaterialAnalysis(UUID planId) {
+        Number count = (Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM production_plans
+                        WHERE id = :planId
+                          AND material_analysis_id IS NOT NULL
+                          AND is_deleted = FALSE
+                        """)
+                .setParameter("planId", planId)
+                .getSingleResult();
+        return count.longValue() > 0;
+    }
 
     @Transactional(readOnly = true)
     public Snapshot preview(UUID planId, UUID warehouseId) {
@@ -98,7 +128,7 @@ public class ProductionExecutionPlanningService {
                 throw validation("执行分段不属于当前生产计划");
             }
             if (!line.bomFingerprint().equalsIgnoreCase(edit.getBomFingerprint())) {
-                throw conflict("执行分段 BOM 已变化，请刷新排产预览");
+                throw stalePreview(STALE_SEGMENT_BOM, !fromMaterialAnalysis(snapshot.planId()));
             }
             if (edit.getPlanBeginDate() != null
                     && edit.getPlanEndDate() != null
@@ -259,14 +289,19 @@ public class ProductionExecutionPlanningService {
                                              AND child.is_deleted = FALSE
                                        ) AS component_has_bom,
                                        i.updated_at,
-                                       b.updated_at,
+                                       COALESCE(analysis_material.usage_basis,
+                                                usage.usage_basis),
                                        component.source_type,
                                        analysis_material.confirmed_route,
                                        b.control_stage,
                                        b.hard_gate,
                                        b.consumption_basis,
                                        b.basis_output_qty,
-                                       b.allow_partial_package
+                                       b.allow_partial_package,
+                                       COALESCE(analysis_material.bom_qty,
+                                                usage.effective_qty),
+                                       component.code,
+                                       component.name
                                 FROM production_plan_items i
                                 JOIN production_plans p
                                   ON p.id = i.plan_id
@@ -308,12 +343,18 @@ public class ProductionExecutionPlanningService {
                                  LEFT JOIN units component_unit
                                    ON component_unit.id = component.unit_id
                                   AND component_unit.is_deleted = FALSE
+                                -- ADR-129：计算用量(真实优先)只读不锁；锁行别名仍只有 b。
+                                LEFT JOIN v_goods_bom_item_usage usage
+                                  ON usage.bom_item_id = b.id
                                 LEFT JOIN LATERAL (
                                     SELECT CASE
                                         WHEN COUNT(DISTINCT candidate.confirmed_route) > 1
                                         THEN 'CONFLICT'
                                         ELSE MIN(candidate.confirmed_route)
-                                    END AS confirmed_route
+                                    END AS confirmed_route,
+                                    -- 分析下达的计划沿用该分析锁定的节点用量。
+                                    MAX(candidate.bom_qty) AS bom_qty,
+                                    MAX(candidate.usage_basis) AS usage_basis
                                     FROM production_material_analysis_materials candidate
                                     WHERE candidate.analysis_id = p.material_analysis_id
                                       AND fn_analysis_plan_material_matches(
@@ -377,7 +418,11 @@ public class ProductionExecutionPlanningService {
                 throw conflict("BOM 计量基数必须大于零，禁止生成执行分段");
             }
             boolean allowPartialPackage = requiredBomBoolean(row[28]);
-            BigDecimal bomQty = decimal(row[17]);
+            BigDecimal designQty = decimal(row[17]);
+            // ADR-129 §2.3：实际采用的用量。分析下达的计划沿用分析锁定的节点用量，
+            // 手工计划用 v_goods_bom_item_usage.effective_qty(有真实数据用真实值，否则设计值)。
+            BigDecimal bomQty = decimal(row[29]);
+            String usageBasis = Objects.toString(row[21], "");
             String componentSourceType =
                     normalizeSourceType((String) row[22]);
             String analysisRoute = row[23] == null ? null
@@ -387,6 +432,10 @@ public class ProductionExecutionPlanningService {
             if (componentUnitId == null || Boolean.TRUE.equals(row[18])) {
                 throw conflict("BOM、颜色或基本单位数据不完整，禁止生成执行分段");
             }
+            // 执行指纹(ADR-129 §2.6)只含影响计量的内容：实际采用的用量与其依据
+            // (ACTUAL/DESIGN)，不含 BOM 行 updated_at——审核标记、备注等编辑不再让
+            // 已保存的草稿或排产预览失效；分析计划用锁定值，学习不改变它；手工计划在
+            // 真实使用数量变化后需重新预览。
             line.recordBomPart(String.join("|",
                     "BOM",
                     Objects.toString(row[13], ""),
@@ -395,7 +444,7 @@ public class ProductionExecutionPlanningService {
                     Objects.toString(row[16], ""),
                     decimalText(bomQty),
                     componentSourceType,
-                    Objects.toString(row[21], ""),
+                    usageBasis,
                     Objects.toString(analysisRoute, ""),
                     controlStage,
                     Boolean.toString(hardGate),
@@ -410,8 +459,10 @@ public class ProductionExecutionPlanningService {
                 // 该 BOM 行仍已进入指纹，且 LineAccumulator 保留合法零物料成品行。
                 continue;
             }
-            if (bomQty.signum() <= 0) {
-                throw conflict("BOM、颜色或基本单位数据不完整，禁止生成执行分段");
+            if (designQty.signum() <= 0 || bomQty.signum() <= 0) {
+                throw conflict("「" + goodsLabel(row[11], row[12]) + "」→ 组件「" + goodsLabel(row[30], row[31])
+                        + "」：" + MaterialConsumptionMath.NON_POSITIVE_BOM_QTY_REASON + "，不能排产。"
+                        + MaterialConsumptionMath.NON_POSITIVE_BOM_QTY_FIX + "。");
             }
             if ("CONFLICT".equals(analysisRoute)) {
                 throw conflict("同一直接领料物料存在冲突的已确认路线，请核对原物料分析");
@@ -420,13 +471,8 @@ public class ProductionExecutionPlanningService {
                     ? supportedSupplyRoute(componentSourceType) : analysisRoute;
             // 自制/多层 BOM 组件不再拒绝：route=MAKE 时参与齐套（消耗半成品现货），
             // 缺口由自制件派生内核生成子生产计划供给。
-            BigDecimal perProduct = productRate.multiply(bomQty)
-                    .divide(
-                            CONSUMPTION_BASIS_PER_UNIT.equals(consumptionBasis)
-                                    ? BigDecimal.ONE : basisOutputQty,
-                            12,
-                            RoundingMode.CEILING)
-                    .setScale(CompleteKitAllocator.USAGE_SCALE, RoundingMode.CEILING);
+            BigDecimal perProduct = MaterialConsumptionMath.effectivePerProduct(
+                    productRate, bomQty, consumptionBasis, basisOutputQty);
             CompleteKitAllocator.MaterialKey key =
                     new CompleteKitAllocator.MaterialKey(
                             componentGoodsId, (UUID) row[15]);
@@ -728,6 +774,10 @@ public class ProductionExecutionPlanningService {
 
     private static String decimalText(BigDecimal value) {
         return value == null ? "0" : value.stripTrailingZeros().toPlainString();
+    }
+
+    private static String goodsLabel(Object code, Object name) {
+        return (Objects.toString(code, "") + " " + Objects.toString(name, "")).strip();
     }
 
     private static LocalDate date(Object value) {

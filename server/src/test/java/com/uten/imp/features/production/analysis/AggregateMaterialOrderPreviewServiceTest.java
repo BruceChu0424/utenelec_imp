@@ -105,6 +105,43 @@ class AggregateMaterialOrderPreviewServiceTest {
         assertThat(result.sharedBomChildren().getFirst().requiredQty()).isEqualByComparingTo("1");
     }
 
+    /** ADR-129 §2.5：配方键按设计使用数量；各来源采用的真实用量不同也是同一个物理批次，子件需求仍按采用量展开。 */
+    @Test void recipeKeyUsesTheDesignUsageSoLearnedUsageNeverSplitsTheBatch() {
+        List<MaterialView> members=new ArrayList<>(),all=new ArrayList<>();List<ProductView> products=new ArrayList<>();
+        UUID inputGoods=UUID.randomUUID();
+        String[] adopted={"1.5","1.8"};
+        for(int i=0;i<2;i++) {
+            UUID source=UUID.randomUUID();MaterialView member=material(source,"p"+i,"10");members.add(member);all.add(member);
+            products.add(product(source,"SALES","0"));
+            MaterialView child=material(source,"p"+i+"/edge","1");
+            when(child.parentNodeKey()).thenReturn("p"+i);when(child.goodsId()).thenReturn(inputGoods);when(child.level()).thenReturn(2);
+            when(child.controlStage()).thenReturn("START");when(child.consumptionBasis()).thenReturn("PER_UNIT");
+            when(child.bomQty()).thenReturn(qty(adopted[i]));when(child.designBomQty()).thenReturn(qty("2"));
+            when(child.basisOutputQty()).thenReturn(BigDecimal.ONE);when(child.allowPartialPackage()).thenReturn(true);
+            all.add(child);
+        }
+        GroupPreview result=service().resolve(ANALYSIS,request(List.of(group(members,"20",false))),view(products,all)).groups().getFirst();
+        assertThat(result.blockedReason()).isNull();
+        // 共享子件按排序后第一条来源的采用量展开(20 件 × 该来源的真实用量)。
+        int first=members.get(0).materialLineId().toString().compareTo(members.get(1).materialLineId().toString())<0?0:1;
+        assertThat(result.sharedBomChildren().getFirst().requiredQty()).isEqualByComparingTo(qty(adopted[first]).multiply(qty("20")));
+        when(all.get(3).designBomQty()).thenReturn(qty("3"));
+        assertThat(service().resolve(ANALYSIS,request(List.of(group(members,"20",false))),view(products,all)).groups().getFirst().blockedReason())
+                .contains("冻结组件规则不同");
+    }
+
+    /** ADR-129 §2.10：没填允许超产比例按货品默认，读不到默认时明确拒绝，不再静默按 0。 */
+    @Test void omittedOverproductionRateUsesTheGoodsDefaultAndNeverSilentlyZero() {
+        MaterialView member=material(UUID.randomUUID(),"a","1000");
+        List<ProductView> products=List.of(product(member.analysisLineId(),"SALES","0"));
+        assertThat(service().resolve(ANALYSIS,request(List.of(group(List.of(member),"100",false))),view(products,List.of(member)))
+                .groups().getFirst().allowedOverproductionRate()).isEqualByComparingTo("0.1");
+        AnalysisView withoutDefault=new AnalysisView(ANALYSIS,"PARTIALLY_PLANNED",13,FINGERPRINT,FINGERPRINT,WAREHOUSE,List.of(WAREHOUSE),null,
+                products,List.of(member),List.of(),List.of(),List.of(),false,null,Map.of(),0,0,0,Map.of(),null);
+        assertThatThrownBy(()->service().resolve(ANALYSIS,request(List.of(group(List.of(member),"100",false))),withoutDefault))
+                .isInstanceOf(ApiException.class).hasMessageContaining("允许超产比例");
+    }
+
     @Test void aChangedTotalOrSupplyCapacityInvalidatesTheReviewedFingerprint() {
         MaterialView member=material(UUID.randomUUID(),"a","1000");
         AnalysisView view=view(List.of(product(member.analysisLineId(),"SALES","0")),List.of(member));

@@ -6,6 +6,7 @@
 //   - 车间 = 部门选择器（department_id + 部门名冗余 workshop_name）；
 //     生产参与人员 = 多选员工(workerIds；首位兼容 workerId)。成品仓和库位由仓库登记。
 //   - 明细行：goodsId（必填）+ qty 完工量（必填）+ color/unit + 精确来源子任务 + remark。
+//   - 不良数(ADR-129)：可选，只记录，不影响完工量、库存与产量分流；用来算实产单耗和不良率。
 //
 // 仅草稿可编辑（后端校验；已审走详情页红冲）。
 import 'package:flutter/material.dart';
@@ -184,6 +185,7 @@ class _ProductionDailyReportEditPageState
     for (final row in _productRows) ...[
       row.goodsNotifier,
       row.qty,
+      row.defectQty,
       row.weight,
       row.planNo,
       row.remark,
@@ -250,6 +252,7 @@ class _ProductionDailyReportEditPageState
           'legacyManual': row.legacyManual,
           'isFinal': row.isFinal,
           'qty': row.qty.text,
+          'defectQty': row.defectQty.text,
           'weight': row.weight.text,
           'planNo': row.planNo.text,
           'remark': row.remark.text,
@@ -336,6 +339,7 @@ class _ProductionDailyReportEditPageState
       row.legacyManual = item['legacyManual'] == true;
       row.isFinal = item['isFinal'] == true;
       row.qty.text = draftText(item, 'qty');
+      row.defectQty.text = draftText(item, 'defectQty');
       row.weight.text = draftText(item, 'weight');
       row.planNo.text = draftText(item, 'planNo');
       row.remark.text = draftText(item, 'remark');
@@ -504,6 +508,9 @@ class _ProductionDailyReportEditPageState
                 .read(masterNameServiceProvider)
                 .goodsOptionOf(it.goodsId);
           row.qty.text = group.qty?.toString() ?? '';
+          row.defectQty.text = group.defectQty > 0
+              ? _quantityText(group.defectQty)
+              : '';
           row.weight.text = group.weight?.toString() ?? '';
           row.isFinal = it.isFinal;
           // V736：草稿里已分好的去向(每个上层工单一条 + 送入仓库合成一条)是用户的选择，
@@ -605,6 +612,7 @@ class _ProductionDailyReportEditPageState
             (productionRateNumber(item['unitRate']) ?? 0) <= 0) {
           throw const FormatException('申请时来源或数量不完整，请回原表核对');
         }
+        final defect = productionRateNumber(item['defectQty']) ?? 0;
         final row = DailyGridRow()
           ..planItemId = item['planItemId'] as String
           ..executionSegmentId = item['executionSegmentId'] as String
@@ -621,6 +629,7 @@ class _ProductionDailyReportEditPageState
               .read(masterNameServiceProvider)
               .goodsOptionOf(item['goodsId'] as String)
           ..qty.text = _quantityText(qty)
+          ..defectQty.text = defect > 0 ? _quantityText(defect) : ''
           ..weight.text = item['weight']?.toString() ?? ''
           ..planNo.text = item['planNo'] as String? ?? ''
           ..remark.text = item['remark'] as String? ?? ''
@@ -857,7 +866,7 @@ class _ProductionDailyReportEditPageState
     String? executionSegmentId,
   }) async {
     if (row.hasFixedSupplement) {
-      context.appWarning('已批准追加批次的来源与总量固定；可修改备注、重量和实际用料');
+      context.appWarning('已批准追加批次的来源与总量固定；可修改备注、重量、不良数和实际用料');
       return;
     }
     final sources = await showReportablePlanLinePicker(
@@ -1035,8 +1044,9 @@ class _ProductionDailyReportEditPageState
         ..directTransferBlockedText = null
         ..directTransferLoadFailed = false
         ..qty.text = source.maxReportQty > 0
-            ? _quantityText(source.maxReportQty)
-            : '';
+              ? _quantityText(source.maxReportQty)
+            : ''
+        ..defectQty.clear();
       _discardOutputAllocations(row);
       _watchProductQty(row);
       if (_departmentId == null && source.departmentId != null) {
@@ -1106,6 +1116,7 @@ class _ProductionDailyReportEditPageState
         ..directTransferBlockedText = null
         ..directTransferLoadFailed = false
         ..qty.clear()
+        ..defectQty.clear()
         ..weight.clear();
     });
   }
@@ -1805,13 +1816,15 @@ class _ProductionDailyReportEditPageState
     return true;
   }
 
-  /// 收尾差额：最后一次报工的行，其物料还剩多少没登记成消耗。
+  /// 收尾清点(ADR-129 §2.7)：最后一次报工的行，其物料只要账面还有可用就列出来，
+  /// 纸面上用完了也要清点——实物剩余才是 BOM 真实使用数量的依据。
   ///
-  /// 只用本地快照估算「要不要问用户」；真正退多少由服务端在审核时按当时的可退量算，
+  /// 纸面剩余(账面可用 - 本次填的用料)只作预填；退仓数量由服务端在审核时按实际剩余发，
   /// 因为退料走原领料单位、台账是基本量，两者在换算率不为 1 时对不上。
   List<SurplusReturnCandidate> _surplusCandidates(
-    List<DailyGridRow> reportRows,
-  ) {
+    List<DailyGridRow> reportRows, {
+    Map<String, double> undrawnDirectLots = const {},
+  }) {
     final seen = <String>{};
     final out = <SurplusReturnCandidate>[];
     for (final row in _grid.rows) {
@@ -1821,21 +1834,63 @@ class _ProductionDailyReportEditPageState
         continue;
       }
       final material = row.material!;
-      if (!seen.add(material.demandId)) continue;
-      final remaining =
-          material.availableToSettleQty - (row.materialUsedValue ?? 0);
-      if (remaining <= 0.0000001) continue;
+      final available = material.availableToSettleQty;
+      if (available <= 0.0000001 || !seen.add(material.demandId)) continue;
       out.add(
         SurplusReturnCandidate(
+          demandId: material.demandId,
           goodsName: material.goodsName ?? material.goodsCode ?? '物料',
           colorName: material.colorName,
-          remainingQty: remaining,
+          availableToSettleQty: available,
+          estimatedLeftoverQty: closeOutDifference(
+            available,
+            row.materialUsedValue ?? 0,
+          ),
           unitName: material.unitName ?? '',
           segmentLabel: row.materialShared ? row.materialSegmentLabel : null,
+          undrawnDirectLotQty: undrawnDirectLots[material.demandId] ?? 0,
         ),
       );
     }
     return out;
+  }
+
+  /// 各需求还能退的未领直送料(基本单位)，取自退料来源读取(与退料单同一份来源)。
+  /// 只是清点时的提示：读不到就不显示数量，弹窗仍有通用说明，不挡保存。
+  Future<Map<String, double>> _undrawnDirectLotsByDemand(
+    Set<String> demandIds,
+  ) async {
+    final scopes = <(String, String)>{
+      for (final row in _grid.rows)
+        if (row.material case final material?
+            when demandIds.contains(material.demandId) &&
+                material.executionSegmentId != null)
+          (material.planId, material.executionSegmentId!),
+    };
+    final repo = ref.read(productionMaterialRepositoryProvider);
+    final result = <String, double>{};
+    for (final (planId, segmentId) in scopes) {
+      try {
+        final sources = await repo.returnSources(
+          planId,
+          executionSegmentId: segmentId,
+        );
+        for (final source in sources) {
+          if (!source.isDirectLot || source.returnBlockedReason != null) {
+            continue;
+          }
+          final baseQty = source.availableQty * source.unitRate;
+          result.update(
+            source.demandId,
+            (qty) => qty + baseQty,
+            ifAbsent: () => baseQty,
+          );
+        }
+      } catch (_) {
+        // 提示读不到不影响收尾，通用说明仍在。
+      }
+    }
+    return result;
   }
 
   /// 把暂存附件上传到刚创建的日报；全部成功才跳详情，失败项留在页面供重试。
@@ -1943,6 +1998,10 @@ class _ProductionDailyReportEditPageState
         context.appError('第 ${i + 1} 行必须先选择已开工的精确执行子任务');
         return;
       }
+      if (productionReportDefectIssue(r) case final issue?) {
+        context.appError('第 ${i + 1} 行$issue');
+        return;
+      }
       if (r.hasLinkedSource &&
           (r.unitId == null || r.unitRate == null || r.unitRate! <= 0)) {
         context.appError('第 ${i + 1} 行来源任务缺少有效单位或换算率，请维护计划后重试');
@@ -2036,16 +2095,25 @@ class _ProductionDailyReportEditPageState
       );
       return;
     }
-    // 最后一次报工(报满或勾完结)且还有料没登记成消耗时，问一次要不要退回仓库。
-    // 填 0 / 没有差额 = 不问、不建单、不打扰仓库。
-    final surplus = _surplusCandidates(rows);
+    // 最后一次报工(报满或勾完结)且账面还有可用的料时，逐料清点实际剩余，再问要不要
+    // 退回仓库。账面已无可用 = 不问、不建单、不打扰仓库；关掉弹窗 = 回到报工表，不保存。
+    var surplus = _surplusCandidates(rows);
+    var surplusCounted = const <String, double>{};
     if (surplus.isNotEmpty) {
-      final wantsReturn = await showProductionReportSurplusReturnDialog(
+      final lots = await _undrawnDirectLotsByDemand({
+        for (final candidate in surplus) candidate.demandId,
+      });
+      if (!mounted) return;
+      if (lots.isNotEmpty) {
+        surplus = _surplusCandidates(rows, undrawnDirectLots: lots);
+      }
+      final decision = await showProductionReportSurplusReturnDialog(
         context,
         candidates: surplus,
       );
-      if (!mounted) return;
-      _surplusReturnRequested = wantsReturn == true;
+      if (!mounted || decision == null) return;
+      _surplusReturnRequested = decision.returnToWarehouse;
+      surplusCounted = decision.countedByDemandId;
     } else if (_isCreate || _materialReadsComplete) {
       _surplusReturnRequested = false;
     }
@@ -2067,6 +2135,8 @@ class _ProductionDailyReportEditPageState
       itemsBody.add({
         'goodsId': r.goods!.id,
         'qty': qty,
+        // 不良数只记录，不改良品数；空或 0 不提交。
+        'defectQty': ?productionReportDefectQty(r),
         'weight': ?weight,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
@@ -2112,7 +2182,7 @@ class _ProductionDailyReportEditPageState
             _materialKey(row.planId!, row.executionSegmentId!),
           ),
     );
-    final materialBody = mergeDraftMaterialUsages(
+    final mergedMaterialBody = mergeDraftMaterialUsages(
       saved: _savedMaterialUsage.values,
       edited: editedMaterialBody,
       allowedSourceSegmentIds: usageSourcesComplete
@@ -2127,6 +2197,24 @@ class _ProductionDailyReportEditPageState
             }
           : null,
     );
+    // ADR-129 实盘收尾：退回仓库时 本次用料 = 账面可用 - 实际剩余，与服务端审核同一口径；
+    // 留在车间不带清点数。台账读不到而原样带回的草稿行，已登记的实际剩余随行保留。
+    final editedDemandIds = {
+      for (final line in editedMaterialBody) line['demandId'] as String,
+    };
+    final materialBody = _surplusReturnRequested
+        ? applySurplusCounts(
+            mergedMaterialBody,
+            candidates: surplus,
+            counted: surplusCounted,
+            savedCounted: {
+              for (final usage in _savedMaterialUsage.values)
+                if (usage.countedLeftoverQty != null &&
+                    !editedDemandIds.contains(usage.demandId))
+                  usage.demandId: usage.countedLeftoverQty!,
+            },
+          )
+        : mergedMaterialBody;
     // 单据号后端自动生成（DocNumberService），不再随 body 提交。
     final body = <String, dynamic>{
       'billDate': _fmt(_billDate),

@@ -81,6 +81,42 @@ class AggregateMaterialOrderEndToEndTest {
         }
     }
 
+    /**
+     * ADR-129 §2.5：学习值在最后一次人工刷新之后才变，汇总预览按成员子件的锁定值算需求；新建的共享制造锚点
+     * 继承同一锁定值，写进计划的也是这个数。锚点有计划后人工刷新，成员子树与锚点树一起保持原值。
+     */
+    @Test void sharedAnchorInheritsTheMembersLockedUsageAndStaysInStepOnManualRefresh(){
+        Case c=create(true,false,"10");
+        UUID componentUnit=db.queryForObject("SELECT unit_id FROM goods WHERE id=?",UUID.class,c.material());
+        UUID parentUnit=db.queryForObject("SELECT unit_id FROM goods WHERE id=?",UUID.class,c.common());
+        db.update("""
+                INSERT INTO goods_bom_actual_usages(goods_id,component_goods_id,unit_id,output_unit_id,net_qty,exposure_output_qty,sample_count)
+                VALUES(?,?,?,?,21,10,2)
+                """,c.common(),c.material(),componentUnit,parentUnit);
+        var request=request(c,List.of(input(c,c.common(),"MAKE","30",false)));
+        var shown=preview.preview(c.analysis(),request);
+        amount("30",shown.groups().getFirst().sharedBomChildren().getFirst().requiredQty());
+        var batch=writer.submit(c.analysis(),submit(shown,request)).batches().getFirst();
+        amount("30",db.queryForObject("SELECT required_qty FROM production_material_demands WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,batch.planId()));
+        amount("1",db.queryForObject("SELECT bom_qty FROM production_material_analysis_materials WHERE analysis_item_id=? AND node_role='BOM_COMPONENT' AND active",
+                BigDecimal.class,batch.anchorAnalysisItemId()));
+        new org.springframework.transaction.support.TransactionTemplate(beans.getBean(org.springframework.transaction.PlatformTransactionManager.class)).executeWithoutResult(status->{
+            beans.getBean(com.uten.imp.security.TxSessionVars.class).bind();
+            Object commandTarget=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(ordinary);
+            Object analysisTarget=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(analyses);
+            Object guard=ReflectionTestUtils.invokeMethod(commandTarget,"lockAnalysisWithClaimableShared",c.analysis());
+            ReflectionTestUtils.invokeMethod(guard,"verifyUnchanged");
+            ReflectionTestUtils.invokeMethod(analysisTarget,"adoptLatestBomUsage",c.analysis());
+            ReflectionTestUtils.invokeMethod(analysisTarget,"refreshLocked",c.analysis());
+        });
+        List<BigDecimal> used=db.queryForList("""
+                SELECT bom_qty FROM production_material_analysis_materials
+                WHERE analysis_id=? AND goods_id=? AND node_role='BOM_COMPONENT' AND active
+                """,BigDecimal.class,c.analysis(),c.material());
+        assertEquals(4,used.size());
+        used.forEach(qty->amount("1",qty));
+    }
+
     @Test void priorThreeChildPlansAreInheritedByTheSharedParentWithoutAnotherChildOrder(){
         Case c=createWithChild("10");
         AnalysisView initial=analyses.detail(c.analysis());
@@ -685,7 +721,7 @@ class AggregateMaterialOrderEndToEndTest {
             ReflectionTestUtils.invokeMethod(writerTarget,"copySharedRoutes",batch);
             ReflectionTestUtils.invokeMethod(analysisTarget,"refreshLocked",c.analysis());
             beans.getBean(PreplanStockEntitlementService.class).delegateAggregateMakeEntitlements(c.analysis(),action);
-            ReflectionTestUtils.invokeMethod(commandTarget,"issueAggregateAnchor",c.analysis(),batchId,anchor,group,c.world().warehouseId(),true,intent.idempotencyKey()+"-plan");
+            ReflectionTestUtils.invokeMethod(commandTarget,"issueAggregateAnchor",c.analysis(),batchId,anchor,group,input.allowedOverproductionRate(),c.world().warehouseId(),true,intent.idempotencyKey()+"-plan");
             ReflectionTestUtils.invokeMethod(analysisTarget,"refreshWithAnchorGrowth",c.analysis());
         });
     }

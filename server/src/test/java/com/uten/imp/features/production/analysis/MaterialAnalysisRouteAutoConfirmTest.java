@@ -109,6 +109,7 @@ class MaterialAnalysisRouteAutoConfirmTest {
                 UUID.randomUUID(), item, nodeKey, UUID.randomUUID(), "G-" + nodeKey, nodeKey, null,
                 null, null, UUID.randomUUID(), "piece", depth, "[\"" + nodeKey + "\"]",
                 depth == 0 ? null : "parent", null, "START", "PER_UNIT", one, true, true, one, one, one,
+                MaterialAnalysisService.BomUsage.design(one),
                 new BigDecimal("10"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, new BigDecimal(shortage), null, suggestion, confirmed, null, false,
                 null, null, null, null, null, null);

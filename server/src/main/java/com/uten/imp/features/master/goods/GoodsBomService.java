@@ -9,6 +9,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.color.Color;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
+import com.uten.imp.features.master.goods.dto.BomItemUsage;
 import com.uten.imp.features.master.goods.dto.BomItemView;
 import com.uten.imp.features.master.lifecycle.MasterObjectAccess;
 import com.uten.imp.features.master.unit.Unit;
@@ -27,6 +28,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -87,11 +89,14 @@ public class GoodsBomService {
         Set<UUID> withChildren = withOperationalRows(visibleComponentIds);
         // 颜色/供应商/单位均 UUID 优先；legacy 仅在对应 UUID 缺失时兼容旧数据，按批一次取名。
         LegacyNames legacy = legacyNames(rows);
+        // 真实使用数量/计算采用值：整层一次取(ADR-129)。
+        Map<UUID, BomItemUsage> usage = usageOf(rows.stream().map(GoodsBomItem::getId).toList());
         List<BomItemView> views = new ArrayList<>(rows.size());
         for (GoodsBomItem r : rows) {
             Goods c = r.getComponent();
+            BomItemUsage rowUsage = usage.getOrDefault(r.getId(), BomItemUsage.NONE);
             if (!visibleComponentIds.contains(c.getId())) {
-                views.add(redactedView(r, c));
+                views.add(redactedView(r, c, rowUsage));
                 continue;
             }
             views.add(new BomItemView(
@@ -110,7 +115,7 @@ public class GoodsBomService {
                     c.getSourceType(),
                     r.getControlStage(), r.getConsumptionBasis(),
                     r.getBasisOutputQty(), r.isAllowPartialPackage(),
-                    r.isHardGate(), r.getAuditedAt()));
+                    r.isHardGate(), r.getAuditedAt(), rowUsage));
         }
         return views;
     }
@@ -280,32 +285,35 @@ public class GoodsBomService {
             "FIXED_BATCH", "固定批耗");
 
     /**
-     * 整树展开导出。列集与前端组装信息表格一致（2026-09-25 用户口径「表格显示啥
-     * 导出啥」：需求阶段/缺料处理/单价/金额四列已从表格退役，导出同步不带；
-     * 已审是审计模式下的交互辅助列，不进导出）。层级只用级联序号表达
-     * （1 / 3.1 / 3.1.1），不再加缩进与子层星号标记。
+     * 导出列 = 组装信息导入的格式(导出的文件原样导回)。列集与前端组装信息表格一致(2026-09-25
+     * 用户口径「表格显示啥导出啥」：需求阶段/缺料处理/单价/金额四列已从表格退役，导出同步不带；
+     * 已审是审计模式下的交互辅助列，不进导出)。
+     * 「设计使用数量」后紧跟只读的「真实使用数量」(ADR-129，没有数据留空；导入时忽略)。
      */
+    public static final List<ExportColumn> EXPORT_COLUMNS = List.of(
+            new ExportColumn("seq", "序号", ExportColumn.TEXT),
+            new ExportColumn("code", "物料编号", ExportColumn.TEXT),
+            new ExportColumn("name", "物料名称", ExportColumn.TEXT),
+            new ExportColumn("model", "型号", ExportColumn.TEXT),
+            new ExportColumn("spec", "规格", ExportColumn.TEXT),
+            new ExportColumn("unitName", "单位", ExportColumn.TEXT),
+            new ExportColumn("colorName", "颜色", ExportColumn.TEXT),
+            new ExportColumn("sourceType", "来源", ExportColumn.TEXT),
+            new ExportColumn("consumptionBasis", "计量方式", ExportColumn.TEXT),
+            new ExportColumn("basisOutputQty", "基准产量", ExportColumn.QTY),
+            new ExportColumn("allowPartialPackage", "尾包", ExportColumn.TEXT),
+            new ExportColumn("qty", "设计使用数量", ExportColumn.QTY),
+            new ExportColumn("actualQty", "真实使用数量", ExportColumn.QTY),
+            new ExportColumn("summary", "备注", ExportColumn.TEXT));
+
+    /** 整树展开导出({@link #EXPORT_COLUMNS})。层级只用级联序号表达(1 / 3.1 / 3.1.1)，不再加缩进与子层星号标记。 */
     @Transactional(readOnly = true)
     public ExportPayload exportPayload(UUID goodsId) {
-        List<ExportColumn> cols = List.of(
-                new ExportColumn("seq", "序号", ExportColumn.TEXT),
-                new ExportColumn("code", "物料编号", ExportColumn.TEXT),
-                new ExportColumn("name", "物料名称", ExportColumn.TEXT),
-                new ExportColumn("model", "型号", ExportColumn.TEXT),
-                new ExportColumn("spec", "规格", ExportColumn.TEXT),
-                new ExportColumn("unitName", "单位", ExportColumn.TEXT),
-                new ExportColumn("colorName", "颜色", ExportColumn.TEXT),
-                new ExportColumn("sourceType", "来源", ExportColumn.TEXT),
-                new ExportColumn("consumptionBasis", "计量方式", ExportColumn.TEXT),
-                new ExportColumn("basisOutputQty", "基准产量", ExportColumn.NUMBER),
-                new ExportColumn("allowPartialPackage", "尾包", ExportColumn.TEXT),
-                new ExportColumn("qty", "数量", ExportColumn.NUMBER),
-                new ExportColumn("summary", "备注", ExportColumn.TEXT));
         List<Map<String, Object>> rows = new ArrayList<>();
         Set<UUID> path = new java.util.HashSet<>();
         path.add(goodsId);
         expandForExport(goodsId, 0, path, "", rows);
-        return new ExportPayload(cols, rows, rows.size());
+        return new ExportPayload(EXPORT_COLUMNS, rows, rows.size());
     }
 
     /** DFS 平铺 BOM 树：[path] = 当前展开路径上的货品（含根，环路防护）；[prefix] = 级联序号前缀。 */
@@ -332,6 +340,7 @@ public class GoodsBomService {
             row.put("allowPartialPackage", "PER_PACKAGE".equals(v.getConsumptionBasis())
                     ? (v.isAllowPartialPackage() ? "允许" : "整包") : "—");
             row.put("qty", v.getQty());
+            row.put("actualQty", v.getUsage().actualQty());
             row.put("summary", v.getSummary());
             rows.add(row);
             if (v.isHasChildren() && !path.contains(v.getComponentGoodsId())) {
@@ -347,9 +356,10 @@ public class GoodsBomService {
     /** 把请求写到组装行上并校验(用量/阶段/计量方式/硬门槛/颜色/供应商)；粘贴命令逐行复用。 */
     void apply(BomItemSaveRequest req, GoodsBomItem r, Goods component) {
         r.setComponent(component);
-        BigDecimal qty = req.getQty() == null ? BigDecimal.ONE : req.getQty();
-        if (qty.signum() <= 0) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "用量必须大于 0");
+        // 不传 = 新建按 1(实体默认)、编辑保留原值：系统学习边只在人改了数量时才提交数量(ADR-129)。
+        BigDecimal qty = req.getQty() == null ? r.getQty() : req.getQty();
+        if (qty == null || qty.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "设计使用数量必须大于 0");
         }
         r.setQty(qty);
         String controlStage = validChoice(
@@ -444,6 +454,8 @@ public class GoodsBomService {
     private BomItemView toView(GoodsBomItem r, Goods component) {
         boolean hasChildren = !withOperationalRows(Set.of(component.getId())).isEmpty();
         LegacyNames legacy = legacyNames(List.of(r));
+        // 原生查询前先落库：刚新建/改过的行也按库里的口径读回(学习边被人工接管由触发器改写)。
+        BomItemUsage usage = usageOf(List.of(r.getId())).getOrDefault(r.getId(), BomItemUsage.NONE);
         return new BomItemView(
                 r.getId(), component.getId(), component.getCode(), component.getName(),
                 component.getModel(), component.getSpec(), component.getMaterial(),
@@ -458,18 +470,28 @@ public class GoodsBomService {
                 r.getSummary(), r.getLegacyId(), hasChildren, component.getSourceType(),
                 r.getControlStage(), r.getConsumptionBasis(),
                 r.getBasisOutputQty(), r.isAllowPartialPackage(), r.isHardGate(),
-                r.getAuditedAt());
+                r.getAuditedAt(), usage);
     }
 
     /** Preserve relationship identity for cleanup while hiding an unauthorized target's data. */
-    private BomItemView redactedView(GoodsBomItem r, Goods component) {
+    private BomItemView redactedView(GoodsBomItem r, Goods component, BomItemUsage usage) {
         return new BomItemView(
                 r.getId(), component.getId(), null, null, null, null, null,
                 null, null, null, null, null, null,
                 r.getQty(), viewPrice(r.getPrice()), viewTotal(r), r.getSummary(), r.getLegacyId(),
                 false, null, r.getControlStage(), r.getConsumptionBasis(),
                 r.getBasisOutputQty(), r.isAllowPartialPackage(), r.isHardGate(),
-                r.getAuditedAt());
+                r.getAuditedAt(), usage);
+    }
+
+    /** 这些组装行的真实使用数量/计算采用值：一条查询(v_goods_bom_item_usage)，不逐行查。 */
+    private Map<UUID, BomItemUsage> usageOf(Collection<UUID> itemIds) {
+        if (itemIds.isEmpty()) return Map.of();
+        Map<UUID, BomItemUsage> out = new HashMap<>();
+        for (Object[] row : bomRepo.findUsageRows(itemIds)) {
+            out.put((UUID) row[0], BomItemUsage.of(row, 1));
+        }
+        return out;
     }
 
     /** 售价可见性（goods:price:view，V570）：未授权者 BOM 行单价/金额置 null（前端隐藏列）。 */
@@ -528,31 +550,13 @@ public class GoodsBomService {
 
     /**
      * BOM 增删改后重算父货品「材料合计」sourceE 并写回 goods：
-     * 直接组件中，来源=自制 或 自身有 BOM（半成品）的取其成本价 cTotal×qty（其下级成本已含），
-     * 其余（采购/委外/未设）取 price×qty。求和（两位小数）。
+     * 直接组件中，来源=自制 或 自身有 BOM(半成品)的取其成本价 cTotal×设计使用数量(其下级成本已含)，
+     * 其余(采购/委外/未设)取 price×设计使用数量。求和(两位小数)。
+     * 公式只在数据库函数 fn_goods_bom_material_cost 里定义一次，学习引擎同步学习边后也调它(ADR-129)。
      * 前端成本 Tab 的 sourceE 只读显示此值；下游成本（成品价/成本价/出厂价）由前端据此级联。
      */
     void recalcSourceE(Goods parent) {
-        List<GoodsBomItem> rows = operationalRows(parent.getId());
-        Set<UUID> componentIds = rows.stream()
-                .map(r -> r.getComponent().getId())
-                .collect(Collectors.toSet());
-        Set<UUID> withChildren = withOperationalRows(componentIds);
-        BigDecimal sum = BigDecimal.ZERO;
-        for (GoodsBomItem r : rows) {
-            Goods c = r.getComponent();
-            boolean selfMade = "自制".equals(c.getSourceType()) || withChildren.contains(c.getId());
-            BigDecimal unit;
-            if (selfMade && c.getCTotal() != null) {
-                unit = c.getCTotal();
-            } else {
-                unit = c.getPrice();
-            }
-            if (unit != null && r.getQty() != null) {
-                sum = sum.add(unit.multiply(r.getQty()));
-            }
-        }
-        parent.setSourceE(sum.setScale(2, RoundingMode.HALF_UP));
+        parent.setSourceE(bomRepo.materialCost(parent.getId()));
         goodsRepo.save(parent);
         // BOM 变更 → 通知旁路：触发研发 BOM 任务自动完成 + 通知所有已登记等待的生产转发人
         // （ChainNoticeService.notifyBomUpdated 经 outbox 原子送达）。create/update/delete 三处共用此钩子。

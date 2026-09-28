@@ -22,7 +22,7 @@ public class BomItemSaveRequest {
     @NotNull
     private UUID componentGoodsId;   // 组件货品 UUID（唯一实时关联键，必填）
 
-    private BigDecimal qty;          // 用量（默认 1）
+    private BigDecimal qty;          // 设计使用数量(不传：新建按 1，编辑保留原值)
     private String controlStage;     // START/ASSEMBLY/FINISH/SHIP/REFERENCE
     private String consumptionBasis; // PER_UNIT/PER_PACKAGE/FIXED_BATCH
     private BigDecimal basisOutputQty;

@@ -423,6 +423,62 @@ class CompleteKitAllocatorTest {
         assertThat(allocated).isEqualByComparingTo("6");
     }
 
+    /**
+     * ADR-129 §2.3：执行侧计量规则只委托共享的 MaterialConsumptionMath；期望值是委托前
+     * ConsumptionRule 自带公式的结果，证明合一后数值不变。
+     */
+    @Test
+    void consumptionRuleDelegatesToTheSharedFormulaWithUnchangedResults() {
+        record Case(String basis, String bomQty, String basisOutputQty,
+                    boolean allowPartialPackage, String parentOutputQty,
+                    String expected) {
+        }
+        List<Case> cases = List.of(
+                new Case("PER_UNIT", "0.333333", "1", true, "7", "2.3334"),
+                new Case("PER_UNIT", "2", "1", false, "0", "0"),
+                new Case("PER_PACKAGE", "1", "6", true, "3", "0.5"),
+                new Case("PER_PACKAGE", "1", "3", true, "10", "3.3334"),
+                new Case("PER_PACKAGE", "2", "6", false, "10", "4"),
+                new Case("PER_PACKAGE", "2", "6", false, "6", "2"),
+                new Case("FIXED_BATCH", "0.25", "100", true, "101", "0.5"),
+                new Case("FIXED_BATCH", "0.25", "100", false, "100", "0.25"),
+                new Case("FIXED_BATCH", "4", "2.5", true, "0.0001", "4"));
+        for (Case value : cases) {
+            BigDecimal delegated = rule(
+                    value.basis(), value.bomQty(), value.basisOutputQty(),
+                    value.allowPartialPackage())
+                    .required(decimal(value.parentOutputQty()));
+            assertThat(delegated).as(value.toString())
+                    .isEqualByComparingTo(value.expected())
+                    .isEqualByComparingTo(
+                            com.uten.imp.features.production.analysis
+                                    .MaterialConsumptionMath.required(
+                                            decimal(value.parentOutputQty()),
+                                            decimal(value.bomQty()),
+                                            value.basis(),
+                                            decimal(value.basisOutputQty()),
+                                            value.allowPartialPackage()));
+            assertThat(delegated.scale()).isEqualTo(
+                    CompleteKitAllocator.MATERIAL_SCALE);
+        }
+    }
+
+    /** 冻结曲线逐规则按父件产出向上取整再求和，与 fn_material_snapshot_required(V609) 同一口径。 */
+    @Test
+    void frozenCurveRoundsEveryRuleBeforeSumming() {
+        List<CompleteKitAllocator.ConsumptionRule> rules = List.of(
+                rule("PER_PACKAGE", "2", "6", false),
+                rule("FIXED_BATCH", "4", "1", true),
+                rule("PER_UNIT", "0.00003", "1", true));
+
+        assertThat(CompleteKitAllocator.required(
+                rules, decimal("3"), decimal("2")))
+                .isEqualByComparingTo("26.0002");
+        assertThat(CompleteKitAllocator.required(
+                rules, BigDecimal.ZERO, decimal("2")))
+                .isZero();
+    }
+
     private static CompleteKitAllocator.ProductLine line(
             String quantity,
             CompleteKitAllocator.MaterialUsage... materials) {

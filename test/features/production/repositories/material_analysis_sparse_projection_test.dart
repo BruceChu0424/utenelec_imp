@@ -26,6 +26,12 @@ void main() {
         'basisOutputQty': null,
         'hardGate': false,
         'minOrderQty': null,
+        // ADR-129：没有真实数据的节点显式下发 null / DESIGN，不能继承默认值。
+        'actualBomQty': null,
+        'usageBasis': 'DESIGN',
+        'usageReason': 'NO_DATA',
+        'usageSampleCount': null,
+        'usageDefectRate': null,
       };
       final defaults = MaterialAnalysisMaterialDefaults(base);
       expect(defaults.hydrate({}), equals(base));
@@ -175,6 +181,10 @@ void main() {
           {'requiredQty': double.infinity},
           {'routeConfirmed': 'false'},
           {'level': 1.5},
+          {'usageSampleCount': 1.5},
+          {'usageDefectRate': '0.1'},
+          {'usageDefectRate': double.nan},
+          {'usageBasis': 1},
           {
             'path': [false],
           },
@@ -303,6 +313,12 @@ List<Object?> _facts(ProductionMaterialAnalysisMaterial row) => [
   row.sourceRequiredQty,
   row.perProductQty,
   row.bomQty,
+  row.designBomQty,
+  row.actualBomQty,
+  row.usageBasis,
+  row.usageReason,
+  row.usageSampleCount,
+  row.usageDefectRate,
   row.parentPerProductQty,
   row.availableQty,
   row.allocatedAvailableQty,
@@ -389,8 +405,14 @@ Map<String, dynamic> _prototype() => {
   'publicSurplusExpectedDate': null,
   'minOrderQty': 3.5,
   'orderMultipleQty': 2,
+  'usageBasis': 'ACTUAL',
+  'usageReason': null,
+  'usageSampleCount': 12,
+  'usageDefectRate': 0.0325,
   for (final field in [
     'bomQty',
+    'designBomQty',
+    'actualBomQty',
     'parentPerProductQty',
     'perProductQty',
     'requiredQty',

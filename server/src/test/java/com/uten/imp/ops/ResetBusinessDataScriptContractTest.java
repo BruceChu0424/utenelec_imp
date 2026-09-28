@@ -124,7 +124,8 @@ class ResetBusinessDataScriptContractTest {
                 .containsEntry("production_bom_learning_samples", "CLEAR")
                 .containsEntry("production_bom_learning_refresh_queue", "CLEAR")
                 .containsEntry("goods_bom_learning_profiles", "PRESERVE")
-                .containsEntry("goods_bom_learning_material_totals", "PRESERVE");
+                .containsEntry("goods_bom_actual_usages", "PRESERVE")
+                .doesNotContainKey("goods_bom_learning_material_totals");
         assertThat(policy).containsEntry("production_planning_urges", "CLEAR");
         assertThat(policy).containsEntry("finance_report_line_bindings", "PRESERVE");
         assertThat(policy).containsEntry("warehouse_keepers", "PRESERVE");

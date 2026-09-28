@@ -306,7 +306,7 @@ class ProductionMaterialDiscoveryEndToEndTest {
         stock.confirmProductionMaterialReturn(returned,new ProductionMaterialReturnConfirmRequest(world.warehouseId(),"third-return-"+segment));
         assertEquals(0,new BigDecimal("0.6").compareTo(db.queryForObject("SELECT qty FROM goods_bom_items WHERE goods_id=? AND component_goods_id=? AND NOT is_deleted",BigDecimal.class,world.goodsC(),world.goodsD())));
         assertEquals(0,new BigDecimal("3").compareTo(db.queryForObject("SELECT total_output_qty FROM goods_bom_learning_profiles WHERE goods_id=?",BigDecimal.class,world.goodsC())));
-        assertEquals(0,new BigDecimal("1.8").compareTo(db.queryForObject("SELECT net_qty FROM goods_bom_learning_material_totals WHERE goods_id=?",BigDecimal.class,world.goodsC())));
+        assertEquals(0,new BigDecimal("1.8").compareTo(db.queryForObject("SELECT net_qty FROM goods_bom_actual_usages WHERE goods_id=?",BigDecimal.class,world.goodsC())));
     }
     @Test void stoppedPlanHidesPendingWarehouseTaskAndResolvesItsNoticeWithoutReleasingInventory(){
         UUID user=fixture.createUserWithPerms(world,"discovery-warehouse-"+UUID.randomUUID(),"notice:read","stock_doc:view","stock_doc:approve","stock_doc:issue");

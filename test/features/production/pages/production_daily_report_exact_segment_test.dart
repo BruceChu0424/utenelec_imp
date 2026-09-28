@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -31,6 +32,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
 import 'package:uten_imp/shared/attachments/attachment_service.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
+import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/features/production/widgets/production_daily_grid_columns.dart';
 
@@ -219,6 +221,8 @@ void main() {
               'unitRate': 1,
               'qty': i == 0 ? 130 : (i == 1 ? 5 : 2),
               'remark': '明细-$i',
+              'destination': 'WAREHOUSE',
+              if (i == 1) 'defectQty': 1.5,
               if (i == 2) 'fqcRecoveryAuthorizationId': 'recovery-1',
             },
         ],
@@ -354,6 +358,7 @@ void main() {
             .where((row) => !row.isSubRow)
             .toList();
         expect(products.map((row) => row.qty.text), ['130', '5', '2']);
+        expect(products.map((row) => row.defectQty.text), ['', '1.5', '']);
         expect(products.map((row) => row.planId), [
           'plan-0',
           'plan-1',
@@ -379,6 +384,8 @@ void main() {
         expect(rows.first['supplementProofId'], 'proof-1');
         expect(rows[1]['executionSegmentId'], 'segment-1');
         expect(rows[1]['remark'], '明细-1');
+        expect(rows[1]['defectQty'], 1.5);
+        expect(rows.first.containsKey('defectQty'), isFalse);
         expect(rows.last['fqcRecoveryAuthorizationId'], 'recovery-1');
         expect(saved!['materialLines'], [
           {'demandId': 'demand-1', 'qtyBase': 117.0},
@@ -734,6 +741,7 @@ void main() {
                     'unitId': 'unit-1',
                     'unitRate': 1,
                     'qty': scenario == 'split-output' ? 3 : 5,
+                    if (scenario == 'split-output') 'defectQty': 1.5,
                     'isFinal': scenario == 'legacy-final',
                     'remainingPlanQty': 20,
                     if (scenario == 'split-output') ...{
@@ -755,6 +763,7 @@ void main() {
                       'unitId': 'unit-1',
                       'unitRate': 1,
                       'qty': 2,
+                      'defectQty': 0,
                       'outputBatchId': 'batch-1',
                       'outputBatchQty': 5,
                       'weight': 0.8,
@@ -943,6 +952,7 @@ void main() {
           );
           expect(double.parse(first.qty.text), 5);
           expect(double.parse(first.weight.text), 2);
+          expect(first.defectQty.text, '1.5');
         }
         if (proofScenario) {
           expect(
@@ -1025,6 +1035,17 @@ void main() {
       expect(saved!['materialLines'], [
         {'demandId': 'demand-1', 'qtyBase': failMaterialRead ? 7 : 8},
       ]);
+      final savedItems = (saved!['items'] as List).cast<Map<String, dynamic>>();
+      if (scenario == 'split-output') {
+        // 复制行带着整次报工的不良数，良品数按用户改后的 6 提交。
+        expect(savedItems.single['qty'], 6);
+        expect(savedItems.single['defectQty'], 1.5);
+      } else {
+        expect(
+          savedItems.every((item) => !item.containsKey('defectQty')),
+          isTrue,
+        );
+      }
       expect(saved!['surplusReturnRequested'] == true, failMaterialRead);
       expect(
         (saved!['items'] as List).every(
@@ -1646,6 +1667,265 @@ void main() {
       },
     );
   }
+
+  // ADR-129 不良数：只记录，不改良品数；空或 0 不提交，只在已选工单的行上填。
+  testWidgets('不良数：输入与保存同一口径校验，大于 0 才随行提交且良品数不变', (tester) async {
+    final saved = <Map<String, dynamic>>[];
+    await _pumpNewReport(tester, _api(onCreate: saved.add));
+    final row = _productRows(tester).single;
+    expect(find.text('不良数'), findsOneWidget);
+    expect(_defectField(row), findsOneWidget);
+    // 输入只接受非负数、最多 4 位小数。
+    await tester.enterText(_defectField(row), '-2');
+    expect(row.defectQty.text, '');
+    await tester.enterText(_defectField(row), '1.23456');
+    expect(row.defectQty.text, '');
+    // 绕过输入框的值(例如恢复的草稿)由保存校验拦下。
+    row.defectQty.text = '1.23456';
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+    await tester.pumpAndSettle();
+    expect(saved, isEmpty);
+    expect(find.textContaining('第 1 行不良数请填写不小于 0、最多 4 位小数的数量'), findsOneWidget);
+    await tester.enterText(_defectField(row), '2.5');
+    await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+    await tester.pumpAndSettle();
+    final item = (saved.single['items'] as List).single as Map;
+    expect(item['defectQty'], 2.5);
+    expect(item['qty'], 10, reason: '不良数不从完工申报量里扣');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('不良数填 0 与留空一样不提交', (tester) async {
+    final saved = <Map<String, dynamic>>[];
+    await _pumpNewReport(tester, _api(onCreate: saved.add));
+    final row = _productRows(tester).single;
+    await tester.enterText(_defectField(row), '0');
+    await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+    await tester.pumpAndSettle();
+    final item = (saved.single['items'] as List).single as Map;
+    expect(item.containsKey('defectQty'), isFalse);
+    expect(item['qty'], 10);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('不良数只在已选工单且完工申报量大于 0 的行上成立', () {
+    final row = DailyGridRow()..defectQty.text = '2';
+    addTearDown(row.dispose);
+    expect(productionReportDefectIssue(row), '不良数只能记在已选择报工工单的行上');
+    row.executionSegmentId = 'segment-1';
+    expect(productionReportDefectIssue(row), '先填写大于 0 的完工申报量，才能记录不良数');
+    row.qty.text = '0';
+    expect(productionReportDefectIssue(row), '先填写大于 0 的完工申报量，才能记录不良数');
+    row.qty.text = '10';
+    expect(productionReportDefectIssue(row), isNull);
+    expect(productionReportDefectQty(row), 2);
+    for (final raw in ['', '0', '0.0000']) {
+      row
+        ..qty.clear()
+        ..executionSegmentId = null
+        ..defectQty.text = raw;
+      expect(productionReportDefectIssue(row), isNull, reason: raw);
+      expect(productionReportDefectQty(row), isNull, reason: raw);
+    }
+    row.defectQty.text = '.';
+    expect(productionReportDefectIssue(row), contains('最多 4 位小数'));
+    // 复制行照带不良数(良品数也照带)。
+    row
+      ..executionSegmentId = 'segment-1'
+      ..planItemId = 'plan-item-1'
+      ..qty.text = '10'
+      ..defectQty.text = '1.5';
+    final copy = row.clone();
+    addTearDown(copy.dispose);
+    expect(copy.defectQty.text, '1.5');
+  });
+
+  testWidgets('不良数随表单草稿保存与恢复，清除来源时一并清空', (tester) async {
+    await _pumpNewReport(tester, _api());
+    final row = _productRows(tester).single;
+    await tester.enterText(_defectField(row), '3.25');
+    await tester.pump();
+    final state =
+        tester.state(find.byType(ProductionDailyReportEditPage))
+            as FormDraftMixin<ProductionDailyReportEditPage>;
+    final draft = Map<String, dynamic>.from(
+      jsonDecode(jsonEncode(state.captureFormDraft())) as Map,
+    );
+    expect(((draft['rows'] as List).single as Map)['defectQty'], '3.25');
+    row.defectQty.clear();
+    await state.restoreFormDraft(draft);
+    await tester.pumpAndSettle();
+    final restored = _productRows(tester).single;
+    expect(restored.defectQty.text, '3.25');
+    expect(restored.qty.text, '10');
+    expect(_defectField(restored), findsOneWidget);
+    // 「清除来源」在右侧来源列，先横向滚到可见再点。
+    await tester.ensureVisible(find.byTooltip('清除来源'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('清除来源'));
+    await tester.pumpAndSettle();
+    expect(restored.defectQty.text, '');
+    expect(restored.executionSegmentId, isNull);
+    expect(_defectField(restored), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  // ADR-129 §2.7 实盘收尾：最后一次报工逐料清点实际剩余。退回仓库时本次用料 =
+  // 账面可用 - 实际剩余并带清点数；留在车间照旧不带；关掉弹窗回到报工表不保存。
+  for (final choice in ['return', 'used-up', 'stay', 'dismiss']) {
+    testWidgets('last report counted close-out: $choice', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1440, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      Map<String, dynamic>? saved;
+      final api = _api(
+        sourceOverrides: {
+          'planId': 'plan-1',
+          'plannedQty': 10,
+          'producedQty': 0,
+        },
+        onCreate: (body) => saved = body,
+        responseOverride: (request) {
+          if (request.path.endsWith('/material-usage-sources')) {
+            return [
+              {
+                'executionSegmentId': 'segment-1',
+                'executionSegmentCode': 'SEG-001',
+                'canOpen': true,
+                'canSettle': true,
+                'shared': false,
+              },
+            ];
+          }
+          if (request.path.endsWith('/clearance')) {
+            return [
+              {
+                'planId': 'plan-1',
+                'demandId': 'demand-1',
+                'goodsId': 'raw',
+                'goodsName': '测试原料',
+                'unitName': '千克',
+                'executionSegmentId': 'segment-1',
+                'issuedQty': 10,
+                'unclearedQty': 10,
+                'availableToSettleQty': 10,
+                'requiredQty': 10,
+                'requiredForProductQty': 10,
+                'requirementMode': 'LINEAR',
+              },
+            ];
+          }
+          return null;
+        },
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            departmentRepositoryProvider.overrideWithValue(
+              _FakeDepartmentRepository(),
+            ),
+            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+            productionDailyReportRepositoryProvider.overrideWithValue(
+              ProductionDailyReportRepository(api),
+            ),
+            employeeRepositoryProvider.overrideWithValue(
+              _FakeEmployeeRepository(),
+            ),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.productionDailyReportCreate,
+            }),
+          ],
+          child: const MaterialApp(
+            home: Column(
+              children: [
+                AppNotificationHost(),
+                Expanded(
+                  child: ProductionDailyReportEditPage(
+                    initialExecutionSegmentId: 'segment-1',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final grid = tester.widget<UtenEditableGrid<DailyGridRow>>(
+        find.byType(UtenEditableGrid<DailyGridRow>),
+      );
+      expect(
+        grid.controller.rows.firstWhere((row) => !row.isMaterialRow).qty.text,
+        '10',
+      );
+      final material = grid.controller.rows.firstWhere(
+        (row) => row.materialEditable,
+      );
+      // 按单耗预填的用料正好用完账面：纸面剩余 0 也要清点。
+      expect(material.materialUsed.text, '10');
+      if (choice != 'used-up') material.materialUsed.text = '6';
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+      await tester.pumpAndSettle();
+      expect(find.text('清点剩余物料'), findsOneWidget);
+      expect(find.text('账面可用 10 千克'), findsOneWidget);
+      final counted = find.byKey(
+        const ValueKey('report-surplus-counted-demand-1'),
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.descendant(of: counted, matching: find.byType(TextField)),
+            )
+            .controller!
+            .text,
+        choice == 'used-up' ? '0' : '4',
+      );
+      if (choice == 'dismiss') {
+        await tester.tapAt(const Offset(5, 5));
+      } else {
+        if (choice != 'used-up') await tester.enterText(counted, '3');
+        await tester.pump();
+        await tester.tap(
+          choice == 'stay'
+              ? find.text('留在车间')
+              : find.byKey(const Key('report-surplus-return-confirm')),
+        );
+      }
+      await tester.pumpAndSettle();
+      if (choice == 'dismiss') {
+        expect(saved, isNull);
+        expect(find.text('清点剩余物料'), findsNothing);
+        expect(material.materialUsed.text, '6');
+      } else {
+        expect(saved!['materialLines'], [
+          switch (choice) {
+            'return' => {
+              'demandId': 'demand-1',
+              'qtyBase': 7.0,
+              'countedLeftoverQty': 3.0,
+            },
+            'used-up' => {
+              'demandId': 'demand-1',
+              'qtyBase': 10.0,
+              'countedLeftoverQty': 0.0,
+            },
+            _ => {'demandId': 'demand-1', 'qtyBase': 6.0},
+          },
+        ]);
+        expect(
+          saved!['surplusReturnRequested'],
+          choice == 'stay' ? isNull : isTrue,
+        );
+        // 页面只改提交的数；用料格仍是用户填的，服务端审核时按实际剩余覆盖。
+        expect(material.materialUsed.text, choice == 'used-up' ? '10' : '6');
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
 }
 
 class _ReportSaveAttachments extends AttachmentService {
@@ -1676,6 +1956,56 @@ class _ReportSaveAttachments extends AttachmentService {
     );
   }
 }
+
+Future<void> _pumpNewReport(WidgetTester tester, ApiClient api) async {
+  await tester.binding.setSurfaceSize(const Size(1440, 1000));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        apiClientProvider.overrideWithValue(api),
+        departmentRepositoryProvider.overrideWithValue(
+          _FakeDepartmentRepository(),
+        ),
+        masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+        productionDailyReportRepositoryProvider.overrideWithValue(
+          ProductionDailyReportRepository(api),
+        ),
+        employeeRepositoryProvider.overrideWithValue(_FakeEmployeeRepository()),
+        sharedPreferencesProvider.overrideWithValue(preferences),
+      ],
+      child: const MaterialApp(
+        home: Column(
+          children: [
+            AppNotificationHost(),
+            Expanded(
+              child: ProductionDailyReportEditPage(
+                initialExecutionSegmentId: 'segment-1',
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+List<DailyGridRow> _productRows(WidgetTester tester) => tester
+    .widget<UtenEditableGrid<DailyGridRow>>(
+      find.byType(UtenEditableGrid<DailyGridRow>),
+    )
+    .controller
+    .rows
+    .where((row) => !row.isMaterialRow)
+    .toList();
+
+Finder _defectField(DailyGridRow row) => find.byWidgetPredicate(
+  (widget) =>
+      widget is TextField && identical(widget.controller, row.defectQty),
+);
 
 /// 去向分配页面测试的共用装配：新建日报带一个来源(完工申报量 10)，
 /// 可送的上层工单 A 还差 6、B 还差 3，C 在别的车间不能收。

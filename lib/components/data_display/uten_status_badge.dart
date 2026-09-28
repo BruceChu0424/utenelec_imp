@@ -28,15 +28,50 @@ class UtenStatusBadge extends StatelessWidget {
   final IconData? icon;
   final UtenStatusBadgeSize size;
 
+  /// 各尺寸的水平/垂直内边距、字号、图标尺寸(徽章与 [measureWidth] 同一份)。
+  static (double, double, double, double) _metrics(UtenStatusBadgeSize size) =>
+      switch (size) {
+        UtenStatusBadgeSize.small => (8.0, 2.0, 11.0, 12.0),
+        UtenStatusBadgeSize.medium => (10.0, 3.0, 12.0, 13.0),
+        UtenStatusBadgeSize.large => (12.0, 5.0, 13.0, 14.0),
+      };
+
+  /// 图标与文字的间距。
+  static const double _iconGap = 4;
+
+  static TextStyle _labelStyle(double textSize) =>
+      TextStyle(fontSize: textSize, fontWeight: FontWeight.w600, height: 1.3);
+
+  /// 不带图标的徽章完整显示 [label] 所需的宽度(按当前字体、字号档与界面
+  /// 缩放实测)。
+  ///
+  /// 给徽章预留固定槽位时用它，不要手写像素：不同语言、字号档下文字宽度不同，
+  /// 写死的宽度会把标签截成省略号。
+  static double measureWidth(
+    BuildContext context,
+    String label, {
+    UtenStatusBadgeSize size = UtenStatusBadgeSize.medium,
+  }) {
+    final (padH, _, textSize, _) = _metrics(size);
+    final painter = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: DefaultTextStyle.of(context).style.merge(_labelStyle(textSize)),
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final textWidth = painter.width;
+    painter.dispose();
+    return (padH * 2 + textWidth).ceilToDouble();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colors = _resolveColors(type, isDark);
-    final (padH, padV, textSize, iconSize) = switch (size) {
-      UtenStatusBadgeSize.small => (8.0, 2.0, 11.0, 12.0),
-      UtenStatusBadgeSize.medium => (10.0, 3.0, 12.0, 13.0),
-      UtenStatusBadgeSize.large => (12.0, 5.0, 13.0, 14.0),
-    };
+    final (padH, padV, textSize, iconSize) = _metrics(size);
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
@@ -49,7 +84,7 @@ class UtenStatusBadge extends StatelessWidget {
         children: [
           if (icon != null) ...[
             Icon(icon, size: iconSize, color: colors.$2),
-            const SizedBox(width: 4),
+            const SizedBox(width: _iconGap),
           ],
           Flexible(
             child: Tooltip(
@@ -58,12 +93,7 @@ class UtenStatusBadge extends StatelessWidget {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: colors.$2,
-                  fontSize: textSize,
-                  fontWeight: FontWeight.w600,
-                  height: 1.3,
-                ),
+                style: _labelStyle(textSize).copyWith(color: colors.$2),
               ),
             ),
           ),

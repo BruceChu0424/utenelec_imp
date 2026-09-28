@@ -32,7 +32,7 @@ erDiagram
 
 <a id="material-discovery-bom"></a>
 
-## 底层自制材料发现、领料编号与 BOM 学习 (V710–V711 / V726–V727 / V731)
+## 底层自制材料发现、领料编号与 BOM 学习 (V710–V711 / V726–V727 / V731 / V739)
 
 ```mermaid
 erDiagram
@@ -47,9 +47,9 @@ erDiagram
     stock_document_items ||--o| production_planning_package_document_items : DRAW_document_item_id
     production_execution_segments ||--o| production_bom_learning_samples : family_contribution
     goods ||--o| goods_bom_learning_profiles : learns
-    goods_bom_learning_profiles ||--o{ goods_bom_learning_material_totals : aggregates
+    goods ||--o{ goods_bom_actual_usages : actual_usage_of_parent
     goods_bom_learning_profiles ||--o{ production_bom_learning_samples : contributions
-    goods_bom_items |o--o| goods_bom_learning_material_totals : learned_edge
+    goods_bom_items |o--o| goods_bom_actual_usages : parent_component_unit
     production_material_discovery_requests {
         uuid id PK
         text request_no UK
@@ -58,6 +58,20 @@ erDiagram
         text status
         bigint expected_version
         bigint row_version
+    }
+    goods_bom_actual_usages {
+        uuid goods_id PK
+        uuid component_goods_id PK
+        uuid unit_id PK
+        uuid output_unit_id FK
+        numeric net_qty
+        numeric exposure_output_qty
+        bigint sample_count
+        numeric baseline_net_qty
+        numeric baseline_exposure_output_qty
+        bigint baseline_sample_count
+        int learning_generation
+        numeric actual_qty "generated"
     }
     production_draw_issue_batches {
         uuid id PK
@@ -79,9 +93,9 @@ V731 为申请的 `request_no` 分配不可变 LQ 号；正式 DRAW 的 `stock_d
 
 同一申请内的精确材料按需求聚合，实际叶仓明细独立保存。正式单列表、计数、筛选及状态使用该张 DRAW 的真实明细和实际仓，不能按需求只取首张单或将需求总量重复投影到每张单。例如一需求分两仓 2 和 3，映射到两张 SL 后仍分别为 2 和 3。
 
-拆批和实际追加共用一个生产族贡献。学习分子是实际实发减已确认良品退料的净耗量，分母是已审核真实产量；生产族闭合平账后才更新累计贡献，反向按新旧贡献差量调整。预填、预留、未平账批次和重复命令不产生新学习样本，人工维护的 BOM 不被自动覆盖。
+拆批和实际追加共用一个生产族贡献。V739 起所有本厂生产的父件都学习：分子是核清物料的实际实发减已确认良品退料 (实物净耗)，分母是用到该物料的族的已审核真实产量 (暴露)；族级完成且逐物料核清后才更新累计贡献，反向按新旧贡献差量调整。累计写入 `goods_bom_actual_usages` (按 父件+组件+组件基本单位，取代按颜色累计的旧表)，BOM 边经唯一视图 `v_goods_bom_item_usage` 读到设计值、真实值与计算采用值。预填、预留、未核清批次和重复命令不产生新学习样本；学习不改人工边的设计使用数量，只新建或同步系统学习边 (`learning_profile_goods_id` 非空)，人工改结构列让该边转为人工边，人工删除记 `learning_released_at` 后不再自动加回。
 
-业务清空清理申请、配置明细、批次命令账、业务样本和刷新队列；货品学习累计及永久编号占号保留。字段与约束见 [实体字典](实体字典.md#底层材料发现与累计学习)，完整规则见 [ADR-119](../99-决策记录-ADR/ADR-119-底层自制实际领料与BOM累计学习.md)，本地验证与未部署边界见 [2026-09-26 收尾记录](../99-项目治理/2026-09-26-领料申请批量出库与编号收尾.md)。
+业务清空清理申请、配置明细、批次命令账、业务样本和刷新队列；学习档案、真实使用数量累计及永久编号占号保留。字段与约束见 [实体字典](实体字典.md#底层材料发现与累计学习)，完整规则见 [ADR-119](../99-决策记录-ADR/ADR-119-底层自制实际领料与BOM累计学习.md) 与 [ADR-129](../99-决策记录-ADR/ADR-129-BOM设计使用数量与真实使用数量.md)，本地验证与未部署边界见 [2026-09-26 收尾记录](../99-项目治理/2026-09-26-领料申请批量出库与编号收尾.md)。
 
 ## 2026-09-23 未领料原工单追加(V647 / ADR-104)
 
@@ -398,6 +412,13 @@ erDiagram
 已隔离 81 条历史 stub 误接边并用数据库触发器阻止复发。`ProductionPlanCost` 是历史计划展开快照，
 可继续引用 31 个历史货品锚，不能因当前货品改名、BOM 调整或 stub 隔离而回溯重算。源端 20,798 条
 BOM reject 仍须单独治理。
+
+2026-09-27 (V739 / [ADR-129](../99-决策记录-ADR/ADR-129-BOM设计使用数量与真实使用数量.md))：`GoodsBomItem.qty` 是**设计使用数量**，真实使用数量不在边上，而在
+`goods_bom_actual_usages` (父件+组件+组件基本单位)。一条真实使用数量的状态与本轮窗口只由视图
+`v_goods_bom_actual_usage` 定义；每条边的「计算用量」由建在它上面的视图 `v_goods_bom_item_usage`
+定义 (线性边有真实值用真实值，否则设计值，6 位向上取整)：物料分析快照、车间领料需求、MRP 与计划导入单台用量
+读它；委外单一子件发料、成本预算 `source_e`、反查报表与 BOM 复制/粘贴仍读设计值。边上的
+`learning_profile_goods_id` 标记系统学习边，`learning_released_at` 记人工删除后不再自动加回。
 
 ### 2.10 资产与待摊专业子账（V183）
 

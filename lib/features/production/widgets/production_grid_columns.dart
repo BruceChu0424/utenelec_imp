@@ -41,6 +41,10 @@ class ProductionGridRow extends EditableGridRow {
   String? salesOrderItemId;
   String? clientName;
 
+  /// 从已保存草稿读回的行 = 该计划明细 id，保存时随行回传，服务端据此认出「同一行」
+  /// 沿用原比例来源(ADR-129 §2.10)；新增行为空，换货品后清空。
+  String? sourceItemId;
+
   /// 该行所属来源订单的销售员（跟单员联动用；选/导入订单时回填）。
   String? sellerId;
   String? sellerName;
@@ -73,7 +77,8 @@ class ProductionGridRow extends EditableGridRow {
     if (v != qtyNotifier.value) qtyNotifier.value = v;
   }
 
-  /// 深拷贝（明细复制/粘贴用）：拷产品编号/货品/颜色/单位/排产量/备注。
+  /// 深拷贝(明细复制/粘贴用)：拷产品编号/货品/颜色/单位/排产量/允许超产比例/备注，
+  /// 以及读回行的 sourceItemId(复制的比例沿用原行的来源)。
   /// 不拷 salesOrderItemId（订单↔计划行 1:1 溯源，审核时回写 planned_qty——复制行
   /// 带旧 id 会双计）及订单带出的展示字段（订货量/订单号/客户/交期/跟单员/换算率）：
   /// 粘贴行等同手工自建行（与「添加行」后手选货品的字段空缺一致）。
@@ -81,7 +86,8 @@ class ProductionGridRow extends EditableGridRow {
     final c = ProductionGridRow()
       ..goods = goods
       ..colorId = colorId
-      ..unitId = unitId;
+      ..unitId = unitId
+      ..sourceItemId = sourceItemId;
     c.productNo.text = productNo.text;
     c.qty.text = qty.text;
     c.overproductionPercent.text = overproductionPercent.text;

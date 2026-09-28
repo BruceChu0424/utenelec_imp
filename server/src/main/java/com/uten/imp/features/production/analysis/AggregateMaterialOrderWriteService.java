@@ -11,7 +11,6 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
-import com.uten.imp.features.production.plan.ProductionOverproductionAllowance;
 import com.uten.imp.features.purchase.request.ProductionPurchaseRequestFacade;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -215,7 +214,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             Map<UUID,BigDecimal> privateProof=originalFlow==null||!hasOriginalBeneficiaryProof(input,current)?null:originalFlowTotals(input,originalFlow);
             sourceAdoptions.addAll(adoptionIntents);
             if(group.requestedQty().signum()==0&&group.safetyQty().signum()==0)continue;
-            BatchResult legacy=issueExistingSingleSource(analysisId,current,group,request,manufacturing);
+            BatchResult legacy=issueExistingSingleSource(analysisId,current,group,request,manufacturing,input.allowedOverproductionRate());
             if(legacy!=null){results.add(legacy);continue;}
             GroupInput issueIntent=issuedIntent(input,group.requestedQty(),adoptionIntents);
             Map<UUID,CapacitySnapshot> capacities=manufacturing?captureSourceCapacities(group,current):Map.of();
@@ -229,7 +228,8 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 copySharedRoutes(batch);
                 analysis.refreshLocked(analysisId);
                 entitlements.delegateAggregateMakeEntitlements(analysisId,batch.action());
-                var plan=commands.issueAggregateAnchor(analysisId,batch.id(),batch.anchor(),group,request.warehouseId(),request.approveNow(),stepKey(request.idempotencyKey(),group.clientGroupKey(),"PLAN"));
+                var plan=commands.issueAggregateAnchor(analysisId,batch.id(),batch.anchor(),group,input.allowedOverproductionRate(),
+                        request.warehouseId(),request.approveNow(),stepKey(request.idempotencyKey(),group.clientGroupKey(),"PLAN"));
                 if("SUBCONTRACT".equals(group.route()))createSubcontractTask(batch,group);
                 analysis.refreshWithAnchorGrowth(analysisId);
                 results.add(new BatchResult(batch.id(),group.clientGroupKey(),group.route(),"PRODUCTION_PLAN",plan.planId(),plan.planNo(),plan.planId(),batch.anchor(),group.requestedQty(),group.publicExtraQty(),group.sources(),plan));
@@ -292,7 +292,8 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         List<BatchResult> results=new ArrayList<>();
         for(Prepared item:prepared) {
             Batch batch=item.batch();GroupPreview group=item.group();
-            var plan=commands.issueAggregateAnchor(analysisId,batch.id(),batch.anchor(),group,request.warehouseId(),request.approveNow(),
+            var plan=commands.issueAggregateAnchor(analysisId,batch.id(),batch.anchor(),group,
+                    inputs.get(group.clientGroupKey()).allowedOverproductionRate(),request.warehouseId(),request.approveNow(),
                     stepKey(request.idempotencyKey(),group.clientGroupKey(),"PLAN"),anchors.get(batch.anchor()));
             results.add(new BatchResult(batch.id(),group.clientGroupKey(),group.route(),"PRODUCTION_PLAN",plan.planId(),plan.planNo(),
                     plan.planId(),batch.anchor(),group.requestedQty(),group.publicExtraQty(),group.sources(),plan));
@@ -418,9 +419,12 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 original.allowedOverproductionRate(),original.safetyQty(),actual);
     }
 
-    /** A unified component entry must still grow an eligible pre-aggregate document in place. */
+    /**
+     * A unified component entry must still grow an eligible pre-aggregate document in place.
+     * [requestedRate] 是人在下单请求里填的比例；空表示按货品默认，不能拿预览已填好的默认值冒充人确认(ADR-129 §2.10)。
+     */
     private BatchResult issueExistingSingleSource(UUID analysisId,AnalysisView current,GroupPreview group,
-            SubmitRequest request,boolean manufacturing) {
+            SubmitRequest request,boolean manufacturing,BigDecimal requestedRate) {
         if(group.sources().size()!=1||group.safetyQty().signum()>0)return null;
         UUID id=group.sources().getFirst().materialLineId();
         MaterialView row=current.flatMaterials().stream().filter(value->value.materialLineId().equals(id)).findFirst().orElseThrow();
@@ -435,7 +439,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             if(anchor==null||"AGGREGATE_MAKE".equals(anchor.sourceType()))return null;
             var line=new MaterialAnalysisContracts.IssueWorkshopPlansRequest.IssuePlanLine(id,null,group.requestedQty(),
                     group.billDate(),group.deliveryDate(),group.departmentId(),null,group.workerId(),group.teamDepartmentId(),group.productNo(),
-                    anchor.remainingQty().signum()==0&&group.publicExtraQty().signum()>0,group.allowedOverproductionRate());
+                    anchor.remainingQty().signum()==0&&group.publicExtraQty().signum()>0,requestedRate);
             var result=commands.issueWorkshopPlans(analysisId,new MaterialAnalysisContracts.IssueWorkshopPlansRequest(
                     current.version(),current.fingerprint(),key,request.warehouseId(),group.billDate(),group.deliveryDate(),request.approveNow(),List.of(line)));
             var plan=result.plans().getFirst();

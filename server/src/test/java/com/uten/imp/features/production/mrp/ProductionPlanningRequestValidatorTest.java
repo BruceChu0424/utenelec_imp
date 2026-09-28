@@ -31,7 +31,6 @@ class ProductionPlanningRequestValidatorTest {
     private EntityManager em;
     private ProductionExecutionPlanningService planning;
     private Query warehouseQuery;
-    private Query analysisPlanQuery;
     private ProductionPlanningRequestValidator validator;
 
     @BeforeEach
@@ -40,16 +39,10 @@ class ProductionPlanningRequestValidatorTest {
         planning = mock(ProductionExecutionPlanningService.class);
         warehouseQuery = query();
         when(warehouseQuery.getSingleResult()).thenReturn(1L);
-        analysisPlanQuery = query();
-        when(analysisPlanQuery.getSingleResult()).thenReturn(0L);
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (sql.contains("FROM warehouses")) {
                 return warehouseQuery;
-            }
-            if (sql.contains("FROM production_plans")
-                    && sql.contains("material_analysis_id IS NOT NULL")) {
-                return analysisPlanQuery;
             }
             throw new AssertionError("unexpected SQL: " + sql);
         });
@@ -73,13 +66,21 @@ class ProductionPlanningRequestValidatorTest {
         GeneratePlanningPackageRequest request = request("a".repeat(64));
         when(planning.preview(any(), any())).thenReturn(
                 snapshot("b".repeat(64), List.of(), List.of()));
+        UUID analysisPlanId = UUID.randomUUID();
+        when(planning.fromMaterialAnalysis(analysisPlanId)).thenReturn(true);
 
         assertThatThrownBy(() -> validator.validateCurrent(
-                UUID.randomUUID(), request))
+                analysisPlanId, request))
                 .isInstanceOf(ApiException.class)
                 .satisfies(error -> assertThat(((ApiException) error).getCode())
                         .isEqualTo(ErrorCode.CONFLICT))
-                .hasMessageContaining("已过期");
+                .hasMessage("排产预览已过期：目标仓库存、占用、计划行或 BOM 已变化，请重新预览");
+        // ADR-129 §2.6：手工计划按视图的计算用量排产，真实使用数量更新也会让预览过期。
+        assertThatThrownBy(() -> validator.validateCurrent(
+                UUID.randomUUID(), request))
+                .isInstanceOf(ApiException.class)
+                .hasMessage("排产预览已过期：目标仓库存、占用、计划行或 BOM 已变化，"
+                        + "或用量已按真实数据更新，请重新预览");
         verify(planning, never()).applyRequested(any(), any());
     }
 
@@ -194,7 +195,7 @@ class ProductionPlanningRequestValidatorTest {
         when(planning.applyRequested(snapshot, request.getSegments()))
                 .thenReturn(allocation(line,
                         ProductionMaterialDemand.ROUTE_BUY, "1"));
-        when(analysisPlanQuery.getSingleResult()).thenReturn(1L);
+        when(planning.fromMaterialAnalysis(snapshot.planId())).thenReturn(true);
 
         assertThatCode(() -> validator.validateCurrent(
                 snapshot.planId(), request)).doesNotThrowAnyException();

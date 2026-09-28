@@ -36,6 +36,8 @@ import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../models/production_daily_report.dart';
+import '../models/production_execution_planning.dart'
+    show formatProductionPlanningQuantity;
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_status_badge.dart';
@@ -569,6 +571,17 @@ class _ProductionDailyReportDetailPageState
                 width: 112,
                 type: 'number',
                 value: (it) => it.qty?.toStringAsFixed(2),
+              ),
+              // ADR-129：一次报工拆成多条明细时不良数只记在第一条，其余留空。
+              MasterColumnDef(
+                key: 'defectQty',
+                label: '不良数',
+                width: 96,
+                type: 'number',
+                info: productionDailyReportDefectInfo,
+                value: (it) => it.defectQty > 0
+                    ? formatProductionPlanningQuantity(it.defectQty)
+                    : null,
               ),
               MasterColumnDef(
                 key: 'outputKind',

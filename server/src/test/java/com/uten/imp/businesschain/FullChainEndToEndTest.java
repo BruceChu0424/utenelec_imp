@@ -2100,14 +2100,20 @@ class FullChainEndToEndTest {
         assertEquals(0,new BigDecimal("16").compareTo(materialReturnRequests.sources(plan,segment).stream().filter(row->row.issuePostingId().equals(source.issuePostingId())).findFirst().orElseThrow().availableQty()));
         var partial=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Submit(segment,
                 "surplus-return-second","剩余物料分次退仓",List.of(new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Item(source.issuePostingId(),new BigDecimal("8"))));
+        // The E2E database is shared by every business-chain class: count only what this request adds.
+        loginAs(w.superAdminUserId());
+        long pendingBefore=materialReturnRequests.warehousePendingCount();
+        var pendingDraws=new com.uten.imp.features.stock.dto.StockDocQueryFilter("WDRAW",null,null,(short)0,null,null,null,null,true);
+        long drawsBefore=stockDocService.list(pendingDraws,1,20,null,null).getTotal();
+        loginAs(worker);
         UUID returnId=materialReturnRequests.submit(plan,partial).getFirst().documentId();
         loginAs(w.superAdminUserId());
-        assertEquals(1,materialReturnRequests.warehousePendingCount());
-        assertEquals(1,stockDocService.list(new com.uten.imp.features.stock.dto.StockDocQueryFilter("WDRAW",null,null,(short)0,null,null,null,null,true),1,20,null,null).getTotal());
+        assertEquals(pendingBefore+1,materialReturnRequests.warehousePendingCount());
+        assertEquals(drawsBefore+1,stockDocService.list(pendingDraws,1,20,null,null).getTotal());
         assertThrows(ApiException.class,()->stockDocService.delete(returnId),"generic deletion cannot release a protected return request");
         stockDocService.approve(returnId);
         assertEquals(0,new BigDecimal("8").compareTo(stockBalance(w.warehouseId(),w.goodsB())));
-        assertEquals(0,materialReturnRequests.warehousePendingCount());
+        assertEquals(pendingBefore,materialReturnRequests.warehousePendingCount());
         assertEquals(1,count("select count(*) from production_material_stock_postings where posting_type='GOOD_RETURN' and source_posting_id=?",source.issuePostingId()));
         loginAs(worker);
         assertEquals("RECEIVED",materialReturnRequests.list(plan,segment).stream().filter(doc->doc.documentId().equals(returnId)).findFirst().orElseThrow().status());

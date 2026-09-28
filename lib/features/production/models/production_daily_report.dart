@@ -47,6 +47,9 @@ double? _asDouble(dynamic v) {
   return null;
 }
 
+/// 「不良数」列的说明(编辑表与详情表共用)。
+const productionDailyReportDefectInfo = '只记录，不影响良品数和库存；用来算实产单耗和不良率';
+
 /// 生产日报列表行（GET /production/daily-reports → DailyReportListItem）。
 class ProductionDailyReportListItem {
   const ProductionDailyReportListItem({
@@ -110,6 +113,7 @@ class ProductionDailyReportItem {
     this.unitId,
     this.unitRate,
     this.qty,
+    this.defectQty = 0,
     this.price,
     this.total,
     this.stotal,
@@ -165,6 +169,10 @@ class ProductionDailyReportItem {
   final String? unitId;
   final double? unitRate;
   final double? qty; // 完工量
+
+  /// 不良数(ADR-129)：只记录，不影响良品数、库存与产量分流；用来算实产单耗和不良率。
+  /// 一次报工拆成多条明细时只记在第一条上，其余为 0。
+  final double defectQty;
   final double? price;
   final double? total; // 金额
   final double? stotal; // 成本金额
@@ -250,6 +258,7 @@ class ProductionDailyReportItem {
         unitId: json['unitId'] as String?,
         unitRate: _asDouble(json['unitRate']),
         qty: _asDouble(json['qty']),
+        defectQty: _asDouble(json['defectQty']) ?? 0,
         price: _asDouble(json['price']),
         total: _asDouble(json['total']),
         stotal: _asDouble(json['stotal']),
@@ -309,6 +318,10 @@ class ProductionDailyReportInputGroup {
   ProductionDailyReportItem get source =>
       items.firstWhere((item) => !item.publicOutput, orElse: () => items.first);
   double? get qty => source.outputBatchQty ?? source.qty;
+
+  /// 整次报工的不良数：服务端只让同一批次的第一条明细带不良数，合计即原输入。
+  double get defectQty =>
+      items.fold<double>(0, (sum, item) => sum + item.defectQty);
   bool get supplementBatch =>
       source.supplementProofId != null &&
       source.fqcRecoveryAuthorizationId == null;
@@ -626,6 +639,7 @@ class ProductionDailyReportMaterialUsage {
     this.goodsName,
     this.colorName,
     this.unitName,
+    this.countedLeftoverQty,
   });
 
   final String? id;
@@ -640,6 +654,9 @@ class ProductionDailyReportMaterialUsage {
   final String? colorName;
   final String? unitName;
   final double qtyBase;
+
+  /// 最后一次报工按实物清点的实际剩余(基本单位，ADR-129 §2.7)；没清点为 null。
+  final double? countedLeftoverQty;
 
   factory ProductionDailyReportMaterialUsage.fromJson(
     Map<String, dynamic> json,
@@ -657,5 +674,6 @@ class ProductionDailyReportMaterialUsage {
     colorName: json['colorName'] as String?,
     unitName: json['unitName'] as String?,
     qtyBase: (json['qtyBase'] as num?)?.toDouble() ?? 0,
+    countedLeftoverQty: (json['countedLeftoverQty'] as num?)?.toDouble(),
   );
 }

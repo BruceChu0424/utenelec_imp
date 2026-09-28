@@ -17,7 +17,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import '../widgets/production_overproduction_rate_field.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -50,6 +49,7 @@ import '../models/production_material_analysis.dart';
 import '../models/production_plan.dart';
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_execution_workbench_repository.dart';
+import '../repositories/production_overproduction_rate_repository.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_execution_card_print_preview.dart';
 import '../widgets/production_execution_segments_card.dart';
@@ -1956,7 +1956,7 @@ class _ProductionPlanDetailPageState
         : '${names.goods(first.goodsId)}'
               '${firstMeta.isEmpty ? '' : ' · ${firstMeta.join(' · ')}'}'
               ' · 计划 ${quantity(first.qty)}'
-              ' · 允许超产 ${productionOverproductionPercentText(first.allowedOverproductionRate)}%'
+              ' · 允许超产 ${productionRateText(first.allowedOverproductionRate)}'
               '${first.outboundDate == null ? '' : ' · 交货 ${productionDateOnly(first.outboundDate)}'}';
     final multiSummary =
         '$namesPreview'
@@ -2003,7 +2003,7 @@ class _ProductionPlanDetailPageState
                   if (items.length > 1)
                     for (final item in items)
                       Text(
-                        '${names.goods(item.goodsId)} · 允许超产 ${productionOverproductionPercentText(item.allowedOverproductionRate)}%',
+                        '${names.goods(item.goodsId)} · 允许超产 ${productionRateText(item.allowedOverproductionRate)}',
                       ),
                 ],
               ),

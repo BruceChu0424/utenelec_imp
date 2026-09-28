@@ -57,7 +57,7 @@ public final class MigratedProjectionSchema {
             for (String table : tables) {
                 String relation = identifier(table);
                 statement.execute("CREATE TABLE " + relation + (constraints
-                        ? " (LIKE public." + relation + " INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES)"
+                        ? " (LIKE public." + relation + " INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING GENERATED)"
                         : " AS SELECT * FROM public." + relation + (data ? "" : " WITH NO DATA")));
             }
         }

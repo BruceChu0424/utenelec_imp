@@ -72,7 +72,8 @@ class ProductionBomLearningEndToEndTest {
         amount("0",profileOutput());
         UUID last=report("60","12",true);
         amount("0",profileOutput());
-        assertEquals("PENDING_RETURN",db.queryForObject("SELECT state FROM production_bom_learning_samples WHERE execution_root_id=?",String.class,task.segment));
+        // 余料待仓库实收：物料未核清，本族还没有任何贡献(ADR-129 §2.4)。
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_bom_learning_samples WHERE execution_root_id=? AND jsonb_array_length(materials)>0",Integer.class,task.segment));
         UUID returned=db.queryForObject("SELECT id FROM production_material_return_requests WHERE execution_segment_id=?",UUID.class,task.segment);
         task.fixture.loginAs(task.world.superAdminUserId());task.stock.approve(returned);
         amount("100",profileOutput());amount("0.2",bomQty());
@@ -82,7 +83,10 @@ class ProductionBomLearningEndToEndTest {
         amount("2",db.queryForObject("SELECT returned_qty FROM v_production_material_clearance WHERE demand_id=?",BigDecimal.class,demand));
         task.fixture.loginAs(reporter);reports.reverse(last);
         amount("0",profileOutput());
-        assertEquals(0,db.queryForObject("SELECT count(*) FROM goods_bom_items WHERE goods_id=? AND NOT is_deleted",Integer.class,task.world.goodsC()));
+        // 冲销撤回贡献：真实使用数量变为没数据，学习边不自动撤下，计算回退到设计值(最后同步值)。
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM goods_bom_items WHERE goods_id=? AND NOT is_deleted",Integer.class,task.world.goodsC()));
+        assertEquals("DESIGN",db.queryForObject("SELECT usage.usage_basis FROM v_goods_bom_item_usage usage JOIN goods_bom_items edge ON edge.id=usage.bom_item_id WHERE edge.goods_id=? AND NOT edge.is_deleted",String.class,task.world.goodsC()));
+        amount("0.2",bomQty());
         amount("40",db.queryForObject("SELECT qty FROM production_daily_report_items WHERE report_id=?",BigDecimal.class,first));
     }
 
@@ -108,12 +112,13 @@ class ProductionBomLearningEndToEndTest {
         request.setItems(List.of(line));var use=new DailyReportMaterialUsageLine();use.setDemandId(demand);use.setQtyBase(new BigDecimal(consumed));
         request.setMaterialLines(List.of(use));request.setSurplusReturnRequested(returnSurplus);
         UUID id=reports.create(request).getId();var command=DailyReportApproveRequests.freshKey();reports.approve(id,command);
-        Long revision=db.queryForObject("SELECT revision FROM goods_bom_learning_profiles WHERE goods_id=?",Long.class,task.world.goodsC());
+        Long revision=db.queryForObject("SELECT (SELECT revision FROM goods_bom_learning_profiles WHERE goods_id=?)",Long.class,task.world.goodsC());
         reports.approve(id,command);
-        assertEquals(revision,db.queryForObject("SELECT revision FROM goods_bom_learning_profiles WHERE goods_id=?",Long.class,task.world.goodsC()));
+        assertEquals(revision,db.queryForObject("SELECT (SELECT revision FROM goods_bom_learning_profiles WHERE goods_id=?)",Long.class,task.world.goodsC()));
         return id;
     }
-    private BigDecimal profileOutput(){return db.queryForObject("SELECT total_output_qty FROM goods_bom_learning_profiles WHERE goods_id=?",BigDecimal.class,task.world.goodsC());}
+    // 档案在第一份有效样本写出时才建(ADR-129 §2.4)，之前按 0 计。
+    private BigDecimal profileOutput(){return db.queryForObject("SELECT COALESCE((SELECT total_output_qty FROM goods_bom_learning_profiles WHERE goods_id=?),0)",BigDecimal.class,task.world.goodsC());}
     private BigDecimal bomQty(){return db.queryForObject("SELECT qty FROM goods_bom_items WHERE goods_id=? AND component_goods_id=? AND NOT is_deleted",BigDecimal.class,task.world.goodsC(),task.world.goodsD());}
     private static void amount(String expected,BigDecimal actual){assertNotNull(actual);assertEquals(0,new BigDecimal(expected).compareTo(actual),actual.toString());}
 }

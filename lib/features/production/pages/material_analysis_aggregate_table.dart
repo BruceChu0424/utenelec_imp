@@ -363,25 +363,26 @@ final class _MaterialAggregateTableController {
     });
   }
 
-  _MaterialAggregatePathSnapshot _snapshot(_MaterialGroup group) =>
-      _MaterialAggregatePathSnapshot(
-        groupKey: group.key,
-        orderText: owner._tableOrderQtyController(group).text,
-        appendText: owner._tableAppendQtyController(group).text,
-        orderSeed: owner._tableSeededQtyTexts['ORDER|${group.key}'],
-        appendSeed: owner._tableSeededQtyTexts['APPEND|${group.key}'],
-        typedQty: owner._tableUserTypedQty[group.representative.materialLineId],
-        selected: owner._selectedMaterialGroupKeys.contains(group.key),
-        autoSelected: owner._tableAutoSelectedKeys.contains(group.key),
-        deselected: owner._tableUserDeselectedKeys.contains(group.key),
-        workshop: owner._tableWorkshopDraft[group.key],
-        worker: owner._tableWorkerDraft[group.key],
-        rate: owner
-            ._overproductionPercentController(
-              materialLineId: group.representative.materialLineId,
-            )
-            .text,
-      );
+  _MaterialAggregatePathSnapshot _snapshot(_MaterialGroup group) {
+    final rate = owner._overproductionPercentController(
+      materialLineId: group.representative.materialLineId,
+    );
+    return _MaterialAggregatePathSnapshot(
+      groupKey: group.key,
+      orderText: owner._tableOrderQtyController(group).text,
+      appendText: owner._tableAppendQtyController(group).text,
+      orderSeed: owner._tableSeededQtyTexts['ORDER|${group.key}'],
+      appendSeed: owner._tableSeededQtyTexts['APPEND|${group.key}'],
+      typedQty: owner._tableUserTypedQty[group.representative.materialLineId],
+      selected: owner._selectedMaterialGroupKeys.contains(group.key),
+      autoSelected: owner._tableAutoSelectedKeys.contains(group.key),
+      deselected: owner._tableUserDeselectedKeys.contains(group.key),
+      workshop: owner._tableWorkshopDraft[group.key],
+      worker: owner._tableWorkerDraft[group.key],
+      rate: rate.text,
+      rateExplicit: owner._prefilledOverproductionRates.isExplicit(rate),
+    );
+  }
 
   void changed(_MaterialAggregate aggregate, String value) {
     if (saving || uncertain) return;
@@ -506,14 +507,14 @@ final class _MaterialAggregateTableController {
   _MaterialAggregateMakeParams makeParams(_MaterialGroup group) {
     final workshop = owner._tableWorkshopFor(group);
     final worker = owner._tableWorkerFor(group);
+    final rate = owner._overproductionPercentController(
+      materialLineId: group.representative.materialLineId,
+    );
     return _MaterialAggregateMakeParams(
       workshop: (id: workshop.id, name: workshop.name),
       worker: (id: worker.id, name: worker.name),
-      rateText: owner
-          ._overproductionPercentController(
-            materialLineId: group.representative.materialLineId,
-          )
-          .text,
+      rateText: rate.text,
+      rateExplicit: owner._prefilledOverproductionRates.isExplicit(rate),
     );
   }
 
@@ -532,7 +533,19 @@ final class _MaterialAggregateTableController {
     final byKey = <String, _MaterialAggregatePart>{};
     for (final source in sources) {
       final params = workshop ? makeParams(source.group) : null;
-      byKey.putIfAbsent(params?.key ?? '', () => _MaterialAggregatePart(params))
+      final part = byKey.putIfAbsent(
+        params?.key ?? '',
+        () => _MaterialAggregatePart(params),
+      );
+      // 同一张工单里只要有一条来源的比例是人定的，整张按人定的提交
+      // (拆单键相同，车间 / 负责人 / 比例数值一致，只是显式标记不同)。
+      if (params != null &&
+          params.rateExplicit &&
+          part.params != null &&
+          !part.params!.rateExplicit) {
+        part.params = params;
+      }
+      part
         ..lineIds.add(source.line)
         ..groups.add(source.group);
     }
@@ -746,9 +759,14 @@ final class _MaterialAggregateTableController {
         throw FormatException('没有下达「${draft.label}」的权限');
       }
       // 来源的车间 / 负责人 / 超产比例不同就自动分成几张工单(ADR-120 §8)，
-      // 汇总行只是把它们合起来看。
+      // 汇总行只是把它们合起来看。比例没人改过的来源按货品默认：提交时送
+      // 空值由服务端填写且不记住(ADR-129 §2.10)；只有人改过且解析不出数值
+      // 的才算「允许超产比例无效」。
       final parts = partsOf(draft.key, sources, workshop: workshop);
-      if (workshop && parts.any((part) => part.params!.rate == null)) {
+      if (workshop &&
+          parts.any(
+            (part) => part.params!.rate == null && part.rateExplicit,
+          )) {
         throw FormatException('「${draft.label}」允许超产比例无效');
       }
       final quantities = partQuantities(draft, parts);
@@ -764,7 +782,7 @@ final class _MaterialAggregateTableController {
             allowPublicExtra: workshop || owner._canOverSupply,
             departmentId: part.params?.workshop.id,
             workerId: part.params?.worker.id,
-            allowedOverproductionRate: part.params?.rate,
+            allowedOverproductionRate: part.rateExplicit ? part.params?.rate : null,
             // 公共安全补库只走采购；采购不按车间拆，一个物料至多一组。
             safetyQty:
                 route == MaterialSupplyRoute.buy &&
@@ -1373,10 +1391,13 @@ final class _MaterialAggregateTableController {
           } else {
             owner._tableWorkerDraft[key] = state.worker!;
           }
-          owner
-                  ._overproductionPercentController(materialLineId: entry.key)
-                  .text =
-              state.rate;
+          // 快照时仍是系统预填的比例回到当前预填值(草稿期间可能已按新默认刷新)，
+          // 不把旧默认当成人填的放回去。
+          owner._prefilledOverproductionRates.restore(
+            owner._overproductionPercentController(materialLineId: entry.key),
+            state.rate,
+            explicit: state.rateExplicit,
+          );
         }
       }
       drafts.clear();
@@ -1540,48 +1561,64 @@ final class _MaterialAggregateTableController {
     });
   }
 
+  /// 各来源行的本次比例输入格(与主表同一批控制器)。
+  List<TextEditingController> rateControllers(
+    Iterable<_MaterialGroup> groups,
+  ) => [
+    for (final group in groups)
+      owner._overproductionPercentController(
+        materialLineId: group.representative.materialLineId,
+      ),
+  ];
+
+  /// 各来源的本次比例按数值比较('10' 与 '10.0' 是同一个比例)。一致时返回代表
+  /// 文本——有人改过的格子优先，照抄它不会把人定的比例降回系统默认；不一致或
+  /// 含无效输入时返回 null(各格文本完全相同时照原样返回)。
+  String? uniformRateText(Iterable<_MaterialGroup> groups) {
+    final controllers = rateControllers(groups);
+    if (controllers.isEmpty) return null;
+    final texts = {for (final controller in controllers) controller.text};
+    if (texts.length == 1) return texts.single;
+    final rates = texts.map(parseProductionOverproductionPercent).toSet();
+    if (rates.length != 1 || rates.single == null) return null;
+    return (controllers
+                .where(owner._prefilledOverproductionRates.isExplicit)
+                .firstOrNull ??
+            controllers.first)
+        .text;
+  }
+
   String rateText(_MaterialAggregate aggregate) {
     if (drafts[aggregate.key]?.mixedRate == true) return '多个比例';
     final groups = workshopGroups(aggregate);
     if (groups.isEmpty) return '—';
-    final rates = groups
-        .map(
-          (group) => owner
-              ._overproductionPercentController(
-                materialLineId: group.representative.materialLineId,
-              )
-              .text,
-        )
-        .toSet();
-    return rates.length == 1 ? '${rates.single}%' : '多个比例';
+    final uniform = uniformRateText(groups);
+    return uniform == null ? '多个比例' : '$uniform%';
   }
 
   Widget rateCell(_MaterialAggregate aggregate) {
     final groups = workshopGroups(aggregate);
     if (groups.isEmpty) return const Text('—');
-    final rates = groups
-        .map(
-          (group) => owner
-              ._overproductionPercentController(
-                materialLineId: group.representative.materialLineId,
-              )
-              .text,
-        )
-        .toSet();
+    final uniform = uniformRateText(groups);
     final initial = drafts[aggregate.key]?.mixedRate == true
         ? ''
-        : rates.length == 1
-        ? rates.single
-        : '';
+        : uniform ?? '';
     final controller = rateEditors.putIfAbsent(
       aggregate.key,
       () => TextEditingController(text: initial),
     );
-    if (!drafts.containsKey(aggregate.key) && controller.text != initial) {
+    // 各来源仍是系统预填的默认比例时汇总格跟着来源走：新快照会刷新来源的预填值，
+    // 提交也按来源送空值，汇总格若停在旧默认，看到的就不是服务端要填的比例。
+    // 有人改过(汇总格的输入会写进每个来源)就不再动它。
+    final sourcesPrefilled = !rateControllers(
+      groups,
+    ).any(owner._prefilledOverproductionRates.isExplicit);
+    if ((!drafts.containsKey(aggregate.key) || sourcesPrefilled) &&
+        controller.text != initial) {
       controller.text = initial;
     }
     return Tooltip(
-      message: rates.length == 1 ? '本次汇总生产统一使用此比例' : '各来源比例不同，请明确填写本次汇总比例',
+      message: uniform != null ? '本次汇总生产统一使用此比例' : '各来源比例不同，请明确填写本次汇总比例',
       child: ProductionOverproductionRateField(
         key: ValueKey('material-aggregate-rate-${aggregate.key}'),
         controller: controller,
@@ -1867,8 +1904,12 @@ final class _MaterialAggregatePathSnapshot {
     required this.workshop,
     required this.worker,
     required this.rate,
+    required this.rateExplicit,
   });
   final String groupKey, orderText, appendText, rate;
+
+  /// 快照时比例是人定的(不再是系统预填值)。
+  final bool rateExplicit;
   final String? orderSeed, appendSeed;
   final double? typedQty;
   final bool selected, autoSelected, deselected;
@@ -1883,9 +1924,13 @@ final class _MaterialAggregateMakeParams {
     required this.workshop,
     required this.worker,
     required this.rateText,
+    required this.rateExplicit,
   });
   final ({String? id, String? name}) workshop, worker;
   final String rateText;
+
+  /// 这格比例是人定的吗：没人改过的系统预填值提交时送空值(ADR-129 §2.10)。
+  final bool rateExplicit;
 
   /// 按数值解析的超产比例；填得不合法时为 null。
   double? get rate => _MaterialAggregateTableController._rateValue(rateText);
@@ -1908,9 +1953,12 @@ final class _MaterialAggregateMakeParams {
 /// 非车间通道(采购 / 直接委外)不拆，[params] 为 null。
 final class _MaterialAggregatePart {
   _MaterialAggregatePart(this.params);
-  final _MaterialAggregateMakeParams? params;
+  _MaterialAggregateMakeParams? params;
   final lineIds = <String>[];
   final groups = <_MaterialGroup>[];
+
+  /// 这张工单的超产比例是人定的吗(任一来源改过即算，见 [partsOf])。
+  bool get rateExplicit => params?.rateExplicit ?? false;
 
   /// 本张工单的提交键，由 [_MaterialAggregateTableController.partsOf] 填。
   String clientGroupKey = '';

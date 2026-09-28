@@ -1,15 +1,91 @@
 {
   "bomLearningTitle": "BOM learning",
+  "bomLearningHelp": "Actual usage = cumulative net consumption of completed, reconciled production ÷ cumulative output of the batches that used the material. Material analysis and workshop material issue use the actual usage first and fall back to the design usage when there is no data. Released tasks keep the quantities frozen at release. Defects recorded in daily reports are kept for reference only and do not count as output; usage per produced unit counts good plus defective pieces.",
+  "bomLearningInactive": "No learning record yet. Accumulation starts when in-house production of this item is completed and leftover material is reconciled.",
+  "bomLearningPaused": "No learned components were created: {reason}. Actual usage keeps accumulating.",
+  "@bomLearningPaused": {
+    "placeholders": {
+      "reason": {"type": "String"}
+    }
+  },
+  "bomDesignQty": "Design usage",
+  "bomActualQty": "Actual usage",
+  "bomLearnedEdge": "Learned",
+  "bomActualTipActual": "Accumulated from {samples} completed production batches: net consumption {net} / output {output}",
+  "@bomActualTipActual": {
+    "placeholders": {
+      "samples": {"type": "int"},
+      "net": {"type": "String"},
+      "output": {"type": "String"}
+    }
+  },
+  "bomActualTipAverage": "Actual average per unit: {qty}",
+  "@bomActualTipAverage": {
+    "placeholders": {
+      "qty": {"type": "String"}
+    }
+  },
+  "bomActualTipUsed": "Material analysis and workshop material issue use the actual usage.",
+  "bomUsesDesignBecause": "{reason}; calculations use the design usage.",
+  "@bomUsesDesignBecause": {
+    "placeholders": {
+      "reason": {"type": "String"}
+    }
+  },
+  "bomDesignReasonNoData": "No completed production with counted leftover material yet",
+  "bomDesignReasonNotLinear": "Whole packages or fixed batches cannot use an average",
+  "bomDesignReasonOutputUnitChanged": "The parent item's unit changed and relearning is needed",
+  "bomDesignReasonSubcontractOutbound": "This time the material is issued through a single-component subcontract and uses the subcontract quantity",
+  "bomDesignReasonOther": "No usable actual data",
+  "bomRelearnedSince": "Accumulating again since {date}",
+  "@bomRelearnedSince": {
+    "placeholders": {
+      "date": {"type": "String"}
+    }
+  },
+  "bomDesignQtyRequired": "Enter the design usage",
+  "bomDesignQtyInvalid": "Design usage must be a number greater than 0",
+  "bomLearnedEdgeEditHint": "This component was learned from actual material use. Changing the design usage makes it manually maintained; actual usage keeps accumulating.",
+  "bomLearnedEdgeDeleteNote": "{count} of them were learned by the system and will not be added back automatically after deletion.",
+  "@bomLearnedEdgeDeleteNote": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "bomLearningMaterial": "Material",
+  "bomLearningExposure": "Cumulative output",
+  "bomLearningSampleCount": "Valid batches",
+  "bomLearningBasis": "Calculation uses",
+  "bomLearningOutsideBom": "Used outside the BOM",
+  "bomLearningReleased": "Deleted, not added back automatically",
+  "bomLearningRelearn": "Relearn from now",
+  "bomLearningRelearnConfirm": "Relearn \"{name}\" from now?\nEarlier accumulation no longer counts. Until new production data arrives, calculations use the design usage.",
+  "@bomLearningRelearnConfirm": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "bomLearningRelearnDone": "Relearning started",
+  "bomLearningRelearnFailed": "Relearning failed. Please try again later.",
+  "bomLearningLoadFailed": "Failed to load the learning record. Please retry.",
+  "bomLearningEmpty": "No components and no materials used yet",
+  "bomLearningAction": "Action",
+  "bomLearningBlockedOutputIdentity": "the parent item's unit or identity changed",
+  "bomLearningBlockedMaterialIdentity": "a material was deleted or its unit changed",
+  "bomLearningBlockedColorConflict": "the same material was issued in several colors; decide it manually in the assembly information",
+  "bomLearningBlockedPrecision": "a usage is outside the recordable range",
+  "bomLearningBlockedCycle": "it would create an assembly loop",
+  "bomLearningBlockedOther": "maintain the components manually in the assembly information",
   "materialDiscoveryBatchHelp": "Select continuous or full-kit production to identify materials before arranging batches.",
   "materialDiscoveryCancel": "Withdraw material definition request",
-  "bomLearningHelp": "After production and material reconciliation, usage is updated from cumulative net consumption divided by actual output. Existing work orders keep their frozen requirements.",
-  "bomLearningInactive": "No learning record yet. Learning begins when a manufactured leaf item completes material issue and production.",
-  "bomLearningAuto": "BOM updates automatically",
-  "bomLearningPaused": "Automatic updates are paused to protect a manual BOM or resolve material, unit or color conflicts. Accumulated records are retained. Review the component records.",
   "bomLearningOutput": "Cumulative actual output",
   "bomLearningSamples": "Valid production batches",
   "bomLearningNet": "Cumulative net consumption",
-  "bomLearningAverage": "Average usage per unit",
+  "bomActualTipDefect": "Plus {defect} defective: counting good plus defective pieces, usage is {perProduced}; defect rate {rate}",
+  "bomLearningDefect": "Defects",
+  "bomLearningPerProduced": "Usage per produced unit",
+  "bomLearningDefectRate": "Defect rate",
+  "bomLearningTotalDefect": "Cumulative defects",
   "materialDiscoveryTitle": "Record materials to issue",
   "materialDiscoveryHelp": "Confirm with the workshop, add the materials, quantities and physical warehouses, then issue them from the generated draw documents.",
   "materialDiscoveryRequestHelp": "These manufactured items have no material definition yet. Optionally select materials and requested quantities for each work order, or leave them for the warehouse to complete. Entered materials carry through to the warehouse for source and quantity confirmation. Actual issue is required before starting.",

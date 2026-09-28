@@ -93,6 +93,14 @@ void main() {
         );
         expect(row.planAnchorAnalysisLineId, 'actual-anchor');
         expect(row.flowStage, 'MAKE_IN_PROGRESS');
+        // ADR-129 锁定的用量来源随行保留，不被归属刷新冲掉。
+        expect(row.bomQty, 0.105);
+        expect(row.designBomQty, 0.1);
+        expect(row.actualBomQty, 0.105);
+        expect(row.usageBasis, 'ACTUAL');
+        expect(row.usageReason, isNull);
+        expect(row.usageSampleCount, 12);
+        expect(row.usageDefectRate, 0.0325);
         expect(row.actionable, isTrue);
       }
       expect(merged.materials.last, same(current.materials.last));
@@ -343,6 +351,12 @@ ProductionMaterialAnalysisMaterial _material(String id, String color) =>
       planAnchorAnalysisLineId: 'actual-anchor',
       path: const ['父件', '子件'],
       flowStage: 'MAKE_IN_PROGRESS',
+      bomQty: 0.105,
+      designBomQty: 0.1,
+      actualBomQty: 0.105,
+      usageBasis: 'ACTUAL',
+      usageSampleCount: 12,
+      usageDefectRate: 0.0325,
       owningWarehouseId: 'old-warehouse',
       owningWarehouseName: '旧所属仓',
       owningWorkshopId: 'old-workshop',

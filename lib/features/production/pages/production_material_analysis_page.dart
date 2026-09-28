@@ -81,6 +81,7 @@ import '../widgets/material_supply_submit_confirm.dart';
 import '../widgets/material_manual_demand_editor.dart';
 import '../widgets/material_preparation_route_card.dart';
 import '../widgets/production_overproduction_rate_field.dart';
+import '../widgets/bom_usage_basis_text.dart';
 
 part 'material_analysis_bom_tree.dart';
 part 'material_analysis_borrow.dart';
@@ -489,9 +490,20 @@ abstract class _MaterialAnalysisPageBase
   // any previously approved execution segment.
   final Map<String, TextEditingController> _overproductionPercentInputs = {};
 
+  /// 系统按货品默认比例预填的格子(ADR-129 §2.10，与计划编辑页同一份口径)：没人
+  /// 改过的下达时送空值，由服务端按默认填写且不记住，新快照带来新的默认比例时跟着
+  /// 刷新；人改过的按所填值明确提交，也不再跟着刷新。
+  final _prefilledOverproductionRates = SystemPrefilledRates();
+
+  /// 表格按「已下达」显示过的格子：比例随工单锁定，快照刷新不再改它的显示值。
+  final Set<TextEditingController> _issuedOverproductionRates = {};
+  bool _overproductionReseedAttached = false;
+
+  /// [issued] 由表格的已下达分支传入，见 [_issuedOverproductionRates]。
   TextEditingController _overproductionPercentController({
     String? analysisLineId,
     String? materialLineId,
+    bool issued = false,
   }) {
     final analysis = _analysis;
     final indexes = analysis == null ? null : _analysisIndexes(analysis);
@@ -513,32 +525,54 @@ abstract class _MaterialAnalysisPageBase
         ? 'M:$exactMaterialId'
         : 'P:$analysisLineId';
     final key = '${_sessionScopeKey()}|${analysis?.analysisId}|$identity';
-    return _overproductionPercentInputs.putIfAbsent(
-      key,
-      () => TextEditingController(
-        text: productionOverproductionPercentText(
-          (sourceProduct == null
-                  ? null
-                  : widget.seed.initialAllowedOverproductionRateFor(
-                      sourceProduct,
-                    )) ??
-              analysis?.overproductionDefaults[product?.goodsId ??
-                  material?.goodsId] ??
-              0,
-        ),
-      ),
-    );
+    final controller = _overproductionPercentInputs.putIfAbsent(key, () {
+      if (!_overproductionReseedAttached) {
+        // materialDetailRevision 在每份新快照落地(_applyAnalysis 末尾)时递增：
+        // 借同一个信号刷新没人改过的预填比例，不在构建期间改输入框。
+        _overproductionReseedAttached = true;
+        materialDetailRevision.addListener(_reseedSystemOverproductionRates);
+      }
+      // 计划单上人改过才会带来比例(见计划编辑页)，与本页手填同等明确提交。
+      final requested = sourceProduct == null
+          ? null
+          : widget.seed.initialAllowedOverproductionRateFor(sourceProduct);
+      final goodsId = product?.goodsId ?? material?.goodsId;
+      final created = TextEditingController();
+      if (requested == null) {
+        _prefilledOverproductionRates.fill(
+          created,
+          analysis?.overproductionDefaults[goodsId] ?? 0,
+          goodsId: goodsId,
+        );
+      } else {
+        created.text = productionOverproductionPercentText(requested);
+      }
+      return created;
+    });
+    if (issued) _issuedOverproductionRates.add(controller);
+    return controller;
   }
 
-  double _overproductionRate({
+  /// 下达时带的允许超产比例：没人改过送 null(服务端按货品默认填写、标 DEFAULT、
+  /// 不记住)；人填的按所填值明确提交。调用方已校验过格子里是有效比例。
+  double? _submittedOverproductionRate({
     String? analysisLineId,
     String? materialLineId,
-  }) => parseProductionOverproductionPercent(
+  }) => _prefilledOverproductionRates.submitted(
     _overproductionPercentController(
       analysisLineId: analysisLineId,
       materialLineId: materialLineId,
-    ).text,
-  )!;
+    ),
+  );
+
+  /// 新快照的默认比例刷进没人改过、也未按已下达显示的格子；快照没带该货品的
+  /// 默认比例时保持原样。
+  void _reseedSystemOverproductionRates() =>
+      _prefilledOverproductionRates.reseed(
+        _overproductionPercentInputs.values,
+        _analysis?.overproductionDefaults ?? const {},
+        skip: _issuedOverproductionRates.contains,
+      );
 
   final Set<String> _selectedPlanLineIds = {};
   final Map<String, MaterialSupplyRoute> _routeDraft = {};

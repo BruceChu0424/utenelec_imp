@@ -119,7 +119,7 @@ void main() {
       expect(find.text('final-document-$_finalTaskId'), findsNothing);
 
       // 双击按任务阶段进入现有到货登记路由，保留 returnTo 与返回后的刷新。
-      await _doubleTapRow(tester, find.text('待登记成品仓与库位'));
+      await _doubleTapRow(tester, find.text('待登记入库'));
       await tester.pumpAndSettle();
 
       expect(find.text('arrival-report-$_arrivalTaskId'), findsOneWidget);
@@ -188,6 +188,76 @@ void main() {
       expect(api.taskRequestCount, 1);
     },
   );
+
+  testWidgets(
+    'registration multi-select shows both route buttons and carries the route into the batch page',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _TrackingFinishedInboundApi();
+      final router = _buildRouter(
+        initialLocation: RouteName.warehouseProductionFinishedInboundTasks,
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        _testApp(
+          api: api,
+          router: router,
+          extraPermissions: const {Perm.productionFinishedInBeforeInspection},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 待登记阶段：与预计到货同款两颗路线按钮并排(未勾选时置灰、不带计数)。
+      const stockInFirst = Key('inbound-route-batch-stockInFirst');
+      const inspectFirst = Key('inbound-route-batch-inspectFirst');
+      expect(find.byKey(stockInFirst), findsOneWidget);
+      expect(find.byKey(inspectFirst), findsOneWidget);
+      expect(find.text('先入库后质检'), findsOneWidget);
+      expect(find.text('先质检后入库'), findsOneWidget);
+      expect(
+        find.byKey(const Key('production-finished-inbound-batch-register')),
+        findsNothing,
+      );
+
+      await tester.tap(find.text('待登记入库'));
+      await tester.pump();
+      expect(find.text('先入库后质检(1)'), findsOneWidget);
+      expect(find.text('先质检后入库(1)'), findsOneWidget);
+
+      // 「先入库后质检(N)」：进批量登记页带 preStock=1。
+      await tester.tap(find.byKey(stockInFirst));
+      await tester.pumpAndSettle();
+      expect(find.byType(_BatchRouteProbe), findsOneWidget);
+      var location = tester
+          .widget<_BatchRouteProbe>(find.byType(_BatchRouteProbe))
+          .location;
+      expect(
+        location.path,
+        RouteName.warehouseProductionFinishedArrivalBatchRegistration,
+      );
+      expect(location.queryParameters['reportIds'], _arrivalTaskId);
+      expect(location.queryParameters['preStock'], '1');
+      expect(
+        location.queryParameters['returnTo'],
+        RouteName.warehouseProductionFinishedInboundTasks,
+      );
+
+      // 未办理直接返回：勾选保留，改点「先质检后入库(N)」不带 preStock。
+      await tester.tap(find.byKey(const Key('leave-batch-route')));
+      await tester.pumpAndSettle();
+      expect(find.text('先质检后入库(1)'), findsOneWidget);
+      await tester.tap(find.byKey(inspectFirst));
+      await tester.pumpAndSettle();
+      location = tester
+          .widget<_BatchRouteProbe>(find.byType(_BatchRouteProbe))
+          .location;
+      expect(location.queryParameters['reportIds'], _arrivalTaskId);
+      expect(location.queryParameters.containsKey('preStock'), isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
@@ -201,12 +271,14 @@ Widget _testApp({
   required _TrackingFinishedInboundApi api,
   required GoRouter router,
   bool canApprove = true,
+  Set<String> extraPermissions = const {},
 }) => ProviderScope(
   overrides: [
     apiClientProvider.overrideWithValue(api),
     currentPermissionsProvider.overrideWithValue({
       Perm.stockDocView,
       if (canApprove) Perm.stockDocApprove,
+      ...extraPermissions,
     }),
     isSuperAdminProvider.overrideWithValue(false),
   ],
@@ -234,6 +306,11 @@ GoRouter _buildRouter({required String initialLocation}) => GoRouter(
     GoRoute(
       path: RouteName.warehouseProductionFinishedInboundTasks,
       builder: (_, _) => const ProductionFinishedInboundTasksPage(),
+    ),
+    // 批量登记页须先于 :reportId 声明(与正式路由表一致)。
+    GoRoute(
+      path: RouteName.warehouseProductionFinishedArrivalBatchRegistration,
+      builder: (_, state) => _BatchRouteProbe(location: state.uri),
     ),
     GoRoute(
       path: RouteName.warehouseProductionFinishedArrivalRegistration,
@@ -266,6 +343,27 @@ class _ArrivalRouteProbe extends StatelessWidget {
           key: const Key('complete-arrival-route'),
           onPressed: () => context.pop(true),
           child: const Text('完成登记'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// 批量登记页落点：记下任务中心 push 的完整地址(含路线参数)。
+class _BatchRouteProbe extends StatelessWidget {
+  const _BatchRouteProbe({required this.location});
+
+  final Uri location;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Column(
+      children: [
+        Text('batch-location-$location'),
+        FilledButton(
+          key: const Key('leave-batch-route'),
+          onPressed: () => context.pop(),
+          child: const Text('返回任务中心'),
         ),
       ],
     ),

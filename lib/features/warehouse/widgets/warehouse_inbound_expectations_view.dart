@@ -38,9 +38,11 @@ import '../../basic_data/models/master_facet.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
+import '../models/inbound_registration_line.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/procurement_inbound_repository.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
+import 'inbound_registration_widgets.dart';
 
 class WarehouseInboundExpectationsView extends ConsumerStatefulWidget {
   const WarehouseInboundExpectationsView({
@@ -396,7 +398,9 @@ class _WarehouseInboundExpectationsViewState
       prefills.add(prefill);
     }
     final batch = await context.push<WarehouseArrivalRegistrationBatch>(
-      '${RouteName.warehouseArrivalReceiptBatch}?preStock=1',
+      InboundRoute.stockInFirst.appendTo(
+        RouteName.warehouseArrivalReceiptBatch,
+      ),
       extra: prefills,
     );
     if (!mounted) return;
@@ -405,52 +409,22 @@ class _WarehouseInboundExpectationsViewState
     await _load(_result?.page ?? 1);
   }
 
-  List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
-    final count = selectedIds.length;
-    return [
-      if (_canPreStockIn)
-        Tooltip(
-          message: count == 0
-              ? '多选预计到货任务：登记的同时把每行实物按库位上架，品质部到库位检验'
-              : '待登记行进批量登记页并预置先入库后质检（库位逐行必填）；'
-                    '品质部到库位检验，合格自动按上架位置转正入库',
-          child: UtenButton(
-            key: const Key('inbound-expectation-batch-pre-stock-in'),
-            size: UtenButtonSize.large,
-            icon: Icons.shelves,
-            isLoading: _batchSending,
-            onPressed: _batchSending || count == 0
-                ? null
-                : () => _batchPreStockIn(selectedIds),
-            onDisabledTap: count == 0
-                ? () => context.appWarning('请先选择预计到货任务')
-                : null,
-            child: Text(count == 0 ? '先入库后质检' : '先入库后质检($count)'),
-          ),
-        ),
-      // 2026-09-20 用户口径：「批量登记送检」改名「先质检后入库」(与「先入库后质检」
-      // 对仗)，进批量登记页后只显示这一条路线的提交按钮；键名与路由不变。
-      Tooltip(
-        message: count == 0
-            ? '多选预计到货任务：待登记行进批量登记页(原登记送检流程)，已登记行直接送检'
-            : '待登记行进批量登记页（实收+行级入库仓库）；已登记行一个事务逐张送检；超量单自动隔离待财务',
-        child: UtenButton(
-          key: const Key('inbound-expectation-batch-send-inspection'),
-          size: UtenButtonSize.large,
-          type: UtenButtonType.danger,
-          icon: Icons.fact_check_outlined,
-          isLoading: _batchSending,
-          onPressed: _batchSending || count == 0
-              ? null
-              : () => _batchRegisterAndSend(selectedIds),
-          onDisabledTap: count == 0
-              ? () => context.appWarning('请先选择预计到货任务')
-              : null,
-          child: Text(count == 0 ? '先质检后入库' : '先质检后入库($count)'),
-        ),
-      ),
-    ];
-  }
+  /// 多选两颗路线按钮：与产成品入库任务同一组件(同名同义)，点哪颗就带着路线
+  /// 进批量登记页；「先入库后质检」需独立权限。
+  List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) =>
+      inboundRouteBatchButtons(
+        context,
+        count: selectedIds.length,
+        canStockInFirst: _canPreStockIn,
+        busy: _batchSending,
+        emptyWarning: '请先选择预计到货任务',
+        extraHints: const {
+          InboundRoute.inspectFirst: '已登记 · 待送检的草稿单直接一个事务逐张送检；超量单自动隔离待财务',
+        },
+        onSelected: (route) => route.isStockInFirst
+            ? _batchPreStockIn(selectedIds)
+            : _batchRegisterAndSend(selectedIds),
+      );
 
   int? _typeCount(ProcurementInboundOrderType type) {
     final counts = _typeCounts;

@@ -356,7 +356,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // 提交：两张订货单 × 同一仓库 → 两张收货单（3 条明细分单）；幂等键内容派生。
-    await tester.tap(find.byKey(const Key('warehouse-arrival-batch-submit')));
+    await tester.tap(
+      find.byKey(const Key('inbound-route-submit-inspectFirst')),
+    );
     await tester.pumpAndSettle();
     expect(find.text('确认登记送检'), findsOneWidget);
     await tester.tap(find.text('确认登记送检'));
@@ -451,7 +453,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final submit = find.byKey(const Key('warehouse-arrival-batch-submit'));
+    final submit = find.byKey(const Key('inbound-route-submit-inspectFirst'));
     UtenButton submitButton() => tester.widget<UtenButton>(submit);
     // 进页默认全选 → 提交可点。
     expect(submitButton().onPressed, isNotNull);
@@ -466,7 +468,7 @@ void main() {
     // 2026-09-20：不带 preStock 进页 = 「先质检后入库」路线，即使持有独立权限
     // 也不再并排显示「先入库后质检」按钮；标题下标明本页路线。
     expect(
-      find.byKey(const Key('warehouse-arrival-stock-in-first')),
+      find.byKey(const Key('inbound-route-submit-stockInFirst')),
       findsNothing,
     );
     expect(find.widgetWithText(UtenButton, '先质检后入库'), findsOneWidget);
@@ -586,7 +588,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('批量登记页：preStock 直达进页即「上架库位(必填)」', (tester) async {
+  testWidgets('批量登记页：preStock 直达进页即库位号必填', (tester) async {
     tester.view.physicalSize = const Size(1400, 1800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -612,22 +614,22 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    // 进页即先入库后质检模式：库位列必填红框口径（不再是普通「库位号」）。
+    // 进页即先入库后质检模式：库位号列必填红框口径(与产成品登记页同一列名)。
     // 列头在横向滚动视口外未必构建，直接断言列定义。
     final grid = tester.widget<UtenEditableGrid<dynamic>>(
       find.byWidgetPredicate((widget) => widget is UtenEditableGrid),
     );
     final stockPlaceColumn = grid.columns
-        .where((column) => column.key == 'stockPlace')
+        .where((column) => column.key == 'place')
         .single;
-    expect(stockPlaceColumn.label, '上架库位(必填)');
+    expect(stockPlaceColumn.label, '库位号');
     expect(stockPlaceColumn.required, isTrue);
     expect(find.widgetWithText(UtenButton, '先入库后质检'), findsOneWidget);
     expect(find.text('路线：先入库后质检'), findsOneWidget);
     // 2026-09-20：只显示进页路线的提交按钮，「先质检后入库」不再并排。
     expect(find.text('先质检后入库'), findsNothing);
     expect(
-      find.byKey(const Key('warehouse-arrival-batch-submit')),
+      find.byKey(const Key('inbound-route-submit-inspectFirst')),
       findsNothing,
     );
     expect(tester.takeException(), isNull);

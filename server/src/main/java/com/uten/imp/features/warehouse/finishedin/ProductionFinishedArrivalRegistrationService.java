@@ -15,15 +15,10 @@ import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContr
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationResult;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchRememberPlacesResult;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchReportRegistrationRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.InspectionSheetSummaryView;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.LastWarehouseView;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.PlaceSuggestionItemView;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.PlaceSuggestionsView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.RegisteredReportView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.RegistrationBatchView;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.RememberPlacesResult;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -38,6 +33,7 @@ import java.sql.Date;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -53,10 +49,18 @@ import java.util.UUID;
  * <p>V547：同一登记命令下同一成品仓的 FQC 待检行归入一张品质检查单（展示/办理聚合）。
  * V548：品质未处理的登记批次可撤回，报工行重新回到待登记；「未登记」谓词统一引用
  * 数据库视图 {@code v_production_report_items_pending_registration}。</p>
+ *
+ * <p>2026-09-27 库位记忆与建议统一：登记(单张/批量)在同一事务里自动把本次新建批次的
+ * 库位记进 {@code warehouse_goods_place_preferences}(较新来源胜出、同一命令同仓同货同色
+ * 多库位则不记)，不再有页面开关与单独的记忆接口；建议库位改走通用的
+ * {@code POST /api/warehouse/place-suggestions}(与采购/委外到货登记同一口径)。</p>
  */
 @Service
 @RequiredArgsConstructor
 public class ProductionFinishedArrivalRegistrationService {
+
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(ProductionFinishedArrivalRegistrationService.class);
 
     static final String SOURCE_ARRIVAL_SINGLE = "ARRIVAL_SINGLE";
     static final String SOURCE_ARRIVAL_BATCH = "ARRIVAL_BATCH";
@@ -74,73 +78,6 @@ public class ProductionFinishedArrivalRegistrationService {
     public ArrivalRegistrationView detail(UUID reportId) {
         access.requireWarehouseTaskAccess("无权查看生产成品送检登记");
         return detailInternal(reportId);
-    }
-
-    @Transactional(readOnly = true)
-    @PreAuthorize("hasAuthority('stock_doc:view')")
-    public PlaceSuggestionsView placeSuggestions(
-            UUID reportId,
-            UUID warehouseId) {
-        access.requireWarehouseTaskAccess("无权查看生产成品库位建议");
-        if (reportId == null || warehouseId == null) {
-            throw validation("生产成品库位建议缺少报工单或仓库 UUID");
-        }
-        return placeSuggestionsInternal(List.of(reportId), warehouseId);
-    }
-
-    /** One bounded SQL for both single and up-to-50-report batch suggestions. */
-    private PlaceSuggestionsView placeSuggestionsInternal(
-            List<UUID> reportIds,
-            UUID warehouseId) {
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
-                                SELECT report.id AS source_report_id,
-                                       report_item.id,
-                                       CASE
-                                           WHEN preference.id IS NOT NULL
-                                               THEN preference.place
-                                           ELSE NULLIF(BTRIM(goods.stock_place), '')
-                                       END AS suggested_place,
-                                       CASE
-                                           WHEN preference.id IS NOT NULL
-                                               THEN 'WAREHOUSE_PREFERENCE'
-                                           WHEN NULLIF(BTRIM(goods.stock_place), '') IS NOT NULL
-                                               THEN 'GOODS_MASTER'
-                                           ELSE 'NONE'
-                                       END AS suggestion_source
-                                FROM production_daily_reports report
-                                JOIN production_daily_report_items report_item
-                                  ON report_item.report_id = report.id
-                                JOIN v_production_report_items_pending_registration pending
-                                  ON pending.report_item_id = report_item.id
-                                JOIN goods goods
-                                  ON goods.id = report_item.goods_id
-                                 AND goods.is_deleted = FALSE
-                                JOIN warehouses selected_warehouse
-                                  ON selected_warehouse.id = :warehouseId
-                                 AND fn_warehouse_is_active_accounting_leaf(selected_warehouse.id)
-                                LEFT JOIN warehouse_goods_place_preferences preference
-                                 ON preference.warehouse_id = selected_warehouse.id
-                                 AND preference.goods_id = report_item.goods_id
-                                 AND preference.color_id
-                                     IS NOT DISTINCT FROM report_item.color_id
-                                WHERE report.id IN (:reportIds)
-                                  AND report.status = 1
-                                  AND report.is_deleted = FALSE
-                                ORDER BY report_item.line_no NULLS LAST,
-                                         report_item.id
-                                """)
-                        .setParameter("reportIds", reportIds)
-                        .setParameter("warehouseId", warehouseId));
-        if (rows.isEmpty()) throw notFound();
-        Set<UUID> foundReports = rows.stream()
-                .map(row -> (UUID) row[0])
-                .collect(java.util.stream.Collectors.toSet());
-        if (!foundReports.containsAll(reportIds)) throw notFound();
-        return new PlaceSuggestionsView(rows.stream()
-                .map(row -> new PlaceSuggestionItemView(
-                        (UUID) row[1], text(row[2]), text(row[3])))
-                .toList());
     }
 
     /**
@@ -163,8 +100,9 @@ public class ProductionFinishedArrivalRegistrationService {
     }
 
     /**
-     * 单张登记：登记头/行 + 逐行 FQC PENDING + 一张品质检查单（V547）同事务提交。
+     * 单张登记：登记头/行 + 逐行 FQC PENDING + 一张品质检查单(V547)+ 库位记忆同事务提交。
      * 页面按行仓分组后每个仓调用一次（幂等键 = 页面键 + ':' + 仓库 UUID）。
+     * 同键重放直接返回原批次，不再开单、不再记忆。
      */
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
@@ -188,6 +126,7 @@ public class ProductionFinishedArrivalRegistrationService {
                     normalized.remark(), SOURCE_ARRIVAL_SINGLE,
                     normalized.idempotencyKey(),
                     List.of(outcome.registrationId())));
+            rememberRegisteredPlaces(List.of(outcome.registrationId()));
         }
         return detailInternal(reportId, outcome.registrationId());
     }
@@ -456,163 +395,147 @@ public class ProductionFinishedArrivalRegistrationService {
         return detailInternal(reportId, registrationId);
     }
 
-    // 2026-09-11 死代码清扫：rememberPlaces(UUID) 单参便捷重载随 rememberPlacesBatch
-    // 一并退役；controller 与批量记忆都走下面的两参版本（registrationId 可为 null）。
-    @Transactional
-    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
-    public RememberPlacesResult rememberPlaces(
-            UUID reportId,
-            UUID exactRegistrationId) {
-        tx.bind();
-        access.requireWarehouseTaskAccess("无权记忆生产成品库位建议");
-        if (reportId == null) {
-            throw validation("生产成品库位记忆缺少报工单 UUID");
-        }
-        if (exactRegistrationId == null) {
-            Number registrationCount = (Number) em.createNativeQuery("""
-                            SELECT COUNT(*)
-                            FROM production_finished_arrival_registrations registration
-                            WHERE registration.source_report_id = :reportId
-                              AND NOT EXISTS (
-                                  SELECT 1
-                                  FROM production_finished_arrival_registration_reversals reversal
-                                  WHERE reversal.registration_id = registration.id)
-                            """)
-                    .setParameter("reportId", reportId)
-                    .getSingleResult();
-            if (registrationCount != null
-                    && registrationCount.longValue() > 1) {
-                throw conflict("该报工已有多个登记批次，请刷新页面后按登记批次记忆库位");
-            }
-        }
-        String registrationPredicate = exactRegistrationId == null
-                ? """
-                  registration.id = (
-                      SELECT latest.id
-                      FROM production_finished_arrival_registrations latest
-                      WHERE latest.source_report_id = :reportId
-                        AND NOT EXISTS (
-                            SELECT 1
-                            FROM production_finished_arrival_registration_reversals reversal
-                            WHERE reversal.registration_id = latest.id)
-                      ORDER BY latest.created_at DESC, latest.id DESC
-                      LIMIT 1)
-                  """
-                : """
-                  registration.id = :registrationId
-                  AND registration.source_report_id = :reportId
-                  """;
-        var rememberQuery = em.createNativeQuery("""
+    /**
+     * 登记即记忆：把本次命令新建的登记批次的库位写进本仓×货品×颜色的记忆库位，
+     * 与登记同一事务(登记成功即记住，登记回滚记忆一并回滚)。
+     *
+     * <ul>
+     *   <li>同一命令内同仓同货同色出现多个不同库位 = 无法判断该记哪个，跳过该维度(不报错)；</li>
+     *   <li>较新来源胜出：(来源时间, 来源 UUID) 不比现有偏好新则不改(重放天然幂等)；</li>
+     *   <li>货品已删除、库位不合规等「记不了」的情形一律静默跳过，绝不挡住登记；
+     *       只有真正的数据库错误才会随登记一起失败。</li>
+     *   <li>按(仓库, 货品, 颜色)固定顺序 upsert，并发命令不因加锁顺序相反而死锁。</li>
+     * </ul>
+     */
+    private void rememberRegisteredPlaces(Collection<UUID> registrationIds) {
+        if (registrationIds == null || registrationIds.isEmpty()) return;
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
                                 SELECT registration.id,
                                        registration.warehouse_id,
                                        registration.created_at,
-                                       registration_item.source_report_item_id,
                                        report_item.goods_id,
                                        report_item.color_id,
                                        registration_item.place_snapshot,
                                        goods.code,
                                        goods.name
                                 FROM production_finished_arrival_registrations registration
-                                JOIN production_daily_reports report
-                                  ON report.id = registration.source_report_id
-                                 AND report.status = 1
-                                 AND report.is_deleted = FALSE
                                 JOIN production_finished_arrival_registration_items
                                           registration_item
                                   ON registration_item.registration_id = registration.id
                                  AND registration_item.reversal_id IS NULL
                                 JOIN production_daily_report_items report_item
                                   ON report_item.id = registration_item.source_report_item_id
-                                 AND report_item.report_id = report.id
                                  AND report_item.is_deleted = FALSE
                                 JOIN goods goods
                                   ON goods.id = report_item.goods_id
                                  AND goods.is_deleted = FALSE
-                                WHERE
-                                """ + registrationPredicate + """
-                                ORDER BY report_item.goods_id,
+                                WHERE registration.id IN (:registrationIds)
+                                ORDER BY registration.warehouse_id,
+                                         report_item.goods_id,
                                          report_item.color_id NULLS FIRST,
+                                         registration.id,
                                          report_item.id
                                 """)
-                .setParameter("reportId", reportId);
-        if (exactRegistrationId != null) {
-            rememberQuery.setParameter("registrationId", exactRegistrationId);
-        }
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(rememberQuery);
-        if (rows.isEmpty()) throw notFound();
+                        .setParameter("registrationIds", List.copyOf(registrationIds)));
+        if (rows.isEmpty()) return;
 
-        UUID registrationId = (UUID) rows.getFirst()[0];
-        UUID warehouseId = (UUID) rows.getFirst()[1];
-        OffsetDateTime registeredAt = offsetDateTime(rows.getFirst()[2]);
-        RememberPlan plan = buildRememberPlan(rows.stream()
-                .map(row -> new RememberPlaceSource(
-                        (UUID) row[4], (UUID) row[5], text(row[6]),
-                        text(row[7]), text(row[8])))
-                .toList());
+        // 同一命令按仓分组；每个维度的来源 = 贡献它的批次里 (created_at, UUID) 最新的一个
+        // (UUID 文本序 = PostgreSQL uuid 序，与 upsert 的较新判定同口径)。
+        Map<UUID, List<RememberPlaceSource>> sourcesByWarehouse = new LinkedHashMap<>();
+        Map<UUID, Map<PlaceDimension, RememberSourceRegistration>> latestByWarehouse =
+                new LinkedHashMap<>();
+        Comparator<RememberSourceRegistration> newer = Comparator
+                .comparing(RememberSourceRegistration::registeredAt)
+                .thenComparing(source -> source.registrationId().toString());
+        for (Object[] row : rows) {
+            UUID warehouseId = (UUID) row[1];
+            UUID goodsId = (UUID) row[3];
+            UUID colorId = (UUID) row[4];
+            sourcesByWarehouse.computeIfAbsent(warehouseId, ignored -> new ArrayList<>())
+                    .add(new RememberPlaceSource(
+                            goodsId, colorId, text(row[5]), text(row[6]), text(row[7])));
+            RememberSourceRegistration candidate = new RememberSourceRegistration(
+                    (UUID) row[0], offsetDateTime(row[2]));
+            latestByWarehouse.computeIfAbsent(warehouseId, ignored -> new LinkedHashMap<>())
+                    .merge(new PlaceDimension(goodsId, colorId), candidate,
+                            (left, right) -> newer.compare(left, right) >= 0 ? left : right);
+        }
 
         UUID actorId = currentUser.requireId();
         UUID employeeId = currentUser.requireEmployeeId();
-        int remembered = 0;
-        int unchanged = 0;
-        for (RememberCandidate candidate : plan.candidates()) {
-            List<?> changed = em.createNativeQuery("""
-                            INSERT INTO warehouse_goods_place_preferences(
-                                id, warehouse_id, goods_id, color_id, place,
-                                selection_count, version,
-                                source_kind, source_registration_id,
-                                source_iqc_batch_id, source_registered_at,
-                                last_selected_by, last_selected_at,
-                                created_by, updated_by)
-                            VALUES (
-                                gen_random_uuid(), :warehouseId, :goodsId,
-                                :colorId, :place, 1, 0,
-                                'FINISHED_ARRIVAL', :registrationId,
-                                NULL, :registeredAt,
-                                :employeeId, now(), :actorId, :actorId)
-                            ON CONFLICT ON CONSTRAINT
-                                warehouse_goods_place_preference_dimension_uk
-                            DO UPDATE SET
-                                place = EXCLUDED.place,
-                                selection_count =
-                                    warehouse_goods_place_preferences.selection_count + 1,
-                                version = warehouse_goods_place_preferences.version + 1,
-                                source_kind = EXCLUDED.source_kind,
-                                source_registration_id =
-                                    EXCLUDED.source_registration_id,
-                                source_iqc_batch_id =
-                                    EXCLUDED.source_iqc_batch_id,
-                                source_registered_at = EXCLUDED.source_registered_at,
-                                last_selected_by = EXCLUDED.last_selected_by,
-                                last_selected_at = now(),
-                                updated_by = EXCLUDED.updated_by
-                            WHERE (
-                                warehouse_goods_place_preferences.source_registered_at,
-                                COALESCE(
-                                    warehouse_goods_place_preferences.source_registration_id,
-                                    warehouse_goods_place_preferences.source_iqc_batch_id)
-                            ) < (
-                                EXCLUDED.source_registered_at,
-                                EXCLUDED.source_registration_id
-                            )
-                            RETURNING id
-                            """)
-                    .setParameter("warehouseId", warehouseId)
-                    .setParameter("goodsId", candidate.goodsId())
-                    .setParameter("colorId", candidate.colorId())
-                    .setParameter("place", candidate.place())
-                    .setParameter("registrationId", registrationId)
-                    .setParameter("registeredAt", registeredAt)
-                    .setParameter("employeeId", employeeId)
-                    .setParameter("actorId", actorId)
-                    .getResultList();
-            if (changed.isEmpty()) {
-                unchanged++;
-            } else {
-                remembered++;
+        for (Map.Entry<UUID, List<RememberPlaceSource>> entry : sourcesByWarehouse.entrySet()) {
+            UUID warehouseId = entry.getKey();
+            RememberPlan plan = buildRememberPlan(entry.getValue());
+            if (plan.ambiguous() > 0) {
+                log.info("生产成品登记库位未记忆 warehouse={} ambiguous={} detail={}",
+                        warehouseId, plan.ambiguous(), plan.warnings());
+            }
+            Map<PlaceDimension, RememberSourceRegistration> latest =
+                    latestByWarehouse.get(warehouseId);
+            for (RememberCandidate candidate : plan.candidates()) {
+                RememberSourceRegistration source = latest.get(
+                        new PlaceDimension(candidate.goodsId(), candidate.colorId()));
+                if (source == null || source.registeredAt() == null) continue;
+                upsertPlacePreference(warehouseId, candidate, source, employeeId, actorId);
             }
         }
-        return new RememberPlacesResult(
-                remembered, unchanged, plan.ambiguous(), plan.warnings());
+    }
+
+    /** V431/V451 较新来源胜出的 upsert：(来源时间, 来源 UUID) 不比现有偏好新则保持不动。 */
+    private void upsertPlacePreference(
+            UUID warehouseId, RememberCandidate candidate,
+            RememberSourceRegistration source, UUID employeeId, UUID actorId) {
+        em.createNativeQuery("""
+                        INSERT INTO warehouse_goods_place_preferences(
+                            id, warehouse_id, goods_id, color_id, place,
+                            selection_count, version,
+                            source_kind, source_registration_id,
+                            source_iqc_batch_id, source_registered_at,
+                            last_selected_by, last_selected_at,
+                            created_by, updated_by)
+                        VALUES (
+                            gen_random_uuid(), :warehouseId, :goodsId,
+                            CAST(:colorId AS uuid), :place, 1, 0,
+                            'FINISHED_ARRIVAL', :registrationId,
+                            NULL, :registeredAt,
+                            :employeeId, now(), :actorId, :actorId)
+                        ON CONFLICT ON CONSTRAINT
+                            warehouse_goods_place_preference_dimension_uk
+                        DO UPDATE SET
+                            place = EXCLUDED.place,
+                            selection_count =
+                                warehouse_goods_place_preferences.selection_count + 1,
+                            version = warehouse_goods_place_preferences.version + 1,
+                            source_kind = EXCLUDED.source_kind,
+                            source_registration_id =
+                                EXCLUDED.source_registration_id,
+                            source_iqc_batch_id =
+                                EXCLUDED.source_iqc_batch_id,
+                            source_registered_at = EXCLUDED.source_registered_at,
+                            last_selected_by = EXCLUDED.last_selected_by,
+                            last_selected_at = now(),
+                            updated_by = EXCLUDED.updated_by
+                        WHERE (
+                            warehouse_goods_place_preferences.source_registered_at,
+                            COALESCE(
+                                warehouse_goods_place_preferences.source_registration_id,
+                                warehouse_goods_place_preferences.source_iqc_batch_id)
+                        ) < (
+                            EXCLUDED.source_registered_at,
+                            EXCLUDED.source_registration_id
+                        )
+                        """)
+                .setParameter("warehouseId", warehouseId)
+                .setParameter("goodsId", candidate.goodsId())
+                .setParameter("colorId", candidate.colorId() == null
+                        ? null : candidate.colorId().toString())
+                .setParameter("place", candidate.place())
+                .setParameter("registrationId", source.registrationId())
+                .setParameter("registeredAt", source.registeredAt())
+                .setParameter("employeeId", employeeId)
+                .setParameter("actorId", actorId)
+                .executeUpdate();
     }
 
     private ArrivalRegistrationView detailInternal(UUID reportId) {
@@ -955,24 +878,12 @@ public class ProductionFinishedArrivalRegistrationService {
         return List.copyOf(result);
     }
 
-    /** 多报工单同仓库位建议合并（一次 HTTP 请求；逐单复用单册建议 SQL 口径）。 */
-    @Transactional(readOnly = true)
-    @PreAuthorize("hasAuthority('stock_doc:view')")
-    public PlaceSuggestionsView batchPlaceSuggestions(
-            List<UUID> reportIds, UUID warehouseId) {
-        access.requireWarehouseTaskAccess("无权查看生产成品库位建议");
-        List<UUID> ids = requireReportIds(reportIds);
-        if (warehouseId == null) {
-            throw validation("生产成品库位建议缺少仓库 UUID");
-        }
-        return placeSuggestionsInternal(ids, warehouseId);
-    }
-
     /**
      * 多张报工单一次性汇总登记送检：外层一个事务，逐单复用单册登记核心的完整校验
      * 与逐行 FQC 创建（每个请求可为待办行的非空子集）；任一单失败整批回滚。
      * 幂等：批量键 + 报工单 UUID 派生逐单子键，重试时已完成单自动安全重放。
      * V547：本批新建的登记按成品仓分组，每个仓生成一张品质检查单（同键重放不再建单）。
+     * 本批新建的登记同事务自动记忆库位；重放的单不再记忆。
      */
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
@@ -1078,6 +989,10 @@ public class ProductionFinishedArrivalRegistrationService {
                             .map(RegistrationOutcome::registrationId)
                             .toList()));
         }
+        rememberRegisteredPlaces(byWarehouse.values().stream()
+                .flatMap(List::stream)
+                .map(RegistrationOutcome::registrationId)
+                .toList());
 
         List<UUID> registrationIds = outcomes.values().stream()
                 .map(RegistrationOutcome::registrationId)
@@ -1135,80 +1050,6 @@ public class ProductionFinishedArrivalRegistrationService {
         return result;
     }
 
-    // 2026-09-11 死代码清扫：rememberPlacesBatch(List<UUID> reportIds)（按报工 UUID
-    // 逐单记忆）无调用方——前端批量登记一律走下面的 rememberPlacesForRegistrations，
-    // 按服务端返回的 registration UUID 精确绑定，避免并发批次「猜最新」。
-    /**
-     * Exact V469 remember path. Registration ids come from the batch-register
-     * response, so another partial batch for the same report cannot change the
-     * preference source between the two HTTP requests.
-     */
-    @Transactional
-    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
-    public BatchRememberPlacesResult rememberPlacesForRegistrations(
-            List<UUID> registrationIds) {
-        tx.bind();
-        access.requireWarehouseTaskAccess("无权记忆生产成品库位建议");
-        List<UUID> ids = requireRegistrationIds(registrationIds);
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
-                                SELECT registration.id,
-                                       registration.source_report_id
-                                FROM production_finished_arrival_registrations registration
-                                WHERE registration.id IN (:registrationIds)
-                                ORDER BY registration.id
-                                """)
-                        .setParameter("registrationIds", ids));
-        if (rows.size() != ids.size()) throw notFound();
-        Map<UUID, UUID> reportByRegistration = new LinkedHashMap<>();
-        for (Object[] row : rows) {
-            reportByRegistration.put((UUID) row[0], (UUID) row[1]);
-        }
-
-        int remembered = 0;
-        int unchanged = 0;
-        int ambiguous = 0;
-        List<String> warnings = new ArrayList<>();
-        for (UUID registrationId : ids) {
-            RememberPlacesResult result = rememberPlaces(
-                    reportByRegistration.get(registrationId), registrationId);
-            remembered += result.remembered();
-            unchanged += result.unchanged();
-            ambiguous += result.ambiguous();
-            warnings.addAll(result.warnings());
-        }
-        return new BatchRememberPlacesResult(
-                remembered, unchanged, ambiguous, warnings);
-    }
-
-    /** 当前用户最近一次成品送检登记所用成品仓（无登记历史返回 null）。 */
-    @Transactional(readOnly = true)
-    @PreAuthorize("hasAuthority('stock_doc:view')")
-    public LastWarehouseView lastWarehouse() {
-        access.requireWarehouseTaskAccess("无权查看生产成品送检登记");
-        UUID actorId = currentUser.requireId();
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
-                                SELECT registration.warehouse_id,
-                                       warehouse.code,
-                                       warehouse.name,
-                                       registration.created_at
-                                FROM (
-                                    SELECT warehouse_id, created_at
-                                    FROM production_finished_arrival_registrations
-                                    WHERE created_by = :actorId
-                                    ORDER BY created_at DESC, id DESC LIMIT 1
-                                ) registration
-                                JOIN warehouses warehouse ON warehouse.id=registration.warehouse_id
-                                  AND fn_warehouse_is_active_accounting_leaf(warehouse.id)
-                                """)
-                        .setParameter("actorId", actorId));
-        if (rows.isEmpty()) return null;
-        Object[] row = rows.getFirst();
-        return new LastWarehouseView(
-                (UUID) row[0], text(row[1]), text(row[2]), offsetDateTime(row[3]));
-    }
-
     private static List<UUID> requireReportIds(List<UUID> reportIds) {
         if (reportIds == null || reportIds.isEmpty()) {
             throw validation("批量送检登记缺少报工单清单");
@@ -1220,22 +1061,6 @@ public class ProductionFinishedArrivalRegistrationService {
         for (UUID id : reportIds) {
             if (id == null || !distinct.add(id)) {
                 throw validation("批量送检登记的报工单清单无效或存在重复");
-            }
-        }
-        return List.copyOf(distinct);
-    }
-
-    private static List<UUID> requireRegistrationIds(List<UUID> registrationIds) {
-        if (registrationIds == null || registrationIds.isEmpty()) {
-            throw validation("批量库位记忆缺少登记批次清单");
-        }
-        if (registrationIds.size() > 50) {
-            throw validation("一次最多记忆 50 个登记批次");
-        }
-        LinkedHashSet<UUID> distinct = new LinkedHashSet<>();
-        for (UUID id : registrationIds) {
-            if (id == null || !distinct.add(id)) {
-                throw validation("登记批次清单无效或存在重复");
             }
         }
         return List.copyOf(distinct);
@@ -1429,6 +1254,10 @@ public class ProductionFinishedArrivalRegistrationService {
         }
     }
 
+    /**
+     * 同一(货品, 颜色)只有一个库位才记；多个不同库位计入 ambiguous 并给出说明。
+     * 记忆是登记的附带动作，缺货品或库位不合规的来源直接跳过，不抛错挡住登记。
+     */
     static RememberPlan buildRememberPlan(List<RememberPlaceSource> sources) {
         Map<PlaceDimension, RememberAccumulator> grouped = new LinkedHashMap<>();
         if (sources == null) {
@@ -1437,11 +1266,11 @@ public class ProductionFinishedArrivalRegistrationService {
         for (RememberPlaceSource source : sources) {
             if (source == null || source.goodsId() == null
                     || source.place() == null) {
-                throw validation("库位记忆来源缺少货品 UUID 或登记快照");
+                continue;
             }
             String place = source.place().strip();
             if (place.isEmpty() || place.length() > 100) {
-                throw validation("库位记忆来源必须为 1至100 个字符");
+                continue;
             }
             PlaceDimension dimension = new PlaceDimension(
                     source.goodsId(), source.colorId());
@@ -1545,6 +1374,10 @@ public class ProductionFinishedArrivalRegistrationService {
     }
 
     record RememberCandidate(UUID goodsId, UUID colorId, String place) {
+    }
+
+    /** 记忆来源登记批次：写进偏好的 source_registration_id / source_registered_at。 */
+    private record RememberSourceRegistration(UUID registrationId, OffsetDateTime registeredAt) {
     }
 
     record RememberPlan(

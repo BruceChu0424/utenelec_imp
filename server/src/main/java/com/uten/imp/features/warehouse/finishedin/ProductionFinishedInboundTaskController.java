@@ -6,10 +6,6 @@ import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContr
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationResult;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchRememberPlacesResult;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.LastWarehouseView;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.PlaceSuggestionsView;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.RememberPlacesResult;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -85,14 +81,6 @@ public class ProductionFinishedInboundTaskController {
         return arrivalRegistrations.batchDetail(reportIds);
     }
 
-    @GetMapping("/arrival-registrations/batch/place-suggestions")
-    @PreAuthorize("hasAuthority('stock_doc:view')")
-    public PlaceSuggestionsView batchPlaceSuggestions(
-            @RequestParam List<UUID> reportIds,
-            @RequestParam UUID warehouseId) {
-        return arrivalRegistrations.batchPlaceSuggestions(reportIds, warehouseId);
-    }
-
     @PostMapping("/arrival-registrations/batch")
     @PreAuthorize("hasAuthority('stock_doc:view')"
             + " and hasAuthority('stock_doc:approve')")
@@ -101,23 +89,10 @@ public class ProductionFinishedInboundTaskController {
         return arrivalRegistrations.batchRegister(request);
     }
 
-    // 2026-09-11 死代码清扫：POST /arrival-registrations/batch/remember-places
-    // （按报工 UUID 记忆）已随批量登记改走 registration UUID 而无任何调用方，
-    // 且并发多批次下只能「猜最新批次」，一并删除避免留错误入口。
-    @PostMapping("/arrival-registrations/batch/remember-registration-batches")
-    @PreAuthorize("hasAuthority('stock_doc:view')"
-            + " and hasAuthority('stock_doc:approve')")
-    public BatchRememberPlacesResult rememberRegistrationBatches(
-            @RequestBody List<UUID> registrationIds) {
-        return arrivalRegistrations.rememberPlacesForRegistrations(
-                registrationIds);
-    }
-
-    @GetMapping("/arrival-registrations/last-warehouse")
-    @PreAuthorize("hasAuthority('stock_doc:view')")
-    public LastWarehouseView lastArrivalWarehouse() {
-        return arrivalRegistrations.lastWarehouse();
-    }
+    // 2026-09-27 库位记忆与建议统一：登记(单张/批量)同事务自动记忆库位，原「记住库位」
+    // 两个端点、按报工取建议库位两个端点、上次所用成品仓端点一并删除；建议库位改走
+    // POST /api/warehouse/place-suggestions(与采购/委外到货登记同一口径)，
+    // 上次所用仓库由客户端本机记忆。
 
     /** V548 登记撤回（仅品质未处理）：与登记同权限 + 仓储对象范围；registrationId 是登记批次 UUID。 */
     @PostMapping("/arrival-registrations/{registrationId}/reverse")
@@ -136,14 +111,6 @@ public class ProductionFinishedInboundTaskController {
         return arrivalRegistrations.detail(reportId);
     }
 
-    @GetMapping("/arrival-registrations/{reportId}/place-suggestions")
-    @PreAuthorize("hasAuthority('stock_doc:view')")
-    public PlaceSuggestionsView placeSuggestions(
-            @PathVariable UUID reportId,
-            @RequestParam UUID warehouseId) {
-        return arrivalRegistrations.placeSuggestions(reportId, warehouseId);
-    }
-
     @PostMapping("/arrival-registrations/{reportId}")
     @PreAuthorize("hasAuthority('stock_doc:view')"
             + " and hasAuthority('stock_doc:approve')")
@@ -151,14 +118,5 @@ public class ProductionFinishedInboundTaskController {
             @PathVariable UUID reportId,
             @Valid @RequestBody ArrivalRegistrationRequest request) {
         return arrivalRegistrations.register(reportId, request);
-    }
-
-    @PostMapping("/arrival-registrations/{reportId}/remember-places")
-    @PreAuthorize("hasAuthority('stock_doc:view')"
-            + " and hasAuthority('stock_doc:approve')")
-    public RememberPlacesResult rememberPlaces(
-            @PathVariable UUID reportId,
-            @RequestParam(required = false) UUID registrationId) {
-        return arrivalRegistrations.rememberPlaces(reportId, registrationId);
     }
 }

@@ -319,14 +319,14 @@ abstract final class FormDraftCatalog {
   );
 
   static const finishedArrival = FormDraftDescriptor(
-    title: '登记成品仓与库位',
+    title: '登记实际入库',
     module: BadgeModule.warehouse,
     route: RouteName.warehouseProductionFinishedArrivalRegistration,
     permission: Perm.stockDocApprove,
   );
 
   static const finishedArrivalBatch = FormDraftDescriptor(
-    title: '汇总登记成品仓与库位',
+    title: '批量登记实际入库',
     module: BadgeModule.warehouse,
     route: RouteName.warehouseProductionFinishedArrivalBatchRegistration,
     permission: Perm.stockDocApprove,

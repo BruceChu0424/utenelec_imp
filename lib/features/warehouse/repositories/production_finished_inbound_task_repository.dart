@@ -107,21 +107,6 @@ class ProductionFinishedInboundTaskRepository {
     return ProductionFinishedArrivalRegistration.fromJson(json);
   }
 
-  Future<List<ProductionFinishedPlaceSuggestion>> placeSuggestions(
-    String reportId, {
-    required String warehouseId,
-  }) async {
-    final json = await api.get(
-      ApiEndpoints.productionFinishedArrivalPlaceSuggestions(reportId),
-      query: {'warehouseId': warehouseId},
-    );
-    return (json['items'] as List?)
-            ?.whereType<Map<String, dynamic>>()
-            .map(ProductionFinishedPlaceSuggestion.fromJson)
-            .toList(growable: false) ??
-        const [];
-  }
-
   Future<ProductionFinishedArrivalRegistration> saveArrivalRegistration(
     String reportId,
     Map<String, dynamic> body,
@@ -131,20 +116,6 @@ class ProductionFinishedInboundTaskRepository {
       body: body,
     );
     return ProductionFinishedArrivalRegistration.fromJson(json);
-  }
-
-  Future<ProductionFinishedRememberPlacesResult> rememberPlaces(
-    String reportId, {
-    String? registrationId,
-  }) async {
-    final json = await api.post(
-      ApiEndpoints.productionFinishedArrivalRememberPlaces(reportId),
-      query: {
-        if (registrationId?.isNotEmpty == true)
-          'registrationId': registrationId,
-      },
-    );
-    return ProductionFinishedRememberPlacesResult.fromJson(json);
   }
 
   /// 多报工单汇总登记：一次拉取多张待登记报工的明细（已登记的按只读带回）。
@@ -160,22 +131,6 @@ class ProductionFinishedInboundTaskRepository {
         .toList(growable: false);
   }
 
-  /// 多报工单同仓库位建议（一次请求合并全部行的建议）。
-  Future<List<ProductionFinishedPlaceSuggestion>> batchPlaceSuggestions({
-    required List<String> reportIds,
-    required String warehouseId,
-  }) async {
-    final json = await api.get(
-      ApiEndpoints.productionFinishedArrivalBatchPlaceSuggestions,
-      query: {'reportIds': reportIds.join(','), 'warehouseId': warehouseId},
-    );
-    return (json['items'] as List?)
-            ?.whereType<Map<String, dynamic>>()
-            .map(ProductionFinishedPlaceSuggestion.fromJson)
-            .toList(growable: false) ??
-        const [];
-  }
-
   /// 一次提交逐单所选 FQC 行：reports = [{reportId, warehouseId, items:[{reportItemId, place}]}]。
   Future<ProductionFinishedBatchRegistrationResult>
   saveArrivalRegistrationBatch(Map<String, dynamic> body) async {
@@ -184,17 +139,6 @@ class ProductionFinishedInboundTaskRepository {
       body: body,
     );
     return ProductionFinishedBatchRegistrationResult.fromJson(json);
-  }
-
-  /// 批量登记后的库位记忆：绑定服务端返回的 registration UUID，避免并发串批。
-  Future<ProductionFinishedRememberPlacesResult> rememberPlacesBatch(
-    List<String> registrationIds,
-  ) async {
-    final json = await api.post(
-      ApiEndpoints.productionFinishedArrivalBatchRememberRegistrationBatches,
-      body: registrationIds,
-    );
-    return ProductionFinishedRememberPlacesResult.fromJson(json);
   }
 
   /// V548 登记撤回（仅品质未处理）：原因必填，幂等键在页面弹窗生命周期内复用。
@@ -208,20 +152,6 @@ class ProductionFinishedInboundTaskRepository {
       body: {'idempotencyKey': idempotencyKey, 'reason': reason.trim()},
     );
     return ProductionFinishedArrivalRegistration.fromJson(json);
-  }
-
-  /// 当前用户最近一次成品送检登记所用成品仓（无历史/空响应返回 null）。
-  Future<ProductionFinishedLastWarehouse?> lastArrivalWarehouse() async {
-    try {
-      final json = await api.get(
-        ApiEndpoints.productionFinishedArrivalLastWarehouse,
-      );
-      if (json.isEmpty) return null;
-      return ProductionFinishedLastWarehouse.fromJson(json);
-    } catch (_) {
-      // 上次仓记忆是锦上添花：拉取失败不阻断登记，仅不预选。
-      return null;
-    }
   }
 }
 

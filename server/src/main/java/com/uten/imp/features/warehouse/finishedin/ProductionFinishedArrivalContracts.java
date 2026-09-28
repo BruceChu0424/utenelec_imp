@@ -133,33 +133,6 @@ public final class ProductionFinishedArrivalContracts {
             int itemCount) {
     }
 
-    /** Warehouse-scoped suggestions for every immutable report line. */
-    public record PlaceSuggestionsView(
-            List<PlaceSuggestionItemView> items) {
-
-        public PlaceSuggestionsView {
-            items = List.copyOf(items);
-        }
-    }
-
-    public record PlaceSuggestionItemView(
-            UUID reportItemId,
-            String place,
-            String source) {
-    }
-
-    /** Result of the explicit, registration-derived remember action. */
-    public record RememberPlacesResult(
-            int remembered,
-            int unchanged,
-            int ambiguous,
-            List<String> warnings) {
-
-        public RememberPlacesResult {
-            warnings = List.copyOf(warnings);
-        }
-    }
-
     /** 多张报工单一次性汇总登记：每张可提交其待办行的非空子集并逐行创建 FQC。 */
     public record BatchArrivalRegistrationRequest(
             @NotBlank
@@ -216,26 +189,6 @@ public final class ProductionFinishedArrivalContracts {
             String warehouseName,
             UUID sheetId,
             String sheetNo) {
-    }
-
-    /** 批量登记后的库位记忆汇总（逐单聚合 remembered/unchanged/ambiguous 与告警）。 */
-    public record BatchRememberPlacesResult(
-            int remembered,
-            int unchanged,
-            int ambiguous,
-            List<String> warnings) {
-
-        public BatchRememberPlacesResult {
-            warnings = List.copyOf(warnings);
-        }
-    }
-
-    /** 当前用户最近一次成品送检登记所用的成品仓（下次进入自动预选）。 */
-    public record LastWarehouseView(
-            UUID warehouseId,
-            String warehouseCode,
-            String warehouseName,
-            OffsetDateTime usedAt) {
     }
 
     public record ArrivalRegistrationItemView(

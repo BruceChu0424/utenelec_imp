@@ -4271,18 +4271,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Select one physical warehouse to view its rack diagram. The table lists each warehouse separately.';
 
   @override
-  String get warehouseGoodsMasterDefaultHint =>
-      'The goods master default warehouse was filled in. Verify the actual destination for this receipt.';
-
-  @override
-  String get warehouseSuggestedDestinationHint =>
-      'A suggested warehouse was filled in. Verify the actual destination.';
-
-  @override
-  String get warehouseBatchRegistrationHelp =>
-      'Each line needs a warehouse and location. Goods master defaults take precedence over personal warehouse context. Selected lines can be edited together. Each report creates its own inspection submission; final receipt follows quality release.';
-
-  @override
   String get materialPreparationReview => 'Review and order';
 
   @override

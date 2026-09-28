@@ -7649,24 +7649,6 @@ abstract class AppLocalizations {
   /// **'当前包含多个仓库，请选择具体仓库查看货架图。下表按实际仓库分别列示。'**
   String get shelfChooseWarehouseForRack;
 
-  /// No description provided for @warehouseGoodsMasterDefaultHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'已带入货品主档的默认存放仓，请核对本次实际仓库'**
-  String get warehouseGoodsMasterDefaultHint;
-
-  /// No description provided for @warehouseSuggestedDestinationHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'已带入建议存放仓，请核对本次实际仓库'**
-  String get warehouseSuggestedDestinationHint;
-
-  /// No description provided for @warehouseBatchRegistrationHelp.
-  ///
-  /// In zh, this message translates to:
-  /// **'成品仓、库位号逐行必填；优先带入货品主档默认仓，缺项再参考个人选仓上下文。勾选多行后改仓或填写库位可批量应用。每张报工单各生成一份送检，品质放行后再最终点收。'**
-  String get warehouseBatchRegistrationHelp;
-
   /// No description provided for @materialPreparationReview.
   ///
   /// In zh, this message translates to:

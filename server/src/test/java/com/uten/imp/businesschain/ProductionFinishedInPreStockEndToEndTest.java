@@ -9,6 +9,9 @@ import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
+import com.uten.imp.features.warehouse.place.WarehousePlaceSuggestionContracts.PlaceSuggestionItemRequest;
+import com.uten.imp.features.warehouse.place.WarehousePlaceSuggestionContracts.PlaceSuggestionRequest;
+import com.uten.imp.features.warehouse.place.WarehousePlaceSuggestionService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -201,6 +204,52 @@ class ProductionFinishedInPreStockEndToEndTest {
         assertEquals(ErrorCode.FORBIDDEN, denied.getCode());
         assertEquals(0, balance(c.warehouseId(), c.goodsId()).signum());
         assertEquals(1, finishedInDocs(c.reportId(), 0), "被拒后单据仍是待点收草稿");
+    }
+
+    // ------------------------------------------------------------------ 库位记忆与共用建议(2026-09-27)
+
+    @Test
+    void registrationRemembersPlaceInSameTransactionAndSharedSuggestionReadsIt() {
+        // ① 单行登记：登记事务里自动记住「本仓 × 货品 × 颜色」的库位(不再有页面开关/单独接口)。
+        Case c = prepare("fip-remember", false, "6");
+        UUID colorId = jdbc.queryForObject(
+                "SELECT color_id FROM production_daily_report_items WHERE id = ?",
+                UUID.class, c.reportItems().getFirst());
+        Map<String, Object> preference = jdbc.queryForMap("""
+                SELECT place, source_kind, source_registration_id
+                FROM warehouse_goods_place_preferences
+                WHERE warehouse_id = ? AND goods_id = ? AND color_id IS NOT DISTINCT FROM ?
+                """, c.warehouseId(), c.goodsId(), colorId);
+        assertEquals(c.places().getFirst(), preference.get("place"), "登记即记住本次库位");
+        assertEquals("FINISHED_ARRIVAL", preference.get("source_kind"));
+        assertNotNull(preference.get("source_registration_id"));
+
+        // ② 采购/委外与产成品共用的建议端点按同一张偏好表回填(该仓记住的库位优先)。
+        var suggestions = beans.getBean(WarehousePlaceSuggestionService.class).suggest(
+                new PlaceSuggestionRequest(c.warehouseId(),
+                        List.of(new PlaceSuggestionItemRequest(c.goodsId(), colorId))));
+        assertEquals(1, suggestions.items().size());
+        assertEquals(c.places().getFirst(), suggestions.items().getFirst().place());
+        assertEquals(WarehousePlaceSuggestionService.SOURCE_WAREHOUSE_PREFERENCE,
+                suggestions.items().getFirst().source());
+
+        // ③ 同一命令里同仓同货同色填了两个不同库位：判断不了记哪个，跳过而不是挡住登记。
+        Case ambiguous = prepare("fip-ambiguous", false, "2", "3");
+        assertEquals(2, ambiguous.inspections().size(), "登记照常成功、逐行送检");
+        UUID ambiguousColor = jdbc.queryForObject(
+                "SELECT color_id FROM production_daily_report_items WHERE id = ?",
+                UUID.class, ambiguous.reportItems().getFirst());
+        boolean sameDimension = Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT count(DISTINCT (goods_id, color_id)) = 1
+                FROM production_daily_report_items WHERE id = ANY(?)
+                """, Boolean.class, (Object) ambiguous.reportItems().toArray(UUID[]::new)));
+        if (sameDimension) {
+            assertEquals(0, jdbc.queryForObject("""
+                    SELECT count(*) FROM warehouse_goods_place_preferences
+                    WHERE warehouse_id = ? AND goods_id = ? AND color_id IS NOT DISTINCT FROM ?
+                    """, Integer.class, ambiguous.warehouseId(), ambiguous.goodsId(), ambiguousColor),
+                    "同维度多库位不记忆");
+        }
     }
 
     // ------------------------------------------------------------------ 夹具

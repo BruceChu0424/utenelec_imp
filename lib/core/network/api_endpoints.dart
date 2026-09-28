@@ -118,21 +118,10 @@ abstract final class ApiEndpoints {
       '/stock/docs/finished-in/confirm-batch';
   static String productionFinishedArrivalRegistration(String reportId) =>
       '/warehouse/production-finished-in/arrival-registrations/$reportId';
-  static String productionFinishedArrivalPlaceSuggestions(String reportId) =>
-      '${productionFinishedArrivalRegistration(reportId)}/place-suggestions';
-  static String productionFinishedArrivalRememberPlaces(String reportId) =>
-      '${productionFinishedArrivalRegistration(reportId)}/remember-places';
-  // 多报工单汇总登记：批量明细/建议/按登记批次精确记忆/上次成品仓。
+  // 多报工单汇总登记：批量明细 + 一次提交(2026-09-27 起库位建议走共用
+  // warehousePlaceSuggestions，库位记忆随登记事务在服务端自动完成，上次仓改走账号记忆)。
   static const productionFinishedArrivalBatchBase =
       '/warehouse/production-finished-in/arrival-registrations/batch';
-  static const productionFinishedArrivalBatchPlaceSuggestions =
-      '$productionFinishedArrivalBatchBase/place-suggestions';
-  // 2026-09-11 死代码清扫：batch/remember-places（按报工 UUID）无调用方，
-  // 批量记忆一律走 remember-registration-batches（按登记批次 UUID 精确绑定）。
-  static const productionFinishedArrivalBatchRememberRegistrationBatches =
-      '$productionFinishedArrivalBatchBase/remember-registration-batches';
-  static const productionFinishedArrivalLastWarehouse =
-      '/warehouse/production-finished-in/arrival-registrations/last-warehouse';
 
   /// V548 登记撤回（仅品质未处理）：路径参数是登记批次 UUID，不是报工单 UUID。
   static String productionFinishedArrivalReverse(String registrationId) =>
@@ -160,6 +149,8 @@ abstract final class ApiEndpoints {
       '/production/quality-replenishments/material-tasks/count';
   static String warehouseArrivalExceptionStockIn(String id) =>
       '/warehouse/inbound/arrival-exceptions/$id/stock-in';
+  // 入库登记库位建议(采购/委外到货与产成品登记共用)：所选仓 × 货品 × 颜色记忆 → 货品资料通用库位。
+  static const warehousePlaceSuggestions = '/warehouse/place-suggestions';
   // 货品资料「学习」回写：登记到货保存后回写库位号/系列/编码（对仓库端开放）。
   static const warehouseInboundGoodsProfileHints =
       '/warehouse/inbound/goods-profile-hints';

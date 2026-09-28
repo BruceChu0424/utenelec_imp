@@ -13,73 +13,6 @@ enum ProductionFinishedInboundTaskStage {
       );
 }
 
-enum ProductionFinishedPlaceSuggestionSource {
-  warehousePreference('WAREHOUSE_PREFERENCE'),
-  registrationHistory('REGISTRATION_HISTORY'),
-  goodsMaster('GOODS_MASTER'),
-  none('NONE');
-
-  const ProductionFinishedPlaceSuggestionSource(this.code);
-
-  final String code;
-
-  static ProductionFinishedPlaceSuggestionSource fromCode(String? code) =>
-      values.firstWhere(
-        (source) => source.code == code,
-        orElse: () => ProductionFinishedPlaceSuggestionSource.none,
-      );
-}
-
-class ProductionFinishedPlaceSuggestion {
-  const ProductionFinishedPlaceSuggestion({
-    required this.reportItemId,
-    required this.source,
-    this.place,
-  });
-
-  final String reportItemId;
-  final String? place;
-  final ProductionFinishedPlaceSuggestionSource source;
-
-  factory ProductionFinishedPlaceSuggestion.fromJson(
-    Map<String, dynamic> json,
-  ) => ProductionFinishedPlaceSuggestion(
-    reportItemId: json['reportItemId'] as String? ?? '',
-    place: json['place'] as String?,
-    source: ProductionFinishedPlaceSuggestionSource.fromCode(
-      json['source'] as String?,
-    ),
-  );
-}
-
-class ProductionFinishedRememberPlacesResult {
-  const ProductionFinishedRememberPlacesResult({
-    required this.remembered,
-    required this.unchanged,
-    required this.ambiguous,
-    required this.warnings,
-  });
-
-  final int remembered;
-  final int unchanged;
-  final int ambiguous;
-  final List<String> warnings;
-
-  factory ProductionFinishedRememberPlacesResult.fromJson(
-    Map<String, dynamic> json,
-  ) => ProductionFinishedRememberPlacesResult(
-    remembered: (json['remembered'] as num?)?.toInt() ?? 0,
-    unchanged: (json['unchanged'] as num?)?.toInt() ?? 0,
-    ambiguous: (json['ambiguous'] as num?)?.toInt() ?? 0,
-    warnings:
-        (json['warnings'] as List?)
-            ?.map((warning) => warning?.toString().trim() ?? '')
-            .where((warning) => warning.isNotEmpty)
-            .toList(growable: false) ??
-        const [],
-  );
-}
-
 /// 多报工单汇总登记结果：一次提交逐单登记所选明细并逐行送检；
 /// V547 起同仓合并成一张品质检查单（sheets 每仓一张）。
 class ProductionFinishedBatchRegistrationResult {
@@ -221,26 +154,6 @@ class ProductionFinishedRegistrationBatch {
     reversalReason: json['reversalReason'] as String?,
     reversible: json['reversible'] as bool? ?? false,
   );
-}
-
-/// 当前用户最近一次成品送检登记所用成品仓（下次进入自动预选）。
-class ProductionFinishedLastWarehouse {
-  const ProductionFinishedLastWarehouse({
-    required this.warehouseId,
-    this.warehouseCode,
-    this.warehouseName,
-  });
-
-  final String warehouseId;
-  final String? warehouseCode;
-  final String? warehouseName;
-
-  factory ProductionFinishedLastWarehouse.fromJson(Map<String, dynamic> json) =>
-      ProductionFinishedLastWarehouse(
-        warehouseId: json['warehouseId'] as String? ?? '',
-        warehouseCode: json['warehouseCode'] as String?,
-        warehouseName: json['warehouseName'] as String?,
-      );
 }
 
 class ProductionFinishedInboundTask {

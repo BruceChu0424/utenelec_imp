@@ -597,11 +597,14 @@ abstract final class RoutePath {
   }) {
     final ids = reportIds
         .map((id) => Uri.encodeComponent(id.trim()))
+  /// [stockInBeforeInspection] = 任务中心点的是「先入库后质检(N)」(`preStock=1`，
+  /// 与采购/委外批量登记页同一参数)，页面只显示所选路线的提交按钮。
         .where((id) => id.isNotEmpty)
         .join(',');
     final path =
+    bool stockInBeforeInspection = false,
         '${RouteName.warehouseProductionFinishedArrivalBatchRegistration}'
-        '?reportIds=$ids';
+        '?reportIds=$ids${stockInBeforeInspection ? '&preStock=1' : ''}';
     final safeReturnTo = sanitizeReturnTo(
       returnTo,
       scope: ReturnToScope.employee,
@@ -610,7 +613,11 @@ abstract final class RoutePath {
         ? path
         : Uri.parse(path)
               .replace(
-                queryParameters: {'reportIds': ids, 'returnTo': safeReturnTo},
+                queryParameters: {
+                  'reportIds': ids,
+                  if (stockInBeforeInspection) 'preStock': '1',
+                  'returnTo': safeReturnTo,
+                },
               )
               .toString();
   }

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -7,15 +9,37 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/warehouse/pages/production_finished_arrival_batch_registration_page.dart';
+import 'package:uten_imp/features/warehouse/providers/inbound_warehouse_fill_memory.dart';
+import 'package:uten_imp/features/warehouse/repositories/warehouse_place_suggestion_repository.dart';
+import 'package:uten_imp/features/warehouse/widgets/inbound_registration_widgets.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 const _reportA = '20000000-0000-0000-0000-000000000001';
 const _reportB = '20000000-0000-0000-0000-000000000002';
 const _itemA = '30000000-0000-0000-0000-000000000001';
 const _itemB = '30000000-0000-0000-0000-000000000002';
 const _itemA2 = '30000000-0000-0000-0000-000000000003';
+const _goodsA = 'a0000000-0000-0000-0000-000000000001';
+const _goodsB = 'a0000000-0000-0000-0000-000000000002';
+const _goodsA2 = 'a0000000-0000-0000-0000-000000000003';
+
+const _inspectSubmitKey = Key('inbound-route-submit-inspectFirst');
+const _stockInSubmitKey = Key('inbound-route-submit-stockInFirst');
+
+/// 共用库位建议端点的桩数据：仓 → 货品 → (库位, 来源)。
+const _placeSuggestions = <String, Map<String, (String, String)>>{
+  'warehouse-1': {
+    _goodsA: ('WH-A-01', 'WAREHOUSE_PREFERENCE'),
+    _goodsA2: ('WH-A-02', 'WAREHOUSE_PREFERENCE'),
+    _goodsB: ('WH-B-01', 'GOODS_MASTER'),
+  },
+  'warehouse-2': {_goodsA: ('BY-A-09', 'WAREHOUSE_PREFERENCE')},
+};
 
 final _testBatchPermissionsProvider =
     NotifierProvider<_TestBatchPermissions, Set<String>>(
@@ -35,12 +59,27 @@ void main() {
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1280, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
+      // A 的货品主档归属仓 = 备用成品仓；账号记忆 = 成品仓。
+      // A 取归属仓(主档优先)，B 没有归属仓才兜底取账号记忆。
       final api = _BatchArrivalApi(
-        goodsWarehouseDefaults: {_itemA: 'warehouse-2', _itemB: 'warehouse-1'},
+        goodsWarehouseDefaults: {_itemA: 'warehouse-2'},
       );
       await _openBatchPage(tester, api: api);
       expect(api.suggestionRequests.toSet(), {'warehouse-1', 'warehouse-2'});
-      expect(find.text('备用成品仓'), findsWidgets);
+      expect(
+        find.descendant(
+          of: _warehouseCell(_itemA),
+          matching: find.text('备用成品仓'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: _warehouseCell(_itemB), matching: find.text('成品仓')),
+        findsOneWidget,
+      );
+      // 预填仓一律黄框待核对。
+      expect(_warehouseDecoration(tester, _itemA).autofilled, isTrue);
+      expect(_warehouseDecoration(tester, _itemB).autofilled, isTrue);
       expect(tester.takeException(), isNull);
     },
   );
@@ -51,14 +90,15 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(1280, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final api = _BatchArrivalApi(
-        withLastWarehouse: false,
         goodsWarehouseDefaults: {_itemA: 'disabled-or-removed'},
       );
-      await _openBatchPage(tester, api: api);
+      await _openBatchPage(tester, api: api, rememberedWarehouseId: null);
       expect(api.suggestionRequests, isEmpty);
+      expect(find.text('必选 · 点击选择'), findsNWidgets(2));
       expect(tester.takeException(), isNull);
     },
   );
+
   testWidgets(
     'batch place suggestions remain yellow on focus and become manual only after text changes',
     (tester) async {
@@ -68,10 +108,12 @@ void main() {
       final field = _placeField(_itemA);
       UtenInputDecoration decoration() =>
           tester.widget<TextField>(field).decoration! as UtenInputDecoration;
-      // 2026-09-12 起库位说明 ⓘ 收进列头，格内只剩黄框（预填待核对）/红框
-      //（必填为空）两种状态，故不再断言行内 info 文案。
-      expect(decoration().info, isNull);
+      // 共用库位列：建议值黄框，格内 ⓘ 说明建议来源(该仓记住的库位)。
       expect(decoration().autofilled, isTrue);
+      expect(
+        decoration().info,
+        InboundPlaceSource.warehousePreference.reviewHint,
+      );
       await tester.showKeyboard(field);
       expect(
         tester
@@ -89,6 +131,7 @@ void main() {
       await tester.enterText(field, 'MANUAL-B');
       await tester.pump();
       expect(decoration().autofilled, isFalse);
+      expect(decoration().info, isNull);
     },
   );
 
@@ -121,14 +164,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    const submitKey = Key('production-finished-arrival-batch-submit');
-    expect(find.byKey(submitKey), findsNothing);
+    expect(find.byKey(_inspectSubmitKey), findsNothing);
 
     container.read(_testBatchPermissionsProvider.notifier).replace({
       Perm.stockDocApprove,
     });
     await tester.pumpAndSettle();
-    expect(find.byKey(submitKey), findsOneWidget);
+    expect(find.byKey(_inspectSubmitKey), findsOneWidget);
+    expect(find.byKey(_stockInSubmitKey), findsNothing);
     expect(
       tester
           .widgetList<Checkbox>(find.byType(Checkbox))
@@ -138,7 +181,7 @@ void main() {
 
     container.read(_testBatchPermissionsProvider.notifier).replace(const {});
     await tester.pumpAndSettle();
-    expect(find.byKey(submitKey), findsNothing);
+    expect(find.byKey(_inspectSubmitKey), findsNothing);
   });
 
   testWidgets('批量自制登记可右键移出任意明细且只提交表内剩余报工行', (tester) async {
@@ -149,10 +192,7 @@ void main() {
 
     // 2026-09-18 明细默认全选：先点表头清空选择，右键目标行时选中集才只剩它
     //（菜单计数 (1)）；移出后再回选全部剩余行提交。
-    await tester.tap(
-      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
-    );
-    await tester.pump();
+    await _toggleSelectAll(tester);
     final removedPlace = _placeField(_itemB);
     final gesture = await tester.startGesture(
       tester.getCenter(find.text('两极插套')),
@@ -163,19 +203,16 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('移出本次登记 (1)').last);
     await tester.pumpAndSettle();
-    expect(find.textContaining('仍保持待登记送检'), findsOneWidget);
+    expect(find.textContaining('返回任务中心后仍保持待登记'), findsOneWidget);
     await tester.tap(find.text('确认移出'));
     await tester.pumpAndSettle();
     expect(removedPlace, findsNothing);
-    expect(find.textContaining('这些行仍在待登记送检'), findsOneWidget);
-    await tester.tap(
-      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
-    );
-    await tester.pump();
+    expect(find.textContaining('这些报工行未写入，仍在待登记'), findsOneWidget);
+    await _toggleSelectAll(tester);
 
     _pressSubmit(tester);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('确认登记并送检'));
+    await tester.tap(find.text('确认登记送检'));
     await tester.pumpAndSettle();
     final reports = (api.lastPostBody?['reports'] as List)
         .cast<Map<String, dynamic>>();
@@ -184,22 +221,34 @@ void main() {
     final items = (reports.single['items'] as List)
         .cast<Map<String, dynamic>>();
     expect(items.single['reportItemId'], _itemA);
-    expect(api.rememberedRegistrationIds, {
-      '40000000-0000-0000-0000-000000000001',
-    });
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('批量登记页合并多报工明细、预选上次仓、按单分组提交并批量记忆', (tester) async {
+  testWidgets('批量登记页合并多报工明细、预选记忆仓、按单分组提交(库位记忆由服务端随登记完成)', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final api = _BatchArrivalApi();
     await _openBatchPage(tester, api: api);
 
-    expect(find.text('批量登记成品仓与库位'), findsOneWidget);
+    expect(find.text('批量登记实际入库'), findsOneWidget);
+    expect(find.text('路线：先质检后入库'), findsOneWidget);
     expect(find.text('RB202608300001'), findsOneWidget);
     expect(find.text('RB202608300002'), findsOneWidget);
+    // 共用列：列名/列序与采购到货批量页一致；先质检后入库不显示「本次实收」。
+    expect(_grid(tester).columns.map((column) => column.label), [
+      '来源报工单',
+      '货品名称',
+      '编号',
+      '颜色',
+      '报工数量',
+      '单位',
+      '入库仓库',
+      '库位号',
+    ]);
+    // 不再有「同时记住」开关：登记成功后服务端自动记住库位。
+    expect(find.textContaining('同时记住'), findsNothing);
 
-    // 上次登记的仓已预选为默认仓，自动落到全部行并批量拉了建议。
+    // 账号记忆的上次所选仓落到全部行，并按仓拉了库位建议。
     expect(api.suggestionRequests, contains('warehouse-1'));
     expect(
       tester.widget<TextField>(_placeField(_itemA)).controller?.text,
@@ -212,19 +261,16 @@ void main() {
 
     // B 行手改库位后提交：确认弹窗拦一道，确认后按单分组提交。
     // 2026-09-18 默认全选会让行内改库位整批落值：先清空选择改 B 行，再回选全部。
-    await tester.tap(
-      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
-    );
-    await tester.pump();
+    await _toggleSelectAll(tester);
     await tester.enterText(_placeField(_itemB), 'CP-B-02');
-    await tester.tap(
-      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
-    );
-    await tester.pump();
+    await _toggleSelectAll(tester);
     _pressSubmit(tester);
     await tester.pumpAndSettle();
     expect(api.lastPostPath, isNull);
-    await tester.tap(find.text('确认登记并送检'));
+    expect(find.text('先质检后入库(2 张报工单)'), findsOneWidget);
+    expect(find.byType(InboundConfirmPoints), findsOneWidget);
+    expect(find.text('确认登记并先入库'), findsNothing);
+    await tester.tap(find.text('确认登记送检'));
     await tester.pumpAndSettle();
 
     expect(
@@ -233,6 +279,8 @@ void main() {
     );
     final body = api.lastPostBody!;
     expect(body['idempotencyKey'], isA<String>());
+    expect(body['idempotencyKey'] as String, isNot(endsWith(':prestock')));
+    expect(body.containsKey('stockInBeforeInspection'), isFalse);
     final reports = (body['reports'] as List).cast<Map<String, dynamic>>();
     expect(reports, hasLength(2));
     expect(
@@ -247,14 +295,15 @@ void main() {
             .cast<Map<String, dynamic>>();
     expect(itemsA.single['reportItemId'], _itemA);
     expect(itemsA.single['place'], 'WH-A-01');
+    expect(itemsA.single.containsKey('countedQty'), isFalse);
     final itemsB =
         (reports.firstWhere((r) => r['reportId'] == _reportB)['items'] as List)
             .cast<Map<String, dynamic>>();
     expect(itemsB.single['place'], 'CP-B-02');
-    expect(api.rememberBatchCalls, 1);
-    expect(api.rememberedRegistrationIds, {
-      '40000000-0000-0000-0000-000000000001',
-      '40000000-0000-0000-0000-000000000002',
+    // 记忆随登记事务在服务端完成：除库位建议与登记本身外不再有单独的记忆请求。
+    expect(api.postPaths.toSet(), {
+      '/warehouse/place-suggestions',
+      '/warehouse/production-finished-in/arrival-registrations/batch',
     });
     expect(tester.takeException(), isNull);
   });
@@ -281,6 +330,7 @@ void main() {
     );
     await gesture.up();
     await tester.pump();
+    expect(find.text('批量设置入库仓库 (2)'), findsOneWidget);
     await tester.tap(find.text('批量设置库位号 (2)'));
     await tester.pumpAndSettle();
     await tester.enterText(
@@ -308,14 +358,11 @@ void main() {
 
     // 右键菜单动作完成后选择集被清空（避免残留高亮）：回选全部行再提交
     //（2026-09-18 提交集=勾选集）。
-    await tester.tap(
-      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
-    );
-    await tester.pump();
+    await _toggleSelectAll(tester);
 
     _pressSubmit(tester);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('确认登记并送检'));
+    await tester.tap(find.text('确认登记送检'));
     await tester.pumpAndSettle();
     final body = api.lastPostBody!;
     expect(body['remark'], '整托入库');
@@ -330,20 +377,14 @@ void main() {
   testWidgets('同一报工单的行选了不同仓会被拦下', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    // 报工 A 有两行明细；无上次仓历史 → 行上仓为空，逐行选择不同仓。
-    final api = _BatchArrivalApi(
-      twoItemsInFirstReport: true,
-      withLastWarehouse: false,
-    );
-    await _openBatchPage(tester, api: api);
+    // 报工 A 有两行明细；无账号记忆仓 → 行上仓为空，逐行选择不同仓。
+    final api = _BatchArrivalApi(twoItemsInFirstReport: true);
+    await _openBatchPage(tester, api: api, rememberedWarehouseId: null);
     await tester.pumpAndSettle();
 
     // 2026-09-18 默认全选会让逐行选仓整批落值：先清空选择再做单行操作，
     // 全部行就位后回选全部再提交。
-    await tester.tap(
-      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
-    );
-    await tester.pump();
+    await _toggleSelectAll(tester);
 
     // 报工 A 两行分别选不同仓；报工 B 的行也分配好仓与库位（不参与冲突）。
     // 2026-09-12 表头默认仓下拉已撤：未选行格内文案为「必选 · 点击选择」。
@@ -364,43 +405,270 @@ void main() {
     await tester.enterText(_placeField(_itemA2), 'CP-A-02');
     await tester.enterText(_placeField(_itemB), 'CP-B-01');
     // 回选全部行（提交集=勾选集）。
-    await tester.tap(
-      find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
-    );
-    await tester.pump();
-    // 校验先于确认弹窗：同一报工单跨仓直接被拦下。
+    await _toggleSelectAll(tester);
+    // 校验先于确认弹窗：同一报工单跨仓直接被拦下(只弹顶部提示，不出确认弹窗)。
     _pressSubmit(tester);
     await tester.pump();
 
     expect(api.lastPostPath, isNull);
-    expect(find.textContaining('只能登记到一个仓'), findsOneWidget);
+    expect(find.byType(InboundConfirmPoints), findsNothing);
+    expect(
+      _notices(tester).where((message) => message.contains('只能登记到一个仓')),
+      hasLength(1),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('库位建议走共用 POST /warehouse/place-suggestions；改仓清库位并重拉建议', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _BatchArrivalApi();
+    final container = await _openBatchPage(tester, api: api);
+
+    // 进页：同仓的全部行合并成一个请求，按「货品 × 颜色」取建议。
+    expect(api.suggestionBodies, hasLength(1));
+    expect(api.suggestionBodies.single, {
+      'warehouseId': 'warehouse-1',
+      'items': [
+        {'goodsId': _goodsA, 'colorId': null},
+        {'goodsId': _goodsB, 'colorId': null},
+      ],
+    });
+    // 旧的逐页 GET 建议端点与 last-warehouse 端点已下线。
+    expect(
+      api.getPaths.where(
+        (path) =>
+            path.endsWith('/place-suggestions') ||
+            path.endsWith('/last-warehouse'),
+      ),
+      isEmpty,
+    );
+    expect(
+      tester.widget<TextField>(_placeField(_itemB)).controller?.text,
+      'WH-B-01',
+    );
+    expect(
+      (tester.widget<TextField>(_placeField(_itemB)).decoration!
+              as UtenInputDecoration)
+          .info,
+      InboundPlaceSource.goodsMaster.reviewHint,
+    );
+
+    // 只改 A 行：先清空默认全选，A 行手填库位后改仓——库位属于仓库，
+    // 换仓一律清掉(含手填)，再按新仓的建议回填黄框。
+    await _toggleSelectAll(tester);
+    await tester.enterText(_placeField(_itemA), 'HAND-A');
+    await tester.pump();
+    expect(
+      (tester.widget<TextField>(_placeField(_itemA)).decoration!
+              as UtenInputDecoration)
+          .autofilled,
+      isFalse,
+    );
+    // 输入框聚焦后页面滚动会让格子落到吸顶表头下方：直接触发格子的点击回调。
+    tester.widget<InkWell>(_warehouseCell(_itemA)).onTap!();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('备用成品仓').last);
+    await tester.pumpAndSettle();
+
+    expect(api.suggestionBodies, hasLength(2));
+    expect(api.suggestionBodies.last, {
+      'warehouseId': 'warehouse-2',
+      'items': [
+        {'goodsId': _goodsA, 'colorId': null},
+      ],
+    });
+    final placeA = tester.widget<TextField>(_placeField(_itemA));
+    expect(placeA.controller?.text, 'BY-A-09');
+    expect((placeA.decoration! as UtenInputDecoration).autofilled, isTrue);
+    // 显式选的仓：不再是预填黄框，并记进账号记忆(下次登记兜底预填)。
+    expect(_warehouseDecoration(tester, _itemA).autofilled, isFalse);
+    expect(
+      container
+          .read(inboundWarehouseFillMemoryProvider(InboundFillScope.finished))
+          .warehouseId,
+      'warehouse-2',
+    );
+    // B 行不受影响。
+    expect(
+      tester.widget<TextField>(_placeField(_itemB)).controller?.text,
+      'WH-B-01',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('先入库后质检进页：路线锁定、只显示该路线提交按钮、实收须等于报工数量', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _BatchArrivalApi();
+    await _openBatchPage(
+      tester,
+      api: api,
+      stockInBeforeInspection: true,
+      permissions: const {
+        Perm.stockDocApprove,
+        Perm.productionFinishedInBeforeInspection,
+      },
+    );
+
+    expect(find.text('路线：先入库后质检'), findsOneWidget);
+    expect(find.byKey(_stockInSubmitKey), findsOneWidget);
+    expect(find.byKey(_inspectSubmitKey), findsNothing);
+    expect(find.widgetWithText(UtenButton, '先入库后质检'), findsOneWidget);
+    expect(find.widgetWithText(UtenButton, '先质检后入库'), findsNothing);
+    // 先入库后质检才显示「本次实收」列(默认=报工数量)。
+    expect(_grid(tester).columns.map((column) => column.label), [
+      '来源报工单',
+      '货品名称',
+      '编号',
+      '颜色',
+      '报工数量',
+      '本次实收',
+      '单位',
+      '入库仓库',
+      '库位号',
+    ]);
+    expect(tester.widget<TextField>(_qtyField(_itemA)).controller?.text, '10');
+
+    // 实收与报工数量不一致：只弹顶部提示拦下，不出确认弹窗、不提交。
+    await _toggleSelectAll(tester);
+    await tester.enterText(_qtyField(_itemA), '8');
+    await tester.pump();
+    await _toggleSelectAll(tester);
+    _pressSubmit(tester, key: _stockInSubmitKey);
+    await tester.pump();
+    expect(api.lastPostPath, isNull);
+    expect(find.byType(InboundConfirmPoints), findsNothing);
+    expect(
+      _notices(tester).where((message) => message.contains('本次实收与报工数量不一致')),
+      hasLength(1),
+    );
+
+    // 改回一致后提交：确认弹窗走先入库后质检口径。
+    await _toggleSelectAll(tester);
+    await tester.enterText(_qtyField(_itemA), '10');
+    await tester.pump();
+    await _toggleSelectAll(tester);
+    _pressSubmit(tester, key: _stockInSubmitKey);
+    await tester.pumpAndSettle();
+    expect(find.text('先入库后质检(2 张报工单)'), findsOneWidget);
+    expect(find.byType(InboundConfirmPoints), findsOneWidget);
+    expect(find.text('确认登记送检'), findsNothing);
+    await tester.tap(find.text('确认登记并先入库'));
+    await tester.pumpAndSettle();
+
+    final body = api.lastPostBody!;
+    expect(body['stockInBeforeInspection'], isTrue);
+    expect(body['idempotencyKey'] as String, endsWith(':prestock'));
+    final reports = (body['reports'] as List).cast<Map<String, dynamic>>();
+    expect(reports.map((report) => report['reportId']), [_reportA, _reportB]);
+    for (final report in reports) {
+      final item = (report['items'] as List)
+          .cast<Map<String, dynamic>>()
+          .single;
+      expect(item['countedQty'], 10);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('先入库后质检进页但无独立权限：退回先质检后入库路线', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await _openBatchPage(
+      tester,
+      api: _BatchArrivalApi(),
+      stockInBeforeInspection: true,
+      // 默认权限只有 stock_doc:approve，没有「产成品先入库后质检」独立权限。
+    );
+
+    expect(find.text('路线：先质检后入库'), findsOneWidget);
+    expect(find.text('路线：先入库后质检'), findsNothing);
+    expect(find.byKey(_inspectSubmitKey), findsOneWidget);
+    expect(find.byKey(_stockInSubmitKey), findsNothing);
+    expect(
+      _grid(tester).columns.map((column) => column.label),
+      isNot(contains('本次实收')),
+    );
     expect(tester.takeException(), isNull);
   });
 }
 
-Finder _placeField(String reportItemId) => find.byKey(
-  ValueKey('production-finished-arrival-batch-place-$reportItemId'),
+/// 库位号格的输入框(共用列把 TextField 包在 WarehouseAutofillTextField 里)。
+Finder _placeField(String reportItemId) => find.descendant(
+  of: find.byKey(
+    ValueKey('production-finished-arrival-batch-place-$reportItemId'),
+  ),
+  matching: find.byType(TextField),
 );
 
-void _pressSubmit(WidgetTester tester) {
-  tester
-      .widget<UtenButton>(
-        find.byKey(const Key('production-finished-arrival-batch-submit')),
-      )
-      .onPressed!
-      .call();
+Finder _qtyField(String reportItemId) =>
+    find.byKey(ValueKey('production-finished-arrival-batch-qty-$reportItemId'));
+
+Finder _warehouseCell(String reportItemId) =>
+    find.byKey(ValueKey('production-finished-arrival-batch-wh-$reportItemId'));
+
+UtenInputDecoration _warehouseDecoration(
+  WidgetTester tester,
+  String reportItemId,
+) =>
+    tester
+            .widget<InputDecorator>(
+              find.descendant(
+                of: _warehouseCell(reportItemId),
+                matching: find.byType(InputDecorator),
+              ),
+            )
+            .decoration
+        as UtenInputDecoration;
+
+UtenEditableGrid<dynamic> _grid(WidgetTester tester) =>
+    tester.widget<UtenEditableGrid<dynamic>>(
+      find.byKey(const Key('production-finished-arrival-batch-grid')),
+    );
+
+Future<void> _toggleSelectAll(WidgetTester tester) async {
+  await tester.tap(
+    find.byWidgetPredicate((widget) => widget is Checkbox && widget.tristate),
+  );
+  await tester.pump();
 }
 
-Future<void> _openBatchPage(
+/// 顶部通知队列里的文案(校验只弹顶部提示，不在页面内渲染错误文字)。
+List<String> _notices(WidgetTester tester) => ProviderScope.containerOf(
+  tester.element(find.byType(ProductionFinishedArrivalBatchRegistrationPage)),
+).read(appNotificationProvider).map((notice) => notice.message).toList();
+
+void _pressSubmit(WidgetTester tester, {Key key = _inspectSubmitKey}) {
+  tester.widget<UtenButton>(find.byKey(key)).onPressed!.call();
+}
+
+Future<ProviderContainer> _openBatchPage(
   WidgetTester tester, {
   required _BatchArrivalApi api,
+  String? rememberedWarehouseId = 'warehouse-1',
+  bool stockInBeforeInspection = false,
+  Set<String> permissions = const {Perm.stockDocApprove},
 }) async {
-  // 选仓记忆（productionFinishedArrivalFillMemoryProvider）本地走
-  // shared_preferences 缓存，测试宿主必须给 mock 初值。
-  SharedPreferences.setMockInitialValues({});
+  // 账号记忆「上次所选入库仓」(InboundFillScope.finished，偏好键
+  // production.finishedArrivalFill)冷启动读本地缓存：用 mock 初值预置。
+  SharedPreferences.setMockInitialValues({
+    if (rememberedWarehouseId != null)
+      'page_prefs_cache_production.finishedArrivalFill': jsonEncode({
+        'warehouseId': rememberedWarehouseId,
+      }),
+  });
+  final prefs = await SharedPreferences.getInstance();
+  // 用 ProviderScope 挂在树上：测试结束卸载时一并释放 provider(含其定时器)。
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [apiClientProvider.overrideWithValue(api)],
+      overrides: [
+        apiClientProvider.overrideWithValue(api),
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        currentPermissionsProvider.overrideWithValue(permissions),
+        isSuperAdminProvider.overrideWithValue(false),
+      ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
@@ -412,9 +680,10 @@ Future<void> _openBatchPage(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) =>
-                        const ProductionFinishedArrivalBatchRegistrationPage(
-                          reportIds: [_reportA, _reportB],
+                        ProductionFinishedArrivalBatchRegistrationPage(
+                          reportIds: const [_reportA, _reportB],
                           canRegister: true,
+                          stockInBeforeInspection: stockInBeforeInspection,
                         ),
                   ),
                 ),
@@ -428,24 +697,31 @@ Future<void> _openBatchPage(
   );
   await tester.tap(find.byKey(const Key('open-batch-registration')));
   await tester.pumpAndSettle();
+  return ProviderScope.containerOf(
+    tester.element(find.byType(ProductionFinishedArrivalBatchRegistrationPage)),
+  );
 }
 
 class _BatchArrivalApi extends ApiClient {
   _BatchArrivalApi({
     this.twoItemsInFirstReport = false,
-    this.withLastWarehouse = true,
     this.goodsWarehouseDefaults = const {},
   }) : super(Dio());
 
   final bool twoItemsInFirstReport;
-  final bool withLastWarehouse;
   final Map<String, String> goodsWarehouseDefaults;
 
   String? lastPostPath;
   Map<String, dynamic>? lastPostBody;
-  int rememberBatchCalls = 0;
-  Set<String> rememberedRegistrationIds = const {};
-  final List<String> suggestionRequests = [];
+  final List<String> getPaths = [];
+  final List<String> postPaths = [];
+
+  /// 共用库位建议端点收到的请求体(按调用顺序)。
+  final List<Map<String, dynamic>> suggestionBodies = [];
+
+  List<String> get suggestionRequests => [
+    for (final body in suggestionBodies) body['warehouseId'] as String,
+  ];
 
   @override
   Future<List<Map<String, dynamic>>> getList(
@@ -465,7 +741,7 @@ class _BatchArrivalApi extends ApiClient {
           _reportA,
           'RB202608300001',
           twoItemsInFirstReport ? [_itemA, _itemA2] : [_itemA],
-          'a0000000-0000-0000-0000-000000000001',
+          _goodsA,
           'V51043',
           '三极插套',
         ),
@@ -473,7 +749,7 @@ class _BatchArrivalApi extends ApiClient {
           _reportB,
           'RB202608300002',
           [_itemB],
-          'a0000000-0000-0000-0000-000000000002',
+          _goodsB,
           'V51044',
           '两极插套',
         ),
@@ -487,43 +763,9 @@ class _BatchArrivalApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    getPaths.add(path);
     if (path.endsWith('/tasks/count')) {
       return const {'count': 2};
-    }
-    if (path.endsWith('/last-warehouse')) {
-      return withLastWarehouse
-          ? const {
-              'warehouseId': 'warehouse-1',
-              'warehouseCode': 'CP',
-              'warehouseName': '成品仓',
-              'usedAt': '2026-09-01T08:30:00Z',
-            }
-          : const <String, dynamic>{};
-    }
-    if (path.endsWith('/batch/place-suggestions')) {
-      final warehouseId = query?['warehouseId']?.toString() ?? '';
-      suggestionRequests.add(warehouseId);
-      return {
-        'items': [
-          if (warehouseId == 'warehouse-1') ...[
-            {
-              'reportItemId': _itemA,
-              'place': 'WH-A-01',
-              'source': 'WAREHOUSE_PREFERENCE',
-            },
-            {
-              'reportItemId': _itemA2,
-              'place': 'WH-A-02',
-              'source': 'WAREHOUSE_PREFERENCE',
-            },
-            {
-              'reportItemId': _itemB,
-              'place': 'WH-B-01',
-              'source': 'GOODS_MASTER',
-            },
-          ],
-        ],
-      };
     }
     throw StateError('Unexpected GET $path');
   }
@@ -535,17 +777,28 @@ class _BatchArrivalApi extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
-    if (path.endsWith('/batch/remember-registration-batches')) {
-      rememberBatchCalls++;
-      rememberedRegistrationIds = (body as List)
-          .map((id) => id.toString())
-          .toSet();
-      return const {
-        'remembered': 2,
-        'unchanged': 0,
-        'ambiguous': 0,
-        'warnings': <String>[],
+    postPaths.add(path);
+    if (path == '/warehouse/place-suggestions') {
+      final request = jsonDecode(jsonEncode(body)) as Map<String, dynamic>;
+      suggestionBodies.add(request);
+      final byGoods = _placeSuggestions[request['warehouseId']] ?? const {};
+      return {
+        'items': [
+          for (final item
+              in (request['items'] as List).cast<Map<String, dynamic>>())
+            if (byGoods[item['goodsId']] case (final place, final source))
+              {
+                'goodsId': item['goodsId'],
+                'colorId': item['colorId'],
+                'place': place,
+                'source': source,
+              },
+        ],
       };
+    }
+    if (path !=
+        '/warehouse/production-finished-in/arrival-registrations/batch') {
+      throw StateError('Unexpected POST $path');
     }
     lastPostPath = path;
     lastPostBody = Map<String, dynamic>.from(body! as Map);
@@ -592,10 +845,8 @@ class _BatchArrivalApi extends ApiClient {
           'reportItemId': itemIds[index],
           'lastWarehouseId': goodsWarehouseDefaults[itemIds[index]],
           'lineNo': 1,
-          // 同报工多行时给不同货品：避免「同时记住」歧义拦截先于本用例断言。
-          'goodsId': index == 0
-              ? goodsId
-              : 'a0000000-0000-0000-0000-000000000003',
+          // 同报工多行时给不同货品：库位建议按「货品 × 颜色」回填，互不串行。
+          'goodsId': index == 0 ? goodsId : _goodsA2,
           'goodsCode': index == 0 ? goodsCode : 'V51045',
           'goodsName': index == 0 ? goodsName : '插座面板',
           'colorName': '—',

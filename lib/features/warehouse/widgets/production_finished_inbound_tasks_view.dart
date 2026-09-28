@@ -1,5 +1,9 @@
-// 产成品入库任务（可嵌入）：FQC 放行上限进入队列；先登记成品仓与库位并送检，
-// 品质放行后按实物完成最终点收（支持短收余量与批量全量点收）。
+// 产成品入库任务(可嵌入)：FQC 放行上限进入队列；登记入库仓库与库位后走两条路线之一
+// ——「先入库后质检」(登记即按库位上架，合格自动入库)或「先质检后入库」(品质放行后按
+// 实物完成最终点收，支持短收余量与批量全量点收)。
+//
+// 2026-09-27 用户口径「产成品入库与采购/委外入库 UI、逻辑一样」：待登记任务多选后与
+// 预计到货同款两颗路线按钮并排(inboundRouteBatchButtons)，点哪颗就带着路线进批量登记页。
 //
 // 2026-09-01 起「入库任务中心 · 产成品入库」待点收分段内嵌本组件（embedded=true
 // 时搜索框由任务中心页级工具条接管）；独立路由 /warehouse/production-finished-in/tasks
@@ -26,11 +30,13 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
+import '../models/inbound_registration_line.dart';
 import '../models/production_finished_inbound_task.dart';
 import '../models/stock_doc.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/production_finished_inbound_task_repository.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
+import 'inbound_registration_widgets.dart';
 
 class ProductionFinishedInboundTasksView extends ConsumerStatefulWidget {
   const ProductionFinishedInboundTasksView({
@@ -293,8 +299,19 @@ class _ProductionFinishedInboundTasksViewState
     await _load(_result?.page ?? 1, replaceActive: true);
   }
 
-  /// 多选「批量登记成品仓并送检」：进入多报工单汇总登记页（页头默认仓+行内批量设）。
-  Future<void> _openBatchRegistration(Set<String> selectedIds) async {
+  /// 「先入库后质检」批量入口(与登记页同款独立权限点，服务端兜底)。
+  bool get _canStockInFirst =>
+      ref.read(isSuperAdminProvider) ||
+      ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.productionFinishedInBeforeInspection);
+
+  /// 多选「先入库后质检(N)」/「先质检后入库(N)」：带着所选路线进多报工单汇总登记页，
+  /// 页面只显示这一条路线的提交按钮(与预计到货批量登记同款)。
+  Future<void> _openBatchRegistration(
+    Set<String> selectedIds,
+    InboundRoute route,
+  ) async {
     final currentItems =
         _result?.items ?? const <ProductionFinishedInboundTask>[];
     final reportIds = <String>{
@@ -302,11 +319,11 @@ class _ProductionFinishedInboundTasksViewState
         if (id.startsWith('reg:')) id.substring(4),
     }.toList()..sort();
     if (reportIds.isEmpty) {
-      context.appWarning('请先选择“待登记成品仓与库位”的任务');
+      context.appWarning('请先选择“待登记入库”的任务');
       return;
     }
     if (reportIds.length != selectedIds.length) {
-      context.appWarning('混选了不同步骤的任务：批量登记送检只处理“待登记成品仓与库位”，请分开操作');
+      context.appWarning('混选了不同步骤的任务：批量登记只处理“待登记入库”，请分开操作');
       return;
     }
     final knownReports = currentItems
@@ -322,6 +339,7 @@ class _ProductionFinishedInboundTasksViewState
       RoutePath.warehouseProductionFinishedArrivalBatchRegistration(
         reportIds,
         returnTo: GoRouterState.of(context).matchedLocation,
+        stockInBeforeInspection: route.isStockInFirst,
       ),
     );
     if (!mounted || changed != true) return;
@@ -345,26 +363,14 @@ class _ProductionFinishedInboundTasksViewState
         (count == 0 &&
             (_result?.items.any((task) => task.isArrivalRegistration) ?? true));
     return [
+      // 待登记任务：与预计到货同款两颗路线按钮(同名同义、同一组件)。
       if (registrationStage)
-        Tooltip(
-          message: registerCount == 0
-              ? '请选择“待登记成品仓与库位”的任务'
-              : '多张报工单汇总到一页统一登记成品仓与库位，一次提交逐单送检',
-          child: UtenButton(
-            key: const Key('production-finished-inbound-batch-register'),
-            size: UtenButtonSize.large,
-            type: UtenButtonType.danger,
-            icon: Icons.edit_location_alt_outlined,
-            onPressed: registerCount == 0
-                ? null
-                : () => _openBatchRegistration(selectedIds),
-            onDisabledTap: registerCount == 0
-                ? () => context.appWarning('请先选择“待登记成品仓与库位”的任务')
-                : null,
-            child: Text(
-              registerCount == 0 ? '批量登记成品仓并送检' : '批量登记成品仓并送检($registerCount)',
-            ),
-          ),
+        ...inboundRouteBatchButtons(
+          context,
+          count: registerCount,
+          canStockInFirst: _canStockInFirst,
+          emptyWarning: '请先选择“待登记入库”的任务',
+          onSelected: (route) => _openBatchRegistration(selectedIds, route),
         ),
       if (!registrationStage)
         Tooltip(
@@ -448,7 +454,7 @@ class _ProductionFinishedInboundTasksViewState
             MasterFacetBucket(
               value: 'ARRIVAL_REGISTRATION',
               count: 0,
-              label: '待登记成品仓与库位',
+              label: '待登记入库',
             ),
             MasterFacetBucket(
               value: 'FINAL_COUNT',
@@ -496,7 +502,7 @@ class _ProductionFinishedInboundTasksViewState
           _load(1, replaceActive: true);
         },
         selectable: canCount,
-        // 两类任务分别可选：待登记任务键 reg:<reportId>（批量登记送检），
+        // 两类任务分别可选：待登记任务键 reg:<reportId>(两条路线批量登记)，
         // 待点收任务键 doc:<documentId>(批量全量点收)；只展示所选阶段的动作。
         idOf: (task) => task.isArrivalRegistration
             ? (task.reportId?.isNotEmpty == true
@@ -673,8 +679,10 @@ class _ProcessHint extends StatelessWidget {
       const SizedBox(width: UtenSpacing.s8),
       const Expanded(
         child: Text(
-          '先登记成品仓和库位并送检；品质放行后，再按实物执行最终点收。'
-          '「待登记成品仓与库位」可多选后进入汇总登记页，一次提交统一送检；'
+          '双击行直达下一步(待登记入库→登记入库仓库与库位)；'
+          '「待登记入库」多选「先入库后质检」：登记的同时逐行按库位上架，品质部到库位检验，'
+          '合格由系统自动入库；多选「先质检后入库」：登记后送品质部检验，放行后再按实物最终点收；'
+          '进批量登记页后只显示所选这一条路线的提交按钮。'
           '品质通过的任务可多选批量全量点收；短收、拒收仍须逐单进入确认。',
         ),
       ),
@@ -684,7 +692,7 @@ class _ProcessHint extends StatelessWidget {
 
 String _taskStageLabel(ProductionFinishedInboundTask task) =>
     task.isArrivalRegistration
-    ? '待登记成品仓与库位'
+    ? '待登记入库'
     : task.residualTask
     ? '短收余量待点收'
     : '品质通过 · 待最终点收';
@@ -701,13 +709,10 @@ String _taskActionLabel(
   required bool canCount,
 }) => canCount
     ? task.isArrivalRegistration
-          ? '登记成品仓和库位'
+          ? '登记入库仓库与库位'
           : '进入最终点收'
     : task.isArrivalRegistration
     ? '查看到货登记详情'
     : '查看待点收详情';
 
-String _quantity(double value) => value
-    .toStringAsFixed(4)
-    .replaceFirst(RegExp(r'0+$'), '')
-    .replaceFirst(RegExp(r'\.$'), '');
+String _quantity(double value) => inboundQty(value);

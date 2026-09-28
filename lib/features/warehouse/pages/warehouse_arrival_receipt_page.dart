@@ -33,11 +33,9 @@ import '../models/arrival_form_draft_codec.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_date_field.dart';
-import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -64,34 +62,22 @@ import '../../subcontract/config/subcontract_doc_config.dart';
 import '../../subcontract/models/subcontract_doc.dart';
 import '../widgets/subcontract_short_delivery_confirm_dialog.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/models/inbound_allocation.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
-import '../providers/warehouse_arrival_fill_memory.dart';
+import '../models/inbound_registration_line.dart';
+import '../providers/inbound_warehouse_fill_memory.dart';
+import '../repositories/warehouse_place_suggestion_repository.dart';
+import '../widgets/inbound_registration_widgets.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/procurement_inbound_repository.dart';
 import '../widgets/batch_place_fill_dialog.dart';
 import '../widgets/warehouse_inbound_allocation_view.dart';
 import '../widgets/warehouse_autofill_text_field.dart';
 import '../widgets/warehouse_arrival_source_field.dart';
-
-/// 批量校验提示：把同一类违规的**全部**行汇总成一句话。
-///
-/// 条目多时只列前 8 条再折成「等 N 行」——刷屏的提示和只报第一行一样没法用。
-String _rowIssueMessage(
-  List<String> rowLabels,
-  String issue, {
-  required String action,
-}) {
-  const shownMax = 8;
-  final shown = rowLabels.take(shownMax).join('、');
-  final more = rowLabels.length > shownMax ? '等 ${rowLabels.length} 行' : '';
-  return '以下 ${rowLabels.length} 行$issue，$action：$shown$more';
-}
 
 class WarehouseArrivalReceiptPage extends ConsumerStatefulWidget {
   const WarehouseArrivalReceiptPage({
@@ -132,9 +118,9 @@ class _WarehouseArrivalReceiptPageState
     _lineGrid,
     for (final line in _lines) ...[
       line.qty,
-      line.stockPlace,
+      line.warehouse,
+      line.place,
       line.series,
-      line.goodsCode,
     ],
   ];
   @override
@@ -146,7 +132,7 @@ class _WarehouseArrivalReceiptPageState
     'receiverId': _receiverId,
     'registrationId': _registrationId,
     'removedLineCount': _removedLineCount,
-    'stockInBeforeInspection': _stockInBeforeInspection,
+    'stockInBeforeInspection': _route.isStockInFirst,
     'employees': draftEmployees(_empCache),
     'rows': draftGridRows(
       _lineGrid,
@@ -155,12 +141,10 @@ class _WarehouseArrivalReceiptPageState
         'qty': line.qty.text,
         'warehouseId': line.warehouseId,
         'warehouseAutofilled': line.warehouseAutofilled,
-        'stockPlace': line.stockPlace.text,
-        'stockPlaceAutofilled': line.stockPlace.autofilled,
+        'stockPlace': line.place.text,
+        'stockPlaceAutofilled': line.place.autofilled,
         'series': line.series.text,
         'seriesAutofilled': line.series.autofilled,
-        'goodsCode': line.goodsCode.text,
-        'goodsCodeAutofilled': line.goodsCode.autofilled,
         'source': line.source.name,
       },
     ),
@@ -174,7 +158,9 @@ class _WarehouseArrivalReceiptPageState
     _receiverId = data['receiverId'] as String?;
     _registrationId = draftText(data, 'registrationId');
     _removedLineCount = data['removedLineCount'] as int? ?? 0;
-    _stockInBeforeInspection = data['stockInBeforeInspection'] == true;
+    _route = data['stockInBeforeInspection'] == true
+        ? InboundRoute.stockInFirst
+        : InboundRoute.inspectFirst;
     restoreDraftEmployees(_empCache, data['employees']);
     restoreDraftGrid(
       _lineGrid,
@@ -186,9 +172,7 @@ class _WarehouseArrivalReceiptPageState
               onChanged: _onLineChanged,
             )
             ..qty.text = draftText(row, 'qty')
-            ..stockPlace.text = draftText(row, 'stockPlace')
             ..series.text = draftText(row, 'series')
-            ..goodsCode.text = draftText(row, 'goodsCode')
             ..warehouseAutofilled = row['warehouseAutofilled'] == true
             ..source = WarehouseArrivalSource.values.byName(
               draftText(row, 'source'),
@@ -199,7 +183,7 @@ class _WarehouseArrivalReceiptPageState
       final row = rows[index];
       final line = _lines[index];
       restoreArrivalDraftText(
-        line.stockPlace,
+        line.place,
         draftText(row, 'stockPlace'),
         row['stockPlaceAutofilled'] == true,
       );
@@ -207,11 +191,6 @@ class _WarehouseArrivalReceiptPageState
         line.series,
         draftText(row, 'series'),
         row['seriesAutofilled'] == true,
-      );
-      restoreArrivalDraftText(
-        line.goodsCode,
-        draftText(row, 'goodsCode'),
-        row['goodsCodeAutofilled'] == true,
       );
     }
   }
@@ -238,10 +217,13 @@ class _WarehouseArrivalReceiptPageState
   String _registrationId = const Uuid().v4();
   int _removedLineCount = 0;
 
-  /// 先入库后质检(V596)：底部两个按钮二选一——「先入库后质检」= 登记送检的同一事务里
-  /// 把每行按库位上架(库位必填)；「先质检后入库」(2026-09-20 前叫「登记并送检」)= 原流程。
-  /// 记住最近一次点的是哪个，库位列是否必填(红框)跟着它走。
-  bool _stockInBeforeInspection = false;
+  /// 单张页由双击行进入、未预选路线，两条路线按钮并排(与产成品单张登记页一致)：
+  /// 记住最近一次点的是哪条，库位列是否必填(红框)跟着它走。
+  InboundRoute _route = InboundRoute.inspectFirst;
+
+  late final _suggestions = InboundPlaceSuggestionLoader(
+    ref.read(warehousePlaceSuggestionRepositoryProvider),
+  );
 
   final UtenEditableGridController<_ArrivalReceiptLine> _lineGrid =
       UtenEditableGridController<_ArrivalReceiptLine>();
@@ -279,12 +261,8 @@ class _WarehouseArrivalReceiptPageState
   /// 建议仓（物料分析目标仓）在 _init 时已逐行预填。
   String? _effectiveWarehouseId(_ArrivalReceiptLine line) => line.warehouseId;
 
-  String? _warehouseLabel(String? id) {
-    if (id == null || id.isEmpty) return null;
-    final names = ref.read(masterNameServiceProvider);
-    return warehouseFullLabel(names.warehouseHierarchy, id) ??
-        names.warehouse(id);
-  }
+  String? _warehouseLabel(String? id) =>
+      inboundWarehouseLabel(ref.read(masterNameServiceProvider), id);
 
   double _lineInputBaseQty(_ArrivalReceiptLine line) {
     final input = double.tryParse(line.qty.text.trim()) ?? 0;
@@ -336,6 +314,7 @@ class _WarehouseArrivalReceiptPageState
 
   @override
   void dispose() {
+    _suggestions.dispose();
     _remark.dispose();
     _scrollCtl.dispose();
     _lineGrid.dispose();
@@ -383,21 +362,24 @@ class _WarehouseArrivalReceiptPageState
     final selectable = WarehouseSelection(
       ref.read(masterNameServiceProvider).warehouseHierarchy,
     ).selectableIds;
-    // 个人选仓上下文只补空位：行内已有值（上次收货仓 / 建议仓 / 货品资料带出的
-    // 库位）优先级都更高，见 warehouse_arrival_fill_memory.dart。
-    final memory = ref.read(warehouseArrivalFillMemoryProvider);
+    // 个人选仓上下文只补空位：行内已有值(归属仓 / 建议仓)优先级更高，
+    // 见 inbound_warehouse_fill_memory.dart。
+    final memory = ref.read(
+      inboundWarehouseFillMemoryProvider(InboundFillScope.procurement),
+    );
     final rememberedWarehouse = selectable.contains(memory.warehouseId)
         ? memory.warehouseId
         : null;
     for (final line in _lineGrid.rows) {
       if (!selectable.contains(line.warehouseId)) {
-        line.warehouseId = rememberedWarehouse;
-        line.warehouseAutofilled = rememberedWarehouse != null;
+        line.setWarehouse(rememberedWarehouse, autofilled: true);
       }
     }
     _removedLineCount = 0;
     await _preloadEmployees([prefill.purchaserId, meId]);
     if (mounted) setState(() => _loading = false);
+    // 按行上的仓带出库位(该仓记住的库位 → 货品资料通用库位；手填/草稿值不覆盖)。
+    await _suggestions.reload(_lines);
     if (mounted) await initializeFormDraft();
   }
 
@@ -454,7 +436,7 @@ class _WarehouseArrivalReceiptPageState
       setState(() {
         for (final target in targets) {
           if (identical(target, line)) continue;
-          target.setCheckedStockPlace(value);
+          target.setCheckedPlace(value);
         }
       });
     }
@@ -483,24 +465,26 @@ class _WarehouseArrivalReceiptPageState
       initialWarehouseId: targets.first.warehouseId ?? fallbackWarehouseId,
       title: targets.length > 1
           ? '批量设置入库仓库（选中 ${targets.length} 行）'
-          : '选择入库仓库 · ${targets.first.item.goodsName}',
+          : '选择入库仓库 · ${targets.first.goodsName}',
     );
     if (picked == null || !mounted) return;
     setState(() {
       for (final target in targets) {
-        if (target.warehouseId != picked.id && target.stockPlace.autofilled) {
-          target.stockPlace.clear();
-        }
-        target.warehouseId = picked.id;
-        target.warehouseAutofilled = false;
+        target.setWarehouse(picked.id);
       }
     });
     ref
-        .read(warehouseArrivalFillMemoryProvider.notifier)
+        .read(
+          inboundWarehouseFillMemoryProvider(
+            InboundFillScope.procurement,
+          ).notifier,
+        )
         .rememberWarehouse(picked.id);
     if (targets.length > 1) {
       context.appInfo('已把入库仓库写到选中的 ${targets.length} 行');
     }
+    // 按新仓重新带出库位(只覆盖没手填过的行)。
+    await _suggestions.reload(targets);
   }
 
   /// 右键「批量设置库位号」（2026-09-12，与批量登记页统一口径）：一次输入应用
@@ -520,21 +504,27 @@ class _WarehouseArrivalReceiptPageState
     }
     setState(() {
       for (final line in rows) {
-        line.setCheckedStockPlace(place);
+        line.setCheckedPlace(place);
       }
     });
   }
 
-  /// [preStock] 为真 = 「先入库后质检」按钮，否则 = 「先质检后入库」按钮(原「登记并送检」)。
-  Future<void> _save({required bool preStock}) async {
+  /// [route] = 点的是哪条路线的按钮(两条并排)。
+  Future<void> _save(InboundRoute route) async {
     if (!_canRegisterNow) {
       context.appError('当前账号没有登记并送检权限，请返回任务中心刷新权限');
       return;
     }
-    final wantPreStock = preStock && _canStockInBeforeInspection;
-    if (_stockInBeforeInspection != wantPreStock) {
-      // 先切模式再校验：缺库位的行立刻红框，用户补齐后再点同一个按钮。
-      setState(() => _stockInBeforeInspection = wantPreStock);
+    final effective = route.isStockInFirst && !_canStockInBeforeInspection
+        ? InboundRoute.inspectFirst
+        : route;
+    if (_route != effective) {
+      // 先切路线再校验：缺库位的行立刻红框，用户补齐后再点同一个按钮。
+      setState(() => _route = effective);
+    }
+    if (_suggestions.loading) {
+      context.appInfo('正在读取所选仓库的默认库位，请稍候再提交');
+      return;
     }
     final prefill = _prefill;
     if (prefill == null) return;
@@ -571,8 +561,7 @@ class _WarehouseArrivalReceiptPageState
     final badQty = <String>[];
     final missingWarehouse = <String>[];
     final missingPlace = <String>[];
-    final stockInFirst =
-        _stockInBeforeInspection && _canStockInBeforeInspection;
+    final stockInFirst = _route.isStockInFirst;
     for (var index = 0; index < _lines.length; index++) {
       final line = _lines[index];
       if (!submitted.contains(line)) continue;
@@ -580,7 +569,7 @@ class _WarehouseArrivalReceiptPageState
       final qty = double.tryParse(line.qty.text.trim()) ?? 0;
       if (qty <= 0) badQty.add(label);
       // 先入库后质检：库位是实物落点，逐行必填(原流程仍只是学习字段)。
-      if (stockInFirst && line.stockPlace.text.trim().isEmpty) {
+      if (stockInFirst && line.place.text.trim().isEmpty) {
         missingPlace.add(label);
       }
       final warehouseId = _effectiveWarehouseId(line);
@@ -592,11 +581,15 @@ class _WarehouseArrivalReceiptPageState
     }
     final rowIssues = <String>[
       if (badQty.isNotEmpty)
-        _rowIssueMessage(badQty, '的本次实收不是大于 0 的数字', action: '请改正后再提交'),
+        inboundRowIssueMessage(badQty, '的本次实收不是大于 0 的数字', action: '请改正后再提交'),
       if (missingWarehouse.isNotEmpty)
-        _rowIssueMessage(missingWarehouse, '未选择入库仓库', action: '请补齐后再提交'),
+        inboundRowIssueMessage(missingWarehouse, '未选择入库仓库', action: '请补齐后再提交'),
       if (missingPlace.isNotEmpty)
-        _rowIssueMessage(missingPlace, '未填写上架库位(先入库后质检必填)', action: '请补齐后再提交'),
+        inboundRowIssueMessage(
+          missingPlace,
+          '未填写库位号(先入库后质检必填)',
+          action: '请补齐后再提交',
+        ),
     ];
     if (rowIssues.isNotEmpty) {
       // 不同类别分行列出，混成一句会让人看不清到底要改哪几处。
@@ -613,7 +606,7 @@ class _WarehouseArrivalReceiptPageState
     );
     final confirmed = await showWarehouseInboundAllocationConfirmDialog(
       context,
-      title: stockInFirst ? '登记并先入库' : '登记并送检',
+      title: route.label,
       actionLabel: stockInFirst ? '登记先入库' : '登记送检',
       confirmLabel: stockInFirst
           ? (hasCrossWarehouse ? '确认跨仓登记并先入库' : '确认登记并先入库')
@@ -678,7 +671,7 @@ class _WarehouseArrivalReceiptPageState
                 'goodsId': line.item.goodsId,
                 'qty': double.tryParse(line.qty.text.trim()) ?? 0,
                 'orderItemId': line.item.orderItemId,
-                if (stockInFirst) 'preStockPlace': line.stockPlace.text.trim(),
+                if (stockInFirst) 'preStockPlace': line.place.text.trim(),
                 if (line.source.apiValue != null)
                   'replacementIntent': line.source.apiValue,
                 // 来源单据编号谱系（来源订货单号），与编辑页口径一致。
@@ -768,12 +761,12 @@ class _WarehouseArrivalReceiptPageState
       for (final line in lines)
         {
           'goodsId': line.item.goodsId,
-          if (line.goodsCode.text.trim().isNotEmpty)
-            'goodsCode': line.goodsCode.text.trim(),
+          if (line.item.goodsCode.trim().isNotEmpty)
+            'goodsCode': line.item.goodsCode.trim(),
           if (line.series.text.trim().isNotEmpty)
             'series': line.series.text.trim(),
-          if (line.stockPlace.text.trim().isNotEmpty)
-            'stockPlace': line.stockPlace.text.trim(),
+          if (line.place.text.trim().isNotEmpty)
+            'stockPlace': line.place.text.trim(),
         },
     ];
     if (hints.isEmpty) return;
@@ -850,9 +843,9 @@ class _WarehouseArrivalReceiptPageState
         floatingActionButton: prefill == null
             ? null
             : ListenableBuilder(
-                listenable: _lineGrid,
+                listenable: Listenable.merge([_lineGrid, _suggestions]),
                 builder: (context, _) =>
-                    _buildBottomBar(theme, canRegister, canPreStock),
+                    _buildBottomBar(canRegister, canPreStock),
               ),
       ),
     );
@@ -952,45 +945,26 @@ class _WarehouseArrivalReceiptPageState
             ),
             const SizedBox(height: UtenSpacing.s12),
             ..._warehouseNotices(theme),
+            InboundPlaceSuggestionStatus(
+              loader: _suggestions,
+              onRetry: () => _suggestions.reload(_lines),
+            ),
             // 「明细(N 行)」标题与表格上方的「统一设置入库仓库」按钮 2026-09-11
             // 一并撤除：落仓/填库位改由表格操作条的批量动作承载（勾选若干行后
             // 作用于选中行，未勾选时沿用旧口径作用于全部明细行）。
             const SizedBox(height: UtenSpacing.s8),
-            // 2026-09-14：提示行改为常驻（原先只在 <840 窄屏出现，宽屏桌面
-            // 完全看不到「可以只登记一部分」这件事）。
-            LayoutBuilder(
-              builder: (context, constraints) => Padding(
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline_rounded,
-                      size: 18,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
-                      child: Text(
-                        '明细默认全选：右下「先入库后质检 / 先质检后入库」只提交勾选的行，'
-                        '未勾选的行不登记、不写库存，仍留在待登记送检（可重新勾回）；'
-                        '本次不收的货品也可以点行末 ⊖ 把该行移出本次登记'
-                        '（可勾选多行后右键批量移出）。移出不删除订货明细、不写库存。'
-                        '${constraints.maxWidth < 840 ? '表格可左右滑动；' : ''}'
-                        '数量、入库仓库、库位、系列和物料编码可直接编辑。',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            // 勾选口径说明(与批量登记页、产成品登记页同一句式)。
+            InboundGridIntro(
+              sourceSummary: '来源订货单 ${prefill.orderBillNo}',
+              submitLabel:
+                  '${InboundRoute.stockInFirst.label} / ${InboundRoute.inspectFirst.label}',
             ),
+            const SizedBox(height: UtenSpacing.s8),
             UtenEditableGrid<_ArrivalReceiptLine>(
               key: const Key('warehouse-arrival-lines-grid'),
               controller: _lineGrid,
               stickyHeaderPinned: _gridPinned,
-              columns: _arrivalLineColumns,
+              columns: _arrivalLineColumns(canRegister),
               createBlankRow: () => throw UnsupportedError('到货任务明细由订货单固定带入'),
               showAddRow: false,
               showRowDelete: false,
@@ -1034,13 +1008,21 @@ class _WarehouseArrivalReceiptPageState
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _lineTotalsBar(),
+                  inboundTotalsBar<_ArrivalReceiptLine>(
+                    key: const Key('warehouse-arrival-totals'),
+                    lines: _lines,
+                    qtyLabel: '本次实收',
+                    qtyOf: (line) => double.tryParse(line.qty.text.trim()) ?? 0,
+                    unitIdOf: (line) => line.item.unitId,
+                    unitNameOf: (line) => line.item.unitName,
+                  ),
                   const SizedBox(height: UtenSpacing.s4),
                   Text(
                     _removedLineCount == 0
-                        ? '库位、系列、编码由货品资料带出，可直接修改；送检后会学习回写，下次自动带出。'
-                              '明细默认全选，提交只含勾选行。'
-                        : '已移出 $_removedLineCount 行（仅本页临时选择）；这些来源行未写收货、未写库存，仍在待登记送检。'
+                        ? '本次实收默认=批准剩余量，可改；入库仓库行级必填(按订货单建议仓或上次所选仓'
+                              '预填)，库位按该仓记住的库位或货品资料带出(黄框请核对)，入库后自动记住'
+                              '为该仓默认库位。明细默认全选，提交只含勾选行。'
+                        : '已移出 $_removedLineCount 行(仅本页临时选择)；这些来源行未写收货、未写库存，仍在待登记。'
                               '明细默认全选，提交只含勾选行。',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
@@ -1167,305 +1149,143 @@ class _WarehouseArrivalReceiptPageState
     );
   }
 
-  List<EditableGridColumn<_ArrivalReceiptLine>> get _arrivalLineColumns => [
-    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
-    EditableGridColumn(
-      key: 'goods',
-      label: '货品名称',
-      width: 200,
-      textOf: (line) => line.item.goodsName,
-      cellBuilder: (context, line) => Tooltip(
-        message: line.item.goodsName,
-        // 单行省略号（2026-09-16 全站口径）：列宽随 textOf 自动加宽兜底。
-        child: Text(
-          line.item.goodsName,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+  // 明细表列(与批量登记页、产成品登记页同一套共用列，列名/列序/格式一致)：
+  // 货品名称 → 编号 → 颜色 → 批准剩余 → 到货来源 → 本次实收 → 单位 → 入库仓库 →
+  // 预计去向 → 库位号 → 物料系列。
+  List<EditableGridColumn<_ArrivalReceiptLine>> _arrivalLineColumns(
+    bool canRegister,
+  ) {
+    final names = ref.read(masterNameServiceProvider);
+    final shared = InboundGridColumns<_ArrivalReceiptLine>(
+      names: names,
+      keyPrefix: 'warehouse-arrival',
+      lineKeyOf: (line) => line.item.orderItemId,
+      goodsCodeOf: (line) => line.item.goodsCode,
+      colorNameOf: (line) => line.item.colorName,
+      unitNameOf: (line) => line.item.unitName,
+    );
+    bool editable(_ArrivalReceiptLine line) => canRegister && !_saving;
+    final stockInFirst = _route.isStockInFirst;
+    final suggested = _suggestedWarehouseId;
+    return [
+      shared.goodsName(),
+      shared.goodsCode(),
+      shared.color(),
+      shared.quantity(
+        key: 'approvedRemainingQty',
+        label: '批准剩余',
+        textOf: (line) => inboundQty(line.item.approvedRemainingQty),
+      ),
+      EditableGridColumn(
+        key: 'arrivalSource',
+        label: workflowFieldText(context).warehouseArrivalSourceLabel,
+        width: 165,
+        // 每行相同的通用说明放列头 ⓘ：格内只留行特有的错误/预填图标。
+        headerInfo: workflowFieldText(context).warehouseArrivalSourceHint,
+        textOf: (line) => line.source.label(context),
+        cellBuilder: (context, line) => WarehouseArrivalSourceField(
+          key: ValueKey('warehouse-arrival-source-${line.item.orderItemId}'),
+          value: line.source,
+          enabled: editable(line),
+          onChanged: (source) => setState(() => line.source = source),
         ),
       ),
-    ),
-    EditableGridColumn(
-      key: 'goodsCode',
-      label: '编号',
-      width: 160,
-      // 2026-09-16 用户口径：编号是货品资料的身份快照，登记页**只读**——
-      // 与批量登记页同款（此前是可编辑核对框）。值仍由行模型 goodsCode
-      // 控制器承载（保存链路不变），只是格内不再可敲。
-      textOf: (line) => line.goodsCode.text,
-      listenableOf: (line) => line.goodsCode,
-      cellBuilder: (context, line) => ValueListenableBuilder<TextEditingValue>(
-        valueListenable: line.goodsCode,
-        builder: (context, value, _) => Semantics(
-          label: '${line.item.goodsName} 物料编码',
-          child: Tooltip(
-            message: value.text,
-            child: Text(
-              value.text.isEmpty ? '—' : value.text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: value.text.isEmpty
-                    ? Theme.of(context).colorScheme.onSurfaceVariant
-                    : Theme.of(context).colorScheme.onSurface,
-              ),
-            ),
-          ),
-        ),
+      shared.receivedQuantity(
+        controllerOf: (line) => line.qty,
+        enabled: editable,
+        headerInfo: workflowFieldText(context).workflowArrivalQuantityHint,
       ),
-    ),
-    EditableGridColumn(
-      key: 'color',
-      label: '颜色',
-      width: 110,
-      textOf: (line) => line.item.colorName ?? '—',
-      cellBuilder: (context, line) => Text(line.item.colorName ?? '—'),
-    ),
-    EditableGridColumn(
-      key: 'approvedRemainingQty',
-      label: '批准剩余',
-      width: 110,
-      numeric: true,
-      cellBuilder: (context, line) => Text(
-        procurementQty(line.item.approvedRemainingQty),
-        textAlign: TextAlign.right,
-      ),
-    ),
-    EditableGridColumn(
-      key: 'arrivalSource',
-      label: workflowFieldText(context).warehouseArrivalSourceLabel,
-      width: 165,
-      // 每行相同的通用说明放列头 ⓘ（2026-09-10 全站口径）：格内只留行特有的
-      // 错误/预填图标，来源下拉不再自带 44px 说明图标挤占选项文案。
-      headerInfo: workflowFieldText(context).warehouseArrivalSourceHint,
-      textOf: (line) => line.source.label(context),
-      cellBuilder: (context, line) => WarehouseArrivalSourceField(
-        key: ValueKey('warehouse-arrival-source-${line.item.orderItemId}'),
-        value: line.source,
-        enabled: _canRegisterNow && !_saving,
-        onChanged: (source) => setState(() => line.source = source),
-      ),
-    ),
-    EditableGridColumn(
-      key: 'qty',
-      label: '本次实收',
-      width: 130,
-      numeric: true,
-      required: true,
-      // 每行相同的通用说明放列头 ⓘ（2026-09-10 全站口径），格内不再塞 44px 图标
-      // 挤占「大于 0」占位与输入值。
-      headerInfo: workflowFieldText(context).workflowArrivalQuantityHint,
-      textOf: (line) => line.qty.text,
-      listenableOf: (line) => line.qty,
-      cellBuilder: (context, line) => RequiredCellFrame(
-        listenable: line.qty,
-        isEmpty: () => (double.tryParse(line.qty.text.trim()) ?? 0) <= 0,
-        child: Semantics(
-          textField: true,
-          label: '${line.item.goodsName} 本次实收',
-          child: TextField(
-            key: ValueKey('warehouse-arrival-qty-${line.item.orderItemId}'),
-            controller: line.qty,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            textAlign: TextAlign.right,
-            decoration: const UtenInputDecoration(
-              InputDecoration(hintText: '大于 0', isDense: true),
-            ),
-          ),
-        ),
-      ),
-    ),
-    // 单位紧跟「本次实收」（2026-09-05 用户口径）：数量的含义（数量/重量）
-    // 由基础资料-单位的维度决定，重量型单位的实收即重量。
-    EditableGridColumn(
-      key: 'unit',
-      label: '单位',
-      width: 80,
-      textOf: (line) => line.item.unitName ?? '—',
-      cellBuilder: (context, line) => Text(line.item.unitName ?? '—'),
-    ),
-    EditableGridColumn(
-      key: 'warehouse',
-      label: '入库仓库',
-      width: 170,
-      required: true,
-      textOf: (line) => _warehouseLabel(_effectiveWarehouseId(line)) ?? '未选择',
-      // 格尾箭头(20) + 预填黄标 ⓘ(44)计入量宽（2026-09-16）。
-      chromeWidth:
-          UtenEditableGridCellSpec.dropdownChevronWidth +
-          UtenEditableGridCellSpec.hintIconWidth,
-      cellBuilder: (context, line) {
-        final theme = Theme.of(context);
-        final warehouseId = _effectiveWarehouseId(line);
-        final label = _warehouseLabel(warehouseId);
-        final suggested = _suggestedWarehouseId;
-        final changedAway =
+      // 单位紧跟「本次实收」：数量的含义(数量/重量)由基础资料-单位的维度决定。
+      shared.unit(),
+      shared.warehouse(
+        required: true,
+        enabled: editable,
+        onTap: _pickLineWarehouse,
+        autofillInfo: '已带入订货单建议仓或上次所选仓，请核对本次实物入库仓库',
+        // 改离建议仓描橙边：合格库存不再计入原物料分析目标仓备料。
+        changedAwayOf: (line) =>
             suggested != null &&
-            warehouseId != null &&
+            line.warehouseId != null &&
             !warehousesShareMain(
-              ref.read(masterNameServiceProvider).warehouseHierarchy,
-              warehouseId,
+              names.warehouseHierarchy,
+              line.warehouseId!,
               suggested,
-            );
-        return Semantics(
-          button: true,
-          label: '${line.item.goodsName} 入库仓库：${label ?? '未选择'}，点击修改',
-          child: InkWell(
-            key: ValueKey('warehouse-arrival-wh-${line.item.orderItemId}'),
-            onTap: _saving ? null : () => _pickLineWarehouse(line),
-            borderRadius: BorderRadius.circular(UtenRadius.control),
-            child: InputDecorator(
-              // 行级必填：未选仓描红边提示；改离建议仓描橙边提醒（合格库存
-              // 不再计入原物料分析目标仓）。选仓走整页 setState 重建本格。
-              // 2026-09-10 单元规格统一：不自带 border/contentPadding/小字/双行，
-              // 圆角、内边距、字号吃 UtenEditableGrid 行级主题（与数量格等高）。
-              decoration: applyAutofillHint(
-                UtenInputDecoration(
-                  InputDecoration(
-                    isDense: true,
-                    enabledBorder: label == null
-                        ? requiredEmptyBorder(theme)
-                        : changedAway
-                        ? autofillHintBorder(theme)
-                        : null,
-                  ),
-                  info: line.warehouseAutofilled
-                      ? '已带入上次收货仓或来源建议仓，请核对本次实物仓库'
-                      : null,
-                ),
-                theme,
-                autofilled: label != null && line.warehouseAutofilled,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      label ?? '必选 · 点击选择',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: label == null
-                          ? theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.error,
-                              fontWeight: FontWeight.w600,
-                            )
-                          : null,
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 16,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ],
-              ),
             ),
-          ),
-        );
-      },
-    ),
-    EditableGridColumn(
-      key: 'expectedAllocation',
-      label: '预计去向(基本量)',
-      width: 240,
-      textOf: (line) => warehouseInboundAllocationSummaryText(
-        _lineProjectedAllocations(line),
-        (value) => '${procurementQty(value)} ${_lineBaseUnitLabel(line)}',
       ),
-      listenableOf: (line) => line.qty,
-      cellBuilder: (context, line) => ValueListenableBuilder<TextEditingValue>(
-        valueListenable: line.qty,
-        builder: (context, _, _) {
-          final allocations = _lineProjectedAllocations(line);
-          return WarehouseInboundAllocationSummary(
-            allocations: allocations,
-            qtyText: (value) =>
-                '${procurementQty(value)} ${_lineBaseUnitLabel(line)}',
-            onTap: () => showWarehouseInboundAllocationDetails(
-              context,
-              title: '预计去向 · ${line.item.goodsName}',
-              sections: [_lineAllocationSection(line)],
+      EditableGridColumn(
+        key: 'expectedAllocation',
+        label: '预计去向(基本量)',
+        width: 240,
+        textOf: (line) => warehouseInboundAllocationSummaryText(
+          _lineProjectedAllocations(line),
+          (value) => '${inboundQty(value)} ${_lineBaseUnitLabel(line)}',
+        ),
+        listenableOf: (line) => line.qty,
+        cellBuilder: (context, line) =>
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: line.qty,
+              builder: (context, _, _) {
+                final allocations = _lineProjectedAllocations(line);
+                return WarehouseInboundAllocationSummary(
+                  allocations: allocations,
+                  qtyText: (value) =>
+                      '${inboundQty(value)} ${_lineBaseUnitLabel(line)}',
+                  onTap: () => showWarehouseInboundAllocationDetails(
+                    context,
+                    title: '预计去向 · ${line.item.goodsName}',
+                    sections: [_lineAllocationSection(line)],
+                  ),
+                );
+              },
             ),
-          );
-        },
       ),
-    ),
-    EditableGridColumn(
-      key: 'stockPlace',
-      label: _stockInBeforeInspection ? '上架库位(必填)' : '库位号',
-      width: 140,
-      required: _stockInBeforeInspection,
-      textOf: (line) => line.stockPlace.text,
-      listenableOf: (line) => line.stockPlace,
-      // 预填黄标 ⓘ(44)计入量宽（2026-09-16）。
-      chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
-      // 先入库后质检：库位是实物落点，空则描红框(原流程只是学习字段)。
-      cellBuilder: (context, line) => RequiredCellFrame(
-        listenable: line.stockPlace,
-        isEmpty: () =>
-            _stockInBeforeInspection && line.stockPlace.text.trim().isEmpty,
-        child: Semantics(
+      // 先入库后质检：库位是实物落点，必填(空则红框)。
+      shared.place(
+        required: stockInFirst,
+        enabled: editable,
+        onChanged: _onStockPlaceChanged,
+        headerInfo: stockInFirst
+            ? '先入库后质检必填：填实物实际放置的库位，品质部按此到库位检验。'
+                  '选定入库仓库后按「该仓记住的库位 → 货品资料通用库位」自动带出；黄框 = 预填待核对。'
+            : '选定入库仓库后按「该仓记住的库位 → 货品资料通用库位」自动带出；'
+                  '黄框 = 预填待核对，可直接修改。入库后自动记住为该仓默认库位。',
+      ),
+      EditableGridColumn(
+        key: 'series',
+        label: '物料系列',
+        width: 140,
+        textOf: (line) => line.series.text,
+        listenableOf: (line) => line.series,
+        // 预填黄标 ⓘ(44)计入量宽。
+        chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
+        cellBuilder: (context, line) => Semantics(
           textField: true,
-          label: '${line.item.goodsName} 库位号',
+          label: '${line.item.goodsName} 物料系列',
           child: WarehouseAutofillTextField(
-            controller: line.stockPlace,
-            source: _stockInBeforeInspection
-                ? '先入库后质检：这里填实物实际放置的库位，品质部按此到库位检验'
-                : '库位来自货品资料或上次登记，请核对本次实物存放位置',
-            enabled: !_saving,
-            onChanged: (value) => _onStockPlaceChanged(line, value),
+            controller: line.series,
+            source: '系列来自货品资料，请核对本次到货',
+            enabled: editable(line),
           ),
         ),
       ),
-    ),
-    EditableGridColumn(
-      key: 'series',
-      label: '物料系列',
-      width: 140,
-      textOf: (line) => line.series.text,
-      listenableOf: (line) => line.series,
-      // 预填黄标 ⓘ(44)计入量宽（2026-09-16）。
-      chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
-      cellBuilder: (context, line) => Semantics(
-        textField: true,
-        label: '${line.item.goodsName} 物料系列',
-        child: WarehouseAutofillTextField(
-          controller: line.series,
-          source: '系列来自货品资料，请核对本次到货',
-          enabled: !_saving,
-        ),
-      ),
-    ),
-  ];
+    ];
+  }
 
-  /// 明细表下方的合计条（全站统一 UtenTotalsSummaryBar 口径）：数量严格按单位
-  /// UUID 分组，不同单位绝不相加；本页对仓库不可见价格，故没有金额项。
-  Widget _lineTotalsBar() => UtenTotalsSummaryBar(
-    key: const Key('warehouse-arrival-totals'),
-    density: true,
-    entries: [
-      UtenTotalEntry('明细', '${_lines.length} 行'),
-      utenQuantityTotalEntry(
-        _lines.map(
-          (line) => MeasuredAmount(
-            value: double.tryParse(line.qty.text.trim()) ?? 0,
-            unitId: line.item.unitId,
-            unitName: line.item.unitName,
-          ),
-        ),
-        label: '本次实收',
-      ),
-    ],
-  );
-
-  Widget _buildBottomBar(ThemeData theme, bool canRegister, bool canPreStock) {
-    // 合计不再挂底部操作条（2026-09-11 用户口径：明细表下方已有合计条，
-    // 底部再报一遍是重复），这里只剩取消 / 先入库后质检 / 先质检后入库。
-    // 2026-09-20：「登记并送检」改名「先质检后入库」(与「先入库后质检」对仗，
-    // 任务中心批量按钮同名)；单张页由双击行进入、未预选路线，故两个按钮都保留。
-    // 2026-09-17 勾选口径：提交集=勾选集，一行都没勾时两个提交按钮置灰，
-    // 灰态点击说明原因（未勾选的行本次不登记）。
+  Widget _buildBottomBar(bool canRegister, bool canPreStock) {
+    // 单张页由双击行进入、未预选路线，两条路线按钮并排(同名同义、同一组件)。
+    // 提交集=勾选集：一行都没勾或库位建议加载中时提交置灰，灰态点击说明原因。
     final hasCheckedLine = _lineGrid.selectedRows.isNotEmpty;
-    final VoidCallback? onDisabledTap =
-        !canRegister || _lines.isEmpty || hasCheckedLine
+    final canSubmit =
+        canRegister &&
+        !_saving &&
+        !_suggestions.loading &&
+        _lines.isNotEmpty &&
+        hasCheckedLine;
+    final VoidCallback? onDisabledTap = !canRegister || _lines.isEmpty
+        ? null
+        : _suggestions.loading
+        ? () => context.appInfo('正在读取所选仓库的默认库位，请稍候再提交')
+        : hasCheckedLine
         ? null
         : () => context.appWarning('请先勾选要登记送检的明细行（未勾选的行本次不登记）');
     return UtenFloatingActionGroup(
@@ -1476,40 +1296,14 @@ class _WarehouseArrivalReceiptPageState
           onPressed: _saving ? null : () => context.pop(),
           child: const Text('取消'),
         ),
-        // 先入库后质检(V596 / ADR-090)：与「先质检后入库」并排的第二个主动作(用户口径
-        // 2026-09-16「在登记并送检左边加个按钮」)。点它 = 登记 + 送检 + 按库位上架同一事务，
-        // 品质部到库位检验；合格自动转正入库，不合格从库位取出退回。需独立权限。
-        if (canPreStock)
-          Tooltip(
-            message:
-                '货品直接上架到库位、品质部到库位检验：每行「库位号」必填；'
-                '合格由系统按上架位置自动转正入库，不合格由仓库从库位取出登记退回',
-            child: UtenButton(
-              key: const Key('warehouse-arrival-stock-in-first'),
-              size: UtenButtonSize.large,
-              isLoading: _saving && _stockInBeforeInspection,
-              icon: Icons.shelves,
-              onPressed:
-                  !canRegister || _saving || _lines.isEmpty || !hasCheckedLine
-                  ? null
-                  : () => _save(preStock: true),
+        for (final route in InboundRoute.values)
+          if (!route.isStockInFirst || canPreStock)
+            InboundRouteSubmitButton(
+              route: route,
+              isLoading: _saving && _route == route,
+              onPressed: canSubmit ? () => _save(route) : null,
               onDisabledTap: onDisabledTap,
-              child: const Text('先入库后质检'),
             ),
-          ),
-        UtenButton(
-          // 「点了就往下走一步」的主动作统一红底白字（全站口径）。
-          type: UtenButtonType.danger,
-          size: UtenButtonSize.large,
-          isLoading: _saving && !_stockInBeforeInspection,
-          icon: Icons.fact_check_outlined,
-          onPressed:
-              !canRegister || _saving || _lines.isEmpty || !hasCheckedLine
-              ? null
-              : () => _save(preStock: false),
-          onDisabledTap: onDisabledTap,
-          child: const Text('先质检后入库'),
-        ),
       ],
     );
   }
@@ -1559,17 +1353,18 @@ class _WarehouseArrivalReceiptPageState
   }
 }
 
-/// 一行到货登记明细的本地状态（数量 + 行级入库仓库 + 库位/系列/编码学习字段）。
-class _ArrivalReceiptLine extends EditableGridRow {
+/// 一行到货登记明细：共用的入库仓库/库位状态 + 数量/来源/系列。
+class _ArrivalReceiptLine extends InboundRegistrationLine {
   _ArrivalReceiptLine(this.item, {String? warehouseId, required this.onChanged})
     : qty = TextEditingController(
         text: procurementQty(item.approvedRemainingQty),
       ),
-      stockPlace = UtenAutofillTextController(text: item.goodsStockPlace ?? ''),
       series = UtenAutofillTextController(text: item.goodsSeries ?? ''),
-      goodsCode = UtenAutofillTextController(text: item.goodsCode),
-      warehouseId = warehouseId?.isNotEmpty == true ? warehouseId : null {
-    warehouseAutofilled = this.warehouseId != null;
+      super(
+        warehouseId: warehouseId?.isNotEmpty == true ? warehouseId : null,
+        warehouseAutofilled: true,
+        place: item.goodsStockPlace ?? '',
+      ) {
     qty.addListener(onChanged);
   }
 
@@ -1577,33 +1372,20 @@ class _ArrivalReceiptLine extends EditableGridRow {
   final VoidCallback onChanged;
   final TextEditingController qty;
   WarehouseArrivalSource source = WarehouseArrivalSource.automatic;
-
-  /// 行级入库仓库（2026-09-06 起必填：建议仓预填，无建议时留空待选）。
-  String? warehouseId;
-  bool warehouseAutofilled = false;
-
-  final UtenAutofillTextController stockPlace;
   final UtenAutofillTextController series;
-  final UtenAutofillTextController goodsCode;
 
-  /// 批量写入库位：视同已核对，写完不留预填黄标。
-  /// 同值写入时 UtenAutofillTextController 不会自行清标（它只在文本变化时清），
-  /// 故先置空再写回，逼它翻成手工值。
-  void setCheckedStockPlace(String value) {
-    if (stockPlace.text == value) stockPlace.value = TextEditingValue.empty;
-    stockPlace.value = TextEditingValue(
-      text: value,
-      selection: TextSelection.collapsed(offset: value.length),
-    );
-  }
+  @override
+  String get goodsId => item.goodsId;
+  @override
+  String? get colorId => item.colorId;
+  @override
+  String get goodsName => item.goodsName;
 
   @override
   void dispose() {
     qty.removeListener(onChanged);
     qty.dispose();
-    stockPlace.dispose();
     series.dispose();
-    goodsCode.dispose();
     super.dispose();
   }
 }

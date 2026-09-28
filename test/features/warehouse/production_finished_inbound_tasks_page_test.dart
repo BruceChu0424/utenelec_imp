@@ -13,6 +13,9 @@ import 'package:uten_imp/features/warehouse/models/production_finished_inbound_t
 import 'package:uten_imp/features/warehouse/pages/production_finished_inbound_tasks_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
+const _stockInFirstBatchKey = Key('inbound-route-batch-stockInFirst');
+const _inspectFirstBatchKey = Key('inbound-route-batch-inspectFirst');
+
 void main() {
   testWidgets('finished inbound queue uses the multi-select table at 375px', (
     tester,
@@ -57,7 +60,7 @@ void main() {
 
     expect(find.text('产成品入库任务'), findsOneWidget);
     expect(find.text('共 2 项 · 单击多选，双击详情'), findsOneWidget);
-    expect(find.text('待登记成品仓与库位'), findsOneWidget);
+    expect(find.text('待登记入库'), findsOneWidget);
     expect(find.text('短收余量待点收'), findsOneWidget);
     expect(find.text('SJ202608280001'), findsOneWidget);
     final tableFinder = find.byKey(
@@ -85,9 +88,9 @@ void main() {
       for (final item in table.items)
         (table.rowMenuBuilder!(item).single as UtenMenuItem).label,
     ];
-    expect(actionLabels, ['登记成品仓和库位', '进入最终点收']);
+    expect(actionLabels, ['登记入库仓库与库位', '进入最终点收']);
 
-    await tester.tap(find.text('待登记成品仓与库位'));
+    await tester.tap(find.text('待登记入库'));
     await tester.pump();
     table = tester.widget<MasterDataTableView<ProductionFinishedInboundTask>>(
       tableFinder,
@@ -98,10 +101,11 @@ void main() {
       table.idOf!(table.items.first),
       'reg:20000000-0000-0000-0000-000000000001',
     );
-    expect(
-      find.byKey(const Key('production-finished-inbound-batch-register')),
-      findsOneWidget,
-    );
+    // 2026-09-27 与预计到货同款路线按钮：没有「先入库后质检」独立权限时只显示
+    // 「先质检后入库(N)」。
+    expect(find.byKey(_inspectFirstBatchKey), findsOneWidget);
+    expect(find.text('先质检后入库(1)'), findsOneWidget);
+    expect(find.byKey(_stockInFirstBatchKey), findsNothing);
     expect(table.selectedIds, {'reg:20000000-0000-0000-0000-000000000001'});
     await tester.tap(find.text('短收余量待点收'));
     await tester.pump();
@@ -117,20 +121,16 @@ void main() {
       'doc:10000000-0000-0000-0000-000000000001',
     });
     expect(find.text('登记送检与最终点收请分开选择'), findsOneWidget);
-    expect(
-      find.byKey(const Key('production-finished-inbound-batch-register')),
-      findsNothing,
-    );
+    expect(find.byKey(_inspectFirstBatchKey), findsNothing);
+    expect(find.byKey(_stockInFirstBatchKey), findsNothing);
     expect(
       find.byKey(const Key('production-finished-inbound-batch-confirm')),
       findsNothing,
     );
-    await tester.tap(find.text('待登记成品仓与库位'));
+    await tester.tap(find.text('待登记入库'));
     await tester.pump();
-    expect(
-      find.byKey(const Key('production-finished-inbound-batch-register')),
-      findsNothing,
-    );
+    expect(find.byKey(_inspectFirstBatchKey), findsNothing);
+    expect(find.byKey(_stockInFirstBatchKey), findsNothing);
     final batchButton = find.byKey(
       const Key('production-finished-inbound-batch-confirm'),
     );

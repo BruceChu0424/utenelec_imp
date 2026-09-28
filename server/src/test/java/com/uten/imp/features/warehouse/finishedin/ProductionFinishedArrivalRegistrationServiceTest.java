@@ -254,19 +254,167 @@ class ProductionFinishedArrivalRegistrationServiceTest {
     }
 
     @Test
-    void placeSuggestionsReadExactMasterRelationsWithoutScanningHistoricalDocuments() throws Exception {
-        String service = Files.readString(Path.of(
-                "src/main/java/com/uten/imp/features/warehouse/finishedin/ProductionFinishedArrivalRegistrationService.java"));
-        int start = service.indexOf("private PlaceSuggestionsView placeSuggestionsInternal(");
-        int end = service.indexOf("public ArrivalRegistrationView register(", start);
-        String suggestions = service.substring(start, end);
-        assertThat(suggestions).contains("preference.warehouse_id = selected_warehouse.id")
-                .contains("preference.goods_id = report_item.goods_id")
-                .contains("IS NOT DISTINCT FROM report_item.color_id")
-                .contains("'WAREHOUSE_PREFERENCE'").contains("'GOODS_MASTER'")
+    void rememberPlanSkipsUnusableSourcesInsteadOfFailingTheRegistration() {
+        UUID goodsId = UUID.randomUUID();
+        var plan = ProductionFinishedArrivalRegistrationService.buildRememberPlan(
+                java.util.Arrays.asList(
+                        null,
+                        new ProductionFinishedArrivalRegistrationService.RememberPlaceSource(
+                                null, null, "A31-3-1", "V5001", "成品"),
+                        new ProductionFinishedArrivalRegistrationService.RememberPlaceSource(
+                                goodsId, null, null, "V5001", "成品"),
+                        new ProductionFinishedArrivalRegistrationService.RememberPlaceSource(
+                                goodsId, null, "   ", "V5001", "成品"),
+                        new ProductionFinishedArrivalRegistrationService.RememberPlaceSource(
+                                goodsId, null, "x".repeat(101), "V5001", "成品"),
+                        new ProductionFinishedArrivalRegistrationService.RememberPlaceSource(
+                                goodsId, null, " C01 ", "V5001", "成品")));
+
+        assertThat(plan.ambiguous()).isZero();
+        assertThat(plan.candidates()).singleElement()
+                .satisfies(candidate -> {
+                    assertThat(candidate.goodsId()).isEqualTo(goodsId);
+                    assertThat(candidate.colorId()).isNull();
+                    assertThat(candidate.place()).isEqualTo("C01");
+                });
+        assertThat(ProductionFinishedArrivalRegistrationService.buildRememberPlan(null)
+                .candidates()).isEmpty();
+    }
+
+    @Test
+    void placeSuggestionsLiveInTheSharedWarehouseServiceAndReadMasterRelationsWithoutScanningHistoricalDocuments()
+            throws Exception {
+        String shared = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/warehouse/place/"
+                        + "WarehousePlaceSuggestionService.java"));
+        String sql = section(shared,
+                "static final String SUGGESTION_SQL = \"\"\"", "\"\"\";");
+        assertThat(sql)
+                .contains("LEFT JOIN warehouse_goods_place_preferences preference")
+                .contains("preference.warehouse_id = CAST(:warehouseId AS uuid)")
+                .contains("preference.goods_id = requested.goods_id")
+                .contains("preference.color_id IS NOT DISTINCT FROM requested.color_id")
+                .contains("NULLIF(BTRIM(goods.stock_place), '')")
+                .contains("fn_warehouse_is_active_accounting_leaf(CAST(:warehouseId AS uuid))")
+                .containsSubsequence("'WAREHOUSE_PREFERENCE'", "'GOODS_MASTER'", "'NONE'")
+                .doesNotContain("production_finished_arrival_registration")
+                .doesNotContain("production_daily_report")
+                .doesNotContain("v_production_report_items_pending_registration")
+                .doesNotContain("procurement_iqc")
+                .doesNotContain("purchase_receipt")
+                .doesNotContain("subcontract_receipt")
                 .doesNotContain("registration_history", "LEFT JOIN LATERAL", "REGISTRATION_HISTORY")
                 .doesNotContain("INSERT INTO warehouse_goods_place_preferences")
                 .doesNotContain("UPDATE warehouse_goods_place_preferences");
+
+        String service = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/warehouse/finishedin/"
+                        + "ProductionFinishedArrivalRegistrationService.java"));
+        assertThat(service)
+                .doesNotContain("placeSuggestionsInternal")
+                .doesNotContain("public PlaceSuggestionsView placeSuggestions(")
+                .doesNotContain("batchPlaceSuggestions(")
+                .doesNotContain("lastWarehouse()")
+                .doesNotContain("'WAREHOUSE_PREFERENCE'");
+    }
+
+    @Test
+    void registrationRemembersPlacesInTheSameTransactionAndReplaysDoNot() throws Exception {
+        String service = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/warehouse/finishedin/"
+                        + "ProductionFinishedArrivalRegistrationService.java"));
+
+        String single = section(service,
+                "public ArrivalRegistrationView register(",
+                "private RegistrationOutcome registerNormalized(");
+        assertThat(single).containsSubsequence(
+                "RegistrationOutcome outcome = registerNormalized(",
+                "if (!outcome.replay()) {", "openInspectionSheet(",
+                "rememberRegisteredPlaces(List.of(outcome.registrationId()));", "}",
+                "return detailInternal(reportId, outcome.registrationId());");
+        // 记忆与登记同一个 @Transactional：register 方法前紧挨着的注解就是它。
+        String singleHeader = service.substring(
+                service.lastIndexOf("@Transactional",
+                        service.indexOf("public ArrivalRegistrationView register(")),
+                service.indexOf("public ArrivalRegistrationView register("));
+        assertThat(singleHeader).startsWith("@Transactional\n")
+                .doesNotContain("readOnly");
+
+        String batch = section(service,
+                "public BatchArrivalRegistrationResult batchRegister(",
+                "private Map<UUID, Object[]> sheetsByRegistration(");
+        assertThat(batch)
+                .containsSubsequence("if (outcome.replay()) continue;",
+                        "openInspectionSheet(",
+                        "rememberRegisteredPlaces(byWarehouse.values().stream()")
+                .doesNotContain("rememberRegisteredPlaces(outcomes.");
+
+        String remember = section(service,
+                "private void rememberRegisteredPlaces(",
+                "private ArrivalRegistrationView detailInternal(UUID reportId) {");
+        assertThat(remember)
+                .contains("WHERE registration.id IN (:registrationIds)")
+                .contains("buildRememberPlan(")
+                .contains("INSERT INTO warehouse_goods_place_preferences")
+                .contains("'FINISHED_ARRIVAL'")
+                .contains("ON CONFLICT ON CONSTRAINT")
+                .contains("warehouse_goods_place_preference_dimension_uk")
+                .contains("EXCLUDED.source_registered_at")
+                .contains("CAST(:colorId AS uuid)")
+                // 记不了(同维度多库位、货品已删除等)只跳过，绝不让登记失败。
+                .doesNotContain("throw ")
+                .doesNotContain("@Transactional")
+                .doesNotContain("@PreAuthorize");
+        String plan = section(service,
+                "static RememberPlan buildRememberPlan(",
+                "private static LocalDate localDate(");
+        assertThat(plan).doesNotContain("throw ");
+    }
+
+    @Test
+    void separateRememberAndReportBoundSuggestionEndpointsAreGone() throws Exception {
+        String controller = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/warehouse/finishedin/"
+                        + "ProductionFinishedInboundTaskController.java"));
+        String service = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/warehouse/finishedin/"
+                        + "ProductionFinishedArrivalRegistrationService.java"));
+        String contracts = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/warehouse/finishedin/"
+                        + "ProductionFinishedArrivalContracts.java"));
+
+        assertThat(controller)
+                .doesNotContain("\"/arrival-registrations/{reportId}/place-suggestions\"")
+                .doesNotContain("\"/arrival-registrations/batch/place-suggestions\"")
+                .doesNotContain("\"/arrival-registrations/{reportId}/remember-places\"")
+                .doesNotContain("\"/arrival-registrations/batch/remember-registration-batches\"")
+                .doesNotContain("\"/arrival-registrations/last-warehouse\"")
+                .doesNotContain("arrivalRegistrations.rememberPlaces")
+                .doesNotContain("arrivalRegistrations.placeSuggestions")
+                .doesNotContain("arrivalRegistrations.batchPlaceSuggestions")
+                .doesNotContain("arrivalRegistrations.lastWarehouse");
+        assertThat(service)
+                .doesNotContain("public RememberPlacesResult rememberPlaces(")
+                .doesNotContain("rememberPlacesForRegistrations(")
+                .doesNotContain("requireRegistrationIds(")
+                .doesNotContain("该报工已有多个登记批次");
+        assertThat(contracts)
+                .doesNotContain("record PlaceSuggestionsView(")
+                .doesNotContain("record PlaceSuggestionItemView(")
+                .doesNotContain("record RememberPlacesResult(")
+                .doesNotContain("record BatchRememberPlacesResult(")
+                .doesNotContain("record LastWarehouseView(")
+                // 待登记行的预填提示仍随详情返回。
+                .contains("String placeHint,")
+                .contains("UUID lastWarehouseId,");
+    }
+
+    private static String section(String source, String startMarker, String endMarker) {
+        int start = source.indexOf(startMarker);
+        assertThat(start).as(startMarker).isNotNegative();
+        int end = source.indexOf(endMarker, start + startMarker.length());
+        assertThat(end).as(endMarker).isGreaterThan(start);
+        return source.substring(start, end);
     }
 
     @Test
@@ -284,11 +432,8 @@ class ProductionFinishedArrivalRegistrationServiceTest {
 
         assertThat(controller)
                 .contains("/arrival-registrations/{reportId}")
-                .contains("/arrival-registrations/{reportId}/place-suggestions")
-                .contains("/arrival-registrations/{reportId}/remember-places")
                 .contains("/arrival-registrations/{registrationId}/reverse")
-                .contains("/arrival-registrations/batch/remember-registration-batches")
-                .contains("@RequestParam(required = false) UUID registrationId")
+                .contains("/arrival-registrations/batch")
                 .contains("hasAuthority('stock_doc:view')")
                 .contains("hasAuthority('stock_doc:approve')");
         assertThat(contracts)
@@ -337,12 +482,12 @@ class ProductionFinishedArrivalRegistrationServiceTest {
                 .contains("detailInternal(reportId, registrationId)")
                 .contains("pendingItemRows(reportId)")
                 .contains("registration_item.registration_id = :registrationId")
-                .contains("rememberPlacesForRegistrations(")
+                .contains("rememberRegisteredPlaces(")
                 .contains("registration.source_report_id = :reportId")
-                .contains("该报工已有多个登记批次")
                 .contains("BatchReportRegistrationRequest::reportId")
                 .contains("WHERE report_item.report_id IN (:reportIds)")
-                .contains("return placeSuggestionsInternal(ids, warehouseId)")
+                .doesNotContain("rememberPlacesForRegistrations(")
+                .doesNotContain("placeSuggestionsInternal(")
                 .doesNotContain("ids.stream().map(this::detailInternal)")
                 .doesNotContain("该生产报工已由其他登记命令完成")
                 .doesNotContain("逐行精确覆盖当前报工全部明细");

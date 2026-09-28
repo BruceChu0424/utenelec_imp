@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
@@ -22,6 +23,7 @@ import 'package:uten_imp/features/employee/repositories/employee_repository.dart
 import 'package:uten_imp/features/warehouse/pages/warehouse_arrival_receipt_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_inbound_expectations_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inbound_repository.dart';
+import 'package:uten_imp/features/warehouse/repositories/warehouse_place_suggestion_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/inbound_allocation.dart';
 import 'package:uten_imp/shared/models/procurement_inbound.dart';
@@ -188,6 +190,9 @@ void main() {
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
           ),
+          warehousePlaceSuggestionRepositoryProvider.overrideWithValue(
+            WarehousePlaceSuggestionRepository(api),
+          ),
           departmentCodeIdMapProvider.overrideWith(
             (ref) async => <String, String>{},
           ),
@@ -279,6 +284,9 @@ void main() {
         ),
         procurementInboundRepositoryProvider.overrideWithValue(
           DioProcurementInboundRepository(api),
+        ),
+        warehousePlaceSuggestionRepositoryProvider.overrideWithValue(
+          WarehousePlaceSuggestionRepository(api),
         ),
         departmentCodeIdMapProvider.overrideWith(
           (ref) async => <String, String>{},
@@ -407,6 +415,9 @@ void main() {
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
           ),
+          warehousePlaceSuggestionRepositoryProvider.overrideWithValue(
+            WarehousePlaceSuggestionRepository(api),
+          ),
           departmentCodeIdMapProvider.overrideWith(
             (ref) async => <String, String>{},
           ),
@@ -447,7 +458,7 @@ void main() {
       find.byKey(const Key('warehouse-arrival-allocation-warehouse-notice')),
       findsNothing,
     );
-    expect(find.textContaining('仍在待登记送检'), findsOneWidget);
+    expect(find.textContaining('仍在待登记'), findsOneWidget);
     expect(api.arrivalPostBodies, isEmpty);
 
     // 移出后选中集已空（提交集=勾选集）：勾回「明细 A」才能提交。
@@ -532,6 +543,9 @@ void main() {
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
           ),
+          warehousePlaceSuggestionRepositoryProvider.overrideWithValue(
+            WarehousePlaceSuggestionRepository(api),
+          ),
           departmentCodeIdMapProvider.overrideWith(
             (ref) async => <String, String>{},
           ),
@@ -561,7 +575,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(removedRow, findsNothing);
-    expect(find.textContaining('仍在待登记送检'), findsOneWidget);
+    expect(find.textContaining('仍在待登记'), findsOneWidget);
     expect(api.arrivalPostBodies, isEmpty);
 
     // 移出后选中集已空（提交集=勾选集）：勾回「采购明细 A」才能提交。
@@ -646,6 +660,9 @@ void main() {
         procurementInboundRepositoryProvider.overrideWithValue(
           DioProcurementInboundRepository(api),
         ),
+        warehousePlaceSuggestionRepositoryProvider.overrideWithValue(
+          WarehousePlaceSuggestionRepository(api),
+        ),
         departmentCodeIdMapProvider.overrideWith(
           (ref) async => <String, String>{},
         ),
@@ -666,7 +683,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final preStockButton = find.byKey(
-      const Key('warehouse-arrival-stock-in-first'),
+      const Key('inbound-route-submit-stockInFirst'),
     );
     // 没有独立权限：只有「先质检后入库」，看不到「先入库后质检」。
     expect(preStockButton, findsNothing);
@@ -687,7 +704,14 @@ void main() {
     await tester.tap(preStockButton);
     await tester.pumpAndSettle();
     expect(find.text('确认登记并先入库'), findsNothing);
-    expect(find.textContaining('上架库位', findRichText: true), findsWidgets);
+    // 库位号列切成必填(列头红星 + 空值红框)；列头在横向滚动视口外未必构建，断言列定义。
+    final grid = tester.widget<UtenEditableGrid<dynamic>>(
+      find.byWidgetPredicate((widget) => widget is UtenEditableGrid),
+    );
+    expect(
+      grid.columns.where((column) => column.key == 'place').single.required,
+      isTrue,
+    );
     expect(api.arrivalPostBodies, isEmpty);
 
     final placeField = find.descendant(
@@ -751,6 +775,9 @@ void main() {
           ),
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
+          ),
+          warehousePlaceSuggestionRepositoryProvider.overrideWithValue(
+            WarehousePlaceSuggestionRepository(api),
           ),
           departmentCodeIdMapProvider.overrideWith(
             (ref) async => <String, String>{},
@@ -972,6 +999,9 @@ void main() {
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
           ),
+          warehousePlaceSuggestionRepositoryProvider.overrideWithValue(
+            WarehousePlaceSuggestionRepository(api),
+          ),
         ],
         child: MaterialApp.router(
           routerConfig: router,
@@ -1044,6 +1074,9 @@ void main() {
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
           ),
+          warehousePlaceSuggestionRepositoryProvider.overrideWithValue(
+            WarehousePlaceSuggestionRepository(api),
+          ),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -1072,6 +1105,9 @@ void main() {
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
+          ),
+          warehousePlaceSuggestionRepositoryProvider.overrideWithValue(
+            WarehousePlaceSuggestionRepository(api),
           ),
         ],
         child: MaterialApp.router(
@@ -1159,6 +1195,7 @@ class _FakeApi extends ApiClient {
   String? lastPostPath;
   Map<String, dynamic>? lastPostBody;
   final List<Map<String, dynamic>> arrivalPostBodies = [];
+  final List<Map<String, dynamic>> placeSuggestionBodies = [];
 
   @override
   Future<Map<String, dynamic>> get(
@@ -1222,6 +1259,11 @@ class _FakeApi extends ApiClient {
     }
     if (path == '/warehouse/inbound/goods-profile-hints') {
       return const {'updated': 0};
+    }
+    if (path == '/warehouse/place-suggestions') {
+      // 共用库位建议：本夹具不预设任何记忆库位。
+      placeSuggestionBodies.add(Map<String, dynamic>.from(body! as Map));
+      return const {'items': <Map<String, dynamic>>[]};
     }
     throw ApiException('TEST_UNEXPECTED_POST', path);
   }

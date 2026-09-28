@@ -1067,6 +1067,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                       .toList(growable: false),
                   returnTo: state.uri.queryParameters['returnTo'],
                 ),
+                  // ?preStock=1 = 任务中心「先入库后质检(N)」直达，不带 = 「先质检后入库(N)」
+                  // 直达(与采购/委外批量登记页同一口径，页面只显示所选路线的提交按钮)。
+                  stockInBeforeInspection:
+                      state.uri.queryParameters['preStock'] == '1',
           ),
           DraftAwareGoRoute(
             path: RouteName.warehouseProductionFinishedArrivalRegistration,

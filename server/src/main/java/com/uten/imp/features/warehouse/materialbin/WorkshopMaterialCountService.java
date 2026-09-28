@@ -803,7 +803,7 @@ public class WorkshopMaterialCountService {
                 LEFT JOIN workshop_machine_containers container ON container.id = line.container_id
                 LEFT JOIN users entered_user ON entered_user.id = line.entered_by
                 LEFT JOIN employees enterer ON enterer.id = entered_user.employee_id
-                WHERE """ + " " + where + " ORDER BY line.entered_at, line.client_line_key", params)) {
+                """ + " WHERE " + where + " ORDER BY line.entered_at, line.client_line_key", params)) {
             out.add(new CountLineView((UUID) row.get("id"), (String) row.get("client_line_key"),
                     (String) row.get("line_kind"), (String) row.get("weigh_note"), (UUID) row.get("goods_id"),
                     (String) row.get("goods_code"), (String) row.get("goods_name"), (UUID) row.get("color_id"),

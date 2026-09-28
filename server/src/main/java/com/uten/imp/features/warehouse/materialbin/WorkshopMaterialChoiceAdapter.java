@@ -233,7 +233,8 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
                 SELECT segment.id, segment.product_goods_id, segment.workshop_department_id, segment.status,
                        segment.start_route, fn_segment_bin_material_state(segment.id) AS state
                 FROM production_execution_segments segment
-                WHERE segment.id IN (:ids) AND NOT segment.is_deleted AND """ + " " + inScope
+                WHERE segment.id IN (:ids) AND NOT segment.is_deleted
+                """ + " AND " + inScope
                 + " ORDER BY segment.workshop_department_id, segment.product_goods_id, segment.id", params)) {
             String state = (String) row.get("state");
             boolean needChoice = STATE_NEED_CHOICE.equals(state);

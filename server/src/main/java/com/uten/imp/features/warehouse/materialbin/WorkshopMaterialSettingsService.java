@@ -66,7 +66,8 @@ public class WorkshopMaterialSettingsService {
                 SELECT workshop.id FROM departments workshop
                 JOIN departments production ON production.id = workshop.parent_id AND production.code = 'DEPT_PROD'
                  AND NOT production.is_deleted
-                WHERE NOT workshop.is_deleted AND """ + " " + inScope + " ORDER BY workshop.code, workshop.name",
+                WHERE NOT workshop.is_deleted
+                """ + " AND " + inScope + " ORDER BY workshop.code, workshop.name",
                 params, UUID.class);
         List<SettingsView> out = new ArrayList<>();
         for (UUID workshop : workshops) out.add(view(workshop));

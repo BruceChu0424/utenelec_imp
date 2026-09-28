@@ -232,13 +232,16 @@ public class WorkshopMaterialPositionQueryService {
         String inScope = scope.predicate("workshop_department_id", params);
         Map<String, Object> row = db.queryForMap("""
                 SELECT (SELECT count(*) FROM workshop_material_requisitions
-                        WHERE status = 'PENDING' AND kind = 'ISSUE' AND """ + " " + inScope + """
+                        WHERE status = 'PENDING' AND kind = 'ISSUE'
+                        """ + " AND " + inScope + """
                 ) AS pending_issue,
                        (SELECT count(*) FROM workshop_material_requisitions
-                        WHERE status = 'PENDING' AND kind = 'RETURN' AND """ + " " + inScope + """
+                        WHERE status = 'PENDING' AND kind = 'RETURN'
+                        """ + " AND " + inScope + """
                 ) AS pending_return,
                        (SELECT count(*) FROM workshop_material_periods
-                        WHERE status = 'COUNTING' AND """ + " " + inScope + """
+                        WHERE status = 'COUNTING'
+                        """ + " AND " + inScope + """
                 ) AS counting
                 """, params);
         return new BadgeCounts(WorkshopMaterialBinSupport.number(row.get("pending_issue")).longValue(),

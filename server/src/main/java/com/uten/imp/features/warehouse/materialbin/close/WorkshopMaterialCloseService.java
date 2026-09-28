@@ -767,7 +767,7 @@ public class WorkshopMaterialCloseService {
                        period.start_date, period.end_date, period.status, period.close_state,
                        (period.close_state = 'HELD' AND period.held_until > now()) AS holding, period.row_version
                 FROM workshop_material_periods period
-                WHERE """ + " " + where + lock, params, (rs, index) -> new Period(rs.getObject("id", UUID.class),
+                """ + " WHERE " + where + lock, params, (rs, index) -> new Period(rs.getObject("id", UUID.class),
                 rs.getObject("bin_warehouse_id", UUID.class), rs.getObject("workshop_department_id", UUID.class),
                 rs.getInt("period_no"), rs.getObject("start_date", LocalDate.class),
                 rs.getObject("end_date", LocalDate.class), rs.getString("status"), rs.getString("close_state"),

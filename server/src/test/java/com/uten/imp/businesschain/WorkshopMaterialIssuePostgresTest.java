@@ -519,8 +519,9 @@ class WorkshopMaterialIssuePostgresTest {
         Shop shop = shop("materials");
         UUID granule = granule(shop, "颗粒下拉", shop.leafA());
         UUID untouched = granule(shop, "颗粒无货", shop.leafB(), "SHARED");
-        otherIn(shop, shop.leafA(), granule, "200", "10");
+        // 归属仓 = 最新入库仓 (V590 入库自动回写, 不因整批领料例外): 先收叶仓 B 再收叶仓 A, 默认出库仓才是 A。
         otherIn(shop, shop.leafB(), granule, "30", "10");
+        otherIn(shop, shop.leafA(), granule, "200", "10");
         UUID bin = enable(shop, BusinessTime.today());
         UUID period = openPeriod(bin);
 

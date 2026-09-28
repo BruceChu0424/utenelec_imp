@@ -65,7 +65,7 @@ class WorkshopMaterialPeriodViews {
                                      AND later.period_no > period.period_no AND later.status = 'CLOSED')
                            AS latest_closed_candidate
                 FROM workshop_material_periods period
-                WHERE """ + " " + where + " ORDER BY period.period_no", params)) {
+                """ + " WHERE " + where + " ORDER BY period.period_no", params)) {
             String status = (String) row.get("status");
             UUID draft = (UUID) row.get("draft_count_id");
             UUID submitted = (UUID) row.get("submitted_count_id");

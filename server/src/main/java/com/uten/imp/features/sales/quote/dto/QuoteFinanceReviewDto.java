@@ -73,6 +73,8 @@ public record QuoteFinanceReviewDto(
             String goodsCode,
             String goodsName,
             String colorName,
+            /** 数量合计按单位分组用(不同单位的数量不相加); unitName 只作显示。 */
+            UUID unitId,
             String unitName,
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal qty,
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal listPrice,

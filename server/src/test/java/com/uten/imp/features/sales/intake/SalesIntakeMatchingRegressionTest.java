@@ -166,7 +166,7 @@ class SalesIntakeMatchingRegressionTest {
         Stats s = evaluate(fixture, doc, result);
         print("UJ23", s, result);
         assertThat(lookup.calls.stream().filter(c -> c.startsWith("historyContains:")).toList())
-                .as("basket only among clue candidates, never an empty client set")
+                .as("with buyer clues the basket compares only the clue candidates (never all visible clients)")
                 .isNotEmpty().doesNotContain("historyContains:0");
         assertThat(s.matchedCorrect()).as("MATCHED precision").isEqualTo(s.matched());
         assertThat(s.goodsLevelPrecise()).isTrue();
@@ -177,6 +177,35 @@ class SalesIntakeMatchingRegressionTest {
         Map<?, ?> client = (Map<?, ?>) result.get("client");
         assertThat(client.get("status")).as("basket-only evidence never auto-selects").isEqualTo("REVIEW");
         assertThat(client.get("selectedClientId")).isEqualTo(fixture.client("CLIENT_B").id().toString());
+    }
+
+    @Test
+    void aFileWithoutAnyBuyerClueComparesTheBasketAcrossAllVisibleClients() {
+        IntakeFixture fixture = IntakeFixture.load();
+        IntakeFixture.FixtureDocument doc = fixture.document("UJ23");
+        // 去掉表头上方的抬头、买方、地址(国家)、电话、税号行: 文件上一条买方线索都没有。
+        Map<Integer, Map<String, String>> rows = new java.util.LinkedHashMap<>();
+        doc.rows().forEach((r, cells) -> {
+            if (r >= 10) {
+                rows.put(r, cells);
+            }
+        });
+        IntakeFixture.FixtureDocument bare = new IntakeFixture.FixtureDocument(doc.key(), doc.clientKey(), doc.sheetName(),
+                List.of(), rows, doc.lines(), doc.sim2());
+        FixtureLookup lookup = new FixtureLookup(fixture);
+        Map<String, Object> result = runPipeline(lookup, IntakeFixture.toXlsx(bare), "UJ23 quotation.xlsx", null);
+        assertThat(lookup.calls).as("no clue candidates: basket across all visible clients").contains("historyContains:0");
+        Map<?, ?> client = (Map<?, ?>) result.get("client");
+        assertThat(client.get("status")).as("basket-only evidence never auto-selects").isEqualTo("REVIEW");
+        assertThat(client.get("selectedClientId")).isEqualTo(fixture.client("CLIENT_B").id().toString());
+        Stats s = evaluate(fixture, doc, result);
+        assertThat(s.matchedCorrect()).as("MATCHED precision").isEqualTo(s.matched());
+        assertThat(s.goodsLevelPrecise()).isTrue();
+
+        // 用户已选好客户: 不做全量比较。
+        FixtureLookup preset = new FixtureLookup(fixture);
+        runPipeline(preset, IntakeFixture.toXlsx(bare), "UJ23 quotation.xlsx", fixture.client("CLIENT_B").id().toString());
+        assertThat(preset.calls).doesNotContain("historyContains:0");
     }
 
     @Test

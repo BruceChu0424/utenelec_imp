@@ -1,4 +1,4 @@
-// 识别客户文件的两个小接口: 用文件信息新建客户(409 已存在 → 可见时带 id), 货品英文名批量查。
+// 识别客户文件的小接口: 用文件信息新建客户(409 已存在 → 可见时带 id)。
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -14,7 +14,6 @@ class _Api extends ApiClient {
   final ApiException? postError;
   String? postPath;
   Object? postBody;
-  final lookupQueries = <Map<String, dynamic>?>[];
 
   @override
   Future<Map<String, dynamic>> post(
@@ -28,25 +27,6 @@ class _Api extends ApiClient {
     final e = postError;
     if (e != null) throw e;
     return postResult ?? const {};
-  }
-
-  @override
-  Future<List<Map<String, dynamic>>> getList(
-    String path, {
-    Map<String, dynamic>? query,
-  }) async {
-    expect(path, '/master/goods/lookup');
-    lookupQueries.add(query);
-    final ids = '${query!['ids']}'.split(',');
-    return [
-      for (final id in ids)
-        {
-          'id': id,
-          'code': 'C-$id',
-          if (id.endsWith('1')) 'nameEn': ' ONE GANG SWITCH ',
-          if (id.endsWith('2')) 'nameEn': '',
-        },
-    ];
   }
 }
 
@@ -129,18 +109,5 @@ void main() {
       DioSalesIntakeRepository(_Api()).createClientFromDocument(_proposal),
       throwsFormatException,
     );
-  });
-
-  test('货品英文名: 每批最多 100 个 id, 空英文名不返回, 去首尾空格', () async {
-    final api = _Api();
-    final ids = [for (var i = 0; i < 205; i++) 'g$i'];
-    final result = await DioSalesIntakeRepository(
-      api,
-    ).goodsNameEn([...ids, 'g1', '']);
-    expect(api.lookupQueries, hasLength(3));
-    expect('${api.lookupQueries.first!['ids']}'.split(','), hasLength(100));
-    expect(result['g1'], 'ONE GANG SWITCH');
-    expect(result.containsKey('g2'), isFalse);
-    expect(result.containsKey('g0'), isFalse);
   });
 }

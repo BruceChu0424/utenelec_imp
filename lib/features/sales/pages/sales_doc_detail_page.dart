@@ -1349,7 +1349,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           !d.stopped &&
           _orderCancelBlockReason != null)
         _KV('取消限制', _orderCancelBlockReason),
-      if (_cfg.hasContractInfo && d.contractNo != null)
+      // 合同号: 报价/订货都有(报价没有签约地等合同信息, ADR-134)。
+      if (_cfg.hasContractNo && (d.contractNo?.isNotEmpty ?? false))
         _KV('合同号', d.contractNo),
       if (_cfg.hasContractInfo && (d.linkPhone?.isNotEmpty ?? false))
         _KV('联系电话', d.linkPhone),

@@ -245,7 +245,8 @@ public class SalesOrderFinanceConfirmService {
                                 (UUID) r[17], (String) r[18],
                                 ((String) r[19]).isBlank() ? null : (String) r[19],
                                 com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(r[20]),
-                                Boolean.TRUE.equals(allLinesMatch.get((UUID) r[0])))))
+                                Boolean.TRUE.equals(allLinesMatch.get((UUID) r[0]))),
+                        r[17] == null ? null : Boolean.TRUE.equals(allLinesMatch.get((UUID) r[0]))))
                 .toList();
         return new PageResponse<>(out, p, sz, total, totalPages);
     }
@@ -491,7 +492,8 @@ public class SalesOrderFinanceConfirmService {
                 quoteTrace == null ? null : new SalesOrderFinanceReviewDto.SourceQuote(
                         quoteTrace.quoteId(), quoteTrace.billNo(), quoteTrace.confirmedByName(),
                         quoteTrace.confirmedAt(), quoteTrace.match().allLinesMatch()),
-                order.getClientFileCurrency());
+                order.getClientFileCurrency(),
+                quoteTrace == null ? null : quoteTrace.match().allLinesMatch());
     }
 
     /**

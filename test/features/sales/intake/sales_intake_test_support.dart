@@ -147,22 +147,10 @@ class FakeProgressPresenter {
 }
 
 class FakeSalesIntakeRepository implements SalesIntakeRepository {
-  FakeSalesIntakeRepository({this.nameEn = const {}});
-
-  final Map<String, String> nameEn;
-  final lookups = <List<String>>[];
-
   @override
   Future<String> createClientFromDocument(
     SalesIntakeNewClientProposal proposal,
   ) async => 'client-new';
-
-  @override
-  Future<Map<String, String>> goodsNameEn(Iterable<String> goodsIds) async {
-    final ids = goodsIds.toList();
-    lookups.add(ids);
-    return {for (final id in ids) id: ?nameEn[id]};
-  }
 }
 
 SalesIntakeProgressPresenter presenterOf(FakeProgressPresenter fake) =>

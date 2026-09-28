@@ -79,7 +79,6 @@ import '../intake/sales_intake_l10n.dart';
 import '../intake/sales_intake_entry_card.dart';
 import '../intake/sales_intake_launcher.dart';
 import '../intake/sales_intake_models.dart';
-import '../intake/sales_intake_repository.dart';
 import '../models/sales_doc.dart';
 import '../models/sales_shipment_prefill.dart';
 import '../providers/master_name_provider.dart';
@@ -723,7 +722,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
               ..priceSource = it.priceSource
               ..quoteDiscountLocked =
                   widget.docType == SalesDocType.order &&
-                  it.quoteDiscount != null;
+                  (it.quoteLocked || it.quoteDiscount != null);
             row.clientModel.text = it.clientModel ?? '';
             row.clientGoodsName.text = it.clientGoodsName ?? '';
           }
@@ -880,6 +879,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           target.clientGoodsName.clear();
         }
         target.prefilledNameEn = null;
+        // 「文件品名」为空时带出货品英文名称(货品选择器随货品列表一并给出, 可改)。
+        final nameEn = g.nameEn?.trim() ?? '';
+        if (nameEn.isNotEmpty && target.clientGoodsName.text.trim().isEmpty) {
+          target.clientGoodsName.text = nameEn;
+          target.prefilledNameEn = nameEn;
+        }
         String? pricingReason;
         if (_priceMasked) {
           target.discount.clear();
@@ -933,31 +938,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     _recalcQtyTotal();
     // 选了货品 = 「有内容」：驱动右下保存按钮从灰转红（2026-09-14 口径）。
     if (mounted) setState(() {});
-    if (_lockedPrice) await _prefillClientGoodsNames([row, ...extraRows]);
-  }
-
-  /// 手工选货品后「文件品名」为空的行带出货品英文名称(可改；取不到就不带)。
-  Future<void> _prefillClientGoodsNames(Iterable<SalesGridRow> rows) async {
-    final targets = rows
-        .where((r) => r.goods != null && r.clientGoodsName.text.trim().isEmpty)
-        .toList();
-    if (targets.isEmpty) return;
-    Map<String, String> names;
-    try {
-      names = await ref
-          .read(salesIntakeRepositoryProvider)
-          .goodsNameEn(targets.map((r) => r.goods!.id));
-    } on Object {
-      return;
-    }
-    if (!mounted) return;
-    for (final r in targets) {
-      final nameEn = names[r.goods?.id];
-      if (nameEn != null && r.clientGoodsName.text.trim().isEmpty) {
-        r.clientGoodsName.text = nameEn;
-        r.prefilledNameEn = nameEn;
-      }
-    }
   }
 
   /// 实物出入库单据（出货/其它出货/退货）：按货品主档补全各行库位号（拣货/上架指引）。
@@ -1902,7 +1882,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       'clientModel': clientModel.isEmpty ? null : clientModel,
       'clientGoodsName': clientGoodsName.isEmpty ? null : clientGoodsName,
       'clientPrice': ?r.clientPrice,
-      'clientNo': ?r.clientNo,
+      // 客户订单号只在订货行(服务端 QuoteItemLine 没有这个字段)。
+      if (widget.docType == SalesDocType.order) 'clientNo': ?r.clientNo,
       if (r.intakeLineKey != null) 'intakeLineKey': r.intakeLineKey,
       if (r.intakeLineKey != null || learnable) ...{
         'userConfirmed': r.userConfirmed,

@@ -42,7 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.profiles.active=dev","uten.storage.provider=local","uten.storage.uploads-enabled=true",
         "uten.storage.malware-scan.provider=test-only","uten.storage.outbox.poll-delay-millis=60000",
         "uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
-        "uten.policy-intelligence.enabled=false","uten.features.goods-owner-scope-enabled=false",
+        "uten.features.goods-owner-scope-enabled=false",
         "uten.jwt.secret=internal-attachment-pipeline-test-only-jwt-0123456789",
         "uten.crypto.pgp-master-key=internal-attachment-pipeline-test-only-pgp-0123456789",
         "uten.crypto.hmac-key=internal-attachment-pipeline-test-only-hmac-0123456789",

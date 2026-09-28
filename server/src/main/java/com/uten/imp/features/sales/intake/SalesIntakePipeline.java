@@ -730,8 +730,11 @@ final class SalesIntakePipeline {
         Set<UUID> goodsIds = ClientMatcher.allGoods(lineGoods);
         if (visible > 0 && !goodsIds.isEmpty()) {
             List<UUID> candidateIds = candidates.stream().map(ClientCandidate::clientId).distinct().toList();
-            // 篮子重合度只在线索找到的候选客户(名称/邮箱/电话/国家等)之间比较; 端口不提供「全部可见客户」的查询。
-            if (!candidateIds.isEmpty()) {
+            // 有买方线索(名称/邮箱/电话/国家等)时, 篮子重合度只在线索找到的候选客户之间比较(不让别的老客户
+            // 仅凭买过同样的货品把强线索客户压成待核对); 文件上一条线索都没有时, 才在用户看得到的全部启用客户里
+            // 比较(端口按买过的货品数只返回前若干个)。只靠篮子的客户只预选待核对, 从不自动选定;
+            // 用户已经选好客户时不做这次全量比较。
+            if (!candidateIds.isEmpty() || run.params.clientId() == null) {
                 mergeBasket(basket, lookup.historyContains(candidateIds, goodsIds));
             }
         }
@@ -1278,6 +1281,9 @@ final class SalesIntakePipeline {
         c.put("rateUsed", pricing == null ? null : pricing.rateUsed());
         c.put("pricingFlag", pricing == null ? null : pricing.flag());
         c.put("pricingNote", pricing == null ? null : pricing.note());
+        // 订货单不能直接导入这个货品(没有标价或客户价高于标价, 要先做报价单交财务定价)。不是价格本身,
+        // 看不到价格的读者也保留(IntakeResultFilter 不去掉), 订货页据此不勾选并提示改做报价单。
+        c.put("orderBlocked", pricing != null && pricing.blocking());
         return c;
     }
 

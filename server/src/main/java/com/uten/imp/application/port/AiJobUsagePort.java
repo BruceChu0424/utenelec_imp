@@ -18,7 +18,8 @@ public interface AiJobUsagePort {
 
     /**
      * 标记任务结果已被保存进某张单据({@code docType} 为 {@code quote} 或 {@code order}), 并在同一次写入里
-     * 清空结果(result_purged_at)。不是本人的任务静默忽略。
+     * 清空结果(result_purged_at)。不是本人的任务静默忽略。没有「采用后仍可读」的保留期: 同一次保存里所有需要
+     * 结果的一方必须在标记<b>之前</b>读好(销售保存: 版式登记是最先执行的提交后回调, 主档学习排在最后并最后标记)。
      */
     void markUsed(UUID jobId, UUID userId, String docType, UUID docId);
 }

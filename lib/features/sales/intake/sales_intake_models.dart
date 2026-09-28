@@ -373,17 +373,25 @@ class SalesIntakeNewClientProposal {
         placeId: placeId,
       );
 
+  /// 请求体(服务端 ClientFromDocumentController.Request)。文件里的原文可能超长,
+  /// 按服务端各字段长度上限截断, 免得整张新建被 400 挡住(对话框只能改简称)。
   Map<String, dynamic> toJson() => {
-    'name': ?name,
-    'fullName': ?fullName,
-    'nameEn': ?nameEn,
-    'linkman': ?linkman,
-    'email': ?email,
-    'phone': ?phone,
-    'address': ?address,
-    'taxId': ?taxId,
-    'placeId': ?placeId,
+    'name': ?_clip(name, 500),
+    'fullName': ?_clip(fullName, 200),
+    'nameEn': ?_clip(nameEn, 255),
+    'linkman': ?_clip(linkman, 100),
+    'email': ?_clip(email, 200),
+    'phone': ?_clip(phone, 64),
+    'address': ?_clip(address, 500),
+    'taxId': ?_clip(taxId, 64),
+    'placeId': ?_clip(placeId, 64),
   };
+
+  static String? _clip(String? value, int max) {
+    final text = value?.trim();
+    if (text == null || text.isEmpty) return null;
+    return text.length <= max ? text : text.substring(0, max).trimRight();
+  }
 }
 
 class SalesIntakeClientBlock {

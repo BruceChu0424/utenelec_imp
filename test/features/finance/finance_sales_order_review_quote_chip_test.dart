@@ -125,6 +125,7 @@ Future<void> _pump(
 
 Map<String, dynamic> _order({
   Map<String, dynamic>? sourceQuote,
+  bool? matchesQuote,
   List<Map<String, dynamic>>? items,
 }) => {
   'orderId': 'order-1',
@@ -133,6 +134,7 @@ Map<String, dynamic> _order({
   'totalOriginal': '380',
   'financeReviewRevision': 1,
   'sourceQuote': ?sourceQuote,
+  'matchesQuote': ?matchesQuote,
   'clientFileCurrency': 'USD',
   'items':
       items ??
@@ -170,8 +172,8 @@ void main() {
           'billNo': 'XB-001',
           'financeConfirmedByName': '王会计',
           'financeConfirmedAt': '2026-09-27T04:00:00Z',
-          'allLinesMatch': true,
         },
+        matchesQuote: true,
         items: const [
           {
             'itemId': 'line-1',
@@ -277,5 +279,43 @@ void main() {
     });
     expect(legacy.sourceQuote, isNull);
     expect(legacy.matchesQuote, isNull);
+  });
+
+  test('top-level matchesQuote wins over sourceQuote.allLinesMatch', () {
+    // 契约：服务端把「全部行一致」放在同级 matchesQuote(sourceQuote 只带
+    // id/billNo/核价人/核价时间); 列表行与审核详情同口径。
+    final item = SalesOrderFinancePendingItem.fromJson(const {
+      'orderId': 'order-1',
+      'billNo': 'XD-001',
+      'sourceQuote': {
+        'id': 'quote-1',
+        'billNo': 'XB-001',
+        'financeConfirmedByName': '王会计',
+        'financeConfirmedAt': '2026-09-27T04:00:00Z',
+      },
+      'matchesQuote': true,
+    });
+    expect(item.sourceQuote?.financeConfirmedByName, '王会计');
+    expect(item.matchesQuote, isTrue);
+    final mixed = SalesOrderFinancePendingItem.fromJson(const {
+      'orderId': 'order-2',
+      'billNo': 'XD-002',
+      'sourceQuote': {'id': 'quote-2', 'allLinesMatch': true},
+      'matchesQuote': false,
+    });
+    expect(mixed.matchesQuote, isFalse);
+    final review = SalesOrderFinanceReview.fromJson(
+      _order(
+        sourceQuote: const {'id': 'quote-1', 'billNo': 'XB-001'},
+        matchesQuote: true,
+      ),
+    );
+    expect(review.matchesQuote, isTrue);
+    final orphan = SalesOrderFinancePendingItem.fromJson(const {
+      'orderId': 'order-3',
+      'billNo': 'XD-003',
+      'matchesQuote': true,
+    });
+    expect(orphan.matchesQuote, isNull);
   });
 }

@@ -33,4 +33,9 @@ public class GoodsDictItem {
      * 批量取名后拼入；部门已软删或未解析时为 null。
      */
     private String owningWorkshopName;
+    /**
+     * 英文名称(goods.name_en, ADR-134): 销售单据手工选货品时预填「文件品名」用; 没有为 null。
+     * 与名称同级的基础资料, 不涉及价格。
+     */
+    private String nameEn;
 }

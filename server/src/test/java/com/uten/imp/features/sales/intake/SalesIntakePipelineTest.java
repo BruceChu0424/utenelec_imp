@@ -413,6 +413,10 @@ class SalesIntakePipelineTest {
             if (warnings.stream().anyMatch(w -> "NO_LIST_PRICE".equals(w.get("code")) || "ABOVE_LIST".equals(w.get("code")))) {
                 blocking++;
             }
+            for (Map<String, Object> c : candidates) {
+                boolean expected = "NO_LIST_PRICE".equals(c.get("pricingFlag")) || "ABOVE_LIST".equals(c.get("pricingFlag"));
+                assertThat(c.get("orderBlocked")).as("orderBlocked follows the blocking pricing flag").isEqualTo(expected);
+            }
         }
         assertThat(ambiguous).as("the rules-matched lines all became REVIEW").isGreaterThanOrEqualTo(20);
         List<Object> notices = (List<Object>) (List<?>) result.get("notices");

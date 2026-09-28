@@ -32,7 +32,7 @@ class ReviewNoticeAudienceTest {
     }
     @Test
     void everyRegisteredEventRejectsViewOnlyAndDepartmentOnlyRecipients() {
-        Set<String> views = Set.of("notice:read", "sales_order_finance:view",
+        Set<String> views = Set.of("notice:read", "sales_order_finance:view", "sales_quote_finance:view",
                 "finance_order_approval:view", "procurement_inspection:view",
                 "production_material_analysis:view", "production_execution:view",
                 "warehouse_iqc_stock_in:view", "stock_doc:view", "warehouse_inbound:view",
@@ -59,6 +59,27 @@ class ReviewNoticeAudienceTest {
         when(jdbc.queryForList(anyString(), eq(String.class), eq(employeeId), eq(employeeId)))
                 .thenReturn(List.of("GM"));
         assertThat(new ReviewNoticeAudience(jdbc).eligibleEvents(user)).isEmpty();
+    }
+
+    @Test
+    void quoteFinanceReviewCardIsAnActionCardForFinanceReviewersOnly() {
+        String event = "SALES_QUOTE_PENDING_FINANCE_REVIEW";
+        assertThat(ReviewNoticeCatalog.of(event)).hasValueSatisfying(entry -> {
+            assertThat(entry.aggregateKind()).isEqualTo("SALES_QUOTE");
+            assertThat(entry.claimTargetType()).isEqualTo("SALES_QUOTE_FINANCE_REVIEW");
+        });
+        // 退回/确认/撤销确认是发给负责销售的普通通知: 不能登记, 否则按报价撤卡时会被一起撤掉。
+        assertThat(ReviewNoticeCatalog.isReviewEvent("SALES_QUOTE_FINANCE_RETURNED")).isFalse();
+        assertThat(ReviewNoticeCatalog.isReviewEvent("SALES_QUOTE_FINANCE_CONFIRMED")).isFalse();
+        assertThat(ReviewNoticeCatalog.isReviewEvent("SALES_QUOTE_FINANCE_REOPENED")).isFalse();
+        Set<String> reviewer = Set.of("notice:read", "sales_quote_finance:view", "sales_quote_finance:confirm");
+        assertThat(ReviewNoticeAudience.eligible(event, reviewer, Set.of("DEPT_FIN"))).isTrue();
+        assertThat(ReviewNoticeAudience.eligible(event, reviewer, Set.of("DEPT_SALES"))).isFalse();
+        assertThat(ReviewNoticeAudience.eligible(event,
+                Set.of("notice:read", "sales_quote_finance:view"), Set.of("DEPT_FIN"))).isFalse();
+        assertThat(ReviewNoticeAudience.eligible(event,
+                Set.of("notice:read", "sales_order_finance:view", "sales_order_finance:confirm"),
+                Set.of("DEPT_FIN"))).isFalse();
     }
 
     @Test

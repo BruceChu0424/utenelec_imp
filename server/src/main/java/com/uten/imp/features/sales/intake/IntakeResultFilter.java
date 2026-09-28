@@ -12,6 +12,7 @@ import java.util.Set;
  * <p>没有价格查看权限(sales_order:price:view 或 goods:price:view)的读者: 候选里的标价、折扣、折算率、定价状态与说明
  * 全部去掉, 会透露标价的理由(「单价与标价一致」「折扣异常」)也去掉, 财务参考汇率置空, summary.priceMasked=true。
  * 客户文件里本来就有的单价/金额(customerUnitPrice/customerAmount)是读者自己上传的, 保留。
+ * 候选的 orderBlocked(订货单不能直接导入: 没有标价或客户价高于标价)不是价格本身, 也保留, 订货页据此不勾选并提示改做报价单。
  */
 final class IntakeResultFilter {
 

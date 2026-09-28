@@ -209,7 +209,7 @@ class _AdminAiSettingsPageState extends ConsumerState<AdminAiSettingsPage> {
     final l10n = AppLocalizations.of(context);
     return _runBusy(
       l10n.aiSettingsBusySaving,
-      () => _repository.setDefault(provider.id),
+      () => _repository.setDefault(provider.id, version: provider.version),
       success: l10n.aiSettingsDefaultSet(provider.name),
     );
   }
@@ -218,7 +218,11 @@ class _AdminAiSettingsPageState extends ConsumerState<AdminAiSettingsPage> {
     final l10n = AppLocalizations.of(context);
     return _runBusy(
       l10n.aiSettingsBusySaving,
-      () => _repository.setEnabled(provider.id, enabled: enabled),
+      () => _repository.setEnabled(
+        provider.id,
+        enabled: enabled,
+        version: provider.version,
+      ),
       success: enabled
           ? l10n.aiSettingsEnabledOn(provider.name)
           : l10n.aiSettingsEnabledOff(provider.name),

@@ -526,6 +526,20 @@ void main() {
 
       expect(api.calls, ['POST ${ApiEndpoints.adminAiProvidersTest}']);
       expect((api.bodies.single! as Map)['apiKey'], _secret);
+      // 服务端 ProbeRequest 的组件, 不多不少(保存用字段不进探测请求)。
+      expect((api.bodies.single! as Map).keys.toSet(), {
+        'preset',
+        'region',
+        'protocol',
+        'baseUrl',
+        'model',
+        'apiKey',
+        'jsonMode',
+        'thinkingControl',
+        'sendTemperature',
+        'timeoutSeconds',
+        'overseasAcknowledged',
+      });
       expect(api.lastTimeout, DioAiProviderRepository.probeTimeout);
       expect(result.ok, isFalse);
       expect(result.orderedSteps.map((s) => s.key), [
@@ -592,13 +606,21 @@ void main() {
     await repository.setDefault(_id);
     await repository.setEnabled(_id, enabled: false);
     await repository.delete(_id);
+    await repository.setDefault(_id, version: 7);
+    await repository.setEnabled(_id, enabled: true, version: 7);
 
     expect(api.calls, [
       'POST ${ApiEndpoints.adminAiProviderDefault(_id)}',
       'POST ${ApiEndpoints.adminAiProviderEnabled(_id)}',
       'DELETE ${ApiEndpoints.adminAiProvider(_id)}',
+      'POST ${ApiEndpoints.adminAiProviderDefault(_id)}',
+      'POST ${ApiEndpoints.adminAiProviderEnabled(_id)}',
     ]);
+    // 服务端 VersionRequest{version} / EnabledRequest{enabled, version}: 版本号选填。
+    expect(api.bodies[0], isNull);
     expect(api.bodies[1], {'enabled': false});
+    expect(api.bodies[3], {'version': 7});
+    expect(api.bodies[4], {'enabled': true, 'version': 7});
   });
 
   test('provider ids with path characters are rejected', () async {

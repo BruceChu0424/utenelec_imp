@@ -79,6 +79,11 @@ public class SalesQuoteService {
     public static final String BUCKET_PENDING_FINANCE = "PENDING_FINANCE";
     public static final String BUCKET_APPROVED = "APPROVED";
     public static final String BUCKET_REVERSED = "REVERSED";
+    /**
+     * 只作列表筛选(不是分段, 分段计数里没有它): 财务已核价、还没转成订货单的报价, 与工作台徽章
+     * 「报价已核价待转订货」({@link #counts()})同一条件; 「从报价引入」选报价时用。
+     */
+    public static final String BUCKET_AWAITING_CONVERSION = "AWAITING_CONVERSION";
 
     private static final String DOC_LABEL = "报价";
     private static final String MASKED_DISCOUNT_NOTE = "文件单价换算不出合理折扣, 暂按原价, 请有价格权限的同事核对";
@@ -180,7 +185,7 @@ public class SalesQuoteService {
             }
             if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
-            if (bucket != null) ps.add(bucketPredicate(bucket, root, cb));
+            if (bucket != null) ps.add(bucketPredicate(bucket, root, q, cb));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             // 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配。
@@ -195,13 +200,18 @@ public class SalesQuoteService {
         if (raw == null || raw.isBlank()) return null;
         String bucket = raw.trim().toUpperCase(java.util.Locale.ROOT);
         return switch (bucket) {
-            case BUCKET_DRAFT, BUCKET_FINANCE_REJECTED, BUCKET_PENDING_FINANCE, BUCKET_APPROVED, BUCKET_REVERSED -> bucket;
+            case BUCKET_DRAFT, BUCKET_FINANCE_REJECTED, BUCKET_PENDING_FINANCE, BUCKET_APPROVED, BUCKET_REVERSED,
+                 BUCKET_AWAITING_CONVERSION -> bucket;
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "报价分段无效: " + raw);
         };
     }
 
-    /** 分段谓词: 与 DocumentStatusCountQueryService 的 salesQuote 分桶逐条一致。 */
-    private static Predicate bucketPredicate(String bucket, Root<SalesQuote> root, CriteriaBuilder cb) {
+    /**
+     * 分段谓词: 与 DocumentStatusCountQueryService 的 salesQuote 分桶逐条一致;
+     * AWAITING_CONVERSION 与 {@link #counts()} 的「已核价待转订货」同一条件(状态 1、财务确认过、没有未删除的订货单引用它)。
+     */
+    private static Predicate bucketPredicate(String bucket, Root<SalesQuote> root,
+                                             jakarta.persistence.criteria.CriteriaQuery<?> query, CriteriaBuilder cb) {
         return switch (bucket) {
             case BUCKET_DRAFT -> cb.and(cb.equal(root.get("status"), STATUS_DRAFT),
                     cb.isNull(root.get("financeReturnReason")));
@@ -209,6 +219,17 @@ public class SalesQuoteService {
                     cb.isNotNull(root.get("financeReturnReason")));
             case BUCKET_PENDING_FINANCE -> cb.equal(root.get("status"), STATUS_PENDING_FINANCE);
             case BUCKET_APPROVED -> cb.equal(root.get("status"), STATUS_CONFIRMED);
+            case BUCKET_AWAITING_CONVERSION -> {
+                jakarta.persistence.criteria.Subquery<Integer> converted = query.subquery(Integer.class);
+                Root<com.uten.imp.features.sales.order.SalesOrder> order =
+                        converted.from(com.uten.imp.features.sales.order.SalesOrder.class);
+                converted.select(cb.literal(1)).where(
+                        cb.equal(order.get("sourceQuoteId"), root.get("id")),
+                        cb.isFalse(order.get("deleted")));
+                yield cb.and(cb.equal(root.get("status"), STATUS_CONFIRMED),
+                        cb.isNotNull(root.get("financeConfirmedAt")),
+                        cb.not(cb.exists(converted)));
+            }
             default -> cb.equal(root.get("status"), STATUS_REVERSED);
         };
     }
@@ -679,6 +700,8 @@ public class SalesQuoteService {
         item.setLegacyId(q.getLegacyId());
         item.setWritable(writable);
         item.setSellerId(q.getSellerId());
+        item.setCurrencyId(q.getCurrencyId());
+        item.setDeliverDate(q.getDeliverDate());
         item.setStatusBucket(statusBucket(q));
         item.setFinanceReturnReason(q.getFinanceReturnReason());
         item.setSubmittedAt(q.getSubmittedAt());

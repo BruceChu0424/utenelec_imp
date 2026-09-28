@@ -1,7 +1,7 @@
-// 销售客户文件识别(ADR-134)用到的两个小接口:
-//  - 用文件信息新建客户(POST /master/clients/from-document, 服务端先跨范围查重);
-//  - 按货品 id 取英文名称(手工选货品时把英文名带到「文件品名」)。
-// 识别作业本身走公共 AI 作业接口(lib/shared/ai), 不在这里。
+// 销售客户文件识别(ADR-134)用到的小接口: 用文件信息新建客户
+// (POST /master/clients/from-document, 服务端先跨范围查重)。
+// 识别作业本身走公共 AI 作业接口(lib/shared/ai), 不在这里; 手工选货品时「文件品名」
+// 直接用货品选择器给出的英文名称(GoodsListItem.nameEn), 不另外查询。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -29,9 +29,6 @@ abstract interface class SalesIntakeRepository {
   Future<String> createClientFromDocument(
     SalesIntakeNewClientProposal proposal,
   );
-
-  /// goodsId → 英文名称(没有英文名的货品不在结果里)。
-  Future<Map<String, String>> goodsNameEn(Iterable<String> goodsIds);
 }
 
 final salesIntakeRepositoryProvider = Provider<SalesIntakeRepository>(
@@ -46,9 +43,6 @@ class DioSalesIntakeRepository implements SalesIntakeRepository {
   DioSalesIntakeRepository(this.api);
 
   final ApiClient api;
-
-  /// 与货品字典批量查询同口径: 每批 ≤ 100 个 id。
-  static const _lookupBatch = 100;
 
   @override
   Future<String> createClientFromDocument(
@@ -79,29 +73,5 @@ class DioSalesIntakeRepository implements SalesIntakeRepository {
         existingClientId: existing,
       );
     }
-  }
-
-  @override
-  Future<Map<String, String>> goodsNameEn(Iterable<String> goodsIds) async {
-    final ids = goodsIds.where((id) => id.isNotEmpty).toSet().toList();
-    final result = <String, String>{};
-    for (var i = 0; i < ids.length; i += _lookupBatch) {
-      final batch = ids.sublist(
-        i,
-        i + _lookupBatch > ids.length ? ids.length : i + _lookupBatch,
-      );
-      final entries = await api.getList(
-        ApiEndpoints.goodsLookup,
-        query: {'ids': batch.join(',')},
-      );
-      for (final entry in entries) {
-        final id = entry['id'];
-        final nameEn = entry['nameEn'];
-        if (id is String && nameEn is String && nameEn.trim().isNotEmpty) {
-          result[id] = nameEn.trim();
-        }
-      }
-    }
-    return result;
   }
 }

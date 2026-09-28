@@ -54,7 +54,6 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "spring.profiles.active=dev",
                 "uten.audit.retention.enabled=false",
                 "uten.reporting.materialized-view-refresh.enabled=false",
-                "uten.policy-intelligence.enabled=false",
                 "uten.features.goods-owner-scope-enabled=false",
                 "uten.jwt.secret=account-posting-harness-jwt-secret-0123456789-test-only",
                 "uten.crypto.pgp-master-key=account-posting-harness-pgp-key-test-only-0123456789",

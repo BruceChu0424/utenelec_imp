@@ -42,6 +42,12 @@ public final class ReviewNoticeCatalog {
             Map.entry(
                     "SALES_ORDER_PENDING_FINANCE_CONFIRM",
                     new Entry("SALES_ORDER", "SALES_ORDER_FINANCE_CONFIRM")),
+            // ADR-134 销售报价提交财务核价 → 合格核价人(报价级; 认领显示「XX 正在核价」;
+            // 销售撤回、财务退回或确认时按 (SALES_QUOTE, 报价 id) 撤卡)。退回/确认/撤销确认发给负责销售的
+            // 普通通知故意不登记在 SALES_QUOTE 下, 否则同一次撤卡会把它们一起撤掉。
+            Map.entry(
+                    "SALES_QUOTE_PENDING_FINANCE_REVIEW",
+                    new Entry("SALES_QUOTE", "SALES_QUOTE_FINANCE_REVIEW")),
             // 采购/委外订货 → 财务审批（V196 审批 case）
             Map.entry(
                     "PROCUREMENT_FINANCE_SUBMITTED",

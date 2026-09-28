@@ -126,7 +126,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 // 还没断言，后台先把 business_refresh_pending 抽干，断言读到 false。
                 // 调度器本身由 InventoryValueWorkSchedulerTest 单独覆盖，这里关掉不丢覆盖面。
                 "uten.inventory.value-work-initial-delay-ms=3600000",
-                "uten.policy-intelligence.enabled=false",
                 "uten.features.goods-owner-scope-enabled=false",
                 "uten.storage.uploads-enabled=true",
                 "uten.storage.malware-scan.provider=test-only",

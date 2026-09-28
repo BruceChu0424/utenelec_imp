@@ -27,9 +27,11 @@ abstract interface class AiProviderRepository {
 
   Future<void> delete(String id);
 
-  Future<void> setDefault(String id);
+  /// [version] 为页面读到的版本号(服务端 `{version}`), 期间被别人改过服务端回 409。
+  Future<void> setDefault(String id, {int? version});
 
-  Future<void> setEnabled(String id, {required bool enabled});
+  /// 请求体 `{enabled, version}`; [version] 同 [setDefault]。
+  Future<void> setEnabled(String id, {required bool enabled, int? version});
 
   /// 用表单里本次新填的密钥测试(未保存的配置)。
   Future<AiConnectionTestResult> testForm(AiProviderForm form);
@@ -103,15 +105,22 @@ class DioAiProviderRepository implements AiProviderRepository {
   }
 
   @override
-  Future<void> setDefault(String id) async {
-    await api.post(ApiEndpoints.adminAiProviderDefault(_checkedId(id)));
+  Future<void> setDefault(String id, {int? version}) async {
+    await api.post(
+      ApiEndpoints.adminAiProviderDefault(_checkedId(id)),
+      body: version == null ? null : {'version': version},
+    );
   }
 
   @override
-  Future<void> setEnabled(String id, {required bool enabled}) async {
+  Future<void> setEnabled(
+    String id, {
+    required bool enabled,
+    int? version,
+  }) async {
     await api.post(
       ApiEndpoints.adminAiProviderEnabled(_checkedId(id)),
-      body: {'enabled': enabled},
+      body: {'enabled': enabled, 'version': ?version},
     );
   }
 
@@ -120,7 +129,7 @@ class DioAiProviderRepository implements AiProviderRepository {
       AiConnectionTestResult.fromJson(
         await api.postLongRunning(
           ApiEndpoints.adminAiProvidersTest,
-          body: form.toJson(),
+          body: form.toProbeJson(),
           receiveTimeout: probeTimeout,
         ),
       );
@@ -142,7 +151,7 @@ class DioAiProviderRepository implements AiProviderRepository {
       AiModelList.fromJson(
         await api.postLongRunning(
           ApiEndpoints.adminAiProvidersModels,
-          body: form.toJson(),
+          body: form.toProbeJson(),
           receiveTimeout: probeTimeout,
         ),
       );

@@ -73,7 +73,6 @@ import static org.mockito.Mockito.when;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false",
-        "uten.policy-intelligence.enabled=false",
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",
         "uten.storage.malware-scan.provider=test-only",
         "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
@@ -163,6 +162,9 @@ class MasterIntakeLearningPostgresTest {
         MasterIntakeLookupPort.ClientProfile profile = lookup.clientProfile(sunas);
         assertThat(profile.editable()).isTrue();
         assertThat(profile.nameEn()).isEqualTo("SUNAS Electrical Resource Ltd");
+        assertThat(profile.status()).as("识别侧按「使用」判断客户启用").isEqualTo("使用");
+        assertThat(lookup.clientProfile(disabled)).as("停用客户仍可读资料, 状态如实返回")
+                .extracting(MasterIntakeLookupPort.ClientProfile::status).isEqualTo("禁用");
 
         fixture.loginAs(b.userId());
         assertThat(lookup.clientCandidates(query(Set.of("sunas.inv40@gmail.test"), Set.of(), Set.of(), Set.of(),
@@ -207,6 +209,11 @@ class MasterIntakeLearningPostgresTest {
         Map<UUID, Set<UUID>> basket = lookup.historyContains(List.of(sunas, other), List.of(g1, g2, g3));
         assertThat(basket).containsOnlyKeys(sunas);
         assertThat(basket.get(sunas)).containsExactlyInAnyOrder(g1, g2);
+        // 空客户集合 = 自己看得到的全部启用客户(文件上没有买方线索时的篮子比较): 别人的客户、作废订单都不算。
+        Map<UUID, Set<UUID>> allVisible = lookup.historyContains(List.of(), List.of(g1, g2, g3));
+        assertThat(allVisible).containsOnlyKeys(sunas);
+        assertThat(allVisible.get(sunas)).containsExactlyInAnyOrder(g1, g2);
+        assertThat(lookup.historyContains(List.of(), List.of())).isEmpty();
 
         List<MasterIntakeLookupPort.DuplicateDocRow> recent = lookup.recentDocs(sunas, 180);
         assertThat(recent).as("两张有效订货单 + 自己做的有效报价单; 作废的与别人做的报价单不算").hasSize(3);
@@ -233,6 +240,8 @@ class MasterIntakeLearningPostgresTest {
         fixture.loginAs(b.userId());
         assertThat(lookup.clientHistory(sunas, 24)).isEmpty();
         assertThat(lookup.recentDocs(sunas, 180)).isEmpty();
+        assertThat(lookup.historyContains(List.of(), List.of(g1, g2, g3))).as("b 只比较自己的客户")
+                .containsOnlyKeys(other);
     }
 
     // ==================================================================
@@ -796,6 +805,12 @@ class MasterIntakeLearningPostgresTest {
         assertThat(updated.getVersion()).isGreaterThan(detail.getVersion());
         assertThat(catchApi(() -> goodsController.updateNameEn(ga, new GoodsNameEnRequest("Other", detail.getVersion())))
                 .getCode()).isEqualTo(ErrorCode.CONFLICT);
+
+        // 按 id 批量解析(销售单据手工选货品时预填「文件品名」)同样带英文名称。
+        fixture.loginAs(reader.userId());
+        assertThat(goodsController.lookup(Set.of(ga))).singleElement()
+                .satisfies(item -> assertThat(item.getNameEn()).isEqualTo("Double Socket " + tag));
+        fixture.loginAs(editor.userId());
 
         var goodsPage = goodsService.list(goodsFilter("double socket " + tag.toLowerCase(Locale.ROOT)), 1, 20, null, null);
         assertThat(goodsPage.getItems()).extracting(item -> item.getId()).containsExactly(ga);

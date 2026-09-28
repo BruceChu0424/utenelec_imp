@@ -815,6 +815,7 @@ class SalesDocItem {
     this.clientPrice,
     this.priceSource,
     this.quoteDiscount,
+    this.quoteLocked = false,
     this.solution,
     this.responsible,
     this.orderItemId,
@@ -883,8 +884,12 @@ class SalesDocItem {
   /// 报价行定价来源: MASTER(货品标价) / FINANCE(财务定价)。
   final String? priceSource;
 
-  /// 报价转入的订货行: 财务在报价中核定的折扣(非 null 时订货行折扣只读)。
+  /// 报价转入的订货行: 财务在报价中核定的折扣(看不到价格的账号服务端置空)。
   final double? quoteDiscount;
+
+  /// 报价转入的订货行: 单价与折扣由来源报价锁定(折扣只读「报价核定」)。
+  /// 服务端对看不到价格的账号也照常下发, 以它为准判断是否锁定。
+  final bool quoteLocked;
   final String? solution;
   final String? responsible;
   final String? orderItemId;
@@ -944,6 +949,7 @@ class SalesDocItem {
     clientPrice: (json['clientPrice'] as num?)?.toDouble(),
     priceSource: json['priceSource'] as String?,
     quoteDiscount: (json['quoteDiscount'] as num?)?.toDouble(),
+    quoteLocked: json['quoteLocked'] == true,
     solution: json['solution'] as String?,
     responsible: json['responsible'] as String?,
     orderItemId: json['orderItemId'] as String?,

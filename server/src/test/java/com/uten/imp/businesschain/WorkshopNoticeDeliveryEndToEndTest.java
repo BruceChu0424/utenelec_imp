@@ -47,7 +47,7 @@ import static org.mockito.Mockito.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false",
-        "uten.reporting.materialized-view-refresh.enabled=false","uten.policy-intelligence.enabled=false",
+        "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true",
         "uten.storage.malware-scan.provider=test-only","uten.inventory.value-work-initial-delay-ms=3600000",
         "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",

@@ -408,6 +408,22 @@ class AiProviderForm {
     'overseasAcknowledged': region == AiRegion.overseas && overseasAcknowledged,
     'version': ?version,
   };
+
+  /// 用本次新填密钥测试 / 取模型的请求体(服务端 ProbeRequest): 只带探测要用的字段,
+  /// 不带名称、启用、最大输出长度等保存用字段; 密钥同样只在新填了才带。
+  Map<String, dynamic> toProbeJson() => {
+    'preset': preset,
+    'region': region.code,
+    'protocol': protocol.code,
+    'baseUrl': baseUrl.trim(),
+    'model': model.trim(),
+    if (hasNewApiKey) 'apiKey': apiKey!.trim(),
+    'jsonMode': jsonMode.code,
+    'thinkingControl': thinkingControl.code,
+    'sendTemperature': sendTemperature,
+    'timeoutSeconds': timeoutSeconds,
+    'overseasAcknowledged': region == AiRegion.overseas && overseasAcknowledged,
+  };
 }
 
 /// 规范化接口地址, 用于判断「接口地址是否改了」(与服务端同口径: 协议 + 主机 + 端口 + 路径)。

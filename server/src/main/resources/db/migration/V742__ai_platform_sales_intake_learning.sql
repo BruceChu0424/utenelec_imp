@@ -239,9 +239,15 @@ COMMENT ON COLUMN client_goods_aliases.alias_norm IS
 COMMENT ON COLUMN client_goods_aliases.context_norm IS
     '该行上下文(规范化的「系列|主色」), 未知时为空串; 同一叫法在不同系列/颜色下可指向不同货品';
 COMMENT ON COLUMN client_goods_aliases.confirm_count IS
-    '被保存确认的次数(同一张单据重复保存不重复计数)';
+    '客户对照: 被保存确认的次数(同一张单据重复保存不重复计数); 全局对照(client_id 为空): 把同一叫法对到同一货品的不同客户数(至少 1, 识别时要求 >= 2)';
 COMMENT ON COLUMN client_goods_aliases.explicit_count IS
-    '用户在识别面板或明细里明确选择/改成这个货品的次数(>= 1 或确认 >= 2 次才算权威对照)';
+    '客户对照: 用户在识别面板或明细里明确选择/改成这个货品的次数(>= 1 或确认 >= 2 次才算权威对照); 全局对照: 其中明确选过的不同客户数';
+
+-- 全局对照的可信度按「不同客户数」重算: 每次保存按 (种类, 叫法, 货品) 查各客户的对照行。唯一索引以 client_id 打头
+-- 服务不了这个查询, 单独建一把只含客户对照行的部分索引(与唯一索引前缀不同, 不是重复索引)。
+CREATE INDEX idx_client_goods_aliases_global_evidence
+    ON client_goods_aliases (alias_kind, alias_norm, goods_id)
+    WHERE client_id IS NOT NULL;
 COMMENT ON COLUMN client_goods_aliases.last_source_doc_type IS
     '最近一次确认来自哪类单据(quote/order), last_source_doc_id 为单据 id; 单据属清空数据, 故不建外键';
 

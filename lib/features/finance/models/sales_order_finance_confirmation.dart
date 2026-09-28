@@ -9,8 +9,9 @@
 /// 这里带出核价人/时间，列表与审核页据此显示「报价已核价」。
 ///
 /// 契约(SPEC §6.1 + 服务端 SalesOrderFinanceReviewDto.SourceQuote)：列表行与审核详情都用
-/// `sourceQuote{id, billNo, financeConfirmedByName, financeConfirmedAt, allLinesMatch}`；
-/// allLinesMatch = 每行单价与折扣都与报价核定一致(列表「报价已核价 · 一致」)。
+/// `sourceQuote{id, billNo, financeConfirmedByName, financeConfirmedAt}`, 「全部行都与报价核定
+/// 一致」在同级 `matchesQuote`(列表「报价已核价 · 一致」); 旧形态把它放在
+/// `sourceQuote.allLinesMatch`, 解析时两处都认, 同级优先。
 class SalesOrderSourceQuote {
   const SalesOrderSourceQuote({
     required this.id,
@@ -25,7 +26,8 @@ class SalesOrderSourceQuote {
   final String? financeConfirmedByName;
   final String? financeConfirmedAt;
 
-  /// 全部行的单价与折扣都与来源报价一致；服务端未给为 null。
+  /// 旧形态 `sourceQuote.allLinesMatch`(全部行的单价与折扣都与来源报价一致)；未给为 null。
+  /// 页面请读外层的 `matchesQuote`。
   final bool? allLinesMatch;
 
   static SalesOrderSourceQuote? tryFromJson(Object? json) {
@@ -65,6 +67,7 @@ class SalesOrderFinancePendingItem {
     this.changeCount = 0,
     this.financeReviewRevision = 0,
     this.sourceQuote,
+    this.matchesQuote,
   });
 
   final String orderId;
@@ -101,7 +104,7 @@ class SalesOrderFinancePendingItem {
   final SalesOrderSourceQuote? sourceQuote;
 
   /// 全部行的单价与折扣都与来源报价一致；非报价转入或服务端未给为 null。
-  bool? get matchesQuote => sourceQuote?.allLinesMatch;
+  final bool? matchesQuote;
 
   bool get canConfirm => orderId.isNotEmpty;
 
@@ -128,6 +131,7 @@ class SalesOrderFinancePendingItem {
       changeCount: _int(json['changeCount']) ?? 0,
       financeReviewRevision: _int(json['financeReviewRevision']) ?? 0,
       sourceQuote: SalesOrderSourceQuote.tryFromJson(json['sourceQuote']),
+      matchesQuote: _matchesQuote(json),
     );
   }
 }
@@ -223,6 +227,7 @@ class SalesOrderFinanceReview {
     this.financeReviewRevision = 0,
     this.sourceQuote,
     this.clientFileCurrency,
+    this.matchesQuote,
   });
 
   final String orderId;
@@ -283,7 +288,8 @@ class SalesOrderFinanceReview {
   final SalesOrderSourceQuote? sourceQuote;
   final String? clientFileCurrency;
 
-  bool? get matchesQuote => sourceQuote?.allLinesMatch;
+  /// 全部行的单价与折扣都与来源报价一致；非报价转入或服务端未给为 null。
+  final bool? matchesQuote;
 
   factory SalesOrderFinanceReview.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'];
@@ -350,6 +356,7 @@ class SalesOrderFinanceReview {
       financeReviewRevision: _int(json['financeReviewRevision']) ?? 0,
       sourceQuote: SalesOrderSourceQuote.tryFromJson(json['sourceQuote']),
       clientFileCurrency: _string(json['clientFileCurrency']),
+      matchesQuote: _matchesQuote(json),
       revisionDiff: json['revisionDiff'] is Map
           ? SalesOrderRevisionDiff.fromJson(
               (json['revisionDiff'] as Map).cast<String, dynamic>(),
@@ -588,4 +595,15 @@ String? _string(Object? value) {
 int? _int(Object? value) {
   if (value is num) return value.toInt();
   return int.tryParse(value?.toString() ?? '');
+}
+
+/// 订单级「全部行都与来源报价核定一致」: 同级 `matchesQuote` 优先, 旧形态
+/// `sourceQuote.allLinesMatch` 兜底; 非报价转入(没有 sourceQuote)为 null。
+bool? _matchesQuote(Map<String, dynamic> json) {
+  final quote = json['sourceQuote'];
+  if (quote is! Map) return null;
+  final top = json['matchesQuote'];
+  if (top is bool) return top;
+  final legacy = quote['allLinesMatch'];
+  return legacy is bool ? legacy : null;
 }

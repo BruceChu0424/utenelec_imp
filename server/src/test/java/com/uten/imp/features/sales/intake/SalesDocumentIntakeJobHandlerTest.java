@@ -133,6 +133,7 @@ class SalesDocumentIntakeJobHandlerTest {
         candidate.put("rateUsed", 1);
         candidate.put("pricingFlag", "OK");
         candidate.put("pricingNote", "n");
+        candidate.put("orderBlocked", true);
         candidate.put("reasons", List.of("型号一致", "单价与标价一致"));
         Map<String, Object> line = new LinkedHashMap<>();
         line.put("candidates", List.of(candidate));
@@ -152,7 +153,9 @@ class SalesDocumentIntakeJobHandlerTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> maskedCandidate = ((List<Map<String, Object>>) ((List<Map<String, Object>>) masked.get("lines")).getFirst()
                 .get("candidates")).getFirst();
-        assertThat(maskedCandidate).containsOnlyKeys("goodsId", "reasons");
+        assertThat(maskedCandidate).as("「订货单不能直接导入」不是价格, 看不到价格的人也要知道")
+                .containsOnlyKeys("goodsId", "reasons", "orderBlocked");
+        assertThat(maskedCandidate.get("orderBlocked")).isEqualTo(true);
         assertThat(maskedCandidate.get("reasons")).isEqualTo(List.of("型号一致"));
         assertThat(((Map<?, ?>) masked.get("summary")).get("priceMasked")).isEqualTo(true);
         assertThat(((Map<?, ?>) masked.get("currency")).get("financeRate")).isNull();

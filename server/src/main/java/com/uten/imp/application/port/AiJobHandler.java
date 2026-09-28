@@ -15,7 +15,14 @@ import java.util.UUID;
  * {@link #filterResultForReader} 过滤。{@link #process} 在后台线程、无事务、以提交人恢复出的权限运行。
  *
  * <p>授权失败抛 {@link com.uten.imp.common.web.ApiException}(403/400); 处理中抛出的 ApiException 以其消息
- * 作为失败原因展示给用户, 其它异常一律显示「识别失败, 请稍后重试」(堆栈只记服务端日志)。
+ * 作为失败原因展示给用户, 其它异常一律显示「识别失败, 请稍后重试」(堆栈只记服务端日志)。需要前端区分失败原因时,
+ * 在 ApiException 的 fieldErrors 里放 {@code field = "errorCode"}、{@code message = 业务码}(大写下划线,
+ * 不超过 48 字符, 如 AI_REQUIRED), 框架把它写进任务的 errorCode; 没有时 errorCode 为 ApiException 的错误类别名。
+ *
+ * <p>阶段名(progress 的 stage)用大写下划线; 框架的坏文件判定只认 {@code READING}/{@code PARSING}/{@code LAYOUT}
+ * 为「还在读文件」阶段(租约过期停在这些阶段即判「文件无法解析」、不重试), 处理器应在解析整个文件时报这些阶段,
+ * 解析完成后再报后续阶段(如 EXTRACTING、MATCHING_GOODS、MATCHING_CLIENT、PRICING、DONE)。
+ * 用户取消时处理器可以直接返回空结果, 框架按「已取消」结束, 不保存结果。
  */
 public interface AiJobHandler {
 

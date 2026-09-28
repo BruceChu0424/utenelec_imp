@@ -350,10 +350,15 @@ class _Repo implements AiProviderRepository {
   Future<void> delete(String id) async => calls.add('delete $id');
 
   @override
-  Future<void> setDefault(String id) async => calls.add('default $id');
+  Future<void> setDefault(String id, {int? version}) async =>
+      calls.add('default $id');
 
   @override
-  Future<void> setEnabled(String id, {required bool enabled}) async {
+  Future<void> setEnabled(
+    String id, {
+    required bool enabled,
+    int? version,
+  }) async {
     calls.add('enabled $id $enabled');
     await holdEnabled?.future;
   }

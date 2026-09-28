@@ -129,7 +129,7 @@ class PurchaseInvoiceMatchHandler implements AiJobHandler {
    再调用 `process`。`process` 里需要读写数据库时自己开**短**事务; AI 调用在事务外。
 3. **阶段约定**: `READING` / `PARSING` / `LAYOUT` 是「解析文件」阶段 —— 处理线程在这些阶段死掉(租约过期)时平台判定是坏文件,
    直接失败「文件无法解析」不再重试; 其后的阶段第一次过期会重新排队一次(AI 次数归零、从头处理), 第二次判失败;
-   用户已点取消的任务租约过期时直接按取消结束。所以: **先把文件完整解析完, 再调用 AI**,
+   用户已点取消的任务租约过期时直接按取消结束; 处理中发现 `cancelled()` 时直接返回空结果即可, 平台按「已取消」结束、不保存结果。所以: **先把文件完整解析完, 再调用 AI**,
    并且解析阶段一定要报告这三个阶段键之一。平台认领任务时把阶段置为 `STARTING`(重建主体中, 不算解析阶段), 重新排队的任务从头处理。其他阶段键自取(前端进度弹窗按阶段键分组显示)。
 4. **进度、租约与取消**: 处理中的任务有租约(`uten.ai.job-lease-seconds`, 默认 600 秒), 过期视为处理线程已死。
    `progress(stage, percent)` 写一个短事务并续租; `completeJson` 调用期间平台每隔租约的 1/4(最长 60 秒)自动续租,
@@ -137,7 +137,9 @@ class PurchaseInvoiceMatchHandler implements AiJobHandler {
    平台不续租: 超过几分钟的循环里要定期 `progress(...)`。任务被取消/清理/清库, 或租约过期后已被重新认领时,
    `progress` 静默返回、`cancelled()` 变成 true, 之后任何结果都不会写入 —— 在阶段之间检查 `cancelled()` 并尽快返回。
 5. **失败**(`errorMessage` 会显示给提交人, 一律是业务人员能看懂的话):
-   - 抛 `ApiException`: 它的中文消息原样显示(处理器自己负责写成通俗说法);
+   - 抛 `ApiException`: 它的中文消息原样显示(处理器自己负责写成通俗说法); 需要前端按原因给出不同的下一步时,
+     在 `fieldErrors` 里放 `field = "errorCode"`、`message = 业务码`(大写下划线, 不超过 48 字符, 例如销售识别的
+     `AI_REQUIRED`、`AI_VISION_UNAVAILABLE`), 平台写进任务的 `errorCode`; 没有时 `errorCode` 为 `ApiException` 的错误类别名;
    - 没接住的 `AiCallException`: 错误码记 `AI_<类别>`(给管理员与日志), 显示的消息按类别换成通俗说法 ——
      RATE_LIMIT / QUOTA →「AI 服务暂时繁忙或今日额度已用完, 请稍后再试」; AUTH / NOT_FOUND / BAD_REQUEST / UNAVAILABLE /
      BLOCKED →「AI 服务暂时不可用, 请联系管理员」; TIMEOUT / NETWORK / SERVER / INVALID_RESPONSE →「识别失败, 请稍后重试」。
@@ -161,8 +163,9 @@ aiJobUsage.markUsed(jobId, currentUserId, "quote", quoteId);
 - `resultFor` 只对提交人本人、成功、**从未被单据采用**且未清空的任务返回完整(未过滤)结果, 其余一律为空。
 - 一个结果只能被一张单据采用: `markUsed` 第一张单据生效并立即清空结果; 之后别的单据再标记不生效、去向不变,
   也读不到结果(同一识别结果不会喂给第二张单据的学习); 同一张单据重复标记无害。
-- 所以需要结果的一方必须**先读后标记**: 在保存事务里读好, 或像主档学习那样在提交后回调里先读、最后一步再标记;
-  其他需要同一结果的提交后回调要排在标记之前, 或在保存事务里先读好(版式学习就是这样)。
+- 所以需要结果的一方必须**先读后标记**: 在保存事务里读好, 或像主档学习那样在提交后回调里先读、最后一步再标记
+  (主档学习回调顺序 `LOWEST_PRECEDENCE`); 其他需要同一结果的提交后回调要排在它前面(版式学习 `SalesIntakeLayoutLearner`
+  就是 `HIGHEST_PRECEDENCE` 的提交后回调), 或在保存事务里先读好。
 
 ### 前端(`lib/shared/ai/`)
 
@@ -186,6 +189,12 @@ final snapshot = await showAiProgressDialog(
 if (snapshot == null) return;              // 用户取消
 final result = snapshot.result;            // 失败时抛 AiJobFailure(message 可直接展示)
 ```
+
+- 只需「提交 + 进度弹窗」时直接用 `runAiJob(context, runner:, request:, title:, stages:)`(内部就是上面的 `showAiProgressDialog(..., task:)`)。
+- 第一步要覆盖上传阶段 `AiJobSnapshot.uploadingStage`(`UPLOADING`); 服务端认领后先报 `STARTING`(重建提交人主体), 可并入第一个服务端阶段。
+  `AiProgressStage.serverStages` 列出该步骤对应的服务端阶段键, 阶段只进不退。
+- 用户取消(含服务端已取消)返回 null; 作业失败抛 `AiJobFailure{message, code, snapshot, clientMessage}`(`code` 为服务端 `errorCode`
+  或客户端的 `CANCELLED` / `CLIENT_TIMEOUT` / `JOB_GONE` / `FAILED`); 提交被服务端拒绝(403/422/429)时原样抛 `ApiException`。
 
 - 状态接口 `GET /api/ai/status` → `aiStatusProvider`: `available`(管理员已配置可用的 AI)、`aiAllowedForMe`(持有 `ai:use`)、
   `supportsVision`。AI 不可用时只提示「AI 未开启, 只能识别常见格式的文件」, 不要显示服务商或模型名称。

@@ -73,9 +73,7 @@ Future<_Env> _pump(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final api = _IntakeApi(detail);
   final runner = FakeAiJobRunner(result: intakeResultJson());
-  final repo = FakeSalesIntakeRepository(
-    nameEn: {'goods-2': 'ONE GANG SWITCH'},
-  );
+  final repo = FakeSalesIntakeRepository();
   final presenter = FakeProgressPresenter();
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
@@ -482,6 +480,7 @@ void main() {
           name: '一开开关',
           price: 21,
           unitId: 'unit-pcs',
+          nameEn: 'ONE GANG SWITCH',
         ),
       ],
     );
@@ -506,7 +505,7 @@ void main() {
     // 客户文件里的品名是客户自己的叫法, 换货品不覆盖。
     expect(row.clientGoodsName.text, 'DOUBLE 3 PIN SOCKET GOLD');
 
-    // 空行手工选货品: 文件品名带出货品英文名称。
+    // 空行手工选货品: 文件品名带出货品选择器给出的货品英文名称。
     final blank = SalesGridRow(amountUsesDiscount: true);
     grid.addRow(blank);
     await tester.pumpAndSettle();

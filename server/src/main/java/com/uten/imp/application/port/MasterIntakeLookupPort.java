@@ -35,7 +35,11 @@ public interface MasterIntakeLookupPort {
     /** 该客户最近 {@code months} 个月未作废订单里买过的货品: 货品 id → 订单数与最近日期。 */
     Map<UUID, ClientGoodsHistory> clientHistory(UUID clientId, int months);
 
-    /** 篮子重合度: 这些客户各自买过(未作废订单)这些货品中的哪些。客户 id → 买过的货品 id。 */
+    /**
+     * 篮子重合度: 这些客户各自买过(未作废订单)这些货品中的哪些。客户 id → 买过的货品 id(没买过的客户不出现)。
+     * 给定客户里调用人看不到的忽略。{@code clientIds} 为空表示「调用人看得到的全部启用客户」, 按买过的货品数
+     * 只返回前若干个(有上限, 文件上没有任何买方线索时用)。
+     */
     Map<UUID, Set<UUID>> historyContains(Collection<UUID> clientIds, Collection<UUID> goodsIds);
 
     /**

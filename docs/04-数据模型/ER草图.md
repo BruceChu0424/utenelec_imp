@@ -1,5 +1,30 @@
 # ER 草图
 
+## 2026-09-27 公共 AI 平台、客户文件学习与报价财务核价 (V742 / ADR-133 / ADR-134)
+
+```mermaid
+erDiagram
+  ai_providers ||--o{ ai_call_logs : provider_id_set_null
+  ai_jobs ||--o{ ai_call_logs : job_id_no_fk
+  users ||--o{ ai_jobs : submitted_by_user_no_fk
+  ai_jobs |o--o| sales_quotes : used_doc_quote_no_fk
+  ai_jobs |o--o| sales_orders : used_doc_order_no_fk
+  clients ||--o{ client_goods_aliases : client_id_null_is_global
+  goods ||--o{ client_goods_aliases : goods_id
+  clients ||--o{ sales_intake_layouts : client_id_null_is_global
+  sales_quotes ||--o{ sales_quote_items : lines
+  sales_quotes ||--o{ sales_quote_revision_logs : append_only
+  sales_quotes |o--o{ sales_orders : source_quote_id
+  currencies ||--o{ sales_quotes : currency_id
+  employees ||--o{ sales_quotes : seller_id
+  settlement_methods ||--o{ sales_quotes : settlement_method_id
+```
+
+- `ai_providers` 自成一体(PRESERVE)；`ai_call_logs.provider_id` 删除服务商时置空，`job_id`/`user_id` 不建外键(技术记录)。
+- `ai_jobs` 的提交人、使用去向(`used_doc_type` + `used_doc_id`)只记 id 不建外键：任务属清空数据，单据可能先被删除；结果被一张单据采用即清空。
+- `client_goods_aliases` / `sales_intake_layouts` 随客户、货品级联删除，`client_id` 为空表示全局；来源单据(`last_source_doc_type/id`)只记 id(保留表不引用清空表)。全局对照的确认次数由客户对照按不同客户数重算，见[实体字典](实体字典.md)。
+- 报价新表头外键：币种、业务员、结算方式(与订货同一目标与 RESTRICT)；订货 `source_quote_id` 沿用既有列，报价状态 1 且没有未删除订货单引用它时算「已核价待转订货」。
+
 ## 制造公共供给承诺与实际实收 (V722)
 
 ```mermaid

@@ -601,7 +601,7 @@ DepartmentNode? _findNode(List<DepartmentNode> nodes, String id) {
   return null;
 }
 
-/// 员工联系卡：窄屏底部弹层、宽屏居中弹窗（与政策详情同款自适应范式）。
+/// 员工联系卡: 窄屏底部弹层、宽屏居中弹窗的自适应范式。
 /// 只用花名册安全字段，不依赖 employee:view / 不进 /employee/:id，人人可看。
 Future<void> _showContactCard(
   BuildContext context,

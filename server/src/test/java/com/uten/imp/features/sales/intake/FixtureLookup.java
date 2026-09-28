@@ -120,14 +120,12 @@ final class FixtureLookup implements MasterIntakeLookupPort {
     @Override
     public Map<UUID, Set<UUID>> historyContains(Collection<UUID> clientIds, Collection<UUID> goodsIds) {
         calls.add("historyContains:" + clientIds.size());
-        if (clientIds.isEmpty()) {
-            // 与真实实现相同: 空客户集合返回空(不是「全部可见客户」)。
-            return Map.of();
-        }
+        // 与真实实现相同: 空客户集合 = 看得到的全部客户(真实实现按买过的货品数取前 50 个; 夹具客户远少于此)。
+        boolean allVisible = clientIds.isEmpty();
         Set<UUID> wanted = new HashSet<>(goodsIds);
         Map<UUID, Set<UUID>> out = new LinkedHashMap<>();
         for (IntakeFixture.FixtureClient c : visibleClients()) {
-            if (!clientIds.contains(c.id())) {
+            if (!allVisible && !clientIds.contains(c.id())) {
                 continue;
             }
             Set<UUID> bought = new LinkedHashSet<>();

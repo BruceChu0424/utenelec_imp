@@ -27,6 +27,10 @@ public class QuoteListItem {
     /** Current caller may mutate this document (functional permission + owner scope + draft). */
     private boolean writable;
     private UUID sellerId;
+    /** 报价币种(与订货单列表同名; 列表的币种列按它解析名称)。 */
+    private UUID currencyId;
+    /** 交货日期(与订货单列表同名)。 */
+    private LocalDate deliverDate;
     private String statusBucket;
     private String financeReturnReason;
     private OffsetDateTime submittedAt;

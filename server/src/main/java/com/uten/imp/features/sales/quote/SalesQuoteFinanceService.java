@@ -16,6 +16,7 @@ import com.uten.imp.features.sales.quote.dto.QuoteFinanceDecisionRequest;
 import com.uten.imp.features.sales.quote.dto.QuoteFinanceEditRequest;
 import com.uten.imp.features.sales.quote.dto.QuoteFinanceListItem;
 import com.uten.imp.features.sales.quote.dto.QuoteFinanceReviewDto;
+import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -149,11 +150,15 @@ public class SalesQuoteFinanceService {
         return new PageResponse<>(items, p, sz, total, totalPages);
     }
 
-    /** 工作台徽章「报价待核价」: 待核价张数; 没有核价权限时固定 0(只看不办的人不算待办)。 */
+    /**
+     * 工作台徽章「报价待核价」(红 = 轮到我): 待核价张数; 只算合格核价人(与认领、通知同一资格口径:
+     * 财务部门树或个人加授 + 查看/核价权限 + 账号启用), 只看不办或不在核价组的人固定 0, 不查报价表。
+     */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_quote_finance:view')")
     public Map<String, Long> pendingCount() {
-        if (!accessPolicy.hasAuthority(FINANCE_CONFIRM)) {
+        if (!accessPolicy.hasAuthority(FINANCE_CONFIRM)
+                || !reviewers.isEligible(currentUser.get().map(AuthUser::getId).orElse(null))) {
             return Map.of("pending", 0L);
         }
         Number n = (Number) em.createNativeQuery(
@@ -205,7 +210,7 @@ public class SalesQuoteFinanceService {
                                i.qty, i.price, i.price_source, COALESCE(fp.full_name, ''), i.finance_price_at,
                                CASE WHEN g.status = '使用' AND NOT COALESCE(g.is_deleted, FALSE) THEN g.price END,
                                i.client_price, i.discount, i.amount_original,
-                               i.client_model, i.client_goods_name, i.remark
+                               i.client_model, i.client_goods_name, i.remark, i.unit_id
                         FROM sales_quote_items i
                         LEFT JOIN goods g ON g.id = i.goods_id
                         LEFT JOIN colors col ON col.id = i.color_id
@@ -258,7 +263,7 @@ public class SalesQuoteFinanceService {
             lines.add(new QuoteFinanceReviewDto.Line(
                     itemId,
                     r[1] == null ? null : ((Number) r[1]).intValue(),
-                    (UUID) r[2], (String) r[3], (String) r[4], (String) r[5], (String) r[6],
+                    (UUID) r[2], (String) r[3], (String) r[4], (String) r[5], (UUID) r[19], (String) r[6],
                     qty, price, priceSource,
                     blankToNull((String) r[10]), NativeValueConverters.toOffsetDateTime(r[11]),
                     (BigDecimal) r[12], clientPrice, clientLocal, dealPrice, discount, amount,

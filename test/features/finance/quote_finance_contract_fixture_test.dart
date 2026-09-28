@@ -51,6 +51,7 @@ const _lineJson = <String, dynamic>{
   'goodsCode': 'LX-100',
   'goodsName': '台灯',
   'colorName': '白',
+  'unitId': '0d7a3c1e-0000-4000-8000-0000000000u1',
   'unitName': '个',
   'qty': '10',
   'listPrice': '100.0000',
@@ -233,6 +234,8 @@ void main() {
       expect(line.diffToFile, '2.00000000');
       expect(line.changedSinceLastConfirm, isTrue);
       expect(line.needsFinancePrice, isFalse);
+      // 数量合计按单位主键分组(不同单位的数量不相加)。
+      expect(line.unitKey, '0d7a3c1e-0000-4000-8000-0000000000u1');
     });
 
     test('a confirmed quote only offers reopen, which needs no claim', () {
@@ -345,10 +348,11 @@ void main() {
         'factory SalesQuoteFinanceLine.fromJson',
         'class SalesQuoteFinanceReview',
       );
-      // unitId: 服务端核价行还没有单位主键(见报告「需要别处改动」)，前端按单位名称兜底分组。
-      expect(lineKeys.difference(_recordComponents(source, 'Line')), {
-        'unitId',
-      });
+      expect(
+        lineKeys.difference(_recordComponents(source, 'Line')),
+        isEmpty,
+        reason: '核价行的每个键(含数量合计分组用的 unitId)都在服务端 Line 上',
+      );
       final headerKeys = _dartJsonKeys(
         model,
         'factory SalesQuoteFinanceReview.fromJson',
@@ -458,7 +462,7 @@ void main() {
       );
     });
 
-    test('order finance DTOs carry sourceQuote{..., allLinesMatch}', () {
+    test('order finance DTOs carry sourceQuote{...} + matchesQuote', () {
       const order = 'features/sales/order/dto';
       final review = _java('$order/SalesOrderFinanceReviewDto.java');
       expect(
@@ -468,21 +472,29 @@ void main() {
           'billNo',
           'financeConfirmedByName',
           'financeConfirmedAt',
-          'allLinesMatch',
         ]),
       );
       expect(
         _recordComponents(review, 'SalesOrderFinanceReviewDto'),
-        containsAll(<String>['sourceQuote', 'clientFileCurrency']),
+        containsAll(<String>[
+          'sourceQuote',
+          'clientFileCurrency',
+          'matchesQuote',
+        ]),
       );
       expect(
         _recordComponents(
           _java('$order/SalesOrderFinancePendingDto.java'),
           'SalesOrderFinancePendingDto',
         ),
-        contains('sourceQuote'),
-        reason: 'SPEC §6.1: 列表行与审核详情同一个 sourceQuote 形状',
+        containsAll(<String>['sourceQuote', 'matchesQuote']),
+        reason: 'SPEC §6.1: 列表行与审核详情同一个 sourceQuote 形状 + 同级 matchesQuote',
       );
+      // 前端两处(列表行 / 审核详情)都读同级 matchesQuote。
+      final dart = File(
+        'lib/features/finance/models/sales_order_finance_confirmation.dart',
+      ).readAsStringSync();
+      expect(dart, contains("json['matchesQuote']"));
     });
   });
 }

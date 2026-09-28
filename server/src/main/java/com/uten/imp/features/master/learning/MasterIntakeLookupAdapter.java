@@ -56,6 +56,10 @@ public class MasterIntakeLookupAdapter implements MasterIntakeLookupPort {
     static final int MODEL_ROWS_MAX = 5000;
     /** 名称相似召回最多比较几段买方名称。 */
     static final int NAME_TEXTS_MAX = 5;
+    /** 篮子重合度不限客户(空客户集合)时, 按买过的候选货品数最多返回几个客户。 */
+    static final int BASKET_CLIENTS_MAX = 50;
+    /** 篮子重合度不限客户时最多带几个候选货品(一个参数列表, 远低于 PG 绑定参数上限)。 */
+    static final int BASKET_GOODS_MAX = 4000;
 
     /** 与 V742 idx_goods_model_norm 完全相同的表达式(改一处必须同时改索引)。 */
     public static final String MODEL_NORM_EXPR = "regexp_replace(upper(regexp_replace("
@@ -360,9 +364,12 @@ public class MasterIntakeLookupAdapter implements MasterIntakeLookupPort {
     @Override
     @SuppressWarnings("unchecked")
     public Map<UUID, Set<UUID>> historyContains(Collection<UUID> clientIds, Collection<UUID> goodsIds) {
-        Set<UUID> clients = visibleClients(nonNull(clientIds));
         Set<UUID> goods = nonNull(goodsIds);
-        if (clients.isEmpty() || goods.isEmpty()) return Map.of();
+        if (goods.isEmpty()) return Map.of();
+        Set<UUID> requested = nonNull(clientIds);
+        if (requested.isEmpty()) return historyAcrossVisibleClients(goods);
+        Set<UUID> clients = visibleClients(requested);
+        if (clients.isEmpty()) return Map.of();
         Map<UUID, Set<UUID>> out = new LinkedHashMap<>();
         for (List<UUID> chunk : chunks(goods)) {
             List<Object[]> rows = em.createNativeQuery("""
@@ -378,6 +385,44 @@ public class MasterIntakeLookupAdapter implements MasterIntakeLookupPort {
             for (Object[] row : rows) {
                 out.computeIfAbsent((UUID) row[0], ignored -> new HashSet<>()).add((UUID) row[1]);
             }
+        }
+        return out;
+    }
+
+    /**
+     * 空客户集合: 调用人可见的全部启用客户(与候选召回同一过滤), 按买过的候选货品数取前
+     * {@link #BASKET_CLIENTS_MAX} 个(同数按 id), 一条语句在库里排好, 不把全部客户 × 货品搬到内存。
+     * 用于文件上没有任何买方线索时的「篮子重合度」(只预选待核对, 从不自动选定)。
+     */
+    @SuppressWarnings("unchecked")
+    private Map<UUID, Set<UUID>> historyAcrossVisibleClients(Set<UUID> goods) {
+        List<UUID> bounded = new ArrayList<>(goods);
+        if (bounded.size() > BASKET_GOODS_MAX) bounded = bounded.subList(0, BASKET_GOODS_MAX);
+        ClientAccessPolicy.NativeReadScope scope = clientAccess.nativeReadScope("c", clientAccess.evaluate());
+        Query query = em.createNativeQuery("""
+                WITH hits AS (
+                    SELECT DISTINCT o.client_id, i.goods_id
+                    FROM sales_orders o
+                    JOIN sales_order_items i ON i.order_id = o.id AND NOT i.is_deleted
+                    JOIN clients c ON c.id = o.client_id
+                    WHERE i.goods_id IN (:goods) AND NOT o.is_deleted AND o.status <> -1
+                      AND ({ACTIVE}) AND {SCOPE}
+                ), ranked AS (
+                    SELECT client_id FROM hits
+                    GROUP BY client_id
+                    ORDER BY count(*) DESC, client_id
+                    LIMIT :clients
+                )
+                SELECT hits.client_id, hits.goods_id
+                FROM hits JOIN ranked ON ranked.client_id = hits.client_id
+                ORDER BY hits.client_id, hits.goods_id
+                """.replace("{ACTIVE}", CLIENT_ACTIVE.strip()).replace("{SCOPE}", scope.predicate()));
+        query.setParameter("goods", bounded);
+        query.setParameter("clients", BASKET_CLIENTS_MAX);
+        scope.bind(query);
+        Map<UUID, Set<UUID>> out = new LinkedHashMap<>();
+        for (Object[] row : (List<Object[]>) query.getResultList()) {
+            out.computeIfAbsent((UUID) row[0], ignored -> new LinkedHashSet<>()).add((UUID) row[1]);
         }
         return out;
     }

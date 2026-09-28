@@ -20,10 +20,12 @@ import java.util.Optional;
  * 保存后学习客户文件版式(ADR-134): 报价/订货保存时发布 {@link SalesIntakeUsedEvent}, 这里按服务端保存的识别结果登记
  * 「表头指纹 → 列角色」, 下次同版式文件直接取列、不再调用 AI。
  *
- * <p>全部在保存事务<b>提交之后</b>做(最先执行的提交后回调): 先在独立的只读事务里读任务结果里的版式
- * ({@link AiJobUsagePort#resultFor}, 只有提交人本人能读到, 从不信任请求体), 再在独立事务里写 sales_intake_layouts。
- * 保存事务里什么都不读不写, 所以读结果出错也不会把保存事务标成只能回滚; 公共任务框架在单据采用任务后仍保留结果
- * 几分钟, 提交后再读来得及。保存回滚则什么都不做; 任何失败只记日志, 不影响单据保存。
+ * <p>全部在保存事务<b>提交之后</b>做, 而且是<b>最先执行</b>的提交后回调({@link Ordered#HIGHEST_PRECEDENCE}):
+ * 先在独立的只读事务里读任务结果里的版式({@link AiJobUsagePort#resultFor}, 只有提交人本人能读到, 从不信任请求体),
+ * 再在独立事务里写 sales_intake_layouts。主档学习的提交后回调排在最后({@link Ordered#LOWEST_PRECEDENCE}),
+ * 它最后一步 {@link AiJobUsagePort#markUsed} 会在同一条语句里清空结果(公共任务框架没有采用后的保留期),
+ * 所以本回调必须排在它前面(先读后标记, ADR-133)。保存事务里什么都不读不写, 读结果出错也不会把保存事务标成
+ * 只能回滚。保存回滚则什么都不做; 任何失败只记日志, 不影响单据保存。
  */
 @Component
 class SalesIntakeLayoutLearner {

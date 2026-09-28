@@ -48,6 +48,8 @@ String workbenchRouteFor(
         ? '/finance/sales-order-changes'
         : '/finance/sales-order-confirmations',
   'SALES_SHIPMENT_PENDING_FINANCE_AUDIT' => RouteName.financeSalesShipmentAudit,
+  // ADR-134 报价待财务核价：落核价队列(待核价分段)。
+  'SALES_QUOTE_PENDING_FINANCE_REVIEW' => RouteName.financeQuoteReview,
   'PROCUREMENT_FINANCE_SUBMITTED' ||
   'PROCUREMENT_FINANCE_CHANGE_SUBMITTED' => '/finance/procurement-approvals',
   'PROCUREMENT_IQC_PENDING' => RouteName.qualityTaskCenter,

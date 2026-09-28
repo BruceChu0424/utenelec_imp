@@ -69,7 +69,9 @@ public record SalesOrderFinanceReviewDto(
         /** ADR-134 来源报价(报价转入才有): 单号 + 财务核价人与时间; allLinesMatch = 每行单价折扣都与报价核定一致。 */
         SourceQuote sourceQuote,
         /** ADR-134 客户文件上单价的币种代码(阅读明细 clientPrice 用)。 */
-        String clientFileCurrency) {
+        String clientFileCurrency,
+        /** ADR-134 整单是否与来源报价核定一致(= sourceQuote.allLinesMatch; 不是报价转入为 null), 与列表同口径。 */
+        Boolean matchesQuote) {
 
     /** 来源报价核价信息(订单确认只需再核信用与条款; 价格已由财务在报价上核定)。 */
     public record SourceQuote(

@@ -759,7 +759,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
           size: UtenStatusBadgeSize.small,
         ),
       ),
-      if (_isOrder)
+      // 报价也有交货日期(ADR-134, 服务端 QuoteListItem.deliverDate)。
+      if (_cfg.hasDeliverDate)
         MasterColumnDef(
           key: 'deliver',
           label: '交货',

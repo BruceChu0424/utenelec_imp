@@ -225,6 +225,53 @@ class AiJobWorkerTest {
     }
 
     @Test
+    void handlerErrorCodeFieldBecomesTheJobErrorCode() {
+        behaviour = ctx -> {
+            throw new ApiException(ErrorCode.BUSINESS, "PDF/图片需要开启 AI 才能识别",
+                    List.of(new com.uten.imp.common.web.ApiError.FieldError("errorCode", "AI_REQUIRED")));
+        };
+        worker.process(claimed("TEST_KIND"));
+        verify(repository).finishFailed(jobId, ATTEMPT, "AI_REQUIRED", "PDF/图片需要开启 AI 才能识别");
+
+        // 不合格式的业务码(小写、空格、太长)不写进去, 退回错误类别名。
+        behaviour = ctx -> {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "文件不对",
+                    List.of(new com.uten.imp.common.web.ApiError.FieldError("errorCode", "bad code"),
+                            new com.uten.imp.common.web.ApiError.FieldError("qty", "X")));
+        };
+        worker.process(claimed("TEST_KIND"));
+        verify(repository).finishFailed(jobId, ATTEMPT, "VALIDATION_FAILED", "文件不对");
+
+        assertThat(AiJobWorker.errorCodeOf(new ApiException(ErrorCode.BUSINESS, "x",
+                List.of(new com.uten.imp.common.web.ApiError.FieldError("errorCode", "A".repeat(49))))))
+                .isEqualTo("BUSINESS");
+        assertThat(AiJobWorker.errorCodeOf(new ApiException(ErrorCode.BUSINESS, "x",
+                List.of(new com.uten.imp.common.web.ApiError.FieldError("errorCode", "AI_VISION_UNAVAILABLE")))))
+                .isEqualTo("AI_VISION_UNAVAILABLE");
+    }
+
+    @Test
+    void aHandlerThatSawTheCancelAndReturnedNothingEndsCancelledNotSucceeded() {
+        when(repository.progress(eq(jobId), eq(ATTEMPT), any(), any(), anyInt()))
+                .thenReturn(Optional.of(false), Optional.of(true));
+        when(repository.finishCancelled(jobId, ATTEMPT)).thenReturn(1);
+        behaviour = ctx -> {
+            ctx.progress("READING", 10);
+            ctx.progress("MATCHING_GOODS", 60);
+            if (ctx.cancelled()) {
+                return Map.of();
+            }
+            throw new AssertionError("cancel flag must be visible after progress");
+        };
+
+        worker.process(claimed("TEST_KIND"));
+
+        verify(repository).finishCancelled(jobId, ATTEMPT);
+        verify(repository, never()).finishSucceeded(any(), anyInt(), any());
+        verify(repository, never()).finishFailed(any(), anyInt(), any(), any());
+    }
+
+    @Test
     void aiFailuresShowPlainWordsToSalesAndKeepTheCategoryInTheErrorCode() {
         Object[][] cases = {
                 {AiErrorCategory.QUOTA, "服务商账户余额不足", "AI_QUOTA", AiJobWorker.AI_BUSY_MESSAGE},

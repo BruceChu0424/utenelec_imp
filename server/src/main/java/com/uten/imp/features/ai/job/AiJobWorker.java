@@ -84,6 +84,9 @@ public class AiJobWorker implements AutoCloseable {
     private static final Set<String> PLAIN_BLOCKED_MESSAGES = Set.of(CANCELLED_MESSAGE, NO_AI_USE_MESSAGE,
             CALL_CAP_MESSAGE, RESETTING_MESSAGE, AiGateway.VISION_UNSUPPORTED_MESSAGE);
     private static final Pattern STAGE = Pattern.compile("^[A-Z][A-Z0-9_]{0,47}$");
+    /** 处理器随 ApiException 给出的业务错误码(fieldErrors 里 field = errorCode), 写进 ai_jobs.error_code。 */
+    static final String ERROR_CODE_FIELD = "errorCode";
+    private static final Pattern ERROR_CODE = STAGE;
     private static final long CANCEL_CHECK_INTERVAL_NANOS = TimeUnit.SECONDS.toNanos(2);
 
     private final AiJobRepository repository;
@@ -331,7 +334,7 @@ public class AiJobWorker implements AutoCloseable {
 
     private void finishWithFailure(AiJobRepository.ClaimedJob job, Execution execution, Throwable failure) {
         if (failure instanceof ApiException api) {
-            finishFailed(job, api.getCode().name(), api.getMessage());
+            finishFailed(job, errorCodeOf(api), api.getMessage());
         } else if (failure instanceof AiCallException ai) {
             if (execution.cancelRequested && ai.category() == AiErrorCategory.BLOCKED) {
                 finish(job, status -> repository.finishCancelled(job.id(), job.attempts()));
@@ -346,6 +349,23 @@ public class AiJobWorker implements AutoCloseable {
             log.error("AI job {} ({}) failed", job.id(), job.kind(), redacted(failure));
             finishFailed(job, "INTERNAL", GENERIC_FAILURE_MESSAGE);
         }
+    }
+
+    /**
+     * 处理器 ApiException 的错误码: fieldErrors 里 {@code errorCode} 字段给出的业务码(如 AI_REQUIRED、
+     * AI_VISION_UNAVAILABLE, 大写下划线、不超过 48 字符)优先, 前端据此给出对应的下一步; 没有或不合格式时
+     * 用 ApiException 自己的错误类别名(BUSINESS / VALIDATION_FAILED ...)。
+     */
+    static String errorCodeOf(ApiException failure) {
+        if (failure.getFieldErrors() != null) {
+            for (com.uten.imp.common.web.ApiError.FieldError field : failure.getFieldErrors()) {
+                if (field != null && ERROR_CODE_FIELD.equals(field.field()) && field.message() != null
+                        && ERROR_CODE.matcher(field.message()).matches()) {
+                    return field.message();
+                }
+            }
+        }
+        return failure.getCode().name();
     }
 
     /**

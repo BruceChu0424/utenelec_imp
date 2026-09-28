@@ -50,7 +50,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
@@ -216,6 +215,7 @@ class SalesQuoteFinanceFlowPostgresTest {
                 .anyMatch(item -> item.id().equals(quoteId));
         QuoteFinanceReviewDto review = finance.review(quoteId);
         assertThat(review.lines().getFirst().salesProposedDiscount()).isEqualByComparingTo("0.95");
+        assertThat(review.lines().getFirst().unitId()).isEqualTo(unitOf(listed));
         assertThat(review.financeActions()).containsExactly("edit", "return", "confirm");
         assertThat(review.blockingLineCount()).isEqualTo(2);
         assertThat(quotes.detail(quoteId).isPriceMasked()).isFalse();
@@ -242,6 +242,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         // 不在财务部门树的权限持有人: 不能认领、不能改价。
         loginAs(f.outsider());
         assertThat(currentPermissions()).contains("sales_quote_finance:confirm");
+        assertThat(finance.pendingCount()).as("不在核价组: 红徽章不算他的待办").containsEntry("pending", 0L);
         assertForbidden(() -> claims.claim(CLAIM, quoteId.toString()));
         assertForbidden(() -> finance.edit(quoteId, edit(3, null, List.of())));
 
@@ -326,9 +327,13 @@ class SalesQuoteFinanceFlowPostgresTest {
 
         loginAs(f.sales());
         assertThat(quotes.counts().awaitingConversion()).isEqualTo(1);
+        QuoteQueryFilter awaiting = new QuoteQueryFilter(null, null, null, null, null, null, "awaiting_conversion");
+        assertThat(quotes.list(awaiting, 1, 50, null, null).getItems())
+                .as("「从报价引入」的筛选与徽章同口径").extracting(item -> item.getId()).containsExactly(quoteId);
         assertThat(quotes.detail(quoteId).getAllowedActions()).contains("convert", "reopen", "reverse");
         OrderDetail order = quotes.convertToOrder(quoteId);
         assertThat(quotes.counts().awaitingConversion()).isZero();
+        assertThat(quotes.list(awaiting, 1, 50, null, null).getItems()).isEmpty();
         assertThat(order.getSourceQuoteId()).isEqualTo(quoteId);
         assertThat(order.getSourceQuote().billNo()).isEqualTo(draft.getBillNo());
         assertThat(order.getContractNo()).isEqualTo("UJ23");
@@ -690,7 +695,9 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(source.financeConfirmedByName()).isNotBlank();
         assertThat(source.financeConfirmedAt()).isNotNull();
         assertThat(source.allLinesMatch()).isTrue();
+        assertThat(listed1.getFirst().matchesQuote()).isTrue();
         assertThat(orderFinance.review(order.getId()).sourceQuote().allLinesMatch()).isTrue();
+        assertThat(orderFinance.review(order.getId()).matchesQuote()).isTrue();
 
         // 已审订单修订: 改报价核定行的折扣 409; 再加一行同货品同价同折扣(报价外) → 列表与审核页都「不一致」。
         loginAs(f.sales());
@@ -714,6 +721,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         var listed2 = orderFinance.pending(1, 100, null, null, null, null, null, order.getBillNo()).getItems();
         assertThat(listed2).hasSize(1);
         assertThat(listed2.getFirst().sourceQuote().allLinesMatch()).isFalse();
+        assertThat(listed2.getFirst().matchesQuote()).isFalse();
         var reviewAfter = orderFinance.review(order.getId());
         assertThat(reviewAfter.sourceQuote().allLinesMatch()).isFalse();
         assertThat(reviewAfter.items()).extracting(line -> line.matchesQuote()).containsExactly(true, false);
@@ -742,33 +750,74 @@ class SalesQuoteFinanceFlowPostgresTest {
         loginAs(f.finance());
         var review = orderFinance.review(order.getId());
         assertThat(review.sourceQuote()).isNull();
+        assertThat(review.matchesQuote()).isNull();
         assertThat(review.items().getFirst().matchesQuote()).isNull();
     }
 
     // =====================================================================
-    // 办结撤回(登记 ReviewNoticeCatalog 后生效)
+    // 办结撤回(ReviewNoticeCatalog 登记 SALES_QUOTE_PENDING_FINANCE_REVIEW → SALES_QUOTE)
     // =====================================================================
 
     @Test
-    void withdrawResolvesEveryReviewersPendingQuoteCard() {
-        assumeTrue(com.uten.imp.features.notice.ReviewNoticeCatalog.isReviewEvent(
-                        com.uten.imp.features.notice.SalesQuoteNoticeService.EVENT_PENDING_REVIEW),
-                "合并时登记 ReviewNoticeCatalog / ReviewNoticeAudience 后生效");
+    void withdrawReturnAndConfirmResolveEveryReviewersPendingQuoteCard() {
+        assertThat(com.uten.imp.features.notice.ReviewNoticeCatalog.isReviewEvent(
+                com.uten.imp.features.notice.SalesQuoteNoticeService.EVENT_PENDING_REVIEW)).isTrue();
         Fixture f = fixture("resolve");
         UUID listed = goods("撤卡货品", BigDecimal.TEN);
         loginAs(f.sales());
         UUID id = quotes.create(quoteRequest(f.client(), line(listed, "1", null, null, null))).getId();
+
+        // 提交 → 财务核价人收到行动卡(聚合 = 报价); 销售撤回 → 撤卡。
         quotes.submit(id, new QuoteActionRequest(0));
-        assertThat(jdbc.queryForObject("""
-                SELECT COUNT(*) FROM notices
-                WHERE source_event = 'SALES_QUOTE_PENDING_FINANCE_REVIEW' AND aggregate_kind = 'SALES_QUOTE'
-                  AND aggregate_id = ? AND audience_user_id = ? AND resolved_at IS NULL
-                """, Long.class, id, f.finance())).isEqualTo(1L);
+        assertThat(pendingQuoteCards(id, f.finance())).isEqualTo(1L);
         quotes.withdraw(id, new QuoteActionRequest(1));
+        assertThat(pendingQuoteCards(id, null)).isZero();
+        assertThat(jdbc.queryForObject("""
+                SELECT resolved_reason FROM notices
+                WHERE source_event = 'SALES_QUOTE_PENDING_FINANCE_REVIEW' AND aggregate_id = ? AND audience_user_id = ?
+                """, String.class, id, f.finance())).isEqualTo("WITHDRAWN");
+
+        // 再提交 → 新卡; 财务退回 → 撤卡, 发给销售的退回通知不被撤(不在 SALES_QUOTE 聚合下)。
+        quotes.submit(id, new QuoteActionRequest(2));
+        assertThat(pendingQuoteCards(id, f.finance())).isEqualTo(1L);
+        loginAs(f.finance());
+        var claim = claims.claim(CLAIM, id.toString());
+        finance.returnToSales(id, new QuoteFinanceDecisionRequest(3, claim.claimId(), "客户要改数量"));
+        assertThat(pendingQuoteCards(id, null)).isZero();
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM notices
-                WHERE source_event = 'SALES_QUOTE_PENDING_FINANCE_REVIEW' AND aggregate_id = ? AND resolved_at IS NULL
-                """, Long.class, id)).isZero();
+                WHERE source_event = 'SALES_QUOTE_FINANCE_RETURNED' AND audience_user_id = ?
+                  AND aggregate_id IS NULL AND resolved_at IS NULL
+                """, Long.class, f.sales())).isEqualTo(1L);
+
+        // 重新提交 → 新卡; 财务确认 → 撤卡。
+        loginAs(f.sales());
+        quotes.submit(id, new QuoteActionRequest(4));
+        assertThat(pendingQuoteCards(id, f.finance())).isEqualTo(1L);
+        loginAs(f.finance());
+        var confirmClaim = claims.claim(CLAIM, id.toString());
+        finance.confirm(id, new QuoteFinanceDecisionRequest(5, confirmClaim.claimId(), null));
+        assertThat(pendingQuoteCards(id, null)).isZero();
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM notices
+                WHERE source_event = 'SALES_QUOTE_PENDING_FINANCE_REVIEW' AND aggregate_id = ?
+                  AND resolved_reason = 'CONFIRMED'
+                """, Long.class, id)).isPositive();
+    }
+
+    /** 某报价未办结的核价行动卡数(recipient 为空 = 所有收件人)。 */
+    private long pendingQuoteCards(UUID quoteId, UUID recipient) {
+        return recipient == null
+                ? jdbc.queryForObject("""
+                        SELECT COUNT(*) FROM notices
+                        WHERE source_event = 'SALES_QUOTE_PENDING_FINANCE_REVIEW' AND aggregate_kind = 'SALES_QUOTE'
+                          AND aggregate_id = ? AND resolved_at IS NULL
+                        """, Long.class, quoteId)
+                : jdbc.queryForObject("""
+                        SELECT COUNT(*) FROM notices
+                        WHERE source_event = 'SALES_QUOTE_PENDING_FINANCE_REVIEW' AND aggregate_kind = 'SALES_QUOTE'
+                          AND aggregate_id = ? AND audience_user_id = ? AND resolved_at IS NULL
+                        """, Long.class, quoteId, recipient);
     }
 
     // =====================================================================

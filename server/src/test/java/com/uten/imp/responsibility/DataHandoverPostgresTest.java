@@ -47,7 +47,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "spring.profiles.active=dev",
                 "uten.audit.retention.enabled=false",
                 "uten.reporting.materialized-view-refresh.enabled=false",
-                "uten.policy-intelligence.enabled=false",
                 "uten.features.goods-owner-scope-enabled=false",
                 "uten.storage.uploads-enabled=true",
                 "uten.storage.malware-scan.provider=test-only",

@@ -292,12 +292,15 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
     final hasChildMaterials = line.bom.isNotEmpty;
     final plannable = need > 0;
     final checked = _selected.contains(line.orderItemId);
-    final shortageCount = line.bom.where((item) {
+    // 车间内料仓供料的料 (整批领料) 不算需求，不参与库存初筛。
+    final screened = line.bom.where((item) => !item.periodic);
+    final periodicCount = line.bom.length - screened.length;
+    final shortageCount = screened.where((item) {
       final onhand = item.onhand;
       final required = item.needQty;
       return onhand != null && required != null && onhand + 1e-6 < required;
     }).length;
-    final unknownCount = line.bom
+    final unknownCount = screened
         .where((item) => item.onhand == null || item.needQty == null)
         .length;
     final deliver = line.deliverDate == null
@@ -400,7 +403,8 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                     key: 'source',
                     label: '来源',
                     width: 80,
-                    value: (item) => item.selfMade ? '自制' : '外购',
+                    value: (item) =>
+                        item.periodic ? '内料仓' : (item.selfMade ? '自制' : '外购'),
                   ),
                   MasterColumnDef(
                     key: 'perQty',
@@ -414,7 +418,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                     label: '总需求',
                     width: 90,
                     type: 'number',
-                    value: (item) => _fmt(item.needQty),
+                    value: (item) => item.periodic ? '—' : _fmt(item.needQty),
                   ),
                   MasterColumnDef(
                     key: 'onhand',
@@ -426,7 +430,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                   MasterColumnDef(
                     key: 'status',
                     label: '初筛状态',
-                    width: 110,
+                    width: 180,
                     value: _availabilityStatus,
                   ),
                 ],
@@ -436,6 +440,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                 filters: const {},
                 onFilterChanged: (_, _) {},
                 rowColor: (item) {
+                  if (item.periodic) return null;
                   final onhand = item.onhand;
                   final required = item.needQty;
                   if (onhand == null || required == null) return null;
@@ -450,7 +455,8 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
               const SizedBox(height: UtenSpacing.s8),
               Text(
                 '即时初筛：共 ${line.bom.length} 种，已知缺 $shortageCount 种'
-                '${unknownCount == 0 ? '' : '，待复核 $unknownCount 种'}。'
+                '${unknownCount == 0 ? '' : '，待复核 $unknownCount 种'}'
+                '${periodicCount == 0 ? '' : '，车间内料仓供料 $periodicCount 种 (不算需求)'}。'
                 '物料单位可能不同，不汇总缺口数量；最终以物料分析齐套结果为准。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: shortageCount > 0
@@ -517,6 +523,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
   }
 
   String _availabilityStatus(ScheduleBomComponent item) {
+    if (item.periodic) return '车间内料仓供料, 不算需求';
     final onhand = item.onhand;
     final required = item.needQty;
     if (onhand == null || required == null) return '待物料分析复核';

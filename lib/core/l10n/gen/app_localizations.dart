@@ -6596,7 +6596,7 @@ abstract class AppLocalizations {
   /// No description provided for @productionBatchDirectTransferHint.
   ///
   /// In zh, this message translates to:
-  /// **'本批物料全部来自本车间直送（线边仓）：确认后自动投入本批，无需提交领料申请、不等仓库发料；回车间任务直接开工。'**
+  /// **'本批物料全部来自本车间直送 (内料仓)：确认后自动投入本批，无需提交领料申请、不等仓库发料；回车间任务直接开工。'**
   String get productionBatchDirectTransferHint;
 
   /// No description provided for @productionBatchSubmittedDirectTransfer.
@@ -7726,6 +7726,660 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'请先补齐“{goods}”的生产车间和负责人，再下单'**
   String materialPreparationMissingAssignment(String goods);
+
+  /// No description provided for @workshopMaterialBin.
+  ///
+  /// In zh, this message translates to:
+  /// **'车间内料仓'**
+  String get workshopMaterialBin;
+
+  /// No description provided for @workshopMaterialBinOf.
+  ///
+  /// In zh, this message translates to:
+  /// **'{workshop}内料仓'**
+  String workshopMaterialBinOf(String workshop);
+
+  /// No description provided for @workshopMaterialGroup.
+  ///
+  /// In zh, this message translates to:
+  /// **'车间内料仓'**
+  String get workshopMaterialGroup;
+
+  /// No description provided for @workshopMaterialSetup.
+  ///
+  /// In zh, this message translates to:
+  /// **'车间内料仓设置'**
+  String get workshopMaterialSetup;
+
+  /// No description provided for @workshopMaterialReports.
+  ///
+  /// In zh, this message translates to:
+  /// **'车间内料仓用量'**
+  String get workshopMaterialReports;
+
+  /// No description provided for @wmIssueMethod.
+  ///
+  /// In zh, this message translates to:
+  /// **'发料方式'**
+  String get wmIssueMethod;
+
+  /// No description provided for @wmIssueMethodOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'按工单领料'**
+  String get wmIssueMethodOrder;
+
+  /// No description provided for @wmIssueMethodPeriodic.
+  ///
+  /// In zh, this message translates to:
+  /// **'整批领到车间内料仓'**
+  String get wmIssueMethodPeriodic;
+
+  /// No description provided for @wmCostBasis.
+  ///
+  /// In zh, this message translates to:
+  /// **'分摊方式'**
+  String get wmCostBasis;
+
+  /// No description provided for @wmCostBasisOwn.
+  ///
+  /// In zh, this message translates to:
+  /// **'主料'**
+  String get wmCostBasisOwn;
+
+  /// No description provided for @wmCostBasisShared.
+  ///
+  /// In zh, this message translates to:
+  /// **'辅料'**
+  String get wmCostBasisShared;
+
+  /// No description provided for @wmCostBasisExpense.
+  ///
+  /// In zh, this message translates to:
+  /// **'记车间费用'**
+  String get wmCostBasisExpense;
+
+  /// No description provided for @wmBulkPackageQty.
+  ///
+  /// In zh, this message translates to:
+  /// **'每袋净重 (公斤)'**
+  String get wmBulkPackageQty;
+
+  /// No description provided for @wmRecycledMaterial.
+  ///
+  /// In zh, this message translates to:
+  /// **'回收料'**
+  String get wmRecycledMaterial;
+
+  /// No description provided for @wmUnitWeightGrams.
+  ///
+  /// In zh, this message translates to:
+  /// **'单个重量 (克)'**
+  String get wmUnitWeightGrams;
+
+  /// No description provided for @wmUnitWeightFromBom.
+  ///
+  /// In zh, this message translates to:
+  /// **'塑料单个重量 (来自 BOM): {grams} 克'**
+  String wmUnitWeightFromBom(String grams);
+
+  /// No description provided for @wmUnusualWeightConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'单个重量 {grams} 克看起来不太对, 确定吗?'**
+  String wmUnusualWeightConfirm(String grams);
+
+  /// No description provided for @wmSecondMaterialConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个产品要同时用两种料吗 (双色 / 双料)? 如果只是换料, 请改原来那一行'**
+  String get wmSecondMaterialConfirm;
+
+  /// No description provided for @wmRequestIssue.
+  ///
+  /// In zh, this message translates to:
+  /// **'申请领料'**
+  String get wmRequestIssue;
+
+  /// No description provided for @wmReturn.
+  ///
+  /// In zh, this message translates to:
+  /// **'退回'**
+  String get wmReturn;
+
+  /// No description provided for @wmOtherIssue.
+  ///
+  /// In zh, this message translates to:
+  /// **'试模清机等用料'**
+  String get wmOtherIssue;
+
+  /// No description provided for @wmOtherReasonTrial.
+  ///
+  /// In zh, this message translates to:
+  /// **'试模'**
+  String get wmOtherReasonTrial;
+
+  /// No description provided for @wmOtherReasonPurge.
+  ///
+  /// In zh, this message translates to:
+  /// **'清机'**
+  String get wmOtherReasonPurge;
+
+  /// No description provided for @wmOtherReasonScrap.
+  ///
+  /// In zh, this message translates to:
+  /// **'报废料'**
+  String get wmOtherReasonScrap;
+
+  /// No description provided for @wmOtherReasonOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'其它'**
+  String get wmOtherReasonOther;
+
+  /// No description provided for @wmDirectIssue.
+  ///
+  /// In zh, this message translates to:
+  /// **'直接发料'**
+  String get wmDirectIssue;
+
+  /// No description provided for @wmPendingIssue.
+  ///
+  /// In zh, this message translates to:
+  /// **'待发料'**
+  String get wmPendingIssue;
+
+  /// No description provided for @wmPendingReturn.
+  ///
+  /// In zh, this message translates to:
+  /// **'待收退回'**
+  String get wmPendingReturn;
+
+  /// No description provided for @wmCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'盘点'**
+  String get wmCount;
+
+  /// No description provided for @wmHistory.
+  ///
+  /// In zh, this message translates to:
+  /// **'记录'**
+  String get wmHistory;
+
+  /// No description provided for @wmBags.
+  ///
+  /// In zh, this message translates to:
+  /// **'袋数'**
+  String get wmBags;
+
+  /// No description provided for @wmKg.
+  ///
+  /// In zh, this message translates to:
+  /// **'公斤'**
+  String get wmKg;
+
+  /// No description provided for @wmReceiver.
+  ///
+  /// In zh, this message translates to:
+  /// **'领料人'**
+  String get wmReceiver;
+
+  /// No description provided for @wmWarehouseAvailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库还有 {qty} 公斤'**
+  String wmWarehouseAvailable(String qty);
+
+  /// No description provided for @wmEstimatedRemaining.
+  ///
+  /// In zh, this message translates to:
+  /// **'内料仓估计还剩 {qty} 公斤'**
+  String wmEstimatedRemaining(String qty);
+
+  /// No description provided for @wmCountingNextPeriod.
+  ///
+  /// In zh, this message translates to:
+  /// **'已开始盘点, 这批料算到下一期'**
+  String get wmCountingNextPeriod;
+
+  /// No description provided for @wmSupplementFlag.
+  ///
+  /// In zh, this message translates to:
+  /// **'这批料是上一期漏录的'**
+  String get wmSupplementFlag;
+
+  /// No description provided for @wmSupplementPeriod.
+  ///
+  /// In zh, this message translates to:
+  /// **'补到哪一期'**
+  String get wmSupplementPeriod;
+
+  /// No description provided for @wmAlsoOrderMaterials.
+  ///
+  /// In zh, this message translates to:
+  /// **'还要按工单领别的料 (例如嵌件)'**
+  String get wmAlsoOrderMaterials;
+
+  /// No description provided for @wmFillFromGoodsWeight.
+  ///
+  /// In zh, this message translates to:
+  /// **'勾选行用货品资料单重填入'**
+  String get wmFillFromGoodsWeight;
+
+  /// No description provided for @wmCloseFailing.
+  ///
+  /// In zh, this message translates to:
+  /// **'结算连续失败, 系统改为每天重试一次, 请联系系统管理员'**
+  String get wmCloseFailing;
+
+  /// No description provided for @wmStartCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'开始盘点'**
+  String get wmStartCount;
+
+  /// No description provided for @wmCutoffToday.
+  ///
+  /// In zh, this message translates to:
+  /// **'截止到今天'**
+  String get wmCutoffToday;
+
+  /// No description provided for @wmCutoffYesterday.
+  ///
+  /// In zh, this message translates to:
+  /// **'截止到昨天'**
+  String get wmCutoffYesterday;
+
+  /// No description provided for @wmMonthEndHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'想要按月对账, 请在月底盘一次'**
+  String get wmMonthEndHint;
+
+  /// No description provided for @wmFillFull.
+  ///
+  /// In zh, this message translates to:
+  /// **'满'**
+  String get wmFillFull;
+
+  /// No description provided for @wmFillHalf.
+  ///
+  /// In zh, this message translates to:
+  /// **'半'**
+  String get wmFillHalf;
+
+  /// No description provided for @wmFillEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'空'**
+  String get wmFillEmpty;
+
+  /// No description provided for @wmFillWeighed.
+  ///
+  /// In zh, this message translates to:
+  /// **'直接填公斤'**
+  String get wmFillWeighed;
+
+  /// No description provided for @wmWeighOpenBag.
+  ///
+  /// In zh, this message translates to:
+  /// **'开口袋过秤'**
+  String get wmWeighOpenBag;
+
+  /// No description provided for @wmWeighMixed.
+  ///
+  /// In zh, this message translates to:
+  /// **'搅好未上机'**
+  String get wmWeighMixed;
+
+  /// No description provided for @wmWeighLoose.
+  ///
+  /// In zh, this message translates to:
+  /// **'散料'**
+  String get wmWeighLoose;
+
+  /// No description provided for @wmFillGuide.
+  ///
+  /// In zh, this message translates to:
+  /// **'超过四分之三算满, 四分之一到四分之三算半, 不到四分之一算空'**
+  String get wmFillGuide;
+
+  /// No description provided for @wmMachineIdle.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机停机、全空'**
+  String get wmMachineIdle;
+
+  /// No description provided for @wmZeroRest.
+  ///
+  /// In zh, this message translates to:
+  /// **'其余料都用完了, 记 0'**
+  String get wmZeroRest;
+
+  /// No description provided for @wmPrintBlank.
+  ///
+  /// In zh, this message translates to:
+  /// **'打印空白盘点表'**
+  String get wmPrintBlank;
+
+  /// No description provided for @wmSubmitCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交盘点'**
+  String get wmSubmitCount;
+
+  /// No description provided for @wmWithdrawCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回盘点'**
+  String get wmWithdrawCount;
+
+  /// No description provided for @wmCorrectCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'更正盘点'**
+  String get wmCorrectCount;
+
+  /// No description provided for @wmBagsTimesKg.
+  ///
+  /// In zh, this message translates to:
+  /// **'整袋 {bags} 袋 × 每袋 {kg} 公斤'**
+  String wmBagsTimesKg(int bags, String kg);
+
+  /// No description provided for @wmCloseState.
+  ///
+  /// In zh, this message translates to:
+  /// **'结算状态'**
+  String get wmCloseState;
+
+  /// No description provided for @wmCloseWaitingPrevious.
+  ///
+  /// In zh, this message translates to:
+  /// **'等上一期结算'**
+  String get wmCloseWaitingPrevious;
+
+  /// No description provided for @wmCloseBlockedReport.
+  ///
+  /// In zh, this message translates to:
+  /// **'还有 {n} 张报工没审核 (请审核人审核, 或制单人删掉不要的草稿)'**
+  String wmCloseBlockedReport(int n);
+
+  /// No description provided for @wmCloseBlockedWeight.
+  ///
+  /// In zh, this message translates to:
+  /// **'有 {n} 个产品没填单个重量 (请 BOM 维护人处理)'**
+  String wmCloseBlockedWeight(int n);
+
+  /// No description provided for @wmCloseBlockedStock.
+  ///
+  /// In zh, this message translates to:
+  /// **'「{material}」这一期没有发料记录却有产品在用 (请仓库补录漏录的发料, 或车间改认料)'**
+  String wmCloseBlockedStock(String material);
+
+  /// No description provided for @wmCloseRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'立即重试'**
+  String get wmCloseRetry;
+
+  /// No description provided for @wmReopen.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤销结算'**
+  String get wmReopen;
+
+  /// No description provided for @wmReopenReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤销原因'**
+  String get wmReopenReason;
+
+  /// No description provided for @wmReopenHeld.
+  ///
+  /// In zh, this message translates to:
+  /// **'已撤销结算, 改完请点「重新结算」; {time} 系统会自动重新结算'**
+  String wmReopenHeld(String time);
+
+  /// No description provided for @wmSettleAgain.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新结算'**
+  String get wmSettleAgain;
+
+  /// No description provided for @wmNeedChoice.
+  ///
+  /// In zh, this message translates to:
+  /// **'待认料'**
+  String get wmNeedChoice;
+
+  /// No description provided for @wmStartSheetTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'开工前确认用料'**
+  String get wmStartSheetTitle;
+
+  /// No description provided for @wmStartConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认并开工 ({n})'**
+  String wmStartConfirm(int n);
+
+  /// No description provided for @wmOrderInstead.
+  ///
+  /// In zh, this message translates to:
+  /// **'这几个产品按工单领料 (暂不开工)'**
+  String get wmOrderInstead;
+
+  /// No description provided for @wmNotFromStore.
+  ///
+  /// In zh, this message translates to:
+  /// **'本产品不用车间内料仓的料 (按工单领料)'**
+  String get wmNotFromStore;
+
+  /// No description provided for @wmWeightPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'待补, 不影响开工'**
+  String get wmWeightPending;
+
+  /// No description provided for @wmChangeMaterial.
+  ///
+  /// In zh, this message translates to:
+  /// **'这张工单改用别的料'**
+  String get wmChangeMaterial;
+
+  /// No description provided for @wmChangeFrom.
+  ///
+  /// In zh, this message translates to:
+  /// **'从哪天起改用'**
+  String get wmChangeFrom;
+
+  /// No description provided for @wmAddMaterial.
+  ///
+  /// In zh, this message translates to:
+  /// **'加一种料'**
+  String get wmAddMaterial;
+
+  /// No description provided for @wmEnable.
+  ///
+  /// In zh, this message translates to:
+  /// **'开启整批领料'**
+  String get wmEnable;
+
+  /// No description provided for @wmGoLiveDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'启用日'**
+  String get wmGoLiveDate;
+
+  /// No description provided for @wmMainWarehouse.
+  ///
+  /// In zh, this message translates to:
+  /// **'放在哪个主仓下'**
+  String get wmMainWarehouse;
+
+  /// No description provided for @wmMachines.
+  ///
+  /// In zh, this message translates to:
+  /// **'机台与容器'**
+  String get wmMachines;
+
+  /// No description provided for @wmGoLivePrep.
+  ///
+  /// In zh, this message translates to:
+  /// **'上线准备'**
+  String get wmGoLivePrep;
+
+  /// No description provided for @wmGoLiveProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'常做的 {total} 个产品, 已选料 {chosen} 个, 已填单重 {weighed} 个'**
+  String wmGoLiveProgress(int total, int chosen, int weighed);
+
+  /// No description provided for @wmReportUsage.
+  ///
+  /// In zh, this message translates to:
+  /// **'用量表'**
+  String get wmReportUsage;
+
+  /// No description provided for @wmReportProduct.
+  ///
+  /// In zh, this message translates to:
+  /// **'产品用料'**
+  String get wmReportProduct;
+
+  /// No description provided for @wmReportTrend.
+  ///
+  /// In zh, this message translates to:
+  /// **'浪费率趋势'**
+  String get wmReportTrend;
+
+  /// No description provided for @wmReportMissingWeight.
+  ///
+  /// In zh, this message translates to:
+  /// **'缺单重清单'**
+  String get wmReportMissingWeight;
+
+  /// No description provided for @wmReportLedger.
+  ///
+  /// In zh, this message translates to:
+  /// **'收发明细'**
+  String get wmReportLedger;
+
+  /// No description provided for @wmTrueUnitUsage.
+  ///
+  /// In zh, this message translates to:
+  /// **'真实单耗'**
+  String get wmTrueUnitUsage;
+
+  /// No description provided for @wmAllocatedByTheory.
+  ///
+  /// In zh, this message translates to:
+  /// **'按理论比例分摊'**
+  String get wmAllocatedByTheory;
+
+  /// No description provided for @wmWasteRate.
+  ///
+  /// In zh, this message translates to:
+  /// **'浪费率'**
+  String get wmWasteRate;
+
+  /// No description provided for @wmIncludeWorkshopStore.
+  ///
+  /// In zh, this message translates to:
+  /// **'含内料仓'**
+  String get wmIncludeWorkshopStore;
+
+  /// No description provided for @workshopMaterialSetupHubDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'开启车间整批领料、机台与容器、上线准备 (产品的颗粒与单个重量)'**
+  String get workshopMaterialSetupHubDesc;
+
+  /// No description provided for @workshopMaterialReportsHubDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'按期间看每种料用了多少、浪费率与结算状态'**
+  String get workshopMaterialReportsHubDesc;
+
+  /// No description provided for @wmReceiveReturn.
+  ///
+  /// In zh, this message translates to:
+  /// **'收退回'**
+  String get wmReceiveReturn;
+
+  /// No description provided for @wmIssueByRequest.
+  ///
+  /// In zh, this message translates to:
+  /// **'按申请发料'**
+  String get wmIssueByRequest;
+
+  /// No description provided for @wmOnHand.
+  ///
+  /// In zh, this message translates to:
+  /// **'现存'**
+  String get wmOnHand;
+
+  /// No description provided for @wmInUseMaterial.
+  ///
+  /// In zh, this message translates to:
+  /// **'在用料'**
+  String get wmInUseMaterial;
+
+  /// No description provided for @wmBagMaterials.
+  ///
+  /// In zh, this message translates to:
+  /// **'袋料'**
+  String get wmBagMaterials;
+
+  /// No description provided for @wmEnableWorkshopTab.
+  ///
+  /// In zh, this message translates to:
+  /// **'车间开启'**
+  String get wmEnableWorkshopTab;
+
+  /// No description provided for @wmReportPeriod.
+  ///
+  /// In zh, this message translates to:
+  /// **'期间'**
+  String get wmReportPeriod;
+
+  /// No description provided for @wmReportAllPeriods.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部期间'**
+  String get wmReportAllPeriods;
+
+  /// No description provided for @wmReportMaterial.
+  ///
+  /// In zh, this message translates to:
+  /// **'料'**
+  String get wmReportMaterial;
+
+  /// No description provided for @wmReportNoBin.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有车间开启整批领料，暂时没有内料仓用量可看。'**
+  String get wmReportNoBin;
+
+  /// No description provided for @wmOpenBom.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开 BOM'**
+  String get wmOpenBom;
+
+  /// No description provided for @wmWorkshopMaterialSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'车间用料'**
+  String get wmWorkshopMaterialSection;
+
+  /// No description provided for @wmIssueMethodUpdated.
+  ///
+  /// In zh, this message translates to:
+  /// **'发料方式已更新'**
+  String get wmIssueMethodUpdated;
 }
 
 class _AppLocalizationsDelegate

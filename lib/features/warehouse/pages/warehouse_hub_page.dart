@@ -138,6 +138,13 @@ class WarehouseHubPage extends ConsumerWidget {
         '按库行/层/位查找，打印张贴到货架',
         RouteName.warehouseShelfLabels,
       ),
+      // 车间内料仓设置 (ADR-131): 只对有设置权限的人可见 (hub 目录 + 路由守卫), 不挂数。
+      _StockQueryEntry(
+        Icons.precision_manufacturing_outlined,
+        l10n.workshopMaterialSetup,
+        l10n.workshopMaterialSetupHubDesc,
+        RouteName.workshopMaterialSetup,
+      ),
     ].where((entry) => canOpen(entry.location)).toList(growable: false);
 
     final reportKinds = WarehouseReportKind.values

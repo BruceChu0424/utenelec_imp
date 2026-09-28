@@ -1699,5 +1699,207 @@
   "materialPreparationAvailableHint": "이 항목에 배정 가능한 재고와 이미 지시한 공급량에는 입고 예정 및 미처리 잔량이 포함됩니다. 다른 주문에 배정된 수량은 중복 계산하지 않으며, 실제 출고에는 실물 재고가 필요합니다.",
   "materialPreparationPending": "주문 대기",
   "materialPreparationInProgress": "진행 중",
-  "materialPreparationMissingAssignment": "발주 전에 “{goods}”의 생산 작업장과 담당자를 지정하세요"
+  "materialPreparationMissingAssignment": "발주 전에 “{goods}”의 생산 작업장과 담당자를 지정하세요",
+  "workshopMaterialBin": "작업장 자재창고",
+  "workshopMaterialBinOf": "{workshop} 자재창고",
+  "@workshopMaterialBinOf": {
+    "placeholders": {
+      "workshop": {
+        "type": "String"
+      }
+    }
+  },
+  "workshopMaterialGroup": "작업장 자재",
+  "workshopMaterialSetup": "작업장 자재 설정",
+  "workshopMaterialReports": "작업장 자재 사용량",
+  "wmIssueMethod": "출고 방식",
+  "wmIssueMethodOrder": "작업지시별 출고",
+  "wmIssueMethodPeriodic": "작업장 창고로 일괄 출고",
+  "wmCostBasis": "원가 배분",
+  "wmCostBasisOwn": "주재료",
+  "wmCostBasisShared": "보조재료",
+  "wmCostBasisExpense": "작업장 비용",
+  "wmBulkPackageQty": "포대당 순중량 (kg)",
+  "wmRecycledMaterial": "재생 자재",
+  "wmUnitWeightGrams": "개당 중량 (g)",
+  "wmUnitWeightFromBom": "수지 개당 중량 (BOM): {grams} g",
+  "@wmUnitWeightFromBom": {
+    "placeholders": {
+      "grams": {
+        "type": "String"
+      }
+    }
+  },
+  "wmUnusualWeightConfirm": "개당 중량 {grams} g 이 이상해 보입니다. 확인하시겠습니까?",
+  "@wmUnusualWeightConfirm": {
+    "placeholders": {
+      "grams": {
+        "type": "String"
+      }
+    }
+  },
+  "wmSecondMaterialConfirm": "이 제품은 두 가지 자재를 함께 사용합니까 (이색/이재)? 자재만 바꾸는 경우 기존 행을 수정하세요",
+  "wmRequestIssue": "자재 요청",
+  "wmReturn": "반납",
+  "wmOtherIssue": "시사출·퍼지 사용",
+  "wmOtherReasonTrial": "시사출",
+  "wmOtherReasonPurge": "퍼지",
+  "wmOtherReasonScrap": "폐기 자재",
+  "wmOtherReasonOther": "기타",
+  "wmDirectIssue": "직접 출고",
+  "wmPendingIssue": "출고 대기",
+  "wmPendingReturn": "반납 수령 대기",
+  "wmCount": "재고 조사",
+  "wmHistory": "기록",
+  "wmBags": "포대 수",
+  "wmKg": "kg",
+  "wmReceiver": "수령인",
+  "wmWarehouseAvailable": "창고 재고 {qty} kg",
+  "@wmWarehouseAvailable": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "wmEstimatedRemaining": "자재창고 예상 잔량 {qty} kg",
+  "@wmEstimatedRemaining": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "wmCountingNextPeriod": "재고 조사가 시작되어 이 자재는 다음 기간으로 계산됩니다",
+  "wmSupplementFlag": "이 자재는 이전 기간에 누락된 기록임",
+  "wmSupplementPeriod": "추가할 기간",
+  "wmAlsoOrderMaterials": "다른 자재도 작업지시별로 출고 (예: 인서트)",
+  "wmFillFromGoodsWeight": "선택 행에 품목 중량 입력",
+  "wmCloseFailing": "결산이 계속 실패하여 매일 재시도합니다. 관리자에게 문의하세요",
+  "wmStartCount": "재고 조사 시작",
+  "wmCutoffToday": "오늘 마감",
+  "wmCutoffYesterday": "어제 마감",
+  "wmMonthEndHint": "월별 대사를 원하면 월말에 재고 조사하세요",
+  "wmFillFull": "가득",
+  "wmFillHalf": "절반",
+  "wmFillEmpty": "비어 있음",
+  "wmFillWeighed": "kg 직접 입력",
+  "wmWeighOpenBag": "개봉 포대 (계량)",
+  "wmWeighMixed": "혼합 후 미투입",
+  "wmWeighLoose": "산물 자재",
+  "wmFillGuide": "3/4 이상은 가득, 1/4~3/4는 절반, 1/4 미만은 비어 있음",
+  "wmMachineIdle": "설비 정지, 전부 비어 있음",
+  "wmZeroRest": "나머지 자재는 모두 소진, 0으로 기록",
+  "wmPrintBlank": "빈 재고 조사표 인쇄",
+  "wmSubmitCount": "재고 조사 제출",
+  "wmWithdrawCount": "재고 조사 철회",
+  "wmCorrectCount": "재고 조사 정정",
+  "wmBagsTimesKg": "{bags}포대 × {kg}kg",
+  "@wmBagsTimesKg": {
+    "placeholders": {
+      "bags": {
+        "type": "int"
+      },
+      "kg": {
+        "type": "String"
+      }
+    }
+  },
+  "wmCloseState": "결산 상태",
+  "wmCloseWaitingPrevious": "이전 기간 결산 대기",
+  "wmCloseBlockedReport": "미승인 작업보고 {n}건 (승인자 승인 또는 작성자가 불필요한 초안 삭제)",
+  "@wmCloseBlockedReport": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "wmCloseBlockedWeight": "개당 중량 누락 제품 {n}개 (BOM 담당자 처리)",
+  "@wmCloseBlockedWeight": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "wmCloseBlockedStock": "\"{material}\" 이번 기간 출고 기록 없이 사용됨 (창고 누락 출고 보완 또는 작업장 자재 수정)",
+  "@wmCloseBlockedStock": {
+    "placeholders": {
+      "material": {
+        "type": "String"
+      }
+    }
+  },
+  "wmCloseRetry": "지금 재시도",
+  "wmReopen": "결산 취소",
+  "wmReopenReason": "취소 사유",
+  "wmReopenHeld": "결산이 취소되었습니다. 수정 후 \"다시 결산\"을 누르세요. {time}에 자동으로 다시 결산합니다",
+  "@wmReopenHeld": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "wmSettleAgain": "다시 결산",
+  "wmNeedChoice": "자재 확인 대기",
+  "wmStartSheetTitle": "착수 전 자재 확인",
+  "wmStartConfirm": "확인 후 착수 ({n})",
+  "@wmStartConfirm": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "wmOrderInstead": "이 제품들은 작업지시별 출고 (지금 착수 안 함)",
+  "wmNotFromStore": "작업장 자재창고 자재 미사용 (작업지시별 출고)",
+  "wmWeightPending": "추후 입력, 착수에 영향 없음",
+  "wmChangeMaterial": "이 작업지시 자재 변경",
+  "wmChangeFrom": "변경 시작일",
+  "wmAddMaterial": "자재 추가",
+  "wmEnable": "일괄 출고 사용",
+  "wmGoLiveDate": "사용 시작일",
+  "wmMainWarehouse": "소속 주창고",
+  "wmMachines": "설비 및 용기",
+  "wmGoLivePrep": "도입 준비",
+  "wmGoLiveProgress": "주요 제품 {total}개, 자재 선택 {chosen}개, 개당 중량 입력 {weighed}개",
+  "@wmGoLiveProgress": {
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "chosen": {
+        "type": "int"
+      },
+      "weighed": {
+        "type": "int"
+      }
+    }
+  },
+  "wmReportUsage": "사용량",
+  "wmReportProduct": "제품별",
+  "wmReportTrend": "손실률 추이",
+  "wmReportMissingWeight": "개당 중량 누락",
+  "wmReportLedger": "입출고 내역",
+  "wmTrueUnitUsage": "실제 개당 사용량",
+  "wmAllocatedByTheory": "표준 비율 배분",
+  "wmWasteRate": "손실률",
+  "wmIncludeWorkshopStore": "작업장 자재창고 포함",
+  "workshopMaterialSetupHubDesc": "일괄 출고 사용, 설비·용기, 도입 준비",
+  "workshopMaterialReportsHubDesc": "기간별 자재 사용량, 손실률, 결산 상태",
+  "wmReceiveReturn": "반납 수령",
+  "wmIssueByRequest": "요청별 출고",
+  "wmOnHand": "현재고",
+  "wmInUseMaterial": "사용 중 자재",
+  "wmBagMaterials": "포대 자재",
+  "wmEnableWorkshopTab": "작업장 사용 설정",
+  "wmReportPeriod": "기간",
+  "wmReportAllPeriods": "전체 기간",
+  "wmReportMaterial": "자재",
+  "wmReportNoBin": "아직 일괄 출고를 사용하는 작업장이 없어 자재창고 사용량이 없습니다.",
+  "wmOpenBom": "BOM 열기",
+  "wmWorkshopMaterialSection": "작업장 자재",
+  "wmIssueMethodUpdated": "출고 방식이 변경되었습니다"
 }

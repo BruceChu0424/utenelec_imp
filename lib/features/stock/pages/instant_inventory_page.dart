@@ -31,6 +31,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../components/print/uten_print_preview.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -696,10 +697,18 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                 // V595：线边仓是车间内部直送的料架，不是现实里的仓库——默认不算进即时库存，
                 // 要看车间料架上还有多少直送料时再打开。选定叶子仓时同样置灰。
                 Tooltip(
-                  message: '线边仓是车间内部直送的料架，默认不计入即时库存',
+                  message: '内料仓是车间的料架, 默认不计入即时库存',
                   child: FilterChip(
                     key: const Key('instant-inventory-line-side'),
-                    label: const Text('含线边仓'), // TODO(l10n): 补 arb
+                    // 本页其余文案尚未接 arb, 既有 widget 测试不挂本地化代理:
+                    // 取不到时回落中文原文, 不因缺代理而抛错。
+                    label: Text(
+                      Localizations.of<AppLocalizations>(
+                            context,
+                            AppLocalizations,
+                          )?.wmIncludeWorkshopStore ??
+                          '含内料仓',
+                    ),
                     selected: _includeLineSide,
                     onSelected: !aggregateWarehouse
                         ? null

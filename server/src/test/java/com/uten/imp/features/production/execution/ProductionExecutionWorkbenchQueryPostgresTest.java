@@ -81,6 +81,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                     supported_output_qty numeric, prepared_output_qty numeric)
                     LANGUAGE sql AS 'SELECT 2, 1, 0, 0, 1, 0, 0, 0, 0, 0::numeric, 10::numeric';
                 CREATE FUNCTION fn_demand_direct_supply_eligible(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE FUNCTION fn_segment_bin_material_state(uuid) RETURNS text LANGUAGE sql AS 'SELECT ''NO_BIN''::text';
                 CREATE TABLE warehouses(id uuid PRIMARY KEY, is_line_side boolean DEFAULT FALSE);
                 CREATE TABLE departments(id uuid PRIMARY KEY, parent_id uuid, manager_id uuid, is_deleted boolean DEFAULT FALSE);
                 CREATE TABLE employees(id uuid PRIMARY KEY, department_id uuid, status text DEFAULT 'active', is_deleted boolean DEFAULT FALSE);

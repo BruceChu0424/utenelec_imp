@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.execution;
 
+import com.uten.imp.application.port.WorkshopMaterialStatePort;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -59,6 +60,12 @@ public class ProductionExecutionSegmentService {
     private final ProductionDocumentAccessPolicy access;
     private final com.uten.imp.features.production.ProductionWorkshopMembership workshopMembership;
     private final ProductionPlanMutationFootprintService planFootprints;
+    /**
+     * ADR-131 车间内料仓开工门(待认料 / 车间没开启整批领料时给员工看的话)。字段注入——
+     * 单测手工构造时为空跳过，Spring 环境恒注入；数据库开工触发器兜底同一口径。
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    private WorkshopMaterialStatePort workshopMaterialState;
 
     @Transactional(readOnly = true)
     public List<ExecutionSegmentView> list(UUID planId) {
@@ -785,6 +792,13 @@ public class ProductionExecutionSegmentService {
     }
 
     private void requireMaterialsIssuedForStart(LockedSegment segment) {
+        // ADR-131：待认料、或产品的料要从车间内料仓领而本车间没开启整批领料，先给带产品名、
+        // 料名、车间名的话；与数据库开工触发器读同一个状态函数。
+        if (workshopMaterialState != null) {
+            workshopMaterialState.startBlockMessage(segment.id()).ifPresent(message -> {
+                throw conflict(message);
+            });
+        }
         assignmentValidator.requireMaterialCustody(segment.id());
         if ("ZERO_MATERIAL".equals(segment.materialRequirementMode())) {
             if(Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_material_discovery_pending(:id)")
@@ -1086,13 +1100,9 @@ public class ProductionExecutionSegmentService {
                                        balance.available_qty, 0)) FILTER (
                                        WHERE recovery_auth.disposition_code
                                              IN ('SCRAP', 'REJECT')
-                                         AND EXISTS (
-                                             SELECT 1
-                                             FROM v_production_fqc_replenishment_material_ready
-                                                  ready
-                                             WHERE ready.authorization_id =
-                                                   recovery_auth.id
-                                         )), 0)
+                                         -- ADR-131：补产只用车间内料仓的料时也算料齐(唯一定义)。
+                                         AND fn_fqc_replenishment_material_ready(
+                                             recovery_auth.id)), 0)
                                        AS replacement_ready_qty
                             FROM v_production_fqc_recovery_balance balance
                             JOIN production_fqc_recovery_authorizations

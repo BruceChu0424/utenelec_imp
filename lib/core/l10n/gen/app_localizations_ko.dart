@@ -4215,4 +4215,356 @@ class AppLocalizationsKo extends AppLocalizations {
   String materialPreparationMissingAssignment(String goods) {
     return '발주 전에 “$goods”의 생산 작업장과 담당자를 지정하세요';
   }
+
+  @override
+  String get workshopMaterialBin => '작업장 자재창고';
+
+  @override
+  String workshopMaterialBinOf(String workshop) {
+    return '$workshop 자재창고';
+  }
+
+  @override
+  String get workshopMaterialGroup => '작업장 자재';
+
+  @override
+  String get workshopMaterialSetup => '작업장 자재 설정';
+
+  @override
+  String get workshopMaterialReports => '작업장 자재 사용량';
+
+  @override
+  String get wmIssueMethod => '출고 방식';
+
+  @override
+  String get wmIssueMethodOrder => '작업지시별 출고';
+
+  @override
+  String get wmIssueMethodPeriodic => '작업장 창고로 일괄 출고';
+
+  @override
+  String get wmCostBasis => '원가 배분';
+
+  @override
+  String get wmCostBasisOwn => '주재료';
+
+  @override
+  String get wmCostBasisShared => '보조재료';
+
+  @override
+  String get wmCostBasisExpense => '작업장 비용';
+
+  @override
+  String get wmBulkPackageQty => '포대당 순중량 (kg)';
+
+  @override
+  String get wmRecycledMaterial => '재생 자재';
+
+  @override
+  String get wmUnitWeightGrams => '개당 중량 (g)';
+
+  @override
+  String wmUnitWeightFromBom(String grams) {
+    return '수지 개당 중량 (BOM): $grams g';
+  }
+
+  @override
+  String wmUnusualWeightConfirm(String grams) {
+    return '개당 중량 $grams g 이 이상해 보입니다. 확인하시겠습니까?';
+  }
+
+  @override
+  String get wmSecondMaterialConfirm =>
+      '이 제품은 두 가지 자재를 함께 사용합니까 (이색/이재)? 자재만 바꾸는 경우 기존 행을 수정하세요';
+
+  @override
+  String get wmRequestIssue => '자재 요청';
+
+  @override
+  String get wmReturn => '반납';
+
+  @override
+  String get wmOtherIssue => '시사출·퍼지 사용';
+
+  @override
+  String get wmOtherReasonTrial => '시사출';
+
+  @override
+  String get wmOtherReasonPurge => '퍼지';
+
+  @override
+  String get wmOtherReasonScrap => '폐기 자재';
+
+  @override
+  String get wmOtherReasonOther => '기타';
+
+  @override
+  String get wmDirectIssue => '직접 출고';
+
+  @override
+  String get wmPendingIssue => '출고 대기';
+
+  @override
+  String get wmPendingReturn => '반납 수령 대기';
+
+  @override
+  String get wmCount => '재고 조사';
+
+  @override
+  String get wmHistory => '기록';
+
+  @override
+  String get wmBags => '포대 수';
+
+  @override
+  String get wmKg => 'kg';
+
+  @override
+  String get wmReceiver => '수령인';
+
+  @override
+  String wmWarehouseAvailable(String qty) {
+    return '창고 재고 $qty kg';
+  }
+
+  @override
+  String wmEstimatedRemaining(String qty) {
+    return '자재창고 예상 잔량 $qty kg';
+  }
+
+  @override
+  String get wmCountingNextPeriod => '재고 조사가 시작되어 이 자재는 다음 기간으로 계산됩니다';
+
+  @override
+  String get wmSupplementFlag => '이 자재는 이전 기간에 누락된 기록임';
+
+  @override
+  String get wmSupplementPeriod => '추가할 기간';
+
+  @override
+  String get wmAlsoOrderMaterials => '다른 자재도 작업지시별로 출고 (예: 인서트)';
+
+  @override
+  String get wmFillFromGoodsWeight => '선택 행에 품목 중량 입력';
+
+  @override
+  String get wmCloseFailing => '결산이 계속 실패하여 매일 재시도합니다. 관리자에게 문의하세요';
+
+  @override
+  String get wmStartCount => '재고 조사 시작';
+
+  @override
+  String get wmCutoffToday => '오늘 마감';
+
+  @override
+  String get wmCutoffYesterday => '어제 마감';
+
+  @override
+  String get wmMonthEndHint => '월별 대사를 원하면 월말에 재고 조사하세요';
+
+  @override
+  String get wmFillFull => '가득';
+
+  @override
+  String get wmFillHalf => '절반';
+
+  @override
+  String get wmFillEmpty => '비어 있음';
+
+  @override
+  String get wmFillWeighed => 'kg 직접 입력';
+
+  @override
+  String get wmWeighOpenBag => '개봉 포대 (계량)';
+
+  @override
+  String get wmWeighMixed => '혼합 후 미투입';
+
+  @override
+  String get wmWeighLoose => '산물 자재';
+
+  @override
+  String get wmFillGuide => '3/4 이상은 가득, 1/4~3/4는 절반, 1/4 미만은 비어 있음';
+
+  @override
+  String get wmMachineIdle => '설비 정지, 전부 비어 있음';
+
+  @override
+  String get wmZeroRest => '나머지 자재는 모두 소진, 0으로 기록';
+
+  @override
+  String get wmPrintBlank => '빈 재고 조사표 인쇄';
+
+  @override
+  String get wmSubmitCount => '재고 조사 제출';
+
+  @override
+  String get wmWithdrawCount => '재고 조사 철회';
+
+  @override
+  String get wmCorrectCount => '재고 조사 정정';
+
+  @override
+  String wmBagsTimesKg(int bags, String kg) {
+    return '$bags포대 × ${kg}kg';
+  }
+
+  @override
+  String get wmCloseState => '결산 상태';
+
+  @override
+  String get wmCloseWaitingPrevious => '이전 기간 결산 대기';
+
+  @override
+  String wmCloseBlockedReport(int n) {
+    return '미승인 작업보고 $n건 (승인자 승인 또는 작성자가 불필요한 초안 삭제)';
+  }
+
+  @override
+  String wmCloseBlockedWeight(int n) {
+    return '개당 중량 누락 제품 $n개 (BOM 담당자 처리)';
+  }
+
+  @override
+  String wmCloseBlockedStock(String material) {
+    return '\"$material\" 이번 기간 출고 기록 없이 사용됨 (창고 누락 출고 보완 또는 작업장 자재 수정)';
+  }
+
+  @override
+  String get wmCloseRetry => '지금 재시도';
+
+  @override
+  String get wmReopen => '결산 취소';
+
+  @override
+  String get wmReopenReason => '취소 사유';
+
+  @override
+  String wmReopenHeld(String time) {
+    return '결산이 취소되었습니다. 수정 후 \"다시 결산\"을 누르세요. $time에 자동으로 다시 결산합니다';
+  }
+
+  @override
+  String get wmSettleAgain => '다시 결산';
+
+  @override
+  String get wmNeedChoice => '자재 확인 대기';
+
+  @override
+  String get wmStartSheetTitle => '착수 전 자재 확인';
+
+  @override
+  String wmStartConfirm(int n) {
+    return '확인 후 착수 ($n)';
+  }
+
+  @override
+  String get wmOrderInstead => '이 제품들은 작업지시별 출고 (지금 착수 안 함)';
+
+  @override
+  String get wmNotFromStore => '작업장 자재창고 자재 미사용 (작업지시별 출고)';
+
+  @override
+  String get wmWeightPending => '추후 입력, 착수에 영향 없음';
+
+  @override
+  String get wmChangeMaterial => '이 작업지시 자재 변경';
+
+  @override
+  String get wmChangeFrom => '변경 시작일';
+
+  @override
+  String get wmAddMaterial => '자재 추가';
+
+  @override
+  String get wmEnable => '일괄 출고 사용';
+
+  @override
+  String get wmGoLiveDate => '사용 시작일';
+
+  @override
+  String get wmMainWarehouse => '소속 주창고';
+
+  @override
+  String get wmMachines => '설비 및 용기';
+
+  @override
+  String get wmGoLivePrep => '도입 준비';
+
+  @override
+  String wmGoLiveProgress(int total, int chosen, int weighed) {
+    return '주요 제품 $total개, 자재 선택 $chosen개, 개당 중량 입력 $weighed개';
+  }
+
+  @override
+  String get wmReportUsage => '사용량';
+
+  @override
+  String get wmReportProduct => '제품별';
+
+  @override
+  String get wmReportTrend => '손실률 추이';
+
+  @override
+  String get wmReportMissingWeight => '개당 중량 누락';
+
+  @override
+  String get wmReportLedger => '입출고 내역';
+
+  @override
+  String get wmTrueUnitUsage => '실제 개당 사용량';
+
+  @override
+  String get wmAllocatedByTheory => '표준 비율 배분';
+
+  @override
+  String get wmWasteRate => '손실률';
+
+  @override
+  String get wmIncludeWorkshopStore => '작업장 자재창고 포함';
+
+  @override
+  String get workshopMaterialSetupHubDesc => '일괄 출고 사용, 설비·용기, 도입 준비';
+
+  @override
+  String get workshopMaterialReportsHubDesc => '기간별 자재 사용량, 손실률, 결산 상태';
+
+  @override
+  String get wmReceiveReturn => '반납 수령';
+
+  @override
+  String get wmIssueByRequest => '요청별 출고';
+
+  @override
+  String get wmOnHand => '현재고';
+
+  @override
+  String get wmInUseMaterial => '사용 중 자재';
+
+  @override
+  String get wmBagMaterials => '포대 자재';
+
+  @override
+  String get wmEnableWorkshopTab => '작업장 사용 설정';
+
+  @override
+  String get wmReportPeriod => '기간';
+
+  @override
+  String get wmReportAllPeriods => '전체 기간';
+
+  @override
+  String get wmReportMaterial => '자재';
+
+  @override
+  String get wmReportNoBin => '아직 일괄 출고를 사용하는 작업장이 없어 자재창고 사용량이 없습니다.';
+
+  @override
+  String get wmOpenBom => 'BOM 열기';
+
+  @override
+  String get wmWorkshopMaterialSection => '작업장 자재';
+
+  @override
+  String get wmIssueMethodUpdated => '출고 방식이 변경되었습니다';
 }

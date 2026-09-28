@@ -146,6 +146,19 @@ public class ReviewNoticeAudience {
             case "PAYROLL_BATCH_SUBMITTED" -> permissions.contains("payroll:review");
             case "PAYROLL_BATCH_PENDING_PUBLISH" -> permissions.contains("payroll:publish");
             case "SUGGESTION_SUBMITTED" -> permissions.contains("suggestion:reply");
+            // ===== ADR-131 车间内料仓 (WorkshopMaterialNoticeService): 收件人在发卡时已按对象范围精确算好
+            // (领料单预填叶仓的仓管 / 该车间的报工审核人与这些草稿的制单人 / BOM 维护人 / 内料仓所在主仓的仓管
+            // 与本车间的认料人 / 设置负责人), 这里在弹卡时复核「现在还能不能动手」: 发卡时凭的那件事的动手权限
+            // 要还在 (与发卡同一口径, 只看动手权限); 车间认料人另要求仍在生产部子树 (调离生产部的人不再弹车间的活)。=====
+            case "WORKSHOP_MATERIAL_REQUISITION_PENDING", "WORKSHOP_MATERIAL_RETURN_PENDING" ->
+                    permissions.contains("workshop_material:issue");
+            // 审核人审; 制单人删掉或改好自己的草稿 (审核人删不了别人的草稿)。
+            case "WORKSHOP_MATERIAL_CLOSE_BLOCKED_REPORT" -> any(permissions, "production_daily_report:approve",
+                    "production_daily_report:create", "production_daily_report:edit", "production_daily_report:delete");
+            case "WORKSHOP_MATERIAL_CLOSE_BLOCKED_WEIGHT" -> permissions.contains("goods:bom:edit");
+            case "WORKSHOP_MATERIAL_CLOSE_BLOCKED_STOCK" -> permissions.contains("workshop_material:issue")
+                    || (permissions.contains("workshop_material:choose") && departments.contains("DEPT_PROD"));
+            case "WORKSHOP_MATERIAL_CLOSE_FAILING" -> permissions.contains("workshop_material:setup");
             default -> false;
         };
     }

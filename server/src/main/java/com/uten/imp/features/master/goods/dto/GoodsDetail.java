@@ -132,6 +132,14 @@ public class GoodsDetail {
     /** 委外允许损耗默认值(%)(ADR-098): 委外订货明细预填记忆; 不是成本字段, 不随成本脱敏。 */
     private BigDecimal subcontractAllowedLossPct;
 
+    // ===== 发料方式 (V740 / ADR-131; 只读展示, 切换走 /issue-method/preview → /issue-method/batch) =====
+    private String issueMethod;          // ORDER 按工单领料 / PERIODIC 整批领到车间内料仓
+    private String periodicCostBasis;    // OWN 主料 / SHARED 辅料 / EXPENSE 记车间费用; 按工单领料为 null
+    private BigDecimal bulkPackageQty;   // 每袋净重 (基本单位)
+    private boolean recycledMaterial;    // 回收料 (水口料、破碎料), 其它入库预填金额 0
+    /** 本产品 BOM 里整批领料的料与单个重量 (期间边); 单重旁只读显示"塑料单个重量 (来自 BOM)"。 */
+    private List<GoodsPeriodicBomWeight> periodicBomWeights;
+
     public BigDecimal getDefaultPurchasePrice() {
         return defaultPurchasePriceInfo == null ? null : defaultPurchasePriceInfo.price();
     }

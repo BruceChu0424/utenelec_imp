@@ -35,7 +35,8 @@ import java.util.UUID;
  * <p>齐套口径：
  * <ol>
  *   <li>毛需求：计划明细排产量 × BOM 递归展开（goods_bom_items，≤10 层、路径防环），
- *       按货品 + BOM 行颜色（空时回落组件主颜色）聚合。</li>
+ *       按货品 + BOM 行颜色（空时回落组件主颜色）聚合。
+ *       整批领料的料 (ADR-131 期间边) 由车间内料仓按期供料, 不展开、不进毛需求。</li>
  *   <li>当前可用 = 全仓账面库存 − 生效销售预留 − 货品安全库存，最小为 0。
  *       安全库存当前仅有货品级字段，对每个颜色分别应用是保守口径。</li>
  *   <li>全部在途与需求日前可到在途分开计算；日期为空的采购行不计入及时在途。
@@ -79,6 +80,7 @@ public class MrpService {
                       ON b.goods_id = mt.goods_id AND b.is_deleted = FALSE
                     JOIN goods component
                       ON component.id = b.component_goods_id AND component.is_deleted = FALSE
+                     AND component.issue_method <> 'PERIODIC'
                     WHERE mt.depth < 10
                       AND NOT b.id = ANY(mt.path)
                       AND component.source_type = '自制'
@@ -94,12 +96,12 @@ public class MrpService {
      * 故 orchestrator 只自动审核它（使其可报工/入库），<b>不</b>对它调 confirm
      * （confirm 的 snapshot 内联 goods_bom_items，无 BOM 会得到空产品行而抛错）。
      * 这与当前人工流程一致：无 BOM 的自制件直接报工+成品入库，不走 confirm 展开。
+     * ADR-131: 只有整批领料边 (期间边) 的产品也算有 BOM，confirm 下达为零料段 (车间内料仓供料)。
      */
     public boolean planGoodsHasBom(UUID planId) {
         Object n = em.createNativeQuery("""
-                SELECT COUNT(*) FROM goods_bom_items b
-                JOIN production_plan_items i ON i.goods_id = b.goods_id
-                WHERE i.plan_id = :planId AND b.is_deleted = FALSE AND i.is_deleted = FALSE
+                SELECT COUNT(*) FROM production_plan_items i
+                WHERE i.plan_id = :planId AND i.is_deleted = FALSE AND fn_goods_has_bom(i.goods_id)
                 """).setParameter("planId", planId).getSingleResult();
         return n instanceof Number num && num.longValue() > 0;
     }
@@ -142,6 +144,7 @@ public class MrpService {
             JOIN goods source ON source.id = i.goods_id
             JOIN goods_bom_items b ON b.goods_id = i.goods_id AND b.is_deleted = false
             JOIN goods component ON component.id = b.component_goods_id
+             AND component.issue_method <> 'PERIODIC'
              LEFT JOIN colors resolved_color
                     ON resolved_color.id = COALESCE(b.color_id, component.color_id)
             WHERE i.plan_id = :planId AND i.is_deleted = false
@@ -182,6 +185,7 @@ public class MrpService {
                 FROM exp e
                 JOIN goods_bom_items b ON b.goods_id = e.goods_id AND b.is_deleted = false
                 JOIN goods component ON component.id = b.component_goods_id
+                 AND component.issue_method <> 'PERIODIC'
                  LEFT JOIN colors resolved_color
                         ON resolved_color.id = COALESCE(b.color_id, component.color_id)
                 WHERE e.lvl < 10 AND NOT b.id = ANY(e.path)
@@ -220,8 +224,7 @@ public class MrpService {
                        bool_or(e.bom_qty_bad) AS bom_qty_bad,
                        bool_or(e.plan_qty_bad) AS plan_qty_bad,
                        bool_or(e.color_bad) AS color_bad,
-                       bool_or(EXISTS (SELECT 1 FROM goods_bom_items c
-                                       WHERE c.goods_id = e.goods_id AND c.is_deleted = false)) AS has_bom
+                       bool_or(fn_goods_has_order_bom(e.goods_id)) AS has_bom
                 FROM exp e
                 GROUP BY e.goods_id, e.color_id
             ),

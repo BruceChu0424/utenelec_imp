@@ -18,6 +18,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/network/api_error.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -42,6 +43,7 @@ import '../widgets/master_entity_detail_pane.dart';
 import '../widgets/master_batch_feedback.dart';
 import '../models/master_batch.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../widgets/periodic_bom_confirmation.dart';
 import '../widgets/system_master_category_guard.dart';
 
 class ProductCategoryPage extends ConsumerStatefulWidget {
@@ -672,17 +674,20 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   }
 
   /// BOM 行 → 粘贴请求行(字段与后端 BomItemSaveRequest 对齐)。
+  /// 整批领料的料 (期间边, ADR-131) 只带用量 (基本单位的单个重量)，形状由服务端固定，不提交。
   Map<String, dynamic> _bomSaveBody(GoodsBomItem it) => <String, dynamic>{
     'componentGoodsId': it.componentGoodsId,
     'qty': it.qty ?? 1,
     'price': it.price,
     'total': it.total,
     'summary': it.summary,
-    'controlStage': it.controlStage.code,
-    'consumptionBasis': it.consumptionBasis.code,
-    'basisOutputQty': it.basisOutputQty,
-    'allowPartialPackage': it.allowPartialPackage,
-    'hardGate': it.hardGate,
+    if (!it.isPeriodicEdge) ...{
+      'controlStage': it.controlStage.code,
+      'consumptionBasis': it.consumptionBasis.code,
+      'basisOutputQty': it.basisOutputQty,
+      'allowPartialPackage': it.allowPartialPackage,
+      'hardGate': it.hardGate,
+    },
     if (it.colorId != null) 'colorId': it.colorId,
     if (it.defaultSupplierId != null) 'defaultSupplierId': it.defaultSupplierId,
   };
@@ -757,10 +762,21 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
             // 组件粘失败单独成行报原因——货品本体已建成功，不并在一起误报整条失败。
             if (clip.bomItems.isNotEmpty) {
               try {
+                // 整份复制源货品的组件行：源货品上的异常单重、双料 (整批领料的料)
+                // 都已有人确认过，副本原样沿用确认，不再逐个弹框。
                 await bomRepo.paste(
                   mode: BomPasteMode.append,
                   targets: [BomPasteTarget(created.id)],
-                  items: [for (final it in clip.bomItems) _bomSaveBody(it)],
+                  items: [
+                    for (final it in clip.bomItems)
+                      {
+                        ..._bomSaveBody(it),
+                        if (it.isPeriodicEdge) ...{
+                          periodicConfirmUnusualWeight: true,
+                          periodicConfirmSecondMaterial: true,
+                        },
+                      },
+                  ],
                 );
               } on ApiException catch (e) {
                 results.add(
@@ -951,25 +967,54 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     required List<BomPasteTarget> targets,
     required List<GoodsBomItem> items,
   }) async {
-    final result = await pane.runExclusive(
-      () => context.guardAction(
-        () => ref
-            .read(goodsBomRepositoryProvider)
-            .paste(
-              mode: mode,
-              targets: targets,
-              items: [for (final it in items) _bomSaveBody(it)],
-            ),
-        errorFallback: '粘贴失败，请稍后重试', // TODO(l10n): 补 arb
-      ),
-    );
+    final bodies = [for (final it in items) _bomSaveBody(it)];
+    final periodicBodies = [
+      for (var i = 0; i < items.length; i++)
+        if (items[i].isPeriodicEdge) bodies[i],
+    ];
+    BomPasteResult? result;
+    while (true) {
+      List<ApiFieldError>? confirmations;
+      result = await pane.runExclusive<BomPasteResult?>(() async {
+        try {
+          return await ref
+              .read(goodsBomRepositoryProvider)
+              .paste(mode: mode, targets: targets, items: bodies);
+        } on ApiException catch (e) {
+          // 整批领料的料只差人确认 (异常单重 / 第二种料)：退出忙碌后问，确认了带上重发。
+          confirmations = periodicConfirmationsOf(e);
+          if (confirmations != null) return null;
+          if (mounted) {
+            context.appError(
+              e.message.isNotEmpty ? e.message : '粘贴失败，请稍后重试',
+              fieldErrors: e.fieldErrors,
+            );
+          }
+          return null;
+        } catch (_) {
+          if (mounted) context.appError('粘贴失败，请稍后重试'); // TODO(l10n): 补 arb
+          return null;
+        }
+      });
+      final pending = confirmations;
+      if (pending == null || !mounted) break;
+      // 忙碌遮罩在 runExclusive 结束时撤掉，等这一帧画完再弹确认框。
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      final confirmed = await askPeriodicConfirmations(context, pending);
+      if (confirmed == null || !mounted) return;
+      applyPeriodicConfirmations(periodicBodies, confirmed);
+    }
     if (result == null || !mounted) return;
     pane.clearSelection();
-    context.appSuccess(
-      mode == BomPasteMode.replace
-          ? '已替换 ${result.targets} 个货品的组件，共 ${result.added} 个' // TODO(l10n): 补 arb
-          : '已给 ${result.targets} 个货品追加 ${result.added} 个组件', // TODO(l10n): 补 arb
-    );
+    final done = mode == BomPasteMode.replace
+        ? '已替换 ${result.targets} 个货品的组件，共 ${result.added} 个' // TODO(l10n): 补 arb
+        : '已给 ${result.targets} 个货品追加 ${result.added} 个组件'; // TODO(l10n): 补 arb
+    if (result.warnings.isNotEmpty) {
+      context.appWarning('$done；请核对：${result.warnings.join('；')}');
+    } else {
+      context.appSuccess(done);
+    }
   }
 
   /// 「粘贴组件信息」：目标已有组件时让用户选「替换」或「同级追加」；

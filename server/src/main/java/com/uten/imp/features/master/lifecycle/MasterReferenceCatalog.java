@@ -572,7 +572,7 @@ final class MasterReferenceCatalog {
         exempt(out, ExemptReason.HISTORY, "成品检验单打印记录", "production_fqc_inspection_sheets", "warehouse_id");
         exempt(out, ExemptReason.HISTORY, "退料收仓确认记录", "production_material_return_receiving_confirmations",
                 "previous_warehouse_id", "received_warehouse_id", "source_warehouse_id");
-        exempt(out, ExemptReason.HISTORY, "车间直送已过账的移库记录(线边仓里还有没有料由库存余额检查)",
+        exempt(out, ExemptReason.HISTORY, "车间直送已过账的移库记录(内料仓里还有没有料由库存余额检查)",
                 "production_workshop_direct_transfers", "line_side_warehouse_id");
         exempt(out, ExemptReason.HISTORY, "公共备货供应事件", "preplan_public_supply_events",
                 "goods_id", "color_id", "unit_id", "warehouse_id");

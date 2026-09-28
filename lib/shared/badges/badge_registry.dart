@@ -89,6 +89,9 @@ enum BadgeEntry {
   /// 生产领料任务中心: 待领任务 + 车间已提交待确认实收的退料。
   warehouseDrawCenter(BadgeModule.warehouse),
 
+  /// 车间内料仓 (ADR-131): 红 = 待发料 + 待收退回; 黄 = 盘点中。
+  warehouseWorkshopMaterial(BadgeModule.warehouse),
+
   /// 品质部检查结果: 红 = 轮到仓库动手; 黄 = 等待检查结果。
   warehouseQualityResult(BadgeModule.warehouse),
 
@@ -205,6 +208,11 @@ abstract final class BadgeFact {
   static const finishedInbound = 'finishedInbound.count';
   static const productionDraw = 'productionDraw.count';
   static const productionReturn = 'productionReturn.count';
+
+  /// 车间内料仓 (ADR-131): 待发料 / 待收退回 / 盘点中 (来源键 workshopMaterial)。
+  static const workshopMaterialPendingIssue = 'workshopMaterial.pendingIssue';
+  static const workshopMaterialPendingReturn = 'workshopMaterial.pendingReturn';
+  static const workshopMaterialCounting = 'workshopMaterial.counting';
   static const warehouseSalesOutboundPendingPick =
       'warehouseSalesOutbound.PENDING_PICK';
   static const warehouseSalesOutboundShipped = 'warehouseSalesOutbound.SHIPPED';

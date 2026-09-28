@@ -637,7 +637,7 @@ public class ProductionFqcInspectionService
     public UUID registerWorkshopSelfInspection(
             UUID reportId, UUID reportItemId, UUID lineSideWarehouseId) {
         if (reportId == null || reportItemId == null || lineSideWarehouseId == null) {
-            throw validation("班组自检缺少报工行或线边仓 UUID");
+            throw validation("班组自检缺少报工行或内料仓");
         }
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""

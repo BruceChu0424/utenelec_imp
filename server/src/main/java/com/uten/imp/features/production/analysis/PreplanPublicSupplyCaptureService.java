@@ -175,9 +175,7 @@ public class PreplanPublicSupplyCaptureService
                 sources,
                 purchase
                         ? "TRUE"
-                        : "NOT EXISTS (SELECT 1 FROM goods_bom_items bom "
-                                + "WHERE bom.goods_id=action.goods_id "
-                                + "AND bom.is_deleted=FALSE)"))
+                        : "NOT fn_goods_has_order_bom(action.goods_id)"))
                 .setParameter("route", route)
                 .setParameter("orderId", orderId));
         List<Candidate> result = new ArrayList<>(rows.size());

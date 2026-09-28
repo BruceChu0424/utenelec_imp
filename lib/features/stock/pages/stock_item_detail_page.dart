@@ -313,8 +313,11 @@ class _StockItemDetailPageState extends ConsumerState<StockItemDetailPage> {
       filters: const {},
       onFilterChanged: (_, _) {},
       onRowTap: (movement) => openStockMovementSourceDoc(context, movement),
+      // 21/22 (内料仓盘点耗用/盘盈) 来源是盘点, 没有库存单据可跳。
       canOpenRow: (movement) =>
-          movement.sourceDocId != null && movement.sourceDocId!.isNotEmpty,
+          movement.sourceDocId != null &&
+          movement.sourceDocId!.isNotEmpty &&
+          !isWorkshopMaterialCountMovement(movement),
       isLoading: _loading && _movements == null,
       loadingMore: _loading && _movements != null,
       error: rows.isEmpty ? _error : null,
@@ -376,7 +379,10 @@ class _StockItemDetailPageState extends ConsumerState<StockItemDetailPage> {
       key: 'remark',
       label: '备注',
       width: 200,
-      value: (row) => row.remark ?? '',
+      // 内料仓盘点过账没有单据, 备注空时标明来源是「盘点」。
+      value: (row) => (row.remark?.trim().isNotEmpty ?? false)
+          ? row.remark
+          : (isWorkshopMaterialCountMovement(row) ? '盘点' : ''),
     ),
   ];
 }
@@ -393,6 +399,8 @@ String? _formatQty(num? value) => value
 void openStockMovementSourceDoc(BuildContext context, MovementRow movement) {
   final sourceId = movement.sourceDocId;
   if (sourceId == null || sourceId.isEmpty) return;
+  // 21/22 (内料仓盘点耗用/盘盈, ADR-131) 来源是盘点, 不是库存单据, 不跳转。
+  if (isWorkshopMaterialCountMovement(movement)) return;
   final t = movement.movementType;
   switch (movement.sourceDocType) {
     case 'PURCHASE_RECEIPT':

@@ -351,6 +351,23 @@ abstract final class RouteName {
 
   static const String warehouseDrawTasks = '/warehouse/tasks/draw';
 
+  // —— 车间内料仓 (ADR-131) ——
+  /// 车间内料仓设置: 车间开启 / 机台与容器 / 上线准备 (静态段须先于 /warehouse/:code)。
+  static const String workshopMaterialSetup =
+      '/warehouse/workshop-material/setup';
+
+  /// 车间内料仓页: 现存、申请领料 / 退回 / 其它耗用、盘点与结算状态 (?workshopId=)。
+  static const String workshopMaterialBin = '/workshop-material/bin';
+
+  /// 仓库发料页: 按申请发料、直接发料、收退回 (?requisitionId= 或 ?mode=direct)。
+  static const String workshopMaterialIssue = '/workshop-material/issue';
+
+  /// 盘点页 (手机优先; ?periodId=)。
+  static const String workshopMaterialCount = '/workshop-material/count';
+
+  /// 车间内料仓用量报表与结算页 (生产、钱流报表入口)。
+  static const String workshopMaterialReports = '/reports/workshop-material';
+
   static const String procurementArrivalExceptions =
       '/procurement/arrival-exceptions';
   static const String procurementIqcRejections = '/procurement/iqc-rejections';
@@ -633,6 +650,36 @@ abstract final class RoutePath {
       ).toString();
   static String financeArrivalException(String id) =>
       '/finance/procurement-arrival-exceptions/$id';
+
+  /// 车间内料仓页深链 (ADR-131): 指定车间时带 ?workshopId=。
+  static String workshopMaterialBin({String? workshopId}) =>
+      _withQuery(RouteName.workshopMaterialBin, {'workshopId': workshopId});
+
+  /// 仓库按申请发料 / 收退回。
+  static String workshopMaterialIssueForRequisition(String requisitionId) =>
+      _withQuery(RouteName.workshopMaterialIssue, {
+        'requisitionId': requisitionId,
+      });
+
+  /// 仓库直接发料 (不经车间申请)。
+  static String workshopMaterialDirectIssue() =>
+      _withQuery(RouteName.workshopMaterialIssue, {'mode': 'direct'});
+
+  /// 某一期的盘点页。
+  static String workshopMaterialCount(String periodId) =>
+      _withQuery(RouteName.workshopMaterialCount, {'periodId': periodId});
+
+  /// 只带非空参数; 一个参数都没有时不留问号。
+  static String _withQuery(String path, Map<String, String?> params) {
+    final query = <String, String>{
+      for (final entry in params.entries)
+        if (entry.value?.trim().isNotEmpty == true)
+          entry.key: entry.value!.trim(),
+    };
+    return query.isEmpty
+        ? path
+        : Uri(path: path, queryParameters: query).toString();
+  }
 
   /// 员工修改审批单批详情（HR 端）。
   static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';

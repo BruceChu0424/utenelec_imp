@@ -48,13 +48,14 @@ class BomImportReport {
       );
 }
 
-/// 提交结果：写入的父货品数 / 新增行数 / 替换掉的行数 / 层数。
+/// 提交结果：写入的父货品数 / 新增行数 / 替换掉的行数 / 层数 / 写入后的提醒。
 class BomImportResult {
   const BomImportResult({
     required this.targets,
     required this.added,
     required this.removed,
     required this.levels,
+    this.warnings = const [],
   });
 
   final int targets;
@@ -62,12 +63,19 @@ class BomImportResult {
   final int removed;
   final int levels;
 
+  /// 写入后的提醒 (不拦写入)，如整批领料的料的单个重量与货品资料单重相差 20% 以上。
+  final List<String> warnings;
+
   factory BomImportResult.fromJson(Map<String, dynamic> json) =>
       BomImportResult(
         targets: (json['targets'] as num?)?.toInt() ?? 0,
         added: (json['added'] as num?)?.toInt() ?? 0,
         removed: (json['removed'] as num?)?.toInt() ?? 0,
         levels: (json['levels'] as num?)?.toInt() ?? 1,
+        warnings: [
+          for (final w in (json['warnings'] as List?) ?? const [])
+            if (w is String && w.trim().isNotEmpty) w.trim(),
+        ],
       );
 }
 

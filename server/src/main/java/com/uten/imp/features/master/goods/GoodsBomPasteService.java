@@ -114,6 +114,8 @@ public class GoodsBomPasteService {
         // ---- 组件行 ----
         Set<UUID> seenComponents = new HashSet<>();
         Map<Integer, Goods> lineComponents = new LinkedHashMap<>();
+        // 期间边 (整批领料的料) 要人确认的事: 异常单重、同一产品第二种料; 没有别的问题时一次问全。
+        List<ApiError.FieldError> confirmations = new ArrayList<>();
         for (int index = 0; index < items.size(); index++) {
             BomItemSaveRequest item = items.get(index);
             Goods component = goods.get(item.getComponentGoodsId());
@@ -133,8 +135,14 @@ public class GoodsBomPasteService {
             try {
                 bom.apply(item, new GoodsBomItem(), component);
             } catch (ApiException invalid) {
-                problems.add(problem(line, invalid.getMessage()));
-                continue;
+                if (!GoodsPeriodicMaterialRules.isConfirmation(invalid)) {
+                    problems.add(problem(line, invalid.getMessage()));
+                    continue;
+                }
+                // 只是要人确认 (异常单重): 记下来, 行本身照常参与下面的检查。
+                for (ApiError.FieldError field : invalid.getFieldErrors()) {
+                    confirmations.add(new ApiError.FieldError(field.field(), line + ": " + field.message()));
+                }
             }
             lineComponents.put(index, component);
             for (Goods target : targets) {
@@ -150,6 +158,10 @@ public class GoodsBomPasteService {
         if (!problems.isEmpty()) {
             throw new ApiException(ErrorCode.CONFLICT, "粘贴没有生效：有 " + problems.size()
                     + " 处问题，现有组件没有任何改动", problems);
+        }
+        confirmations.addAll(secondPeriodicConfirmations(targets, items, lineComponents, replace));
+        if (!confirmations.isEmpty()) {
+            throw GoodsPeriodicMaterialRules.confirmationRequired(confirmations);
         }
 
         // ---- 写入(全部合格才到这里) ----
@@ -187,8 +199,63 @@ public class GoodsBomPasteService {
         }
         // 新行 id 由 Java 端预生成，走 save 会被当成「可能已存在」先查一次再插；这里直接 persist。
         created.forEach(em::persist);
+        List<String> warnings = new ArrayList<>();
+        if (created.stream().anyMatch(row -> GoodsPeriodicMaterialRules.isPeriodic(row.getComponent()))) {
+            // 期间边的形状守卫与 BOM 接管是行触发器: 当场写库, 拒绝原因原样交给员工。
+            try {
+                em.flush();
+            } catch (RuntimeException error) {
+                throw GoodsPeriodicMaterialRules.translate(error);
+            }
+            for (GoodsBomItem row : created) {
+                warnings.addAll(GoodsBomService.periodicWarnings(row.getGoods(), row.getComponent(), row));
+            }
+        }
         targets.forEach(bom::recalcSourceE);
-        return new BomPasteResult(targets.size(), created.size(), removing.size(), results);
+        return new BomPasteResult(targets.size(), created.size(), removing.size(), results, List.copyOf(warnings));
+    }
+
+    /**
+     * 粘贴后某个目标会同时有两种整批领料的料 (双色 / 双料) 时要人确认: 粘贴清单里的期间边
+     * (追加模式再算上目标现有的期间边) 多于一种, 且相关行没带确认。
+     */
+    private List<ApiError.FieldError> secondPeriodicConfirmations(List<Goods> targets, List<BomItemSaveRequest> items,
+                                                                  Map<Integer, Goods> lineComponents, boolean replace) {
+        List<Integer> periodicLines = lineComponents.entrySet().stream()
+                .filter(entry -> GoodsPeriodicMaterialRules.isPeriodic(entry.getValue()))
+                .map(Map.Entry::getKey).toList();
+        if (periodicLines.isEmpty()) return List.of();
+        boolean confirmed = periodicLines.stream()
+                .allMatch(index -> Boolean.TRUE.equals(items.get(index).getConfirmSecondPeriodicMaterial()));
+        if (confirmed) return List.of();
+        Set<UUID> withPeriodic = replace ? Set.of() : targetsWithPeriodicEdges(targets);
+        List<ApiError.FieldError> out = new ArrayList<>();
+        for (Goods target : targets) {
+            int count = periodicLines.size() + (withPeriodic.contains(target.getId()) ? 1 : 0);
+            if (count > 1) {
+                out.add(new ApiError.FieldError(GoodsPeriodicMaterialRules.CONFIRM_SECOND_MATERIAL,
+                        GoodsPeriodicMaterialRules.secondMaterialMessage(label(target))));
+            }
+        }
+        return out;
+    }
+
+    /** 这些目标里哪些已经有期间边 (组件是整批领料的料)。 */
+    private Set<UUID> targetsWithPeriodicEdges(List<Goods> targets) {
+        if (targets.isEmpty()) return Set.of();
+        @SuppressWarnings("unchecked")
+        List<Object> rows = em.createNativeQuery("""
+                        SELECT DISTINCT bom.goods_id
+                        FROM goods_bom_items bom
+                        JOIN goods component ON component.id = bom.component_goods_id
+                         AND component.issue_method = 'PERIODIC'
+                        WHERE bom.goods_id IN (:ids) AND bom.is_deleted = FALSE
+                        """)
+                .setParameter("ids", targets.stream().map(Goods::getId).toList())
+                .getResultList();
+        Set<UUID> out = new HashSet<>();
+        for (Object row : rows) out.add((UUID) row);
+        return out;
     }
 
     /**

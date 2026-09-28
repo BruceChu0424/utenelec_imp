@@ -46,6 +46,9 @@ public class StockService {
     public static final short TYPE_SUBCONTRACT_RETURN = 18;          // 委外成品退 E_WithDraw
     public static final short TYPE_SUBCONTRACT_WASTE = 19;           // 委外材料损耗 E_SWaste
     public static final short TYPE_SALES_OTHER_OUT = 20;             // 销售其它出库 S_OtherOut
+    // ADR-131 车间内料仓盘点过账: 必须带 WorkshopMaterialBin 来源引用(本事务登记的盘点过账行)。
+    public static final short TYPE_WORKSHOP_MATERIAL_CONSUME = 21;   // 内料仓盘点耗用(出; 更正时原路入)
+    public static final short TYPE_WORKSHOP_MATERIAL_GAIN = 22;      // 内料仓盘盈(入; 更正时原路出)
 
     /** direction 字典。 */
     public static final short DIR_IN = 1;
@@ -74,6 +77,8 @@ public class StockService {
     public static final String SRC_SUBCONTRACT_MATERIAL_ISSUE = "SUBCONTRACT_MATERIAL_ISSUE";
     public static final String SRC_SUBCONTRACT_MATERIAL_RETURN = "SUBCONTRACT_MATERIAL_RETURN";
     public static final String SRC_SUBCONTRACT_WASTE = "SUBCONTRACT_WASTE";
+    /** 内料仓盘点过账: source_doc_id = 盘点单, source_item_id = 期间用量行。 */
+    public static final String SRC_WORKSHOP_MATERIAL_COUNT = "WORKSHOP_MATERIAL_COUNT";
 
     private final StockMovementRepository movementRepo;
     private final StockBalanceRepository balanceRepo;
@@ -213,6 +218,7 @@ public class StockService {
             throw new IllegalArgumentException(
                     "inventory movement weight unit requires an actual weight");
         }
+        InventoryMovementCostReference.WorkshopMaterialBin bin = workshopMaterialBin(req);
         // Re-entrant when the top-level document already batch-locked its keys;
         // mandatory as a safe fallback for future single-movement callers.
         inventoryLock.lock(new InventoryKey(req.goodsId(), req.colorId()));
@@ -220,6 +226,12 @@ public class StockService {
             // The prefix has already frozen all inventory keys for multi-document commands.
             // Lock their goods rows once in PostgreSQL order, independently of display/line order.
             owningWarehouseSync.lockForPosting(inventoryLock);
+        }
+        // ADR-131: 内料仓的进出只认本事务里内料仓服务登记的单据或盘点过账行, 不接受调用方自报来源。
+        if (bin != null && !Boolean.TRUE.equals(balanceRepo.workshopMaterialBinMovementAuthorized(
+                bin.kind().name(), bin.sourceId(), req.sourceDocId(), req.sourceItemId(),
+                req.warehouseId(), req.goodsId(), req.colorId(), req.qty()))) {
+            throw new ApiException(ErrorCode.CONFLICT, "内料仓出入库缺少本次登记的来源, 请刷新后重试");
         }
         var physicalRows=balanceRepo.readPhysicalSnapshot(req.warehouseId(),req.goodsId(),req.colorId());
         if(physicalRows.size()>1)throw new ApiException(ErrorCode.CONFLICT,"库存维度存在重复余额，请先核对");
@@ -249,8 +261,14 @@ public class StockService {
             // consume stock left after active reservations and safety stock.
             // KS-P1-1: 红冲/退货类 DIR_OUT 同样不守 movable（只守上方非负底线）——撤销入库/退供应商
             // 不应被他人预留卡死；非负底线已防真实负库存。
+            // ADR-131: 内料仓作为出库方(退回调出、其它耗用、盘点耗用、盘盈冲回)只守非负底线——
+            // 内料仓不参与公共可用量, 没有别人的预留, 安全库存也不适用于车间料架; 叶仓发到内料仓
+            // 的调出一侧只扣有效预留、不扣安全库存(料仍在本厂, 只是换了存放位置)。
+            boolean binIssue = bin != null
+                    && bin.kind() == InventoryMovementCostReference.WorkshopMaterialBinKind.ISSUE_OUT;
             if (req.movementType() != TYPE_CHECK_LOSS
-                    && !REVERSAL_RETURN_TYPES.contains(req.movementType())) {
+                    && !REVERSAL_RETURN_TYPES.contains(req.movementType())
+                    && (bin == null || binIssue)) {
                 boolean allocatedProductionIssue = false;
                 if (req.costReference() instanceof InventoryMovementCostReference.WorkshopReturn returned) {
                     if (!Boolean.TRUE.equals(balanceRepo.workshopReturnOutboundAuthorized(returned.requestItemId(),req.sourceDocId(),
@@ -270,14 +288,16 @@ public class StockService {
                     }
                     allocatedProductionIssue = true;
                 }
-                BigDecimal movable = allocatedProductionIssue
+                BigDecimal movable = allocatedProductionIssue || binIssue
                         ? balanceRepo.warehouseUnreservedBase(req.warehouseId(), req.goodsId(), req.colorId())
                         : balanceRepo.warehouseAvailableBase(req.warehouseId(), req.goodsId(), req.colorId());
                 if (movable == null) movable = BigDecimal.ZERO;
                 if (movable.compareTo(req.qty()) < 0) {
                     throw new ApiException(
                             ErrorCode.CONFLICT,
-                            (allocatedProductionIssue ? "本仓剩余可领数量不足：当前 " : "可动用库存不足(已扣硬预留和安全库存)：当前 ")
+                            (allocatedProductionIssue ? "本仓剩余可领数量不足：当前 "
+                                    : binIssue ? "本仓可发到车间内料仓的数量不足(已扣硬预留)：当前 "
+                                    : "可动用库存不足(已扣硬预留和安全库存)：当前 ")
                                     + movable.stripTrailingZeros().toPlainString()
                                     + "，本次出库 "
                                     + req.qty().stripTrailingZeros().toPlainString());
@@ -329,6 +349,41 @@ public class StockService {
                     req.goodsId(), req.colorId(), req.warehouseId()));
         }
         return m.getId();
+    }
+
+    /**
+     * ADR-131: 内料仓来源引用只接受与流水类型、方向、来源类型一致的组合; 21/22 型必须带引用。
+     * 不一致是调用方编码错误(不是用户输入), 直接拒绝。
+     */
+    private static InventoryMovementCostReference.WorkshopMaterialBin workshopMaterialBin(MovementRequest req) {
+        boolean countMovement = req.movementType() == TYPE_WORKSHOP_MATERIAL_CONSUME
+                || req.movementType() == TYPE_WORKSHOP_MATERIAL_GAIN;
+        if (!(req.costReference() instanceof InventoryMovementCostReference.WorkshopMaterialBin bin)) {
+            if (countMovement) {
+                throw new IllegalArgumentException(
+                        "workshop material count movements require their registered count posting reference");
+            }
+            return null;
+        }
+        if (bin.sourceId() == null || bin.kind() == null) {
+            throw new IllegalArgumentException("workshop material bin reference is incomplete");
+        }
+        boolean stockDocument = "STOCK_DOC".equals(req.sourceDocType());
+        boolean countPosting = SRC_WORKSHOP_MATERIAL_COUNT.equals(req.sourceDocType());
+        boolean matches = switch (bin.kind()) {
+            // 8 = 调拨调出, 12 = 其它出库; 内料仓单据的调入一侧不带引用。
+            case ISSUE_OUT, RETURN_OUT -> stockDocument && req.movementType() == 8 && req.direction() == DIR_OUT;
+            case OTHER_ISSUE_OUT -> stockDocument && req.movementType() == 12 && req.direction() == DIR_OUT;
+            case CONSUME -> countPosting && req.movementType() == TYPE_WORKSHOP_MATERIAL_CONSUME && req.direction() == DIR_OUT;
+            case CONSUME_REVERSE -> countPosting && req.movementType() == TYPE_WORKSHOP_MATERIAL_CONSUME && req.direction() == DIR_IN;
+            case GAIN -> countPosting && req.movementType() == TYPE_WORKSHOP_MATERIAL_GAIN && req.direction() == DIR_IN;
+            case GAIN_REVERSE -> countPosting && req.movementType() == TYPE_WORKSHOP_MATERIAL_GAIN && req.direction() == DIR_OUT;
+        };
+        if (!matches) {
+            throw new IllegalArgumentException(
+                    "workshop material bin reference does not match the movement type, direction and source");
+        }
+        return bin;
     }
 
     private void enqueueSubcontractWake(SubcontractOutboundWakePort.StockedDimension dimension) {

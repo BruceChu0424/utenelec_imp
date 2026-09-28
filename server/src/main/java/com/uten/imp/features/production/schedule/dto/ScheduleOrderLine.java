@@ -31,7 +31,11 @@ public record ScheduleOrderLine(
         String clientName,
         List<BomComponent> bom) {
 
-    /** 货品一层 BOM 零件：单件用量 × 待排产缺口 = 需求小计；onhand 为全仓即时库存。 */
+    /**
+     * 货品一层 BOM 零件：单件用量 × 待排产缺口 = 需求小计；onhand 为全仓即时库存。
+     * periodic = 整批领料的料 (ADR-131): 由车间内料仓供料, 不算需求 (needQty 为 0), 页面标注
+     * 「车间内料仓供料, 不算需求」。
+     */
     public record BomComponent(
             UUID goodsId,
             String code,
@@ -42,6 +46,7 @@ public record ScheduleOrderLine(
             BigDecimal perQty,
             BigDecimal needQty,
             BigDecimal onhand,
-            boolean selfMade) {
+            boolean selfMade,
+            boolean periodic) {
     }
 }

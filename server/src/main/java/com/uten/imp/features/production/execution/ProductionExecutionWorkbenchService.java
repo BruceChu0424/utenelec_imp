@@ -2,6 +2,7 @@ package com.uten.imp.features.production.execution;
 
 import com.uten.imp.application.port.SubcontractDocumentReadAccessPort;
 import com.uten.imp.application.port.ProductionMaterialUsageReadPort;
+import com.uten.imp.application.port.WorkshopMaterialStatePort;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -30,6 +31,15 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class ProductionExecutionWorkbenchService {
+
+    /** ADR-131 认料与换料权限；段级动作只在服务端按它算。 */
+    private static final String WORKSHOP_MATERIAL_CHOOSE = "workshop_material:choose";
+    /** 段级动作：这张工单改用别的料(生产中)。 */
+    static final String ACTION_CHANGE_MATERIAL = "CHANGE_MATERIAL";
+    /** 段级动作：在开工确认表里认料。 */
+    static final String ACTION_CHOOSE = "CHOOSE";
+    private static final String BIN_STATE_KNOWN = WorkshopMaterialStatePort.KNOWN;
+    private static final String BIN_STATE_NEED_CHOICE = WorkshopMaterialStatePort.NEED_CHOICE;
 
     private final EntityManager em;
     private final ProductionDocumentAccessPolicy productionAccess;
@@ -298,7 +308,8 @@ public class ProductionExecutionWorkbenchService {
                 case "READY_TO_START" ->
                     " AND task.segment_status IN ('READY', 'DISPATCHED')"
                     + " AND NOT fn_material_discovery_pending(task.segment_id)"
-                    + " AND (" + effectiveIssuedPredicate() + " OR task.zero_material)";
+                    + " AND (" + effectiveIssuedPredicate() + " OR task.zero_material)"
+                    + " AND NOT (" + needChoicePredicate() + ")";
                 case "IN_PROGRESS" -> " AND task.segment_status = 'IN_PROGRESS'";
                 default -> "";
             };
@@ -624,11 +635,14 @@ public class ProductionExecutionWorkbenchService {
      * 我的车间任务「等待物料」排序（2026-09-15 用户口径：可开工的放最前，越接近
      * 可开工越靠前）。档位与状态筛选四桶一一对应（preparationPredicate 同款谓词）：
      * 0 = 可开工（零料/已发料且 READY/DISPATCHED）；1 = 已提交领料·待仓库发料；
-     * 2 = 物料齐套·去领料；3 = 等料（WAITING）。同档位内再按既有键稳定排序。
-     * CASE 短路保证领料谓词里的 EXISTS 只对 READY/DISPATCHED 行求值。
+     * 2 = 待认料 (ADR-131，排在去领料之前)；3 = 物料齐套·去领料；4 = 等料 (WAITING)。
+     * 同档位内再按既有键稳定排序。CASE 短路保证领料谓词里的 EXISTS 只对
+     * READY/DISPATCHED 行求值。
      */
     private static final String SEGMENT_ORDER_READINESS = """
             ORDER BY CASE
+                         WHEN task.segment_status IN ('READY','DISPATCHED')
+                              AND %s THEN 2
                          WHEN task.segment_status IN ('READY','DISPATCHED')
                               AND NOT fn_material_discovery_pending(task.segment_id)
                               AND (task.zero_material OR task.issued
@@ -637,14 +651,14 @@ public class ProductionExecutionWorkbenchService {
                          WHEN task.segment_status IN ('READY','DISPATCHED')
                               AND NOT task.zero_material AND NOT task.issued
                               AND (%s) THEN 1
-                         WHEN task.segment_status IN ('READY','DISPATCHED') THEN 2
-                         ELSE 3
+                         WHEN task.segment_status IN ('READY','DISPATCHED') THEN 3
+                         ELSE 4
                      END ASC,
                      task.plan_end_date ASC NULLS LAST,
                      task.plan_no ASC,
                      task.segment_no ASC,
                      task.segment_id ASC
-            """.formatted(drawRequestedPredicate());
+            """.formatted(needChoicePredicate(), drawRequestedPredicate());
 
     private PageResponse<ProductionExecutionWorkbenchSegment> segmentPage(
             String predicate,
@@ -695,6 +709,8 @@ public class ProductionExecutionWorkbenchService {
                 + " JOIN production_fqc_recovery_authorizations recovery_authority ON recovery_authority.id=recovery.authorization_id"
                 + " WHERE recovery.execution_segment_id=task.segment_id AND NOT recovery.cancelled AND recovery.available_qty>0"
                 + " AND (recovery_authority.disposition_code='REWORK' OR fn_fqc_replenishment_material_ready(recovery_authority.id)))) AS allowed) report_origin ON TRUE"
+                // ADR-131 车间内料仓用料状态：每行只算一次，状态列与「要不要过开工确认表」共用。
+                + " LEFT JOIN LATERAL (SELECT fn_segment_bin_material_state(task.segment_id) AS state) bin_material ON TRUE"
                 + " WHERE " + predicate;
         Query data = em.createNativeQuery(segmentSelect() + dataFrom + "\n" + orderBy
                 + "\n LIMIT :limit OFFSET :offset");
@@ -715,9 +731,13 @@ public class ProductionExecutionWorkbenchService {
                 ? planningFacts(rows, activeOperator && productionAccess.hasAuthority("production_execution:start")
                         && productionAccess.hasAuthority("production_execution:view"))
                 : java.util.Map.of();
+        // ADR-131 段级动作(认料、换料)：服务端按权限码算好，页面只看 allowedActions。
+        boolean canChooseMaterial = activeOperator
+                && productionAccess.hasAuthority(WORKSHOP_MATERIAL_CHOOSE);
         List<ProductionExecutionWorkbenchSegment> items = rows.stream()
                         .map(row -> segmentRow(row, usage.getOrDefault(uuid(row[0]), ProductionMaterialUsageReadPort.UsageFlags.NONE),
-                                operatorRouteMemory, planning.getOrDefault(uuid(row[0]), PlanningFacts.NONE)))
+                                operatorRouteMemory, planning.getOrDefault(uuid(row[0]), PlanningFacts.NONE),
+                                canChooseMaterial))
                         .toList();
         return new PageResponse<>(items, page, size, total, totalPages);
     }
@@ -1087,7 +1107,20 @@ public class ProductionExecutionWorkbenchService {
                        (SELECT root_analysis.analysis_no
                           FROM production_material_analyses root_analysis
                          WHERE task.root_type = 'ANALYSIS'
-                           AND root_analysis.id = task.root_id)
+                           AND root_analysis.id = task.root_id),
+                       bin_material.state,
+                       (:allowRequestDraw AND task.segment_status IN ('READY','DISPATCHED')
+                         AND bin_material.state <> 'NEED_BIN'
+                         AND EXISTS (SELECT 1 FROM production_execution_segments confirm_segment
+                           JOIN production_plans confirm_plan ON confirm_plan.id=confirm_segment.plan_id
+                           JOIN production_planning_packages confirm_package ON confirm_package.id=confirm_segment.package_id
+                           WHERE confirm_segment.id=task.segment_id
+                             AND confirm_segment.workshop_department_id IS NOT NULL
+                             AND confirm_segment.responsible_employee_id IS NOT NULL
+                             AND confirm_plan.status=1 AND NOT confirm_plan.is_deleted AND NOT confirm_plan.is_closed
+                             AND NOT confirm_plan.is_canceled AND NOT confirm_plan.is_stopped
+                             AND confirm_package.status='CONFIRMED' AND NOT confirm_package.is_deleted
+                             AND (bin_material.state = 'NEED_CHOICE' OR confirm_segment.start_route IS NULL)))
                 """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), drawRequestedPredicate(), pendingDrawItemSql());
     }
 
@@ -1125,21 +1158,35 @@ public class ProductionExecutionWorkbenchService {
                 """;
     }
 
+    /**
+     * 等待物料四桶。ADR-131：待认料(车间已开启整批领料、产品还没选用哪种料)归「等待物料」桶，
+     * 不进去领料、待仓库发料、可开工三桶——认完料才知道要不要领、能不能开。
+     */
     static String preparationPredicate(String rawFilter) {
         if (rawFilter == null || rawFilter.isBlank()) return "";
+        String notNeedChoice = " AND NOT (" + needChoicePredicate() + ")";
         return switch (rawFilter.strip().toUpperCase(Locale.ROOT)) {
-            case "WAITING_MATERIAL" -> " AND task.segment_status='WAITING'";
+            case "WAITING_MATERIAL" -> " AND (task.segment_status='WAITING'"
+                    + " OR (task.segment_status IN ('READY','DISPATCHED') AND " + needChoicePredicate() + "))";
             case "DRAW_NOT_REQUESTED" -> " AND task.segment_status IN ('READY','DISPATCHED')"
                     + " AND ((fn_material_discovery_pending(task.segment_id) AND NOT " + discoveryRequestedPredicate() + ")"
-                    + " OR (NOT task.zero_material AND NOT (" + effectiveIssuedPredicate() + ") AND NOT (" + drawRequestedPredicate() + ")))";
+                    + " OR (NOT task.zero_material AND NOT (" + effectiveIssuedPredicate() + ") AND NOT (" + drawRequestedPredicate() + ")))"
+                    + notNeedChoice;
             case "DRAW_REQUESTED" -> " AND task.segment_status IN ('READY','DISPATCHED')"
                     + " AND ((fn_material_discovery_pending(task.segment_id) AND " + discoveryRequestedPredicate() + ")"
-                    + " OR (NOT task.zero_material AND NOT (" + effectiveIssuedPredicate() + ") AND (" + drawRequestedPredicate() + ")))";
+                    + " OR (NOT task.zero_material AND NOT (" + effectiveIssuedPredicate() + ") AND (" + drawRequestedPredicate() + ")))"
+                    + notNeedChoice;
             case "READY_TO_START" -> " AND task.segment_status IN ('READY','DISPATCHED')"
                     + " AND NOT fn_material_discovery_pending(task.segment_id)"
-                    + " AND (task.zero_material OR " + effectiveIssuedPredicate() + ")";
+                    + " AND (task.zero_material OR " + effectiveIssuedPredicate() + ")"
+                    + notNeedChoice;
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "等待物料状态筛选无效");
         };
+    }
+
+    /** ADR-131 待认料：与开工门、开工确认表同一个状态函数。 */
+    static String needChoicePredicate() {
+        return "fn_segment_bin_material_state(task.segment_id) = '" + BIN_STATE_NEED_CHOICE + "'";
     }
 
     static String effectiveIssuedPredicate() {
@@ -1290,11 +1337,17 @@ public class ProductionExecutionWorkbenchService {
     }
 
     private static ProductionExecutionWorkbenchSegment segmentRow(Object[] row, ProductionMaterialUsageReadPort.UsageFlags usage,
-                                                                  String operatorRouteMemory, PlanningFacts planning) {
+                                                                  String operatorRouteMemory, PlanningFacts planning,
+                                                                  boolean canChooseMaterial) {
         // The same current plan/package facts gate every command capability. Compute once
         // per projected task, so historical or paused rows do not advertise rejected actions.
         boolean executable = bool(row[46]);
         boolean custodyValid = bool(row[47]);
+        // ADR-131 §5.4：待认料或路线未确认的行要先过开工确认表(车间没开启整批领料的不算)。
+        String binMaterialState = text(row[74]);
+        boolean needsStartConfirmation = executable && custodyValid && bool(row[75]);
+        List<String> allowedActions = segmentAllowedActions(
+                binMaterialState, text(row[20]), needsStartConfirmation, canChooseMaterial);
         // 路线记忆(ADR-096)：本产品的历史优先；没有才退回操作者上次的选择。只作预填展示。
         String productMemory = text(row[48]);
         String suggestedRoute = productMemory != null ? productMemory : operatorRouteMemory;
@@ -1324,7 +1377,26 @@ public class ProductionExecutionWorkbenchService {
                 planning.gapKindCount(), planning.gapSummary(), planning.urgeCount(), planning.urgedAt(),
                 planning.urgedByName(), planning.nextUrgeAt(), planning.canUrge(),
                 bool(row[69]), uuid(row[70]), text(row[71]), executable && bool(row[72]),
-                text(row[73]));
+                text(row[73]),
+                binMaterialState, needsStartConfirmation, allowedActions);
+    }
+
+    /**
+     * 段级动作(ADR-131 评审 m7)：CHANGE_MATERIAL = 生产中且内料仓用料已知时可「这张工单改用别的料」；
+     * CHOOSE = 要过开工确认表时可在表里认料。都要当前员工持认料与换料权限。
+     */
+    static List<String> segmentAllowedActions(
+            String binMaterialState, String segmentStatus,
+            boolean needsStartConfirmation, boolean canChooseMaterial) {
+        if (!canChooseMaterial) return List.of();
+        List<String> actions = new ArrayList<>(2);
+        if (BIN_STATE_KNOWN.equals(binMaterialState) && "IN_PROGRESS".equals(segmentStatus)) {
+            actions.add(ACTION_CHANGE_MATERIAL);
+        }
+        if (needsStartConfirmation) {
+            actions.add(ACTION_CHOOSE);
+        }
+        return List.copyOf(actions);
     }
 
     private static int boundedSize(int requested) {

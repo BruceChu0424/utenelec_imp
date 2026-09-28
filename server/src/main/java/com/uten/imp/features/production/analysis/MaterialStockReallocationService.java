@@ -428,6 +428,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
         boolean preparation=material!=null && "SUBCONTRACT".equals(route) && Boolean.TRUE.equals(em.createNativeQuery("""
                 SELECT EXISTS(SELECT 1 FROM goods_bom_items bom JOIN goods child ON child.id=bom.component_goods_id
                     AND NOT child.is_deleted AND NOT COALESCE(child.auto_created,FALSE)
+                    AND child.issue_method<>'PERIODIC'
                     WHERE bom.goods_id=:goods AND NOT bom.is_deleted)
                 """).setParameter("goods",material.goodsId()).getSingleResult());
         String operation="MAKE".equals(route) ? "ISSUE_WORKSHOP_PLANS" : "NOTIFY_SUPPLY";

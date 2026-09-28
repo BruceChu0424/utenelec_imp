@@ -44,6 +44,8 @@ public class ProductionExecutionPlanningService {
     private static final Set<String> SUPPORTED_CONSUMPTION_BASES = Set.of(
             "PER_UNIT", "PER_PACKAGE", "FIXED_BATCH");
     private static final String CONSUMPTION_BASIS_PER_UNIT = "PER_UNIT";
+    /** ADR-131：组件发料方式「整批领到车间内料仓」，这样的 BOM 行是期间边。 */
+    private static final String GOODS_ISSUE_METHOD_PERIODIC = "PERIODIC";
 
     private final CompleteKitAllocator allocator = new CompleteKitAllocator();
 
@@ -251,13 +253,9 @@ public class ProductionExecutionPlanningService {
                                         OR (component.color_id IS NULL
                                             AND NULLIF(component.color_legacy_id, 0) IS NOT NULL))
                                            AS color_reference_invalid,
-                                       EXISTS (
-                                           SELECT 1
-                                           FROM goods_bom_items child
-                                           WHERE child.goods_id =
-                                                 b.component_goods_id
-                                             AND child.is_deleted = FALSE
-                                       ) AS component_has_bom,
+                                       -- ADR-131：「组件有没有下层」只数按单边，期间边不算。
+                                       fn_goods_has_order_bom(b.component_goods_id)
+                                           AS component_has_bom,
                                        i.updated_at,
                                        b.updated_at,
                                        component.source_type,
@@ -266,7 +264,8 @@ public class ProductionExecutionPlanningService {
                                        b.hard_gate,
                                        b.consumption_basis,
                                        b.basis_output_qty,
-                                       b.allow_partial_package
+                                       b.allow_partial_package,
+                                       component.issue_method
                                 FROM production_plan_items i
                                 JOIN production_plans p
                                   ON p.id = i.plan_id
@@ -386,6 +385,19 @@ public class ProductionExecutionPlanningService {
             UUID componentUnitId = (UUID) row[16];
             if (componentUnitId == null || Boolean.TRUE.equals(row[18])) {
                 throw conflict("BOM、颜色或基本单位数据不完整，禁止生成执行分段");
+            }
+            if (periodicComponent(row)) {
+                // ADR-131 期间边(整批领到车间内料仓的料)：不建按单需求，只让零料原因
+                // 变成「车间内料仓供料」。指纹只计用哪种料(料、颜色、单位)：改单个重量
+                // 会改 BOM 行更新时间，不能让排产预览过期、拆批报「BOM 已变化」。
+                line.recordBomPart(String.join("|",
+                        "BOM",
+                        "PERIODIC",
+                        Objects.toString(row[14], ""),
+                        Objects.toString(row[15], ""),
+                        Objects.toString(row[16], "")));
+                line.markPeriodicEdge();
+                continue;
             }
             line.recordBomPart(String.join("|",
                     "BOM",
@@ -770,6 +782,14 @@ public class ProductionExecutionPlanningService {
         return value;
     }
 
+    /**
+     * 快照第 30 列(下标 29)是组件发料方式；PERIODIC = 期间边。
+     * 只含前 29 列的行(旧形状的单测桩)按按单边处理。
+     */
+    private static boolean periodicComponent(Object[] row) {
+        return row.length > 29 && GOODS_ISSUE_METHOD_PERIODIC.equals(row[29]);
+    }
+
     private static boolean requiredBomBoolean(Object rawValue) {
         if (!(rawValue instanceof Boolean value)) {
             throw conflict("BOM 管控配置不完整，禁止生成执行分段");
@@ -800,6 +820,8 @@ public class ProductionExecutionPlanningService {
                 CompleteKitAllocator.MaterialUsage> materials =
                 new LinkedHashMap<>();
         private final List<String> bomParts = new ArrayList<>();
+        /** 产品 BOM 里有期间边(ADR-131)：没有按单料时零料原因为「车间内料仓供料」。 */
+        private boolean hasPeriodicEdge;
 
         private LineAccumulator(Object[] row) {
             this.row = row;
@@ -808,6 +830,10 @@ public class ProductionExecutionPlanningService {
 
         private void recordBomPart(String fingerprintPart) {
             bomParts.add(fingerprintPart);
+        }
+
+        private void markPeriodicEdge() {
+            hasPeriodicEdge = true;
         }
 
         private void add(CompleteKitAllocator.MaterialUsage material) {
@@ -863,8 +889,11 @@ public class ProductionExecutionPlanningService {
                     List.copyOf(materials.values()),
                     PlanningPackageFingerprint.sha256(bomParts),
                     materials.isEmpty()
-                            ? ProductionExecutionSegment
-                                    .ZERO_MATERIAL_REASON_NO_PRODUCTION_HARD_GATE
+                            ? (hasPeriodicEdge
+                                    ? ProductionExecutionSegment
+                                            .ZERO_MATERIAL_REASON_PERIODIC_MATERIAL
+                                    : ProductionExecutionSegment
+                                            .ZERO_MATERIAL_REASON_NO_PRODUCTION_HARD_GATE)
                             : null);
         }
     }

@@ -19,6 +19,7 @@ import com.uten.imp.features.master.goods.dto.GoodsDetail;
 import com.uten.imp.features.master.goods.dto.GoodsDictItem;
 import com.uten.imp.features.master.goods.dto.GoodsFacets;
 import com.uten.imp.features.master.goods.dto.GoodsListItem;
+import com.uten.imp.features.master.goods.dto.GoodsPeriodicBomWeight;
 import com.uten.imp.features.master.goods.dto.GoodsQueryFilter;
 import com.uten.imp.features.master.goods.dto.GoodsSaveRequest;
 import com.uten.imp.features.master.goods.dto.GoodsStockSummary;
@@ -1228,7 +1229,10 @@ public class GoodsService {
                 owningWarehouseId, owningWarehouseName,
                 owningWorkshopId, owningWorkshopName, null, null,
                 // ADR-098 委外允许损耗默认值：不是成本字段, 不随成本脱敏。
-                g.getSubcontractAllowedLossPct());
+                g.getSubcontractAllowedLossPct(),
+                // ADR-131 发料方式 (只读, 切换走 GoodsIssueMethodService)。
+                g.getIssueMethod(), g.getPeriodicCostBasis(), g.getBulkPackageQty(), g.isRecycledMaterial(),
+                periodicBomWeights(g.getId()));
         if (learnedPrices != null && costMasker.canView()) {
             var prices = learnedPrices.find(g.getId());
             d.setDefaultPurchasePriceInfo(prices.purchase());
@@ -1290,7 +1294,38 @@ public class GoodsService {
                 owningWarehouseId == null ? null : owningWarehouseNames.get(owningWarehouseId),
                 owningWorkshopId,
                 owningWorkshopId == null ? null : owningWorkshopNames.get(owningWorkshopId),
-                g.getVersion());
+                g.getVersion(),
+                g.getIssueMethod(), g.getPeriodicCostBasis(), g.getBulkPackageQty(), g.isRecycledMaterial());
+    }
+
+    /**
+     * 本产品 BOM 里的期间边 (组件整批领到车间内料仓, ADR-131): 料与单个重量, 详情单重旁只读显示。
+     * 读 goods_bom_items 表 (表访问, 不引入跨特性 Java 依赖)。
+     */
+    private List<GoodsPeriodicBomWeight> periodicBomWeights(UUID goodsId) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                        SELECT bom.id, component.id, component.code, component.name,
+                               COALESCE(bom.color_id, component.color_id), color.name, bom.qty, unit.name
+                        FROM goods_bom_items bom
+                        JOIN goods component ON component.id = bom.component_goods_id
+                         AND component.issue_method = 'PERIODIC'
+                        LEFT JOIN colors color ON color.id = COALESCE(bom.color_id, component.color_id)
+                        LEFT JOIN units unit ON unit.id = component.unit_id AND unit.is_deleted = FALSE
+                        WHERE bom.goods_id = :goodsId AND bom.is_deleted = FALSE
+                        ORDER BY bom.sort_order, bom.id
+                        """)
+                .setParameter("goodsId", goodsId)
+                .getResultList();
+        List<GoodsPeriodicBomWeight> out = new ArrayList<>();
+        for (Object[] r : rows) {
+            BigDecimal qty = toBd(r[6]);
+            String unitName = (String) r[7];
+            out.add(new GoodsPeriodicBomWeight(toUuid(r[0]), toUuid(r[1]), (String) r[2], (String) r[3],
+                    toUuid(r[4]), (String) r[5], qty, unitName,
+                    GoodsPeriodicMaterialRules.toGrams(qty, GoodsPeriodicMaterialRules.gramsPerUnit(unitName))));
+        }
+        return out;
     }
 
     private MaterialCategory requireCategory(UUID id) {

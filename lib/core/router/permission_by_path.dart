@@ -87,6 +87,21 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (location.startsWith('/warehouse/material-discovery/')) {
     return const [Perm.stockDocIssue, Perm.stockDocApprove];
   }
+  // 车间内料仓 (ADR-131): 这里只管能不能进页面, 页内按钮一律看服务端下发的 allowedActions。
+  // 设置页在 /warehouse/ 下, 须先于下方 /warehouse/:code 单据段兜底。
+  if (location == RouteName.workshopMaterialBin ||
+      location == RouteName.workshopMaterialReports) {
+    return const [Perm.workshopMaterialView];
+  }
+  if (location == RouteName.workshopMaterialIssue) {
+    return const [Perm.workshopMaterialIssue];
+  }
+  if (location == RouteName.workshopMaterialCount) {
+    return const [Perm.workshopMaterialCount];
+  }
+  if (location == RouteName.workshopMaterialSetup) {
+    return const [Perm.workshopMaterialSetup];
+  }
   // hub：子卡守卫的并集(真正的放行判定在 route_access_policy：任一子卡可进即可进)。
   if (isHubLocation(location)) return hubUnionRequiredAny(location);
   // 账号支持可进入员工账号列表；只有超级管理员能看到并修改授权部分。
@@ -689,6 +704,16 @@ List<String> requiredAllPermsFor(String rawLocation) {
   }
   if (location.startsWith('/warehouse/material-discovery/')) {
     return const [Perm.stockDocIssue, Perm.stockDocApprove];
+  }
+  // 车间内料仓 (ADR-131): 发料、盘点、设置三页要求本码本身, 不因持有查看码而放行。
+  if (location == RouteName.workshopMaterialIssue) {
+    return const [Perm.workshopMaterialIssue];
+  }
+  if (location == RouteName.workshopMaterialCount) {
+    return const [Perm.workshopMaterialCount];
+  }
+  if (location == RouteName.workshopMaterialSetup) {
+    return const [Perm.workshopMaterialSetup];
   }
   if ({
     RouteName.productionDrawRequest,

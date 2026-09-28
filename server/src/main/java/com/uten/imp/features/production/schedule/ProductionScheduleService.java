@@ -402,15 +402,18 @@ public class ProductionScheduleService {
         return out;
     }
 
-    /** 一层 BOM 零件（需求小计 = 单件用量 × 待排产缺口；onhand 全仓即时库存；selfMade=零件本身还有 BOM）。 */
+    /**
+     * 一层 BOM 零件（需求小计 = 单件用量 × 待排产缺口；onhand 全仓即时库存；selfMade=零件本身还有按单 BOM）。
+     * ADR-131: 整批领料的料 (periodic) 由车间内料仓供料, 不算需求, 需求小计为 0。
+     */
     private List<ScheduleOrderLine.BomComponent> bomOf(UUID goodsId, BigDecimal need) {
         @SuppressWarnings("unchecked")
         List<Object[]> rs = em.createNativeQuery("""
                 SELECT b.component_goods_id, g.code, g.name, g.spec, b.qty,
                        g.color_id, col.name,
                        COALESCE(sb.onhand, 0),
-                       EXISTS (SELECT 1 FROM goods_bom_items c
-                               WHERE c.goods_id = b.component_goods_id AND c.is_deleted = false)
+                       fn_goods_has_order_bom(b.component_goods_id),
+                       g.issue_method = 'PERIODIC' AS periodic
                 FROM goods_bom_items b
                 JOIN goods g ON g.id = b.component_goods_id
                 LEFT JOIN colors col ON col.id = g.color_id
@@ -422,10 +425,12 @@ public class ProductionScheduleService {
         List<ScheduleOrderLine.BomComponent> out = new ArrayList<>(rs.size());
         for (Object[] r : rs) {
             BigDecimal per = bd(r[4]);
+            boolean periodic = Boolean.TRUE.equals(r[9]);
             out.add(new ScheduleOrderLine.BomComponent(
                     (UUID) r[0], (String) r[1], (String) r[2], (String) r[3],
                     (UUID) r[5], (String) r[6],
-                    per, per.multiply(need), bd(r[7]), Boolean.TRUE.equals(r[8])));
+                    per, periodic ? BigDecimal.ZERO : per.multiply(need), bd(r[7]),
+                    !periodic && Boolean.TRUE.equals(r[8]), periodic));
         }
         return out;
     }
@@ -510,10 +515,13 @@ public class ProductionScheduleService {
         Object d = em.createNativeQuery("""
                 WITH RECURSIVE bom AS (
                     SELECT b.component_goods_id AS gid, 1 AS depth
-                    FROM goods_bom_items b WHERE b.goods_id = :g AND b.is_deleted = false
+                    FROM goods_bom_items b
+                    JOIN goods c ON c.id = b.component_goods_id AND c.issue_method <> 'PERIODIC'
+                    WHERE b.goods_id = :g AND b.is_deleted = false
                     UNION ALL
                     SELECT b.component_goods_id, bom.depth + 1
                     FROM goods_bom_items b JOIN bom ON b.goods_id = bom.gid
+                    JOIN goods c ON c.id = b.component_goods_id AND c.issue_method <> 'PERIODIC'
                     WHERE b.is_deleted = false AND bom.depth < 5
                 )
                 SELECT COALESCE(MAX(depth), 1) FROM bom

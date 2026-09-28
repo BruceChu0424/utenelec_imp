@@ -3478,7 +3478,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get productionBatchDirectTransferHint =>
-      '本批物料全部来自本车间直送（线边仓）：确认后自动投入本批，无需提交领料申请、不等仓库发料；回车间任务直接开工。';
+      '本批物料全部来自本车间直送 (内料仓)：确认后自动投入本批，无需提交领料申请、不等仓库发料；回车间任务直接开工。';
 
   @override
   String productionBatchSubmittedDirectTransfer(String quantity, String unit) {
@@ -4114,4 +4114,356 @@ class AppLocalizationsZh extends AppLocalizations {
   String materialPreparationMissingAssignment(String goods) {
     return '请先补齐“$goods”的生产车间和负责人，再下单';
   }
+
+  @override
+  String get workshopMaterialBin => '车间内料仓';
+
+  @override
+  String workshopMaterialBinOf(String workshop) {
+    return '$workshop内料仓';
+  }
+
+  @override
+  String get workshopMaterialGroup => '车间内料仓';
+
+  @override
+  String get workshopMaterialSetup => '车间内料仓设置';
+
+  @override
+  String get workshopMaterialReports => '车间内料仓用量';
+
+  @override
+  String get wmIssueMethod => '发料方式';
+
+  @override
+  String get wmIssueMethodOrder => '按工单领料';
+
+  @override
+  String get wmIssueMethodPeriodic => '整批领到车间内料仓';
+
+  @override
+  String get wmCostBasis => '分摊方式';
+
+  @override
+  String get wmCostBasisOwn => '主料';
+
+  @override
+  String get wmCostBasisShared => '辅料';
+
+  @override
+  String get wmCostBasisExpense => '记车间费用';
+
+  @override
+  String get wmBulkPackageQty => '每袋净重 (公斤)';
+
+  @override
+  String get wmRecycledMaterial => '回收料';
+
+  @override
+  String get wmUnitWeightGrams => '单个重量 (克)';
+
+  @override
+  String wmUnitWeightFromBom(String grams) {
+    return '塑料单个重量 (来自 BOM): $grams 克';
+  }
+
+  @override
+  String wmUnusualWeightConfirm(String grams) {
+    return '单个重量 $grams 克看起来不太对, 确定吗?';
+  }
+
+  @override
+  String get wmSecondMaterialConfirm =>
+      '这个产品要同时用两种料吗 (双色 / 双料)? 如果只是换料, 请改原来那一行';
+
+  @override
+  String get wmRequestIssue => '申请领料';
+
+  @override
+  String get wmReturn => '退回';
+
+  @override
+  String get wmOtherIssue => '试模清机等用料';
+
+  @override
+  String get wmOtherReasonTrial => '试模';
+
+  @override
+  String get wmOtherReasonPurge => '清机';
+
+  @override
+  String get wmOtherReasonScrap => '报废料';
+
+  @override
+  String get wmOtherReasonOther => '其它';
+
+  @override
+  String get wmDirectIssue => '直接发料';
+
+  @override
+  String get wmPendingIssue => '待发料';
+
+  @override
+  String get wmPendingReturn => '待收退回';
+
+  @override
+  String get wmCount => '盘点';
+
+  @override
+  String get wmHistory => '记录';
+
+  @override
+  String get wmBags => '袋数';
+
+  @override
+  String get wmKg => '公斤';
+
+  @override
+  String get wmReceiver => '领料人';
+
+  @override
+  String wmWarehouseAvailable(String qty) {
+    return '仓库还有 $qty 公斤';
+  }
+
+  @override
+  String wmEstimatedRemaining(String qty) {
+    return '内料仓估计还剩 $qty 公斤';
+  }
+
+  @override
+  String get wmCountingNextPeriod => '已开始盘点, 这批料算到下一期';
+
+  @override
+  String get wmSupplementFlag => '这批料是上一期漏录的';
+
+  @override
+  String get wmSupplementPeriod => '补到哪一期';
+
+  @override
+  String get wmAlsoOrderMaterials => '还要按工单领别的料 (例如嵌件)';
+
+  @override
+  String get wmFillFromGoodsWeight => '勾选行用货品资料单重填入';
+
+  @override
+  String get wmCloseFailing => '结算连续失败, 系统改为每天重试一次, 请联系系统管理员';
+
+  @override
+  String get wmStartCount => '开始盘点';
+
+  @override
+  String get wmCutoffToday => '截止到今天';
+
+  @override
+  String get wmCutoffYesterday => '截止到昨天';
+
+  @override
+  String get wmMonthEndHint => '想要按月对账, 请在月底盘一次';
+
+  @override
+  String get wmFillFull => '满';
+
+  @override
+  String get wmFillHalf => '半';
+
+  @override
+  String get wmFillEmpty => '空';
+
+  @override
+  String get wmFillWeighed => '直接填公斤';
+
+  @override
+  String get wmWeighOpenBag => '开口袋过秤';
+
+  @override
+  String get wmWeighMixed => '搅好未上机';
+
+  @override
+  String get wmWeighLoose => '散料';
+
+  @override
+  String get wmFillGuide => '超过四分之三算满, 四分之一到四分之三算半, 不到四分之一算空';
+
+  @override
+  String get wmMachineIdle => '本机停机、全空';
+
+  @override
+  String get wmZeroRest => '其余料都用完了, 记 0';
+
+  @override
+  String get wmPrintBlank => '打印空白盘点表';
+
+  @override
+  String get wmSubmitCount => '提交盘点';
+
+  @override
+  String get wmWithdrawCount => '撤回盘点';
+
+  @override
+  String get wmCorrectCount => '更正盘点';
+
+  @override
+  String wmBagsTimesKg(int bags, String kg) {
+    return '整袋 $bags 袋 × 每袋 $kg 公斤';
+  }
+
+  @override
+  String get wmCloseState => '结算状态';
+
+  @override
+  String get wmCloseWaitingPrevious => '等上一期结算';
+
+  @override
+  String wmCloseBlockedReport(int n) {
+    return '还有 $n 张报工没审核 (请审核人审核, 或制单人删掉不要的草稿)';
+  }
+
+  @override
+  String wmCloseBlockedWeight(int n) {
+    return '有 $n 个产品没填单个重量 (请 BOM 维护人处理)';
+  }
+
+  @override
+  String wmCloseBlockedStock(String material) {
+    return '「$material」这一期没有发料记录却有产品在用 (请仓库补录漏录的发料, 或车间改认料)';
+  }
+
+  @override
+  String get wmCloseRetry => '立即重试';
+
+  @override
+  String get wmReopen => '撤销结算';
+
+  @override
+  String get wmReopenReason => '撤销原因';
+
+  @override
+  String wmReopenHeld(String time) {
+    return '已撤销结算, 改完请点「重新结算」; $time 系统会自动重新结算';
+  }
+
+  @override
+  String get wmSettleAgain => '重新结算';
+
+  @override
+  String get wmNeedChoice => '待认料';
+
+  @override
+  String get wmStartSheetTitle => '开工前确认用料';
+
+  @override
+  String wmStartConfirm(int n) {
+    return '确认并开工 ($n)';
+  }
+
+  @override
+  String get wmOrderInstead => '这几个产品按工单领料 (暂不开工)';
+
+  @override
+  String get wmNotFromStore => '本产品不用车间内料仓的料 (按工单领料)';
+
+  @override
+  String get wmWeightPending => '待补, 不影响开工';
+
+  @override
+  String get wmChangeMaterial => '这张工单改用别的料';
+
+  @override
+  String get wmChangeFrom => '从哪天起改用';
+
+  @override
+  String get wmAddMaterial => '加一种料';
+
+  @override
+  String get wmEnable => '开启整批领料';
+
+  @override
+  String get wmGoLiveDate => '启用日';
+
+  @override
+  String get wmMainWarehouse => '放在哪个主仓下';
+
+  @override
+  String get wmMachines => '机台与容器';
+
+  @override
+  String get wmGoLivePrep => '上线准备';
+
+  @override
+  String wmGoLiveProgress(int total, int chosen, int weighed) {
+    return '常做的 $total 个产品, 已选料 $chosen 个, 已填单重 $weighed 个';
+  }
+
+  @override
+  String get wmReportUsage => '用量表';
+
+  @override
+  String get wmReportProduct => '产品用料';
+
+  @override
+  String get wmReportTrend => '浪费率趋势';
+
+  @override
+  String get wmReportMissingWeight => '缺单重清单';
+
+  @override
+  String get wmReportLedger => '收发明细';
+
+  @override
+  String get wmTrueUnitUsage => '真实单耗';
+
+  @override
+  String get wmAllocatedByTheory => '按理论比例分摊';
+
+  @override
+  String get wmWasteRate => '浪费率';
+
+  @override
+  String get wmIncludeWorkshopStore => '含内料仓';
+
+  @override
+  String get workshopMaterialSetupHubDesc => '开启车间整批领料、机台与容器、上线准备 (产品的颗粒与单个重量)';
+
+  @override
+  String get workshopMaterialReportsHubDesc => '按期间看每种料用了多少、浪费率与结算状态';
+
+  @override
+  String get wmReceiveReturn => '收退回';
+
+  @override
+  String get wmIssueByRequest => '按申请发料';
+
+  @override
+  String get wmOnHand => '现存';
+
+  @override
+  String get wmInUseMaterial => '在用料';
+
+  @override
+  String get wmBagMaterials => '袋料';
+
+  @override
+  String get wmEnableWorkshopTab => '车间开启';
+
+  @override
+  String get wmReportPeriod => '期间';
+
+  @override
+  String get wmReportAllPeriods => '全部期间';
+
+  @override
+  String get wmReportMaterial => '料';
+
+  @override
+  String get wmReportNoBin => '还没有车间开启整批领料，暂时没有内料仓用量可看。';
+
+  @override
+  String get wmOpenBom => '打开 BOM';
+
+  @override
+  String get wmWorkshopMaterialSection => '车间用料';
+
+  @override
+  String get wmIssueMethodUpdated => '发料方式已更新';
 }

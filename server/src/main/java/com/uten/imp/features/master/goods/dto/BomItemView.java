@@ -5,6 +5,7 @@ import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -40,4 +41,10 @@ public class BomItemView {
     private boolean allowPartialPackage;
     private boolean hardGate;          // 仅 START/ASSEMBLY/FINISH 可为 true
     private OffsetDateTime auditedAt;  // 审计标记时间（非空 = 已核对无误）
+    /** 组件发料方式 (ORDER / PERIODIC); PERIODIC 的行是期间边, 只填单个重量, 形状列只读。 */
+    private String componentIssueMethod;
+    /** 期间边的单个重量 (克); 组件基本单位不能按克换算或不是期间边时为 null (按 qty 原单位显示)。 */
+    private BigDecimal unitWeightGrams;
+    /** 保存后的提醒 (不拦保存), 如单个重量与货品资料单重相差 20% 以上; 列表查询时为空。 */
+    private List<String> warnings;
 }

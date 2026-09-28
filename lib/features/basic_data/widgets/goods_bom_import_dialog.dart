@@ -152,11 +152,28 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
     }
     if (_result != null) {
       final r = _result!;
-      return Text(
+      final done = Text(
         '导入完成：共 ${r.added} 个组件写入 ${r.targets} 个货品'
         '${r.removed > 0 ? '（替换掉 ${r.removed} 个旧组件）' : ''}，'
         '文件共 ${r.levels} 层。', // TODO(l10n): 补 arb
         style: theme.textTheme.bodyMedium,
+      );
+      if (r.warnings.isEmpty) return done;
+      // 写入后的提醒 (如整批领料的料单个重量与货品资料单重相差 20% 以上)：不拦写入，请核对。
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          done,
+          const SizedBox(height: UtenSpacing.s8),
+          Text(
+            '请核对 ${r.warnings.length} 条提醒：',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          for (final w in r.warnings.take(50))
+            Text('· $w', style: theme.textTheme.bodySmall),
+        ],
       );
     }
     if (_report != null) {

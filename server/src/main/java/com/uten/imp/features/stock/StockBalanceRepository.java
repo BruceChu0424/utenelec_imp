@@ -25,6 +25,18 @@ public interface StockBalanceRepository
             @Param("item") UUID documentItemId,@Param("warehouse") UUID warehouseId,
             @Param("qty") BigDecimal qty,@Param("kind") String kind);
 
+    /**
+     * ADR-131 车间内料仓: 这笔流水的来源是否为本事务里内料仓服务刚登记的单据或盘点过账行
+     * (种类、单据、明细、仓库、货品、颜色、数量逐项核对, 口径只在库内函数定义一次)。
+     */
+    @Query(value="""
+            SELECT fn_workshop_material_bin_movement_authorized(:kind,:source,CAST(:doc AS uuid),CAST(:item AS uuid),
+                :warehouse,:goods,CAST(:color AS uuid),:qty)
+            """,nativeQuery=true)
+    Boolean workshopMaterialBinMovementAuthorized(@Param("kind") String kind,@Param("source") UUID sourceId,
+            @Param("doc") UUID documentId,@Param("item") UUID documentItemId,@Param("warehouse") UUID warehouseId,
+            @Param("goods") UUID goodsId,@Param("color") UUID colorId,@Param("qty") BigDecimal qty);
+
     Optional<StockBalance> findByWarehouseIdAndGoodsIdAndColorId(UUID warehouseId, UUID goodsId, UUID colorId);
 
     interface PhysicalSnapshot {

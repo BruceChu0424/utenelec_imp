@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock;
 
+import com.uten.imp.application.port.InventoryMovementCostReference;
 import com.uten.imp.application.port.ProductionCompletionReversePort;
 import com.uten.imp.application.port.ProductionMutationFootprintPort;
 import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
@@ -30,6 +31,7 @@ import com.uten.imp.features.stock.dto.StockDocItemLine;
 import com.uten.imp.features.stock.dto.StockDocListItem;
 import com.uten.imp.features.stock.dto.StockDocQueryFilter;
 import com.uten.imp.features.stock.dto.StockDocSaveRequest;
+import com.uten.imp.features.stock.dto.WorkshopMaterialDocumentCommand;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerService;
 import com.uten.imp.security.TxSessionVars;
@@ -529,9 +531,11 @@ public class StockDocService {
     /**
      * 成品点收的三条通道。仓库手工点收是默认；另两条是「证据即授权」的自动通道，
      * 各自由自己的单据事实证明(车间直送行 / 先入库后质检的登记行)，不得互相借道。
+     * WORKSHOP_MATERIAL_BIN 是车间内料仓(ADR-131)的审核通道：只审内料仓服务本事务登记的
+     * 调拨与其它出库单，不参与成品点收。
      */
     private enum FinishedInLane {
-        WAREHOUSE_CONFIRM, WORKSHOP_DIRECT_TRANSFER, PRE_STOCKED_AUTO;
+        WAREHOUSE_CONFIRM, WORKSHOP_DIRECT_TRANSFER, PRE_STOCKED_AUTO, WORKSHOP_MATERIAL_BIN;
 
         boolean automatic() { return this != WAREHOUSE_CONFIRM; }
 
@@ -570,6 +574,8 @@ public class StockDocService {
             case PRE_STOCKED_AUTO -> requirePreStockedFinishedInDocument(document);
             case WAREHOUSE_CONFIRM -> requireOperationWritable(
                     document, "stock_doc:approve", "无权点收此成品入库单");
+            case WORKSHOP_MATERIAL_BIN -> throw new ApiException(
+                    ErrorCode.CONFLICT, "车间内料仓的单据不走成品点收");
         }
         if (!"FINISHED_IN".equals(document.getDocType())
                 || !isProductionLinked(document.getId())) {
@@ -927,9 +933,12 @@ public class StockDocService {
                     ErrorCode.CONFLICT,
                     "生产领料单不能单独审核；请使用“出库”一次完成审核与实物出库");
         }
+        // 内料仓通道下为登记的种类(ISSUE / RETURN / OTHER_ISSUE)，其余通道为空。
+        String workshopMaterialKind = null;
         switch (lane) {
             case WORKSHOP_DIRECT_TRANSFER -> requireWorkshopDirectTransferDocument(d);
             case PRE_STOCKED_AUTO -> requirePreStockedFinishedInDocument(d);
+            case WORKSHOP_MATERIAL_BIN -> workshopMaterialKind = requireWorkshopMaterialDocument(d);
             case WAREHOUSE_CONFIRM -> requireOperationWritable(
                     d, "stock_doc:approve", "无权审核此仓库单据");
         }
@@ -952,7 +961,10 @@ public class StockDocService {
                 throw new ApiException(ErrorCode.CONFLICT,"请由仓库确认正常仓库接收当前车间的余料，不能收入车间流转位置");
             ensureMaterialReturnReceivingConfirmation(d);
         }
-        if (Set.of("TRANSFER", "OTHER_OUT", "WASTE", "FINISHED_OUT").contains(d.getDocType())
+        // 内料仓单据(ADR-131)已由登记证明是整批领料货品的发料、退回或其它耗用，放行；
+        // 其余从车间料架调出或其它出库的单据照旧拒绝。
+        if (lane != FinishedInLane.WORKSHOP_MATERIAL_BIN
+                && Set.of("TRANSFER", "OTHER_OUT", "WASTE", "FINISHED_OUT").contains(d.getDocType())
                 && Boolean.TRUE.equals(em.createNativeQuery("SELECT EXISTS(SELECT 1 FROM warehouses WHERE id=:id AND is_line_side)")
                         .setParameter("id", d.getWarehouseId()).getSingleResult())) {
             throw new ApiException(ErrorCode.CONFLICT,
@@ -962,6 +974,8 @@ public class StockDocService {
             if (Set.of("OTHER_IN", "FINISHED_IN", "CHECK").contains(d.getDocType())
                     && !(warehouseQuantityConfirmed && "FINISHED_IN".equals(d.getDocType()))) {
                 warehouseScopes.requireActiveLeafWarehouse(d.getWarehouseId(), "入库仓库");
+            } else if ("TRANSFER".equals(d.getDocType()) && "ISSUE".equals(workshopMaterialKind)) {
+                warehouseScopes.requireActiveLineSideWarehouse(d.getToWarehouseId(), "车间内料仓");
             } else if ("TRANSFER".equals(d.getDocType())) {
                 warehouseScopes.requireActiveLeafWarehouse(d.getToWarehouseId(), "调入仓");
             }
@@ -995,7 +1009,12 @@ public class StockDocService {
         if(requestedMaterialReturn) {
             materialReturnDrawInstructions.adjust(d.getId(),false);
             materialReturnReceipts.getObject().apply(d,items,false);
-        } else if (!"DRAW".equals(d.getDocType())) applyStockEffect(d, items, +1);
+        } else if (workshopMaterialKind != null) {
+            // 内料仓单据: 内料仓一侧的调出流水带登记来源引用, 由库存内核逐笔核验。
+            applyStockEffect(d, items, +1, workshopMaterialOutboundKind(workshopMaterialKind));
+        } else if (!"DRAW".equals(d.getDocType())) {
+            applyStockEffect(d, items, +1);
+        }
         if ("OTHER_IN".equals(d.getDocType()) && d.getWarehouseId() != null) {
             // V606 / ADR-091 批注：其它入库提交后，本仓等待中的齐套段尽力而为补跑提升
             //（缺料静默返回；路线门在段锁查询里复核）。必须挂在事务提交之后：本事务已持有
@@ -1062,6 +1081,9 @@ public class StockDocService {
         tx.bind();
         prelockProductionDocument(id);
         StockDocument d = requireDocForUpdate(id);
+        if (Set.of("TRANSFER", "OTHER_OUT").contains(d.getDocType())) {
+            rejectWorkshopMaterialDocumentReverse(id);
+        }
         requireOperationWritable(
                 d, "stock_doc:reverse", "无权红冲此仓库单据");
         requireBalanceAdjustmentPermission(d);
@@ -1688,6 +1710,189 @@ public class StockDocService {
             // 不再多做一次按读范围装配详情的查询。
             issueLocked(
                     drawId, request, lockProductionDocuments(List.of(drawId)), true);
+        }
+    }
+
+    /** 与库内红冲守卫同一句文案(ADR-131 §4.3)。 */
+    private static final String WORKSHOP_MATERIAL_REVERSE_MESSAGE =
+            "车间内料仓的发料、退回和其它耗用单据不能红冲; 发错了请做退回, 或在盘点时如实盘点";
+
+    /**
+     * 车间内料仓的发料、收退回与其它耗用(ADR-131)：在调用方事务里一次完成建单、登记、审核。
+     *
+     * <p>只给内料仓的库存网关用。单据先以草稿落库，再登记到 {@code workshop_material_stock_documents}
+     * (登记表对库存单据的外键不可延迟，所以登记只能在建单之后、审核之前)，最后走内料仓审核通道：
+     * 调出一侧的流水带 {@link InventoryMovementCostReference.WorkshopMaterialBin} 来源引用，库存内核逐笔
+     * 核验"单据确实是本事务登记的内料仓单据"后才放行；通用调拨、其它出库照旧选不到内料仓。
+     * 调用方须事先按库存维度一次锁定本次全部货品，并已建好领料单(或退回单、其它耗用记录)。
+     *
+     * @return 已审核单据与每行内料仓一侧的流水，供调用方写调拨关联或回填其它耗用
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public WorkshopMaterialDocumentCommand.Posted createAndApproveWorkshopMaterialDocument(
+            WorkshopMaterialDocumentCommand command) {
+        requireWorkshopMaterialCommand(command);
+        tx.bind();
+        WorkshopMaterialDocumentCommand.Kind kind = command.kind();
+        String docType = kind == WorkshopMaterialDocumentCommand.Kind.OTHER_ISSUE ? "OTHER_OUT" : "TRANSFER";
+        UUID fromWarehouseId = kind == WorkshopMaterialDocumentCommand.Kind.ISSUE
+                ? command.leafWarehouseId() : command.binWarehouseId();
+        UUID toWarehouseId = switch (kind) {
+            case ISSUE -> command.binWarehouseId();
+            case RETURN -> command.leafWarehouseId();
+            case OTHER_ISSUE -> null;
+        };
+        if (warehouseScopes != null) {
+            warehouseScopes.requireActiveLineSideWarehouse(command.binWarehouseId(), "车间内料仓");
+            if (kind != WorkshopMaterialDocumentCommand.Kind.OTHER_ISSUE) {
+                warehouseScopes.requireActiveLeafWarehouse(command.leafWarehouseId(),
+                        kind == WorkshopMaterialDocumentCommand.Kind.ISSUE ? "发料仓库" : "收料仓库");
+            }
+        }
+        StockDocument d = new StockDocument();
+        d.setDocType(docType);
+        d.setBillNo(docNumberService.nextNumber(DOC_TYPE_TO_PREFIX.get(docType)));
+        d.setBillDate(command.billDate() == null ? BusinessTime.today() : command.billDate());
+        d.setWarehouseId(fromWarehouseId);
+        d.setToWarehouseId(toWarehouseId);
+        d.setWorkerId(command.receiverEmployeeId());
+        d.setDepartmentId(command.workshopDepartmentId());
+        d.setRemark(command.remark());
+        d.setMakerId(currentUser.requireEmployeeId());
+        d.setStatus(STATUS_DRAFT);
+        docRepo.saveAndFlush(d);
+        List<StockDocItemLine> lines = new ArrayList<>(command.lines().size());
+        int lineNo = 1;
+        for (WorkshopMaterialDocumentCommand.Line source : command.lines()) {
+            StockDocItemLine line = new StockDocItemLine();
+            line.setLineNo(lineNo++);
+            line.setGoodsId(source.goodsId());
+            line.setColorId(source.colorId());
+            line.setUnitId(source.unitId());
+            line.setUnitRate(source.unitRate());
+            line.setQty(source.qty());
+            line.setRemark(source.remark());
+            lines.add(line);
+        }
+        applyTotals(d, saveItems(d, lines));
+        em.flush();
+        em.createNativeQuery("""
+                        INSERT INTO workshop_material_stock_documents(
+                            stock_document_id, bin_warehouse_id, kind, requisition_id, other_issue_id, created_by)
+                        VALUES (:documentId, :binId, :kind, CAST(:requisitionId AS uuid),
+                                CAST(:otherIssueId AS uuid), :actorId)
+                        """)
+                .setParameter("documentId", d.getId())
+                .setParameter("binId", command.binWarehouseId())
+                .setParameter("kind", kind.name())
+                .setParameter("requisitionId", command.requisitionId())
+                .setParameter("otherIssueId", command.otherIssueId())
+                .setParameter("actorId", currentUser.requireId())
+                .executeUpdate();
+        approveDocumentAfterPrelock(d.getId(), false, false, null, FinishedInLane.WORKSHOP_MATERIAL_BIN);
+        em.flush();
+        Map<UUID, UUID> binMovements = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT movement.source_item_id, movement.id
+                        FROM stock_movements movement
+                        WHERE movement.source_doc_type = 'STOCK_DOC'
+                          AND movement.source_doc_id = :documentId
+                          AND movement.warehouse_id = :binId
+                        """)
+                .setParameter("documentId", d.getId())
+                .setParameter("binId", command.binWarehouseId()))) {
+            if (binMovements.put((UUID) row[0], (UUID) row[1]) != null) {
+                throw new ApiException(ErrorCode.CONFLICT, "内料仓单据的一行明细出现了多笔内料仓流水，请核对后重试");
+            }
+        }
+        List<WorkshopMaterialDocumentCommand.PostedLine> posted = new ArrayList<>();
+        for (StockDocumentItem item : itemRepo.findByDocIdOrderByLineNoAsc(d.getId())) {
+            UUID movementId = binMovements.get(item.getId());
+            if (movementId == null) {
+                throw new ApiException(ErrorCode.CONFLICT, "内料仓单据缺少内料仓一侧的库存流水，请核对后重试");
+            }
+            posted.add(new WorkshopMaterialDocumentCommand.PostedLine(
+                    item.getLineNo() == null ? posted.size() + 1 : item.getLineNo(), item.getId(),
+                    item.getGoodsId(), item.getColorId(), item.getUnitId(),
+                    com.uten.imp.common.finance.MoneyPolicy.quantity(baseQty(item)), movementId));
+        }
+        return new WorkshopMaterialDocumentCommand.Posted(d.getId(), d.getBillNo(), docType, posted);
+    }
+
+    private static void requireWorkshopMaterialCommand(WorkshopMaterialDocumentCommand command) {
+        boolean valid = command != null && command.kind() != null && command.binWarehouseId() != null
+                && !command.lines().isEmpty();
+        if (valid) {
+            valid = switch (command.kind()) {
+                case ISSUE, RETURN -> command.leafWarehouseId() != null
+                        && !command.leafWarehouseId().equals(command.binWarehouseId())
+                        && command.requisitionId() != null && command.otherIssueId() == null;
+                case OTHER_ISSUE -> command.leafWarehouseId() == null
+                        && command.otherIssueId() != null && command.requisitionId() == null;
+            };
+        }
+        if (valid) {
+            valid = command.lines().stream().allMatch(line -> line.goodsId() != null
+                    && line.qty() != null && line.qty().signum() > 0);
+        }
+        if (!valid) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "车间内料仓的库存单据缺少仓库、来源单据或明细数量，请刷新后重试");
+        }
+    }
+
+    /**
+     * 内料仓通道的「证据即授权」：这张单据必须是本事务里内料仓服务刚登记的单据，且仓库方向与登记一致
+     * (发料：叶仓调到内料仓；退回：内料仓调回叶仓；其它耗用：从内料仓其它出库)。返回登记的种类。
+     */
+    private String requireWorkshopMaterialDocument(StockDocument document) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT registration.kind, registration.bin_warehouse_id
+                        FROM workshop_material_stock_documents registration
+                        WHERE registration.stock_document_id = :documentId
+                          AND registration.xmin = CAST(pg_current_xact_id() AS xid)
+                        """)
+                .setParameter("documentId", document.getId()));
+        if (rows.size() == 1) {
+            String kind = (String) rows.getFirst()[0];
+            UUID bin = (UUID) rows.getFirst()[1];
+            boolean matches = switch (kind) {
+                case "ISSUE" -> "TRANSFER".equals(document.getDocType())
+                        && bin.equals(document.getToWarehouseId())
+                        && document.getWarehouseId() != null && !bin.equals(document.getWarehouseId());
+                case "RETURN" -> "TRANSFER".equals(document.getDocType())
+                        && bin.equals(document.getWarehouseId())
+                        && document.getToWarehouseId() != null && !bin.equals(document.getToWarehouseId());
+                case "OTHER_ISSUE" -> "OTHER_OUT".equals(document.getDocType())
+                        && bin.equals(document.getWarehouseId()) && document.getToWarehouseId() == null;
+                default -> false;
+            };
+            if (matches) return kind;
+        }
+        throw new ApiException(ErrorCode.FORBIDDEN,
+                "该仓库单据不是车间内料仓本次登记的发料、退回或其它耗用单据");
+    }
+
+    /** 内料仓单据调出一侧的来源引用种类；不是内料仓单据时为空。 */
+    private static InventoryMovementCostReference.WorkshopMaterialBinKind workshopMaterialOutboundKind(String kind) {
+        if (kind == null) return null;
+        return switch (kind) {
+            case "ISSUE" -> InventoryMovementCostReference.WorkshopMaterialBinKind.ISSUE_OUT;
+            case "RETURN" -> InventoryMovementCostReference.WorkshopMaterialBinKind.RETURN_OUT;
+            case "OTHER_ISSUE" -> InventoryMovementCostReference.WorkshopMaterialBinKind.OTHER_ISSUE_OUT;
+            default -> throw new ApiException(ErrorCode.CONFLICT, "车间内料仓单据的种类无法识别");
+        };
+    }
+
+    /** 内料仓服务登记的单据不能红冲(发错了做退回，或盘点时如实盘点)；库内守卫另有兜底。 */
+    private void rejectWorkshopMaterialDocumentReverse(UUID documentId) {
+        Object registered = em.createNativeQuery("""
+                        SELECT EXISTS(SELECT 1 FROM workshop_material_stock_documents WHERE stock_document_id = :documentId)
+                        """)
+                .setParameter("documentId", documentId)
+                .getSingleResult();
+        if (Boolean.TRUE.equals(registered)) {
+            throw new ApiException(ErrorCode.CONFLICT, WORKSHOP_MATERIAL_REVERSE_MESSAGE);
         }
     }
 
@@ -3531,9 +3736,20 @@ public class StockDocService {
      * @param sign +1=审核（正方向）/ -1=红冲（反方向）
      */
     private Map<UUID,UUID> applyStockEffect(StockDocument d, List<StockDocumentItem> items, int sign) {
+        return applyStockEffect(d, items, sign, null);
+    }
+
+    /**
+     * @param workshopMaterialOut 车间内料仓单据(ADR-131)调出一侧的来源引用种类；为空表示普通单据。
+     *                            调入一侧不带引用(调拨调入按原调出成本恢复)。
+     */
+    private Map<UUID,UUID> applyStockEffect(StockDocument d, List<StockDocumentItem> items, int sign,
+            InventoryMovementCostReference.WorkshopMaterialBinKind workshopMaterialOut) {
         Map<UUID,UUID> materialMovements=new LinkedHashMap<>();
         OffsetDateTime ts = d.getBillDate() == null ? OffsetDateTime.now()
                 : d.getBillDate().atStartOfDay(BusinessTime.ZONE).toOffsetDateTime();
+        InventoryMovementCostReference outbound = workshopMaterialOut == null ? null
+                : new InventoryMovementCostReference.WorkshopMaterialBin(d.getId(), workshopMaterialOut);
         for (StockDocumentItem it : items) {
             if (it.getGoodsId() == null) continue;
             BigDecimal baseQty = baseQty(it);
@@ -3541,14 +3757,14 @@ public class StockDocService {
             BigDecimal actualWeight = actualWeight(it);
             switch (d.getDocType()) {
                 case "OTHER_IN" -> move(d, it, T_OTHER_IN, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
-                case "OTHER_OUT", "WASTE" -> move(d, it, T_OTHER_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
+                case "OTHER_OUT", "WASTE" -> move(d, it, T_OTHER_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign, outbound);
                 case "DRAW" -> move(d, it, T_DRAW, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
                 case "WDRAW" -> materialMovements.put(it.getId(),move(d, it, T_WDRAW, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign));
                 case "FINISHED_IN" -> move(d, it, T_FINISHED_IN, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
                 case "FINISHED_OUT" -> move(d, it, T_FINISHED_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
                 case "TRANSFER" -> {
                     if (d.getWarehouseId() != null)
-                        move(d, it, T_TRANSFER_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
+                        move(d, it, T_TRANSFER_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign, outbound);
                     if (d.getToWarehouseId() != null)
                         move(d, it, T_TRANSFER_IN, DIR_IN, baseQty, actualWeight, d.getToWarehouseId(), ts, sign);
                 }
@@ -3582,12 +3798,18 @@ public class StockDocService {
     /** 写一笔流水：审核用 naturalDir，红冲反向（naturalDir × sign）。weight 传正数，由 recordMovement 乘 direction。 */
     private UUID move(StockDocument d, StockDocumentItem it, short type, short naturalDir,
                       BigDecimal qty, BigDecimal weight, UUID warehouseId, OffsetDateTime ts, int sign) {
+        return move(d, it, type, naturalDir, qty, weight, warehouseId, ts, sign, null);
+    }
+
+    private UUID move(StockDocument d, StockDocumentItem it, short type, short naturalDir,
+                      BigDecimal qty, BigDecimal weight, UUID warehouseId, OffsetDateTime ts, int sign,
+                      InventoryMovementCostReference costReference) {
         if (warehouseId == null || qty == null || qty.signum() == 0) return null;
         short dir = (short) (naturalDir * sign);
         return stockService.recordMovement(new StockService.MovementRequest(
                 ts, type, SRC_STOCK_DOC, d.getId(), it.getId(),
                 it.getGoodsId(), it.getColorId(), warehouseId, dir, qty,
-                it.getUnitId(), it.getUnitRate(), it.getAmountLocal(), it.getRemark(), weight));
+                it.getUnitId(), it.getUnitRate(), it.getAmountLocal(), it.getRemark(), weight, null, costReference));
     }
 
     // ===== 私有映射 =====

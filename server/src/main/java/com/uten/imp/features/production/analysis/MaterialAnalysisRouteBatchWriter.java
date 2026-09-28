@@ -38,7 +38,7 @@ final class MaterialAnalysisRouteBatchWriter {
                 mixedGoods.contains(id) ? null : MaterialAnalysisService.sourceTypeForRoute(goodsRoutes.get(id))});
         var goods = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT goods.id, goods.source_type,
-                       EXISTS (SELECT 1 FROM goods_bom_items bom WHERE bom.goods_id=goods.id AND NOT bom.is_deleted)
+                       fn_goods_has_order_bom(goods.id)
                 FROM goods JOIN %s ON input.goods_id=goods.id
                 WHERE NOT goods.is_deleted ORDER BY input._position FOR UPDATE OF goods
                 """.formatted(GOODS.recordset("input"))).setParameter("snapshots", goodsInput));

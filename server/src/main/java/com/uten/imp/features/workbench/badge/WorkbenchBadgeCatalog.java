@@ -87,6 +87,10 @@ enum WorkbenchBadgeCatalog {
     warehouseDrawCenter(Module.warehouse, facts(
             "productionDraw.count",
             "productionReturn.count"), none()),
+    /** 车间内料仓 (ADR-131): 红 = 待发料 + 待收退回 (轮到仓库动手); 黄 = 盘点中 (还没提交的那一期)。 */
+    warehouseWorkshopMaterial(Module.warehouse,
+            facts("workshopMaterial.pendingIssue", "workshopMaterial.pendingReturn"),
+            facts("workshopMaterial.counting")),
     /** 品质部检查结果: 红 = 轮到仓库动手(待入库 + 部分合格 + 需退回); 黄 = 等待检查结果。 */
     warehouseQualityResult(Module.warehouse, facts("qualityResult.actionable.*"), facts("qualityResult.inProgress.*")),
     /** 仓库草稿: stock_documents 全类型合计(不能用调拨/盘点切片, 会双计)。 */

@@ -48,6 +48,7 @@ import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/page_resume_provider.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -75,6 +76,8 @@ import '../repositories/production_material_repository.dart';
 import '../widgets/production_flow_stage_cell.dart';
 import '../widgets/workshop_draft_segment.dart';
 import '../widgets/production_material_settlement_sheet.dart';
+import '../widgets/segment_material_change_dialog.dart';
+import '../widgets/start_confirmation_sheet.dart';
 import '../widgets/workshop_task_material_table.dart';
 import '../../../shared/badges/badge_registry.dart';
 
@@ -141,6 +144,20 @@ class _ProductionWorkshopTasksPageState
     semanticsKey: Key('workshop-draw-review-refresh-busy'),
     title: '正在刷新任务列表',
     description: '正在核对领料申请后的工单与物料状态。',
+  );
+
+  /// 开工确认表办完回来后的整页重拉(认料、路线、开工都在确认表里提交)。
+  static const _busyStartConfirmRefresh = (
+    semanticsKey: Key('workshop-start-confirmation-refresh-busy'),
+    title: '正在刷新任务列表',
+    description: '正在按刚确认的用料、生产路线和开工结果重新拉取任务。',
+  );
+
+  /// 换料对话框办完回来后的整页重拉。
+  static const _busyMaterialChangeRefresh = (
+    semanticsKey: Key('workshop-material-change-refresh-busy'),
+    title: '正在刷新任务列表',
+    description: '正在按改用的料重新拉取任务。',
   );
 
   /// 网络段之后的整页重拉段: 换文案不撤遮罩, 免得提示已经弹出来、表格还停在
@@ -501,8 +518,8 @@ class _ProductionWorkshopTasksPageState
   /// 首列勾选门之一：齐套链批量动作(批量领料 / 批量开工)。可设路线的行另由
   /// [_routeSettableTask] 放进勾选集，供「批量设路线」使用。
   bool _kitSelectableTask(ProductionExecutionWorkbenchSegment task) =>
-      _routeAllowsKitActions(task) &&
-      (_canRequestDrawTask(task) || _canStartTask(task));
+      _canEnterStart(task) ||
+      (_routeAllowsKitActions(task) && _canRequestDrawTask(task));
 
   static const _routeIcons = {
     'FULL_KIT': Icons.checklist_rounded,
@@ -568,12 +585,20 @@ class _ProductionWorkshopTasksPageState
           enabled: !busy,
           onTap: () => _openSupplementTask(task),
         ),
-      if (_isPreparing && _canStart && _canStartTask(task))
+      if (_isPreparing && _canStart && _canEnterStart(task))
         UtenMenuItem(
           label: '开工',
           icon: Icons.play_circle_outline,
           enabled: !busy,
           onTap: () => _startTasks([task]),
+        ),
+      // ADR-131 段级换料：只看服务端段级动作，不在本地拼权限。
+      if (task.canChangeMaterial)
+        UtenMenuItem(
+          label: AppLocalizations.of(context).wmChangeMaterial,
+          icon: Icons.swap_horiz_rounded,
+          enabled: !busy,
+          onTap: () => _changeMaterial(task),
         ),
       if (_canStart && _canRequestDrawTask(task))
         UtenMenuItem(
@@ -622,8 +647,7 @@ class _ProductionWorkshopTasksPageState
           enabled: !busy && !task.urgeCoolingDown(DateTime.now()),
           onTap: () => _urgePlanning(task),
         ),
-      if (_isPreparing &&
-          (!_canStartTask(task) || !_routeAllowsKitActions(task)))
+      if (_isPreparing && !_canEnterStart(task))
         UtenMenuItem(
           label: '为什么不能开工',
           icon: Icons.help_outline_rounded,
@@ -869,6 +893,15 @@ class _ProductionWorkshopTasksPageState
   bool _routeAllowsKitActions(ProductionExecutionWorkbenchSegment task) =>
       task.startRoute == 'FULL_KIT' || task.startRoute == 'CONTINUOUS';
 
+  /// 「能不能点开工」的唯一判定(ADR-131 §5.4 / 评审 S4)：服务端说要先过开工
+  /// 确认表(待认料或生产路线未确认)的行也放行，点开工时弹确认表——待认料的行
+  /// 还要服务端给了认料动作(CHOOSE)；其余行照旧要求路线放行且服务端复核可开工。
+  /// 勾选、行菜单、详情按钮、批量开工共用。
+  bool _canEnterStart(ProductionExecutionWorkbenchSegment task) =>
+      (task.needsStartConfirmation &&
+          (!task.needsMaterialChoice || task.canChooseMaterial)) ||
+      (_routeAllowsKitActions(task) && _canStartTask(task));
+
   /// 服务端确认的续领包括持续到料和齐套开工后的真实退料补领，不依赖历史 issued 标志。
   bool _canRequestDrawTask(ProductionExecutionWorkbenchSegment task) =>
       task.canRequestMaterialDiscovery ||
@@ -879,8 +912,30 @@ class _ProductionWorkshopTasksPageState
               task.segmentStatus == 'DISPATCHED' ||
               task.segmentStatus == 'IN_PROGRESS'));
 
+  /// 产品的料要从车间内料仓领、本车间却还没开启整批领料(开工会被拒)。
+  static String _materialBinMissingText(
+    ProductionExecutionWorkbenchSegment task,
+  ) =>
+      '「${task.productName ?? '这个产品'}」用的料要从车间内料仓领，但'
+      '「${task.workshopName ?? '本车间'}」还没有开启整批领料。'
+      '请找仓库开启，或改派到已开启的车间';
+
   /// 未开工行点击/勾选受限的明确原因（物料未入库、库存不足、备料未完成等）。
   String _blockedReasonOf(ProductionExecutionWorkbenchSegment task) {
+    // ADR-131：内料仓用料状态先于领料发现——认完料领料发现门就解除了。
+    if (task.needsMaterialBin) return _materialBinMissingText(task);
+    // 没有开工权限的人落到下面统一的权限说明。
+    if (task.needsMaterialChoice && (_canStart || !_isPreparing)) {
+      if (!task.canChooseMaterial) {
+        return '这个产品开工前要先选用车间内料仓里的哪种料，你没有认料的权限；'
+            '请找车间负责人选好料后再开工';
+      }
+      return task.needsStartConfirmation
+          ? '这个产品开工前要先选用车间内料仓里的哪种料：勾选后点「开工」，'
+                '在开工确认表里选一次，以后同一产品自动带出'
+          : '这个产品开工前要先选用车间内料仓里的哪种料；工单到了可开工的状态后，'
+                '勾选点「开工」在开工确认表里选';
+    }
     if (task.materialDiscoveryRequired) {
       final l10n = AppLocalizations.of(context);
       if (task.startRoute == 'BATCH') {
@@ -1312,12 +1367,7 @@ class _ProductionWorkshopTasksPageState
   List<ProductionExecutionWorkbenchSegment> _selectedStartTasks(
     Set<String> ids,
   ) => _items
-      .where(
-        (task) =>
-            ids.contains(task.segmentId) &&
-            _routeAllowsKitActions(task) &&
-            _canStartTask(task),
-      )
+      .where((task) => ids.contains(task.segmentId) && _canEnterStart(task))
       .toList(growable: false);
 
   Future<void> _requestDraw(
@@ -1433,15 +1483,30 @@ class _ProductionWorkshopTasksPageState
 
   /// 批量开工：按计划分组提交（计划内原子；跨计划串行）。全部完成后刷新，
   /// 部分失败时保留失败项的选择并提示首个原因。
+  ///
+  /// ADR-131 §5.4：选中行里有要先过开工确认表的(待认料或生产路线未确认)，
+  /// 先弹确认表——认料、确认路线、开工都在确认表里按序办完(同一次勾选里
+  /// 不用确认的行一起开工)；否则走原来的批量开工。
   Future<void> _startTasks(
     List<ProductionExecutionWorkbenchSegment> targets,
   ) async {
     if (!_canStart || _navigating || targets.isEmpty) return;
     // 双保险：未确认/分批路线的行服务端必拒（V599），混进一个会拖垮同计划整批。
-    targets = targets
-        .where((task) => _routeAllowsKitActions(task) && _canStartTask(task))
-        .toList(growable: false);
+    // 要先过开工确认表的行在确认表里补齐路线与用料后再开工。
+    targets = targets.where(_canEnterStart).toList(growable: false);
     if (targets.isEmpty) return;
+    final confirm = targets
+        .where((task) => task.needsStartConfirmation)
+        .toList(growable: false);
+    if (confirm.isNotEmpty) {
+      await _startWithConfirmation(
+        confirm,
+        targets
+            .where((task) => !task.needsStartConfirmation)
+            .toList(growable: false),
+      );
+      return;
+    }
     final byPlan = <String, List<ProductionExecutionWorkbenchSegment>>{};
     for (final task in targets) {
       byPlan.putIfAbsent(task.planId, () => []).add(task);
@@ -1486,6 +1551,123 @@ class _ProductionWorkshopTasksPageState
         '部分工单开工失败(已开工 ${outcome.started} / ${targets.length})：${outcome.error}',
         force: true,
       );
+    }
+  }
+
+  /// 开工确认表(ADR-131 §5.4)：表自己持有提交期间的遮罩并按
+  /// 「认料 → 确认路线 → 开工」依次办理；关表回来后本页挂遮罩整页重拉，
+  /// 撤下遮罩再发结果提示。勾了「还要按工单领别的料」或选了「不用内料仓的料」
+  /// 的无 BOM 产品不开工，撤遮罩等一帧后转去领料申请(ADR-119)。
+  Future<void> _startWithConfirmation(
+    List<ProductionExecutionWorkbenchSegment> confirm,
+    List<ProductionExecutionWorkbenchSegment> alsoStart,
+  ) async {
+    setState(() => _navigating = true);
+    StartConfirmationOutcome? outcome;
+    try {
+      outcome = await showStartConfirmationSheet(
+        context,
+        tasks: confirm,
+        alsoStart: alsoStart,
+      );
+    } finally {
+      if (mounted) setState(() => _navigating = false);
+    }
+    if (!mounted || outcome == null || !outcome.wrote) return;
+    final done = outcome;
+    await _reloadWithBusy(_busyStartConfirmRefresh);
+    if (!mounted) return;
+    setState(
+      () => _selected.removeAll({
+        ...done.startedSegmentIds,
+        ...done.drawSegmentIds,
+        ...done.batchSegmentIds,
+      }),
+    );
+    if (done.startedSegmentIds.isNotEmpty) {
+      context.appSuccess(
+        '已开工 ${done.startedSegmentIds.length} 个工单，请在「生产中」分类报工',
+      );
+    }
+    if (done.error != null) {
+      context.appError(
+        done.plannedStartCount > 0
+            ? '部分工单没有开工(已开工 ${done.startedSegmentIds.length} / '
+                  '${done.plannedStartCount})：${done.error}'
+            : done.error!,
+        force: true,
+      );
+      return;
+    }
+    if (done.batchSegmentIds.isNotEmpty) {
+      context.appInfo('已记下用料；分批生产的工单请在列表里点「分批生产领料」');
+    }
+    if (done.drawSegmentIds.isEmpty) return;
+    // 转领料申请是跳页：遮罩已在 _reloadWithBusy 里撤下，等这一帧画完再推。
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    final drawIds = done.drawSegmentIds.toSet();
+    final drawTasks = _items
+        .where(
+          (task) =>
+              drawIds.contains(task.segmentId) &&
+              _routeAllowsKitActions(task) &&
+              _canRequestDrawTask(task),
+        )
+        .toList(growable: false);
+    if (drawTasks.isEmpty) {
+      context.appInfo('已记下用料；这些工单开工前还要按工单领料，请在列表里点「去领料」');
+      return;
+    }
+    await _requestDraw(drawTasks);
+  }
+
+  /// 行菜单「这张工单改用别的料」(ADR-131 §5.5)：对话框自己持有提交遮罩；
+  /// 改成功回来本页挂遮罩整页重拉，撤下后再提示。
+  Future<void> _changeMaterial(ProductionExecutionWorkbenchSegment task) async {
+    if (_navigating || _loading || !task.canChangeMaterial) return;
+    setState(() => _navigating = true);
+    bool? changed;
+    try {
+      changed = await showSegmentMaterialChangeDialog(context, task: task);
+    } finally {
+      if (mounted) setState(() => _navigating = false);
+    }
+    if (!mounted || changed != true) return;
+    await _reloadWithBusy(_busyMaterialChangeRefresh);
+    if (!mounted) return;
+    context.appSuccess('已改用新料：从选定的那天起，这张工单报工的产量按新料算用量');
+  }
+
+  /// 子流程(确认表、换料对话框)办完回来的整页重拉：遮罩盖到重拉完成再撤，
+  /// 撤下后调用方再发提示或跳页。
+  Future<void> _reloadWithBusy(_WorkshopBusy busy) async {
+    setState(() {
+      _busy = busy;
+      _navigating = true;
+    });
+    try {
+      await _reloadAfterChange();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = null;
+          _navigating = false;
+        });
+      }
+    }
+  }
+
+  /// 顶栏「车间内料仓」：带上表头已选的生产车间(没选时由内料仓页自己定)。
+  Future<void> _openMaterialBin() async {
+    if (_navigating) return;
+    setState(() => _navigating = true);
+    try {
+      await context.push(
+        RoutePath.workshopMaterialBin(workshopId: _workshopDepartmentId),
+      );
+    } finally {
+      if (mounted) setState(() => _navigating = false);
     }
   }
 
@@ -1647,6 +1829,18 @@ class _ProductionWorkshopTasksPageState
     }
   }
 
+  /// 要先过开工确认表的行在详情里的说明(点「开工」即弹确认表)。
+  String _startConfirmationHint(ProductionExecutionWorkbenchSegment task) {
+    final needs = [
+      if (task.needsMaterialChoice) '选用车间内料仓里的哪种料',
+      if (task.startRoute == null) '选生产路线',
+    ];
+    return needs.isEmpty
+        ? '开工前要在开工确认表里核对一次，点「开工」即可。'
+        : '开工前要先${needs.join('、')}：点「开工」在开工确认表里一次办完，'
+              '以后同一产品自动带出。';
+  }
+
   Future<void> _openTaskDetail(ProductionExecutionWorkbenchSegment task) async {
     if (_navigating || _loading) return;
     final action = await showDialog<String>(
@@ -1737,7 +1931,15 @@ class _ProductionWorkshopTasksPageState
                 ],
                 const SizedBox(height: UtenSpacing.s8),
                 Text(
-                  task.startRoute == null
+                  task.needsMaterialBin && _isPreparing
+                      ? _materialBinMissingText(task)
+                      : _canStart &&
+                            _canEnterStart(task) &&
+                            task.needsStartConfirmation
+                      ? _startConfirmationHint(task)
+                      : task.needsMaterialChoice && _isPreparing
+                      ? _blockedReasonOf(task)
+                      : task.startRoute == null
                       ? '请先确认路线。齐套或持续生产共用原工单；只有各批独立管理时才选择分批。'
                       : task.startRoute == 'CONTINUOUS'
                       ? '每种必需物料共同支持部分产量后即可开工；仓库料分次领取，直送料按实际交接投入，后续均在本任务继续。'
@@ -1770,10 +1972,7 @@ class _ProductionWorkshopTasksPageState
               onPressed: () => Navigator.of(dialogContext).pop('material'),
               child: Text(_materialUsageLabel(task)),
             ),
-          if (_canStart &&
-              _isPreparing &&
-              _routeAllowsKitActions(task) &&
-              _canStartTask(task))
+          if (_canStart && _isPreparing && _canEnterStart(task))
             FilledButton.icon(
               key: ValueKey('workshop-detail-start-${task.segmentId}'),
               onPressed: () => Navigator.of(dialogContext).pop('start'),
@@ -2040,7 +2239,43 @@ class _ProductionWorkshopTasksPageState
   /// 路线确认后 WAITING 的等待方式按路线区分（齐套等到齐/分批等部分到货/
   /// 持续等部分物料——物料分析「未下达按路线显示第一步」同款）。
   ProductionFlowStage _flowStageOf(ProductionExecutionWorkbenchSegment task) =>
-      task.materialDiscoveryRequired
+      _binMaterialStageOf(task) ?? _orderFlowStageOf(task);
+
+  /// 车间内料仓用料状态的阶段(ADR-131 §5.4)：先于领料发现判定——待认料归
+  /// 「等待物料」、状态「待认料」；产品的料要从内料仓领而本车间没开启的，
+  /// 红底「不能开工」。只对未开工段生效。
+  ProductionFlowStage? _binMaterialStageOf(
+    ProductionExecutionWorkbenchSegment task,
+  ) {
+    const started = {'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'REVERSED'};
+    if (started.contains(task.segmentStatus)) return null;
+    if (task.needsMaterialChoice) {
+      return ProductionFlowStage(
+        route: ProductionFlowRoute.make,
+        key: 'MAKE_BIN_NEED_CHOICE',
+        label: AppLocalizations.of(context).wmNeedChoice,
+        tone: ProductionFlowTone.decide,
+        stepIndex: 0,
+        stepCount: 5,
+      );
+    }
+    if (task.needsMaterialBin) {
+      return const ProductionFlowStage(
+        route: ProductionFlowRoute.make,
+        key: 'MAKE_BIN_NEED_BIN',
+        label: '车间内料仓未开启 · 不能开工',
+        tone: ProductionFlowTone.decide,
+        stepIndex: 0,
+        stepCount: 5,
+      );
+    }
+    return null;
+  }
+
+  /// 按工单领料链路的阶段(原口径)：领料发现在前，其余按全站流程词表。
+  ProductionFlowStage _orderFlowStageOf(
+    ProductionExecutionWorkbenchSegment task,
+  ) => task.materialDiscoveryRequired
       ? ProductionFlowStage(
           route: ProductionFlowRoute.make,
           key: 'MAKE_MATERIAL_DISCOVERY',
@@ -2106,6 +2341,21 @@ class _ProductionWorkshopTasksPageState
   List<(String, _MaterialSummaryTone)> _materialSummaryParts(
     ProductionExecutionWorkbenchSegment task,
   ) {
+    // ADR-131：内料仓用料状态先说(认完料领料发现门才解除)。
+    if (task.needsMaterialBin) {
+      return const [('车间内料仓未开启', _MaterialSummaryTone.short)];
+    }
+    if (task.needsMaterialChoice) {
+      return [
+        (
+          '${AppLocalizations.of(context).wmNeedChoice} · 开工时选用料',
+          _MaterialSummaryTone.planning,
+        ),
+      ];
+    }
+    final fromBin =
+        task.binMaterialState ==
+        ProductionExecutionWorkbenchSegment.binStateKnown;
     if (task.materialDiscoveryRequired) {
       return [
         (
@@ -2117,7 +2367,9 @@ class _ProductionWorkshopTasksPageState
       ];
     }
     if (task.zeroMaterial || task.materialKindCount == 0) {
-      return const [('无需物料', _MaterialSummaryTone.plain)];
+      return fromBin
+          ? const [('车间内料仓供料', _MaterialSummaryTone.plain)]
+          : const [('无需物料', _MaterialSummaryTone.plain)];
     }
     final parts = <(String, _MaterialSummaryTone)>[
       (
@@ -2152,6 +2404,7 @@ class _ProductionWorkshopTasksPageState
         _MaterialSummaryTone.muted,
       ));
     }
+    if (fromBin) parts.add(('另有内料仓供料', _MaterialSummaryTone.muted));
     return parts;
   }
 
@@ -2161,11 +2414,22 @@ class _ProductionWorkshopTasksPageState
 
   /// 「物料」列悬停：逐桶解释 + 已投料可产量。
   String _materialSummaryTooltip(ProductionExecutionWorkbenchSegment task) {
+    if (task.needsMaterialBin) return _materialBinMissingText(task);
+    if (task.needsMaterialChoice) {
+      return '车间已开启整批领料，这个产品还没选用内料仓里的哪种料。'
+          '勾选后点「开工」，在开工确认表里选一次，以后同一产品自动带出';
+    }
+    final fromBin =
+        task.binMaterialState ==
+        ProductionExecutionWorkbenchSegment.binStateKnown;
     if (task.materialDiscoveryRequired) {
       return AppLocalizations.of(context).materialDiscoveryRequestHelp;
     }
     if (task.zeroMaterial || task.materialKindCount == 0) {
-      return '本任务不需要领用物料，可直接开工';
+      return fromBin
+          ? '塑料等整批领料的料由车间内料仓供给，不用按工单领料；'
+                '用量在盘点结算时按报工数量分摊'
+          : '本任务不需要领用物料，可直接开工';
     }
     final lines = <String>[
       '共 ${task.materialKindCount} 种物料：',
@@ -2189,6 +2453,7 @@ class _ProductionWorkshopTasksPageState
       '已投料可产 ${_taskQuantity(task.materialSupportedOutputQty)}'
           '${task.productUnitName ?? ''}'
           '，已预留可产 ${_taskQuantity(task.materialPreparedOutputQty)}${task.productUnitName ?? ''}',
+      if (fromBin) '塑料等整批领料的料另由车间内料仓供给，不算在上面的种数里',
       '双击本行查看每种物料的数量',
     ];
     return lines.join('\n');
@@ -2238,6 +2503,12 @@ class _ProductionWorkshopTasksPageState
     // 口径（_draftFullyClaimedCount=0 即不扣），且不出现负数。
     final inProgressDeducted = counts.inProgress - _draftFullyClaimedCount;
     final inProgressCount = inProgressDeducted < 0 ? 0 : inProgressDeducted;
+    // 顶栏「车间内料仓」与路由守卫同一份契约(不在页面里拼权限码)。
+    final canOpenMaterialBin = locationAllowedFor(
+      ref.watch(currentPermissionsProvider),
+      ref.watch(isSuperAdminProvider),
+      RouteName.workshopMaterialBin,
+    );
     return Scaffold(
       appBar: UtenAppBar(
         title: '我的车间任务',
@@ -2245,6 +2516,13 @@ class _ProductionWorkshopTasksPageState
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
+          if (canOpenMaterialBin)
+            TextButton.icon(
+              key: const Key('workshop-material-bin-entry'),
+              onPressed: _navigating ? null : _openMaterialBin,
+              icon: const Icon(Icons.inventory_2_outlined),
+              label: Text(AppLocalizations.of(context).workshopMaterialBin),
+            ),
           IconButton(
             tooltip: '刷新',
             // 整页刷新：回第 1 页重拉（关键词/状态/车间筛选保留）。

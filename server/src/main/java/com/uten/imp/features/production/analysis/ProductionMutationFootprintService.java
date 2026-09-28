@@ -648,6 +648,9 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
      * Each row carries its xmin row version: any committed or own UPDATE of the
      * row changes it, so the post-lock recheck compares versions instead of
      * hashing whole rows (ADR-107). It is not a persisted analysis fingerprint.
+     *
+     * ADR-131: 整批领料的料 (组件发料方式 PERIODIC) 的边不进足迹, 物料分析快照本来就不读它;
+     * 否则全厂注塑报工审核都会排队抢颗粒的库存锁。
      */
     private void addCurrentBom(Footprint result, Collection<UUID> roots) {
         for (var row : readCurrentBom(roots)) {
@@ -701,6 +704,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                         WHERE edge.goods_id=parent.goods_id AND edge.is_deleted=FALSE OFFSET 0
                     ) bom ON TRUE
                     JOIN goods ON goods.id=bom.component_goods_id AND goods.is_deleted=FALSE
+                     AND goods.issue_method<>'PERIODIC'
                     WHERE parent.depth<10
                 ), parents AS (
                     SELECT DISTINCT goods_id FROM reachable WHERE depth<10
@@ -713,6 +717,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                     WHERE edge.goods_id=parents.goods_id AND edge.is_deleted=FALSE OFFSET 0
                 ) bom ON TRUE
                 JOIN goods ON goods.id=bom.component_goods_id AND goods.is_deleted=FALSE
+                 AND goods.issue_method<>'PERIODIC'
                 ORDER BY id,component_goods_id,color_id
                 """).setParameter("rootIds", roots)).stream().map(MaterialAnalysisStructureScope.Row::from).toList();
     }

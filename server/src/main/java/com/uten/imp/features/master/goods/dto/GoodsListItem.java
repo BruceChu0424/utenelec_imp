@@ -68,4 +68,10 @@ public class GoodsListItem {
      * 不必为拿版本先逐条拉详情。
      */
     private Long version;
+
+    // ===== 发料方式 (V740 / ADR-131; 只读展示) =====
+    private String issueMethod;          // ORDER 按工单领料 / PERIODIC 整批领到车间内料仓
+    private String periodicCostBasis;    // OWN 主料 / SHARED 辅料 / EXPENSE 记车间费用; 按工单领料为 null
+    private BigDecimal bulkPackageQty;   // 每袋净重 (基本单位)
+    private boolean recycledMaterial;    // 回收料 (水口料、破碎料), 其它入库预填金额 0
 }

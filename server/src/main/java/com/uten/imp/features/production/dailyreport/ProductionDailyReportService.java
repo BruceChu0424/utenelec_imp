@@ -3,6 +3,7 @@ package com.uten.imp.features.production.dailyreport;
 import com.uten.imp.application.port.ProductionMaterialConsumptionWritePort;
 import com.uten.imp.application.port.ProductionQualityInspectionPort;
 import com.uten.imp.application.port.ProductionFqcRecoveryPort;
+import com.uten.imp.application.port.WorkshopMaterialReportGuardPort;
 import com.uten.imp.common.util.NativeValueConverters;
 
 import com.uten.imp.common.web.ApiException;
@@ -131,6 +132,12 @@ public class ProductionDailyReportService {
     /** V595：持续生产完结时释放直送子件余量后刷新需求状态。字段注入+可空——单测手工构造时缺省跳过。 */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.uten.imp.features.production.fulfillment.ProductionFulfillmentLedgerService fulfillmentLedger;
+    /**
+     * ADR-131 报工截止守卫：段绑定了车间内料仓的，报工日期落在已结算的一期就不许新建、审核、红冲。
+     * 字段注入+可空——单测手工构造时缺省跳过，Spring 环境恒注入；数据库延迟触发器兜底同一口径。
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private WorkshopMaterialReportGuardPort reportGuard;
 
     @Transactional(readOnly = true)
     public PageResponse<DailyReportListItem> list(DailyReportQueryFilter f, int page, int size, String sort, String order) {
@@ -287,6 +294,9 @@ public class ProductionDailyReportService {
             }
             return detail(replay.reportId());
         }
+        // ADR-131 §10 锁序：幂等顾问锁之后、写日报之前，锁住涉及的车间内料仓期间并核对日期。
+        guardWorkshopMaterialPeriods(null, req.getBillDate(), requestSegmentIds(req.getItems()),
+                WorkshopMaterialReportGuardPort.Operation.SAVE);
         validateWorkerIds(workerIds);
 
         ProductionDailyReport r = new ProductionDailyReport();
@@ -308,6 +318,11 @@ public class ProductionDailyReportService {
     @PreAuthorize("hasAuthority('production_daily_report:edit')")
     public DailyReportDetail update(UUID id, DailyReportSaveRequest req) {
         tx.bind();
+        // ADR-131 §10 锁序：车间内料仓期间的共享锁先于日报行锁；按请求里的新日期与明细段核对。
+        if (req != null) {
+            guardWorkshopMaterialPeriods(id, req.getBillDate(), requestSegmentIds(req.getItems()),
+                    WorkshopMaterialReportGuardPort.Operation.SAVE);
+        }
         ProductionDailyReport r = requireReportForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的生产日报");
         requireExpectedVersion(req == null ? null : req.getExpectedVersion(),
@@ -372,6 +387,10 @@ public class ProductionDailyReportService {
             }
             return detail(id);
         }
+        // ADR-131 §10 锁序：幂等顾问锁 → 预读本单日期与明细段 → 车间内料仓期间共享锁 → 原有足迹。
+        ReportPeriodFacts periodFacts = reportPeriodFacts(id);
+        guardWorkshopMaterialPeriods(id, periodFacts.billDate(), periodFacts.segmentIds(),
+                WorkshopMaterialReportGuardPort.Operation.APPROVE);
         var sourceGuard = mutationFootprint.beginReport(id);
         ProductionDailyReport r = requireReportForUpdate(id);
         access.requireWritable(
@@ -386,6 +405,7 @@ public class ProductionDailyReportService {
         // 过了闸门就落命令账本：同事务，失败一起回滚；重发时上面的回放分支直接命中。
         recordCommand(COMMAND_APPROVE, actorId, idempotencyKey, requestHash, id);
         List<ProductionDailyReportItem> items = itemRepo.findByReportIdOrderByLineNoAsc(id);
+        requireSamePeriodFacts(periodFacts, r, items);
         if (items.isEmpty())
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         if (items.stream().anyMatch(item ->
@@ -524,6 +544,10 @@ public class ProductionDailyReportService {
     @PreAuthorize("hasAuthority('production_daily_report:reverse')")
     public DailyReportDetail reverse(UUID id) {
         tx.bind();
+        // ADR-131 §10 锁序：预读本单日期与明细段 → 车间内料仓期间共享锁 → 原有足迹 → 日报行。
+        ReportPeriodFacts periodFacts = reportPeriodFacts(id);
+        guardWorkshopMaterialPeriods(id, periodFacts.billDate(), periodFacts.segmentIds(),
+                WorkshopMaterialReportGuardPort.Operation.REVERSE);
         var sourceGuard = mutationFootprint.beginReport(id);
         ProductionDailyReport r = requireReportForUpdate(id);
         qualityInspection.prelockForReportReversal(r.getId());
@@ -533,6 +557,7 @@ public class ProductionDailyReportService {
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         List<ProductionDailyReportItem> items = itemRepo.findByReportIdOrderByLineNoAsc(id);
+        requireSamePeriodFacts(periodFacts, r, items);
         executionSegments.prelockForReverse(items);
         lockPlanItems(items.stream()
                 .map(ProductionDailyReportItem::getPlanItemId)
@@ -2319,5 +2344,81 @@ public class ProductionDailyReportService {
     /** 日报命令账本的一行：同一把 (操作者, 幂等键) 永久绑定一种命令和一张日报。 */
     private record ReportCommand(
             String commandKind, String requestHash, UUID reportId) {
+    }
+
+    /**
+     * ADR-131 报工截止守卫：段绑定了车间内料仓的，锁住报工日期所在的期间(共享锁，与结算的排他锁
+     * 互斥)，已结算就拒绝。明细没有任务段或端口缺省(单测手工构造)时直接返回。
+     */
+    private void guardWorkshopMaterialPeriods(
+            UUID reportId, LocalDate billDate, java.util.Collection<UUID> segmentIds,
+            WorkshopMaterialReportGuardPort.Operation operation) {
+        if (reportGuard == null || billDate == null
+                || segmentIds == null || segmentIds.isEmpty()) {
+            return;
+        }
+        reportGuard.lockAndCheck(reportId, billDate, segmentIds, operation);
+    }
+
+    /** 请求明细里的任务段(去重、保序)；报工截止守卫按它们找绑定的车间内料仓。 */
+    private static List<UUID> requestSegmentIds(List<DailyReportItemLine> lines) {
+        if (lines == null) return List.of();
+        return lines.stream()
+                .filter(Objects::nonNull)
+                .map(DailyReportItemLine::getExecutionSegmentId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
+    /**
+     * 审核、红冲前不加锁预读本单日期与明细段(一条语句)：期间共享锁要先于足迹与日报行锁
+     * (ADR-131 §10)，锁住日报行后再用 {@link #requireSamePeriodFacts} 复核没变。
+     */
+    private ReportPeriodFacts reportPeriodFacts(UUID reportId) {
+        if (reportGuard == null || reportId == null) return ReportPeriodFacts.NONE;
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT report.bill_date, item.execution_segment_id
+                FROM production_daily_reports report
+                LEFT JOIN production_daily_report_items item
+                  ON item.report_id = report.id
+                 AND item.execution_segment_id IS NOT NULL
+                WHERE report.id = :reportId
+                  AND report.is_deleted = FALSE
+                """).setParameter("reportId", reportId));
+        if (rows.isEmpty()) return ReportPeriodFacts.NONE;
+        LocalDate billDate = NativeValueConverters.toLocalDate(rows.getFirst()[0]);
+        Set<UUID> segments = new LinkedHashSet<>();
+        for (Object[] row : rows) {
+            if (row[1] != null) segments.add((UUID) row[1]);
+        }
+        return new ReportPeriodFacts(billDate, List.copyOf(segments));
+    }
+
+    /**
+     * 锁住日报行后复核：日期与明细段都在预读时锁过的范围内。并发改了草稿的，请刷新重试
+     * (数据库延迟触发器另有兜底)。
+     */
+    private void requireSamePeriodFacts(
+            ReportPeriodFacts facts,
+            ProductionDailyReport report,
+            List<ProductionDailyReportItem> items) {
+        if (reportGuard == null) return;
+        List<UUID> current = items.stream()
+                .map(ProductionDailyReportItem::getExecutionSegmentId)
+                .filter(Objects::nonNull)
+                .toList();
+        if (current.isEmpty()) return;
+        boolean segmentsCovered = facts.segmentIds().containsAll(current);
+        boolean sameDate = Objects.equals(facts.billDate(), report.getBillDate());
+        if (!segmentsCovered || !sameDate) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "生产日报刚被修改过，请刷新后重试");
+        }
+    }
+
+    /** 审核、红冲前预读的本单日期与明细段。 */
+    private record ReportPeriodFacts(LocalDate billDate, List<UUID> segmentIds) {
+        static final ReportPeriodFacts NONE = new ReportPeriodFacts(null, List.of());
     }
 }

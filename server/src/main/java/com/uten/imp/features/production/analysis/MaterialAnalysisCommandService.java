@@ -980,16 +980,17 @@ public class MaterialAnalysisCommandService {
         return analysisService.detailInternal(analysisId,false);
     }
 
+    /** @param commandPlans plans already issued by this aggregate command; never adopted by its later groups. */
     Map<UUID,BigDecimal> claimAggregateMakeFuture(UUID analysisId,AnalysisView view,
-            AggregateMaterialOrderContracts.GroupPreview group,String key,
+            AggregateMaterialOrderContracts.GroupPreview group,String key,Set<UUID> commandPlans,
             java.util.function.Consumer<AggregateMaterialOrderContracts.AdoptedClaim> collector) {
         Map<UUID,BigDecimal> desired=new LinkedHashMap<>();group.sources().forEach(source->desired.put(source.materialLineId(),source.allocatedQty()));
-        return makePublicSupply.adoptLocked(analysisId,desired,Map.of(),key,collector);
+        return makePublicSupply.adoptLocked(analysisId,desired,Map.of(),key,commandPlans,collector);
     }
 
-    Map<UUID,BigDecimal> claimOriginalAggregateMakeFuture(UUID analysisId,Map<UUID,BigDecimal> desired,String key,
+    Map<UUID,BigDecimal> claimOriginalAggregateMakeFuture(UUID analysisId,Map<UUID,BigDecimal> desired,String key,Set<UUID> commandPlans,
             java.util.function.Consumer<AggregateMaterialOrderContracts.AdoptedClaim> collector) {
-        return makePublicSupply.adoptLocked(analysisId,desired,Map.of(),key,collector);
+        return makePublicSupply.adoptLocked(analysisId,desired,Map.of(),key,commandPlans,collector);
     }
     Map<UUID,BigDecimal> claimOriginalAggregateFuture(UUID analysisId,AnalysisView view,Map<UUID,BigDecimal> desired,String key,String hash,
             java.util.function.Consumer<AggregateMaterialOrderContracts.AdoptedClaim> collector) {

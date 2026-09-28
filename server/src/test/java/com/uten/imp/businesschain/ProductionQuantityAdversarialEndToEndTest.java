@@ -606,8 +606,7 @@ class ProductionQuantityAdversarialEndToEndTest {
         item.setUnitId(c.world().unitId());
         item.setUnitRate(BigDecimal.ONE);
         item.setQty(new BigDecimal(quantity));
-        item.setDestination("WORKSHOP");
-        item.setDirectTransferDemandId(parentDemand(c));
+        item.setAllocations(List.of(com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.direct(parentDemand(c), item.getQty())));
         report.setItems(List.of(item));
         reports().approve(reports().create(report).getId(), DailyReportApproveRequests.freshKey());
     }

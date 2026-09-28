@@ -48,7 +48,11 @@ class PreplanPrivateFutureTransferEndToEndTest {
     @Autowired com.uten.imp.features.production.execution.ProductionExecutionSegmentService segments;
     FullChainEndToEndTest fixture;
     @BeforeEach void setup(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
-    @AfterEach void logout(){org.springframework.security.core.context.SecurityContextHolder.clearContext();}
+    @AfterEach void logout(){
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        // 在途转拨/认领走的是集合写法里的「在途转拨」分支, 这里顺带守住与库函数逐条一致.
+        com.uten.imp.features.production.analysis.AggregateAllocationPendingParity.assertMatchesDatabaseFunctions(db);
+    }
 
     @Test void privateFortyIsReceivedBeforeOriginalSixtyWithoutTouchingAnExistingPublicNineHundredClaim() {
         var c=scenario("private-and-public");

@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
+import 'package:uten_imp/shared/models/party_open_balance.dart';
 import 'package:uten_imp/shared/models/task_claim_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -138,6 +139,12 @@ SalesOrderFinancePendingItem _item({
   String client = '远硕智能',
   bool rejected = false,
   int changeCount = 0,
+  PartyOpenBalance balance = const PartyOpenBalance(
+    currencyName: '美金',
+    openOriginal: '12000.00',
+    netOriginal: '12000.00',
+    baseCurrencyName: '人民币',
+  ),
 }) => SalesOrderFinancePendingItem(
   orderId: id,
   billNo: billNo,
@@ -149,7 +156,7 @@ SalesOrderFinancePendingItem _item({
   totalOriginal: '144000.00',
   currencyCode: 'USD',
   currencyName: '美金',
-  clientOutstanding: '12000.00',
+  clientBalance: balance,
   financeRejected: rejected,
   financeRejectedReason: rejected ? '客户额度待核对' : null,
   changeCount: changeCount,
@@ -486,7 +493,7 @@ void main() {
         );
     expect(table.selectable, isTrue);
     expect(find.text('订单金额'), findsOneWidget);
-    expect(find.text('客户应收（本币）'), findsOneWidget);
+    expect(find.text('客户应收'), findsOneWidget);
 
     await tester.tap(find.text('XD20260829000003'));
     await tester.pump();
@@ -537,6 +544,131 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('detail-order-1'), findsOneWidget);
+  });
+
+  testWidgets('客户应收列与订单同币种：还差多少写「币种 金额」，其它币种与历史应收放进提示', (tester) async {
+    final repository = _FakeConfirmationRepository([
+      _item(
+        id: 'order-1',
+        billNo: 'XD-SURPLUS',
+        balance: const PartyOpenBalance(
+          currencyName: '美金',
+          creditOriginal: '200.0000',
+          netOriginal: '-200.0000',
+          baseCurrencyName: '人民币',
+        ),
+      ),
+      _item(
+        id: 'order-2',
+        billNo: 'XD-OWES',
+        balance: const PartyOpenBalance(
+          currencyName: '美金',
+          openOriginal: '12000',
+          netOriginal: '12000',
+          baseCurrencyName: '人民币',
+          otherCurrencies: [
+            PartyCurrencyBalance(currencyName: '人民币', netOriginal: '30000'),
+          ],
+          unverifiedLocal: '1200',
+          unverifiedCount: 1,
+          openBookLocal: '116400',
+          creditLimitLocal: '50000',
+          overLimitLocal: '66400',
+          overCredit: true,
+        ),
+      ),
+    ]);
+    await _pumpPage(tester, repository, size: const Size(1440, 1000));
+
+    expect(find.text('美金 144000.00'), findsNWidgets(2));
+    expect(find.text('预收有余 美金 200.00'), findsOneWidget);
+    expect(find.text('美金 12000.00'), findsOneWidget);
+    final owes = tester.widget<Text>(find.text('美金 12000.00'));
+    expect(
+      owes.style?.color,
+      Theme.of(tester.element(find.text('美金 12000.00'))).colorScheme.error,
+      reason: '全部币种应收(折本币)超信用额度时该格标红',
+    );
+    final tooltip = tester.widget<Tooltip>(
+      find
+          .ancestor(
+            of: find.text('美金 12000.00'),
+            matching: find.byType(Tooltip),
+          )
+          .first,
+    );
+    expect(
+      tooltip.message,
+      '另有 人民币 30000.00；另有历史应收 人民币 1200.00 原币未核实；'
+      '全部币种应收(折本币) 人民币 116400.00 已超信用额度 人民币 50000.00',
+    );
+    expect(
+      find.ancestor(
+        of: find.text('预收有余 美金 200.00'),
+        matching: find.byType(Tooltip),
+      ),
+      findsNothing,
+      reason: '没有补充说明时不挂提示',
+    );
+  });
+
+  testWidgets('紧凑端客户应收同样按订单币种，补充说明另起一行', (tester) async {
+    final repository = _FakeConfirmationRepository([
+      _item(
+        id: 'order-1',
+        billNo: 'XD-COMPACT',
+        balance: const PartyOpenBalance(
+          currencyName: '美金',
+          netOriginal: '-200',
+          otherCurrencies: [
+            PartyCurrencyBalance(currencyName: '人民币', netOriginal: '30000'),
+          ],
+        ),
+      ),
+    ]);
+    await _pumpPage(tester, repository, size: const Size(375, 812));
+
+    expect(find.textContaining('客户应收 预收有余 美金 200.00'), findsOneWidget);
+    expect(find.text('另有 人民币 30000.00'), findsOneWidget);
+    expect(find.textContaining('美金 144000.00'), findsWidgets);
+  });
+
+  testWidgets('审核详情客户快照：本单金额与客户应收同币种，超信用出横幅', (tester) async {
+    const review = SalesOrderFinanceReview(
+      orderId: 'order-credit',
+      billNo: 'XD-CREDIT',
+      clientName: '远硕智能',
+      clientCode: 'C001',
+      currencyName: '美金',
+      totalOriginal: '144000.0000',
+      clientCreditFloor: '2000',
+      clientBalance: PartyOpenBalance(
+        currencyName: '美金',
+        openOriginal: '500',
+        creditOriginal: '100',
+        netOriginal: '400',
+        baseCurrencyName: '人民币',
+        openBookLocal: '3500',
+        creditLimitLocal: '3000',
+        overLimitLocal: '500',
+        overCredit: true,
+      ),
+    );
+    await _pumpReview(tester, review);
+
+    expect(find.text('客户财务快照 · 远硕智能(C001)'), findsOneWidget);
+    expect(find.text('美金 144000.00'), findsWidgets);
+    expect(find.text('美金 500.00'), findsOneWidget);
+    expect(find.text('美金 100.00'), findsOneWidget);
+    expect(find.text('美金 400.00'), findsOneWidget);
+    expect(find.text('人民币 3500.00'), findsOneWidget);
+    expect(find.text('人民币 3000.00'), findsOneWidget);
+    expect(find.text('人民币 2000.00'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('finance-party-snapshot-over-limit')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('已超信用额度，请谨慎确认'), findsOneWidget);
   });
 
   testWidgets('紧凑端使用可勾选列表并保留显式详情入口', (tester) async {

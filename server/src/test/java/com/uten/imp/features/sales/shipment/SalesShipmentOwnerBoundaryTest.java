@@ -67,7 +67,7 @@ class SalesShipmentOwnerBoundaryTest {
                 currentUser,
                 nameResolver,
                 chainNotice, clientShipAddressService,
-                org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class), org.mockito.Mockito.mock(CustomerShipmentPolicy.class), org.mockito.Mockito.mock(DirectCustomerShipmentCommercialService.class), org.mockito.Mockito.mock(SalesShipmentReviewSnapshotService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.CustomerShipmentInventoryPort.class), org.mockito.Mockito.mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
+                org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class), org.mockito.Mockito.mock(CustomerShipmentPolicy.class), org.mockito.Mockito.mock(DirectCustomerShipmentCommercialService.class), org.mockito.Mockito.mock(SalesShipmentReviewSnapshotService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.CustomerShipmentInventoryPort.class), org.mockito.Mockito.mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.PartyOpenBalancePort.class));
         ShipmentItemLine line = new ShipmentItemLine();
         line.setGoodsId(UUID.randomUUID());
         line.setUnitId(UUID.randomUUID());
@@ -125,7 +125,7 @@ class SalesShipmentOwnerBoundaryTest {
                 shipmentRepo, itemRepo, stockService, reservationService,
                 arApService, tx, em, docNumberService, accessPolicy,
                 currentUser, nameResolver, chainNotice, clientShipAddressService,
-                org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class), org.mockito.Mockito.mock(CustomerShipmentPolicy.class), org.mockito.Mockito.mock(DirectCustomerShipmentCommercialService.class), org.mockito.Mockito.mock(SalesShipmentReviewSnapshotService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.CustomerShipmentInventoryPort.class), org.mockito.Mockito.mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
+                org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class), org.mockito.Mockito.mock(CustomerShipmentPolicy.class), org.mockito.Mockito.mock(DirectCustomerShipmentCommercialService.class), org.mockito.Mockito.mock(SalesShipmentReviewSnapshotService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.CustomerShipmentInventoryPort.class), org.mockito.Mockito.mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.PartyOpenBalancePort.class));
 
         service.create(request);
 
@@ -213,7 +213,7 @@ class SalesShipmentOwnerBoundaryTest {
                 currentUser,
                 nameResolver,
                 chainNotice, clientShipAddressService,
-                org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class), org.mockito.Mockito.mock(CustomerShipmentPolicy.class), org.mockito.Mockito.mock(DirectCustomerShipmentCommercialService.class), org.mockito.Mockito.mock(SalesShipmentReviewSnapshotService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.CustomerShipmentInventoryPort.class), org.mockito.Mockito.mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
+                org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class), org.mockito.Mockito.mock(CustomerShipmentPolicy.class), org.mockito.Mockito.mock(DirectCustomerShipmentCommercialService.class), org.mockito.Mockito.mock(SalesShipmentReviewSnapshotService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.CustomerShipmentInventoryPort.class), org.mockito.Mockito.mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.PartyOpenBalancePort.class));
 
         BatchShipRequest request = new BatchShipRequest();
         request.setBillDate(LocalDate.now());
@@ -278,7 +278,7 @@ class SalesShipmentOwnerBoundaryTest {
                 currentUser,
                 nameResolver,
                 chainNotice, clientShipAddressService,
-                org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class), org.mockito.Mockito.mock(CustomerShipmentPolicy.class), org.mockito.Mockito.mock(DirectCustomerShipmentCommercialService.class), org.mockito.Mockito.mock(SalesShipmentReviewSnapshotService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.CustomerShipmentInventoryPort.class), org.mockito.Mockito.mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
+                org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class), org.mockito.Mockito.mock(CustomerShipmentPolicy.class), org.mockito.Mockito.mock(DirectCustomerShipmentCommercialService.class), org.mockito.Mockito.mock(SalesShipmentReviewSnapshotService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.CustomerShipmentInventoryPort.class), org.mockito.Mockito.mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.PartyOpenBalancePort.class));
         BatchShipRequest request=new BatchShipRequest();request.setBillDate(LocalDate.now());
         request.setIdempotencyKey("forbidden-batch-intent");request.setLines(List.of(batchLine(item)));
         assertThrows(com.uten.imp.common.web.ApiException.class,()->service.batchCreate(request));

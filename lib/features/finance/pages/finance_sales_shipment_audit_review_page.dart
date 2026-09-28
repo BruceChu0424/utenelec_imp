@@ -45,6 +45,7 @@ import '../../sales/models/sales_doc.dart';
 import '../../sales/providers/master_name_provider.dart';
 import '../../sales/repositories/sales_repository.dart';
 import '../../sales/widgets/shipment_finance_change_summary.dart';
+import '../widgets/finance_party_snapshot_card.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 class FinanceSalesShipmentAuditReviewPage extends ConsumerStatefulWidget {
@@ -894,110 +895,49 @@ class _FinanceSalesShipmentAuditReviewPageState
   }
 
   /// 客户财务快照卡：审核必看的本单结账方式、应收、铺底与可用预收。
+  /// ADR-128：应收与可用预收按本单币种显示(财务共用 FinancePartySnapshotCard)；
+  /// 铺底额只和全部币种正式应收(折本币，不扣预收)比，超出时标红。
   Widget _clientFinanceCard(ThemeData theme, ShipmentFinanceAuditInfo info) {
     final names = ref.watch(salesMasterNameServiceProvider);
-    final overFloor = double.tryParse(info.overFloor ?? '');
-    final overFloorDanger = overFloor != null && overFloor > 0;
-
-    Widget metric(String label, String? value, {bool danger = false}) =>
-        SizedBox(
-          width: 220,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                value?.trim().isNotEmpty == true ? value!.trim() : '0',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: danger ? theme.colorScheme.error : null,
-                ),
-              ),
-            ],
+    return FinancePartySnapshotCard(
+      title: '客户财务快照 · ${info.clientName ?? names.client(_detail?.clientId)}',
+      balance: info.clientBalance,
+      leading: [
+        if (info.billingMode != null)
+          FinanceSnapshotMetric(
+            '本次发货',
+            info.billingMode == 'FREE' ? '不收费（货款 0）' : '收费',
           ),
-        );
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.account_balance_wallet_outlined,
-                  size: 18,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    '客户财务快照 · ${info.clientName ?? names.client(_detail?.clientId)}',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            Wrap(
-              spacing: UtenSpacing.s12,
-              runSpacing: UtenSpacing.s12,
-              children: [
-                if (info.billingMode != null)
-                  metric(
-                    '本次发货',
-                    info.billingMode == 'FREE' ? '不收费（货款 0）' : '收费',
-                  ),
-                if (info.directPurpose != null)
-                  metric('发货用途', switch (info.directPurpose) {
-                    'SAMPLE' => '样品',
-                    'GIFT' => '赠送',
-                    _ => '其它客户发货',
-                  }),
-                if (info.freeReason != null) metric('不收费原因', info.freeReason),
-                metric('结账方式', info.settlementMethodName ?? '未设置'),
-                if (!_isFreeShipment)
-                  metric(
-                    '主档参考汇率${info.currencyName == null ? '' : '(${info.currencyName})'}',
-                    _rateLocked
-                        ? '1(本位币)'
-                        : info.financeRateReady == false
-                        ? '未维护'
-                        : (info.financeRate ?? '—'),
-                    danger: !_rateLocked && info.financeRateReady == false,
-                  ),
-                metric('正式应收未收(本币)', info.outstanding),
-                metric('铺底额(本币)', info.creditFloor),
-                metric('超出铺底额(本币)', info.overFloor, danger: overFloorDanger),
-                metric('可用预收(原币)', info.availablePrepaymentOriginal),
-                metric('可用预收(本币)', info.availablePrepaymentLocal),
-              ],
-            ),
-            if (!_isFreeShipment) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              _exchangeRateSection(theme, info),
-            ],
-            const SizedBox(height: UtenSpacing.s8),
-            Text(
-              '结账方式来自本单；可用预收为同客户同币种的真实已审核到账。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
+        if (info.directPurpose != null)
+          FinanceSnapshotMetric('发货用途', switch (info.directPurpose) {
+            'SAMPLE' => '样品',
+            'GIFT' => '赠送',
+            _ => '其它客户发货',
+          }),
+        if (info.freeReason != null)
+          FinanceSnapshotMetric('不收费原因', info.freeReason),
+        FinanceSnapshotMetric('结账方式', info.settlementMethodName ?? '未设置'),
+        if (!_isFreeShipment)
+          FinanceSnapshotMetric(
+            '主档参考汇率${info.currencyName == null ? '' : '(${info.currencyName})'}',
+            _rateLocked
+                ? '1(本位币)'
+                : info.financeRateReady == false
+                ? '未维护'
+                : (info.financeRate ?? '—'),
+            danger: !_rateLocked && info.financeRateReady == false,
+          ),
+      ],
+      limitLabel: '铺底额',
+      footer: [
+        if (!_isFreeShipment) ...[
+          const SizedBox(height: UtenSpacing.s12),
+          _exchangeRateSection(theme, info),
+        ],
+      ],
+      note:
+          '结账方式来自本单。应收和可用预收按本单币种的原币余额相加，不用汇率换算；'
+          '可用预收只算已审核到账的预收。铺底额只和全部币种应收(折本币，不扣预收)比。',
     );
   }
 

@@ -24,6 +24,8 @@ import 'uten_input_decoration.dart';
 ///
 /// [enabled]=false 为分组标题（如仓库层级下拉的父仓）：正常显示与参与值回显，
 /// 但点击不生效；[indent] 为缩进像素（子仓缩进展示），两者默认关闭保持旧行为。
+/// [error]=true 用红字显示并在悬停时给出整句(如「无法转到下一道工序」的原因)，
+/// 一般与 enabled=false 搭配：列出来让人知道为什么不能选。
 class UtenDropdownItem {
   const UtenDropdownItem({
     this.value,
@@ -31,11 +33,13 @@ class UtenDropdownItem {
     this.enabled = true,
     this.indent = 0,
     this.visible = true,
+    this.error = false,
   });
   final String? value;
   final String label;
   final bool enabled;
   final double indent;
+  final bool error;
 
   /// A historical value can retain its label without appearing in new choices.
   final bool visible;
@@ -431,6 +435,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                                       : null,
                                   theme: theme,
                                   indent: it.indent,
+                                  error: it.error,
                                 ),
                               if (filtered.isEmpty)
                                 Padding(
@@ -467,9 +472,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
     required VoidCallback? onTap,
     required ThemeData theme,
     double indent = 0,
+    bool error = false,
   }) {
     final disabled = onTap == null;
-    return InkWell(
+    final item = InkWell(
       onTap: onTap,
       child: Container(
         padding: EdgeInsets.only(
@@ -497,7 +503,11 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: disabled
+                style: error
+                    ? theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.error,
+                      )
+                    : disabled
                     ? theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: theme.colorScheme.onSurfaceVariant,
@@ -509,5 +519,6 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
         ),
       ),
     );
+    return error ? Tooltip(message: label, child: item) : item;
   }
 }

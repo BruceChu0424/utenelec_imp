@@ -3,9 +3,11 @@ package com.uten.imp.features.finance.procurement;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.BusinessEventPublisher;
+import com.uten.imp.application.port.PartyOpenBalancePort;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.ItemSnapshot;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.OrderSnapshot;
+import com.uten.imp.common.finance.PartyOpenBalances;
 import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.features.admin.workflow.WorkflowReviewerEligibility;
 import com.uten.imp.security.AuthUser;
@@ -26,6 +28,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
@@ -81,6 +84,9 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                 sources(jdbc, prefix, item);
                 OrderSnapshot original = snapshot(type, order, item, goods, unit, supplier, currency, settlement, "10");
                 ProcurementOrderApprovalPort port = mock(ProcurementOrderApprovalPort.class);
+                // ADR-128: 供应商余额由共用余额查询提供(本测试只看审批快照)。
+                PartyOpenBalancePort balances = mock(PartyOpenBalancePort.class);
+                when(balances.suppliers(any())).thenReturn(PartyOpenBalances.empty());
                 when(port.orderType()).thenReturn(type);
                 when(port.lockAndValidateFinanceSubmission(order)).thenReturn(original);
                 ProcurementFinanceApprovalService service = new ProcurementFinanceApprovalService(
@@ -88,7 +94,7 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                         mock(ProcurementApprovalProjectionQuery.class), user, mock(TxSessionVars.class),
                         mock(com.uten.imp.features.notice.ChainNoticeService.class),
                         mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
-                        mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, RETURNS_DEEP_STUBS));
+                        mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, RETURNS_DEEP_STUBS), balances);
                 service.submit(type, order);
                 UUID first = jdbc.queryForObject("SELECT id FROM procurement_order_approval_cases WHERE order_id=? AND attempt=1", UUID.class, order);
                 String originalJson = ProcurementApprovalSnapshot.json(original, mapper);
@@ -130,6 +136,14 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                 assertThat(review.sourceApplicationCount()).isEqualTo(2);
                 assertThat(review.previousHeaderSnapshot().get("remark")).isEqualTo("原头备注");
                 assertThat(review.headerSnapshot()).containsEntry("remark", null);
+                // ADR-128: 待审列表带订货币种原币金额与币种名(与审核详情同一个币种名列), 前端写成「币种 金额」。
+                var tasks = service.tasks(1, 20, type, null).getItems();
+                assertThat(tasks).singleElement().satisfies(task -> {
+                    assertThat(task.caseId()).isEqualTo(second);
+                    assertThat(task.totalOriginal()).isEqualByComparingTo("24");
+                    assertThat(task.currencyName()).isEqualTo("美元");
+                    assertThat(task.amount()).isEqualByComparingTo(review.totalLocal());
+                });
                 assertThatThrownBy(() -> jdbc.update("UPDATE procurement_order_approval_cases SET display_snapshot='{}'::jsonb WHERE id=?", first))
                         .hasRootCauseInstanceOf(org.postgresql.util.PSQLException.class);
                 assertThatThrownBy(() -> jdbc.update("INSERT INTO procurement_order_approval_cases(id,order_type,order_id,submission_snapshot) VALUES (?, ?, ?, '{}'::jsonb)", UUID.randomUUID(), type, order))
@@ -174,7 +188,6 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                 CREATE TABLE procurement_order_approval_events(id uuid,case_id uuid,event_type text,actor_user_id uuid,
                   actor_employee_id uuid,from_assignee_user_id uuid,to_assignee_user_id uuid,reason text,event_snapshot jsonb,created_at timestamptz DEFAULT now());
                 CREATE TABLE procurement_order_qty_change_logs(order_type text,order_item_id uuid,old_qty numeric,new_qty numeric,changed_at timestamptz,changed_by_employee_id uuid,case_id uuid);
-                CREATE TABLE ar_ap_ledger(supplier_id uuid,amount_balance numeric,direction text,is_deleted boolean,status int);
                 CREATE TABLE suppliers(id uuid,code text,name text);
                 CREATE TABLE warehouses(id uuid,name text);
                 CREATE TABLE currencies(id uuid,name text);
@@ -186,7 +199,7 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                 """);
         for (String prefix : List.of("purchase", "subcontract")) {
             String source = prefix.equals("purchase") ? "request" : "application";
-            jdbc.execute("CREATE TABLE " + prefix + "_orders(id uuid,supplier_id uuid,warehouse_id uuid,currency_id uuid,settlement_method_id uuid,purchaser_id uuid,maker_id uuid,remark text)");
+            jdbc.execute("CREATE TABLE " + prefix + "_orders(id uuid,supplier_id uuid,warehouse_id uuid,currency_id uuid,settlement_method_id uuid,purchaser_id uuid,maker_id uuid,remark text,deliver_date date)");
             String extra = prefix.equals("purchase") ? "gift_qty numeric(18,4)" : "allowed_loss_pct numeric(5,2)";
             jdbc.execute("CREATE TABLE " + prefix + "_order_items(id uuid,order_id uuid,line_no int,goods_id uuid,color_id uuid,unit_id uuid,goods_code_snapshot text,goods_name_snapshot text,weight numeric(18,4)," + extra + ",remark text,source_doc_no text,is_deleted boolean DEFAULT FALSE)");
             jdbc.execute("CREATE TABLE " + prefix + "_order_item_sources(order_item_id uuid," + source + "_item_id uuid,alloc_qty numeric,line_no int)");

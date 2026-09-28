@@ -148,7 +148,7 @@ public class ProductionDailyReportItem extends BaseEntity {
     /**
      * 产出去向(V584)：WAREHOUSE=送仓库走品质部送检登记与 FQC；
      * WORKSHOP=班组自检后直送同车间的上层工单，不进公共仓库。
-     * 一行只有一个去向，要拆量就拆行。
+     * 一条明细只有一个去向：工人一行报工分给几个上层工单，保存时就拆成几条同批次明细(V736/ADR-127)。
      */
     @Column(name = "destination", nullable = false)
     private String destination = "WAREHOUSE";
@@ -159,6 +159,10 @@ public class ProductionDailyReportItem extends BaseEntity {
      */
     @Column(name = "direct_transfer_demand_id")
     private UUID directTransferDemandId;
+
+    /** 送仓明细为什么没转下一道工序(V736 原因码)；转送明细与历史明细为空。 */
+    @Column(name = "output_route_reason")
+    private String outputRouteReason;
 
     private String remark;
 }

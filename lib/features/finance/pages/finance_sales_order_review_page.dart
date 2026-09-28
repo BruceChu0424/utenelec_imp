@@ -2,6 +2,7 @@
 //
 // 设计目标（对齐大公司审批中心：SAP/Oracle 审批详情 = 单据信息 + 风险快照 + 双决策）：
 //  - 客户财务快照卡：应收余额 / 信用额度 / 铺底额，超信用红色告警——财务确认前必看；
+//    ADR-128 起应收按本单币种显示，卡片用财务共用的 FinancePartySnapshotCard；
 //  - 订单信息卡：币种加粗红色、发运策略、结帐方式等商业事实；资金状态读取独立财务汇总；
 //  - 产品明细保持全局统一表格（MasterDataTableView 嵌入模式）；
 //  - 底栏双决策：驳回（必填原因，通知归属销售修正）/ 确认通过（选填备注，放行计划部）。
@@ -31,7 +32,6 @@ import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/measurement/measurement_totals.dart';
@@ -44,6 +44,8 @@ import '../repositories/sales_order_finance_confirmation_repository.dart';
 import '../../../shared/widgets/sales_order_money_summary_card.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/money_display.dart';
+import '../widgets/finance_party_snapshot_card.dart';
 
 class FinanceSalesOrderReviewPage extends ConsumerStatefulWidget {
   const FinanceSalesOrderReviewPage({
@@ -497,7 +499,7 @@ class _FinanceSalesOrderReviewPageState
                             ],
                             _statusStrip(theme, _review!),
                             const SizedBox(height: UtenSpacing.s12),
-                            _clientFinanceCard(theme, _review!),
+                            _clientFinanceCard(_review!),
                             const SizedBox(height: UtenSpacing.s12),
                             _orderCard(theme, _review!),
                             if (canViewMoneySummary) ...[
@@ -703,115 +705,36 @@ class _FinanceSalesOrderReviewPageState
     );
   }
 
-  /// 客户财务快照卡：应收余额 / 信用额度 / 铺底额 + 超信用告警。
-  Widget _clientFinanceCard(ThemeData theme, SalesOrderFinanceReview r) {
-    final over = r.clientOverCredit;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.account_balance_wallet_outlined,
-                  size: 18,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    '客户财务快照 · ${r.clientName ?? '—'}'
-                    '${r.clientCode != null ? '(${r.clientCode})' : ''}',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            UtenFormGrid(
-              children: [
-                _metric(
-                  theme,
-                  '应收余额(本币)',
-                  _money(r.clientOutstanding),
-                  emphasis: true,
-                  danger: over,
-                ),
-                _metric(theme, '信用额度', _money(r.clientCredit)),
-                _metric(theme, '铺底额', _money(r.clientCreditFloor)),
-                _metric(
-                  theme,
-                  '本单金额',
-                  _money(r.totalOriginal),
-                  emphasis: true,
-                  danger: true,
-                ),
-              ],
-            ),
-            if (over) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              Container(
-                key: const ValueKey('finance-review-over-credit'),
-                padding: const EdgeInsets.all(UtenSpacing.s8),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.errorContainer,
-                  borderRadius: BorderRadius.circular(UtenRadius.md),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.warning_amber_rounded,
-                      size: 18,
-                      color: theme.colorScheme.onErrorContainer,
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
-                      child: Text(
-                        '该客户应收余额已超信用额度，请谨慎确认',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onErrorContainer,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _metric(
-    ThemeData theme,
-    String label,
-    String value, {
-    bool emphasis = false,
-    bool danger = false,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+  /// 客户财务快照卡(ADR-128)：本单金额与客户在本单币种下的应收 / 可用预收 / 还差多少
+  /// 放在一起比；信用额度只和全部币种应收(折本币，不扣预收)比，超额标红并出横幅。
+  Widget _clientFinanceCard(SalesOrderFinanceReview r) {
+    return FinancePartySnapshotCard(
+      title:
+          '客户财务快照 · ${r.clientName ?? '—'}'
+          '${r.clientCode != null ? '(${r.clientCode})' : ''}',
+      balance: r.clientBalance,
+      leading: [
+        FinanceSnapshotMetric(
+          '本单金额',
+          financeMoneyWithCurrency(
+            r.totalOriginal,
+            currencyName: r.currencyName,
+            currencyCode: r.currencyCode,
+            fallback: '订单币种',
           ),
+          emphasis: true,
+          danger: true,
         ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: emphasis ? FontWeight.w800 : FontWeight.w600,
-            color: danger ? theme.colorScheme.error : null,
-          ),
+      ],
+      limitLabel: '信用额度',
+      overLimitWarning: '该客户全部币种应收(折本币，不扣预收)已超信用额度，请谨慎确认',
+      trailing: [
+        FinanceSnapshotMetric(
+          '铺底额',
+          r.clientCreditFloor == null
+              ? null
+              : r.clientBalance?.baseMoneyText(r.clientCreditFloor) ??
+                    financeMoneyText(r.clientCreditFloor),
         ),
       ],
     );
@@ -858,7 +781,7 @@ class _FinanceSalesOrderReviewPageState
               children: [
                 kv('业务员', r.sellerName),
                 kv('交货日', r.deliverDate),
-                kv('币种', _currencyLabel(r), highlight: true),
+                kv('币种', r.currencyLabel, highlight: true),
                 kv('发运策略', r.shipmentPolicyName ?? r.shipmentPolicy),
                 kv('结帐方式', r.settlementMethodName),
               ],
@@ -892,7 +815,7 @@ class _FinanceSalesOrderReviewPageState
     if (r.revisionDiff != null) {
       return SalesOrderRevisionTable(
         diff: r.revisionDiff!,
-        currencyLabel: _currencyLabel(r),
+        currencyLabel: r.currencyLabel,
         summaryBar: _itemsSummary(r),
       );
     }
@@ -955,7 +878,7 @@ class _FinanceSalesOrderReviewPageState
         ),
         MasterColumnDef(
           key: 'amount',
-          label: '金额(${_currencyLabel(r)})',
+          label: '金额(${r.currencyLabel})',
           width: 120,
           type: 'money',
           value: (it) => _trimNum(it.amountOriginal),
@@ -998,8 +921,8 @@ class _FinanceSalesOrderReviewPageState
               ),
             ),
             UtenTotalEntry(
-              '合计金额(${_currencyLabel(r)})',
-              _money(r.totalOriginal),
+              '合计金额(${r.currencyLabel})',
+              financeMoneyText(r.totalOriginal),
               danger: true,
             ),
           ],
@@ -1054,18 +977,6 @@ class _FinanceSalesOrderReviewPageState
           _ => value,
         }
       : value;
-
-  String _currencyLabel(SalesOrderFinanceReview r) =>
-      financeCurrencyDisplayLabel(name: r.currencyName, code: r.currencyCode) ??
-      '订单币种';
-
-  /// 金额按服务端十进制原文显示(ADR-112): 至少 2 位小数、多余的 0 去掉, 不经过 double、不四舍五入。
-  String _money(String? raw) {
-    if (raw == null || raw.isEmpty) return '—';
-    return financeExactDecimal(raw) == null
-        ? raw
-        : financeExactMoneyDisplay(raw);
-  }
 
   /// 数量/单价/汇率按原文去掉末尾多余的 0, 不四舍五入到 2 位。
   String? _trimNum(String? raw) => financeExactTrimmed(raw);

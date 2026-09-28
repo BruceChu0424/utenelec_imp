@@ -106,7 +106,17 @@ Map<String, dynamic> _procurementReviewJson({
   'taxRate': '13',
   'totalOriginal': '10000',
   'totalLocal': '71000',
-  'supplierApBalance': '12500.50',
+  // ADR-128：供应商应付按本单币种(美元)显示，其它币种另列、不换算。
+  'supplierBalance': {
+    'currencyName': '美元',
+    'openOriginal': '13000.50',
+    'creditOriginal': '500',
+    'netOriginal': '12500.50',
+    'baseCurrencyName': '人民币',
+    'otherCurrencies': [
+      {'currencyName': '人民币', 'openOriginal': '1100', 'netOriginal': '1100'},
+    ],
+  },
   'sourceApplicationCount': 1,
   'items': [
     {

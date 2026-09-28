@@ -7,6 +7,7 @@
 // - 补料页用的是主表同一份输入与同一条提交编排：下完回到主表，下单数量已锁成累计已下单量；
 // - 取消勾选的行不提交；没定供应方式的行不能勾，并说出原因；
 // - 车间在催时提示条变红、补料页给那几行挂「车间在催」，下完立即请求核对办结。
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -517,6 +518,54 @@ void main() {
     expect(find.byKey(const Key('child-shortage-done')), findsOneWidget);
   });
 
+  testWidgets('进页附带读取合成一批：在催清单等同批的车间默认值回来才一起套用', (tester) async {
+    // 2026-09-27 进页只整页重画一次：在途调拨 / 车间在催 / 可调拨量 / 车间默认值
+    // 由公共装载器合批并发，全部回来后只 setState 一次。这里把车间默认值挂住：
+    // 在催清单早就回来了，但红色提示条要等同一批的默认值回来才一起出现。
+    final defaults = Completer<void>();
+    await _pump(
+      tester,
+      defaultWorkshopsGate: defaults.future,
+      urges: [
+        {
+          'urgeId': 'urge-1',
+          'segmentId': 'seg-1',
+          'segmentCode': 'ZX-001',
+          'productName': '委外件',
+          'workshopName': '二车间',
+          'lastUrgedByName': '李四',
+          'lastUrgedAt': DateTime.now().toUtc().toIso8601String(),
+          'urgeCount': 1,
+          'gapKindCount': 1,
+          'gapSummary': '委外件的子料 600个',
+          'shortMaterialLineIds': ['m-pc'],
+        },
+      ],
+    );
+    expect(
+      requests.where(
+        (r) => r.method == 'GET' && r.path.endsWith('/workshop-urges'),
+      ),
+      hasLength(1),
+    );
+    expect(
+      requests.where((r) => r.path.endsWith('/default-workshops')),
+      isNotEmpty,
+    );
+    expect(
+      find.byKey(const Key('child-shortage-banner-urgent')),
+      findsNothing,
+      reason: '同一批还有读取没回来，先不单独重画',
+    );
+    defaults.complete();
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('child-shortage-banner-urgent')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('车间在本页打开之后才催：轮询时在催清单自动刷新, 提示条变红', (tester) async {
     final store = <Map<String, dynamic>>[];
     await _pump(tester, urgeStore: store);
@@ -697,6 +746,7 @@ Future<void> _pump(
   bool failNotify = false,
   Set<String> failAggregateRoutes = const {},
   Map<String, dynamic> Function(Map<String, dynamic> data)? mutate,
+  Future<void>? defaultWorkshopsGate,
 }) async {
   requests.clear();
   await tester.pumpWidget(const SizedBox.shrink());
@@ -738,6 +788,7 @@ Future<void> _pump(
             {'id': 'warehouse-1', 'name': '原料仓', 'code': '001'},
           ];
         } else if (path.endsWith('/default-workshops')) {
+          if (defaultWorkshopsGate != null) await defaultWorkshopsGate;
           result = [
             for (final goodsId in ['g-m-root', 'g-m-c3'])
               {
@@ -819,7 +870,8 @@ Future<void> _pump(
           _applyNotify(data, request.data as Map<String, dynamic>);
           result = bumped();
         } else if (path.endsWith('/routes') && request.method == 'PUT') {
-          // 进页自动确认兜底: 未处理的空列表回包会把整份视图清空。
+          // 人工改供应方式的回包 (自动确认 2026-09-27 起在服务端, 页面不再发):
+          // 未处理的空列表回包会把整份视图清空。
           result = bumped();
         } else if (path == '/production/material-analyses/analysis-1') {
           result = data;

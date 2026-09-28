@@ -2,7 +2,9 @@ package com.uten.imp.features.finance.procurement;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.BusinessEventPublisher;
+import com.uten.imp.application.port.PartyOpenBalancePort;
 import com.uten.imp.application.port.FinanceReviewerEligibilityPort.EligibleFinanceReviewer;
+import com.uten.imp.common.finance.PartyOpenBalances;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.workflow.WorkflowReviewerEligibility;
@@ -19,6 +21,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -38,6 +41,9 @@ import static org.mockito.Mockito.when;
 class ProcurementFinanceApprovalReviewTest {
 
     private static final UUID USER_ID = UUID.randomUUID();
+    private static final UUID SUPPLIER_ID = UUID.randomUUID();
+    private static final UUID CNY = UUID.randomUUID();
+    private static final UUID USD = UUID.randomUUID();
 
     @Test
     void unknownCaseFailsClosedAsNotFound() {
@@ -67,8 +73,17 @@ class ProcurementFinanceApprovalReviewTest {
         assertEquals(2, review.attempt());
         assertEquals(3L, review.version());
         assertEquals("供应商甲", review.supplierName());
-        assertEquals(0, new BigDecimal("12500.50").compareTo(
-                review.supplierApBalance()));
+        // ADR-128: 应付按本单币种(人民币)精确显示, 美金另列, 不换算不相加。
+        var balance = review.supplierBalance();
+        assertEquals(CNY, balance.currencyId());
+        assertEquals("人民币", balance.currencyName());
+        assertEquals(0, new BigDecimal("12500.50").compareTo(balance.openOriginal()));
+        assertEquals(0, new BigDecimal("500").compareTo(balance.creditOriginal()));
+        assertEquals(0, new BigDecimal("12000.50").compareTo(balance.netOriginal()));
+        assertEquals(1, balance.otherCurrencies().size());
+        assertEquals("美金", balance.otherCurrencies().getFirst().currencyName());
+        assertEquals(0, new BigDecimal("300").compareTo(balance.otherCurrencies().getFirst().netOriginal()));
+        assertEquals(false, balance.overCredit(), "供应商没有信用额度, 不判超额");
     }
 
     @Test
@@ -101,7 +116,7 @@ class ProcurementFinanceApprovalReviewTest {
     private static JdbcTemplate headerRow(
             UUID caseId, UUID orderId, String status) {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        Object[] row = new Object[24];
+        Object[] row = new Object[25];
         row[0] = caseId;
         row[1] = "PURCHASE";
         row[2] = orderId;
@@ -125,7 +140,8 @@ class ProcurementFinanceApprovalReviewTest {
         row[20] = "月结30天";
         row[21] = "采购员甲";
         row[22] = "制单员乙";
-        row[23] = new BigDecimal("12500.50");
+        row[23] = SUPPLIER_ID;
+        row[24] = CNY;
         when(jdbc.query(ArgumentMatchers.argThat(
                         (String sql) -> sql != null && sql.contains("SELECT c.id, c.order_type")),
                 ArgumentMatchers.<RowMapper<Object[]>>notNull(), eq(caseId)))
@@ -138,6 +154,20 @@ class ProcurementFinanceApprovalReviewTest {
                 ArgumentMatchers.<RowMapper<Object[]>>notNull(), eq(caseId)))
                 .thenReturn(java.util.List.of());
         return jdbc;
+    }
+
+    private static PartyOpenBalancePort balances() {
+        PartyOpenBalancePort port = mock(PartyOpenBalancePort.class);
+        when(port.suppliers(List.of(SUPPLIER_ID))).thenReturn(new PartyOpenBalances(
+                Map.of(CNY, new PartyOpenBalances.Currency(CNY, "人民币", true),
+                        USD, new PartyOpenBalances.Currency(USD, "美金", false)),
+                Map.of(SUPPLIER_ID, new PartyOpenBalances.Party(List.of(
+                        new PartyOpenBalances.CurrencyAmounts(CNY, new BigDecimal("12500.50"),
+                                new BigDecimal("500"), new BigDecimal("500")),
+                        new PartyOpenBalances.CurrencyAmounts(USD, new BigDecimal("300"),
+                                BigDecimal.ZERO, BigDecimal.ZERO)),
+                        new BigDecimal("14600.50"), BigDecimal.ZERO, 0))));
+        return port;
     }
 
     private static ProcurementFinanceApprovalService service(
@@ -167,6 +197,6 @@ class ProcurementFinanceApprovalReviewTest {
                 mock(TxSessionVars.class),
                 mock(com.uten.imp.features.notice.ChainNoticeService.class),
                         org.mockito.Mockito.mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
-                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
+                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS), balances());
     }
 }

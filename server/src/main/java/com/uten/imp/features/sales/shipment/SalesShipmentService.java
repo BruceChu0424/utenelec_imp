@@ -1,6 +1,7 @@
 package com.uten.imp.features.sales.shipment;
 
 import com.uten.imp.common.finance.MoneyPolicy;
+import com.uten.imp.common.finance.PartyOpenBalanceView;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.saleschain.SalesOrderChainSql;
@@ -126,6 +127,8 @@ public class SalesShipmentService {
     private final SalesShipmentReviewSnapshotService reviewSnapshots;
     private final com.uten.imp.application.port.CustomerShipmentInventoryPort customerInventory;
     private final com.uten.imp.features.common.taskclaim.TaskClaimService taskClaims;
+    // ADR-128: 客户余额(本单币种、全币种正式应收毛额、可用预收)只经 finance 的共用余额查询取。
+    private final com.uten.imp.application.port.PartyOpenBalancePort partyBalances;
 
     /**
      * 出货单生命周期阶段（列表分段，2026-09-20）。status 只在仓库确认出库时变 1，财审前后的
@@ -972,7 +975,13 @@ public class SalesShipmentService {
                 && SalesShipment.WORK_PENDING_PICK.equals(shipment.getWarehouseWorkStatus());
     }
 
-    /** 财务审核辅助信息：标签、UUID 结算方式、权威未结应收、铺底和原始差值。 */
+    /**
+     * 财务审核辅助信息：标签、UUID 结算方式、客户余额与铺底。
+     *
+     * <p>ADR-128: 客户余额是共用视图 {@code clientBalance}: 本单币种的应收 / 可用预收 / 还差多少,
+     * 其它币种另列; {@code openBookLocal} = 全币种正式应收账面本币毛额(不扣预收),
+     * 只和铺底额比({@code creditLimitLocal} = 铺底额, 未填按 0; {@code overLimitLocal} = 超出铺底额, 可为负)。
+     */
     private Map<String, Object> financeAuditInfo(SalesShipment s) {
         var commercialSnapshot=reviewSnapshots.snapshot(s.getId());
         ClientSettlementDefaults defaults = loadClientSettlementDefaults(
@@ -980,55 +989,16 @@ public class SalesShipmentService {
         var method = resolveEffectiveSettlementMethod(s, defaults);
         FinanceRateState rateState = financeRateState(s.getCurrencyId());
         Object[] c = (Object[]) em.createNativeQuery("""
-                SELECT c.name,
-                       (SELECT COALESCE(SUM(COALESCE(l.amount_balance, 0)), 0)
-                        FROM ar_ap_ledger l
-                        WHERE l.client_id=c.id
-                          AND l.direction='AR'
-                          AND l.open_item_kind='RECEIVABLE'
-                          AND l.source_doc_type<>'DIRECT_RECEIPT'
-                          AND l.is_deleted=false
-                          AND l.status=1),
-                       COALESCE(c.credit_floor, 0),
-                       (SELECT COALESCE(SUM(ABS(l.amount_balance_original)), 0)
-                        FROM ar_ap_ledger l
-                        JOIN finance_receipts receipt ON receipt.id=l.source_doc_id
-                        WHERE l.client_id=c.id
-                          AND l.currency_id=:currencyId
-                          AND l.direction='AR'
-                          AND l.open_item_kind='CUSTOMER_PREPAYMENT'
-                          AND l.source_doc_type='DIRECT_RECEIPT'
-                          AND l.status=1
-                          AND COALESCE(l.is_deleted, FALSE)=FALSE
-                          AND receipt.receipt_kind='CUSTOMER_PREPAYMENT'
-                          AND receipt.status=1
-                          AND COALESCE(receipt.is_deleted, FALSE)=FALSE),
-                       (SELECT COALESCE(SUM(ABS(l.amount_balance)), 0)
-                        FROM ar_ap_ledger l
-                        JOIN finance_receipts receipt ON receipt.id=l.source_doc_id
-                        WHERE l.client_id=c.id
-                          AND l.currency_id=:currencyId
-                          AND l.direction='AR'
-                          AND l.open_item_kind='CUSTOMER_PREPAYMENT'
-                          AND l.source_doc_type='DIRECT_RECEIPT'
-                          AND l.status=1
-                          AND COALESCE(l.is_deleted, FALSE)=FALSE
-                          AND receipt.receipt_kind='CUSTOMER_PREPAYMENT'
-                          AND receipt.status=1
-                          AND COALESCE(receipt.is_deleted, FALSE)=FALSE)
+                SELECT c.name, COALESCE(c.credit_floor, 0)
                 FROM clients c WHERE c.id = :id
                 """)
                 .setParameter("id", s.getClientId())
-                .setParameter("currencyId", s.getCurrencyId())
                 .getSingleResult();
-        BigDecimal outstanding = c[1] == null
+        BigDecimal creditFloor = c[1] == null
                 ? BigDecimal.ZERO : (BigDecimal) c[1];
-        BigDecimal creditFloor = c[2] == null
-                ? BigDecimal.ZERO : (BigDecimal) c[2];
-        BigDecimal availablePrepaymentOriginal = c[3] == null
-                ? BigDecimal.ZERO : (BigDecimal) c[3];
-        BigDecimal availablePrepaymentLocal = c[4] == null
-                ? BigDecimal.ZERO : (BigDecimal) c[4];
+        PartyOpenBalanceView clientBalance = partyBalances
+                .clients(java.util.Collections.singletonList(s.getClientId()))
+                .forDocument(s.getClientId(), s.getCurrencyId(), creditFloor);
         return Map.ofEntries(
                 Map.entry("shipmentId", s.getId()),
                 Map.entry("shipmentKind",s.getShipmentKind()),
@@ -1064,17 +1034,11 @@ public class SalesShipmentService {
                         ? "" : s.getExchangeRate().stripTrailingZeros().toPlainString()),
                 // 财审页汇率框的预填值：已冻结的 > 本位币恒 1 > 主档参考汇率 > 空(要财务填)。
                 Map.entry("suggestedExchangeRate", suggestedFinanceReleaseRate(s, rateState)),
-                Map.entry("outstanding", outstanding),
-                Map.entry("outstandingExact",outstanding.stripTrailingZeros().toPlainString()),
-                Map.entry("creditFloor", creditFloor),
-                Map.entry("creditFloorExact",creditFloor.stripTrailingZeros().toPlainString()),
-                Map.entry("overFloor", outstanding.subtract(creditFloor)),
-                Map.entry("overFloorExact",outstanding.subtract(creditFloor).stripTrailingZeros().toPlainString()),
-                Map.entry("availablePrepaymentOriginal", availablePrepaymentOriginal),
-                Map.entry("availablePrepaymentOriginalExact",availablePrepaymentOriginal.stripTrailingZeros().toPlainString()),
-                Map.entry("availablePrepaymentLocalExact",availablePrepaymentLocal.stripTrailingZeros().toPlainString()),
-                Map.entry("availablePrepaymentLocal", availablePrepaymentLocal));
+                Map.entry(CLIENT_BALANCE, clientBalance));
     }
+
+    /** 财审信息里客户余额视图的键(页面与放行事件快照同读这一份)。 */
+    private static final String CLIENT_BALANCE = "clientBalance";
 
     private UUID appendFinanceReleaseEvent(
             SalesShipment shipment,
@@ -1084,6 +1048,8 @@ public class SalesShipmentService {
             Map<String, Object> info,UUID claimId,String reason) {
         UUID eventId=UUID.randomUUID();
         var snapshot=reviewSnapshots.snapshot(shipment.getId());
+        // 放行事件冻结的余额与页面看到的是同一份视图(ADR-128), 不再各取一遍。
+        PartyOpenBalanceView balance = (PartyOpenBalanceView) info.get(CLIENT_BALANCE);
         String settlementMethod = Objects.toString(
                 info.get("settlementMethodId"), "").trim();
         // V632：只有放行事件记录这次冻结的记账汇率与来源；撤回/退回/免费发货为空(成对约束)。
@@ -1135,16 +1101,11 @@ public class SalesShipmentService {
                                 ? null : UUID.fromString(settlementMethod))
                 .setParameter("shipmentTotalOriginal",
                         shipment.getTotalOriginal())
-                .setParameter("formalOutstanding",
-                        snapshotMoney(info, "outstanding"))
-                .setParameter("creditFloor",
-                        snapshotMoney(info, "creditFloor"))
-                .setParameter("overFloor",
-                        snapshotMoney(info, "overFloor"))
-                .setParameter("availablePrepaymentOriginal",
-                        snapshotMoney(info, "availablePrepaymentOriginal"))
-                .setParameter("availablePrepaymentLocal",
-                        snapshotMoney(info, "availablePrepaymentLocal"))
+                .setParameter("formalOutstanding", balance.openBookLocal())
+                .setParameter("creditFloor", balance.creditLimitLocal())
+                .setParameter("overFloor", balance.overLimitLocal())
+                .setParameter("availablePrepaymentOriginal", balance.creditOriginal())
+                .setParameter("availablePrepaymentLocal", balance.creditBookLocal())
                 .executeUpdate();
         return eventId;
     }
@@ -1160,14 +1121,6 @@ public class SalesShipmentService {
         s.setFinanceReleaseEventId(null);
         // V632：商业内容变了，放行时冻结的记账汇率一并作废。
         s.setExchangeRate(null);
-    }
-
-    private static BigDecimal snapshotMoney(
-            Map<String, Object> info, String key) {
-        Object value = info.get(key);
-        if (value instanceof BigDecimal decimal) return decimal;
-        if (value == null) return BigDecimal.ZERO;
-        return new BigDecimal(value.toString());
     }
 
     /**

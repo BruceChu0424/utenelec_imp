@@ -105,7 +105,10 @@ class MaterialRouteMasterWriteBackEndToEndTest {
         MaterialView line=second.flatMaterials().stream().filter(m->m.goodsId().equals(c.leaf()))
                 .findFirst().orElseThrow();
         assertEquals("SUBCONTRACT",line.sourceSuggestion(),"新分析的建议路线只从货品主档来");
-        assertNull(line.sourceConfirmed(),"建议不是确认：新分析仍要人再确认一次");
+        // ADR-102 (2026-09-27): 有路线维护权限的人新建分析, 同一次请求就按主档把它确认掉,
+        // 不再要人再点一次, 也不再由页面补发 PUT /routes.
+        assertEquals("SUBCONTRACT",line.sourceConfirmed(),"主档给出的供应方式在新建分析时就确认");
+        assertTrue(second.autoConfirmedRouteCount()>0);
     }
 
     @Test void workshopLearningRejectsStaleEditorsAndDoesNotReturnResignedWorkers() {

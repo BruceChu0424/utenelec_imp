@@ -280,9 +280,13 @@ public class MaterialAnalysisService {
                     .executeUpdate();
         }
         validateSourceCapacity(loadSourceLines(analysisId, false));
-        int routeResets = refreshWithAnchorGrowth(analysisId, previousMakeAnchorRequirements);
+        // 页面发起的新建/刷新在同一次重算里按货品档案确认供应方式 (ADR-102); 委外前置自制由
+        // 别的业务流程顺带建分析, 不替人确认, 留给打开分析的人刷新时确认.
+        RefreshOutcome refreshed = refreshWithAnchorGrowth(analysisId, previousMakeAnchorRequirements,
+                Map.of(), !allowSubcontractPreparation);
         recordSimpleCommand(analysisId, "PREVIEW", request.idempotencyKey(), requestHash);
-        return detailInternal(analysisId, false).withRouteResetCount(routeResets);
+        return detailInternal(analysisId, false)
+                .withRouteOutcome(refreshed.routeResets(), refreshed.autoConfirmedRoutes());
     }
 
     /**
@@ -510,9 +514,72 @@ public class MaterialAnalysisService {
         // All request/source validation precedes writes. Mixed per-node routes
         // remain legitimate, but cannot choose a last-wins default for the goods.
         new MaterialAnalysisRouteBatchWriter(em).apply(analysisId, currentUser.requireId(), changes);
-        refreshLocked(analysisId);
+        // 人工改了父件路线后, 下层可能刚出现独立需求: 同一次重算里按货品档案把它们一并确认.
+        RefreshOutcome refreshed = refreshLockedOutcome(analysisId, Map.of(), true);
         recordSimpleCommand(analysisId, "ROUTE", request.idempotencyKey(), requestHash);
-        return detailInternal(analysisId, false);
+        return detailInternal(analysisId, false).withRouteOutcome(0, refreshed.autoConfirmedRoutes());
+    }
+
+    /**
+     * 一次服务端重算的路线结果: 因事实变更被清空、且没被本次自动确认补回的确认数 (仍要人补选),
+     * 按货品档案自动确认的操作组数.
+     */
+    record RefreshOutcome(int routeResets, int autoConfirmedRoutes) {
+        RefreshOutcome plus(RefreshOutcome other) {
+            return new RefreshOutcome(routeResets + other.routeResets, autoConfirmedRoutes + other.autoConfirmedRoutes);
+        }
+    }
+
+    /**
+     * 能否确认供应方式: 详情里的 CONFIRM_ROUTES 能力与服务端自动确认共用这一道闸 (ADR-102).
+     * = PUT /routes 的闸 (查看 + 路线维护权限, 本人负责或按归属范围可写) 再加分析仍在安排中、
+     * 且不是只做成品检验补货的分析 (页面在这两种情况下本来就不给改路线).
+     */
+    private boolean canConfirmRoutes(AnalysisHeader header, boolean fqcReplenishmentOnly) {
+        return !fqcReplenishmentOnly
+                && List.of(STATUS_ACTIVE, STATUS_PARTIAL).contains(header.status())
+                && access.hasAuthority("production_material_analysis:view")
+                && access.hasAuthority("production_material_analysis:route")
+                && access.canWrite(header.makerId(), scopeForAnalysis(header));
+    }
+
+    /**
+     * 按货品档案自动确认供应方式 (ADR-102, 2026-09-27 从页面挪到服务端): 页面发起的新建/刷新
+     * 与人工改路线在重算写完快照、换指纹之前执行, 与重算同一事务、只算一次. 判据唯一一份在
+     * {@link MaterialAnalysisRouteAutoConfirm}; 写入复用人工确认的
+     * {@link MaterialAnalysisRouteBatchWriter} (同一套行级校验与主档回写), 只是不为不改主档的
+     * 货品去加锁. 自动确认的值就是本行重算时已经生效的路线 (未确认行按建议算; 顶层行未确认时
+     * 按自制算, 历史计划证明的也是自制), 所以不需要再重算一遍.
+     *
+     * @return 本次自动确认的操作组数
+     */
+    private int autoConfirmDecisiveRoutes(UUID analysisId, List<SourceLine> sources) {
+        if (!access.hasAuthority("production_material_analysis:view")
+                || !access.hasAuthority("production_material_analysis:route")) return 0;
+        List<MaterialRow> rows = loadMaterialRows(analysisId);
+        Map<UUID, String> planningBlocks = planningBlockedReasons(sources);
+        if (!MaterialAnalysisRouteAutoConfirm.hasCandidates(rows, planningBlocks)) return 0;
+        if (!canConfirmRoutes(readHeader(analysisId), fqcRecoveryAuthorizationId(analysisId) != null)) return 0;
+        Map<UUID, List<DownstreamReference>> references = downstreamReferences(analysisId);
+        if (rootSupply != null) rootSupply.addOutputReferences(analysisId, references);
+        MaterialAnalysisRouteAutoConfirm.Plan plan = MaterialAnalysisRouteAutoConfirm.plan(rows, planningBlocks,
+                MaterialAnalysisRouteAutoConfirm.facts(sources, productPlanStates(analysisId),
+                        planAnchorByMaterial(analysisId,
+                                hasAggregateSources(sources) ? aggregateMembers(analysisId) : List.of()),
+                        references, supplyActions(analysisId)));
+        if (plan.changes().isEmpty()) return 0;
+        new MaterialAnalysisRouteBatchWriter(em).applyAutomatic(analysisId, currentUser.requireId(), plan.changes());
+        return plan.groupCount();
+    }
+
+    /**
+     * 物料行 → 自制锚点产品行 (详情里的 planAnchorAnalysisLineId): 自制/委外前置自制子件任务,
+     * 再补上合单批次成员 (锚到批次的合单来源行).
+     */
+    private Map<UUID, UUID> planAnchorByMaterial(UUID analysisId, List<AggregateMember> aggregateMembers) {
+        Map<UUID, UUID> anchors = new LinkedHashMap<>(anchorChildByParentLine(analysisId));
+        for (AggregateMember member : aggregateMembers) anchors.putIfAbsent(member.materialId(), member.anchorId());
+        return anchors;
     }
 
     /**
@@ -1358,6 +1425,18 @@ public class MaterialAnalysisService {
      * {@link #issuePreviewView} 的只读投影)。真实下达恒传空 Map。</p>
      */
     int refreshLocked(UUID analysisId, Map<UUID, BigDecimal> typedOutputByMaterialLine) {
+        return refreshLockedOutcome(analysisId, typedOutputByMaterialLine, false).routeResets();
+    }
+
+    /**
+     * 同 {@link #refreshLocked(UUID, Map)}. [autoConfirmRoutes] 只由页面发起的新建/刷新
+     * ({@link #preview}) 与人工改路线 ({@link #saveRoutes}) 打开 (ADR-102): 其余重算是别的单据
+     * 顺带唤醒 (到货、审核、跨分析转移等), 操作人未必是这张分析的负责人, 也不该在那些事务里
+     * 改货品主档、多拿货品行锁; 它们留下的待确认行由详情里的 pendingAutoConfirmRouteCount
+     * 告诉页面, 页面静默刷新一次即可.
+     */
+    private RefreshOutcome refreshLockedOutcome(UUID analysisId, Map<UUID, BigDecimal> typedOutputByMaterialLine,
+            boolean autoConfirmRoutes) {
         AnalysisHeader header = lockHeader(analysisId);
         if (!isOpenForFulfillment(header)) {
             throw conflict("物料分析已结束，不能刷新");
@@ -1404,16 +1483,8 @@ public class MaterialAnalysisService {
         Set<String> confirmedBefore = baseline.confirmedNodes();
         List<NodeSnapshotRow> snapshotRows = nodeSnapshotRows(tree, availability);
         boolean structureChanged = upsertNodeSnapshots(analysisId, snapshotRows, baseline);
-        int routeResets = 0;
-        if (structureChanged && !confirmedBefore.isEmpty()) {
-            Set<String> confirmedAfter = confirmedRouteNodeKeys(analysisId);
-            for (BomNode node : nodes) {
-                String nodeRef = nodeRef(node.analysisItemId(), node.nodeKey());
-                if (confirmedBefore.contains(nodeRef) && !confirmedAfter.contains(nodeRef)) {
-                    routeResets++;
-                }
-            }
-        }
+        int routeResets = structureChanged && !confirmedBefore.isEmpty()
+                ? clearedConfirmations(analysisId, nodes, confirmedBefore) : 0;
         validateActiveBorrowEndpointsAfterRefresh(analysisId);
         AllocationSnapshot allocation = computeAllocationSnapshot(
                 analysisId, header.warehouseId(), sources, nodes, availability, snapshotRows,
@@ -1426,8 +1497,24 @@ public class MaterialAnalysisService {
         // Aggregate aliases terminate at BOM_COMPONENT descendants; aggregate anchors have no ROOT_SUPPLY.
         // Root refresh needs direct promises only, including original-root public claims.
         if (rootSupply != null) rootSupply.refreshRootNodes(analysisId,activeFutureCoverageByMaterial(analysisId,false));
+        // 快照 (含顶层行) 写完之后、换指纹之前: 自动确认只看本次重算的结果, 版本只涨一次.
+        int autoConfirmed = autoConfirmRoutes ? autoConfirmDecisiveRoutes(analysisId, sources) : 0;
+        // 被清掉又在上面按货品档案马上重新确认的不算「需重新确认」: 刷新提示只数真要人补选的
+        // (与以前页面补发 PUT /routes、套用新快照后这条提示随之消失的结果相同).
+        if (autoConfirmed > 0 && routeResets > 0) routeResets = clearedConfirmations(analysisId, nodes, confirmedBefore);
         bumpFingerprint(analysisId);
-        return routeResets;
+        return new RefreshOutcome(routeResets, autoConfirmed);
+    }
+
+    /** 刷新前已确认、此刻却没有确认的节点数 (刷新提示「N 条路线因主档变更需重新确认」的 N). */
+    private int clearedConfirmations(UUID analysisId, List<BomNode> nodes, Set<String> confirmedBefore) {
+        Set<String> confirmedNow = confirmedRouteNodeKeys(analysisId);
+        int cleared = 0;
+        for (BomNode node : nodes) {
+            String nodeRef = nodeRef(node.analysisItemId(), node.nodeKey());
+            if (confirmedBefore.contains(nodeRef) && !confirmedNow.contains(nodeRef)) cleared++;
+        }
+        return cleared;
     }
 
     /** 刷新的来源行与 BOM 树(第 1 层已按来源计划产出量展开)。 */
@@ -4373,8 +4460,7 @@ public class MaterialAnalysisService {
         Map<UUID, ProductPlanState> productPlanStates = productPlanStates(analysisId);
         // 行级流程阶段（表格进度/待办列唯一口径）：锚点子件的执行状态 + 行路线/缺口
         // + 采购/委外单据链，全部在服务端一次批量推导。
-        Map<UUID, UUID> anchorChildByParentLine = new LinkedHashMap<>(anchorChildByParentLine(analysisId));
-        for(AggregateMember member:aggregateMembers)anchorChildByParentLine.putIfAbsent(member.materialId(),member.anchorId());
+        Map<UUID, UUID> anchorChildByParentLine = planAnchorByMaterial(analysisId, aggregateMembers);
         Map<UUID, String> childStatusByLine = new LinkedHashMap<>();
         Map<UUID, Boolean> childZeroByLine = new LinkedHashMap<>();
         anchorChildByParentLine.forEach((parentLine, childItem) -> {
@@ -4608,7 +4694,7 @@ public class MaterialAnalysisService {
             List<PreparationSharedSupplySlice> slices=budgetFacts.slicesByMaterial().getOrDefault(row.materialLineId(),List.of());
             BigDecimal adoptable=slices.stream().filter(PreparationSharedSupplySlice::adoptable)
                     .map(PreparationSharedSupplySlice::availableQty).reduce(BigDecimal.ZERO,BigDecimal::add);
-            return row.withPreparationBudget(pool,shared,owned,required).withPreparationAdoptableSharedQty(adoptable)
+            return row.withPreparationBudget(MaterialPreparationBudgetReader.wireKey(pool),shared,owned,required).withPreparationAdoptableSharedQty(adoptable)
                     .withPreparationSharedSupplySlices(slices);
         }).toList();
         List<SupplyActionView> actionViews=supplyActions(analysisId);
@@ -4621,14 +4707,22 @@ public class MaterialAnalysisService {
                 directPrivate,aliasCoverage.attributedCoverage(),originalMaterials);
         materials=AggregateMaterialPreparationProjection.apply(materials,products,actionViews,
                 aggregateDelegations,aggregateOrderIntents(analysisId),new AggregateAdoptionIntentReader(em).read(analysisId),attributedPrivate,directPrivate);
+        List<String> allowed = allowedActions(analysisId, header, fqcReplenishmentOnly);
+        // ADR-102: 还能按货品档案自动确认的操作组 (与重算里的自动确认同一判据、同一批事实);
+        // 通常是到货/审核等别的单据顺带重算后新冒出来的行, 页面据此静默刷新一次. 下达预览不算;
+        // 当前账号不能确认路线 (无 CONFIRM_ROUTES, 与自动确认同一道闸) 时恒为 0, 数了也做不了.
+        int pendingAutoConfirm = !overlay.isNone() || !allowed.contains("CONFIRM_ROUTES") ? 0
+                : MaterialAnalysisRouteAutoConfirm.plan(materialRows, planningBlocks,
+                        MaterialAnalysisRouteAutoConfirm.facts(sources, productPlanStates, anchorChildByParentLine,
+                                references, actionViews)).groupCount();
         return new AnalysisView(
                 header.id(), header.status(), header.version(), header.fingerprint(),
                 header.fingerprint(),
                 header.warehouseId(), participatingWarehouseIds,
                 header.analyzedAt(), products, materials,
                 warehouses, actionViews,
-                allowedActions(analysisId, header, fqcReplenishmentOnly),
-                fqcReplenishmentOnly, fqcRecoveryAuthorizationId, planningBlocks, 0,
+                allowed,
+                fqcReplenishmentOnly, fqcRecoveryAuthorizationId, planningBlocks, 0, 0, pendingAutoConfirm,
                 com.uten.imp.features.production.plan.ProductionOverproductionAllowance.defaults(em, rateGoodsIds),
                 header.analysisNo());
     }
@@ -5120,13 +5214,20 @@ public class MaterialAnalysisService {
 
     int refreshWithAnchorGrowth(UUID analysisId, Map<UUID, BigDecimal> previousRequirements,
             Map<UUID, BigDecimal> typedOutputByMaterialLine) {
+        return refreshWithAnchorGrowth(analysisId, previousRequirements, typedOutputByMaterialLine, false)
+                .routeResets();
+    }
+
+    /** [autoConfirmRoutes] 见 {@link #refreshLockedOutcome}; 锚点跟涨后的第二次重算同样确认新出现的行. */
+    private RefreshOutcome refreshWithAnchorGrowth(UUID analysisId, Map<UUID, BigDecimal> previousRequirements,
+            Map<UUID, BigDecimal> typedOutputByMaterialLine, boolean autoConfirmRoutes) {
         Map<UUID, BigDecimal> previous = previousRequirements == null || previousRequirements.isEmpty()
                 ? makeAnchorParentRequirements(analysisId) : previousRequirements;
-        int routeResets = refreshLocked(analysisId, typedOutputByMaterialLine);
+        RefreshOutcome outcome = refreshLockedOutcome(analysisId, typedOutputByMaterialLine, autoConfirmRoutes);
         if (growMakeAnchorQuotasAfterSourcePreview(analysisId, previous)) {
-            routeResets += refreshLocked(analysisId, typedOutputByMaterialLine);
+            outcome = outcome.plus(refreshLockedOutcome(analysisId, typedOutputByMaterialLine, autoConfirmRoutes));
         }
-        return routeResets;
+        return outcome;
     }
 
     int refreshWithAnchorGrowth(UUID analysisId) {
@@ -7956,7 +8057,7 @@ public class MaterialAnalysisService {
         if (access.hasAuthority("production_material_analysis:refresh")) {
             result.add("REFRESH");
         }
-        if (access.hasAuthority("production_material_analysis:route")) {
+        if (canConfirmRoutes(header, fqcReplenishmentOnly)) {
             result.add("CONFIRM_ROUTES");
         }
         if (access.hasAuthority("production_material_analysis:notify")) {

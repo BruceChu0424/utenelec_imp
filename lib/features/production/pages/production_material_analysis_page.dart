@@ -116,6 +116,23 @@ class ProductionMaterialAnalysisPage extends ConsumerStatefulWidget {
       _ProductionMaterialAnalysisPageState();
 }
 
+/// 套用分析快照后跟着要取的只读附带数据 (2026-09-27 进页只整页重画一次)。
+/// 四类读取统一走 [_MaterialAnalysisPageBase._requestCompanionReads]: 同一轮里提出的
+/// 合成一批并发请求, 全部回来后只 setState 一次; 各自的实现在负责它的那一层。
+enum _CompanionRead {
+  /// 在途调拨进度 (GET /{id}/future-transfers), 实现在页面基类。
+  futureTransfers,
+
+  /// 车间在催清单 (GET /{id}/workshop-urges), 实现在补下层物料层。
+  workshopUrges,
+
+  /// 批量可调拨量 (GET /{id}/transferable-in-summary), 实现在主表层。
+  transferableIn,
+
+  /// 生产车间 / 负责人默认值 (组织树 + GET /default-workshops), 实现在主表层。
+  assignmentDefaults,
+}
+
 abstract class _MaterialAnalysisPageBase
     extends ConsumerState<ProductionMaterialAnalysisPage> {
   static const int _maxAnalysisItems = 500;
@@ -154,7 +171,7 @@ abstract class _MaterialAnalysisPageBase
           _flushDeferredAssignmentRead();
           if (_deferredFutureTransferRead && _analysis != null) {
             _deferredFutureTransferRead = false;
-            unawaited(_refreshFutureTransfers(_analysis!));
+            _requestCompanionReads(const [_CompanionRead.futureTransfers]);
           }
         }
       }
@@ -214,31 +231,93 @@ abstract class _MaterialAnalysisPageBase
   String? _futureTransferError;
   int _futureTransferRequest = 0;
 
-  Future<void> _refreshFutureTransfers(
+  // ===== 附带读取的公共装载器 (2026-09-27 进页只整页重画一次) =====
+  //
+  // 在途调拨、车间在催、可调拨量、车间/负责人默认值原来各自回来各 setState 一次,
+  // 进页数据到达后接连 5-6 次整页重画。现在统一走这里: 同一轮里提出的读取合成一批
+  // 并发请求, 全部回来后只 setState 一次。每个读取返回「套用动作」, 自带作用域 /
+  // 代际守卫, 在合批套用那一刻再核对一次, 迟到的结果直接丢弃。
+  final Set<_CompanionRead> _pendingCompanionReads = {};
+  bool _companionReadsScheduled = false;
+
+  /// 登记要取的附带数据; 本轮 (同一个微任务之前) 提出的所有读取合成一批。
+  void _requestCompanionReads(Iterable<_CompanionRead> reads) {
+    _pendingCompanionReads.addAll(reads);
+    if (_companionReadsScheduled || _pendingCompanionReads.isEmpty) return;
+    _companionReadsScheduled = true;
+    scheduleMicrotask(() {
+      _companionReadsScheduled = false;
+      final batch = {..._pendingCompanionReads};
+      _pendingCompanionReads.clear();
+      final view = _analysis;
+      if (!mounted || view == null) return;
+      unawaited(
+        _runCompanionReads([
+          for (final read in batch) _companionRead(read, view),
+        ]),
+      );
+    });
+  }
+
+  /// 一类附带读取的实现: 返回要在合批 setState 里执行的套用动作, null = 不用套用
+  /// (无权限、作用域没变、被写命令推迟等)。各层只认自己负责的那几类, 其余交给上一层。
+  Future<VoidCallback?> _companionRead(
+    _CompanionRead read,
+    ProductionMaterialAnalysisView view,
+  ) async => switch (read) {
+    _CompanionRead.futureTransfers => await _fetchFutureTransfers(view),
+    _ => null,
+  };
+
+  /// 并发执行一批附带读取, 全部回来后在同一次 setState 里套用。直接 await 它的调用方
+  /// (比如下单前必须等到车间默认值) 也走这里, 保证只有一套套用口径。
+  Future<void> _runCompanionReads(Iterable<Future<VoidCallback?>> reads) async {
+    final results = await Future.wait([
+      for (final read in reads)
+        read.then<VoidCallback?>((apply) => apply, onError: (_) => null),
+    ]);
+    final applies = results.whereType<VoidCallback>().toList(growable: false);
+    if (applies.isEmpty) return;
+    if (!mounted) {
+      // 页面已销毁: 仍执行套用动作里的收尾 (加载标记复位、等待者放行), 不再重画。
+      for (final apply in applies) {
+        apply();
+      }
+      return;
+    }
+    setState(() {
+      for (final apply in applies) {
+        apply();
+      }
+    });
+    materialDetailRevision.value++;
+  }
+
+  Future<VoidCallback?> _fetchFutureTransfers(
     ProductionMaterialAnalysisView view,
   ) async {
     if (!mounted ||
         !identical(_analysis, view) ||
         !view.allowedActions.contains('VIEW_FUTURE_TRANSFERS')) {
-      return;
+      return null;
     }
     if (_preparationSubmissionActive) {
       _deferredFutureTransferRead = true;
-      return;
+      return null;
     }
     final request = ++_futureTransferRequest;
     final scope = _sessionScopeKey();
+    bool current() =>
+        mounted &&
+        request == _futureTransferRequest &&
+        _analysis?.analysisId == view.analysisId &&
+        scope == _sessionScopeKey();
     try {
       final records = await ref
           .read(productionPlanRepositoryProvider)
           .materialFutureTransfers(analysisId: view.analysisId);
-      if (!mounted ||
-          request != _futureTransferRequest ||
-          _analysis?.analysisId != view.analysisId ||
-          scope != _sessionScopeKey()) {
-        return;
-      }
-      setState(() {
+      return () {
+        if (!current()) return;
         _futureTransferRecords = records;
         _futureTransferByMaterial = MaterialFutureTransferProgress.index(
           view.analysisId,
@@ -246,30 +325,32 @@ abstract class _MaterialAnalysisPageBase
         );
         _futureTransferReadScope = scope;
         _futureTransferError = null;
-      });
-      materialDetailRevision.value++;
+      };
     } catch (_) {
-      if (!mounted ||
-          request != _futureTransferRequest ||
-          _analysis?.analysisId != view.analysisId ||
-          scope != _sessionScopeKey()) {
-        return;
-      }
-      setState(() => _futureTransferError = '在途调拨进度暂不可用，请刷新核对');
+      return () {
+        if (current()) _futureTransferError = '在途调拨进度暂不可用，请刷新核对';
+      };
     }
   }
 
-  void _reloadFutureTransferScope() {
-    if (_futureTransferReadScope == _sessionScopeKey()) return;
-    setState(() {
-      ++_futureTransferRequest;
-      _futureTransferRecords = const [];
-      _futureTransferByMaterial = const {};
-      _futureTransferError = null;
-      _futureTransferReadScope = null;
-    });
-    final view = _analysis;
-    if (view != null) unawaited(_refreshFutureTransfers(view));
+  /// 账号 / 模拟身份 / 权限集一变: 在途调拨按新会话重取; 可调拨量与车间默认值
+  /// 各自带会话作用域键, 作用域没变的读取直接跳过, 变了的与在途调拨合成一批。
+  void _reloadCompanionScopes() {
+    final reads = <_CompanionRead>[
+      _CompanionRead.transferableIn,
+      _CompanionRead.assignmentDefaults,
+    ];
+    if (_futureTransferReadScope != _sessionScopeKey()) {
+      setState(() {
+        ++_futureTransferRequest;
+        _futureTransferRecords = const [];
+        _futureTransferByMaterial = const {};
+        _futureTransferError = null;
+        _futureTransferReadScope = null;
+      });
+      reads.add(_CompanionRead.futureTransfers);
+    }
+    if (_analysis != null) _requestCompanionReads(reads);
   }
 
   MaterialAnalysisSalesCandidatePage? _candidatePage;
@@ -278,6 +359,11 @@ abstract class _MaterialAnalysisPageBase
   String? _error;
   String? _serverRefreshNotice;
   bool _booting = true;
+
+  /// 带着来源进页 (排产看板「联合分析所选」) 时由进页流程自动发起的第一次分析。
+  /// 只有这种情况用整页进度卡代替候选区 (候选表尚未加载, 否则会闪一张空表);
+  /// 在新建页自己点「联合分析」时保留已填内容只读显示 (ADR-130), 只在按钮上转圈。
+  bool _autoPreviewFromSeed = false;
   bool _loadingCandidates = false;
   final _candidateRequests = LatestRequestGuard();
   bool _previewingAnalysis = false;
@@ -465,10 +551,6 @@ abstract class _MaterialAnalysisPageBase
   String? _sessionComputedScope;
 
   final Set<String> _dirtyRouteGroups = {};
-  // 进页自动确认（2026-09-25 用户口径「供应方式有就自动确认，没有的红框」）的
-  // 防环守卫：每个 (analysisId|version|fingerprint) 纪元只自动尝试一次——轮询、
-  // 保存回包、409 恢复都会重走 _applyAnalysis，靠它挡住重复提交。
-  String? _autoRouteConfirmEpoch;
   final Set<String> _selectedMaterialGroupKeys = {};
   final Set<String> _collapsedBomProducts = {};
   final Set<String> _collapsedBomBranches = {};
@@ -710,9 +792,140 @@ abstract class _MaterialAnalysisPageBase
   // ===== 继承链协作契约：实现在后段 part，基类生命周期按虚调用分发 =====
   Future<void> _previewAnalysis();
 
-  /// 进页自动确认供应方式（2026-09-25 确认路线退役）：实现在 material_table
-  /// 层——那里才有汇总草稿控制器与占用判据。见 [_maybeAutoConfirmRoutes]。
-  Future<void> _maybeAutoConfirmRoutes();
+  /// 供应方式自动确认的轻提示文案 (预览 / 改路线回包共用一处)。
+  String _autoConfirmedRoutesText(int count) => '已按货品档案自动确认 $count 条供应方式';
+
+  /// 静默刷新 (确认路线) 进行中：顶部卡片给一行不挡操作的小提示。
+  bool _autoRouteRefreshing = false;
+
+  /// 静默刷新的防环守卫：每个 (analysisId|version|fingerprint) 纪元最多刷一次，
+  /// 刷新回包本身也登记进来——服务端若仍报待确认，不再连环刷新。
+  String? _autoRouteRefreshEpoch;
+
+  String _analysisEpoch(ProductionMaterialAnalysisView view) =>
+      '${view.analysisId}|${view.version}|${view.fingerprint}';
+
+  /// ADR-102 (2026-09-27 供应方式自动确认移到服务端)：新建 / 刷新分析时服务端在同一次
+  /// 重算里就按货品档案确认了供应方式，页面不再自己补发 PUT /routes、不再盖全屏遮罩。
+  /// 打开已有分析时，若服务端报还有能确认的行(多半是到货 / 审核等别的单据顺带重算后
+  /// 新冒出来的)，就静默刷新一次分析，由服务端一并确认。有人正在填数 / 勾选或别的操作
+  /// 进行中就不打扰，下次换快照再试。
+  void _refreshPendingRouteConfirmation() {
+    final analysis = _analysis;
+    if (!mounted ||
+        analysis == null ||
+        analysis.pendingAutoConfirmRouteCount <= 0 ||
+        _autoRouteRefreshEpoch == _analysisEpoch(analysis) ||
+        _booting ||
+        _busy ||
+        !_canManage ||
+        !_canRoute ||
+        _sources.isEmpty ||
+        _hasUnsavedAnalysisEditing) {
+      return;
+    }
+    final warehouseId = _warehouseId;
+    final warehouseIds = _warehouseIds.toList()..sort();
+    if (warehouseId == null ||
+        !warehouseIds.contains(warehouseId) ||
+        _sources.length > _MaterialAnalysisPageBase._maxAnalysisItems) {
+      return;
+    }
+    _autoRouteRefreshEpoch = _analysisEpoch(analysis);
+    unawaited(
+      _runPendingRouteConfirmation(analysis, warehouseId, warehouseIds),
+    );
+  }
+
+  /// 静默刷新本体：与右上角「按最新库存刷新分析」同一个接口、同一份请求内容 (完整来源 +
+  /// 版本 / 指纹)，只是不弹校验提示、不挂红色错误——不是人点的，失败只轻提示一次。
+  /// 放在页面基类而不复用候选层的 [_previewAnalysis]：那里是人点的新建 / 刷新，
+  /// 校验提示、错误态和 409 恢复都按「人在等结果」设计。
+  Future<void> _runPendingRouteConfirmation(
+    ProductionMaterialAnalysisView view,
+    String warehouseId,
+    List<String> warehouseIds,
+  ) async {
+    final canonicalSources = [..._sources]
+      ..sort((a, b) => a.canonicalKey.compareTo(b.canonicalKey));
+    final key = businessIdempotencyKey(
+      'material-analysis-route-auto-confirm',
+      [
+        view.analysisId,
+        view.version,
+        view.fingerprint,
+        warehouseId,
+        warehouseIds.join(','),
+        for (final source in canonicalSources)
+          '${source.canonicalKey}:${source.requestedQty}:${source.sourceReason ?? ''}',
+      ].join('|'),
+    );
+    setState(() {
+      _previewingAnalysis = true;
+      _autoRouteRefreshing = true;
+    });
+    try {
+      final latest = await ref
+          .read(productionPlanRepositoryProvider)
+          .previewMaterialAnalysis(
+            analysisId: view.analysisId,
+            expectedVersion: view.version,
+            analysisFingerprint: view.fingerprint,
+            warehouseId: warehouseId,
+            warehouseIds: warehouseIds,
+            idempotencyKey: key,
+            sources: canonicalSources,
+          );
+      if (!mounted) return;
+      setState(() {
+        _previewingAnalysis = false;
+        _autoRouteRefreshing = false;
+        // 本次刷新的回包自己不再触发静默刷新 (服务端若仍报待确认，不连环刷)。
+        _autoRouteRefreshEpoch = _analysisEpoch(latest);
+        if (_analysis?.analysisId != view.analysisId) return;
+        // 静默刷新不是人点的：等回包期间若有人开始填数 / 勾选，按「保留未提交输入」
+        // 套用，不能把刚填的吞掉。
+        if (_hasUnsavedAnalysisEditing) {
+          _applyAnalysisKeepingPreparationEditing(latest);
+        } else {
+          _applyAnalysis(latest);
+        }
+        if (latest.routeResetCount > 0) {
+          _serverRefreshNotice = '${latest.routeResetCount} 条路线因主档变更需重新确认';
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _previewingAnalysis = false;
+        _autoRouteRefreshing = false;
+      });
+      // 页面仍显示原快照，不挂红色错误。版本冲突说明别人刚改过，静默重读最新即可；
+      // 其他失败轻提示一次，可点右上角刷新重试。
+      if (_isAnalysisConflict(error)) {
+        unawaited(_reloadAnalysisSilently(protectUnsavedEditing: true));
+      } else {
+        context.appInfo('供应方式自动确认没有完成，可点右上角「刷新」重试');
+      }
+    }
+  }
+
+  /// 服务端在本次新建 / 刷新 / 改路线的同一次重算里自动确认了供应方式时的轻提示
+  /// (ADR-102)：放在套用快照这一处，不管是哪条路径 (候选层的新建 / 刷新、静默刷新)
+  /// 拿到的回包都只提示一次；同一快照纪元不重复。改路线的保存把条数并进自己的成功
+  /// 提示，先登记纪元再套用。
+  String? _autoConfirmNoticeEpoch;
+
+  void _noticeAutoConfirmedRoutes(ProductionMaterialAnalysisView view) {
+    final count = view.autoConfirmedRouteCount;
+    final epoch = _analysisEpoch(view);
+    if (count <= 0 || _autoConfirmNoticeEpoch == epoch) return;
+    _autoConfirmNoticeEpoch = epoch;
+    // 套用快照发生在 setState 回调里：提示排到本轮之后发。
+    scheduleMicrotask(() {
+      if (mounted) context.appInfo(_autoConfirmedRoutesText(count));
+    });
+  }
 
   /// 表头筛选值只在当前桶里仍存在时保留（刷新/轮询/切视图后失效值自动移除，
   /// 仍有效的用户筛选不清）；实现见 material_analysis_material_table.dart。
@@ -881,6 +1094,11 @@ abstract class _MaterialAnalysisPageBase
             _systemSeededBatchQtyTexts[entry.key] != entry.value.text,
       );
 
+  /// 动态投影键按快照对象缓存：当前快照每次轮询都要比一次，不必每次重拼整串。
+  final Expando<String> _projectionKeys = Expando<String>();
+  String _projectionKeyOf(ProductionMaterialAnalysisView view) =>
+      _projectionKeys[view] ??= _analysisDynamicProjectionKey(view);
+
   /// 静默重拉当前分析详情（返回即刷新）。本地未保存的路线草稿/勾选按稳定
   /// 操作组键恢复到新快照，避免吞掉计划员正在做的决定。
   Future<void> _reloadAnalysisSilently({
@@ -909,20 +1127,21 @@ abstract class _MaterialAnalysisPageBase
           view.version < current.version) {
         return;
       }
+      // 分析头版本只保护分析本身的写入 CAS；计划审批、派工、仓库发料、
+      // 报工/入库和 exact peg 是读侧动态投影，可能在 version/fingerprint
+      // 不变时更新。只有头与动态投影都相同才跳过重建。
+      // 2026-09-27：先比较再套用，编辑中也一样——原来有人填数/勾选时不比就整份
+      // 重新套用，45 秒一次整页重画并补发汇总预览，数据其实没变。
+      if (view.version == current.version &&
+          view.fingerprint == current.fingerprint &&
+          _projectionKeyOf(view) == _projectionKeyOf(current)) {
+        return;
+      }
       if (_editingPriorities ||
           (protectUnsavedEditing && _hasUnsavedAnalysisEditing)) {
         setState(() {
           _applyAnalysisKeepingPreparationEditing(view);
         });
-        return;
-      }
-      // 分析头版本只保护分析本身的写入 CAS；计划审批、派工、仓库发料、
-      // 报工/入库和 exact peg 是读侧动态投影，可能在 version/fingerprint
-      // 不变时更新。只有头与动态投影都相同才跳过重建。
-      if (view.version == current.version &&
-          view.fingerprint == current.fingerprint &&
-          _analysisDynamicProjectionKey(view) ==
-              _analysisDynamicProjectionKey(current)) {
         return;
       }
       setState(() {
@@ -1003,9 +1222,16 @@ abstract class _MaterialAnalysisPageBase
         });
         return;
       }
-      setState(() => _booting = false);
+      setState(() {
+        _booting = false;
+        _autoPreviewFromSeed = _sources.isNotEmpty;
+      });
       if (_sources.isNotEmpty) {
-        await _previewAnalysis();
+        try {
+          await _previewAnalysis();
+        } finally {
+          if (mounted) setState(() => _autoPreviewFromSeed = false);
+        }
       } else {
         await _loadCandidates();
       }
@@ -1045,11 +1271,12 @@ abstract class _MaterialAnalysisPageBase
     // (只覆盖用户没动过的格子)。顺序不能反——反了就是拿模拟值去回填。
     _invalidateMaterialTableCascadePreview();
     _reseedMaterialTableQtyInputs();
-    if (_preparationSubmissionActive) {
-      _deferredFutureTransferRead = true;
-    } else {
-      unawaited(Future<void>.microtask(() => _refreshFutureTransfers(view)));
-    }
+    // 附带读取合成一批、回来只重画一次(写命令期间由各读取自己推迟)。
+    _requestCompanionReads(const [
+      _CompanionRead.futureTransfers,
+      _CompanionRead.transferableIn,
+      _CompanionRead.assignmentDefaults,
+    ]);
     _serverRefreshNotice = null;
     _invalidateBucketRowsCache();
     _indexCacheAnalysis = null;
@@ -1088,25 +1315,27 @@ abstract class _MaterialAnalysisPageBase
     _routeDraft.clear();
     _dirtyRouteGroups.clear();
     _selectedPlanLineIds.clear();
-    final groups = _materialGroups(view);
+    final indexes = _analysisIndexes(view);
+    final groups = indexes.groups;
     // 刷新后草稿已清空，只有仍可勾的组才留在选中集：轮询期间被同事确认的行
     // 自动脱选（否则「勾着但不计数」）。
     //
     // ADR-102（2026-09-25 确认路线退役修订）：勾选只服务「下单」，谓词与
     // [_selectedIssuableGroups] 同源——能下单，或只差「车间/负责人」这种当场
     // 能修好的拦截。原先「路线可提交」那一支随确认路线按钮一起退役。
-    final selectableKeys = groups
-        .where(
-          (g) => const [
+    // 2026-09-27：只核对勾着的组——进页时勾选集是空的，不再对整张表逐行跑一遍判据。
+    bool stillSelectable(String key) {
+      final group = indexes.groupsByKey[key];
+      return group != null &&
+          const [
             null,
             '先在「生产车间」列里指定本次交给哪个车间',
             '先在「负责人」列里指定本次谁负责',
-          ].contains(_tableIssueBlockedReason(g, forAggregate: true)),
-        )
-        .map((g) => g.key)
-        .toSet();
-    _selectedMaterialGroupKeys.removeWhere(
-      (key) => !selectableKeys.contains(key),
+          ].contains(_tableIssueBlockedReason(group, forAggregate: true));
+    }
+
+    _selectedMaterialGroupKeys.removeAll(
+      _selectedMaterialGroupKeys.where((key) => !stillSelectable(key)).toList(),
     );
     for (final group in groups) {
       if (!group.actionable) continue;
@@ -1148,11 +1377,11 @@ abstract class _MaterialAnalysisPageBase
     // 即典型）：只移除失效值，避免不可见的激活筛选把表过滤成空。
     _pruneMaterialTableFilters();
     materialDetailRevision.value++;
-    // 新快照落地后的下一帧尝试进页自动确认（boot/轮询/保存回包/409 恢复都走
-    // 这里；[_maybeAutoConfirmRoutes] 自带纪元守卫，确认后回包不会引发连环写）。
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_maybeAutoConfirmRoutes());
-    });
+    _noticeAutoConfirmedRoutes(view);
+    // 服务端报还有能按货品档案确认的行：本轮结束后静默刷新一次(自带纪元守卫)。
+    if (view.pendingAutoConfirmRouteCount > 0) {
+      scheduleMicrotask(_refreshPendingRouteConfirmation);
+    }
   }
 
   /// 服务端刷新会重建节点视图；只把相对最新快照仍合法的未保存路线覆盖回去。
@@ -1840,29 +2069,12 @@ abstract class _MaterialAnalysisPageBase
 /// 继承链的最终实现类：保持测试与 createState 引用的原私有名。
 class _ProductionMaterialAnalysisPageState
     extends _MaterialAnalysisChildShortageState {
-  /// 顶部「主仓库」字段实测高度（更新时间事实框与之等高，2026-09-12 用户口径）。
-  final GlobalKey _warehouseFieldMeasureKey = GlobalKey();
-  double? _factChipHeight;
-
-  /// 帧后量一次主仓库字段高度；变了才 setState（主题/字号切换自适应）。
-  void _measureWarehouseFieldHeight() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final height = _warehouseFieldMeasureKey.currentContext?.size?.height;
-      if (height != null && (height - (_factChipHeight ?? 0)).abs() > 0.5) {
-        setState(() => _factChipHeight = height);
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    // 账号 / 权限一变就重设跨账号读的作用域（在途调拨进度按会话隔离迟到响应）。
-    ref.listen(sessionProvider, (_, _) => _reloadFutureTransferScope());
-    ref.listen(
-      currentPermissionsProvider,
-      (_, _) => _reloadFutureTransferScope(),
-    );
+    // 账号 / 权限一变就重设跨账号读的作用域(在途调拨、可调拨量、车间默认值都按
+    // 会话隔离迟到响应)。
+    ref.listen(sessionProvider, (_, _) => _reloadCompanionScopes());
+    ref.listen(currentPermissionsProvider, (_, _) => _reloadCompanionScopes());
 
     // 返回即刷新（须与 ref.listen 同位置=build 内注册）：采购/委外到货、IQC 合格放行
     // 等下游事实由服务端在各自事务里重算分析快照；本页从子页面返回时静默重拉详情，
@@ -2003,9 +2215,11 @@ class _ProductionMaterialAnalysisPageState
                 // 拖选与轮询重建并发会触发框架 CME（准则 §3.4），故退出选择区。
                 selectable: false,
                 child: _booting
-                    ? const Center(child: CircularProgressIndicator())
+                    ? _bootingBody(theme)
                     : _analysis == null
-                    ? _candidateBody(theme)
+                    ? (_previewingAnalysis && _autoPreviewFromSeed
+                          ? _firstAnalysisProgress(theme)
+                          : _candidateBody(theme))
                     : _analysisBody(theme),
               ),
             ),
@@ -2035,11 +2249,142 @@ class _ProductionMaterialAnalysisPageState
       // 悬浮动作随勾选状态出现/消失，不做进场缩放动画：状态变化后
       // 立即可点（动画中途命中区域为缩放中尺寸，会吃掉点击）。
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _analysis == null
-          ? _candidateFloatingAction()
-          : _floatingActions(),
+      // 进页等待期与第一次分析进行中只显示进度，不挂候选表的「联合分析」按钮。
+      floatingActionButton: _analysis != null
+          ? _floatingActions()
+          : _booting || (_previewingAnalysis && _autoPreviewFromSeed)
+          ? null
+          : _candidateFloatingAction(),
     );
     return PopScope(canPop: !_planSubmissionInProgress, child: page);
+  }
+
+  /// 进页等待期 (2026-09-27 用户口径「一进就弹窗加载, 会卡一会」)。
+  /// 打开已有分析: 页头骨架 + 一行说明, 不再是整页正中一个光秃秃的转圈;
+  /// 带着来源新建: 直接进「正在分析」进度卡, 不先闪一下转圈。
+  Widget _bootingBody(ThemeData theme) {
+    if (widget.seed.analysisId == null) {
+      return _sources.isNotEmpty
+          ? _firstAnalysisProgress(theme)
+          : const Center(child: CircularProgressIndicator());
+    }
+    return ListView(
+      key: const Key('material-analysis-opening-skeleton'),
+      padding: const EdgeInsets.only(top: UtenSpacing.s8),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerLow,
+            borderRadius: UtenRadius.mdAll,
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Wrap(
+                spacing: UtenSpacing.s12,
+                runSpacing: UtenSpacing.s8,
+                children: [
+                  _skeletonBlock(theme, width: 260, height: 48),
+                  _skeletonBlock(theme, width: 160, height: 48),
+                  _skeletonBlock(theme, width: 200, height: 48),
+                ],
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              _skeletonBlock(theme, height: 52),
+            ],
+          ),
+        ),
+        const SizedBox(height: UtenSpacing.s12),
+        Row(
+          children: [
+            const SizedBox.square(
+              dimension: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                '正在读取这份物料分析的 BOM 与库存结果…',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// 骨架占位块：静态底色 (不闪烁、不依赖性能档设置)，形状对齐真实页头。
+  Widget _skeletonBlock(
+    ThemeData theme, {
+    double? width,
+    required double height,
+  }) => Container(
+    width: width,
+    height: height,
+    decoration: BoxDecoration(
+      color: theme.colorScheme.surfaceContainerHigh,
+      borderRadius: UtenRadius.mdAll,
+    ),
+  );
+
+  /// 第一次分析进行中的页内进度卡：服务端要展开全部产品的 BOM 并核对库存，
+  /// 期间不再闪出一张空的候选表 (「暂无可分析的已审销售订单产品」)。
+  Widget _firstAnalysisProgress(ThemeData theme) {
+    final count = _sources.length;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Container(
+          key: const Key('material-analysis-first-preview-progress'),
+          margin: const EdgeInsets.all(UtenSpacing.s16),
+          padding: const EdgeInsets.all(UtenSpacing.s16),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerLow,
+            borderRadius: UtenRadius.mdAll,
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.insights_outlined,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: Text(
+                      count > 0
+                          ? '正在展开 $count 个产品的 BOM 并核对库存…'
+                          : '正在展开 BOM 并核对库存…',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+              const LinearProgressIndicator(),
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                '产品较多时需要几秒钟，算完自动显示物料表，并按货品档案确认好供应方式。',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _analysisBody(ThemeData theme) {
@@ -2055,6 +2400,29 @@ class _ProductionMaterialAnalysisPageState
         padding: const EdgeInsets.only(top: UtenSpacing.s8),
         child: _analysisHeader(theme, analysis),
       ),
+      // 静默刷新确认供应方式期间只给一行小提示，不盖遮罩、不挡查看。
+      if (_autoRouteRefreshing)
+        Padding(
+          key: const Key('material-analysis-route-auto-confirming'),
+          padding: const EdgeInsets.only(top: UtenSpacing.s8),
+          child: Row(
+            children: [
+              const SizedBox.square(
+                dimension: 14,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Text(
+                  '正在按货品档案确认新出现的供应方式，完成后自动刷新…',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       if (_serverRefreshNotice != null)
         Padding(
           padding: const EdgeInsets.only(top: UtenSpacing.s8),
@@ -2128,7 +2496,25 @@ class _ProductionMaterialAnalysisPageState
     ThemeData theme,
     ProductionMaterialAnalysisView analysis,
   ) {
-    _measureWarehouseFieldHeight();
+    final compact = context.breakpoint.isCompact;
+    final facts = <Widget>[
+      if (analysis.analysisNo != null)
+        Tooltip(
+          message: '分析编号（计划单号）${analysis.analysisNo}',
+          child: _factChip(theme, Icons.tag_outlined, analysis.analysisNo!),
+        ),
+      Tooltip(
+        message:
+            '分析版本 ${analysis.version} · '
+            '产品 ${analysis.products.length} · 物料 ${analysis.materials.length}',
+        child: _factChip(
+          theme,
+          Icons.schedule_outlined,
+          '更新 ${_dateTimeOnly(analysis.analyzedAt)}',
+        ),
+      ),
+    ];
+    final warehouse = SizedBox(width: 260, child: _warehouseField());
     return Container(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
@@ -2144,40 +2530,31 @@ class _ProductionMaterialAnalysisPageState
             runSpacing: UtenSpacing.s8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              // 2026-09-12 用户口径：更新时间框与主仓库框等高——用 GlobalKey 量
-              // 主仓库字段的实际高度（随主题/字号自适应），量得后 setState 一次。
-              SizedBox(
-                width: 260,
-                child: KeyedSubtree(
-                  key: _warehouseFieldMeasureKey,
-                  child: _warehouseField(),
-                ),
-              ),
-              if (analysis.analysisNo != null)
-                Tooltip(
-                  message: '分析编号（计划单号）${analysis.analysisNo}',
-                  child: _factChip(
-                    theme,
-                    Icons.tag_outlined,
-                    analysis.analysisNo!,
-                    height: _factChipHeight,
+              // 2026-09-12 用户口径：更新时间框与主仓库框等高。2026-09-27 起不再
+              // 帧后量主仓库字段高度再 setState 一次：宽屏把主仓库与事实框排成
+              // 同一行、按行高拉伸 (随主题/字号自适应)；手机窄屏各占一行、各按内容高。
+              if (compact) ...[
+                warehouse,
+                ...facts,
+              ] else
+                IntrinsicHeight(
+                  key: const Key('material-analysis-header-facts'),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      warehouse,
+                      for (final fact in facts) ...[
+                        const SizedBox(width: UtenSpacing.s12),
+                        Flexible(child: fact),
+                      ],
+                    ],
                   ),
                 ),
-              Tooltip(
-                message:
-                    '分析版本 ${analysis.version} · '
-                    '产品 ${analysis.products.length} · 物料 ${analysis.materials.length}',
-                child: _factChip(
-                  theme,
-                  Icons.schedule_outlined,
-                  '更新 ${_dateTimeOnly(analysis.analyzedAt)}',
-                  height: _factChipHeight,
-                ),
-              ),
               // 查找框常驻顶部卡片（更新时间右侧）；全屏时顶部卡片不可见，
               // 由 _bomToolbarActions 在全屏工具条里再挂一个（共享同一控制器）。
               SizedBox(
-                width: context.breakpoint.isCompact ? 200 : 240,
+                width: compact ? 200 : 240,
                 child: UtenSearchBar(
                   key: const Key('material-bom-search'),
                   controller: _bomSearch,
@@ -2405,6 +2782,8 @@ class _ProductionMaterialAnalysisPageState
   String _analysisDynamicProjectionKey(ProductionMaterialAnalysisView view) {
     final parts = <String>[
       view.status ?? '',
+      // 货品档案改了供应方式时版本不变，但能自动确认的行变了：要套用才会静默刷新。
+      '${view.pendingAutoConfirmRouteCount}',
       (view.allowedActions.toList()..sort()).join(','),
       view.warehouseId ?? '',
       (view.warehouseIds.toList()..sort()).join(','),

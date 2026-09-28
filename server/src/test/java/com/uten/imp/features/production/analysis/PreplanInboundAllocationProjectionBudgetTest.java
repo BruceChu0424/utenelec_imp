@@ -122,6 +122,9 @@ class PreplanInboundAllocationProjectionBudgetTest {
                 } else if (sql.contains("SELECT receipt_item.id,order_item.id")) {
                     rows = anchors;
                 } else if (sql.contains("FROM preplan_supply_action_allocations allocation")) {
+                    // 预览与入库时的真实归属同一次序(先急后缓)，用同一个常量。
+                    assertThat(sql).contains("ORDER BY allocation.external_item_id,"
+                            + PreplanAnalysisStockPegService.INBOUND_ALLOCATION_ORDER);
                     rows = candidates;
                 } else if (sql.contains("FROM production_material_supply_pegs peg")) {
                     rows = List.of();

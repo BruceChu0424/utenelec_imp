@@ -21,6 +21,7 @@ import com.uten.imp.features.production.dailyreport.dto.DailyReportApproveReques
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemDto;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportListItem;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageDto;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine;
@@ -57,7 +58,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Map;
 import java.util.Set;
@@ -191,8 +191,12 @@ public class ProductionDailyReportService {
                 .toList();
         if (itemIds.isEmpty()) return Map.of();
         Map<UUID, String[]> byItem = new HashMap<>();
+        // 送仓原因的大白话与货品身份同一条语句取回(审核返回详情时不多一次往返)，文案只来自库里一份。
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT item.id, goods.name, goods.code, color.name, unit.name
+                SELECT item.id, goods.name, goods.code, color.name, unit.name,
+                       CASE WHEN item.output_route_reason IS NULL THEN NULL
+                            ELSE fn_workshop_direct_reason_text(item.output_route_reason, NULL,
+                                 COALESCE(NULLIF(goods.code, ''), goods.name), NULL, NULL, NULL, NULL) END
                 FROM production_daily_report_items item
                 LEFT JOIN goods ON goods.id = item.goods_id
                 LEFT JOIN colors color ON color.id = item.color_id
@@ -200,7 +204,7 @@ public class ProductionDailyReportService {
                 WHERE item.id IN (:ids)
                 """).setParameter("ids", itemIds))) {
             byItem.put((UUID) row[0], new String[] {
-                    (String) row[1], (String) row[2], (String) row[3], (String) row[4]});
+                    (String) row[1], (String) row[2], (String) row[3], (String) row[4], (String) row[5]});
         }
         return byItem;
     }
@@ -272,6 +276,7 @@ public class ProductionDailyReportService {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED, "生产日报创建请求或明细不能为空");
         }
+        DailyReportOutputAllocationService.rejectStaleRouteShape(req.getItems());
         UUID actorId = currentUser.requireId();
         String idempotencyKey =
                 normalizeCreateIdempotencyKey(req.getIdempotencyKey());
@@ -308,6 +313,7 @@ public class ProductionDailyReportService {
     @PreAuthorize("hasAuthority('production_daily_report:edit')")
     public DailyReportDetail update(UUID id, DailyReportSaveRequest req) {
         tx.bind();
+        if (req != null) DailyReportOutputAllocationService.rejectStaleRouteShape(req.getItems());
         ProductionDailyReport r = requireReportForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的生产日报");
         requireExpectedVersion(req == null ? null : req.getExpectedVersion(),
@@ -1570,7 +1576,7 @@ public class ProductionDailyReportService {
                     ErrorCode.VALIDATION_FAILED, "生产日报创建请求不能为空");
         }
         List<String> parts = new ArrayList<>();
-        addCanonical(parts, "schema", "PRODUCTION-DAILY-REPORT-CREATE-V2");
+        addCanonical(parts, "schema", "PRODUCTION-DAILY-REPORT-CREATE-V3");
         addCanonical(parts, "header.billDate", request.getBillDate());
         addCanonical(parts, "header.warehouseId", request.getWarehouseId());
         addCanonical(parts, "header.departmentId", request.getDepartmentId());
@@ -1632,14 +1638,24 @@ public class ProductionDailyReportService {
             addCanonical(parts, path + ".clientName", line.getClientName());
             addCanonical(parts, path + ".sourceDocNo", line.getSourceDocNo());
             addCanonical(parts, path + ".remark", line.getRemark());
-            // Normalize absent and explicit WAREHOUSE to the same destination.
-            // Only WORKSHOP has a meaningful receiving demand identity.
-            if (line.getDestination() != null
-                    && !"WAREHOUSE".equalsIgnoreCase(line.getDestination().strip())) {
-                addCanonical(parts, path + ".destination",
-                        line.getDestination().strip().toUpperCase(Locale.ROOT));
-                addCanonical(parts, path + ".directTransferDemandId",
-                        line.getDirectTransferDemandId());
+            // V736 去向分配：不传、空列表与「整行送入仓库」是同一份载荷；
+            // 其余按客户端给出的顺序逐条入指纹(改了分给谁或分多少都不是重放)。
+            List<DailyReportOutputAllocationLine> allocations = line.getAllocations() == null
+                    ? List.of() : line.getAllocations();
+            boolean allWarehouse = allocations.stream().allMatch(allocation -> allocation != null
+                    && allocation.directTransferDemandId() == null
+                    && allocation.qty() != null && allocation.qty().compareTo(line.getQty() == null
+                            ? BigDecimal.ZERO : line.getQty()) == 0);
+            if (!allocations.isEmpty() && !(allocations.size() == 1 && allWarehouse)) {
+                addCanonical(parts, path + ".allocations.count", allocations.size());
+                for (int allocationIndex = 0; allocationIndex < allocations.size(); allocationIndex++) {
+                    DailyReportOutputAllocationLine allocation = allocations.get(allocationIndex);
+                    String allocationPath = path + ".allocations[" + allocationIndex + "]";
+                    addCanonical(parts, allocationPath + ".directTransferDemandId",
+                            allocation == null ? null : allocation.directTransferDemandId());
+                    addCanonical(parts, allocationPath + ".qty",
+                            allocation == null ? null : allocation.qty());
+                }
             }
         }
         // V583：实耗与收尾退仓意愿必须进指纹。漏掉的话，「同一幂等键、只改了实际用料数字」
@@ -2038,22 +2054,11 @@ public class ProductionDailyReportService {
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
             it.setFinal(Boolean.TRUE.equals(l.getIsFinal()));
-            // V584/V585 产出去向。不传按送仓库处理，老客户端行为不变；
-            // 选了转送车间就必须带接收需求，归属与同车间由 directTransfer 再逐条校验。
-            String destination = l.getDestination() == null
-                    ? "WAREHOUSE" : l.getDestination().strip().toUpperCase(Locale.ROOT);
-            if (!List.of("WAREHOUSE", "WORKSHOP").contains(destination)) {
-                throw new ApiException(
-                        ErrorCode.VALIDATION_FAILED, "报工明细的产出去向无效");
-            }
-            it.setDestination(destination);
-            it.setDirectTransferDemandId(
-                    "WORKSHOP".equals(destination) ? l.getDirectTransferDemandId() : null);
-            if ("WORKSHOP".equals(destination) && it.getDirectTransferDemandId() == null) {
-                throw new ApiException(
-                        ErrorCode.VALIDATION_FAILED,
-                        "转送车间的报工行必须选择接收本批产出的上层工单");
-            }
+            // V584/V585 产出去向：已由 outputAllocation.split 按工人的去向分配逐条拆出并按 V736
+            // 直送判定校验过(每个接收工单一条转送明细，送仓明细带原因码)，这里原样落库。
+            it.setDestination(l.getDestination());
+            it.setDirectTransferDemandId(l.getDirectTransferDemandId());
+            it.setOutputRouteReason(l.getOutputRouteReason());
             itemRepo.save(it);
             out.add(toItemDto(it));
             auto++;
@@ -2165,7 +2170,8 @@ public class ProductionDailyReportService {
                 it.getOrderDate(), it.getBoxes(), it.getPerBoxQty(), it.getWeight(),
                 it.getClientName(), it.getSourceDocNo(), it.getRemark(), it.isFinal(),
                 it.getDestination(), it.getDirectTransferDemandId(),
-                directTransferLabels.get(it.getId()), null, null,
+                directTransferLabels.get(it.getId()), it.getOutputRouteReason(),
+                identity == null ? null : identity[4], null, null,
                 identity == null ? null : identity[0],
                 identity == null ? null : identity[1],
                 identity == null ? null : identity[2],

@@ -4,7 +4,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/production/repositories/production_material_repository.dart';
 import 'package:uten_imp/features/production/widgets/production_daily_grid_columns.dart';
-import 'package:uten_imp/features/production/models/production_direct_transfer_candidate.dart';
 import 'package:uten_imp/features/production/models/production_daily_report.dart';
 import 'package:uten_imp/features/production/models/reportable_plan_line.dart';
 
@@ -34,43 +33,6 @@ ProductionMaterialClearanceRow _material({
 );
 
 void main() {
-  test(
-    'different sources share demand capacity but never share a source quota',
-    () {
-      const target = ProductionDirectTransferCandidate(
-        demandId: 'd',
-        executionSegmentId: 'receiving',
-        requiredQty: 100,
-        remainingQty: 60,
-      );
-      final first = DailyGridRow()
-        ..planItemId = 'source-a'
-        ..executionSegmentId = 'a-1'
-        ..destination = 'WORKSHOP'
-        ..directTransfer = target
-        ..qty.text = '50';
-      final second = first.clone()
-        ..planItemId = 'source-b'
-        ..executionSegmentId = 'b-1';
-      addTearDown(first.dispose);
-      addTearDown(second.dispose);
-      expect(directTransferAggregateIssues([first, second]), isEmpty);
-      second.qty.text = '51';
-      expect(
-        directTransferAggregateIssues([first, second]).single,
-        contains('总缺口'),
-      );
-      second
-        ..qty.text = '50'
-        ..planItemId = 'source-a'
-        ..executionSegmentId = 'a-2';
-      expect(
-        directTransferAggregateIssues([first, second]).single,
-        contains('本来源'),
-      );
-    },
-  );
-
   test(
     'another pending draft reserves quota but does not complete the task',
     () {
@@ -129,21 +91,22 @@ void main() {
     },
   );
 
-  test(
-    'copying an explicit workshop destination preserves its exact target',
-    () {
-      final source = DailyGridRow()
-        ..destination = 'WORKSHOP'
-        ..destinationTouched = true
-        ..pendingDirectTransferDemandId = 'exact-target';
-      final copy = source.clone();
-      addTearDown(source.dispose);
-      addTearDown(copy.dispose);
-      expect(copy.destination, 'WORKSHOP');
-      expect(copy.destinationTouched, isTrue);
-      expect(copy.pendingDirectTransferDemandId, 'exact-target');
-    },
-  );
+  test('copying a report row starts a fresh output allocation', () {
+    // V736：粘贴行是新一次申报，去向分配由重排按当前余量重新给出，不复制原行的分配。
+    final source = DailyGridRow()..executionSegmentId = 'segment';
+    final allocation = DailyGridRow()
+      ..depth = 1
+      ..allocationParent = source
+      ..allocationDemandId = 'exact-target'
+      ..allocationFixed = true;
+    source.allocationRows = [allocation];
+    final copy = source.clone();
+    addTearDown(source.dispose);
+    addTearDown(allocation.dispose);
+    addTearDown(copy.dispose);
+    expect(copy.allocationRows, isEmpty);
+    expect(() => allocation.clone(), throwsUnsupportedError);
+  });
 
   test(
     'draft task context survives JSON and excludes this draft from target',
@@ -156,38 +119,6 @@ void main() {
       });
       expect(item.planId, 'plan');
       expect(item.remainingPlanQty, 10);
-    },
-  );
-
-  test(
-    'candidate failure or a different sole target never reroutes a draft',
-    () {
-      const original = ProductionDirectTransferCandidate(
-        demandId: 'original',
-        executionSegmentId: 'a',
-        remainingQty: 10,
-      );
-      const other = ProductionDirectTransferCandidate(
-        demandId: 'other',
-        executionSegmentId: 'b',
-        remainingQty: 20,
-      );
-      final row = DailyGridRow()
-        ..destination = 'WORKSHOP'
-        ..destinationTouched = true
-        ..directTransfer = original;
-      addTearDown(row.dispose);
-      expect(restoreExplicitDirectTransferSelection(row), isTrue);
-      expect(row.destination, 'WORKSHOP');
-      expect(row.directTransfer, isNull);
-      expect(row.pendingDirectTransferDemandId, 'original');
-      row.directTransferCandidates = [other];
-      restoreExplicitDirectTransferSelection(row);
-      expect(row.directTransfer, isNull);
-      row.directTransferCandidates = [other, original];
-      restoreExplicitDirectTransferSelection(row);
-      expect(row.directTransfer, original);
-      expect(row.pendingDirectTransferDemandId, isNull);
     },
   );
 
@@ -287,51 +218,6 @@ void main() {
     },
   );
 
-  test(
-    'direct handoff compares basic quantities including fractional conversions',
-    () {
-      final row = DailyGridRow()
-        ..qty.text = '30'
-        ..unitRate = 5;
-      addTearDown(row.dispose);
-      expect(productionReportBaseQuantity(row), 150);
-      row
-        ..qty.text = '200'
-        ..unitRate = .1;
-      expect(productionReportBaseQuantity(row), 20);
-      row.unitRate = 0;
-      expect(productionReportBaseQuantity(row), isNull);
-      row
-        ..qty.text = '1.005'
-        ..unitRate = .01;
-      expect(
-        productionReportBaseQuantity(row),
-        .0101,
-        reason: 'decimal HALF_UP must match the server at the fifth digit',
-      );
-    },
-  );
-
-  test('two report lines cannot each consume the entire receiving quota', () {
-    const target = ProductionDirectTransferCandidate(
-      demandId: 'd',
-      executionSegmentId: 'parent',
-      remainingQty: 100,
-    );
-    final first = DailyGridRow()
-      ..destination = 'WORKSHOP'
-      ..directTransfer = target
-      ..qty.text = '12'
-      ..unitRate = 5;
-    final second = first.clone()
-      ..destination = 'WORKSHOP'
-      ..directTransfer = target;
-    addTearDown(first.dispose);
-    addTearDown(second.dispose);
-    expect(directTransferAggregateIssues([first, second]), hasLength(1));
-    second.qty.text = '8';
-    expect(directTransferAggregateIssues([first, second]), isEmpty);
-  });
   test(
     'uses the batch ratio (required / for-product) before the BOM ratio',
     () {

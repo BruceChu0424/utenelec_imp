@@ -152,23 +152,27 @@ abstract class _MaterialAnalysisChildShortageState
   }
 
   /// 45 秒轮询：分析快照有未提交输入时让路，但车间在催的清单是纯读、不碰输入，照常刷新，
-  /// 车间刚催的红色提示条不必等计划员手动刷新。
+  /// 车间刚催的红色提示条不必等计划员手动刷新。在催清单登记进公共装载器：本轮轮询若
+  /// 换了快照，就与快照的其余附带读取合成一批、只重画一次 (2026-09-27)。
   @override
   Future<void> _pollAnalysisIfIdle() async {
+    if (mounted && ModalRoute.of(context)?.isCurrent == true) {
+      _pendingCompanionReads.add(_CompanionRead.workshopUrges);
+    }
     await super._pollAnalysisIfIdle();
-    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
-    await _loadWorkshopUrges();
+    if (mounted) _requestCompanionReads(const []);
   }
 
-  /// 返回本页(从通知、子页面回来)时连同在催清单一起重取。
+  /// 返回本页(从通知、子页面回来)时连同在催清单一起重取 (同上合批)。
   @override
   Future<void> _reloadAnalysisSilently({
     bool protectUnsavedEditing = false,
   }) async {
+    _pendingCompanionReads.add(_CompanionRead.workshopUrges);
     await super._reloadAnalysisSilently(
       protectUnsavedEditing: protectUnsavedEditing,
     );
-    if (mounted) await _loadWorkshopUrges();
+    if (mounted) _requestCompanionReads(const []);
   }
 
   @override
@@ -180,11 +184,19 @@ abstract class _MaterialAnalysisChildShortageState
       _workshopUrgesScope = scope;
       _workshopUrges = const [];
       _workshopUrgesGeneration++;
-      // 换了一份分析(或换了账号)：车间在催的清单跟着重取。不在 setState 回调里同步
-      // 发请求，排到下一个微任务。
-      scheduleMicrotask(() => unawaited(_loadWorkshopUrges()));
+      // 换了一份分析(或换了账号)：车间在催的清单跟着重取，与本次快照的其余附带
+      // 读取合成一批 (公共装载器排在下一个微任务，不在 setState 回调里同步发请求)。
+      _requestCompanionReads(const [_CompanionRead.workshopUrges]);
     }
   }
+
+  @override
+  Future<VoidCallback?> _companionRead(
+    _CompanionRead read,
+    ProductionMaterialAnalysisView view,
+  ) => read == _CompanionRead.workshopUrges
+      ? _fetchWorkshopUrges()
+      : super._companionRead(read, view);
 
   // ------------------------------------------------------------ 数据
 
@@ -431,22 +443,30 @@ abstract class _MaterialAnalysisChildShortageState
     for (final urge in _workshopUrges) ...urge.shortMaterialLineIds,
   };
 
-  Future<void> _loadWorkshopUrges() async {
+  /// 直接 await 的调用方 (下单后核对、同一份分析的催办直链) 用它；与进页那一批走
+  /// 同一个公共装载器、同一套套用口径。
+  Future<void> _loadWorkshopUrges() =>
+      _runCompanionReads([_fetchWorkshopUrges()]);
+
+  Future<VoidCallback?> _fetchWorkshopUrges() async {
     final analysis = _analysis;
-    if (analysis == null || !mounted) return;
+    if (analysis == null || !mounted) return null;
     final generation = ++_workshopUrgesGeneration;
     try {
       final urges = await ref
           .read(productionPlanRepositoryProvider)
           .materialAnalysisWorkshopUrges(analysis.analysisId);
-      if (!mounted ||
-          generation != _workshopUrgesGeneration ||
-          _analysis?.analysisId != analysis.analysisId) {
-        return;
-      }
-      setState(() => _workshopUrges = urges);
+      return () {
+        if (!mounted ||
+            generation != _workshopUrgesGeneration ||
+            _analysis?.analysisId != analysis.analysisId) {
+          return;
+        }
+        _workshopUrges = urges;
+      };
     } catch (_) {
       // 提示条是附加信息：取不到不打扰主流程，下次下单 / 回到本页再取。
+      return null;
     }
   }
 

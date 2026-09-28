@@ -22,14 +22,10 @@ abstract class _MaterialAnalysisSupplyActionsState
     _bulkOperationTotal = 0;
   }
 
-  /// [automatic] = 进页自动确认（2026-09-25 确认路线退役）：成功提示降为一条
-  /// appInfo、没有待确认时静默、失败回滚草稿并只轻提示一次——非本人分析/无权限
-  /// 时打开页面不该弹一串红错。手动直改（[_confirmRouteChanges]）保持强提示。
-  Future<void> _saveRoutes({
-    Set<String>? onlyGroupKeys,
-    bool automatic = false,
-    Set<String>? automaticRollbackKeys,
-  }) async {
+  /// 人工改供应方式的保存 (PUT /routes)。2026-09-27 起按货品档案的自动确认由服务端在
+  /// 新建 / 刷新分析的同一次重算里完成 (ADR-102)，这里只剩人工直改一条路径; 服务端在
+  /// 同一次改路线里顺带确认的其余行, 回包里带条数, 一并提示。
+  Future<void> _saveRoutes({Set<String>? onlyGroupKeys}) async {
     final analysis = _analysis;
     if (analysis == null || !_canRoute || _savingRoutes) return;
     final groups = {
@@ -69,7 +65,7 @@ abstract class _MaterialAnalysisSupplyActionsState
       }
     }
     if (changes.isEmpty) {
-      if (!automatic) context.appInfo('没有待确认的路线变更');
+      context.appInfo('没有待确认的路线变更');
       return;
     }
     changes.sort((left, right) {
@@ -83,6 +79,7 @@ abstract class _MaterialAnalysisSupplyActionsState
     });
     var current = analysis;
     var completed = 0;
+    var autoConfirmed = 0;
     final batches = _chunked(changes);
     setState(() {
       _savingRoutes = true;
@@ -116,6 +113,7 @@ abstract class _MaterialAnalysisSupplyActionsState
               decisions: [for (final change in batch) change.decision],
             );
         completed += batch.length;
+        autoConfirmed += current.autoConfirmedRouteCount;
         if (!mounted) return;
         setState(() => _bulkOperationCompleted = completed);
       }
@@ -123,45 +121,23 @@ abstract class _MaterialAnalysisSupplyActionsState
       setState(() {
         _savingRoutes = false;
         _clearBulkOperation();
+        // 顺带自动确认的条数 (各批累计) 并进下面的成功提示，套用快照处不再单独提示。
+        _autoConfirmNoticeEpoch = _analysisEpoch(current);
         _applyAnalysisPreservingRouteDrafts(current);
         _selectedMaterialGroupKeys.removeAll(
           changes.take(completed).map((change) => change.groupKey),
         );
       });
-      if (automatic) {
-        context.appInfo('已按货品档案自动确认 $completed 条供应方式');
-      } else {
-        context.appSuccess(
-          batches.length == 1 ? '物料路线已确认' : '物料路线已分 ${batches.length} 批全部确认',
-        );
-      }
+      final saved = batches.length == 1
+          ? '物料路线已确认'
+          : '物料路线已分 ${batches.length} 批全部确认';
+      context.appSuccess(
+        autoConfirmed > 0
+            ? '$saved；${_autoConfirmedRoutesText(autoConfirmed)}'
+            : saved,
+      );
     } catch (error) {
       if (!mounted) return;
-      if (automatic) {
-        // 自动路径失败：回滚**自动确认自己建的**这批草稿（行回到红框/建议
-        // 显示），轻提示一次。人工直改建立的草稿不在回滚集合里，不能吞掉。
-        final failedKeys = changes
-            .skip(completed)
-            .map((change) => change.groupKey)
-            .where(automaticRollbackKeys?.contains ?? (_) => true)
-            .toSet();
-        setState(() {
-          _savingRoutes = false;
-          _clearBulkOperation();
-          for (final key in failedKeys) {
-            _routeDraft.remove(key);
-            _dirtyRouteGroups.remove(key);
-          }
-          _applyAnalysisPreservingRouteDrafts(current);
-          _invalidateBucketRowsCache();
-        });
-        context.appInfo(
-          completed > 0
-              ? '已自动确认 $completed 条供应方式；其余 ${failedKeys.length} 条自动确认失败，请在供应方式列补选'
-              : '供应方式自动确认失败，请在供应方式列补选（红框行不能下单）',
-        );
-        return;
-      }
       if (await _recoverLatestAnalysisAfterConflict(
         error,
         operation: '批量保存物料路线',

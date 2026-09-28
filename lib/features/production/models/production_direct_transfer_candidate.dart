@@ -1,8 +1,7 @@
 /// 报工页「转下一道工序」的候选工单(V584/V585/V595)。
 ///
-/// 服务端只列同车间、有真实父子责任、同货品同颜色且还缺料的上层工单：跨车间必须走仓库，
-/// 数据库守卫也会拒。等待/齐套/已派工的上层工单，以及**持续生产中**的上层工单
-/// 都可以收；普通已开工的段不列——料投过去挂不上，只会变成呆料。
+/// 能不能送、还差多少只由服务端的一份判定给出(V736/ADR-127)：这里只收可送的上层工单，
+/// 本端不复写任何资格条件；一张报工里多行之间的扣减在 daily_output_allocation.dart 一处算。
 class ProductionDirectTransferCandidate {
   const ProductionDirectTransferCandidate({
     required this.demandId,
@@ -61,26 +60,19 @@ class ProductionDirectTransferCandidate {
     ].join(' ');
   }
 
-  /// 收起态(选中后格子里的单行)：父件产品 + 本来源最多可送多少。工单号放下拉第二行，
-  /// 不挤占这一行——车间认料认的是产品，不是工单号。
-  String get label {
-    final head = receivingGoodsLabel.isEmpty
-        ? (executionSegmentCode?.trim().isNotEmpty == true
-              ? executionSegmentCode!.trim()
-              : (planNo ?? '上层工单'))
-        : receivingGoodsLabel;
-    return '$head · 最多可送 ${_number(remainingQty)} ${unitName ?? ''}'.trim();
-  }
-
-  /// 下拉第二行：工单号 · 本来源最多可送多少(持续生产中的工单另加标注)。
-  String get secondaryLabel {
+  /// 去向下拉条目(V736/ADR-127)：工单号 · 父件产品 · 还差多少([roomBase] = 本行还能分给它的基本数量)。
+  String optionLabel(double roomBase) {
     final segment = executionSegmentCode?.trim();
     final head = segment == null || segment.isEmpty
         ? (planNo ?? '上层工单')
         : segment;
-    final tail = continuousSupply ? ' · 持续生产中' : '';
-    return '$head · 最多可送 ${_number(remainingQty)} ${unitName ?? ''}'.trim() +
-        tail;
+    final room = roomBase > 0 ? roomBase : 0.0;
+    return [
+      head,
+      if (receivingGoodsLabel.isNotEmpty) receivingGoodsLabel,
+      '还差 ${_number(room)}${unitName == null ? '' : ' $unitName'}',
+      if (continuousSupply) '持续生产中',
+    ].join(' · ');
   }
 
   factory ProductionDirectTransferCandidate.fromJson(
@@ -116,44 +108,121 @@ String _number(double value) => value == value.roundToDouble()
           .replaceFirst(RegExp(r'0+$'), '')
           .replaceFirst(RegExp(r'\.$'), '');
 
-/// 候选接口的完整返回：候选列表 + 上次报工的记忆(V595)。
+/// 不能转时红字的统一开头(与服务端审核报错、数据库守卫同一句)。
+const directTransferUnavailablePrefix = '无法转到下一道工序：';
+
+/// 候选读取失败时的提示：读取失败不等于「没有上层工单」。
+const directTransferLoadFailedText = '转给工单候选读取失败，请刷新后重试';
+
+/// 结构上是本工单的上层、但现在不能收的工单(V736/ADR-127)：报工页下拉里置灰并用红字写明原因。
+class ProductionDirectTransferBlockedTarget {
+  const ProductionDirectTransferBlockedTarget({
+    required this.demandId,
+    required this.reason,
+    this.executionSegmentId,
+    this.executionSegmentCode,
+    this.planNo,
+    this.receivingGoodsId,
+    this.receivingGoodsCode,
+    this.receivingGoodsName,
+    this.reasonCode,
+  });
+
+  final String demandId;
+  final String? executionSegmentId;
+  final String? executionSegmentCode;
+  final String? planNo;
+  final String? receivingGoodsId;
+  final String? receivingGoodsCode;
+  final String? receivingGoodsName;
+
+  /// 服务端给的原因大白话(例如「上层工单 ZX… 在二车间，跨车间必须送入仓库」)。
+  final String reason;
+
+  /// 原因的机器码，只用于判断与测试，界面不显示。
+  final String? reasonCode;
+
+  /// 下拉条目：工单号 · 父件产品 · 原因。
+  String get optionLabel {
+    final segment = executionSegmentCode?.trim();
+    final head = segment == null || segment.isEmpty
+        ? (planNo ?? '上层工单')
+        : segment;
+    final product = [
+      if (receivingGoodsName?.trim().isNotEmpty == true)
+        receivingGoodsName!.trim(),
+      if (receivingGoodsCode?.trim().isNotEmpty == true)
+        receivingGoodsCode!.trim(),
+    ].join(' ');
+    return [head, if (product.isNotEmpty) product, reason].join(' · ');
+  }
+
+  factory ProductionDirectTransferBlockedTarget.fromJson(
+    Map<String, dynamic> json,
+  ) => ProductionDirectTransferBlockedTarget(
+    demandId: json['demandId'] as String,
+    executionSegmentId: json['executionSegmentId'] as String?,
+    executionSegmentCode: json['executionSegmentCode'] as String?,
+    planNo: json['planNo'] as String?,
+    receivingGoodsId: json['receivingGoodsId'] as String?,
+    receivingGoodsCode: json['receivingGoodsCode'] as String?,
+    receivingGoodsName: json['receivingGoodsName'] as String?,
+    reasonCode: json['reasonCode'] as String?,
+    reason: json['reason'] as String? ?? '',
+  );
+}
+
+/// 候选接口的完整返回：可送的上层工单(先急后缓) + 不能收的上层工单 + 不可转原因(V736/ADR-127)。
 ///
-/// [lastDestination]/[lastReceivingGoodsId]：本车间上一次报这个货品时选的去向与
-/// 投给的父件产品。报工页据此预填并标黄提醒核对——去向大多数时候不变，
-/// 但以前每次都要人重新选一遍。线边仓缺失(V584 的 lineSideWarehouseMissing)
-/// 不再是空候选的原因：V595 起线边仓由服务端自动配置。
+/// [unavailableReason]：一个可送的上层工单都没有时，服务端给出最接近可送的那条原因
+/// (例如「HV5ZJ012 是委外件：……」「上层工单 ZX… 在二车间，跨车间必须送入仓库」)。
+///
+/// 默认去向不再按上次报工记忆替人选：报工页按 [candidates] 的先急后缓次序逐个分满，其余送入仓库。
 class DirectTransferCandidatesResult {
   const DirectTransferCandidatesResult({
     required this.candidates,
-    this.lastDestination,
-    this.lastReceivingGoodsId,
-    this.lastReceivingGoodsCode,
-    this.lastReceivingGoodsName,
+    this.blockedTargets = const [],
+    this.unavailableReason,
+    this.unavailableReasonCode,
+    this.receiverLimit = 1 << 30,
+    this.loadFailed = false,
   });
 
+  /// 候选读取失败：不能当成「没有上层工单」，也不能替人改去向。
+  const DirectTransferCandidatesResult.loadFailed()
+    : this(candidates: const [], loadFailed: true);
+
+  /// 可送的上层工单，已按先急后缓排好。
   final List<ProductionDirectTransferCandidate> candidates;
 
-  /// 'WAREHOUSE' / 'WORKSHOP'；没报过为 null。
-  final String? lastDestination;
-  final String? lastReceivingGoodsId;
-  final String? lastReceivingGoodsCode;
-  final String? lastReceivingGoodsName;
+  /// 结构上是上层、但现在不能收的工单(同一次序)。
+  final List<ProductionDirectTransferBlockedTarget> blockedTargets;
 
-  bool get hasMemory => lastDestination != null;
+  /// 没有可送的上层工单时服务端给的原因(大白话)；有候选时为空。
+  final String? unavailableReason;
 
-  /// 记忆指向的候选：只有恰好一个候选的父件产品与上次相同才算命中，
-  /// 两个同产品工单并存时不替人猜。
-  ProductionDirectTransferCandidate? get rememberedCandidate {
-    final goodsId = lastReceivingGoodsId;
-    if (goodsId == null || goodsId.isEmpty) return null;
-    final matches = candidates
-        .where((candidate) => candidate.receivingGoodsId == goodsId)
-        .toList(growable: false);
-    return matches.length == 1 ? matches.single : null;
+  /// 原因的机器码，只用于判断与测试，界面不显示。
+  final String? unavailableReasonCode;
+
+  /// 一行报工最多同时转给几个上层工单(服务端同一个常量)。
+  final int receiverLimit;
+
+  final bool loadFailed;
+
+  /// 「产出去向」格要显示的红字：读取失败或一个可送的都没有时给出，否则为空。
+  String? get blockedText {
+    if (loadFailed) return directTransferLoadFailedText;
+    if (candidates.isNotEmpty) return null;
+    final reason = unavailableReason?.trim();
+    // 服务端总会给原因；万一缺了也只说「不能转」，不编造原因。
+    return reason == null || reason.isEmpty
+        ? '无法转到下一道工序'
+        : '$directTransferUnavailablePrefix$reason';
   }
 
   factory DirectTransferCandidatesResult.fromJson(Map<String, dynamic> json) {
     final rows = json['candidates'];
+    final blocked = json['blockedTargets'];
     return DirectTransferCandidatesResult(
       candidates: rows is List
           ? rows
@@ -164,10 +233,18 @@ class DirectTransferCandidatesResult {
                 )
                 .toList(growable: false)
           : const [],
-      lastDestination: json['lastDestination'] as String?,
-      lastReceivingGoodsId: json['lastReceivingGoodsId'] as String?,
-      lastReceivingGoodsCode: json['lastReceivingGoodsCode'] as String?,
-      lastReceivingGoodsName: json['lastReceivingGoodsName'] as String?,
+      blockedTargets: blocked is List
+          ? blocked
+                .map(
+                  (e) => ProductionDirectTransferBlockedTarget.fromJson(
+                    e as Map<String, dynamic>,
+                  ),
+                )
+                .toList(growable: false)
+          : const [],
+      unavailableReason: json['unavailableReason'] as String?,
+      unavailableReasonCode: json['unavailableReasonCode'] as String?,
+      receiverLimit: (json['receiverLimit'] as num?)?.toInt() ?? 1 << 30,
     );
   }
 }

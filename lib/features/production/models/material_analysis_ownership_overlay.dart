@@ -91,6 +91,8 @@ extension MaterialAnalysisOwnershipOverlay on ProductionMaterialAnalysisView {
       fqcRecoveryAuthorizationId: fqcRecoveryAuthorizationId,
       planningBlockedReasons: planningBlockedReasons,
       routeResetCount: routeResetCount,
+      autoConfirmedRouteCount: autoConfirmedRouteCount,
+      pendingAutoConfirmRouteCount: pendingAutoConfirmRouteCount,
       overproductionDefaults: overproductionDefaults,
       analysisNo: analysisNo,
     );

@@ -4,6 +4,9 @@
 // 不再单点指定负责人。后端演进期间允许常见字段别名；但关键身份字段
 // （orderId）缺失时前端保持 fail-closed，不猜测可办理对象。
 
+import '../../../shared/formatters/money_display.dart';
+import '../../../shared/models/party_open_balance.dart';
+
 enum FinanceProcurementOrderType { purchase, subcontract, unknown }
 
 FinanceProcurementOrderType financeProcurementOrderTypeFrom(Object? value) {
@@ -33,6 +36,7 @@ class FinanceProcurementApprovalTask {
     this.submittedByName,
     this.submittedByEmployeeId,
     this.amount,
+    this.totalOriginal,
     this.currencyName,
     this.submittedAt,
     this.expectedDate,
@@ -55,7 +59,9 @@ class FinanceProcurementApprovalTask {
   final String? submittedByEmployeeId;
 
   /// 金额保留服务端字符串，避免大额或小数在客户端转换时丢精度。
+  /// [amount] 是折合本币；[totalOriginal] 是订货币种([currencyName])原币金额(ADR-128)。
   final String? amount;
+  final String? totalOriginal;
   final String? currencyName;
   final String? submittedAt;
   final String? expectedDate;
@@ -146,6 +152,7 @@ class FinanceProcurementApprovalTask {
         order?['amount'],
         order?['totalLocal'],
       ]),
+      totalOriginal: _firstNullableString([json['totalOriginal']]),
       currencyName: _firstNullableString([
         json['currencyName'],
         json['currencyCode'],
@@ -237,7 +244,7 @@ class FinanceProcurementApprovalReview {
     this.remark,
     this.totalOriginal,
     this.totalLocal,
-    this.supplierApBalance,
+    this.supplierBalance,
     this.sourceApplicationCount = 0,
     this.qtyChanges = const <FinanceProcurementQtyChange>[],
     this.items = const <FinanceProcurementReviewLine>[],
@@ -271,7 +278,9 @@ class FinanceProcurementApprovalReview {
   final String? remark;
   final String? totalOriginal;
   final String? totalLocal;
-  final String? supplierApBalance;
+
+  /// 供应商在本单币种下的应付 / 可抵预付与贷项 / 还差多少(ADR-128)，其它币种另列。
+  final PartyOpenBalance? supplierBalance;
   final int sourceApplicationCount;
 
   /// 批准后改量清单（服务端字段位于 items 之前）：为空表示本单未被改过数量。
@@ -285,6 +294,9 @@ class FinanceProcurementApprovalReview {
   final List<FinanceProcurementReviewHistoryEntry> history;
 
   bool get isPending => status == null || status == 'PENDING';
+
+  /// 订货币种显示名：主档名称优先，都没有时写「原币」。
+  String get currencyLabel => financeCurrencyText(name: currencyName);
 
   String get orderTypeLabel => switch (orderType) {
     FinanceProcurementOrderType.purchase => '采购订货',
@@ -338,7 +350,7 @@ class FinanceProcurementApprovalReview {
       remark: _string(json['remark']),
       totalOriginal: _firstNullableString([json['totalOriginal']]),
       totalLocal: _firstNullableString([json['totalLocal']]),
-      supplierApBalance: _firstNullableString([json['supplierApBalance']]),
+      supplierBalance: PartyOpenBalance.fromJson(json['supplierBalance']),
       sourceApplicationCount: _firstInt([json['sourceApplicationCount']]) ?? 0,
       qtyChanges: [
         for (final change in (json['qtyChanges'] as List? ?? const <dynamic>[]))

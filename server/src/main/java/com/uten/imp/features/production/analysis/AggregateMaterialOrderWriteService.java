@@ -159,6 +159,9 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                     .anyMatch(row->{var anchor=currentProducts.get(row.planAnchorAnalysisLineId());return row.priorityMakeSupplementQty().signum()>0||row.requiredQty().signum()==0
                         &&anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType())&&anchor.remainingQty().signum()>0;});
             List<AdoptedClaim> adoptedClaims=new ArrayList<>();
+            // One material split into several orders (ADR-120 §8) commits group by group. A sibling's new
+            // public share was not part of the reviewed preview, so it is never adopted here.
+            Set<UUID> commandPlans=results.stream().map(BatchResult::planId).filter(Objects::nonNull).collect(Collectors.toSet());
             Map<UUID,Map<UUID,BigDecimal>> originalFlow=originalPrivateFlow(input,group,current);
             List<SourceAdoptionIntent> adoptionIntents;
             if(originalFlow!=null&&!retainedMakeResponsibility) {
@@ -171,7 +174,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 // only their proven responsibility before a MAKE claim's DB capacity check.
                 if(!repairOrigins.isEmpty())missingDeepAliases.repair(analysisId,repairOrigins);
                 Map<UUID,BigDecimal> makeClaims=commands.claimOriginalAggregateMakeFuture(analysisId,desired,
-                        stepKey(request.idempotencyKey(),group.clientGroupKey(),"MAKE-PUBLIC-CLAIM"),adoptedClaims::add);
+                        stepKey(request.idempotencyKey(),group.clientGroupKey(),"MAKE-PUBLIC-CLAIM"),commandPlans,adoptedClaims::add);
                 Map<UUID,BigDecimal> remaining=new LinkedHashMap<>(desired);
                 makeClaims.forEach((id,qty)->remaining.compute(id,(ignored,value)->value.subtract(qty)));
                 commands.claimOriginalAggregateFuture(analysisId,current,remaining,
@@ -190,7 +193,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 }
             } else {
             Map<UUID,BigDecimal> makeClaims=retainedMakeResponsibility?Map.of():commands.claimAggregateMakeFuture(analysisId,current,group,
-                    stepKey(request.idempotencyKey(),group.clientGroupKey(),"MAKE-PUBLIC-CLAIM"),adoptedClaims::add);
+                    stepKey(request.idempotencyKey(),group.clientGroupKey(),"MAKE-PUBLIC-CLAIM"),commandPlans,adoptedClaims::add);
             if(!makeClaims.isEmpty()) {
                 List<SourcePreview> sources=group.sources().stream().map(source->source(source,
                         source.allocatedQty().subtract(makeClaims.getOrDefault(source.materialLineId(),BigDecimal.ZERO)).max(BigDecimal.ZERO))).toList();

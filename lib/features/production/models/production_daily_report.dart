@@ -137,6 +137,8 @@ class ProductionDailyReportItem {
     this.destination,
     this.directTransferDemandId,
     this.directTransferTargetLabel,
+    this.outputRouteReason,
+    this.outputRouteReasonText,
     this.goodsName,
     this.goodsCode,
     this.colorName,
@@ -199,6 +201,12 @@ class ProductionDailyReportItem {
   /// 直送接收方的可读标识(V595)：父件产品名 编号 · 工单号。
   final String? directTransferTargetLabel;
 
+  /// 送仓明细为什么没转下一道工序(V736 原因码)；转送明细与历史明细为空。只用于判断。
+  final String? outputRouteReason;
+
+  /// 上面原因的大白话(服务端唯一文案)，详情页与审核确认直接显示。
+  final String? outputRouteReasonText;
+
   /// 货品身份三列与单位由服务端随单解析下发，页面不再查字典缓存。
   /// 客户端字典会随连接恢复或权限快照变化整体清空，那时逐格解析会集体变「—」且不自愈。
   final String? goodsName;
@@ -233,6 +241,8 @@ class ProductionDailyReportItem {
         destination: json['destination'] as String?,
         directTransferDemandId: json['directTransferDemandId'] as String?,
         directTransferTargetLabel: json['directTransferTargetLabel'] as String?,
+        outputRouteReason: json['outputRouteReason'] as String?,
+        outputRouteReasonText: json['outputRouteReasonText'] as String?,
         id: json['id'] as String,
         lineNo: _asInt(json['lineNo']),
         goodsId: json['goodsId'] as String?,
@@ -323,7 +333,65 @@ class ProductionDailyReportInputGroup {
     final weights = items.map((item) => item.weight).whereType<double>();
     return weights.isEmpty ? null : weights.fold<double>(0, (a, b) => a + b);
   }
+
+  /// 本批产出的去向(与提交体同形 `{directTransferDemandId, qty}`)：每个上层工单一条，
+  /// 送入仓库的部分(需求份、公共备货、实际超产)合成一条(V736/ADR-127)。
+  List<Map<String, dynamic>> get allocations {
+    final direct = <String, double>{};
+    var warehouse = 0.0;
+    for (final item in items) {
+      final qty = item.qty ?? 0;
+      final demand = item.directTransferDemandId;
+      if (item.isDirectTransfer && demand != null) {
+        direct[demand] = (direct[demand] ?? 0) + qty;
+      } else {
+        warehouse += qty;
+      }
+    }
+    return [
+      for (final entry in direct.entries)
+        {'directTransferDemandId': entry.key, 'qty': entry.value},
+      if (warehouse > 0) {'directTransferDemandId': null, 'qty': warehouse},
+    ];
+  }
+
+  /// 审核确认与详情用的一句话：本批共多少，逐条写转给哪个工单多少、送入仓库多少及原因。
+  String get routeSummary {
+    final head = [
+      source.goodsCode ?? source.goodsName ?? '本行产出',
+      '共 ${_quantityText(qty ?? 0)}',
+    ].join(' ');
+    final parts = <String>[];
+    final warehouse = <String, double>{};
+    for (final item in items) {
+      final qty = item.qty ?? 0;
+      if (item.isDirectTransfer) {
+        parts.add(
+          '转给 ${item.directTransferTargetLabel ?? '上层工单'} ${_quantityText(qty)}',
+        );
+      } else {
+        final reason = item.outputRouteReasonText ?? '';
+        warehouse[reason] = (warehouse[reason] ?? 0) + qty;
+      }
+    }
+    for (final entry in warehouse.entries) {
+      parts.add(
+        entry.key.isEmpty
+            ? '送入仓库 ${_quantityText(entry.value)}'
+            : '送入仓库 ${_quantityText(entry.value)} (${entry.key})',
+      );
+    }
+    return '$head：${parts.join('；')}';
+  }
 }
+
+/// 数量文本：整数不带小数点，小数最多 4 位且不留尾零。
+String _quantityText(double value) => value == value.roundToDouble()
+    ? value.toStringAsFixed(0)
+    : value
+          .toStringAsFixed(4)
+          .replaceFirst(RegExp(r'0+$'), '')
+          .replaceFirst(RegExp(r'\.$'), '');
 
 List<ProductionDailyReportInputGroup> productionDailyReportInputGroups(
   List<ProductionDailyReportItem> items,

@@ -7,6 +7,7 @@
   的资格判定函数 `fn_demand_direct_supply_eligible` 一处口径，[ADR-091](ADR-091-开工路线确认与到货进展通知.md)
   的路线门与 V604 的自动识别机制原样保留。
 - 相关：[我的车间任务页](../03-页面/我的车间任务页.md)
+- 2026-09-27 补充([ADR-127](ADR-127-直送资格单一事实源、不可转原因与报工自动分流.md) / V736)：路线判断收进唯一的结构判定 `fn_workshop_direct_relation_code`(委外/采购点名为原因，不再无声地判成「没有关系」)；`fn_demand_direct_supply_eligible` 改为复用 `fn_workshop_direct_relationship_allows`——同货品的在制工单必须与这条需求存在真实直送关系(同车间、真实父子关系、自制路线)，本文第二节第 1 条「同车间在做同货品」的判支随之退役。
 
 ---
 

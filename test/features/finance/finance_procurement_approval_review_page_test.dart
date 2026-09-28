@@ -116,7 +116,17 @@ Map<String, dynamic> _pendingReviewJson({
   'remark': '加急',
   'totalOriginal': '10000',
   'totalLocal': '71000',
-  'supplierApBalance': '12500.50',
+  // ADR-128：供应商应付按本单币种(美元)显示，其它币种另列、不换算。
+  'supplierBalance': {
+    'currencyName': '美元',
+    'openOriginal': '13000.50',
+    'creditOriginal': '500',
+    'netOriginal': '12500.50',
+    'baseCurrencyName': '人民币',
+    'otherCurrencies': [
+      {'currencyName': '人民币', 'openOriginal': '1100', 'netOriginal': '1100'},
+    ],
+  },
   'sourceApplicationCount': 2,
   'items': [
     {
@@ -354,7 +364,15 @@ void main() {
     expect(find.text('采购订货 · 第 2 轮'), findsOneWidget);
     expect(find.text('待财务审核'), findsOneWidget);
     expect(find.text('供应商财务快照 · 供应商A(S-001)'), findsOneWidget);
-    expect(find.text('12500.50'), findsOneWidget, reason: '应付余额格式化展示');
+    expect(find.text('本单金额'), findsOneWidget);
+    expect(find.text('美元 10000.00'), findsOneWidget);
+    expect(find.text('应付未付'), findsOneWidget);
+    expect(find.text('美元 13000.50'), findsOneWidget);
+    expect(find.text('可抵预付/贷项'), findsOneWidget);
+    expect(find.text('美元 500.00'), findsOneWidget);
+    expect(find.text('美元 12500.50'), findsOneWidget, reason: '还差多少与本单同币种');
+    expect(find.text('另有 人民币 1100.00'), findsOneWidget);
+    expect(find.text('人民币 71000.00'), findsOneWidget, reason: '折合本币带本币名');
     expect(find.text('美元'), findsWidgets);
     // 2026-09-14 起名称 / 编号 / 颜色 / 单位各占一列，不再拼成一格。
     expect(find.text('铜线'), findsOneWidget);

@@ -188,6 +188,102 @@ class ProductionDailyReportCommandTest {
         return line;
     }
 
+    /// V736/ADR-127：一行报工的去向分配进指纹——改了分给哪个上层工单或分多少都不是重放；
+    /// 不传、空列表与「整行送入仓库」是同一份申报。
+    @Test
+    void canonicalHashCoversOutputAllocations() {
+        UUID goodsId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        UUID planItemId = UUID.randomUUID();
+        UUID orderItemId = UUID.randomUUID();
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        DailyReportSaveRequest request = request(
+                "allocation-key", "SR-allocation", goodsId, unitId,
+                planItemId, orderItemId, BigDecimal.TEN);
+        String bare = ProductionDailyReportService.createRequestHash(request);
+        var line = request.getItems().getFirst();
+        line.setAllocations(List.of());
+        assertEquals(bare, ProductionDailyReportService.createRequestHash(request));
+        line.setAllocations(List.of(com.uten.imp.features.production.dailyreport.dto
+                .DailyReportOutputAllocationLine.warehouse(new BigDecimal("10.0000"))));
+        assertEquals(bare, ProductionDailyReportService.createRequestHash(request));
+
+        line.setAllocations(List.of(
+                com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.direct(first, new BigDecimal("4")),
+                com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.warehouse(new BigDecimal("6"))));
+        String split = ProductionDailyReportService.createRequestHash(request);
+        assertNotEquals(bare, split);
+        line.setAllocations(List.of(
+                com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.direct(first, new BigDecimal("4.0")),
+                com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.warehouse(new BigDecimal("6.0000"))));
+        assertEquals(split, ProductionDailyReportService.createRequestHash(request));
+        line.setAllocations(List.of(
+                com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.direct(second, new BigDecimal("4")),
+                com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.warehouse(new BigDecimal("6"))));
+        assertNotEquals(split, ProductionDailyReportService.createRequestHash(request));
+        line.setAllocations(List.of(
+                com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.direct(first, new BigDecimal("5")),
+                com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.warehouse(new BigDecimal("5"))));
+        assertNotEquals(split, ProductionDailyReportService.createRequestHash(request));
+    }
+
+    /// V736/ADR-127：部署前打开的旧页面仍在行上传单个去向(destination / directTransferDemandId)。
+    /// 保存入口整单拒收(400)并请刷新，不按新口径把它悄悄送入仓库；新页面的 allocations 照常收，
+    /// 服务端自用的同名字段不从 JSON 读取，写快照时也不带旧字段。
+    @Test
+    void staleSingleDestinationShapeIsRejectedAtSaveEntries() throws Exception {
+        var mapper = org.springframework.http.converter.json.Jackson2ObjectMapperBuilder.json().build();
+        UUID goodsId = UUID.randomUUID();
+        UUID demand = UUID.randomUUID();
+        DailyReportSaveRequest legacy = mapper.readValue("""
+                {"idempotencyKey":"stale-key","items":[{"goodsId":"%s","qty":10,
+                 "destination":"WORKSHOP","directTransferDemandId":"%s"}]}
+                """.formatted(goodsId, demand), DailyReportSaveRequest.class);
+        DailyReportItemLine legacyLine = legacy.getItems().getFirst();
+        org.junit.jupiter.api.Assertions.assertTrue(legacyLine.carriesStaleRouteShape());
+        org.junit.jupiter.api.Assertions.assertNull(legacyLine.getDestination());
+        org.junit.jupiter.api.Assertions.assertNull(legacyLine.getDirectTransferDemandId());
+
+        ApiException created = assertThrows(ApiException.class, () -> service.create(legacy));
+        assertEquals(ErrorCode.MALFORMED_REQUEST, created.getCode());
+        assertEquals(400, created.getCode().getHttpStatus());
+        assertEquals("页面版本已更新，请刷新页面后重新填写去向", created.getMessage());
+        ApiException updated = assertThrows(ApiException.class, () -> service.update(UUID.randomUUID(), legacy));
+        assertEquals(ErrorCode.MALFORMED_REQUEST, updated.getCode());
+        verify(reportRepo, never()).saveAndFlush(any());
+        verify(outputAllocation, never()).split(any(), any());
+
+        // 只带旧的接收需求、或新旧两种形状同时出现，同样不收。
+        for (String shape : List.of(
+                "\"directTransferDemandId\":\"" + demand + "\"",
+                "\"destination\":\"WORKSHOP\",\"allocations\":[{\"directTransferDemandId\":\"" + demand + "\",\"qty\":10}]")) {
+            DailyReportSaveRequest mixed = mapper.readValue(
+                    "{\"items\":[{\"goodsId\":\"" + goodsId + "\",\"qty\":10," + shape + "}]}",
+                    DailyReportSaveRequest.class);
+            assertThrows(ApiException.class,
+                    () -> DailyReportOutputAllocationService.rejectStaleRouteShape(mixed.getItems()), shape);
+        }
+
+        DailyReportSaveRequest current = mapper.readValue("""
+                {"items":[{"goodsId":"%s","qty":10,"allocations":[
+                  {"directTransferDemandId":"%s","qty":4},{"directTransferDemandId":null,"qty":6}]}]}
+                """.formatted(goodsId, demand), DailyReportSaveRequest.class);
+        DailyReportItemLine currentLine = current.getItems().getFirst();
+        org.junit.jupiter.api.Assertions.assertFalse(currentLine.carriesStaleRouteShape());
+        assertEquals(2, currentLine.getAllocations().size());
+        assertEquals(demand, currentLine.getAllocations().getFirst().directTransferDemandId());
+        assertDoesNotThrow(() -> DailyReportOutputAllocationService.rejectStaleRouteShape(current.getItems()));
+
+        currentLine.setDestination("WORKSHOP");
+        currentLine.setDirectTransferDemandId(demand);
+        String snapshot = mapper.writeValueAsString(current);
+        org.junit.jupiter.api.Assertions.assertFalse(snapshot.contains("\"destination\""), snapshot);
+        org.junit.jupiter.api.Assertions.assertFalse(snapshot.contains("staleRouteShape"), snapshot);
+        org.junit.jupiter.api.Assertions.assertFalse(
+                mapper.readValue(snapshot, DailyReportSaveRequest.class).getItems().getFirst().carriesStaleRouteShape());
+    }
+
     @Test
     void canonicalHashDistinguishesRecoveryAuthorization() {
         UUID goodsId = UUID.randomUUID();

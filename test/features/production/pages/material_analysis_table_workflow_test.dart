@@ -44,7 +44,8 @@ void main() {
       //   用户拖好的列宽列序也就不会被清空。
       expect(find.text('表头设置 17/17'), findsOneWidget);
       expect(find.text('处理'), findsNothing);
-      // 2026-09-25 确认路线退役：按钮没了；进页自动确认一次（全部建议 SUBCONTRACT）。
+      // 2026-09-25 确认路线退役：按钮没了。2026-09-27 起自动确认在服务端建分析
+      // 时就做完了(夹具行已确认 SUBCONTRACT)，进页零写入。
       expect(
         find.byKey(const Key('material-analysis-create-routes')),
         findsNothing,
@@ -53,7 +54,7 @@ void main() {
         find.byKey(const Key('material-analysis-entry-workshop')),
         findsOneWidget,
       );
-      expect(harness.writes, hasLength(1));
+      expect(harness.writes, isEmpty);
       var dropdown = tester.widget<UtenDropdownField>(_route('m-1'));
       expect(dropdown.value, 'subcontract');
       final tree = tester.widget<UtenTreeTableCell>(
@@ -79,7 +80,7 @@ void main() {
         isNull,
       );
       expect(find.byKey(const Key('material-route-reason')), findsNothing);
-      expect(harness.writes, hasLength(2));
+      expect(harness.writes, hasLength(1));
       final body = harness.writes.last.data! as Map<String, dynamic>;
       expect(body['decisions'], [
         {'actionGroupKey': 'a-1', 'route': 'BUY'},
@@ -111,7 +112,7 @@ void main() {
       );
       await tester.tap(header);
       await tester.pumpAndSettle();
-      // 2026-09-25 确认路线退役：勾选只服务下单（进页已自动确认全部路线）。
+      // 2026-09-25 确认路线退役：勾选只服务下单(路线已由服务端自动确认)。
       expect(find.text('已选 99 项'), findsOneWidget);
       expect(find.text('下单(99)'), findsOneWidget);
       await tester.enterText(
@@ -143,7 +144,7 @@ void main() {
       await tester.tap(find.byKey(const Key('master-table-clear-selection')));
       await tester.pumpAndSettle();
       expect(find.text('已选 0 项'), findsOneWidget);
-      expect(harness.writes, hasLength(1), reason: '只有进页自动确认那一次');
+      expect(harness.writes, isEmpty, reason: '自动确认在服务端，页面零写入');
     },
   );
 
@@ -187,36 +188,27 @@ void main() {
   testWidgets(
     'saving keeps selected white text on selected rows and blocks duplicate writes',
     (tester) async {
-      // 2026-09-25 确认路线退役：保存期防重复写改由「直改」承担——进页
-      // 自动确认先行落库（第一次 PUT 放行），手动直改挂在 gate 上验证
-      // 进行中不会重复提交。
+      // 2026-09-25 确认路线退役：保存期防重复写由「直改」承担——手动直改挂在
+      // gate 上验证进行中不会重复提交(2026-09-27 起页面不再自动发 PUT)。
       final complete = Completer<void>();
-      var routeWrites = 0;
       final harness = await _pump(
         tester,
-        beforeRouteWrite: () async {
-          routeWrites++;
-          if (routeWrites > 1) await complete.future;
-        },
+        beforeRouteWrite: () => complete.future,
       );
       await tester.tap(_route('m-1'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('采购').last);
-      for (
-        var attempt = 0;
-        attempt < 10 && harness.writes.length < 2;
-        attempt++
-      ) {
+      for (var attempt = 0; attempt < 10 && harness.writes.isEmpty; attempt++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
-      expect(harness.writes, hasLength(2));
+      expect(harness.writes, hasLength(1));
       final tree = tester.widget<UtenTreeTableCell>(
         find.byKey(const ValueKey('material-table-tree-MATERIAL|m-1')),
       );
       expect(tree.foregroundColor, isNull);
       complete.complete();
       await tester.pumpAndSettle();
-      expect(harness.writes, hasLength(2));
+      expect(harness.writes, hasLength(1));
       expect(tester.widget<UtenDropdownField>(_route('m-1')).value, 'buy');
     },
   );
@@ -545,7 +537,9 @@ Map<String, dynamic> _analysis(
         'demandSupplyGapQty': 800,
         'additionalSupplyRecommendedQty': 800,
         'sourceSuggestion': route,
-        'routeConfirmed': false,
+        // 服务端建分析时已按货品档案确认 (ADR-102 2026-09-27)。
+        'sourceConfirmed': route,
+        'routeConfirmed': true,
         'controlStage': 'START',
         'hardGate': true,
         'actionable': true,

@@ -114,6 +114,8 @@ public final class CustomerPrepaymentContracts {
             UUID clientId,
             UUID currencyId,
             String currencyCode,
+            /** 币种显示名(人民币 / 美金); 资金汇总各格按「币种 金额」显示(ADR-128)。 */
+            String currencyName,
             String orderTotalOriginal,
             String orderTotalLocal,
             String formalArOriginal,

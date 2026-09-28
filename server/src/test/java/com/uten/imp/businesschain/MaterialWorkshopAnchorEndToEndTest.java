@@ -113,9 +113,18 @@ class MaterialWorkshopAnchorEndToEndTest {
         assertEquals(false, db.queryForObject("SELECT active FROM production_material_analysis_materials WHERE id=?", Boolean.class, material));
         // An administrative correction restores the same historical BOM identity.
         db.update("UPDATE goods_bom_items SET is_deleted=FALSE,deleted_at=NULL,qty=2 WHERE id=?", edge);
+        var confirmedAt = db.queryForObject(
+                "SELECT route_confirmed_at FROM production_material_analysis_materials WHERE id=?", java.time.OffsetDateTime.class, material);
+        assertNotNull(confirmedAt, "The historical node still carries its earlier confirmation");
         var restored = refreshCase(c, "restore-changed-edge");
-        assertEquals(1, restored.routeResetCount());
-        assertEquals(null, material(restored, material).sourceConfirmed());
+        // ADR-102 (2026-09-27): 被清掉的确认在同一次刷新里按货品主档重新确认 (以前由页面紧接着
+        // 补发 PUT /routes 做同一件事); 先前人工确认的自制已回写主档, 所以重新确认的仍是自制.
+        // 清掉又马上补回的不算「需重新确认」, 所以刷新提示数为 0; 确认时间换新证明确实清过再确认.
+        assertEquals(0, restored.routeResetCount());
+        assertTrue(restored.autoConfirmedRouteCount() >= 1);
+        assertEquals("MAKE", material(restored, material).sourceConfirmed());
+        assertNotEquals(confirmedAt, db.queryForObject(
+                "SELECT route_confirmed_at FROM production_material_analysis_materials WHERE id=?", java.time.OffsetDateTime.class, material));
         qty("20000", material(restored, material).requiredQty());
     }
 

@@ -128,8 +128,19 @@ class ProductionMaterialAnalysisScalePostgresTest {
         var firstKeys = first.flatMaterials().stream().map(MaterialView::nodeKey).collect(java.util.stream.Collectors.toSet());
         assertTrue(second.flatMaterials().stream().anyMatch(row -> firstKeys.contains(row.nodeKey())),
                 "The fixture must actually repeat nodeKey across different analyses");
+        // ADR-102 (2026-09-27): both previews already confirmed their own master routes. Put the first
+        // analysis back into the historical unconfirmed state so the manual save below really writes
+        // rows, then prove that it never touches the second analysis' rows on the same BOM path.
+        assertTrue(second.autoConfirmedRouteCount() > 0);
+        List<Map<String, Object>> secondRoutes = routeState(second.analysisId());
+        jdbc.update("""
+                UPDATE production_material_analysis_materials
+                SET confirmed_route=NULL, route_confirmed_by=NULL, route_confirmed_at=NULL
+                WHERE analysis_id=?
+                """, first.analysisId());
         AnalysisView routed = confirmAllRoutes(first, false);
-        assertTrue(analysis.detail(second.analysisId()).flatMaterials().stream().noneMatch(MaterialView::routeConfirmed),
+        assertTrue(routed.flatMaterials().stream().filter(MaterialView::actionable).allMatch(MaterialView::routeConfirmed));
+        assertEquals(secondRoutes, routeState(second.analysisId()),
                 "Route confirmation must be isolated by analysis, even for the same BOM path");
 
         for (String route : List.of("BUY", "SUBCONTRACT")) {
@@ -622,6 +633,13 @@ class ProductionMaterialAnalysisScalePostgresTest {
         AnalysisView released = analysis.detail(next.analysisId());
         assertEquals("CANCELLED", commands.cancelAnalysis(next.analysisId(), new CancelRequest(
                 released.version(), released.fingerprint(), "cancel-after-delete-" + suffix(), "草稿已删除，取消分析")).status());
+    }
+
+    private List<Map<String, Object>> routeState(UUID analysisId) {
+        return jdbc.queryForList("""
+                SELECT id, confirmed_route, route_confirmed_by, route_confirmed_at
+                FROM production_material_analysis_materials WHERE analysis_id=? ORDER BY id
+                """, analysisId);
     }
 
     private AnalysisView confirmAllRoutes(AnalysisView initial, boolean measure) throws Exception {

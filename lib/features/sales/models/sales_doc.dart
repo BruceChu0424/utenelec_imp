@@ -13,6 +13,7 @@
 //    costAmount 出/退；parcel/carton 出货类；solution/responsible 退货专属）。
 import 'package:flutter/material.dart';
 import '../../../shared/models/decimal_text.dart';
+import '../../../shared/models/party_open_balance.dart';
 export '../../../shared/models/sales_shipment_policy.dart';
 
 /// 销售单据类型。pathSegment 对齐后端 /api/sales/{quotes|orders|shipments|other-shipments|returns}。
@@ -276,11 +277,7 @@ class ShipmentFinanceAuditInfo {
     this.settlementMethodId,
     this.settlementMethodCode,
     this.settlementMethodName,
-    this.outstanding,
-    this.creditFloor,
-    this.overFloor,
-    this.availablePrepaymentOriginal,
-    this.availablePrepaymentLocal,
+    this.clientBalance,
     this.reviewRevision,
     this.contentHash,
     this.billingMode,
@@ -334,12 +331,10 @@ class ShipmentFinanceAuditInfo {
   final String? settlementMethodCode;
   final String? settlementMethodName;
 
-  /// 金额保留服务端十进制文本，避免财务预览在客户端二次计算或丢精度。
-  final String? outstanding;
-  final String? creditFloor;
-  final String? overFloor;
-  final String? availablePrepaymentOriginal;
-  final String? availablePrepaymentLocal;
+  /// 客户余额(ADR-128，服务端共用余额视图，金额为十进制原文)：本单币种的应收未收 /
+  /// 可用预收 / 还差多少，其它币种另列；`openBookLocal` = 全部币种正式应收(折本币，不扣预收)，
+  /// `creditLimitLocal` = 铺底额(未填按 0)，`overLimitLocal` = 超出铺底额(可为负)。
+  final PartyOpenBalance? clientBalance;
 
   factory ShipmentFinanceAuditInfo.fromJson(Map<String, dynamic> json) =>
       ShipmentFinanceAuditInfo(
@@ -370,22 +365,7 @@ class ShipmentFinanceAuditInfo {
         settlementMethodId: _text(json['settlementMethodId']),
         settlementMethodCode: _text(json['settlementMethodCode']),
         settlementMethodName: _text(json['settlementMethodName']),
-        outstanding: _text(json['outstandingExact'] ?? json['outstanding']),
-        creditFloor:
-            _text(json['creditFloorExact'] ?? json['creditFloor']) ?? '0',
-        overFloor: _text(json['overFloorExact'] ?? json['overFloor']),
-        availablePrepaymentOriginal:
-            _text(
-              json['availablePrepaymentOriginalExact'] ??
-                  json['availablePrepaymentOriginal'],
-            ) ??
-            '0',
-        availablePrepaymentLocal:
-            _text(
-              json['availablePrepaymentLocalExact'] ??
-                  json['availablePrepaymentLocal'],
-            ) ??
-            '0',
+        clientBalance: PartyOpenBalance.fromJson(json['clientBalance']),
       );
 
   static String? _text(Object? value) {

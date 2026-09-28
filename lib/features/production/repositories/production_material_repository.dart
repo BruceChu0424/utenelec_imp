@@ -238,10 +238,9 @@ class ProductionMaterialRepository {
         .toList(growable: false);
   }
 
-  /// 报工页「转下一道工序」的候选上层工单(V584/V585)。
-  /// 服务端只返回同车间、同货品同颜色、还缺料的工单——跨车间必须走仓库。
-  /// 候选为空且 [DirectTransferCandidatesResult.lineSideWarehouseMissing]
-  /// 时，是本车间缺同主仓线边仓，不是没有上层工单可投。
+  /// 报工页「转下一道工序」的候选上层工单(V584/V585/V736)。
+  /// 服务端按唯一的直送判定只返回可送的工单；一个都没有时带回最接近可送的原因
+  /// ([DirectTransferCandidatesResult.unavailableReason])，界面原样用红字显示。
   Future<DirectTransferCandidatesResult> directTransferCandidates({
     required String executionSegmentId,
     required String goodsId,

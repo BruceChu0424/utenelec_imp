@@ -2,6 +2,8 @@ package com.uten.imp.features.sales.order.dto;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+import com.uten.imp.common.finance.ExactDecimalText;
+import com.uten.imp.common.finance.PartyOpenBalanceView;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -22,12 +24,13 @@ public record SalesOrderFinancePendingDto(
         String sellerName,
         LocalDate deliverDate,
         long itemCount,
-        BigDecimal totalOriginal,
+        @JsonSerialize(using = ExactDecimalText.class) BigDecimal totalOriginal,
         String currencyCode,
         /** 币种显示名（主档 name 人民币/美金…，前端展示优先于 code 编号）。 */
         String currencyName,
         String shipmentPolicy,
-        BigDecimal clientOutstanding,
+        /** ADR-128: 客户在本单币种下还差多少(其它币种另列, 信用对比用全币种本币毛额)。 */
+        PartyOpenBalanceView clientBalance,
         boolean financeRejected,
         String financeRejectedReason,
         OffsetDateTime financeRejectedAt,

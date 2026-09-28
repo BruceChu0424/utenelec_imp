@@ -26,6 +26,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -848,12 +849,23 @@ class _FinanceProcurementApprovalTasksPageState
       width: 210,
       value: (task) => task.supplierName ?? '—',
     ),
+    // ADR-128：订货金额按订货币种写成「币种 金额」，折合本币另列。
+    MasterColumnDef(
+      key: 'totalOriginal',
+      label: '订货金额',
+      width: 150,
+      type: 'money',
+      value: (task) => financeMoneyWithCurrency(
+        task.totalOriginal,
+        currencyName: task.currencyName,
+      ),
+    ),
     MasterColumnDef(
       key: 'amount',
-      label: '本币金额',
+      label: '折合本币',
       width: 130,
       type: 'money',
-      value: (task) => task.amount,
+      value: (task) => financeMoneyText(task.amount),
     ),
     MasterColumnDef(
       key: 'expectedDate',

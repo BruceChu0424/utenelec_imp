@@ -274,7 +274,7 @@ class _ProcurementIqcRejectionActionDialogState
                               labelText: '服务器冻结贷项金额(只读)',
                             ),
                             child: Text(
-                              widget.caseItem.amountLabel(
+                              widget.caseItem.originalAmountLabel(
                                 widget.caseItem.failedAmountOriginal,
                               ),
                               style: theme.textTheme.titleMedium?.copyWith(

@@ -40,7 +40,10 @@ class AggregateMaterialOrderEndToEndTest {
     @Autowired AggregateMaterialOrderWriteService writer;
     FullChainEndToEndTest fixture;
     @BeforeEach void before(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
-    @AfterEach void after(){SecurityContextHolder.clearContext();}
+    @AfterEach void after(){
+        SecurityContextHolder.clearContext();
+        AggregateAllocationPendingParity.assertMatchesDatabaseFunctions(db);
+    }
 
     @Test void threeSourcesProduceOneRealPurchaseLineAndOnePublicAppend(){
         Case c=create(false,false,"10");GroupInput group=input(c,c.material(),"BUY","60",false);
@@ -92,6 +95,52 @@ class AggregateMaterialOrderEndToEndTest {
         MaterialView canonical=analyses.detail(c.analysis()).flatMaterials().stream().filter(row->row.analysisLineId().equals(shared.anchorAnalysisItemId())&&row.goodsId().equals(c.child())).findFirst().orElseThrow();
         amount("30",canonical.requiredQty());amount("0",canonical.planningUncoveredQty());
         amount("60",analyses.detail(c.analysis()).flatMaterials().stream().filter(row->row.goodsId().equals(c.material())).map(MaterialView::requiredQty).reduce(BigDecimal.ZERO,BigDecimal::add));
+    }
+
+    @Test void sameMaterialFromDifferentWorkshopsAndRatesBecomesSeparateOrdersInOneRequest(){
+        // ADR-120 §8：同一物料的来源车间 / 负责人 / 超产比例不同，准备页自动拆成几组一次提交。
+        // 兼容键不同，服务端既不按「同一物料两组」拒绝，也不合成一张单；每张单的下层只接
+        // 自己那几个来源的原子料(精确身份桥)，另一张单做出的公共份不能被这一张顺手采用。
+        Case c=create(true,false,"1");
+        Object other=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment","aggregate-split-"+UUID.randomUUID());
+        UUID otherWorkshop=ReflectionTestUtils.invokeMethod(other,"workshopId"),otherWorker=ReflectionTestUtils.invokeMethod(other,"workerId");
+        List<UUID> sources=input(c,c.common(),"MAKE","3",false).materialLineIds();assertEquals(3,sources.size());
+        GroupInput first=new GroupInput(c.common()+"|part-a",List.of(sources.get(0)),"MAKE",new BigDecimal("2"),true,
+                c.workshop(),c.worker(),null,null,null,null,BigDecimal.ZERO,BigDecimal.ZERO);
+        GroupInput second=new GroupInput(c.common()+"|part-b",sources.subList(1,3),"MAKE",new BigDecimal("2"),true,
+                otherWorkshop,otherWorker,null,null,null,null,new BigDecimal("0.1"),BigDecimal.ZERO);
+        var request=request(c,List.of(first,second));
+        var shown=preview.preview(c.analysis(),request);
+        assertEquals(2,shown.groups().size());
+        assertNotEquals(shown.groups().get(0).compatibilityKey(),shown.groups().get(1).compatibilityKey());
+        for(GroupPreview group:shown.groups())assertNull(group.blockedReason(),group.clientGroupKey());
+        amount("1",shown.groups().get(0).publicExtraQty());amount("0",shown.groups().get(1).publicExtraQty());
+        var result=writer.submit(c.analysis(),submit(shown,request));
+        assertEquals(2,result.batches().size());
+        Map<String,BatchResult> byKey=new HashMap<>();result.batches().forEach(batch->byKey.put(batch.clientGroupKey(),batch));
+        BatchResult a=byKey.get(first.clientGroupKey()),b=byKey.get(second.clientGroupKey());
+        assertNotEquals(a.batchId(),b.batchId());assertNotEquals(a.planId(),b.planId());
+        amount("2",db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,a.planId()));
+        amount("2",db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,b.planId()));
+        amount("0.1",db.queryForObject("SELECT allowed_overproduction_rate FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,b.planId()));
+        assertEquals(c.workshop(),db.queryForObject("SELECT workshop_department_id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",UUID.class,a.planId()));
+        assertEquals(otherWorkshop,db.queryForObject("SELECT workshop_department_id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",UUID.class,b.planId()));
+        assertEquals(0,count("SELECT count(*) FROM preplan_make_public_claims WHERE target_analysis_id=?",c.analysis()),"sibling public output must not be adopted");
+        amount("2",db.queryForObject("SELECT SUM(allocated_qty) FROM preplan_supply_action_allocations WHERE action_id=(SELECT action_id FROM preplan_aggregate_batches WHERE id=?)",BigDecimal.class,b.batchId()));
+        // 每张单的共享子料只接自己来源下的原子料。
+        AnalysisView before=shown.analysis();
+        for(var entry:Map.of(a,List.of(sources.get(0)),b,sources.subList(1,3)).entrySet()){
+            Set<String> parents=before.flatMaterials().stream().filter(row->entry.getValue().contains(row.materialLineId()))
+                    .map(row->row.analysisLineId()+"|"+row.nodeKey()).collect(java.util.stream.Collectors.toSet());
+            Set<UUID> originalChildren=before.flatMaterials().stream().filter(row->row.goodsId().equals(c.material())
+                    &&parents.contains(row.analysisLineId()+"|"+row.parentNodeKey())).map(MaterialView::materialLineId).collect(java.util.stream.Collectors.toSet());
+            assertEquals(entry.getValue().size(),originalChildren.size());
+            MaterialView shared=analyses.detail(c.analysis()).flatMaterials().stream().filter(row->row.analysisLineId().equals(entry.getKey().anchorAnalysisItemId())
+                    &&row.goodsId().equals(c.material())).findFirst().orElseThrow();
+            amount("2",shared.requiredQty());
+            var bridge=result.materialIdentityBridges().stream().filter(item->item.toMaterialLineId().equals(shared.materialLineId())).findFirst().orElseThrow();
+            assertEquals(originalChildren,new HashSet<>(bridge.fromMaterialLineIds()));
+        }
     }
 
     @Test void parentAndDescendantCannotCommitWithStaleChildQuantities(){

@@ -76,7 +76,8 @@ void main() {
     expect(find.byKey(const Key('iqc-rejection-compact-list')), findsOneWidget);
     expect(find.byKey(const Key('iqc-rejection-task-table')), findsNothing);
     expect(find.textContaining('金额 ***'), findsOneWidget);
-    expect(find.textContaining('金额 CNY 25.0000'), findsOneWidget);
+    // ADR-128：列表金额是本币，不挂单据币种。
+    expect(find.textContaining('本币金额 25.00'), findsOneWidget);
     expect(find.text('财务投影异常'), findsWidgets);
     expect(tester.takeException(), isNull);
   });

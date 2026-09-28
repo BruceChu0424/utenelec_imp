@@ -62,6 +62,23 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             "SUBCONTRACT_APPLICATION_ITEM";
     private static final String SUPPLY_PRODUCTION_PLAN_ITEM = "PRODUCTION_PLAN_ITEM";
 
+    /**
+     * 同一供应行动里各份额的「先急后缓」次序(ADR-127 §7.2 第 5 点)：份额所属产品行的优先级、交期，
+     * 再按建立先后；同一笔事务里建立的份额不再按随机 UUID 抢先。别名固定：{@code owner} = 份额所属的
+     * 物料分析行，{@code allocation} = 份额。
+     */
+    static final String ALLOCATION_URGENCY_ORDER =
+            "owner.line_priority NULLS LAST, owner.delivery_date NULLS LAST, allocation.created_at, allocation.id";
+
+    /**
+     * 采购/委外到货分给各份额的次序：先转交、再普通、最后共享认领，同类按供应行动先后，行动内先急后缓。
+     * 入库时的真实归属与到货预览({@link PreplanInboundAllocationProjectionService})共用这一份，预览才会
+     * 与实际入库落到同一个产品、计划、车间与仓库。别名固定：{@code action}、{@code owner}、{@code allocation}。
+     */
+    static final String INBOUND_ALLOCATION_ORDER =
+            "CASE action.operation_type WHEN 'FUTURE_TRANSFER' THEN -1 WHEN 'SHARED_FUTURE_CLAIM' THEN 1 ELSE 0 END, "
+                    + "action.created_at, action.id, " + ALLOCATION_URGENCY_ORDER;
+
     private final EntityManager em;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
@@ -235,15 +252,14 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                           ON material.id = allocation.analysis_material_id
                          AND material.analysis_id = allocation.analysis_id
                          AND material.active = TRUE
+                        LEFT JOIN production_material_analysis_items owner
+                          ON owner.id = material.analysis_item_id
                         WHERE allocation.external_item_id = :externalItemId
                           AND material.goods_id = :goodsId
                           AND material.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
-                        ORDER BY CASE action.operation_type WHEN 'FUTURE_TRANSFER' THEN -1
-                                      WHEN 'SHARED_FUTURE_CLAIM' THEN 1 ELSE 0 END,
-                                 action.created_at, action.id,
-                                 allocation.created_at, allocation.id
+                        ORDER BY %s
                         FOR UPDATE OF action, allocation
-                        """)
+                        """.formatted(INBOUND_ALLOCATION_ORDER))
                     .setParameter("externalItemId", externalItemId)
                     .setParameter("goodsId", goodsId)
                     .setParameter("colorId", colorId));
@@ -586,6 +602,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                               ON material.id = allocation.analysis_material_id
                              AND material.analysis_id = allocation.analysis_id
                              AND material.active = TRUE
+                            LEFT JOIN production_material_analysis_items owner
+                              ON owner.id = material.analysis_item_id
                             WHERE allocation.analysis_id = :analysisId
                               AND allocation.external_item_id = :analysisItemId
                               AND (allocation.analysis_material_id = :parentMaterialId
@@ -595,9 +613,11 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                               AND material.goods_id = :goodsId
                               AND material.color_id IS NOT DISTINCT FROM
                                   CAST(:colorId AS uuid)
-                            ORDER BY allocation.created_at, allocation.id
+                            -- 先急后缓(V736/ADR-127)：与车间直送、ADR-120 §3 同一次序——所属产品行的
+                            -- 优先级、交期；同时建立的份额不再按随机 UUID 抢先占用。
+                            ORDER BY %s
                             FOR UPDATE OF action, allocation
-                            """)
+                            """.formatted(ALLOCATION_URGENCY_ORDER))
                             .setParameter("analysisId", analysisId)
                             .setParameter("analysisItemId", analysisItemId)
                             .setParameter("goodsId", line.goodsId())

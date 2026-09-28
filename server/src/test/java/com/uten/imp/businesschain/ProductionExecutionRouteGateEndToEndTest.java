@@ -1487,8 +1487,7 @@ class ProductionExecutionRouteGateEndToEndTest {
         item.setUnitId(c.world().unitId());
         item.setUnitRate(BigDecimal.ONE);
         item.setQty(new BigDecimal(quantity));
-        item.setDestination("WORKSHOP");
-        item.setDirectTransferDemandId(parentDemand(c));
+        item.setAllocations(List.of(com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.direct(parentDemand(c), item.getQty())));
         report.setItems(List.of(item));
         var usage=new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();
         usage.setDemandId(db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",UUID.class,c.childSegment()));

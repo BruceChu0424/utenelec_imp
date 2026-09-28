@@ -69,7 +69,9 @@ void main() {
     expect(find.text('订单资金状态'), findsOneWidget);
     expect(find.text('订单总额'), findsOneWidget);
     expect(find.text('客户已付'), findsOneWidget);
-    expect(find.text('40.12'), findsOneWidget);
+    // ADR-128：资金汇总格按「币种 金额」显示(币种取主档名称，不显示 001 旧编号)。
+    expect(find.text('美金 100.00'), findsOneWidget);
+    expect(find.text('美金 40.12'), findsOneWidget);
     expect(find.textContaining('银行实际到账以账户流水为准'), findsNothing);
     expect(find.text('其中：预收到账'), findsNothing);
 
@@ -85,9 +87,9 @@ void main() {
     expect(find.text('可用预收余额'), findsOneWidget);
     expect(find.text('当前还需收款'), findsOneWidget);
     expect(find.text('预计还需新收'), findsOneWidget);
-    expect(find.text('30.0234'), findsNWidgets(2));
-    expect(find.text('59.8566'), findsOneWidget);
-    expect(find.text('40.12'), findsNWidgets(2));
+    expect(find.text('美金 30.0234'), findsNWidgets(2));
+    expect(find.text('美金 59.8566'), findsOneWidget);
+    expect(find.text('美金 40.12'), findsNWidgets(2));
     // 超收为 0 时不再显示「超收金额」派生项。
     expect(find.text('超收金额'), findsNothing);
     expect(
@@ -149,7 +151,7 @@ void main() {
       expect(find.text('客户待处理余额'), findsOneWidget);
       expect(find.text('待处理余额需财务确认抵扣或退款，不表示已退款。'), findsOneWidget);
       expect(find.text('已退款金额'), findsNothing);
-      expect(find.text('0.00'), findsOneWidget);
+      expect(find.text('美金 0.00'), findsOneWidget);
     },
   );
 
@@ -172,8 +174,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('尚未处理的退货金额'), findsOneWidget);
-      expect(find.text('150.00'), findsOneWidget);
-      expect(find.text('200.00'), findsOneWidget);
+      expect(find.text('美金 150.00'), findsOneWidget);
+      expect(find.text('美金 200.00'), findsOneWidget);
       expect(find.text('客户待处理余额'), findsNothing);
     },
   );
@@ -226,6 +228,7 @@ const _summary = <String, dynamic>{
   'clientId': 'client-1',
   'currencyId': 'currency-usd',
   'currencyCode': '001',
+  'currencyName': '美金',
   'orderTotalOriginal': '100.0000',
   'orderTotalLocal': '720.0000',
   'formalArOriginal': '80.0000',

@@ -49,4 +49,22 @@ void main() {
       ]);
     },
   );
+  test('a material split into several orders counts as that many groups', () {
+    // ADR-120 §8：车间 / 负责人 / 比例不同的物料分成几张工单同次提交，
+    // 服务端 500 组上限按提交组算，整个物料仍不跨请求拆开。
+    final groups = {for (var i = 0; i < 500; i++) 'g-$i': 2};
+    final window = materialAggregateRequestWindow(
+      groups,
+      requestGroupsByKey: {'g-0': 2, 'g-1': 2},
+    );
+    expect(window, hasLength(498));
+    expect(window.last, 'g-497');
+    expect(
+      materialAggregateRequestWindow(
+        {'split': 3},
+        requestGroupsByKey: {'split': 3},
+      ),
+      ['split'],
+    );
+  });
 }

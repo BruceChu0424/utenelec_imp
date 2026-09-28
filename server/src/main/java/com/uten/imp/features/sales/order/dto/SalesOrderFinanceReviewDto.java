@@ -2,6 +2,7 @@ package com.uten.imp.features.sales.order.dto;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.uten.imp.common.finance.ExactDecimalText;
+import com.uten.imp.common.finance.PartyOpenBalanceView;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 
 import java.math.BigDecimal;
@@ -15,7 +16,7 @@ import java.util.UUID;
  * 销售订单财务审核详情（V300 财务审核专用页）。
  *
  * <p>与销售端订单详情分离：面向财务审核决策，额外携带客户财务快照
- * （应收余额/信用额度/铺底额/是否超信用）与结算方式；不含销售端运营按钮语义
+ * (本单币种应收余额 ADR-128 / 信用额度 / 铺底额 / 是否超信用)与结算方式；不含销售端运营按钮语义
  * （改量/排产进度/取消/红冲不在本页操作）。
  *
  * <p>金额口径：与待确认列表一致——sales_order_finance:view 持有者可见订单原币金额
@@ -46,11 +47,13 @@ public record SalesOrderFinanceReviewDto(
         long itemCount,
         @JsonSerialize(using = ExactDecimalText.class) BigDecimal totalOriginal,
         // ===== 客户财务快照 =====
-        @JsonSerialize(using = ExactDecimalText.class) BigDecimal clientOutstanding,
-        @JsonSerialize(using = ExactDecimalText.class) BigDecimal clientCredit,
+        /**
+         * ADR-128: 客户在本单币种下的应收 / 可用预收 / 还差多少, 其它币种另列;
+         * 信用额度只在视图里下发一次({@code creditLimitLocal}, 迁入客户的旧额度、为空或不大于 0 都按未设置 = null),
+         * {@code overCredit} = 全币种正式应收账面本币毛额(不扣预收) > 信用额度。
+         */
+        PartyOpenBalanceView clientBalance,
         @JsonSerialize(using = ExactDecimalText.class) BigDecimal clientCreditFloor,
-        /** 应收余额是否已超信用额度（信用额度为空/≤0 时按未配置处理，恒 false）。 */
-        boolean clientOverCredit,
         // ===== 财务确认/驳回事实 =====
         boolean financeConfirmed,
         OffsetDateTime financeConfirmedAt,

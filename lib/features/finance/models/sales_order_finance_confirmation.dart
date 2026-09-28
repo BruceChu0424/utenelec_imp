@@ -4,6 +4,10 @@
 // 销售订货单。确认后订单才对计划部可见（物料分析/待排产/MRP/计划关联）。
 // V300：财务可驳回（必填原因，通知归属销售修正）；列表行携带驳回标记/原因与
 // 客户应收余额快照，审核详情另见 [SalesOrderFinanceReview]（含产品明细与客户财务快照）。
+// ADR-128(2026-09-27)：客户应收改为服务端共用余额视图 [PartyOpenBalance]，按本单币种显示。
+
+import '../../../shared/formatters/money_display.dart';
+import '../../../shared/models/party_open_balance.dart';
 
 class SalesOrderFinancePendingItem {
   const SalesOrderFinancePendingItem({
@@ -18,7 +22,7 @@ class SalesOrderFinancePendingItem {
     this.currencyCode,
     this.currencyName,
     this.shipmentPolicy,
-    this.clientOutstanding,
+    this.clientBalance,
     this.financeRejected = false,
     this.financeRejectedReason,
     this.financeRejectedAt,
@@ -44,8 +48,9 @@ class SalesOrderFinancePendingItem {
   /// 发运策略（ALLOW_PARTIAL / REQUIRE_COMPLETE / 历史值；标签用 salesShipmentPolicyLabel）。
   final String? shipmentPolicy;
 
-  /// 客户当前应收余额（本币，ar_ap_ledger 未结口径；服务端字符串保精度）。
-  final String? clientOutstanding;
+  /// 客户在本单币种下还差多少(ADR-128)：其它币种与原币未核实部分另列，
+  /// 是否超信用由服务端按全部币种正式应收(折本币，不扣预收)判定。
+  final PartyOpenBalance? clientBalance;
 
   /// 财务驳回（V300）：已驳回待销售修正；确认后自动清除。
   final bool financeRejected;
@@ -74,7 +79,7 @@ class SalesOrderFinancePendingItem {
       currencyCode: _string(json['currencyCode']),
       currencyName: _string(json['currencyName']),
       shipmentPolicy: _string(json['shipmentPolicy']),
-      clientOutstanding: _string(json['clientOutstanding']),
+      clientBalance: PartyOpenBalance.fromJson(json['clientBalance']),
       financeRejected: json['financeRejected'] == true,
       financeRejectedReason: _string(json['financeRejectedReason']),
       financeRejectedAt: _string(json['financeRejectedAt']),
@@ -156,10 +161,8 @@ class SalesOrderFinanceReview {
     this.remark,
     this.itemCount = 0,
     this.totalOriginal,
-    this.clientOutstanding,
-    this.clientCredit,
+    this.clientBalance,
     this.clientCreditFloor,
-    this.clientOverCredit = false,
     this.financeConfirmed = false,
     this.financeConfirmedAt,
     this.financeConfirmedByName,
@@ -202,15 +205,19 @@ class SalesOrderFinanceReview {
   final int itemCount;
   final String? totalOriginal;
 
-  /// 客户应收余额（本币未结口径）。
-  final String? clientOutstanding;
+  /// 客户在本单币种下的应收 / 可用预收 / 还差多少(ADR-128)；
+  /// 信用额度(`creditLimitLocal`，未设置为 null)与是否超信用(`overCredit`)也在里面。
+  final PartyOpenBalance? clientBalance;
 
-  /// 信用额度 / 铺底额（客户主档；未配置为 null）。
-  final String? clientCredit;
+  /// 铺底额(客户主档，本币；未配置为 null)。
   final String? clientCreditFloor;
 
-  /// 应收余额是否已超信用额度（信用额度未配置时恒 false）。
-  final bool clientOverCredit;
+  /// 订单币种显示名：主档名称优先，缺名称退回可读代码，都没有时写「订单币种」。
+  String get currencyLabel => financeCurrencyText(
+    name: currencyName,
+    code: currencyCode,
+    fallback: '订单币种',
+  );
 
   final bool financeConfirmed;
   final String? financeConfirmedAt;
@@ -255,10 +262,8 @@ class SalesOrderFinanceReview {
       remark: _string(json['remark']),
       itemCount: _int(json['itemCount']) ?? 0,
       totalOriginal: _string(json['totalOriginal']),
-      clientOutstanding: _string(json['clientOutstanding']),
-      clientCredit: _string(json['clientCredit']),
+      clientBalance: PartyOpenBalance.fromJson(json['clientBalance']),
       clientCreditFloor: _string(json['clientCreditFloor']),
-      clientOverCredit: json['clientOverCredit'] == true,
       financeConfirmed: json['financeConfirmed'] == true,
       financeConfirmedAt: _string(json['financeConfirmedAt']),
       financeConfirmedByName: _string(json['financeConfirmedByName']),

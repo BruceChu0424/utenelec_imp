@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.order;
 
+import com.uten.imp.application.port.PartyOpenBalancePort;
+import com.uten.imp.common.finance.PartyOpenBalances;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
@@ -56,6 +58,12 @@ public class SalesOrderFinanceConfirmService {
     private final SalesOrderFinanceConfirmerEligibility confirmerEligibility;
     private final com.uten.imp.application.port.TaskClaimMutationGuardPort taskClaim;
     private final SalesOrderRevisionService revisions;
+    // ADR-128: 客户应收只经 finance 的共用余额查询取, 本服务不再自写 ar_ap_ledger 汇总。
+    private final PartyOpenBalancePort partyBalances;
+
+    /** 客户信用额度: 迁入客户的旧额度不可信, 按未设置处理(列表与审核页同一表达式)。 */
+    private static final String CLIENT_CREDIT_SQL =
+            "CASE WHEN c.legacy_id IS NULL THEN c.credit ELSE NULL END";
 
     /** 确认请求体（remark 可选；确认即放行计划部可见性，幂等由服务层状态前置保证）。 */
     public record FinanceConfirmRequest(
@@ -170,7 +178,7 @@ public class SalesOrderFinanceConfirmService {
                         WHERE i.order_id = o.id AND i.is_deleted = FALSE),
                        o.total_original, COALESCE(cur.code, ''), COALESCE(cur.name, ''),
                        COALESCE(o.shipment_policy, ''),
-                       COALESCE(ar.bal, 0),
+                       o.client_id,
                        o.finance_rejected, o.finance_rejected_reason, o.finance_rejected_at,
                        (SELECT COUNT(*) FROM sales_order_qty_change_logs ch
                          WHERE ch.order_id = o.id
@@ -187,15 +195,13 @@ public class SalesOrderFinanceConfirmService {
                        + (SELECT COUNT(*) FROM sales_order_revision_logs revision
                           WHERE revision.order_id = o.id
                             AND revision.changed_at > COALESCE(o.finance_confirmed_at, to_timestamp(0))),
-                       o.finance_review_revision
+                       o.finance_review_revision,
+                       """ + CLIENT_CREDIT_SQL + """
+                       , o.currency_id
                 FROM sales_orders o
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN employees e ON e.id = o.seller_id
                 LEFT JOIN currencies cur ON cur.id = o.currency_id
-                LEFT JOIN (SELECT client_id, SUM(amount_balance) AS bal
-                           FROM ar_ap_ledger
-                           WHERE direction = 'AR' AND is_deleted = FALSE AND status = 1
-                           GROUP BY client_id) ar ON ar.client_id = o.client_id
                 WHERE o.status = 1 AND o.is_deleted = FALSE
                   AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE
                   AND o.finance_confirmed = FALSE
@@ -212,6 +218,9 @@ public class SalesOrderFinanceConfirmService {
         pendingQuery.setParameter("off", (p - 1) * sz);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = pendingQuery.getResultList();
+        // 本页用到的客户一次取余额(不 N+1), 每行按自己订单的币种派生「客户应收」。
+        PartyOpenBalances balances = rows.isEmpty() ? PartyOpenBalances.empty()
+                : partyBalances.clients(rows.stream().map(r -> (UUID) r[11]).toList());
         List<SalesOrderFinancePendingDto> out = rows.stream()
                 .map(r -> new SalesOrderFinancePendingDto(
                         (UUID) r[0], (String) r[1],
@@ -223,7 +232,8 @@ public class SalesOrderFinanceConfirmService {
                         (String) r[8],
                         (String) r[9],
                         (String) r[10],
-                        r[11] == null ? BigDecimal.ZERO : (BigDecimal) r[11],
+                        balances.forDocument((UUID) r[11], (UUID) r[18],
+                                configuredCreditLimit((BigDecimal) r[17])),
                         Boolean.TRUE.equals(r[12]),
                         (String) r[13],
                         com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(r[14]),
@@ -231,6 +241,11 @@ public class SalesOrderFinanceConfirmService {
                         ((Number) r[16]).longValue()))
                 .toList();
         return new PageResponse<>(out, p, sz, total, totalPages);
+    }
+
+    /** 信用额度为空或不大于 0 = 未设置, 不判超信用(沿用 V300 口径)。 */
+    private static BigDecimal configuredCreditLimit(BigDecimal credit) {
+        return credit != null && credit.signum() > 0 ? credit : null;
     }
 
     static String pendingChangesExpression() {
@@ -333,9 +348,8 @@ public class SalesOrderFinanceConfirmService {
                        COALESCE(e.full_name, ''), COALESCE(m.full_name, ''),
                        COALESCE(cur.code, ''), COALESCE(cur.name, ''),
                        COALESCE(sm.name, ''),
-                       COALESCE(ar.bal, 0),
-                       CASE WHEN c.legacy_id IS NULL THEN c.credit ELSE NULL END,
-                       c.credit_floor,
+                       """ + CLIENT_CREDIT_SQL + """
+                       , c.credit_floor,
                        COALESCE(fc.full_name, ''), COALESCE(fr.full_name, '')
                 FROM sales_orders o
                 LEFT JOIN clients c ON c.id = o.client_id
@@ -343,10 +357,6 @@ public class SalesOrderFinanceConfirmService {
                 LEFT JOIN employees m ON m.id = o.maker_id
                 LEFT JOIN currencies cur ON cur.id = o.currency_id
                 LEFT JOIN settlement_methods sm ON sm.id = o.settlement_method_id
-                LEFT JOIN (SELECT client_id, SUM(amount_balance) AS bal
-                           FROM ar_ap_ledger
-                           WHERE direction = 'AR' AND is_deleted = FALSE AND status = 1
-                           GROUP BY client_id) ar ON ar.client_id = o.client_id
                 LEFT JOIN employees fc ON fc.id = o.finance_confirmed_by
                 LEFT JOIN employees fr ON fr.id = o.finance_rejected_by
                 WHERE o.id = :id
@@ -418,11 +428,12 @@ public class SalesOrderFinanceConfirmService {
                     (String) r[7],
                     com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(r[8])));
         }
-        BigDecimal outstanding = h[7] == null ? BigDecimal.ZERO : (BigDecimal) h[7];
-        BigDecimal credit = (BigDecimal) h[8];
-        BigDecimal creditFloor = (BigDecimal) h[9];
-        boolean overCredit = credit != null && credit.signum() > 0
-                && outstanding.compareTo(credit) > 0;
+        BigDecimal credit = (BigDecimal) h[7];
+        BigDecimal creditFloor = (BigDecimal) h[8];
+        // ADR-128: 客户应收按本单币种显示; 超信用 = 全币种正式应收账面本币毛额(不扣预收) > 信用额度,
+        // 与出货财审同一口径, 由共用余额视图算一次。
+        var clientBalance = partyBalances.clients(java.util.Collections.singletonList(order.getClientId()))
+                .forDocument(order.getClientId(), order.getCurrencyId(), configuredCreditLimit(credit));
         return new SalesOrderFinanceReviewDto(
                 order.getId(),
                 order.getBillNo(),
@@ -442,17 +453,15 @@ public class SalesOrderFinanceConfirmService {
                 order.getRemark(),
                 lines.size(),
                 order.getTotalOriginal(),
-                outstanding,
-                credit,
+                clientBalance,
                 creditFloor,
-                overCredit,
                 order.isFinanceConfirmed(),
                 order.getFinanceConfirmedAt(),
-                (String) h[10],
+                (String) h[9],
                 order.getFinanceConfirmRemark(),
                 order.isFinanceRejected(),
                 order.getFinanceRejectedReason(),
-                (String) h[11],
+                (String) h[10],
                 order.getFinanceRejectedAt(),
                 lines,
                 qtyChanges,

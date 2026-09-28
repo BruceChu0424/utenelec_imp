@@ -478,8 +478,23 @@ public final class MaterialAnalysisContracts {
              * 本次刷新（POST /preview）因主档/BOM 事实变更而被清空的人工确认路线条数；
              * 只在刷新响应上非零，详情/命令响应恒为 0。前端据此提示
              * 「N 条路线因主档变更需重新确认」，让静默清空可见。
+             * 2026-09-27 起同一次刷新里按货品档案马上重新确认的不计入 (ADR-102), 只数真要人补选的。
              */
             int routeResetCount,
+            /**
+             * 本次请求在服务端重算里按货品档案自动确认的供应方式条数 (按操作组计, ADR-102,
+             * 2026-09-27): 只在做了确认的那次新建/刷新 (POST /preview) 与改路线 (PUT /routes)
+             * 响应上非零, 详情、其他命令与重放恒为 0. 前端据此轻提示「已按货品档案自动确认 N 条
+             * 供应方式」, 不再自己补发 PUT /routes.
+             */
+            int autoConfirmedRouteCount,
+            /**
+             * 这份分析里此刻还能按货品档案自动确认、但还没确认的操作组数 (与自动确认同一判据).
+             * 非零通常是到货/审核等别的单据顺带重算后新冒出来的行, 或上一次打开的人没有路线维护
+             * 权限; 有「刷新分析」与「确认路线」能力的页面据此静默刷新一次即可, 不必自己判断哪些行.
+             * 当前账号没有 CONFIRM_ROUTES 能力 (与自动确认同一道闸) 时恒为 0; 下达预览响应恒为 0.
+             */
+            int pendingAutoConfirmRouteCount,
             Map<UUID, BigDecimal> overproductionDefaults,
             /** 分析编号 WL+YYYYMMDD+6位日流水（V719）；历史夹具行可能为 null。 */
             String analysisNo) {
@@ -499,7 +514,7 @@ public final class MaterialAnalysisContracts {
             this(analysisId, status, version, fingerprint, analysisFingerprint,
                     warehouseId, warehouseIds, analyzedAt, products, flatMaterials,
                     warehouses, supplyActions, allowedActions, fqcReplenishmentOnly,
-                    fqcRecoveryAuthorizationId, planningBlockedReasons, routeResetCount, Map.of(), null);
+                    fqcRecoveryAuthorizationId, planningBlockedReasons, routeResetCount, 0, 0, Map.of(), null);
         }
 
         public AnalysisView(UUID analysisId, String status, long version,
@@ -529,14 +544,14 @@ public final class MaterialAnalysisContracts {
                     fqcRecoveryAuthorizationId, Map.of());
         }
 
-        /** 刷新入口专用：把本次被清空的确认路线数挂到响应上，其余字段不变。 */
-        public AnalysisView withRouteResetCount(int count) {
-            return count == routeResetCount ? this : new AnalysisView(
+        /** 重算入口专用: 把本次被清空 / 被自动确认的路线条数挂到响应上, 其余字段不变. */
+        public AnalysisView withRouteOutcome(int resetCount, int autoConfirmedCount) {
+            return resetCount == routeResetCount && autoConfirmedCount == autoConfirmedRouteCount ? this : new AnalysisView(
                     analysisId, status, version, fingerprint, analysisFingerprint,
                     warehouseId, warehouseIds, analyzedAt, products, flatMaterials,
                     warehouses, supplyActions, allowedActions, fqcReplenishmentOnly,
-                    fqcRecoveryAuthorizationId, planningBlockedReasons, count, overproductionDefaults,
-                    analysisNo);
+                    fqcRecoveryAuthorizationId, planningBlockedReasons, resetCount, autoConfirmedCount,
+                    pendingAutoConfirmRouteCount, overproductionDefaults, analysisNo);
         }
     }
 

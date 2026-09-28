@@ -440,24 +440,23 @@ public class ProductionExecutionWorkbenchService {
     @Transactional(readOnly = true)
     public List<ProductionWorkshopTaskMaterial> workshopTaskMaterials(UUID segmentId) {
         requireVisibleWorkshopTask(segmentId);
+        // producing_segments「谁在给这条需求做料」只认 V736 唯一直送关系
+        // fn_workshop_direct_relationship_allows(同车间、真实父子、自制路线)，不再另写车间与路线条件。
         Query query = em.createNativeQuery("""
                 SELECT facts.demand_id, goods.code, goods.name, color.name, unit.name,
                        facts.supply_route, facts.direct_supply, facts.required_qty, facts.reserved_qty,
                        facts.requested_unissued_qty, facts.requestable_qty, facts.line_side_pending_qty,
                        facts.issued_qty, facts.shortage_qty, facts.direct_received_qty,
                        facts.direct_available_qty, facts.state,
-                       CASE WHEN facts.supply_route = 'MAKE' THEN (
-                           SELECT string_agg(producing.segment_code || '|' || producing.status, '、'
-                                             ORDER BY producing.segment_code)
-                           FROM production_execution_segments producing
-                           JOIN production_execution_segments receiving ON receiving.id = :segmentId
-                           WHERE producing.product_goods_id = facts.goods_id
-                             AND producing.product_color_id IS NOT DISTINCT FROM facts.color_id
-                             AND producing.workshop_department_id = receiving.workshop_department_id
-                             AND producing.id <> receiving.id AND NOT producing.is_deleted
-                             AND producing.status IN ('WAITING','READY','DISPATCHED','IN_PROGRESS','COMPLETED')
-                             AND fn_workshop_direct_responsibility_allows(producing.id, facts.demand_id))
-                       END AS producing_segments
+                       (SELECT string_agg(producing.segment_code || '|' || producing.status, '、'
+                                          ORDER BY producing.segment_code)
+                        FROM production_execution_segments producing
+                        WHERE producing.product_goods_id = facts.goods_id
+                          AND producing.product_color_id IS NOT DISTINCT FROM facts.color_id
+                          AND NOT producing.is_deleted
+                          AND producing.status IN ('WAITING','READY','DISPATCHED','IN_PROGRESS','COMPLETED')
+                          AND fn_workshop_direct_relationship_allows(producing.id, facts.demand_id)
+                       ) AS producing_segments
                 FROM fn_execution_segment_material_facts(:segmentId) facts
                 JOIN goods ON goods.id = facts.goods_id
                 LEFT JOIN colors color ON color.id = facts.color_id

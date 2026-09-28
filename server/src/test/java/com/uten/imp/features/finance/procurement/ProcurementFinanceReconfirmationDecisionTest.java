@@ -101,7 +101,7 @@ class ProcurementFinanceReconfirmationDecisionTest {
                 mock(WorkflowReviewerEligibility.class), projection, actor, mock(TxSessionVars.class),
                 mock(com.uten.imp.features.notice.ChainNoticeService.class),
                         org.mockito.Mockito.mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
-                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
+                        org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS), org.mockito.Mockito.mock(com.uten.imp.application.port.PartyOpenBalancePort.class));
         return new Fixture(service, port, jdbc, projection, orderId, caseId);
     }
 

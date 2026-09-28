@@ -156,6 +156,15 @@ final class MaterialPreparationBudgetReader {
     static String poolKey(UUID warehouse, UUID goods, UUID color, UUID unit, String scope) {
         return warehouse + "[" + scope + "]|" + goods + "|" + Objects.toString(color, "") + "|" + unit;
     }
+
+    /**
+     * 行上下发的共用备料池标识 (preparationPoolKey, 2026-09-27 瘦身): 同一个池同一个值、不同池不同值的
+     * 定长不透明串. 内部池键带着本次全部范围仓 ID, 每个节点重复一遍约 600 多字节; 页面只拿它分组比较、
+     * 从不拆开读, 所以只下发它的摘要. 同样的输入永远得到同样的值, 前后两次响应之间也能直接比较.
+     */
+    static String wireKey(String pool) {
+        return pool == null ? null : CanonicalFingerprint.sha256(List.of("PREPARATION-POOL", pool));
+    }
     private static BigDecimal nonnegative(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value.max(BigDecimal.ZERO);
     }

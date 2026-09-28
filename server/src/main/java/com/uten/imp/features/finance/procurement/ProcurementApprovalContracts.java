@@ -2,6 +2,7 @@ package com.uten.imp.features.finance.procurement;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.uten.imp.common.finance.ExactDecimalText;
+import com.uten.imp.common.finance.PartyOpenBalanceView;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 
 import jakarta.validation.Valid;
@@ -74,7 +75,11 @@ public final class ProcurementApprovalContracts {
             String orderType,
             UUID orderId,
             String billNo,
+            /** 折合本币(提交快照 amount_snapshot)。 */
             BigDecimal amount,
+            /** ADR-128: 订货币种原币金额与币种名, 列表按「币种 金额」显示。 */
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal totalOriginal,
+            String currencyName,
             String supplierName,
             String warehouseName,
             LocalDate expectedDate,
@@ -131,7 +136,8 @@ public final class ProcurementApprovalContracts {
             String remark,
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal totalOriginal,
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal totalLocal,
-            @JsonSerialize(using = ExactDecimalText.class) BigDecimal supplierApBalance,
+            /** ADR-128: 供应商在本单币种下的应付 / 可抵贷项与预付 / 还差多少, 其它币种另列。 */
+            PartyOpenBalanceView supplierBalance,
             int sourceApplicationCount,
             List<QtyChange> qtyChanges,
             List<ReviewLine> items,

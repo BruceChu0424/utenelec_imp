@@ -97,15 +97,18 @@ class SalesShipmentFinanceRateSqlContractTest {
                 "s.getclientid(), true)");
         // V630: 客户货款类别标签退役，放行路径与快照 SQL 都不得再引用它。
         assertThat(source).doesNotContain("salespaymenttype", "sales_payment_type");
+        // ADR-128: 正式应收(毛额, 信用口径)与本单币种可用预收分开算, 只在共用余额查询里写一次;
+        // 出货服务只按本单币种取视图, 不再自写 ar_ap_ledger 汇总。
         assertThat(source).contains(
-                "l.open_item_kind='receivable'",
-                "l.source_doc_type<>'direct_receipt'",
-                "l.open_item_kind='customer_prepayment'",
-                "l.source_doc_type='direct_receipt'",
-                "receipt.receipt_kind='customer_prepayment'",
-                "l.currency_id=:currencyid",
-                "map.entry(\"availableprepaymentoriginal\"",
-                "map.entry(\"availableprepaymentlocal\"");
+                "partybalances .clients(java.util.collections.singletonlist(s.getclientid()))",
+                "map.entry(client_balance, clientbalance)");
+        String shared = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/finance/arap/PartyOpenBalanceQuery.java"),
+                StandardCharsets.UTF_8).replaceAll("\s+", " ");
+        assertThat(shared).contains(
+                "\"AR\", \"client_id\", \"'RECEIVABLE'\", \"'CUSTOMER_PREPAYMENT'\"",
+                "FILTER (WHERE item.open_item_kind IN (%3$s))",
+                "ledger.direction = '%1$s'");
     }
 
     @Test
@@ -183,8 +186,13 @@ class SalesShipmentFinanceRateSqlContractTest {
                 "formal_ar_outstanding_local",
                 "available_prepayment_original",
                 "available_prepayment_local",
-                "snapshotmoney(info, \"outstanding\")",
-                "snapshotmoney(info, \"overfloor\")");
+                // ADR-128: 放行事件冻结的余额就是财审页那一份共用视图, 不再另取一遍。
+                "partyopenbalanceview balance = (partyopenbalanceview) info.get(client_balance)",
+                ".setparameter(\"formaloutstanding\", balance.openbooklocal())",
+                ".setparameter(\"overfloor\", balance.overlimitlocal())",
+                ".setparameter(\"availableprepaymentoriginal\", balance.creditoriginal())");
+        assertThat(source).contains(".fordocument(s.getclientid(), s.getcurrencyid(), creditfloor)")
+                .doesNotContain("from ar_ap_ledger");
         assertThat(source.indexOf("appendfinancereleaseevent( s, \"released\""))
                 .isLessThan(source.indexOf("chainnotice.notifyshipmentpendingpick"));
         assertThat(source.indexOf("appendfinancereleaseevent( s, \"revoked\""))

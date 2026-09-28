@@ -138,8 +138,9 @@ class _ProductionDailyReportDetailPageState
       bumpListRefresh(ref, productionExecutionRefreshKey);
 
   Future<void> _approve() => _doAction(
-    '请核对本次实际产量、需求份与公共备货份以及产出去向。'
-        '需求内直送部分交下工序；送仓部分生成仓库到货登记任务，'
+    '请核对本次实际产量与产出去向：\n'
+        '${_routeLines()}'
+        '转给上层工单的部分交下工序；送入仓库的部分生成仓库到货登记任务，'
         '仓库登记成品仓与库位并送品质部检查。'
         '只有品质合格且仓库实际接收的数量才增加可用库存。确认审核？',
     (repo) => repo.approve(
@@ -156,6 +157,24 @@ class _ProductionDailyReportDetailPageState
     '已审核',
     reviewerResponsibility: true,
   );
+
+  /// 审核确认里逐批列出去向(直送给哪个工单多少；送入仓库多少及原因)，最多列 6 批。
+  String _routeLines() {
+    try {
+      final groups = productionDailyReportInputGroups(
+        _detail?.items ?? const [],
+      );
+      const limit = 6;
+      final lines = [
+        for (final group in groups.take(limit)) '· ${group.routeSummary}',
+        if (groups.length > limit) '· 等共 ${groups.length} 批，详见明细表',
+      ];
+      return lines.isEmpty ? '' : '${lines.join('\n')}\n';
+    } on FormatException {
+      return '';
+    }
+  }
+
   Future<void> _reverse() =>
       _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
 
@@ -573,7 +592,8 @@ class _ProductionDailyReportDetailPageState
                 width: 140,
                 value: (it) => it.planNo,
               ),
-              // V584/V595：产出去向与直送接收方——同车间直送的行在这里看得到投给了谁。
+              // V584/V595/V736：产出去向与说明——一行报工分给几个上层工单就有几条转送明细，
+              // 送入仓库的明细写明为什么没转(服务端给的原因)。
               MasterColumnDef(
                 key: 'destination',
                 label: '产出去向',
@@ -581,12 +601,12 @@ class _ProductionDailyReportDetailPageState
                 value: (it) => it.isDirectTransfer ? '转下一道工序' : '送入仓库',
               ),
               MasterColumnDef(
-                key: 'directTransfer',
-                label: '转给工单',
-                width: 240,
+                key: 'routeNote',
+                label: '去向说明',
+                width: 300,
                 value: (it) => it.isDirectTransfer
-                    ? (it.directTransferTargetLabel ?? '—')
-                    : '—',
+                    ? '转给 ${it.directTransferTargetLabel ?? '上层工单'}'
+                    : (it.outputRouteReasonText ?? '—'),
               ),
             ],
             items: items,

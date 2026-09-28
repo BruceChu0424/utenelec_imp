@@ -50,7 +50,7 @@ class ProcurementApprovalRevisionSnapshotPostgresTest {
                     mock(SecurityContextCurrentUser.class), mock(TxSessionVars.class),
                     mock(com.uten.imp.features.notice.ChainNoticeService.class),
                     mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
-                    mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class));
+                    mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class), org.mockito.Mockito.mock(com.uten.imp.application.port.PartyOpenBalancePort.class));
             UUID dollars = UUID.randomUUID(), yuan = UUID.randomUUID();
             jdbc.update("INSERT INTO currencies VALUES (?, ?)", dollars, "美元");
             jdbc.update("INSERT INTO currencies VALUES (?, ?)", yuan, "人民币");

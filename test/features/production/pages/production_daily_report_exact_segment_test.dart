@@ -17,8 +17,10 @@ import 'package:uten_imp/features/department/models/workforce_overview.dart';
 import 'package:uten_imp/features/department/repositories/department_repository.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
+import 'package:uten_imp/features/production/models/production_direct_transfer_candidate.dart';
 import 'package:uten_imp/features/production/pages/production_daily_report_edit_page.dart';
 import 'package:uten_imp/features/production/providers/production_department_provider.dart';
+import 'package:uten_imp/features/production/repositories/production_material_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_actual_output_supplement_repository.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -31,7 +33,6 @@ import 'package:uten_imp/shared/attachments/attachment_service.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/features/production/widgets/production_daily_grid_columns.dart';
-import 'package:uten_imp/features/production/models/production_direct_transfer_candidate.dart';
 
 void main() {
   for (final attachmentMode in ['none', 'upload', 'retry']) {
@@ -218,7 +219,6 @@ void main() {
               'unitRate': 1,
               'qty': i == 0 ? 130 : (i == 1 ? 5 : 2),
               'remark': '明细-$i',
-              'destination': 'WAREHOUSE',
               if (i == 2) 'fqcRecoveryAuthorizationId': 'recovery-1',
             },
         ],
@@ -351,7 +351,7 @@ void main() {
           find.byType(UtenEditableGrid<DailyGridRow>),
         );
         final products = grid.controller.rows
-            .where((row) => !row.isMaterialRow)
+            .where((row) => !row.isSubRow)
             .toList();
         expect(products.map((row) => row.qty.text), ['130', '5', '2']);
         expect(products.map((row) => row.planId), [
@@ -499,9 +499,7 @@ void main() {
       final grid = tester.widget<UtenEditableGrid<DailyGridRow>>(
         find.byType(UtenEditableGrid<DailyGridRow>),
       );
-      final product = grid.controller.rows.firstWhere(
-        (row) => !row.isMaterialRow,
-      );
+      final product = grid.controller.rows.firstWhere((row) => !row.isSubRow);
       product.qty.text = '130';
       final material = grid.controller.rows.firstWhere(
         (row) => row.materialEditable,
@@ -551,11 +549,26 @@ void main() {
       Map<String, dynamic>? saved;
       final api = _api(
         sourceOverrides: {
+          if (mode == 'workshop') 'planId': 'plan-1',
           'allowActualOverproduction': mode != 'legacy',
           'maxReportQty': mode == 'after-plan' ? 0 : 10,
           if (mode == 'recovery') 'fqcRecoveryAuthorizationId': 'recovery-1',
         },
         onCreate: (payload) => saved = payload,
+        responseOverride: mode == 'workshop'
+            ? (request) => request.path.endsWith('/direct-transfers/candidates')
+                  ? const {
+                      'candidates': [
+                        {
+                          'demandId': 'target-demand',
+                          'executionSegmentId': 'parent-task',
+                          'remainingQty': 10,
+                        },
+                      ],
+                      'receiverLimit': 30,
+                    }
+                  : null
+            : null,
       );
       await tester.pumpWidget(
         ProviderScope(
@@ -594,18 +607,10 @@ void main() {
       final grid = tester.widget<UtenEditableGrid<DailyGridRow>>(
         find.byType(UtenEditableGrid<DailyGridRow>),
       );
-      final row = grid.controller.rows.single;
+      final row = grid.controller.rows.firstWhere((row) => !row.isSubRow);
       if (mode == 'after-plan') expect(row.qty.text, isEmpty);
       final actualQty = mode == 'after-plan' ? 1 : 11;
       row.qty.text = '$actualQty';
-      if (mode == 'workshop') {
-        row.destination = 'WORKSHOP';
-        row.directTransfer = const ProductionDirectTransferCandidate(
-          demandId: 'target-demand',
-          executionSegmentId: 'parent-task',
-          remainingQty: 10,
-        );
-      }
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
       await tester.pumpAndSettle();
@@ -623,8 +628,13 @@ void main() {
         expect(item['salesOrderItemId'], 'order-item-1');
         expect(item.containsKey('publicOutput'), isFalse);
         if (mode == 'workshop') {
-          expect(item['destination'], 'WORKSHOP');
-          expect(item['directTransferDemandId'], 'target-demand');
+          // V736：系统按先急后缓先分满能收的上层工单(还差 10)，余下的送入仓库。
+          expect(item['allocations'], [
+            {'directTransferDemandId': 'target-demand', 'qty': 10.0},
+            {'directTransferDemandId': null, 'qty': 1.0},
+          ]);
+        } else {
+          expect(item.containsKey('allocations'), isFalse);
         }
       }
       expect(tester.takeException(), isNull);
@@ -925,12 +935,10 @@ void main() {
         var grid = tester.widget<UtenEditableGrid<DailyGridRow>>(
           find.byType(UtenEditableGrid<DailyGridRow>),
         );
-        final first = grid.controller.rows.firstWhere(
-          (row) => !row.isMaterialRow,
-        );
+        final first = grid.controller.rows.firstWhere((row) => !row.isSubRow);
         if (scenario == 'split-output') {
           expect(
-            grid.controller.rows.where((row) => !row.isMaterialRow),
+            grid.controller.rows.where((row) => !row.isSubRow),
             hasLength(1),
           );
           expect(double.parse(first.qty.text), 5);
@@ -938,7 +946,7 @@ void main() {
         }
         if (proofScenario) {
           expect(
-            grid.controller.rows.where((row) => !row.isMaterialRow),
+            grid.controller.rows.where((row) => !row.isSubRow),
             hasLength(2),
           );
           expect(
@@ -1111,6 +1119,189 @@ void main() {
   // 2026-09-27 用户口径「表头右键菜单全站统一都要有」——生产车间提交报表
   // （本页）是点名缺菜单的例子。默认翻转（UtenEditableGrid.showColumnSettings
   // 默认 true）后：右击表头弹固定/移动/隐藏菜单；必填列（完工申报量）隐藏锁定。
+  testWidgets('去向分配：先急后缓逐个分满，改数量后余量下移，送入仓库只留一条，提交体逐条带上', (tester) async {
+    Map<String, dynamic>? saved;
+    final grid = await _pumpAllocationPage(
+      tester,
+      onCreate: (payload) => saved = payload,
+    );
+    List<(String?, String, bool)> allocations() => [
+      for (final row in grid.rows)
+        if (row.isAllocationRow)
+          (
+            row.allocationDemandId,
+            row.allocationQty.text,
+            row.allocationAutofilled.value,
+          ),
+    ];
+    final product = grid.rows.firstWhere((row) => !row.isSubRow);
+    expect(product.qty.text, '10');
+    // 先急后缓逐个分满：A 还差 6、B 还差 3，剩下 1 送入仓库；都是系统建议(黄框)。
+    expect(allocations(), [
+      ('A', '6', true),
+      ('B', '3', true),
+      (null, '1', true),
+    ]);
+    expect(find.text('转下一道工序 2 个工单 9 · 送入仓库 1'), findsOneWidget);
+
+    // 把给 A 的改成 2：它和上面的条目算工人定的，下面按余量重排——B 仍 3，送入仓库 5。
+    final first = product.allocationRows.first;
+    final qtyField = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField && widget.controller == first.allocationQty,
+    );
+    await tester.enterText(qtyField, '2');
+    await tester.pumpAndSettle();
+    expect(allocations(), [
+      ('A', '2', false),
+      ('B', '3', true),
+      (null, '5', true),
+    ]);
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+
+    // 完工申报量改小到 4：工人定的 A=2 保留，B 只剩 2，没有送入仓库。
+    product.qty.text = '4';
+    await tester.pumpAndSettle();
+    expect(allocations(), [('A', '2', false), ('B', '2', true)]);
+    // 改回 10：余量重新排出来，送入仓库只有一条。
+    product.qty.text = '10';
+    await tester.pumpAndSettle();
+    expect(allocations(), [
+      ('A', '2', false),
+      ('B', '3', true),
+      (null, '5', true),
+    ]);
+
+    // 把 B 那条改成送入仓库：与下面的送入仓库合并成一条。
+    final second = product.allocationRows[1];
+    await tester.tap(
+      find.byKey(
+        ValueKey('daily-allocation-destination-${identityHashCode(second)}'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('ZX-C · 上层工单 ZX-C 在二车间，跨车间必须送入仓库'), findsOneWidget);
+    await tester.tap(find.text('送入仓库').last);
+    await tester.pumpAndSettle();
+    expect(allocations(), [('A', '2', false), (null, '8', false)]);
+
+    // 逐键改完工申报量会经过 1：工人定的送入仓库那条被压到 0 只是先藏起来，改回 10 原样回来。
+    final warehouse = product.allocationRows[1];
+    expect(
+      warehouse.allocationRequested,
+      3,
+      reason: '工人要的是从 B 改过来的 3；顺带接下的余量 5 每次重排重新分，不算工人要的',
+    );
+    product.qty.text = '1';
+    await tester.pumpAndSettle();
+    expect(allocations(), [('A', '1', false)]);
+    expect(product.allocationRows, contains(warehouse));
+    expect(outputAllocationBody(product), [
+      {'directTransferDemandId': 'A', 'qty': 1.0},
+    ], reason: '藏起来的条目不提交');
+    product.qty.text = '10';
+    await tester.pumpAndSettle();
+    expect(allocations(), [('A', '2', false), (null, '8', false)]);
+    expect(product.allocationRows[1], same(warehouse));
+
+    await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+    await tester.pumpAndSettle();
+    expect(saved, isNotNull);
+    final item = (saved!['items'] as List).single as Map;
+    expect(item['qty'], 10);
+    expect(item['allocations'], [
+      {'directTransferDemandId': 'A', 'qty': 2.0},
+      {'directTransferDemandId': null, 'qty': 8.0},
+    ]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('去向分配：粘贴的行与改勾选都按当前余量重排', (tester) async {
+    final grid = await _pumpAllocationPage(tester);
+    List<(String?, String, bool)> allocationsOf(DailyGridRow product) => [
+      for (final row in grid.rows)
+        if (row.allocationParent == product)
+          (
+            row.allocationDemandId,
+            row.allocationQty.text,
+            row.allocationAutofilled.value,
+          ),
+    ];
+    final original = grid.rows.firstWhere((row) => !row.isSubRow);
+    expect(allocationsOf(original), [
+      ('A', '6', true),
+      ('B', '3', true),
+      (null, '1', true),
+    ]);
+
+    grid.copySelected((row) => row.clone());
+    grid.paste((row) => row.clone());
+    await tester.pumpAndSettle();
+    final pasted = grid.rows.where((row) => !row.isSubRow).last;
+    expect(pasted, isNot(same(original)));
+    // 同一来源的 A、B 已被勾选的原行分满：粘贴行(未勾选)只能送入仓库，但要有去向，不能空着。
+    expect(allocationsOf(pasted), [(null, '10', true)]);
+
+    // 改勾选：勾选行先占上层工单的「还差多少」。
+    grid.setSelected([original], false);
+    grid.setSelected([pasted], true);
+    await tester.pumpAndSettle();
+    expect(allocationsOf(pasted), [
+      ('A', '6', true),
+      ('B', '3', true),
+      (null, '1', true),
+    ]);
+    expect(allocationsOf(original), [(null, '10', true)]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('去向分配：转给工单候选读不到时自动重读一次，仍读不到就不让提交', (tester) async {
+    Map<String, dynamic>? saved;
+    late _FlakyCandidatesRepository repository;
+    final grid = await _pumpAllocationPage(
+      tester,
+      onCreate: (payload) => saved = payload,
+      materialRepository: (api) => repository = _FlakyCandidatesRepository(api),
+    );
+    final product = grid.rows.firstWhere((row) => !row.isSubRow);
+    expect(product.directTransferLoadFailed, isTrue);
+    expect(find.text('转给工单候选读取失败，请刷新后重试'), findsOneWidget);
+    final save = find.byKey(const ValueKey('uten-edit-save'));
+
+    final before = repository.calls;
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(repository.calls, before + 1, reason: '提交前自动重读一次');
+    expect(find.textContaining('第 1 行：转给工单候选读取失败，请刷新后重试'), findsOneWidget);
+    expect(saved, isNull, reason: '读不到候选不能当成整行送入仓库提交');
+
+    // 重读成功：去向按先急后缓重新分配，先让人核对，这一次不提交。
+    repository.failing = false;
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('转给工单候选已重新读到'), findsOneWidget);
+    expect(saved, isNull);
+    expect(product.directTransferLoadFailed, isFalse);
+    expect(
+      product.allocationRows.map(
+        (row) => (row.allocationDemandId, row.allocationQty.text),
+      ),
+      [('A', '6'), ('B', '3'), (null, '1')],
+    );
+
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(saved, isNotNull);
+    final item = (saved!['items'] as List).single as Map;
+    expect(item['allocations'], [
+      {'directTransferDemandId': 'A', 'qty': 6.0},
+      {'directTransferDemandId': 'B', 'qty': 3.0},
+      {'directTransferDemandId': null, 'qty': 1.0},
+    ]);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('报工表明头右键菜单：弹菜单、隐藏列、移动换位、必填列锁定', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -1482,6 +1673,117 @@ class _ReportSaveAttachments extends AttachmentService {
       storageKey: 'report-file',
       originalName: fileName,
       sizeBytes: bytes.length,
+    );
+  }
+}
+
+/// 去向分配页面测试的共用装配：新建日报带一个来源(完工申报量 10)，
+/// 可送的上层工单 A 还差 6、B 还差 3，C 在别的车间不能收。
+Future<UtenEditableGridController<DailyGridRow>> _pumpAllocationPage(
+  WidgetTester tester, {
+  void Function(Map<String, dynamic>)? onCreate,
+  ProductionMaterialRepository Function(ApiClient api)? materialRepository,
+}) async {
+  await tester.binding.setSurfaceSize(const Size(1800, 1000));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
+  final api = _api(
+    sourceOverrides: const {'planId': 'plan-1'},
+    onCreate: onCreate,
+    responseOverride: (request) =>
+        request.path.endsWith('/direct-transfers/candidates')
+        ? const {
+            'candidates': [
+              {
+                'demandId': 'A',
+                'executionSegmentId': 'segment-a',
+                'executionSegmentCode': 'ZX-A',
+                'receivingGoodsName': '成品甲',
+                'remainingQty': 6,
+              },
+              {
+                'demandId': 'B',
+                'executionSegmentId': 'segment-b',
+                'executionSegmentCode': 'ZX-B',
+                'receivingGoodsName': '成品乙',
+                'remainingQty': 3,
+              },
+            ],
+            'blockedTargets': [
+              {
+                'demandId': 'C',
+                'executionSegmentCode': 'ZX-C',
+                'reasonCode': 'DIFFERENT_WORKSHOP',
+                'reason': '上层工单 ZX-C 在二车间，跨车间必须送入仓库',
+              },
+            ],
+            'receiverLimit': 30,
+          }
+        : null,
+  );
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        apiClientProvider.overrideWithValue(api),
+        if (materialRepository != null)
+          productionMaterialRepositoryProvider.overrideWithValue(
+            materialRepository(api),
+          ),
+        departmentRepositoryProvider.overrideWithValue(
+          _FakeDepartmentRepository(),
+        ),
+        masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+        productionDailyReportRepositoryProvider.overrideWithValue(
+          ProductionDailyReportRepository(api),
+        ),
+        employeeRepositoryProvider.overrideWithValue(_FakeEmployeeRepository()),
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.productionDailyReportCreate,
+        }),
+      ],
+      child: const MaterialApp(
+        home: Column(
+          children: [
+            AppNotificationHost(),
+            Expanded(
+              child: ProductionDailyReportEditPage(
+                initialExecutionSegmentId: 'segment-1',
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return tester
+      .widget<UtenEditableGrid<DailyGridRow>>(
+        find.byType(UtenEditableGrid<DailyGridRow>),
+      )
+      .controller;
+}
+
+/// 转给工单候选接口：[failing] 为真时读取失败(网络或服务端故障)，否则照常读。
+class _FlakyCandidatesRepository extends ProductionMaterialRepository {
+  _FlakyCandidatesRepository(super.api);
+
+  bool failing = true;
+  int calls = 0;
+
+  @override
+  Future<DirectTransferCandidatesResult> directTransferCandidates({
+    required String executionSegmentId,
+    required String goodsId,
+    String? colorId,
+  }) async {
+    calls++;
+    if (failing) throw StateError('候选接口暂时不可用');
+    return super.directTransferCandidates(
+      executionSegmentId: executionSegmentId,
+      goodsId: goodsId,
+      colorId: colorId,
     );
   }
 }

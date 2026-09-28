@@ -1838,16 +1838,10 @@ abstract class _MaterialAnalysisProductTasksState
 
   /// 「层级 N」徽章：与路线角标同款小胶囊，颜色取层级色板（与整卡阶梯
   /// 缩进、状态栏底色共用同一色板，三处冗余表达层级）。
-  Widget _factChip(
-    ThemeData theme,
-    IconData icon,
-    String label, {
-    double? height,
-  }) => Container(
+  Widget _factChip(ThemeData theme, IconData icon, String label) => Container(
     constraints: const BoxConstraints(maxWidth: 280),
-    // 指定 height（如顶部与「主仓库」字段等高）时内容垂直居中。
-    height: height,
-    alignment: height == null ? null : Alignment.center,
+    // 顶部与「主仓库」字段同一行按行高拉伸时 (见 _analysisHeader)，内层 Row 在拉伸
+    // 后的高度里默认垂直居中，不另套 Align (Align 会把宽度撑满)。
     padding: const EdgeInsets.symmetric(
       horizontal: UtenSpacing.s8,
       vertical: UtenSpacing.s8,

@@ -163,8 +163,8 @@ Future<void> _pumpAnalysis(
           '/production/material-analyses/analysis-child' => analysis,
           '/production/material-analyses/preview' => analysis,
           '/production/material-analyses/last-routes' => <String, dynamic>{},
-          // 2026-09-25 确认路线退役：进页自动确认会打这条通道——回写确认，
-          // 并保持同一棵树（否则回包把树换掉，行会凭空消失）。
+          // 人工改供应方式走这条通道 (2026-09-27 起自动确认在服务端，页面不再发)
+          // ——回写确认，并保持同一棵树(否则回包把树换掉，行会凭空消失)。
           '/production/material-analyses/analysis-child/routes' =>
             _confirmRoutes(analysis, request),
           _ => <dynamic>[],

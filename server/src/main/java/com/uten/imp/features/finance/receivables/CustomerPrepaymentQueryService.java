@@ -85,7 +85,7 @@ public class CustomerPrepaymentQueryService {
         @SuppressWarnings("unchecked")
         List<Object[]> orders = em.createNativeQuery("""
                 SELECT sales_order.id,sales_order.bill_no,sales_order.client_id,sales_order.currency_id,
-                       currency.code,sales_order.total_original,sales_order.total_local
+                       currency.code,sales_order.total_original,sales_order.total_local,currency.name
                 FROM sales_orders sales_order
                 LEFT JOIN currencies currency ON currency.id=sales_order.currency_id
                 WHERE sales_order.id=:id AND COALESCE(sales_order.is_deleted,FALSE)=FALSE
@@ -184,6 +184,7 @@ public class CustomerPrepaymentQueryService {
 
         return new SalesOrderMoneySummary((UUID) order[0], Objects.toString(order[1], null),
                 (UUID) order[2], (UUID) order[3], Objects.toString(order[4], null),
+                Objects.toString(order[7], null),
                 money(orderOriginal), money(orderLocal), money(formalOriginal), money(formalLocal),
                 hasUnallocated ? null : money(cashReceivedOriginal), hasUnallocated ? null : money(cashReceivedLocal), money(writeOffOriginal), money(writeOffLocal),
                 money(prepaymentReceivedOriginal), money(prepaymentReceivedLocal),

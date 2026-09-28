@@ -6,6 +6,7 @@ import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../features/finance/models/customer_prepayment.dart';
 import '../formatters/exact_decimal.dart';
+import '../formatters/money_display.dart';
 import '../../features/finance/repositories/customer_prepayment_repository.dart';
 import '../auth/permissions.dart';
 
@@ -247,12 +248,18 @@ class _SalesOrderMoneySummaryCardState
               children: [
                 SizedBox(
                   width: width,
-                  child: _metric(theme, '订单总额', summary.orderTotalOriginal),
+                  child: _metric(
+                    theme,
+                    summary,
+                    '订单总额',
+                    summary.orderTotalOriginal,
+                  ),
                 ),
                 SizedBox(
                   width: width,
                   child: _metric(
                     theme,
+                    summary,
                     words?.moneySummaryCustomerPaid ?? '客户已付',
                     summary.cashReceivedOriginal,
                     emphasis: true,
@@ -270,11 +277,13 @@ class _SalesOrderMoneySummaryCardState
             children: [
               _metric(
                 theme,
+                summary,
                 words?.moneySummaryReturned ?? '退货金额',
                 summary.returnCreditOriginal,
               ),
               _metric(
                 theme,
+                summary,
                 words?.moneySummaryNetReceivable ?? '当前还需收款',
                 summary.netReceivableOriginal,
                 emphasis: true,
@@ -282,6 +291,7 @@ class _SalesOrderMoneySummaryCardState
               if (hasPendingBalance)
                 _metric(
                   theme,
+                  summary,
                   words?.moneySummaryPendingBalance ?? '客户待处理余额',
                   summary.customerPendingBalanceOriginal,
                   emphasis: true,
@@ -333,6 +343,7 @@ class _SalesOrderMoneySummaryCardState
                                   width: width,
                                   child: _metric(
                                     theme,
+                                    summary,
                                     metric.$1,
                                     metric.$2,
                                     emphasis: metric.$3,
@@ -372,8 +383,10 @@ class _SalesOrderMoneySummaryCardState
     );
   }
 
+  /// 一格资金指标：格内按「币种 金额」显示(ADR-128，2026-09-27 起不再只显示数值)。
   Widget _metric(
     ThemeData theme,
+    SalesOrderMoneySummary summary,
     String label,
     String? value, {
     bool emphasis = false,
@@ -397,7 +410,12 @@ class _SalesOrderMoneySummaryCardState
         ),
         const SizedBox(height: UtenSpacing.s4),
         Text(
-          financeExactMoneyDisplay(value),
+          financeMoneyWithCurrency(
+            value,
+            currencyName: summary.currencyName,
+            currencyCode: summary.currencyCode,
+            fallback: '订单币种',
+          ),
           style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w700,
             fontFeatures: const [FontFeature.tabularFigures()],

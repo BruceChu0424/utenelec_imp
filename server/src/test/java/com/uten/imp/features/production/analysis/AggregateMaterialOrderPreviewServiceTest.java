@@ -53,7 +53,7 @@ class AggregateMaterialOrderPreviewServiceTest {
     }
     private static AnalysisView view(List<ProductView> products,List<MaterialView> materials,List<SupplyActionView> actions) {
         return new AnalysisView(ANALYSIS,"PARTIALLY_PLANNED",13,FINGERPRINT,FINGERPRINT,WAREHOUSE,List.of(WAREHOUSE),null,
-                products,materials,List.of(),actions,List.of(),false,null,Map.of(),0,Map.of(GOODS,qty("0.1")),null);
+                products,materials,List.of(),actions,List.of(),false,null,Map.of(),0,0,0,Map.of(GOODS,qty("0.1")),null);
     }
     private static GroupInput group(List<MaterialView> materials,String quantity,boolean extra) {
         return new GroupInput("material-group",materials.stream().map(MaterialView::materialLineId).toList(),"MAKE",qty(quantity),extra,
@@ -238,7 +238,7 @@ class AggregateMaterialOrderPreviewServiceTest {
                 BigDecimal.ZERO,false,qty("1"),qty("1"),List.of(targetId),true));
         AnalysisView current=new AnalysisView(ANALYSIS,"PARTIALLY_PLANNED",13,FINGERPRINT,FINGERPRINT,WAREHOUSE,List.of(WAREHOUSE),null,
                 List.of(),List.of(original,target),List.of(),List.of(),List.of(),false,null,
-                Map.of(originalItem,"原销售来源已停止"),0,Map.of(GOODS,qty("0.1")),null);
+                Map.of(originalItem,"原销售来源已停止"),0,0,0,Map.of(GOODS,qty("0.1")),null);
         assertThatThrownBy(()->service().resolve(ANALYSIS,request(List.of(group(List.of(original),"1",false))),current))
                 .isInstanceOf(ApiException.class).hasMessageContaining("原销售来源已停止");
     }

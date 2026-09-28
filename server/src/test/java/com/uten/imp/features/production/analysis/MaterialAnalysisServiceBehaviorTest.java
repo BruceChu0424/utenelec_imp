@@ -1235,7 +1235,7 @@ class MaterialAnalysisServiceBehaviorTest {
         Query custodyRows = query(Collections.singletonList(new Object[]{UUID.randomUUID(),ownerMaterialId,
                 UUID.randomUUID(),"owned-child",UUID.randomUUID(),null,UUID.randomUUID(),UUID.randomUUID(),bd("4")}));
         when(em.createNativeQuery(anyString())).thenAnswer(call ->
-                call.getArgument(0,String.class).contains("FROM subcontract_component_stock_handoffs")
+                call.getArgument(0,String.class).contains("custody.child_material_id=child.id")
                         ? custodyRows : exactRows);
         MaterialAnalysisService service = service(
                 em, mock(ProductionDocumentAccessPolicy.class));

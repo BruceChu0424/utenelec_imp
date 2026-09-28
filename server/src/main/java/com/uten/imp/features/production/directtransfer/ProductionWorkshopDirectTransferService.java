@@ -2,6 +2,7 @@ package com.uten.imp.features.production.directtransfer;
 
 import com.uten.imp.application.port.LineSideWarehousePort;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.dailyreport.ProductionDailyReport;
@@ -21,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -51,9 +53,10 @@ import java.util.UUID;
  * V595 起线边仓由系统按「车间 × 收料主仓」自动配置，不再要求手工到仓库资料里建。
  *
  * <p>权限：整条链由 {@code production_direct_transfer:approve} 一个码显式授权(V585)，
- * 不借用品质部与仓库的码；范围由 {@link ProductionWorkshopMembership} 逐段判定，
- * 更强的不变量(两段与线边仓同车间、同主仓、同货品同颜色、不超收料需求量)
- * 由 V584 的行级守卫在数据库层兜底。
+ * 不借用品质部与仓库的码；范围由 {@link ProductionWorkshopMembership} 逐段判定。
+ * 能不能送(同车间、真实父子关系、路线、接收状态、数量)只有一份规则：
+ * 库函数 fn_workshop_direct_targets / fn_assert_workshop_direct_target(V736, ADR-127)，
+ * 候选、审核与数据库守卫都调用它；线边仓同车间同主仓等身份不变量仍由 V584 行级守卫兜底。
  */
 @Service
 @RequiredArgsConstructor
@@ -69,7 +72,7 @@ public class ProductionWorkshopDirectTransferService {
     private final LineSideWarehousePort lineSideWarehouses;
     private final ChainNoticeService chainNotices;
 
-    /** 报工页「转下一道工序」下拉的候选：同车间、同货品同颜色、还缺料的上层工单。 */
+    /** 报工页「转下一道工序」下拉的候选：可送的上层工单(同车间、真实父子关系、接收中、还缺料)。 */
     public record Candidate(
             UUID demandId,
             UUID executionSegmentId,
@@ -91,90 +94,76 @@ public class ProductionWorkshopDirectTransferService {
             String receivingGoodsName) {
     }
 
-    /**
-     * 候选列表 + 上次报工的记忆(V595)。
-     *
-     * <p>{@code lastDestination} / {@code lastReceivingGoodsId}：本车间上一次报这个货品时
-     * 选的去向与投给的父件产品。报工页据此预填并标黄提醒核对——车间的去向大多数时候不变，
-     * 但每次都要人重新选一遍。学习查询直接看历史报工行，不另起记忆表。
-     */
-    public record CandidateListing(
-            List<Candidate> candidates,
-            String lastDestination,
-            UUID lastReceivingGoodsId,
-            String lastReceivingGoodsCode,
-            String lastReceivingGoodsName) {
+    /** 结构上是它的上层、但现在不能收的工单(报工页下拉里置灰并用红字写明原因)。 */
+    public record BlockedTarget(
+            UUID demandId,
+            UUID executionSegmentId,
+            String executionSegmentCode,
+            String planNo,
+            UUID receivingGoodsId,
+            String receivingGoodsCode,
+            String receivingGoodsName,
+            String reasonCode,
+            String reason) {
     }
 
     /**
-     * 列出这条报工行可以投给谁。
+     * 候选列表 + 不能收的上层工单 + 不可转原因(V736/ADR-127)。
      *
-     * <p>只列同车间的段：跨车间必须走仓库(数据库守卫也会拒)。等待/齐套/已派工的上层工单，
-     * 以及**持续生产中**(V595)的上层工单都可以收；普通已开工的段不列——它的料已经领齐，
-     * 投过去挂不上，只会变成线边仓的呆料。「还差多少」按基础数量计算，普通仓供给与直送相加，
-     * 直送已形成的线边预留只计一次，并扣除同一拆批谱系中其他工单已占用的直送料。
-     * 父件从仓库领过的部分不再重复直送。线边仓缺失不再是空候选的原因(V595 起自动配置)。
+     * <p>{@code candidates}：可送的上层工单，已按「先急后缓」排好(接收计划所属分析行的优先级、交期…)；
+     * 报工页按这个次序把一行产量逐个分给它们，剩下的送入仓库。
+     *
+     * <p>{@code blockedTargets}：结构上是上层、但现在不能收的工单(跨车间、委外件、已备齐、停产等)，
+     * 同一次序；报工页在下拉里置灰并用红字写明原因。与本工单没有父子关系的同货品工单不列出。
+     *
+     * <p>{@code unavailableReasonCode} / {@code unavailableReason}：一个可送的上层工单都没有时，
+     * 最接近可送的那条原因(fn_workshop_direct_targets 的 reason_rank 最小者)；有候选时为空。
+     *
+     * <p>{@code receiverLimit}：一行报工最多同时转给几个上层工单(服务端同一个常量)。
      */
-    private static final String CANDIDATE_SQL = """
-                        WITH candidate_scope AS MATERIALIZED (
-                        SELECT demand.id AS demand_id, receiving.id AS receiving_id, receiving.segment_code,
-                               receiving.status, receiving.continuous_supply,
-                               receiving.plan_id, plan.bill_no,
-                               demand.goods_id, goods.code AS goods_code, goods.name AS goods_name,
-                               color.name AS color_name, unit.name AS unit_name,
-                               demand.required_qty,
-                               receiving.product_goods_id,
-                               receiving_product.code AS product_code, receiving_product.name AS product_name,
-                               producing.id AS producing_id
-                        FROM production_execution_segments producing
-                        JOIN production_plans producing_plan ON producing_plan.id=producing.plan_id AND NOT producing_plan.is_deleted
-                        JOIN production_execution_segments receiving
-                          ON receiving.workshop_department_id = producing.workshop_department_id
-                         AND receiving.is_deleted = FALSE
-                         AND receiving.id <> producing.id
-                         AND (receiving.status IN ('WAITING', 'READY', 'DISPATCHED')
-                              OR (receiving.status = 'IN_PROGRESS'
-                                  AND receiving.continuous_supply))
-                        JOIN production_material_demands demand
-                          ON demand.execution_segment_id = receiving.id
-                         AND demand.is_deleted = FALSE
-                         AND demand.status NOT IN ('RELEASED', 'REVERSED', 'FULFILLED')
-                         AND demand.goods_id = :goodsId
-                         AND demand.color_id IS NOT DISTINCT FROM CAST(:colorId AS UUID)
-                        JOIN production_plans plan
-                          ON plan.id = receiving.plan_id AND plan.is_deleted = FALSE
-                         AND plan.status = 1 AND plan.is_closed = FALSE
-                         AND plan.is_canceled = FALSE AND plan.is_stopped = FALSE
-                        JOIN production_planning_packages package
-                          ON package.id = receiving.package_id AND package.plan_id = plan.id
-                         AND package.status = 'CONFIRMED' AND package.is_deleted = FALSE
+    public record CandidateListing(
+            List<Candidate> candidates,
+            List<BlockedTarget> blockedTargets,
+            String unavailableReasonCode,
+            String unavailableReason,
+            int receiverLimit) {
+    }
+
+    /**
+     * 列候选只读库里唯一的判定入口 fn_workshop_direct_targets(V736)：只列与本工单挂钩的结构上层
+     * (任意车间)，逐条给出「能不能送、为什么」；没有父子关系的工单库里就不列，这里不再复写任何资格条件。
+     * 报工行的货品与来源工单的产品对不上时，原因与接近程度也取库里同一份文案。
+     */
+    private static final String TARGETS_SQL = """
+                        SELECT target.demand_id, target.receiving_segment_id, target.receiving_segment_code,
+                               target.receiving_status, target.receiving_continuous,
+                               target.receiving_plan_id, target.receiving_plan_no,
+                               demand.goods_id, goods.code, goods.name, color.name, unit.name,
+                               target.required_qty, target.covered_qty, target.remaining_qty,
+                               target.receiving_product_goods_id, product.code, product.name,
+                               target.eligible AND matched.same_goods,
+                               CASE WHEN matched.same_goods THEN target.reason_code ELSE 'GOODS_MISMATCH' END,
+                               CASE WHEN matched.same_goods THEN target.reason_text
+                                    ELSE fn_workshop_direct_reason_text('GOODS_MISMATCH',
+                                         NULL, NULL, NULL, NULL, NULL, NULL) END,
+                               CASE WHEN matched.same_goods THEN target.reason_rank
+                                    ELSE fn_workshop_direct_reason_rank('GOODS_MISMATCH') END
+                        FROM fn_workshop_direct_targets(:segmentId) target
+                        LEFT JOIN production_material_demands demand ON demand.id = target.demand_id
+                        CROSS JOIN LATERAL (
+                            SELECT target.demand_id IS NULL
+                                   OR (demand.goods_id = :goodsId
+                                       AND demand.color_id IS NOT DISTINCT FROM CAST(:colorId AS UUID))
+                                   AS same_goods) matched
                         LEFT JOIN goods ON goods.id = demand.goods_id
-                        LEFT JOIN goods receiving_product
-                          ON receiving_product.id = receiving.product_goods_id
+                        LEFT JOIN goods product ON product.id = target.receiving_product_goods_id
                         LEFT JOIN colors color ON color.id = demand.color_id
                         LEFT JOIN units unit ON unit.id = demand.unit_id
-                        WHERE producing.id = :segmentId
-                          AND producing.is_deleted = FALSE
-                          AND producing.workshop_department_id IS NOT NULL
-                          AND ((producing_plan.material_analysis_id IS NOT NULL
-                                AND plan.material_analysis_id=producing_plan.material_analysis_id)
-                            OR (producing_plan.material_analysis_id IS NULL AND plan.material_analysis_id IS NULL
-                                AND (EXISTS(SELECT 1 FROM subplan_links link WHERE link.plan_id=plan.id
-                                        AND link.subplan_id=producing_plan.id AND NOT link.is_deleted)
-                                  OR EXISTS(SELECT 1 FROM production_material_supply_pegs peg
-                                        WHERE peg.demand_id IN(demand.id,demand.split_root_demand_id)
-                                          AND peg.supply_type='PRODUCTION_PLAN_ITEM'
-                                          AND peg.supply_item_id=producing.source_plan_item_id
-                                          AND peg.status<>'REVERSED' AND peg.allocated_qty>peg.released_qty))))
-                        )
-                        SELECT demand_id,receiving_id,segment_code,status,continuous_supply,plan_id,bill_no,
-                               goods_id,goods_code,goods_name,color_name,unit_name,required_qty,
-                               fn_workshop_direct_covered_base_qty(demand_id),product_goods_id,product_code,product_name,
-                               fn_workshop_direct_remaining_for_source(producing_id,demand_id)
-                        FROM candidate_scope
-                        WHERE fn_workshop_direct_relationship_allows(producing_id,demand_id)
-                        ORDER BY bill_no,segment_code,demand_id
-                            """;
+                        ORDER BY target.sort_order
+                        """;
+
+    /** 不可转原因的统一前缀：界面红字、审核报错与数据库守卫同一句开头。 */
+    public static final String UNAVAILABLE_PREFIX = "无法转到下一道工序：";
 
     @Transactional(readOnly = true)
     public CandidateListing candidates(UUID executionSegmentId, UUID goodsId, UUID colorId) {
@@ -182,74 +171,57 @@ public class ProductionWorkshopDirectTransferService {
             throw validation("请先选择报工来源工单与货品");
         }
         requireWorkshopMember(executionSegmentId);
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(CANDIDATE_SQL)
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(TARGETS_SQL)
                 .setParameter("segmentId", executionSegmentId)
                 .setParameter("goodsId", goodsId)
                 .setParameter("colorId", colorId));
         List<Candidate> out = new ArrayList<>(rows.size());
+        List<BlockedTarget> blocked = new ArrayList<>();
+        String reasonCode = null;
+        String reason = null;
+        int bestRank = Integer.MAX_VALUE;
+        // 行已按「先急后缓」排好(sort_order)，这里原样保序。
         for (Object[] row : rows) {
-            BigDecimal required = decimal(row[12]);
-            BigDecimal covered = decimal(row[13]);
-            BigDecimal remaining = decimal(row[17]);
-            if (remaining.signum() <= 0) continue;
-            out.add(new Candidate(
-                    (UUID) row[0], (UUID) row[1], (String) row[2],
-                    (String) row[3], Boolean.TRUE.equals(row[4]),
-                    (UUID) row[5], (String) row[6], (UUID) row[7],
-                    (String) row[8], (String) row[9], (String) row[10], (String) row[11],
-                    required, covered, remaining,
-                    (UUID) row[14], (String) row[15], (String) row[16]));
+            if (Boolean.TRUE.equals(row[18])) {
+                out.add(new Candidate(
+                        (UUID) row[0], (UUID) row[1], (String) row[2],
+                        (String) row[3], Boolean.TRUE.equals(row[4]),
+                        (UUID) row[5], (String) row[6], (UUID) row[7],
+                        (String) row[8], (String) row[9], (String) row[10], (String) row[11],
+                        decimal(row[12]), decimal(row[13]), decimal(row[14]),
+                        (UUID) row[15], (String) row[16], (String) row[17]));
+                continue;
+            }
+            // 报工行货品对不上时(本查询标的 GOODS_MISMATCH)列出的工单都不是它的上层，不进置灰列表。
+            if (row[0] != null && row[19] != null && !"GOODS_MISMATCH".equals(row[19])) {
+                blocked.add(new BlockedTarget((UUID) row[0], (UUID) row[1], (String) row[2], (String) row[6],
+                        (UUID) row[15], (String) row[16], (String) row[17], (String) row[19], (String) row[20]));
+            }
+            // 一个都不能送时只报最接近可送的那条原因(接近程度由库里统一给出)。
+            int rank = row[21] == null ? Integer.MAX_VALUE : ((Number) row[21]).intValue();
+            if (row[19] != null && rank < bestRank) {
+                bestRank = rank;
+                reasonCode = (String) row[19];
+                reason = (String) row[20];
+            }
         }
-        Object[] learned = lastChoice(executionSegmentId, goodsId, colorId);
+        boolean none = out.isEmpty();
         return new CandidateListing(
                 List.copyOf(out),
-                learned == null ? null : (String) learned[0],
-                learned == null ? null : (UUID) learned[1],
-                learned == null ? null : (String) learned[2],
-                learned == null ? null : (String) learned[3]);
-    }
-
-    /**
-     * 本车间上一次报这个货品(同颜色)时选的去向与父件产品。草稿也算——那是车间最近一次的意愿。
-     */
-    private Object[] lastChoice(UUID executionSegmentId, UUID goodsId, UUID colorId) {
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                        SELECT item.destination,
-                               receiving.product_goods_id,
-                               receiving_product.code,
-                               receiving_product.name
-                        FROM production_daily_report_items item
-                        JOIN production_daily_reports report
-                          ON report.id = item.report_id
-                         AND report.status IN (0, 1)
-                         AND report.is_deleted = FALSE
-                        JOIN production_execution_segments producing
-                          ON producing.id = item.execution_segment_id
-                        JOIN production_execution_segments current_segment
-                          ON current_segment.id = :segmentId
-                         AND current_segment.workshop_department_id
-                             = producing.workshop_department_id
-                        LEFT JOIN production_material_demands demand
-                          ON demand.id = item.direct_transfer_demand_id
-                        LEFT JOIN production_execution_segments receiving
-                          ON receiving.id = demand.execution_segment_id
-                        LEFT JOIN goods receiving_product
-                          ON receiving_product.id = receiving.product_goods_id
-                        WHERE item.is_deleted = FALSE
-                          AND item.goods_id = :goodsId
-                          AND item.color_id IS NOT DISTINCT FROM CAST(:colorId AS UUID)
-                        ORDER BY report.created_at DESC, item.line_no DESC
-                        LIMIT 1
-                        """)
-                .setParameter("segmentId", executionSegmentId)
-                .setParameter("goodsId", goodsId)
-                .setParameter("colorId", colorId));
-        return rows.isEmpty() ? null : rows.getFirst();
+                List.copyOf(blocked),
+                none ? reasonCode : null,
+                none ? reason : null,
+                RequestLimits.DAILY_REPORT_DIRECT_RECEIVERS);
     }
 
     /**
      * 审核同事务执行直送。调用方(生产日报审核)已经完成自己的状态与范围校验，
      * 这里独立再校验直送特有的权限、车间归属与线边仓。
+     *
+     * <p>一张报工分给多个上层工单时仍逐块办：校验、写直送明细、自检入线边仓、投给这个上层工单，
+     * 办完一块再办下一块(ADR-127 §8)。曾试过把同一线边位置的各块合成一张入库单一次点收，实测更慢：
+     * 各块同时进了线边仓，后面每个上层工单投料时的可用量与权益查询都要把还没投出去的各块再过一遍，
+     * 11 块时审核反而多花约一倍时间，所以不合单。线边仓按「车间 × 收料主仓」一次审核只确定一次。
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void executeForApprovedReport(
@@ -265,8 +237,10 @@ public class ProductionWorkshopDirectTransferService {
         // 同一张报工常有多行出自同一个执行工单；车间成员资格只由 (工单, 当前操作者) 决定，
         // 在一次调用里逐行重查是纯粹的重复往返(每行两条语句)。
         Set<UUID> memberCheckedSegments = new LinkedHashSet<>();
+        // 线边仓只由 (车间, 收料主仓) 决定，同一次审核里各块共用，不再每块重走一遍查找/配置。
+        Map<List<UUID>, UUID> lineSideByPlace = new HashMap<>();
         for (ProductionDailyReportItem item : direct) {
-            Resolved resolved = resolve(item, memberCheckedSegments);
+            Resolved resolved = resolve(item, memberCheckedSegments, lineSideByPlace);
             UUID transferId = transferByLocation.computeIfAbsent(
                     resolved.lineSideWarehouseId(),
                     location -> insertTransfer(report, resolved.workshopDepartmentId(), location));
@@ -349,70 +323,66 @@ public class ProductionWorkshopDirectTransferService {
     }
 
     /**
-     * 逐行解析收料需求、车间与线边仓，并把「同车间」这条边界在应用层也说清楚。
+     * 逐行解析收料需求、车间与线边仓。能不能送只读 fn_workshop_direct_targets 的单条校验(V736)，
+     * 与候选列表、保存拆分、数据库守卫同一把尺子；不能送时原样说出原因。
      * 线边仓按「车间 × 收料主仓」自动配置(V595)，第一次直送时就地建好。
      */
     private Resolved resolve(
-            ProductionDailyReportItem item, Set<UUID> memberCheckedSegments) {
+            ProductionDailyReportItem item, Set<UUID> memberCheckedSegments,
+            Map<List<UUID>, UUID> lineSideByPlace) {
+        BigDecimal baseQty = baseQuantity(item);
+        // 一条语句：先锁住出料工单、收料需求、接收工单及其计划与计划包(防并发停产/关闭穿透)，
+        // 再读库里唯一的单条判定。判定读的是本语句快照；写直送明细时数据库断言会在锁后重新判定，
+        // 真被并发改了也给同一句原因。
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                        SELECT demand.id, receiving.id, receiving.plan_id,
-                               producing.workshop_department_id,
-                               receiving.workshop_department_id,
-                               demand.warehouse_id,
-                               package.warehouse_id,
-                               receiving.status, receiving.continuous_supply,
+                        WITH locked AS MATERIALIZED (
+                            SELECT report_item.id
+                            FROM production_daily_report_items report_item
+                            JOIN production_execution_segments producing
+                              ON producing.id = report_item.execution_segment_id
+                            JOIN production_material_demands demand
+                              ON demand.id = report_item.direct_transfer_demand_id
+                            JOIN production_execution_segments receiving
+                              ON receiving.id = demand.execution_segment_id
+                            JOIN production_plans receiving_plan ON receiving_plan.id = receiving.plan_id
+                            JOIN production_planning_packages package
+                              ON package.id = receiving.package_id AND package.plan_id = receiving_plan.id
+                            WHERE report_item.id = :itemId
+                            FOR UPDATE OF receiving_plan, package, producing, receiving, demand
+                        )
+                        SELECT target.demand_id, target.receiving_segment_id, target.receiving_plan_id,
+                               target.receiving_workshop_id, target.demand_warehouse_id,
+                               target.package_warehouse_id, target.receiving_status,
+                               target.receiving_continuous,
                                COALESCE(goods.name, goods.code, '物料'),
-                               fn_workshop_direct_remaining_for_source(producing.id,demand.id)
+                               target.eligible, target.reason_text,
+                               locked.id IS NOT NULL AS locked
                         FROM production_daily_report_items report_item
-                        JOIN production_execution_segments producing
-                          ON producing.id = report_item.execution_segment_id
-                         AND producing.is_deleted = FALSE
+                        LEFT JOIN locked ON locked.id = report_item.id
                         JOIN goods ON goods.id = report_item.goods_id
-                        JOIN production_material_demands demand
-                          ON demand.id = report_item.direct_transfer_demand_id
-                         AND demand.is_deleted = FALSE
-                         AND demand.status NOT IN ('RELEASED', 'REVERSED', 'FULFILLED')
-                        JOIN production_execution_segments receiving
-                          ON receiving.id = demand.execution_segment_id
-                         AND receiving.is_deleted = FALSE
-                         AND (receiving.status IN ('WAITING', 'READY', 'DISPATCHED')
-                              OR (receiving.status = 'IN_PROGRESS' AND receiving.continuous_supply))
-                        JOIN production_plans receiving_plan
-                          ON receiving_plan.id = receiving.plan_id
-                         AND receiving_plan.status = 1 AND receiving_plan.is_deleted = FALSE
-                         AND receiving_plan.is_closed = FALSE AND receiving_plan.is_canceled = FALSE
-                         AND receiving_plan.is_stopped = FALSE
-                        JOIN production_planning_packages package
-                          ON package.id = receiving.package_id AND package.plan_id = receiving_plan.id
-                         AND package.status = 'CONFIRMED' AND package.is_deleted = FALSE
+                        CROSS JOIN LATERAL fn_workshop_direct_targets(
+                            report_item.execution_segment_id, report_item.direct_transfer_demand_id,
+                            CAST(:baseQty AS NUMERIC)) target
                         WHERE report_item.id = :itemId
-                          AND fn_workshop_direct_relationship_allows(producing.id,demand.id)
-                        FOR UPDATE OF receiving_plan, package, producing, receiving, demand
-                        """).setParameter("itemId", item.getId()));
+                        """).setParameter("itemId", item.getId()).setParameter("baseQty", baseQty));
         if (rows.size() != 1) {
-            throw conflict("直送须有同车间的真实上下层供给责任；接收任务可能无对应来源关系、已暂停或结束，请刷新后选择。跨来源任务请先办理正常仓库或正式让料流程");
+            throw conflict(UNAVAILABLE_PREFIX + "报工来源工单已失效，请刷新后重试");
         }
         Object[] row = rows.getFirst();
-        UUID producingWorkshop = (UUID) row[3];
-        UUID receivingWorkshop = (UUID) row[4];
-        if (producingWorkshop == null || !producingWorkshop.equals(receivingWorkshop)) {
-            throw conflict(
-                    "转送车间只能在同一个车间内部进行；跨车间请改选「送入仓库」，"
-                            + "由仓库送检登记、品质部检验后入库再发料");
+        if (!Boolean.TRUE.equals(row[9])) {
+            throw conflict(UNAVAILABLE_PREFIX + row[10]);
         }
         if (memberCheckedSegments.add(item.getExecutionSegmentId())) {
             requireWorkshopMember(item.getExecutionSegmentId());
         }
-        BigDecimal remaining=decimal(row[10]);
-        if (baseQuantity(item).compareTo(remaining)>0) {
-            throw conflict("本生产来源剩余可直送数量为 " + remaining.stripTrailingZeros().toPlainString()
-                    + "（基本单位）；同一计划行拆出的执行段共用供给额度，请刷新后调整数量");
-        }
-        UUID lineSide = lineSideWarehouses.ensure(producingWorkshop, (UUID) row[5]);
+        UUID workshop = (UUID) row[3];
+        UUID lineSide = lineSideByPlace.computeIfAbsent(
+                java.util.Arrays.asList(workshop, (UUID) row[4]),
+                place -> lineSideWarehouses.ensure(place.get(0), place.get(1)));
         return new Resolved(
                 (UUID) row[0], (UUID) row[1], (UUID) row[2],
-                (String) row[7], Boolean.TRUE.equals(row[8]),
-                producingWorkshop, lineSide, (UUID) row[6], (String) row[9]);
+                (String) row[6], Boolean.TRUE.equals(row[7]),
+                workshop, lineSide, (UUID) row[5], (String) row[8]);
     }
 
     private UUID insertTransfer(

@@ -6,6 +6,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /** 生产日报明细保存行。 */
@@ -51,11 +52,47 @@ public class DailyReportItemLine {
     private String remark;
 
     /**
-     * 产出去向(V584)：WAREHOUSE(默认，送仓库)或 WORKSHOP(班组自检后直送同车间上层工单)。
-     * 不传按 WAREHOUSE 处理，老客户端行为不变。
+     * 本行实际产量的去向分配(V736/ADR-127)：逐个转给上层工单多少、送入仓库多少，合计等于本行实际产量。
+     * 不传或为空 = 整行送入仓库。去向只从这里读，客户端不再传单个去向或单个接收需求。
      */
-    private String destination;
+    @jakarta.validation.Valid
+    @jakarta.validation.constraints.Size(max = com.uten.imp.common.validation.RequestLimits.DAILY_REPORT_LINE_DESTINATIONS)
+    private List<DailyReportOutputAllocationLine> allocations;
 
-    /** 直送的接收需求(V585)：destination=WORKSHOP 时必填，服务端再校验同车间同货品。 */
-    private UUID directTransferDemandId;
+    /**
+     * 拆分后单条明细的产出去向(V584)：WAREHOUSE 或 WORKSHOP。由服务端按 {@link #allocations} 拆出，
+     * 从不接受客户端传入。
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore private String destination;
+
+    /** 拆分后转送明细的接收需求(V585)；只由服务端按 {@link #allocations} 写入。 */
+    @com.fasterxml.jackson.annotation.JsonIgnore private UUID directTransferDemandId;
+
+    /** 拆分后送仓明细为什么没转下一道工序(V736 原因码)；只由服务端写入。 */
+    @com.fasterxml.jackson.annotation.JsonIgnore private String outputRouteReason;
+
+    /**
+     * 部署 V736 之前打开的旧页面仍按「行上单个去向」提交(destination / directTransferDemandId)。
+     * 这两个 JSON 名只收不发、只用来认出旧页面：保存入口据此整单拒收并请用户刷新
+     * (ADR-127 §7)，绝不按新口径把旧页面想转下一道工序的量悄悄送入仓库。
+     * 与上面服务端自用的同名字段互不相干(那两个字段不从 JSON 读取)。
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @Getter(lombok.AccessLevel.NONE) @Setter(lombok.AccessLevel.NONE)
+    private boolean staleRouteShape;
+
+    @com.fasterxml.jackson.annotation.JsonSetter("destination")
+    private void readStaleDestination(String value) {
+        if (value != null && !value.isBlank()) staleRouteShape = true;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonSetter("directTransferDemandId")
+    private void readStaleDirectTransferDemandId(UUID value) {
+        if (value != null) staleRouteShape = true;
+    }
+
+    /** 请求 JSON 是否带着旧页面的单去向字段(见上)。 */
+    public boolean carriesStaleRouteShape() {
+        return staleRouteShape;
+    }
 }

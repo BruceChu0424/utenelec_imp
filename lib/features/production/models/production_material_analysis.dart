@@ -582,6 +582,8 @@ class ProductionMaterialAnalysisView {
     this.fqcRecoveryAuthorizationId,
     this.planningBlockedReasons = const {},
     this.routeResetCount = 0,
+    this.autoConfirmedRouteCount = 0,
+    this.pendingAutoConfirmRouteCount = 0,
     this.overproductionDefaults = const {},
     this.analysisNo,
   });
@@ -610,6 +612,17 @@ class ProductionMaterialAnalysisView {
   /// 路线条数；只在刷新响应上非零，详情/命令响应恒为 0。页面据此提示
   /// 「N 条路线因主档变更需重新确认」，让静默清空可见（2026-09-10 F8）。
   final int routeResetCount;
+
+  /// 服务端在本次新建 / 刷新 (POST /preview) 或改路线 (PUT /routes) 的同一次重算里
+  /// 按货品档案自动确认的供应方式条数 (按操作组计, ADR-102 2026-09-27)。详情与其他
+  /// 命令恒为 0。页面据此轻提示「已按货品档案自动确认 N 条供应方式」, 自己不再补发
+  /// PUT /routes。
+  final int autoConfirmedRouteCount;
+
+  /// 这份分析此刻还能按货品档案自动确认、但还没确认的操作组数 (服务端同一判据,
+  /// 只有当前账号能确认路线时才非零)。通常是到货 / 审核等别的单据顺带重算后新冒出来
+  /// 的行; 页面据此静默刷新一次分析, 由服务端在刷新里一并确认。
+  final int pendingAutoConfirmRouteCount;
 
   String? planningBlockedReason(String? analysisLineId) =>
       analysisLineId == null ? null : planningBlockedReasons[analysisLineId];
@@ -675,6 +688,9 @@ class ProductionMaterialAnalysisView {
       fqcReplenishmentOnly: json['fqcReplenishmentOnly'] == true,
       fqcRecoveryAuthorizationId: _string(json['fqcRecoveryAuthorizationId']),
       routeResetCount: _int(json['routeResetCount']) ?? 0,
+      autoConfirmedRouteCount: _int(json['autoConfirmedRouteCount']) ?? 0,
+      pendingAutoConfirmRouteCount:
+          _int(json['pendingAutoConfirmRouteCount']) ?? 0,
       overproductionDefaults: {
         if (json['overproductionDefaults']
             case final Map<Object?, Object?> rates)

@@ -67,7 +67,7 @@ final class StockLedgerSql {
                                 ELSE a.weight_now - (COALESCE(w.ws, 0) - COALESCE(w.weight_signed, 0))
                            END AS balance_weight_after
                     FROM w CROSS JOIN anchor a
-                    WHERE """ + " " + display(q, "w") + """
+                    """ + "WHERE " + display(q, "w") + """
 
                     ORDER BY w.transaction_date DESC, w.ledger_seq DESC
                     LIMIT :limit OFFSET :offset

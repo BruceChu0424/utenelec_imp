@@ -145,6 +145,61 @@ class GoodsBomControlFieldsTest {
         assertFalse(view.isHardGate());
     }
 
+    /** 系统学习边只在人改了数量时才提交数量(ADR-129)：不传数量的编辑保留原设计使用数量，不回落成 1。 */
+    @Test
+    void updateWithoutQtyKeepsTheDesignUsage() {
+        GoodsBomItem row = new GoodsBomItem();
+        row.setGoods(parent);
+        row.setComponent(component);
+        row.setQty(new BigDecimal("0.33333"));
+        when(bomRepo.findById(row.getId())).thenReturn(Optional.of(row));
+
+        BomItemSaveRequest request = request();
+        request.setQty(null);
+        request.setSummary("只改备注");
+
+        var view = service.update(parent.getId(), row.getId(), request);
+
+        assertEquals(new BigDecimal("0.33333"), view.getQty());
+        assertEquals("只改备注", view.getSummary());
+    }
+
+    @Test
+    void nonPositiveDesignUsageIsRejectedWithTheColumnName() {
+        BomItemSaveRequest zero = request();
+        zero.setQty(BigDecimal.ZERO);
+
+        ApiException error = assertThrows(ApiException.class, () -> service.create(parent.getId(), zero));
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
+        assertEquals("设计使用数量必须大于 0", error.getMessage());
+    }
+
+    /** 保存后回显的行带上视图里的真实使用数量(一条查询，按行 id 对上)；qty 仍是设计值。 */
+    @Test
+    void savedRowEchoesActualUsageFromTheUsageView() {
+        when(bomRepo.findUsageRows(org.mockito.ArgumentMatchers.anyCollection())).thenAnswer(invocation -> {
+            java.util.Collection<?> ids = invocation.getArgument(0);
+            Object id = ids.iterator().next();
+            return java.util.Collections.singletonList(new Object[]{id,
+                    new BigDecimal("0.95"), new BigDecimal("0.95"), "ACTUAL", new BigDecimal("0.950000"), "ACTUAL",
+                    3L, new BigDecimal("300"), new BigDecimal("285"), null, null, true,
+                    new BigDecimal("15"), new BigDecimal("0.9"), new BigDecimal("0.05")});
+        });
+
+        var view = service.create(parent.getId(), request());
+
+        assertEquals(BigDecimal.ONE, view.getQty());
+        assertEquals(new BigDecimal("0.95"), view.getUsage().actualQty());
+        assertEquals("ACTUAL", view.getUsage().usageBasis());
+        assertEquals(3L, view.getUsage().actualSampleCount());
+        assertTrue(view.getUsage().systemLearned());
+        // 不良数、实产单耗与不良率同样原样取视图。
+        assertEquals(new BigDecimal("15"), view.getUsage().actualDefectQty());
+        assertEquals(new BigDecimal("0.9"), view.getUsage().actualPerProducedQty());
+        assertEquals(new BigDecimal("0.05"), view.getUsage().actualDefectRate());
+    }
+
     @Test
     void invalidControlCodesAndNonPositiveBasisFailClosed() {
         BomItemSaveRequest badStage = request();

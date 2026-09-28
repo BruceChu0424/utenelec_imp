@@ -101,7 +101,7 @@ class AuditTriggerCoverageMigrationContractTest {
                     Set.of(
                         "accounts", "client_categories", "client_ship_addresses", "clients",
                         "colors", "currencies", "finance_payment_methods", "goods",
-                        "goods_bom_items", "goods_bom_learning_profiles", "goods_bom_learning_material_totals",
+                        "goods_bom_items",
                         "goods_import_batches", "goods_import_creations",
                         "master_code_change_batches", "material_categories", "mould_categories",
                         "moulds", "official_policy_briefs", "party_activity_records",
@@ -167,7 +167,7 @@ class AuditTriggerCoverageMigrationContractTest {
                     "生产计划、日报、执行段、退料、点收、质检与直送单据: 人工录入并审核的业务单据",
                     Set.of(
                         "production_overproduction_rate_requests", "production_actual_output_supplement_requests",
-                        "production_material_increment_requests", "production_material_discovery_requests", "production_bom_learning_samples",
+                        "production_material_increment_requests", "production_material_discovery_requests",
                         "production_draw_issue_batches",
                         "preplan_aggregate_batches",
                         "production_daily_report_items", "production_daily_report_material_usages",
@@ -265,6 +265,8 @@ class AuditTriggerCoverageMigrationContractTest {
                     "派生投影与计算结果: 可由单据和流水重算, 每次重算整行复制只是噪声",
                     Set.of(
                         "account_flow_monthly_summaries", "da_amortization_log",
+                        // V737 / ADR-129：学习档案、样本与真实使用数量由台账重算。
+                        "goods_bom_actual_usages", "goods_bom_learning_profiles", "production_bom_learning_samples",
                         "execution_segment_sales_allocations", "fa_depreciation_log",
                         "inbound_expectation_items", "inbound_expectations", "mrp_generations",
                         "preplan_analysis_stock_exact_pegs", "preplan_future_supply_transfers",

@@ -21,6 +21,12 @@ public class PlanItemLine {
     private Integer lineNo;
 
     /**
+     * 编辑草稿时这一行载入自哪条已存计划行(该行 id)；新增行为空。
+     * 服务端只凭它认「同一行」，决定允许超产比例是否沿用原来源(ADR-129 §2.10)。
+     */
+    private UUID sourceItemId;
+
+    /**
      * 用户可选的业务产品编号；留空时由服务端在计划号下原子分配。
      * 关系身份始终是计划行 UUID，编号只用于展示、搜索和打印。
      */
@@ -43,7 +49,11 @@ public class PlanItemLine {
     private BigDecimal oqty;
     @NotNull
     private BigDecimal qty;
-    /** Initial allowance approved together with this plan; null keeps old clients at 10%. */
+    /**
+     * Initial allowance approved together with this plan (ADR-129 §2.10)：空 = 按货品默认填写(不记忆)；
+     * 填了 = 人确认过的比例(会记成货品下次的默认)。编辑草稿时同一行(sourceItemId 且同一货品)：
+     * 空着而原行是系统默认的、或填的与原行相同的，沿用原来的比例与来源，不算新的确认。
+     */
     @jakarta.validation.constraints.DecimalMin("0")
     @jakarta.validation.constraints.Digits(integer = 3, fraction = 6)
     private BigDecimal allowedOverproductionRate;

@@ -6,8 +6,9 @@
 // 递归展开带环路防护（当前路径上的货品不再展开）与深度上限（10 层），
 // 防止历史脏数据死循环。
 //
-// 弹窗内按 A4 横向比例渲染（13 列竖排放不下；标题 + 产品名称/型号/备注表头 +
-// 明细表格）。底部操作：
+// 弹窗内按 A4 横向比例渲染(14 列竖排放不下；标题 + 产品名称/型号/备注表头 +
+// 明细表格)。用量两列(ADR-129)：「设计使用数量」与只读「真实使用数量」
+// (没有数据或不适用显示「—」)，数字与组装信息表格同一格式。底部操作：
 // - 打印：pdf 包生成 A4 横向 PDF（NotoSansSC 内置中文字体）→ printing 系统打印对话框；
 // - 下载 Excel：复用 UtenExportButton（加密 xlsx，走后端 bom/export，同列集同序号）；
 // - 关闭。
@@ -42,17 +43,27 @@ class _PreviewRow {
   /// 物料名称（不缩进，列内对齐）。
   String get plainName => item.componentName ?? '';
 
-  /// 尾包展示（与表格尾包列同口径）：只有「按包装」显示 允许/整包，其余 —。
-  String get partialPackageLabel =>
-      item.consumptionBasis == BomConsumptionBasis.perPackage
-      ? (item.allowPartialPackage ? '允许' : '整包')
-      : '—';
+  /// 一行 14 格文本(列序 = 明细列头；纸面与 PDF 共用，尾包/用量与组装信息
+  /// 表格同一口径)。
+  List<String> get cells => [
+    seq,
+    plainCode,
+    plainName,
+    item.componentModel ?? '',
+    item.componentSpec ?? '',
+    item.componentUnitName ?? '',
+    item.componentColorName ?? '',
+    item.componentSourceType ?? '',
+    item.consumptionBasis.label,
+    item.basisOutputQtyText,
+    item.partialPackageLabel,
+    item.designQtyText,
+    item.actualQtyText,
+    item.summary ?? '',
+  ];
 
-  static String _num(double? v) =>
-      v == null ? '' : (v == v.roundToDouble() ? v.toStringAsFixed(0) : '$v');
-
-  String get basisOutputQtyLabel => _num(item.basisOutputQty);
-  String get qtyLabel => _num(item.qty);
+  /// 居中显示的格(基准产量/尾包/两个用量)。
+  static const centeredCells = {9, 10, 11, 12};
 }
 
 /// 弹出 A4 产品配件清单预览。
@@ -158,7 +169,8 @@ class _GoodsBomPreviewDialogState
     '计量方式',
     '基准产量',
     '尾包',
-    '数量',
+    '设计使用数量',
+    '真实使用数量',
     '备注',
   ];
 
@@ -173,7 +185,7 @@ class _GoodsBomPreviewDialogState
       final doc = pw.Document();
       doc.addPage(
         pw.MultiPage(
-          // 13 列明细，横向 A4 才放得下（与弹窗纸面同口径）。
+          // 14 列明细，横向 A4 才放得下(与弹窗纸面同口径)。
           pageFormat: PdfPageFormat.a4.landscape,
           margin: const pw.EdgeInsets.all(28),
           build: (ctx) => [
@@ -206,6 +218,8 @@ class _GoodsBomPreviewDialogState
               ],
             ),
             // 列集 = 组装信息表格列（「表格显示啥导出啥」，2026-09-25）。
+            // 列宽：9pt 字 + 左右各 4pt 内边距，四字表头一行放下；两个用量列
+            // 52pt 让「设计使用/数量」整齐折成两行，不会折成三行。
             pw.Table(
               border: pw.TableBorder.all(width: 0.5),
               columnWidths: const {
@@ -220,8 +234,9 @@ class _GoodsBomPreviewDialogState
                 8: pw.FixedColumnWidth(52), // 计量方式
                 9: pw.FixedColumnWidth(48), // 基准产量
                 10: pw.FixedColumnWidth(34), // 尾包
-                11: pw.FixedColumnWidth(40), // 数量
-                12: pw.FlexColumnWidth(1.4), // 备注
+                11: pw.FixedColumnWidth(52), // 设计使用数量
+                12: pw.FixedColumnWidth(52), // 真实使用数量
+                13: pw.FlexColumnWidth(1.3), // 备注
               },
               children: [
                 pw.TableRow(
@@ -233,22 +248,15 @@ class _GoodsBomPreviewDialogState
                       _pdfCell(font, h, bold: true, center: true),
                   ],
                 ),
-                for (var i = 0; i < rows.length; i++)
+                for (final row in rows)
                   pw.TableRow(
                     children: [
-                      _pdfCell(font, rows[i].seq),
-                      _pdfCell(font, rows[i].plainCode),
-                      _pdfCell(font, rows[i].plainName),
-                      _pdfCell(font, rows[i].item.componentModel ?? ''),
-                      _pdfCell(font, rows[i].item.componentSpec ?? ''),
-                      _pdfCell(font, rows[i].item.componentUnitName ?? ''),
-                      _pdfCell(font, rows[i].item.componentColorName ?? ''),
-                      _pdfCell(font, rows[i].item.componentSourceType ?? ''),
-                      _pdfCell(font, rows[i].item.consumptionBasis.label),
-                      _pdfCell(font, rows[i].basisOutputQtyLabel, center: true),
-                      _pdfCell(font, rows[i].partialPackageLabel, center: true),
-                      _pdfCell(font, rows[i].qtyLabel, center: true),
-                      _pdfCell(font, rows[i].item.summary ?? ''),
+                      for (final (i, text) in row.cells.indexed)
+                        _pdfCell(
+                          font,
+                          text,
+                          center: _PreviewRow.centeredCells.contains(i),
+                        ),
                     ],
                   ),
               ],
@@ -375,7 +383,7 @@ class _GoodsBomPreviewDialogState
     );
   }
 
-  /// A4 横向纸面（297:210；13 列明细竖排版放不下）。宽 1000 → 高约 707。
+  /// A4 横向纸面(297:210；14 列明细竖排版放不下)。宽 1000 → 高约 707。
   Widget _a4Paper(ThemeData theme, List<_PreviewRow> rows) {
     const paperWidth = 1000.0;
     return Container(
@@ -419,7 +427,9 @@ class _GoodsBomPreviewDialogState
               ),
             ],
           ),
-          // 配件明细表（整树平铺，层级由级联序号 1/3.1/3.1.1 表达）
+          // 配件明细表(整树平铺，层级由级联序号 1/3.1/3.1.1 表达)。
+          // 列宽：11px 字 + 左右各 5px 内边距；两个用量列 60 让「设计使用/数量」
+          // 整齐折成两行。
           Table(
             border: TableBorder.all(color: Colors.black54, width: 0.6),
             columnWidths: const {
@@ -434,30 +444,23 @@ class _GoodsBomPreviewDialogState
               8: FixedColumnWidth(68), // 计量方式
               9: FixedColumnWidth(62), // 基准产量
               10: FixedColumnWidth(44), // 尾包
-              11: FixedColumnWidth(52), // 数量
-              12: FlexColumnWidth(1.4), // 备注
+              11: FixedColumnWidth(60), // 设计使用数量
+              12: FixedColumnWidth(60), // 真实使用数量
+              13: FlexColumnWidth(1.3), // 备注
             },
             children: [
               TableRow(
                 decoration: const BoxDecoration(color: UtenColors.slate100),
                 children: [for (final h in _columns) _PaperHeaderCell(h)],
               ),
-              for (var i = 0; i < rows.length; i++)
+              for (final row in rows)
                 TableRow(
                   children: [
-                    _paperCell(rows[i].seq),
-                    _paperCell(rows[i].plainCode),
-                    _paperCell(rows[i].plainName),
-                    _paperCell(rows[i].item.componentModel ?? ''),
-                    _paperCell(rows[i].item.componentSpec ?? ''),
-                    _paperCell(rows[i].item.componentUnitName ?? ''),
-                    _paperCell(rows[i].item.componentColorName ?? ''),
-                    _paperCell(rows[i].item.componentSourceType ?? ''),
-                    _paperCell(rows[i].item.consumptionBasis.label),
-                    _paperCell(rows[i].basisOutputQtyLabel, center: true),
-                    _paperCell(rows[i].partialPackageLabel, center: true),
-                    _paperCell(rows[i].qtyLabel, center: true),
-                    _paperCell(rows[i].item.summary ?? ''),
+                    for (final (i, text) in row.cells.indexed)
+                      _paperCell(
+                        text,
+                        center: _PreviewRow.centeredCells.contains(i),
+                      ),
                   ],
                 ),
             ],

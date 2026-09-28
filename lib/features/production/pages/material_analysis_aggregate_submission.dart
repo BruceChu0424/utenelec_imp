@@ -206,21 +206,12 @@ final class _MaterialAggregateSubmission {
     final groups = table.draftGroups(draft);
     final workshops = groups.map(owner._tableWorkshopFor).toList();
     final workers = groups.map(owner._tableWorkerFor).toList();
-    final rates = groups
-        .map(
-          (group) => owner
-              ._overproductionPercentController(
-                materialLineId: group.representative.materialLineId,
-              )
-              .text,
-        )
-        .toSet();
     return _MaterialAggregateRebindSettings(
       workshops.isEmpty
           ? null
           : (id: workshops.first.id, name: workshops.first.name),
       workers.isEmpty ? null : (id: workers.first.id, name: workers.first.name),
-      rates.length == 1 ? rates.single : null,
+      table.uniformRateText(groups),
       workshops.map((value) => value.id).toSet().length > 1,
       workers.map((value) => value.id).toSet().length > 1,
     );
@@ -308,7 +299,8 @@ final class _MaterialAggregateSubmission {
       );
       final explicit = original?.hasExplicitQty == true;
       final order = owner._tableOrderQtyController(group),
-          append = owner._tableAppendQtyController(group);
+          append = owner._tableAppendQtyController(group),
+          rate = owner._overproductionPercentController(materialLineId: id);
       order.text = explicit ? original!.orderText : residual;
       append.text = explicit ? original!.appendText : residual;
       owner._tableSeededQtyTexts['ORDER|${group.key}'] = explicit
@@ -334,9 +326,10 @@ final class _MaterialAggregateSubmission {
               deselected: false,
               workshop: owner._tableWorkshopDraft[group.key],
               worker: owner._tableWorkerDraft[group.key],
-              rate: owner
-                  ._overproductionPercentController(materialLineId: id)
-                  .text,
+              rate: rate.text,
+              rateExplicit: owner._prefilledOverproductionRates.isExplicit(
+                rate,
+              ),
             );
       table._draftByLine[id] = draft.key;
       owner._selectedMaterialGroupKeys.add(group.key);
@@ -346,10 +339,7 @@ final class _MaterialAggregateSubmission {
       if (!settings.mixedWorker && settings.worker != null) {
         owner._tableWorkerDraft[group.key] = settings.worker!;
       }
-      if (settings.rate != null) {
-        owner._overproductionPercentController(materialLineId: id).text =
-            settings.rate!;
-      }
+      if (settings.rate != null) rate.text = settings.rate!;
     }
     final currentSettings = _settings(draft);
     draft.mixedWorkshop = currentSettings.mixedWorkshop;

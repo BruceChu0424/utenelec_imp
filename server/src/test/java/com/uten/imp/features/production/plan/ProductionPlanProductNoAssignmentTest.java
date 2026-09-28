@@ -11,6 +11,7 @@ import com.uten.imp.features.production.plan.dto.PlanItemLine;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -18,10 +19,13 @@ import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.RETURNS_SELF;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -33,12 +37,15 @@ class ProductionPlanProductNoAssignmentTest {
     void keepsExplicitBusinessNumberAndAllocatesOnlyTheBlankLine() throws Exception {
         ProductionPlanItemRepository itemRepo = mock(ProductionPlanItemRepository.class);
         ProductionProductNoAllocator allocator = mock(ProductionProductNoAllocator.class);
+        EntityManager em = mock(EntityManager.class);
+        // The explicit rate of each new line is remembered as the goods' next default.
+        when(em.createNativeQuery(anyString())).thenReturn(mock(Query.class, RETURNS_SELF));
         ProductionPlanService service = new ProductionPlanService(
                 mock(ProductionPlanRepository.class), itemRepo,
                 mock(PlanOrderItemLinkRepository.class), mock(MrpService.class),
                 mock(ProductionPlanningDraftService.class), mock(TxSessionVars.class),
                 mock(SecurityContextCurrentUser.class), mock(EmployeeNameResolver.class),
-                mock(EntityManager.class), mock(DocNumberService.class), allocator,
+                em, mock(DocNumberService.class), allocator,
                  mock(ChainNoticeService.class), mock(ProductionDocumentAccessPolicy.class),
                  mock(MaterialAnalysisService.class), mock(ProductionPlanMutationFootprintService.class));
         ProductionPlan plan = new ProductionPlan();
@@ -50,9 +57,9 @@ class ProductionPlanProductNoAssignmentTest {
                 .thenReturn("SJ20260814000001-001");
 
         Method saveItems = ProductionPlanService.class.getDeclaredMethod(
-                "saveItems", ProductionPlan.class, List.class);
+                "saveItems", ProductionPlan.class, List.class, Map.class);
         saveItems.setAccessible(true);
-        saveItems.invoke(service, plan, List.of(explicit, automatic));
+        saveItems.invoke(service, plan, List.of(explicit, automatic), Map.of());
 
         ArgumentCaptor<ProductionPlanItem> saved =
                 ArgumentCaptor.forClass(ProductionPlanItem.class);

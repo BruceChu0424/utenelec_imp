@@ -58,27 +58,118 @@ class ProductionPlannedOverproductionAllowanceEndToEndTest {
     }
     @AfterEach void logout() { SecurityContextHolder.clearContext(); }
 
-    @Test void manufacturingDefaultsRememberZeroAndWeightedBomRawMaterialChildrenDoNotChangeTheManufacturingLeaf() {
+    @Test void structuralDefaultsAndOnlyRatesAPersonConfirmedAreRemembered() {
         var defaults=rates.defaults(java.util.Set.of(world.goodsA(),world.goodsB(),world.goodsC(),world.goodsD(),world.goodsE()));
         assertDecimal("0",defaults.get(world.goodsA()));
         assertDecimal("0",defaults.get(world.goodsB()));
         assertDecimal(".1",defaults.get(world.goodsC()));
         assertDecimal("0",defaults.get(world.goodsD()));
         assertDecimal("0",defaults.get(world.goodsE()));
+        // Purchased and undecided raw materials without their own BOM are not manufacturing stages.
         fixture.insertBom(world.goodsC(),world.goodsD(),".125");
+        UUID onSiteMaterial=UUID.randomUUID();
+        fixture.insertGoods(onSiteMaterial,"RAW-"+onSiteMaterial,"现场登记原料-"+onSiteMaterial,null,world.unitId(),world.unitLegacy());
+        fixture.insertBom(world.goodsC(),onSiteMaterial,".5");
         assertDecimal(".1",rates.defaults(java.util.Set.of(world.goodsC())).get(world.goodsC()));
+
+        // Omitted rate: the goods default, marked DEFAULT and never remembered.
         var request=manual(null);request.getItems().getFirst().setGoodsId(world.goodsC());
         var draft=plans.create(request);
-        assertDecimal(".1",draft.getItems().getFirst().getAllowedOverproductionRate());
-        request.getItems().getFirst().setAllowedOverproductionRate(BigDecimal.ZERO);
-        plans.update(draft.getId(),request);
-        assertDecimal("0",rates.defaults(java.util.Set.of(world.goodsC())).get(world.goodsC()));
+        assertAllowance(draft.getItems().getFirst(),".1","DEFAULT");
+        assertNull(memory(world.goodsC()));
+        var explicitZero=manual("0");explicitZero.getItems().getFirst().setGoodsId(world.goodsC());
+        assertAllowance(plans.create(explicitZero).getItems().getFirst(),"0","EXPLICIT");
+        assertDecimal("0",memory(world.goodsC()));
+        // Editing the first draft echoes its saved 10% untouched on the same saved line: it stays a
+        // system default and does not bring the remembered zero back to 10%.
+        request.getItems().getFirst().setSourceItemId(draft.getItems().getFirst().getId());
+        request.getItems().getFirst().setAllowedOverproductionRate(new BigDecimal(".100000"));
+        var echoed=plans.update(draft.getId(),request).getItems().getFirst();
+        assertAllowance(echoed,".1","DEFAULT");
+        assertDecimal("0",memory(world.goodsC()));
+        request.getItems().getFirst().setSourceItemId(null);
         request.getItems().getFirst().setAllowedOverproductionRate(null);
-        assertDecimal("0",plans.create(request).getItems().getFirst().getAllowedOverproductionRate());
+        assertAllowance(plans.create(request).getItems().getFirst(),"0","DEFAULT");
         assertDecimal("0",analyses.detail(analysis().analysisId()).overproductionDefaults().get(world.goodsC()));
+        // Changing the rate while editing is a person's decision.
+        request.getItems().getFirst().setSourceItemId(echoed.getId());
+        request.getItems().getFirst().setAllowedOverproductionRate(new BigDecimal(".2"));
+        assertAllowance(plans.update(draft.getId(),request).getItems().getFirst(),".2","EXPLICIT");
+        assertDecimal(".2",memory(world.goodsC()));
         request.getItems().getFirst().setAllowedOverproductionRate(new BigDecimal("-.1"));
         assertThrows(ApiException.class,()->plans.create(request));
-        assertDecimal("0",rates.defaults(java.util.Set.of(world.goodsC())).get(world.goodsC()));
+        assertDecimal(".2",rates.defaults(java.util.Set.of(world.goodsC())).get(world.goodsC()));
+        // MRP sub-plans, report remakes and actual-output supplements write the column default.
+        UUID generatedItem=UUID.randomUUID();
+        db.update("""
+                INSERT INTO production_plan_items(id,plan_id,bill_no,bill_date,line_no,product_no,goods_id,unit_id,unit_rate,qty,allowed_overproduction_rate)
+                VALUES(?,?,?,CURRENT_DATE,2,?,?,?,1,5,.7)
+                """,generatedItem,draft.getId(),draft.getBillNo(),"generated-"+generatedItem,world.goodsC(),world.unitId());
+        assertEquals("DEFAULT",db.queryForObject("SELECT allowed_overproduction_rate_source FROM production_plan_items WHERE id=?",String.class,generatedItem));
+        assertDecimal(".2",memory(world.goodsC()));
+    }
+
+    /**
+     * ADR-129 §2.10: "the same line" is the saved line id. Deleting a row no longer lets the next row
+     * inherit its position, and an untouched system default keeps the rate the page showed.
+     */
+    @Test void draftEditMatchesTheSavedLineByItsIdNotByItsPosition() {
+        var request=manual(null);
+        var second=new PlanItemLine();second.setGoodsId(world.goodsC());second.setUnitId(world.unitId());
+        second.setUnitRate(BigDecimal.ONE);second.setQty(BigDecimal.TEN);
+        request.setItems(List.of(request.getItems().getFirst(),second));
+        var draft=plans.create(request);
+        assertAllowance(draft.getItems().get(0),"0","DEFAULT");assertAllowance(draft.getItems().get(1),".1","DEFAULT");
+        // The first row is deleted; the page echoes the second row's saved 10% with its saved line id.
+        second.setSourceItemId(draft.getItems().get(1).getId());second.setAllowedOverproductionRate(new BigDecimal(".1"));
+        request.setItems(List.of(second));
+        var edited=plans.update(draft.getId(),request).getItems();
+        assertEquals(1,edited.size());assertAllowance(edited.getFirst(),".1","DEFAULT");
+        assertNull(memory(world.goodsC()));
+        // A later confirmation elsewhere does not re-resolve the untouched default row.
+        var elsewhere=manual(".25");elsewhere.getItems().getFirst().setGoodsId(world.goodsC());
+        assertAllowance(plans.create(elsewhere).getItems().getFirst(),".25","EXPLICIT");
+        assertDecimal(".25",memory(world.goodsC()));
+        second.setSourceItemId(edited.getFirst().getId());second.setAllowedOverproductionRate(null);
+        var untouched=plans.update(draft.getId(),request).getItems().getFirst();
+        assertAllowance(untouched,".1","DEFAULT");
+        // A saved line of other goods is not the same line: the echoed rate is a new confirmation.
+        second.setSourceItemId(untouched.getId());second.setGoodsId(world.goodsA());second.setAllowedOverproductionRate(new BigDecimal(".1"));
+        assertAllowance(plans.update(draft.getId(),request).getItems().getFirst(),".1","EXPLICIT");
+        assertDecimal(".1",memory(world.goodsA()));
+        assertDecimal(".25",memory(world.goodsC()));
+    }
+
+    /**
+     * ADR-129 §2.10: re-saving a draft re-inserts its unchanged lines; that is not a new confirmation,
+     * so it must not overwrite a rate approved later on another task of the same goods.
+     */
+    @Test void reSavingAnUnchangedConfirmedLineKeepsANewerApprovedRateInMemory() {
+        var batchFixture=new ProductionExecutionBatchEndToEndTest();beans.autowireBean(batchFixture);batchFixture.prepare();
+        Object task=ReflectionTestUtils.invokeMethod(batchFixture,"create","rate-resave-"+UUID.randomUUID().toString().substring(0,8),false);
+        UUID segment=ReflectionTestUtils.invokeMethod(task,"segment");UUID goods=ReflectionTestUtils.invokeMethod(task,"root");
+        var batchWorld=(FullChainEndToEndTest.World)ReflectionTestUtils.invokeMethod(task,"world");
+        fixture.loginAs(batchWorld.superAdminUserId());
+        // A newly created confirmed line is remembered.
+        var request=manual(".20");request.getItems().getFirst().setGoodsId(goods);request.getItems().getFirst().setUnitId(batchWorld.unitId());
+        var draft=plans.create(request);
+        assertAllowance(draft.getItems().getFirst(),".20","EXPLICIT");assertDecimal(".20",memory(goods));
+        // Later a 5% adjustment on another task of the same goods is approved and becomes the memory.
+        var pending=rates.submit(new com.uten.imp.features.production.execution.ProductionOverproductionRateContracts.SubmitRequest(
+                segment,0L,new BigDecimal(".05"),"试产稳定后调低允许超产","resave-rate-request-"+segment));
+        rates.decide(pending.id(),new com.uten.imp.features.production.execution.ProductionOverproductionRateContracts.DecisionRequest(
+                pending.rowVersion(),"resave-rate-approve-"+segment,"已核对"),true);
+        assertDecimal(".05",memory(goods));
+        // Re-saving the draft with only a header change keeps the line's 20% and the newer 5% memory.
+        request.setDeliveryDate(BusinessTime.today().plusDays(20));
+        request.getItems().getFirst().setSourceItemId(draft.getItems().getFirst().getId());
+        var resaved=plans.update(draft.getId(),request).getItems().getFirst();
+        assertAllowance(resaved,".20","EXPLICIT");assertDecimal(".05",memory(goods));
+        // Changing the line's rate is a new confirmation and is remembered again.
+        request.getItems().getFirst().setSourceItemId(resaved.getId());
+        request.getItems().getFirst().setAllowedOverproductionRate(new BigDecimal(".15"));
+        assertAllowance(plans.update(draft.getId(),request).getItems().getFirst(),".15","EXPLICIT");
+        assertDecimal(".15",memory(goods));
     }
 
     @Test void initialPlanRateFlowsThroughReadOnlyPreviewApprovalAndSameRateGrowthWithoutOverwritingAnotherRate() {
@@ -91,6 +182,8 @@ class ProductionPlannedOverproductionAllowanceEndToEndTest {
         var firstResult=commands.issueWorkshopPlans(analysis.analysisId(),first);
         UUID original=firstResult.plans().getFirst().planId();
         assertPlanAndSegments(original,".20");
+        assertAllowance(plans.detail(original).getItems().getFirst(),".20","EXPLICIT");
+        assertDecimal(".20",memory(world.goodsA()));
         assertEquals(original,commands.issueWorkshopPlans(analysis.analysisId(),first).plans().getFirst().planId());
         var changedIntentSameKey=new IssueWorkshopPlansRequest(first.version(),first.fingerprint(),first.idempotencyKey(),
                 first.warehouseId(),first.billDate(),first.deliveryDate(),true,
@@ -115,6 +208,9 @@ class ProductionPlannedOverproductionAllowanceEndToEndTest {
         var remembered=commands.issueWorkshopPlans(analysis.analysisId(),defaultRate).plans().getFirst();
         assertEquals(original,remembered.planId());assertTrue(remembered.mergedIntoExisting());
         assertPlanAndSegments(original,".20");
+        // Growth without a rate keeps the line's confirmed source and writes no memory of its own.
+        assertAllowance(plans.detail(original).getItems().getFirst(),".20","EXPLICIT");
+        assertDecimal(".20",memory(world.goodsA()));
         var differentIntentionSameKey = new IssueWorkshopPlansRequest(defaultRate.version(),defaultRate.fingerprint(),
                 defaultRate.idempotencyKey(),defaultRate.warehouseId(),defaultRate.billDate(),defaultRate.deliveryDate(),
                 defaultRate.approveNow(),List.of(issueLine(line,"4",".10")));
@@ -145,8 +241,9 @@ class ProductionPlannedOverproductionAllowanceEndToEndTest {
         PlanSaveRequest create=manual("0");
         var draft=plans.create(create);assertDecimal("0",draft.getItems().getFirst().getAllowedOverproductionRate());
         var changed=plans.update(draft.getId(),manual("1.50"));
-        assertDecimal("1.5",changed.getItems().getFirst().getAllowedOverproductionRate());
-        assertThrows(ApiException.class,()->plans.update(draft.getId(),manual(null)));
+        assertAllowance(changed.getItems().getFirst(),"1.5","EXPLICIT");
+        // Clearing the rate while editing hands it back to the goods default (the remembered 150%).
+        assertAllowance(plans.update(draft.getId(),manual(null)).getItems().getFirst(),"1.5","DEFAULT");
         assertThrows(ApiException.class,()->plans.update(draft.getId(),manual("0.0000001")));
         assertDecimal("1.5",plans.detail(draft.getId()).getItems().getFirst().getAllowedOverproductionRate());
         assertThrows(ApiException.class,()->plans.create(manual("-0.01")));
@@ -215,6 +312,12 @@ class ProductionPlannedOverproductionAllowanceEndToEndTest {
         var request=new PlanSaveRequest();request.setBillDate(BusinessTime.today());request.setDepartmentId(workshop);request.setWorkerId(worker);
         var line=new PlanItemLine();line.setGoodsId(world.goodsA());line.setUnitId(world.unitId());line.setUnitRate(BigDecimal.ONE);
         line.setQty(BigDecimal.TEN);line.setAllowedOverproductionRate(rate==null?null:new BigDecimal(rate));request.setItems(List.of(line));return request;
+    }
+    private void assertAllowance(com.uten.imp.features.production.plan.dto.PlanItemDto item,String rate,String source) {
+        assertDecimal(rate,item.getAllowedOverproductionRate());assertEquals(source,item.getAllowedOverproductionRateSource());
+    }
+    private BigDecimal memory(UUID goods) {
+        return db.queryForObject("SELECT production_overproduction_rate FROM goods WHERE id=?",BigDecimal.class,goods);
     }
     private void assertPlanAndSegments(UUID plan,String expected) {
         assertDecimal(expected,plans.detail(plan).getItems().getFirst().getAllowedOverproductionRate());

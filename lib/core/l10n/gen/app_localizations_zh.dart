@@ -12,23 +12,143 @@ class AppLocalizationsZh extends AppLocalizations {
   String get bomLearningTitle => 'BOM 学习记录';
 
   @override
+  String get bomLearningHelp =>
+      '真实使用数量 = 已完工且核清余料的生产累计净耗料 ÷ 用到该物料的累计产量。物料分析和车间领料优先按真实使用数量计算，没有数据时按设计使用数量；已下达的任务仍按下达时的用量执行。日报登记的不良数只作记录，不计入产量；实产单耗按良品加不良算。';
+
+  @override
+  String get bomLearningInactive => '还没有学习记录。本厂生产的货品完工并核清余料后开始累计。';
+
+  @override
+  String bomLearningPaused(String reason) {
+    return '没有自动建立学习组件：$reason。真实使用数量照常累计。';
+  }
+
+  @override
+  String get bomDesignQty => '设计使用数量';
+
+  @override
+  String get bomActualQty => '真实使用数量';
+
+  @override
+  String get bomLearnedEdge => '系统学习';
+
+  @override
+  String bomActualTipActual(int samples, String net, String output) {
+    return '按 $samples 批已完工生产累计：净耗 $net / 产量 $output';
+  }
+
+  @override
+  String bomActualTipAverage(String qty) {
+    return '实际平均每件用 $qty';
+  }
+
+  @override
+  String get bomActualTipUsed => '物料分析和车间领料按真实使用数量计算';
+
+  @override
+  String bomUsesDesignBecause(String reason) {
+    return '$reason，计算按设计使用数量';
+  }
+
+  @override
+  String get bomDesignReasonNoData => '还没有已完工且核清余料的生产数据';
+
+  @override
+  String get bomDesignReasonNotLinear => '整包或固定批次不能按平均用量算';
+
+  @override
+  String get bomDesignReasonOutputUnitChanged => '父件单位变了，需重新学习';
+
+  @override
+  String get bomDesignReasonSubcontractOutbound => '本次由委外单一子件发料，按委外合同用量';
+
+  @override
+  String get bomDesignReasonOther => '没有可用的真实数据';
+
+  @override
+  String bomRelearnedSince(String date) {
+    return '从 $date 起重新累计';
+  }
+
+  @override
+  String get bomDesignQtyRequired => '请填写设计使用数量';
+
+  @override
+  String get bomDesignQtyInvalid => '设计使用数量必须是大于 0 的数字';
+
+  @override
+  String get bomLearnedEdgeEditHint =>
+      '这是系统按真实用料学出的组件；改设计使用数量后转为人工维护，真实使用数量照常累计';
+
+  @override
+  String bomLearnedEdgeDeleteNote(int count) {
+    return '其中 $count 个是系统学出的组件，删除后系统不会再自动加回';
+  }
+
+  @override
+  String get bomLearningMaterial => '物料';
+
+  @override
+  String get bomLearningExposure => '累计产量';
+
+  @override
+  String get bomLearningSampleCount => '有效批次';
+
+  @override
+  String get bomLearningBasis => '计算采用';
+
+  @override
+  String get bomLearningOutsideBom => 'BOM 外实际用过的料';
+
+  @override
+  String get bomLearningReleased => '已删除，不再自动加入';
+
+  @override
+  String get bomLearningRelearn => '从现在起重新学习';
+
+  @override
+  String bomLearningRelearnConfirm(String name) {
+    return '「$name」从现在起重新学习？\n之前的累计不再参与计算；新的生产数据出来前，计算按设计使用数量。';
+  }
+
+  @override
+  String get bomLearningRelearnDone => '已从现在起重新学习';
+
+  @override
+  String get bomLearningRelearnFailed => '重新学习失败，请稍后重试';
+
+  @override
+  String get bomLearningLoadFailed => '学习记录加载失败，请重试';
+
+  @override
+  String get bomLearningEmpty => '还没有组件，也没有实际用过的料';
+
+  @override
+  String get bomLearningAction => '操作';
+
+  @override
+  String get bomLearningBlockedOutputIdentity => '父件单位或身份变了';
+
+  @override
+  String get bomLearningBlockedMaterialIdentity => '物料已删除或单位变了';
+
+  @override
+  String get bomLearningBlockedColorConflict => '同一物料领过多种颜色，请人工在组装信息里确定';
+
+  @override
+  String get bomLearningBlockedPrecision => '用量超出可记录范围';
+
+  @override
+  String get bomLearningBlockedCycle => '会形成组装环路';
+
+  @override
+  String get bomLearningBlockedOther => '请人工在组装信息里维护';
+
+  @override
   String get materialDiscoveryBatchHelp => '请先选择持续生产或齐套生产，登记实际物料后再安排分批';
 
   @override
   String get materialDiscoveryCancel => '撤回待登记领料申请';
-
-  @override
-  String get bomLearningHelp => '完成生产并核清余料后，按累计净耗料除以累计实际产量更新单耗。已有任务仍按下达时的用料执行。';
-
-  @override
-  String get bomLearningInactive => '尚无学习记录。无底层材料的自制任务完成领料和生产后开始累计。';
-
-  @override
-  String get bomLearningAuto => '自动更新 BOM';
-
-  @override
-  String get bomLearningPaused =>
-      '已保留人工 BOM 或发现材料、单位、颜色冲突，自动更新已暂停；累计记录仍保留，请核对组件资料。';
 
   @override
   String get bomLearningOutput => '累计实际产量';
@@ -40,7 +160,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get bomLearningNet => '累计净耗料';
 
   @override
-  String get bomLearningAverage => '每件平均用量';
+  String bomActualTipDefect(String defect, String perProduced, String rate) {
+    return '另有不良 $defect：按实产(良品+不良)算用量为 $perProduced，不良率 $rate';
+  }
+
+  @override
+  String get bomLearningDefect => '不良数';
+
+  @override
+  String get bomLearningPerProduced => '实产单耗';
+
+  @override
+  String get bomLearningDefectRate => '不良率';
+
+  @override
+  String get bomLearningTotalDefect => '累计不良';
 
   @override
   String get materialDiscoveryTitle => '填写实际领料';

@@ -158,7 +158,9 @@ class BusinessDataResetSqlContractTest {
             // V693 仓库负责人(ADR-115): 仓库的附属设置随主档保留。
             Map.entry("warehouse_keepers", 693),
             Map.entry("goods_bom_learning_profiles", 711),
-            Map.entry("goods_bom_learning_material_totals", 711));
+            Map.entry("goods_bom_learning_material_totals", 711),
+            // V737 / ADR-129：真实使用数量按 (父件, 组件, 单位) 累计，取代按颜色的累计表。
+            Map.entry("goods_bom_actual_usages", 737));
 
     /**
      * V590 起整表废弃并从清空策略移除的表（「读取已安装定义 + 锚点替换删除」
@@ -170,7 +172,9 @@ class BusinessDataResetSqlContractTest {
             "roles", 677,
             "user_roles", 677,
             "role_permissions", 677,
-            "department_roles", 677);
+            "department_roles", 677,
+            // V737 / ADR-129：按颜色的学习累计表由 goods_bom_actual_usages 取代。
+            "goods_bom_learning_material_totals", 737);
 
     private String opsScript;
     private String migrationSql;
@@ -422,7 +426,9 @@ class BusinessDataResetSqlContractTest {
                 .contains("(720, 649)")
                 .contains("(721, 650), (722, 651), (723, 652), (724, 653), (725, 654), (726, 655), (727, 656), (728, 657), (729, 658), (730, 659), (731, 660), (732, 661)")
                 .contains("(733, 662)")
-                .contains("(734, 663)")
+                .contains("(734, 663),")
+                .contains("(735, 664),")
+                .contains("(737, 665)")
                 // The exact range label follows the independently enumerated classpath head.
                 .contains("V507/469、V508/470及V511至V"
                         + MigrationRehearsalSupport.CURRENT_HEAD_VERSION + "完整目录");

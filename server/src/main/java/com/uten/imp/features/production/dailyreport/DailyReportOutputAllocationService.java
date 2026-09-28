@@ -161,7 +161,7 @@ public class DailyReportOutputAllocationService {
                 left=left.subtract(extraPlanned);
             }
             if(left.signum()>0)pieces.add(copy(input,left,batch,true,true));
-            distributeWeight(input,pieces);
+            distributeWeight(input,pieces);keepDefectOnFirstSlice(input,pieces);
             result.addAll(pieces);
         }
         for(int index=0;index<result.size();index++)result.get(index).setLineNo(index+1);
@@ -288,6 +288,14 @@ public class DailyReportOutputAllocationService {
                     com.uten.imp.common.finance.MoneyPolicy.quantitySlice(input.getWeight(),input.getQty(),BigDecimal.ZERO,cumulativeQty);
             piece.setWeight(boundary.subtract(previousBoundary));previousBoundary=boundary;
         }
+    }
+    /**
+     * 一次录入的不良数只记一次(ADR-129)：整笔挂在拆出的第一份上，其余份为 0。
+     * 不良数不参与拆分，拆分只按良品数；库里 daily_report_defect_first_slice 同样把关。
+     */
+    static void keepDefectOnFirstSlice(DailyReportItemLine input,List<DailyReportItemLine> pieces) {
+        for(int index=0;index<pieces.size();index++)
+            pieces.get(index).setDefectQty(index==0?input.getDefectQty():BigDecimal.ZERO);
     }
     static BigDecimal transferBaseQuantity(BigDecimal qty,BigDecimal rate) {
         return com.uten.imp.common.finance.MoneyPolicy.quantity(qty.multiply(rate));

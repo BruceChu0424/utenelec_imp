@@ -6,12 +6,14 @@ package com.uten.imp.common.export;
  *
  * @param key  行 Map 取值键（与查询投影别名 / 行模型字段对齐）
  * @param label 表头文案
- * @param type text / date / money / number / bool（常量见下）
+ * @param type text / date / money / number / qty / bool(常量见下)
  */
 public record ExportColumn(String key, String label, String type) {
     public static final String TEXT = "text";
     public static final String DATE = "date";
     public static final String MONEY = "money";
     public static final String NUMBER = "number";
+    /** 用量等小数位不定的数量：按存储值全精度显示(0.00001 不显示成 0.00)，导回时读到同一个数。 */
+    public static final String QTY = "qty";
     public static final String BOOL = "bool";
 }

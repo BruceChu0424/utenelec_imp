@@ -382,7 +382,23 @@ class MaterialAnalysisServiceBehaviorTest {
     }
 
     @Test
-    void changedDirectBomSignatureBlocksFormalPlanning() {
+    void changedDirectBomStructureBlocksFormalPlanning() {
+        ApiException error = assertThrows(ApiException.class, () -> directBomSnapshotCheck("ASSEMBLY", "BUY"));
+        assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
+        assertThat(error.getMessage()).contains("BOM 直接层已变更");
+    }
+
+    /** ADR-129 §2.5：签名只比结构，设计/真实使用数量的变化随下一次人工刷新生效，不拦下达/审批。 */
+    @Test
+    void directBomUsageChangeNeverBlocksFormalPlanning() {
+        directBomSnapshotCheck("START", "BUY");
+    }
+
+    /**
+     * 现时 BOM：设计用量 2、真实用量 1.5(已学到)；库内快照只存结构列与第一层换算率，
+     * [storedStage]/[storedSuggestion] 决定快照与现时是否同一结构。
+     */
+    private static void directBomSnapshotCheck(String storedStage, String storedSuggestion) {
         EntityManager em = mock(EntityManager.class);
         MaterialAnalysisService service = service(
                 em, mock(ProductionDocumentAccessPolicy.class));
@@ -398,17 +414,14 @@ class MaterialAnalysisServiceBehaviorTest {
                 itemId, productId, productUnitId)));
         // ADR-111：BOM 图校验只返回违规行(父件 → 组件 + 原因)，零行即通过。
         Query graphValidation = query(Collections.emptyList());
-        Query currentBom = query(Collections.singletonList(new Object[]{
-                bomItemId, productId, componentId, null, componentUnitId, 1,
-                bomItemId.toString(), null, BigDecimal.ONE, bd("2"), bd("2"),
-                "C-01", "Component", null, null, "piece", BigDecimal.ZERO,
-                "\u91c7\u8d2d", false, "START", "PER_UNIT", BigDecimal.ONE,
-                true, true, itemId
-        }));
-        Query staleSnapshot = query(Collections.singletonList(new Object[]{
-                bomItemId, componentId, null, componentUnitId,
-                BigDecimal.ONE, bd("3"), bd("3"), "START", "PER_UNIT",
-                BigDecimal.ONE, true, true, "BUY", "EDGE_RULE", itemId
+        Query currentBom = query(Collections.singletonList(bomRow(
+                bomItemId, productId, componentId, componentUnitId, 1, bomItemId.toString(), null,
+                "2", "1.5", "ACTUAL", "采购", false, "PER_UNIT", "1", true, itemId, 3L)));
+        Query snapshot = query(Collections.singletonList(new Object[]{
+                itemId, "EDGE_RULE",
+                null, bomItemId, componentId, null, componentUnitId, 1, bomItemId.toString(),
+                storedStage, "PER_UNIT", BigDecimal.ONE, true, true, "EDGE_RULE", storedSuggestion, true,
+                BigDecimal.ONE
         }));
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String statement = invocation.getArgument(0);
@@ -422,15 +435,416 @@ class MaterialAnalysisServiceBehaviorTest {
                 return currentBom;
             }
             if (statement.contains("FROM production_material_analysis_materials")) {
-                return staleSnapshot;
+                assertThat(statement).doesNotContain("bom_qty").doesNotContain("per_product_qty,");
+                return snapshot;
             }
             throw new AssertionError("unexpected SQL: " + statement);
         });
 
-        ApiException error = assertThrows(ApiException.class,
-                () -> service.requireCurrentBomSnapshot(analysisId, Set.of(itemId)));
+        service.requireCurrentBomSnapshot(analysisId, Set.of(itemId));
+    }
 
-        assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
+    /**
+     * ADR-129 §2.5：单耗在 Java 里按所选用量逐层算，6 位向上取整后作为下一层的父件单耗(小数换算率、
+     * 第 3 层、允许尾包的按包计量)；第二次刷新沿用快照锁定的用量，即使现时设计/真实值已变，
+     * 算出的快照列与按 NUMERIC(18,6) 落库的值逐列相等，不写任何节点行。
+     */
+    @Test
+    void perProductQuantityIsComputedInJavaAndASecondRefreshKeepsEveryPinnedColumn() {
+        UUID itemId = UUID.randomUUID(), unit = UUID.randomUUID();
+        UUID root = UUID.randomUUID(), a = UUID.randomUUID(), b = UUID.randomUUID(), c = UUID.randomUUID();
+        UUID edgeA = UUID.randomUUID(), edgeB = UUID.randomUUID(), edgeC = UUID.randomUUID();
+        Object[] sourceRow = sourceRow(itemId, root, unit);
+        sourceRow[16] = bd("0.3333");
+        var source = MaterialAnalysisService.SourceLine.from(sourceRow);
+        String keyA = edgeA.toString(), keyB = keyA + "/" + edgeB, keyC = keyB + "/" + edgeC;
+        List<Object[]> live = List.of(
+                bomRow(edgeA, root, a, unit, 1, keyA, null, "3", "2.5", "ACTUAL", "自制", true, "PER_UNIT", "1", true, itemId, 4L,
+                        "0.0625"),
+                bomRow(edgeB, a, b, unit, 2, keyB, keyA, "2", null, "NO_DATA", "自制", true, "PER_PACKAGE", "7", true, itemId, 0L),
+                bomRow(edgeC, b, c, unit, 3, keyC, keyB, "0.3", "0.333334", "ACTUAL", "采购", false, "PER_UNIT", "1", true, itemId, 2L,
+                        "0.142857"));
+
+        var first = MaterialAnalysisService.bomNodes(source, live,
+                MaterialAnalysisService.BomUsageContext.LIVE, Set.of());
+
+        assertThat(first).extracting(MaterialAnalysisService.BomNode::bomQty)
+                .usingElementComparator(BigDecimal::compareTo).containsExactly(bd("2.5"), bd("2"), bd("0.333334"));
+        assertThat(first).extracting(node -> node.usage().basis()).containsExactly("ACTUAL", "DESIGN", "ACTUAL");
+        assertThat(first).extracting(node -> node.usage().reason()).containsExactly(null, "NO_DATA", null);
+        // 不良率跟着真实使用数量一起采用；没有真实值的节点为空。
+        assertThat(first).extracting(node -> node.usage().defectRate())
+                .usingElementComparator(java.util.Comparator.nullsFirst(BigDecimal::compareTo))
+                .containsExactly(bd("0.0625"), null, bd("0.142857"));
+        assertThat(first).extracting(MaterialAnalysisService.BomNode::perProductQty)
+                .usingElementComparator(BigDecimal::compareTo).containsExactly(bd("0.833250"), bd("0.238072"), bd("0.079358"));
+        assertThat(first.get(0).parentPerProductQty()).isEqualByComparingTo("0.3333");
+        assertThat(first.get(2).parentPerProductQty()).isEqualByComparingTo(first.get(1).perProductQty());
+
+        // 落库：NUMERIC(18,6) 四舍五入；下一次刷新按节点键沿用锁定值，现时主档与学习值都已变化。
+        Map<String, MaterialAnalysisService.PinnedUsage> pinned = new java.util.HashMap<>();
+        Map<String, Object[]> stored = new java.util.HashMap<>();
+        for (var node : first) {
+            pinned.put(itemId + "|" + node.nodeKey(), pinnedFrom(node));
+            stored.put(node.nodeKey(), java.util.Arrays.stream(nodeStructure(node))
+                    .map(value -> value instanceof BigDecimal number ? storedNumeric(number) : value).toArray());
+        }
+        List<Object[]> changedLive = List.of(
+                bomRow(edgeA, root, a, unit, 1, keyA, null, "4", "9", "ACTUAL", "自制", true, "PER_UNIT", "1", true, itemId, 9L,
+                        "0.5"),
+                bomRow(edgeB, a, b, unit, 2, keyB, keyA, "2", "11", "ACTUAL", "自制", true, "PER_PACKAGE", "7", true, itemId, 5L,
+                        "0.3"),
+                bomRow(edgeC, b, c, unit, 3, keyC, keyB, "0.3", null, "NO_DATA", "采购", false, "PER_UNIT", "1", true, itemId, 0L));
+        var second = MaterialAnalysisService.bomNodes(source, changedLive,
+                new MaterialAnalysisService.BomUsageContext(pinned, Map.of()), Set.of());
+
+        for (var node : second) {
+            Object[] expected = stored.get(node.nodeKey());
+            Object[] actual = nodeStructure(node);
+            for (int i = 0; i < actual.length; i++) {
+                assertThat(MaterialAnalysisSnapshotBaseline.sameSqlValue(expected[i], actual[i]))
+                        .as("node %s column %d", node.nodeKey(), i).isTrue();
+            }
+        }
+        // 换了一条边(同一节点键不同 BOM 边)不沿用旧值，按新节点取现时值。
+        UUID replaced = UUID.randomUUID();
+        var fresh = MaterialAnalysisService.bomNodes(source, List.<Object[]>of(
+                bomRow(replaced, root, a, unit, 1, keyA, null, "4", null, "NO_DATA", "自制", false, "PER_UNIT", "1", true, itemId, 0L)),
+                new MaterialAnalysisService.BomUsageContext(pinned, Map.of()), Set.of());
+        assertThat(fresh.getFirst().bomQty()).isEqualByComparingTo("4");
+        assertThat(fresh.getFirst().usage().reason()).isEqualTo("NO_DATA");
+    }
+
+    /**
+     * ADR-129 §2.5：按父节点路线与视图给出的线性/状态选用量；只有单一子件委外发出的子件按设计值(合同用量)。
+     * 线性与状态是 v_goods_bom_item_usage 的结果，Java 不再按计量规则重判。
+     */
+    @Test
+    void nodeUsageFollowsParentRouteAndLinearity() {
+        BigDecimal design = bd("2"), actual = bd("1.5");
+        BigDecimal defectRate = bd("0.05");
+        var outbound = MaterialAnalysisService.BomUsage.choose(design, actual, 3L, defectRate, "ACTUAL", true, true);
+        assertThat(outbound.usedQty()).isEqualByComparingTo("2");
+        assertThat(outbound.basis()).isEqualTo("DESIGN");
+        assertThat(outbound.reason()).isEqualTo("SUBCONTRACT_OUTBOUND");
+        assertThat(outbound.actualQty()).isEqualByComparingTo("1.5");
+        // 发给委外商时真实值留作路线改回的依据，不良率跟着它一起留。
+        assertThat(outbound.defectRate()).isEqualByComparingTo("0.05");
+        var ownConsumption = MaterialAnalysisService.BomUsage.choose(design, actual, 3L, defectRate, "ACTUAL", true, false);
+        assertThat(ownConsumption.usedQty()).isEqualByComparingTo("1.5");
+        assertThat(ownConsumption.basis()).isEqualTo("ACTUAL");
+        assertThat(ownConsumption.reason()).isNull();
+        assertThat(ownConsumption.defectRate()).isEqualByComparingTo("0.05");
+        // 边现时不是线性规则(整包/固定批次)：平均单耗不能近似；锁定的旧真实值也不用。
+        var nonLinear = MaterialAnalysisService.BomUsage.choose(design, actual, 3L, defectRate, "NOT_LINEAR", false, false);
+        assertThat(nonLinear.usedQty()).isEqualByComparingTo("2");
+        assertThat(nonLinear.basis()).isEqualTo("DESIGN");
+        assertThat(nonLinear.reason()).isEqualTo("NOT_LINEAR");
+        assertThat(MaterialAnalysisService.BomUsage.choose(design, null, 0L, null, "OUTPUT_UNIT_CHANGED", true, false)
+                .reason()).isEqualTo("OUTPUT_UNIT_CHANGED");
+        // 锁定时还没有真实值、现时已学到：仍按设计值直到人工刷新采用。
+        var pinnedWithoutActual = MaterialAnalysisService.BomUsage.choose(design, null, null, null, "ACTUAL", true, false);
+        assertThat(pinnedWithoutActual.usedQty()).isEqualByComparingTo("2");
+        assertThat(pinnedWithoutActual.reason()).isEqualTo("NO_DATA");
+        // 没有真实值就没有「采用时的不良率」：按设计值的节点存空。
+        assertThat(MaterialAnalysisService.BomUsage.choose(design, null, 2L, defectRate, "NO_DATA", true, false)
+                .defectRate()).isNull();
+        assertThat(MaterialAnalysisService.BomUsage.design(design).defectRate()).isNull();
+
+        UUID itemId = UUID.randomUUID(), unit = UUID.randomUUID(), edge = UUID.randomUUID();
+        var source = MaterialAnalysisService.SourceLine.from(sourceRow(itemId, UUID.randomUUID(), unit));
+        Object[] row = bomRow(edge, UUID.randomUUID(), UUID.randomUUID(), unit, 1, edge.toString(), null,
+                "2", "1.5", "ACTUAL", "采购", false, "PER_UNIT", "1", true, itemId, 3L, "0.05");
+        var sent = MaterialAnalysisService.bomNodes(source, List.<Object[]>of(row),
+                MaterialAnalysisService.BomUsageContext.LIVE, Set.of(itemId + "|" + edge)).getFirst();
+        assertThat(sent.bomQty()).isEqualByComparingTo("2");
+        assertThat(sent.perProductQty()).isEqualByComparingTo("2");
+        assertThat(sent.usage().defectRate()).isEqualByComparingTo("0.05");
+        var consumed = MaterialAnalysisService.bomNodes(source, List.<Object[]>of(row),
+                MaterialAnalysisService.BomUsageContext.LIVE, Set.of()).getFirst();
+        assertThat(consumed.bomQty()).isEqualByComparingTo("1.5");
+        assertThat(consumed.snapshotRequiredQty()).isEqualByComparingTo("150");
+        assertThat(consumed.usage().defectRate()).isEqualByComparingTo("0.05");
+    }
+
+    /**
+     * ADR-129 §2.5：锁定值只在原边规则下有意义。同一节点键、同一条 BOM 边原地改了组件、单位或计量规则
+     * (按件 0.01 改成每 100 件一包用 1 包、换成按公斤的胶水)，内部刷新按现时设计值，不把旧数量套到新规则上；
+     * 规则没变才沿用锁定值。不良率与锁定的真实值一起沿用、一起换成现时值，不会一半锁定一半现时。
+     */
+    @Test
+    void pinnedUsageIsOnlyKeptWhileTheSameEdgeKeepsItsComponentUnitAndMeteringRule() {
+        UUID itemId = UUID.randomUUID(), pcs = UUID.randomUUID(), kg = UUID.randomUUID();
+        UUID root = UUID.randomUUID(), screw = UUID.randomUUID(), glue = UUID.randomUUID(), edge = UUID.randomUUID();
+        String key = edge.toString();
+        var source = MaterialAnalysisService.SourceLine.from(sourceRow(itemId, root, pcs));
+        var locked = MaterialAnalysisService.bomNodes(source, List.<Object[]>of(
+                bomRow(edge, root, screw, pcs, 1, key, null, "0.01", "0.012", "ACTUAL", "采购", false, "PER_UNIT", "1", true, itemId, 4L,
+                        "0.04")),
+                MaterialAnalysisService.BomUsageContext.LIVE, Set.of()).getFirst();
+        var context = new MaterialAnalysisService.BomUsageContext(Map.of(itemId + "|" + key, pinnedFrom(locked)), Map.of());
+
+        var unchanged = MaterialAnalysisService.bomNodes(source, List.<Object[]>of(
+                bomRow(edge, root, screw, pcs, 1, key, null, "0.02", "0.03", "ACTUAL", "采购", false, "PER_UNIT", "1.000", true, itemId, 9L,
+                        "0.2")),
+                context, Set.of()).getFirst();
+        assertThat(unchanged.bomQty()).isEqualByComparingTo("0.012");
+        assertThat(unchanged.usage().designQty()).isEqualByComparingTo("0.01");
+        assertThat(unchanged.usage().sampleCount()).isEqualTo(4L);
+        assertThat(unchanged.usage().defectRate()).isEqualByComparingTo("0.04");
+
+        var repackaged = MaterialAnalysisService.bomNodes(source, List.<Object[]>of(
+                bomRow(edge, root, screw, pcs, 1, key, null, "1", null, "NO_DATA", "采购", false, "PER_PACKAGE", "100", true, itemId, 0L)),
+                context, Set.of()).getFirst();
+        assertThat(repackaged.bomQty()).isEqualByComparingTo("1");
+        assertThat(repackaged.usage().actualQty()).isNull();
+        assertThat(repackaged.usage().reason()).isEqualTo("NO_DATA");
+        assertThat(repackaged.snapshotRequiredQty()).isEqualByComparingTo("1");
+        assertThat(repackaged.usage().defectRate()).isNull();
+        // 改了计量规则、现时已有学到的真实值：整组取现时值(用量、批次、不良率)，不留锁定的 0.04。
+        var relearnedPackage = MaterialAnalysisService.bomNodes(source, List.<Object[]>of(
+                bomRow(edge, root, screw, pcs, 1, key, null, "1", "1.2", "ACTUAL", "采购", false, "PER_PACKAGE", "100", true, itemId, 7L,
+                        "0.3")),
+                context, Set.of()).getFirst();
+        assertThat(relearnedPackage.bomQty()).isEqualByComparingTo("1.2");
+        assertThat(relearnedPackage.usage().sampleCount()).isEqualTo(7L);
+        assertThat(relearnedPackage.usage().defectRate()).isEqualByComparingTo("0.3");
+
+        var nowFixedBatch = MaterialAnalysisService.bomNodes(source, List.<Object[]>of(
+                bomRow(edge, root, screw, pcs, 1, key, null, "5", null, "NOT_LINEAR", "采购", false, "FIXED_BATCH", "50", false, itemId, 4L)),
+                context, Set.of()).getFirst();
+        assertThat(nowFixedBatch.bomQty()).isEqualByComparingTo("5");
+        assertThat(nowFixedBatch.usage().reason()).isEqualTo("NOT_LINEAR");
+
+        for (Object[] changed : List.of(
+                bomRow(edge, root, glue, kg, 1, key, null, "0.02", null, "NO_DATA", "采购", false, "PER_UNIT", "1", true, itemId, 0L),
+                bomRow(edge, root, glue, pcs, 1, key, null, "0.02", null, "NO_DATA", "采购", false, "PER_UNIT", "1", true, itemId, 0L),
+                bomRow(edge, root, screw, kg, 1, key, null, "0.02", null, "NO_DATA", "采购", false, "PER_UNIT", "1", true, itemId, 0L))) {
+            var live = MaterialAnalysisService.bomNodes(source, List.<Object[]>of(changed), context, Set.of()).getFirst();
+            assertThat(live.bomQty()).isEqualByComparingTo("0.02");
+            assertThat(live.usage().designQty()).isEqualByComparingTo("0.02");
+        }
+
+        var perPackage = new MaterialAnalysisService.PinnedUsage(edge, screw, pcs, "PER_PACKAGE", bd("100"), true,
+                bd("1"), null, 0L, null);
+        assertThat(perPackage.sameEdgeRule(edge, screw, pcs, "PER_PACKAGE", bd("100.00"), true)).isTrue();
+        assertThat(perPackage.sameEdgeRule(edge, screw, pcs, "PER_PACKAGE", bd("50"), true)).isFalse();
+        assertThat(perPackage.sameEdgeRule(edge, screw, pcs, "PER_PACKAGE", bd("100"), false)).isFalse();
+        assertThat(perPackage.sameEdgeRule(UUID.randomUUID(), screw, pcs, "PER_PACKAGE", bd("100"), true)).isFalse();
+    }
+
+    /**
+     * ADR-129：落库节点按 loadStoredMaterialRows 的列序读回锁定的用量(41 设计、42 真实、43 采用、44 原因、
+     * 45 有效批次、46 不良率)；物料分析接口的字段名是 usageDefectRate，紧跟 usageSampleCount，没有时是空(不是 0)。
+     */
+    @Test
+    void storedNodeReadsBackItsDefectRateAndTheMaterialViewCallsItUsageDefectRate() throws Exception {
+        Object[] stored = new Object[47];
+        stored[0] = UUID.randomUUID();stored[1] = UUID.randomUUID();stored[2] = "node";stored[11] = 1;
+        stored[41] = bd("2");stored[42] = bd("1.5");stored[43] = "ACTUAL";stored[45] = 4L;stored[46] = bd("0.032500");
+        var usage = MaterialAnalysisService.MaterialRow.from(stored).usage();
+        assertThat(usage.basis()).isEqualTo("ACTUAL");
+        assertThat(usage.sampleCount()).isEqualTo(4L);
+        assertThat(usage.defectRate()).isEqualByComparingTo("0.0325");
+        stored[46] = null;
+        assertThat(MaterialAnalysisService.MaterialRow.from(stored).usage().defectRate()).isNull();
+
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
+        var json = mapper.valueToTree(material(UUID.randomUUID(), false, null));
+        List<String> names = new ArrayList<>();
+        json.fieldNames().forEachRemaining(names::add);
+        assertThat(names.indexOf("usageDefectRate")).isEqualTo(names.indexOf("usageSampleCount") + 1);
+        assertThat(json.get("usageDefectRate").isNull()).isTrue();
+    }
+
+    /**
+     * ADR-129 §2.5：共享制造锚点第一次展开时没有自己的锁定值，按批次第一个成员(行 id 排序，与汇总预览同序)
+     * 子树里同一相对 BOM 路径的锁定值展开；锚点自己已锁定的节点不动，不在成员子树里的节点不借。
+     */
+    @Test
+    void aggregateAnchorNodesInheritTheFirstMembersPinnedUsageByRelativeBomPath() {
+        UUID anchor = UUID.randomUUID(), memberItem = UUID.randomUUID(), rootItem = UUID.randomUUID();
+        UUID first = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID second = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        UUID laterItem = UUID.randomUUID();
+        var member = new MaterialAnalysisService.AggregateMemberSubtree(first, memberItem, "m", false);
+        var later = new MaterialAnalysisService.AggregateMemberSubtree(second, laterItem, "x/y", false);
+        var fromMember = usage("2.0");
+        var fromLater = usage("2.1");
+        var own = usage("3");
+        Map<UUID, Map<String, MaterialAnalysisService.PinnedUsage>> byItem = Map.of(
+                memberItem, Map.of("m", usage("9"), "m/e1", fromMember, "m/e1/e2", fromMember, "other/e1", usage("8")),
+                laterItem, Map.of("x/y/e1", fromLater, "x/y/e3", fromLater),
+                anchor, Map.of("e1/e2", own));
+
+        var pinned = MaterialAnalysisService.withAggregateAnchorPins(byItem, Map.of(anchor, List.of(member, later)));
+
+        assertThat(pinned.get(anchor + "|e1")).isSameAs(fromMember);
+        assertThat(pinned.get(anchor + "|e1/e2")).isSameAs(own);
+        assertThat(pinned.get(anchor + "|e3")).isSameAs(fromLater);
+        assertThat(pinned).doesNotContainKeys(anchor + "|m", anchor + "|", anchor + "|other/e1");
+        assertThat(pinned.get(memberItem + "|m/e1")).isSameAs(fromMember);
+        // 成员是顶层供给行：它的子树就是整棵来源树，相对路径即节点键。
+        var rootMember = new MaterialAnalysisService.AggregateMemberSubtree(first, rootItem, "ROOT_SUPPLY", true);
+        var rootPinned = MaterialAnalysisService.withAggregateAnchorPins(
+                Map.of(rootItem, Map.of("e1", fromMember)), Map.of(anchor, List.of(rootMember)));
+        assertThat(rootPinned.get(anchor + "|e1")).isSameAs(fromMember);
+    }
+
+    /** 批次成员按行 id 排序读出(与汇总预览取第一个成员同序)，只读未撤回批次、仍有效的成员行。 */
+    @Test
+    void aggregateMemberSubtreesAreOrderedLikeTheAggregatePreview() {
+        EntityManager em = mock(EntityManager.class);
+        UUID anchor = UUID.randomUUID(), item = UUID.randomUUID();
+        UUID first = UUID.fromString("00000000-0000-0000-0000-00000000000a");
+        UUID second = UUID.fromString("00000000-0000-0000-0000-00000000000b");
+        Query rows = query(List.of(new Object[]{anchor, second, item, "b", false},
+                new Object[]{anchor, first, item, "ROOT_SUPPLY", true}));
+        when(em.createNativeQuery(anyString())).thenAnswer(call -> {
+            assertThat(call.getArgument(0, String.class).replaceAll("\\s+", " "))
+                    .contains("action.status<>'CANCELLED'", "member.active",
+                            "batch.configuration_snapshot->'materialLineIds'", "event.event_type IN('CREATE','APPEND')");
+            return rows;
+        });
+        Map<UUID, List<MaterialAnalysisService.AggregateMemberSubtree>> members = invokePrivate(
+                service(em, mock(ProductionDocumentAccessPolicy.class)), "aggregateMemberSubtrees",
+                new Class<?>[]{UUID.class}, UUID.randomUUID());
+        assertThat(members.get(anchor)).extracting(MaterialAnalysisService.AggregateMemberSubtree::materialLineId)
+                .containsExactly(first, second);
+        assertThat(members.get(anchor).getFirst().rootSupply()).isTrue();
+    }
+
+    /**
+     * 人工刷新：锚点冻结的父键(锚点有下达计划)同步到每个成员子树的同一相对路径，成员树与锚点树保持同一个数；
+     * 其他父键原样保留。
+     */
+    @Test
+    void frozenAnchorParentsFreezeTheSameRelativeParentsInEveryMemberSubtree() {
+        UUID anchor = UUID.randomUUID(), memberItem = UUID.randomUUID(), rootItem = UUID.randomUUID(), other = UUID.randomUUID();
+        var member = new MaterialAnalysisService.AggregateMemberSubtree(UUID.randomUUID(), memberItem, "m", false);
+        var rootMember = new MaterialAnalysisService.AggregateMemberSubtree(UUID.randomUUID(), rootItem, "ROOT_SUPPLY", true);
+        Set<String> planned = Set.of(anchor + "|", anchor + "|e1", other + "|k");
+
+        Set<String> frozen = MaterialAnalysisService.frozenUsageParents(planned, Map.of(anchor, List.of(member, rootMember)));
+
+        assertThat(frozen).containsExactlyInAnyOrder(anchor + "|", anchor + "|e1", other + "|k",
+                memberItem + "|m", memberItem + "|m/e1", rootItem + "|", rootItem + "|e1");
+        assertThat(MaterialAnalysisService.frozenUsageParents(Set.of(other + "|k"), Map.of(anchor, List.of(member))))
+                .containsExactly(other + "|k");
+    }
+
+    /**
+     * 选用量读的路线与写入后的有效路线：只有带子节点的节点路线变了才要按写入后的路线再选一次；
+     * 新节点按现时建议选用量，写入后仍是它，不算变化。
+     */
+    @Test
+    void usageIsReselectedOnlyWhenAParentRouteChangedByTheSnapshotWrite() {
+        UUID itemId = UUID.randomUUID(), unit = UUID.randomUUID(), root = UUID.randomUUID();
+        UUID parent = UUID.randomUUID(), leaf = UUID.randomUUID(), edgeA = UUID.randomUUID(), edgeB = UUID.randomUUID();
+        String keyA = edgeA.toString(), keyB = keyA + "/" + edgeB;
+        var nodes = MaterialAnalysisService.bomNodes(MaterialAnalysisService.SourceLine.from(sourceRow(itemId, root, unit)),
+                List.<Object[]>of(
+                        bomRow(edgeA, root, parent, unit, 1, keyA, null, "1", null, "NO_DATA", "委外", true, "PER_UNIT", "1", true, itemId, 0L),
+                        bomRow(edgeB, parent, leaf, unit, 2, keyB, keyA, "1", null, "NO_DATA", "采购", false, "PER_UNIT", "1", true, itemId, 0L)),
+                MaterialAnalysisService.BomUsageContext.LIVE, Set.of());
+        String refA = itemId + "|" + keyA, refB = itemId + "|" + keyB;
+
+        assertThat(MaterialAnalysisService.usageRoutesChanged(nodes, Map.of(),
+                Map.of(refA, "SUBCONTRACT", refB, "BUY"))).isFalse();
+        assertThat(MaterialAnalysisService.usageRoutesChanged(nodes, Map.of(refA, "MAKE", refB, "BUY"),
+                Map.of(refA, "SUBCONTRACT", refB, "BUY"))).isTrue();
+        assertThat(MaterialAnalysisService.usageRoutesChanged(nodes, Map.of(refA, "SUBCONTRACT", refB, "BUY"),
+                Map.of(refA, "SUBCONTRACT", refB, "REVIEW"))).isFalse();
+        // 重新激活的旧节点：选用量时库里没有有效行(按建议)，写入后恢复了原确认路线。
+        assertThat(MaterialAnalysisService.usageRoutesChanged(nodes, Map.of(),
+                Map.of(refA, "MAKE", refB, "BUY"))).isTrue();
+    }
+
+    private static MaterialAnalysisService.PinnedUsage usage(String designQty) {
+        return new MaterialAnalysisService.PinnedUsage(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                "PER_UNIT", BigDecimal.ONE, true, bd(designQty), null, 0L, null);
+    }
+
+    /** 父节点有效路线是委外且父件是单一子件委外货品时，子节点按发出合同用量；第 1 层看根产品确认路线。 */
+    @Test
+    void subcontractOutboundNodesUseTheParentsEffectiveRouteAndOneBatchedPredicate() {
+        EntityManager em = mock(EntityManager.class);
+        MaterialAnalysisService service = service(em, mock(ProductionDocumentAccessPolicy.class));
+        UUID itemId = UUID.randomUUID(), unit = UUID.randomUUID(), root = UUID.randomUUID();
+        UUID sole = UUID.randomUUID(), leaf = UUID.randomUUID();
+        UUID edgeA = UUID.randomUUID(), edgeB = UUID.randomUUID();
+        String keyA = edgeA.toString(), keyB = keyA + "/" + edgeB;
+        // 根产品整件委外，只发出唯一子件 S；S 在本分析里也确认为委外，只发出它的唯一子件。
+        List<Object[]> rows = List.of(
+                bomRow(edgeA, root, sole, unit, 1, keyA, null, "1", null, "NO_DATA", "自制", true, "PER_UNIT", "1", true, itemId, 0L),
+                bomRow(edgeB, sole, leaf, unit, 2, keyB, keyA, "1", null, "NO_DATA", "采购", false, "PER_UNIT", "1", true, itemId, 0L));
+        Object[] subcontractedRoot = java.util.Arrays.copyOf(sourceRow(itemId, root, unit), 47);
+        subcontractedRoot[46] = "SUBCONTRACT";
+        Query predicate = query(List.of(root, sole));
+        when(em.createNativeQuery(anyString(), org.mockito.ArgumentMatchers.eq(UUID.class))).thenReturn(predicate);
+
+        Set<String> outbound = invokePrivate(service, "subcontractOutboundNodes",
+                new Class<?>[]{List.class, Map.class, Map.class},
+                List.of(MaterialAnalysisService.SourceLine.from(subcontractedRoot)), Map.of(itemId, rows),
+                Map.of(itemId + "|" + keyA, "SUBCONTRACT"));
+
+        assertThat(outbound).containsExactlyInAnyOrder(itemId + "|" + keyA, itemId + "|" + keyB);
+        verify(predicate).setParameter("goodsIds", java.util.stream.Stream.of(root, sole).sorted().toList());
+        // 根产品未确认委外、S 确认为自制：两层都是本厂消耗，不查委外判定。
+        Set<String> ownMade = invokePrivate(service, "subcontractOutboundNodes",
+                new Class<?>[]{List.class, Map.class, Map.class},
+                List.of(MaterialAnalysisService.SourceLine.from(sourceRow(itemId, root, unit))),
+                Map.of(itemId, rows), Map.of(itemId + "|" + keyA, "MAKE"));
+        assertThat(ownMade).isEmpty();
+        verify(em, org.mockito.Mockito.times(1)).createNativeQuery(anyString(), org.mockito.ArgumentMatchers.eq(UUID.class));
+    }
+
+    /**
+     * TREE_SQL 一行：0-7 边与路径，8 设计，9 真实，10 状态，11-23 组件与计量，24 来源，25 有效批次，
+     * 26 线性，27 与真实值一起的不良率。夹具按视图的结果填：状态 NOT_LINEAR 的边不是线性，其余是。
+     */
+    private static Object[] bomRow(UUID bomItemId, UUID parentGoodsId, UUID goodsId, UUID unitId, int depth,
+            String nodeKey, String parentNodeKey, String designQty, String actualQty, String status,
+            String sourceType, boolean hasChildren, String basis, String basisOutputQty, boolean allowPartial,
+            UUID sourceId, long samples) {
+        return bomRow(bomItemId, parentGoodsId, goodsId, unitId, depth, nodeKey, parentNodeKey, designQty, actualQty,
+                status, sourceType, hasChildren, basis, basisOutputQty, allowPartial, sourceId, samples, null);
+    }
+
+    private static Object[] bomRow(UUID bomItemId, UUID parentGoodsId, UUID goodsId, UUID unitId, int depth,
+            String nodeKey, String parentNodeKey, String designQty, String actualQty, String status,
+            String sourceType, boolean hasChildren, String basis, String basisOutputQty, boolean allowPartial,
+            UUID sourceId, long samples, String defectRate) {
+        return new Object[]{
+                bomItemId, parentGoodsId, goodsId, null, unitId, depth, nodeKey, parentNodeKey,
+                bd(designQty), actualQty == null ? null : bd(actualQty), status,
+                "C-" + depth, "Component", null, null, "piece", BigDecimal.ZERO, sourceType, hasChildren,
+                "START", basis, bd(basisOutputQty), allowPartial, true, sourceId, samples,
+                !"NOT_LINEAR".equals(status), defectRate == null ? null : bd(defectRate)};
+    }
+
+    /** 节点落库后被下一次刷新读回的锁定用量(与 bomUsageContext 读的列一致，数值按 6 位小数)。 */
+    private static MaterialAnalysisService.PinnedUsage pinnedFrom(MaterialAnalysisService.BomNode node) {
+        return new MaterialAnalysisService.PinnedUsage(node.bomItemId(), node.goodsId(), node.unitId(),
+                node.consumptionBasis(), node.basisOutputQty(), node.allowPartialPackage(),
+                storedNumeric(node.usage().designQty()), storedNumeric(node.usage().actualQty()),
+                node.usage().sampleCount(), storedNumeric(node.usage().defectRate()));
+    }
+
+    /** 与 NUMERIC(18,6) / NUMERIC(9,6) 落库一致的四舍五入。 */
+    private static BigDecimal storedNumeric(BigDecimal value) {
+        return value == null ? null : value.setScale(6, java.math.RoundingMode.HALF_UP);
+    }
+
+    private static Object[] nodeStructure(MaterialAnalysisService.BomNode node) {
+        try {
+            Method method = MaterialAnalysisService.class.getDeclaredMethod(
+                    "nodeStructure", MaterialAnalysisService.BomNode.class);
+            method.setAccessible(true);
+            return (Object[]) method.invoke(null, node);
+        } catch (ReflectiveOperationException error) {
+            throw new AssertionError(error);
+        }
     }
 
     @Test
@@ -2415,7 +2829,10 @@ class MaterialAnalysisServiceBehaviorTest {
                 UUID.randomUUID(), "piece", 1, List.of("Material"), null, null, null,
                 "START", "PER_UNIT", BigDecimal.ONE, true, true,
                 BigDecimal.ONE, BigDecimal.ONE,
-                BigDecimal.ONE, bd("100"), BigDecimal.ZERO,
+                BigDecimal.ONE,
+                // ADR-129：分析锁定的设计/真实使用数量、采用依据、原因、有效批次与不良率
+                BigDecimal.ONE, null, "DESIGN", "NO_DATA", 0L, null,
+                bd("100"), BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, bd("90"), bd("90"),
                 BigDecimal.ZERO, null,
@@ -2455,7 +2872,8 @@ class MaterialAnalysisServiceBehaviorTest {
                 "Shared material", null, null, null, unitId, "piece",
                 depth, path, "parent", UUID.randomUUID(), "START", "PER_UNIT",
                 BigDecimal.ONE, true, true, BigDecimal.ONE, BigDecimal.ONE,
-                BigDecimal.ONE, bd("10"), BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ONE, MaterialAnalysisService.BomUsage.design(BigDecimal.ONE),
+                bd("10"), BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, shortage, null,
                 "BUY", "BUY", null,
                 false, null, null, null, null, null, null);
@@ -2481,6 +2899,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 null, null, UUID.randomUUID(), "piece", depth, nodeKey,
                 parentNodeKey, null, controlStage, "PER_UNIT", BigDecimal.ONE,
                 true, true, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE,
+                MaterialAnalysisService.BomUsage.design(BigDecimal.ONE),
                 bd(required), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, bd(shortage), null,
                 suggestion, confirmedRoute, null, false, null, null, null, null, null, null);

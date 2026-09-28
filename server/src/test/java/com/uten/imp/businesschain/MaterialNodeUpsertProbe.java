@@ -48,7 +48,7 @@ final class MaterialNodeUpsertProbe {
     static String snapshots(UUID analysis,UUID actor,List<Map<String,Object>> rows) {
         var columns=(List<String>)ReflectionTestUtils.getField(MaterialAnalysisService.class,"NODE_INPUT_COLUMNS");
         Object shape=ReflectionTestUtils.getField(MaterialAnalysisService.class,"NODE_INPUT");
-        assertNotNull(columns);assertNotNull(shape);assertEquals(36,columns.size());
+        assertNotNull(columns);assertNotNull(shape);assertEquals(42,columns.size());
         Function<Map<String,Object>,Object[]> values=row->{
             Object[] result=new Object[columns.size()];
             for(int index=0;index<columns.size();index++) {

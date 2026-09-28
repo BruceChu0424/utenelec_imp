@@ -176,7 +176,7 @@ public class ProductionPlanService {
         // The database product-number allocator locks this persisted plan and
         // reads its server-issued bill_no. Do not rely on an implicit JPA flush.
         planRepo.flush();
-        List<PlanItemDto> items = saveItems(p, req.getItems());
+        List<PlanItemDto> items = saveItems(p, req.getItems(), Map.of());
         recomputeClosed(p.getId());
         return new CreatedDraft(p, items);
     }
@@ -193,15 +193,17 @@ public class ProductionPlanService {
             throw new ApiException(ErrorCode.CONFLICT,
                     "物料分析生成的计划不可直接编辑，请删除草稿后回到物料分析重新生成");
         }
-        if (req.getItems().stream().anyMatch(line -> line.getAllowedOverproductionRate() == null)) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "计划已填写允许超产比例，请刷新后逐行核对比例再保存，不能由缺失字段恢复为默认值");
-        }
         planningDraftService.supersedeActive(id, "生产计划已编辑，原预排草案失效");
         applyHeader(req, p);
+        Map<UUID, SavedLine> savedLines = new HashMap<>();
+        for (ProductionPlanItem saved : itemRepo.findByPlanIdOrderByLineNoAsc(id)) {
+            savedLines.put(saved.getId(), new SavedLine(saved.getGoodsId(),
+                    new ProductionOverproductionAllowance.Allowance(
+                            saved.getAllowedOverproductionRate(), saved.getAllowedOverproductionRateSource())));
+        }
         itemRepo.deleteByPlanId(id);
         itemRepo.flush();
-        saveItems(p, req.getItems());
+        saveItems(p, req.getItems(), savedLines);
         recomputeClosed(id);
         return detail(id);
     }
@@ -1605,7 +1607,32 @@ public class ProductionPlanService {
         p.setSourceDocNo(req.getSourceDocNo());
     }
 
-    private List<PlanItemDto> saveItems(ProductionPlan p, List<PlanItemLine> lines) {
+    /** 编辑草稿前已存的一行(按行 id 取)：货品，以及当时的允许超产比例与来源。 */
+    private record SavedLine(UUID goodsId, ProductionOverproductionAllowance.Allowance allowance) { }
+
+    /** 一行最终的允许超产比例；carried = 沿用已存行原来的比例与来源，不是新的确认。 */
+    private record LineAllowance(ProductionOverproductionAllowance.Allowance allowance, boolean carried) { }
+
+    /**
+     * ADR-129 §2.10：空比例按货品默认填写(DEFAULT)；填了比例即有人确认(EXPLICIT)。
+     * 编辑草稿时「同一行」只认页面带回的已存行 id(sourceItemId)且货品没换：空着而原行是系统默认的、
+     * 或填的比例与原行相同的，沿用原来的比例与来源——页面上显示的比例不变，系统默认值也不会被钉成记忆。
+     */
+    private LineAllowance allowanceFor(PlanItemLine line, Map<UUID, SavedLine> savedLines) {
+        SavedLine saved = line.getSourceItemId() == null ? null : savedLines.get(line.getSourceItemId());
+        BigDecimal requested = line.getAllowedOverproductionRate();
+        if (saved != null && saved.goodsId().equals(line.getGoodsId())) {
+            ProductionOverproductionAllowance.Allowance previous = saved.allowance();
+            if (requested == null ? !previous.explicit() : previous.rate().compareTo(requested) == 0) {
+                return new LineAllowance(previous, true);
+            }
+        }
+        return new LineAllowance(
+                ProductionOverproductionAllowance.allowance(em, line.getGoodsId(), requested), false);
+    }
+
+    private List<PlanItemDto> saveItems(ProductionPlan p, List<PlanItemLine> lines,
+            Map<UUID, SavedLine> savedLines) {
         List<PlanItemDto> out = new ArrayList<>(lines.size());
         Set<String> usedProductNos = collectExplicitProductNos(lines);
         int auto = 1;
@@ -1634,7 +1661,9 @@ public class ProductionPlanService {
             it.setClientNo(l.getClientNo());
             it.setOqty(zeroIfNull(l.getOqty()));
             it.setQty(zeroIfNull(l.getQty()));
-            it.setAllowedOverproductionRate(ProductionOverproductionAllowance.resolve(em, l.getGoodsId(), l.getAllowedOverproductionRate()));
+            LineAllowance allowance = allowanceFor(l, savedLines);
+            it.setAllowedOverproductionRate(allowance.allowance().rate());
+            it.setAllowedOverproductionRateSource(allowance.allowance().source());
             it.setLqty(zeroIfNull(l.getLqty()));
             it.setIqty(zeroIfNull(l.getIqty()));
             it.setFqty(zeroIfNull(l.getFqty()));
@@ -1666,6 +1695,10 @@ public class ProductionPlanService {
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
             itemRepo.save(it);
+            // 重存草稿会把没改的行删了重插；只有新增或改过的确认才记成货品下次的默认。
+            if (!allowance.carried()) {
+                ProductionOverproductionAllowance.remember(em, p.getId(), l.getGoodsId(), allowance.allowance());
+            }
             out.add(toItemDto(it));
             auto++;
         }
@@ -1709,7 +1742,8 @@ public class ProductionPlanService {
                 it.getLstatus(), it.getCstatus(), it.getStepLegacyId(),
                 it.getVeilLegacyId(), it.getAssTeamLegacyId(), it.getFittings(),
                 it.getRequestNote(), it.getCustomerModel(), it.getDiscount(), it.getLabelNo(), it.getPlanAppNo(),
-                it.getSourceDocNo(), it.getRemark(), it.getAllowedOverproductionRate());
+                it.getSourceDocNo(), it.getRemark(), it.getAllowedOverproductionRate(),
+                it.getAllowedOverproductionRateSource());
     }
 
     private PlanDetail toDetail(ProductionPlan p, List<PlanItemDto> items) {

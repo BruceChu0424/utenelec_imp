@@ -12,26 +12,147 @@ class AppLocalizationsKo extends AppLocalizations {
   String get bomLearningTitle => 'BOM 학습 기록';
 
   @override
+  String get bomLearningHelp =>
+      '실제 사용량 = 완료되고 잔여 자재가 정산된 생산의 누적 순소비량 ÷ 해당 자재를 사용한 누적 생산량. 자재 분석과 작업장 자재 출고는 실제 사용량을 우선 사용하고, 데이터가 없으면 설계 사용량을 사용합니다. 이미 지시된 작업은 지시 시점의 수량을 유지합니다. 일일 보고의 불량 수는 기록용이며 생산량에 포함하지 않습니다. 실생산 단위 사용량은 양품과 불량을 합쳐 계산합니다.';
+
+  @override
+  String get bomLearningInactive =>
+      '학습 기록이 없습니다. 자체 생산이 완료되고 잔여 자재가 정산되면 누적이 시작됩니다.';
+
+  @override
+  String bomLearningPaused(String reason) {
+    return '학습 구성품을 자동으로 만들지 않았습니다: $reason. 실제 사용량은 계속 누적됩니다.';
+  }
+
+  @override
+  String get bomDesignQty => '설계 사용량';
+
+  @override
+  String get bomActualQty => '실제 사용량';
+
+  @override
+  String get bomLearnedEdge => '시스템 학습';
+
+  @override
+  String bomActualTipActual(int samples, String net, String output) {
+    return '완료된 생산 $samples배치 누적: 순소비 $net / 생산량 $output';
+  }
+
+  @override
+  String bomActualTipAverage(String qty) {
+    return '실제 개당 평균 $qty';
+  }
+
+  @override
+  String get bomActualTipUsed => '자재 분석과 작업장 자재 출고는 실제 사용량으로 계산합니다.';
+
+  @override
+  String bomUsesDesignBecause(String reason) {
+    return '$reason. 설계 사용량으로 계산합니다.';
+  }
+
+  @override
+  String get bomDesignReasonNoData => '완료되고 잔여 자재가 정산된 생산 데이터가 아직 없습니다';
+
+  @override
+  String get bomDesignReasonNotLinear => '전체 포장 또는 고정 배치는 평균 사용량으로 계산할 수 없습니다';
+
+  @override
+  String get bomDesignReasonOutputUnitChanged => '상위 품목 단위가 바뀌어 다시 학습해야 합니다';
+
+  @override
+  String get bomDesignReasonSubcontractOutbound =>
+      '이번에는 단일 구성품 외주로 출고되어 외주 계약 수량을 따릅니다';
+
+  @override
+  String get bomDesignReasonOther => '사용할 수 있는 실제 데이터가 없습니다';
+
+  @override
+  String bomRelearnedSince(String date) {
+    return '$date부터 다시 누적';
+  }
+
+  @override
+  String get bomDesignQtyRequired => '설계 사용량을 입력하세요';
+
+  @override
+  String get bomDesignQtyInvalid => '설계 사용량은 0보다 큰 숫자여야 합니다';
+
+  @override
+  String get bomLearnedEdgeEditHint =>
+      '실제 자재 사용으로 학습된 구성품입니다. 설계 사용량을 바꾸면 수동 관리로 전환되며 실제 사용량은 계속 누적됩니다.';
+
+  @override
+  String bomLearnedEdgeDeleteNote(int count) {
+    return '그중 $count개는 시스템이 학습한 구성품이며, 삭제하면 자동으로 다시 추가되지 않습니다.';
+  }
+
+  @override
+  String get bomLearningMaterial => '자재';
+
+  @override
+  String get bomLearningExposure => '누적 생산량';
+
+  @override
+  String get bomLearningSampleCount => '유효 배치';
+
+  @override
+  String get bomLearningBasis => '계산 기준';
+
+  @override
+  String get bomLearningOutsideBom => 'BOM 외 실제 사용 자재';
+
+  @override
+  String get bomLearningReleased => '삭제됨, 자동으로 다시 추가하지 않음';
+
+  @override
+  String get bomLearningRelearn => '지금부터 다시 학습';
+
+  @override
+  String bomLearningRelearnConfirm(String name) {
+    return '「$name」을(를) 지금부터 다시 학습할까요?\n이전 누적은 더 이상 계산에 쓰이지 않으며, 새 생산 데이터가 나오기 전까지 설계 사용량으로 계산합니다.';
+  }
+
+  @override
+  String get bomLearningRelearnDone => '지금부터 다시 학습합니다';
+
+  @override
+  String get bomLearningRelearnFailed => '다시 학습하지 못했습니다. 잠시 후 다시 시도하세요.';
+
+  @override
+  String get bomLearningLoadFailed => '학습 기록을 불러오지 못했습니다. 다시 시도하세요.';
+
+  @override
+  String get bomLearningEmpty => '구성품도, 실제 사용한 자재도 아직 없습니다';
+
+  @override
+  String get bomLearningAction => '작업';
+
+  @override
+  String get bomLearningBlockedOutputIdentity => '상위 품목의 단위나 식별 정보가 바뀌었습니다';
+
+  @override
+  String get bomLearningBlockedMaterialIdentity => '자재가 삭제되었거나 단위가 바뀌었습니다';
+
+  @override
+  String get bomLearningBlockedColorConflict =>
+      '같은 자재를 여러 색상으로 출고했습니다. 조립 정보에서 직접 정하세요';
+
+  @override
+  String get bomLearningBlockedPrecision => '사용량이 기록 가능한 범위를 벗어났습니다';
+
+  @override
+  String get bomLearningBlockedCycle => '조립 순환이 생깁니다';
+
+  @override
+  String get bomLearningBlockedOther => '조립 정보에서 직접 관리하세요';
+
+  @override
   String get materialDiscoveryBatchHelp =>
       '연속 생산 또는 전량 준비 생산을 선택하여 자재를 등록한 후 분할 생산을 진행하세요.';
 
   @override
   String get materialDiscoveryCancel => '자재 입력 요청 철회';
-
-  @override
-  String get bomLearningHelp =>
-      '생산 및 잔여 자재 정산 후 누적 순소비량을 실제 생산량으로 나누어 단위 소요량을 갱신합니다. 기존 작업 지시의 자재는 유지됩니다.';
-
-  @override
-  String get bomLearningInactive =>
-      '학습 기록이 없습니다. 하위 자재가 없는 자체 생산품의 출고와 생산 완료 후 누적됩니다.';
-
-  @override
-  String get bomLearningAuto => 'BOM 자동 갱신';
-
-  @override
-  String get bomLearningPaused =>
-      '수동 BOM 보호 또는 자재, 단위, 색상 충돌로 자동 갱신이 중지되었습니다. 누적 기록은 유지됩니다. 구성품 정보를 확인하세요.';
 
   @override
   String get bomLearningOutput => '누적 실제 생산량';
@@ -43,7 +164,21 @@ class AppLocalizationsKo extends AppLocalizations {
   String get bomLearningNet => '누적 순소비량';
 
   @override
-  String get bomLearningAverage => '개당 평균 소요량';
+  String bomActualTipDefect(String defect, String perProduced, String rate) {
+    return '불량 $defect 별도: 양품+불량 기준 사용량 $perProduced, 불량률 $rate';
+  }
+
+  @override
+  String get bomLearningDefect => '불량 수';
+
+  @override
+  String get bomLearningPerProduced => '실생산 단위 사용량';
+
+  @override
+  String get bomLearningDefectRate => '불량률';
+
+  @override
+  String get bomLearningTotalDefect => '누적 불량';
 
   @override
   String get materialDiscoveryTitle => '실제 출고 자재 입력';

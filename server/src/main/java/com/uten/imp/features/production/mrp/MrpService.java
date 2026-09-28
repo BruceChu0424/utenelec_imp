@@ -7,6 +7,7 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.production.analysis.MaterialConsumptionMath;
 import com.uten.imp.features.production.plan.ProductionPlan;
 import com.uten.imp.features.production.plan.ProductionPlanItem;
 import com.uten.imp.features.production.plan.ProductionPlanItemRepository;
@@ -34,8 +35,9 @@ import java.util.UUID;
  *
  * <p>齐套口径：
  * <ol>
- *   <li>毛需求：计划明细排产量 × BOM 递归展开（goods_bom_items，≤10 层、路径防环），
- *       按货品 + BOM 行颜色（空时回落组件主颜色）聚合。</li>
+ *   <li>毛需求：计划明细排产量按 BOM 递归展开(goods_bom_items，≤10 层、路径防环)，
+ *       每层用计算用量(ADR-129：有真实使用数量用真实值，否则设计值)按计量规则取整，
+ *       按货品 + BOM 行颜色(空时回落组件主颜色)聚合。</li>
  *   <li>当前可用 = 全仓账面库存 − 生效销售预留 − 货品安全库存，最小为 0。
  *       安全库存当前仅有货品级字段，对每个颜色分别应用是保守口径。</li>
  *   <li>全部在途与需求日前可到在途分开计算；日期为空的采购行不计入及时在途。
@@ -104,13 +106,20 @@ public class MrpService {
         return n instanceof Number num && num.longValue() > 0;
     }
 
-    /** 生产计划需求源：开工日优先，未排开工日时回落计划交货日。 */
+    /**
+     * 生产计划需求源：开工日优先，未排开工日时回落计划交货日。
+     * 种子层与递归层的每条边都按计算用量 {@code v_goods_bom_item_usage.effective_qty}
+     * (真实优先，否则设计)经共享的 {@code fn_material_analysis_edge_required} 按计量规则展开
+     * (整包/固定批次向上取整)；无效标记仍只看设计使用数量 b.qty(ADR-129 §2.3)。
+     */
     private static final String PLAN_MRP_SEED = """
             SELECT b.component_goods_id AS goods_id,
                    resolved_color.id AS color_id,
                    CASE
                        WHEN COALESCE(i.unit_rate,1) > 0 AND b.qty > 0 AND COALESCE(i.qty,0) >= 0
-                       THEN (COALESCE(i.qty,0) * COALESCE(i.unit_rate,1) * b.qty)::numeric
+                       THEN fn_material_analysis_edge_required(
+                               COALESCE(i.qty,0) * COALESCE(i.unit_rate,1), usage.effective_qty,
+                               b.consumption_basis, b.basis_output_qty, b.allow_partial_package)
                        ELSE 0::numeric
                    END AS req_qty,
                    COALESCE(i.plan_begin_date, p.delivery_date) AS need_date,
@@ -142,6 +151,7 @@ public class MrpService {
             JOIN goods source ON source.id = i.goods_id
             JOIN goods_bom_items b ON b.goods_id = i.goods_id AND b.is_deleted = false
             JOIN goods component ON component.id = b.component_goods_id
+            LEFT JOIN v_goods_bom_item_usage usage ON usage.bom_item_id = b.id
              LEFT JOIN colors resolved_color
                     ON resolved_color.id = COALESCE(b.color_id, component.color_id)
             WHERE i.plan_id = :planId AND i.is_deleted = false
@@ -156,7 +166,11 @@ public class MrpService {
                 UNION ALL
                 SELECT b.component_goods_id,
                        resolved_color.id,
-                       CASE WHEN b.qty > 0 THEN (e.req_qty * b.qty)::numeric ELSE 0::numeric END,
+                       CASE WHEN b.qty > 0
+                            THEN fn_material_analysis_edge_required(
+                                    e.req_qty, usage.effective_qty, b.consumption_basis,
+                                    b.basis_output_qty, b.allow_partial_package)
+                            ELSE 0::numeric END,
                        e.need_date,
                        (e.invalid_requirement OR b.qty <= 0 OR component.is_deleted
                          OR (COALESCE(b.color_id, component.color_id) IS NOT NULL
@@ -182,6 +196,7 @@ public class MrpService {
                 FROM exp e
                 JOIN goods_bom_items b ON b.goods_id = e.goods_id AND b.is_deleted = false
                 JOIN goods component ON component.id = b.component_goods_id
+                LEFT JOIN v_goods_bom_item_usage usage ON usage.bom_item_id = b.id
                  LEFT JOIN colors resolved_color
                         ON resolved_color.id = COALESCE(b.color_id, component.color_id)
                 WHERE e.lvl < 10 AND NOT b.id = ANY(e.path)
@@ -704,7 +719,7 @@ public class MrpService {
         if (Boolean.TRUE.equals(x[18])) reasons.add("BOM 组件货品已删除");
         if (Boolean.TRUE.equals(x[23])) reasons.add("组件基本单位未维护或已禁用");
         if (Boolean.TRUE.equals(x[19])) reasons.add("计划明细行的单位或换算率无效");
-        if (Boolean.TRUE.equals(x[20])) reasons.add("BOM 用量非正");
+        if (Boolean.TRUE.equals(x[20])) reasons.add("BOM " + MaterialConsumptionMath.NON_POSITIVE_BOM_QTY_REASON);
         if (Boolean.TRUE.equals(x[22])) reasons.add("颜色映射无效");
         if (Boolean.TRUE.equals(x[21])) reasons.add("计划数量为负");
         if (reasons.isEmpty()) {

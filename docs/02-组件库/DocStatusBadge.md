@@ -54,4 +54,29 @@ MasterColumnDef(
 - 只是配色映射，不新增状态、不改变任何列表的数据或筛选；
 - 深色模式配色由 `UtenStatusBadge` 自行处理（半透明底 + 亮档文字）。
 
-**最后更新**：2026-09-18 · 采购订货财务态映射下沉共享（列表/详情同口径）；2026-09-10 新建（C06 F2e 推广）。
+## 五、给徽章预留固定位置：`UtenStatusBadge.measureWidth`
+
+有的格子要给徽章留一块固定位置 (例如货品「组装信息」树格右侧的「系统学习」标记，名称让出等宽、省略号不被压住)。这时用
+
+```dart
+static double measureWidth(
+  BuildContext context,
+  String label, {
+  UtenStatusBadgeSize size = UtenStatusBadgeSize.medium,
+})
+```
+
+算出不带图标的徽章完整显示 `label` 要多宽 (按当前字体、字号档与界面缩放实测，内边距与徽章本身同一份尺寸表)，再按需加一点间距：
+
+```dart
+final badgeSlot = UtenStatusBadge.measureWidth(
+      context,
+      l10n.bomLearnedEdge,
+      size: UtenStatusBadgeSize.small,
+    ) +
+    UtenSpacing.s8;
+```
+
+不要手写像素：不同语言、不同字号档下文字宽度不同，写死的宽度会把标签截成省略号。带图标的徽章不适用 (只算文字与内边距)。
+
+**最后更新**：2026-09-27 · 新增 `UtenStatusBadge.measureWidth` 预留徽章位置 (ADR-129 组装信息「系统学习」标记)；2026-09-18 · 采购订货财务态映射下沉共享 (列表/详情同口径)；2026-09-10 新建 (C06 F2e 推广)。

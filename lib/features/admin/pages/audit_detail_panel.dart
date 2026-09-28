@@ -1021,14 +1021,19 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
               children: [
                 for (var index = 0; index < changed.length; index++) ...[
                   _AuditDiffRow(
-                    field: AuditFieldLabels.labelOf(changed[index]),
+                    field: AuditFieldLabels.labelOf(
+                      changed[index],
+                      table: widget.detail.targetType,
+                    ),
                     before: _displayValue(
                       service,
+                      widget.detail.targetType,
                       changed[index],
                       before[changed[index]],
                     ),
                     after: _displayValue(
                       service,
+                      widget.detail.targetType,
                       changed[index],
                       after[changed[index]],
                     ),
@@ -1056,9 +1061,10 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
     );
   }
 
-  /// UUID 值 → "名称(短ID)"；无法解析时缩短展示；其余值翻译布尔/空。
+  /// UUID 值 → "名称(短ID)"；无法解析时缩短展示；其余值按表列翻译布尔/空/编码。
   static String _displayValue(
     MasterNameService service,
+    String? table,
     String field,
     dynamic value,
   ) {
@@ -1067,7 +1073,7 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
       final resolved = _resolveRef(service, field, id);
       return resolved == null ? _shortId(id) : '$resolved(${_shortId(id)})';
     }
-    return AuditFieldLabels.valueOf(value);
+    return AuditFieldLabels.valueOf(value, table: table, field: field);
   }
 
   static String? _resolveRef(
@@ -1274,10 +1280,14 @@ List<_AuditChangeEntry> _relatedDetailEntries(AuditLogDetail detail) {
     }
   }
 
-  String safeValue(dynamic value) {
+  String safeValue(String key, dynamic value) {
     if (AuditFieldLabels.looksLikeUuid(value)) return '关联对象';
     if (value is Map || value is List) return '结构化内容';
-    return AuditFieldLabels.valueOf(value);
+    return AuditFieldLabels.valueOf(
+      value,
+      table: detail.targetType,
+      field: key,
+    );
   }
 
   final before = decode(detail.beforeJson);
@@ -1288,9 +1298,9 @@ List<_AuditChangeEntry> _relatedDetailEntries(AuditLogDetail detail) {
       .take(20)
       .map(
         (key) => _AuditChangeEntry.ofField(
-          AuditFieldLabels.labelOf(key),
-          safeValue(before[key]),
-          safeValue(after[key]),
+          AuditFieldLabels.labelOf(key, table: detail.targetType),
+          safeValue(key, before[key]),
+          safeValue(key, after[key]),
         ),
       )
       .toList(growable: false);

@@ -19,7 +19,11 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
 import '../models/production_direct_transfer_candidate.dart';
 import '../models/production_daily_report.dart';
+import '../models/production_execution_planning.dart'
+    show isValidProductionPlanningQuantityText;
 import '../repositories/production_material_repository.dart';
+import 'production_report_surplus_return_dialog.dart'
+    show productionQuantityInputFormatter;
 
 /// One editable fact per demand, shared by all displayed output slices.
 class DailyMaterialInput {
@@ -45,6 +49,9 @@ class DailyGridRow extends EditableGridRow {
   set goods(GoodsOption? v) => goodsNotifier.value = v;
 
   final TextEditingController qty = TextEditingController(); // 完工量
+
+  /// 不良数(ADR-129)：只记录，不影响完工申报量、库存与产量分流；空 = 0。
+  final TextEditingController defectQty = TextEditingController();
   final TextEditingController weight = TextEditingController(); // 本行实际总重量
   final TextEditingController planNo = TextEditingController(); // 关联生产计划号
   final TextEditingController remark = TextEditingController();
@@ -254,6 +261,8 @@ class DailyGridRow extends EditableGridRow {
       ..unitId = unitId
       ..isFinal = false;
     c.qty.text = hasFixedSupplement ? '' : qty.text;
+    // 固定追加批次的复制行不带来源，不良数也无处可记。
+    c.defectQty.text = hasFixedSupplement ? '' : defectQty.text;
     c.weight.text = weight.text;
     c.planNo.text = planNo.text;
     c.remark.text = remark.text;
@@ -295,6 +304,7 @@ class DailyGridRow extends EditableGridRow {
     unitIdNotifier.dispose();
     finalNotifier.dispose();
     qty.dispose();
+    defectQty.dispose();
     weight.dispose();
     planNo.dispose();
     remark.dispose();
@@ -369,6 +379,29 @@ double? productionReportBaseQuantity(DailyGridRow row) {
   if (baseUnits == null || baseUnits <= BigInt.zero) return null;
   final rounded = baseUnits.toDouble() / 10000;
   return rounded.isFinite ? rounded : null;
+}
+
+/// 不良数的唯一校验口径(格内红框与保存校验共用)：空 = 0 不校验；不小于 0、
+/// 最多 4 位小数；大于 0 时本行必须已选报工工单且完工申报量大于 0。
+String? productionReportDefectIssue(DailyGridRow row) {
+  final raw = row.defectQty.text.trim();
+  if (raw.isEmpty) return null;
+  if (!isValidProductionPlanningQuantityText(raw)) {
+    return '不良数请填写不小于 0、最多 4 位小数的数量';
+  }
+  if (double.parse(raw) <= 0) return null;
+  if (row.executionSegmentId == null) return '不良数只能记在已选择报工工单的行上';
+  final qty = double.tryParse(row.qty.text.trim());
+  if (qty == null || !qty.isFinite || qty <= 0) {
+    return '先填写大于 0 的完工申报量，才能记录不良数';
+  }
+  return null;
+}
+
+/// 随行提交的不良数；空或 0 返回 null(不提交)。先经 [productionReportDefectIssue] 校验。
+double? productionReportDefectQty(DailyGridRow row) {
+  final value = double.tryParse(row.defectQty.text.trim());
+  return value != null && value.isFinite && value > 0 ? value : null;
 }
 
 String productionReportRoutingHint(DailyGridRow row) {
@@ -529,7 +562,7 @@ double? expectedMaterialUsage({
   return (capped * 10000).roundToDouble() / 10000;
 }
 
-/// 生产日报明细列：货品（点选）/ 颜色（只读）/ 单位（只读）/ 完工申报量 / 实际重量 /
+/// 生产日报明细列：货品(点选) / 颜色(只读) / 单位(只读) / 完工申报量 / 不良数 / 实际重量 /
 /// 关联计划号 / 备注。[onPickGoods] 由编辑页提供；[colorEntries]/[unitEntries] 由编辑页注入。
 /// [hasMaterialChildren]/[isLastMaterialChild] 由编辑页按当前行序计算：本表把成品行与
 /// 它的物料子行扁平混排，树形缩进和连接线要知道「这行下面还有没有子行」「这是不是
@@ -690,6 +723,45 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                 ),
               ),
             ),
+    ),
+    // ADR-129 不良数：可选，只在已选报工工单的行上填；空 = 0。
+    EditableGridColumn<DailyGridRow>(
+      key: 'defectQty',
+      label: '不良数',
+      width: 104,
+      numeric: true,
+      headerInfo: productionDailyReportDefectInfo,
+      textOf: (r) => r.isMaterialRow ? '' : r.defectQty.text,
+      listenableOf: (r) => r.defectQty,
+      cellBuilder: (context, row) {
+        if (row.isMaterialRow) return const SizedBox.shrink();
+        // 来源随选择/清除来源一起变，货品通知器在来源字段之后赋值，借它重建本格。
+        return ValueListenableBuilder<GoodsOption?>(
+          valueListenable: row.goodsNotifier,
+          builder: (context, _, _) => row.executionSegmentId == null
+              ? Text(
+                  '—',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                )
+              : RequiredCellFrame(
+                  listenable: Listenable.merge([row.defectQty, row.qty]),
+                  isEmpty: () => productionReportDefectIssue(row) != null,
+                  child: TextField(
+                    controller: row.defectQty,
+                    textAlign: TextAlign.right,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: [productionQuantityInputFormatter],
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(isDense: true, hintText: '0'),
+                    ),
+                  ),
+                ),
+        );
+      },
     ),
     // ===== V583 物料子行专用两列：成品行留空 =====
     EditableGridColumn<DailyGridRow>(

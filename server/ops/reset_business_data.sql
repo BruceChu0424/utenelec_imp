@@ -1,5 +1,5 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空(支持至 V732；保留主档、人事、权限与治理证据)
+-- 本地/测试库业务数据一键清空(支持至 V737；保留主档、人事、权限与治理证据)
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
@@ -504,10 +504,10 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('flyway_schema_history', 'PRESERVE'),
 ('goods', 'PRESERVE'),
 ('goods_bom_items', 'PRESERVE'),
--- Learned recipes and cumulative averages are master knowledge; reset-away
--- samples become its fixed historical baseline, without reweighting the BOM.
+-- Learned recipes and cumulative actual usage (V737 goods_bom_actual_usages)
+-- are master knowledge; reset-away samples become their fixed baseline.
 ('goods_bom_learning_profiles', 'PRESERVE'),
-('goods_bom_learning_material_totals', 'PRESERVE'),
+('goods_bom_actual_usages', 'PRESERVE'),
 ('goods_import_batches', 'PRESERVE'),
 ('goods_import_creations', 'PRESERVE'),
 ('legacy_departments', 'PRESERVE'),
@@ -1281,10 +1281,14 @@ BEGIN
         -- 未办理公共供给与制造公共承诺(两张只追加业务来源表)。
         (721, 650), (722, 651), (723, 652), (724, 653), (725, 654), (726, 655), (727, 656), (728, 657), (729, 658), (730, 659), (731, 660), (732, 661), (733, 662),
         -- V734 领料申请 LQ 取号触发器按 ADR-106 标准模式重建: 不加表; 本迁移 662→663。
-        (734, 663)
+        (734, 663),
+        -- V735 领料单批次号: 不加表; 本迁移 663→664。
+        (735, 664),
+        -- V737 BOM 真实使用数量(ADR-129): 按颜色累计表换成 goods_bom_actual_usages(PRESERVE 数不变); 本迁移 664→665。
+        (737, 665)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V734完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669 跳号)，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V737完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669、V736 跳号)，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -1471,7 +1475,7 @@ BEGIN
             ('production_draw_issue_batches', 727),
             ('production_material_discovery_lines', 710),
             ('goods_bom_learning_profiles', 711),
-            ('goods_bom_learning_material_totals', 711),
+            ('goods_bom_actual_usages', 737),
             ('production_bom_learning_samples', 711),
             ('production_bom_learning_refresh_queue', 711),
             ('preplan_aggregate_batches', 712),

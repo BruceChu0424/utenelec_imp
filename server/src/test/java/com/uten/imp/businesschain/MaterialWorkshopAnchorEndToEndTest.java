@@ -103,7 +103,11 @@ class MaterialWorkshopAnchorEndToEndTest {
         for (var row : before.entrySet()) if (!row.getKey().equals(removedMaterial)) assertEquals(row.getValue(), after.get(row.getKey()));
     }
 
-    @Test void reactivatedChangedBomStillClearsAndCountsItsHistoricalConfirmation() {
+    /**
+     * ADR-129 §2.5：用量变化不是结构变化。恢复的同一条历史 BOM 边改了设计使用数量，重新激活后按新值
+     * 展开需求，但人工确认的路线保留，不计入 routeResetCount。
+     */
+    @Test void reactivatedBomWithChangedUsageKeepsItsHistoricalConfirmation() {
         Case c = create("snapshot-reactivate", false);
         UUID material = c.materials().getFirst();
         UUID edge = db.queryForObject("SELECT id FROM goods_bom_items WHERE goods_id=? AND component_goods_id=? AND NOT is_deleted",
@@ -114,9 +118,78 @@ class MaterialWorkshopAnchorEndToEndTest {
         // An administrative correction restores the same historical BOM identity.
         db.update("UPDATE goods_bom_items SET is_deleted=FALSE,deleted_at=NULL,qty=2 WHERE id=?", edge);
         var restored = refreshCase(c, "restore-changed-edge");
-        assertEquals(1, restored.routeResetCount());
-        assertEquals(null, material(restored, material).sourceConfirmed());
+        assertEquals(0, restored.routeResetCount());
+        assertEquals("MAKE", material(restored, material).sourceConfirmed());
+        qty("2", material(restored, material).bomQty());
+        qty("2", material(restored, material).designBomQty());
+        assertEquals("DESIGN", material(restored, material).usageBasis());
         qty("20000", material(restored, material).requiredQty());
+    }
+
+    /**
+     * ADR-129 §2.5：同一条 BOM 边原地改了计量规则(按件 1 改成每 100 件一包用 3 包)，内部重算(保存路线)按现时
+     * 设计值展开，不把快照锁定的旧数量套到新规则上。
+     */
+    @Test void inPlaceMeteringRuleChangeIsNotComputedWithTheLockedQuantity() {
+        Case c = create("snapshot-rule-change", false);
+        UUID material = c.materials().getFirst();
+        UUID edge = db.queryForObject("SELECT id FROM goods_bom_items WHERE goods_id=? AND component_goods_id=? AND NOT is_deleted",
+                UUID.class, c.root(), c.world().goodsC());
+        db.update("UPDATE goods_bom_items SET consumption_basis='PER_PACKAGE',basis_output_qty=100,qty=3 WHERE id=?", edge);
+        AnalysisView before = analyses.detail(c.analysis());
+        MaterialView bought = before.flatMaterials().stream().filter(m -> m.goodsId().equals(c.world().goodsD())).findFirst().orElseThrow();
+
+        AnalysisView after = analyses.saveRoutes(c.analysis(), new RouteRequest(before.version(), before.fingerprint(),
+                "rule-change-" + c.analysis(), List.of(new RouteDecision(bought.materialLineId(), bought.actionGroupKey(), "BUY", null))));
+
+        MaterialView changed = material(after, material);
+        assertEquals("PER_PACKAGE", changed.consumptionBasis());
+        qty("3", changed.designBomQty());
+        qty("3", changed.bomQty());
+        qty("300", changed.requiredQty());
+    }
+
+    /**
+     * ADR-129 §2.5：父件主档来源改成委外(单一子件)后的第一次内部重算里，快照写入刷新了父节点建议路线，子件就按
+     * 写入后的父节点路线选用量(发给委外商的合同用量 = 设计值)，与同一次分配看同一条路线。
+     */
+    @Test void usageFollowsTheParentRouteThatTheSameRefreshWrites() {
+        String tag = "usage-route";
+        var w = fixture.seedWorld(tag);
+        UUID root = UUID.randomUUID(), parent = UUID.randomUUID(), leaf = UUID.randomUUID();
+        fixture.insertGoods(root, "UR-R-" + root, "路线用量成品", "自制", w.unitId(), w.unitLegacy());
+        fixture.insertGoods(parent, "UR-P-" + parent, "单一子件父件", "自制", w.unitId(), w.unitLegacy());
+        fixture.insertGoods(leaf, "UR-L-" + leaf, "发料子件", "采购", w.unitId(), w.unitLegacy());
+        fixture.insertBom(root, parent, "1");
+        fixture.insertBom(parent, leaf, "2");
+        db.update("""
+                INSERT INTO goods_bom_actual_usages(goods_id,component_goods_id,unit_id,output_unit_id,net_qty,exposure_output_qty,sample_count)
+                VALUES(?,?,?,?,30,10,2)
+                """, parent, leaf, w.unitId(), w.unitId());
+        UUID planner = fixture.createUserWithPerms(w, "planner-" + tag,
+                "production_material_analysis:view", "production_material_analysis:manage", "production_material_analysis:route",
+                "production_material_analysis:notify", "production_material_analysis:generate", "production_plan:view",
+                "production_plan:approve", "production_plan:delete");
+        fixture.loginAs(planner);
+        AnalysisView view = analyses.preview(new PreviewRequest(null, null, null, w.warehouseId(), "preview-" + tag + "-" + root,
+                List.of(new PreviewItem("OTHER", null, root, null, w.unitId(), "manual-" + tag, "明确的原始生产需求",
+                        BusinessTime.today().plusDays(10), new BigDecimal("100")))));
+        MaterialView child = view.flatMaterials().stream().filter(m -> m.goodsId().equals(leaf)).findFirst().orElseThrow();
+        assertEquals("ACTUAL", child.usageBasis());
+        qty("300", child.requiredQty());
+        // 主档改成委外：本分析里父节点没有人工确认，库内还存着旧建议「自制」。
+        db.update("UPDATE goods SET source_type='委外' WHERE id=?", parent);
+
+        AnalysisView after = analyses.saveRoutes(view.analysisId(), new RouteRequest(view.version(), view.fingerprint(),
+                "routes-" + tag + "-" + root, List.of(new RouteDecision(child.materialLineId(), child.actionGroupKey(), "BUY", null))));
+
+        MaterialView parentRow = after.flatMaterials().stream().filter(m -> m.goodsId().equals(parent)).findFirst().orElseThrow();
+        MaterialView sent = material(after, child.materialLineId());
+        assertEquals("SUBCONTRACT", parentRow.sourceSuggestion());
+        assertEquals("DESIGN", sent.usageBasis());
+        assertEquals("SUBCONTRACT_OUTBOUND", sent.usageReason());
+        qty("2", sent.bomQty());
+        qty("200", sent.requiredQty());
     }
 
     private Map<UUID, String> materialRowVersions(Case c) {

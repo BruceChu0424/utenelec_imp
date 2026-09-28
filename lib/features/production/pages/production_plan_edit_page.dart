@@ -121,6 +121,12 @@ class _ProductionPlanEditPageState
   String? _makerName;
   String? _createdAt;
 
+  /// 系统按货品默认比例填进明细行的比例(ADR-129 §2.10，与物料分析页同一份口径)：
+  /// 没人改过的保存送空值，由服务端按默认填写且不记住；人改过就按所填值明确提交。
+  /// 从已保存草稿读回、来源仍是系统默认(DEFAULT)的行也在此列，不论之后删行、插行
+  /// 让它挪到第几行，没人改过就不会被当成人定的比例记住。
+  final _prefilledRates = SystemPrefilledRates();
+
   @override
   void initState() {
     super.initState();
@@ -214,9 +220,16 @@ class _ProductionPlanEditPageState
                 .read(masterNameServiceProvider)
                 .goodsOptionOf(it.goodsId);
           row.qty.text = it.qty?.toString() ?? '';
-          row.overproductionPercent.text = productionOverproductionPercentText(
-            it.allowedOverproductionRate,
-          );
+          row.sourceItemId = it.id;
+          final rate = it.allowedOverproductionRate;
+          if (rate == null) {
+            row.overproductionPercent.clear();
+          } else if (it.allowedOverproductionRateSource == 'DEFAULT') {
+            _prefilledRates.fill(row.overproductionPercent, rate);
+          } else {
+            row.overproductionPercent.text =
+                productionOverproductionPercentText(rate);
+          }
           row.oqty.text = it.oqty?.toString() ?? '';
           rows.add(row);
         }
@@ -299,7 +312,12 @@ class _ProductionPlanEditPageState
       ..colorId = g.colorId
       ..unitId = g.unitId;
     final defaultRequestVersion = ++row.overproductionDefaultRequestVersion;
-    row.overproductionPercent.clear();
+    // 换了货品就不再是原来那一行：上一个货品的预填记录与读回来源都作废，
+    // 之后人填的值(哪怕与旧默认相同)按人定的提交。
+    _prefilledRates.forget(row.overproductionPercent);
+    row
+      ..overproductionPercent.clear()
+      ..sourceItemId = null;
     try {
       final rates = await ref
           .read(productionPlanRepositoryProvider)
@@ -314,9 +332,7 @@ class _ProductionPlanEditPageState
       if (row.overproductionPercent.text.isEmpty) {
         final rate = rates[g.id];
         if (rate == null) throw StateError('Missing production rate default');
-        row.overproductionPercent.text = productionOverproductionPercentText(
-          rate,
-        );
+        _prefilledRates.fill(row.overproductionPercent, rate);
       }
     } catch (error) {
       if (mounted &&
@@ -380,9 +396,6 @@ class _ProductionPlanEditPageState
       }
       for (final l in fresh) {
         final row = ProductionGridRow()
-          ..overproductionPercent.text = rates[l.goodsId] == null
-              ? ''
-              : productionOverproductionPercentText(rates[l.goodsId]!)
           ..salesOrderNo.text = d.billNo ?? ''
           ..qty.text = _numText(l.needQty)
           ..oqty.text = _numText(l.qty)
@@ -401,6 +414,11 @@ class _ProductionPlanEditPageState
                   code: l.goodsCode,
                   name: l.goodsName ?? l.goodsCode ?? '',
                 );
+        if (rates[l.goodsId] case final rate?) {
+          _prefilledRates.fill(row.overproductionPercent, rate);
+        } else {
+          row.overproductionPercent.clear();
+        }
         _wireRow(row);
         _grid.addRow(row);
       }
@@ -531,9 +549,10 @@ class _ProductionPlanEditPageState
           'productNo': r.productNo.text.trim(),
         'goodsId': r.goods!.id,
         'qty': double.tryParse(r.qty.text) ?? 0,
-        'allowedOverproductionRate': parseProductionOverproductionPercent(
-          r.overproductionPercent.text,
-        )!,
+        'allowedOverproductionRate': ?_prefilledRates.submitted(
+          r.overproductionPercent,
+        ),
+        'sourceItemId': ?r.sourceItemId,
         if (double.tryParse(r.oqty.text) != null)
           'oqty': double.tryParse(r.oqty.text),
         if (r.colorId != null) 'colorId': r.colorId,
@@ -575,10 +594,9 @@ class _ProductionPlanEditPageState
             colorId: row.salesOrderItemId == null ? row.colorId : null,
             unitId: row.salesOrderItemId == null ? row.unitId : null,
             requestedQty: double.parse(row.qty.text),
-            initialAllowedOverproductionRate:
-                parseProductionOverproductionPercent(
-                  row.overproductionPercent.text,
-                ),
+            initialAllowedOverproductionRate: _prefilledRates.submitted(
+              row.overproductionPercent,
+            ),
             sourceReason: row.salesOrderItemId == null
                 ? _manualSourceReason.text.trim()
                 : null,
@@ -955,7 +973,15 @@ class _ProductionPlanEditPageState
                               _wireRow(r);
                               return r;
                             },
-                            cloneRow: (r) => r.clone(),
+                            // 复制行沿用原行的预填记录：没人改过的默认比例仍按默认提交。
+                            cloneRow: (r) {
+                              final copy = r.clone();
+                              _prefilledRates.copy(
+                                r.overproductionPercent,
+                                copy.overproductionPercent,
+                              );
+                              return copy;
+                            },
                             // 排产量合计回到表尾：原先只挂在页面底部操作条里，底部条
                             // 改右下角悬浮后本页就没有合计了（本页此前从不传 footer）。
                             // 本页无金额，只报数量，且按 unitId 分组绝不跨单位相加。

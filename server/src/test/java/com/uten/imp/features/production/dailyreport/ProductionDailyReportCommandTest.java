@@ -175,9 +175,90 @@ class ProductionDailyReportCommandTest {
 
         // 勾了「余料退回仓库」会多开退料单，是不同的业务意图。
         withUsage.setSurplusReturnRequested(true);
+        String returnHash = ProductionDailyReportService.createRequestHash(withUsage);
+        assertNotEquals(usageHash, returnHash);
+
+        // 实盘清点的剩余量不同是不同的申报(ADR-129 §2.7)，不能被当成重放吞掉。
+        DailyReportMaterialUsageLine counted = materialLine(demandId, "6");
+        counted.setCountedLeftoverQty(new BigDecimal("1.5"));
+        withUsage.setMaterialLines(List.of(counted));
+        String countedHash = ProductionDailyReportService.createRequestHash(withUsage);
+        assertNotEquals(returnHash, countedHash);
+        counted.setCountedLeftoverQty(new BigDecimal("2"));
+        assertNotEquals(countedHash, ProductionDailyReportService.createRequestHash(withUsage));
+    }
+
+    /// ADR-129：不良数为 0 与不填是同一份申报，指纹不变；填了才入指纹，
+    /// 改了不良数的重试是另一份申报，不能被当成重放静默吞掉。
+    @Test
+    void canonicalHashCoversDefectsOnlyWhenReported() {
+        UUID goodsId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        UUID planItemId = UUID.randomUUID();
+        UUID orderItemId = UUID.randomUUID();
+        DailyReportSaveRequest report = request(
+                "defect-key", "SR-defect", goodsId, unitId,
+                planItemId, orderItemId, BigDecimal.TEN);
+        DailyReportItemLine line = report.getItems().getFirst();
+        String bareHash = ProductionDailyReportService.createRequestHash(report);
+
+        line.setDefectQty(new BigDecimal("0.0000"));
+        assertEquals(bareHash, ProductionDailyReportService.createRequestHash(report));
+
+        line.setDefectQty(new BigDecimal("2"));
+        String defectHash = ProductionDailyReportService.createRequestHash(report);
+        assertNotEquals(bareHash, defectHash);
+
+        // 写法不同但数值相同仍是同一次申报。
+        line.setDefectQty(new BigDecimal("2.0000"));
+        assertEquals(defectHash, ProductionDailyReportService.createRequestHash(report));
+
+        line.setDefectQty(new BigDecimal("3"));
+        assertNotEquals(defectHash, ProductionDailyReportService.createRequestHash(report));
+
+        // 不良数不是良品数：良品 10 不良 2 与良品 12 是两份申报。
+        line.setDefectQty(new BigDecimal("2"));
+        DailyReportSaveRequest allGood = request(
+                "defect-key-good", "SR-defect-good", goodsId, unitId,
+                planItemId, orderItemId, new BigDecimal("12"));
         assertNotEquals(
-                usageHash,
-                ProductionDailyReportService.createRequestHash(withUsage));
+                ProductionDailyReportService.createRequestHash(allGood),
+                ProductionDailyReportService.createRequestHash(report));
+    }
+
+    /// ADR-129：不良数只记录，且只能随良品记在已选车间任务的行上；与库里约束同口径，用人话拒绝。
+    @Test
+    void defectsAreOnlyRecordedWithGoodOutputOfAWorkshopTask() {
+        DailyReportItemLine line = new DailyReportItemLine();
+        line.setExecutionSegmentId(UUID.randomUUID());
+        line.setQty(new BigDecimal("5"));
+        assertDoesNotThrow(() -> ProductionDailyReportService.requireValidDefect(line));
+        line.setDefectQty(new BigDecimal("1.2345"));
+        assertDoesNotThrow(() -> ProductionDailyReportService.requireValidDefect(line));
+
+        line.setDefectQty(new BigDecimal("-1"));
+        assertDefectRejected(line, "不良数不能为负");
+        line.setDefectQty(new BigDecimal("0.00001"));
+        assertDefectRejected(line, "不良数最多 4 位小数");
+
+        line.setDefectQty(BigDecimal.ONE);
+        line.setExecutionSegmentId(null);
+        assertDefectRejected(line, "不良数只能填在已选车间任务且良品数大于 0 的报工行上");
+        line.setExecutionSegmentId(UUID.randomUUID());
+        line.setQty(BigDecimal.ZERO);
+        assertDefectRejected(line, "不良数只能填在已选车间任务且良品数大于 0 的报工行上");
+
+        // 没有不良数的行不受这条规则约束(良品数本身另有校验)。
+        line.setDefectQty(BigDecimal.ZERO);
+        line.setExecutionSegmentId(null);
+        assertDoesNotThrow(() -> ProductionDailyReportService.requireValidDefect(line));
+    }
+
+    private static void assertDefectRejected(DailyReportItemLine line, String message) {
+        ApiException error = assertThrows(ApiException.class,
+                () -> ProductionDailyReportService.requireValidDefect(line));
+        assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
+        assertEquals(message, error.getMessage());
     }
 
     private static DailyReportMaterialUsageLine materialLine(

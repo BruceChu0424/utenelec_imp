@@ -350,25 +350,26 @@ final class _MaterialAggregateTableController {
     });
   }
 
-  _MaterialAggregatePathSnapshot _snapshot(_MaterialGroup group) =>
-      _MaterialAggregatePathSnapshot(
-        groupKey: group.key,
-        orderText: owner._tableOrderQtyController(group).text,
-        appendText: owner._tableAppendQtyController(group).text,
-        orderSeed: owner._tableSeededQtyTexts['ORDER|${group.key}'],
-        appendSeed: owner._tableSeededQtyTexts['APPEND|${group.key}'],
-        typedQty: owner._tableUserTypedQty[group.representative.materialLineId],
-        selected: owner._selectedMaterialGroupKeys.contains(group.key),
-        autoSelected: owner._tableAutoSelectedKeys.contains(group.key),
-        deselected: owner._tableUserDeselectedKeys.contains(group.key),
-        workshop: owner._tableWorkshopDraft[group.key],
-        worker: owner._tableWorkerDraft[group.key],
-        rate: owner
-            ._overproductionPercentController(
-              materialLineId: group.representative.materialLineId,
-            )
-            .text,
-      );
+  _MaterialAggregatePathSnapshot _snapshot(_MaterialGroup group) {
+    final rate = owner._overproductionPercentController(
+      materialLineId: group.representative.materialLineId,
+    );
+    return _MaterialAggregatePathSnapshot(
+      groupKey: group.key,
+      orderText: owner._tableOrderQtyController(group).text,
+      appendText: owner._tableAppendQtyController(group).text,
+      orderSeed: owner._tableSeededQtyTexts['ORDER|${group.key}'],
+      appendSeed: owner._tableSeededQtyTexts['APPEND|${group.key}'],
+      typedQty: owner._tableUserTypedQty[group.representative.materialLineId],
+      selected: owner._selectedMaterialGroupKeys.contains(group.key),
+      autoSelected: owner._tableAutoSelectedKeys.contains(group.key),
+      deselected: owner._tableUserDeselectedKeys.contains(group.key),
+      workshop: owner._tableWorkshopDraft[group.key],
+      worker: owner._tableWorkerDraft[group.key],
+      rate: rate.text,
+      rateExplicit: owner._prefilledOverproductionRates.isExplicit(rate),
+    );
+  }
 
   void changed(_MaterialAggregate aggregate, String value) {
     if (saving || uncertain) return;
@@ -473,25 +474,24 @@ final class _MaterialAggregateTableController {
           (draft.mixedWorkshop || draft.mixedWorker || draft.mixedRate)) {
         throw FormatException('「${draft.label}」原来源生产参数不同，请明确统一本次车间、负责人和比例');
       }
-      final rateTexts = workshop
-          ? groups
-                .map(
-                  (group) => owner
-                      ._overproductionPercentController(
-                        materialLineId: group.representative.materialLineId,
-                      )
-                      .text,
-                )
-                .toSet()
-          : <String>{};
-      if (rateTexts.length > 1) {
-        throw FormatException('「${draft.label}」各来源超产比例不同，请先统一设置');
-      }
-      final rate = rateTexts.isEmpty
-          ? null
-          : parseProductionOverproductionPercent(rateTexts.single);
-      if (workshop && rate == null) {
-        throw FormatException('「${draft.label}」允许超产比例无效');
+      double? rate;
+      if (workshop) {
+        final controllers = rateControllers(groups);
+        // 按数值比：'10' 与 '10.0' 是同一个比例。
+        final rates = {
+          for (final controller in controllers)
+            parseProductionOverproductionPercent(controller.text),
+        };
+        if (rates.length > 1) {
+          throw FormatException('「${draft.label}」各来源超产比例不同，请先统一设置');
+        }
+        if (rates.singleOrNull == null) {
+          throw FormatException('「${draft.label}」允许超产比例无效');
+        }
+        // 各来源都没人改过 = 按货品默认：送空值，由服务端填写且不记住(ADR-129 §2.10)。
+        rate = controllers.any(owner._prefilledOverproductionRates.isExplicit)
+            ? rates.single
+            : null;
       }
       inputs.add(
         MaterialAggregateOrderGroupInput(
@@ -1111,10 +1111,13 @@ final class _MaterialAggregateTableController {
           } else {
             owner._tableWorkerDraft[key] = state.worker!;
           }
-          owner
-                  ._overproductionPercentController(materialLineId: entry.key)
-                  .text =
-              state.rate;
+          // 快照时仍是系统预填的比例回到当前预填值(草稿期间可能已按新默认刷新)，
+          // 不把旧默认当成人填的放回去。
+          owner._prefilledOverproductionRates.restore(
+            owner._overproductionPercentController(materialLineId: entry.key),
+            state.rate,
+            explicit: state.rateExplicit,
+          );
         }
       }
       drafts.clear();
@@ -1278,48 +1281,64 @@ final class _MaterialAggregateTableController {
     });
   }
 
+  /// 各来源行的本次比例输入格(与主表同一批控制器)。
+  List<TextEditingController> rateControllers(
+    Iterable<_MaterialGroup> groups,
+  ) => [
+    for (final group in groups)
+      owner._overproductionPercentController(
+        materialLineId: group.representative.materialLineId,
+      ),
+  ];
+
+  /// 各来源的本次比例按数值比较('10' 与 '10.0' 是同一个比例)。一致时返回代表
+  /// 文本——有人改过的格子优先，照抄它不会把人定的比例降回系统默认；不一致或
+  /// 含无效输入时返回 null(各格文本完全相同时照原样返回)。
+  String? uniformRateText(Iterable<_MaterialGroup> groups) {
+    final controllers = rateControllers(groups);
+    if (controllers.isEmpty) return null;
+    final texts = {for (final controller in controllers) controller.text};
+    if (texts.length == 1) return texts.single;
+    final rates = texts.map(parseProductionOverproductionPercent).toSet();
+    if (rates.length != 1 || rates.single == null) return null;
+    return (controllers
+                .where(owner._prefilledOverproductionRates.isExplicit)
+                .firstOrNull ??
+            controllers.first)
+        .text;
+  }
+
   String rateText(_MaterialAggregate aggregate) {
     if (drafts[aggregate.key]?.mixedRate == true) return '多个比例';
     final groups = workshopGroups(aggregate);
     if (groups.isEmpty) return '—';
-    final rates = groups
-        .map(
-          (group) => owner
-              ._overproductionPercentController(
-                materialLineId: group.representative.materialLineId,
-              )
-              .text,
-        )
-        .toSet();
-    return rates.length == 1 ? '${rates.single}%' : '多个比例';
+    final uniform = uniformRateText(groups);
+    return uniform == null ? '多个比例' : '$uniform%';
   }
 
   Widget rateCell(_MaterialAggregate aggregate) {
     final groups = workshopGroups(aggregate);
     if (groups.isEmpty) return const Text('—');
-    final rates = groups
-        .map(
-          (group) => owner
-              ._overproductionPercentController(
-                materialLineId: group.representative.materialLineId,
-              )
-              .text,
-        )
-        .toSet();
+    final uniform = uniformRateText(groups);
     final initial = drafts[aggregate.key]?.mixedRate == true
         ? ''
-        : rates.length == 1
-        ? rates.single
-        : '';
+        : uniform ?? '';
     final controller = rateEditors.putIfAbsent(
       aggregate.key,
       () => TextEditingController(text: initial),
     );
-    if (!drafts.containsKey(aggregate.key) && controller.text != initial) {
+    // 各来源仍是系统预填的默认比例时汇总格跟着来源走：新快照会刷新来源的预填值，
+    // 提交也按来源送空值，汇总格若停在旧默认，看到的就不是服务端要填的比例。
+    // 有人改过(汇总格的输入会写进每个来源)就不再动它。
+    final sourcesPrefilled = !rateControllers(
+      groups,
+    ).any(owner._prefilledOverproductionRates.isExplicit);
+    if ((!drafts.containsKey(aggregate.key) || sourcesPrefilled) &&
+        controller.text != initial) {
       controller.text = initial;
     }
     return Tooltip(
-      message: rates.length == 1 ? '本次汇总生产统一使用此比例' : '各来源比例不同，请明确填写本次汇总比例',
+      message: uniform != null ? '本次汇总生产统一使用此比例' : '各来源比例不同，请明确填写本次汇总比例',
       child: ProductionOverproductionRateField(
         key: ValueKey('material-aggregate-rate-${aggregate.key}'),
         controller: controller,
@@ -1605,8 +1624,12 @@ final class _MaterialAggregatePathSnapshot {
     required this.workshop,
     required this.worker,
     required this.rate,
+    required this.rateExplicit,
   });
   final String groupKey, orderText, appendText, rate;
+
+  /// 快照时比例是人定的(不再是系统预填值)。
+  final bool rateExplicit;
   final String? orderSeed, appendSeed;
   final double? typedQty;
   final bool selected, autoSelected, deselected;

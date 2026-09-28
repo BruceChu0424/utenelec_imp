@@ -66,4 +66,6 @@ public class PlanItemDto {
     private String sourceDocNo;
     private String remark;
     private BigDecimal allowedOverproductionRate;
+    /** DEFAULT = 系统按货品默认填写；EXPLICIT = 有人确认过(ADR-129 §2.10)。 */
+    private String allowedOverproductionRateSource;
 }

@@ -106,6 +106,240 @@ abstract class AppLocalizations {
   /// **'BOM 学习记录'**
   String get bomLearningTitle;
 
+  /// No description provided for @bomLearningHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'真实使用数量 = 已完工且核清余料的生产累计净耗料 ÷ 用到该物料的累计产量。物料分析和车间领料优先按真实使用数量计算，没有数据时按设计使用数量；已下达的任务仍按下达时的用量执行。日报登记的不良数只作记录，不计入产量；实产单耗按良品加不良算。'**
+  String get bomLearningHelp;
+
+  /// No description provided for @bomLearningInactive.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有学习记录。本厂生产的货品完工并核清余料后开始累计。'**
+  String get bomLearningInactive;
+
+  /// No description provided for @bomLearningPaused.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有自动建立学习组件：{reason}。真实使用数量照常累计。'**
+  String bomLearningPaused(String reason);
+
+  /// No description provided for @bomDesignQty.
+  ///
+  /// In zh, this message translates to:
+  /// **'设计使用数量'**
+  String get bomDesignQty;
+
+  /// No description provided for @bomActualQty.
+  ///
+  /// In zh, this message translates to:
+  /// **'真实使用数量'**
+  String get bomActualQty;
+
+  /// No description provided for @bomLearnedEdge.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统学习'**
+  String get bomLearnedEdge;
+
+  /// No description provided for @bomActualTipActual.
+  ///
+  /// In zh, this message translates to:
+  /// **'按 {samples} 批已完工生产累计：净耗 {net} / 产量 {output}'**
+  String bomActualTipActual(int samples, String net, String output);
+
+  /// No description provided for @bomActualTipAverage.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际平均每件用 {qty}'**
+  String bomActualTipAverage(String qty);
+
+  /// No description provided for @bomActualTipUsed.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料分析和车间领料按真实使用数量计算'**
+  String get bomActualTipUsed;
+
+  /// No description provided for @bomUsesDesignBecause.
+  ///
+  /// In zh, this message translates to:
+  /// **'{reason}，计算按设计使用数量'**
+  String bomUsesDesignBecause(String reason);
+
+  /// No description provided for @bomDesignReasonNoData.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有已完工且核清余料的生产数据'**
+  String get bomDesignReasonNoData;
+
+  /// No description provided for @bomDesignReasonNotLinear.
+  ///
+  /// In zh, this message translates to:
+  /// **'整包或固定批次不能按平均用量算'**
+  String get bomDesignReasonNotLinear;
+
+  /// No description provided for @bomDesignReasonOutputUnitChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'父件单位变了，需重新学习'**
+  String get bomDesignReasonOutputUnitChanged;
+
+  /// No description provided for @bomDesignReasonSubcontractOutbound.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次由委外单一子件发料，按委外合同用量'**
+  String get bomDesignReasonSubcontractOutbound;
+
+  /// No description provided for @bomDesignReasonOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有可用的真实数据'**
+  String get bomDesignReasonOther;
+
+  /// No description provided for @bomRelearnedSince.
+  ///
+  /// In zh, this message translates to:
+  /// **'从 {date} 起重新累计'**
+  String bomRelearnedSince(String date);
+
+  /// No description provided for @bomDesignQtyRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写设计使用数量'**
+  String get bomDesignQtyRequired;
+
+  /// No description provided for @bomDesignQtyInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'设计使用数量必须是大于 0 的数字'**
+  String get bomDesignQtyInvalid;
+
+  /// No description provided for @bomLearnedEdgeEditHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'这是系统按真实用料学出的组件；改设计使用数量后转为人工维护，真实使用数量照常累计'**
+  String get bomLearnedEdgeEditHint;
+
+  /// No description provided for @bomLearnedEdgeDeleteNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'其中 {count} 个是系统学出的组件，删除后系统不会再自动加回'**
+  String bomLearnedEdgeDeleteNote(int count);
+
+  /// No description provided for @bomLearningMaterial.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料'**
+  String get bomLearningMaterial;
+
+  /// No description provided for @bomLearningExposure.
+  ///
+  /// In zh, this message translates to:
+  /// **'累计产量'**
+  String get bomLearningExposure;
+
+  /// No description provided for @bomLearningSampleCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'有效批次'**
+  String get bomLearningSampleCount;
+
+  /// No description provided for @bomLearningBasis.
+  ///
+  /// In zh, this message translates to:
+  /// **'计算采用'**
+  String get bomLearningBasis;
+
+  /// No description provided for @bomLearningOutsideBom.
+  ///
+  /// In zh, this message translates to:
+  /// **'BOM 外实际用过的料'**
+  String get bomLearningOutsideBom;
+
+  /// No description provided for @bomLearningReleased.
+  ///
+  /// In zh, this message translates to:
+  /// **'已删除，不再自动加入'**
+  String get bomLearningReleased;
+
+  /// No description provided for @bomLearningRelearn.
+  ///
+  /// In zh, this message translates to:
+  /// **'从现在起重新学习'**
+  String get bomLearningRelearn;
+
+  /// No description provided for @bomLearningRelearnConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'「{name}」从现在起重新学习？\n之前的累计不再参与计算；新的生产数据出来前，计算按设计使用数量。'**
+  String bomLearningRelearnConfirm(String name);
+
+  /// No description provided for @bomLearningRelearnDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已从现在起重新学习'**
+  String get bomLearningRelearnDone;
+
+  /// No description provided for @bomLearningRelearnFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新学习失败，请稍后重试'**
+  String get bomLearningRelearnFailed;
+
+  /// No description provided for @bomLearningLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'学习记录加载失败，请重试'**
+  String get bomLearningLoadFailed;
+
+  /// No description provided for @bomLearningEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有组件，也没有实际用过的料'**
+  String get bomLearningEmpty;
+
+  /// No description provided for @bomLearningAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作'**
+  String get bomLearningAction;
+
+  /// No description provided for @bomLearningBlockedOutputIdentity.
+  ///
+  /// In zh, this message translates to:
+  /// **'父件单位或身份变了'**
+  String get bomLearningBlockedOutputIdentity;
+
+  /// No description provided for @bomLearningBlockedMaterialIdentity.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料已删除或单位变了'**
+  String get bomLearningBlockedMaterialIdentity;
+
+  /// No description provided for @bomLearningBlockedColorConflict.
+  ///
+  /// In zh, this message translates to:
+  /// **'同一物料领过多种颜色，请人工在组装信息里确定'**
+  String get bomLearningBlockedColorConflict;
+
+  /// No description provided for @bomLearningBlockedPrecision.
+  ///
+  /// In zh, this message translates to:
+  /// **'用量超出可记录范围'**
+  String get bomLearningBlockedPrecision;
+
+  /// No description provided for @bomLearningBlockedCycle.
+  ///
+  /// In zh, this message translates to:
+  /// **'会形成组装环路'**
+  String get bomLearningBlockedCycle;
+
+  /// No description provided for @bomLearningBlockedOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'请人工在组装信息里维护'**
+  String get bomLearningBlockedOther;
+
   /// No description provided for @materialDiscoveryBatchHelp.
   ///
   /// In zh, this message translates to:
@@ -117,30 +351,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'撤回待登记领料申请'**
   String get materialDiscoveryCancel;
-
-  /// No description provided for @bomLearningHelp.
-  ///
-  /// In zh, this message translates to:
-  /// **'完成生产并核清余料后，按累计净耗料除以累计实际产量更新单耗。已有任务仍按下达时的用料执行。'**
-  String get bomLearningHelp;
-
-  /// No description provided for @bomLearningInactive.
-  ///
-  /// In zh, this message translates to:
-  /// **'尚无学习记录。无底层材料的自制任务完成领料和生产后开始累计。'**
-  String get bomLearningInactive;
-
-  /// No description provided for @bomLearningAuto.
-  ///
-  /// In zh, this message translates to:
-  /// **'自动更新 BOM'**
-  String get bomLearningAuto;
-
-  /// No description provided for @bomLearningPaused.
-  ///
-  /// In zh, this message translates to:
-  /// **'已保留人工 BOM 或发现材料、单位、颜色冲突，自动更新已暂停；累计记录仍保留，请核对组件资料。'**
-  String get bomLearningPaused;
 
   /// No description provided for @bomLearningOutput.
   ///
@@ -160,11 +370,35 @@ abstract class AppLocalizations {
   /// **'累计净耗料'**
   String get bomLearningNet;
 
-  /// No description provided for @bomLearningAverage.
+  /// No description provided for @bomActualTipDefect.
   ///
   /// In zh, this message translates to:
-  /// **'每件平均用量'**
-  String get bomLearningAverage;
+  /// **'另有不良 {defect}：按实产(良品+不良)算用量为 {perProduced}，不良率 {rate}'**
+  String bomActualTipDefect(String defect, String perProduced, String rate);
+
+  /// No description provided for @bomLearningDefect.
+  ///
+  /// In zh, this message translates to:
+  /// **'不良数'**
+  String get bomLearningDefect;
+
+  /// No description provided for @bomLearningPerProduced.
+  ///
+  /// In zh, this message translates to:
+  /// **'实产单耗'**
+  String get bomLearningPerProduced;
+
+  /// No description provided for @bomLearningDefectRate.
+  ///
+  /// In zh, this message translates to:
+  /// **'不良率'**
+  String get bomLearningDefectRate;
+
+  /// No description provided for @bomLearningTotalDefect.
+  ///
+  /// In zh, this message translates to:
+  /// **'累计不良'**
+  String get bomLearningTotalDefect;
 
   /// No description provided for @materialDiscoveryTitle.
   ///

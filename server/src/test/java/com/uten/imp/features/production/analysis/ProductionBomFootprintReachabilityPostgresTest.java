@@ -102,7 +102,8 @@ class ProductionBomFootprintReachabilityPostgresTest {
                         id uuid PRIMARY KEY,goods_id uuid NOT NULL REFERENCES goods(id),
                         component_goods_id uuid NOT NULL REFERENCES goods(id),color_id uuid,
                         qty numeric(18,4) NOT NULL DEFAULT 1,summary text,
-                        updated_at timestamptz NOT NULL DEFAULT now(),is_deleted boolean NOT NULL DEFAULT FALSE, learning_profile_goods_id uuid, learning_unit_id uuid);
+                        updated_at timestamptz NOT NULL DEFAULT now(),is_deleted boolean NOT NULL DEFAULT FALSE, learning_profile_goods_id uuid, learning_unit_id uuid,
+                        learning_released_at timestamptz);
                     CREATE UNIQUE INDEX uq_goods_bom_component ON goods_bom_items(goods_id,component_goods_id)
                         WHERE NOT is_deleted;
                     CREATE INDEX idx_goods_bom_goods ON goods_bom_items(goods_id);

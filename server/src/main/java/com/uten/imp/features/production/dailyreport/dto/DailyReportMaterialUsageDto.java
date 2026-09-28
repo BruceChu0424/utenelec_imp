@@ -22,6 +22,8 @@ public class DailyReportMaterialUsageDto {
     private String goodsName;
     private String colorName;
     private String unitName;
-    /** 本次实际用料基本量。 */
+    /** 本次实际用料基本量；实盘收尾的行审核后是「账面可用 − 实际剩余」。 */
     private BigDecimal qtyBase;
+    /** 实盘收尾清点的实际剩余(ADR-129 §2.7)；空 = 没有清点。 */
+    private BigDecimal countedLeftoverQty;
 }

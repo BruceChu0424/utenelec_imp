@@ -64,7 +64,8 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
         source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());jdbc=new JdbcTemplate(source);
         jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY,parent_id uuid,code text,name text,is_deleted boolean,is_accountable boolean,is_defective boolean,is_line_side boolean DEFAULT FALSE)");
         jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY,min_qty double precision, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6))");
-        jdbc.execute("CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY,analysis_id uuid,goods_id uuid,color_id uuid,unit_id uuid,active boolean)");
+        jdbc.execute("CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY,analysis_id uuid,goods_id uuid,color_id uuid,unit_id uuid,active boolean,"
+                + "design_bom_qty numeric,actual_bom_qty numeric,usage_basis text NOT NULL DEFAULT 'DESIGN',usage_reason text,usage_sample_count bigint,usage_defect_rate numeric)");
         jdbc.execute("CREATE INDEX ON production_material_analysis_materials(analysis_id,goods_id)");
         jdbc.execute("CREATE TABLE stock_facts(warehouse_id uuid,goods_id uuid,color_id uuid,on_hand_qty numeric,reserved_qty numeric,available_qty numeric)");
         jdbc.execute("CREATE VIEW v_stock_available AS SELECT * FROM stock_facts");

@@ -40,14 +40,25 @@
 // 组件经右侧滑窗 showUtenGoodsPicker(scope: component) 选择（原材料/半成品/辅料/OEM 系列），
 // 选完组件信息（编号/型号/规格/单位/颜色/材质/单价/来源）自动回填只读，仅用量/备注可改。
 // CRUD 后保留展开状态（_expandedIds），让刚加的子组件立即可见。
+//
+// 两个用量(ADR-129)：「设计使用数量」= goods_bom_items.qty(原「数量」，工程
+// 人员维护，必填)；其后只读「真实使用数量」= 学习累计(与设计值同一计量口径，
+// 没有数据或不适用显示「—」，悬停说明原因、有效批次和累计产量)。系统学出的
+// 组件在身份格带「系统学习」标记；编辑它只在改了设计使用数量时才提交数量
+// (改了即转为人工维护)，删除它后系统不再自动加回。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_inline_notice.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_error.dart';
 import '../../../core/network/api_exception.dart';
@@ -110,6 +121,7 @@ class _BomDeleteTarget {
     required this.itemId,
     required this.label,
     required this.nested,
+    required this.learned,
   });
 
   final String parentGoodsId;
@@ -119,6 +131,9 @@ class _BomDeleteTarget {
   /// true = 这条关系不是直接挂在本页货品下的(删它改的是某个子件自己的
   /// 组装清单，用到该子件的其它货品都会跟着变)。
   final bool nested;
+
+  /// true = 系统学出的组件(删除后系统不再自动加回，确认框要说明)。
+  final bool learned;
 }
 
 /// 「添加组件」弹窗里的选货入口(组件范围、多选)。独立成 provider，组件测试可以换成
@@ -378,6 +393,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
               ? '${r.seq} $display'
               : '${r.seq} $display — 挂在「$parentName」下',
           nested: nested,
+          learned: item.systemLearned,
         ),
       );
     }
@@ -482,6 +498,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     final targets = _selectedTargets;
     if (targets.isEmpty) return;
     final nestedCount = targets.where((t) => t.nested).length;
+    final learnedCount = targets.where((t) => t.learned).length;
+    final l10n = AppLocalizations.of(context);
     // 清单太长会把确认框撑成一屏文字，前 10 条足够让人认出自己勾了什么。
     final shown = targets.take(10).toList();
     final rest = targets.length - shown.length;
@@ -537,6 +555,14 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                           ),
                         ],
                       ),
+                    ),
+                  ],
+                  // 系统学出的组件：人工删除即释放，学习不会再把它加回来。
+                  if (learnedCount > 0) ...[
+                    const SizedBox(height: UtenSpacing.s12),
+                    UtenInlineNotice(
+                      key: const Key('goods-bom-delete-learned-note'),
+                      message: l10n.bomLearnedEdgeDeleteNote(learnedCount),
                     ),
                   ],
                   const SizedBox(height: UtenSpacing.s12),
@@ -681,38 +707,81 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   /// 退役（数据仍在行上，编辑弹窗/复制粘贴/成本聚合不受影响）；后端导出同列集。
   /// 「已审」列只在审计模式下出现（点该格翻已核对状态），关闭即普通清单视图。
   List<MasterColumnDef<_BomRow>> get _columns {
+    final l10n = AppLocalizations.of(context);
     return [
       // 层级身份集中在首列：级联号 + 明确层级文字 + 连续树轨 + 48dp
       // 单击展开按钮。行单击只负责选中，不再让“双击整行”兼任树导航。
       // 2026-09-12 用户口径「只显示名字和组件X级」：身份格不再堆路径行与编号
       // 副标题（编号看「编号」列），副标题仅剩懒加载中的提示。
+      // 系统学出的组件在格内右侧叠「系统学习」标记(ADR-129)。
       MasterColumnDef(
         key: 'treeIdentity',
         label: '层级 / 组件',
-        width: 320,
-        value: (r) =>
-            '${r.seq} 组件 ${r.depth + 1} 级 '
-            '${r.node.item.componentName ?? ''}',
+        width: 340,
+        value: (r) => [
+          '${r.seq} 组件 ${r.depth + 1} 级 ${r.node.item.componentName ?? ''}',
+          if (r.node.item.systemLearned) l10n.bomLearnedEdge,
+        ].join(' '),
         cellBuilderHandlesSemantics: true,
         // 树列吃满整行高度 + 连线跨过数据格纵向内边距，否则层级竖线会在
         // 行与行之间断开（与物料分析主表 / 级联页同一处理，2026-09-15）。
         fillsCellHeight: true,
-        cellBuilder: (context, r) => UtenTreeTableCell(
-          key: ValueKey('goods-bom-tree-cell-${r.node.item.id}'),
-          toggleKey: ValueKey('goods-bom-tree-toggle-${r.node.item.id}'),
-          depth: r.depth,
-          guideBleed: MasterDataTableView.cellVerticalPadding,
-          sequence: r.seq,
-          levelLabel: '组件 ${r.depth + 1} 级',
-          title:
-              r.node.item.componentName ?? r.node.item.componentCode ?? '未命名组件',
-          subtitle: r.node.loading ? '正在加载下级…' : null,
-          hasChildren: r.node.item.hasChildren,
-          expanded: r.node.expanded,
-          onToggle: r.node.loading ? null : () => _toggle(r.node),
-          ancestorContinuations: r.ancestorContinuations,
-          isLastChild: r.isLastChild,
-        ),
+        cellBuilder: (context, r) {
+          final cell = UtenTreeTableCell(
+            key: ValueKey('goods-bom-tree-cell-${r.node.item.id}'),
+            toggleKey: ValueKey('goods-bom-tree-toggle-${r.node.item.id}'),
+            depth: r.depth,
+            guideBleed: MasterDataTableView.cellVerticalPadding,
+            sequence: r.seq,
+            levelLabel: '组件 ${r.depth + 1} 级',
+            title:
+                r.node.item.componentName ??
+                r.node.item.componentCode ??
+                '未命名组件',
+            subtitle: r.node.loading ? '正在加载下级…' : null,
+            hasChildren: r.node.item.hasChildren,
+            expanded: r.node.expanded,
+            onToggle: r.node.loading ? null : () => _toggle(r.node),
+            ancestorContinuations: r.ancestorContinuations,
+            isLastChild: r.isLastChild,
+          );
+          if (!r.node.item.systemLearned) return cell;
+          // passthrough：树格照旧拿到整行的高度约束(层级竖线不断)，标记
+          // 浮在右侧、树格让出等宽，名称省略号不被压住；不裁剪，树轨要画进
+          // 上下相邻行的内边距(guideBleed)。槽宽按标记文字实测(各语言、
+          // 字号档都完整显示)，再留一点与名称的间距。
+          final badgeSlot =
+              UtenStatusBadge.measureWidth(
+                context,
+                l10n.bomLearnedEdge,
+                size: UtenStatusBadgeSize.small,
+              ) +
+              UtenSpacing.s8;
+          return Stack(
+            fit: StackFit.passthrough,
+            clipBehavior: Clip.none,
+            children: [
+              Padding(
+                padding: EdgeInsets.only(right: badgeSlot),
+                child: cell,
+              ),
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: badgeSlot,
+                child: Center(
+                  child: UtenStatusBadge(
+                    key: ValueKey('goods-bom-learned-${r.node.item.id}'),
+                    label: l10n.bomLearnedEdge,
+                    type: UtenStatusBadgeType.info,
+                    size: UtenStatusBadgeSize.small,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
       // 已审列（V256）：审计标记持久在服务端，但只在做核对的人眼前出现——
       // 进「审计模式」才显示 ✓ 列（改标记要 goods:bom:audit），关闭即正常清单。
@@ -793,23 +862,37 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         label: '基准产量',
         width: 88,
         type: 'number',
-        value: (r) => _num(r.node.item.basisOutputQty),
+        value: (r) => r.node.item.basisOutputQtyText,
       ),
       MasterColumnDef(
         key: 'allowPartialPackage',
         label: '尾包',
         width: 72,
-        value: (r) =>
-            r.node.item.consumptionBasis == BomConsumptionBasis.perPackage
-            ? (r.node.item.allowPartialPackage ? '允许' : '整包')
-            : '—',
+        value: (r) => r.node.item.partialPackageLabel,
       ),
       MasterColumnDef(
         key: 'qty',
-        label: '数量',
-        width: 72,
+        label: l10n.bomDesignQty,
+        width: 112,
         type: 'number',
-        value: (r) => _num(r.node.item.qty),
+        value: (r) => r.node.item.designQtyText,
+      ),
+      // 真实使用数量(只读，ADR-129)：与设计使用数量同一计量口径；没有数据或
+      // 不适用显示「—」，悬停说明计算按哪个数、依据几批、累计多少。
+      MasterColumnDef(
+        key: 'actualQty',
+        label: l10n.bomActualQty,
+        width: 112,
+        type: 'number',
+        value: (r) => r.node.item.actualQtyText,
+        cellBuilder: (context, r) => Tooltip(
+          message: bomActualUsageTip(
+            l10n,
+            r.node.item.actual,
+            netUnit: r.node.item.componentUnitName,
+          ),
+          child: Text(r.node.item.actualQtyText),
+        ),
       ),
       MasterColumnDef(
         key: 'summary',
@@ -876,8 +959,15 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
               UtenButton(
                 key: const Key('goods-bom-learning'),
                 height: UtenTableToolbar.controlHeight,
-                onPressed: () => showGoodsBomLearning(context, widget.goodsId),
-                child: const Text('BOM 学习记录'), // TODO(l10n): 补 arb
+                // 在学习记录里重学后真实使用数量会变，本页签跟着重读。
+                onPressed: () => showGoodsBomLearning(
+                  context,
+                  widget.goodsId,
+                  onRelearned: () {
+                    if (mounted) _load();
+                  },
+                ),
+                child: Text(AppLocalizations.of(context).bomLearningTitle),
               ),
               if (widget.onPreview != null)
                 UtenButton(
@@ -979,9 +1069,6 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       ],
     );
   }
-
-  static String _num(double? v) =>
-      v == null ? '' : (v == v.roundToDouble() ? v.toStringAsFixed(0) : '$v');
 }
 
 /// 添加组件弹窗的返回：是否保存 + 实际写入的父级 goodsId（供父级恢复展开）。
@@ -1063,19 +1150,18 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
       setState(() => _error = '一次最多添加 $_maxLines 个组件，请分几次添加'); // TODO(l10n)
       return;
     }
+    final l10n = AppLocalizations.of(context);
     final bodies = <Map<String, dynamic>>[];
     for (final p in _picked) {
-      final raw = p.qtyCtl.text.trim();
-      final qty = raw.isEmpty ? 1.0 : double.tryParse(raw);
-      if (qty == null || qty <= 0) {
-        setState(
-          () => _error = '「${p.goods.name ?? p.goods.code}」数量必须大于 0',
-        ); // TODO(l10n)
+      // 设计使用数量必填：清空了就报错，不再静默按 1。
+      final error = _designQtyError(l10n, p.qtyCtl.text);
+      if (error != null) {
+        setState(() => _error = '「${p.goods.name ?? p.goods.code}」$error');
         return;
       }
       bodies.add({
         'componentGoodsId': p.goods.id,
-        'qty': qty,
+        'qty': double.parse(p.qtyCtl.text.trim()),
         'price': p.goods.price,
       });
     }
@@ -1230,18 +1316,10 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
                                   ),
                                 ),
                                 SizedBox(
-                                  width: 84,
-                                  child: TextField(
+                                  width: 132,
+                                  child: _DesignQtyField(
+                                    key: Key('goods-bom-add-qty-${p.goods.id}'),
                                     controller: p.qtyCtl,
-                                    keyboardType:
-                                        const TextInputType.numberWithOptions(
-                                          decimal: true,
-                                        ),
-                                    decoration: const InputDecoration(
-                                      labelText: '数量',
-                                      border: OutlineInputBorder(),
-                                      isDense: true,
-                                    ),
                                   ),
                                 ),
                                 IconButton(
@@ -1297,7 +1375,11 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
 }
 
 /// 编辑组件对话框（单条）：组件与父级锁定（换组件/换父级走删除+新增），
-/// 用量、生产管控和备注可改。
+/// 设计使用数量和备注可改。
+///
+/// 设计使用数量只在用户真改了时才提交(ADR-129)：系统学出的组件只改备注时
+/// 仍由系统维护；改了数量即转为人工维护(真实使用数量照常累计)，弹窗顶部
+/// 黄色提示先说清楚。
 class _BomItemEditDialog extends ConsumerStatefulWidget {
   const _BomItemEditDialog({
     required this.parentGoodsId,
@@ -1317,11 +1399,15 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
   bool _saving = false;
   String? _error;
 
+  /// 打开时的设计使用数量文本：保存时与它比较，判断用户是否改了数量。
+  late final String _initialQtyText;
+
   @override
   void initState() {
     super.initState();
     final e = widget.editing;
-    _qtyCtl.text = e.qty?.toString() ?? '';
+    _initialQtyText = e.designQtyText;
+    _qtyCtl.text = _initialQtyText;
     _summaryCtl.text = e.summary ?? '';
   }
 
@@ -1333,15 +1419,20 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
   }
 
   Future<void> _save() async {
-    final qty = double.tryParse(_qtyCtl.text.trim());
-    if (qty == null || qty <= 0) {
-      setState(() => _error = '「数量」必须是大于 0 的数字'); // TODO(l10n): 补 arb
-      return;
+    final raw = _qtyCtl.text.trim();
+    // 只有改了才提交数量：不改就不碰服务端的设计使用数量(学习组件不被接管)。
+    final qtyChanged = raw != _initialQtyText;
+    if (qtyChanged) {
+      final error = _designQtyError(AppLocalizations.of(context), raw);
+      if (error != null) {
+        setState(() => _error = error);
+        return;
+      }
     }
     final e = widget.editing;
     final body = <String, dynamic>{
       'componentGoodsId': e.componentGoodsId,
-      'qty': qty,
+      if (qtyChanged) 'qty': double.parse(raw),
       'price': e.price,
       // 实时关联只回传 UUID；历史 legacy 快照缺少 UUID 时不解析、不覆盖。
       if (e.colorId != null) 'colorId': e.colorId,
@@ -1429,21 +1520,23 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                           ],
                         ),
                       ),
+                      if (e.systemLearned) ...[
+                        const SizedBox(height: UtenSpacing.s12),
+                        UtenInlineNotice(
+                          key: const Key('goods-bom-edit-learned-hint'),
+                          level: UtenInlineNoticeLevel.warning,
+                          message: AppLocalizations.of(
+                            context,
+                          ).bomLearnedEdgeEditHint,
+                        ),
+                      ],
                       const SizedBox(height: UtenSpacing.s12),
                       Row(
                         children: [
                           Expanded(
-                            child: TextField(
+                            child: _DesignQtyField(
+                              key: const Key('goods-bom-edit-qty'),
                               controller: _qtyCtl,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              decoration: const InputDecoration(
-                                labelText: '数量',
-                                border: OutlineInputBorder(),
-                                isDense: true,
-                              ),
                             ),
                           ),
                           const SizedBox(width: UtenSpacing.s12),
@@ -1501,6 +1594,55 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
 }
 
 // —— 弹窗公共片段 ——
+
+/// 设计使用数量输入框(添加/编辑两个弹窗共用)：必填，空时红框 + 红 *。
+class _DesignQtyField extends StatelessWidget {
+  const _DesignQtyField({super.key, required this.controller});
+
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = AppLocalizations.of(context).bomDesignQty;
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final theme = Theme.of(context);
+        return TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: UtenInputDecoration(
+            applyRequiredEmpty(
+              InputDecoration(
+                label: requiredLabel(
+                  label,
+                  theme,
+                  required: true,
+                  base: theme.inputDecorationTheme.labelStyle,
+                ),
+                border: const OutlineInputBorder(),
+                isDense: true,
+              ),
+              theme,
+              requiredEmpty: controller.text.trim().isEmpty,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 设计使用数量校验(两个弹窗共用)：空 → 请填写；不是大于 0 的有限数字 →
+/// 报错；合法返回 null。
+String? _designQtyError(AppLocalizations l10n, String raw) {
+  final text = raw.trim();
+  if (text.isEmpty) return l10n.bomDesignQtyRequired;
+  final value = double.tryParse(text);
+  return value == null || !value.isFinite || value <= 0
+      ? l10n.bomDesignQtyInvalid
+      : null;
+}
 
 Widget _dialogHeader(BuildContext context, ThemeData theme, String title) {
   return Padding(

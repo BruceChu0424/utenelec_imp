@@ -18,6 +18,8 @@ public class DailyReportItemDto {
     private UUID unitId;
     private BigDecimal unitRate;
     private BigDecimal qty;
+    /** 不良数(ADR-129)：只记录，没有时为 0。 */
+    private BigDecimal defectQty;
     private BigDecimal price;
     private BigDecimal total;
     private BigDecimal stotal;

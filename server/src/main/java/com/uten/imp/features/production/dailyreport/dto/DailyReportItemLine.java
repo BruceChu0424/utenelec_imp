@@ -26,6 +26,8 @@ public class DailyReportItemLine {
     private UUID unitId;
     private BigDecimal unitRate;
     @NotNull private BigDecimal qty;
+    /** 不良数(ADR-129)：只记录，不改良品数；不传或为空按 0。 */
+    private BigDecimal defectQty;
     private BigDecimal price;
     private BigDecimal total;
     private BigDecimal stotal;

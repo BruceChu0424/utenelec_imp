@@ -1,4 +1,5 @@
-// 货品组装信息（BOM）仓库：组件清单 CRUD（组装树子级对组件 id 再调 list 懒加载）。
+// 货品组装信息(BOM)仓库：组件清单 CRUD(组装树子级对组件 id 再调 list 懒加载)
+// + BOM 学习记录(读、从现在起重新学习，ADR-129)。
 //
 // 仿 DioGoodsRepository，端点走 ApiEndpoints.goodsBom 系列；
 // 导出复用 UtenExportButton（endpoint=goodsBomExport），不走本仓库。
@@ -40,6 +41,16 @@ abstract interface class GoodsBomRepository {
     required List<BomPasteTarget> targets,
     required List<Map<String, dynamic>> items,
   });
+
+  /// BOM 学习记录(ADR-129)：父件累计 + 逐组件设计/真实使用数量。
+  Future<GoodsBomLearningSummary> learning(String goodsId);
+
+  /// 某组件「从现在起重新学习」(goods:bom:edit)：当前累计记为基线，
+  /// 新数据出来前计算按设计使用数量。返回重学后的学习记录(不用再读一次)。
+  Future<GoodsBomLearningSummary> relearn(
+    String goodsId,
+    String componentGoodsId,
+  );
 }
 
 /// 粘贴方式：替换目标现有组件 / 在现有组件后追加。
@@ -141,6 +152,23 @@ class DioGoodsBomRepository implements GoodsBomRepository {
     );
     return BomPasteResult.fromJson(json);
   }
+
+  @override
+  Future<GoodsBomLearningSummary> learning(String goodsId) async =>
+      GoodsBomLearningSummary.fromJson(
+        await api.get(ApiEndpoints.goodsBomLearning(goodsId)),
+      );
+
+  @override
+  Future<GoodsBomLearningSummary> relearn(
+    String goodsId,
+    String componentGoodsId,
+  ) async => GoodsBomLearningSummary.fromJson(
+    await api.post(
+      ApiEndpoints.goodsBomRelearn(goodsId),
+      body: {'componentGoodsId': componentGoodsId},
+    ),
+  );
 
   static const _pastePath = '${ApiEndpoints.goods}/bom/paste';
 }

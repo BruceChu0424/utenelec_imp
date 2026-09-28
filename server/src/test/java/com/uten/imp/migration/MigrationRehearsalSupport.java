@@ -119,7 +119,11 @@ public final class MigrationRehearsalSupport {
             "supplier_categories",
             // V681 按 SystemSettingKey 登记补齐 7 个设置行 (ON CONFLICT DO NOTHING, 不改已有值; ADR-110)。
             "system_settings",
-            "user_permission_overrides");
+            "user_permission_overrides",
+            // V737(ADR-129) 学习引擎按台账事实整体重放：旧样本清空后按新口径重算，
+            // 学习档案可能为已完工生产族新增。
+            "production_bom_learning_samples",
+            "goods_bom_learning_profiles");
 
     private MigrationRehearsalSupport() {
     }
@@ -165,7 +169,9 @@ public final class MigrationRehearsalSupport {
                 "production_goods_workshop_preferences",
                 // V677(ADR-109) 角色体系四张表删除：全员基础包平移到 permissions.baseline，
                 // 通知受众改按部门子树 + 权限码。
-                "roles", "user_roles", "role_permissions", "department_roles");
+                "roles", "user_roles", "role_permissions", "department_roles",
+                // V737(ADR-129) 按颜色的学习累计表由 goods_bom_actual_usages 取代。
+                "goods_bom_learning_material_totals");
         Set<String> requiredTables = new java.util.HashSet<>(before.tableRows().keySet());
         requiredTables.removeAll(intentionallyDropped);
         // V673(ADR-105) production_plan_costs 由按年分区改为普通单表: 各年分区子表与 default 分区

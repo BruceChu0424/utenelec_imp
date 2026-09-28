@@ -463,10 +463,10 @@ void main() {
         (request) => request.path.endsWith('/issue-plans'),
       );
       expect((issueRequest.data as Map<String, dynamic>)['lines'], [
+        // 没人改过的允许超产比例不带(ADR-129 §2.10)，由服务端按货品默认填写。
         {
           'analysisLineId': 'p1',
           'qty': 10.0,
-          'allowedOverproductionRate': 0,
           'departmentId': 'workshop',
           'workshopName': '装配车间',
           'workerId': 'worker',

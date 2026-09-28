@@ -6,6 +6,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/master_facet.dart';
+import '../widgets/production_overproduction_rate_field.dart';
 
 const productionOverproductionRateRefreshKey = 'production:overproduction-rate';
 const productionOverproductionRateRequestPermission =
@@ -17,14 +18,10 @@ double? productionRateNumber(Object? value) => value is num
     ? double.tryParse(value)
     : null;
 
-String productionRateText(double? rate) {
-  if (rate == null || !rate.isFinite) return '—';
-  final value = (rate * 100)
-      .toStringAsFixed(4)
-      .replaceFirst(RegExp(r'0+$'), '')
-      .replaceFirst(RegExp(r'\.$'), '');
-  return '$value%';
-}
+/// 展示用：未确定(空)显示「—」，否则「X%」。百分比格式与输入框同一口径。
+String productionRateText(double? rate) => rate == null || !rate.isFinite
+    ? '—'
+    : '${productionOverproductionPercentText(rate)}%';
 
 String productionRateStatus(String? status) => switch (status) {
   'PENDING' => '待计划部审批',

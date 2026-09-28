@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.mock;
@@ -27,6 +28,8 @@ import static org.mockito.Mockito.when;
  * <p>导出列集与前端组装信息表格一致——需求阶段/缺料处理/单价/金额四列已从表格
  * 退役，导出同步不带；层级只用级联序号表达（1 / 2 / 2.1），不再加全角空格缩进、
  * └ 分支符或子层星号标记；计量方式/尾包按展示文字导出（尾包仅「按包装」有意义）。</p>
+ *
+ * <p>ADR-129：「数量」改名「设计使用数量」，其后紧跟只读的「真实使用数量」(没有数据留空)。</p>
  */
 class GoodsBomExportColumnsTest {
 
@@ -71,13 +74,20 @@ class GoodsBomExportColumnsTest {
                 .thenReturn(List.of(rowWasher));
         when(bomRepo.findGoodsWithOperationalRows(anyCollection()))
                 .thenReturn(List.of(screw.getId()));
+        // 只有外壳学到了真实使用数量；螺丝(整包)与垫片没有数据。
+        when(bomRepo.findUsageRows(anyCollection())).thenAnswer(invocation -> {
+            java.util.Collection<?> ids = invocation.getArgument(0);
+            return ids.contains(rowShell.getId())
+                    ? java.util.Collections.singletonList(usageRow(rowShell, "1.85"))
+                    : List.of();
+        });
 
         ExportPayload payload = service.exportPayload(root.getId());
 
-        // 列集 = 组装信息表格列（四列退役后），共 13 列、顺序即表格顺序。
+        // 列集 = 组装信息表格列(四列退役后)，共 14 列、顺序即表格顺序。
         assertEquals(
                 List.of("序号", "物料编号", "物料名称", "型号", "规格", "单位", "颜色", "来源",
-                        "计量方式", "基准产量", "尾包", "数量", "备注"),
+                        "计量方式", "基准产量", "尾包", "设计使用数量", "真实使用数量", "备注"),
                 payload.columns().stream().map(c -> c.label()).collect(Collectors.toList()),
                 () -> "导出列必须与表格列一致");
 
@@ -105,6 +115,19 @@ class GoodsBomExportColumnsTest {
         assertEquals("整包", bySeq.get("2").get("allowPartialPackage"));
         assertEquals(0, BigDecimal.TEN.compareTo(
                 new BigDecimal(String.valueOf(bySeq.get("2").get("basisOutputQty")))));
+
+        // 设计使用数量照旧；真实使用数量只在有数据的行上有值，其余留空(不当 0)。
+        assertEquals(new BigDecimal("2"), bySeq.get("1").get("qty"));
+        assertEquals(new BigDecimal("1.85"), bySeq.get("1").get("actualQty"));
+        assertNull(bySeq.get("2").get("actualQty"));
+        assertNull(bySeq.get("2.1").get("actualQty"));
+    }
+
+    /** v_goods_bom_item_usage 一行：[行 id, BomItemUsage.COLUMNS...]。 */
+    private static Object[] usageRow(GoodsBomItem row, String actual) {
+        return new Object[]{row.getId(), new BigDecimal(actual), new BigDecimal(actual), "ACTUAL",
+                new BigDecimal(actual), "ACTUAL", 2L, new BigDecimal("200"), new BigDecimal("370"), null, null, false,
+                BigDecimal.ZERO, new BigDecimal(actual), BigDecimal.ZERO};
     }
 
     private static GoodsBomItem bomRow(Goods parent, Goods component, String qty) {

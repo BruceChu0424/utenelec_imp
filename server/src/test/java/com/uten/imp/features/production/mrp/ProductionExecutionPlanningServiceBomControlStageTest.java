@@ -212,6 +212,97 @@ class ProductionExecutionPlanningServiceBomControlStageTest {
         assertThat(start.fingerprint()).isNotEqualTo(finish.fingerprint());
     }
 
+    @Test
+    void usedQuantityDrivesDemandWhileDesignQuantityOnlyValidates() {
+        ProductIds product = ProductIds.create();
+        UUID materialId = UUID.randomUUID();
+        Object[] row = executionRow(
+                product, UUID.randomUUID(), materialId, UUID.randomUUID(),
+                "START", true, "PER_UNIT", BigDecimal.ONE);
+        row[21] = "ACTUAL";
+        row[29] = new BigDecimal("0.8");
+        Harness harness = harness(
+                Collections.singletonList(row),
+                Collections.singletonList(new Object[]{
+                        materialId, null, BigDecimal.TEN
+                }));
+
+        ProductionExecutionPlanningService.Snapshot snapshot =
+                harness.service().preview(UUID.randomUUID(), UUID.randomUUID());
+
+        assertThat(snapshot.productLines().getFirst().materials())
+                .singleElement().satisfies(material -> {
+                    assertThat(material.perProductQty())
+                            .isEqualByComparingTo("0.8");
+                    assertThat(material.consumptionRules().getFirst().bomQty())
+                            .isEqualByComparingTo("0.8");
+                });
+        assertThat(harness.service().propose(snapshot).segments())
+                .singleElement().satisfies(segment -> assertThat(
+                        segment.materials().getFirst().requiredQty())
+                        .isEqualByComparingTo("8"));
+        verify(harness.em()).createNativeQuery(argThat(sql ->
+                sql.contains("LEFT JOIN v_goods_bom_item_usage usage")
+                        && sql.contains("ON usage.bom_item_id = b.id")
+                        && sql.contains("MAX(candidate.bom_qty) AS bom_qty")
+                        && sql.contains("MAX(candidate.usage_basis) AS usage_basis")
+                        && !sql.contains("b.updated_at")));
+
+        Object[] invalidDesign = executionRow(
+                product, UUID.randomUUID(), materialId, UUID.randomUUID(),
+                "START", true, "PER_UNIT", BigDecimal.ONE,
+                BigDecimal.ZERO, true);
+        invalidDesign[29] = BigDecimal.ONE;
+        assertThatThrownBy(() -> harness(
+                Collections.singletonList(invalidDesign), List.of())
+                .service().preview(UUID.randomUUID(), UUID.randomUUID()))
+                .as("用量不大于零的存量 BOM 行：说清是哪一行、为什么、怎么改")
+                .hasMessage("「FG-001 Finished good」→ 组件「C-001 Component」：用量小于或等于 0，不能排产。"
+                        + "请在父件的 BOM 里把这一行的用量改成大于 0。");
+    }
+
+    @Test
+    void fingerprintFollowsUsedQuantityAndBasisButNotBomRowEdits() {
+        ProductIds product = ProductIds.create();
+        UUID bomItemId = UUID.randomUUID();
+        UUID materialId = UUID.randomUUID();
+        UUID materialUnitId = UUID.randomUUID();
+        UUID planId = UUID.randomUUID();
+        UUID warehouseId = UUID.randomUUID();
+        java.util.function.BiFunction<String, BigDecimal, String> fingerprint =
+                (basis, usedQty) -> {
+                    Object[] row = executionRow(
+                            product, bomItemId, materialId, materialUnitId,
+                            "START", true, "PER_UNIT", BigDecimal.ONE);
+                    row[21] = basis;
+                    row[29] = usedQty;
+                    return harness(Collections.singletonList(row),
+                            Collections.singletonList(new Object[]{
+                                    materialId, null, BigDecimal.TEN
+                            })).service().preview(planId, warehouseId)
+                            .productLines().getFirst().bomFingerprint();
+                };
+        String design = fingerprint.apply("DESIGN", BigDecimal.ONE);
+
+        assertThat(fingerprint.apply("DESIGN", BigDecimal.ONE)).isEqualTo(design);
+        assertThat(fingerprint.apply("ACTUAL", BigDecimal.ONE)).isNotEqualTo(design);
+        assertThat(fingerprint.apply("DESIGN", new BigDecimal("1.2")))
+                .isNotEqualTo(design);
+
+        Object[] redesigned = executionRow(
+                product, bomItemId, materialId, materialUnitId,
+                "START", true, "PER_UNIT", BigDecimal.ONE,
+                new BigDecimal("3"), true);
+        redesigned[29] = BigDecimal.ONE;
+        assertThat(harness(Collections.singletonList(redesigned),
+                Collections.singletonList(new Object[]{
+                        materialId, null, BigDecimal.TEN
+                })).service().preview(planId, warehouseId)
+                .productLines().getFirst().bomFingerprint())
+                .as("an analysis-pinned quantity keeps the task valid after a design edit")
+                .isEqualTo(design);
+    }
+
     private static Harness harness(
             List<Object[]> rows, List<Object[]> availability) {
         EntityManager em = mock(EntityManager.class);
@@ -270,7 +361,7 @@ class ProductionExecutionPlanningServiceBomControlStageTest {
             BigDecimal basisOutputQty,
             BigDecimal bomQty,
             boolean allowPartialPackage) {
-        Object[] row = new Object[29];
+        Object[] row = new Object[32];
         row[0] = product.sourceItemId();
         row[1] = 1;
         row[2] = product.productGoodsId();
@@ -292,7 +383,7 @@ class ProductionExecutionPlanningServiceBomControlStageTest {
         row[18] = null;
         row[19] = false;
         row[20] = "plan-item-version-1";
-        row[21] = "bom-item-version-1";
+        row[21] = "DESIGN";
         row[22] = "\u91c7\u8d2d";
         row[23] = null;
         row[24] = controlStage;
@@ -300,6 +391,9 @@ class ProductionExecutionPlanningServiceBomControlStageTest {
         row[26] = consumptionBasis;
         row[27] = basisOutputQty;
         row[28] = allowPartialPackage;
+        row[29] = bomQty;
+        row[30] = "C-001";
+        row[31] = "Component";
         return row;
     }
 

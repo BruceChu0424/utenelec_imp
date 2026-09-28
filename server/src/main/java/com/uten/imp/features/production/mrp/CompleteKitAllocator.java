@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.mrp;
 
+import com.uten.imp.features.production.analysis.MaterialConsumptionMath;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionSegment;
 import com.uten.imp.features.production.fulfillment.ProductionMaterialDemand;
@@ -283,6 +284,24 @@ public final class CompleteKitAllocator {
             BigDecimal perProductQty) {
         return productQty.multiply(perProductQty)
                 .setScale(MATERIAL_SCALE, RoundingMode.CEILING);
+    }
+
+    /**
+     * Exact requirement of a consumption curve: every rule is rounded up to
+     * four decimals on the parent output, then summed. The frozen curve of a
+     * demand (V609 {@code consumption_snapshot}) is evaluated with the same
+     * formula as its SQL twin {@code fn_material_snapshot_required}.
+     */
+    static BigDecimal required(
+            List<ConsumptionRule> rules,
+            BigDecimal productQty,
+            BigDecimal productUnitRate) {
+        BigDecimal parentOutputQty = productQty.multiply(productUnitRate);
+        BigDecimal total = BigDecimal.ZERO.setScale(MATERIAL_SCALE);
+        for (ConsumptionRule rule : rules) {
+            total = total.add(rule.required(parentOutputQty));
+        }
+        return total.setScale(MATERIAL_SCALE, RoundingMode.UNNECESSARY);
     }
 
     private static String decimalText(BigDecimal value) {
@@ -584,12 +603,8 @@ public final class CompleteKitAllocator {
                 return CompleteKitAllocator.required(
                         productQty, perProductQty);
             }
-            BigDecimal parentOutputQty = productQty.multiply(productUnitRate);
-            BigDecimal total = BigDecimal.ZERO.setScale(MATERIAL_SCALE);
-            for (ConsumptionRule rule : consumptionRules) {
-                total = total.add(rule.required(parentOutputQty));
-            }
-            return total.setScale(MATERIAL_SCALE, RoundingMode.UNNECESSARY);
+            return CompleteKitAllocator.required(
+                    consumptionRules, productQty, productUnitRate);
         }
 
         String requirementFingerprint(BigDecimal productUnitRate) {
@@ -621,30 +636,17 @@ public final class CompleteKitAllocator {
             BigDecimal basisOutputQty,
             boolean allowPartialPackage) {
 
-        public static final String PER_UNIT = "PER_UNIT";
-        public static final String PER_PACKAGE = "PER_PACKAGE";
-        public static final String FIXED_BATCH = "FIXED_BATCH";
+        public static final String PER_UNIT = MaterialConsumptionMath.PER_UNIT;
+        public static final String PER_PACKAGE = MaterialConsumptionMath.PER_PACKAGE;
+        public static final String FIXED_BATCH = MaterialConsumptionMath.FIXED_BATCH;
         private static final List<String> SUPPORTED_BASES = List.of(
                 PER_UNIT, PER_PACKAGE, FIXED_BATCH);
 
+        /** 执行侧与物料分析同一计量公式(ADR-129 §2.3)：只委托共享实现，不另写一份。 */
         BigDecimal required(BigDecimal parentOutputQty) {
-            BigDecimal raw = switch (consumptionBasis) {
-                case PER_UNIT -> parentOutputQty.multiply(bomQty);
-                case PER_PACKAGE -> allowPartialPackage
-                        ? parentOutputQty.multiply(bomQty).divide(
-                                basisOutputQty, 12, RoundingMode.CEILING)
-                        : wholePackages(parentOutputQty).multiply(bomQty);
-                case FIXED_BATCH ->
-                        wholePackages(parentOutputQty).multiply(bomQty);
-                default -> throw new IllegalStateException(
-                        "不支持的物料消耗规则: " + consumptionBasis);
-            };
-            return raw.setScale(MATERIAL_SCALE, RoundingMode.CEILING);
-        }
-
-        private BigDecimal wholePackages(BigDecimal parentOutputQty) {
-            return parentOutputQty.divide(
-                    basisOutputQty, 0, RoundingMode.CEILING);
+            return MaterialConsumptionMath.required(
+                    parentOutputQty, bomQty, consumptionBasis,
+                    basisOutputQty, allowPartialPackage);
         }
     }
 

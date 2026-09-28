@@ -45,6 +45,20 @@ class DailyReportOutputAllocationServiceTest {
         assertTrue(pieces.stream().allMatch(piece->piece.getWeight().signum()>=0));
         assertEquals(0,original.getWeight().compareTo(pieces.stream().map(DailyReportItemLine::getWeight).reduce(BigDecimal.ZERO,BigDecimal::add)));
     }
+    @Test void theWholeDefectOfOneEntryStaysOnItsFirstSliceOnly() {
+        var input=new DailyReportItemLine();input.setQty(new BigDecimal("10"));input.setDefectQty(new BigDecimal("3"));
+        var pieces=new java.util.ArrayList<DailyReportItemLine>();
+        for(String qty:List.of("5","4","1")){
+            var piece=new DailyReportItemLine();org.springframework.beans.BeanUtils.copyProperties(input,piece);
+            piece.setQty(new BigDecimal(qty));pieces.add(piece);
+        }
+        DailyReportOutputAllocationService.keepDefectOnFirstSlice(input,pieces);
+        assertEquals(new BigDecimal("3"),pieces.get(0).getDefectQty());
+        assertEquals(BigDecimal.ZERO,pieces.get(1).getDefectQty());
+        assertEquals(BigDecimal.ZERO,pieces.get(2).getDefectQty());
+        assertEquals(List.of(new BigDecimal("5"),new BigDecimal("4"),BigDecimal.ONE),
+                pieces.stream().map(DailyReportItemLine::getQty).toList(),"slicing only ever moves the good quantity");
+    }
     @Test void nonBasicUnitMultiLineTransferDebitsEachActualRoundedLedgerQuantity() {
         BigDecimal remaining=new BigDecimal("0.0006");
         for(int index=0;index<3;index++) {

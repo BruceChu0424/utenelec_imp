@@ -292,6 +292,12 @@ abstract final class ApiEndpoints {
   static String goodsBomBatchDelete(String id) =>
       '/master/goods/$id/bom/batch-delete';
   static String goodsBomExport(String id) => '/master/goods/$id/bom/export';
+
+  /// BOM 学习记录(ADR-129)：逐组件的设计/真实使用数量与累计；relearn 把某组件
+  /// 的当前累计记为基线、从现在起重新学习(goods:bom:edit)，返回同一份汇总。
+  static String goodsBomLearning(String id) => '/master/goods/$id/bom-learning';
+  static String goodsBomRelearn(String id) =>
+      '/master/goods/$id/bom-learning/relearn';
   // 货品批量导入：detect 只读检测 / commit 原子导入 / latest 最近批次 / undo 撤回。
   // 组装信息导入（2026-09-25）：格式 = 配件清单导出 13 列，序号级联段表达层级。
   static String goodsBomImportDetect(String goodsId) =>

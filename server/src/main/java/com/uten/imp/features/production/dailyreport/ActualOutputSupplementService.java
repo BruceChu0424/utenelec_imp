@@ -377,7 +377,8 @@ public class ActualOutputSupplementService {
             additional.setExecutionSegmentId(uuid(proof,"supplement_execution_segment_id"));additional.setPlanItemId(uuid(proof,"supplement_plan_item_id"));
             additional.setExecutionSegmentSalesAllocationId(null);additional.setSalesOrderItemId(null);additional.setSalesOrderNo(null);additional.setClientName(null);
             additional.setDestination("WAREHOUSE");additional.setDirectTransferDemandId(null);additional.setIsFinal(false);split.add(additional);
-            DailyReportOutputAllocationService.distributeWeight(line,split);expanded.addAll(split);
+            DailyReportOutputAllocationService.distributeWeight(line,split);
+            DailyReportOutputAllocationService.keepDefectOnFirstSlice(line,split);expanded.addAll(split);
         }
         return expanded;
     }

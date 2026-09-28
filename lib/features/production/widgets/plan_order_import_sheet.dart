@@ -407,6 +407,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                     label: '单台用量',
                     width: 90,
                     type: 'number',
+                    info: '按计算采用的用量(有真实数据时用真实使用数量)',
                     value: (item) => _fmt(item.perQty),
                   ),
                   MasterColumnDef(

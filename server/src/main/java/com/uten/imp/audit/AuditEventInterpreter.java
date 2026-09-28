@@ -34,8 +34,10 @@ public class AuditEventInterpreter {
     private static final Map<String, String> ROUTE_LABELS = routeLabels();
     private static final Map<String, String> PAGE_LABELS = pageLabels();
     private static final Map<String, String> FIELD_LABELS = fieldLabels();
+    private static final Map<String, Map<String, String>> TABLE_FIELD_LABELS = tableFieldLabels();
     private static final Map<String, String> RESULT_LABELS = resultLabels();
     private static final Map<String, String> VALUE_LABELS = valueLabels();
+    private static final Map<String, Map<String, String>> TABLE_VALUE_LABELS = tableValueLabels();
     private static final Map<String, String> EXPORT_SUBJECTS = exportSubjects();
     private static final Pattern UUID_PATTERN =
             Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
@@ -187,7 +189,7 @@ public class AuditEventInterpreter {
         }
         String pageLabel = pageLabel(path);
         String resultLabel = resultLabel(value.getResult(), value.getStatusCode());
-        List<String> changes = changeEntries(action, value.getBefore(), value.getAfter());
+        List<String> changes = changeEntries(target, action, value.getBefore(), value.getAfter());
         String changeSummary = changeSummary(action, value.getBefore(), value.getAfter(), changes);
         String summary = buildSummary(
                 action, actionLabel, objectLabel, targetName, changes, resultLabel);
@@ -342,6 +344,7 @@ public class AuditEventInterpreter {
             // 组装明细批量删除要排在通知那条之前: 两条路径都以 /batch-delete 收尾,
             // 先匹配到谁就按谁显示。
             if (path.contains("/bom/batch-delete")) return "批量删除组装明细";
+            if (path.contains("/bom-learning/relearn")) return "重新学习真实使用数量";
             // 「移除通知」必须限定在通知域。原先只看 /batch-delete 这个后缀, 当时全仓
             // 只有 /api/notices/batch-delete 一条路径, 所以看不出问题; 2026-09-21 加了
             // 货品组装明细批量删除之后, 一次货品主档删除会在审计里读成「移除通知 · 货品」,
@@ -472,7 +475,7 @@ public class AuditEventInterpreter {
      * 数据库触发行的逐字段变更明细（详情页"具体变更"数据源）。
      * 只对 update 计算字段级差异；insert/delete 的信息量用 {@link #changeSummary} 概括。
      */
-    private List<String> changeEntries(String action, String beforeJson, String afterJson) {
+    private List<String> changeEntries(String table, String action, String beforeJson, String afterJson) {
         if (!"update".equals(action)) {
             return List.of();
         }
@@ -493,13 +496,13 @@ public class AuditEventInterpreter {
             if (nodesEqual(oldValue, newValue)) {
                 continue;
             }
-            entries.add(fieldLabel(field) + "：" + valueLabel(oldValue)
-                    + " → " + valueLabel(newValue));
+            entries.add(fieldLabel(table, field) + "：" + valueLabel(table, field, oldValue)
+                    + " → " + valueLabel(table, field, newValue));
         }
         JsonNode redacted = after.get(REDACTED_CHANGES_KEY);
         if (redacted != null && redacted.isArray() && !redacted.isEmpty()) {
             List<String> names = new ArrayList<>();
-            redacted.forEach(node -> names.add(fieldLabel(node.asText())));
+            redacted.forEach(node -> names.add(fieldLabel(table, node.asText())));
             entries.add("敏感信息已修改(内容不记录)：" + String.join("、", names));
         }
         return entries;
@@ -1380,6 +1383,17 @@ public class AuditEventInterpreter {
         values.put("to_material_id", "借出物料");
         values.put("borrow_qty", "借用数量");
         values.put("last_effective_qty", "最近生效数量");
+        // BOM 设计/真实使用数量(ADR-129)
+        values.put("design_bom_qty", "设计使用数量");
+        values.put("actual_bom_qty", "真实使用数量");
+        values.put("usage_basis", "计算采用");
+        values.put("usage_reason", "按设计使用数量的原因");
+        values.put("usage_sample_count", "有效生产批次");
+        values.put("usage_defect_rate", "采用时的不良率");
+        values.put("defect_qty", "不良数");
+        values.put("counted_leftover_qty", "实际剩余(清点)");
+        values.put("allowed_overproduction_rate", "允许超产比例");
+        values.put("allowed_overproduction_rate_source", "超产比例来源");
         // 财务
         values.put("payee", "收款方");
         values.put("payer", "付款方");
@@ -1413,6 +1427,37 @@ public class AuditEventInterpreter {
         values.put("mode=custom", "方式：管理员指定密码");
         values.put("mode=generated", "方式：系统随机生成");
         return Collections.unmodifiableMap(new LinkedHashMap<>(values));
+    }
+
+    /**
+     * 同名列在个别表里含义不同：表内口径优先于通用列名(与前端 AuditFieldLabels 同义)。
+     * 组装行的 qty 是「设计使用数量」(ADR-129)，真实使用数量由学习引擎另存，不在这张表上。
+     */
+    private static Map<String, Map<String, String>> tableFieldLabels() {
+        Map<String, String> bom = new LinkedHashMap<>();
+        bom.put("qty", "设计使用数量");
+        bom.put("learning_profile_goods_id", "系统学习标记");
+        bom.put("learning_unit_id", "系统学习时的组件单位");
+        bom.put("learning_released_at", "人工删除后不再自动加回的时间");
+        return Map.of("goods_bom_items", Collections.unmodifiableMap(bom));
+    }
+
+    /**
+     * 只属于某张表某一列的枚举值(键 = 表名.列名)，与前端 AuditFieldLabels 的表限定值标签逐字一致；
+     * 不进通用值字典，免得别的表同名取值(如研发任务类别 DESIGN)被误翻。
+     */
+    private static Map<String, Map<String, String>> tableValueLabels() {
+        Map<String, Map<String, String>> values = new LinkedHashMap<>();
+        values.put("production_material_analysis_materials.usage_basis",
+                Map.of("design", "按设计使用数量", "actual", "按真实使用数量"));
+        values.put("production_material_analysis_materials.usage_reason", Map.of(
+                "no_data", "还没有已完工且核清余料的生产数据",
+                "not_linear", "整包或固定批次不能按平均用量算",
+                "output_unit_changed", "父件单位变了，需重新学习",
+                "subcontract_outbound", "本次由委外单一子件发料，按委外合同用量"));
+        values.put("production_plan_items.allowed_overproduction_rate_source",
+                Map.of("default", "系统默认", "explicit", "人工确认"));
+        return Collections.unmodifiableMap(values);
     }
 
     /** 常见状态枚举值 → 中文（仅做精确匹配，避免误翻业务编码）。 */
@@ -1455,8 +1500,19 @@ public class AuditEventInterpreter {
         return Collections.unmodifiableMap(new LinkedHashMap<>(values));
     }
 
-    private static String fieldLabel(String field) {
-        return FIELD_LABELS.getOrDefault(field, "未登记字段");
+    private static String fieldLabel(String table, String field) {
+        String scoped = TABLE_FIELD_LABELS.getOrDefault(table, Map.of()).get(field);
+        return scoped != null ? scoped : FIELD_LABELS.getOrDefault(field, "未登记字段");
+    }
+
+    /** 先按表限定的枚举值翻译，其余同 {@link #valueLabel(JsonNode)}。 */
+    private static String valueLabel(String table, String field, JsonNode node) {
+        if (node != null && node.isTextual()) {
+            String scoped = TABLE_VALUE_LABELS.getOrDefault(table + "." + field, Map.of())
+                    .get(node.asText().toLowerCase(Locale.ROOT));
+            if (scoped != null) return scoped;
+        }
+        return valueLabel(node);
     }
 
     /** 值可读化：空值/布尔/常见状态翻译，时间戳转"yyyy-MM-dd HH:mm(北京时间)"，UUID 取前 8 位，长文本截断。 */

@@ -99,6 +99,7 @@ CREATE UNIQUE INDEX uq_goods_bom_component
 - **编号唯一**：组件按货品编号关联（UI 搜索选择器锁定具体货品），唯一索引兜底；后端 service 先查给 409 友好报错「该组件已在组装清单中」。
 - `sort_order`：迁移时按老库 `ID` 序生成（保持 001.jpg 行序）；手工新增 = max+1。
 - `total`：显式传入优先，缺省后端按 `qty*price`（两位小数）兜底。
+- `qty` 自 2026-09-27 起在界面、导出与导入中称**设计使用数量** (列不变，[ADR-129](../99-决策记录-ADR/ADR-129-BOM设计使用数量与真实使用数量.md) / [V737](256-V737BOM设计与真实使用数量.md))；学习得出的真实使用数量另存 `goods_bom_actual_usages`，不写回人工边的 `qty`，只有系统学习边 (`learning_profile_goods_id` 非空) 的 `qty` 由系统同步。导入时设计使用数量为空报错，不再按 1 兜底。
 
 ---
 
@@ -147,6 +148,8 @@ bash server/legacy_migration/migrate.sh --goods-bom --confirm-destructive
   直接组件中 `source_type∈{采购,委外}` 取 `price×qty`，**自制 / 有 BOM（半成品）取其 `c_total×qty`**
   （自制件 price 常 0，取其成本价才不失真；求和 `setScale(2)`）。前端成本页签 `sourceE` 只读显示此值，
   不再手填。这是"组件价格→父货品材料合计"的唯一真源（前端 `Σ(qty×price)` 对自制件是错的，故由后端做）。
+  2026-09-27 起公式只在数据库函数 `fn_goods_bom_material_cost` 定义一次，Java `recalcSourceE` 与学习引擎同步学习边后都调用它；
+  成本预算始终按**设计使用数量** `qty` 计算，真实使用数量不进入 `source_e` ([ADR-129](../99-决策记录-ADR/ADR-129-BOM设计使用数量与真实使用数量.md) §2.3)。
 - **DAG 环检测**：`ensureNoCycle(parentGoodsId, componentId)`——加边前 BFS 下溯组件子树（深度上限 10），
   若已含 parentGoodsId 则 409「会形成组装环路」（"加为某组件的子组件"让环路更易人为构造，写入侧必须防护；
   预览/导出侧早有路径去重 + 10 层上限）。

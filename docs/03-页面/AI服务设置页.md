@@ -22,11 +22,11 @@
 |---|---|
 | 顶部状态 | 渐变卡: 「正在使用: 名称 · 模型」+ 区域标签 + 上次测试(通过/未通过 + 北京时间)。没有服务 →「还没有可用的 AI 服务」+ 下一步说明; 默认服务停用 / 没密钥 / 密钥解不开 → 一句大白话原因 |
 | 外呼关闭提示 | 服务器 `uten.ai.outbound-enabled=false`(内部测试环境强制)时黄色提示「配置可以保存, 但不会真正调用」 |
-| 服务商卡片 | 预设首字头像(国内青绿 / 境外紫 / 本机蓝渐变, 停用变淡; 字色取主题 `onPrimary`, 深色主题换浅一档渐变保证对比度)、名称、预设名(预设目录缺这条时用服务端 `presetLabel`)、区域标签(国内/境外/本机)、默认徽章、已停用徽章、启用开关; 模型、接口地址、密钥(「已配置 ••••abcd」; 服务端对短密钥不留尾号时只显示「已配置」;「未配置」/「不需要」(区域为本机即不需要)/ 红色「密钥无法解密, 请重新填写」)、上次测试(小徽章只写「通过 / 未通过」, 北京时间写在旁边普通文字里, 窄屏自动换行不被省略号截断); 操作 测试连接 / 编辑 / 设为默认 / 删除(按钮高 48) |
-| 空状态 | 「还没有配置 AI 服务」+ 支持哪些服务商 + 「添加 AI 服务」 |
+| 服务商卡片 | 预设首字头像(国内青绿 / 境外紫 / 本机蓝渐变, 停用变淡; 字色取主题 `onPrimary`, 深色主题换浅一档渐变保证对比度)、名称、预设名(预设目录缺这条时用服务端 `presetLabel`)、区域标签(国内/境外/本机)、默认徽章、已停用徽章、启用开关; 模型、接口地址、密钥(小徽章「已配置」+ 旁边紧凑显示尾号掩码「••••abcd」(`AiMaskedKey`: 应用字体里「•」是全角, 连写会显示成「• • • •」, 所以圆点画成紧凑小点、读屏仍读掩码原文); 服务端对短密钥不留尾号时只显示「已配置」;「未配置」/「不需要」(区域为本机即不需要)/ 红色「密钥无法解密, 请重新填写」)、上次测试(小徽章只写「通过 / 未通过」, 北京时间写在旁边普通文字里, 窄屏自动换行不被省略号截断); 操作 测试连接 / 编辑 / 设为默认 / 删除(按钮高 48) |
+| 空状态 | 「还没有配置 AI 服务」+ 支持哪些服务商 + 「添加 AI 服务」(此时只有这一个添加按钮, 右下悬浮按钮不出现) |
 | 近 30 天用量 | 每个服务: 调用次数、成功率、输入 / 输出 token、平均耗时; 读不到只提示「用量暂时读不到, 不影响使用」 |
 | 安全说明 | 密钥加密保存只显示尾号; 保存、删除、用已存密钥测试要再次确认登录密码 |
-| 右下悬浮 | 红色大按钮「添加 AI 服务」(`UtenFloatingActionGroup`, 正文 200dp 留白) |
+| 右下悬浮 | 红色大按钮「添加 AI 服务」(`UtenFloatingActionGroup`, 正文 200dp 留白); 已有至少一个服务时才出现 |
 
 加载: 首屏骨架(`UtenSkeleton` 顶部条 + 两张卡片轮廓); 已有数据时刷新失败只提示, 保留旧数据。
 遮罩: `UtenBusyOverlay` 只包「设为默认 / 启停 / 删除」的纯网络段, 结束即撤再静默刷新; 服务端要求再认证时遮罩自动让位给统一密码框。
@@ -37,7 +37,7 @@
 
 ## 新增 / 编辑面板
 
-宽屏右侧抽屉(560), 窄屏底部弹层; 点空白处不关闭(防止丢掉填了一半的密钥), 右上角关闭。
+宽屏右侧抽屉(560), 窄屏底部弹层; 点空白处不关闭(防止丢掉填了一半的密钥), 右上角关闭。所有字段(含下拉框: 服务商、所在区域、接口协议、JSON 输出方式、关闭深度思考)的名称都在框上方, 说明 ⓘ 在框内。
 
 | 字段 | 说明与约束 |
 |---|---|
@@ -46,10 +46,10 @@
 | 显示名称 | 必填, 最多 64 字, 名称唯一由服务端校验 |
 | 接口地址 | 必填, https; 只有本机部署可用 http(如 `http://127.0.0.1:11434/v1`); 不带账号、问号参数和 # 片段; 最终安全判断在服务端 `AiEndpointPolicy`(SSRF、元数据地址、跳转一律拒绝) |
 | 模型 | 必填, 最多 128 字; 预设推荐 ≤ 6 个时直接点选(小药丸), 「获取模型」拉服务商列表, 多于 6 个用可搜索下拉; 拿不到列表时显示服务端给的原因(如「这个服务商没有模型列表接口, 请手动填写模型名称」), 没给原因才用通用提示 |
-| 密钥 | `UtenInput(isPassword)`, 不接系统自动填充, 过滤空白字符; 新增时按预设必填(区域为本机部署一律不需要, 包括「自定义」选本机; 与服务端 `requiresApiKey(region)` 同口径); 编辑时提示「已配置 ••••abcd, 不改就留空」, 不回显原文; 「清除密钥」(再点撤销)用于本机部署不需要密钥或密钥泄露先撤掉, 清除后该服务不可用直到重新填写; 编辑保存不强制重填密钥 |
+| 密钥 | `UtenInput(isPassword)`, 不接系统自动填充, 过滤空白字符; 新增时按预设必填(区域为本机部署一律不需要, 包括「自定义」选本机; 与服务端 `requiresApiKey(region)` 同口径); 编辑时提示「已配置, 不改就留空」, 不回显原文, 输入框下方一行「当前密钥 ••••abcd」(紧凑掩码)与「清除密钥」按钮; 「清除密钥」(再点撤销)用于本机部署不需要密钥或密钥泄露先撤掉, 清除后该服务不可用直到重新填写; 编辑保存不强制重填密钥 |
 | 改了接口地址 | 编辑时协议或规范化地址(协议 + 主机 + 端口 + 路径)变了而旧密钥还在: 显示「改了接口地址, 需要重新填写密钥」, 保存和测试都被拦下, 直到重新填写(或本机部署清除); 服务端同样回 422 |
 | 境外确认 | 区域为境外时出现勾选框「客户资料(公司名、货品描述)会发送到境外服务商, 我已确认完成数据出境评估」, 不勾不能保存 |
-| 高级设置(默认收起) | 接口协议(OpenAI 兼容 / Anthropic)、JSON 输出方式、关闭深度思考的写法、固定输出(温度 0)、能识别图片和扫描件、启用、最大输出长度(256 ~ 65536)、超时秒数(10 ~ 600); 高级项有错时保存会自动展开 |
+| 高级设置(默认收起, 收起时箭头朝下、展开后朝上, 与全站 `UtenCollapsibleSection` 一致) | 接口协议(OpenAI 兼容 / Anthropic)、JSON 输出方式、关闭深度思考的写法、固定输出(温度 0)、能识别图片和扫描件、启用、最大输出长度(256 ~ 65536)、超时秒数(10 ~ 600); 高级项有错时保存会自动展开 |
 
 底部两个大按钮(`UtenActionButton`, 高 52, 自带防连点):
 
@@ -94,7 +94,7 @@
 | `GET /admin/ai/usage?days=30` | - | `UsageView{days, providers: [{providerId, providerName, calls, okCalls, inputTokens, outputTokens, averageLatencyMs}], total, todayTokens, dailyTokenBudget}`(平均耗时也接受 `avgLatencyMs`) |
 | `POST /admin/ai/providers` | 表单 `{name, preset, region, protocol, baseUrl, model, apiKey?, jsonMode, thinkingControl, sendTemperature, supportsVision, maxOutputTokens, timeoutSeconds, enabled, overseasAcknowledged}` | 忽略(页面随后重读列表) |
 | `PUT /admin/ai/providers/{id}` | 同上 + `version`; `apiKey` 省略 = 保留; `clearApiKey: true` = 清除 | 忽略 |
-| `DELETE /admin/ai/providers/{id}` | - | - |
+| `DELETE /admin/ai/providers/{id}?version=` | 查询参数 `version` = 页面读到的版本号(DELETE 没有请求体; 服务端 `@RequestParam(required = false) Long version`), 别人改过回 409 | - |
 | `POST /admin/ai/providers/{id}/default` | 无 | 忽略 |
 | `POST /admin/ai/providers/{id}/enabled` | `{enabled: bool}` | 忽略 |
 | `POST /admin/ai/providers/test` | 表单(必须带 `apiKey`, 不需要密钥的预设除外) | `TestResult{ok, summary, steps: [{key: NETWORK/AUTH/MODEL/JSON, status: OK/WARN/FAILED/SKIPPED, message, latencyMs}], testedAt}`; `ok` 在有失败或有步骤没进行时为 false; 总结也接受 `message`, 步骤另可带 `advice` |
@@ -107,8 +107,9 @@
 
 ## 验证
 
-- `flutter test test/features/admin/admin_ai_settings_page_test.dart`: 空状态; 卡片只显示掩码(桌面浅色 / 窄屏深色), 短密钥只显示「已配置」; 解不开的密钥标红, 可不填新密钥直接清除; 卡片测试连接四步 ✓/✗ + 耗时 + 建议; 服务端原样结果: `WARN` 显示黄色「!」+ 说明 + 「需留意」徽标而不是「未进行」, 失败时底部是服务端总结且不在步骤下重复; 编辑改地址 → 提示且保存/测试被拦 → 重新填密钥后带 `version` 保存; 未改配置用已存密钥测试(带当前地址核对)、改了模型不冒充、改了高级设置不冒充(取模型照常); 空模型列表显示服务端原因; 服务端原样预设: 新增预填 DeepSeek、锁定项列出服务端原因、外呼关闭时默认本机部署且国内预设「暂不可用」; 预设目录缺失时本机服务仍显示「不需要」密钥、就绪且显示预设名; 新增: 预设预填 → 点选模型 → 无密钥不测 → 填密钥测试 → 保存; 境外未开放不可选; 境外开放需勾确认; 非超管提示; 外呼关闭提示; 默认服务不能删; 启停只在网络段挂遮罩。
-- `flutter test test/features/admin/ai_provider_repository_test.dart`: 各端点路径、请求体(空密钥不发、`version`、`clearApiKey`、境外确认、已存密钥核对体不带密钥)、服务端原样 `PresetsView` / `TestResult`(含 `WARN` / `SKIPPED` / 失败)/ `ModelsResult` 解析、本机与「自定义 + 本机」免密钥口径、非法 id 拒绝、地址规范化。
+- `flutter test test/features/admin/admin_ai_settings_page_test.dart`: 空状态; 卡片只显示掩码(桌面浅色 / 窄屏深色), 短密钥只显示「已配置」; 解不开的密钥标红, 可不填新密钥直接清除; 卡片测试连接四步 ✓/✗ + 耗时 + 建议; 服务端原样结果: `WARN` 显示黄色「!」+ 说明 + 「需留意」徽标而不是「未进行」, 失败时底部是服务端总结且不在步骤下重复; 编辑改地址 → 提示且保存/测试被拦 → 重新填密钥后带 `version` 保存; 空状态只有一个添加按钮; 卡片与编辑面板的尾号掩码走 `AiMaskedKey`; 高级设置箭头收起朝下、展开朝上; 删除带 `version`; 未改配置用已存密钥测试(带当前地址核对)、改了模型不冒充、改了高级设置不冒充(取模型照常); 空模型列表显示服务端原因; 服务端原样预设: 新增预填 DeepSeek、锁定项列出服务端原因、外呼关闭时默认本机部署且国内预设「暂不可用」; 预设目录缺失时本机服务仍显示「不需要」密钥、就绪且显示预设名; 新增: 预设预填 → 点选模型 → 无密钥不测 → 填密钥测试 → 保存; 境外未开放不可选; 境外开放需勾确认; 非超管提示; 外呼关闭提示; 默认服务不能删; 启停只在网络段挂遮罩。
+- `flutter test test/features/admin/ai_masked_key_test.dart`: 掩码圆点紧凑(4 个圆点不到 2 个字宽)、读屏读原文、非圆点掩码原样显示。
+- `flutter test test/features/admin/ai_provider_repository_test.dart`: 各端点路径、请求体(空密钥不发、`version`、删除的 `?version=`、`clearApiKey`、境外确认、已存密钥核对体不带密钥)、服务端原样 `PresetsView` / `TestResult`(含 `WARN` / `SKIPPED` / 失败)/ `ModelsResult` 解析、本机与「自定义 + 本机」免密钥口径、非法 id 拒绝、地址规范化。
 - `flutter test test/features/admin/ai_settings_entry_test.dart`: 工作台卡片与系统设置入口卡的显隐与跳转; 系统设置读取失败或没有设置项时入口卡仍在顶部。
 - 截图: `UTEN_UI_FIXTURES=1 flutter test test/features/admin/admin_ai_settings_page_test.dart` 输出到 `.codex-tmp/ai-settings-ui/`。
 - 真机联调(服务端完成后): 超管账号添加 DeepSeek(或本机 Ollama)→ 测试连接四步全绿 → 设为默认 → 销售账号「识别客户文件」走通; 改接口地址不填密钥保存应被拒(422); 审计中心能查到 `ai_provider.*` 事件且无密钥明文。

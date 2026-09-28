@@ -1,7 +1,7 @@
 # ADR-134：销售客户文件 AI 识别导入、主档学习与报价财务核价
 
 - 日期：2026-09-27
-- 状态：已接受；本地实现，未部署(迁移号 V742 为临时号，落地时顺延)；2026-09-27 九个实现包合并后按最终代码复核(全局对照计数口径、学习回调顺序、徽章入口名与接口一览)；2026-09-28 集成补记(用户改正优先、购买历史只算已审核订货、无买方线索时的篮子比较、未预选客户时复用客户专属版式、英文名去规格尾行、接口一览补报价列表/订单财务审核/任务错误码)
+- 状态：已接受；本地实现，未部署(迁移号 V742 为临时号，落地时顺延)；2026-09-27 九个实现包合并后按最终代码复核(全局对照计数口径、学习回调顺序、徽章入口名与接口一览)；2026-09-28 集成补记(用户改正优先、购买历史只算已审核订货、无买方线索时的篮子比较、未预选客户时复用客户专属版式、英文名去规格尾行、接口一览补报价列表/订单财务审核/任务错误码)；同日评审修复(全局版式按不同客户计数、别的客户的版式只作规则之后的兜底、提示词抬头区号码从严、报价币种只能本位币、旧流程已审报价不在财务读范围也不能直接转订货、订货服务端拦截无标价或高于标价的文件单价行、折扣区间按取位后判断)
 - 范围：新建报价单/订货单的客户文件识别导入；客户货品对照、货品英文名、客户外文名与版式学习；报价单财务核价流程与转订货；新增权限码 `sales_quote_finance:view`、`sales_quote_finance:confirm`、`ai:use`、`goods:name_en:edit`，退役 `sales_quote:approve`
 - 依赖：ADR-133(公共 AI 平台)、ADR-017(跨模块只经 application.port)、ADR-027(财务审核组)、ADR-074(附件绑定已保存单据)、ADR-112(金额只在服务端精确派生)、ADR-121(新建表单草稿)
 
@@ -21,9 +21,9 @@
 
 ### 一、识别以规则为主、AI 为辅(混合)
 
-- 服务端解析文件(Excel 取缓存计算值、合并单元格、隐藏行列跳过；PDF 取文字层；扫描件/图片只在管理员启用「支持图片识别」的模型时交给 AI)，只挑表头得分最高的一张工作表，其他像明细的工作表提示用户选择，绝不自动拼接(防止装箱单重复计数)。
+- 服务端解析文件(Excel 取缓存计算值、合并单元格、隐藏行列跳过；PDF 取文字层；扫描件/图片只在管理员启用「支持图片识别」的模型时交给 AI)，只挑表头得分最高的一张工作表，其他像明细的工作表提示用户选择(结果 `file.otherSheets[{name, index, lineCount}]`; 核对面板点「另有工作表 X 也像明细表 (N 行)」即用同一个文件加参数 `sheet`=index 重新识别, 新结果整个替换面板)，绝不自动拼接(防止装箱单重复计数)。
 - 列角色先查**已学习版式**(表头指纹)，再按中英关键词字典打分，规则置信度低时才请 AI 判断列角色；表头信息(买方、联系人、邮箱、电话、单号、日期、贸易术语、付款条件)规则优先，AI 只补规则没抽到的，且只看表格上方文字。
-- **发送前最小化**：银行/账号/SWIFT/收款人行与我方卖方信息整行剔除；邮箱、电话、税号换成占位符，服务端再映射回来；抽表头时从不发送单价金额。文件内容一律按「不可信数据」加分隔标记，提示词明确禁止执行其中指令。
+- **发送前最小化**：银行/账号/SWIFT/收款人行与我方卖方信息整行剔除；邮箱、电话、税号换成占位符，服务端再映射回来；抽表头时从不发送单价金额。认列(表格片段)与 PDF 文字两种提示词里，抬头区(第一行货品/表头之前，买方与联系人一带)按表头同口径从严：7 位以上数字串都当电话，7 位以上的整数数字格也换成占位符；左边一格只是「Tel:」「VAT No.」这类标签时，右边的号码一律换成占位符；电话标签认 tel/telephone/ph/phone/mobile/cell/fax/whatsapp/wechat/viber/contact、带「.」或「:」的单字母 T 及中文电话/手机/传真/联系(英文词前后不紧挨字母, 「Total」「Photo」不算)，货品区只换带标签或明显电话格式的号码，数量单价照常发送。文件内容一律按「不可信数据」加分隔标记，提示词明确禁止执行其中指令。
 - 识别以后台作业运行(ADR-133 公共作业，kind `SALES_DOCUMENT_INTAKE`，参数 `docType`=quote|order、可选 `clientId`/`docId`/`sheet`，文件 <= 15 MiB、图片 <= 8 MiB)，前端显示分步进度弹窗，可取消；每人同时最多 2 个、每日有上限。服务端阶段(2026-09-27 按代码核对)：`READING`(10) → `LAYOUT`(25) → `EXTRACTING`(40) → `MATCHING_GOODS`(60) → `MATCHING_CLIENT`(75) → `PRICING`(90) → `DONE`(100)；先把文件完整解析完再调用 AI，解析阶段(READING/LAYOUT)租约过期按坏文件结束不重试。结果 JSON `schemaVersion` 2，行键 `S<表序号>R<行号>`(PDF `P1R<n>`、图片 `I1R<n>`)，保存时作为 `intakeLineKey` 回传。
 
 ### 二、货品匹配：可加性证据 + 只在证据充分时自动对应
@@ -43,9 +43,9 @@
 
 ### 四、价格与折扣(销售永不改价)
 
-- 导入后的单据币种一律为本位币(货品标价的币种)；文件币种与文件单价只作参考保存(`client_file_currency`、`client_price`)。汇率只取财务维护的币种汇率，销售不填。
-- 折扣 = 文件单价 × 汇率 ÷ 标价，在 `MoneyPolicy.discountFromUnitPrice` 里四位四舍五入(全平台唯一取位处)；分别按汇率 1 与财务汇率各算一次，恰好一个落在 (0.3, 1] 才采用，否则需核对(可能对错货品或币种不对)。高于标价从不截成 1。
-- 标价为 0 或未维护、文件单价高于标价：报价单上留空折扣、标「待财务定价」，由财务在核价时给出成交单价(`price_source = FINANCE`)；订货单上这些行不可导入，引导「改为新建报价单」(复用同一次识别，不必重传)。
+- 导入后的单据币种一律为本位币(货品标价的币种)；文件币种与文件单价只作参考保存(`client_file_currency`、`client_price`)。汇率只取财务维护的币种汇率，销售不填。报价按货品标价计价，手工新建的报价币种也只能是本位币或不填：选客户时不按客户上次订货的币种预填，币种下拉只列本位币，服务端保存/提交核价时拒绝外币(「报价按货品标价(本位币)计价, 币种只能选本位币或不填」)，不再等财务确认后转订货单才报错。
+- 折扣 = 文件单价 × 汇率 ÷ 标价，在 `MoneyPolicy.discountFromUnitPrice` 里四位四舍五入(全平台唯一取位处)；分别按汇率 1 与财务汇率各算一次，恰好一个落在 (0.3, 1] 才采用，否则需核对(可能对错货品或币种不对)。「落在 (0.3, 1]」判的是取 4 位后的折扣(`SalesPriceAuthority.plausibleDiscount`)，识别定价、看不到价格的人保存时的反推、前端换货预览是同一个判断，同一行不会因为谁在看而得到不同折扣。高于标价(取 4 位后大于 1)从不截成 1。
+- 标价为 0 或未维护、文件单价高于标价：报价单上留空折扣、标「待财务定价」，由财务在核价时给出成交单价(`price_source = FINANCE`)；订货单上这些行不可导入，引导「改为新建报价单」(复用同一次识别，不必重传，原文件一并带到报价的附件里)；服务端订货保存同样拦下带文件单价、而货品标价为 0 或文件单价高于标价的行(报价转来、财务核定单价的行除外)，直接调接口或在导入行上手工换货品也一样(409「请先做报价单交给财务定价」)。
 - 无售价查看权限的业务员：识别结果不含标价与折扣(`summary.priceMasked = true`)；前端提交 `discount: null`，保存时服务端按文件单价用同一规则(`SalesPriceAuthority.deriveDiscountFromClientPrice`，合理区间 (0.3, 1])派生折扣，推不出时按原价(折扣 1)并在行备注写「文件单价换算不出合理折扣, 暂按原价, 请有价格权限的同事核对」；已保存行(按明细 id 对上)的折扣保持不变、请求没带文件单价时也保留原文件单价(修复原先无权限保存把折扣重置为 1 的问题)。候选上的订货单拦截标记 `orderBlocked`(没有标价或客户价高于标价)不是价格字段，看不到价格的读者也保留，订货页据此不勾选并引导改做报价单；它会让这类读者知道「该货品不能直接下订货单」，但不透露任何价格。
 
 ### 五、学习(保存后，只学基础信息)
@@ -53,9 +53,9 @@
 - 保存报价/订货单时在保存事务内只做校验(勾选的客户资料字段不合法返回 422，整单回滚)；学习在提交成功后另起短事务执行(`SalesMasterLearningPort.learnAfterCommit`，回调排在最后)，失败只记日志(日志不含客户文件内容)、不影响单据保存(避免与保存时对货品行的共享锁互相等待)。学习的权限按当前登录人重新判定；请求声明的保存人与登录人不一致时不学。
 - 客户对照：从**服务端保存的识别记录**(`AiJobUsagePort.resultFor`，按 `intakeLineKey` 对行)里取客户原文(不信任请求体里改写过的文字)，只学用户明确选过/改过的行(`userConfirmed`)，或识别「已自动对应」且用户没改货品的行；型号(PART_NO)与品名(DESCRIPTION)各学一条，上下文取识别行的「系列|主色」。同一张单据里同一叫法(同上下文)对到不止一个货品时这次不学；对客户没有写范围(只读共享)不学客户对照。确认次数按保存的单据累计，同一张单据重复保存不重复计数；同一张单据再次保存时某叫法改对到别的货品，撤回本单据上次学到的旧对应(只确认过一次的删除，多次的扣一次)；用户明确选了某货品时，同一叫法同一上下文下从没被人明确选过的其它对应一并作废(改正优先)。用户可在客户资料「货品对照」里删除错误对照(写审计)。
 - 全局对照(`client_id` 为空)：只从与识别原文一致的文字学习(手打的原文只学客户对照、不学全局与英文名)。全局行的 `confirm_count` **不是保存次数**，而是「有多少个不同客户的客户对照把同一叫法(不分上下文)对到同一货品」，`explicit_count` 是其中明确选过的客户数；每次学习或撤回后按客户证据重算，撤回后已没有任何客户证据的全局对照删除。这样同一个人反复保存同一批单据不会把它推过门槛；识别时全局对照要至少 2 个客户确认、且同一叫法不指向多个货品才用(90 分)。按 (种类, 叫法, 货品) 查各客户证据走 V742 的部分索引 `idx_client_goods_aliases_global_evidence`(只含客户对照行)；两个计数列的注释写明了客户行与全局行两种口径。
-- 货品英文名：识别面板每行「设为货品英文名」(货品英文名为空且文字有区分度时默认勾选)，保存后写入 `goods.name_en`(来源 LEARNED，有意勾选即覆盖旧值)；只学识别结果里的英文描述(识别行的 `nameEnText`)，要求至少两个英文单词、不含汉字；描述后面附带的规格行整段去掉、只留品名本身(空白压成一个空格后，从空格加 current / voltage / power / rated / rating / size / dimension / material / colour / color / packing / weight 加半角或全角冒号处起删到结尾，例如 `WALL SWITCH Current: 10A` 只学 `WALL SWITCH`；去掉后为空则不学，`SalesIntakePipeline.nameEnText`)；同一张单据里同一段英文对到多个货品、或同一货品出现两段不同英文时都不学；另一个货品已用同一英文名称(不分大小写)时不学。货品资料里手工修改为 MANUAL(`PUT /api/master/goods/{id}/name-en`)；需要 `goods:name_en:edit` 或 `goods:edit` 且对货品有写范围。手工选货品时自动带出客户叫法或英文名。
+- 货品英文名：识别面板每行「设为货品英文名」(货品英文名为空且文字有区分度时默认勾选)，保存后写入 `goods.name_en`(来源 LEARNED，有意勾选即覆盖旧值)；只学识别结果里的英文描述(识别行的 `nameEnText`)，要求至少两个英文单词、不含汉字；描述后面附带的规格行整段去掉、只留品名本身(空白压成一个空格后，从空格加 current / voltage / power / rated / rating / size / dimension / material / colour / color / packing / weight 加半角或全角冒号处起删到结尾，例如 `WALL SWITCH Current: 10A` 只学 `WALL SWITCH`；去掉后为空则不学，`SalesIntakePipeline.nameEnText`)；同一张单据里同一段英文对到多个货品、或同一货品出现两段不同英文时都不学；另一个货品已用同一英文名称(不分大小写)时不学。货品资料里手工修改为 MANUAL(`PUT /api/master/goods/{id}/name-en`)；需要 `goods:name_en:edit` 或 `goods:edit` 且对货品有写范围。手工选货品时「文件品名」为空则带出货品英文名称(不查客户对照; 与 SPEC §7.3「先带客户叫法」的偏差: 手工选货品的场景没有客户文件原文, 客户对照在客户资料「货品对照」里可查, 下单页不再为每次选货多一次查询)；带出后没改过的英文名称只保存显示、不当客户叫法学习(不回传 `userConfirmed`)，改成客户自己的叫法才学。
 - 客户资料：面板里一句话一个勾选「保存时补进客户资料」，空字段默认补、有值且不同默认不改；只接受 nameEn、fullName、linkman、email、phone、mobile、address、taxId、website 九个键；需要 `client:edit` 与客户写范围。邮箱/电话/手机/网址记进多联系方式表(同类已有同值不记，该类第一条记为主联系方式，由服务端同步回客户表平铺列)，其余写客户表。审计事件 `client.learn_from_document`(「从客户文件补全」)只列字段名，作为旁路事件记录，不吞掉本次保存自己的操作审计(报价/订货的新增或修改)。
-- 版式：保存后按识别记录学习表头指纹与列角色(`sales_intake_layouts`，本客户与全局各写一行，每次保存确认次数 +1)；本客户的版式保存一次即用，全局版式要确认 2 次才用，下次同格式文件直接取列、无需 AI。预选了客户时只查本客户与全局版式；没有预选客户时也查任何客户的专属版式(客户专属排在全局之前，客户专属仍是一次即用)——识别时只取版式的列角色(列字母 → 型号/品名/数量/单价等)与表头行数，不读表头原文列 `header_texts`，版式来自哪个客户只用来判断「一次即用」，既不当客户线索也不写进识别结果，所以跨客户复用不透露任何客户资料，只是让同一格式的文件在客户还没确定时也能直接取列(`SalesIntakeStore.layouts`)。
+- 版式：保存后按识别记录学习表头指纹与列角色(`sales_intake_layouts`)。版式来自规则或 AI 时写本客户一行(列角色没变确认次数 +1，变了从 1 重新数)，再按各客户的证据重算全局一行(列角色 = 最多客户确认过的那种，确认次数 = 确认过它的**不同客户数**，与全局对照同口径；同一客户保存再多次也只算 1)；保存时用的就是学习到的版式则只刷新使用时间、不加次数(自己确认自己不算新证据)；没有客户的保存不写。使用顺序：① 先于规则：已选客户自己的版式(一次即用)、至少 2 个不同客户确认过的全局版式；② 规则；③ 规则认不出时的兜底(仍在 AI 之前)：同一表头指纹学到的版式(全局的与别的客户的)只有一种列角色才用，互相矛盾就交给 AI。别的客户的专属版式从不先于规则或可信的全局版式，一个客户的一次保存(可能是 AI 认错列后手工改了表格)不会影响其他人。没有预选客户时也查各客户的专属版式，但只用于第 ③ 步；识别时只取列角色与表头行数，不读表头原文列 `header_texts`，来源客户不当客户线索也不写进识别结果(`SalesIntakeStore.layouts`、`SalesIntakePipeline.trusted/fallbackLearnedLayout`)。
 - 重复单据：同一客户同一单号、同一文件或明细基本相同的报价/订货单，面板顶部黄色提醒(只提醒不拦截)。
 
 ### 六、报价单财务核价
@@ -75,7 +75,7 @@
 | `POST /api/ai/jobs?kind=SALES_DOCUMENT_INTAKE&docType=quote\|order[&clientId][&docId][&sheet]` | 员工账号 + 处理器校验 `sales_quote:create\|edit` 或 `sales_order:create\|edit` | 原始字节流上传, 见 ADR-133 §4; 查询 `GET /api/ai/jobs/{id}`、取消 `POST /api/ai/jobs/{id}/cancel` 只给提交人。结果的货品候选带 `orderBlocked`(订货单不能直接导入: 没有标价或文件单价高于标价; 不是价格字段, 看不到价格的读者也保留, 见 §四)。失败时任务的 `errorCode`(`ai_jobs.error_code`)取处理器 `ApiException` 的 `fieldErrors` 里 `field = "errorCode"` 给出的业务码: `UNSUPPORTED_FILE` / `NO_TABLE` / `NO_LINES` / `AI_REQUIRED` / `AI_VISION_UNAVAILABLE` / `AI_FAILED`(前端据此给下一步), 约定见 ADR-133 §4 与 [AI 平台接入指南](../05-架构/AI平台接入指南.md) §三.5 |
 | `GET /api/sales/quotes?bucket=...`、`/facets?bucket=...` | `sales_quote:view` | 报价列表(`QuoteListItem`)。列表项带 `currencyId`、`deliverDate`(与订货单列表同名; 列表的币种列按 `currencyId` 解析名称)、`statusBucket`、`allowedActions`、`priceMasked` 等; `bucket` = `DRAFT` / `FINANCE_REJECTED` / `PENDING_FINANCE` / `APPROVED` / `REVERSED`(与分段计数同口径), 另有只作筛选的 `AWAITING_CONVERSION`(状态 1、财务确认过、没有未删除的订货单引用它, 与徽章「报价已核价待转订货」同口径, 订货单「从报价引入」用); 其他值 422 「报价分段无效」 |
 | `POST /api/sales/quotes/{id}/submit\|withdraw\|reopen` | `sales_quote:edit` | body `{expectedRevision}`(submit 可省), 返回报价详情 |
-| `POST /api/sales/quotes/{id}/convert` | `sales_quote:convert` + `sales_order:create` | 只对已核价、未转单的报价 |
+| `POST /api/sales/quotes/{id}/convert` | `sales_quote:convert` + `sales_order:create` | 只对财务确认过(有财务确认时间)、未转单的报价; 旧流程销售自审的已审报价先「重新修改」再提交核价 |
 | `GET /api/sales/quotes/counts` | `sales_quote:view` | 「报价已核价待转订货」数(本人负责范围) |
 | `GET /api/sales/quotes/finance-review?state=pending\|confirmed\|returned`、`/finance-review/count`、`/{id}/finance-review` | `sales_quote_finance:view` | 核价队列、计数与核价详情(不脱敏); 核价详情明细行带 `unitId`(数量合计按单位分组, 不同单位不相加; `unitName` 只作显示) |
 | `GET /api/sales/orders/finance-confirmation/pending`、`GET /api/sales/orders/{id}/finance-confirmation/review` | `sales_order_finance:view` | 订单财务确认列表与审核详情(V294/V300 既有接口, 本 ADR 加字段): 列表行与详情都带来源报价 `sourceQuote{id, billNo, financeConfirmedByName, financeConfirmedAt, allLinesMatch}` 与顶层 `matchesQuote`(报价转入的订单: 每行单价与折扣都与报价核定一致为 true、有不一致为 false; **不是报价转入为 null**, 两处同一配对规则); 审核明细行带 `quotePrice`、`quoteDiscount`、`matchesQuote`(报价外新增的行为 false)与客户文件的 `clientPrice`、`clientGoodsName`、`clientModel`, 表头 `clientFileCurrency` |

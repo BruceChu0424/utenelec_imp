@@ -144,7 +144,7 @@ public class ProductionExecutionBatchService {
                 var drawPreview=drawRequests.preview(new ProductionDrawRequest.PreviewRequest(
                         List.of(new ProductionDrawRequest.Item(batch,version))));
                 if (!distribution(warehouseLines).equals(distribution(drawPreview.summaries())))
-                    throw conflict("实际领料分仓或数量与刚才核对的汇总不同(线边仓直送料已自动投入，无需领料)，本次未提交；请刷新后重新确认");
+                    throw conflict("实际领料分仓或数量与刚才核对的汇总不同(内料仓直送料已自动投入, 无需领料)，本次未提交；请刷新后重新确认");
                 drawRequests.submit(new ProductionDrawRequest.SubmitRequest(
                         List.of(new ProductionDrawRequest.Item(batch,version)),
                         "batch-draw-"+batch,drawPreview.fingerprint()));

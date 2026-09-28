@@ -225,6 +225,28 @@ abstract final class Perm {
   static const warehouseIqcStockInBeforeInspection =
       'warehouse_iqc_stock_in:before_inspection';
 
+  // ===== 车间内料仓 (ADR-131; 只供路由守卫与码表对齐, 页面按钮一律看服务端 allowedActions) =====
+  /// 查看车间内料仓与用量报表。
+  static const workshopMaterialView = 'workshop_material:view';
+
+  /// 发料到车间内料仓与接收退回。
+  static const workshopMaterialIssue = 'workshop_material:issue';
+
+  /// 车间申请领料、退回与登记其它耗用。
+  static const workshopMaterialRequest = 'workshop_material:request';
+
+  /// 车间内料仓盘点。
+  static const workshopMaterialCount = 'workshop_material:count';
+
+  /// 认料与换料。
+  static const workshopMaterialChoose = 'workshop_material:choose';
+
+  /// 车间整批领料设置、机台与上线准备。
+  static const workshopMaterialSetup = 'workshop_material:setup';
+
+  /// 撤销车间内料仓结算 (只能单独授给个人)。
+  static const workshopMaterialReopen = 'workshop_material:reopen';
+
   /// 采购/委外收货 IQC 待检查看与处置（处置还需 :handle）。
   static const procurementInspectionView = 'procurement_inspection:view';
   static const procurementInspectionHandle = 'procurement_inspection:handle';

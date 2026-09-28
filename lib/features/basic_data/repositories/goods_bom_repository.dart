@@ -36,6 +36,8 @@ abstract interface class GoodsBomRepository {
   ///
   /// 任何一处不合格(重复、成环、组件停用、目标已被他人改过……)服务端一条都不写，
   /// 抛 ApiException(409)，fieldErrors 逐条写明第几行、为什么。
+  /// 整批领料的料只差人确认 (异常单重 / 同一产品第二种料) 时回 422，fieldErrors 是确认字段名
+  /// (见 periodic_bom_confirmation.dart)，确认后带上确认字段重发。
   Future<BomPasteResult> paste({
     required BomPasteMode mode,
     required List<BomPasteTarget> targets,
@@ -70,22 +72,30 @@ class BomPasteTarget {
   };
 }
 
-/// 粘贴结果：目标数、新增行数、替换掉的行数。
+/// 粘贴结果：目标数、新增行数、替换掉的行数，以及写入后的提醒。
 class BomPasteResult {
   const BomPasteResult({
     required this.targets,
     required this.added,
     required this.removed,
+    this.warnings = const [],
   });
 
   final int targets;
   final int added;
   final int removed;
 
+  /// 写入后的提醒 (不拦写入)，如整批领料的料的单个重量与货品资料单重相差 20% 以上。
+  final List<String> warnings;
+
   factory BomPasteResult.fromJson(Map<String, dynamic> json) => BomPasteResult(
     targets: (json['targets'] as num?)?.toInt() ?? 0,
     added: (json['added'] as num?)?.toInt() ?? 0,
     removed: (json['removed'] as num?)?.toInt() ?? 0,
+    warnings: [
+      for (final w in (json['warnings'] as List?) ?? const [])
+        if (w is String && w.trim().isNotEmpty) w.trim(),
+    ],
   );
 }
 

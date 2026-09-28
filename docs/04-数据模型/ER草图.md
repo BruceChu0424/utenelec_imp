@@ -1,5 +1,97 @@
 # ER 草图
 
+<a id="workshop-material-v740"></a>
+
+## 车间内料仓: 整批领料、期间、盘点与结算 (V740 / ADR-131)
+
+```mermaid
+erDiagram
+    departments ||--o| workshop_material_settings : workshop
+    warehouses ||--o| workshop_material_settings : periodic_bin
+    departments ||--o{ workshop_machines : owns
+    workshop_machines ||--o{ workshop_machine_containers : has
+    goods ||--o{ goods_periodic_material_choices : product_choice
+    production_execution_segments ||--o{ production_execution_periodic_materials : bound_rows
+    goods_periodic_material_choices ||--o{ production_execution_periodic_materials : CHOICE
+    production_execution_material_changes ||--o{ production_execution_periodic_materials : CHANGE
+    production_execution_periodic_materials ||--o{ production_execution_periodic_materials : INHERITED
+    warehouses ||--o{ workshop_material_periods : bin_periods
+    workshop_material_requisitions ||--o{ workshop_material_requisition_lines : lines
+    workshop_material_requisition_lines ||--o{ workshop_material_requisition_postings : transfers
+    stock_document_items ||--o| workshop_material_requisition_postings : transfer_item
+    stock_movements ||--o| workshop_material_requisition_postings : bin_side_movement
+    stock_documents ||--o| workshop_material_stock_documents : registered_doc
+    workshop_material_other_issues ||--o| workshop_material_stock_documents : OTHER_OUT
+    workshop_material_periods ||--o{ workshop_material_requisition_postings : period_id
+    workshop_material_periods ||--o{ workshop_material_other_issues : period_id
+    workshop_material_periods ||--o{ workshop_material_counts : versions
+    workshop_material_counts ||--o{ workshop_material_count_lines : lines
+    workshop_machine_containers ||--o{ workshop_material_count_lines : container
+    workshop_material_periods ||--o{ workshop_material_period_lines : per_material
+    workshop_material_period_lines ||--o{ workshop_material_count_postings : type21_22
+    stock_movements ||--o| workshop_material_count_postings : movement
+    workshop_material_periods ||--o{ workshop_material_period_closes : close_runs
+    workshop_material_period_closes ||--o{ workshop_material_close_materials : per_material
+    workshop_material_period_lines ||--o{ workshop_material_close_materials : period_line
+    workshop_material_close_materials ||--o{ workshop_material_close_theory_lines : theory
+    production_daily_report_items ||--o{ workshop_material_close_theory_lines : report_line
+    production_execution_periodic_materials ||--o{ workshop_material_close_theory_lines : used_row
+    workshop_material_close_materials ||--o{ workshop_material_close_allocations : by_cost_scope
+    stock_value_nodes |o--o{ workshop_material_close_allocations : value_slice
+    workshop_material_settings {
+        uuid workshop_department_id PK
+        boolean periodic_enabled
+        uuid periodic_bin_warehouse_id FK
+        date go_live_date
+        bigint row_version
+    }
+    workshop_material_periods {
+        uuid id PK
+        uuid bin_warehouse_id FK
+        int period_no
+        date start_date
+        date end_date
+        text status
+        text close_state
+        jsonb close_blockers
+        int close_failures
+        timestamptz held_until
+        bigint row_version
+    }
+    workshop_material_period_lines {
+        uuid id PK
+        uuid period_id FK
+        uuid goods_id FK
+        text cost_basis
+        numeric opening_qty
+        numeric transfer_in_qty
+        numeric return_qty
+        numeric other_issue_qty
+        numeric closing_qty
+        numeric actual_qty
+    }
+    production_execution_periodic_materials {
+        uuid id PK
+        uuid execution_segment_id FK
+        uuid bin_warehouse_id FK
+        uuid material_goods_id FK
+        text origin
+        numeric design_qty_snapshot
+        date effective_from
+        date effective_to
+    }
+```
+
+读图要点:
+
+- **一车间一个按盘点计耗的内料仓**: 设置行指定内料仓 (就是原线边仓, 车间直送照用); 内料仓按期间切段, 相邻两次盘点之间为一期, 期间链逐期衔接、恰好一个开着的期。
+- **进出三类来源, 每笔都挂所属期间**: 调拨关联 (发料进、退回出)、其它耗用、盘点过账 (21 型耗用 / 22 型盘盈及各自原路冲回)。三类并成流水视图 `v_workshop_material_bin_ledger`; 视图合计 = 库存余额; 内料仓里整批领料货品的每条流水恰好一行来源。登记的库存单据 (`workshop_material_stock_documents`) 不能红冲。
+- **期间料行把段绑定到内料仓**: 开工时按 BOM 期间边、认料或来源段建出; 理论用量 = 已审报工 × 单个重量, 逐行落在理论明细里, 可追到每行报工。
+- **结算按次只追加**: 每种料一行结算料 (处理方式、计入、损失、浪费率), 按成本范围一行分摊; 分摊行指向 V500 价值切片 (`stock_value_nodes`), 再以 `PERIODIC_MATERIAL` 投入种类登记进生产成本对象。撤销结算只写撤销列并退回价值, 数量不动。
+- **不引用学习对象**: 以上对象不引用 V711 BOM 学习的任何表、函数或列; 期间料行的 `bom_item_id` 只是快照引用、不建外键。
+
+字段与约束见[实体字典](实体字典.md#车间整批领料与盘点计耗-v740), 规则见 [ADR-131](../99-决策记录-ADR/ADR-131-车间整批领料与盘点计耗.md), 迁移与核对 SQL 见 [V740 说明](../数据迁移/258-V740车间整批领料与盘点计耗.md)。
+
 ## 制造公共供给承诺与实际实收 (V722)
 
 ```mermaid

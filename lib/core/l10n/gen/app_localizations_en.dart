@@ -4451,4 +4451,363 @@ class AppLocalizationsEn extends AppLocalizations {
   String materialPreparationMissingAssignment(String goods) {
     return 'Set the production workshop and responsible person for “$goods” before ordering';
   }
+
+  @override
+  String get workshopMaterialBin => 'Workshop Material Store';
+
+  @override
+  String workshopMaterialBinOf(String workshop) {
+    return '$workshop Material Store';
+  }
+
+  @override
+  String get workshopMaterialGroup => 'Workshop Material';
+
+  @override
+  String get workshopMaterialSetup => 'Workshop Material Setup';
+
+  @override
+  String get workshopMaterialReports => 'Workshop Material Usage';
+
+  @override
+  String get wmIssueMethod => 'Issue method';
+
+  @override
+  String get wmIssueMethodOrder => 'Issue per work order';
+
+  @override
+  String get wmIssueMethodPeriodic => 'Bulk issue to workshop store';
+
+  @override
+  String get wmCostBasis => 'Cost allocation';
+
+  @override
+  String get wmCostBasisOwn => 'Main material';
+
+  @override
+  String get wmCostBasisShared => 'Auxiliary material';
+
+  @override
+  String get wmCostBasisExpense => 'Workshop expense';
+
+  @override
+  String get wmBulkPackageQty => 'Net weight per bag (kg)';
+
+  @override
+  String get wmRecycledMaterial => 'Recycled material';
+
+  @override
+  String get wmUnitWeightGrams => 'Unit weight (g)';
+
+  @override
+  String wmUnitWeightFromBom(String grams) {
+    return 'Plastic unit weight (from BOM): $grams g';
+  }
+
+  @override
+  String wmUnusualWeightConfirm(String grams) {
+    return 'Unit weight $grams g looks unusual. Confirm?';
+  }
+
+  @override
+  String get wmSecondMaterialConfirm =>
+      'Does this product use two materials (two-shot)? If you are only changing material, edit the existing row';
+
+  @override
+  String get wmRequestIssue => 'Request material';
+
+  @override
+  String get wmReturn => 'Return';
+
+  @override
+  String get wmOtherIssue => 'Trial / purge usage';
+
+  @override
+  String get wmOtherReasonTrial => 'Trial moulding';
+
+  @override
+  String get wmOtherReasonPurge => 'Purging';
+
+  @override
+  String get wmOtherReasonScrap => 'Scrapped material';
+
+  @override
+  String get wmOtherReasonOther => 'Other';
+
+  @override
+  String get wmDirectIssue => 'Direct issue';
+
+  @override
+  String get wmPendingIssue => 'To issue';
+
+  @override
+  String get wmPendingReturn => 'Returns to receive';
+
+  @override
+  String get wmCount => 'Stock count';
+
+  @override
+  String get wmHistory => 'History';
+
+  @override
+  String get wmBags => 'Bags';
+
+  @override
+  String get wmKg => 'kg';
+
+  @override
+  String get wmReceiver => 'Received by';
+
+  @override
+  String wmWarehouseAvailable(String qty) {
+    return 'Warehouse has $qty kg';
+  }
+
+  @override
+  String wmEstimatedRemaining(String qty) {
+    return 'Store estimated remaining $qty kg';
+  }
+
+  @override
+  String get wmCountingNextPeriod =>
+      'Counting has started; this batch goes to the next period';
+
+  @override
+  String get wmSupplementFlag => 'This batch was missed in the previous period';
+
+  @override
+  String get wmSupplementPeriod => 'Add to period';
+
+  @override
+  String get wmAlsoOrderMaterials =>
+      'Also issue other materials per work order (e.g. inserts)';
+
+  @override
+  String get wmFillFromGoodsWeight => 'Fill checked rows from item weight';
+
+  @override
+  String get wmCloseFailing =>
+      'Settlement keeps failing; retrying daily. Please contact the administrator';
+
+  @override
+  String get wmStartCount => 'Start count';
+
+  @override
+  String get wmCutoffToday => 'Cut off today';
+
+  @override
+  String get wmCutoffYesterday => 'Cut off yesterday';
+
+  @override
+  String get wmMonthEndHint => 'For monthly reconciliation, count at month end';
+
+  @override
+  String get wmFillFull => 'Full';
+
+  @override
+  String get wmFillHalf => 'Half';
+
+  @override
+  String get wmFillEmpty => 'Empty';
+
+  @override
+  String get wmFillWeighed => 'Enter kg';
+
+  @override
+  String get wmWeighOpenBag => 'Opened bag (weighed)';
+
+  @override
+  String get wmWeighMixed => 'Mixed, not yet loaded';
+
+  @override
+  String get wmWeighLoose => 'Loose material';
+
+  @override
+  String get wmFillGuide =>
+      'Over 3/4 is full, 1/4 to 3/4 is half, under 1/4 is empty';
+
+  @override
+  String get wmMachineIdle => 'Machine idle, all empty';
+
+  @override
+  String get wmZeroRest => 'Everything else is used up, record 0';
+
+  @override
+  String get wmPrintBlank => 'Print blank count sheet';
+
+  @override
+  String get wmSubmitCount => 'Submit count';
+
+  @override
+  String get wmWithdrawCount => 'Withdraw count';
+
+  @override
+  String get wmCorrectCount => 'Correct count';
+
+  @override
+  String wmBagsTimesKg(int bags, String kg) {
+    return '$bags bags × $kg kg';
+  }
+
+  @override
+  String get wmCloseState => 'Settlement status';
+
+  @override
+  String get wmCloseWaitingPrevious => 'Waiting for previous period';
+
+  @override
+  String wmCloseBlockedReport(int n) {
+    return '$n reports not yet approved (approver, or author deletes unwanted drafts)';
+  }
+
+  @override
+  String wmCloseBlockedWeight(int n) {
+    return '$n products missing unit weight (BOM owner)';
+  }
+
+  @override
+  String wmCloseBlockedStock(String material) {
+    return '\"$material\" used without any issue this period (warehouse adds the missed issue, or workshop corrects the material)';
+  }
+
+  @override
+  String get wmCloseRetry => 'Retry now';
+
+  @override
+  String get wmReopen => 'Reopen settlement';
+
+  @override
+  String get wmReopenReason => 'Reason';
+
+  @override
+  String wmReopenHeld(String time) {
+    return 'Settlement reopened. Click \"Settle again\" when done; the system will settle automatically at $time';
+  }
+
+  @override
+  String get wmSettleAgain => 'Settle again';
+
+  @override
+  String get wmNeedChoice => 'Material to confirm';
+
+  @override
+  String get wmStartSheetTitle => 'Confirm materials before start';
+
+  @override
+  String wmStartConfirm(int n) {
+    return 'Confirm and start ($n)';
+  }
+
+  @override
+  String get wmOrderInstead => 'Issue these per work order (do not start yet)';
+
+  @override
+  String get wmNotFromStore => 'Not from workshop store (per work order)';
+
+  @override
+  String get wmWeightPending => 'To be filled; start is not blocked';
+
+  @override
+  String get wmChangeMaterial => 'Change material for this order';
+
+  @override
+  String get wmChangeFrom => 'Effective from';
+
+  @override
+  String get wmAddMaterial => 'Add a material';
+
+  @override
+  String get wmEnable => 'Enable bulk issue';
+
+  @override
+  String get wmGoLiveDate => 'Go-live date';
+
+  @override
+  String get wmMainWarehouse => 'Under main warehouse';
+
+  @override
+  String get wmMachines => 'Machines & containers';
+
+  @override
+  String get wmGoLivePrep => 'Go-live preparation';
+
+  @override
+  String wmGoLiveProgress(int total, int chosen, int weighed) {
+    return '$total frequent products, $chosen with material, $weighed with unit weight';
+  }
+
+  @override
+  String get wmReportUsage => 'Usage';
+
+  @override
+  String get wmReportProduct => 'By product';
+
+  @override
+  String get wmReportTrend => 'Waste trend';
+
+  @override
+  String get wmReportMissingWeight => 'Missing unit weights';
+
+  @override
+  String get wmReportLedger => 'Movements';
+
+  @override
+  String get wmTrueUnitUsage => 'Actual per-unit usage';
+
+  @override
+  String get wmAllocatedByTheory => 'Allocated by standard';
+
+  @override
+  String get wmWasteRate => 'Waste rate';
+
+  @override
+  String get wmIncludeWorkshopStore => 'Include workshop stores';
+
+  @override
+  String get workshopMaterialSetupHubDesc =>
+      'Enable bulk issue, machines & containers, go-live preparation';
+
+  @override
+  String get workshopMaterialReportsHubDesc =>
+      'Usage, waste rate and settlement status by period';
+
+  @override
+  String get wmReceiveReturn => 'Receive return';
+
+  @override
+  String get wmIssueByRequest => 'Issue by request';
+
+  @override
+  String get wmOnHand => 'On hand';
+
+  @override
+  String get wmInUseMaterial => 'Material in use';
+
+  @override
+  String get wmBagMaterials => 'Bagged material';
+
+  @override
+  String get wmEnableWorkshopTab => 'Workshops';
+
+  @override
+  String get wmReportPeriod => 'Period';
+
+  @override
+  String get wmReportAllPeriods => 'All periods';
+
+  @override
+  String get wmReportMaterial => 'Material';
+
+  @override
+  String get wmReportNoBin =>
+      'No workshop has enabled bulk issue yet, so there is no store usage to show.';
+
+  @override
+  String get wmOpenBom => 'Open BOM';
+
+  @override
+  String get wmWorkshopMaterialSection => 'Workshop material';
+
+  @override
+  String get wmIssueMethodUpdated => 'Issue method updated';
 }

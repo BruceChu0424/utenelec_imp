@@ -1,5 +1,5 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空(支持至 V739；保留主档、人事、权限与治理证据)
+-- 本地/测试库业务数据一键清空(支持至 V740；保留主档、人事、权限与治理证据)
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
@@ -569,7 +569,30 @@ SELECT optional.table_name, optional.disposition FROM (VALUES
 ('production_material_increment_requests', 'CLEAR'),
 ('production_material_increment_decisions', 'CLEAR'),
 ('production_material_increment_reversals', 'CLEAR'),
-('production_planning_urges', 'CLEAR')
+('production_planning_urges', 'CLEAR'),
+-- V740 车间整批领料与盘点计耗 (ADR-131): 进出、期间、盘点、结算与段用料 18 张随业务清空;
+-- 机台、容器与认料 3 张是车间与产品的配置, 随主档保留。
+('workshop_material_settings', 'CLEAR'),
+('production_execution_periodic_materials', 'CLEAR'),
+('production_execution_material_changes', 'CLEAR'),
+('workshop_material_commands', 'CLEAR'),
+('workshop_material_requisitions', 'CLEAR'),
+('workshop_material_requisition_lines', 'CLEAR'),
+('workshop_material_stock_documents', 'CLEAR'),
+('workshop_material_requisition_postings', 'CLEAR'),
+('workshop_material_other_issues', 'CLEAR'),
+('workshop_material_periods', 'CLEAR'),
+('workshop_material_counts', 'CLEAR'),
+('workshop_material_count_lines', 'CLEAR'),
+('workshop_material_period_lines', 'CLEAR'),
+('workshop_material_count_postings', 'CLEAR'),
+('workshop_material_period_closes', 'CLEAR'),
+('workshop_material_close_materials', 'CLEAR'),
+('workshop_material_close_theory_lines', 'CLEAR'),
+('workshop_material_close_allocations', 'CLEAR'),
+('workshop_machines', 'PRESERVE'),
+('workshop_machine_containers', 'PRESERVE'),
+('goods_periodic_material_choices', 'PRESERVE')
 ) AS optional(table_name, disposition)
 WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
 
@@ -1287,10 +1310,11 @@ BEGIN
         -- V738 手工需求单多货品(ADR-130): 手工来源唯一索引拆成系统来源/手工货品行两条 + 一编号一分析触发器, 不加表; V735、V737 为并行会话在途号跳号; 本迁移 664→665。
         (738, 665),
         -- V739 BOM 真实使用数量(ADR-129): 按颜色累计表换成 goods_bom_actual_usages(PRESERVE 数不变); 原号 V737, 并入 main 时因开发库已过 V738 改号 V739; 本迁移 665→666。
-        (739, 666)
+        (739, 666),
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V739完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669、V735、V737 跳号)，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V740完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669、V735、V737 跳号)，当前 V%/%',        -- V740 车间整批领料与盘点计耗(ADR-131): 新增 21 张表 (CLEAR 18、PRESERVE 3)、7 个权限点与 GL/ZT 单号命名空间, 零料原因加 PERIODIC_MATERIAL; 本迁移 666→667。
+        (740, 667)
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -1485,7 +1509,28 @@ BEGIN
             ('preplan_aggregate_material_aliases', 712),
             ('preplan_aggregate_direct_transfer_slices', 715),
             ('preplan_make_public_claims', 722),
-            ('preplan_make_public_claim_cancellations', 722)
+            ('preplan_make_public_claim_cancellations', 722),
+            ('workshop_material_settings', 740),
+            ('production_execution_periodic_materials', 740),
+            ('production_execution_material_changes', 740),
+            ('workshop_material_commands', 740),
+            ('workshop_material_requisitions', 740),
+            ('workshop_material_requisition_lines', 740),
+            ('workshop_material_stock_documents', 740),
+            ('workshop_material_requisition_postings', 740),
+            ('workshop_material_other_issues', 740),
+            ('workshop_material_periods', 740),
+            ('workshop_material_counts', 740),
+            ('workshop_material_count_lines', 740),
+            ('workshop_material_period_lines', 740),
+            ('workshop_material_count_postings', 740),
+            ('workshop_material_period_closes', 740),
+            ('workshop_material_close_materials', 740),
+            ('workshop_material_close_theory_lines', 740),
+            ('workshop_material_close_allocations', 740),
+            ('workshop_machines', 740),
+            ('workshop_machine_containers', 740),
+            ('goods_periodic_material_choices', 740)
     )
     SELECT string_agg(required.table_name, ', ' ORDER BY required.table_name) FILTER (
                WHERE (to_regclass(format('public.%I', required.table_name)) IS NOT NULL)
@@ -1516,7 +1561,9 @@ BEGIN
        OR (applied_max_version BETWEEN 677 AND 685 AND preserve_count <> 98)
        OR (applied_max_version BETWEEN 686 AND 692 AND preserve_count <> 99)
        OR (applied_max_version BETWEEN 693 AND 710 AND preserve_count <> 100)
-       OR (applied_max_version >= 711 AND preserve_count <> 102)
+       OR (applied_max_version BETWEEN 711 AND 739 AND preserve_count <> 102)
+       -- V740 机台、机台容器与认料三张配置表随主档保留(102→105, ADR-131)。
+       OR (applied_max_version >= 740 AND preserve_count <> 105)
        OR NOT (
            (v446_business_table_count = 0
                 AND v447_business_table_count = 0

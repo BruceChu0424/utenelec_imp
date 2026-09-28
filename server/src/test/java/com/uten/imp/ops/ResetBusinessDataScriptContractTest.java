@@ -108,6 +108,7 @@ class ResetBusinessDataScriptContractTest {
         // V703 +1 车间催计划记录(ADR-117, 协调提醒随业务流程数据清空): 412 表。
         // V710/V711: four business tables and two preserved learning aggregates.
         // V712/V715: shared batches, events, exact aliases and direct-transfer slices.
+        // V740 +18 CLEAR (车间内料仓进出、期间、盘点、结算与段用料) / +3 PRESERVE (机台、容器、认料), ADR-131。
         // Reconcile exact identities/dispositions against the frozen baseline plus the reviewed
         // extension registry. A drifting hand-maintained count cannot detect table substitutions.
         Map<String, String> expected = BusinessDataResetSqlContractTest.expectedCurrentPolicy();
@@ -127,6 +128,16 @@ class ResetBusinessDataScriptContractTest {
                 .containsEntry("goods_bom_actual_usages", "PRESERVE")
                 .doesNotContainKey("goods_bom_learning_material_totals");
         assertThat(policy).containsEntry("production_planning_urges", "CLEAR");
+        assertThat(policy).containsEntry("workshop_material_periods", "CLEAR")
+                .containsEntry("workshop_material_requisition_postings", "CLEAR")
+                .containsEntry("workshop_material_count_postings", "CLEAR")
+                .containsEntry("workshop_material_close_allocations", "CLEAR")
+                .containsEntry("workshop_material_commands", "CLEAR")
+                .containsEntry("workshop_material_settings", "CLEAR")
+                .containsEntry("production_execution_periodic_materials", "CLEAR")
+                .containsEntry("workshop_machines", "PRESERVE")
+                .containsEntry("workshop_machine_containers", "PRESERVE")
+                .containsEntry("goods_periodic_material_choices", "PRESERVE");
         assertThat(policy).containsEntry("finance_report_line_bindings", "PRESERVE");
         assertThat(policy).containsEntry("warehouse_keepers", "PRESERVE");
         assertThat(policy).containsEntry("subcontract_component_stock_handoffs", "CLEAR");

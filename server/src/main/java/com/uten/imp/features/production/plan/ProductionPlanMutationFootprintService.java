@@ -202,12 +202,14 @@ public class ProductionPlanMutationFootprintService {
                     SELECT bom.id,bom.component_goods_id,COALESCE(bom.color_id,goods.color_id) AS color_id,
                            ARRAY[bom.goods_id,bom.component_goods_id] AS path,1 AS depth,bom.xmin::text AS snapshot
                     FROM goods_bom_items bom JOIN goods ON goods.id=bom.component_goods_id AND goods.is_deleted=FALSE
+                     AND goods.issue_method<>'PERIODIC'
                     WHERE bom.goods_id IN (:ids) AND bom.is_deleted=FALSE AND bom.hard_gate=TRUE AND bom.control_stage IN ('START','ASSEMBLY','FINISH')
                     UNION ALL
                     SELECT bom.id,bom.component_goods_id,COALESCE(bom.color_id,goods.color_id),parent.path||bom.component_goods_id,
                            parent.depth+1,bom.xmin::text
                     FROM tree parent JOIN goods_bom_items bom ON bom.goods_id=parent.component_goods_id AND bom.is_deleted=FALSE
                     JOIN goods ON goods.id=bom.component_goods_id AND goods.is_deleted=FALSE
+                     AND goods.issue_method<>'PERIODIC'
                     WHERE parent.depth<10 AND NOT bom.component_goods_id=ANY(parent.path)
                       AND bom.hard_gate=TRUE AND bom.control_stage IN ('START','ASSEMBLY','FINISH')
                 ) SELECT DISTINCT id,component_goods_id,color_id,snapshot FROM tree ORDER BY id,component_goods_id,color_id

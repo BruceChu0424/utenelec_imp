@@ -103,6 +103,13 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
     Perm.productionExecutionView,
     Perm.productionExecutionStart,
   ],
+  // 2026-09-28 车间内料仓 (ADR-131) 五页: 内料仓页与用量报表只要查看码 (任一),
+  // 组合门槛为空; 发料、盘点、设置三页要求本码本身。
+  '/workshop-material/bin': [],
+  '/reports/workshop-material': [],
+  '/workshop-material/issue': [Perm.workshopMaterialIssue],
+  '/workshop-material/count': [Perm.workshopMaterialCount],
+  '/warehouse/workshop-material/setup': [Perm.workshopMaterialSetup],
 };
 
 String _samplePath(String pattern) => pattern
@@ -165,6 +172,17 @@ void main() {
           reason: '${route.key} 不得放松已核对的组合权限',
         );
         expect(guarded, contains(_samplePath(route.key)));
+      }
+      // 组合门槛为空的已核对路径, 单独锁住它的「任一」守卫。
+      for (final path in const [
+        '/workshop-material/bin',
+        '/reports/workshop-material',
+      ]) {
+        expect(
+          requiredAnyPermFor(path),
+          orderedEquals(const [Perm.workshopMaterialView]),
+          reason: '$path 不得放松查看守卫',
+        );
       }
       // 新路径按精确身份和组合权限比较；原清单仍按原数量锁定，禁止只抬总数。
       expect(

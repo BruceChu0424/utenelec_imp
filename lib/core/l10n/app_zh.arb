@@ -1704,7 +1704,7 @@
   "productionBatchNoKitHint": "现有物料尚不能配齐一个生产批次，请等待实际入库后重新核对",
   "productionBatchReuseHint": "本批沿用前批已领物料，无需再次领料；确认后回车间任务开工。",
   "productionBatchDirectTransferBadge": "车间直送 · 自动投入",
-  "productionBatchDirectTransferHint": "本批物料全部来自本车间直送（线边仓）：确认后自动投入本批，无需提交领料申请、不等仓库发料；回车间任务直接开工。",
+  "productionBatchDirectTransferHint": "本批物料全部来自本车间直送 (内料仓)：确认后自动投入本批，无需提交领料申请、不等仓库发料；回车间任务直接开工。",
   "productionBatchSubmittedDirectTransfer": "已安排本批 {quantity} {unit}，直送物料已自动投入，无需领料，可直接开工",
   "@productionBatchSubmittedDirectTransfer": {
     "placeholders": {
@@ -2056,5 +2056,207 @@
         "type": "String"
       }
     }
-  }
+  },
+  "workshopMaterialBin": "车间内料仓",
+  "workshopMaterialBinOf": "{workshop}内料仓",
+  "@workshopMaterialBinOf": {
+    "placeholders": {
+      "workshop": {
+        "type": "String"
+      }
+    }
+  },
+  "workshopMaterialGroup": "车间内料仓",
+  "workshopMaterialSetup": "车间内料仓设置",
+  "workshopMaterialReports": "车间内料仓用量",
+  "wmIssueMethod": "发料方式",
+  "wmIssueMethodOrder": "按工单领料",
+  "wmIssueMethodPeriodic": "整批领到车间内料仓",
+  "wmCostBasis": "分摊方式",
+  "wmCostBasisOwn": "主料",
+  "wmCostBasisShared": "辅料",
+  "wmCostBasisExpense": "记车间费用",
+  "wmBulkPackageQty": "每袋净重 (公斤)",
+  "wmRecycledMaterial": "回收料",
+  "wmUnitWeightGrams": "单个重量 (克)",
+  "wmUnitWeightFromBom": "塑料单个重量 (来自 BOM): {grams} 克",
+  "@wmUnitWeightFromBom": {
+    "placeholders": {
+      "grams": {
+        "type": "String"
+      }
+    }
+  },
+  "wmUnusualWeightConfirm": "单个重量 {grams} 克看起来不太对, 确定吗?",
+  "@wmUnusualWeightConfirm": {
+    "placeholders": {
+      "grams": {
+        "type": "String"
+      }
+    }
+  },
+  "wmSecondMaterialConfirm": "这个产品要同时用两种料吗 (双色 / 双料)? 如果只是换料, 请改原来那一行",
+  "wmRequestIssue": "申请领料",
+  "wmReturn": "退回",
+  "wmOtherIssue": "试模清机等用料",
+  "wmOtherReasonTrial": "试模",
+  "wmOtherReasonPurge": "清机",
+  "wmOtherReasonScrap": "报废料",
+  "wmOtherReasonOther": "其它",
+  "wmDirectIssue": "直接发料",
+  "wmPendingIssue": "待发料",
+  "wmPendingReturn": "待收退回",
+  "wmCount": "盘点",
+  "wmHistory": "记录",
+  "wmBags": "袋数",
+  "wmKg": "公斤",
+  "wmReceiver": "领料人",
+  "wmWarehouseAvailable": "仓库还有 {qty} 公斤",
+  "@wmWarehouseAvailable": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "wmEstimatedRemaining": "内料仓估计还剩 {qty} 公斤",
+  "@wmEstimatedRemaining": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "wmCountingNextPeriod": "已开始盘点, 这批料算到下一期",
+  "wmSupplementFlag": "这批料是上一期漏录的",
+  "wmSupplementPeriod": "补到哪一期",
+  "wmAlsoOrderMaterials": "还要按工单领别的料 (例如嵌件)",
+  "wmFillFromGoodsWeight": "勾选行用货品资料单重填入",
+  "wmCloseFailing": "结算连续失败, 系统改为每天重试一次, 请联系系统管理员",
+  "wmStartCount": "开始盘点",
+  "wmCutoffToday": "截止到今天",
+  "wmCutoffYesterday": "截止到昨天",
+  "wmMonthEndHint": "想要按月对账, 请在月底盘一次",
+  "wmFillFull": "满",
+  "wmFillHalf": "半",
+  "wmFillEmpty": "空",
+  "wmFillWeighed": "直接填公斤",
+  "wmWeighOpenBag": "开口袋过秤",
+  "wmWeighMixed": "搅好未上机",
+  "wmWeighLoose": "散料",
+  "wmFillGuide": "超过四分之三算满, 四分之一到四分之三算半, 不到四分之一算空",
+  "wmMachineIdle": "本机停机、全空",
+  "wmZeroRest": "其余料都用完了, 记 0",
+  "wmPrintBlank": "打印空白盘点表",
+  "wmSubmitCount": "提交盘点",
+  "wmWithdrawCount": "撤回盘点",
+  "wmCorrectCount": "更正盘点",
+  "wmBagsTimesKg": "整袋 {bags} 袋 × 每袋 {kg} 公斤",
+  "@wmBagsTimesKg": {
+    "placeholders": {
+      "bags": {
+        "type": "int"
+      },
+      "kg": {
+        "type": "String"
+      }
+    }
+  },
+  "wmCloseState": "结算状态",
+  "wmCloseWaitingPrevious": "等上一期结算",
+  "wmCloseBlockedReport": "还有 {n} 张报工没审核 (请审核人审核, 或制单人删掉不要的草稿)",
+  "@wmCloseBlockedReport": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "wmCloseBlockedWeight": "有 {n} 个产品没填单个重量 (请 BOM 维护人处理)",
+  "@wmCloseBlockedWeight": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "wmCloseBlockedStock": "「{material}」这一期没有发料记录却有产品在用 (请仓库补录漏录的发料, 或车间改认料)",
+  "@wmCloseBlockedStock": {
+    "placeholders": {
+      "material": {
+        "type": "String"
+      }
+    }
+  },
+  "wmCloseRetry": "立即重试",
+  "wmReopen": "撤销结算",
+  "wmReopenReason": "撤销原因",
+  "wmReopenHeld": "已撤销结算, 改完请点「重新结算」; {time} 系统会自动重新结算",
+  "@wmReopenHeld": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "wmSettleAgain": "重新结算",
+  "wmNeedChoice": "待认料",
+  "wmStartSheetTitle": "开工前确认用料",
+  "wmStartConfirm": "确认并开工 ({n})",
+  "@wmStartConfirm": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "wmOrderInstead": "这几个产品按工单领料 (暂不开工)",
+  "wmNotFromStore": "本产品不用车间内料仓的料 (按工单领料)",
+  "wmWeightPending": "待补, 不影响开工",
+  "wmChangeMaterial": "这张工单改用别的料",
+  "wmChangeFrom": "从哪天起改用",
+  "wmAddMaterial": "加一种料",
+  "wmEnable": "开启整批领料",
+  "wmGoLiveDate": "启用日",
+  "wmMainWarehouse": "放在哪个主仓下",
+  "wmMachines": "机台与容器",
+  "wmGoLivePrep": "上线准备",
+  "wmGoLiveProgress": "常做的 {total} 个产品, 已选料 {chosen} 个, 已填单重 {weighed} 个",
+  "@wmGoLiveProgress": {
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "chosen": {
+        "type": "int"
+      },
+      "weighed": {
+        "type": "int"
+      }
+    }
+  },
+  "wmReportUsage": "用量表",
+  "wmReportProduct": "产品用料",
+  "wmReportTrend": "浪费率趋势",
+  "wmReportMissingWeight": "缺单重清单",
+  "wmReportLedger": "收发明细",
+  "wmTrueUnitUsage": "真实单耗",
+  "wmAllocatedByTheory": "按理论比例分摊",
+  "wmWasteRate": "浪费率",
+  "wmIncludeWorkshopStore": "含内料仓",
+  "workshopMaterialSetupHubDesc": "开启车间整批领料、机台与容器、上线准备 (产品的颗粒与单个重量)",
+  "workshopMaterialReportsHubDesc": "按期间看每种料用了多少、浪费率与结算状态",
+  "wmReceiveReturn": "收退回",
+  "wmIssueByRequest": "按申请发料",
+  "wmOnHand": "现存",
+  "wmInUseMaterial": "在用料",
+  "wmBagMaterials": "袋料",
+  "wmEnableWorkshopTab": "车间开启",
+  "wmReportPeriod": "期间",
+  "wmReportAllPeriods": "全部期间",
+  "wmReportMaterial": "料",
+  "wmReportNoBin": "还没有车间开启整批领料，暂时没有内料仓用量可看。",
+  "wmOpenBom": "打开 BOM",
+  "wmWorkshopMaterialSection": "车间用料",
+  "wmIssueMethodUpdated": "发料方式已更新"
 }

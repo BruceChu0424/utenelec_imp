@@ -15,7 +15,8 @@ public interface InventoryProductionCostPort {
     enum ScopeKind { PRODUCTION_EXECUTION, SUBCONTRACT_RECEIPT_ITEM, SUBCONTRACT_ORDER_NORMAL_LOSS }
     /** The source UUID is a real business identity, never a synthetic execution segment. */
     record Scope(UUID sourceId, ScopeKind kind, PoolKey productPool) {}
-    enum InputKind { CONSUMED, NORMAL_LOSS, CONFIRMED_PROCESSING_FEE }
+    /** PERIODIC_MATERIAL: 车间内料仓按期结算分摊进来的料 (ADR-131)。 */
+    enum InputKind { CONSUMED, NORMAL_LOSS, CONFIRMED_PROCESSING_FEE, PERIODIC_MATERIAL }
     enum CostState { APPLYING, PROVISIONAL, FINAL, PENDING_BASIS, PENDING_CLASSIFICATION }
     record Input(UUID consumedPositionRootId, UUID approvedPostingId, InputKind kind) {}
     record Output(UUID finishedSourceNodeId, UUID movementId) {}

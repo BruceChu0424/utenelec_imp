@@ -406,6 +406,13 @@ const _allGroups = <_ModuleGroup>[
         location: RouteName.productionWorkshopTasks,
         badge: WorkbenchBadgeKind.productionWorkshop,
       ),
+      // 车间内料仓 (ADR-131): 现存与估计还剩、申请领料 / 退回 / 其它耗用、盘点与结算状态;
+      // 紧挨车间生产任务, 不挂数 (待办在车间任务与仓库任务中心)。
+      _ModuleItem(
+        icon: Icons.inventory_2_outlined,
+        label: '车间内料仓',
+        location: RouteName.workshopMaterialBin,
+      ),
       // 旧流水线看板/产量录入/产量统计（mock 数据）已下线，收敛为生产管理 hub 单卡。
       // 徽标 = BadgeModule.production 求和（待排产 + 超产/追加审批 + 车间在催）。
       _ModuleItem(

@@ -308,6 +308,13 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
                       description: l10n.financeHubReportGlSub,
                       location: RouteName.financeReportGl,
                     ),
+                    // ADR-131 车间内料仓用量与结算 (塑料用量附表的数据来源)。
+                    _Entry(
+                      icon: Icons.scale_outlined,
+                      label: l10n.workshopMaterialReports,
+                      description: l10n.workshopMaterialReportsHubDesc,
+                      location: RouteName.workshopMaterialReports,
+                    ),
                   ]),
                 ),
               ],

@@ -29,16 +29,17 @@ import java.util.UUID;
  *   <li><b>铜柱加工费核算</b>（附件 7）{@link #copperFee}：委外进仓按货品聚合 数量×单价=金额
  *       （keyword 按加工商，如 铜柱车间/黄庆哲）。</li>
  *   <li><b>插套酸洗入库明细</b>（附件 7-1）{@link #copperPickling}：酸洗件委外进仓逐行 时间/货品/重量KG/数量个。</li>
- *   <li><b>塑料耗用明细</b>（附件 8）{@link #plasticUsage}：车间口径 上月结存 C=累计领用−累计退料−累计耗用(BOM 重量归属)、
- *       本月领用 D(DRAW)、退料 E(WDRAW)、产品入库耗用 H(BOM 归属成品入库重量)、账面结存=C+D−E−H、
- *       盘点数(CHECK 最新 count_qty)、差异=盘点−账面、成品占材料比例=H/(C+D)。</li>
- *   <li><b>塑料领料/退料/产品入库明细</b>（附件 8-1/8-2/8-3）{@link #plasticDetail}：kind=issue/return/finished。</li>
+ *   <li><b>塑料耗用明细</b>(附件 8){@link #plasticUsage}：数据源是车间内料仓的结算结果 (ADR-131 §7.5),
+ *       按内料仓的期间出表; 上月结存 = 期初实盘、本月仓库领用 = 领入、退料 = 退回、产品入库数 = 理论用量、
+ *       账面结存 = 期初 + 领入 − 退回 − 其它耗用 − 理论、实际盘点数 = 期末实盘、差异 = 实盘 − 账面。</li>
+ *   <li><b>塑料领料/退料/产品入库明细</b>(附件 8-1/8-2/8-3){@link #plasticDetail}：kind=issue/return/finished,
+ *       领料与退料取内料仓流水, 产品入库取已结算各期的理论明细。</li>
  * </ul>
  *
  * <p>口径说明：只取 status=1 已审核单据；stock_movements movement_type：5=DRAW 领用 / 6=WDRAW 退料 /
- * 9,10=CHECK 盘盈亏 / 13=FINISHED_IN 成品入库（已核实映射）。耗用归属两条路：①BOM（成品行重量 × 组件 qty 占比）；
- * ②无 BOM 时 goods.material 文本唯一命中材料货品名则全额归属（多命中/零命中不摊，防错配）。均属近似口径。
- * 「安装挑选不良」「运费」无数据源，列占位 NULL。</p>
+ * 9,10=CHECK 盘盈亏 / 13=FINISHED_IN 成品入库 (已核实映射)。「运费」无数据源，列占位 NULL。
+ * 附件 8 不再用"成品入库重量 × BOM 占比"与"材质文本推断"两条近似口径, 一律读内料仓结算结果;
+ * 「安装挑选不良」第一期恒为 0, 表头注明待不良数上线。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -254,9 +255,15 @@ public class FinanceCostService {
         return runPaged(cols, core, "t.\"billDate\", t.\"goodsName\"", keyword, from, to, page, size, Map.of());
     }
 
-    // ======================== 附件 8 · 塑料耗用明细（车间口径） ========================
+    // ======================== 附件 8 · 塑料耗用明细(车间内料仓结算结果) ========================
 
-    /** 塑料耗用明细（车间口径）：上月结存 C=累计(领用−退料−BOM耗用)，账面结存=C+D−E−H；耗用按 BOM 组件 qty 占比归属成品入库重量，无 BOM 时按材质文本唯一命中材料全量归属（多/零命中不摊）。 */
+    /**
+     * 塑料耗用明细(ADR-131 §7.5)：按车间内料仓的期间出表，按月查询时列出期末日落在所选日期范围里的已结算各期。
+     * 列名列序保持会计模板原样，末尾追加「其它耗用」「期间」「内料仓」。上月结存 = 期初实盘；本月仓库领用 = 领入；
+     * 退料 = 退回；安装挑选不良第一期恒为 0(待不良数上线)；产品入库数 = 理论用量(良品 × 单个重量；辅料取按主料理论
+     * 分到产品的量，记车间费用的料为 0)；账面结存 = 期初 + 领入 − 退回 − 其它耗用 − 产品入库数；实际盘点数 = 期末实盘；
+     * 差异 = 实盘 − 账面(负数表示多用)；成品占材料比例% = 产品入库数 / 实际用量。
+     */
     @Transactional(readOnly = true)
     public ReportTableResponse plasticUsage(String keyword, LocalDate from, LocalDate to, int page, int size) {
         List<ReportColumn> cols = List.of(
@@ -265,115 +272,52 @@ public class FinanceCostService {
                 ReportColumn.number("prevBalance", "上月结存"),
                 ReportColumn.number("drawQty", "本月仓库领用"),
                 ReportColumn.number("returnQty", "退料"),
-                ReportColumn.number("rejectQty", "安装挑选不良"),
+                ReportColumn.number("rejectQty", "安装挑选不良(待不良数上线)"),
                 ReportColumn.number("finishedWeight", "产品入库数"),
                 ReportColumn.number("bookBalance", "账面结存"),
                 ReportColumn.number("checkQty", "实际盘点数"),
                 ReportColumn.number("diff", "差异"),
-                ReportColumn.number("usageRatio", "成品占材料比例%"));
-        // 车间材料结存口径：上月结存 C=累计(领用−退料−BOM耗用)；账面结存=C+D−E−H；
-        // BOM 耗用=成品入库行重量 × 组件 qty 占比（塑胶单材料件近似全量归属）。
+                ReportColumn.number("usageRatio", "成品占材料比例%"),
+                ReportColumn.number("otherIssueQty", "其它耗用"),
+                ReportColumn.text("periodLabel", "期间", 190),
+                ReportColumn.text("binName", "内料仓", 160));
         String core = """
-                WITH mv AS (
-                    SELECT goods_id,
-                           SUM(CASE WHEN movement_type=5 AND transaction_date < :from THEN qty ELSE 0 END) AS prev_draw,
-                           SUM(CASE WHEN movement_type=6 AND transaction_date < :from THEN qty ELSE 0 END) AS prev_ret,
-                           SUM(CASE WHEN movement_type=5 AND transaction_date BETWEEN :from AND :to THEN qty ELSE 0 END) AS draw_qty,
-                           SUM(CASE WHEN movement_type=6 AND transaction_date BETWEEN :from AND :to THEN qty ELSE 0 END) AS ret_qty
-                    FROM stock_movements
-                    WHERE source_doc_type='STOCK_DOC' AND movement_type IN (5,6)
-                    GROUP BY goods_id
-                ),
-                fin AS (
-                    SELECT i.goods_id, i.weight AS w, i.bill_date
-                    FROM stock_document_items i
-                    JOIN stock_documents d ON d.id = i.doc_id
-                    WHERE d.doc_type='FINISHED_IN' AND d.status=1 AND d.is_deleted=false AND i.is_deleted=false
-                      AND COALESCE(i.weight,0) <> 0
-                ),
-                bom_share AS (
-                    SELECT b.goods_id, b.component_goods_id, b.qty,
-                           SUM(b.qty) OVER (PARTITION BY b.goods_id) AS tq
-                    FROM goods_bom_items b WHERE b.is_deleted = false
-                ),
-                mat_map AS (
-                    -- 材质文本唯一匹配(无 BOM 的成品)。按材质值去重探测(~50 个值 × 货品名 ILIKE，约 1s)：
-                    -- 该材质值全库唯一命中某货品名 → 归属该材料；多命中/零命中不摊，防错配。
-                    SELECT fg.id AS finished_id, u.mat_id
-                    FROM (SELECT DISTINCT goods_id FROM fin) ff
-                    JOIN goods fg ON fg.id = ff.goods_id
-                    JOIN (
-                        SELECT m.mat, MIN(g2.id::text)::uuid AS mat_id
-                        FROM (
-                            SELECT DISTINCT BTRIM(fg2.material) AS mat
-                            FROM (SELECT DISTINCT goods_id FROM fin) ff2
-                            JOIN goods fg2 ON fg2.id = ff2.goods_id
-                            WHERE fg2.material IS NOT NULL AND LENGTH(BTRIM(fg2.material)) >= 4
-                              AND NOT EXISTS (SELECT 1 FROM goods_bom_items b
-                                              WHERE b.goods_id = fg2.id AND b.is_deleted = false)
-                        ) m
-                        JOIN goods g2 ON g2.is_deleted = false
-                                     AND g2.name ILIKE '%' || m.mat || '%'
-                        GROUP BY m.mat
-                        HAVING COUNT(g2.id) = 1
-                    ) u ON u.mat = BTRIM(fg.material)
-                    WHERE fg.material IS NOT NULL AND LENGTH(BTRIM(fg.material)) >= 4
-                      AND NOT EXISTS (SELECT 1 FROM goods_bom_items b
-                                      WHERE b.goods_id = fg.id AND b.is_deleted = false)
-                ),
-                attr AS (
-                    SELECT x.mat_id, SUM(x.prev_w) AS prev_w, SUM(x.m_w) AS m_w FROM (
-                        SELECT s.component_goods_id AS mat_id,
-                               CASE WHEN f.bill_date < :from THEN f.w * s.qty / NULLIF(s.tq,0) ELSE 0 END AS prev_w,
-                               CASE WHEN f.bill_date BETWEEN :from AND :to THEN f.w * s.qty / NULLIF(s.tq,0) ELSE 0 END AS m_w
-                        FROM fin f JOIN bom_share s ON s.goods_id = f.goods_id
-                        UNION ALL
-                        SELECT mm.mat_id,
-                               CASE WHEN f.bill_date < :from THEN f.w ELSE 0 END,
-                               CASE WHEN f.bill_date BETWEEN :from AND :to THEN f.w ELSE 0 END
-                        FROM fin f JOIN mat_map mm ON mm.finished_id = f.goods_id
-                    ) x GROUP BY x.mat_id
-                ),
-                chk AS (
-                    SELECT DISTINCT ON (i.goods_id) i.goods_id, i.count_qty
-                    FROM stock_document_items i
-                    JOIN stock_documents d ON d.id = i.doc_id
-                    WHERE d.doc_type='CHECK' AND d.status=1 AND i.is_deleted=false
-                      AND i.bill_date BETWEEN :from AND :to AND i.count_qty IS NOT NULL
-                    ORDER BY i.goods_id, i.bill_date DESC
-                ),
-                base AS (
-                    SELECT g.id, g.code, g.name,
-                           (COALESCE(mv.prev_draw,0) - COALESCE(mv.prev_ret,0) - COALESCE(attr.prev_w,0)) AS c_prev,
-                           COALESCE(mv.draw_qty,0) AS d_draw,
-                           COALESCE(mv.ret_qty,0) AS e_ret,
-                           COALESCE(attr.m_w,0) AS h_fin,
-                           chk.count_qty
-                    FROM goods g
-                    LEFT JOIN mv ON mv.goods_id = g.id
-                    LEFT JOIN attr ON attr.mat_id = g.id
-                    LEFT JOIN chk ON chk.goods_id = g.id
-                    WHERE g.is_deleted = false
-                      AND (mv.goods_id IS NOT NULL OR attr.mat_id IS NOT NULL OR chk.goods_id IS NOT NULL)
-                )
-                SELECT b.code AS "goodsCode", b.name AS "goodsName",
-                       ROUND(b.c_prev, 3) AS "prevBalance",
-                       ROUND(b.d_draw, 3) AS "drawQty",
-                       ROUND(b.e_ret, 3) AS "returnQty",
-                       NULL AS "rejectQty",
-                       ROUND(b.h_fin, 3) AS "finishedWeight",
-                       ROUND(b.c_prev + b.d_draw - b.e_ret - b.h_fin, 3) AS "bookBalance",
-                       b.count_qty AS "checkQty",
-                       ROUND(b.count_qty - (b.c_prev + b.d_draw - b.e_ret - b.h_fin), 3) AS "diff",
-                       ROUND(b.h_fin / NULLIF(b.c_prev + b.d_draw, 0) * 100, 2) AS "usageRatio",
-                       b.name AS party_name, b.code AS party_code
-                FROM base b
-                WHERE (b.c_prev <> 0 OR b.d_draw <> 0 OR b.e_ret <> 0 OR b.h_fin <> 0 OR b.count_qty IS NOT NULL)
+                SELECT goods.code AS "goodsCode",
+                       goods.name || COALESCE(' ' || color.name, '') AS "goodsName",
+                       report.opening_qty AS "prevBalance",
+                       report.transfer_in_qty AS "drawQty",
+                       report.return_qty AS "returnQty",
+                       CAST(0 AS numeric) AS "rejectQty",
+                       used.product_qty AS "finishedWeight",
+                       report.opening_qty + report.transfer_in_qty - report.return_qty - report.other_issue_qty
+                           - used.product_qty AS "bookBalance",
+                       report.closing_qty AS "checkQty",
+                       report.closing_qty - (report.opening_qty + report.transfer_in_qty - report.return_qty
+                           - report.other_issue_qty - used.product_qty) AS "diff",
+                       CASE WHEN report.actual_qty > 0
+                            THEN round(used.product_qty / report.actual_qty * 100, 2) END AS "usageRatio",
+                       report.other_issue_qty AS "otherIssueQty",
+                       to_char(report.start_date, 'YYYY-MM-DD') || ' 至 ' || to_char(report.end_date, 'YYYY-MM-DD')
+                           AS "periodLabel",
+                       bin.name AS "binName",
+                       goods.name AS party_name, goods.code AS party_code,
+                       report.end_date AS sort_end_date, report.period_no AS sort_period_no
+                FROM v_workshop_material_period_report report
+                JOIN goods ON goods.id = report.goods_id
+                LEFT JOIN colors color ON color.id = report.color_id
+                JOIN warehouses bin ON bin.id = report.bin_warehouse_id
+                CROSS JOIN LATERAL (
+                    SELECT round(CASE report.cost_basis WHEN 'OWN' THEN COALESCE(report.theory_qty, 0)
+                                                        WHEN 'SHARED' THEN report.consumed_qty
+                                                        ELSE 0 END, 4) AS product_qty) used
+                WHERE report.close_id IS NOT NULL
+                  AND report.end_date BETWEEN :from AND :to
                 """;
-        return runPaged(cols, core, "t.\"goodsCode\"", keyword, from, to, page, size, Map.of());
+        return runPaged(cols, core, "t.\"binName\", t.sort_end_date, t.sort_period_no, t.\"goodsCode\"",
+                keyword, from, to, page, size, Map.of());
     }
 
-    // ======================== 附件 8-1/8-2/8-3 · 领料/退料/产品入库明细 ========================
+    // ======================== 附件 8-1/8-2/8-3 · 领料/退料/产品入库明细(内料仓流水与理论明细) ========================
 
     @Transactional(readOnly = true)
     public ReportTableResponse plasticDetail(String kind, String keyword, LocalDate from, LocalDate to,
@@ -385,35 +329,39 @@ public class FinanceCostService {
         };
     }
 
-    /** 附件 8-1 领料明细（DRAW 已审行）。 */
+    /** 附件 8-1 领料明细：仓库发到车间内料仓的每一笔(业务日期落在所选范围)。 */
     private ReportTableResponse plasticIssue(String keyword, LocalDate from, LocalDate to, int page, int size) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140),
                 ReportColumn.date("billDate", "开单日期"),
-                ReportColumn.text("planNo", "订单号", 120),
+                ReportColumn.text("planNo", "领料单号", 120),
                 ReportColumn.text("goodsName", "货品名称", 200),
                 ReportColumn.text("model", "型号", 120),
                 ReportColumn.text("color", "颜色", 100),
                 ReportColumn.number("qty", "实发数量"),
                 ReportColumn.text("remark", "备注", 160));
         String core = """
-                SELECT i.bill_no AS "billNo", i.bill_date AS "billDate",
-                       COALESCE(d.plan_no,'') AS "planNo",
-                       g.name AS "goodsName", COALESCE(g.model,'') AS "model",
-                       COALESCE(c.name,'') AS "color", i.qty AS "qty",
-                       COALESCE(i.remark,'') AS "remark",
-                       g.name AS party_name, g.code AS party_code
-                FROM stock_document_items i
-                JOIN stock_documents d ON d.id = i.doc_id
-                LEFT JOIN goods g ON g.id = i.goods_id
-                LEFT JOIN colors c ON c.id = i.color_id
-                WHERE d.doc_type = 'DRAW' AND d.status = 1 AND d.is_deleted = false AND i.is_deleted = false
-                  AND i.bill_date BETWEEN :from AND :to
+                SELECT document.bill_no AS "billNo", ledger.business_date AS "billDate",
+                       requisition.request_no AS "planNo",
+                       goods.name AS "goodsName", COALESCE(goods.model, '') AS "model",
+                       COALESCE(color.name, '') AS "color", ledger.signed_qty AS "qty",
+                       bin.name || CASE WHEN ledger.is_supplement THEN ' 上一期漏录补录' ELSE '' END AS "remark",
+                       goods.name AS party_name, goods.code AS party_code
+                FROM v_workshop_material_bin_ledger ledger
+                JOIN workshop_material_requisition_postings posting ON posting.id = ledger.source_row_id
+                JOIN workshop_material_requisition_lines line ON line.id = posting.line_id
+                JOIN workshop_material_requisitions requisition ON requisition.id = line.requisition_id
+                JOIN stock_document_items item ON item.id = posting.stock_document_item_id
+                JOIN stock_documents document ON document.id = item.doc_id
+                JOIN goods ON goods.id = ledger.goods_id
+                LEFT JOIN colors color ON color.id = ledger.color_id
+                JOIN warehouses bin ON bin.id = ledger.bin_warehouse_id
+                WHERE ledger.source_kind = 'ISSUE' AND ledger.business_date BETWEEN :from AND :to
                 """;
         return runPaged(cols, core, "t.\"billDate\", t.\"billNo\"", keyword, from, to, page, size, Map.of());
     }
 
-    /** 附件 8-2 退料明细（WDRAW 已审行）。 */
+    /** 附件 8-2 退料明细：车间内料仓退回仓库的每一笔。 */
     private ReportTableResponse plasticReturn(String keyword, LocalDate from, LocalDate to, int page, int size) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140),
@@ -423,22 +371,24 @@ public class FinanceCostService {
                 ReportColumn.text("goodsName", "货品名称", 200),
                 ReportColumn.number("qty", "实退数量"));
         String core = """
-                SELECT i.bill_no AS "billNo", i.bill_date AS "billDate",
-                       COALESCE(g.series,'') AS "series",
-                       (g.code || CASE WHEN NULLIF(BTRIM(COALESCE(c.code, '')), '') IS NOT NULL THEN '-' || BTRIM(c.code) ELSE '' END) AS "goodsCode",
-                       g.name AS "goodsName", i.qty AS "qty",
-                       g.name AS party_name, g.code AS party_code
-                FROM stock_document_items i
-                JOIN stock_documents d ON d.id = i.doc_id
-                LEFT JOIN goods g ON g.id = i.goods_id
-                LEFT JOIN colors c ON c.id = i.color_id
-                WHERE d.doc_type = 'WDRAW' AND d.status = 1 AND d.is_deleted = false AND i.is_deleted = false
-                  AND i.bill_date BETWEEN :from AND :to
+                SELECT document.bill_no AS "billNo", ledger.business_date AS "billDate",
+                       COALESCE(goods.series, '') AS "series",
+                       (goods.code || CASE WHEN NULLIF(BTRIM(COALESCE(color.code, '')), '') IS NOT NULL
+                                           THEN '-' || BTRIM(color.code) ELSE '' END) AS "goodsCode",
+                       goods.name AS "goodsName", -ledger.signed_qty AS "qty",
+                       goods.name AS party_name, goods.code AS party_code
+                FROM v_workshop_material_bin_ledger ledger
+                JOIN workshop_material_requisition_postings posting ON posting.id = ledger.source_row_id
+                JOIN stock_document_items item ON item.id = posting.stock_document_item_id
+                JOIN stock_documents document ON document.id = item.doc_id
+                JOIN goods ON goods.id = ledger.goods_id
+                LEFT JOIN colors color ON color.id = ledger.color_id
+                WHERE ledger.source_kind = 'RETURN' AND ledger.business_date BETWEEN :from AND :to
                 """;
         return runPaged(cols, core, "t.\"billDate\", t.\"billNo\"", keyword, from, to, page, size, Map.of());
     }
 
-    /** 附件 8-3 产品入库明细（FINISHED_IN 已审行）。 */
+    /** 附件 8-3 产品入库明细：已结算各期的理论明细(每行报工 × 所用的料；重量 = 良品 × 单个重量)。 */
     private ReportTableResponse plasticFinished(String keyword, LocalDate from, LocalDate to, int page, int size) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140),
@@ -452,22 +402,31 @@ public class FinanceCostService {
                 ReportColumn.number("qty", "数量"),
                 ReportColumn.text("remark", "备注", 160));
         String core = """
-                SELECT i.bill_no AS "billNo", i.bill_date AS "billDate",
-                       COALESCE(g.series,'') AS "series",
-                       (g.code || CASE WHEN NULLIF(BTRIM(COALESCE(c.code, '')), '') IS NOT NULL THEN '-' || BTRIM(c.code) ELSE '' END) AS "goodsCode",
-                       g.name AS "goodsName", COALESCE(c.name,'') AS "color",
-                       COALESCE(g.material,'') AS "material",
-                       COALESCE(i.weight,0) AS "weight", i.qty AS "qty",
-                       COALESCE(i.remark,'') AS "remark",
-                       g.name AS party_name, g.code AS party_code
-                FROM stock_document_items i
-                JOIN stock_documents d ON d.id = i.doc_id
-                LEFT JOIN goods g ON g.id = i.goods_id
-                LEFT JOIN colors c ON c.id = i.color_id
-                WHERE d.doc_type = 'FINISHED_IN' AND d.status = 1 AND d.is_deleted = false AND i.is_deleted = false
-                  AND i.bill_date BETWEEN :from AND :to
+                SELECT report.bill_no AS "billNo", theory.business_date AS "billDate",
+                       COALESCE(product.series, '') AS "series",
+                       (product.code || CASE WHEN NULLIF(BTRIM(COALESCE(item_color.code, '')), '') IS NOT NULL
+                                             THEN '-' || BTRIM(item_color.code) ELSE '' END) AS "goodsCode",
+                       product.name AS "goodsName", COALESCE(item_color.name, '') AS "color",
+                       material.name AS "material", theory.theory_qty AS "weight", theory.output_qty_base AS "qty",
+                       bin.name || ' ' || to_char(period.start_date, 'YYYY-MM-DD') || ' 至 '
+                           || to_char(period.end_date, 'YYYY-MM-DD') AS "remark",
+                       product.name AS party_name, product.code AS party_code
+                FROM workshop_material_close_theory_lines theory
+                JOIN workshop_material_period_closes period_close
+                  ON period_close.id = theory.close_id AND period_close.status = 'ACTIVE'
+                JOIN workshop_material_close_materials close_material ON close_material.id = theory.close_material_id
+                JOIN workshop_material_period_lines line ON line.id = close_material.period_line_id
+                JOIN workshop_material_periods period ON period.id = line.period_id
+                JOIN warehouses bin ON bin.id = period.bin_warehouse_id
+                JOIN goods material ON material.id = line.goods_id
+                JOIN production_daily_reports report ON report.id = theory.report_id
+                JOIN production_daily_report_items item ON item.id = theory.report_item_id
+                JOIN goods product ON product.id = theory.product_goods_id
+                LEFT JOIN colors item_color ON item_color.id = item.color_id
+                WHERE theory.business_date BETWEEN :from AND :to
                 """;
-        return runPaged(cols, core, "t.\"billDate\", t.\"billNo\"", keyword, from, to, page, size, Map.of());
+        return runPaged(cols, core, "t.\"billDate\", t.\"billNo\", t.\"goodsCode\"", keyword, from, to, page, size,
+                Map.of());
     }
 
     // ======================== 通用执行器（同 FinanceStatementService 范式） ========================

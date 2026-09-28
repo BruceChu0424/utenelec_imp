@@ -227,7 +227,7 @@ class GoodsBomImportServiceTest {
     void exportedWorkbookRoundTripsFullPrecisionAndLocksEveryParentBeforeWriting() throws Exception {
         GoodsRepository repo = repoWithAllCodes();
         GoodsBomPasteService paste = mock(GoodsBomPasteService.class);
-        when(paste.paste(any())).thenReturn(new BomPasteResult(1, 1, 0, List.of()));
+        when(paste.paste(any())).thenReturn(new BomPasteResult(1, 1, 0, List.of(), List.of()));
         // 真正的导出格式：用量列是数值单元格，常规格式按存储值全精度显示。
         byte[] xlsx = savedAgain(new XlsxExportService().build(GoodsBomService.EXPORT_COLUMNS, List.of(
                 exportRow("1", "K01", "按包装", "2.5", "允许", "0.03125", "0.031"),

@@ -422,6 +422,7 @@ public class SubcontractPreparationTaskAdapter
                 JOIN goods child ON child.id = bom.component_goods_id
                  AND child.is_deleted = FALSE
                  AND COALESCE(child.auto_created, FALSE) = FALSE
+                 AND child.issue_method <> 'PERIODIC'
                 WHERE bom.goods_id = :goodsId AND bom.is_deleted = FALSE
                 ORDER BY bom.id
                 """).setParameter("goodsId", goodsId));

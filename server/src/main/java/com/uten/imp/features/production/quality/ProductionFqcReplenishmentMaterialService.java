@@ -142,6 +142,11 @@ public class ProductionFqcReplenishmentMaterialService {
         LockedAuthorization locked = lockAuthorization(authorizationId);
         productionAccess.requireScopedOperationWritable(
                 locked.reportMakerId(), "无权确认此 FQC 补产物料任务", CONFIRM);
+        if (periodicOnly(authorizationId)) {
+            // ADR-131：补产只用车间内料仓的料(来源段期间料行仍有效、产品没有按单硬门槛边)，
+            // 补产报工照常计入内料仓期间理论；不建补产轮次，任务直接就绪。
+            return detailInternal(authorizationId);
+        }
         requirePlannerAnalysis(locked);
 
         List<String> replay = NativeQueryResults.typedRows(
@@ -240,6 +245,16 @@ public class ProductionFqcReplenishmentMaterialService {
         if (authorizationId == null) return false;
         return Boolean.TRUE.equals(em.createNativeQuery("""
                         SELECT fn_fqc_replenishment_material_ready(
+                            CAST(:authorizationId AS uuid))
+                        """)
+                .setParameter("authorizationId", authorizationId)
+                .getSingleResult());
+    }
+
+    /** ADR-131 §6 第 12 条：补产只用车间内料仓的料时不等领料(数据库唯一定义)。 */
+    private boolean periodicOnly(UUID authorizationId) {
+        return Boolean.TRUE.equals(em.createNativeQuery("""
+                        SELECT fn_fqc_replenishment_periodic_only(
                             CAST(:authorizationId AS uuid))
                         """)
                 .setParameter("authorizationId", authorizationId)
@@ -775,6 +790,7 @@ public class ProductionFqcReplenishmentMaterialService {
                        CASE
                          WHEN auth_cancellation.id IS NOT NULL
                               OR cancellation.id IS NOT NULL THEN 'CANCELLED'
+                         WHEN fn_fqc_replenishment_periodic_only(recovery_auth.id) THEN 'READY'
                          WHEN ready.authorization_id IS NOT NULL THEN 'READY'
                          WHEN draw.stock_document_id IS NOT NULL THEN 'AWAITING_WAREHOUSE'
                          WHEN attempt.outcome = 'BLOCKED' THEN 'BLOCKED'

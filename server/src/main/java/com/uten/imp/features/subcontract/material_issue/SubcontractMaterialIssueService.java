@@ -425,15 +425,18 @@ public class SubcontractMaterialIssueService {
     /**
      * 查当前 goods_bom_items 的子件单位用量（每单位父件耗用本子件），作为本次发料的冻结 BOM 版本。
      * 无 BOM 边返回 null（该子件不按 BOM 消费；回厂消费将跳过此子件）。
+     * 整批领料的料 (ADR-131 期间边) 不参与委外, 同样返回 null。
      */
     private BigDecimal lookupFrozenUnitQty(UUID parentGoodsId, UUID componentGoodsId) {
         if (parentGoodsId == null || componentGoodsId == null) return null;
         @SuppressWarnings("unchecked")
         List<BigDecimal> rows = em.createNativeQuery("""
-                SELECT qty FROM goods_bom_items
-                WHERE goods_id = :parent AND component_goods_id = :component
-                  AND COALESCE(is_deleted, false) = false
-                ORDER BY sort_order ASC NULLS LAST, id ASC
+                SELECT bom.qty FROM goods_bom_items bom
+                WHERE bom.goods_id = :parent AND bom.component_goods_id = :component
+                  AND COALESCE(bom.is_deleted, false) = false
+                  AND NOT EXISTS (SELECT 1 FROM goods c
+                                  WHERE c.id = bom.component_goods_id AND c.issue_method = 'PERIODIC')
+                ORDER BY bom.sort_order ASC NULLS LAST, bom.id ASC
                 LIMIT 1
                 """)
                 .setParameter("parent", parentGoodsId)

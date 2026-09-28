@@ -647,7 +647,9 @@ public class ProductionExecutionPackageCommandService {
                         ProductionExecutionSegment
                                 .ZERO_MATERIAL_REASON_DIRECT_MAKE,
                         ProductionExecutionSegment
-                                .ZERO_MATERIAL_REASON_NO_PRODUCTION_HARD_GATE)
+                                .ZERO_MATERIAL_REASON_NO_PRODUCTION_HARD_GATE,
+                        ProductionExecutionSegment
+                                .ZERO_MATERIAL_REASON_PERIODIC_MATERIAL)
                 .contains(zeroReason)) {
             throw conflict("无物料执行分段缺少可审计的合法原因");
         }
@@ -661,6 +663,12 @@ public class ProductionExecutionPackageCommandService {
                             && authorizedBy == null;
             case ProductionExecutionSegment
                     .ZERO_MATERIAL_REASON_NO_PRODUCTION_HARD_GATE ->
+                    analysisId == null
+                            && exceptionReason == null
+                            && authorizedBy == null;
+            // ADR-131：料由车间内料仓供给，证据只在 BOM 上(期间边)，不带分析与授权事实。
+            case ProductionExecutionSegment
+                    .ZERO_MATERIAL_REASON_PERIODIC_MATERIAL ->
                     analysisId == null
                             && exceptionReason == null
                             && authorizedBy == null;

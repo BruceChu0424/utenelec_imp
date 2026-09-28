@@ -116,6 +116,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         ORIGINAL_ENDPOINTS.put("drafts", "/api/documents/drafts/count");
         ORIGINAL_ENDPOINTS.put("financeRejected", "/api/documents/finance-rejected/count");
         ORIGINAL_ENDPOINTS.put("subcontractShortDelivery", "/api/subcontract/short-deliveries/count");
+        // ADR-131 车间内料仓: 新入口, 没有迁移前的旧口径, 原端点即本次新增的计数端点。
+        ORIGINAL_ENDPOINTS.put("workshopMaterial", "/api/workshop-material/badge-counts");
         ORIGINAL_ENDPOINTS.put("serverStatus", "/api/admin/server-status");
         ORIGINAL_ENDPOINTS.put("notices", "/api/notices/unread-index");
     }
@@ -156,6 +158,9 @@ class WorkbenchBadgeSummaryPostgresTest {
         legacy("warehouseInboundCenter", List.of("warehouseInboundExpectation.count",
                 "warehouseArrivalException.count", "finishedInbound.count"), List.of());
         legacy("warehouseDrawCenter", List.of("productionDraw.count", "productionReturn.count"), List.of());
+        // ADR-131 车间内料仓: 红 = 待发料 + 待收退回, 黄 = 盘点中 (新入口, 口径即计数端点本身)。
+        legacy("warehouseWorkshopMaterial", List.of("workshopMaterial.pendingIssue", "workshopMaterial.pendingReturn"),
+                List.of("workshopMaterial.counting"));
         legacy("warehouseQualityResult", List.of("qualityResult.actionable.*"), List.of("qualityResult.inProgress.*"));
         legacy("warehouseDrafts", List.of("drafts.stockDocument"), List.of());
         legacy("purchaseTaskCenter", List.of("purchaseTask.pending"), List.of("purchaseTask.inProgress"));

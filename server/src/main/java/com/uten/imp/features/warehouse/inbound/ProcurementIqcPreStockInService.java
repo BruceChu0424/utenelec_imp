@@ -212,7 +212,7 @@ public class ProcurementIqcPreStockInService {
                 throw validation("上架仓库必须是启用中的记账叶仓(不能是父仓、停用仓或不参与核算的仓)");
             }
             if (Boolean.TRUE.equals(row[1])) {
-                throw conflict("线边仓是车间料架，采购/委外到货不能上架到线边仓");
+                throw conflict("内料仓是车间的料架, 采购和委外到货不能放进内料仓");
             }
             names.put(warehouseId, row[0] == null ? "" : row[0].toString());
         }

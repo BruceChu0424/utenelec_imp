@@ -39,6 +39,8 @@ public final class ScheduledTaskCatalog {
                     "每 5 分钟核对车间催计划的任务: 计划已经下够单或任务已结束的, 办结催办并撤掉计划员的待办卡。")),
             Map.entry("SubcontractPreparationAutoStartReconciler.reconcile", new Entry("委外备料自动启动",
                     "每 10 分钟为还没启动前置分析的委外备料行补启动。")),
+            Map.entry("WorkshopMaterialCloseScheduler.retry", new Entry("车间内料仓自动结算",
+                    "每 10 分钟给已经盘点、还没结算的车间内料仓补做结算; 差报工审核、单个重量或发料记录的, 通知该补的人, 补完自动结算。")),
             Map.entry("MaterializedViewRefreshScheduler.refreshAll", new Entry("报表数据刷新",
                     "每 5 分钟刷新销售、采购、生产、库存、委外和应收应付的报表汇总。")),
             Map.entry("ServerStatusAlertScheduler.scan", new Entry("服务器状态告警推送",

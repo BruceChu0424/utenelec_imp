@@ -138,7 +138,26 @@ class BusinessDataResetSqlContractTest {
             Map.entry("preplan_aggregate_material_aliases", 712),
             Map.entry("preplan_aggregate_direct_transfer_slices", 715),
             Map.entry("preplan_make_public_claims", 722),
-            Map.entry("preplan_make_public_claim_cancellations", 722));
+            Map.entry("preplan_make_public_claim_cancellations", 722),
+            // V740 +18 CLEAR / +3 PRESERVE (ADR-131): 车间内料仓进出、期间、盘点、结算与段用料随业务清空。
+            Map.entry("workshop_material_settings", 740),
+            Map.entry("production_execution_periodic_materials", 740),
+            Map.entry("production_execution_material_changes", 740),
+            Map.entry("workshop_material_commands", 740),
+            Map.entry("workshop_material_requisitions", 740),
+            Map.entry("workshop_material_requisition_lines", 740),
+            Map.entry("workshop_material_stock_documents", 740),
+            Map.entry("workshop_material_requisition_postings", 740),
+            Map.entry("workshop_material_other_issues", 740),
+            Map.entry("workshop_material_periods", 740),
+            Map.entry("workshop_material_counts", 740),
+            Map.entry("workshop_material_count_lines", 740),
+            Map.entry("workshop_material_period_lines", 740),
+            Map.entry("workshop_material_count_postings", 740),
+            Map.entry("workshop_material_period_closes", 740),
+            Map.entry("workshop_material_close_materials", 740),
+            Map.entry("workshop_material_close_theory_lines", 740),
+            Map.entry("workshop_material_close_allocations", 740));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
@@ -160,7 +179,11 @@ class BusinessDataResetSqlContractTest {
             Map.entry("goods_bom_learning_profiles", 711),
             Map.entry("goods_bom_learning_material_totals", 711),
             // V739 / ADR-129：真实使用数量按 (父件, 组件, 单位) 累计，取代按颜色的累计表。
-            Map.entry("goods_bom_actual_usages", 739));
+            Map.entry("goods_bom_actual_usages", 739),
+            // V740 (ADR-131): 机台、机台容器与认料是车间和产品的配置, 随主档保留。
+            Map.entry("workshop_machines", 740),
+            Map.entry("workshop_machine_containers", 740),
+            Map.entry("goods_periodic_material_choices", 740));
 
     /**
      * V590 起整表废弃并从清空策略移除的表（「读取已安装定义 + 锚点替换删除」
@@ -429,8 +452,8 @@ class BusinessDataResetSqlContractTest {
                 .contains("(734, 663),")
                 .contains("(736, 664),")
                 .contains("(738, 665),")
-                .contains("(739, 666)")
-                // The exact range label follows the independently enumerated classpath head.
+                .contains("(739, 666),")
+                .contains("(740, 667)")                // The exact range label follows the independently enumerated classpath head.
                 .contains("V507/469、V508/470及V511至V"
                         + MigrationRehearsalSupport.CURRENT_HEAD_VERSION + "完整目录");
         assertThat(RUNTIME_RESET_EXTENSIONS)

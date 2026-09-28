@@ -14,7 +14,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 线边仓自动配置(V595 / ADR-089)。
+ * 车间内料仓(原名线边仓)自动配置(V595 / ADR-089; ADR-131 起面向员工一律叫「{车间名}内料仓」,
+ * 内部类名、列名、方法名不改)。
  *
  * <p>用户口径(2026-09-16)：「创建一个这种仓库总觉得不对，明明现实中没有，要么就做个虚拟的、
  * 不算在现实的。」线边仓仍然必须是一个真实叶仓(ADR-087 的四道硬闸没有变)，但它不再要求
@@ -30,6 +31,9 @@ import java.util.UUID;
 public class LineSideWarehouseService implements LineSideWarehousePort {
 
     private static final String CODE_PREFIX = "LS-";
+    /** 与 V740 改名时写给存量自动配置仓的备注同一句。 */
+    private static final String AUTO_REMARK =
+            "系统自动配置的车间内料仓: 车间直送与整批领料的料放在这里, 不参与公共可用量与即时库存";
 
     private final EntityManager em;
     private final WarehouseRepository repo;
@@ -44,7 +48,7 @@ public class LineSideWarehouseService implements LineSideWarehousePort {
     @Transactional(propagation = Propagation.MANDATORY)
     public UUID ensure(UUID workshopDepartmentId, UUID demandWarehouseId) {
         if (workshopDepartmentId == null || demandWarehouseId == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "线边仓配置缺少车间或收料仓");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "配置车间内料仓缺少车间或收料仓");
         }
         List<UUID> existing = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT line_side.id
@@ -80,7 +84,7 @@ public class LineSideWarehouseService implements LineSideWarehousePort {
                 .setParameter("workshopId", workshopDepartmentId)
                 .setParameter("warehouseId", demandWarehouseId));
         if (rows.size() != 1 || rows.getFirst()[2] == null) {
-            throw new ApiException(ErrorCode.CONFLICT, "车间或收料主仓不存在，无法配置线边仓");
+            throw new ApiException(ErrorCode.CONFLICT, "车间或收料主仓不存在, 无法配置车间内料仓");
         }
         Object[] row = rows.getFirst();
         if (row[4] != null) return (UUID) row[4];
@@ -91,8 +95,8 @@ public class LineSideWarehouseService implements LineSideWarehousePort {
         String mainWarehouseName = (String) row[3];
         Warehouse warehouse = new Warehouse();
         warehouse.setCode(uniqueCode(CODE_PREFIX + departmentCode));
-        warehouse.setName(uniqueName(departmentName + "线边仓", mainWarehouseName));
-        warehouse.setRemark("系统自动配置的车间线边仓(V595)：车间内部直送的料架，不参与公共可用量与即时库存");
+        warehouse.setName(uniqueName(departmentName + "内料仓", mainWarehouseName));
+        warehouse.setRemark(AUTO_REMARK);
         warehouse.setAccountable(true);
         warehouse.setDefective(false);
         warehouse.setLineSide(true);
@@ -121,12 +125,13 @@ public class LineSideWarehouseService implements LineSideWarehousePort {
         return count.longValue() > 0;
     }
 
+    /** 名字被占用 (同车间在别的主仓下已有一个, 或别的仓恰好同名) 才追加 " ({主仓})"; 与 V740 改名同一规则。 */
     private String uniqueName(String base, String mainWarehouseName) {
         Number count = (Number) em.createNativeQuery(
                         "SELECT COUNT(*) FROM warehouses WHERE name = :name AND is_deleted = FALSE")
                 .setParameter("name", base)
                 .getSingleResult();
         if (count.longValue() == 0) return base;
-        return base + "(" + (mainWarehouseName == null ? "" : mainWarehouseName) + ")";
+        return base + " (" + (mainWarehouseName == null ? "主仓" : mainWarehouseName) + ")";
     }
 }

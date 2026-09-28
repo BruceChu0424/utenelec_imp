@@ -227,6 +227,9 @@ class GoodsBomItem {
     this.auditedAt,
     this.actual = BomActualUsage.none,
     this.systemLearned = false,
+    this.componentIssueMethod,
+    this.unitWeightGrams,
+    this.warnings = const [],
   });
 
   final String id;
@@ -266,6 +269,16 @@ class GoodsBomItem {
   /// 系统按真实用料学出的组件(人改了设计使用数量等配方列后转为人工维护)。
   final bool systemLearned;
 
+  /// 组件的发料方式 (ADR-131)：PERIODIC = 整批领到车间内料仓的料 (颗粒等)，
+  /// 这一行是「期间边」：数量只表示单个重量，管控阶段/计量方式/齐套门槛固定。
+  final String? componentIssueMethod;
+
+  /// 服务端给出的单个重量 (克)；旧响应没有时按 [qty] 与组件单位换算。
+  final double? unitWeightGrams;
+
+  /// 保存后服务端给的提醒 (如与货品资料单重相差 20% 以上)；只提示，不拦截。
+  final List<String> warnings;
+
   /// 已审 = 审计标记非空。
   bool get audited => auditedAt != null;
 
@@ -283,6 +296,20 @@ class GoodsBomItem {
       consumptionBasis == BomConsumptionBasis.perPackage
       ? (allowPartialPackage ? '允许' : '整包')
       : '—';
+
+  /// 组件是整批领料的料 (这一行是期间边)。
+  bool get isPeriodicEdge => componentIssueMethod == 'PERIODIC';
+
+  /// 期间边的单个重量 (克)：服务端值优先，否则按组件基本单位把 [qty] 换算成克；
+  /// 单位不是千克/克 (无法换算) 时为 null，界面按原单位显示 [qty]。
+  double? get periodicUnitWeightGrams {
+    if (!isPeriodicEdge) return null;
+    if (unitWeightGrams != null) return unitWeightGrams;
+    final q = qty;
+    final factor = periodicGramsPerBaseUnit(componentUnitName);
+    if (q == null || factor == null) return null;
+    return q * factor;
+  }
 
   factory GoodsBomItem.fromJson(Map<String, dynamic> json) {
     final controlStage = BomControlStage.fromCode(json['controlStage']);
@@ -316,6 +343,12 @@ class GoodsBomItem {
       auditedAt: DateTime.tryParse(json['auditedAt'] as String? ?? ''),
       actual: BomActualUsage.fromJson(json),
       systemLearned: json['systemLearned'] as bool? ?? false,
+      componentIssueMethod: json['componentIssueMethod'] as String?,
+      unitWeightGrams: (json['unitWeightGrams'] as num?)?.toDouble(),
+      warnings: [
+        for (final w in (json['warnings'] as List?) ?? const [])
+          if (w is String && w.trim().isNotEmpty) w.trim(),
+      ],
     );
   }
 }
@@ -433,4 +466,35 @@ class GoodsBomLearningSummary {
       ],
     );
   }
+}
+
+/// 质量单位名 → 每 1 基本单位是多少克 (ADR-131 期间边「按克输入显示」)。
+///
+/// 颗粒基本单位一般是千克；少数按克记。其它单位 (吨、磅、非质量单位) 返回 null，
+/// 界面不做换算、按原单位显示数量。
+double? periodicGramsPerBaseUnit(String? unitName) {
+  final n = unitName?.trim().toLowerCase();
+  if (n == null || n.isEmpty) return null;
+  const kilograms = {'kg', 'kgs', '千克', '公斤'};
+  const grams = {'g', '克', '公克'};
+  if (kilograms.contains(n)) return 1000;
+  if (grams.contains(n)) return 1;
+  return null;
+}
+
+/// 单个重量 (克) 的显示文本：最多 3 位小数，去掉补齐的 0。
+String periodicGramsText(double grams) {
+  final fixed = grams.toStringAsFixed(3);
+  return fixed.contains('.')
+      ? fixed.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '')
+      : fixed;
+}
+
+/// 单个重量是否在常理之外 (小于 0.1 克或大于 5000 克)，保存前要二次确认。
+bool periodicGramsUnusual(double grams) => grams < 0.1 || grams > 5000;
+
+/// 单个重量与货品资料单重相差是否超过 20% (标黄待核对)。
+bool periodicGramsDeviates(double grams, double? referenceGrams) {
+  if (referenceGrams == null || referenceGrams <= 0) return false;
+  return (grams - referenceGrams).abs() / referenceGrams > 0.2;
 }

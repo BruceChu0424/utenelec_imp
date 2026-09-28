@@ -124,6 +124,7 @@ class MovementRow {
 
 /// movement_type 中文（1采购入 2采购退 3销售出 4销售退 5领料 6退料 7调拨入 8调拨出
 /// 9盘盈 10盘亏 11其它入 12其它出 13产成品进仓 14产成品出仓）。
+/// 21 内料仓盘点耗用、22 内料仓盘盈 (ADR-131: 车间内料仓盘点过账, 来源是盘点不是库存单据)。
 String movementTypeLabel(int? t) {
   const m = {
     1: '采购入库',
@@ -140,9 +141,19 @@ String movementTypeLabel(int? t) {
     12: '其它出',
     13: '产成品进仓',
     14: '产成品出仓',
+    21: '内料仓盘点耗用',
+    22: '内料仓盘盈',
   };
   return t == null ? '—' : (m[t] ?? '类型$t');
 }
+
+/// 车间内料仓盘点过账的流水 (21 盘点耗用 / 22 盘盈, ADR-131)。
+///
+/// 来源是盘点 (`WORKSHOP_MATERIAL_COUNT`), 没有库存单据可跳, 流水里只显示「盘点」。
+bool isWorkshopMaterialCountMovement(MovementRow row) =>
+    row.sourceDocType == 'WORKSHOP_MATERIAL_COUNT' ||
+    row.movementType == 21 ||
+    row.movementType == 22;
 
 /// 即时库存行（对标老系统「即时库存」窗口），对应后端 InstantInventoryRow。
 /// 粒度=货品+颜色；名称（分类/颜色/单位）后端已解析，免前端字典二次查询。

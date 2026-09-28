@@ -107,7 +107,10 @@ class AuditTriggerCoverageMigrationContractTest {
                         "moulds", "official_policy_briefs", "party_activity_records",
                         "party_addresses", "party_contact_methods", "payment_styles",
                         "settlement_methods", "supplier_categories", "suppliers", "units",
-                        "warehouse_keepers", "warehouses")),
+                        "warehouse_keepers", "warehouses",
+                        // V740 (ADR-131): 车间整批领料设置、机台与容器、产品认料
+                        "workshop_material_settings", "workshop_machines", "workshop_machine_containers",
+                        "goods_periodic_material_choices")),
             new FullGroup("org_hr", "data_change", false,
                     "组织、人事与访客资料: 人工维护的敏感资料, 由脱敏函数去掉证件/联系方式/自由文本后整行审计",
                     Set.of(
@@ -184,6 +187,18 @@ class AuditTriggerCoverageMigrationContractTest {
                         "production_material_return_requests", "production_plan_items",
                         "production_plans", "production_workshop_direct_transfer_items",
                         "production_workshop_direct_transfers")),
+            new FullGroup("workshop_material", "data_change", false,
+                    "车间内料仓的领料/退回单、进出过账、期间、盘点与结算, 以及段的期间料行与换料 (ADR-131): "
+                            + "人录入并确认的业务事实, 每笔进出、每次更正与撤销都要能还原前后值",
+                    Set.of(
+                        "production_execution_periodic_materials", "production_execution_material_changes",
+                        "workshop_material_requisitions", "workshop_material_requisition_lines",
+                        "workshop_material_stock_documents", "workshop_material_requisition_postings",
+                        "workshop_material_other_issues", "workshop_material_periods",
+                        "workshop_material_counts", "workshop_material_count_lines",
+                        "workshop_material_period_lines", "workshop_material_count_postings",
+                        "workshop_material_period_closes", "workshop_material_close_materials",
+                        "workshop_material_close_allocations")),
             new FullGroup("finance_docs", "data_change", false,
                     "财务单据、凭证、往来台账与资产: 人工录入并审核的财务事实",
                     Set.of(
@@ -249,7 +264,8 @@ class AuditTriggerCoverageMigrationContractTest {
                         "production_planning_drafts", "production_planning_urges", "production_bom_learning_refresh_queue", "stock_value_jobs",
                         "stock_value_production_cost_dirty", "stock_value_production_cost_tasks",
                         "stock_value_tasks", "subcontract_outbound_preparation_commands",
-                        "task_claims", "warehouse_arrival_registration_commands")),
+                        "task_claims", "warehouse_arrival_registration_commands",
+                        "workshop_material_commands")),
             new NoneGroup("reservation",
                     "编号终身预留、冲突证据与改号历史: 只追加, 行本身就是占用/改号记录",
                     Set.of(
@@ -296,7 +312,8 @@ class AuditTriggerCoverageMigrationContractTest {
                         "stock_value_production_cost_shares",
                         "subcontract_loss_fulfillment_allocations",
                         "subcontract_outbound_issue_reservation_allocations",
-                        "subcontract_receipt_material_consumptions")),
+                        "subcontract_receipt_material_consumptions",
+                        "workshop_material_close_theory_lines")),
             new NoneGroup("link",
                     "单据关联与下达包: 由下单/下达命令生成的链接, 命令本身已有语义事件",
                     Set.of(

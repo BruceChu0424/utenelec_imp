@@ -301,6 +301,16 @@ abstract final class ApiEndpoints {
   static String goodsImportUndo(String batchId) =>
       '/master/goods/import/$batchId';
 
+  // 发料方式 (按工单领料 / 整批领到车间内料仓) 与分摊方式切换, ADR-131: 先预览受影响项, 再原子批量切换。
+  static String goodsIssueMethodPreview(String goodsId) =>
+      '/master/goods/$goodsId/issue-method/preview';
+  static const goodsIssueMethodBatch = '/master/goods/issue-method/batch';
+
+  // 车间内料仓上线准备: 产品的塑料单个重量 (期间边) 与认料批量填写。
+  static const goodsPeriodicBomPreparation =
+      '/master/goods/periodic-bom/preparation';
+  static const goodsPeriodicBomBatch = '/master/goods/periodic-bom/batch';
+
   // 模具资料分类（基础资料 / master-data）—— 与货品分类同构，独立端点
   static const mouldCategories = '/master/mould-categories';
   static const mouldCategoryTree = '$mouldCategories/tree';
@@ -452,6 +462,90 @@ abstract final class ApiEndpoints {
       '/stock/production-materials/plans/$planId/settlements/reverse';
   static String productionMaterialClose(String planId) =>
       '/stock/production-materials/plans/$planId/close';
+
+  // 车间内料仓 (ADR-131; 后端 features/warehouse/materialbin): 设置、机台与容器、
+  // 领料 / 退回 / 其它耗用、盘点与期间、自动结算状态、认料与换料、用量报表。
+  // 写接口都带 idempotencyKey 与 expectedVersion; 页面按钮只看响应里的 allowedActions。
+  static const workshopMaterialBase = '/workshop-material';
+
+  /// 工作台徽章来源: 待发料 / 待收退回 / 盘点中。
+  static const workshopMaterialBadgeCounts =
+      '$workshopMaterialBase/badge-counts';
+  static const workshopMaterialSettings = '$workshopMaterialBase/settings';
+  static String workshopMaterialSetting(String workshopId) =>
+      '$workshopMaterialSettings/$workshopId';
+
+  /// 开启前本车间在产、需认料的产品清单 (含预填)。
+  static String workshopMaterialSettingInProgressPending(String workshopId) =>
+      '$workshopMaterialSettings/$workshopId/in-progress-pending';
+  static const workshopMaterialMachines = '$workshopMaterialBase/machines';
+  static const workshopMaterialMachinesBatch =
+      '$workshopMaterialBase/machines/batch';
+  static String workshopMaterialMachine(String machineId) =>
+      '$workshopMaterialMachines/$machineId';
+  static const workshopMaterialContainersBatch =
+      '$workshopMaterialBase/containers/batch';
+  static String workshopMaterialContainer(String containerId) =>
+      '$workshopMaterialBase/containers/$containerId';
+  static String workshopMaterialBinPosition(String binId) =>
+      '$workshopMaterialBase/bins/$binId/position';
+  static const workshopMaterialRequisitions =
+      '$workshopMaterialBase/requisitions';
+  static String workshopMaterialRequisition(String id) =>
+      '$workshopMaterialRequisitions/$id';
+  static String workshopMaterialRequisitionFulfil(String id) =>
+      '$workshopMaterialRequisitions/$id/fulfil';
+  static String workshopMaterialRequisitionCancel(String id) =>
+      '$workshopMaterialRequisitions/$id/cancel';
+  static const workshopMaterialDirectIssues =
+      '$workshopMaterialBase/direct-issues';
+
+  /// 直接发料默认值 (该车间上一次的领料人)。
+  static const workshopMaterialDirectIssueDefaults =
+      '$workshopMaterialDirectIssues/defaults';
+  static const workshopMaterialOtherIssues =
+      '$workshopMaterialBase/other-issues';
+  static const workshopMaterialPeriods = '$workshopMaterialBase/periods';
+  static String workshopMaterialPeriod(String periodId) =>
+      '$workshopMaterialPeriods/$periodId';
+  static String workshopMaterialStartCount(String periodId) =>
+      '$workshopMaterialPeriods/$periodId/start-count';
+  static String workshopMaterialWithdrawCount(String periodId) =>
+      '$workshopMaterialPeriods/$periodId/withdraw-count';
+  static String workshopMaterialCorrectCount(String periodId) =>
+      '$workshopMaterialPeriods/$periodId/correct-count';
+  static String workshopMaterialCloseStatus(String periodId) =>
+      '$workshopMaterialPeriods/$periodId/close-status';
+  static String workshopMaterialCloseRetry(String periodId) =>
+      '$workshopMaterialPeriods/$periodId/close-retry';
+
+  /// 撤销结算 (需再认证)。
+  static String workshopMaterialReopen(String periodId) =>
+      '$workshopMaterialPeriods/$periodId/reopen';
+  static String workshopMaterialCount(String countId) =>
+      '$workshopMaterialBase/counts/$countId';
+
+  /// 盘点单一行 (逐行保存 / 删除); key 是客户端生成的行键。
+  static String workshopMaterialCountLine(String countId, String key) =>
+      '$workshopMaterialBase/counts/$countId/lines/${Uri.encodeComponent(key)}';
+  static String workshopMaterialZeroRest(String countId) =>
+      '$workshopMaterialBase/counts/$countId/zero-rest';
+  static String workshopMaterialSubmitCount(String countId) =>
+      '$workshopMaterialBase/counts/$countId/submit';
+
+  /// 整批领料的料清单 (申请/发料下拉、出库仓下拉、上线准备颗粒下拉), ?workshopId=。
+  static const workshopMaterialMaterials = '$workshopMaterialBase/materials';
+  static const workshopMaterialChoicesPending =
+      '$workshopMaterialBase/choices/pending';
+  static const workshopMaterialChoices = '$workshopMaterialBase/choices';
+
+  /// 某张工单 (任务段) 改用别的料。
+  static String workshopMaterialSegmentChange(String segmentId) =>
+      '$workshopMaterialBase/segments/$segmentId/material-changes';
+
+  /// 用量报表: [kind] = bin-usage | product-usage | waste-trend | missing-weights | ledger。
+  static String workshopMaterialReport(String kind) =>
+      '$workshopMaterialBase/reports/$kind';
 
   // 岗位（部门下）
   static String departmentPositions(String deptId) =>

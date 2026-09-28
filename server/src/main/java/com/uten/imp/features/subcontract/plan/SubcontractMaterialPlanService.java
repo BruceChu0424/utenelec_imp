@@ -383,6 +383,7 @@ public class SubcontractMaterialPlanService
                     JOIN goods child ON child.id=edge.component_goods_id
                      AND child.is_deleted=FALSE
                      AND COALESCE(child.auto_created,FALSE)=FALSE
+                     AND child.issue_method<>'PERIODIC'
                     WHERE inventory_item.order_id=:orderId AND inventory_item.is_deleted=FALSE
                       AND edge.consumption_basis='PER_UNIT'
                       AND edge.control_stage IN ('START','ASSEMBLY','FINISH')
@@ -3104,6 +3105,7 @@ public class SubcontractMaterialPlanService
      *   <li>该边 {@code control_stage} 是真实投入阶段（SHIP/REFERENCE 只是参考料）；</li>
      *   <li>子件可由采购或自制取得，其自身 BOM 不限制直属外发形态。</li>
      * </ol>
+     * ADR-131: 子件是整批领料的料的边 (期间边) 不算活动边, 与 V740 收紧后的函数同口径。
      */
     private SoleComponent soleOutboundComponent(UUID goodsId) {
         // 判据本体在 V581 的 fn_subcontract_sole_component_goods，Java 只取
@@ -3114,6 +3116,7 @@ public class SubcontractMaterialPlanService
                 JOIN goods child ON child.id = edge.component_goods_id
                  AND child.is_deleted = FALSE
                  AND COALESCE(child.auto_created, FALSE) = FALSE
+                 AND child.issue_method <> 'PERIODIC'
                 WHERE edge.goods_id = :goodsId AND edge.is_deleted = FALSE
                   AND fn_subcontract_sole_component_goods(CAST(:goodsId AS uuid))
                 """).setParameter("goodsId", goodsId));
@@ -3135,6 +3138,7 @@ public class SubcontractMaterialPlanService
                 JOIN goods child ON child.id = bom.component_goods_id
                  AND child.is_deleted = FALSE
                  AND COALESCE(child.auto_created, FALSE) = FALSE
+                 AND child.issue_method <> 'PERIODIC'
                 WHERE bom.goods_id = :goodsId AND bom.is_deleted = FALSE
                 ORDER BY bom.id
                 """).setParameter("goodsId", goodsId));

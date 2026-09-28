@@ -115,6 +115,22 @@ public class Goods extends SoftDeletableEntity {
     @JoinColumn(name = "owning_responsible_employee_id")
     private com.uten.imp.features.org.employee.Employee owningResponsibleEmployee;
 
+    // ===== 发料方式 (V740 / ADR-131) =====
+    // 四列只读映射: 普通保存 (新建、编辑、导入) 一律不写, 新建时取库默认值; 只经
+    // GoodsIssueMethodService 的预览确认切换 (会话标记 + 提交时断言, 同一事务转换相关 BOM 行)。
+    /** 发料方式: ORDER 按工单领料 / PERIODIC 整批领到车间内料仓。 */
+    @Column(name = "issue_method", nullable = false, insertable = false, updatable = false)
+    private String issueMethod = "ORDER";
+    /** 分摊方式 (只对整批领料): OWN 主料 / SHARED 辅料 / EXPENSE 记车间费用; 按工单领料为空。 */
+    @Column(name = "periodic_cost_basis", insertable = false, updatable = false)
+    private String periodicCostBasis;
+    /** 每袋净重 (基本单位): 发料与盘点"袋数 × 每袋"的默认值。 */
+    @Column(name = "bulk_package_qty", precision = 18, scale = 4, insertable = false, updatable = false)
+    private BigDecimal bulkPackageQty;
+    /** 回收料 (水口料、破碎料): 其它入库预填金额 0。 */
+    @Column(name = "is_recycled_material", nullable = false, insertable = false, updatable = false)
+    private boolean recycledMaterial = false;
+
     /** 采购单价（V593 单一事实源）：新建采购订货单行价预填；每次保存采购单写回最新行价。 */
     @Column(name = "default_purchase_price", precision = 18, scale = 6)
     private java.math.BigDecimal defaultPurchasePrice;

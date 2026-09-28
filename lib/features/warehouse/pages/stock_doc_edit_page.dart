@@ -84,6 +84,15 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   final _grid = UtenEditableGridController<StockGridRow>();
   final _scrollCtl = ScrollController();
 
+  /// 其它入库里按 0 成本进仓的货品 (ADR-131：回收料 = 水口料、破碎料)。
+  ///
+  /// 仓库单据明细没有金额列：这些货品保存时显式带单价 0、金额 0 (留空会变成
+  /// 「成本未定」)，并在明细表上方提示。编辑已有单据时，原来就按 0 成本进仓的
+  /// 明细也记在这里，保存时原样保持。
+  final Set<String> _zeroCostGoodsIds = <String>{};
+
+  bool get _isOtherIn => widget.docType == StockDocType.otherIn;
+
   /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
   final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
@@ -135,6 +144,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     'createdDocId': _createdDocId,
     'billDate': _billDate.toIso8601String(),
     'attachments': _pendingFiles.exportDraft(),
+    'zeroCostGoodsIds': _zeroCostGoodsIds.toList(),
     'selected': draftGridSelection(_grid),
     'rows': [
       for (final row in _grid.rows)
@@ -169,6 +179,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     _createdDocId = data['createdDocId'] as String?;
     _billDate = DateTime.tryParse(draftText(data, 'billDate')) ?? _billDate;
     _pendingFiles.restoreDraft(draftMap(data['attachments']));
+    _zeroCostGoodsIds
+      ..clear()
+      ..addAll([
+        for (final id in (data['zeroCostGoodsIds'] as List?) ?? const [])
+          if (id is String && id.isNotEmpty) id,
+      ]);
     _grid.replaceAll([
       for (final item in draftMaps(data['rows']))
         (() {
@@ -279,6 +295,13 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         _editRestrictionReason = d.restrictionReason;
         final rows = <StockGridRow>[];
         for (final it in d.items) {
+          // 原来就按 0 成本进仓的其它入库明细 (回收料)：保存时保持 0 成本。
+          if (_isOtherIn &&
+              it.goodsId != null &&
+              it.amountLocal != null &&
+              it.amountLocal == 0) {
+            _zeroCostGoodsIds.add(it.goodsId!);
+          }
           final row = StockGridRow(isCheck: _isCheck)
             ..goods = it.goodsId == null
                 ? null
@@ -353,6 +376,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       ..goodsSeries = g.series
       ..colorName = g.colorName
       ..unitName = g.unitName;
+    // 其它入库的回收料 (水口料、破碎料，ADR-131)：金额预填 0，按 0 成本进仓。
+    if (_isOtherIn && g.recycledMaterial) {
+      _zeroCostGoodsIds.add(g.id);
+      if (!mounted) return;
+      context.appInfo('「${g.name ?? g.code ?? ''}」是回收料，水口料按 0 成本进仓');
+    }
     // 库位号不在选择器返回里：按需补全详情（名称缓存命中也会拉取）。
     await ref.read(masterNameServiceProvider).loadGoodsDetails([g.id]);
     if (!mounted) return;
@@ -506,6 +535,11 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       } else {
         m['qty'] = double.tryParse(r.qty.text) ?? 0;
       }
+      // 回收料按 0 成本进仓：显式单价 0、金额 0 (不留空，留空是「成本未定」)。
+      if (_isOtherIn && _zeroCostGoodsIds.contains(r.goods!.id)) {
+        m['price'] = 0;
+        m['amountLocal'] = 0;
+      }
       if (r.upstreamItemId != null) m['upstreamItemId'] = r.upstreamItemId;
       if (r.executionSegmentId != null) {
         m['executionSegmentId'] = r.executionSegmentId;
@@ -557,6 +591,18 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// 明细里按 0 成本进仓的货品名 (去重，保持表内顺序)。
+  List<String> get _zeroCostNames {
+    final names = <String>[];
+    for (final row in _grid.rows) {
+      final goods = row.goods;
+      if (goods == null || !_zeroCostGoodsIds.contains(goods.id)) continue;
+      final name = goods.name ?? goods.code ?? '';
+      if (name.isNotEmpty && !names.contains(name)) names.add(name);
+    }
+    return names;
   }
 
   String _fmt(DateTime d) =>
@@ -768,6 +814,28 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                                 '请刷新账面并重新核对实盘数。',
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: UtenSpacing.s8),
+                            ],
+                            // 其它入库含回收料 (ADR-131)：提示这些货品按 0 成本进仓。
+                            if (_isOtherIn && _zeroCostNames.isNotEmpty) ...[
+                              Container(
+                                key: const Key('stock-doc-zero-cost-hint'),
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(UtenSpacing.s8),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.secondaryContainer,
+                                  borderRadius: BorderRadius.circular(
+                                    UtenRadius.control,
+                                  ),
+                                ),
+                                child: Text(
+                                  '水口料按 0 成本进仓：${_zeroCostNames.join('、')}',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color:
+                                        theme.colorScheme.onSecondaryContainer,
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: UtenSpacing.s8),

@@ -31,12 +31,14 @@ import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
+import '../models/goods_bom_item.dart';
 import '../models/goods_node.dart';
 import '../providers/color_unit_dict.dart';
 import '../repositories/goods_repository.dart';
 import 'goods_bom_preview.dart';
 import 'goods_bom_tab.dart';
 import 'goods_cost_tab.dart';
+import 'goods_issue_method_dialog.dart';
 import 'master_detail_sheet.dart';
 import 'master_edit_dialog.dart';
 import 'mould_picker_field.dart';
@@ -362,6 +364,9 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         label: '单重',
         type: MasterFieldType.custom,
         group: '规格',
+        // ADR-131：有整批领料的料 (期间边) 的产品，在单重旁只读提示 BOM 里的
+        // 塑料单个重量；货品资料的单重本身不锁。
+        info: _periodicBomWeightInfo(),
         customBuilder: (ctx) => NumberUnitField(
           label: '单重',
           numberKey: 'mWeight',
@@ -504,6 +509,57 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     );
   }
 
+  /// BOM 里整批领料的料的单个重量 (克)，逐条一句话；没有期间边时为 null。
+  String? _periodicBomWeightInfo() {
+    final weights = _detail?.periodicBomWeights ?? const [];
+    if (weights.isEmpty) return null;
+    return [for (final w in weights) _periodicBomWeightText(w)].join('\n');
+  }
+
+  String _periodicBomWeightText(GoodsPeriodicBomWeight w) {
+    final material = [
+      w.materialName ?? w.materialCode,
+      w.colorName,
+    ].whereType<String>().join(' ');
+    final grams = w.unitWeightGrams;
+    final qty = w.qty;
+    // 料的基本单位不能按克换算时服务端不给克数，按 BOM 用量原单位显示。
+    final text = grams != null
+        ? (_l10nOrNull()?.wmUnitWeightFromBom(periodicGramsText(grams)) ??
+              '塑料单个重量 (来自 BOM): ${periodicGramsText(grams)} 克')
+        : qty != null && qty > 0
+        ? '塑料单个重量 (来自 BOM): ${goodsQtyText(qty)}${w.unitName ?? ''}'
+        : '塑料单个重量 (来自 BOM): 待补';
+    return material.isEmpty ? text : '$text ($material)';
+  }
+
+  /// 货品资料单重折算成克 (单重单位是千克/克时)；其它单位或没登记返回 null。
+  double? _productWeightGrams() {
+    final d = _detail;
+    final weight = d?.mWeight;
+    if (d == null || weight == null || weight <= 0) return null;
+    final factor = periodicGramsPerBaseUnit(
+      _unitSuffix(d.mWeightUnitId, d.mWeightUnitLegacyId),
+    );
+    return factor == null ? null : weight * factor;
+  }
+
+  /// 「发料方式」弹窗 (ADR-131)：发料方式 / 分摊方式 / 每袋净重 / 回收料。
+  /// 切换发料方式会转换 BOM 行形状，所以要同时有货品编辑与 BOM 编辑权
+  /// (由页面按服务端权限传入，与 PUT /issue-method/batch 的要求一致)。
+  bool get _canEditIssueMethod =>
+      _canEditSaved && widget.canBomEdit && _detail != null;
+
+  Future<void> _openIssueMethod() async {
+    final d = _detail;
+    if (d == null) return;
+    final saved = await showGoodsIssueMethodDialog(context, detail: d);
+    if (!saved || !mounted) return;
+    context.appSuccess(_l10nOrNull()?.wmIssueMethodUpdated ?? '发料方式已更新');
+    await _refreshDetail();
+    widget.onDataChanged?.call();
+  }
+
   Map<String, String> _initialValues() {
     final d = _detail;
     if (d == null) return {'status': '使用'};
@@ -545,6 +601,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     if (d != null) {
       m.addAll(goodsUuidFirstReferenceBody(d));
       if (d.version != null) m['version'] = d.version;
+      // 车间内料仓属性 (ADR-131：发料方式、分摊方式、每袋净重、回收料) 只在「发料方式」
+      // 弹窗里改 (PUT /issue-method/batch)；普通保存服务端不收这四个字段，这里也不提交。
       m
         ..['sourceE'] = d.sourceE
         ..['machiningE'] = d.machiningE
@@ -904,6 +962,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         if (widget.onViewMovements != null ||
             (widget.onToggleStatus != null && _writable) ||
             _canEditSaved ||
+            _canEditIssueMethod ||
             (widget.onDelete != null && _writable)) ...[
           const Divider(height: 1),
           Padding(
@@ -918,6 +977,16 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
                     // 流水页压栈在本详情页之上，返回时回到本页。
                     onPressed: widget.onViewMovements,
                     child: const Text('出入库流水'),
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                ],
+                if (_canEditIssueMethod) ...[
+                  UtenButton(
+                    key: const Key('goods-issue-method-open'),
+                    type: UtenButtonType.tonal,
+                    icon: Icons.inventory_2_outlined,
+                    onPressed: _openIssueMethod,
+                    child: Text(_l10nOrNull()?.wmIssueMethod ?? '发料方式'),
                   ),
                   const SizedBox(width: UtenSpacing.s8),
                 ],
@@ -954,6 +1023,10 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       ],
     );
   }
+
+  /// 可选取 l10n：个别宿主测试没挂本地化代理，取不到时回落中文。
+  AppLocalizations? _l10nOrNull() =>
+      Localizations.of<AppLocalizations>(context, AppLocalizations);
 
   /// 厚度/单重的单位显示名：UUID 真源优先；仅 UUID 缺失时按 legacy_id 兼容。
   /// 新建单位通常没有 legacy_id，因此查看态不能只走 legacy 映射。
@@ -1031,6 +1104,9 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
           '单重',
           withUnit(d.mWeight, d.mWeightUnitId, d.mWeightUnitLegacyId),
         ),
+        // ADR-131：有期间边的产品在单重旁只读显示 BOM 里的塑料单个重量。
+        for (final w in d.periodicBomWeights)
+          MasterDetailRow('塑料单个重量', _periodicBomWeightText(w)),
         MasterDetailRow('主颜色', d.colorName),
         MasterDetailRow('系列', d.series),
         MasterDetailRow('库位号', d.stockPlace),
@@ -1039,6 +1115,27 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         MasterDetailRow('模具', d.mouldName),
         MasterDetailRow('模具编号', d.mouldCode),
         MasterDetailRow('后模镶件编号', d.rearInsertCode),
+      ]),
+      // 车间内料仓 (ADR-131)：发料方式等在底部「发料方式」按钮里改。
+      _DetailSection(_l10nOrNull()?.wmWorkshopMaterialSection ?? '车间用料', [
+        MasterDetailRow(
+          _l10nOrNull()?.wmIssueMethod ?? '发料方式',
+          goodsIssueMethodLabel(context, d.issueMethod),
+        ),
+        if (d.isPeriodicIssue)
+          MasterDetailRow(
+            _l10nOrNull()?.wmCostBasis ?? '分摊方式',
+            goodsCostBasisLabel(context, d.periodicCostBasis),
+          ),
+        if (d.isPeriodicIssue || d.bulkPackageQty != null)
+          MasterDetailRow(
+            _l10nOrNull()?.wmBulkPackageQty ?? '每袋净重 (公斤)',
+            goodsQtyText(d.bulkPackageQty),
+          ),
+        MasterDetailRow(
+          _l10nOrNull()?.wmRecycledMaterial ?? '回收料',
+          d.recycledMaterial ? '是 (其它入库按 0 成本进仓)' : '否',
+        ),
       ]),
       _DetailSection('商务', [
         if (canViewPrice) MasterDetailRow('价格', s(d.price)),
@@ -1148,6 +1245,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       canDelete: widget.canBomDelete,
       productCode: _detail?.code,
       productName: _detail?.name,
+      // ADR-131：BOM 上整批领料的料的单个重量与货品资料单重相差 20% 以上时标黄。
+      productWeightGrams: _productWeightGrams(),
       // 「预览」按钮渲染在组装信息表格工具条「全屏」旁（2026-09-12 从详情头部
       // 迁入）；弹窗要的型号等取自 _detail，故由本 Body 接线。
       onPreview: () => showGoodsBomPreview(

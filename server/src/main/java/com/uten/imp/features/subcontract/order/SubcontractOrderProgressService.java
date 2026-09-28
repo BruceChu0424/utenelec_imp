@@ -180,7 +180,7 @@ public class SubcontractOrderProgressService {
             materialLines=queryRows("""
                     SELECT item.id,goods.code,goods.name,color.name,unit.name,item.unit_rate,round(item.qty*COALESCE(item.unit_rate,1),4),
                            preparation.analysis_id,preparation.id,
-                           EXISTS(SELECT 1 FROM goods_bom_items bom WHERE bom.goods_id=item.goods_id AND bom.is_deleted=FALSE),
+                           fn_goods_has_order_bom(item.goods_id),
                            EXISTS(SELECT 1 FROM production_plans plan WHERE plan.material_analysis_id=preparation.analysis_id
                              AND plan.material_analysis_item_id=preparation.id AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE)
                     FROM subcontract_order_items item JOIN goods ON goods.id=item.goods_id

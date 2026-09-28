@@ -1885,5 +1885,207 @@
   "materialPreparationAvailableHint": "Supply available to this line includes stock and issued supply, including incoming and unprocessed quantities. Supply assigned to other orders is excluded. Material issue requires actual stock.",
   "materialPreparationPending": "To order",
   "materialPreparationInProgress": "In progress",
-  "materialPreparationMissingAssignment": "Set the production workshop and responsible person for “{goods}” before ordering"
+  "materialPreparationMissingAssignment": "Set the production workshop and responsible person for “{goods}” before ordering",
+  "workshopMaterialBin": "Workshop Material Store",
+  "workshopMaterialBinOf": "{workshop} Material Store",
+  "@workshopMaterialBinOf": {
+    "placeholders": {
+      "workshop": {
+        "type": "String"
+      }
+    }
+  },
+  "workshopMaterialGroup": "Workshop Material",
+  "workshopMaterialSetup": "Workshop Material Setup",
+  "workshopMaterialReports": "Workshop Material Usage",
+  "wmIssueMethod": "Issue method",
+  "wmIssueMethodOrder": "Issue per work order",
+  "wmIssueMethodPeriodic": "Bulk issue to workshop store",
+  "wmCostBasis": "Cost allocation",
+  "wmCostBasisOwn": "Main material",
+  "wmCostBasisShared": "Auxiliary material",
+  "wmCostBasisExpense": "Workshop expense",
+  "wmBulkPackageQty": "Net weight per bag (kg)",
+  "wmRecycledMaterial": "Recycled material",
+  "wmUnitWeightGrams": "Unit weight (g)",
+  "wmUnitWeightFromBom": "Plastic unit weight (from BOM): {grams} g",
+  "@wmUnitWeightFromBom": {
+    "placeholders": {
+      "grams": {
+        "type": "String"
+      }
+    }
+  },
+  "wmUnusualWeightConfirm": "Unit weight {grams} g looks unusual. Confirm?",
+  "@wmUnusualWeightConfirm": {
+    "placeholders": {
+      "grams": {
+        "type": "String"
+      }
+    }
+  },
+  "wmSecondMaterialConfirm": "Does this product use two materials (two-shot)? If you are only changing material, edit the existing row",
+  "wmRequestIssue": "Request material",
+  "wmReturn": "Return",
+  "wmOtherIssue": "Trial / purge usage",
+  "wmOtherReasonTrial": "Trial moulding",
+  "wmOtherReasonPurge": "Purging",
+  "wmOtherReasonScrap": "Scrapped material",
+  "wmOtherReasonOther": "Other",
+  "wmDirectIssue": "Direct issue",
+  "wmPendingIssue": "To issue",
+  "wmPendingReturn": "Returns to receive",
+  "wmCount": "Stock count",
+  "wmHistory": "History",
+  "wmBags": "Bags",
+  "wmKg": "kg",
+  "wmReceiver": "Received by",
+  "wmWarehouseAvailable": "Warehouse has {qty} kg",
+  "@wmWarehouseAvailable": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "wmEstimatedRemaining": "Store estimated remaining {qty} kg",
+  "@wmEstimatedRemaining": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "wmCountingNextPeriod": "Counting has started; this batch goes to the next period",
+  "wmSupplementFlag": "This batch was missed in the previous period",
+  "wmSupplementPeriod": "Add to period",
+  "wmAlsoOrderMaterials": "Also issue other materials per work order (e.g. inserts)",
+  "wmFillFromGoodsWeight": "Fill checked rows from item weight",
+  "wmCloseFailing": "Settlement keeps failing; retrying daily. Please contact the administrator",
+  "wmStartCount": "Start count",
+  "wmCutoffToday": "Cut off today",
+  "wmCutoffYesterday": "Cut off yesterday",
+  "wmMonthEndHint": "For monthly reconciliation, count at month end",
+  "wmFillFull": "Full",
+  "wmFillHalf": "Half",
+  "wmFillEmpty": "Empty",
+  "wmFillWeighed": "Enter kg",
+  "wmWeighOpenBag": "Opened bag (weighed)",
+  "wmWeighMixed": "Mixed, not yet loaded",
+  "wmWeighLoose": "Loose material",
+  "wmFillGuide": "Over 3/4 is full, 1/4 to 3/4 is half, under 1/4 is empty",
+  "wmMachineIdle": "Machine idle, all empty",
+  "wmZeroRest": "Everything else is used up, record 0",
+  "wmPrintBlank": "Print blank count sheet",
+  "wmSubmitCount": "Submit count",
+  "wmWithdrawCount": "Withdraw count",
+  "wmCorrectCount": "Correct count",
+  "wmBagsTimesKg": "{bags} bags × {kg} kg",
+  "@wmBagsTimesKg": {
+    "placeholders": {
+      "bags": {
+        "type": "int"
+      },
+      "kg": {
+        "type": "String"
+      }
+    }
+  },
+  "wmCloseState": "Settlement status",
+  "wmCloseWaitingPrevious": "Waiting for previous period",
+  "wmCloseBlockedReport": "{n} reports not yet approved (approver, or author deletes unwanted drafts)",
+  "@wmCloseBlockedReport": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "wmCloseBlockedWeight": "{n} products missing unit weight (BOM owner)",
+  "@wmCloseBlockedWeight": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "wmCloseBlockedStock": "\"{material}\" used without any issue this period (warehouse adds the missed issue, or workshop corrects the material)",
+  "@wmCloseBlockedStock": {
+    "placeholders": {
+      "material": {
+        "type": "String"
+      }
+    }
+  },
+  "wmCloseRetry": "Retry now",
+  "wmReopen": "Reopen settlement",
+  "wmReopenReason": "Reason",
+  "wmReopenHeld": "Settlement reopened. Click \"Settle again\" when done; the system will settle automatically at {time}",
+  "@wmReopenHeld": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "wmSettleAgain": "Settle again",
+  "wmNeedChoice": "Material to confirm",
+  "wmStartSheetTitle": "Confirm materials before start",
+  "wmStartConfirm": "Confirm and start ({n})",
+  "@wmStartConfirm": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "wmOrderInstead": "Issue these per work order (do not start yet)",
+  "wmNotFromStore": "Not from workshop store (per work order)",
+  "wmWeightPending": "To be filled; start is not blocked",
+  "wmChangeMaterial": "Change material for this order",
+  "wmChangeFrom": "Effective from",
+  "wmAddMaterial": "Add a material",
+  "wmEnable": "Enable bulk issue",
+  "wmGoLiveDate": "Go-live date",
+  "wmMainWarehouse": "Under main warehouse",
+  "wmMachines": "Machines & containers",
+  "wmGoLivePrep": "Go-live preparation",
+  "wmGoLiveProgress": "{total} frequent products, {chosen} with material, {weighed} with unit weight",
+  "@wmGoLiveProgress": {
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "chosen": {
+        "type": "int"
+      },
+      "weighed": {
+        "type": "int"
+      }
+    }
+  },
+  "wmReportUsage": "Usage",
+  "wmReportProduct": "By product",
+  "wmReportTrend": "Waste trend",
+  "wmReportMissingWeight": "Missing unit weights",
+  "wmReportLedger": "Movements",
+  "wmTrueUnitUsage": "Actual per-unit usage",
+  "wmAllocatedByTheory": "Allocated by standard",
+  "wmWasteRate": "Waste rate",
+  "wmIncludeWorkshopStore": "Include workshop stores",
+  "workshopMaterialSetupHubDesc": "Enable bulk issue, machines & containers, go-live preparation",
+  "workshopMaterialReportsHubDesc": "Usage, waste rate and settlement status by period",
+  "wmReceiveReturn": "Receive return",
+  "wmIssueByRequest": "Issue by request",
+  "wmOnHand": "On hand",
+  "wmInUseMaterial": "Material in use",
+  "wmBagMaterials": "Bagged material",
+  "wmEnableWorkshopTab": "Workshops",
+  "wmReportPeriod": "Period",
+  "wmReportAllPeriods": "All periods",
+  "wmReportMaterial": "Material",
+  "wmReportNoBin": "No workshop has enabled bulk issue yet, so there is no store usage to show.",
+  "wmOpenBom": "Open BOM",
+  "wmWorkshopMaterialSection": "Workshop material",
+  "wmIssueMethodUpdated": "Issue method updated"
 }

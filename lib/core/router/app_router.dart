@@ -127,6 +127,10 @@ import '../../features/warehouse/pages/warehouse_subcontract_outbound_edit_page.
 import '../../features/warehouse/pages/warehouse_subcontract_outbound_page.dart';
 import '../../features/warehouse/pages/warehouse_sales_outbound_page.dart';
 import '../../features/warehouse/pages/warehouse_task_center_page.dart';
+import '../../features/warehouse/materialbin/pages/workshop_material_bin_page.dart';
+import '../../features/warehouse/materialbin/pages/workshop_material_count_page.dart';
+import '../../features/warehouse/materialbin/pages/workshop_material_issue_page.dart';
+import '../../features/warehouse/materialbin/pages/workshop_material_setup_page.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
 import '../../features/notice/models/notice.dart';
@@ -135,6 +139,7 @@ import '../../features/payroll/pages/payroll_review_page.dart';
 import '../../features/payroll/pages/payroll_slip_detail_page.dart';
 import '../../features/payroll/pages/payroll_slip_list_page.dart';
 import '../../features/production/production_routes.dart';
+import '../../features/production/pages/workshop_material_reports_page.dart';
 import '../../features/procurement_iqc_rejection/pages/procurement_iqc_rejection_detail_page.dart';
 import '../../features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart';
 import '../../features/profile/pages/my_profile_changes_page.dart';
@@ -1227,6 +1232,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) =>
                 const WarehouseTaskCenterPage(initialGroup: 'draw'),
           ),
+          // 车间内料仓设置 (ADR-131; 静态段须先于 /warehouse/:code/:id, 否则被单据详情吞掉)。
+          // ?tab=enable|machines|prep 直达页签。
+          DraftAwareGoRoute(
+            path: RouteName.workshopMaterialSetup,
+            name: 'workshop-material-setup',
+            builder: (_, s) => WorkshopMaterialSetupPage(
+              initialTab: s.uri.queryParameters['tab'],
+            ),
+          ),
           DraftAwareGoRoute(
             path: '/warehouse/:code/new',
             name: 'stock-doc-new',
@@ -1261,6 +1275,44 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, s) => StockDocListPage(
               docType: StockDocType.byCode(s.pathParameters['code']!),
               initialStatus: s.uri.queryParameters['status'],
+            ),
+          ),
+
+          // —— 车间内料仓 (ADR-131) ——
+          DraftAwareGoRoute(
+            path: RouteName.workshopMaterialBin,
+            name: 'workshop-material-bin',
+            builder: (_, s) => WorkshopMaterialBinPage(
+              workshopId: s.uri.queryParameters['workshopId'],
+            ),
+          ),
+          // 带 ?requisitionId= 为按申请发料 / 收退回; 不带 (或 ?mode=direct) 为直接发料。
+          DraftAwareGoRoute(
+            path: RouteName.workshopMaterialIssue,
+            name: 'workshop-material-issue',
+            builder: (_, s) => WorkshopMaterialIssuePage(
+              requisitionId: s.uri.queryParameters['requisitionId'],
+              mode: s.uri.queryParameters['mode'],
+            ),
+          ),
+          // 盘点页只认 ?periodId=; 缺参数时回到车间内料仓页选期间。
+          DraftAwareGoRoute(
+            path: RouteName.workshopMaterialCount,
+            name: 'workshop-material-count',
+            redirect: (_, s) =>
+                (s.uri.queryParameters['periodId']?.trim().isNotEmpty ?? false)
+                ? null
+                : RouteName.workshopMaterialBin,
+            builder: (_, s) => WorkshopMaterialCountPage(
+              periodId: s.uri.queryParameters['periodId']!.trim(),
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.workshopMaterialReports,
+            name: 'workshop-material-reports',
+            builder: (_, s) => WorkshopMaterialReportsPage(
+              initialBinId: s.uri.queryParameters['binId'],
+              initialPeriodId: s.uri.queryParameters['periodId'],
             ),
           ),
 

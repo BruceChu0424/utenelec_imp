@@ -27,6 +27,9 @@ import java.util.UUID;
  * that goes with that actual usage. Which one a node
  * adopts, and its per-product quantity, is decided in Java
  * ({@code MaterialAnalysisService.bomNodes}); no usage rule is re-derived here.</p>
+ *
+ * <p>ADR-131: 整批领料的料 (组件发料方式 PERIODIC) 的边整体不进快照, 由车间内料仓按期盘点计耗;
+ * 「有没有下层」只数按单边 (fn_goods_has_order_bom), 校验同样不看这些边。</p>
  */
 final class MaterialAnalysisBomSnapshotReader {
     private final EntityManager em;
@@ -153,9 +156,7 @@ final class MaterialAnalysisBomSnapshotReader {
                            component_unit.name AS unit_name,
                            GREATEST(COALESCE(component.min_qty,0),0)::numeric AS safety_stock,
                            component.source_type,
-                           EXISTS (SELECT 1 FROM goods_bom_items child
-                                   WHERE child.goods_id = b.component_goods_id
-                                     AND child.is_deleted = FALSE LIMIT 1 OFFSET 0) AS has_children,
+                           fn_goods_has_order_bom(b.component_goods_id) AS has_children,
                            b.control_stage, b.consumption_basis,
                            b.basis_output_qty, b.allow_partial_package, b.hard_gate
                     FROM roots
@@ -166,6 +167,7 @@ final class MaterialAnalysisBomSnapshotReader {
                     ) b ON TRUE
                     JOIN goods component ON component.id = b.component_goods_id
                                          AND component.is_deleted = FALSE
+                                         AND component.issue_method <> 'PERIODIC'
                     LEFT JOIN colors resolved_color ON resolved_color.id =
                         COALESCE(b.color_id, component.color_id)
                                                     AND resolved_color.is_deleted = FALSE
@@ -183,9 +185,7 @@ final class MaterialAnalysisBomSnapshotReader {
                            component_unit.name,
                            GREATEST(COALESCE(component.min_qty,0),0)::numeric,
                            component.source_type,
-                           EXISTS (SELECT 1 FROM goods_bom_items child
-                                   WHERE child.goods_id = b.component_goods_id
-                                     AND child.is_deleted = FALSE LIMIT 1 OFFSET 0),
+                           fn_goods_has_order_bom(b.component_goods_id),
                            b.control_stage, b.consumption_basis,
                            b.basis_output_qty, b.allow_partial_package, b.hard_gate
                     FROM exp
@@ -196,6 +196,7 @@ final class MaterialAnalysisBomSnapshotReader {
                     ) b ON TRUE
                     JOIN goods component ON component.id = b.component_goods_id
                                          AND component.is_deleted = FALSE
+                                         AND component.issue_method <> 'PERIODIC'
                     LEFT JOIN colors resolved_color ON resolved_color.id =
                         COALESCE(b.color_id, component.color_id)
                                                     AND resolved_color.is_deleted = FALSE
@@ -275,6 +276,7 @@ final class MaterialAnalysisBomSnapshotReader {
                         WHERE edge.goods_id=roots.goods_id AND edge.is_deleted=FALSE OFFSET 0
                     ) b ON TRUE
                     JOIN goods component ON component.id = b.component_goods_id
+                                         AND component.issue_method <> 'PERIODIC'
                     LEFT JOIN units component_unit ON component_unit.id = component.unit_id
                                                    AND component_unit.is_deleted = FALSE
                     LEFT JOIN colors resolved_color ON resolved_color.id =
@@ -291,6 +293,7 @@ final class MaterialAnalysisBomSnapshotReader {
                         OFFSET 0
                     ) b ON TRUE
                     JOIN goods component ON component.id = b.component_goods_id
+                                         AND component.issue_method <> 'PERIODIC'
                     LEFT JOIN units component_unit ON component_unit.id = component.unit_id
                                                    AND component_unit.is_deleted = FALSE
                     LEFT JOIN colors resolved_color ON resolved_color.id =

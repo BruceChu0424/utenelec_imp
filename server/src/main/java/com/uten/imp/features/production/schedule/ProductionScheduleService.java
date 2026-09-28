@@ -411,7 +411,8 @@ public class ProductionScheduleService {
                                      WHERE balance.goods_id = b.component_goods_id), 0) AS onhand,
                            EXISTS (SELECT 1 FROM goods_bom_items child
                                    WHERE child.goods_id = b.component_goods_id
-                                     AND child.is_deleted = false) AS self_made
+                                     AND child.is_deleted = false) AS self_made,
+                           component.issue_method = 'PERIODIC' AS periodic
                     FROM goods_bom_items b
                     JOIN goods component ON component.id = b.component_goods_id
                     LEFT JOIN v_goods_bom_item_usage usage ON usage.bom_item_id = b.id
@@ -433,13 +434,16 @@ public class ProductionScheduleService {
                     components.computeIfAbsent(lineId, ignored -> new ArrayList<>());
             if (r[17] != null) {
                 BigDecimal effectiveQty = bdOrNull(r[23]);
+                boolean periodic = Boolean.TRUE.equals(r[29]);
                 bom.add(new ScheduleOrderLine.BomComponent(
                         (UUID) r[17], (String) r[18], (String) r[19], (String) r[20],
                         (UUID) r[21], (String) r[22],
                         // 单件用量 = 计算用量 / (按件 ? 1 : 每包/每批产出数)，与物料分析同一共享公式。
                         effectiveQty == null ? null : MaterialConsumptionMath.effectivePerProduct(
                                 BigDecimal.ONE, effectiveQty, (String) r[24], bd(r[25])),
-                        bdOrNull(r[26]), bd(r[27]), Boolean.TRUE.equals(r[28])));
+                        // 整批领料的料 (ADR-131 期间边) 由车间内料仓供料, 不算需求。
+                        periodic ? BigDecimal.ZERO : bdOrNull(r[26]), bd(r[27]),
+                        !periodic && Boolean.TRUE.equals(r[28]), periodic));
             }
         }
         List<ScheduleOrderLine> out = new ArrayList<>(lines.size());
@@ -536,10 +540,13 @@ public class ProductionScheduleService {
         Object d = em.createNativeQuery("""
                 WITH RECURSIVE bom AS (
                     SELECT b.component_goods_id AS gid, 1 AS depth
-                    FROM goods_bom_items b WHERE b.goods_id = :g AND b.is_deleted = false
+                    FROM goods_bom_items b
+                    JOIN goods c ON c.id = b.component_goods_id AND c.issue_method <> 'PERIODIC'
+                    WHERE b.goods_id = :g AND b.is_deleted = false
                     UNION ALL
                     SELECT b.component_goods_id, bom.depth + 1
                     FROM goods_bom_items b JOIN bom ON b.goods_id = bom.gid
+                    JOIN goods c ON c.id = b.component_goods_id AND c.issue_method <> 'PERIODIC'
                     WHERE b.is_deleted = false AND bom.depth < 5
                 )
                 SELECT COALESCE(MAX(depth), 1) FROM bom

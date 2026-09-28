@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.goods.Goods;
 import com.uten.imp.features.master.goods.GoodsBomPasteService;
+import com.uten.imp.features.master.goods.GoodsPeriodicMaterialRules;
 import com.uten.imp.features.master.goods.GoodsRepository;
 import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
 import com.uten.imp.features.master.goods.dto.BomPasteRequest;
@@ -27,6 +28,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -143,6 +145,7 @@ public class GoodsBomImportService {
         int targets = 0;
         int added = 0;
         int removed = 0;
+        List<String> warnings = new ArrayList<>();
         // 按层写入：层 0 粘到目标货品；层 L(≥1) 按父序号分组粘到对应组件货品。
         // 父行一定在更浅的层（校验保证父序号存在），所以按层序写入时父货品 id 已解析。
         for (int level = 0; level < parsed.levels.size(); level++) {
@@ -165,6 +168,9 @@ public class GoodsBomImportService {
                         item.setAllowPartialPackage(row.allowPartialPackage);
                     }
                     item.setSummary(row.summary);
+                    // 整批领料的料的异常单重、双料已在检测报告里逐行提醒, 提交即确认 (ADR-131)。
+                    item.setConfirmUnusualWeight(true);
+                    item.setConfirmSecondPeriodicMaterial(true);
                     items.add(item);
                 }
                 BomPasteResult result = pasteService.paste(new BomPasteRequest(
@@ -174,9 +180,10 @@ public class GoodsBomImportService {
                 targets += result.targets();
                 added += result.added();
                 removed += result.removed();
+                warnings.addAll(result.warnings());
             }
         }
-        return new BomImportResult(targets, added, removed, parsed.levels.size());
+        return new BomImportResult(targets, added, removed, parsed.levels.size(), List.copyOf(warnings));
     }
 
     // ============================================================
@@ -381,6 +388,61 @@ public class GoodsBomImportService {
             if (!perParent.computeIfAbsent(parent, ignored -> new HashSet<>()).add(row.goodsId)) {
                 errors.add(new GoodsImportError(row.rowNum, "物料编号",
                         "物料编号「" + row.code + "」在同一层级重复出现"));
+            }
+        }
+        validatePeriodicEdges(target, rows, bySeq, codeIndex, errors, warnings);
+    }
+
+    /**
+     * 整批领料的料 (期间边, ADR-131 §3.2): 在 BOM 里只填单个重量, 形状由写入时自动归一 (开工前、按每件、
+     * 基准产量 1、不设齐套门槛), 数量按"数量 / 基准产量"折成每件用量; 辅料 (色母) 不写进 BOM;
+     * 按包装或固定批耗计量的拒绝。异常单重、与货品资料单重相差 20% 以上、同一产品两种料逐行提醒,
+     * 提交即按此写入。
+     */
+    private void validatePeriodicEdges(Goods target, List<ParsedRow> rows, Map<String, ParsedRow> bySeq,
+                                       Map<String, Goods> codeIndex, List<GoodsImportError> errors,
+                                       List<GoodsImportError> warnings) {
+        Map<String, Integer> periodicPerParent = new HashMap<>();
+        for (ParsedRow row : rows) {
+            Goods component = row.goodsId == null ? null : codeIndex.get(row.code);
+            if (!GoodsPeriodicMaterialRules.isPeriodic(component)) continue;
+            if (GoodsPeriodicMaterialRules.isSharedBasis(component.getPeriodicCostBasis())) {
+                errors.add(new GoodsImportError(row.rowNum, "物料编号",
+                        "「" + row.code + "」: " + GoodsPeriodicMaterialRules.SHARED_NOT_IN_BOM));
+                continue;
+            }
+            if (!"PER_UNIT".equals(row.basisCode)) {
+                errors.add(new GoodsImportError(row.rowNum, "计量方式",
+                        "「" + row.code + "」是整批领到车间内料仓的料, 在 BOM 里只填单个重量, 计量方式请填 按每件"));
+                continue;
+            }
+            Goods parent = row.parentSeq == null ? target
+                    : bySeq.get(row.parentSeq) == null ? null : codeIndex.get(bySeq.get(row.parentSeq).code);
+            String parentKey = row.parentSeq == null ? "" : row.parentSeq;
+            if (periodicPerParent.merge(parentKey, 1, Integer::sum) == 2) {
+                warnings.add(new GoodsImportError(row.rowNum, "物料编号",
+                        GoodsPeriodicMaterialRules.secondMaterialMessage(GoodsPeriodicMaterialRules.label(parent))
+                                + " (提交即按两种料写入)"));
+            }
+            if (row.qty == null || row.qty.signum() <= 0 || row.basisOutputQty == null
+                    || row.basisOutputQty.signum() <= 0) continue;
+            BigDecimal perUnit = row.qty.divide(row.basisOutputQty, GoodsPeriodicMaterialRules.QTY_SCALE,
+                    RoundingMode.HALF_UP);
+            BigDecimal grams = GoodsPeriodicMaterialRules.toGrams(perUnit,
+                    GoodsPeriodicMaterialRules.gramsPerUnit(component.getUnit()));
+            if (perUnit.signum() <= 0) {
+                errors.add(new GoodsImportError(row.rowNum, "数量", "「" + row.code + "」的单个重量太小, 最少 0.01 克"));
+                continue;
+            }
+            if (GoodsPeriodicMaterialRules.unusual(grams)) {
+                warnings.add(new GoodsImportError(row.rowNum, "数量",
+                        "「" + row.code + "」的单个重量 " + GoodsPeriodicMaterialRules.gramsText(grams)
+                                + " 克看起来不太对, 请核对; 提交即按此写入"));
+            }
+            String difference = GoodsPeriodicMaterialRules.differenceWarning(
+                    GoodsPeriodicMaterialRules.label(parent), grams, GoodsPeriodicMaterialRules.goodsWeightGrams(parent));
+            if (difference != null) {
+                warnings.add(new GoodsImportError(row.rowNum, "数量", difference));
             }
         }
     }

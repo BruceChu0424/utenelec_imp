@@ -36,6 +36,9 @@ public record ScheduleOrderLine(
      * needQty 按计量规则(整包/固定批次向上取整)算出的待排产缺口需求；颜色为 BOM 行颜色(缺省取组件颜色)；
      * onhand 为全仓即时库存。BOM 行用量不大于零(存量坏数据)时 perQty 与 needQty 为空，
      * 由物料分析给出原因。
+     *      * 货品一层 BOM 零件：单件用量 × 待排产缺口 = 需求小计；onhand 为全仓即时库存。
+     * periodic = 整批领料的料 (ADR-131): 由车间内料仓供料, 不算需求 (needQty 为 0), 页面标注
+     * 「车间内料仓供料, 不算需求」。
      */
     public record BomComponent(
             UUID goodsId,
@@ -47,6 +50,7 @@ public record ScheduleOrderLine(
             BigDecimal perQty,
             BigDecimal needQty,
             BigDecimal onhand,
-            boolean selfMade) {
+            boolean selfMade,
+            boolean periodic) {
     }
 }

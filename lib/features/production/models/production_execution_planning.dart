@@ -50,6 +50,8 @@ String? productionZeroMaterialReasonText(
     'DIRECT_MAKE' => '无需生产领料：直接自制',
     'PLAN_BOM_OVERRIDE' => '无需生产领料：本计划 BOM 例外',
     'NO_PRODUCTION_HARD_GATE' => '无需生产领料：仅发货或参考物料',
+    // ADR-131：塑料等整批领料的料由车间内料仓供给，开工不按工单领料。
+    'PERIODIC_MATERIAL' => '无需生产领料：车间内料仓供料',
     _ => '无需生产领料：原因待核验',
   };
 }

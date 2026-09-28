@@ -402,6 +402,96 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertNotFound(() -> finance.review(draft.getId()));
     }
 
+    @Test
+    void quoteCurrencyMustBeTheBaseCurrencyAtSaveAndSubmit() {
+        Fixture f = fixture("currency");
+        UUID listed = goods("报价币种货品", new BigDecimal("8"));
+        ensureUsd("7.1");
+        UUID usd = jdbc.queryForObject("""
+                SELECT id FROM currencies WHERE NOT is_deleted AND NOT is_base_currency AND status = '使用'
+                  AND (name IN ('美元', '美金') OR upper(code) IN ('USD', 'US$', 'USD-QT'))
+                ORDER BY code LIMIT 1
+                """, UUID.class);
+        loginAs(f.sales());
+        QuoteSaveRequest foreign = quoteRequest(f.client(), line(listed, "3", null, null, null));
+        foreign.setCurrencyId(usd);
+        assertThatThrownBy(() -> quotes.create(foreign)).isInstanceOf(ApiException.class)
+                .hasMessageContaining("本位币")
+                .extracting(error -> ((ApiException) error).getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
+
+        QuoteSaveRequest base = quoteRequest(f.client(), line(listed, "3", null, null, null));
+        base.setCurrencyId(baseCurrency());
+        QuoteDetail draft = quotes.create(base);
+        assertThat(draft.getCurrencyId()).isEqualTo(baseCurrency());
+        QuoteSaveRequest switched = copy(draft, base);
+        switched.setCurrencyId(usd);
+        assertCode(() -> quotes.update(draft.getId(), switched), ErrorCode.VALIDATION_FAILED);
+
+        // 库里已有外币草稿(直接写库模拟): 提交核价同样拦下, 不等财务确认后转订货单才报错。
+        jdbc.update("UPDATE sales_quotes SET currency_id = ? WHERE id = ?", usd, draft.getId());
+        assertCode(() -> quotes.submit(draft.getId(), null), ErrorCode.VALIDATION_FAILED);
+        assertThat(jdbc.queryForObject("SELECT status FROM sales_quotes WHERE id = ?", Integer.class, draft.getId()))
+                .isZero();
+    }
+
+    @Test
+    void ordersRefuseLinesWithAClientPriceWhenTheGoodsHasNoListPriceOrIsBelowIt() {
+        Fixture f = fixture("orderguard");
+        UUID zero = goods("订货零价货品", BigDecimal.ZERO);
+        UUID listed = goods("订货标价货品", BigDecimal.TEN);
+        loginAs(f.sales());
+        java.util.function.BiFunction<UUID, String, OrderSaveRequest> order = (goodsId, clientPrice) -> {
+            OrderSaveRequest request = new OrderSaveRequest();
+            request.setBillDate(LocalDate.of(2026, 9, 27));
+            request.setClientId(f.client());
+            request.setCurrencyId(baseCurrency());
+            request.setShipmentPolicy("ALLOW_PARTIAL");
+            OrderItemLine line = new OrderItemLine();
+            line.setGoodsId(goodsId);
+            line.setUnitId(unitOf(goodsId));
+            line.setUnitRate(BigDecimal.ONE);
+            line.setQty(BigDecimal.TEN);
+            line.setClientPrice(clientPrice == null ? null : new BigDecimal(clientPrice));
+            request.setItems(new ArrayList<>(List.of(line)));
+            return request;
+        };
+        assertThatThrownBy(() -> orders.create(order.apply(zero, "5"))).isInstanceOf(ApiException.class)
+                .hasMessageContaining("报价单")
+                .extracting(error -> ((ApiException) error).getCode()).isEqualTo(ErrorCode.CONFLICT);
+        assertConflict(() -> orders.create(order.apply(listed, "12")));
+        assertThat(orders.create(order.apply(listed, "9")).getId()).isNotNull();
+        assertThat(orders.create(order.apply(zero, null)).getId()).as("没有文件单价的 0 价货品照旧").isNotNull();
+    }
+
+    @Test
+    void legacyApprovedQuotesWithoutFinanceConfirmationAreNeitherFinanceReadableNorConvertible() {
+        Fixture f = fixture("legacy");
+        UUID listed = goods("旧流程已审报价货品", new BigDecimal("8"));
+        loginAs(f.sales());
+        QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(listed, "3", null, null, null)));
+        // 旧流程销售自审: 状态 1, 没有提交/财务确认时间(V742 不回填)。
+        jdbc.update("""
+                UPDATE sales_quotes SET status = 1, submitted_at = NULL, finance_confirmed_at = NULL,
+                                        finance_confirmed_by = NULL
+                WHERE id = ?
+                """, draft.getId());
+        QuoteDetail legacy = quotes.detail(draft.getId());
+        assertThat(legacy.getAllowedActions()).doesNotContain("convert").contains("reopen");
+        assertBusiness(() -> quotes.convertToOrder(draft.getId()));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_orders WHERE source_quote_id = ?", Long.class,
+                draft.getId())).isZero();
+
+        // 只持核价查看权限、不是负责人: 看不到这张没经财务的报价。
+        loginAs(f.finance());
+        assertNotFound(() -> finance.review(draft.getId()));
+        assertNotFound(() -> quotes.detail(draft.getId()));
+
+        // 负责人「重新修改」后照常走核价流程。
+        loginAs(f.sales());
+        QuoteDetail reopened = quotes.reopen(draft.getId(), new QuoteActionRequest(legacy.getReviewRevision()));
+        assertThat(reopened.getStatusBucket()).isEqualTo("DRAFT");
+    }
+
     // =====================================================================
     // 看不到价格的人保存
     // =====================================================================
@@ -733,13 +823,30 @@ class SalesQuoteFinanceFlowPostgresTest {
         UUID listed = goods("旧流程报价货品", BigDecimal.TEN);
         loginAs(f.sales());
         QuoteDetail legacy = quotes.create(quoteRequest(f.client(), line(listed, "5", null, "0.9", null)));
-        // V742 之前按旧「审核」直接生效的报价: 已审核, 但财务从没核过价。
+        // V742 之前按旧「审核」直接生效的报价: 已审核, 但财务从没核过价。收紧后这种报价不能再转单
+        // (见 legacyApprovedQuotesWithoutFinanceConfirmationAreNeitherFinanceReadableNorConvertible),
+        // 这里模拟收紧前已经转出来的存量订货单: 直接回链, 验证它仍然不锁折扣、没有「报价核定」对照。
         jdbc.update("UPDATE sales_quotes SET status = 1 WHERE id = ?", legacy.getId());
-        OrderDetail order = quotes.convertToOrder(legacy.getId());
-        OrderItemDto carried = order.getItems().getFirst();
-        assertThat(carried.getDiscount()).isEqualByComparingTo("0.9");
-        assertThat(carried.isQuoteLocked()).isFalse();
-        assertThat(carried.getQuoteDiscount()).isNull();
+        OrderSaveRequest request = new OrderSaveRequest();
+        request.setBillDate(LocalDate.of(2026, 9, 28));
+        request.setClientId(f.client());
+        request.setCurrencyId(baseCurrency());
+        request.setShipmentPolicy("ALLOW_PARTIAL");
+        OrderItemLine carried = new OrderItemLine();
+        carried.setGoodsId(listed);
+        carried.setUnitId(unitOf(listed));
+        carried.setUnitRate(BigDecimal.ONE);
+        carried.setQty(new BigDecimal("5"));
+        carried.setDiscount(new BigDecimal("0.9"));
+        request.setItems(new ArrayList<>(List.of(carried)));
+        OrderDetail created = orders.create(request);
+        jdbc.update("UPDATE sales_orders SET source_quote_id = ?, source_doc_no = ? WHERE id = ?",
+                legacy.getId(), legacy.getBillNo(), created.getId());
+        OrderDetail order = orders.detail(created.getId());
+        OrderItemDto first = order.getItems().getFirst();
+        assertThat(first.getDiscount()).isEqualByComparingTo("0.9");
+        assertThat(first.isQuoteLocked()).isFalse();
+        assertThat(first.getQuoteDiscount()).isNull();
         assertThat(order.getSourceQuote().financeConfirmedAt()).isNull();
 
         OrderSaveRequest edit = orderRequest(order);

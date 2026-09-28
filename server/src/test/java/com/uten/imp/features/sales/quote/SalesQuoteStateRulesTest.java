@@ -28,7 +28,11 @@ class SalesQuoteStateRulesTest {
     void financeSeesSubmittedConfirmedAndCurrentlyReturnedQuotesOnly() {
         OffsetDateTime submitted = OffsetDateTime.now().minusHours(2);
         assertThat(SalesQuoteService.financeVisible(quote(2, null))).isTrue();
-        assertThat(SalesQuoteService.financeVisible(quote(1, null))).isTrue();
+        SalesQuote confirmed = quote(1, null);
+        confirmed.setFinanceConfirmedAt(submitted.plusHours(1));
+        assertThat(SalesQuoteService.financeVisible(confirmed)).as("财务确认过的已核价").isTrue();
+        assertThat(SalesQuoteService.financeVisible(quote(1, null)))
+                .as("旧流程销售自审的已审报价(没有财务确认时间)不在财务读范围").isFalse();
         assertThat(SalesQuoteService.financeVisible(quote(-1, null))).isFalse();
         assertThat(SalesQuoteService.financeVisible(quote(0, null))).as("从没提交过的草稿").isFalse();
 

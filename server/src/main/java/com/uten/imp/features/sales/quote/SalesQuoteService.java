@@ -313,6 +313,9 @@ public class SalesQuoteService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "报价还没有货品明细, 不能提交财务核价");
         }
         referenceValidator.validateStoredQuote(q.getClientId(), items);
+        if (!isBaseCurrency(q.getCurrencyId())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, NON_BASE_CURRENCY_MESSAGE);
+        }
         UUID actor = currentUser.requireEmployeeId();
         q.setStatus(STATUS_PENDING_FINANCE);
         q.setSubmittedAt(OffsetDateTime.now());
@@ -406,6 +409,10 @@ public class SalesQuoteService {
         if (q.getStatus() == null || q.getStatus() != STATUS_CONFIRMED) {
             throw new ApiException(ErrorCode.BUSINESS, "报价还没有财务核价确认, 不能转订货单");
         }
+        if (q.getFinanceConfirmedAt() == null) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "报价还没有财务核价确认, 不能转订货单; 请点「重新修改」后提交财务核价");
+        }
         // 防重复/并发转入：运行时只按报价 UUID；source_doc_no 仅保留可读快照。
         // 防重复——转入不改报价状态；此查询在 em.refresh 锁行后执行，见最新提交，并发也只一笔成功。
         Integer existingFromQuote = ((Number) em.createNativeQuery("""
@@ -492,6 +499,9 @@ public class SalesQuoteService {
                     .getSingleResult();
             if (count.longValue() != 1) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "币种不存在或已停用");
+            }
+            if (!isBaseCurrency(req.getCurrencyId())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, NON_BASE_CURRENCY_MESSAGE);
             }
         }
         if (req.getSettlementMethodId() != null) {
@@ -804,6 +814,8 @@ public class SalesQuoteService {
         boolean owner = accessPolicy.canWrite(q.getMakerId(), scope);
         boolean draft = status == STATUS_DRAFT && !q.isClosed();
         boolean open = status == STATUS_CONFIRMED && converted == null;
+        // 转订货单只认财务确认过的(与「报价已核价待转订货」徽章、待转订货筛选、主档引用保护同口径)。
+        boolean convertible = open && q.getFinanceConfirmedAt() != null;
         if (owner && draft && accessPolicy.hasAuthority("sales_quote:edit")) {
             actions.add("edit");
             if (hasItems) actions.add("submit");
@@ -813,7 +825,7 @@ public class SalesQuoteService {
             actions.add("withdraw");
         }
         if (owner && open && accessPolicy.hasAuthority("sales_quote:edit")) actions.add("reopen");
-        if (owner && open && accessPolicy.hasAuthority("sales_quote:convert")
+        if (owner && convertible && accessPolicy.hasAuthority("sales_quote:convert")
                 && accessPolicy.hasAuthority("sales_order:create")) {
             actions.add("convert");
         }
@@ -833,13 +845,14 @@ public class SalesQuoteService {
     }
 
     /**
-     * 财务读范围: 待核价、已核价, 以及本轮被财务退回的草稿(退回时间不早于最近一次提交)。
-     * 销售提交后又撤回的草稿财务看不到。
+     * 财务读范围: 待核价、财务确认过的已核价(旧流程销售自审、没有财务确认时间的不算), 以及本轮被财务退回的草稿
+     * (退回时间不早于最近一次提交)。销售提交后又撤回的草稿财务看不到。
      */
     static boolean financeVisible(SalesQuote q) {
         if (q == null || q.isDeleted() || q.getStatus() == null) return false;
         short status = q.getStatus();
-        if (status == STATUS_PENDING_FINANCE || status == STATUS_CONFIRMED) return true;
+        if (status == STATUS_PENDING_FINANCE) return true;
+        if (status == STATUS_CONFIRMED) return q.getFinanceConfirmedAt() != null;
         return status == STATUS_DRAFT
                 && q.getFinanceReturnedAt() != null
                 && q.getSubmittedAt() != null
@@ -850,6 +863,10 @@ public class SalesQuoteService {
     public boolean pricesMasked() {
         return !priceMasker.canView() && !accessPolicy.hasAuthority(FINANCE_VIEW);
     }
+
+    /** 报价按货品标价(本位币)计价, 外币报价转不了订货单; 保存/提交时就拦下。 */
+    static final String NON_BASE_CURRENCY_MESSAGE =
+            "报价按货品标价(本位币)计价, 币种只能选本位币或不填; 客户文件里的外币单价只作参考";
 
     public boolean isBaseCurrency(UUID currencyId) {
         if (currencyId == null) return true;

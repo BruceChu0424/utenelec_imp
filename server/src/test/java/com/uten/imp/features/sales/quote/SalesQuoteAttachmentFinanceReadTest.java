@@ -50,6 +50,9 @@ class SalesQuoteAttachmentFinanceReadTest {
         quote.setStatus((short) 2);
         assertDoesNotThrow(() -> policy.requireCanView(id, reviewer));
         quote.setStatus((short) 1);
+        // 旧流程销售自审的已审报价(没有财务确认时间)不在财务读范围。
+        assertThrows(ApiException.class, () -> policy.requireCanView(id, reviewer));
+        quote.setFinanceConfirmedAt(OffsetDateTime.now());
         assertDoesNotThrow(() -> policy.requireCanView(id, reviewer));
         assertThrows(ApiException.class, () -> policy.requireCanManage(id, reviewer));
         verify(access, never()).requireWritable(any(), anyString());

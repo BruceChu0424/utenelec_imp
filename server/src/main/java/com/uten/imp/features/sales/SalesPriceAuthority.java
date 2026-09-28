@@ -181,6 +181,27 @@ public class SalesPriceAuthority {
     }
 
     /**
+     * 客户文件单价高于标价(与识别导入的 ABOVE_LIST 同口径): 文件币种是本位币或未知 → 按 1 折算取 4 位后大于 1;
+     * 外币且财务有参考汇率 → 按 1 与按汇率两种读法都高于标价; 外币没有参考汇率 → 判断不了, 不算。
+     */
+    public static boolean clientPriceAboveList(BigDecimal clientPrice, FileCurrency currency, BigDecimal listPrice) {
+        if (clientPrice == null || clientPrice.signum() <= 0 || listPrice == null || listPrice.signum() <= 0) {
+            return false;
+        }
+        boolean plainAbove = MoneyPolicy.discountFromUnitPrice(clientPrice, BigDecimal.ONE, listPrice).flag()
+                == MoneyPolicy.DiscountFlag.ABOVE_LIST;
+        if (currency == null || currency.base()) {
+            return plainAbove;
+        }
+        BigDecimal rate = currency.financeRate();
+        if (rate == null || rate.signum() <= 0) {
+            return false;
+        }
+        return plainAbove && MoneyPolicy.discountFromUnitPrice(clientPrice, rate, listPrice).flag()
+                == MoneyPolicy.DiscountFlag.ABOVE_LIST;
+    }
+
+    /**
      * 客户文件币种 → 是否本位币 + 财务参考汇率。按常见写法(USD/US$/美元/美金、CNY/RMB/人民币…)与币种资料的
      * 编号或名称对应; 对不上的一律当作「未知外币、没有汇率」。
      */

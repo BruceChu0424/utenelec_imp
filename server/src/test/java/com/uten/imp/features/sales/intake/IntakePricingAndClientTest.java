@@ -44,6 +44,24 @@ class IntakePricingAndClientTest {
     }
 
     @Test
+    void rangeIsJudgedOnTheRoundedDiscountLikeTheMaskedSavePath() {
+        // 30.004 / 100 取 4 位是 0.3000: 不在 (0.3, 1], 与看不到价格的人保存时的反推一致(不给折扣)。
+        CandidatePricing floor = price("30.004", "100", RMB);
+        assertThat(floor.flag()).isEqualTo("OUT_OF_RANGE");
+        assertThat(floor.discount()).isNull();
+        assertThat(com.uten.imp.features.sales.SalesPriceAuthority.deriveDiscountFromClientPrice(
+                new BigDecimal("30.004"), null, new BigDecimal("100"))).isEmpty();
+        // 100.004 / 100 取 4 位是 1.0000: 按 1 折导入, 不当成「高于标价」拦下, 保存路径同样得 1。
+        CandidatePricing ceiling = price("100.004", "100", RMB);
+        assertThat(ceiling.flag()).isEqualTo("ROUNDED");
+        assertThat(ceiling.discount()).isEqualByComparingTo("1");
+        assertThat(ceiling.blocking()).isFalse();
+        assertThat(com.uten.imp.features.sales.SalesPriceAuthority.deriveDiscountFromClientPrice(
+                new BigDecimal("100.004"), null, new BigDecimal("100"))).hasValueSatisfying(
+                d -> assertThat(d).isEqualByComparingTo("1"));
+    }
+
+    @Test
     void foreignFileTriesBothRatesAndOnlyUsesAnUnambiguousOne() {
         CandidatePricing converted = price("2.8", "21", USD);
         assertThat(converted.flag()).isEqualTo("ROUNDED");

@@ -1,6 +1,9 @@
 package com.uten.imp.features.sales.intake;
 
 import com.uten.imp.common.finance.MoneyPolicy;
+import com.uten.imp.common.finance.MoneyPolicy.DiscountFlag;
+import com.uten.imp.common.finance.MoneyPolicy.DiscountQuote;
+import com.uten.imp.features.sales.SalesPriceAuthority;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -12,6 +15,8 @@ import java.util.UUID;
  * <p>单据币种一律是本位币。文件是外币时, 汇率只用财务在币种资料里维护的参考汇率(销售不能填)。
  * 外币文件同时试「按 1 折算」(客户直接写的人民币价)与「按汇率折算」: 只有一种落在 (0.3, 1] 才采用;
  * 两种都在范围内(AMBIGUOUS_CURRENCY)或都不在(OUT_OF_RANGE / ABOVE_LIST)时不给折扣, 交给人核对。
+ * 「落在 (0.3, 1]」判的是 MoneyPolicy 取 4 位后的折扣, 用 {@link SalesPriceAuthority#plausibleDiscount} ——
+ * 与看不到价格的人保存时服务端反推折扣是同一个判断, 同一行文件不会因为谁在看而得到不同的折扣。
  */
 final class IntakePricing {
 
@@ -22,7 +27,6 @@ final class IntakePricing {
     static final String OUT_OF_RANGE = "OUT_OF_RANGE";
     static final String AMBIGUOUS_CURRENCY = "AMBIGUOUS_CURRENCY";
     static final String RATE_MISSING = "RATE_MISSING";
-    private static final double MIN_RATIO = 0.3;
 
     private IntakePricing() {
     }
@@ -73,47 +77,47 @@ final class IntakePricing {
         if (customerPrice == null || customerPrice.signum() <= 0) {
             return new CandidatePricing(listPrice, null, null, null, null);
         }
-        double list = listPrice.doubleValue();
-        double q1 = customerPrice.doubleValue() / list;
-        boolean in1 = inRange(q1);
+        DiscountQuote plain = MoneyPolicy.discountFromUnitPrice(customerPrice, BigDecimal.ONE, listPrice);
+        boolean in1 = plausible(plain);
         if (currency.foreign() && !currency.rateMissing()) {
             BigDecimal rate = currency.financeRate();
-            double qr = customerPrice.doubleValue() * rate.doubleValue() / list;
-            boolean inR = inRange(qr);
+            DiscountQuote converted = MoneyPolicy.discountFromUnitPrice(customerPrice, rate, listPrice);
+            boolean inR = plausible(converted);
             if (in1 && inR) {
                 return new CandidatePricing(listPrice, null, null, AMBIGUOUS_CURRENCY,
                         "按" + label(currency) + "和按人民币算都说得通, 请核对后再填折扣");
             }
-            if (in1 || inR) {
-                BigDecimal used = in1 ? BigDecimal.ONE : rate;
-                String note = in1 ? "客户单价按" + currency.baseCurrencyName() + "标价计算(没有按汇率换算)" : null;
-                return fromPolicy(customerPrice, used, listPrice, note);
+            if (in1) {
+                return adopt(plain, BigDecimal.ONE, listPrice,
+                        "客户单价按" + currency.baseCurrencyName() + "标价计算(没有按汇率换算)");
             }
-            return outOfRange(listPrice, q1 > 1 + 1e-9 && qr > 1 + 1e-9);
+            if (inR) {
+                return adopt(converted, rate, listPrice, null);
+            }
+            return outOfRange(listPrice, plain.flag() == DiscountFlag.ABOVE_LIST
+                    && converted.flag() == DiscountFlag.ABOVE_LIST);
         }
         if (currency.foreign()) {
             if (in1) {
-                return fromPolicy(customerPrice, BigDecimal.ONE, listPrice,
-                        "客户单价按" + currency.baseCurrencyName() + "标价计算");
+                return adopt(plain, BigDecimal.ONE, listPrice, "客户单价按" + currency.baseCurrencyName() + "标价计算");
             }
             return new CandidatePricing(listPrice, null, null, RATE_MISSING,
                     label(currency) + "参考汇率未维护, 请财务在币种资料中填写");
         }
         if (in1) {
-            return fromPolicy(customerPrice, BigDecimal.ONE, listPrice, null);
+            return adopt(plain, BigDecimal.ONE, listPrice, null);
         }
-        return outOfRange(listPrice, q1 > 1 + 1e-9);
+        return outOfRange(listPrice, plain.flag() == DiscountFlag.ABOVE_LIST);
     }
 
-    private static CandidatePricing fromPolicy(BigDecimal customerPrice, BigDecimal rate, BigDecimal listPrice, String note) {
-        MoneyPolicy.DiscountQuote quote = MoneyPolicy.discountFromUnitPrice(customerPrice, rate, listPrice);
-        return switch (quote.flag()) {
-            case OK -> new CandidatePricing(listPrice, quote.discount(), rate, OK, note);
-            case ROUNDED -> new CandidatePricing(listPrice, quote.discount(), rate, ROUNDED, note);
-            case ABOVE_LIST -> new CandidatePricing(listPrice, null, null, ABOVE_LIST, "客户单价高于标价, 请核对");
-            case NO_LIST_PRICE -> new CandidatePricing(listPrice, null, null, NO_LIST_PRICE, "这个货品还没有标价, 需要财务定价");
-            case INVALID -> new CandidatePricing(listPrice, null, null, OUT_OF_RANGE, "文件单价不正常, 请核对");
-        };
+    /** 取 4 位后的折扣落在 (0.3, 1](与服务端保存时反推折扣同一个判断)。 */
+    private static boolean plausible(DiscountQuote quote) {
+        return SalesPriceAuthority.plausibleDiscount(quote.discount());
+    }
+
+    private static CandidatePricing adopt(DiscountQuote quote, BigDecimal rate, BigDecimal listPrice, String note) {
+        return new CandidatePricing(listPrice, quote.discount(), rate,
+                quote.flag() == DiscountFlag.ROUNDED ? ROUNDED : OK, note);
     }
 
     private static CandidatePricing outOfRange(BigDecimal listPrice, boolean above) {
@@ -121,10 +125,6 @@ final class IntakePricing {
             return new CandidatePricing(listPrice, null, null, ABOVE_LIST, "客户单价高于标价, 请核对");
         }
         return new CandidatePricing(listPrice, null, null, OUT_OF_RANGE, "算出来的折扣低于 3 折, 可能对应错货品, 请核对");
-    }
-
-    private static boolean inRange(double ratio) {
-        return ratio > MIN_RATIO && ratio <= 1 + 1e-9;
     }
 
     private static String label(CurrencyInfo currency) {

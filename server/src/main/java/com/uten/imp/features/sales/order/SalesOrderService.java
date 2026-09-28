@@ -1378,7 +1378,8 @@ public class SalesOrderService {
         List<TrustedQuotePriceBook.Terms> quoteTerms = quoteBook == null
                 ? java.util.Collections.nCopies(requested.size(), null) : quoteBook.assign(requested, false);
         boolean masked = !priceMasker.canView();
-        com.uten.imp.features.sales.SalesPriceAuthority.FileCurrency fileCurrency = masked
+        // 看不到价格的人反推折扣、以及「客户文件单价高于标价」的拦截都要文件币种; 每次保存只解析一次。
+        com.uten.imp.features.sales.SalesPriceAuthority.FileCurrency fileCurrency = masked || hasClientPrice(requested)
                 ? priceAuthority.resolveFileCurrency(order.getClientFileCurrency()) : null;
         List<OrderItemDto> result = new ArrayList<>(requested.size());
         int autoLine = 1;
@@ -1427,6 +1428,7 @@ public class SalesOrderService {
             }
             requirePreviewPriceMatches(line, authoritativePrice);
             requireSafeCommercialLine(line, authoritativePrice);
+            requireOrderableClientPrice(line, quoted, authoritativePrice, fileCurrency, lineIndex + 1);
             applyRejectedRevisionLine(
                     order,
                     target,
@@ -2478,8 +2480,8 @@ public class SalesOrderService {
                 ? java.util.Collections.nCopies(lines.size(), null)
                 : quoteBook.assign(lines, quoteConversion);
         boolean masked = !priceMasker.canView();
-        // 看不到价格的人才需要按文件单价反推折扣; 文件币种每次保存只解析一次。
-        com.uten.imp.features.sales.SalesPriceAuthority.FileCurrency fileCurrency = masked
+        // 看不到价格的人反推折扣、以及「客户文件单价高于标价」的拦截都要文件币种; 每次保存只解析一次。
+        com.uten.imp.features.sales.SalesPriceAuthority.FileCurrency fileCurrency = masked || hasClientPrice(lines)
                 ? priceAuthority.resolveFileCurrency(o.getClientFileCurrency()) : null;
         List<BigDecimal> authoritativePrices = new ArrayList<>(lines.size());
         List<SalesOrderItem> keptItems = new ArrayList<>(lines.size());
@@ -2516,6 +2518,7 @@ public class SalesOrderService {
             BigDecimal normalizedDiscount = lineDiscount.discount();
             requirePreviewPriceMatches(l, authoritativePrice);
             requireSafeCommercialLine(l, authoritativePrice);
+            requireOrderableClientPrice(l, quoteTerms.get(index), authoritativePrice, fileCurrency, index + 1);
             BigDecimal amountOriginal = authoritativeOrderAmount(
                     l.getQty(), authoritativePrice, normalizedDiscount);
             SalesOrderItem it = new SalesOrderItem();
@@ -2807,6 +2810,31 @@ public class SalesOrderService {
         item.setGoodsNameSnapshot(snapshot.name());
         item.setGoodsSnapshotSource(snapshot.source());
         item.setGoodsSnapshotLockedAt(lockedAt);
+    }
+
+    private static boolean hasClientPrice(List<OrderItemLine> lines) {
+        return lines.stream().anyMatch(l -> l.getClientPrice() != null && l.getClientPrice().signum() > 0);
+    }
+
+    /**
+     * 订货单不能直接下「货品没有标价(0)」或「客户文件单价高于标价」的行(与识别导入在订货单上的拦截同口径,
+     * 直接调接口或在导入行上手工换货品也一样); 报价转来、由财务核定单价的行(含 0 价赠品)不在此列。
+     */
+    static void requireOrderableClientPrice(
+            OrderItemLine line, TrustedQuotePriceBook.Terms quoted, BigDecimal authoritativePrice,
+            com.uten.imp.features.sales.SalesPriceAuthority.FileCurrency fileCurrency, int position) {
+        BigDecimal clientPrice = line.getClientPrice();
+        if (quoted != null || clientPrice == null || clientPrice.signum() <= 0 || authoritativePrice == null) {
+            return;
+        }
+        if (authoritativePrice.signum() == 0
+                || com.uten.imp.features.sales.SalesPriceAuthority.clientPriceAboveList(
+                        clientPrice, fileCurrency, authoritativePrice)) {
+            int lineNo = line.getLineNo() != null ? line.getLineNo() : position;
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "第 " + lineNo + " 行货品还没有标价或客户文件单价高于标价, 订货单不能直接下; "
+                            + "请先做报价单交给财务定价");
+        }
     }
 
     private static void requireSafeCommercialLine(

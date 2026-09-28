@@ -99,6 +99,8 @@ class SalesOrderCurrencyFilterTest {
                 mock(TaskClaimService.class),
                 mock(SalesOrderRevisionService.class),
                 mock(SalesMutationFootprintService.class),
-                mock(ClientDefaultTermsSyncService.class));
+                mock(ClientDefaultTermsSyncService.class),
+                mock(com.uten.imp.features.sales.SalesPriceAuthority.class),
+                mock(com.uten.imp.features.sales.SalesIntakeSaveHooks.class));
     }
 }

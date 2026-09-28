@@ -2,6 +2,7 @@ package com.uten.imp.features.sales.quote;
 
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.audit.AuditDetailViewRecorder;
+import com.uten.imp.features.sales.quote.dto.QuoteActionRequest;
 import com.uten.imp.features.sales.quote.dto.QuoteDetail;
 import com.uten.imp.features.sales.quote.dto.QuoteListItem;
 import com.uten.imp.features.sales.quote.dto.QuoteQueryFilter;
@@ -30,9 +31,15 @@ import java.util.UUID;
  * - GET    /api/sales/quotes/{id}             → 详情
  * - POST   /api/sales/quotes                  → 新建 sales_quote:create
  * - PUT    /api/sales/quotes/{id}             → 编辑（仅草稿）
- * - DELETE /api/sales/quotes/{id}             → 删除（草稿/红冲可删）
- * - POST   /api/sales/quotes/{id}/approve     → 审核
- * - POST   /api/sales/quotes/{id}/reverse     → 红冲
+ * - DELETE /api/sales/quotes/{id}             → 删除(仅草稿)
+ * - POST   /api/sales/quotes/{id}/submit      → 提交财务核价(草稿 → 待核价)
+ * - POST   /api/sales/quotes/{id}/withdraw    → 撤回核价(待核价 → 草稿, 财务没在核价时)
+ * - POST   /api/sales/quotes/{id}/reopen      → 重新修改(已核价未转单 → 草稿)
+ * - POST   /api/sales/quotes/{id}/reverse     → 作废(已核价未转单)
+ * - POST   /api/sales/quotes/{id}/convert     → 转订货单(已核价)
+ * - GET    /api/sales/quotes/counts           → 工作台徽章「报价已核价待转订货」
+ *
+ * <p>报价不再由销售审核(ADR-134): 财务核价端点见 {@link SalesQuoteFinanceController}。
  */
 @RestController
 @RequestMapping("/api/sales/quotes")
@@ -54,8 +61,17 @@ public class SalesQuoteController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String billNo) {
-        return service.list(new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, billNo), page, size, sort, order);
+            @RequestParam(required = false) String billNo,
+            @RequestParam(required = false) String bucket) {
+        return service.list(new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, billNo, bucket),
+                page, size, sort, order);
+    }
+
+    /** 工作台徽章「报价已核价待转订货」(本人负责范围)。 */
+    @GetMapping("/counts")
+    @PreAuthorize("hasAuthority('sales_quote:view')")
+    public SalesQuoteService.QuoteCounts counts() {
+        return service.counts();
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -66,8 +82,9 @@ public class SalesQuoteController {
             @RequestParam(required = false) UUID clientId,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.facets(new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, null));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) String bucket) {
+        return service.facets(new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, null, bucket));
     }
 
     @GetMapping("/{id}")
@@ -98,10 +115,26 @@ public class SalesQuoteController {
         service.delete(id);
     }
 
-    @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('sales_quote:approve')")
-    public QuoteDetail approve(@PathVariable UUID id) {
-        return service.approve(id);
+    /** 提交财务核价; body 可选(带 expectedRevision 时校验)。 */
+    @PostMapping("/{id}/submit")
+    @PreAuthorize("hasAuthority('sales_quote:edit')")
+    public QuoteDetail submit(@PathVariable UUID id,
+                              @Valid @RequestBody(required = false) QuoteActionRequest req) {
+        return service.submit(id, req);
+    }
+
+    /** 撤回核价(必须带 expectedRevision)。 */
+    @PostMapping("/{id}/withdraw")
+    @PreAuthorize("hasAuthority('sales_quote:edit')")
+    public QuoteDetail withdraw(@PathVariable UUID id, @Valid @RequestBody QuoteActionRequest req) {
+        return service.withdraw(id, req);
+    }
+
+    /** 重新修改已核价的报价(必须带 expectedRevision)。 */
+    @PostMapping("/{id}/reopen")
+    @PreAuthorize("hasAuthority('sales_quote:edit')")
+    public QuoteDetail reopen(@PathVariable UUID id, @Valid @RequestBody QuoteActionRequest req) {
+        return service.reopen(id, req);
     }
 
     @PostMapping("/{id}/reverse")
@@ -110,7 +143,7 @@ public class SalesQuoteController {
         return service.reverse(id);
     }
 
-    /** 报价转订货（SOP §三1）：已审报价一键生成订货草稿（行带入+来源回联+价格留痕）。 */
+    /** 报价转订货(SOP §三1)：财务已核价的报价一键生成订货草稿(表头+行+核定折扣带入，来源回联)。 */
     @PostMapping("/{id}/convert")
     @PreAuthorize("hasAuthority('sales_quote:convert') and hasAuthority('sales_order:create')")
     public com.uten.imp.features.sales.order.dto.OrderDetail convert(@PathVariable UUID id) {

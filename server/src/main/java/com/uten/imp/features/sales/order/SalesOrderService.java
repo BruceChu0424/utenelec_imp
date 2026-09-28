@@ -54,12 +54,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -114,6 +112,13 @@ public class SalesOrderService {
     private final SalesOrderRevisionService revisions;
     private final com.uten.imp.features.sales.SalesMutationFootprintService mutationFootprint;
     private final com.uten.imp.features.master.client.ClientDefaultTermsSyncService clientDefaultTermsSync;
+    /** ADR-134 单价权威(与报价单共用)。 */
+    private final com.uten.imp.features.sales.SalesPriceAuthority priceAuthority;
+    /** ADR-134 保存后学习(文件型号/品名、客户资料)与识别任务采用事件。 */
+    private final com.uten.imp.features.sales.SalesIntakeSaveHooks intakeHooks;
+
+    /** 看不到价格的人保存新行、文件单价又推算不出合理折扣时追加到行备注。 */
+    private static final String MASKED_DISCOUNT_NOTE = "文件单价换算不出合理折扣, 暂按原价, 请有价格权限的同事核对";
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order:view')")
@@ -966,7 +971,11 @@ public class SalesOrderService {
                 """.formatted(item);
     }
 
-    /** 报价转入回联（SOP §三1）：只按 sourceQuoteId 回联；sourceDocNo 仅作历史显示快照。 */
+    /**
+     * 报价转入回联(SOP §三1)：只按 sourceQuoteId 回联；sourceDocNo 仅作历史显示快照。
+     * ADR-134: 行按「报价核定」配对(与保存时的折扣锁同一配对规则), 回填报价单价/折扣与锁定标记,
+     * 表头回填来源报价的核价人与时间。
+     */
     private void fillQuoteTrace(SalesOrder o, OrderDetail d) {
         if (o.getSourceQuoteId() == null) return;
         quoteRepo.findById(o.getSourceQuoteId()).filter(q -> !q.isDeleted()).ifPresent(q -> {
@@ -978,16 +987,24 @@ public class SalesOrderService {
                 return;
             }
             d.setSourceQuoteId(q.getId());
-            if (!priceMasker.canView()) {
-                return;
-            }
-            Map<Integer, BigDecimal> priceByLine = new HashMap<>();
-            for (var qi : quoteItemRepo.findByQuoteIdOrderByLineNoAsc(q.getId())) {
-                priceByLine.put(qi.getLineNo(), qi.getPrice());
-            }
-            for (OrderItemDto it : d.getItems()) {
-                BigDecimal qp = priceByLine.get(it.getLineNo());
-                if (qp != null) it.setQuotePrice(qp);
+            d.setSourceQuote(new OrderDetail.SourceQuote(q.getId(), q.getBillNo(),
+                    q.getFinanceConfirmedBy() == null ? null : nameResolver.nameOf(q.getFinanceConfirmedBy()),
+                    q.getFinanceConfirmedAt()));
+            // 财务没核过价的报价(旧流程直接审核)不锁折扣, 也不显示「报价核定」对照。
+            if (q.getFinanceConfirmedAt() == null) return;
+            TrustedQuotePriceBook book = new TrustedQuotePriceBook(
+                    quoteItemRepo.findByQuoteIdOrderByLineNoAsc(q.getId()), q.getBillNo(), false);
+            List<TrustedQuotePriceBook.Terms> terms = book.assignDetails(d.getItems());
+            boolean canViewPrices = priceMasker.canView();
+            for (int index = 0; index < d.getItems().size(); index++) {
+                TrustedQuotePriceBook.Terms matched = terms.get(index);
+                if (matched == null) continue;
+                OrderItemDto it = d.getItems().get(index);
+                it.setQuoteLocked(true);
+                if (canViewPrices) {
+                    it.setQuotePrice(matched.price());
+                    it.setQuoteDiscount(matched.discount());
+                }
             }
         });
     }
@@ -1035,15 +1052,80 @@ public class SalesOrderService {
         clientDefaultTermsSync.syncOnOrderTerms(o.getClientId(), o.getSettlementMethodId(), o.getShipmentPolicy(), o.getCurrencyId());
         // 普通开单的单价只取货品主档；报价转单则只取已审核报价明细快照。
         // 两条路径都不把 OrderItemLine.price / amount* 当成客户端权威。
-        List<SalesQuoteItem> quoteItems =
+        TrustedQuotePriceBook quoteTerms =
                 sourceQuote == null
                         ? null
-                        : quoteItemRepo.findByQuoteIdOrderByLineNoAsc(sourceQuote.getId());
-        List<OrderItemDto> items = saveItems(o, req.getItems(), List.of(), quoteItems);
+                        : new TrustedQuotePriceBook(
+                                quoteItemRepo.findByQuoteIdOrderByLineNoAsc(sourceQuote.getId()),
+                                sourceQuote.getBillNo(), true);
+        List<OrderItemDto> items = saveItems(o, req.getItems(), List.of(), quoteTerms, sourceQuote != null);
         applyTotals(o, items);
+        if (sourceQuote == null) {
+            // 报价转单不是用户确认文件原文的时刻(报价保存时已学过), 不重复学习。
+            intakeHooks.afterSave(com.uten.imp.features.sales.SalesIntakeSaveHooks.DOC_ORDER,
+                    o.getId(), o.getClientId(), learnedLines(req.getItems(), items), req.getAiIntake());
+        }
         OrderDetail detail = toDetail(o, items, List.of(), true);
         fillQuoteTrace(o, detail);
         return detail;
+    }
+
+    /** 学习出口的行输入: 保存结果(货品/文件原文) + 请求里的识别行键与确认标记, 按顺序一一对应。 */
+    private static List<com.uten.imp.application.port.SalesMasterLearningPort.LearnedLine> learnedLines(
+            List<OrderItemLine> requested, List<OrderItemDto> saved) {
+        List<com.uten.imp.application.port.SalesMasterLearningPort.LearnedLine> lines =
+                new ArrayList<>(saved.size());
+        for (int index = 0; index < saved.size() && index < requested.size(); index++) {
+            OrderItemDto item = saved.get(index);
+            OrderItemLine line = requested.get(index);
+            String key = line.getIntakeLineKey() == null || line.getIntakeLineKey().isBlank()
+                    ? null : line.getIntakeLineKey().strip();
+            lines.add(new com.uten.imp.application.port.SalesMasterLearningPort.LearnedLine(
+                    item.getGoodsId(), item.getClientModel(), item.getClientGoodsName(), key,
+                    Boolean.TRUE.equals(line.getUserConfirmed()), Boolean.TRUE.equals(line.getSetNameEn())));
+        }
+        return lines;
+    }
+
+    /**
+     * 订货单修改后交给学习出口的行。报价转入的订单里, 与来源报价某行「货品 + 文件型号 + 文件品名」完全相同的行,
+     * 是报价保存时已经学过的同一份客户文件, 不再交给学习出口(否则转单后第一次保存会把同一文件再记一次);
+     * 销售改了货品或文件原文的行仍然学习。
+     */
+    private List<com.uten.imp.application.port.SalesMasterLearningPort.LearnedLine> learnableOrderLines(
+            SalesOrder o, List<OrderItemLine> requested, List<OrderItemDto> saved) {
+        var lines = learnedLines(requested, saved);
+        if (o.getSourceQuoteId() == null || lines.isEmpty()) return lines;
+        Map<List<Object>, Integer> learnedFromQuote = new HashMap<>();
+        for (SalesQuoteItem item : quoteItemRepo.findByQuoteIdOrderByLineNoAsc(o.getSourceQuoteId())) {
+            if (item.getClientModel() == null && item.getClientGoodsName() == null) continue;
+            learnedFromQuote.merge(java.util.Arrays.asList(
+                    item.getGoodsId(), item.getClientModel(), item.getClientGoodsName()), 1, Integer::sum);
+        }
+        if (learnedFromQuote.isEmpty()) return lines;
+        List<com.uten.imp.application.port.SalesMasterLearningPort.LearnedLine> out = new ArrayList<>(lines.size());
+        for (var line : lines) {
+            List<Object> key = java.util.Arrays.asList(line.goodsId(), line.clientModel(), line.clientGoodsName());
+            Integer left = learnedFromQuote.get(key);
+            if (left != null && left > 0) {
+                learnedFromQuote.put(key, left - 1);
+                continue;
+            }
+            out.add(line);
+        }
+        return out;
+    }
+
+    /**
+     * 报价转入的订单: 来源报价的核定单价/折扣配对簿(宽松: 没有单价的历史报价行不锁)。
+     * 只有财务核价确认过的报价才锁折扣; 旧流程直接审核、财务从没核过的报价不锁(返回 null)。
+     */
+    private TrustedQuotePriceBook quoteTermsFor(SalesOrder o) {
+        if (o.getSourceQuoteId() == null) return null;
+        var quote = quoteRepo.findById(o.getSourceQuoteId()).orElse(null);
+        if (quote == null || quote.getFinanceConfirmedAt() == null) return null;
+        return new TrustedQuotePriceBook(
+                quoteItemRepo.findByQuoteIdOrderByLineNoAsc(quote.getId()), quote.getBillNo(), false);
     }
 
     private com.uten.imp.features.sales.quote.SalesQuote resolveSourceQuote(
@@ -1095,6 +1177,8 @@ public class SalesOrderService {
         if (rejectedRevision || approvedRevision) {
             String before = revisions.snapshot(id);
             OrderDetail revised = reviseApprovedOrder(o, req);
+            intakeHooks.afterSave(com.uten.imp.features.sales.SalesIntakeSaveHooks.DOC_ORDER,
+                    o.getId(), o.getClientId(), learnableOrderLines(o, req.getItems(), revised.getItems()), req.getAiIntake());
             if (revisions.record(id, before)) {
                 o.setFinanceReviewRevision(o.getFinanceReviewRevision() + 1);
                 orderRepo.save(o);
@@ -1121,12 +1205,16 @@ public class SalesOrderService {
         costItemRepo.deleteByOrderId(id);
         itemRepo.deleteByOrderId(id);
         itemRepo.flush();
-        List<OrderItemDto> items = saveItems(o, req.getItems(), existingItems, null);
+        List<OrderItemDto> items = saveItems(o, req.getItems(), existingItems, quoteTermsFor(o), false);
         applyTotals(o, items);
+        intakeHooks.afterSave(com.uten.imp.features.sales.SalesIntakeSaveHooks.DOC_ORDER,
+                o.getId(), o.getClientId(), learnableOrderLines(o, req.getItems(), items), req.getAiIntake());
         // 草稿修改同样写回客户默认条款 (V592「每次保存/修改」口径; 此前只有新建与
         // 已审修订两条路径写回, 草稿改结账方式/发运策略/币种后主档学不到)。
         clientDefaultTermsSync.syncOnOrderTerms(o.getClientId(), o.getSettlementMethodId(), o.getShipmentPolicy(), o.getCurrencyId());
-        return toDetail(o, items, List.of(), true);
+        OrderDetail detail = toDetail(o, items, List.of(), true);
+        fillQuoteTrace(o, detail);
+        return detail;
     }
 
     /**
@@ -1180,7 +1268,9 @@ public class SalesOrderService {
         clearPartialShipmentConfirmation(order);
         orderRepo.save(order);
         applyTotals(order, revised);
-        return toDetail(order, revised, List.of(), true);
+        OrderDetail detail = toDetail(order, revised, List.of(), true);
+        fillQuoteTrace(order, detail);
+        return detail;
     }
 
     static boolean hasRejectedRevisionBlockingLineFacts(SalesOrderItem item) {
@@ -1284,9 +1374,17 @@ public class SalesOrderService {
                 requested.stream().map(OrderItemLine::getGoodsId).toList(),
                 SalesGoodsSnapshot.MASTER_AT_SAVE);
         Map<UUID, BigDecimal> masterPrices = loadMasterOrderPrices(requested);
+        TrustedQuotePriceBook quoteBook = quoteTermsFor(order);
+        List<TrustedQuotePriceBook.Terms> quoteTerms = quoteBook == null
+                ? java.util.Collections.nCopies(requested.size(), null) : quoteBook.assign(requested, false);
+        boolean masked = !priceMasker.canView();
+        com.uten.imp.features.sales.SalesPriceAuthority.FileCurrency fileCurrency = masked
+                ? priceAuthority.resolveFileCurrency(order.getClientFileCurrency()) : null;
         List<OrderItemDto> result = new ArrayList<>(requested.size());
         int autoLine = 1;
-        for (OrderItemLine line : requested) {
+        for (int lineIndex = 0; lineIndex < requested.size(); lineIndex++) {
+            OrderItemLine line = requested.get(lineIndex);
+            TrustedQuotePriceBook.Terms quoted = quoteTerms.get(lineIndex);
             SalesOrderItem target = null;
             if (line.getId() != null) {
                 if (!seenExistingIds.add(line.getId())) {
@@ -1305,17 +1403,28 @@ public class SalesOrderService {
                     itemRepo.save(stored);
                 }
             }
-            BigDecimal authoritativePrice = target == null ? null : target.getPrice();
+            SalesOrderItem kept = target;
+            BigDecimal authoritativePrice = quoted != null ? quoted.price()
+                    : target == null ? null : target.getPrice();
+            BigDecimal keptClientPrice = target == null ? null : target.getClientPrice();
             if (target == null) {
                 target = new SalesOrderItem();
                 target.setOrderId(order.getId());
             }
-            // 商业身份未变的既有行保留冻结单价；新增/换货行只取当前主档价。
+            // 报价核定行用报价单价; 商业身份未变的既有行保留冻结单价；新增/换货行只取当前主档价。
             if (authoritativePrice == null) {
                 authoritativePrice = requireMasterOrderPrice(
                         line.getGoodsId(), masterPrices.get(line.getGoodsId()));
             }
-            BigDecimal normalizedDiscount = normalizeOrderDiscountForWrite(line.getDiscount());
+            LineDiscount lineDiscount = resolveLineDiscount(
+                    line, quoted, kept, masked, quoteBook, fileCurrency, authoritativePrice);
+            BigDecimal normalizedDiscount = lineDiscount.discount();
+            if (masked && kept != null && line.getClientPrice() == null) {
+                line.setClientPrice(keptClientPrice);
+            }
+            if (lineDiscount.note() != null) {
+                line.setRemark(appendNote(line.getRemark(), lineDiscount.note()));
+            }
             requirePreviewPriceMatches(line, authoritativePrice);
             requireSafeCommercialLine(line, authoritativePrice);
             applyRejectedRevisionLine(
@@ -1386,7 +1495,9 @@ public class SalesOrderService {
         item.setTaxAmount(BigDecimal.ZERO);
         item.setWeight(line.getWeight());
         item.setClientNo(line.getClientNo());
-        item.setClientModel(line.getClientModel());
+        item.setClientModel(blankToNull(line.getClientModel()));
+        item.setClientGoodsName(blankToNull(line.getClientGoodsName()));
+        item.setClientPrice(line.getClientPrice());
         item.setDeliverDate(line.getDeliverDate());
         item.setSourceDocNo(line.getSourceDocNo());
         item.setMachiningPrice(line.getMachiningPrice());
@@ -2268,6 +2379,8 @@ public class SalesOrderService {
             o.setShipmentPolicy(normalizeShipmentPolicy(req.getShipmentPolicy()));
         }
         // 新单未选发运策略时保留 null（销售自填），不再默认 CUSTOMER_CONFIRM。
+        o.setClientFileCurrency(com.uten.imp.features.sales.SalesPriceAuthority.canonicalCurrency(
+                req.getClientFileCurrency()));
     }
 
     /**
@@ -2350,7 +2463,8 @@ public class SalesOrderService {
             SalesOrder o,
             List<OrderItemLine> lines,
             List<SalesOrderItem> existingItems,
-            List<SalesQuoteItem> trustedQuoteItems) {
+            TrustedQuotePriceBook quoteBook,
+            boolean quoteConversion) {
         if (lines == null || lines.isEmpty()) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED, "订货明细不能为空");
@@ -2360,26 +2474,30 @@ public class SalesOrderService {
                 lines.stream().map(OrderItemLine::getGoodsId).toList(),
                 SalesGoodsSnapshot.MASTER_AT_SAVE);
         ExistingOrderPriceBook existingPrices = new ExistingOrderPriceBook(existingItems);
-        TrustedQuotePriceBook quotePrices = trustedQuoteItems == null
-                ? null : new TrustedQuotePriceBook(trustedQuoteItems);
+        List<TrustedQuotePriceBook.Terms> quoteTerms = quoteBook == null
+                ? java.util.Collections.nCopies(lines.size(), null)
+                : quoteBook.assign(lines, quoteConversion);
+        boolean masked = !priceMasker.canView();
+        // 看不到价格的人才需要按文件单价反推折扣; 文件币种每次保存只解析一次。
+        com.uten.imp.features.sales.SalesPriceAuthority.FileCurrency fileCurrency = masked
+                ? priceAuthority.resolveFileCurrency(o.getClientFileCurrency()) : null;
         List<BigDecimal> authoritativePrices = new ArrayList<>(lines.size());
-        List<BigDecimal> normalizedDiscounts = new ArrayList<>(lines.size());
+        List<SalesOrderItem> keptItems = new ArrayList<>(lines.size());
         List<OrderItemLine> needsMasterPrice = new ArrayList<>();
-        for (OrderItemLine line : lines) {
-            BigDecimal price;
-            if (quotePrices != null) {
-                price = quotePrices.take(line);
-                if (price == null) {
-                    throw new ApiException(
-                            ErrorCode.CONFLICT,
-                            "报价转订货的明细或单价快照已变化，请刷新报价后重试");
-                }
-            } else {
-                price = existingPrices.take(line);
-                if (price == null) needsMasterPrice.add(line);
+        for (int index = 0; index < lines.size(); index++) {
+            OrderItemLine line = lines.get(index);
+            TrustedQuotePriceBook.Terms quoted = quoteTerms.get(index);
+            if (quoteConversion && quoted == null) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "报价转订货的明细或单价快照已变化，请刷新报价后重试");
             }
+            // 报价核定行用报价单价; 同一草稿既有行保留冻结单价; 其余新行取货品主档价。
+            SalesOrderItem kept = quoteConversion ? null : existingPrices.takeItem(line);
+            BigDecimal price = quoted != null ? quoted.price() : kept == null ? null : kept.getPrice();
+            if (price == null) needsMasterPrice.add(line);
             authoritativePrices.add(price);
-            normalizedDiscounts.add(normalizeOrderDiscountForWrite(line.getDiscount()));
+            keptItems.add(kept);
         }
         // 新行只需一次批量读主档价；同一草稿的既有行和报价转单不会因主档调价漂移。
         Map<UUID, BigDecimal> masterPrices = loadMasterOrderPrices(needsMasterPrice);
@@ -2392,7 +2510,10 @@ public class SalesOrderService {
                 authoritativePrice = requireMasterOrderPrice(
                         l.getGoodsId(), masterPrices.get(l.getGoodsId()));
             }
-            BigDecimal normalizedDiscount = normalizedDiscounts.get(index);
+            SalesOrderItem kept = keptItems.get(index);
+            LineDiscount lineDiscount = resolveLineDiscount(
+                    l, quoteTerms.get(index), kept, masked, quoteBook, fileCurrency, authoritativePrice);
+            BigDecimal normalizedDiscount = lineDiscount.discount();
             requirePreviewPriceMatches(l, authoritativePrice);
             requireSafeCommercialLine(l, authoritativePrice);
             BigDecimal amountOriginal = authoritativeOrderAmount(
@@ -2413,8 +2534,8 @@ public class SalesOrderService {
             it.setUnitRate(l.getUnitRate());
             it.setQty(l.getQty());
             it.setPrice(authoritativePrice);
-            // 客户端 price / amount* 只用于预览；持久化金额始终用权威单价和销售填写的
-            // 规范化折扣重算，避免伪造金额或小数位漂移。
+            // 客户端 price / amount* 只用于预览；持久化金额始终用权威单价和规范化折扣重算，
+            // 避免伪造金额或小数位漂移。
             it.setAmountOriginal(amountOriginal);
             // 销售订单不形成任何本币金额；SHIPPED 立账时再按财务汇率计算。
             it.setAmountLocal(null);
@@ -2424,7 +2545,11 @@ public class SalesOrderService {
             it.setTaxAmount(BigDecimal.ZERO);
             it.setWeight(l.getWeight());
             it.setClientNo(l.getClientNo());
-            it.setClientModel(l.getClientModel());
+            it.setClientModel(blankToNull(l.getClientModel()));
+            it.setClientGoodsName(blankToNull(l.getClientGoodsName()));
+            // 文件单价不脱敏; 看不到价格的人回传空值时保留既有行的文件单价(空 = 不变)。
+            it.setClientPrice(masked && kept != null && l.getClientPrice() == null
+                    ? kept.getClientPrice() : l.getClientPrice());
             it.setDeliverDate(l.getDeliverDate());
             it.setSourceDocNo(l.getSourceDocNo());
             it.setMachiningPrice(l.getMachiningPrice());
@@ -2434,12 +2559,63 @@ public class SalesOrderService {
             it.setInboundQty(BigDecimal.ZERO);
             it.setInNo(null);
             it.setOutNo(null);
-            it.setRemark(l.getRemark());
+            it.setRemark(appendNote(l.getRemark(), lineDiscount.note()));
             itemRepo.save(it);
             out.add(toItemDto(it));
             auto++;
         }
         return out;
+    }
+
+    /** 一行最终折扣与(可选)备注提示。 */
+    private record LineDiscount(BigDecimal discount, String note) {
+    }
+
+    /**
+     * 订单行折扣(ADR-134):
+     * <ol>
+     *   <li>报价核定行: 折扣 = 报价折扣; 请求带了不同的折扣 409(空/0 = 沿用报价)。</li>
+     *   <li>看得到价格: 请求折扣规范化(空/0 = 原价)。</li>
+     *   <li>看不到价格(请求折扣一律忽略): 既有行保留原折扣; 新行有文件单价就按文件单价反推(合理区间内),
+     *       推不出按原价并在备注提示; 没有文件单价按原价。</li>
+     * </ol>
+     */
+    private LineDiscount resolveLineDiscount(
+            OrderItemLine line, TrustedQuotePriceBook.Terms quoted, SalesOrderItem kept, boolean masked,
+            TrustedQuotePriceBook quoteBook,
+            com.uten.imp.features.sales.SalesPriceAuthority.FileCurrency fileCurrency, BigDecimal price) {
+        BigDecimal requested = masked ? null : line.getDiscount();
+        if (quoted != null) {
+            if (requested != null && requested.signum() != 0
+                    && normalizeOrderDiscountForWrite(requested).compareTo(quoted.discount()) != 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "该行折扣已由财务在报价 " + (quoteBook == null ? "" : quoteBook.quoteBillNo())
+                                + " 核定, 如需改价请重新打开报价");
+            }
+            return new LineDiscount(quoted.discount(), null);
+        }
+        if (!masked) {
+            return new LineDiscount(normalizeOrderDiscountForWrite(requested), null);
+        }
+        if (kept != null) {
+            return new LineDiscount(normalizeOrderDiscountForWrite(kept.getDiscount()), null);
+        }
+        if (line.getClientPrice() != null && price != null) {
+            var derived = com.uten.imp.features.sales.SalesPriceAuthority.deriveDiscountFromClientPrice(
+                    line.getClientPrice(), fileCurrency, price);
+            return derived.map(discount -> new LineDiscount(discount, null))
+                    .orElseGet(() -> new LineDiscount(BigDecimal.ONE.setScale(4), MASKED_DISCOUNT_NOTE));
+        }
+        return new LineDiscount(BigDecimal.ONE.setScale(4), null);
+    }
+
+    private static String appendNote(String remark, String note) {
+        if (note == null) return remark;
+        return remark == null || remark.isBlank() ? note : remark.strip() + "; " + note;
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
     }
 
     /**
@@ -2449,150 +2625,151 @@ public class SalesOrderService {
      */
     private Map<UUID, BigDecimal> loadMasterOrderPrices(List<OrderItemLine> lines) {
         if (lines == null || lines.isEmpty()) return Map.of();
-        LinkedHashSet<UUID> ids = new LinkedHashSet<>();
-        for (OrderItemLine line : lines) {
-            if (line != null && line.getGoodsId() != null) ids.add(line.getGoodsId());
-        }
-        if (ids.isEmpty()) return Map.of();
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery("""
-                        SELECT goods.id, goods.price
-                        FROM goods
-                        WHERE goods.id IN (:ids)
-                          AND COALESCE(goods.is_deleted, FALSE) = FALSE
-                          AND goods.status = '使用'
-                        FOR SHARE
-                        """)
-                .setParameter("ids", List.copyOf(ids))
-                .getResultList();
-        Map<UUID, BigDecimal> result = new HashMap<>();
-        for (Object[] row : rows) {
-            result.put((UUID) row[0], (BigDecimal) row[1]);
-        }
-        return result;
+        return priceAuthority.loadMasterPrices(lines.stream()
+                .filter(java.util.Objects::nonNull).map(OrderItemLine::getGoodsId).toList());
     }
 
+    /** 委托 {@link com.uten.imp.features.sales.SalesPriceAuthority#requireMasterPrice}(保留原名供既有调用与测试)。 */
     static BigDecimal requireMasterOrderPrice(UUID goodsId, BigDecimal price) {
-        if (price == null) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "货品未维护销售单价，无法创建销售订货明细(" + goodsId + ")");
-        }
-        if (price.signum() < 0) {
-            throw new ApiException(ErrorCode.CONFLICT, "货品销售单价为负数，禁止开单");
-        }
-        return price;
+        return com.uten.imp.features.sales.SalesPriceAuthority.requireMasterPrice(goodsId, price, "销售订货");
     }
 
-    /**
-     * 请求单价不是写入来源，但若旧/新客户端提交了页面预览值，就必须与服务端权威快照一致。
-     * 这样既阻止改包篡价，也避免用户开单期间主档调价后静默保存成一个未核对的新价格；
-     * 客户端省略 price 仍可兼容，由服务端独立取价。
-     */
+    /** 委托 {@link com.uten.imp.features.sales.SalesPriceAuthority#requirePreviewMatches}。 */
     static void requirePreviewPriceMatches(
             OrderItemLine line, BigDecimal authoritativePrice) {
-        if (line.getPrice() != null
-                && authoritativePrice != null
-                && line.getPrice().compareTo(authoritativePrice) != 0) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "订单单价已变化或请求被修改，请刷新货品/来源单据后重新确认");
+        com.uten.imp.features.sales.SalesPriceAuthority.requirePreviewMatches(
+                line.getPrice(), authoritativePrice, "订单");
+    }
+
+    /** 委托 {@link com.uten.imp.features.sales.SalesPriceAuthority#normalizeDiscountForWrite}。 */
+    static BigDecimal normalizeOrderDiscountForWrite(BigDecimal discount) {
+        return com.uten.imp.features.sales.SalesPriceAuthority.normalizeDiscountForWrite(discount);
+    }
+
+    /** 既有草稿行配对：UUID 精确命中优先；旧客户端无 UUID 时按商业身份队列匹配(通用实现见 SalesPriceAuthority)。 */
+    static final class ExistingOrderPriceBook {
+        private final com.uten.imp.features.sales.SalesPriceAuthority.ExistingPriceBook<SalesOrderItem, OrderItemLine> book;
+
+        ExistingOrderPriceBook(List<SalesOrderItem> items) {
+            this.book = new com.uten.imp.features.sales.SalesPriceAuthority.ExistingPriceBook<>(
+                    items,
+                    SalesOrderItem::getId,
+                    item -> com.uten.imp.features.sales.SalesPriceAuthority.identity(
+                            item.getGoodsId(), item.getColorId(), item.getUnitId(), item.getUnitRate()),
+                    OrderItemLine::getId,
+                    line -> com.uten.imp.features.sales.SalesPriceAuthority.identity(
+                            line.getGoodsId(), line.getColorId(), line.getUnitId(), line.getUnitRate()));
+        }
+
+        /** 配对并返回既有行(沿用它的冻结单价; 看不到价格的人保存时还沿用它的折扣与文件单价)。 */
+        SalesOrderItem takeItem(OrderItemLine line) {
+            return book.take(line);
         }
     }
 
     /**
-     * 新写折扣统一为四位倍率：1=原价、0.9=9折。null/0 是旧客户端的“不打折”表达，
-     * 保存时归一为 1；已审核历史行仍由审核兼容公式把 null/0 解释为 1，不批量改写历史。
+     * 报价核定条款簿(ADR-134): 来源报价每行的 (单价, 折扣), 每条只配一次。
+     * 配对先按「报价行号 + 货品 + 颜色 + 单位 + 换算率」精确配, 再(非转单时)按商业身份兜底,
+     * 所以订货草稿重排行号或增删其它行后, 报价转入的行仍锁定报价折扣。
+     * 转单时(严格)报价行必须有非负单价; 之后的修改(宽松)跳过没有单价的历史报价行。
      */
-    static BigDecimal normalizeOrderDiscountForWrite(BigDecimal discount) {
-        if (discount == null || discount.signum() == 0) {
-            return BigDecimal.ONE.setScale(4);
+    static final class TrustedQuotePriceBook {
+        /** 报价核定条款: 单价与 4 位折扣。 */
+        record Terms(BigDecimal price, BigDecimal discount) {
         }
-        if (discount.signum() < 0 || discount.compareTo(BigDecimal.ONE) > 0) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "折扣须为大于 0 且不大于 1 的倍率(1=原价，0.9=9折)");
-        }
-        if (discount.stripTrailingZeros().scale() > 4) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "折扣最多四位小数(最小精度 0.0001，1=原价，0.9=9折)");
-        }
-        return discount.setScale(4);
-    }
 
-    /** 既有草稿行价格索引：UUID 精确命中优先；旧客户端无 UUID 时按商业身份队列匹配。 */
-    static final class ExistingOrderPriceBook {
-        private final Map<UUID, SalesOrderItem> byId = new HashMap<>();
-        private final Map<OrderLinePriceIdentity, ArrayDeque<SalesOrderItem>> byIdentity =
-                new HashMap<>();
-        private final Set<UUID> consumed = new HashSet<>();
+        private static final class Entry {
+            private final QuoteLinePriceIdentity exact;
+            private final List<Object> identity;
+            private final Terms terms;
+            private boolean used;
 
-        ExistingOrderPriceBook(List<SalesOrderItem> items) {
-            if (items == null) return;
-            for (SalesOrderItem item : items) {
-                byId.put(item.getId(), item);
-                byIdentity.computeIfAbsent(
-                        OrderLinePriceIdentity.from(item), ignored -> new ArrayDeque<>())
-                        .addLast(item);
+            private Entry(QuoteLinePriceIdentity exact, List<Object> identity, Terms terms) {
+                this.exact = exact;
+                this.identity = identity;
+                this.terms = terms;
             }
         }
 
-        BigDecimal take(OrderItemLine line) {
-            if (line == null) return null;
-            if (line.getId() != null) {
-                SalesOrderItem exact = byId.get(line.getId());
-                if (exact == null
-                        || !OrderLinePriceIdentity.from(exact)
-                                .equals(OrderLinePriceIdentity.from(line))
-                        || !consumed.add(exact.getId())) {
-                    return null;
+        private final List<Entry> entries = new ArrayList<>();
+        private final String quoteBillNo;
+
+        TrustedQuotePriceBook(List<SalesQuoteItem> items, String quoteBillNo, boolean requirePrices) {
+            this.quoteBillNo = quoteBillNo == null ? "" : quoteBillNo;
+            for (var item : items) {
+                if (item.getPrice() == null || item.getPrice().signum() < 0) {
+                    if (requirePrices) {
+                        throw new ApiException(
+                                ErrorCode.CONFLICT,
+                                "来源报价存在空或负数单价，不能转换为销售订货单");
+                    }
+                    continue;
                 }
-                return exact.getPrice();
+                entries.add(new Entry(
+                        QuoteLinePriceIdentity.from(item),
+                        com.uten.imp.features.sales.SalesPriceAuthority.identity(
+                                item.getGoodsId(), item.getColorId(), item.getUnitId(), item.getUnitRate()),
+                        new Terms(item.getPrice(), normalizeOrderDiscountForWrite(item.getDiscount()))));
             }
-            ArrayDeque<SalesOrderItem> candidates =
-                    byIdentity.get(OrderLinePriceIdentity.from(line));
-            while (candidates != null && !candidates.isEmpty()) {
-                SalesOrderItem candidate = candidates.removeFirst();
-                if (consumed.add(candidate.getId())) return candidate.getPrice();
+        }
+
+        String quoteBillNo() {
+            return quoteBillNo;
+        }
+
+        /** 一行的配对键: 行号 + 货品 + 颜色 + 单位 + 换算率。 */
+        record LineKey(Integer lineNo, UUID goodsId, UUID colorId, UUID unitId, BigDecimal unitRate) {
+        }
+
+        /** 为每条请求行配报价条款(没配上为 null): 先全部精确配, exactOnly=false 时再按商业身份兜底。 */
+        List<Terms> assign(List<OrderItemLine> lines, boolean exactOnly) {
+            return assignKeys(lines.stream().map(line -> new LineKey(line.getLineNo(), line.getGoodsId(),
+                    line.getColorId(), line.getUnitId(), line.getUnitRate())).toList(), exactOnly);
+        }
+
+        /** 订单详情行配报价条款(同 assign 的两轮规则)。 */
+        List<Terms> assignDetails(List<OrderItemDto> items) {
+            return assignKeys(items.stream().map(item -> new LineKey(item.getLineNo(), item.getGoodsId(),
+                    item.getColorId(), item.getUnitId(), item.getUnitRate())).toList(), false);
+        }
+
+        /** 通用两轮配对(订单保存、订单详情、财务确认审核页共用同一规则)。 */
+        List<Terms> assignKeys(List<LineKey> keys, boolean exactOnly) {
+            List<Terms> out = new ArrayList<>(java.util.Collections.nCopies(keys.size(), null));
+            for (int index = 0; index < keys.size(); index++) {
+                LineKey key = keys.get(index);
+                out.set(index, takeExact(new QuoteLinePriceIdentity(key.lineNo(), key.goodsId(),
+                        key.colorId(), key.unitId(), decimalKey(key.unitRate()))));
+            }
+            if (!exactOnly) {
+                for (int index = 0; index < keys.size(); index++) {
+                    if (out.get(index) != null) continue;
+                    LineKey key = keys.get(index);
+                    out.set(index, takeIdentity(com.uten.imp.features.sales.SalesPriceAuthority.identity(
+                            key.goodsId(), key.colorId(), key.unitId(), key.unitRate())));
+                }
+            }
+            return out;
+        }
+
+        private Terms takeExact(QuoteLinePriceIdentity key) {
+            for (Entry entry : entries) {
+                if (!entry.used && entry.exact.equals(key)) {
+                    entry.used = true;
+                    return entry.terms;
+                }
             }
             return null;
         }
-    }
 
-    /** 报价转单价格只按来源报价行号+商业身份匹配，绝不使用请求体里的 price。 */
-    static final class TrustedQuotePriceBook {
-        private final Map<QuoteLinePriceIdentity, ArrayDeque<BigDecimal>> prices = new HashMap<>();
-
-        TrustedQuotePriceBook(List<SalesQuoteItem> items) {
-            for (var item : items) {
-                if (item.getPrice() == null || item.getPrice().signum() < 0) {
-                    throw new ApiException(
-                            ErrorCode.CONFLICT,
-                            "来源报价存在空或负数单价，不能转换为销售订货单");
+        private Terms takeIdentity(List<Object> identity) {
+            for (Entry entry : entries) {
+                if (!entry.used && entry.identity.equals(identity)) {
+                    entry.used = true;
+                    return entry.terms;
                 }
-                prices.computeIfAbsent(
-                        QuoteLinePriceIdentity.from(item), ignored -> new ArrayDeque<>())
-                        .addLast(item.getPrice());
             }
-        }
-
-        BigDecimal take(OrderItemLine line) {
-            ArrayDeque<BigDecimal> candidates = prices.get(QuoteLinePriceIdentity.from(line));
-            return candidates == null || candidates.isEmpty() ? null : candidates.removeFirst();
-        }
-    }
-
-    private record OrderLinePriceIdentity(
-            UUID goodsId, UUID colorId, UUID unitId, BigDecimal unitRate) {
-        static OrderLinePriceIdentity from(SalesOrderItem item) {
-            return new OrderLinePriceIdentity(
-                    item.getGoodsId(), item.getColorId(), item.getUnitId(), decimalKey(item.getUnitRate()));
-        }
-
-        static OrderLinePriceIdentity from(OrderItemLine line) {
-            return new OrderLinePriceIdentity(
-                    line.getGoodsId(), line.getColorId(), line.getUnitId(), decimalKey(line.getUnitRate()));
+            return null;
         }
     }
 
@@ -2602,12 +2779,6 @@ public class SalesOrderService {
             return new QuoteLinePriceIdentity(
                     item.getLineNo(), item.getGoodsId(), item.getColorId(), item.getUnitId(),
                     decimalKey(item.getUnitRate()));
-        }
-
-        static QuoteLinePriceIdentity from(OrderItemLine line) {
-            return new QuoteLinePriceIdentity(
-                    line.getLineNo(), line.getGoodsId(), line.getColorId(), line.getUnitId(),
-                    decimalKey(line.getUnitRate()));
         }
     }
 
@@ -2653,6 +2824,7 @@ public class SalesOrderService {
                     ErrorCode.VALIDATION_FAILED,
                     "订单货品、单位、正数数量和非负权威单价必须完整，金额由服务端计算");
         }
+        com.uten.imp.features.sales.SalesPriceAuthority.requireClientPrice(line.getClientPrice(), "文件单价");
     }
 
     static BigDecimal authoritativeOrderAmount(
@@ -2757,7 +2929,7 @@ public class SalesOrderService {
                 it.getDeliverDate(), it.getSourceDocNo(), it.getMachiningPrice(), it.getCircumference(),
                 it.getInboundQty(), it.getInNo(), it.getOutNo(), it.getRemark(),
                 it.getReservedQty(), it.getPlannedQty(), it.getProducedQty(), it.getChainStatus(), null,
-                it.getPriority());
+                it.getPriority(), it.getClientGoodsName(), it.getClientPrice(), null, false);
     }
 
     private OrderCostItemDto toCostDto(SalesOrderCostItem c) {
@@ -2792,7 +2964,8 @@ public class SalesOrderService {
                 o.getFinanceConfirmedBy() == null ? null : nameResolver.nameOf(o.getFinanceConfirmedBy()),
                 o.getFinanceConfirmRemark(),
                 o.isFinanceRejected(), o.getFinanceRejectedReason(), o.getFinanceRejectedAt(),
-                o.getFinanceRejectedBy() == null ? null : nameResolver.nameOf(o.getFinanceRejectedBy()));
+                o.getFinanceRejectedBy() == null ? null : nameResolver.nameOf(o.getFinanceRejectedBy()),
+                o.getClientFileCurrency(), null);
     }
 
     /** 该订单全部出货单聚合（含物流单号与仓库作业状态；SOP §三.7 多单全展示）。 */
@@ -2830,6 +3003,7 @@ public class SalesOrderService {
         it.setTaxAmount(null);
         it.setMachiningPrice(null);
         it.setQuotePrice(null);
+        it.setQuoteDiscount(null);
     }
 
     /**

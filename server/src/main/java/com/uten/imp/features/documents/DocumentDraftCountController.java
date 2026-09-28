@@ -44,7 +44,7 @@ public class DocumentDraftCountController {
         return statusCounts.counts(kind, shipmentKind, docType);
     }
 
-    /** 销售出货 / 采购订货 / 委外订货各自的「财务已退回」张数(hub 单据卡徽章 = 草稿 + 财务已退回). */
+    /** 销售出货 / 销售报价 / 采购订货 / 委外订货各自的「财务已退回」张数(hub 单据卡徽章 = 草稿 + 财务已退回). */
     @GetMapping("/finance-rejected/count")
     @PreAuthorize("isAuthenticated()")
     public Map<String, Long> financeRejectedCounts() {

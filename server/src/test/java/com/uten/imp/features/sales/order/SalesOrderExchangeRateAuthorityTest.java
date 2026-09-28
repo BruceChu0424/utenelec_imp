@@ -72,6 +72,8 @@ class SalesOrderExchangeRateAuthorityTest {
     @Mock private com.uten.imp.features.sales.SalesMutationFootprintService mutationFootprint;
     // V592 客户默认销售条款写回：create/update 会调它，@InjectMocks 缺 mock 时为 null 直接 NPE。
     @Mock private com.uten.imp.features.master.client.ClientDefaultTermsSyncService clientDefaultTermsSync;
+    // ADR-134 保存后学习挂钩(本测试不关心学习, 只防 NPE)。
+    @Mock private com.uten.imp.features.sales.SalesIntakeSaveHooks intakeHooks;
 
     @InjectMocks private SalesOrderService service;
 
@@ -79,6 +81,9 @@ class SalesOrderExchangeRateAuthorityTest {
 
     @BeforeEach
     void stubGoodsSnapshots() {
+        // ADR-134 单价权威抽到 SalesPriceAuthority: 用真实实现 + 同一个模拟 EntityManager(下方价格查询桩)。
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                service, "priceAuthority", new com.uten.imp.features.sales.SalesPriceAuthority(em));
         Query basisLock = mock(Query.class);
         lenient().when(em.createNativeQuery(contains("FOR KEY SHARE"))).thenReturn(basisLock);
         lenient().when(basisLock.setParameter(eq("ids"), any())).thenReturn(basisLock);

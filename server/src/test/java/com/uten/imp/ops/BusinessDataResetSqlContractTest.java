@@ -446,9 +446,9 @@ class BusinessDataResetSqlContractTest {
                 .contains("(733, 662)")
                 .contains("(734, 663)")
                 .contains("(738, 664)")
-                // V745 仓库重量账与单重学习(ADR-135)：本工作树磁盘另有在途 V735，目录数出 666；
-                // 已提交目录(无 V735)为 V745/665，合并时按真实目录重算。
-                .contains("(745, 666)")
+                // V745 仓库重量账与单重学习(ADR-135)：已提交目录(无 V735)为 V745/665；
+                // 本工作树磁盘另有在途 V735 时目录数出 666，本类目录对账在本地红属预期，合并时按真实目录重算。
+                .contains("(745, 665)")
                 // The exact range label follows the independently enumerated classpath head.
                 .contains("V507/469、V508/470及V511至V"
                         + MigrationRehearsalSupport.CURRENT_HEAD_VERSION + "完整目录");

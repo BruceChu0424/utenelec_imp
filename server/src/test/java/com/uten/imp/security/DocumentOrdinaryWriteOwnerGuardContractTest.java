@@ -17,7 +17,7 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
     @Test
     void salesOrdinaryMutationsKeepOwnerWriteGuards() throws Exception {
         assertMethods("features/sales/quote/SalesQuoteService.java",
-                " update(", " delete(", " approve(", " reverse(", " convertToOrder(");
+                " update(", " delete(", " submit(", " withdraw(", " reopen(", " reverse(", " convertToOrder(");
         assertMethods("features/sales/order/SalesOrderService.java",
                 " update(", " delete(", " approve(", " reverse(", " changeQty(",
                 " cancel(", " setPartialShipmentConfirmation(", " setLinePriority(",

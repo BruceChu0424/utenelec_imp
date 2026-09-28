@@ -110,13 +110,24 @@ class DocumentActionPermissionContractTest {
                     documentAuthority(document, "delete"));
             assertGate(document.service(), "delete",
                     documentAuthority(document, "delete"));
-            // Shipments use sales confirmation before finance and warehouse work;
-            // the old direct approve entry is retired and always rejects.
-            String approvalMethod = "sales_shipment".equals(document.prefix()) ? "confirmSales" : "approve";
-            assertGate(document.controller(), approvalMethod,
-                    documentAuthority(document, "approve"));
-            assertGate(document.service(), approvalMethod,
-                    documentAuthority(document, "approve"));
+            if ("sales_quote".equals(document.prefix())) {
+                // ADR-134：报价不再由销售审核(sales_quote:approve 已退役)，改为提交财务核价；
+                // 提交/撤回/重新修改都是负责人的编辑动作，核价由 sales_quote_finance:* 把关。
+                assertNoPublicMethod(document.controller(), "approve");
+                assertNoPublicMethod(document.service(), "approve");
+                for (String method : List.of("submit", "withdraw", "reopen")) {
+                    assertGate(document.controller(), method, documentAuthority(document, "edit"));
+                    assertGate(document.service(), method, documentAuthority(document, "edit"));
+                }
+            } else {
+                // Shipments use sales confirmation before finance and warehouse work;
+                // the old direct approve entry is retired and always rejects.
+                String approvalMethod = "sales_shipment".equals(document.prefix()) ? "confirmSales" : "approve";
+                assertGate(document.controller(), approvalMethod,
+                        documentAuthority(document, "approve"));
+                assertGate(document.service(), approvalMethod,
+                        documentAuthority(document, "approve"));
+            }
             assertGate(document.controller(), "reverse",
                     documentAuthority(document, "reverse"));
             assertGate(document.service(), "reverse",
@@ -134,6 +145,22 @@ class DocumentActionPermissionContractTest {
                 "convertToOrder", convert);
         assertGate(type("com.uten.imp.features.sales.order.SalesOrderService"),
                 "createFromQuote", convert);
+
+        // ADR-134 报价财务核价: 读 = sales_quote_finance:view; 改价/退回/确认/撤销确认 = view + confirm。
+        String financeView = authority("sales_quote_finance:view");
+        String financeDecide = financeView + " and " + authority("sales_quote_finance:confirm");
+        Class<?> financeController = type("com.uten.imp.features.sales.quote.SalesQuoteFinanceController");
+        Class<?> financeService = type("com.uten.imp.features.sales.quote.SalesQuoteFinanceService");
+        for (String method : List.of("list", "pendingCount", "review")) {
+            assertGate(financeController, method, financeView);
+            assertGate(financeService, method, financeView);
+        }
+        assertGate(financeController, "edit", financeDecide);
+        assertGate(financeService, "edit", financeDecide);
+        for (String method : List.of("returnToSales", "confirm", "reopen")) {
+            assertGate(financeController, method, financeDecide);
+            assertGate(financeService, method, financeDecide);
+        }
 
         Class<?> salesOrderController =
                 type("com.uten.imp.features.sales.order.SalesOrderController");

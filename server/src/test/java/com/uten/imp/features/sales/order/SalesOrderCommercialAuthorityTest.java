@@ -82,14 +82,15 @@ class SalesOrderCommercialAuthorityTest {
         OrderItemLine unchanged = orderLine(goodsId, colorId, unitId, "10");
         unchanged.setId(stored.getId());
         var prices = new SalesOrderService.ExistingOrderPriceBook(List.of(stored));
-        assertThat(prices.take(unchanged)).isEqualByComparingTo("12.3400");
-        assertThat(prices.take(unchanged)).isNull();
+        assertThat(prices.takeItem(unchanged)).isSameAs(stored);
+        assertThat(stored.getPrice()).isEqualByComparingTo("12.3400");
+        assertThat(prices.takeItem(unchanged)).isNull();
 
         OrderItemLine changedGoods = orderLine(
                 UUID.randomUUID(), colorId, unitId, "10.000000");
         changedGoods.setId(stored.getId());
         assertThat(new SalesOrderService.ExistingOrderPriceBook(List.of(stored))
-                .take(changedGoods)).isNull();
+                .takeItem(changedGoods)).isNull();
     }
 
     @Test
@@ -107,9 +108,10 @@ class SalesOrderCommercialAuthorityTest {
 
         OrderItemLine line = orderLine(goodsId, colorId, unitId, "1");
         line.setLineNo(3);
-        var prices = new SalesOrderService.TrustedQuotePriceBook(List.of(quote));
-        assertThat(prices.take(line)).isEqualByComparingTo("8.7500");
-        assertThat(prices.take(line)).isNull();
+        var prices = new SalesOrderService.TrustedQuotePriceBook(List.of(quote), "XB1", true);
+        var terms = prices.assign(List.of(line, line), true);
+        assertThat(terms.get(0).price()).isEqualByComparingTo("8.7500");
+        assertThat(terms.get(1)).as("同一条报价行只配一次").isNull();
     }
 
     @Test

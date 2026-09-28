@@ -28,7 +28,13 @@ public final class IntakeTextNormalizer {
     public static final List<String> PART_PREFIXES = List.of("Q120-", "F-", "V6", "G-");
 
     private static final Pattern WHITESPACE = Pattern.compile("\\s+");
-    private static final Pattern TRAILING_DOT = Pattern.compile("\\.$");
+    /**
+     * 型号归一去掉的空白: Java 的 {@code \s} 再加上 PostgreSQL(glibc)正则 {@code \s} 也算空白、NFKC 又不会换成空格的
+     * U+1680/U+2028/U+2029(U+0085 两边都不算), 与迁移 V742 种子表达式逐字一致(一致性测试覆盖)。
+     */
+    private static final Pattern PART_WHITESPACE = Pattern.compile("[\\s\\u1680\\u2028\\u2029]+");
+    /** 只在整个字符串的最末尾({@code \z}); {@code $} 还会匹配结尾换行符之前, 与 SQL 不一致。 */
+    private static final Pattern TRAILING_DOT = Pattern.compile("\\.\\z");
     private static final Pattern DESCRIPTION_PUNCT = Pattern.compile("[^\\p{L}\\p{N}\\s+/\\-]");
     /** 前缀后的中文序号(「沙特二」「伊拉克三」); 不剥数字, 否则会吃掉「6M」这类系列号。 */
     private static final Pattern ORDINAL_AFTER_PREFIX = Pattern.compile("^[一二三四五六七八九十]");
@@ -59,7 +65,7 @@ public final class IntakeTextNormalizer {
         // 逐码点大写, 与 PostgreSQL upper() 一致(不做 ß→SS 这类一变多的特殊映射)。
         out = out.codePoints().map(Character::toUpperCase)
                 .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append).toString();
-        out = WHITESPACE.matcher(out).replaceAll("");
+        out = PART_WHITESPACE.matcher(out).replaceAll("");
         return TRAILING_DOT.matcher(out).replaceFirst("");
     }
 

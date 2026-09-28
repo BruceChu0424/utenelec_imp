@@ -16,6 +16,10 @@ class IntakeTextNormalizerTest {
         assertThat(IntakeTextNormalizer.normalizePart("K20AD—01.")).isEqualTo("K20AD-01");
         assertThat(IntakeTextNormalizer.normalizePart("Z13N－03")).isEqualTo("Z13N-03");
         assertThat(IntakeTextNormalizer.normalizePart(null)).isEmpty();
+        // PostgreSQL 的 \s 认、Java 的 \s 不认的空白也要去掉; 结尾句点只看整串最末尾。
+        assertThat(IntakeTextNormalizer.normalizePart("Z13N\u2028-03")).isEqualTo("Z13N-03");
+        assertThat(IntakeTextNormalizer.normalizePart("Z13N\u1680-03")).isEqualTo("Z13N-03");
+        assertThat(IntakeTextNormalizer.normalizePart("GZ23/D.\u2029")).isEqualTo("GZ23/D");
     }
 
     @Test

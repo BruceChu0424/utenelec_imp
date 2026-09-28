@@ -200,8 +200,9 @@ public interface MasterIntakeLookupPort {
      * @param text          最近一次确认的原文
      * @param norm          规范化叫法
      * @param context       规范化上下文「系列|主色」, 未知为空串
-     * @param confirmCount  保存确认次数
-     * @param explicitCount 用户明确选择/改成该货品的次数
+     * @param confirmCount  客户对照: 保存确认次数(同一张单据重复保存不重复计数);
+     *                      全局对照: 把同一叫法对到同一货品的不同客户数(至少 1)
+     * @param explicitCount 客户对照: 用户明确选择/改成该货品的次数; 全局对照: 其中明确选过的不同客户数
      */
     record AliasRow(UUID id, AliasScope scope, UUID clientId, AliasKind kind, String text, String norm,
                     String context, UUID goodsId, int confirmCount, int explicitCount,

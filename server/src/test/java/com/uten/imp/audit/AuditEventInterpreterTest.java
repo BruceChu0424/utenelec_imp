@@ -401,6 +401,42 @@ class AuditEventInterpreterTest {
     }
 
     @Test
+    void labelsCustomerDocumentLearningEventsInChinese() {
+        AuditLog learned = request("client.learn_from_document", "/api/sales/quotes");
+        learned.setEventSource("business");
+        learned.setHttpMethod("POST");
+        learned.setTargetType("clients");
+        AuditEventInterpreter.InterpretedEvent learnedEvent = interpretStored(learned);
+        assertEquals("从客户文件补全资料", learnedEvent.actionLabel());
+        assertEquals("客户", learnedEvent.objectLabel());
+
+        AuditLog alias = request("client_goods_alias.delete",
+                "/api/master/clients/3e27d660-5c36-41c8-8ea1-7f777f52a9cc/goods-aliases/"
+                        + "5b0f3f7e-1d2a-4c55-9d0e-0a1b2c3d4e5f");
+        alias.setEventSource("business");
+        alias.setHttpMethod("DELETE");
+        alias.setTargetType("client_goods_aliases");
+        AuditEventInterpreter.InterpretedEvent aliasEvent = interpretStored(alias);
+        assertEquals("删除", aliasEvent.actionLabel());
+        assertEquals("客户货品对照", aliasEvent.objectLabel());
+
+        AuditLog nameEn = request("goods.update_name_en",
+                "/api/master/goods/3e27d660-5c36-41c8-8ea1-7f777f52a9cc/name-en");
+        nameEn.setEventSource("business");
+        nameEn.setHttpMethod("PUT");
+        nameEn.setTargetType("goods");
+        assertEquals("修改英文名称", interpretStored(nameEn).actionLabel());
+
+        AuditLog created = request("client_from_document.create", "/api/master/clients/from-document");
+        created.setEventSource("business");
+        created.setHttpMethod("POST");
+        created.setTargetType("client_from_document");
+        AuditEventInterpreter.InterpretedEvent createdEvent = interpretStored(created);
+        assertEquals("新增", createdEvent.actionLabel());
+        assertEquals("客户(来自客户文件)", createdEvent.objectLabel());
+    }
+
+    @Test
     void labelsMasterDataRoutesInChinese() {
         Map<String, String> expected = Map.of(
                 "/api/master/goods", "货品",

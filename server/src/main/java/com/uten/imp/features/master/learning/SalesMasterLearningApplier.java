@@ -258,8 +258,8 @@ public class SalesMasterLearningApplier {
         }
         if (changed.isEmpty()) return List.of();
         List<String> ordered = fields.keySet().stream().filter(changed::contains).toList();
-        // TODO(coordinator): 换成不「说明请求」的旁路事件写法(见主档包报告), 否则保存请求自己的语义审计行会被跳过。
-        audit.logCommitted(actorUserId, user.getLoginAccount(), AUDIT_ACTION_CLIENT_FIELDS,
+        // 旁路事件: 保存请求自己的语义审计行(报价/订货单的新增或修改、状态码、耗时)照常写。
+        audit.logCommittedSideEffect(actorUserId, user.getLoginAccount(), AUDIT_ACTION_CLIENT_FIELDS,
                 "clients", clientId.toString(),
                 "从客户文件补全: " + ClientDocumentFields.labels(ordered));
         return ordered;

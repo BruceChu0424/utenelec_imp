@@ -43,6 +43,21 @@ class AuditServiceTransactionContractTest {
     }
 
     @Test
+    void sideEffectEventsJoinTheCallersTransaction() throws Exception {
+        Method method = AuditService.class.getMethod(
+                "logCommittedSideEffect",
+                java.util.UUID.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class);
+        assertEquals(Propagation.MANDATORY,
+                method.getAnnotation(Transactional.class).propagation(),
+                "a side-effect event must roll back with the write it describes");
+    }
+
+    @Test
     void failureAndAuthenticationAuditStillUsesIndependentTransaction()
             throws Exception {
         Method method = AuditService.class.getMethod(

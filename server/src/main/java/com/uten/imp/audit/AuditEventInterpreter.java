@@ -935,6 +935,9 @@ public class AuditEventInterpreter {
         values.put("client_categories", "客户分类");
         values.put("clients", "客户");
         values.put("client_ship_addresses", "客户收货地址");
+        values.put("client_goods_aliases", "客户货品对照");
+        values.put("client_goods_alias", "客户货品对照");
+        values.put("client_from_document", "客户(来自客户文件)");
         values.put("client_default_settlement_migration_issues", "客户结算方式迁移问题");
         values.put("supplier_categories", "供应商分类");
         values.put("suppliers", "供应商");

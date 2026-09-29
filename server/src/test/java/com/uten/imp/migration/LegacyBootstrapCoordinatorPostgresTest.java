@@ -472,8 +472,11 @@ class LegacyBootstrapCoordinatorPostgresTest {
                 SELECT count(*) || '|' || count(*) FILTER (WHERE balance.color_id IS NULL)
                 FROM stock_balances balance JOIN goods ON goods.id=balance.goods_id WHERE goods.legacy_id=920101
                 """)).isEqualTo("2|1");
+        // V743(ADR-135) 起, 老库 Weight/FactWeight 的单位不可证明, 库存重量一律不导入
+        // (NULL=不知道, 从第一次称重/盘点建立)——数量与金额维度不变, 重量维度改为断言未导入。
         assertThat(scalar("""
-                SELECT (sum(balance.qty)=8 AND sum(balance.amount_local)=26.5 AND sum(balance.weight)=3.7)::text
+                SELECT (sum(balance.qty)=8 AND sum(balance.amount_local)=26.5
+                        AND count(balance.weight) = 0)::text
                 FROM stock_balances balance JOIN goods ON goods.id=balance.goods_id WHERE goods.legacy_id=920101
                 """)).isEqualTo("true");
         assertThat(scalar("""

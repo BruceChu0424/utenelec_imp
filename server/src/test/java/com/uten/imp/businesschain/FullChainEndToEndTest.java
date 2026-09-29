@@ -137,11 +137,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         })
 class FullChainEndToEndTest {
 
+    // 73 个 E2E 类经 registerDataSource 共享本容器, 各自的 Spring 上下文(缓存上限 32)
+    // 各持一个 Hikari 池同连此库——默认 max_connections=100 会被瞬时冲爆
+    // (CI 全链 job 实测 FATAL: too many clients), 提容到 400 并配测试侧小池。
     private static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
                     .withUsername("uten")
-                    .withPassword("uten");
+                    .withPassword("uten")
+                    .withCommand("postgres", "-c", "max_connections=400");
 
     /** 附件本地存储测试目录（隔离，避免污染工程目录）。 */
     private static java.nio.file.Path ATTACH_TEST_DIR;

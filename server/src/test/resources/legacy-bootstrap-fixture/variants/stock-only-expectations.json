@@ -34,7 +34,7 @@
     "count": 5,
     "qtySum": "21.0000",
     "amountLocalSum": "65.50",
-    "weightSum": "3.7000",
+    "weightSum": null,
     "newTuples": [
       {
         "warehouse": 900201,
@@ -42,7 +42,7 @@
         "color": 920401,
         "qty": "5.0000",
         "amountLocal": "17.50",
-        "weight": "2.5000"
+        "weight": null
       },
       {
         "warehouse": 900201,
@@ -50,7 +50,7 @@
         "color": null,
         "qty": "3.0000",
         "amountLocal": "9.00",
-        "weight": "1.2000"
+        "weight": null
       }
     ]
   },

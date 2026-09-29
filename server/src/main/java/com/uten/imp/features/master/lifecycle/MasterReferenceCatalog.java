@@ -631,6 +631,45 @@ final class MasterReferenceCatalog {
                 "production_fqc_recovery_authorizations", "goods_id", "color_id", "unit_id", "warehouse_id");
         exempt(out, ExemptReason.COVERED, "补产周期跟着生产计划走(排产包/生产用料检查)",
                 "production_fqc_replenishment_cycles", "warehouse_id");
+        // V740(ADR-131): 车间内料仓期间/申请/领用/盘点/结算/其它耗用的事实行与记账——
+        // 货品、颜色、单位与内料仓都是发生时点的快照身份, 主档删除后账目照样可查。
+        exempt(out, ExemptReason.HISTORY, "认料/换料记录的产品与选定料快照",
+                "goods_periodic_material_choices",
+                "product_goods_id", "material_goods_id", "material_color_id");
+        exempt(out, ExemptReason.HISTORY, "执行段换料事件的目标料快照",
+                "production_execution_material_changes",
+                "to_material_goods_id", "to_material_color_id");
+        exempt(out, ExemptReason.HISTORY, "执行段期间用料快照",
+                "production_execution_periodic_materials",
+                "material_goods_id", "material_color_id", "unit_id", "bin_warehouse_id");
+        exempt(out, ExemptReason.HISTORY, "内料仓领料申请与记账的事实身份",
+                "workshop_material_requisitions", "bin_warehouse_id");
+        exempt(out, ExemptReason.HISTORY, "内料仓领料申请行的事实身份(建议叶仓一并入账)",
+                "workshop_material_requisition_lines",
+                "goods_id", "color_id", "unit_id", "bin_warehouse_id",
+                "suggested_leaf_warehouse_id");
+        exempt(out, ExemptReason.HISTORY, "内料仓领料记账的事实身份",
+                "workshop_material_requisition_postings",
+                "goods_id", "color_id", "bin_warehouse_id", "leaf_warehouse_id");
+        exempt(out, ExemptReason.HISTORY, "内料仓单据的内料仓归属快照",
+                "workshop_material_stock_documents", "bin_warehouse_id");
+        exempt(out, ExemptReason.HISTORY, "内料仓核算期间归属快照",
+                "workshop_material_periods", "bin_warehouse_id");
+        exempt(out, ExemptReason.HISTORY, "内料仓期间用料行的事实身份",
+                "workshop_material_period_lines", "goods_id", "color_id", "unit_id");
+        exempt(out, ExemptReason.HISTORY, "内料仓盘点行与记账的事实身份",
+                "workshop_material_count_lines", "goods_id", "color_id", "unit_id");
+        exempt(out, ExemptReason.HISTORY, "内料仓盘点记账的事实身份",
+                "workshop_material_count_postings",
+                "goods_id", "color_id", "bin_warehouse_id");
+        exempt(out, ExemptReason.HISTORY, "内料仓其它耗用的事实身份",
+                "workshop_material_other_issues",
+                "goods_id", "color_id", "unit_id", "bin_warehouse_id");
+        exempt(out, ExemptReason.HISTORY, "内料仓结算理论行(按产品聚合的核算快照)",
+                "workshop_material_close_theory_lines", "product_goods_id");
+        // 货品的整批发料方式设置随主档保留失效(与称重设置同口径)。
+        exempt(out, ExemptReason.OWN_CONFIG, "货品整批发料设置的目标内料仓",
+                "workshop_material_settings", "periodic_bin_warehouse_id");
         return List.copyOf(out);
     }
 

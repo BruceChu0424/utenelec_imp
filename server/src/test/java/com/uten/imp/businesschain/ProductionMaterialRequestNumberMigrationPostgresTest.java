@@ -68,10 +68,21 @@ class ProductionMaterialRequestNumberMigrationPostgresTest {
         // Current Java also reads the ADR-129 BOM usage objects (view, learning, new columns). They are
         // independent of V731, so the same migration is applied here verbatim; found by name because its
         // version number is assigned when it lands.
-        try(var files=java.nio.file.Files.list(java.nio.file.Path.of("src/main/resources/db/migration"))) {
-            java.nio.file.Path usage=files.filter(file->file.getFileName().toString().endsWith("__bom_design_and_actual_usage.sql"))
-                    .findFirst().orElseThrow();
-            db.execute(java.nio.file.Files.readString(usage));
+        var migrationFiles=java.util.Collections.<java.nio.file.Path>emptyList();
+        try {
+            migrationFiles=java.nio.file.Files.list(java.nio.file.Path.of("src/main/resources/db/migration")).toList();
+            // 当前 Java 的实体与查询需要后续迁移给既有表加的列/对象; 与 V731 编号回填互相独立、
+            // 且不触碰 V730 库上尚不存在的对象(整段 V733..V743 连放会在跳版本的库上断), 按需逐个
+            // verbatim 应用: V739 BOM 用量、V735 draw_batch_no、V740 issue_method/内料仓、
+            // V742 AI 列、V743 重量账列。V731 延后到测试中段单独验证; V732 保持手工重建的形态。
+            for(String suffix:new String[]{"__bom_design_and_actual_usage.sql","__draw_batch_no.sql",
+                    "__workshop_material_periodic_costing.sql","__ai_platform_sales_intake_learning.sql",
+                    "__warehouse_weight_ledger_and_learning.sql"}){
+                java.nio.file.Path bridge=migrationFiles.stream()
+                        .filter(file->file.getFileName().toString().endsWith(suffix))
+                        .findFirst().orElseThrow();
+                db.execute(java.nio.file.Files.readString(bridge));
+            }
         }catch(java.io.IOException failure){throw new java.io.UncheckedIOException(failure);}
     }
     @AfterEach void clear(){SecurityContextHolder.clearContext();}

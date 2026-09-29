@@ -599,7 +599,6 @@ final class MasterReferenceCatalog {
         exempt(out, ExemptReason.OWN_CONFIG, "客户货品对照(客户的型号/品名对应我们的货品)", "client_goods_aliases",
                 "client_id", "goods_id");
         exempt(out, ExemptReason.OWN_CONFIG, "客户文件版式(表头对应的列)", "sales_intake_layouts", "client_id");
-        exempt(out, ExemptReason.OWN_CONFIG, "货品自己的计量采集设置", "measurement_capture_profiles", "goods_id");
         // V743(ADR-135): 称重设置与单重学习结果都挂在货品下; manual_unit_id 只是设定人工单重时
         // 货品基本单位的快照(与当前单位不一致即作废), 不算「还在用」这个单位。
         exempt(out, ExemptReason.OWN_CONFIG, "货品称重设置", "goods_weight_profiles",
@@ -646,8 +645,7 @@ final class MasterReferenceCatalog {
                 "workshop_material_requisitions", "bin_warehouse_id");
         exempt(out, ExemptReason.HISTORY, "内料仓领料申请行的事实身份(建议叶仓一并入账)",
                 "workshop_material_requisition_lines",
-                "goods_id", "color_id", "unit_id", "bin_warehouse_id",
-                "suggested_leaf_warehouse_id");
+                "goods_id", "color_id", "unit_id", "suggested_leaf_warehouse_id");
         exempt(out, ExemptReason.HISTORY, "内料仓领料记账的事实身份",
                 "workshop_material_requisition_postings",
                 "goods_id", "color_id", "bin_warehouse_id", "leaf_warehouse_id");

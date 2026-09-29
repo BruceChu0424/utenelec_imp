@@ -47,7 +47,7 @@ dependencies:
   path_provider: ^2.1.5
 
   # 文件/图片选择（报销附件上传：发票照片/PDF 等）
-  file_picker: ^8.1.7
+  file_picker: ^11.0.3
 
   # 图片格式支持；附件上传保留原始字节，不再用此库进行有损转码。
   image: ^4.9.1

@@ -74,11 +74,11 @@ class ResetBusinessDataScriptContractTest {
                 "('ai_providers', 742)",
                 "('client_goods_aliases', 742)",
                 "('sales_intake_layouts', 742)",
-                // V743(ADR-135)：重量调整账是 CLEAR 业务来源；单重学习三表 PRESERVE，只登记存在性。
-                "('stock_weight_adjustments', 745)",
-                "('goods_weight_profiles', 745)",
-                "('goods_weight_observations', 745)",
-                "('goods_weight_estimates', 745)",
+                // V743(ADR-135, 定号 V743 非 745)：重量调整账是 CLEAR 业务来源；单重学习三表 PRESERVE，只登记存在性。
+                "('stock_weight_adjustments', 743)",
+                "('goods_weight_profiles', 743)",
+                "('goods_weight_observations', 743)",
+                "('goods_weight_estimates', 743)",
                 "IS DISTINCT FROM (applied_max_version >= required.introduced_version)",
                 "count(*) FILTER (WHERE policy.disposition = 'CLEAR')",
                 "INTO incomplete_operational_tables, current_operational_table_count",
@@ -321,8 +321,8 @@ class ResetBusinessDataScriptContractTest {
         // V743 删掉了 V442 计量学习表的完整性计数(七张表已退役，只剩 unit_measurement_profiles)。
         assertThat(sql).doesNotContain("measurement_table_count");
         assertThat(sql)
-                .contains("(applied_max_version BETWEEN 711 AND 744 AND preserve_count <> 102)")
-                .contains("(applied_max_version >= 745 AND preserve_count <> 102)")
+                .contains("(applied_max_version BETWEEN 711 AND 739 AND preserve_count <> 102)")
+                .contains("(applied_max_version >= 743 AND preserve_count <> 107)")
                 .contains("current_operational_table_count=225)")
                 .contains("v440_business_table_count <> 6")
                 .contains("v443_business_table_count <> 1")

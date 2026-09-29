@@ -1549,11 +1549,12 @@ BEGIN
             ('ai_jobs', 742),
             ('ai_call_logs', 742),
             ('sales_quote_revision_logs', 742),
-            -- V743 仓库重量账与单重学习(ADR-135): 只有 CLEAR 的重量调整账计入恒等式扣减。
-            ('stock_weight_adjustments', 745),
-            ('goods_weight_profiles', 745),
-            ('goods_weight_observations', 745),
-            ('goods_weight_estimates', 745)
+            -- V743 仓库重量账与单重学习(ADR-135, 原号 V745, 定号 V743): 只有 CLEAR 的
+            -- 重量调整账计入恒等式扣减。
+            ('stock_weight_adjustments', 743),
+            ('goods_weight_profiles', 743),
+            ('goods_weight_observations', 743),
+            ('goods_weight_estimates', 743)
     )
     SELECT string_agg(required.table_name, ', ' ORDER BY required.table_name) FILTER (
                WHERE (to_regclass(format('public.%I', required.table_name)) IS NOT NULL)
@@ -1586,15 +1587,14 @@ BEGIN
        OR (applied_max_version BETWEEN 693 AND 710 AND preserve_count <> 100)
        OR (applied_max_version BETWEEN 711 AND 739 AND preserve_count <> 102)
        -- V740 机台、机台容器与认料三张配置表随主档保留(102→105, ADR-131)。
-       OR (applied_max_version >= 740 AND preserve_count <> 105),
-       OR (applied_max_version BETWEEN 711 AND 740 AND preserve_count <> 102)
+       OR (applied_max_version = 740 AND preserve_count <> 105)
        -- V741 删政策情报表 official_policy_briefs(102→101, ADR-133)；V742 新增 AI 服务商配置、
        -- 客户货品对照与客户文件版式三张 PRESERVE 表(101→104, ADR-133/ADR-134)。
        OR (applied_max_version = 741 AND preserve_count <> 101)
-       OR (applied_max_version >= 742 AND preserve_count <> 104),
-       OR (applied_max_version BETWEEN 711 AND 744 AND preserve_count <> 102)
-       -- V743 退役 V442 三张旧库计量证据表(-3)，新增单重学习三表(+3)：PRESERVE 仍为 102。
-       OR (applied_max_version >= 745 AND preserve_count <> 102)
+       OR (applied_max_version = 742 AND preserve_count <> 104)
+       -- V743 退役 V442 三张旧库计量证据表(-3)，新增单重学习三表(+3)：PRESERVE
+       -- 维持 V742 的 107（102 是写注释时按 V739 基数误算）。
+       OR (applied_max_version >= 743 AND preserve_count <> 107)
        OR NOT (
            (v446_business_table_count = 0
                 AND v447_business_table_count = 0
@@ -1639,11 +1639,11 @@ BEGIN
            -- V500 eight value tables; V503 three source revision tables.
            -- V608 报销链路完整化：发票登记表 + 审批事件表进 current_operational_
            -- table_count 清单（clear_count 同步 +2，恒等式仍为 229）。
-           OR (applied_max_version BETWEEN 500 AND 744 AND v446_business_table_count=2
+           OR (applied_max_version BETWEEN 500 AND 742 AND v446_business_table_count=2
                 AND v447_business_table_count=5
                 AND clear_count-v454_celebration_table_count-v500_value_table_count-v503_source_revision_table_count-v506_opening_table_count-current_operational_table_count=229)
            -- V743 退役 V442 四张 CLEAR 采集表(229→225)；新增的重量调整账在 current_operational_table_count 里扣减。
-           OR (applied_max_version>=745 AND v446_business_table_count=2
+           OR (applied_max_version>=743 AND v446_business_table_count=2
                 AND v447_business_table_count=5
                 AND clear_count-v454_celebration_table_count-v500_value_table_count-v503_source_revision_table_count-v506_opening_table_count-current_operational_table_count=225)
        ) THEN

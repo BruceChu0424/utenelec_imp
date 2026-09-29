@@ -90,6 +90,7 @@ WITH unique_employees AS (
 ), numbered AS (
     SELECT cs.*,
            row_number() OVER (ORDER BY cs.legacy_id) AS seq_ordinal,
+           row_number() OVER (PARTITION BY upper(btrim(cs.code)) ORDER BY cs.legacy_id) AS dup_ordinal,
            count(*) OVER ()::bigint AS allocation_count
     FROM client_stage cs
 ), reserved AS (
@@ -114,7 +115,15 @@ SELECT
         (SELECT client_category_id
          FROM system_master_category_registry
          WHERE id = '27500000-0000-4000-8000-000000000001'::uuid)),
-    cs.name, cs.code, cs.full_name, cs.client_rank,
+    cs.name,
+    -- V276 同码不同身份拒绝重复入档（实测老库 'GD0001'×2）：每组 legacy_id 序第一条
+    -- 保留原码，其余用本行已预留的分配器序号按 KH + %06d 重派
+    -- （MasterCodePrefix.CLIENT 回退前缀，CategoryDrivenCodeService.format 同格式）。
+    CASE WHEN cs.dup_ordinal = 1 THEN cs.code
+         ELSE 'KH' || to_char(
+                  reserved.last_seq - cs.allocation_count + cs.seq_ordinal, 'FM000000')
+    END,
+    cs.full_name, cs.client_rank,
     cs.place_id, cs.emp_id, employee_owner.employee_id,
     cs.legal_person, cs.linkman, cs.mobile, cs.phone, cs.phone2,
     cs.fax, cs.postcode, cs.address, cs.email, cs.website, cs.ship_via, cs.ship_address,

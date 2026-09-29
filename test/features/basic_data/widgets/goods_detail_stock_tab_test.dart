@@ -241,6 +241,6 @@ void main() {
     expect(find.text('≈28.9 kg (另有 2 处未称)'), findsOneWidget);
     expect(find.text('5000.0 个 · 重量 ≈28.9 kg'), findsOneWidget);
     expect(find.text('20.0 个 · 重量 未称'), findsOneWidget);
-    expect(find.textContaining('(线边仓, 不计入合计)'), findsOneWidget);
+    expect(find.textContaining('(内料仓, 不计入合计)'), findsOneWidget);
   });
 }

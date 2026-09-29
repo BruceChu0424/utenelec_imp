@@ -1962,7 +1962,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       );
       if (!mounted || result == null) return;
       // 订货单交过来的原文件随这次识别一起存进附件(恢复作业本身不带文件)。
-      final handedFile = jobId == widget.initialAiJobId ? widget.initialAiFile : null;
+      final handedFile = jobId == widget.initialAiJobId
+          ? widget.initialAiFile
+          : null;
       final patch = result.patch;
       await _handleIntakeResult(
         patch != null && result.file == null && handedFile != null
@@ -3265,7 +3267,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     if (widget.docType != SalesDocType.quote || base == null) return all;
     return {
       for (final entry in all.entries)
-        if (entry.key == base || entry.key == _currencyId) entry.key: entry.value,
+        if (entry.key == base || entry.key == _currencyId)
+          entry.key: entry.value,
     };
   }
 

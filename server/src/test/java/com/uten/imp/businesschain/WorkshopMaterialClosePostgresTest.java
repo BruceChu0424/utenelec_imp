@@ -145,6 +145,11 @@ class WorkshopMaterialClosePostgresTest {
         bench.stockIn(expense, "5", "5");
         bench.stockIn(gain, "5", "8");
         bench.stockIn(loss, "5", "6");
+        // 颗粒入库的价值任务必须在结算前算完: 结算读池均价核定盘盈, 慢机上不等,
+        // 结算落库的 value_at_close 就是 0(本地快机靠调度器抢先跑完才碰巧绿)。
+        var preCloseGoods = new java.util.ArrayList<UUID>(List.of(bench.world.goodsA(), bench.world.goodsB(), bench.world.goodsE()));
+        preCloseGoods.addAll(bench.granules);
+        InventoryValueWorkTestSupport.drain(bench.valueWork, db, preCloseGoods);
         bench.enable(List.of());
         assertEquals("BOM", db.queryForObject("""
                 SELECT origin FROM production_execution_periodic_materials WHERE execution_segment_id = ?""",
@@ -167,9 +172,12 @@ class WorkshopMaterialClosePostgresTest {
         assertEquals("QUEUED", counted.closeState());
 
         assertEquals(Result.CLOSED, closes.attempt(first, TriggerKind.AFTER_COUNT, bench.admin));
-        // 结算自身的出库/盘盈事件会再排一轮价值任务; 盘盈按池均价核定, 断言前等本世界的
-        // 价值池就位(慢机上不等会出现 value_at_close=0)。
-        InventoryValueWorkTestSupport.drain(bench.valueWork, db, List.of(bench.world.goodsA(), bench.world.goodsB(), bench.world.goodsE()));
+        // 结算自身的出库/盘盈事件会再排一轮价值任务; 盘盈按池均价核定, 断言前等价值池就位
+        // (慢机上不等会出现 value_at_close=0)。池属于各颗粒货品——drain 范围必须含 bench
+        // 建的全部颗粒, 只等 A/B/E 会漏掉颗粒的入库价值任务(本地快机靠调度器抢先跑完)。
+        var drainGoods = new java.util.ArrayList<UUID>(List.of(bench.world.goodsA(), bench.world.goodsB(), bench.world.goodsE()));
+        drainGoods.addAll(bench.granules);
+        InventoryValueWorkTestSupport.drain(bench.valueWork, db, drainGoods);
         assertEquals("CLOSED/NONE", state(first));
 
         // 主料: 实际 1.2, 理论 5 件 x 0.2 = 1.0, 浪费率 20% 不标红; 全部分给这张工单的成本范围 (单行即尾差)
@@ -670,12 +678,19 @@ class WorkshopMaterialClosePostgresTest {
         void confirmInboundAndDrain() {
             login();
             fixture.confirmFinishedInboundFully(fixture.finishedInDocForReport(report));
-            InventoryValueWorkTestSupport.drain(valueWork, db, List.of(world.goodsA(), world.goodsB(), world.goodsE()));
+            // 成品入库的价值任务之外, 颗粒货品后续 stockIn 的价值任务也要能等到——
+            // drain 范围含已建颗粒(此时颗粒价值任务尚未产生, 等的是 A/B/E 成品)。
+            var drainGoods = new java.util.ArrayList<UUID>(List.of(world.goodsA(), world.goodsB(), world.goodsE()));
+            drainGoods.addAll(granules);
+            InventoryValueWorkTestSupport.drain(valueWork, db, drainGoods);
             login();
         }
 
+        final java.util.List<UUID> granules = new java.util.ArrayList<>();
+
         UUID granule(String name, String costBasis) {
             UUID id = UUID.randomUUID();
+            granules.add(id);
             int legacy = db.queryForObject("SELECT legacy_id FROM units WHERE id = ?", Integer.class, kg);
             db.update("""
                     INSERT INTO goods(id, code, name, source_type, status, unit_id, unit_legacy_id, price, code_sequence,

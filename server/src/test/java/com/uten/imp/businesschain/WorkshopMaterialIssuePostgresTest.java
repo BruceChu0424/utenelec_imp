@@ -496,6 +496,8 @@ class WorkshopMaterialIssuePostgresTest {
                 // (单跑恒绿、全量红)。本用例的关注点是认料/机台的保留口径, 按生产
                 // 「附件清理准备已完成」的状态先清业务附件行(事务内, 回滚不留痕)。
                 statement.execute(
+                        "DELETE FROM attachment_object_outbox WHERE attachment_id IN (SELECT id FROM attachments WHERE upper(btrim(owner_type)) NOT IN ('EMPLOYEE','EMPLOYEE_CONTRACT'))");
+                statement.execute(
                         "DELETE FROM attachments WHERE upper(btrim(owner_type)) NOT IN ('EMPLOYEE','EMPLOYEE_CONTRACT')");
                 statement.execute(
                         "DELETE FROM attachment_upload_sessions WHERE upper(btrim(owner_type)) NOT IN ('EMPLOYEE','EMPLOYEE_CONTRACT')");

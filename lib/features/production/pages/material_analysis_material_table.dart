@@ -200,6 +200,9 @@ abstract class _MaterialAnalysisMaterialTableState
     _recomputeTableEstimates();
     _draftBudget.invalidate();
     _tableEstimateTick.value++;
+    // 保留编辑套用新快照后也要刷新没人改过的预填比例(汇总草稿开着时新默认
+    // 跟着来源走)；人填过的与已下达的由 reseed 自己跳过。
+    _reseedSystemOverproductionRates();
   }
 
   void _mutateAggregateTable(VoidCallback change) {

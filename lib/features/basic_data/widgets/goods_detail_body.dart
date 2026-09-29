@@ -1312,14 +1312,14 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         // 归属生产车间 (V590)：最近一次排产确认/车间改派自动学习回写，只读。
         MasterDetailRow('归属车间', d.owningWorkshopName),
         MasterDetailRow('库存量(合计)', s(d.stockQty)),
-        // 重量合计由服务端算好 (千克, 不含线边仓; ADR-135), 前端只按显示单位换算。
+        // 重量合计由服务端算好 (千克, 不含内料仓; ADR-135), 前端只按显示单位换算。
         if (d.stockWeightKg != null || d.stockWeightUnknown > 0)
           MasterDetailRow('库存重量(合计)', _stockWeightTotalText(d, weightDisplay)),
         for (final w in d.stockByWarehouse)
           MasterDetailRow(
             '　${w.warehouseName ?? w.warehouseCode ?? '仓库'}'
                 '${w.colorName != null ? '·${w.colorName}' : ''}'
-                '${w.lineSide ? ' (线边仓, 不计入合计)' : ''}',
+                '${w.lineSide ? ' (内料仓, 不计入合计)' : ''}',
             '${s(w.qty)}${d.unitName != null ? ' ${d.unitName}' : ''}'
                 '${_rowWeightText(w, weightDisplay)}',
           ),

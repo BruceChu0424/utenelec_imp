@@ -2821,6 +2821,12 @@ class _ProductionMaterialAnalysisPageState
       (view.allowedActions.toList()..sort()).join(','),
       view.warehouseId ?? '',
       (view.warehouseIds.toList()..sort()).join(','),
+      // 超产默认比例是页面要跟着刷新的读侧事实(ADR-129 预填/汇总格跟随):
+      // 版本指纹都不变、只变了默认时也要套用, 否则没人改过的格子停在旧默认。
+      (view.overproductionDefaults.entries.toList()
+            ..sort((a, b) => a.key.compareTo(b.key)))
+          .map((entry) => '${entry.key}=${entry.value}')
+          .join(','),
     ];
     for (final product in view.products) {
       parts.add(

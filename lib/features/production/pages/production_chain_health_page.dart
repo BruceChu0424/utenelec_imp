@@ -4,6 +4,8 @@
 //  ① 有销售缺口无分析  ② 有分析未排完计划  ③ 有计划未生成领料单  ④ 有领料单无计划来源
 // 每类显示全量命中数 + 截断明细，点明细跳到权威单据修复。
 // 数据全部来自服务端只读扫描（GET /production/chain-health），页面不自行推断。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -16,6 +18,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../models/production_material_analysis.dart';
 
 class ProductionChainHealthPage extends ConsumerStatefulWidget {
@@ -118,7 +121,13 @@ class _ProductionChainHealthPageState
     final categories = _categories ?? const [];
     final total = categories.fold<int>(0, (sum, c) => sum + c.count);
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
+      // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
+      padding: EdgeInsets.fromLTRB(
+        0,
+        UtenSpacing.s12,
+        0,
+        math.max(UtenSpacing.s12, UtenCapsuleNavScope.occlusionOf(context)),
+      ),
       children: [
         _coverageNotice(),
         const SizedBox(height: UtenSpacing.s12),

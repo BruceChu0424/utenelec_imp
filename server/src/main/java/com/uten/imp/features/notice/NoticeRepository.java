@@ -36,6 +36,14 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
             @Param("ids") Set<UUID> ids,
             @Param("workshopScope") ReviewNoticeAudience.WorkshopScope workshopScope);
 
+    /**
+     * 人事序列部门（部门 code 含 HR：DEPT_HR 及其二级班组，与工作台
+     * DashboardOverviewService#tagsForCode 同口径）的用户 id 集合。
+     * 「重要通知」= 该集合用户发布且当前用户未读的通知（2026-09-28 用户口径）。
+     */
+    @Query(value = "SELECT u.id FROM users u JOIN employees e ON e.id = u.employee_id JOIN departments d ON d.id = e.department_id WHERE d.code LIKE '%HR%'", nativeQuery = true)
+    List<UUID> findHrDepartmentUserIds();
+
     @Query(value="""
             SELECT id AS "shipmentId",
               (status=0 AND NOT is_deleted AND NOT rejected AND NOT finance_rejected AND finance_audit=0

@@ -239,7 +239,7 @@ void main() {
       expect(
         find.descendant(
           of: confirmDialog,
-          matching: find.text('本分析预定 4 · 公共在途已采用 1'),
+          matching: find.text('计划部预定 4 · 公共在途已采用 1'),
         ),
         findsOneWidget,
       );

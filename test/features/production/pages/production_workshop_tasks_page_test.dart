@@ -15,7 +15,6 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
-import 'package:uten_imp/components/data_display/uten_status_badge.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
@@ -270,16 +269,9 @@ void main() {
         await tester.tap(find.text('等待物料'));
         await tester.pumpAndSettle();
         final label = requested ? '已提交领料 · 待仓库发料' : '物料齐套 · 去领料';
-        final badge = tester.widget<UtenStatusBadge>(
-          find.byWidgetPredicate(
-            (widget) => widget is UtenStatusBadge && widget.label == label,
-          ),
-        );
-        // 2026-09-20 用户口径「颜色差别大点」：去领料=蓝、待仓库发料=灰。
-        expect(
-          badge.type,
-          requested ? UtenStatusBadgeType.neutral : UtenStatusBadgeType.info,
-        );
+        // 2026-09-27 起状态列不再画胶囊：阶段文案纯文字（正文字号），就绪度
+        // 区分色由整格底色表达（去领料=蓝 / 待仓库发料=灰，口径不变）。
+        expect(find.text(label), findsOneWidget);
         expect(
           find.byKey(const ValueKey('workshop-request-draw-segment-a')),
           requested ? findsNothing : findsOneWidget,
@@ -1196,20 +1188,8 @@ void routeConfirmationTests() {
         ),
       );
       expect(find.text('待选生产路线'), findsNWidgets(2));
-      // 待选路线 = 车间必须先做决定：红色徽章，与等待(琥珀)/去领料(蓝)/可开工(绿)拉开。
-      expect(
-        tester
-            .widget<UtenStatusBadge>(
-              find
-                  .byWidgetPredicate(
-                    (widget) =>
-                        widget is UtenStatusBadge && widget.label == '待选生产路线',
-                  )
-                  .first,
-            )
-            .type,
-        UtenStatusBadgeType.danger,
-      );
+      // 待选路线 = 车间必须先做决定：整格红色底（2026-09-27 起格内不画胶囊，
+      // 文字黑/白由对比度约定接管），与等待(琥珀)/去领料(蓝)/可开工(绿)拉开。
       // 「下一步」格直接是路线下拉：未确认=空占位（不预填假默认），可改选。
       final field = tester.widget<UtenDropdownField>(
         find.byKey(const ValueKey('workshop-next-step-segment-c')),
@@ -1416,10 +1396,10 @@ void routeConfirmationTests() {
     expect(tester.takeException(), isNull);
   });
 
-  for (final (route, label, color) in [
-    ('FULL_KIT', '齐套生产', UtenStatusBadgeType.success),
-    ('BATCH', '分批生产', UtenStatusBadgeType.info),
-    ('CONTINUOUS', '持续生产', UtenStatusBadgeType.fuchsia),
+  for (final (route, label) in [
+    ('FULL_KIT', '齐套生产'),
+    ('BATCH', '分批生产'),
+    ('CONTINUOUS', '持续生产'),
   ]) {
     testWidgets(
       'frozen $route row displays its route badge and only its own actions',
@@ -1432,16 +1412,12 @@ void routeConfirmationTests() {
             rowCanSplitBatch: true,
           ),
         );
-        // 已确认且不可再改：「下一步」格退化为只读徽章（五轮路线配色口径不变）。
-        final badge = tester.widget<UtenStatusBadge>(
-          find.descendant(
-            of: _frozenRowOf('产品 C'),
-            matching: find.byWidgetPredicate(
-              (widget) => widget is UtenStatusBadge && widget.label == label,
-            ),
-          ),
+        // 已确认且不可再改：「下一步」格退化为只读回显（2026-09-27 起表格格内
+        // 不再画胶囊，路线名纯文字；路线分类色由「生产路线」列整格底色表达）。
+        expect(
+          find.descendant(of: _frozenRowOf('产品 C'), matching: find.text(label)),
+          findsOneWidget,
         );
-        expect(badge.type, color);
         // 冻结必须说清原因与解锁路径（2026-09-20 用户口径「有些不能解锁」：
         // 只显示路线说明、不解释为什么不能改，等于让车间猜）。
         expect(

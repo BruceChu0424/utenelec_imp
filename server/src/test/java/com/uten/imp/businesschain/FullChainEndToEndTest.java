@@ -10752,6 +10752,52 @@ class FullChainEndToEndTest {
     }
 
     // ---------------------------------------------------------------------------------------------
+    // 通知合并(2026-09-27)：计划单与货品 1:1，批量审核同一订单的多张计划单时，
+    // outbox 把同批 PRODUCTION_PLAN_SCHEDULED 事件合并投递——订单归属人只收到
+    // 一条排产通知(正文合并货品、标注计划单张数)，而不是每个货品一条。
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void planBatchApproveSendsOneMergedSchedulingNoticePerOrder() {
+        World w = seedWorld("pbatchnotice");
+        UUID orderId = createApprovedOrder(w, w.goodsA(), "30", "100");
+        UUID orderItemId = orderItemId(orderId);
+        loginAs(w.superAdminUserId());
+        UUID p1 = createLegacyTestDraft(orderItemId, w.goodsA(), "3");
+        UUID p2 = createLegacyTestDraft(orderItemId, w.goodsA(), "3");
+        UUID p3 = createLegacyTestDraft(orderItemId, w.goodsA(), "3");
+        planService.batchApprove(List.of(p1, p2, p3));
+
+        String billNo = jdbc.queryForObject(
+                "select bill_no from sales_orders where id = ?", String.class, orderId);
+        UUID ownerUser = w.superAdminUserId();
+        int schedulingNotices = 0;
+        for (int i = 0; i < 60 && schedulingNotices == 0; i++) {
+            while (businessOutboxProcessor.processNext()) { }
+            schedulingNotices = count("""
+                    select count(*) from notices
+                    where audience_user_id = ?
+                      and source_event = 'PRODUCTION_PLAN_SCHEDULED'
+                      and title = ?
+                    """, ownerUser, "排产通知：" + billNo);
+            if (schedulingNotices == 0) {
+                try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+            }
+        }
+        assertEquals(1, schedulingNotices,
+                "同一订单批量审核多张计划单必须合并成一条排产通知");
+        Map<String, Object> merged = jdbc.queryForMap("""
+                select content from notices
+                where audience_user_id = ?
+                  and source_event = 'PRODUCTION_PLAN_SCHEDULED'
+                  and title = ?
+                """, ownerUser, "排产通知：" + billNo);
+        String content = (String) merged.get("content");
+        assertTrue(content.contains("已排产"), "合并通知正文必须带排产量：" + content);
+        assertTrue(content.contains("共 3 张计划单"),
+                "合并通知正文必须标注计划单张数：" + content);
+    }
+
+    // ---------------------------------------------------------------------------------------------
     // security-07：计划子资源(/plans/{id}/mrp/**)与计划详情同一对象范围——越权读 404、越权写 403。
     // 旧的订单物料分析(order-preview)没有任何调用方，已随本次整改删除(ADR-109)。
     // ---------------------------------------------------------------------------------------------

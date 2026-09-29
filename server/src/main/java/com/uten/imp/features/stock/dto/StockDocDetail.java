@@ -42,6 +42,8 @@ public class StockDocDetail {
     private UUID departmentId;
     /** 出库进度（仅 DRAW）：0未出库/1部分出库/2已出完。 */
     private Short issueStatus;
+    /** 领料批次号（仅 DRAW，V735）：批量出库明细表按「同批次同货品」合并显示用。 */
+    private String drawBatchNo;
     private List<StockDocItemDto> items;
     /** 制单员姓名（服务端按 maker_id 解析：employees 直查 + users 历史数据兼容）。 */
     private String makerName;

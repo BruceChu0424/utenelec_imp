@@ -12,6 +12,8 @@
 //   · 新建区五张卡不挂数（2026-09-24 用户口径：新建入口不需要通知数量徽章；
 //     草稿仍在新页「草稿(N)」按钮与任务中心草稿分段可见，模块累计照旧含草稿）。
 // 权限来自 currentPermissionsProvider；路由用 SalesRoutePath 字面量。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -27,6 +29,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
@@ -115,9 +118,12 @@ class SalesHubPage extends ConsumerWidget {
           child: ListView(
             padding: EdgeInsets.only(
               top: UtenSpacing.s12,
-              // 外壳 compact 已预留胶囊高度；medium+/桌面 Rail 不预留，取更大值。
+              // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊；medium+/桌面 Rail 无遮挡。
               bottom: context.breakpoint.isCompact
-                  ? UtenSpacing.s16
+                  ? math.max(
+                      UtenSpacing.s16,
+                      UtenCapsuleNavScope.occlusionOf(context),
+                    )
                   : UtenSpacing.s40,
             ),
             children: [

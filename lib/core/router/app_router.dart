@@ -130,6 +130,7 @@ import '../../features/warehouse/pages/warehouse_task_center_page.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
 import '../../features/notice/models/notice.dart';
+import '../../features/notice/providers/notice_providers.dart' show NoticeFilter;
 import '../../features/payroll/pages/payroll_generate_page.dart';
 import '../../features/payroll/pages/payroll_review_page.dart';
 import '../../features/payroll/pages/payroll_slip_detail_page.dart';
@@ -184,6 +185,7 @@ import 'page_resume_provider.dart';
 import 'route_access_policy.dart';
 import 'route_names.dart';
 import '../../shared/drafts/form_draft_navigation.dart';
+import '../../shared/drafts/form_drafts_page.dart';
 
 String? _rejectUnknownPurchaseDoc(BuildContext _, GoRouterState state) =>
     PurchaseDocType.tryByPath(state.pathParameters['doc']!) == null
@@ -488,7 +490,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           DraftAwareGoRoute(
             path: '/notice',
             name: 'notice-list',
-            builder: (_, _) => const NoticeListPage(),
+            // ?filter=unread|important 直达筛选段（工作台「重要通知」指标深链）。
+            builder: (_, s) => NoticeListPage(
+              initialFilter: switch (s.uri.queryParameters['filter']) {
+                'unread' => NoticeFilter.unread,
+                'important' => NoticeFilter.important,
+                _ => null,
+              },
+            ),
           ),
           DraftAwareGoRoute(
             path: RouteName.noticePublish,
@@ -1699,6 +1708,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             // ?field=xxx：从「我的」页字段铅笔进入，编辑页定位聚焦该字段。
             builder: (_, s) =>
                 ProfileEditPage(initialField: s.uri.queryParameters['field']),
+          ),
+          // 独立草稿页(登录即可：本人表单草稿，无业务权限概念；2026-09-27
+          // 基础资料/建议箱/HR/品质任务中心顶栏「草稿」按钮的落点)。
+          DraftAwareGoRoute(
+            path: RouteName.formDrafts,
+            name: 'form-drafts',
+            builder: (_, s) =>
+                FormDraftsPage(categoryId: s.pathParameters['categoryId']!),
           ),
           DraftAwareGoRoute(
             path: RouteName.profileMyChanges,

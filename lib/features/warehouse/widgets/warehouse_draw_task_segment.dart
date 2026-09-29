@@ -21,8 +21,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -122,6 +122,15 @@ class _WarehouseDrawTaskSegmentState
   static String _idOf(WarehouseDrawTask task) =>
       task.actionDocId ?? task.taskId;
 
+  /// 展示粒度（2026-09-27 用户口径）：行=「批次 × 货品」——先按行级明细把每张单
+  /// 拆成货品行，再同批次同货品跨单合并数量；无批次单只拆不跨单合并。
+  List<WarehouseDrawTask> _expandForView(List<WarehouseDrawTask> items) => [
+    for (final task in items) ...task.expandToGoodsRows(),
+  ];
+
+  List<WarehouseDrawTask> _viewItemsOf(PagedResult<WarehouseDrawTask> result) =>
+      WarehouseDrawTask.mergeGoodsRows(_expandForView(result.items));
+
   Future<void> _load(int page) async {
     final version = ++_requestVersion;
     setState(() {
@@ -142,13 +151,18 @@ class _WarehouseDrawTaskSegmentState
             scope: WarehouseListScope.of(context),
           );
       if (!mounted || version != _requestVersion) return;
+      final viewItems = _viewItemsOf(result);
       setState(() {
         _result = result;
         _loading = false;
+        // 底层单据行（勾选展开/出库跳转用）与视图行（表格勾选 id）都登记。
         for (final task in result.items) {
           _knownTasks[_idOf(task)] = task;
         }
-        _pruneSelection(result);
+        for (final task in viewItems) {
+          _knownTasks[task.taskId] = task;
+        }
+        _pruneSelection(viewItems, result);
       });
       _loadStatusCounts();
     } on ApiException catch (error) {
@@ -190,16 +204,19 @@ class _WarehouseDrawTaskSegmentState
     _load(1);
   }
 
-  /// 刷新后修剪勾选：本页已领完/不可出库的单剔除；整个结果只有一页时，
-  /// 不在页内的单也剔除（已不是当前分段的待领任务）。多页结果不臆断其它页，
-  /// 翻到该页再修剪。
-  void _pruneSelection(PagedResult<WarehouseDrawTask> result) {
+  /// 刷新后修剪勾选：本页已领完/不可出库的行剔除；整个结果只有一页时，
+  /// 不在页内的行也剔除（已不是当前分段的待领任务）。多页结果不臆断其它页，
+  /// 翻到该页再修剪。视图行（聚合行）的 canBatchIssue 已按底层单聚合判断。
+  void _pruneSelection(
+    List<WarehouseDrawTask> viewItems,
+    PagedResult<WarehouseDrawTask> result,
+  ) {
     if (_selectedIds.isEmpty) return;
     final onPage = <String, WarehouseDrawTask>{
-      for (final task in result.items) _idOf(task): task,
+      for (final task in viewItems) task.taskId: task,
     };
     _selectedIds.removeWhere((id) {
-      final task = onPage[id];
+      final task = onPage[id] ?? _knownTasks[id];
       if (task != null) return !task.canBatchIssue;
       return result.totalPages <= 1;
     });
@@ -221,17 +238,26 @@ class _WarehouseDrawTaskSegmentState
   }
 
   /// 可在同一批量页核对的正式领料单和已知材料申请，跨页保留。
+  /// 聚合/拆分行按 members 展开为底层单据。
   List<WarehouseDrawTask> get _issuableSelection => [
     for (final id in _selectedIds)
-      if (_knownTasks[id] case final task? when task.canBatchIssue) task,
+      if (_knownTasks[id] case final task?)
+        if (task.isBatchMerged)
+          ...task.members!.where((d) => d.canBatchIssue)
+        else if (task.canBatchIssue)
+          task,
   ];
 
   /// 批量全额出库：选中多张领料单按剩余量逐单出库（跨页勾选全部提交）。
   Future<void> _batchIssue() async {
     if (_batchIssuing || _selectedIds.isEmpty) return;
-    final unsupported = _selectedIds.where(
-      (id) => _knownTasks[id]?.canBatchIssue != true,
-    );
+    final unsupported = _selectedIds.where((id) {
+      final task = _knownTasks[id];
+      if (task == null) return false;
+      // 聚合行按底层单判断；底层单 id（跨页勾选）自身判断。
+      if (task.isBatchMerged) return task.members!.any((d) => !d.canBatchIssue);
+      return !task.canBatchIssue;
+    });
     if (unsupported.isNotEmpty) {
       context.appWarning('选中任务含尚未确定材料或已失效的任务，请先进入“填写实际领料”确认材料，再选择批量出库');
       return;
@@ -284,6 +310,19 @@ class _WarehouseDrawTaskSegmentState
   }
 
   Future<void> _openTask(WarehouseDrawTask task) async {
+    // 聚合行（同批次同货品多张单）：进批量出库页一起核对；单成员行回落到底层单
+    // 的既有入口（单张详情 / 填写材料）。
+    if (task.isBatchMerged) {
+      final members = task.members!;
+      if (members.length == 1) return _openTask(members.single);
+      if (members.every((d) => d.canBatchIssue)) {
+        await context.push<bool>(_batchPath(members));
+        if (mounted) await _load(_result?.page ?? 1);
+        return;
+      }
+      context.appWarning('本批任务里有尚未确定材料或已失效的领料单，请先逐单处理');
+      return;
+    }
     if (task.isMaterialDiscovery) {
       if (task.materialsDefined) {
         await context.push<bool>(_batchPath([task]));
@@ -351,7 +390,13 @@ class _WarehouseDrawTaskSegmentState
 
   @override
   Widget build(BuildContext context) {
-    final tasks = _result?.items ?? const <WarehouseDrawTask>[];
+    // 展示粒度=「批次 × 货品」（2026-09-27 用户口径）：同批次同货品合并数量、
+    // 多货品单拆开一行一个货品；勾选/出库按底层单展开。
+    final tasks = _result == null
+        ? const <WarehouseDrawTask>[]
+        : WarehouseDrawTask.mergeGoodsRows(
+            _expandForView(_result!.items),
+          );
     final theme = Theme.of(context);
     // 批量出库按钮按会话权限门控：stock_doc:issue 才渲染；草稿单还需 approve
     //（出库即审核），无审核权限时按钮置灰并提示。
@@ -487,14 +532,11 @@ class _WarehouseDrawTaskSegmentState
     );
   }
 
+  // 2026-09-27 用户口径「领料页和批量出库页两个表头应该一样」：列序与列名对齐
+  // 批量出库明细表（production_draw_detail_table），并补齐领料车间/领料负责人/
+  // 单位/应领/已出库——两张表里有用的合起来，重复的（系列/实际重量/已申请领料）
+  // 两边都不留。
   List<MasterColumnDef<WarehouseDrawTask>> get _columns => [
-    MasterColumnDef(
-      key: 'planNo',
-      sortable: true,
-      label: '生产计划',
-      width: 170,
-      value: (task) => task.planNo,
-    ),
     MasterColumnDef(
       key: 'drawBillNo',
       sortable: true,
@@ -509,24 +551,37 @@ class _WarehouseDrawTaskSegmentState
         overflow: TextOverflow.ellipsis,
       ),
     ),
-    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列——
-    // 仓库正是靠名称 + 颜色对位拣货，三个属性挤成一串时列一窄就先被省略号吃掉。
-    // 规格没有独立列，仍留在名称格副行；归组行（N 种物料）没有单一货品身份，
-    // 名称列沿用规模摘要、编号/颜色列如实显示「—」。
+    // 2026-09-27 用户口径「同一次批量领料仓库能看出是一批」：车间批量领料提交的
+    // 多张单在服务端写同一批次号，这里可按批次筛选/识别同批。
+    MasterColumnDef(
+      key: 'drawBatchNo',
+      // 2026-09-27 用户口径「申请号和批次一样就留一个」：本列是唯一的批标识——
+      // 批量领料批次号优先；没有批次但挂了领料申请（LQ）的单显示申请号；
+      // 申请行自身的申请号在「领料单号」列（带「申请」前缀），这里不重复。
+      label: '领料批次',
+      width: 190,
+      filterFromRows: true,
+      value: (task) => task.isBatchMerged
+          ? task.drawBatchNo
+          : task.drawBatchNo.isNotEmpty
+          ? task.drawBatchNo
+          : !task.isMaterialDiscovery && task.materialRequestNo.isNotEmpty
+          ? task.materialRequestNo
+          : '—',
+    ),
+    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列；
+    // 2026-09-27 用户口径：名称列只显示名称（规格副行下线）。归组行（N 种物料）
+    // 没有单一货品身份，名称列沿用规模摘要、编号/颜色列如实显示「—」。
     MasterColumnDef(
       key: 'goods',
       label: '货品名称',
       width: 200,
       value: (task) => task.materialLabel,
-      cellBuilderHandlesSemantics: true,
-      cellBuilder: (context, task) =>
-          task.isMaterialDiscovery || task.isDocumentGrouped
-          ? Text(
-              task.materialLabel,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            )
-          : UtenGoodsIdentityCell(name: task.goodsName, spec: task.spec),
+      cellBuilder: (context, task) => Text(
+        task.materialLabel,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
     ),
     MasterColumnDef(
       key: 'goodsCode',
@@ -555,26 +610,60 @@ class _WarehouseDrawTaskSegmentState
       ),
     ),
     MasterColumnDef(
-      key: 'productionPurpose',
-      label: '用于生产',
-      width: 220,
-      value: (task) =>
-          task.productionPurpose.isEmpty ? '—' : task.productionPurpose,
-    ),
-    MasterColumnDef(
       key: 'warehouseName',
       sortable: true,
-      label: '发料仓',
+      label: '仓库',
       width: 150,
       value: (task) => task.warehouseName.isEmpty ? '—' : task.warehouseName,
     ),
     MasterColumnDef(
+      key: 'workshopName',
+      label: '领料车间',
+      width: 150,
+      value: (task) =>
+          task.workshopName.isEmpty || task.isMaterialDiscovery
+          ? '—'
+          : task.workshopName,
+    ),
+    MasterColumnDef(
+      key: 'workerName',
+      label: '领料负责人',
+      width: 140,
+      value: (task) =>
+          task.workerName.isEmpty || task.isMaterialDiscovery
+          ? '—'
+          : task.workerName,
+    ),
+    MasterColumnDef(
+      key: 'unitName',
+      label: '单位',
+      width: 80,
+      value: (task) =>
+          task.isDocumentGrouped || task.needsMaterialEntry
+          ? '—'
+          : task.unitName,
+    ),
+    MasterColumnDef(
+      key: 'requiredQty',
+      label: '应领数量',
+      width: 105,
+      type: 'number',
+      value: (task) => task.requiredQtyText,
+    ),
+    MasterColumnDef(
+      key: 'fulfilledQty',
+      label: '已出库',
+      width: 105,
+      type: 'number',
+      value: (task) => task.fulfilledQtyText,
+    ),
+    MasterColumnDef(
       key: 'openQty',
       sortable: true,
-      label: '待领数量',
+      label: '待出库',
       width: 130,
       type: 'number',
-      value: (task) => task.quantityText,
+      value: (task) => task.remainingQtyText,
     ),
     MasterColumnDef(
       key: 'status',
@@ -584,10 +673,18 @@ class _WarehouseDrawTaskSegmentState
       value: (task) => task.statusLabel,
     ),
     MasterColumnDef(
-      key: 'exception',
-      label: '异常',
-      width: 110,
-      value: (task) => task.exceptionLabel,
+      key: 'planNo',
+      sortable: true,
+      label: '生产计划',
+      width: 170,
+      value: (task) => task.planNo,
+    ),
+    MasterColumnDef(
+      key: 'productionPurpose',
+      label: '用于生产',
+      width: 220,
+      value: (task) =>
+          task.productionPurpose.isEmpty ? '—' : task.productionPurpose,
     ),
     MasterColumnDef(
       key: 'dueDate',
@@ -598,13 +695,10 @@ class _WarehouseDrawTaskSegmentState
       value: (task) => task.dueDate,
     ),
     MasterColumnDef(
-      key: 'materialRequestNo',
-      label: '来源申请号',
-      width: 180,
-      value: (task) =>
-          task.isMaterialDiscovery || task.materialRequestNo.isEmpty
-          ? '—'
-          : task.materialRequestNo,
+      key: 'exception',
+      label: '异常',
+      width: 110,
+      value: (task) => task.exceptionLabel,
     ),
   ];
 }

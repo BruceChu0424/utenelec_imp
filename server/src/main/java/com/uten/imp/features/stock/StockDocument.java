@@ -92,6 +92,10 @@ public class StockDocument extends SoftDeletableEntity {
     @Column(name = "issue_status", nullable = false)
     private Short issueStatus = 0;
 
+    /** 领料批次号（V735，仅 DRAW：车间批量领料提交时整批同值）。 */
+    @Column(name = "draw_batch_no")
+    private String drawBatchNo;
+
     @Column(name = "plan_no")
     private String planNo;
 

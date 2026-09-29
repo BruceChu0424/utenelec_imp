@@ -17,6 +17,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -276,6 +277,12 @@ class _ProcurementIqcRejectionListPageState
       }
       return ListView(
         key: const Key('iqc-rejection-compact-list'),
+        // compact 悬浮胶囊避让：滚到底分页条要能越过胶囊（嵌入态由宿主管）
+        padding: EdgeInsets.only(
+          bottom: widget.embedded
+              ? 0
+              : UtenCapsuleNavScope.occlusionOf(context),
+        ),
         children: [
           header,
           if (result.items.isEmpty)

@@ -4,10 +4,15 @@
 //
 // 设计原则：柔和语义底色（UtenColors.*Bg）+ 深档同色文字，胶囊圆角，无边框。
 // 深色模式下自动切换为"半透明底色 + 亮档文字"，保证可读性。
+//
+// 表格单元格内的状态列不再用胶囊（2026-09-27 用户口径「胶囊背景去掉、
+// 改成单元格背景色」）：用 [utenStatusBadgeCellColor] 铺整格底色，
+// 文字交给 MasterDataTableView 的 cellColor 双向对比度约定（黑/白自适应
+// + 正文字号），选中行的统一青绿高亮也不会再被胶囊底盖住。
 
 import 'package:flutter/material.dart';
 
-import '../../core/theme/uten_colors.dart';
+import 'uten_status_cell_color.dart';
 import '../../core/theme/uten_tokens.dart';
 
 /// Uten 状态徽章
@@ -31,7 +36,7 @@ class UtenStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final colors = _resolveColors(type, isDark);
+    final colors = resolveStatusBadgeColors(type, isDark);
     final (padH, padV, textSize, iconSize) = switch (size) {
       UtenStatusBadgeSize.small => (8.0, 2.0, 11.0, 12.0),
       UtenStatusBadgeSize.medium => (10.0, 3.0, 12.0, 13.0),
@@ -70,77 +75,6 @@ class UtenStatusBadge extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  /// 解析两色：背景色（柔和浅底）/ 文字与图标色（深档同色）
-  ///
-  /// 浅色模式：*Bg 浅底 + *Text 深字（对比度达标）；
-  /// 深色模式：语义色 18% 透明底 + 亮档文字。
-  (Color, Color) _resolveColors(UtenStatusBadgeType t, bool isDark) {
-    if (isDark) {
-      return switch (t) {
-        UtenStatusBadgeType.neutral => (
-          UtenColors.slate400.withValues(alpha: 0.18),
-          UtenColors.slate300,
-        ),
-        UtenStatusBadgeType.info => (
-          UtenColors.info.withValues(alpha: 0.18),
-          UtenColors.infoOnDark,
-        ),
-        UtenStatusBadgeType.success => (
-          UtenColors.success.withValues(alpha: 0.18),
-          UtenColors.successOnDark,
-        ),
-        UtenStatusBadgeType.warning => (
-          UtenColors.warning.withValues(alpha: 0.18),
-          UtenColors.warningOnDark,
-        ),
-        UtenStatusBadgeType.danger => (
-          UtenColors.error.withValues(alpha: 0.18),
-          UtenColors.errorOnDark,
-        ),
-        UtenStatusBadgeType.fuchsia => (
-          UtenColors.fuchsia.withValues(alpha: 0.18),
-          UtenColors.fuchsiaOnDark,
-        ),
-        UtenStatusBadgeType.violet => (
-          UtenColors.violet.withValues(alpha: 0.18),
-          UtenColors.violetOnDark,
-        ),
-        UtenStatusBadgeType.accent => (
-          UtenColors.teal500.withValues(alpha: 0.18),
-          UtenColors.teal300,
-        ),
-      };
-    }
-    return switch (t) {
-      UtenStatusBadgeType.neutral => (
-        UtenColors.surfaceMid,
-        UtenColors.textSecondary,
-      ),
-      UtenStatusBadgeType.info => (UtenColors.infoBg, UtenColors.infoText),
-      UtenStatusBadgeType.success => (
-        UtenColors.successBg,
-        UtenColors.successText,
-      ),
-      UtenStatusBadgeType.warning => (
-        UtenColors.warningBg,
-        UtenColors.warningText,
-      ),
-      UtenStatusBadgeType.danger => (UtenColors.errorBg, UtenColors.errorText),
-      UtenStatusBadgeType.fuchsia => (
-        UtenColors.fuchsiaBg,
-        UtenColors.fuchsiaText,
-      ),
-      UtenStatusBadgeType.violet => (
-        UtenColors.violetBg,
-        UtenColors.violetText,
-      ),
-      UtenStatusBadgeType.accent => (
-        UtenColors.tealSurface,
-        UtenColors.teal700,
-      ),
-    };
   }
 }
 

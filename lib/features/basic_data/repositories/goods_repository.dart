@@ -44,6 +44,22 @@ List<List<String>> _goodsCategoryRootBatches(Set<String> rawIds) {
   ];
 }
 
+/// 跨批合并结果的客户端排序（见 _searchAcrossRootBatches 注释）。
+/// 只覆盖服务端排序白名单键（code/price）；asc 空值排尾、desc 取反后空值排头，
+/// 与 PostgreSQL 默认 NULLS 口径一致。不识别的键返回 null（保持合并原序）。
+Comparator<GoodsListItem>? _searchMergeComparator(String? sort, String? order) {
+  int Function(GoodsListItem, GoodsListItem)? byKey;
+  switch (sort) {
+    case 'code':
+      byKey = (a, b) => (a.code ?? '').compareTo(b.code ?? '');
+    case 'price':
+      byKey = (a, b) => ((a.price ?? 0) - (b.price ?? 0)).sign.toInt();
+  }
+  if (byKey == null) return null;
+  final asc = order == null || order == 'asc';
+  return asc ? byKey : (a, b) => byKey!(b, a);
+}
+
 abstract interface class GoodsRepository {
   /// 某分类（子树）下的货品分页。
   ///
@@ -67,6 +83,9 @@ abstract interface class GoodsRepository {
   Future<GoodsFacets> facets(String categoryId);
 
   /// 全局搜货品（组装信息「添加组件」选择器用；不限分类，按编号/名称/型号/规格/系列模糊）。
+  ///
+  /// [sort]/[order] 与 [list] 同一套服务端排序白名单（code/price）；
+  /// 不传时保持服务端默认（创建时间倒序）。
   Future<PagedResult<GoodsListItem>> search(
     String keyword, {
     int page = 1,
@@ -74,6 +93,8 @@ abstract interface class GoodsRepository {
     Set<String> categoryRootIds = const {},
     bool excludeDisabled = false,
     bool excludeStub = false,
+    String? sort,
+    String? order,
   });
 
   /// 返回受 [categoryRootIds] 约束的关键词命中货品所属分类 id（去重）。
@@ -161,6 +182,8 @@ class DioGoodsRepository implements GoodsRepository {
     Set<String> categoryRootIds = const {},
     bool excludeDisabled = false,
     bool excludeStub = false,
+    String? sort,
+    String? order,
   }) async {
     final rootBatches = _goodsCategoryRootBatches(categoryRootIds);
     if (rootBatches.length > 1) {
@@ -171,6 +194,8 @@ class DioGoodsRepository implements GoodsRepository {
         rootBatches: rootBatches,
         excludeDisabled: excludeDisabled,
         excludeStub: excludeStub,
+        sort: sort,
+        order: order,
       );
     }
     return _searchPage(
@@ -180,6 +205,8 @@ class DioGoodsRepository implements GoodsRepository {
       categoryRootIds: rootBatches.isEmpty ? const [] : rootBatches.single,
       excludeDisabled: excludeDisabled,
       excludeStub: excludeStub,
+      sort: sort,
+      order: order,
     );
   }
 
@@ -190,6 +217,8 @@ class DioGoodsRepository implements GoodsRepository {
     required List<String> categoryRootIds,
     required bool excludeDisabled,
     required bool excludeStub,
+    String? sort,
+    String? order,
   }) async {
     // categoryRootIds 为空时不传，保留调用方明确使用的全库搜索语义。
     final json = await api.get(
@@ -201,6 +230,8 @@ class DioGoodsRepository implements GoodsRepository {
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
         if (excludeDisabled) 'excludeDisabled': true,
         if (excludeStub) 'excludeStub': true,
+        if (sort != null && sort.isNotEmpty) 'sort': sort,
+        if (order != null && order.isNotEmpty) 'order': order,
       },
     );
     final result = PagedResult.fromJson(json, GoodsListItem.fromJson);
@@ -217,6 +248,9 @@ class DioGoodsRepository implements GoodsRepository {
 
   /// 后端单次最多接受 32 个分类根。超过上限时按已排序根分批拉完各批结果，
   /// 以货品 id 去重后再切调用方请求页；任一批失败都会整体抛错，不返回部分结果。
+  ///
+  /// 批与批的拼接会破坏服务端排序（批1全部+批2全部），传了 [sort] 时在合并后
+  /// 按同一键客户端重排一次，保证与单批路径同序。
   Future<PagedResult<GoodsListItem>> _searchAcrossRootBatches(
     String keyword, {
     required int page,
@@ -224,6 +258,8 @@ class DioGoodsRepository implements GoodsRepository {
     required List<List<String>> rootBatches,
     required bool excludeDisabled,
     required bool excludeStub,
+    String? sort,
+    String? order,
   }) async {
     final uniqueItems = <String, GoodsListItem>{};
     for (final roots in rootBatches) {
@@ -237,6 +273,8 @@ class DioGoodsRepository implements GoodsRepository {
           categoryRootIds: roots,
           excludeDisabled: excludeDisabled,
           excludeStub: excludeStub,
+          sort: sort,
+          order: order,
         );
         for (final item in result.items) {
           uniqueItems.putIfAbsent(item.id, () => item);
@@ -251,6 +289,8 @@ class DioGoodsRepository implements GoodsRepository {
     final normalizedPage = page < 1 ? 1 : page;
     final normalizedSize = size.clamp(1, _goodsSearchMergeFetchSize);
     final merged = uniqueItems.values.toList(growable: false);
+    final comparator = _searchMergeComparator(sort, order);
+    if (comparator != null) merged.sort(comparator);
     final total = merged.length;
     final totalPages = total == 0
         ? 0

@@ -13,6 +13,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../models/procurement_iqc_rejection.dart';
@@ -258,7 +259,13 @@ class _ProcurementIqcRejectionDetailPageState
               _buildEvents(detail),
             ];
             if (!expanded) {
-              return ListView(children: [...facts, ...workflow]);
+              return ListView(
+                // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
+                padding: EdgeInsets.only(
+                  bottom: UtenCapsuleNavScope.occlusionOf(context),
+                ),
+                children: [...facts, ...workflow],
+              );
             }
             // 大屏双栏（原 3:2 定比）统一接入可拖拽分栏（2026-09-03）：左事实区
             // 可拖宽，初始/复位宽取布局宽的 58% 对齐旧 flex 3:2 观感。

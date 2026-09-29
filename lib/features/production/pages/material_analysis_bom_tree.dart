@@ -279,7 +279,6 @@ abstract class _MaterialAnalysisBomTreeState
         // 只移除失效的表头筛选值，仍有效的保留。
         onSelected: () => setState(() {
           _bomViewMode = mode;
-          _bomTablePageNo = 1;
           _pruneMaterialTableFilters();
         }),
         label: '${mode.label} ${_bomModeCount(analysis, mode)}',
@@ -290,7 +289,6 @@ abstract class _MaterialAnalysisBomTreeState
       selected: !_bomAggregateByMaterial,
       onSelected: () => setState(() {
         _bomAggregateByMaterial = false;
-        _bomTablePageNo = 1;
         _pruneMaterialTableFilters();
       }),
       label: _l10n.materialByProduct,
@@ -303,7 +301,6 @@ abstract class _MaterialAnalysisBomTreeState
       // 路线桶两边同键（BUY/SUBCONTRACT/MAKE/MIXED）可跨视图保留。
       onSelected: () => setState(() {
         _bomAggregateByMaterial = true;
-        _bomTablePageNo = 1;
         _pruneMaterialTableFilters();
       }),
       label: _l10n.materialByMaterial,
@@ -379,7 +376,6 @@ abstract class _MaterialAnalysisBomTreeState
     if (keyword == _bomKeyword) return;
     setState(() {
       _bomKeyword = keyword;
-      _bomTablePageNo = 1;
     });
   }
 

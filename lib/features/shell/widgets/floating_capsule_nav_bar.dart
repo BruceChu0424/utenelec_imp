@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 
 /// 底部悬浮胶囊导航栏。
 ///
@@ -36,8 +37,9 @@ class FloatingCapsuleNavBar extends StatelessWidget {
   static const double _maxItemWidth = 96.0;
   static const double _gap = 6.0;
 
-  /// 外壳高度与圆角（胶囊形：圆角 = 高度 / 2）
-  static const double navHeight = 60;
+  /// 外壳高度与圆角（胶囊形：圆角 = 高度 / 2）。
+  /// 高度常量单一事实源在 [UtenCapsuleNavScope]（内容避让计算共用）。
+  static const double navHeight = UtenCapsuleNavScope.navHeight;
   static const double navRadius = 30;
 
   /// 外壳水平 padding（6×2）与描边（1×2），宽度计算必须计入，

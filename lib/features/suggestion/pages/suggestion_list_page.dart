@@ -16,7 +16,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/form_drafts_page.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/feedback/uten_context_menu.dart';
@@ -125,17 +125,15 @@ class SuggestionListPage extends ConsumerWidget {
             UtenSegment(value: SuggestionScope.mine, label: '我的建议'),
           ],
         ),
+        // 草稿入口走右上角按钮（2026-09-27），不再在左上角占一行分段栏。
+        actions: const [FormDraftsAppBarButton(categoryId: 'suggestion')],
       ),
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: createAction.floatingActionButton(
         context,
         hasItems: list.valueOrNull?.items.isNotEmpty ?? false,
       ),
-      body: FormDraftCategoryHost(
-        scope: const FormDraftCategoryScope(routePath: '/suggestion/new'),
-        contentLabel: '建议',
-        child: body,
-      ),
+      body: body,
     );
   }
 }

@@ -1,6 +1,8 @@
 // 通知详情页
 // 详情页全断点套 UtenContentContainer.narrow（maxWidth 1120）。
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,6 +17,7 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../dashboard/providers/dashboard_overview_provider.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
@@ -94,7 +97,13 @@ class _Content extends ConsumerWidget {
     // 页面无需再自行包裹。
     return UtenContentContainer.narrow(
       child: ListView(
-        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+        // compact 悬浮胶囊避让：滚到底末行要能越过胶囊（弹窗内嵌态查 scope 为 0 不变）
+        padding: EdgeInsets.fromLTRB(
+          0,
+          UtenSpacing.s16,
+          0,
+          math.max(UtenSpacing.s16, UtenCapsuleNavScope.occlusionOf(context)),
+        ),
         children: [
           // 类型徽章
           Row(

@@ -22,6 +22,8 @@
 //     就挂黄色, 那是本页自己的进度指示, 不上卷。
 // 支票管理 = 账户 account_type=CHECK/FOREIGN_CHECK 的过滤视图（不单独模块），
 // 入口指向 /finance/checks（由用户在 app_router 接到 AccountPage(initialAccountTypeFilter:'CHECK')）。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/drafts/form_draft_category.dart';
@@ -42,6 +44,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../config/finance_doc_config.dart';
@@ -141,8 +144,12 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
             ListView(
               padding: EdgeInsets.only(
                 top: UtenSpacing.s12,
+                // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
                 bottom: context.breakpoint.isCompact
-                    ? UtenSpacing.s16
+                    ? math.max(
+                        UtenSpacing.s16,
+                        UtenCapsuleNavScope.occlusionOf(context),
+                      )
                     : UtenSpacing.s40,
               ),
               children: [

@@ -341,7 +341,8 @@ void main() {
         Theme.of(tester.element(tableFinder)).colorScheme.errorContainer,
       );
       expect(table.rowColor!(known), isNull);
-      expect(known.quantityText, '12.5 千克');
+      expect(known.remainingQtyText, '12.5');
+      expect(known.unitName, '千克');
       expect(known.statusLabel, '待核对领料');
       expect(unknown.statusLabel, '需要填写');
       expect(known.canBatchIssue, isTrue);
@@ -353,6 +354,70 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  test('同批次同货品跨单合并数量、多货品单拆开一行一个货品（2026-09-27 口径）', () {
+    WarehouseDrawTask doc({
+      required String docId,
+      required String billNo,
+      required String batch,
+      required List<Map<String, dynamic>> lines,
+    }) => WarehouseDrawTask.fromJson({
+      'taskId': docId,
+      'actionDocType': 'DRAW',
+      'actionDocId': docId,
+      'actionDocNo': billNo,
+      'drawBatchNo': batch,
+      'taskStatus': 'READY_TO_PICK',
+      'planNo': 'WL001',
+      'warehouseName': '成品仓',
+      'lines': lines,
+    });
+    final doc1 = doc(
+      docId: 'd1',
+      billNo: 'SL001',
+      batch: 'SL001',
+      lines: [
+        {'goodsCode': 'A', 'goodsName': '接线铜扣', 'colorName': '', 'unitName': '个', 'requiredQty': 10, 'fulfilledQty': 0, 'openQty': 10},
+        {'goodsCode': 'B', 'goodsName': '外壳', 'colorName': '', 'unitName': '个', 'requiredQty': 5, 'fulfilledQty': 0, 'openQty': 5},
+      ],
+    );
+    final doc2 = doc(
+      docId: 'd2',
+      billNo: 'SL002',
+      batch: 'SL001',
+      lines: [
+        {'goodsCode': 'A', 'goodsName': '接线铜扣', 'colorName': '', 'unitName': '个', 'requiredQty': 3, 'fulfilledQty': 0, 'openQty': 3},
+      ],
+    );
+    final view = WarehouseDrawTask.mergeGoodsRows([
+      ...doc1.expandToGoodsRows(),
+      ...doc2.expandToGoodsRows(),
+    ]);
+    // 接线铜扣：同批次两单合并成一行，数量相加。
+    final mergedA = view.firstWhere((r) => r.goodsCode == 'A');
+    expect(mergedA.openQty, 13);
+    expect(mergedA.requiredQty, 13);
+    expect(mergedA.members!.length, 2);
+    expect(mergedA.drawBillLabel, '2 张单');
+    expect(mergedA.remainingQtyText, '13');
+    // 外壳：多货品单拆出的独立货品行。
+    final rowB = view.firstWhere((r) => r.goodsCode == 'B');
+    expect(rowB.openQty, 5);
+    expect(rowB.isBatchMerged, isTrue);
+    expect(rowB.members!.single.actionDocNo, 'SL001');
+    // 无批次单不跨单合并：同货品两张无批次单保持两行。
+    final noBatch1 = doc(docId: 'd3', billNo: 'SL003', batch: '', lines: [
+      {'goodsCode': 'A', 'goodsName': '接线铜扣', 'colorName': '', 'unitName': '个', 'openQty': 7},
+    ]);
+    final noBatch2 = doc(docId: 'd4', billNo: 'SL004', batch: '', lines: [
+      {'goodsCode': 'A', 'goodsName': '接线铜扣', 'colorName': '', 'unitName': '个', 'openQty': 2},
+    ]);
+    final view2 = WarehouseDrawTask.mergeGoodsRows([
+      ...noBatch1.expandToGoodsRows(),
+      ...noBatch2.expandToGoodsRows(),
+    ]);
+    expect(view2.where((r) => r.goodsCode == 'A'), hasLength(2));
+  });
 
   test(
     'multiple suggested materials keep names and unknown quantity stays unknown',
@@ -366,7 +431,7 @@ void main() {
         'materialsDefined': true,
       });
       expect(multiple.materialLabel, 'PC颗粒、添加剂');
-      expect(multiple.quantityText, '2 行材料');
+      expect(multiple.remainingQtyText, '2 行材料');
       final materialOnly = WarehouseDrawTask.fromJson({
         'actionDocType': 'MATERIAL_DISCOVERY',
         'actionDocId': 'request',
@@ -375,7 +440,7 @@ void main() {
         'openLineCount': 1,
         'materialsDefined': true,
       });
-      expect(materialOnly.quantityText, '需要填写数量');
+      expect(materialOnly.remainingQtyText, '需要填写数量');
       expect(materialOnly.needsMaterialEntry, isFalse);
     },
   );
@@ -410,8 +475,10 @@ void main() {
     final number = table.columns.firstWhere(
       (column) => column.key == 'drawBillNo',
     );
+    // 2026-09-27 申请号列与批次列合并：批标识只剩「领料批次」一列
+    //（批次号优先，无批次挂申请的单显示申请号）。
     final source = table.columns.firstWhere(
-      (column) => column.key == 'materialRequestNo',
+      (column) => column.key == 'drawBatchNo',
     );
     expect(number.value(request), 'LQ20260927000001');
     expect(number.value(draw), 'SL20260927000002');
@@ -458,19 +525,26 @@ void main() {
     await _pump(tester, repo, _issuer);
     expect(repo.requests.last.sort, isNull);
 
+    // 2026-09-27 列头与批量出库统一后列变多：中后部列头要先滚进视口再点。
+    await tester.ensureVisible(find.text('生产计划'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('生产计划'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('从大到小'));
     await tester.pumpAndSettle();
     expect(repo.requests.last, (page: 1, sort: 'planNo', ascending: false));
 
+    await tester.ensureVisible(find.text('领料单号'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('领料单号'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('从小到大'));
     await tester.pumpAndSettle();
     expect(repo.requests.last, (page: 1, sort: 'docNo', ascending: true));
 
-    await tester.tap(find.text('待领数量'));
+    await tester.ensureVisible(find.text('待出库'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('待出库'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('从大到小'));
     await tester.pumpAndSettle();

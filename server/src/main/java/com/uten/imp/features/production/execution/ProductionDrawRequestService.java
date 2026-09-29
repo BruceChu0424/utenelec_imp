@@ -134,7 +134,35 @@ public class ProductionDrawRequestService {
         }
         submittedDrawIds.forEach(notices::notifyProductionDrawPending);
         notices.resolveProductionWorkshopTasks(submittedSegments, "DRAW_REQUESTED");
+        stampDrawBatch(submittedDrawIds);
         return result(submittedSegments, submittedDrawIds, false);
+    }
+
+    /**
+     * 2026-09-27 用户口径「同一次批量领料的单号能看出是一批」：本批全部领料单写上
+     * 同一批次号（取本批最小单号，稳定可读，不另设取号序列），仓库待领任务按
+     * 「领料批次」列识别同批。V164 生产链守卫按列举字段拦截，新列放行。
+     */
+    private void stampDrawBatch(List<UUID> drawIds) {
+        // 单列 native query 的每行是标量 String（不是 Object[]），不能走 objectArrayRows。
+        @SuppressWarnings("unchecked")
+        List<Object> billNos = em.createNativeQuery(
+                        "SELECT bill_no FROM stock_documents WHERE id IN (:ids)")
+                .setParameter("ids", drawIds)
+                .getResultList();
+        String batchNo = billNos.stream()
+                .filter(Objects::nonNull)
+                .map(Object::toString)
+                .min(String::compareTo)
+                .orElse(null);
+        if (batchNo == null) return;
+        em.createNativeQuery("""
+                UPDATE stock_documents SET draw_batch_no=:batch, updated_at=now(), updated_by=:actor
+                WHERE id IN (:ids)
+                """).setParameter("batch", batchNo)
+                .setParameter("actor", currentUser.requireId())
+                .setParameter("ids", drawIds)
+                .executeUpdate();
     }
 
     static List<Item> normalize(List<Item> items, boolean requireVersion) {

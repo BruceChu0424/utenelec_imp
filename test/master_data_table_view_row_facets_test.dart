@@ -2,8 +2,8 @@
 //
 // 覆盖：①本地筛选桶从当前行构建（无服务端 facets 也能筛），选中后只显示命中行、
 // 「所有」复原；②宿主未接 onSortChange 时 sortable 列就地排序（升降序/取消排序），
-// 空值「—」恒排末尾；③筛选把行滤空时空态出现并可一键清除；④「取消排序」位于
-// 菜单最上（用户口径）。
+// 空值「—」恒排末尾；③筛选把行滤空时空态出现（2026-09-28 起无「清除筛选」按钮，
+// 只报筛选生效数）；④「取消排序」位于菜单最上（用户口径）。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -148,10 +148,12 @@ void main() {
     );
   });
 
-  testWidgets('rows filtered to empty show empty state with clear button', (
+  testWidgets('rows filtered to empty: empty state, no clear button', (
     tester,
   ) async {
-    // 两列都可本地筛：单据号=000001 且 名称=B 货 → 交叉后 0 行 → 空态 + 一键清除。
+    // 两列都可本地筛：单据号=000001 且 名称=B 货 → 交叉后 0 行 → 空态。
+    // 2026-09-28 用户口径：空态「清除筛选」按钮全站退役——空态只报筛选生效数，
+    // 清除入口在表外分段条/行数恢复后的列头控件。
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -198,10 +200,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('A 货'), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('master-table-clear-filters')));
-    await tester.pumpAndSettle();
-    expect(find.text('A 货'), findsOneWidget);
-    expect(find.text('B 货'), findsOneWidget);
+    // 空态不再给「清除筛选」按钮，只报两个表头筛选生效。
+    expect(
+      find.byKey(const ValueKey('master-table-clear-filters')),
+      findsNothing,
+    );
+    expect(find.text('清除筛选'), findsNothing);
+    expect(find.text('当前有 2 个表头筛选生效'), findsOneWidget);
   });
 
   testWidgets('server facets win over filterFromRows', (tester) async {

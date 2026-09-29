@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../../core/ui/capsule_nav_metrics.dart';
 import '../buttons/uten_button.dart';
 import 'uten_empty.dart';
 
@@ -56,12 +57,19 @@ class UtenListCreateAction {
   Widget? floatingActionButton(BuildContext context, {required bool hasItems}) {
     if (!hasItems) return null;
     final colors = Theme.of(context).colorScheme;
-    return FloatingActionButton.extended(
-      onPressed: onPressed,
-      backgroundColor: colors.primary,
-      foregroundColor: colors.onPrimary,
-      icon: Icon(actionIcon),
-      label: Text(fabLabel),
+    // compact 悬浮胶囊避让：FAB 挂在页面 Scaffold 的 FAB 位（贴屏底右缘），
+    // 窄屏下与居中胶囊横向重叠，抬到胶囊上方；非 shell 内取 0 位置不变。
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: UtenCapsuleNavScope.occlusionOf(context),
+      ),
+      child: FloatingActionButton.extended(
+        onPressed: onPressed,
+        backgroundColor: colors.primary,
+        foregroundColor: colors.onPrimary,
+        icon: Icon(actionIcon),
+        label: Text(fabLabel),
+      ),
     );
   }
 }

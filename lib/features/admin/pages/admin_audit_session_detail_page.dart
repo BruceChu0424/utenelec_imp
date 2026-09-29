@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +10,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../models/audit_log_entry.dart';
 import '../models/audit_session.dart';
 import '../repositories/audit_log_repository.dart';
@@ -227,7 +230,15 @@ class _AdminAuditSessionDetailPageState
             loadEvents: _loadEvents,
             onOpenEvent: _openEvent,
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: UtenSpacing.s24)),
+          // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: math.max(
+                UtenSpacing.s24,
+                UtenCapsuleNavScope.occlusionOf(context),
+              ),
+            ),
+          ),
         ],
       ),
     );

@@ -19,6 +19,8 @@
 //   · 新建区六张卡不挂数（新建入口不是待办；草稿仍在新页「草稿(N)」按钮与
 //     任务中心各草稿分段可见）。
 //   · 库存查询与报表区是浏览型入口，不挂任何计数。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -35,6 +37,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../config/warehouse_report_config.dart';
 import '../models/stock_doc.dart';
@@ -159,8 +162,12 @@ class WarehouseHubPage extends ConsumerWidget {
           child: ListView(
             padding: EdgeInsets.only(
               top: UtenSpacing.s12,
+              // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
               bottom: context.breakpoint.isCompact
-                  ? UtenSpacing.s16
+                  ? math.max(
+                      UtenSpacing.s16,
+                      UtenCapsuleNavScope.occlusionOf(context),
+                    )
                   : UtenSpacing.s40,
             ),
             children: [

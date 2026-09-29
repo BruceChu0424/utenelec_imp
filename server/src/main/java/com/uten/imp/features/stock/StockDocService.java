@@ -3977,7 +3977,7 @@ public class StockDocService {
                 canViewCost ? d.getTotalOriginal() : null,
                 canViewCost ? d.getTotalLocal() : null, d.getStatus(), d.isClosed(),
                 d.getSourceDocNo(), d.getSourceDailyReportId(),
-                d.getDepartmentId(), d.getIssueStatus(), visibleItems,
+                d.getDepartmentId(), d.getIssueStatus(), d.getDrawBatchNo(), visibleItems,
                 nameResolver.nameOf(d.getMakerId()), nameResolver.nameOf(d.getWorkerId()),
                 d.getCreatedAt(),
                 productionLinked, canEdit, canDelete, restrictionReason,

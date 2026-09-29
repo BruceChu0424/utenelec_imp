@@ -271,7 +271,7 @@ Future<void> _pumpComposer(
                 onCustomDate: () {},
                 onRunQuery: () {},
                 onRequestIdChanged: (_) {},
-                onRequestIdSubmitted: (_) {},
+                onRequestIdSubmitted: (_) => true,
                 onClear: () {},
               ),
             ),

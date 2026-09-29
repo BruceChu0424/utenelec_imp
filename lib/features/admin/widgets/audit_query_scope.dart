@@ -59,7 +59,9 @@ class AuditQueryScopeComposer extends StatelessWidget {
   final VoidCallback onCustomDate;
   final VoidCallback onRunQuery;
   final ValueChanged<String> onRequestIdChanged;
-  final ValueChanged<String> onRequestIdSubmitted;
+
+  /// 提交操作关联编号；返回 true 表示已受理（弹窗应关闭），false 保留弹窗。
+  final bool Function(String) onRequestIdSubmitted;
   final VoidCallback onClear;
 
   @override
@@ -227,6 +229,7 @@ class AuditQueryScopeComposer extends StatelessWidget {
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // 三种调查范围入口同一样式同一高度，避免主次按钮大小不一。
                 OutlinedButton.icon(
                   key: const ValueKey('audit-select-actor'),
                   style: scopeButtonStyle,
@@ -235,18 +238,19 @@ class AuditQueryScopeComposer extends StatelessWidget {
                   label: const Text('选择人员'),
                 ),
                 const SizedBox(height: UtenSpacing.s8),
-                TextButton.icon(
+                OutlinedButton.icon(
                   key: const ValueKey('audit-select-anonymous'),
                   style: scopeButtonStyle,
                   onPressed: onSelectAnonymous,
-                  icon: const Icon(Icons.shield_outlined, size: 18),
+                  icon: const Icon(Icons.shield_outlined),
                   label: const Text('查看未识别访问'),
                 ),
-                TextButton.icon(
+                const SizedBox(height: UtenSpacing.s8),
+                OutlinedButton.icon(
                   key: const ValueKey('audit-select-system-anomaly'),
                   style: scopeButtonStyle,
                   onPressed: onSelectSystemAnomaly,
-                  icon: const Icon(Icons.warning_amber_rounded, size: 18),
+                  icon: const Icon(Icons.warning_amber_rounded),
                   label: const Text('查看系统异常'),
                 ),
               ],
@@ -393,28 +397,32 @@ class AuditQueryScopeComposer extends StatelessWidget {
                     : '查看操作记录',
               ),
             );
-            final hint = Text(
-              actor != null
-                  ? '按登录会话分页展示；点击会话后再按需加载完整时间线。'
-                  : '页面每页 20 条；单次导出最多 10,000 条。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.45,
-              ),
-            );
+            // 人员模式不挂提示文案（会话说明行按 2026-09-28 用户口径删除）；
+            // 仅匿名/系统范围保留每页与导出上限提示。
+            final hint = actor == null
+                ? Text(
+                    '页面每页 20 条；单次导出最多 10,000 条。',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      height: 1.45,
+                    ),
+                  )
+                : null;
             if (constraints.maxWidth < 560) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   runButton,
-                  const SizedBox(height: UtenSpacing.s8),
-                  hint,
+                  if (hint != null) ...[
+                    const SizedBox(height: UtenSpacing.s8),
+                    hint,
+                  ],
                 ],
               );
             }
             return Row(
               children: [
-                Expanded(child: hint),
+                Expanded(child: hint ?? const SizedBox.shrink()),
                 const SizedBox(width: UtenSpacing.s16),
                 runButton,
               ],
@@ -422,26 +430,23 @@ class AuditQueryScopeComposer extends StatelessWidget {
           },
         ),
         const SizedBox(height: UtenSpacing.s8),
-        ExpansionTile(
-          key: const ValueKey('audit-request-investigation'),
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-          leading: const Icon(Icons.account_tree_outlined),
-          title: const Text('高级排查：按操作关联编号'),
-          subtitle: const Text('仅调查某一次操作及其关联证据时使用'),
-          children: [
-            Semantics(
-              key: const ValueKey('audit-request-id-field'),
-              textField: true,
-              label: '按操作关联编号精确排查',
-              child: UtenSearchBar(
-                hint: '输入完整的操作关联编号',
+        // 高级排查是低频专家路径：安静的文字入口 + 独立弹窗（2026-09-28
+        // 用户口径，替代原内联 ExpansionTile）。
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            key: const ValueKey('audit-request-investigation'),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (dialogContext) => _AuditRequestIdDialog(
                 controller: requestIdController,
                 onChanged: onRequestIdChanged,
-                onSubmitted: onRequestIdSubmitted,
+                onSubmit: onRequestIdSubmitted,
               ),
             ),
-          ],
+            icon: const Icon(Icons.account_tree_outlined, size: 18),
+            label: const Text('高级排查：按操作关联编号'),
+          ),
         ),
       ],
     );
@@ -547,7 +552,6 @@ class AuditQueryScopeComposer extends StatelessWidget {
 
     return UtenCard(
       padding: EdgeInsets.zero,
-      elevation: UtenCardElevation.low,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -567,21 +571,49 @@ class AuditQueryScopeComposer extends StatelessWidget {
                 builder: (context, constraints) {
                   final copy = Row(
                     children: [
-                      Icon(
-                        Icons.account_tree_outlined,
-                        color: theme.colorScheme.onTertiaryContainer,
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.onTertiaryContainer
+                              .withValues(alpha: 0.12),
+                          borderRadius: UtenRadius.mdAll,
+                        ),
+                        child: Icon(
+                          Icons.account_tree_outlined,
+                          size: 20,
+                          color: theme.colorScheme.onTertiaryContainer,
+                        ),
                       ),
                       const SizedBox(width: UtenSpacing.s12),
                       Expanded(
-                        child: Text(
-                          '正在查看同一操作的完整关联证据',
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            color: theme.colorScheme.onTertiaryContainer,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '正在查看同一操作的完整关联证据',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                color: theme.colorScheme.onTertiaryContainer,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: UtenSpacing.s2),
+                            Text(
+                              '列表只包含这一次操作及其关联证据。',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onTertiaryContainer
+                                    .withValues(alpha: 0.8),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
+                  );
+                  final back = FilledButton.tonalIcon(
+                    onPressed: onClear,
+                    icon: const Icon(Icons.undo_rounded, size: 18),
+                    label: const Text('返回选人'),
                   );
                   return Container(
                     width: double.infinity,
@@ -595,20 +627,14 @@ class AuditQueryScopeComposer extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               copy,
-                              const SizedBox(height: UtenSpacing.s8),
-                              TextButton(
-                                onPressed: onClear,
-                                child: const Text('返回选人'),
-                              ),
+                              const SizedBox(height: UtenSpacing.s12),
+                              back,
                             ],
                           )
                         : Row(
                             children: [
                               Expanded(child: copy),
-                              TextButton(
-                                onPressed: onClear,
-                                child: const Text('返回选人'),
-                              ),
+                              back,
                             ],
                           ),
                   );
@@ -652,6 +678,75 @@ class AuditQueryScopeComposer extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+class _AuditRequestIdDialog extends StatelessWidget {
+  const _AuditRequestIdDialog({
+    required this.controller,
+    required this.onChanged,
+    required this.onSubmit,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final bool Function(String) onSubmit;
+
+  void _submit(BuildContext context) {
+    if (onSubmit(controller.text)) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      title: Row(
+        children: [
+          Icon(Icons.account_tree_outlined, color: theme.colorScheme.primary),
+          const SizedBox(width: UtenSpacing.s8),
+          const Text('高级排查 · 按操作关联编号'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '仅调查某一次操作及其关联证据时使用；请输入完整的操作关联编号。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          Semantics(
+            key: const ValueKey('audit-request-id-field'),
+            textField: true,
+            label: '按操作关联编号精确排查',
+            child: UtenSearchBar(
+              hint: '输入完整的操作关联编号',
+              controller: controller,
+              onChanged: onChanged,
+              onSubmitted: (_) => _submit(context),
+              autofocus: true,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton.icon(
+          onPressed: () => _submit(context),
+          icon: const Icon(Icons.search_rounded),
+          label: const Text('开始排查'),
+        ),
+      ],
     );
   }
 }

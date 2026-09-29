@@ -4,9 +4,11 @@
 // 全员可见（登录即可，不设路由守卫）；卡片统一用 UtenHubCard（与各模块 hub 一致），
 // labelStyle 用 titleMedium 保留原较大标题观感，color 按条目绿/青区分。
 // 新增资料类型（如颜色资料）时在 _resources 加一条即可。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/form_drafts_page.dart';
 
 import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -19,6 +21,7 @@ import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 
 class BasicDataHubPage extends ConsumerWidget {
@@ -120,35 +123,40 @@ class BasicDataHubPage extends ConsumerWidget {
             )
             .toList(growable: false);
     return Scaffold(
-      appBar: UtenAppBar(title: l10n.basicDataHubTitle, showBackButton: true),
-      body: FormDraftCategoryHost(
-        scope: const FormDraftCategoryScope(routePrefix: '/basicinfo/'),
-        contentLabel: '基础资料',
-        child: SafeArea(
-          child: UtenContentContainer(
-            child: ListView(
-              padding: EdgeInsets.only(
-                top: UtenSpacing.s8,
-                bottom: context.breakpoint.isCompact
-                    ? UtenSpacing.s16
-                    : UtenSpacing.s40,
-              ),
-              children: [
-                UtenResponsiveGrid(
-                  itemCount: resources.length,
-                  spacing: UtenSpacing.s12,
-                  columns: const UtenResponsiveColumns(compact: 2, medium: 3),
-                  itemBuilder: (context, i, _) => UtenHubCard(
-                    icon: resources[i].icon,
-                    label: resources[i].label,
-                    description: resources[i].description,
-                    color: resources[i].color,
-                    labelStyle: theme.textTheme.titleMedium,
-                    onTap: () => goFrom(context, resources[i].location),
-                  ),
-                ),
-              ],
+      appBar: UtenAppBar(
+        title: l10n.basicDataHubTitle,
+        showBackButton: true,
+        // 草稿入口走右上角按钮（2026-09-27），不再在左上角占一行分段栏。
+        actions: const [FormDraftsAppBarButton(categoryId: 'basicinfo')],
+      ),
+      body: SafeArea(
+        child: UtenContentContainer(
+          child: ListView(
+            padding: EdgeInsets.only(
+              top: UtenSpacing.s8,
+              // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
+              bottom: context.breakpoint.isCompact
+                  ? math.max(
+                      UtenSpacing.s16,
+                      UtenCapsuleNavScope.occlusionOf(context),
+                    )
+                  : UtenSpacing.s40,
             ),
+            children: [
+              UtenResponsiveGrid(
+                itemCount: resources.length,
+                spacing: UtenSpacing.s12,
+                columns: const UtenResponsiveColumns(compact: 2, medium: 3),
+                itemBuilder: (context, i, _) => UtenHubCard(
+                  icon: resources[i].icon,
+                  label: resources[i].label,
+                  description: resources[i].description,
+                  color: resources[i].color,
+                  labelStyle: theme.textTheme.titleMedium,
+                  onTap: () => goFrom(context, resources[i].location),
+                ),
+              ),
+            ],
           ),
         ),
       ),

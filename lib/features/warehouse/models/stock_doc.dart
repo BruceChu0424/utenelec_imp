@@ -194,6 +194,7 @@ class StockDocDetail {
     this.assTeam,
     this.departmentId,
     this.issueStatus,
+    this.drawBatchNo,
     this.makerName,
     this.workerName,
     this.createdAt,
@@ -241,6 +242,9 @@ class StockDocDetail {
   /// 出库进度（仅 DRAW）：0未出库/1部分出库/2已出完
   final int? issueStatus;
 
+  /// 领料批次号（仅 DRAW，V735）：批量出库明细表按「同批次同货品」合并显示用。
+  final String? drawBatchNo;
+
   /// 制单员姓名（服务端解析；只读展示，不可修改）
   final String? makerName;
 
@@ -285,8 +289,9 @@ class StockDocDetail {
     makerId: json['makerId'] as String?,
     assTeam: json['assTeam'] as String?,
     departmentId: json['departmentId'] as String?,
-    issueStatus: (json['issueStatus'] as num?)?.toInt(),
-    makerName: json['makerName'] as String?,
+        issueStatus: (json['issueStatus'] as num?)?.toInt(),
+        drawBatchNo: (json['drawBatchNo'] as String? ?? '').trim(),
+        makerName: json['makerName'] as String?,
     workerName: json['workerName'] as String?,
     createdAt: json['createdAt'] as String?,
     productionLinked: (json['productionLinked'] as bool?) ?? false,

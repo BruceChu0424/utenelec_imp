@@ -42,6 +42,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -478,6 +479,10 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
 
         return ListView(
           key: const Key('rd-task-mobile-list'),
+          // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
+          padding: EdgeInsets.only(
+            bottom: UtenCapsuleNavScope.occlusionOf(context),
+          ),
           children: [
             ...top,
             if (data.items.isEmpty)

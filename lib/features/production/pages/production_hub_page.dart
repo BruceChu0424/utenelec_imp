@@ -7,6 +7,8 @@
 //  ③ 报表中心（最底）：计划明细/汇总/物料反查/链路健康初筛。
 // 车间生产任务是另一个独立入口（我的车间任务页），红黄两条链都不算进本 hub。
 //
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -23,6 +25,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../widgets/production_pending_badge.dart';
@@ -65,8 +68,12 @@ class ProductionHubPage extends ConsumerWidget {
           child: ListView(
             padding: EdgeInsets.only(
               top: UtenSpacing.s12,
+              // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
               bottom: context.breakpoint.isCompact
-                  ? UtenSpacing.s16
+                  ? math.max(
+                      UtenSpacing.s16,
+                      UtenCapsuleNavScope.occlusionOf(context),
+                    )
                   : UtenSpacing.s40,
             ),
             children: [

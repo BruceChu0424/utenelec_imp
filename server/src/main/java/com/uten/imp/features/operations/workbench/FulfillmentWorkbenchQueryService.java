@@ -166,7 +166,25 @@ public class FulfillmentWorkbenchQueryService {
                     COALESCE(
                         ARRAY_AGG(draw_item.id::TEXT ORDER BY draw_item.id),
                         ARRAY[]::TEXT[]
-                    ) AS action_item_ids
+                    ) AS action_item_ids,
+                    -- 2026-09-27 表头统一（用户口径「领料页与批量出库一样」）：
+                    -- 待领任务补领料车间/领料负责人（与批量出库明细表同源同义）。
+                    MAX(draw_dept.name) AS workshop_name,
+                    MAX(worker.full_name) AS worker_name,
+                    -- 2026-09-27 批量领料批次号（同批多张单同值，仓库识别一批领料）。
+                    MAX(draw_doc.draw_batch_no) AS draw_batch_no,
+                    -- 2026-09-27 行级明细（货品×数量）：前端按「批次×货品」拆分/合并
+                    -- 待领任务行用（用户口径「相同货品合并、3 种物料拆开一行一个」）。
+                    -- 同货品多行由前端聚合时求和，这里保持行粒度。
+                    COALESCE(jsonb_agg(jsonb_build_object(
+                        'goodsCode', v.goods_code,
+                        'goodsName', v.goods_name,
+                        'colorName', v.color_name,
+                        'unitName', v.unit_name,
+                        'requiredQty', request.effective_qty,
+                        'fulfilledQty', request.fulfilled_qty,
+                        'openQty', request.open_qty
+                    ) ORDER BY v.goods_code NULLS LAST, v.color_name NULLS LAST), '[]'::jsonb) AS lines
              FROM v_fulfillment_workbench v
              JOIN production_planning_package_document_items mapping
                ON mapping.package_id=v.package_id AND mapping.demand_id=v.task_id AND mapping.document_type='DRAW'
@@ -175,6 +193,8 @@ public class FulfillmentWorkbenchQueryService {
              JOIN stock_document_items draw_item ON draw_item.id=mapping.document_item_id
                AND draw_item.doc_id=draw_doc.id AND NOT draw_item.is_deleted
              LEFT JOIN warehouses actual_warehouse ON actual_warehouse.id=draw_doc.warehouse_id
+             LEFT JOIN departments draw_dept ON draw_dept.id=draw_doc.department_id
+             LEFT JOIN employees worker ON worker.id=draw_doc.worker_id
              CROSS JOIN LATERAL (SELECT
                fn_production_draw_item_effective_qty(draw_item.id)*COALESCE(draw_item.unit_rate,1) AS effective_qty,
                COALESCE(draw_item.issued_qty,0)*COALESCE(draw_item.unit_rate,1) AS fulfilled_qty,
@@ -193,7 +213,10 @@ public class FulfillmentWorkbenchQueryService {
                     material.qty, 'MATERIALS_TO_DEFINE', segment.plan_end_date, NULL::date,
                     NULL::text, request.created_at, 'MATERIAL_DISCOVERY', request.id,
                     request.request_no, NULL::uuid, NULL::text, material.goods_count,
-                    GREATEST(material.line_count,1), ARRAY[]::text[]
+                    GREATEST(material.line_count,1), ARRAY[]::text[],
+                    NULL::text AS workshop_name, NULL::text AS worker_name,
+                    NULL::text AS draw_batch_no,
+                    '[]'::jsonb AS lines
              FROM production_material_discovery_requests request
              JOIN production_execution_segments segment ON segment.id=request.execution_segment_id
              JOIN production_plans plan ON plan.id=segment.plan_id
@@ -334,7 +357,9 @@ public class FulfillmentWorkbenchQueryService {
                               ARRAY_AGG(v.action_item_id::TEXT ORDER BY v.action_item_id)
                                   FILTER (WHERE v.action_item_id IS NOT NULL),
                               ARRAY[]::TEXT[]
-                          ) AS action_item_ids
+                          ) AS action_item_ids,
+                          NULL::text AS workshop_name, NULL::text AS worker_name,
+                          NULL::text AS draw_batch_no, '[]'::jsonb AS lines
                    FROM v_procurement_decomposition_tasks v
                    GROUP BY v.department, v.action_doc_type, v.action_doc_id, v.task_status)
                   """;
@@ -394,7 +419,8 @@ public class FulfillmentWorkbenchQueryService {
                        action_doc_type, action_doc_id, action_doc_no, action_item_id, action_doc_status,
                        goods_count, open_line_count, action_item_ids, issued_at, can_create_order,
                        display_stage, component_available_qty,
-                       materials_defined, production_product_code, production_product_name, material_request_no
+                       materials_defined, production_product_code, production_product_name, material_request_no,
+                       workshop_name, worker_name, draw_batch_no, lines
                 FROM %s
                 WHERE %s
                 ORDER BY %s
@@ -919,7 +945,8 @@ public class FulfillmentWorkbenchQueryService {
                         %s AS component_available_qty,
                         (base.action_doc_type IS DISTINCT FROM 'MATERIAL_DISCOVERY' OR base.goods_count>0) AS materials_defined,
                         %s AS production_product_code, %s AS production_product_name, %s AS material_request_no,
-                        %s AS execution_segment_codes
+                        %s AS execution_segment_codes,
+                        base.workshop_name, base.worker_name, base.draw_batch_no, base.lines
                  FROM %s base %s %s %s %s)
                 """.formatted(exceptionExpression, subcontract ? "issue.issued_at" : "NULL::timestamptz",
                         canCreate ? "TRUE" : "FALSE", requestType,
@@ -960,7 +987,9 @@ public class FulfillmentWorkbenchQueryService {
                                   AND NOT segment.is_deleted AND segment.status NOT IN ('CANCELLED','REVERSED')
                             ) THEN 'IN_PRODUCTION' ELSE 'NOTIFYING_WORKSHOP' END AS action_doc_status,
                        1::bigint AS goods_count, 1::bigint AS open_line_count,
-                       ARRAY[]::text[] AS action_item_ids
+                       ARRAY[]::text[] AS action_item_ids,
+                       NULL::text AS workshop_name, NULL::text AS worker_name,
+                       NULL::text AS draw_batch_no, '[]'::jsonb AS lines
                 FROM preplan_subcontract_make_tasks task
                 JOIN goods ON goods.id = task.goods_id
                 LEFT JOIN colors color ON color.id = task.color_id
@@ -1042,7 +1071,27 @@ public class FulfillmentWorkbenchQueryService {
                 List.of(), row.length <= 38 || Boolean.TRUE.equals(row[38]),
                 row.length > 39 ? (String) row[39] : null,
                 row.length > 40 ? (String) row[40] : null,
-                row.length > 41 ? (String) row[41] : null);
+                row.length > 41 ? (String) row[41] : null,
+                row.length > 42 ? (String) row[42] : null,
+                row.length > 43 ? (String) row[43] : null,
+                row.length > 44 ? (String) row[44] : null,
+                row.length > 45 ? parseLines(row[45]) : List.of());
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper LINES_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** jsonb 明细数组 → List<Map>（行级货品明细；空/异常回空表，不让显示粒度拖垮列表）。 */
+    @SuppressWarnings("unchecked")
+    static List<java.util.Map<String, Object>> parseLines(Object value) {
+        if (value == null) return List.of();
+        try {
+            String json = value.toString();
+            if (json.isBlank()) return List.of();
+            return LINES_MAPPER.readValue(json, List.class);
+        } catch (Exception ignored) {
+            return List.of();
+        }
     }
 
     /** Only the visible application IDs on this page are expanded, in one bounded query. */
@@ -1182,7 +1231,8 @@ public class FulfillmentWorkbenchQueryService {
                 restricted ? List.of() : row.actionItemIds(), row.issuedAt(),
                 !restricted && row.canCreateOrder(), row.displayStage(),
                 row.componentAvailableQty(), restricted ? List.of() : row.sources(), row.materialsDefined(),
-                row.productionProductCode(), row.productionProductName(), restricted ? null : row.materialRequestNo());
+                row.productionProductCode(), row.productionProductName(), restricted ? null : row.materialRequestNo(),
+                row.workshopName(), row.workerName(), row.drawBatchNo(), row.lines());
     }
 
     private static BigDecimal decimal(Object value) {

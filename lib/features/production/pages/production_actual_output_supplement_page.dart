@@ -10,6 +10,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/router/route_access_policy.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
 import '../providers/production_execution_refresh.dart';
@@ -215,6 +216,10 @@ class _SupplementState
               : Padding(
                   padding: const EdgeInsets.all(24),
                   child: SingleChildScrollView(
+                    // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+                    padding: EdgeInsets.only(
+                      bottom: UtenCapsuleNavScope.occlusionOf(context),
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [

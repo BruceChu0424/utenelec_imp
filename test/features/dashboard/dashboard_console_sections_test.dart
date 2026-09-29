@@ -1,14 +1,16 @@
-// 工作台「今日概览 / 待办任务」控制台形态的回归网（2026-09-12 改版随附）。
+// 工作台「今日概览」合并面板的回归网（2026-09-28 合并改版随附；
+// 前身是 2026-09-12 控制台改版为 DashboardMetricStrip / DashboardTodoLane
+// 写的测试，合并后改为直接泵 DashboardOverviewPanel）。
 //
-// 改版前这两块**零 widget 测试**——调研时确认过。既然把卡片堆换成了指标带 + 待办泳道，
-// 就得把新形态的行为契约钉住，否则下一个人改回去或改坏都没人拦。
-//
-// 锁住的五件事：
-// 1. 数值与标题真的渲染出来了（不是只剩装饰）；
-// 2. 空态说的是「本部门」而不是旧的「当前权限下」——这正是本次改口径的用户可见面；
-// 3. reduced-motion 下不崩、内容照常完整（动效不承载信息）；
-// 4. 375px 窄屏不溢出（车间用的机器屏幕都不大）；
-// 5. 截止倒计时芯片只在有 dueAt 的待办上出现，逾期/未逾期两种措辞都对（2026-09-11 补）。
+// 锁住的六件事：
+// 1. 合并结构成立：一段面板同时承载「今日概览」标题栏、指标区与「待办任务」
+//    小节头，总数徽章 = 各待办 count 之和；
+// 2. 数值与标题真的渲染出来了（不是只剩装饰）；非数字指标值不被当成 0；
+// 3. 空态说的是「本部门」而不是旧的「当前权限下」——这是此前改口径的用户可见面；
+// 4. reduced-motion 下不崩、内容照常完整（动效不承载信息）；
+// 5. 375px 窄屏不溢出（rail 在上瓦片在下纵排，车间用的机器屏幕都不大）；
+//    待办超 4 张折叠 + 末尾「查看更多」点开全量可收起；
+// 6. 截止倒计时芯片只在有 dueAt 的待办上出现，逾期/未逾期两种措辞都对。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -87,15 +89,46 @@ void main() {
     ),
   );
 
-  testWidgets('指标带渲染标题、数值与副标题', (tester) async {
+  DashboardOverviewPanel panel({
+    List<DashboardMetric> metrics = const [],
+    List<DashboardTodo> todos = const [],
+    String departmentName = '财税部',
+  }) => DashboardOverviewPanel(
+    metrics: metrics,
+    todos: todos,
+    departmentName: departmentName,
+    generatedAt: DateTime(2026, 9, 28, 9, 41),
+  );
+
+  testWidgets('合并面板一段承载今日概览标题栏与待办小节头，总数徽章=各待办之和', (tester) async {
     await tester.pumpWidget(
       host(
-        DashboardMetricStrip(
+        panel(
+          metrics: [metric()],
+          todos: [
+            todo(),
+            todo(id: 'visitor-approval', title: '你有 1 项访客申请待审批', count: 1),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('今日概览'), findsOneWidget);
+    expect(find.text('待办任务'), findsOneWidget);
+    // 总数徽章 = 3 + 1 = 4（瓦片上的 3 / 1 是各自计数，只有一枚 4）。
+    expect(find.text('4'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('指标区渲染标题、数值与副标题', (tester) async {
+    await tester.pumpWidget(
+      host(
+        panel(
           metrics: [
             metric(),
             metric(id: 'sales-active', title: '执行中订单', value: '7'),
           ],
-          departmentName: '财税部',
         ),
       ),
     );
@@ -111,14 +144,7 @@ void main() {
   });
 
   testWidgets('非数字的指标值原样显示，不被当成 0', (tester) async {
-    await tester.pumpWidget(
-      host(
-        DashboardMetricStrip(
-          metrics: [metric(value: '已锁定')],
-          departmentName: '财税部',
-        ),
-      ),
-    );
+    await tester.pumpWidget(host(panel(metrics: [metric(value: '已锁定')])));
     await tester.pumpAndSettle();
 
     expect(find.text('已锁定'), findsOneWidget);
@@ -126,24 +152,21 @@ void main() {
   });
 
   testWidgets('指标为空时说的是「本部门」，不是旧的「当前权限下」', (tester) async {
-    await tester.pumpWidget(
-      host(const DashboardMetricStrip(metrics: [], departmentName: '财税部')),
-    );
+    await tester.pumpWidget(host(panel()));
     await tester.pumpAndSettle();
 
     expect(find.text('财税部暂无概览指标'), findsOneWidget);
     expect(find.textContaining('当前权限下'), findsNothing);
   });
 
-  testWidgets('待办泳道渲染标题与计数徽章', (tester) async {
+  testWidgets('待办区渲染标题与计数徽章', (tester) async {
     await tester.pumpWidget(
       host(
-        DashboardTodoLane(
+        panel(
           todos: [
             todo(),
             todo(id: 'visitor-approval', title: '你有 1 项访客申请待审批', count: 1),
           ],
-          departmentName: '财税部',
         ),
       ),
     );
@@ -151,15 +174,14 @@ void main() {
 
     expect(find.text('你有 3 项报销申请待审批'), findsOneWidget);
     expect(find.text('你有 1 项访客申请待审批'), findsOneWidget);
+    // 各瓦片一枚计数徽章（总数 4 由合并结构用例单独锁定）。
     expect(find.text('3'), findsOneWidget);
     expect(find.text('1'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('待办为空时同样说「本部门」', (tester) async {
-    await tester.pumpWidget(
-      host(const DashboardTodoLane(todos: [], departmentName: '财税部')),
-    );
+    await tester.pumpWidget(host(panel()));
     await tester.pumpAndSettle();
 
     expect(find.text('财税部当前没有待办'), findsOneWidget);
@@ -170,7 +192,7 @@ void main() {
   testWidgets('有截止时间的待办渲染倒计时芯片，逾期与未逾期措辞各就各位', (tester) async {
     await tester.pumpWidget(
       host(
-        DashboardTodoLane(
+        panel(
           todos: [
             // 3.5 天而不是整 3 天：构建比夹具晚几毫秒，整天数边界会被 inDays 截断。
             todo(dueAt: DateTime.now().add(const Duration(days: 3, hours: 12))),
@@ -180,7 +202,6 @@ void main() {
               dueAt: DateTime.now().subtract(const Duration(hours: 2)),
             ),
           ],
-          departmentName: '财税部',
         ),
       ),
     );
@@ -192,9 +213,7 @@ void main() {
   });
 
   testWidgets('无截止时间的待办不渲染倒计时芯片', (tester) async {
-    await tester.pumpWidget(
-      host(DashboardTodoLane(todos: [todo()], departmentName: '财税部')),
-    );
+    await tester.pumpWidget(host(panel(todos: [todo()])));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('剩 '), findsNothing);
@@ -205,12 +224,7 @@ void main() {
   // pumpAndSettle 永远停不下来（准则 07 §七）。改成复用 UtenLivePulseDot 的一次性脉冲。
   testWidgets('紧急节点的脉冲是一次性的：settle 能停下来，不是无限呼吸灯', (tester) async {
     await tester.pumpWidget(
-      host(
-        DashboardTodoLane(
-          todos: [todo(urgentCount: 2, tone: 'danger')],
-          departmentName: '财税部',
-        ),
-      ),
+      host(panel(todos: [todo(urgentCount: 2, tone: 'danger')])),
     );
     await tester.pumpAndSettle();
     expect(find.byType(UtenLivePulseDot), findsOneWidget);
@@ -220,9 +234,13 @@ void main() {
   testWidgets('reduced-motion 下紧急待办照常完整渲染（动效不承载信息）', (tester) async {
     await tester.pumpWidget(
       host(
-        DashboardTodoLane(
-          todos: [todo(urgentCount: 2, tone: 'danger')],
-          departmentName: '财税部',
+        panel(
+          todos: [
+            todo(urgentCount: 2, tone: 'danger'),
+            // 第二条非紧急待办把总数徽章顶到 4，避免「3」同时出现在
+            // 瓦片徽章与总数徽章、findsOneWidget 误红。
+            todo(id: 'visitor-approval', title: '你有 1 项访客申请待审批', count: 1),
+          ],
         ),
         reduceMotion: true,
       ),
@@ -234,7 +252,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('375px 窄屏：指标带退化成单列且不溢出', (tester) async {
+  testWidgets('375px 窄屏：指标区退化成单列，瓦片与面板不溢出', (tester) async {
     tester.view.physicalSize = const Size(375, 812);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -242,33 +260,68 @@ void main() {
 
     await tester.pumpWidget(
       host(
-        DashboardMetricStrip(
+        panel(
           metrics: [
             metric(),
             metric(id: 'sales-active', title: '执行中订单', value: '7'),
             metric(id: 'notice-unread', title: '未读通知', value: '25'),
           ],
-          departmentName: '财税部',
+          todos: [
+            todo(),
+            todo(id: 'visitor-approval', title: '你有 1 项访客申请待审批', count: 1),
+          ],
         ),
         size: const Size(375, 812),
       ),
     );
     await tester.pumpAndSettle();
 
-    // 窄屏收起态只显示一列一行；展开入口应在。
-    expect(find.textContaining('展开其余'), findsOneWidget);
+    // 指标 rail 不折叠（竖排全量），三行都在；待办单列纵排。
+    expect(find.text('待排产'), findsOneWidget);
+    expect(find.text('执行中订单'), findsOneWidget);
+    expect(find.text('未读通知'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 2026-09-28 用户口径「放不下就最后显示 点击查看更多」：折叠态最多 4 张瓦片，
+  // 末尾给「查看更多」，点开全量、可收起。
+  testWidgets('待办超过 4 张折叠到 4 张 + 查看更多，点开全量可收起', (tester) async {
+    await tester.pumpWidget(
+      host(
+        panel(
+          todos: [
+            // id 单字符：瓦片 key = dashboard-todo-{id}，双段拼接易写错。
+            for (var i = 0; i < 6; i++)
+              todo(id: 't$i', title: '待办 $i', count: 1),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('dashboard-todo-t4')), findsNothing);
+    expect(find.textContaining('查看更多（还有 2 项）'), findsOneWidget);
+
+    await tester.tap(find.textContaining('查看更多'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('dashboard-todo-t4')), findsOneWidget);
+    expect(find.byKey(const ValueKey('dashboard-todo-t5')), findsOneWidget);
+    expect(find.text('收起'), findsOneWidget);
+
+    await tester.tap(find.text('收起'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('dashboard-todo-t4')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('大字号（1.5 档）下不裁切、不溢出', (tester) async {
     await tester.pumpWidget(
       host(
-        DashboardTodoLane(
+        panel(
           todos: [
             todo(),
             todo(id: 'payroll-review', title: '你有 5 项工资批次待复核', count: 5),
           ],
-          departmentName: '财税部',
         ),
         size: const Size(900, 900),
         textScaler: const TextScaler.linear(1.5),
@@ -279,38 +332,37 @@ void main() {
     expect(find.text('你有 5 项工资批次待复核'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
-  testWidgets(
-    'desktop todos share a horizontal row instead of a vertical list',
-    (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1200, 800));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        host(
-          DashboardTodoLane(
-            todos: [
-              todo(id: 'a'),
-              todo(id: 'b'),
-              todo(id: 'c'),
-            ],
-            departmentName: '仓库',
-          ),
+  testWidgets('desktop todos cap at two per row: a/b share a row, c wraps', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      host(
+        panel(
+          todos: [
+            todo(id: 'a'),
+            todo(id: 'b'),
+            todo(id: 'c'),
+          ],
+          departmentName: '仓库',
         ),
-      );
-      await tester.pumpAndSettle();
-      final first = tester.getTopLeft(
-        find.byKey(const ValueKey('dashboard-todo-a')),
-      );
-      final second = tester.getTopLeft(
-        find.byKey(const ValueKey('dashboard-todo-b')),
-      );
-      final third = tester.getTopLeft(
-        find.byKey(const ValueKey('dashboard-todo-c')),
-      );
-      expect(first.dy, second.dy);
-      expect(second.dy, third.dy);
-      expect(first.dx, lessThan(second.dx));
-      expect(second.dx, lessThan(third.dx));
-      expect(tester.takeException(), isNull);
-    },
-  );
+      ),
+    );
+    await tester.pumpAndSettle();
+    final first = tester.getTopLeft(
+      find.byKey(const ValueKey('dashboard-todo-a')),
+    );
+    final second = tester.getTopLeft(
+      find.byKey(const ValueKey('dashboard-todo-b')),
+    );
+    final third = tester.getTopLeft(
+      find.byKey(const ValueKey('dashboard-todo-c')),
+    );
+    // 大屏两列封顶（2026-09-28 用户口径）：前两张同行并排，第三张换行。
+    expect(first.dy, second.dy);
+    expect(first.dx, lessThan(second.dx));
+    expect(third.dy, greaterThan(second.dy));
+    expect(tester.takeException(), isNull);
+  });
 }

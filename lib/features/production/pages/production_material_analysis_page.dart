@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter/foundation.dart' show mapEquals;
@@ -40,6 +41,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
@@ -483,7 +485,6 @@ abstract class _MaterialAnalysisPageBase
   List<String> _priorityDraft = [];
   List<String> _priorityBaseline = [];
   bool _editingPriorities = false;
-  int _bomTablePageNo = 1;
 
   /// BOM 表是否处于全屏（表格全屏路由打开时顶部卡片不可见，搜索框
   /// 借 [MasterDataTableView.onFullscreenChanged] 回到表格工具条）。
@@ -2048,7 +2049,8 @@ class _ProductionMaterialAnalysisPageState
     // 让末尾内容能滚到悬浮按钮上方，不被常驻遮挡。
     final actionCount = _bottomActionButtons().length;
     final bottomClearance = actionCount == 0
-        ? UtenSpacing.s16
+        // compact 悬浮胶囊避让：滚到底末块要能越过胶囊
+        ? math.max(UtenSpacing.s16, UtenCapsuleNavScope.occlusionOf(context))
         : UtenFloatingActionGroup.scrollClearance;
     final headerSections = [
       Padding(

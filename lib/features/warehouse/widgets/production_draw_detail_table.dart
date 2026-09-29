@@ -14,14 +14,40 @@ import '../models/production_draw_discovery_row.dart';
 
 /// 单张领料和批量出库共用的逐物料明细，来源始终随所属单据展示。
 class ProductionDrawDetailRow {
-  const ProductionDrawDetailRow(this.document, this.item) : discovery = null;
+  const ProductionDrawDetailRow(this.document, this.item)
+    : discovery = null,
+      group = null;
   const ProductionDrawDetailRow.discovery(this.discovery)
     : document = null,
-      item = null;
+      item = null,
+      group = null;
+
+  /// 同批次同货品的合并组（2026-09-27 用户口径「批量出库里只合并相同批次的
+  /// 相同货品」）：组员按 document/item 逐行出库，本行只是显示聚合。
+  const ProductionDrawDetailRow.merged(this.group)
+    : document = null,
+      item = null,
+      discovery = null;
 
   final StockDocDetail? document;
   final StockDocItem? item;
   final ProductionDrawDiscoveryRow? discovery;
+  final List<ProductionDrawDetailRow>? group;
+
+  bool get isMergedGroup => group != null;
+
+  /// 行稳定键（MasterDataTableView 行 key 与双击判定共用）：合并行 document/item
+  /// 均为 null，组身份就是「批次|货品|颜色」，必须给键而不能走 null 断言——
+  /// 否则合并行 build 直接抛空检查异常，整行渲染成错误占位盒。
+  String get stableRowKey {
+    final discovery = this.discovery;
+    if (discovery != null) return discovery.id;
+    if (isMergedGroup) {
+      final first = group!.first;
+      return 'merged:${first.document!.drawBatchNo}|${first.item!.goodsId}|${first.item!.colorId}';
+    }
+    return '${document!.id}:${item!.id}';
+  }
 }
 
 /// 一行待出库行的校验结果（页面提交前逐行核对）。
@@ -53,6 +79,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
     this.onSplitDiscoveryRow,
     this.onRemoveDiscoveryRow,
     this.canRemoveDiscoveryRow,
+    this.mergeBatchGoods = false,
   });
 
   final List<StockDocDetail> documents;
@@ -72,9 +99,57 @@ class ProductionDrawDetailTable extends StatelessWidget {
   final List<ProductionDrawDiscoveryRow> discoveryRows;
   final ValueChanged<ProductionDrawDiscoveryRow>? onPickDiscoveryWarehouse;
   final bool showDiscoveryValidation;
+
+  /// 批量出库页启用：同批次（drawBatchNo）同货品的明细行合并成一行显示数量
+  /// 合计；出库仍按底层单据逐张全量提交（页面不填行级数量）。
+  final bool mergeBatchGoods;
   final ValueChanged<ProductionDrawDiscoveryRow>? onSplitDiscoveryRow;
   final ValueChanged<ProductionDrawDiscoveryRow>? onRemoveDiscoveryRow;
   final bool Function(ProductionDrawDiscoveryRow)? canRemoveDiscoveryRow;
+
+  /// 明细视图行：mergeBatchGoods 时把同批次（drawBatchNo 非空）同货品同颜色的
+  /// 多行合并成一行（数量合计、单号显示张数）；discovery 行与无批次行不合并。
+  List<ProductionDrawDetailRow> get viewRows {
+    final base = <ProductionDrawDetailRow>[
+      for (final document in documents)
+        for (final item in document.items)
+          ProductionDrawDetailRow(document, item),
+      for (final row in discoveryRows) ProductionDrawDetailRow.discovery(row),
+    ];
+    if (!mergeBatchGoods) return base;
+    final byKey = <String, List<ProductionDrawDetailRow>>{};
+    for (final row in base) {
+      final doc = row.document;
+      final item = row.item;
+      final batch = doc?.drawBatchNo ?? '';
+      if (batch.isEmpty || item == null) continue;
+      byKey
+          .putIfAbsent('$batch|${item.goodsId}|${item.colorId}', () => [])
+          .add(row);
+    }
+    final result = <ProductionDrawDetailRow>[];
+    final seen = <String>{};
+    for (final row in base) {
+      final doc = row.document;
+      final item = row.item;
+      final batch = doc?.drawBatchNo ?? '';
+      final key = batch.isEmpty || item == null
+          ? ''
+          : '$batch|${item.goodsId}|${item.colorId}';
+      if (key.isEmpty) {
+        result.add(row);
+        continue;
+      }
+      if (!seen.add(key)) continue;
+      final group = byKey[key]!;
+      result.add(
+        group.length == 1
+            ? group.single
+            : ProductionDrawDetailRow.merged(group),
+      );
+    }
+    return result;
+  }
 
   @override
   Widget build(
@@ -83,8 +158,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
     key: const Key('production-draw-detail-table'),
     primary: primary,
     enableTextSelection: discoveryRows.isEmpty && issueQtyControllers == null,
-    rowKeyOf: (row) =>
-        row.discovery?.id ?? '${row.document!.id}:${row.item!.id}',
+    rowKeyOf: (row) => row.stableRowKey,
     bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
     facets: const {},
     nullCounts: const {},
@@ -98,7 +172,9 @@ class ProductionDrawDetailTable extends StatelessWidget {
         filterFromRows: true,
         label: '领料单号',
         width: 160,
-        value: (row) => _numberLabel(row.document?.billNo),
+        value: (row) => row.isMergedGroup
+            ? '${row.group!.length} 张单'
+            : _numberLabel(row.document?.billNo),
       ),
       MasterColumnDef(
         key: 'materialRequestNo',
@@ -115,17 +191,20 @@ class ProductionDrawDetailTable extends StatelessWidget {
         key: 'goods',
         label: '货品名称',
         width: 200,
-        value: (row) =>
-            row.discovery?.label('goodsName') ?? names.goods(row.item!.goodsId),
+        value: (row) => row.isMergedGroup
+            ? names.goods(row.group!.first.item!.goodsId)
+            : row.discovery?.label('goodsName') ??
+                  names.goods(row.item!.goodsId),
       ),
       MasterColumnDef(
         key: 'goodsCode',
         label: '编号',
         width: 120,
-        value: (row) =>
-            row.discovery?.label('goodsCode') ??
-            names.goodsInfo(row.item!.goodsId)?.code ??
-            '—',
+        value: (row) => row.isMergedGroup
+            ? names.goodsInfo(row.group!.first.item!.goodsId)?.code ?? '—'
+            : row.discovery?.label('goodsCode') ??
+                  names.goodsInfo(row.item!.goodsId)?.code ??
+                  '—',
       ),
       // 颜色列原来排在库位号之后（第 8 列），仓库拣货要横滚才看得到：同名不同色
       // 在本系统很常见，编号/名称/颜色必须在前几列同屏可见，故上移紧跟货品名称。
@@ -134,17 +213,30 @@ class ProductionDrawDetailTable extends StatelessWidget {
         key: 'color',
         label: '颜色',
         width: 90,
-        value: (row) =>
-            row.discovery?.label('colorName') ?? names.color(row.item!.colorId),
+        value: (row) => row.isMergedGroup
+            ? names.color(row.group!.first.item!.colorId)
+            : row.discovery?.label('colorName') ??
+                  names.color(row.item!.colorId),
       ),
       MasterColumnDef(
         key: 'warehouse',
         label: discoveryRows.isEmpty ? '仓库' : '仓库 *',
         width: discoveryRows.isEmpty ? 160 : 200,
-        value: (row) =>
-            row.discovery?.label('warehouseName') ??
-            names.warehouse(row.document!.warehouseId),
-        cellBuilder: (context, row) => row.discovery == null
+        value: (row) => row.isMergedGroup
+            ? _joinedOrDash(
+                row.group!.map((r) => names.warehouse(r.document!.warehouseId)),
+              )
+            : row.discovery?.label('warehouseName') ??
+                  names.warehouse(row.document!.warehouseId),
+        cellBuilder: (context, row) => row.isMergedGroup
+            ? Text(
+                _joinedOrDash(
+                  row.group!.map(
+                    (r) => names.warehouse(r.document!.warehouseId),
+                  ),
+                ),
+              )
+            : row.discovery == null
             ? Text(names.warehouse(row.document!.warehouseId))
             : _discoveryWarehouseCell(context, row.discovery!),
       ),
@@ -152,9 +244,14 @@ class ProductionDrawDetailTable extends StatelessWidget {
         key: 'department',
         label: '领料车间',
         width: 150,
-        value: (row) =>
-            row.discovery?.request.workshopName ??
-            names.department(row.document!.departmentId),
+        value: (row) => row.isMergedGroup
+            ? _joinedOrDash(
+                row.group!.map(
+                  (r) => names.department(r.document!.departmentId),
+                ),
+              )
+            : row.discovery?.request.workshopName ??
+                  names.department(row.document!.departmentId),
       ),
       // 姓名由详情接口随单返回(workerName): 单张详情/批量出库页都不再预加载员工档案,
       // 仓库/车间账号没有 employee:view 也能看到是谁来领料。
@@ -162,7 +259,16 @@ class ProductionDrawDetailTable extends StatelessWidget {
         key: 'worker',
         label: '领料负责人',
         width: 140,
-        value: (row) => row.discovery == null
+        value: (row) => row.isMergedGroup
+            ? _joinedOrDash(
+                row.group!.map(
+                  (r) => names.employeeOr(
+                    r.document!.workerName,
+                    r.document!.workerId,
+                  ),
+                ),
+              )
+            : row.discovery == null
             ? names.employeeOr(row.document!.workerName, row.document!.workerId)
             : '—',
       ),
@@ -170,54 +276,56 @@ class ProductionDrawDetailTable extends StatelessWidget {
         key: 'place',
         label: '库位号',
         width: 100,
-        value: (row) =>
-            row.discovery?.label('stockPlace') ??
-            (row.item!.place?.trim().isNotEmpty == true
-                ? row.item!.place!
-                : names.goodsInfo(row.item!.goodsId)?.stockPlace ?? '—'),
+        value: (row) => row.isMergedGroup
+            ? '—'
+            : row.discovery?.label('stockPlace') ??
+                  (row.item!.place?.trim().isNotEmpty == true
+                      ? row.item!.place!
+                      : names.goodsInfo(row.item!.goodsId)?.stockPlace ?? '—'),
       ),
       MasterColumnDef(
         key: 'unit',
         label: '单位',
         width: 70,
-        value: (row) =>
-            row.discovery?.label('unitName') ?? names.unit(row.item!.unitId),
+        value: (row) => row.isMergedGroup
+            ? names.unit(row.group!.first.item!.unitId)
+            : row.discovery?.label('unitName') ?? names.unit(row.item!.unitId),
       ),
       MasterColumnDef(
         key: 'qty',
         label: discoveryRows.isEmpty ? '应领数量' : '应领数量 *',
         width: discoveryRows.isEmpty ? 105 : 180,
         type: 'number',
-        value: (row) =>
-            row.discovery?.quantity.text ?? _quantity(row.item!.qty ?? 0),
-        cellBuilder: (context, row) => row.discovery == null
+        value: (row) => row.isMergedGroup
+            ? _mergedQty(row.group!, (item) => item.qty ?? 0)
+            : row.discovery?.quantity.text ?? _quantity(row.item!.qty ?? 0),
+        cellBuilder: (context, row) => row.isMergedGroup
+            ? Text(_mergedQty(row.group!, (item) => item.qty ?? 0))
+            : row.discovery == null
             ? Text(_quantity(row.item!.qty ?? 0))
             : _discoveryQuantityCell(context, row.discovery!),
-      ),
-      MasterColumnDef(
-        key: 'requestedQty',
-        label: '已申请领料',
-        width: 105,
-        type: 'number',
-        value: (row) => row.discovery == null
-            ? _quantity(row.item!.requestedQty ?? row.item!.qty ?? 0)
-            : '待确认',
       ),
       MasterColumnDef(
         key: 'issuedQty',
         label: '已出库',
         width: 105,
         type: 'number',
-        value: (row) =>
-            row.discovery == null ? _quantity(row.item!.issuedQty ?? 0) : '0',
+        value: (row) => row.isMergedGroup
+            ? _mergedQty(row.group!, (item) => item.issuedQty ?? 0)
+            : row.discovery == null
+            ? _quantity(row.item!.issuedQty ?? 0)
+            : '0',
       ),
       MasterColumnDef(
         key: 'remainingQty',
         label: '待出库',
         width: 105,
         type: 'number',
-        value: (row) =>
-            row.discovery == null ? _quantity(row.item!.remainingQty) : '待确认',
+        value: (row) => row.isMergedGroup
+            ? _mergedQty(row.group!, (item) => item.remainingQty)
+            : row.discovery == null
+            ? _quantity(row.item!.remainingQty)
+            : '待确认',
       ),
       // 2026-09-12：本次出库数量与行备注在表格内编辑（默认=待出库），
       // 出库按钮只弹总结确认——弹窗里不再改数字、不再传附件。
@@ -274,9 +382,14 @@ class ProductionDrawDetailTable extends StatelessWidget {
         ),
       MasterColumnDef(
         key: 'issueStatus',
-        label: '出库进度',
+        label: '状态',
         width: 120,
-        value: (row) => row.discovery == null
+        value: (row) => row.isMergedGroup
+            ? (row.group!.map((r) => r.document!.issueStatus).toSet().length ==
+                      1
+                  ? drawIssueStatusLabel(row.group!.first.document!.issueStatus)
+                  : '—')
+            : row.discovery == null
             ? drawIssueStatusLabel(row.document!.issueStatus)
             : '待确认出库',
       ),
@@ -284,25 +397,33 @@ class ProductionDrawDetailTable extends StatelessWidget {
         key: 'planNo',
         label: '生产计划',
         width: 170,
-        value: (row) =>
-            row.discovery?.request.planNo ?? row.document?.planNo ?? '—',
-        cellBuilder: (context, row) => _sourceLink(
-          context,
-          row.discovery?.request.planNo ?? row.document?.planNo,
-          row.document?.sourcePlanId == null
-              ? null
-              : RoutePath.productionPlanDetail(row.document!.sourcePlanId!),
-        ),
+        value: (row) => row.isMergedGroup
+            ? _joinedOrDash(row.group!.map((r) => r.document?.planNo ?? ''))
+            : row.discovery?.request.planNo ?? row.document?.planNo ?? '—',
+        cellBuilder: (context, row) => row.isMergedGroup
+            ? Text(
+                _joinedOrDash(row.group!.map((r) => r.document?.planNo ?? '')),
+              )
+            : _sourceLink(
+                context,
+                row.discovery?.request.planNo ?? row.document?.planNo,
+                row.document?.sourcePlanId == null
+                    ? null
+                    : RoutePath.productionPlanDetail(
+                        row.document!.sourcePlanId!,
+                      ),
+              ),
       ),
       MasterColumnDef(
         key: 'sourceDocNo',
         label: '来源',
         width: 170,
-        value: (row) =>
-            row.discovery?.request.segmentCode ??
-            row.item?.sourceDocNo ??
-            row.document?.sourceDocNo ??
-            '—',
+        value: (row) => row.isMergedGroup
+            ? '—'
+            : row.discovery?.request.segmentCode ??
+                  row.item?.sourceDocNo ??
+                  row.document?.sourceDocNo ??
+                  '—',
         cellBuilder: (context, row) => _sourceLink(
           context,
           row.discovery?.request.segmentCode ??
@@ -313,29 +434,8 @@ class ProductionDrawDetailTable extends StatelessWidget {
               : '/production/daily-reports/${row.document!.sourceDailyReportId}',
         ),
       ),
-      MasterColumnDef(
-        key: 'series',
-        label: '系列',
-        width: 90,
-        value: (row) =>
-            row.discovery?.label('series') ??
-            names.goodsInfo(row.item?.goodsId)?.series ??
-            '—',
-      ),
-      MasterColumnDef(
-        key: 'weight',
-        label: '实际重量',
-        width: 105,
-        type: 'number',
-        value: (row) =>
-            row.item?.weight == null ? '—' : _quantity(row.item!.weight!),
-      ),
-      MasterColumnDef(
-        key: 'remark',
-        label: '备注',
-        width: 200,
-        value: (row) => row.item?.remark ?? row.document?.remark ?? '—',
-      ),
+      // 2026-09-27 用户口径「表头统一、重复的删除」：系列 / 实际重量 / 只读备注
+      // 三列下线（重量由单位表达、备注在行备注编辑列与单据头体现）。
       if (discoveryRows.isNotEmpty) ...[
         MasterColumnDef(
           key: 'spec',
@@ -388,12 +488,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
         ),
       ],
     ],
-    items: [
-      for (final document in documents)
-        for (final item in document.items)
-          ProductionDrawDetailRow(document, item),
-      for (final row in discoveryRows) ProductionDrawDetailRow.discovery(row),
-    ],
+    items: viewRows,
     emptyMessage: '暂无领料明细',
   );
 
@@ -466,6 +561,24 @@ class ProductionDrawDetailTable extends StatelessWidget {
       onPressed: () => context.push(path),
       child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
     );
+  }
+
+  /// 合并行数量合计（组员逐行取数相加）。
+  static String _mergedQty(
+    List<ProductionDrawDetailRow> group,
+    double Function(StockDocItem) pick,
+  ) => _quantity(
+    group.fold<double>(
+      0,
+      (acc, row) => acc + (row.item == null ? 0 : pick(row.item!)),
+    ),
+  );
+
+  /// 合并行多值摘要：单值原样、多值「N 个」、空「—」。
+  static String _joinedOrDash(Iterable<String> values) {
+    final list = values.where((v) => v.isNotEmpty && v != '—').toSet().toList();
+    if (list.isEmpty) return '—';
+    return list.length == 1 ? list.single : '${list.length} 个';
   }
 
   static String _quantity(double value) => value

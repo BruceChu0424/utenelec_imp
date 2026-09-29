@@ -182,12 +182,45 @@ public class NoticeService {
     /** 当前用户可见通知列表（已删除的除外）。置顶优先，其余按发布时间倒序。 */
     @Transactional(readOnly = true)
     public List<NoticeDto> list(boolean onlyUnread) {
+        List<Notice> notices = visibleNotices(onlyUnread);
+        return toDtos(notices);
+    }
+
+    /**
+     * 重要通知：人事序列部门用户发布且当前用户未读（2026-09-28 用户口径
+     * 「人事部发布的通知最重要，未读即重要」）。与列表同一可见性与装配链路，
+     * 仅在未读集合上按发布者部门过滤。
+     */
+    @Transactional(readOnly = true)
+    public List<NoticeDto> listImportantUnread() {
+        return toDtos(importantUnreadNotices());
+    }
+
+    /** 重要通知数：工作台「重要通知」指标用（列表上限 500，作徽章数足够）。 */
+    @Transactional(readOnly = true)
+    public long unreadImportantCount() {
+        return importantUnreadNotices().size();
+    }
+
+    private List<Notice> visibleNotices(boolean onlyUnread) {
         UUID userId = requireStaffId();
-        List<Notice> notices = noticeRepo.findVisible(
+        return noticeRepo.findVisible(
                 userId,
                 onlyUnread,
                 reviewAudience.workshopScope(requireStaff()),
                 PageRequest.of(0, MAX_LIST_ITEMS));
+    }
+
+    private List<Notice> importantUnreadNotices() {
+        Set<UUID> hrUsers = Set.copyOf(noticeRepo.findHrDepartmentUserIds());
+        if (hrUsers.isEmpty()) return List.of();
+        return visibleNotices(true).stream()
+                .filter(n -> n.getCreatedBy() != null && hrUsers.contains(n.getCreatedBy()))
+                .toList();
+    }
+
+    private List<NoticeDto> toDtos(List<Notice> notices) {
+        UUID userId = requireStaffId();
         Map<UUID, NoticeUserState> states = stateMap(
                 userId,
                 notices.stream().map(Notice::getId).toList());

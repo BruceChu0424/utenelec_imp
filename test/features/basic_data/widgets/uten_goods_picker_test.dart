@@ -88,6 +88,25 @@ void main() {
     expect(clearedTree.selectedIds, {'section-b'});
   });
 
+  testWidgets('右侧列表与货品资料同款排序（编号升序）', (tester) async {
+    final goodsRepository = _FakeGoodsRepository();
+    await _pumpPicker(tester, goodsRepository);
+
+    await tester.tap(find.byKey(const Key('open-goods-picker')));
+    await tester.pumpAndSettle();
+
+    // 点分类：分类列表通道带编号升序（与货品资料页 defaultSortKey: 'code' 同款）。
+    await tester.tap(find.text('分区乙(B)'));
+    await tester.pumpAndSettle();
+    expect(goodsRepository.listSortOrders.single, ('code', 'asc'));
+
+    // 全局搜索通道同款排序。
+    await tester.enterText(_searchEditable(), 'G-');
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+    expect(goodsRepository.searchSortOrders.single, ('code', 'asc'));
+  });
+
   testWidgets('旧后端忽略 scope 时客户端拒绝展示范围外货品', (tester) async {
     final goodsRepository = _FakeGoodsRepository(returnOutOfScopeItem: true);
     await _pumpPicker(tester, goodsRepository);
@@ -419,8 +438,10 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
   final searchQueries = <String>[];
   final searchPages = <int>[];
   final searchRootScopes = <Set<String>>[];
+  final searchSortOrders = <(String?, String?)>[];
   final searchCategoryIdQueries = <String>[];
   final listCalls = <(String, String?)>[];
+  final listSortOrders = <(String?, String?)>[];
 
   void completeDelayedSearch(List<GoodsListItem> items) {
     _delayedSearch.complete(_page(items, page: 1, size: 100));
@@ -434,10 +455,13 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
     Set<String> categoryRootIds = const {},
     bool excludeDisabled = false,
     bool excludeStub = false,
+    String? sort,
+    String? order,
   }) async {
     searchQueries.add(keyword);
     searchPages.add(page);
     searchRootScopes.add({...categoryRootIds});
+    searchSortOrders.add((sort, order));
     if (keyword == delayedQuery) return _delayedSearch.future;
     if (keyword == categoryOnlyQuery) {
       return _page(const [], page: page, size: size);
@@ -488,6 +512,7 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
     bool stubOnly = false,
   }) async {
     listCalls.add((categoryId!, keyword));
+    listSortOrders.add((sort, order));
     final items = categoryId == 'section-b' ? const [_goodsB] : const [_goodsA];
     return _page(items, page: page, size: size);
   }

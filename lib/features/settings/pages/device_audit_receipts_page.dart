@@ -1,5 +1,6 @@
 // 本机设备信息与操作回执：按不可猜测的操作 ID 精确查询，不枚举共享设备上的全部历史。
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,6 +19,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 
 class DeviceAuditReceiptsPage extends ConsumerStatefulWidget {
   const DeviceAuditReceiptsPage({
@@ -73,7 +75,13 @@ class _DeviceAuditReceiptsPageState
         readOnly: true,
         label: '本机操作回执只读核查',
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+          // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
+          padding: EdgeInsets.fromLTRB(
+            0,
+            UtenSpacing.s16,
+            0,
+            math.max(UtenSpacing.s16, UtenCapsuleNavScope.occlusionOf(context)),
+          ),
           child: UtenContentContainer.narrow(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

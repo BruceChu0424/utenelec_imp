@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
@@ -28,6 +29,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
@@ -36,6 +38,7 @@ import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../models/sales_order_finance_confirmation.dart';
+import '../providers/finance_name_provider.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
 import '../repositories/sales_order_finance_confirmation_repository.dart';
 import '../../../shared/badges/badge_registry.dart';
@@ -111,6 +114,10 @@ class _FinanceSalesOrderConfirmationPageState
   /// 排序列 key 见 [_kSortFields]，null = 服务端默认序。
   final _columnFilters = MasterServerColumnFilters();
 
+  /// 本位币名(客户应收列前缀)；字典未加载到时为 null，格内退回裸金额。
+  String? get _baseCurrencyLabel =>
+      ref.watch(financeNameServiceProvider).baseCurrencyName;
+
   bool get _canView {
     return ref.read(isSuperAdminProvider) ||
         ref
@@ -128,7 +135,11 @@ class _FinanceSalesOrderConfirmationPageState
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 客户应收列前缀要显示本位币名(币种字典 baseCurrency 标记)。
+      ref.read(financeNameServiceProvider).ensureLoaded();
+      _load(1);
+    });
   }
 
   @override
@@ -823,9 +834,15 @@ class _FinanceSalesOrderConfirmationPageState
         key: const Key('sales-order-finance-mobile-list'),
         physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.only(
+          // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊（嵌入态由宿主管）
           bottom: selectable
               ? UtenFloatingActionGroup.scrollClearance
-              : UtenSpacing.s24,
+              : widget.embedded
+              ? UtenSpacing.s24
+              : math.max(
+                  UtenSpacing.s24,
+                  UtenCapsuleNavScope.occlusionOf(context),
+                ),
         ),
         children: [
           _filters(Theme.of(context)),
@@ -854,6 +871,7 @@ class _FinanceSalesOrderConfirmationPageState
               _CompactTaskRow(
                 key: Key('sales-order-finance-task-${item.orderId}'),
                 item: item,
+                baseCurrencyLabel: _baseCurrencyLabel,
                 selected: selectable && _selectedIds.contains(item.orderId),
                 onSelected: selectable ? () => _toggleSelected(item) : null,
                 onOpen: () => _open(item),
@@ -901,10 +919,11 @@ class _FinanceSalesOrderConfirmationPageState
     ),
     MasterColumnDef(
       key: 'clientOutstanding',
-      label: '客户应收（本币）',
+      // 2026-09-27 用户口径：列头去「（本币）」，格内与订单金额同款「币种 金额」。
+      label: '客户应收',
       width: 150,
       type: 'money',
-      value: (item) => item.clientOutstanding ?? '—',
+      value: (item) => _clientOutstanding(_baseCurrencyLabel, item),
     ),
     MasterColumnDef(
       key: 'deliverDate',
@@ -1067,12 +1086,14 @@ class _CompactTaskRow extends StatelessWidget {
   const _CompactTaskRow({
     super.key,
     required this.item,
+    required this.baseCurrencyLabel,
     required this.selected,
     required this.onSelected,
     required this.onOpen,
   });
 
   final SalesOrderFinancePendingItem item;
+  final String? baseCurrencyLabel;
   final bool selected;
   final VoidCallback? onSelected;
   final VoidCallback onOpen;
@@ -1160,7 +1181,7 @@ class _CompactTaskRow extends StatelessWidget {
                                   '交货 ${item.deliverDate ?? '未定'} · '
                                   '${_urgencyLabel(urgency)} · '
                                   '${item.itemCount} 行明细 · '
-                                  '应收（本币）${item.clientOutstanding ?? '—'}',
+                                  '应收 ${_clientOutstanding(baseCurrencyLabel, item)}',
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     color: theme.colorScheme.onSurfaceVariant,
                                   ),
@@ -1247,6 +1268,16 @@ String _orderAmount(SalesOrderFinancePendingItem item) {
       ) ??
       '订单币种';
   return '$currency ${item.totalOriginal ?? '—'}';
+}
+
+/// 客户应收余额(本位币口径)：与订单金额同款「币种 金额」；字典未给本位币名时退回裸金额。
+String _clientOutstanding(
+  String? baseCurrencyLabel,
+  SalesOrderFinancePendingItem item,
+) {
+  final amount = item.clientOutstanding;
+  if (amount == null) return '—';
+  return baseCurrencyLabel == null ? amount : '$baseCurrencyLabel $amount';
 }
 
 String _shipmentPolicyLabel(String? policy) => switch (policy) {

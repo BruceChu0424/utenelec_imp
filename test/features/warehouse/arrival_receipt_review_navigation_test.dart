@@ -220,7 +220,7 @@ void main() {
     const qtyKey = Key('warehouse-arrival-qty-unit-rate-order-item');
     await tester.enterText(find.byKey(qtyKey), '1');
     await tester.pump();
-    expect(find.text('本分析预定 24 个'), findsOneWidget);
+    expect(find.text('计划部预定 24 个'), findsOneWidget);
     expect(find.textContaining('跨仓部分'), findsNothing);
 
     await tester.enterText(find.byKey(qtyKey), '2');

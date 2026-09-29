@@ -1,6 +1,8 @@
 // 官网询盘列表页（综合营销统一收件箱）
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,6 +19,7 @@ import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../models/website_inquiry.dart';
 import '../providers/website_inquiry_providers.dart';
 
@@ -51,9 +54,13 @@ class WebsiteInquiryListPage extends ConsumerWidget {
                 }
                 return SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.only(
+                  padding: EdgeInsets.only(
                     top: UtenSpacing.s8,
-                    bottom: 80, // 底部悬浮胶囊导航留白
+                    // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
+                    bottom: math.max(
+                      80,
+                      UtenCapsuleNavScope.occlusionOf(context),
+                    ),
                   ),
                   child: Column(
                     children: [

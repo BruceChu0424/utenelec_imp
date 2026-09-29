@@ -9,6 +9,8 @@
 // 卡片统一用 UtenHubCard；显隐走 hub_catalog + 路由守卫同一份 any/all 契约
 // (hubCardAllowed，ADR-109)。顶栏两枚药丸（黄=进行中/红=待办）= 服务端徽章目录
 // 对 BadgeModule.purchase 求和；页面里不做加法。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -26,6 +28,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/badges/badge_scope.dart';
 import '../../../shared/models/procurement_inbound.dart';
@@ -124,10 +127,13 @@ class PurchaseHubPage extends ConsumerWidget {
           child: ListView(
             padding: EdgeInsets.only(
               top: UtenSpacing.s12,
-              // 外壳 compact 已为子页面预留胶囊高度；此处再补呼吸。
-              // medium+/桌面 Rail 外壳不预留，取更大值避免末卡贴底。
+              // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊；
+              // medium+/桌面 Rail 外壳无遮挡，取更大值避免末卡贴底。
               bottom: context.breakpoint.isCompact
-                  ? UtenSpacing.s16
+                  ? math.max(
+                      UtenSpacing.s16,
+                      UtenCapsuleNavScope.occlusionOf(context),
+                    )
                   : UtenSpacing.s40,
             ),
             children: [

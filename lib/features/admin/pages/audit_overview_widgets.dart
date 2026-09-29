@@ -1133,7 +1133,15 @@ class _AuditEventTable extends StatelessWidget {
         label: '风险',
         width: 100,
         value: (row) => _riskLabel(row.riskLevel),
-        cellBuilder: (_, row) => _AuditRiskBadge(level: row.riskLevel),
+        // 风险分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）。
+        cellColor: (context, row) => udenStatusBadgeCellColor(
+          context,
+          switch (row.riskLevel) {
+            'critical' || 'high' => UtenStatusBadgeType.danger,
+            'medium' => UtenStatusBadgeType.warning,
+            _ => UtenStatusBadgeType.success,
+          },
+        ),
       ),
       MasterColumnDef(
         key: 'department',

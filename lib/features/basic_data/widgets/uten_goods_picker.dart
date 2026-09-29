@@ -42,6 +42,11 @@ import 'uten_category_tree_view.dart';
 /// 原材料=2113、辅料=2480、未分类=迁移虚拟孤儿根 -1。
 const _excludedLegacyIds = {2113, 2480, -1};
 
+/// 右侧列表默认排序：与货品资料页同款（编号升序，服务端白名单键 code）。
+/// 货品资料页对应 product_category_page 的 defaultSortKey: 'code'（升序）。
+const _goodsPickerSort = 'code';
+const _goodsPickerOrder = 'asc';
+
 /// 滑窗显示范围（按单据场景分流；默认 sellable 保持历史行为，零回归）。
 enum UtenGoodsPickerScope {
   /// 成品/可售卖类：排除原材料/辅料/未分类（销售/生产/委外进仓等）。
@@ -501,6 +506,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
             categoryId,
             page: requestedPage,
             keyword: keyword,
+            sort: _goodsPickerSort,
+            order: _goodsPickerOrder,
             excludeDisabled: true,
             excludeStub: true,
           );
@@ -547,6 +554,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           categoryRootIds: _scopeRootIds,
           excludeDisabled: true,
           excludeStub: true,
+          sort: _goodsPickerSort,
+          order: _goodsPickerOrder,
         ),
         if (needsLocation)
           repo.searchCategoryIds(
@@ -605,6 +614,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
         // 只命中分类名称/编号时，右侧展示该分类内容；分类词不强行套到货品字段上。
         final categoryPage = await repo.list(
           categoryId,
+          sort: _goodsPickerSort,
+          order: _goodsPickerOrder,
           excludeDisabled: true,
           excludeStub: true,
         );

@@ -1,5 +1,7 @@
 // 官网询盘详情页：完整留言 + 跟进动作（开始跟进 / 关闭 / 一键转客户）
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -14,6 +16,7 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/uten_notify.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/website_inquiry.dart';
 import '../providers/website_inquiry_providers.dart';
@@ -49,7 +52,11 @@ class WebsiteInquiryDetailPage extends ConsumerWidget {
               ref.invalidate(websiteInquiryDetailProvider(inquiryId)),
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.only(top: UtenSpacing.s8, bottom: 80),
+            padding: EdgeInsets.only(
+              top: UtenSpacing.s8,
+              // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+              bottom: math.max(80, UtenCapsuleNavScope.occlusionOf(context)),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

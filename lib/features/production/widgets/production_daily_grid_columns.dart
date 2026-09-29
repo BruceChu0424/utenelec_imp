@@ -371,24 +371,6 @@ double? productionReportBaseQuantity(DailyGridRow row) {
   return rounded.isFinite ? rounded : null;
 }
 
-String productionReportRoutingHint(DailyGridRow row) {
-  if (row.isMaterialRow || !row.hasLinkedSource) return '';
-  if (row.supplementProofId != null) {
-    return '已关联批准的追加计划，原工单与追加工单分别记产出；本次实际总量保持不变';
-  }
-  if (row.supplementRequestId != null) {
-    return '追加计划审批与开工待核对；本次实际数量和用料保留';
-  }
-  if (row.hasReportQuantityLimit) {
-    return row.maxReportQty == null
-        ? '按原来源核对本次产量'
-        : '本次可报 ${_quantityText(row.maxReportQty!)}';
-  }
-  return row.isDirectTransfer
-      ? '按有效超产比例核对；需求内交下工序，容差内余量送仓，越限先办追加计划'
-      : '按有效超产比例核对；容差内公共量分开送仓，越限先办追加计划';
-}
-
 /// An explicit destination may become invalid, but must never change silently.
 bool restoreExplicitDirectTransferSelection(DailyGridRow row) {
   if (!row.destinationTouched) return false;
@@ -580,9 +562,11 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
             guideBleed: UtenEditableGrid.cellVerticalPadding,
             isLastChild: isLastMaterialChild?.call(row) ?? true,
             title: row.material?.goodsName ?? '未命名物料',
+            // 2026-09-27 用户口径：非共享物料的「本工单领用」小字删除；
+            // 共享物料保留「沿用前批已领 · 工单号」（有区分价值）。
             subtitle: row.materialShared
                 ? '沿用前批已领 · ${row.materialSegmentLabel}'
-                : '本工单领用',
+                : null,
           );
         }
         return RequiredCellFrame(
@@ -692,30 +676,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
             ),
     ),
     // ===== V583 物料子行专用两列：成品行留空 =====
-    EditableGridColumn<DailyGridRow>(
-      key: 'outputRouting',
-      label: '产量分流',
-      width: 260,
-      headerInfo:
-          '实际产量只填写一次。需求份额与公共产出由系统保存时核定；'
-          '转下工序只交当前需求内数量，其余送仓，公共部分经质检合格并实收后可用。',
-      textOf: (row) => productionReportRoutingHint(row),
-      cellBuilder: (context, row) => row.isMaterialRow
-          ? const SizedBox.shrink()
-          : ListenableBuilder(
-              listenable: Listenable.merge([
-                row.qty,
-                row.destinationNotifier,
-                row.directTransferNotifier,
-              ]),
-              builder: (_, _) => Text(
-                productionReportRoutingHint(row),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-    ),
+    // 2026-09-27 用户口径：「产量分流」列退役——提示语与保存核定重复，
+    // 不再单独占一列（产量的需求/公共份额由系统保存时核定）。
     EditableGridColumn<DailyGridRow>(
       key: 'issuedQty',
       label: '领料量',

@@ -23,6 +23,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -329,6 +330,74 @@ class BusinessOutboxPostgresTest {
             assertEquals(1L, deliveries());
             assertEquals(1, eventStatus("real-worker"));
         }
+    }
+
+    @Test
+    void planScheduledSiblingsCoalesceIntoOneGroupDelivery() {
+        transactions.executeWithoutResult(status -> {
+            publisher.publishOnce(
+                    "PRODUCTION_PLAN_SCHEDULED", "PRODUCTION_PLAN",
+                    UUID.randomUUID(), Map.of("shortage", false), "plan-a");
+            publisher.publishOnce(
+                    "PRODUCTION_PLAN_SCHEDULED", "PRODUCTION_PLAN",
+                    UUID.randomUUID(), Map.of("shortage", true), "plan-b");
+            publisher.publishOnce(
+                    "PRODUCTION_PLAN_SCHEDULED", "PRODUCTION_PLAN",
+                    UUID.randomUUID(), Map.of("shortage", false), "plan-c");
+        });
+
+        assertTrue(Boolean.TRUE.equals(
+                transactions.execute(status -> processor.processNext())));
+        assertEquals(1, eventStatus("plan-a"));
+        assertEquals(1, eventStatus("plan-b"));
+        assertEquals(1, eventStatus("plan-c"));
+        var captor = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(chainNotice).deliverPlanScheduledGroup(captor.capture());
+        assertEquals(3, captor.getValue().size());
+        verify(chainNotice, org.mockito.Mockito.never())
+                .deliverOutboxEvent(anyString(), any(), any());
+        assertTrue(!transactions.execute(status -> processor.processNext()),
+                "the coalesced delivery must have claimed every sibling");
+    }
+
+    @Test
+    void singlePlanScheduledEventKeepsSingleEventDelivery() {
+        transactions.executeWithoutResult(status -> publisher.publishOnce(
+                "PRODUCTION_PLAN_SCHEDULED", "PRODUCTION_PLAN",
+                UUID.randomUUID(), Map.of("shortage", false), "plan-single"));
+
+        assertTrue(Boolean.TRUE.equals(
+                transactions.execute(status -> processor.processNext())));
+        assertEquals(1, eventStatus("plan-single"));
+        verify(chainNotice).deliverOutboxEvent(
+                org.mockito.ArgumentMatchers.eq("PRODUCTION_PLAN_SCHEDULED"),
+                any(UUID.class), any());
+        verify(chainNotice, org.mockito.Mockito.never())
+                .deliverPlanScheduledGroup(any());
+    }
+
+    @Test
+    void failedGroupDeliveryRollsBackEveryClaimedEvent() {
+        transactions.executeWithoutResult(status -> {
+            publisher.publishOnce(
+                    "PRODUCTION_PLAN_SCHEDULED", "PRODUCTION_PLAN",
+                    UUID.randomUUID(), Map.of("shortage", false), "plan-x");
+            publisher.publishOnce(
+                    "PRODUCTION_PLAN_SCHEDULED", "PRODUCTION_PLAN",
+                    UUID.randomUUID(), Map.of("shortage", false), "plan-y");
+        });
+        doThrow(new IllegalStateException("temporary"))
+                .when(chainNotice).deliverPlanScheduledGroup(any());
+        assertThrows(OutboxDeliveryException.class, () ->
+                transactions.executeWithoutResult(status -> processor.processNext()));
+        assertEquals(0, eventStatus("plan-x"));
+        assertEquals(0, eventStatus("plan-y"));
+
+        reset(chainNotice);
+        assertTrue(Boolean.TRUE.equals(
+                transactions.execute(status -> processor.processNext())));
+        assertEquals(1, eventStatus("plan-x"));
+        assertEquals(1, eventStatus("plan-y"));
     }
 
     private void recordSuccessfulDeliveries() {

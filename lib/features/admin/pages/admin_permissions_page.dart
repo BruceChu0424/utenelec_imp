@@ -24,6 +24,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/employee_display.dart';
 import '../models/admin_models.dart';
@@ -519,6 +520,10 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
       );
     }
     return ListView.builder(
+      // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+      padding: EdgeInsets.only(
+        bottom: UtenCapsuleNavScope.occlusionOf(context),
+      ),
       itemCount: visible.length + 1,
       itemBuilder: (context, i) {
         if (i == visible.length) {

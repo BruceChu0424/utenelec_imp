@@ -10,6 +10,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -1163,6 +1164,233 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(tester.widget<TextField>(field).controller!.text, '3000');
+  });
+
+  testWidgets('汇总输入6000未下单切回按产品：每行平分2000，撤销恢复1000(2026-09-27)', (tester) async {
+    await _pump(
+      tester,
+      overSupply: true,
+      permissions: _overSupplyPermissions,
+      mutate: _threeSharedBuySources,
+      aggregatePreview: _sharedAggregatePreview,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('material-aggregate-qty-g-m-2|本色|unit-1')),
+      '6000',
+    );
+    // 敲键当场平分：不等 300ms 去抖与服务端预览往返，立刻切视图也要看得到。
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('material-bom-layout-product')));
+    await tester.pumpAndSettle();
+    // 三条来源行被汇总草稿接管并锁住，显示平分值(需要1000 + 公共3000平分1000)。
+    expect(_orderQty('shared-0'), findsNothing);
+    for (var i = 0; i < 3; i++) {
+      final row = find.byKey(ValueKey('material-table-row-shared-$i'));
+      expect(row, findsOneWidget);
+      expect(
+        find.descendant(of: row, matching: find.text('2000')),
+        findsOneWidget,
+        reason: '汇总总量 6000 必须平分回每条来源行(连通口径)',
+      );
+    }
+    await tester.tap(find.byKey(const Key('material-aggregate-cancel-drafts')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('撤销草稿'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(_qtyText(tester, _orderQty('shared-0')), '1000');
+  });
+
+  testWidgets('汇总总量低于合计还需安排：输入即红框且拦下下单(2026-09-27)', (tester) async {
+    await _pump(
+      tester,
+      overSupply: true,
+      permissions: _overSupplyPermissions,
+      mutate: _threeSharedBuySources,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    final field = find.byKey(
+      const ValueKey('material-aggregate-qty-g-m-2|本色|unit-1'),
+    );
+    final frame = find
+        .ancestor(of: field, matching: find.byType(RequiredCellFrame))
+        .first;
+    await tester.enterText(field, '1000');
+    await tester.pump();
+    expect(
+      tester.widget<RequiredCellFrame>(frame).isEmpty(),
+      isTrue,
+      reason: '总量低于三来源合计还需安排 3000，必须边输入边标红',
+    );
+    await tester.enterText(field, '3100');
+    await tester.pump();
+    expect(tester.widget<RequiredCellFrame>(frame).isEmpty(), isFalse);
+    await tester.enterText(field, '1000');
+    await tester.pump();
+    expect(tester.widget<RequiredCellFrame>(frame).isEmpty(), isTrue);
+    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+    await tester.pumpAndSettle();
+    expect(
+      requests.where(
+        (request) => request.path.endsWith('/aggregate-orders/preview'),
+      ),
+      isEmpty,
+      reason: '低于下限的总量不能发出预览/下单请求',
+    );
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(
+      ProviderScope.containerOf(
+            tester.element(find.byType(ProductionMaterialAnalysisPage)),
+          )
+          .read(appNotificationProvider)
+          .map((notice) => notice.message)
+          .join('\n'),
+      contains('不能低于'),
+    );
+  });
+
+  testWidgets('已下达汇总追加900：平分进各来源追加格，撤销恢复0(2026-09-27)', (tester) async {
+    await _pump(
+      tester,
+      overSupply: true,
+      permissions: _overSupplyPermissions,
+      mutate: (data) {
+        _threeSharedBuySources(data);
+        for (final material in _records(data['flatMaterials'])) {
+          if (!(material['materialLineId'] as String).startsWith('shared-')) {
+            continue;
+          }
+          material['downstreamReferences'] = [
+            {
+              'actionId': 'aggregate-action',
+              'route': 'BUY',
+              'status': 'REQUESTED',
+              'documentType': 'PURCHASE_REQUEST',
+              'documentId': 'purchase-aggregate',
+              'documentNo': 'CS-AGG',
+              'allocatedQty': 1000,
+            },
+          ];
+          material['aggregatePreparation'] = {
+            'requiredQty': material['requiredQty'],
+            'orderedQty': 1000,
+            'allocatedOrderedQty': 1000,
+            'totalOrderedQty': 3000,
+            'orderedQtyExact': true,
+            'planningUncoveredQty': 0,
+            'netShortageQty': 0,
+            'targetMaterialLineIds': <String>[],
+            'actionable': true,
+          };
+          material['additionalSupplyRecommendedQty'] = 0;
+          material['netShortageQty'] = 0;
+        }
+        data['supplyActions'] = [
+          {
+            'actionId': 'aggregate-action',
+            'route': 'BUY',
+            'operationType': 'AGGREGATE_SUPPLY',
+            'requestedQty': 3000,
+            'publicSurplusQty': 0,
+          },
+        ];
+        return data;
+      },
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    const aggregate = 'g-m-2|本色|unit-1';
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('material-aggregate-order-$aggregate')),
+          )
+          .data,
+      '3000',
+      reason: '已下达汇总行的下单数量锁成累计已下单',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('material-aggregate-qty-$aggregate')),
+      '900',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('material-bom-layout-product')));
+    await tester.pumpAndSettle();
+    // 追加总量 900 在三来源间均分(各行已无缺口，纯追加=纯公共)。
+    expect(_appendQty('shared-0'), findsNothing);
+    for (var i = 0; i < 3; i++) {
+      final row = find.byKey(ValueKey('material-table-row-shared-$i'));
+      expect(row, findsOneWidget);
+      expect(
+        find.descendant(of: row, matching: find.text('300')),
+        findsOneWidget,
+        reason: '追加总量必须平分回每条来源行的追加格',
+      );
+    }
+    await tester.tap(find.byKey(const Key('material-aggregate-cancel-drafts')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('撤销草稿'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(_qtyText(tester, _appendQty('shared-0')), '0');
+  });
+
+  testWidgets('左上角全选连折叠分支一起选上；清全选也连折叠一起撤(2026-09-27)', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        return data;
+      },
+    );
+    // 折叠产品树：子件行整棵不渲染，但点左上角全选仍要选上它们(用户口径
+    // 「即使列表是收起的，点左上角也是全选，包括收起的」)。
+    final toggle = find.byKey(
+      const ValueKey('material-table-toggle-PRODUCT|product-1'),
+    );
+    expect(toggle, findsOneWidget);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('material-table-row-m-6')),
+      findsNothing,
+      reason: '折叠后子件行不再渲染',
+    );
+    final headerSelectAll = find.byKey(
+      const Key('master-data-table-select-all'),
+    );
+    await _check(tester, headerSelectAll);
+    await tester.pumpAndSettle();
+    // 展开回来：折叠期间被全选的子件必须已经勾上。
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(_rowChecked(tester, 'm-6'), isTrue, reason: '收起的层级也要被全选覆盖');
+    // 清全选同样要覆盖收起层级：再折叠 → 表头清空 → 展开 → 子件已撤勾。
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    tester.widget<Checkbox>(headerSelectAll).onChanged!(false);
+    await tester.pumpAndSettle();
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(_rowChecked(tester, 'm-6'), isFalse, reason: '清全选也要撤掉收起层级的勾');
   });
 
   testWidgets('汇总冲突刷新删除一个来源时保留3100总量并可撤销，不因身份缺失崩页', (tester) async {

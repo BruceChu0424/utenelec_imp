@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,6 +17,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -303,7 +306,13 @@ class _IncrementCreateState
         body: SafeArea(
           child: UtenContentContainer.wide(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              // compact 悬浮胶囊避让：滚到底表单要能越过胶囊
+              padding: EdgeInsets.fromLTRB(
+                24,
+                24,
+                24,
+                math.max(24, UtenCapsuleNavScope.occlusionOf(context)),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

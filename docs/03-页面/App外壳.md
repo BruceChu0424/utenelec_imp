@@ -73,10 +73,25 @@ compact                         medium / expanded
 │ 连接恢复提示（按需）   │       │ Rail │ 连接恢复提示（按需）   │
 │                      │       │      │                      │
 │ 主 Tab / 业务子页面    │       │      │ 主 Tab / 业务子页面    │
-│                      │       │      │                      │
+│ (内容全高直通屏底)     │       │      │                      │
 │ ╭ 工作台 通知 我的 设置╮│       │      │ maxWidth 1600 内容区   │
 └──────────────────────┘       └──────┴──────────────────────┘
 ```
+
+### 4.1 compact 胶囊遮挡与内容避让（UtenCapsuleNavScope）
+
+compact 下胶囊导航是纯 overlay：主 Tab 与业务子页面一律全高直通屏底，内容从胶囊下方穿过，
+导航不占布局空间（2026-09-28 用户口径，取代早期「业务子页面整体垫高胶囊高度」的做法）。
+内容避让统一走 `lib/core/ui/capsule_nav_metrics.dart` 的 `UtenCapsuleNavScope`（外壳注入，
+`occlusion` = 胶囊高 60 + 呼吸 10 + 系统手势条）：
+
+- 页面级滚动件末尾留白 += `occlusion`（滚到最底最后一行能越过胶囊）——公共入口：
+  `MasterDataTableView` 表体留白、`UtenCollapsingHeaderScrollView` 紧凑整页滚、
+  各页自有滚动件直接查询；
+- 右下悬浮组（`UtenFloatingActionGroup`，含编辑页取消/保存、表格批量动作）自带
+  `occlusion` 底距，抬到胶囊上方；
+- scope 只在 compact 外壳内可查到：medium+（左侧 Rail 无遮挡）、弹窗/抽屉/全屏路由
+  在 shell 之外，查询恒为 0，组件在弹窗里复用不产生多余留白。
 
 ## 五、权限与边界
 

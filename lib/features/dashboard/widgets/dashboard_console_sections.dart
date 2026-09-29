@@ -1,4 +1,9 @@
-// 工作台部门指标带与横向待办网格，使用真实计数、截止时间与目标路由。
+// 工作台「今日概览」合并面板（2026-09-28 两轮改版：
+// ① 指标带与待办任务从两段独立区块并入同一块控制台面板；
+// ② 面板体改为「左指标 rail │ 竖线 │ 右待办区」的单行结构——未读通知只有
+//   数字所以放最左（rail 顶部），左栏宽度随内容自适应（非居中分隔），右边
+//   放待办任务，大屏两列封顶，折叠超出部分在末尾给「查看更多」）。
+// 使用真实计数、截止时间与目标路由。
 import 'package:flutter/material.dart';
 
 import '../../../components/data_display/uten_animated_number.dart';
@@ -8,113 +13,250 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/dashboard_overview.dart';
-import 'dashboard_overview_sections.dart'
-    show dashboardMetricIcon, dashboardToneColor;
+import 'dashboard_overview_sections.dart' show dashboardToneColor;
 import 'uten_console_panel.dart';
 
-class DashboardMetricStrip extends StatefulWidget {
-  const DashboardMetricStrip({
+/// 今日概览合并面板：左指标 rail + 待办任务装进同一块面板。
+///
+/// 结构：标题栏（今日概览 + 部门范围 + 采样时刻）→ [celebration] 插槽 →
+/// 面板体（宽屏：指标 rail │ 竖线 │ 待办区并排；窄屏：上下堆叠）。
+/// 两区空态各自说明「本部门」，不用隐藏组件替代数据授权。
+class DashboardOverviewPanel extends StatelessWidget {
+  const DashboardOverviewPanel({
     super.key,
     required this.metrics,
+    required this.todos,
     required this.departmentName,
-    this.sweepTrigger = 0,
+    required this.generatedAt,
+    this.celebration,
   });
+
   final List<DashboardMetric> metrics;
+  final List<DashboardTodo> todos;
   final String departmentName;
-  final int sweepTrigger;
+  final DateTime generatedAt;
 
-  @override
-  State<DashboardMetricStrip> createState() => _DashboardMetricStripState();
-}
-
-class _DashboardMetricStripState extends State<DashboardMetricStrip> {
-  bool _expanded = false;
+  /// 插在标题栏与面板体之间的插槽（今日庆典卡；无庆典时不传，不占位）。
+  final Widget? celebration;
 
   @override
   Widget build(BuildContext context) {
-    if (widget.metrics.isEmpty) {
-      return _DepartmentEmpty(
-        icon: Icons.insights_outlined,
-        message: widget.departmentName.isEmpty
-            ? '本部门暂无概览指标'
-            : '${widget.departmentName}暂无概览指标',
-      );
-    }
-    final colors = Theme.of(context).colorScheme;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final scaledWidth =
-            constraints.maxWidth /
-            MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.6);
-        final maxColumns = scaledWidth >= 1050
-            ? 4
-            : scaledWidth >= 680
-            ? 3
-            : scaledWidth >= 420
-            ? 2
-            : 1;
-        final columns = maxColumns.clamp(1, widget.metrics.length);
-        final visible = _expanded
-            ? widget.metrics
-            : widget.metrics.take(columns).toList();
-        return UtenConsolePanel(
-          padding: EdgeInsets.zero,
-          child: Column(
-            children: [
-              for (var start = 0; start < visible.length; start += columns) ...[
-                if (start > 0) Divider(height: 1, color: colors.outlineVariant),
-                IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (var col = 0; col < columns; col++) ...[
-                        if (col > 0)
-                          VerticalDivider(
-                            width: 1,
-                            color: colors.outlineVariant.withValues(alpha: .6),
-                          ),
-                        Expanded(
-                          child: start + col < visible.length
-                              ? _MetricCell(metric: visible[start + col])
-                              : const SizedBox.shrink(),
+    return UtenConsolePanel(
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _PanelHeaderBand(
+            departmentName: departmentName,
+            generatedAt: generatedAt,
+          ),
+          if (celebration != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                UtenSpacing.s16,
+                UtenSpacing.s12,
+                UtenSpacing.s16,
+                0,
+              ),
+              child: celebration,
+            ),
+          _PanelBody(
+            metrics: metrics,
+            todos: todos,
+            departmentName: departmentName,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 面板标题栏：浅底色带内的「今日概览」主标题、部门范围副标题与采样时刻。
+/// 主色竖条延续全站分区标题语言，让这块面板在工作台里仍读作一个「区」。
+class _PanelHeaderBand extends StatelessWidget {
+  const _PanelHeaderBand({
+    required this.departmentName,
+    required this.generatedAt,
+  });
+
+  final String departmentName;
+  final DateTime generatedAt;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // 口径：范围是「本部门」。
+    final scopeLabel = departmentName.isEmpty
+        ? '按本部门范围展示'
+        : '$departmentName · 按本部门范围展示';
+    return Container(
+      width: double.infinity,
+      color: theme.colorScheme.surfaceContainerLow,
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s16,
+        vertical: UtenSpacing.s12,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 30,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: UtenSpacing.s12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '今日概览',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
-                      ],
-                    ],
+                      ),
+                    ),
+                    // 采样时刻（HH:mm）给「这是实时仪表」一个锚点。
+                    Text(
+                      _sampledAt(generatedAt),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: UtenSpacing.s2),
+                Text(
+                  scopeLabel,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
-              if (widget.metrics.length > columns)
-                TextButton.icon(
-                  onPressed: () => setState(() => _expanded = !_expanded),
-                  icon: Icon(
-                    _expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 18,
-                  ),
-                  label: Text(
-                    _expanded
-                        ? '收起'
-                        : '展开其余 ${widget.metrics.length - visible.length} 项',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 面板体：宽屏（≥900）「指标 rail │ 竖线 │ 待办区」并排——rail 宽度随内容
+/// 自适应（IntrinsicWidth），分隔线不居中；窄屏上下堆叠（rail 在上）。
+class _PanelBody extends StatelessWidget {
+  const _PanelBody({
+    required this.metrics,
+    required this.todos,
+    required this.departmentName,
+  });
+
+  final List<DashboardMetric> metrics;
+  final List<DashboardTodo> todos;
+  final String departmentName;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final rail = _MetricRail(metrics: metrics, departmentName: departmentName);
+    final todoSide = _TodoSide(todos: todos, departmentName: departmentName);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 待办两列最少 ~612，加 rail 内容宽与内边距，900 起并排才有意义。
+        if (constraints.maxWidth < 900) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              rail,
+              Divider(height: 1, color: colors.outlineVariant),
+              todoSide,
+            ],
+          );
+        }
+        // 分隔线画在待办区左缘（随其全高）：不能给 Row 套 IntrinsicHeight 拉齐
+        // 高度——待办网格的 LayoutBuilder 无法提供 intrinsic 尺寸，会直接断言。
+        // 线的位置 = rail 内容自然宽之后，不与待办区对半分（用户口径）。
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            rail,
+            Expanded(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border(
+                    left: BorderSide(
+                      color: colors.outlineVariant.withValues(alpha: .6),
+                    ),
                   ),
                 ),
-            ],
-          ),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: UtenSpacing.s16),
+                  child: todoSide,
+                ),
+              ),
+            ),
+          ],
         );
       },
     );
   }
 }
 
-class _MetricCell extends StatelessWidget {
-  const _MetricCell({required this.metric});
+/// 指标 rail：竖排紧凑指标（标签 / 数值 / 副标题），未读通知这类「只有数字」
+/// 的指标在最顶上；宽度取内容最大自然宽（IntrinsicWidth），不与待办区对半分。
+class _MetricRail extends StatelessWidget {
+  const _MetricRail({required this.metrics, required this.departmentName});
+
+  final List<DashboardMetric> metrics;
+  final String departmentName;
+
+  @override
+  Widget build(BuildContext context) {
+    // IntrinsicWidth 包整体（含空态）：并排模式下 Row 给 rail 的是无界宽度，
+    // 空态行里的 Expanded 会因无界约束崩；先取内容自然宽再进 Row。
+    return IntrinsicWidth(
+      child: metrics.isEmpty
+          ? _ZoneEmpty(
+              icon: Icons.insights_outlined,
+              message: departmentName.isEmpty
+                  ? '本部门暂无概览指标'
+                  : '$departmentName暂无概览指标',
+            )
+          : Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: UtenSpacing.s16,
+                vertical: UtenSpacing.s12,
+              ),
+              child: Column(
+                // 各行在 rail 宽度内左右居中（宽度取最宽行；Column 默认 center）。
+                children: [
+                  for (var i = 0; i < metrics.length; i++) ...[
+                    if (i > 0) const SizedBox(height: UtenSpacing.s12),
+                    _RailMetric(metric: metrics[i]),
+                  ],
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+class _RailMetric extends StatelessWidget {
+  const _RailMetric({required this.metric});
   final DashboardMetric metric;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = dashboardToneColor(theme, metric.tone);
     final numeric = double.tryParse(metric.value.replaceAll(',', ''));
     final valueStyle = theme.textTheme.headlineMedium?.copyWith(
-      fontSize: 28,
+      fontSize: 24,
       fontWeight: FontWeight.w700,
       fontFeatures: const [FontFeature.tabularFigures()],
     );
@@ -126,48 +268,54 @@ class _MetricCell extends StatelessWidget {
           onTap: metric.route == null
               ? null
               : () => goFrom(context, metric.route!),
-          child: Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        metric.title,
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+          // 行内左右居中（2026-09-28 用户口径）；装饰性小图标撤掉，
+          // 仅敏感指标保留锁标识（它承载「无权看明细」的含义）。
+          child: Column(
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      metric.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                  ),
+                  if (metric.sensitive) ...[
+                    const SizedBox(width: 6),
                     Icon(
-                      metric.sensitive
-                          ? Icons.lock_outline
-                          : dashboardMetricIcon(metric.id),
-                      size: 18,
-                      color: color,
+                      Icons.lock_outline,
+                      size: 14,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ],
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                numeric == null
-                    ? Text(metric.value, style: valueStyle)
-                    : UtenAnimatedNumber(value: numeric, style: valueStyle),
-                if (metric.subtitle.isNotEmpty) ...[
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
+                ],
+              ),
+              const SizedBox(height: UtenSpacing.s4),
+              numeric == null
+                  ? Text(metric.value, style: valueStyle)
+                  : UtenAnimatedNumber(value: numeric, style: valueStyle),
+              if (metric.subtitle.isNotEmpty) ...[
+                const SizedBox(height: UtenSpacing.s2),
+                // 副标题只给一行：长文案不许把 rail 撑宽（cap 220）。
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 220),
+                  child: Text(
                     metric.subtitle,
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
-                ],
+                ),
               ],
-            ),
+            ],
           ),
         ),
       ),
@@ -175,60 +323,186 @@ class _MetricCell extends StatelessWidget {
   }
 }
 
-/// 宽屏并排展示任务队列，窄屏按实际可用宽度换行。
-class DashboardTodoLane extends StatelessWidget {
-  const DashboardTodoLane({
-    super.key,
-    required this.todos,
-    required this.departmentName,
-    this.sweepTrigger = 0,
-  });
+/// 待办区：小节头（标题 + 排布说明 + 总数徽章）+ 瓦片网格。
+/// 大屏两列封顶（用户口径 2026-09-28「两个卡片一行就行」）；折叠态最多
+/// 显示 [_collapsedLimit] 张，超出在末尾给「查看更多」，点开全量可收起。
+class _TodoSide extends StatefulWidget {
+  const _TodoSide({required this.todos, required this.departmentName});
+
   final List<DashboardTodo> todos;
   final String departmentName;
-  final int sweepTrigger;
+
+  @override
+  State<_TodoSide> createState() => _TodoSideState();
+}
+
+class _TodoSideState extends State<_TodoSide> {
+  static const int _collapsedLimit = 4;
+
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
-    if (todos.isEmpty) {
-      return _DepartmentEmpty(
-        icon: Icons.task_alt_rounded,
-        message: departmentName.isEmpty ? '本部门当前没有待办' : '$departmentName当前没有待办',
-      );
-    }
-    final ordered = [...todos]
-      ..sort((a, b) {
-        final urgency = b.urgentCount.compareTo(a.urgentCount);
-        if (urgency != 0) return urgency;
-        if (a.dueAt != null && b.dueAt != null) {
-          return a.dueAt!.compareTo(b.dueAt!);
-        }
-        return todos.indexOf(a).compareTo(todos.indexOf(b));
-      });
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final minWidth =
-            300 * MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.6);
-        final columns = ((constraints.maxWidth + 12) / (minWidth + 12))
-            .floor()
-            .clamp(1, todos.length.clamp(1, 4));
-        final width = (constraints.maxWidth - (columns - 1) * 12) / columns;
-        return Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            for (final todo in ordered)
-              SizedBox(
-                key: ValueKey('dashboard-todo-${todo.id}'),
-                width: width,
-                child: _TodoTile(todo: todo),
+    final todos = widget.todos;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _TodoZoneHeader(
+          // 总数徽章 = 各待办 count 之和（无待办时徽章自身不渲染）。
+          total: todos.fold<int>(0, (sum, t) => sum + t.count),
+        ),
+        if (todos.isEmpty)
+          _ZoneEmpty(
+            icon: Icons.task_alt_rounded,
+            message: widget.departmentName.isEmpty
+                ? '本部门当前没有待办'
+                : '${widget.departmentName}当前没有待办',
+          )
+        else ...[
+          _TodoTileGrid(
+            todos: _expanded
+                ? _ordered()
+                : _ordered().take(_collapsedLimit).toList(),
+          ),
+          if (todos.length > _collapsedLimit)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                UtenSpacing.s16,
+                UtenSpacing.s4,
+                UtenSpacing.s16,
+                UtenSpacing.s12,
               ),
-          ],
-        );
-      },
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => setState(() => _expanded = !_expanded),
+                  icon: Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 18,
+                  ),
+                  label: Text(
+                    _expanded
+                        ? '收起'
+                        : '查看更多（还有 ${todos.length - _collapsedLimit} 项）',
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
+  /// 紧急优先，其次临近截止，其余保持服务端顺序。
+  List<DashboardTodo> _ordered() {
+    final todos = widget.todos;
+    return [...todos]..sort((a, b) {
+      final urgency = b.urgentCount.compareTo(a.urgentCount);
+      if (urgency != 0) return urgency;
+      if (a.dueAt != null && b.dueAt != null) {
+        return a.dueAt!.compareTo(b.dueAt!);
+      }
+      return todos.indexOf(a).compareTo(todos.indexOf(b));
+    });
+  }
+}
+
+/// 待办区小节头：区内标题 + 排布说明 + 总数徽章。
+class _TodoZoneHeader extends StatelessWidget {
+  const _TodoZoneHeader({required this.total});
+
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s16,
+        UtenSpacing.s12,
+        UtenSpacing.s16,
+        UtenSpacing.s4,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.task_alt_outlined,
+            size: 18,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: UtenSpacing.s8),
+          Expanded(
+            child: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s2,
+              children: [
+                Text(
+                  '待办任务',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  '按紧急度排布',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          UtenNotificationBadge(count: total, size: 20, showLabel: true),
+        ],
+      ),
     );
   }
 }
 
+/// 待办瓦片网格：大屏最多两列并排，窄屏按实际可用宽度退化为单列。
+class _TodoTileGrid extends StatelessWidget {
+  const _TodoTileGrid({required this.todos});
+
+  final List<DashboardTodo> todos;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s16,
+        0,
+        UtenSpacing.s16,
+        UtenSpacing.s16,
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final minWidth =
+              300 * MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.6);
+          // 大屏两列封顶（2026-09-28 用户口径「两个卡片一行就行」）：瓦片承载
+          // 标题/摘要/倒计时/操作，三四列一行太窄挤；列数不随待办数放大。
+          final columns = ((constraints.maxWidth + 12) / (minWidth + 12))
+              .floor()
+              .clamp(1, 2);
+          final width = (constraints.maxWidth - (columns - 1) * 12) / columns;
+          return Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              for (final todo in todos)
+                SizedBox(
+                  key: ValueKey('dashboard-todo-${todo.id}'),
+                  width: width,
+                  child: _TodoTile(todo: todo),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 待办瓦片：面板内的浅底浮块（不自带边框，靠底色与面板表面区分）。
 class _TodoTile extends StatelessWidget {
   const _TodoTile({required this.todo});
   final DashboardTodo todo;
@@ -243,14 +517,23 @@ class _TodoTile extends StatelessWidget {
       label:
           '${todo.title}，${todo.count} 项${urgent ? '，紧急' : ''}${_DueCountdownChip.describe(todo.dueAt)}，${todo.summary}',
       child: ExcludeSemantics(
-        child: UtenConsolePanel(
-          padding: EdgeInsets.zero,
+        child: Material(
+          color: theme.colorScheme.surfaceContainerLow,
+          shape: RoundedRectangleBorder(
+            borderRadius: UtenRadius.controlAll,
+            // hairline 边框：surfaceContainerLow 与面板 surface 的明度差在
+            // 浅色/深色下都偏弱，靠细边框补足瓦片边界的可辨性。
+            side: BorderSide(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: .45),
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: todo.route == null
                 ? null
                 : () => goFrom(context, todo.route!),
             child: Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s16),
+              padding: const EdgeInsets.all(UtenSpacing.s12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -335,15 +618,17 @@ class _TodoTile extends StatelessWidget {
   }
 }
 
-class _DepartmentEmpty extends StatelessWidget {
-  const _DepartmentEmpty({required this.icon, required this.message});
+/// 区内空态：面板内的一行静默说明（面板自身就是容器，不再套子面板）。
+class _ZoneEmpty extends StatelessWidget {
+  const _ZoneEmpty({required this.icon, required this.message});
   final IconData icon;
   final String message;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return UtenConsolePanel(
+    return Padding(
+      padding: const EdgeInsets.all(UtenSpacing.s16),
       child: Row(
         children: [
           Icon(icon, color: theme.colorScheme.primary),
@@ -422,4 +707,11 @@ class _DueCountdownChip extends StatelessWidget {
     if (value.inHours < 48) return '${value.inHours} 小时';
     return '${value.inDays} 天';
   }
+}
+
+/// 标题栏右上角的采样时刻（HH:mm），给「这是实时仪表」一个锚点。
+String _sampledAt(DateTime value) {
+  final local = value.toLocal();
+  return '${local.hour.toString().padLeft(2, '0')}:'
+      '${local.minute.toString().padLeft(2, '0')} 采样';
 }

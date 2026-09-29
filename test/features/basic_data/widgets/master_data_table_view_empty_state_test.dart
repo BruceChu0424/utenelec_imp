@@ -5,10 +5,11 @@ import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
-/// 2026-09-10（F2a-flow / F2b）：成功空态必须保留「全屏/退出全屏」、
-/// `toolbarLeadingActions`，并在有激活表头筛选时给「清除筛选」出口 +
-/// 「当前有 N 个表头筛选生效」提示——列头筛选控件随表头一起不渲染，
-/// 否则用户没有入口撤掉看不见的筛选（全屏里还会被困住）。
+/// 2026-09-10（F2a-flow / F2b）：成功空态必须保留「退出全屏」、
+/// `toolbarLeadingActions`，并在有激活表头筛选时报「当前有 N 个表头筛选生效」
+/// ——列头筛选控件随表头一起不渲染，提示用户表为何为空。
+/// 2026-09-28 用户口径：空态「清除筛选」按钮全站退役（表外分段条等入口承担
+/// 清除），本文件同步锁住「永不出按钮」。
 void main() {
   Widget host({
     required Map<String, String?> filters,
@@ -57,27 +58,26 @@ void main() {
   );
 
   testWidgets(
-    'empty state with an active filter offers clear-filters and reports the count',
+    'empty state with an active filter reports the count, no clear button',
     (tester) async {
-      final cleared = <(String, String?)>[];
       await tester.pumpWidget(
         host(
           filters: const {'status': 'x', 'other': null, 'blank': ''},
-          onFilterChanged: (key, value) => cleared.add((key, value)),
+          onFilterChanged: (_, _) {},
           leading: const [Text('视图切换')],
         ),
       );
       await tester.pumpAndSettle();
       expect(find.text('没有数据'), findsOneWidget);
+      // 只数有值的列（空串/null 不算激活筛选）。
       expect(find.text('当前有 1 个表头筛选生效'), findsOneWidget);
       expect(find.text('视图切换'), findsOneWidget);
-      final clear = find.byKey(const ValueKey('master-table-clear-filters'));
-      expect(clear, findsOneWidget);
-      expect(find.text('清除筛选'), findsOneWidget);
-      await tester.tap(clear);
-      await tester.pumpAndSettle();
-      // 只对有值的列回调 null；空串/null 的列不算激活筛选。
-      expect(cleared, [('status', null)]);
+      // 2026-09-28 口径：清除筛选按钮全站退役。
+      expect(
+        find.byKey(const ValueKey('master-table-clear-filters')),
+        findsNothing,
+      );
+      expect(find.text('清除筛选'), findsNothing);
     },
   );
 
@@ -176,10 +176,10 @@ void main() {
       findsNothing,
     );
     expect(find.text('全屏'), findsNothing);
-    // 其余空态出口（清除筛选）照常在。
+    // 清除筛选按钮已退役（2026-09-28），空态不再出现。
     expect(
       find.byKey(const ValueKey('master-table-clear-filters')),
-      findsOneWidget,
+      findsNothing,
     );
   });
 
@@ -199,7 +199,7 @@ void main() {
     expect(toggle, findsOneWidget);
     await tester.tap(toggle);
     await tester.pumpAndSettle();
-    // 全屏中把行数换成 0：退出入口与清除筛选都必须还在。
+    // 全屏中把行数换成 0：退出入口必须还在（清除筛选已退役）。
     await tester.pumpWidget(
       host(
         filters: const {'status': 'x'},
@@ -211,7 +211,7 @@ void main() {
     expect(find.text('退出全屏'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('master-table-clear-filters')),
-      findsOneWidget,
+      findsNothing,
     );
     await tester.tap(find.text('退出全屏'));
     await tester.pumpAndSettle();

@@ -44,13 +44,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('正式工单 2 · 本分析预定 4'), findsOneWidget);
-      await tester.tap(find.text('正式工单 2 · 本分析预定 4'));
+      expect(find.text('正式工单 2 · 计划部预定 4'), findsOneWidget);
+      await tester.tap(find.text('正式工单 2 · 计划部预定 4'));
       await tester.pumpAndSettle();
       expect(find.text('正式工单'), findsOneWidget);
-      expect(find.text('本分析预定'), findsOneWidget);
+      expect(find.text('计划部预定'), findsOneWidget);
       expect(find.text('公共在途已采用'), findsNothing);
-      expect(find.text('公共库存'), findsNothing);
+      expect(find.text('仓库存放'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -174,7 +174,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('跨仓部分 1 件 不绑定计划'), findsOneWidget);
       expect(find.textContaining('其余按上方预定分配'), findsOneWidget);
-      expect(find.text('本分析预定'), findsOneWidget);
+      expect(find.text('计划部预定'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

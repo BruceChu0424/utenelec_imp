@@ -98,6 +98,10 @@ function Export-Query {
     }
     $file = Get-Item $OutPath
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $OutPath).Hash.ToLowerInvariant()
+    # All 目标按模块分组会重复导出同名参考 CSV（如 legacy_operators_ref.csv 在
+    # 采购段与委外段各导一次）；清单按文件名去重、以最后一次为准，否则
+    # formatVersion 4 manifest 的 files[] 出现重复条目，导入端唯一性校验拒绝。
+    $script:exportResults = @($script:exportResults | Where-Object { $_.file -ne $file.Name })
     $script:exportResults += [pscustomobject]@{
         file = $file.Name
         rows = $rowCount

@@ -203,7 +203,12 @@ class DailyReportDefectLearningEndToEndTest {
         item.setPlanItemId(db.queryForObject("SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",UUID.class,childSegment));
         item.setGoodsId(invoke(c,"child"));item.setUnitId(world.unitId());item.setUnitRate(BigDecimal.ONE);
         item.setQty(new BigDecimal("130"));item.setDefectQty(new BigDecimal("5"));item.setIsFinal(false);
-        item.setDestination("WORKSHOP");item.setDirectTransferDemandId(target);
+        // ADR-127 起直送入口是「去向分配」子行(每条=接收需求+数量), 不再是行级
+        // destination/directTransferDemandId; 100 直送父需求、30 容差内公共超产。
+        item.setAllocations(List.of(com.uten.imp.features.production.dailyreport.dto
+                        .DailyReportOutputAllocationLine.direct(target,new BigDecimal("100")),
+                com.uten.imp.features.production.dailyreport.dto
+                        .DailyReportOutputAllocationLine.warehouse(new BigDecimal("30"))));
         report.setItems(List.of(item));
         report.setMaterialLines(invoke(transfers,"directInputUse",c,item.getQty()));
         UUID draft=reports.create(report).getId();

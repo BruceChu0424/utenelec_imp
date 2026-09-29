@@ -81,11 +81,13 @@ class WorkshopDirectTransferBatchEndToEndTest {
      * 2026-09-25 server/target-aggregate-direct-closure.log 实测 446 条、JDBC 1396ms、
      * commit 277ms，因此新有料工况预算为 450。旧零料工况的 424 预算不再可比；
      * 事务数、MD5 次数、真实自动实发和独立触发器预算均保持原断言。
+     * 2026-09-29 实测 457 条：V740(ADR-131) 内料仓期间账在直送审核路径新增读写
+     * (APPROVE-PROFILE 剖面新增 insert/read 组、无重复读放大)，按量测值钉 465。
      *
      * <p>这个数字是拿来挡回归的，不是拿来抬的：抬它之前先跑这条用例看剖面，
      * 确认多出来的语句是新做的事而不是又一遍重复的读。
      */
-    private static final int APPROVE_STATEMENTS_BUDGET = 450;
+    private static final int APPROVE_STATEMENTS_BUDGET = 465;
 
     /**
      * 一行车间直送审核里触发器函数的调用预算(ADR-106)。统计口径：pg_stat_user_functions 里

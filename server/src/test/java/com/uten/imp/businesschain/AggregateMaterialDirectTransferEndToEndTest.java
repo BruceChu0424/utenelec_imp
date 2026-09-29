@@ -112,7 +112,7 @@ class AggregateMaterialDirectTransferEndToEndTest {
         List<UUID> parents=issue(c,c.common(),"1");
         UUID source=segment(shared.planId());flow.receive(c,c.material(),"6");start(c,source);
         // BOM 学习口径(V711/V739)：给这个子件建一份学习档案，审核后必须照常入队刷新。
-        db.update("INSERT INTO goods_bom_learning_profiles(goods_id,output_unit_id,enabled,blocked_reason) VALUES (?,?,FALSE,'MANUAL_BOM') ON CONFLICT DO NOTHING",
+        db.update("INSERT INTO goods_bom_learning_profiles(goods_id,output_unit_id,blocked_reason) VALUES (?,?,'MANUAL_BOM') ON CONFLICT DO NOTHING",
                 c.child(),c.world().unitId());
         UUID worker=worker(c);flow.fixture.loginAs(worker);
         var listing=direct().candidates(source,c.child(),null);

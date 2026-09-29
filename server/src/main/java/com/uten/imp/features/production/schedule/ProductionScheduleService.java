@@ -383,7 +383,7 @@ public class ProductionScheduleService {
                        bom.component_goods_id, bom.code, bom.name, bom.spec,
                        bom.color_id, bom.color_name, bom.effective_qty,
                        bom.consumption_basis, bom.basis_output_qty, bom.need_qty,
-                       bom.onhand, bom.self_made
+                       bom.onhand, bom.self_made, bom.periodic
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
                 LEFT JOIN clients c ON c.id = o.client_id

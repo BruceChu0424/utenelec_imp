@@ -48,8 +48,8 @@ final class _MaterialTableRow {
   final List<bool> ancestorContinuations;
   final bool isLastChild;
 
-  /// 只读上下文：分页补的祖先（`PAGE_CONTEXT|` 键）或表头筛选未命中、仅因子孙
-  /// 命中而保留的祖先。无勾选/下拉/行菜单，不计入业务数量。
+  /// 只读上下文：表头筛选未命中、仅因子孙命中而保留的祖先。无勾选/下拉/
+  /// 行菜单，不计入业务数量。
   final bool contextOnly;
   final String? rootAnalysisLineId;
   final String? parentMaterialLineId;
@@ -58,8 +58,6 @@ final class _MaterialTableRow {
   /// 可见子件数而非 BOM 全量。
   final int? childCount;
 
-  /// 分页补祖先行（与表头筛选保留的上下文行区分：后者保留原 widget key）。
-  bool get isPageContext => key.startsWith('PAGE_CONTEXT|');
   bool get isAggregateSource => kind == _MaterialTableRowKind.aggregatePath;
 
   /// 套上共享树投影的连线信息。[hasChildren] / [childCount] **不由投影接管**：
@@ -81,21 +79,6 @@ final class _MaterialTableRow {
     rootAnalysisLineId: rootAnalysisLineId,
     parentMaterialLineId: parentMaterialLineId,
     childCount: childCount,
-  );
-
-  _MaterialTableRow asPageContext(int page) => _MaterialTableRow(
-    kind: kind,
-    key: 'PAGE_CONTEXT|$page|$key',
-    sequence: sequence,
-    depth: depth,
-    product: product,
-    material: material,
-    aggregate: aggregate,
-    ancestorContinuations: ancestorContinuations,
-    isLastChild: isLastChild,
-    contextOnly: true,
-    rootAnalysisLineId: rootAnalysisLineId,
-    parentMaterialLineId: parentMaterialLineId,
   );
 }
 
@@ -317,7 +300,6 @@ abstract class _MaterialAnalysisMaterialTableState
             .toSet()
             .length
       : groups.length;
-  static const int _materialTablePageSize = 100;
   ProductionMaterialAnalysisView? _materialRowsCacheAnalysis;
   String? _materialRowsCacheKey;
   List<_MaterialTableRow>? _materialRowsCache;
@@ -325,11 +307,6 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 与 [_materialRowsCache] 同生命周期的表头筛选桶（产品视图取自投影，汇总
   /// 视图按聚合行聚合）；始终从「未套表头筛选」的行集算出。
   Map<String, List<MasterFacetBucket>> _materialRowsFacetsCache = const {};
-  List<_MaterialTableRow>? _materialPageCacheSource;
-  int? _materialPageCachePage;
-  int? _materialPageCacheStart;
-  int? _materialPageCacheEnd;
-  List<_MaterialTableRow>? _materialPageCache;
 
   List<_MaterialTableRow> _materialTableRows(
     ProductionMaterialAnalysisView analysis,
@@ -352,8 +329,6 @@ abstract class _MaterialAnalysisMaterialTableState
     _materialRowsCacheAnalysis = analysis;
     _materialRowsCacheKey = projectionKey;
     _materialRowsCache = rows;
-    _materialPageCacheSource = null;
-    _materialPageCache = null;
     return rows;
   }
 
@@ -668,94 +643,6 @@ abstract class _MaterialAnalysisMaterialTableState
     return result;
   }
 
-  /// A flat pager may start in the middle of a product branch. Repeat the
-  /// product and material ancestors as read-only context rows so the first
-  /// visible child is never orphaned. Repeated rows have no group/id and are
-  /// excluded from selection and business counts.
-  List<_MaterialTableRow> _materialTablePageRows(
-    List<_MaterialTableRow> rows,
-    int start,
-    int end,
-    int page,
-  ) {
-    if (rows.isEmpty || start >= end) return const [];
-    if (identical(_materialPageCacheSource, rows) &&
-        _materialPageCachePage == page &&
-        _materialPageCacheStart == start &&
-        _materialPageCacheEnd == end &&
-        _materialPageCache != null) {
-      return _materialPageCache!;
-    }
-    final slice = rows.sublist(start, end);
-    if (start == 0) {
-      return _cacheMaterialTablePage(rows, page, start, end, slice);
-    }
-    final first = slice.first;
-    final contextRows = <_MaterialTableRow>[];
-    if (first.kind == _MaterialTableRowKind.aggregatePath) {
-      for (var index = start - 1; index >= 0; index--) {
-        final candidate = rows[index];
-        if (candidate.kind == _MaterialTableRowKind.aggregate) {
-          contextRows.add(candidate.asPageContext(page));
-          break;
-        }
-      }
-    } else if (first.material != null) {
-      final analysisLineId =
-          first.rootAnalysisLineId ?? first.material!.analysisLineId;
-      final hasProductContext = rows.any(
-        (candidate) => candidate.product?.analysisLineId == analysisLineId,
-      );
-      for (var index = start - 1; index >= 0; index--) {
-        final candidate = rows[index];
-        if (candidate.product?.analysisLineId == analysisLineId ||
-            (!hasProductContext &&
-                candidate.kind == _MaterialTableRowKind.orphan)) {
-          contextRows.add(candidate.asPageContext(page));
-          break;
-        }
-      }
-      final byMaterialId = <String, _MaterialTableRow>{
-        for (final candidate in rows.take(start))
-          if (candidate.material != null)
-            candidate.material!.materialLineId: candidate,
-      };
-      final ancestors = <_MaterialTableRow>[];
-      var parentKey = first.parentMaterialLineId;
-      final visited = <String>{};
-      while (parentKey != null &&
-          parentKey.isNotEmpty &&
-          visited.add(parentKey)) {
-        final parent = byMaterialId[parentKey];
-        if (parent == null) break;
-        if (parent.kind != _MaterialTableRowKind.product) {
-          ancestors.add(parent.asPageContext(page));
-        }
-        parentKey = parent.parentMaterialLineId;
-      }
-      contextRows.addAll(ancestors.reversed);
-    }
-    return _cacheMaterialTablePage(rows, page, start, end, [
-      ...contextRows,
-      ...slice,
-    ]);
-  }
-
-  List<_MaterialTableRow> _cacheMaterialTablePage(
-    List<_MaterialTableRow> source,
-    int page,
-    int start,
-    int end,
-    List<_MaterialTableRow> value,
-  ) {
-    _materialPageCacheSource = source;
-    _materialPageCachePage = page;
-    _materialPageCacheStart = start;
-    _materialPageCacheEnd = end;
-    _materialPageCache = value;
-    return value;
-  }
-
   /// 该操作组当前是否可显式「采用公共在途」（行内动作与右键菜单共用）。
   bool _canClaimMaterialSharedFuture(_MaterialGroup group) {
     final analysis = _analysis;
@@ -882,6 +769,23 @@ abstract class _MaterialAnalysisMaterialTableState
       final target = nowSelected ? additions : removals;
       target.addAll(directGroups.map((group) => group.key));
     }
+    // 2026-09-27 用户口径「点左上角就是全选，包括收起的层级」：表头三态勾
+    // 传回的集合只覆盖当前渲染的行——折叠分支、被筛选藏掉的子行不在 items 里。
+    // 全选/清全选这两个端点按整份分析的可勾组扫一遍，收起的行一样选上/撤掉；
+    // 部分选中状态不经过这里(表头勾只会点到两个端点)。
+    final checkableIds = [
+      for (final row in rows)
+        if (_materialRowSelectableGroups(row).isNotEmpty) row.key,
+    ];
+    if (checkableIds.isNotEmpty) {
+      final allOn = checkableIds.every(selected.contains);
+      final allOff = checkableIds.every((id) => !selected.contains(id));
+      if (allOn) {
+        additions.addAll(_aggregateTable.allSelectableGroupKeys());
+      } else if (allOff) {
+        removals.addAll(_aggregateTable.allSelectableGroupKeys());
+      }
+    }
     setState(() {
       for (final row in rows) {
         final aggregate = row.aggregate;
@@ -987,14 +891,10 @@ abstract class _MaterialAnalysisMaterialTableState
     // _reloadCompanionScopes 按作用域键补取。
     // 表头筛选已在投影层生效（祖先保留为只读上下文），行集即最终行；桶随
     // 行缓存一起算出（未套表头筛选的全量行）。
+    // 2026-09-27 用户口径「不要分上下页，直接都在一页，不断下拉不断显示全」：
+    // 整棵行集直接交给表体(ListView.builder 懒建，滚到哪建到哪)，客户端分页
+    // 与翻页条退役——上百上千行也只有一条连续滚动。
     final rows = _materialTableRows(analysis);
-    final totalPages = rows.isEmpty
-        ? 1
-        : (rows.length / _materialTablePageSize).ceil();
-    final page = _bomTablePageNo.clamp(1, totalPages);
-    final start = (page - 1) * _materialTablePageSize;
-    final end = (start + _materialTablePageSize).clamp(0, rows.length);
-    final pageRows = _materialTablePageRows(rows, start, end, page);
     return KeyedSubtree(
       key: const Key('material-analysis-material-table-region'),
       child: MasterDataTableView<_MaterialTableRow>(
@@ -1051,10 +951,10 @@ abstract class _MaterialAnalysisMaterialTableState
             if (_materialRowSelected(row)) row.key,
         },
         onSelectedIdsChanged: (selected) =>
-            _changeMaterialTableSelection(pageRows, selected),
+            _changeMaterialTableSelection(rows, selected),
         onRowSelectionChanged: _changeMaterialRowSelection,
         batchActionsBuilder: (_, _) => _bottomActionButtons(),
-        items: pageRows,
+        items: rows,
         // 表头筛选（2026-09-09 用户口径：进度/路线列下拉筛选，UtenTableColumnKit
         // 同款锚定弹窗；2026-09-10 F2a 改稳定键 + 投影级过滤）：bucket 从当前
         // BOM 视图全量行聚合（非当前页、不含表头筛选本身），过滤在节点投影层
@@ -1064,7 +964,6 @@ abstract class _MaterialAnalysisMaterialTableState
         filters: _materialTableFilters,
         onFilterChanged: (key, value) => setState(() {
           _materialTableFilters[key] = value;
-          _bomTablePageNo = 1;
         }),
         // 宽屏联动滚动：整页先滚、表格列头顶到页面顶部后表体内滚；横向滚动
         // 条按内容高度定位（行少贴末行下、超高钉在联动区底），与货品资料页
@@ -1076,9 +975,6 @@ abstract class _MaterialAnalysisMaterialTableState
         enableTextSelection: false,
         // 空态：组件层在有激活表头筛选时补「清除筛选」按钮与生效数提示（F2a-flow）。
         emptyMessage: '当前视图/筛选下没有物料任务，可切换“全部 BOM”、清除查找或清除表头筛选',
-        currentPage: page,
-        totalPages: totalPages,
-        onPageChange: (next) => setState(() => _bomTablePageNo = next),
         rowColor: (row) {
           if (row.contextOnly) {
             return theme.colorScheme.surfaceContainerHigh.withValues(
@@ -1857,8 +1753,6 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   Key _materialTableRowWidgetKey(_MaterialTableRow row) {
-    // 分页补的祖先行用带页号的键；表头筛选保留的上下文行保持原 widget key。
-    if (row.isPageContext) return ValueKey(row.key);
     if (row.product != null) {
       return ValueKey('material-bom-product-${row.product!.analysisLineId}');
     }
@@ -1946,7 +1840,6 @@ abstract class _MaterialAnalysisMaterialTableState
       expanded = !_collapsedBomProducts.contains(product.analysisLineId);
       toggle = () {
         _toggleBomProductCollapsed(product.analysisLineId);
-        _bomTablePageNo = 1;
       };
     } else if (aggregate != null) {
       expanded = _expandedMaterialAggregates.contains(aggregate.key);
@@ -1954,7 +1847,6 @@ abstract class _MaterialAnalysisMaterialTableState
         if (!_expandedMaterialAggregates.add(aggregate.key)) {
           _expandedMaterialAggregates.remove(aggregate.key);
         }
-        _bomTablePageNo = 1;
       });
     } else if (material != null && row.hasChildren) {
       expanded = !_collapsedBomBranches.contains(material.materialLineId);
@@ -1963,7 +1855,6 @@ abstract class _MaterialAnalysisMaterialTableState
         if (!_collapsedBomBranches.add(key)) {
           _collapsedBomBranches.remove(key);
         }
-        _bomTablePageNo = 1;
       });
     }
     final title = _bomAggregateByMaterial && product != null
@@ -4163,7 +4054,6 @@ abstract class _MaterialAnalysisMaterialTableState
             ? null
             : () => setState(() {
                 _bomAggregateByMaterial = false;
-                _bomTablePageNo = 1;
                 _pruneMaterialTableFilters();
               }),
         child: const Text('按产品办理'),
@@ -5143,31 +5033,16 @@ abstract class _MaterialAnalysisMaterialTableState
 
   /// 把表格滚到这一行缺填的「生产车间/负责人」格：必填拦截时定位指路用。
   ///
-  /// 行可能不在当前分页(先翻页、等一帧再找格子)，格子的 GlobalKey 由
+  /// 行集单页直下(2026-09-27 去分页)，行总在滚动范围内；格子的 GlobalKey 由
   /// [_tableAssignmentCellKey] 在构建时挂上。Scrollable.ensureVisible 会把
   /// 纵向(表体滚动/联动滚动)和横向(表体横滚区)两向的滚动容器都带过去，
   /// 被"上下挡住/左右挡住"都能滑到位。
   Future<void> _revealTableAssignmentCell(_MaterialGroup group) async {
-    final analysis = _analysis;
-    if (analysis == null) return;
-    final lineId = group.representative.materialLineId;
-    final rows = _materialTableRows(analysis);
-    final index = rows.indexWhere(
-      (row) => row.material?.materialLineId == lineId,
-    );
-    if (index >= 0) {
-      final page = index ~/ _materialTablePageSize + 1;
-      if (_bomTablePageNo != page) {
-        setState(() => _bomTablePageNo = page);
-        await WidgetsBinding.instance.endOfFrame;
-        if (!mounted) return;
-      }
-    }
     // 先滚缺的那个格：车间空先滚车间格，车间有了缺负责人再点会滚负责人格。
     final kind = _tableWorkshopFor(group).id == null ? 'W' : 'R';
     final target =
         _tableAssignmentCellKeys['$kind|${group.key}']?.currentContext;
-    // 翻页那一帧之后格子可能还没挂上(虚拟化/列被藏)：定位不到就不硬滚。
+    // 折叠/虚拟化下格子可能还没挂上(列被藏)：定位不到就不硬滚。
     if (target == null || !target.mounted) return;
     await Scrollable.ensureVisible(
       target,
@@ -5252,7 +5127,7 @@ abstract class _MaterialAnalysisMaterialTableState
             ...lines.take(12),
             if (lines.length > 12) '…… 以及其余 ${lines.length - 12} 行',
             if (includedHidden > 0)
-              '其中 $includedHidden 行在折叠分支、筛选之外或其他分页，已按你的产品/来源选择计入本次。',
+              '其中 $includedHidden 行在折叠分支或筛选之外，已按你的产品/来源选择计入本次。',
             if (mergedKinds > 0) ...[
               '',
               '本次 $mergedKinds 种组件按来源一次下达，相同物料自动合单'
@@ -5668,7 +5543,7 @@ abstract class _MaterialAnalysisMaterialTableState
               LinearProgressIndicator(
                 value: ratio,
                 minHeight: 8,
-                color: color,
+                // 2026-09-27 用户口径：进度条颜色全站统一主题主色，不随状态色变。
                 backgroundColor: theme.colorScheme.surfaceContainerHighest,
               ),
             ],

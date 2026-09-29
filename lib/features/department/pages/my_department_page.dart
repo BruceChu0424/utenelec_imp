@@ -28,6 +28,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
 import '../../basic_data/widgets/category_tree_search.dart';
@@ -381,6 +382,13 @@ class _MyDepartmentDetail extends ConsumerWidget {
             ),
             sliver: const SliverToBoxAdapter(child: _ManagerPermissionPanel()),
           ),
+        // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+        SliverPadding(
+          padding: EdgeInsets.only(
+            bottom: UtenCapsuleNavScope.occlusionOf(context),
+          ),
+          sliver: const SliverToBoxAdapter(child: SizedBox.shrink()),
+        ),
       ],
     );
   }

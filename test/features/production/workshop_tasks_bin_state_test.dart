@@ -10,7 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:uten_imp/components/data_display/uten_status_badge.dart';
+import 'package:uten_imp/features/production/models/production_flow_stage.dart';
+import 'package:uten_imp/features/production/widgets/production_flow_stage_cell.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -366,9 +367,24 @@ final Finder _menuSurface = find.byWidgetPredicate(
 Finder _menuEntry(String label) =>
     find.descendant(of: _menuSurface, matching: find.text(label));
 
-UtenStatusBadge _badge(WidgetTester tester, String label) => tester
-    .widgetList<UtenStatusBadge>(find.byType(UtenStatusBadge))
-    .firstWhere((badge) => badge.label == label);
+/// 2026-09-27 去胶囊口径：状态语义由整格底色承载——取该文本所在格的
+/// 第一个带背景色的 BoxDecoration（即 cellColor 铺的底）。
+Color _cellBackgroundColor(WidgetTester tester, String label) {
+  final start = tester.element(find.text(label).first);
+  Color? found;
+  start.visitAncestorElements((element) {
+    final widget = element.widget;
+    if (widget is Container) {
+      final decoration = widget.decoration;
+      if (decoration is BoxDecoration && decoration.color != null) {
+        found = decoration.color!;
+        return false;
+      }
+    }
+    return true;
+  });
+  return found!;
+}
 
 void main() {
   testWidgets('a task waiting for a material choice shows 待认料 in waiting', (
@@ -376,7 +392,11 @@ void main() {
   ) async {
     await _mount(tester);
     expect(find.text('待认料'), findsWidgets);
-    expect(_badge(tester, '待认料').type, UtenStatusBadgeType.danger);
+    // 等待物料段整格铺实底（decide=红：车间必须先决定，其它动作全锁着）。
+    expect(
+      _cellBackgroundColor(tester, '待认料'),
+      productionReadinessCellColor(ProductionFlowTone.decide),
+    );
     expect(find.text('待认料 · 开工时选用料'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
@@ -386,7 +406,10 @@ void main() {
   ) async {
     await _mount(tester);
     expect(find.text('车间内料仓未开启 · 不能开工'), findsWidgets);
-    expect(_badge(tester, '车间内料仓未开启 · 不能开工').type, UtenStatusBadgeType.danger);
+    expect(
+      _cellBackgroundColor(tester, '车间内料仓未开启 · 不能开工'),
+      productionReadinessCellColor(ProductionFlowTone.decide),
+    );
     expect(
       find.descendant(
         of: _frozenRowOf('产品 N'),

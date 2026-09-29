@@ -19,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
@@ -37,6 +38,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/widgets/metric_filter_cards.dart' show metricToneColor;
 import '../../../shared/providers/draft_counts_provider.dart';
@@ -769,10 +771,11 @@ class _OperationsWorkbenchPageState
           children: [
             ListView(
               key: const Key('operations-workbench-mobile-list'),
-              // 悬浮主操作不占页面布局；仅在滚动尾部留透明避让，防止遮住末张任务卡/分页器。
+              // 悬浮主操作不占页面布局；滚动尾部留透明避让（无操作条时也要越过
+              // compact 悬浮胶囊），防止遮住末张任务卡/分页器。
               padding: EdgeInsets.only(
                 bottom: selectionAction == null
-                    ? 0
+                    ? UtenCapsuleNavScope.occlusionOf(context)
                     : UtenFloatingActionGroup.scrollClearance,
               ),
               children: [
@@ -1028,14 +1031,14 @@ class _DesktopTaskTable extends StatelessWidget {
           sortable: mergedStageColumn,
           value: (item) =>
               mergedStageColumn ? stageLabelOf(item) : item.statusLabel,
-          cellBuilder: !mergedStageColumn
+          // 状态分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）。
+          cellColor: !mergedStageColumn
               ? null
-              : (context, item) => UtenStatusBadge(
-                  label: stageLabelOf(item),
-                  type: _OperationsWorkbenchPageState._stageBadgeType(
+              : (context, item) => udenStatusBadgeCellColor(
+                  context,
+                  _OperationsWorkbenchPageState._stageBadgeType(
                     item.progressStatus,
                   ),
-                  size: UtenStatusBadgeSize.small,
                 ),
         ),
         MasterColumnDef(

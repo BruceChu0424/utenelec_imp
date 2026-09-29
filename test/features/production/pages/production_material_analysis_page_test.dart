@@ -4290,7 +4290,7 @@ void main() {
   );
 
   // ===== 2026-09-10 表头筛选（F2a/F2a-flow）：稳定桶键、祖先只读上下文、chip 同步、
-  // 空态清除筛选 =====
+  // 空态筛选生效数（2026-09-28 起无清除按钮） =====
 
   Map<String, dynamic> unconfirmedBuyChildTree() {
     final json = _makeTreeAnalysisJson();
@@ -4304,7 +4304,7 @@ void main() {
 
   testWidgets(
     'header status filter keeps ancestors as read-only context, syncs chip '
-    'counts and clears from the empty state',
+    'counts; empty state has no clear button',
     (tester) async {
       final json = unconfirmedBuyChildTree()
         ..['allowedActions'] = const ['VIEW'];
@@ -4343,7 +4343,8 @@ void main() {
       expect(find.text('上级路径上下文（只读）'), findsWidgets);
       expect(find.text('全部 BOM 1'), findsOneWidget);
 
-      // 关键词只命中被筛掉的行 → 0 行空态：组件层给「清除筛选」出口。
+      // 关键词只命中被筛掉的行 → 0 行空态：报筛选生效数，但 2026-09-28 口径
+      // 空态不再给「清除筛选」按钮——清除走表外入口（这里先撤关键词）。
       // 查找框在联动折叠头区里，表格滚动后已收起（offstage）：先回顶再输入。
       await _resetPageScrolls(tester);
       final search = find.byKey(const Key('material-bom-search'));
@@ -4352,13 +4353,23 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
       expect(find.text('当前有 1 个表头筛选生效'), findsOneWidget);
-      await tester.tap(
+      expect(
         find.byKey(const ValueKey('master-table-clear-filters')),
+        findsNothing,
       );
+      await _resetPageScrolls(tester);
+      await tester.ensureVisible(search);
+      await tester.enterText(search, '');
+      await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
+      // 关键词撤掉后行数随表头恢复，进度筛选仍生效：make-path-2 依旧隐藏。
       expect(find.text('当前有 1 个表头筛选生效'), findsNothing);
       expect(
         find.byKey(const ValueKey('material-table-row-make-path-2')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('material-table-row-buy-child')),
         findsOneWidget,
       );
     },

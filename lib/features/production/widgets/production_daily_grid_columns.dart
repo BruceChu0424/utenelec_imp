@@ -616,9 +616,11 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
             guideBleed: UtenEditableGrid.cellVerticalPadding,
             isLastChild: isLastSubRow?.call(row) ?? true,
             title: row.material?.goodsName ?? '未命名物料',
+            // 2026-09-27 用户口径：非共享物料的「本工单领用」小字删除；
+            // 共享物料保留「沿用前批已领 · 工单号」（有区分价值）。
             subtitle: row.materialShared
                 ? '沿用前批已领 · ${row.materialSegmentLabel}'
-                : '本工单领用',
+                : null,
           );
         }
         return RequiredCellFrame(
@@ -779,6 +781,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       },
     ),
     // ===== V583 物料子行专用两列：成品行留空 =====
+    // 2026-09-27 用户口径：「产量分流」列退役——提示语与保存核定重复，
+    // 不再单独占一列（产量的需求/公共份额由系统保存时核定）。
     EditableGridColumn<DailyGridRow>(
       key: 'issuedQty',
       label: '领料量',

@@ -4,6 +4,8 @@
 // 联系与车辆 Tab 内置：更换手机号（同步登录账号）、备用手机号与车辆管理。
 // 敏感字段由后端按权限点脱敏后返回；全断点默认 UtenContentContainer（1600 钳制）。
 // 文档：docs/03-页面/员工详情页.md
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -24,6 +26,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/attachments/attachment.dart';
@@ -275,7 +278,13 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       // （准则 §3.4），此处无需再包。
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+        // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+        padding: EdgeInsets.fromLTRB(
+          0,
+          UtenSpacing.s16,
+          0,
+          math.max(UtenSpacing.s16, UtenCapsuleNavScope.occlusionOf(context)),
+        ),
         children: children,
       ),
     );

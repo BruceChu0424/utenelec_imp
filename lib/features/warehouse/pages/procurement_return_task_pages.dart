@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,6 +25,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../repositories/procurement_inbound_repository.dart';
@@ -341,13 +344,16 @@ class _ProcurementReturnTasksPageState
         onRefresh: () => _load(result.page),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          // 选择模式下右下悬浮操作组让位。
+          // 选择模式下右下悬浮操作组让位；否则 compact 悬浮胶囊避让。
           padding: EdgeInsets.fromLTRB(
             0,
             UtenSpacing.s16,
             0,
             _selected.isEmpty
-                ? UtenSpacing.s16
+                ? math.max(
+                    UtenSpacing.s16,
+                    UtenCapsuleNavScope.occlusionOf(context),
+                  )
                 : UtenFloatingActionGroup.scrollClearance,
           ),
           children: [

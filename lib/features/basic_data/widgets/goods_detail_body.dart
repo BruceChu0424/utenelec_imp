@@ -15,6 +15,8 @@
 // - 头部：返回键 + 货品名（「预览」A4 产品配件清单 2026-09-12 起在组装信息
 //   表格工具条「全屏」旁，goods_bom_tab.dart）。
 // - 布局：页签靠左；基本信息/成本限宽 960 居中；组装信息全宽。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -28,6 +30,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/page_permission_action.dart';
 import '../../../shared/auth/permissions.dart';
@@ -869,7 +872,13 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
   );
 
   Widget _buildFilesTab() => SingleChildScrollView(
-    padding: const EdgeInsets.all(UtenSpacing.s16),
+    // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+    padding: EdgeInsets.fromLTRB(
+      UtenSpacing.s16,
+      UtenSpacing.s16,
+      UtenSpacing.s16,
+      math.max(UtenSpacing.s16, UtenCapsuleNavScope.occlusionOf(context)),
+    ),
     child: Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 960),

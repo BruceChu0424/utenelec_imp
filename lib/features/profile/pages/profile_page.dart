@@ -13,6 +13,8 @@
 //     快捷入口用 goFrom 带 returnTo，返回恒回「我的」而非工作台兜底
 //   * 字段维护策略徽章（直接修改 / 需审核 / 人事维护）原样保留；
 //     薪酬与银行不因本人对象范围自动展示
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -31,6 +33,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/models/user.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../department/providers/my_department_providers.dart';
@@ -120,9 +123,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
           medium: UtenSpacing.s24,
           expanded: UtenSpacing.s32,
         );
-        // compact 底部悬浮胶囊导航占位；medium+ 为侧栏 Rail，正常留白即可。
+        // compact 底部悬浮胶囊导航占位（按遮挡高度取值，滚到底越过胶囊）；
+        // medium+ 为侧栏 Rail，正常留白即可。
         final tabBottomPadding = bp.select<double>(
-          compact: 96,
+          compact: math.max(96, UtenCapsuleNavScope.occlusionOf(context)),
           medium: UtenSpacing.s24,
           expanded: UtenSpacing.s24,
         );

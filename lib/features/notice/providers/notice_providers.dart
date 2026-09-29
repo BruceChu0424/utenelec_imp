@@ -13,13 +13,14 @@ final noticeRepositoryProvider = Provider<NoticeRepository>((ref) {
   return DioNoticeRepository(ref.watch(apiClientProvider));
 });
 
-/// 筛选：全部 / 仅未读 / 仅置顶
-enum NoticeFilter { all, unread }
+/// 筛选：全部 / 仅未读 / 重要（人事序列部门发布且未读）
+enum NoticeFilter { all, unread, important }
 
 extension NoticeFilterValue on NoticeFilter {
   String get label => switch (this) {
     NoticeFilter.all => '全部',
     NoticeFilter.unread => '未读',
+    NoticeFilter.important => '重要',
   };
 }
 
@@ -39,7 +40,10 @@ class NoticeListNotifier extends AutoDisposeAsyncNotifier<List<Notice>> {
     final repo = ref.watch(noticeRepositoryProvider);
     // 已读清理由 NoticeRouteReadBridge 在路由落点驱动（精确路由 + 页面事件集），
     // 列表加载不再维护内存路由档案（2026-09-18 重写：无状态、不丢登记）。
-    return repo.list(onlyUnread: filter == NoticeFilter.unread);
+    return repo.list(
+      onlyUnread: filter == NoticeFilter.unread,
+      importantOnly: filter == NoticeFilter.important,
+    );
   }
 
   Future<void> refresh() async {
@@ -48,7 +52,10 @@ class NoticeListNotifier extends AutoDisposeAsyncNotifier<List<Notice>> {
       final filter = ref.read(noticeFilterProvider);
       return ref
           .read(noticeRepositoryProvider)
-          .list(onlyUnread: filter == NoticeFilter.unread);
+          .list(
+            onlyUnread: filter == NoticeFilter.unread,
+            importantOnly: filter == NoticeFilter.important,
+          );
     });
   }
 }

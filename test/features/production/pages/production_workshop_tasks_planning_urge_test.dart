@@ -249,13 +249,9 @@ void main() {
     final server = _Server();
     final container = await _pump(tester, server);
 
-    // 状态列：不是笼统的「等待到货」，而是品红的「等计划下单 · 缺 2 种」。
-    final status = find.widgetWithText(UtenStatusBadge, '等计划下单 · 缺 2 种');
-    expect(status, findsOneWidget);
-    expect(
-      tester.widget<UtenStatusBadge>(status).type,
-      UtenStatusBadgeType.fuchsia,
-    );
+    // 状态列：不是笼统的「等待到货」，而是「等计划下单 · 缺 2 种」（2026-09-27
+    // 起格内不画胶囊，品红区分色由整格底色表达，文字为正文字号）。
+    expect(find.text('等计划下单 · 缺 2 种'), findsOneWidget);
     // 物料列：缺 3 种里 2 种计划没下单，单独点出来。
     final summary = tester.widget<Text>(
       find.byKey(const ValueKey('workshop-material-summary-seg-1')),

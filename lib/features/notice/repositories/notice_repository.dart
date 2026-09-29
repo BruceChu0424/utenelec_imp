@@ -123,7 +123,7 @@ class NoticeUnreadIndex {
 
 abstract interface class NoticeRepository {
   /// 当前用户可见通知列表（置顶优先 + 时间倒序）
-  Future<List<Notice>> list({bool? onlyUnread});
+  Future<List<Notice>> list({bool? onlyUnread, bool? importantOnly});
 
   /// 顶部到达提醒 feed（按 publishedAt + id 高水位升序分页）。
   Future<NoticeArrivalPage> listArrivals({
@@ -240,10 +240,16 @@ class DioNoticeRepository implements NoticeRepository {
   final ApiClient _api;
 
   @override
-  Future<List<Notice>> list({bool? onlyUnread}) async {
+  Future<List<Notice>> list({bool? onlyUnread, bool? importantOnly}) async {
     final json = await _api.get(
       ApiEndpoints.notices,
-      query: onlyUnread == true ? {'onlyUnread': true} : null,
+      query: {
+        // importantOnly 服务端语义已含未读（人事序列部门发布 ∧ 未读）。
+        if (importantOnly == true)
+          'importantOnly': true
+        else if (onlyUnread == true)
+          'onlyUnread': true,
+      },
     );
     final items = (json['items'] as List<dynamic>? ?? const [])
         .cast<Map<String, dynamic>>();

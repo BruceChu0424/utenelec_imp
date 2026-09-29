@@ -54,7 +54,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     public static final String TYPE_APPROVAL = "approval";
 
     private static final String PUBLISHER = "系统";
-    static final String EVENT_PLAN_SCHEDULED = "PRODUCTION_PLAN_SCHEDULED";
+    public static final String EVENT_PLAN_SCHEDULED = "PRODUCTION_PLAN_SCHEDULED";
     static final String EVENT_PRODUCTION_REPORTED = "PRODUCTION_REPORTED";
     static final String EVENT_FINISHED_INBOUND = "PRODUCTION_FINISHED_INBOUND";
     static final String EVENT_FINISHED_INBOUND_PENDING =
@@ -786,48 +786,108 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     Map.of("shortage", shortage));
             return;
         }
+        deliverPlansScheduled(List.of(new PlanScheduled(planId, shortage)));
+    }
+
+    /** 排产事件载荷：计划单 + 是否真实缺料（分配核验后的及时缺口）。 */
+    public record PlanScheduled(UUID planId, boolean shortage) {}
+
+    /**
+     * Outbox 合并投递入口（仅锁定的事务内被处理器调用）：批量审核同一订单的
+     * 多张计划单（计划单与货品 1:1 不合单）会把 N 个事件一次性提交进 outbox；
+     * 逐条投递会让销售按货品收到 N 条排产通知。处理器把同批待投递事件合并
+     * 交给这里，按订单各合成一条排产/缺料通知；车间任务卡仍按计划单逐张下发。
+     */
+    public void deliverPlanScheduledGroup(List<PlanScheduled> plans) {
+        if (plans.isEmpty()) return;
+        OUTBOX_DELIVERY.set(true);
+        OUTBOX_EVENT.set(EVENT_PLAN_SCHEDULED);
+        try {
+            deliverPlansScheduled(plans);
+        } finally {
+            OUTBOX_EVENT.remove();
+            OUTBOX_DELIVERY.remove();
+        }
+    }
+
+    private void deliverPlansScheduled(List<PlanScheduled> plans) {
         deliverAtomically(() -> {
-            String planNo = oneStr("SELECT bill_no FROM production_plans WHERE id = ?", planId);
             Map<UUID, BigDecimal> byOrder = new LinkedHashMap<>();
-            Map<UUID, String> goodsByOrder = new LinkedHashMap<>();
-            for (Map<String, Object> r : jdbc.queryForList("""
-                    SELECT oi.order_id, SUM(l.allocated_qty) AS qty, g.code AS goods
-                    FROM plan_order_item_links l
-                    JOIN sales_order_items oi ON oi.id = l.order_item_id
-                    JOIN production_plan_items pi ON pi.id = l.plan_item_id
-                    LEFT JOIN goods g ON g.id = pi.goods_id
-                    WHERE pi.plan_id = ? AND l.is_deleted = false AND l.source = 0
-                    GROUP BY oi.order_id, g.code
-                    """, planId)) {
-                UUID orderId = (UUID) r.get("order_id");
-                byOrder.merge(orderId, bd(r.get("qty")), BigDecimal::add);
-                goodsByOrder.merge(orderId, str(r.get("goods")), (a, b) -> a + "/" + b);
+            Map<UUID, LinkedHashSet<String>> goodsByOrder = new LinkedHashMap<>();
+            Map<UUID, Set<UUID>> plansByOrder = new LinkedHashMap<>();
+            Map<UUID, String> planNoById = new LinkedHashMap<>();
+            for (PlanScheduled ps : plans) {
+                String planNo = oneStr("SELECT bill_no FROM production_plans WHERE id = ?", ps.planId());
+                if (planNo == null) continue;
+                planNoById.put(ps.planId(), planNo);
+                for (Map<String, Object> r : jdbc.queryForList("""
+                        SELECT oi.order_id, SUM(l.allocated_qty) AS qty, g.code AS goods
+                        FROM plan_order_item_links l
+                        JOIN sales_order_items oi ON oi.id = l.order_item_id
+                        JOIN production_plan_items pi ON pi.id = l.plan_item_id
+                        LEFT JOIN goods g ON g.id = pi.goods_id
+                        WHERE pi.plan_id = ? AND l.is_deleted = false AND l.source = 0
+                        GROUP BY oi.order_id, g.code
+                        """, ps.planId())) {
+                    UUID orderId = (UUID) r.get("order_id");
+                    byOrder.merge(orderId, bd(r.get("qty")), BigDecimal::add);
+                    goodsByOrder.computeIfAbsent(orderId, k -> new LinkedHashSet<>())
+                            .add(str(r.get("goods")));
+                    plansByOrder.computeIfAbsent(orderId, k -> new LinkedHashSet<>())
+                            .add(ps.planId());
+                }
             }
             for (var e : byOrder.entrySet()) {
                 OrderRef o = orderRef(e.getKey());
                 if (o == null) continue;
+                Set<UUID> orderPlans = plansByOrder.getOrDefault(e.getKey(), Set.of());
+                UUID onlyPlan = orderPlans.size() == 1 ? orderPlans.iterator().next() : null;
                 notifyUser(o.ownerUserId(), TYPE_WORKFLOW,
                         "排产通知：" + o.billNo(),
-                        "订单 " + o.billNo() + " 货品 " + goodsByOrder.get(e.getKey())
-                                + " 已排产 " + qty(e.getValue()) + "(计划单 " + planNo + ")。",
+                        "订单 " + o.billNo() + " 货品 "
+                                + String.join("/", goodsByOrder.get(e.getKey()))
+                                + " 已排产 " + qty(e.getValue())
+                                + (onlyPlan != null
+                                        ? "(计划单 " + planNoById.get(onlyPlan) + ")"
+                                        : "(共 " + orderPlans.size() + " 张计划单)")
+                                + "。",
                         o.route());
-                if (shortage) {
+                if (plans.stream().anyMatch(ps -> ps.shortage() && orderPlans.contains(ps.planId()))) {
                     sendToUser(o.ownerUserId(), TYPE_URGENT,
                             "生产缺料：" + o.billNo(),
-                            "订单 " + o.billNo() + " 的计划单 " + planNo
+                            "订单 " + o.billNo() + " 的"
+                                    + (onlyPlan != null
+                                            ? "计划单 " + planNoById.get(onlyPlan)
+                                            : " " + orderPlans.size() + " 张计划单")
                                     + " 已核验存在及时物料缺口，采购/调度已收到处理任务；"
                                     + "销售端排产进度会随到料、开工和完工继续更新。",
                             o.route(), null, "normal");
                 }
             }
-            if (shortage) {
-                notifyDepartmentPool(PLAN_VIEW_AUTHORITY, List.of("SUB_PURCHASE", "SUB_PLAN"), TYPE_TASK,
-                        "缺料提醒：" + planNo,
-                        "计划单 " + planNo + " 审核后 BOM 净需求不足(订单行状态=待物料)，请采购/调度跟进备料。",
-                        "/production/plans/" + planId);
+            List<PlanScheduled> shortagePlans = plans.stream()
+                    .filter(ps -> ps.shortage() && planNoById.containsKey(ps.planId()))
+                    .toList();
+            if (!shortagePlans.isEmpty()) {
+                if (shortagePlans.size() == 1) {
+                    PlanScheduled ps = shortagePlans.get(0);
+                    notifyDepartmentPool(PLAN_VIEW_AUTHORITY, List.of("SUB_PURCHASE", "SUB_PLAN"), TYPE_TASK,
+                            "缺料提醒：" + planNoById.get(ps.planId()),
+                            "计划单 " + planNoById.get(ps.planId())
+                                    + " 审核后 BOM 净需求不足(订单行状态=待物料)，请采购/调度跟进备料。",
+                            "/production/plans/" + ps.planId());
+                } else {
+                    notifyDepartmentPool(PLAN_VIEW_AUTHORITY, List.of("SUB_PURCHASE", "SUB_PLAN"), TYPE_TASK,
+                            "缺料提醒：" + shortagePlans.size() + " 张计划单",
+                            "计划单 " + planNoById.get(shortagePlans.get(0).planId()) + " 等 "
+                                    + shortagePlans.size()
+                                    + " 张审核后 BOM 净需求不足(订单行状态=待物料)，请采购/调度跟进备料。",
+                            "/production/plans");
+                }
             }
-            publishWorkshopTasksForPlan(
-                    planId, "生产计划已审核下达");
+            for (PlanScheduled ps : plans) {
+                publishWorkshopTasksForPlan(
+                        ps.planId(), "生产计划已审核下达");
+            }
         });
     }
 

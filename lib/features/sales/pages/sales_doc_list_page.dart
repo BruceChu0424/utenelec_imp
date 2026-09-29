@@ -28,6 +28,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -752,12 +753,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         label: '状态',
         width: 130,
         value: (it) => _statusText(it, l10n),
-        // 状态徽章；value 仍是纯文本供列宽/排序/筛选。
-        cellBuilder: (_, it) => UtenStatusBadge(
-          label: _statusText(it, l10n),
-          type: _statusBadgeType(it),
-          size: UtenStatusBadgeSize.small,
-        ),
+        // 状态分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）；
+        // value 仍是纯文本供列宽/排序/筛选。
+        cellColor: (context, it) =>
+            udenStatusBadgeCellColor(context, _statusBadgeType(it)),
       ),
       // 报价也有交货日期(ADR-134, 服务端 QuoteListItem.deliverDate)。
       if (_cfg.hasDeliverDate)

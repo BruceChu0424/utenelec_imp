@@ -16,6 +16,7 @@
 // 实称重量(ADR-135)与单张页同一口径：数量组之后录净重(可选)，按各行订货单供应商
 // 学到的单重核对；称重计数默认只记重量；重量与「按称重改数量」随明细提交并计入幂等键。
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
@@ -54,6 +55,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../department/models/department_node.dart';
@@ -923,7 +925,13 @@ class _WarehouseArrivalBatchReceiptPageState
       child: UtenContentContainer(
         child: ListView(
           controller: _scrollCtl,
-          padding: const EdgeInsets.all(UtenSpacing.s12),
+          // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+          padding: EdgeInsets.fromLTRB(
+            UtenSpacing.s12,
+            UtenSpacing.s12,
+            UtenSpacing.s12,
+            math.max(UtenSpacing.s12, UtenCapsuleNavScope.occlusionOf(context)),
+          ),
           children: [
             Card(
               child: Padding(

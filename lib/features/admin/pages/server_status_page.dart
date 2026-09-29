@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +21,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -234,8 +236,15 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
                     physics: const AlwaysScrollableScrollPhysics(),
                     child: UtenContentContainer(
                       selectable: false,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: UtenSpacing.s20,
+                      // compact 悬浮胶囊避让：滚到底末块要能越过胶囊
+                      padding: EdgeInsets.fromLTRB(
+                        0,
+                        UtenSpacing.s20,
+                        0,
+                        math.max(
+                          UtenSpacing.s20,
+                          UtenCapsuleNavScope.occlusionOf(context),
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,

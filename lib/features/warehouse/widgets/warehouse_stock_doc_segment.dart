@@ -40,6 +40,7 @@ import '../models/stock_doc.dart';
 import '../repositories/stock_doc_repository.dart';
 import '../providers/stock_draft_delete.dart';
 import '../pages/warehouse_stock_batch_outbound_page.dart';
+import '../pages/warehouse_material_return_batch_receive_page.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
@@ -115,17 +116,31 @@ class _WarehouseStockDocSegmentState
       _seg?.status == 0 &&
       ref.read(currentPermissionsProvider).contains(Perm.stockDocApprove);
 
+  /// 生产退料批量收料（2026-09-27 用户口径「退料里应该支持多选批量入库」）：
+  /// 待收料段（status=0）+ 审核权限即可勾选批量。
+  bool get _isMaterialReturnBatch =>
+      widget.productionReturnRequests &&
+      widget.docType == StockDocType.wdraw;
+  bool get _canBatchReceive =>
+      _isMaterialReturnBatch &&
+      _seg?.history == false &&
+      _seg?.status == 0 &&
+      ref.read(currentPermissionsProvider).contains(Perm.stockDocApprove);
+
   bool get _canDeleteDrafts =>
       !widget.productionReturnRequests &&
       _seg?.history == false &&
       _seg?.status == 0 &&
       canDeleteStockDrafts(ref.read(currentPermissionsProvider));
 
-  bool get _canSelectDrafts => _canBatchOutbound || _canDeleteDrafts;
+  bool get _canSelectDrafts =>
+      _canBatchOutbound || _canDeleteDrafts || _canBatchReceive;
 
   bool _isSelectableDraft(StockDocListItem item) =>
       isStockDraftDeleteCandidate(item) &&
-      (_canDeleteDrafts || (_canBatchOutbound && !item.closed));
+      (_canDeleteDrafts ||
+          (_canBatchOutbound && !item.closed) ||
+          (_canBatchReceive && !item.closed));
 
   /// 当前选中分段；null = 未选择引导态（不发请求）。
   _StockSegSeg? _seg;
@@ -298,6 +313,47 @@ class _WarehouseStockDocSegmentState
           MaterialPageRoute(
             builder: (_) => WarehouseStockBatchOutboundPage(
               docType: docType,
+              documentIds: ids,
+            ),
+          ),
+        );
+      }
+      if (mounted && generation == _outboundGeneration) await _reload();
+    } finally {
+      if (mounted && generation == _outboundGeneration) {
+        setState(() => _outboundBusy = false);
+      }
+    }
+  }
+
+  /// 生产退料批量收料（2026-09-27）：单张直进详情页（那边弹选仓），多张进
+  /// 批量收料页；与 _openBatch 同款代数守卫防串台刷新。
+  Future<void> _openBatchReceive(Set<String> selectedIds) async {
+    if (!_canBatchReceive ||
+        _outboundBusy ||
+        draftDeleteBusy ||
+        _list.loading ||
+        _list.error != null) {
+      return;
+    }
+    final ids = (_list.page?.items ?? const <StockDocListItem>[])
+        .where(
+          (d) => d.status == 0 && !d.closed && selectedIds.contains(d.id),
+        )
+        .map((d) => d.id)
+        .toList();
+    if (ids.isEmpty) return;
+    final generation = ++_outboundGeneration;
+    setState(() => _outboundBusy = true);
+    try {
+      if (ids.length == 1) {
+        await context.push(
+          RoutePath.stockDocDetail(widget.docType.code, ids.single),
+        );
+      } else {
+        await Navigator.of(context).push<bool>(
+          MaterialPageRoute(
+            builder: (_) => WarehouseMaterialReturnBatchReceivePage(
               documentIds: ids,
             ),
           ),
@@ -645,6 +701,31 @@ class _WarehouseStockDocSegmentState
                                     ? null
                                     : _openBatch,
                                 child: Text(l10n.warehouseStockOutboundAction),
+                              ),
+                            // 生产退料批量收料（2026-09-27）：与批量出库同款交互，
+                            // 一张时直进单张详情，多张进批量收料页逐张选仓。
+                            if (_canBatchReceive)
+                              UtenButton(
+                                key: const Key(
+                                  'stock-doc-batch-receive-wdraw',
+                                ),
+                                icon: Icons.move_to_inbox_rounded,
+                                onPressed:
+                                    _outboundBusy ||
+                                        draftDeleteBusy ||
+                                        !(_list.page?.items ??
+                                                const <StockDocListItem>[])
+                                            .any(
+                                              (item) =>
+                                                  item.status == 0 &&
+                                                  !item.closed &&
+                                                  ids.contains(item.id),
+                                            ) ||
+                                        _list.loading ||
+                                        _list.error != null
+                                    ? null
+                                    : () => _openBatchReceive(ids),
+                                child: const Text('批量收料'),
                               ),
                             if (_canDeleteDrafts)
                               buildDraftDeleteButton(

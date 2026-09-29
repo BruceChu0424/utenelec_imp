@@ -12,6 +12,8 @@ analyzer:
     - ".codex-tmp/**"
     - "server/target/**"
     - "server/target-*/**"
+    - ".local-tmp/**"
+    - ".claude/**"
   language:
     strict-casts: true
     strict-inference: true

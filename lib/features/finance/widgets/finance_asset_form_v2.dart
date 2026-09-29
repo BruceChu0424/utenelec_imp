@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,6 +21,7 @@ import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../models/finance_asset_category_models.dart';
@@ -521,6 +524,7 @@ class _FinanceAssetFormSurfaceState
                       key: _formKey,
                       autovalidateMode: AutovalidateMode.onUserInteraction,
                       child: SingleChildScrollView(
+                        // compact 悬浮胶囊避让：滚到底表单要能越过胶囊（面板/弹窗态查 scope 为 0 不变）
                         padding: EdgeInsets.fromLTRB(
                           context.breakpoint.isCompact
                               ? UtenSpacing.s16
@@ -529,7 +533,10 @@ class _FinanceAssetFormSurfaceState
                           context.breakpoint.isCompact
                               ? UtenSpacing.s16
                               : UtenSpacing.s24,
-                          UtenSpacing.s32,
+                          math.max(
+                            UtenSpacing.s32,
+                            UtenCapsuleNavScope.occlusionOf(context),
+                          ),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,

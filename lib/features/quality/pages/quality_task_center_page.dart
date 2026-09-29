@@ -11,6 +11,8 @@
 // 与「已出结论」(终态) 两档, 中间没有「已经在办、还没完」的在办态。检查结果出来前
 // 那段等待是**仓库**在等品质部, 已由仓库「品质部检查结果」卡的黄数字报出来,
 // 在品质侧再数一遍就是同一批收货单数两遍。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -26,9 +28,10 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/badges/badge_registry.dart';
-import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/form_drafts_page.dart';
 
 class QualityTaskCenterPage extends ConsumerWidget {
   const QualityTaskCenterPage({super.key});
@@ -69,8 +72,12 @@ class QualityTaskCenterPage extends ConsumerWidget {
         child: ListView(
           padding: EdgeInsets.only(
             top: UtenSpacing.s12,
+            // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
             bottom: context.breakpoint.isCompact
-                ? UtenSpacing.s16
+                ? math.max(
+                    UtenSpacing.s16,
+                    UtenCapsuleNavScope.occlusionOf(context),
+                  )
                 : UtenSpacing.s40,
           ),
           children: [
@@ -96,13 +103,14 @@ class QualityTaskCenterPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
+        // 草稿入口走右上角按钮（2026-09-27），不再在左上角占一行分段栏；
+        // 与原分段栏同条件：无任一品质查看权限时不出现。
+        actions: [
+          if (canViewInspection || canViewFqc)
+            const FormDraftsAppBarButton(categoryId: 'quality'),
+        ],
       ),
-      body: canViewInspection || canViewFqc
-          ? FormDraftCategoryHost(
-              scope: const FormDraftCategoryScope(module: BadgeModule.quality),
-              child: content,
-            )
-          : content,
+      body: content,
     );
   }
 

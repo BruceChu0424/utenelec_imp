@@ -6,6 +6,16 @@ import 'package:flutter/material.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 
+/// 员工状态 → 徽章配色类型（表格 cellColor 铺整格时复用同一映射，
+/// 与 [EmployeeStatusBadge] 保持同色）。
+UtenStatusBadgeType employeeStatusBadgeType(String? status) => switch (status) {
+  'active' => UtenStatusBadgeType.success,
+  'probation' => UtenStatusBadgeType.warning,
+  'onLeave' => UtenStatusBadgeType.info,
+  'resigned' => UtenStatusBadgeType.neutral,
+  _ => UtenStatusBadgeType.neutral,
+};
+
 class EmployeeStatusBadge extends StatelessWidget {
   const EmployeeStatusBadge({
     super.key,
@@ -31,11 +41,5 @@ class EmployeeStatusBadge extends StatelessWidget {
     _ => l10n.employeeStatusUnknown,
   };
 
-  UtenStatusBadgeType get _type => switch (status) {
-    'active' => UtenStatusBadgeType.success,
-    'probation' => UtenStatusBadgeType.warning,
-    'onLeave' => UtenStatusBadgeType.info,
-    'resigned' => UtenStatusBadgeType.neutral,
-    _ => UtenStatusBadgeType.neutral,
-  };
+  UtenStatusBadgeType get _type => employeeStatusBadgeType(status);
 }

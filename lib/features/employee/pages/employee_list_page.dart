@@ -19,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -380,7 +381,9 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
       label: '状态',
       width: 100,
       value: (e) => e.status == null ? null : _statusLabel(l10n, e.status!),
-      cellBuilder: (context, e) => EmployeeStatusBadge(status: e.status),
+      // 员工状态色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）。
+      cellColor: (context, e) =>
+          udenStatusBadgeCellColor(context, employeeStatusBadgeType(e.status)),
     ),
     MasterColumnDef(
       key: 'hireDate',

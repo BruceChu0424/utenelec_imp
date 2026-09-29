@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/data_display/uten_revision_table.dart';
 import 'dart:async';
+import 'package:dio/dio.dart';
+import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/repositories/payment_style_repository.dart';
+import 'package:uten_imp/features/finance/providers/finance_name_provider.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
@@ -200,6 +204,9 @@ Future<GoRouter> _pumpPage(
           if (canConfirm) Perm.salesOrderFinanceConfirm,
         }),
         sessionProvider.overrideWith(_FinanceSessionNotifier.new),
+        // 客户应收列前缀读本位币名(币种字典)：确认页 initState 会拉字典，
+        // 这里换成一个不发网的空服务(测试里应收列退回裸金额)。
+        _offlineFinanceNameServiceOverride,
         taskClaimRepositoryProvider.overrideWithValue(
           claims ?? FinanceClaimFixture(),
         ),
@@ -217,6 +224,22 @@ Future<GoRouter> _pumpPage(
   );
   await tester.pumpAndSettle();
   return router;
+}
+
+/// 离线版名称服务：Dio 无 adapter，字典加载在 ensureLoaded 内部被容错吞掉，
+/// 页面正常渲染（本位币名缺失时应收列显示裸金额）。
+final _offlineFinanceNameServiceOverride =
+    financeNameServiceProvider.overrideWith(
+      (ref) => FinanceNameService(
+        ApiClient(Dio()),
+        _NoopPaymentStyleRepository(),
+      ),
+    );
+
+class _NoopPaymentStyleRepository implements PaymentStyleRepository {
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnsupportedError('not needed in this test');
 }
 
 Future<void> _pumpReview(
@@ -868,6 +891,7 @@ void main() {
             Perm.salesOrderFinanceConfirm,
           }),
           sessionProvider.overrideWith(_FinanceSessionNotifier.new),
+          _offlineFinanceNameServiceOverride,
           fixedBadgeSummaryOverride(
             badgeSummaryFixture(facts: {BadgeFact.salesOrderFinance: 0}),
           ),

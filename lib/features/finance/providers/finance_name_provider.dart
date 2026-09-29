@@ -336,6 +336,16 @@ class FinanceNameService extends ChangeNotifier {
   bool? currencyIsBase(String? id) =>
       id == null || id.isEmpty ? null : _currencyReferences[id]?.baseCurrency;
 
+  /// 本位币名称(币种字典 baseCurrency=true 的那条)；未加载或未标记时返回 null。
+  String? get baseCurrencyName {
+    for (final ref in _currencyReferences.values) {
+      if (!ref.baseCurrency) continue;
+      final name = ref.name?.trim();
+      if (name != null && name.isNotEmpty) return name;
+    }
+    return null;
+  }
+
   Map<String, String> get clientEntries => _clients;
   Map<String, String> get supplierEntries => _suppliers;
   Map<String, String> get accountEntries => _accountEntries;

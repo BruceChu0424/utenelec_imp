@@ -87,7 +87,14 @@ public class NoticeController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('notice:read')")
-    public Map<String, Object> list(@RequestParam(required = false) Boolean onlyUnread) {
+    public Map<String, Object> list(
+            @RequestParam(required = false) Boolean onlyUnread,
+            @RequestParam(name = "importantOnly", required = false) Boolean importantOnly) {
+        // importantOnly：人事序列部门发布且未读的「重要通知」（2026-09-28 用户口径），
+        // 与 onlyUnread 互斥使用（语义已含未读）。
+        if (Boolean.TRUE.equals(importantOnly)) {
+            return Map.of("items", service.listImportantUnread());
+        }
         return Map.of("items", service.list(Boolean.TRUE.equals(onlyUnread)));
     }
 

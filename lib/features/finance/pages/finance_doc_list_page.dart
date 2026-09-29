@@ -16,7 +16,7 @@ import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/paged_list_controller.dart';
-import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -340,12 +340,10 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         label: '状态',
         width: 100,
         value: (it) => financeStatusLabel(it.status),
-        // 状态徽章（草稿中性/已审绿/红冲红）；value 仍是纯文本供列宽/排序/筛选。
-        cellBuilder: (_, it) => UtenStatusBadge(
-          label: financeStatusLabel(it.status),
-          type: docStatusBadgeType(it.status),
-          size: UtenStatusBadgeSize.small,
-        ),
+        // 状态分类色（草稿中性/已审绿/红冲红）铺整格底色，替代原格内胶囊
+        // （2026-09-27 用户口径）；value 仍是纯文本供列宽/排序/筛选。
+        cellColor: (context, it) =>
+            udenStatusBadgeCellColor(context, docStatusBadgeType(it.status)),
       ),
     ];
   }

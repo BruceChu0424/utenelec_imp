@@ -5,9 +5,10 @@
 // 多选删除：右上角「管理」进入选择模式（或长按卡片直接进入），
 // 勾选多张卡片后底部操作条「删除」——从自己列表移除（他人不受影响）。
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../shared/drafts/form_draft_category.dart';
 
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
@@ -21,6 +22,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../models/notice.dart';
@@ -30,7 +32,11 @@ import '../widgets/notice_detail_dialog.dart';
 import '../widgets/notice_interaction_footer.dart';
 
 class NoticeListPage extends ConsumerStatefulWidget {
-  const NoticeListPage({super.key});
+  const NoticeListPage({super.key, this.initialFilter});
+
+  /// 深链初始筛选（如 /notice?filter=important 工作台「重要通知」直达）；
+  /// null 走 provider 现值（默认全部）。只消费一次，不与段内切换互斥。
+  final NoticeFilter? initialFilter;
 
   @override
   ConsumerState<NoticeListPage> createState() => _NoticeListPageState();
@@ -42,6 +48,19 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
 
   /// 已勾选的通知 id
   final Set<String> _selected = {};
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialFilter != null) {
+      // 放到帧后写 provider：build 期改依赖会触发「修改监听中的 provider」断言。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(noticeFilterProvider.notifier).state = widget.initialFilter!;
+        }
+      });
+    }
+  }
 
   void _enterSelection([String? initialId]) {
     setState(() {
@@ -125,6 +144,8 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                     segments: const [
                       UtenSegment(value: NoticeFilter.all, label: '全部'),
                       UtenSegment(value: NoticeFilter.unread, label: '未读'),
+                      // 重要 = 人事序列部门发布且未读（2026-09-28 用户口径）。
+                      UtenSegment(value: NoticeFilter.important, label: '重要'),
                     ],
                   ),
                 ),
@@ -212,8 +233,14 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.only(
                     top: UtenSpacing.s16,
-                    // 底部留白：悬浮胶囊导航 +（选择模式时）多选操作条
-                    bottom: _selecting ? 160 : 96,
+                    // 底部留白：compact 悬浮胶囊避让（滚到底末卡越过胶囊）+
+                    //（选择模式时）多选操作条。
+                    bottom: _selecting
+                        ? 160
+                        : math.max(
+                            96,
+                            UtenCapsuleNavScope.occlusionOf(context),
+                          ),
                   ),
                   itemBuilder: (context, i, _) {
                     final notice = notices[i];
@@ -257,11 +284,7 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
     }
 
     return Scaffold(
-      body: FormDraftCategoryHost(
-        scope: const FormDraftCategoryScope(routePath: '/notice/publish'),
-        contentLabel: '通知',
-        child: body,
-      ),
+      body: body,
       // 多选操作：2026-09-14 UI 统一口径——吸底操作条改右下悬浮组，
       // 「已选 N」用全站标准胶囊，删除按钮统一 large。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

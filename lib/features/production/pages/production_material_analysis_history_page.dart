@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,6 +15,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -403,7 +406,13 @@ class _ProductionMaterialAnalysisHistoryPageState
         Expanded(
           child: ListView.separated(
             key: const Key('analysis-history-cards'),
-            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+            // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
+            padding: EdgeInsets.only(
+              bottom: math.max(
+                UtenSpacing.s8,
+                UtenCapsuleNavScope.occlusionOf(context),
+              ),
+            ),
             itemCount: items.length,
             separatorBuilder: (_, _) => const SizedBox(height: UtenSpacing.s8),
             itemBuilder: (_, index) => _card(theme, items[index]),

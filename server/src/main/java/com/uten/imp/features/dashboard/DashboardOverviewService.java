@@ -123,6 +123,19 @@ public class DashboardOverviewService {
                 unread == 0 ? "neutral" : "info",
                 "/notice",
                 false));
+        // 重要通知（2026-09-28 用户口径）：人事序列部门发布且未读，点击直达
+        // 通知页「重要」筛选段。没有未读时不占位（读完即普通通知）。
+        long important = noticeService.unreadImportantCount();
+        if (important > 0) {
+            metrics.add(new MetricCard(
+                    "notice-important",
+                    "重要通知",
+                    Long.toString(important),
+                    "人事部发布 · 未读",
+                    "warning",
+                    "/notice?filter=important",
+                    false));
+        }
         for (NoticeDto notice : noticeService.pendingTodos(NOTICE_TODO_LIMIT)) {
             todos.add(new TodoCard(
                     "notice-" + notice.id(),

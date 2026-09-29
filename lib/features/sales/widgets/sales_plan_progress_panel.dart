@@ -491,6 +491,9 @@ class _ProgressList extends ConsumerWidget {
                   value: (line.qty ?? 0) > 0
                       ? ((line.producedQty ?? 0) / line.qty!).clamp(0, 1)
                       : 0,
+                  // 2026-09-27 用户口径：进度条形态全站统一（主色+8 高+同轨道）。
+                  minHeight: 8,
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
                 ),
               ],
             ),
@@ -682,6 +685,9 @@ class _ProgressList extends ConsumerWidget {
       Expanded(
         child: LinearProgressIndicator(
           value: total > 0 ? (quantity / total).clamp(0, 1) : 0,
+          // 2026-09-27 用户口径：进度条形态全站统一（主色+8 高+同轨道）。
+          minHeight: 8,
+          backgroundColor: theme.colorScheme.surfaceContainerHighest,
         ),
       ),
       const SizedBox(width: UtenSpacing.s8),

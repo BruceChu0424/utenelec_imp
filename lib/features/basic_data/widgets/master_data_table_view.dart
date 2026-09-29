@@ -23,6 +23,7 @@ import '../../../components/layout/uten_sticky_header.dart';
 import '../../../components/layout/uten_table_column_kit.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../models/master_facet.dart';
 
@@ -270,12 +271,12 @@ class MasterDataTableView<T> extends StatefulWidget {
   final Map<String, int> nullCounts;
   final Map<String, String?> filters;
 
-  /// 由宿主页自己承担入口的筛选列 key（不参与空态「清除筛选」）。
+  /// 由宿主页自己承担入口的筛选列 key（不计入空态「筛选生效数」描述）。
   ///
   /// 两类：① 被页面钉死、表里根本改不动的（分段子页的 fixedOrderType）；
   /// ② 表外分段条上一直看得见、用户随时能切回去的（待检处置的类型分段）。
-  /// 这两类若也算进空态清除按钮，得到的要么是**点了没反应的死按钮**，要么是
-  /// 与分段条重复的入口——2026-09-11 用户对「没有任务却有清除筛选」的两次反馈。
+  /// （空态「清除筛选」按钮已按 2026-09-28 用户口径全站退役，见
+  /// [_emptyStateWithToolbarActions]。）
   final Set<String> externalFilterKeys;
   final void Function(String key, String? value) onFilterChanged;
 
@@ -551,6 +552,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 表体 ListView 当前底 padding，随悬浮动作或外部留白配置同步。
   double _bodyBottomPad = _hBarGap;
+
+  /// compact 悬浮胶囊遮挡高度（非外壳内恒 0），didChangeDependencies 里同步。
+  double _capsuleOcclusion = 0;
 
   // —— embedded 表头吸顶（stickyHeaderPinned，2026-09-22）——
   /// 吸顶核心（仅传了 stickyHeaderPinned 的 embedded 表创建）。表体测量复用
@@ -978,6 +982,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // compact 悬浮胶囊避让：遮挡高度变化（进/出外壳、转屏改手势条）时重算
+    // 表体底部留白。弹窗/picker 里查不到 scope 取 0，留白不受影响。
+    final capsuleOcclusion = UtenCapsuleNavScope.occlusionOf(context);
+    if (capsuleOcclusion != _capsuleOcclusion) {
+      _capsuleOcclusion = capsuleOcclusion;
+      _updateBodyPad();
+    }
     // 吸顶表：绑定祖先滚动 position（详情页页面 ListView）——滚动 tick 同帧
     // 定表头位置，post-frame 复核量位（与 UtenEditableGrid 同款两段式）。
     if (_sticky == null) return;
@@ -1028,10 +1039,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 滚动留白独立于横滚条：悬浮动作取共享留白，页面可再提供更大的让位空间。
   void _updateBodyPad() {
     // 即使内容刚好装得下，也要允许把最后一行滚到操作区上方。
-    final next = (_hasFloatingBatchActions ? _batchPad : _hBarGap).clamp(
-      widget.bottomContentPadding,
-      double.infinity,
-    );
+    // compact 悬浮胶囊的遮挡高度叠加在其后：页面给的 floor 也须抬过胶囊，
+    // 否则悬浮批量动作（已按胶囊避让抬升）反而盖住末行。
+    final next =
+        (_hasFloatingBatchActions ? _batchPad : _hBarGap).clamp(
+          widget.bottomContentPadding,
+          double.infinity,
+        ) +
+        _capsuleOcclusion;
     if (next != _bodyBottomPad) setState(() => _bodyBottomPad = next);
   }
 
@@ -1925,12 +1940,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (entry.value != null && entry.value!.isNotEmpty) entry.key,
   ];
 
-  /// 空态「清除筛选」真正能清掉的列 = 有值 − 宿主自管的列。
+  /// 空态「当前有 N 个表头筛选生效」描述真正计入的列 = 有值 − 宿主自管的列。
   ///
-  /// 2026-09-11 用户反馈「入库任务中心明明没有任务了，还显示个清除筛选按钮」：
-  /// 那个分段页把 orderType 钉死（fixedOrderType），onFilterChanged 直接 return，
-  /// 按钮点了毫无反应；待检处置则是同一个筛选在表外的分段条上一直看得见，
-  /// 表里再给一个是重复入口。两种都由宿主用 [externalFilterKeys] 声明。
+  /// 2026-09-28 用户口径：空态「清除筛选」按钮全站退役（分类分段条就在表上方，
+  /// 按钮是重复入口）；此 getter 只剩筛选生效数描述一个用途。
   List<String> get _clearableFilterKeys => [
     for (final key in _activeFilterKeys)
       if (!widget.externalFilterKeys.contains(key)) key,
@@ -1953,43 +1966,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 成功空态仍保留调用方业务工具条(例如 BOM 的“添加组件”)。加载中/错误态不走
   /// 本壳，避免基础数据尚未确认时开放依赖现状的写动作。
   Widget _emptyStateWithToolbarActions(Widget child) {
-    final activeFilterKeys = _clearableFilterKeys;
     final actions = <Widget>[
       // 空表不给「进全屏」：一张没有行的表放大到整屏毫无意义，用户反而会以为
       // 数据被按钮挡住了（2026-09-11 销售订单财务确认「待确认」空态反馈）。
       // 已在全屏中时保留按钮——那是唯一的退出口。
       if (_fullscreen) _fullscreenToggleButton(),
-      // 有激活表头筛选却 0 行：列头筛选控件随表头一起不渲染，用户没有入口
-      // 把「看不见的筛选」撤掉——这里给一键清除（服务端筛选逐列回调
-      // onFilterChanged(key,null)；filterFromRows 列的本地筛选就地清）。
-      if (activeFilterKeys.isNotEmpty)
-        UtenButton(
-          key: const ValueKey('master-table-clear-filters'),
-          height: UtenTableToolbar.controlHeight,
-          icon: Icons.filter_alt_off_rounded,
-          onPressed: () {
-            final localKeys = <String>{};
-            final defs = _columnByKey;
-            for (final key in activeFilterKeys) {
-              final def = defs[key];
-              if (def != null &&
-                  def.filterFromRows &&
-                  (widget.facets[key] ?? const []).isEmpty) {
-                localKeys.add(key);
-              } else {
-                widget.onFilterChanged(key, null);
-              }
-            }
-            if (localKeys.isNotEmpty) {
-              setState(() {
-                for (final key in localKeys) {
-                  _rowFilters.remove(key);
-                }
-              });
-            }
-          },
-          child: const Text('清除筛选'), // TODO(l10n): 补 arb
-        ),
+      // 空态「清除筛选」按钮已退役（2026-09-28 用户口径：分类分段条等筛选入口
+      // 常驻表外，按钮是重复入口；空态仅保留「当前有 N 个表头筛选生效」描述）。
       if (widget.selectable &&
           widget.showSelectionSummary &&
           !_hasFloatingBatchActions)
@@ -2071,7 +2054,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         UtenEmpty(
           icon: Icons.table_rows_outlined,
           message: widget.emptyMessage,
-          // 空态说明补一行筛选生效数，配合上方「清除筛选」按钮。
+          // 空态说明补一行筛选生效数，提示表格为何为空（清除入口在表外分段条/
+          // 重新出现行后的列头筛选控件）。
           description: activeFilters > 0
               ? '当前有 $activeFilters 个表头筛选生效' // TODO(l10n): 补 arb
               : null,
@@ -2744,11 +2728,23 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return Container(
       width: _widths[columnIndex],
       // 列间竖线：逐格勾勒单元格右边界。
+      // 语义底色格补上/下边框（2026-09-27 用户口径「整格背景变色后上下单元格
+      // 边框看不清」）：实底会淹没行的横向分隔，描一圈同款细线让行列网格在
+      // 任何底色下都保持可读；无底色格维持原有竖线，不加重整表线感。
       decoration: BoxDecoration(
         color: cellColor,
-        border: Border(
-          right: BorderSide(color: theme.colorScheme.outline, width: 0.5),
-        ),
+        border: cellColor == null
+            ? Border(
+                right: BorderSide(color: theme.colorScheme.outline, width: 0.5),
+              )
+            : Border(
+                top: BorderSide(color: theme.colorScheme.outline, width: 0.5),
+                bottom: BorderSide(
+                  color: theme.colorScheme.outline,
+                  width: 0.5,
+                ),
+                right: BorderSide(color: theme.colorScheme.outline, width: 0.5),
+              ),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(

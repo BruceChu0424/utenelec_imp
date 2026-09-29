@@ -16,6 +16,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../core/ui/capsule_nav_metrics.dart';
+
 class UtenBottomActionBar extends StatelessWidget {
   const UtenBottomActionBar({
     super.key,
@@ -40,16 +42,25 @@ class UtenBottomActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // compact 悬浮胶囊避让：occlusion 已含手势条，抬到胶囊上方；查不到 scope
+    // （弹窗/抽屉）取 0，保留 SafeArea 原行为。
+    final occlusion = UtenCapsuleNavScope.occlusionOf(context);
     return SafeArea(
       top: false,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: background ?? theme.colorScheme.surface,
-          border: showDivider
-              ? Border(top: BorderSide(color: theme.colorScheme.outlineVariant))
-              : null,
+      bottom: occlusion == 0,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: occlusion),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: background ?? theme.colorScheme.surface,
+            border: showDivider
+                ? Border(
+                    top: BorderSide(color: theme.colorScheme.outlineVariant),
+                  )
+                : null,
+          ),
+          child: Padding(padding: padding, child: child),
         ),
-        child: Padding(padding: padding, child: child),
       ),
     );
   }

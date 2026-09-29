@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -19,6 +21,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/metric_filter_cards.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -381,7 +384,13 @@ class _QualityInspectionRecordsPageState
             if (compact) {
               return ListView(
                 key: const Key('quality-inspection-record-mobile-list'),
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s24),
+                // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
+                padding: EdgeInsets.only(
+                  bottom: math.max(
+                    UtenSpacing.s24,
+                    UtenCapsuleNavScope.occlusionOf(context),
+                  ),
+                ),
                 children: [
                   overview,
                   const SizedBox(height: UtenSpacing.s16),

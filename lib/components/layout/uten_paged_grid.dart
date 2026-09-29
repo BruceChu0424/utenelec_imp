@@ -26,6 +26,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../../core/ui/capsule_nav_metrics.dart';
 import 'uten_responsive_grid.dart';
 
 /// 分页卡片网格：把全量数据按 [pageSize] 切片，只渲染当页，外裹 [UtenResponsiveGrid]。
@@ -146,7 +147,15 @@ class _UtenPagedGridState<T> extends State<UtenPagedGrid<T>> {
                   ),
           ),
         ),
-        if (totalPages > 1) buildPager(context, totalPages),
+        // compact 悬浮胶囊避让：翻页条钉在本组件 Column 底（即页面屏底），
+        // 抬到胶囊上方；非 shell 内查不到 scope 取 0，位置不变。
+        if (totalPages > 1)
+          Padding(
+            padding: EdgeInsets.only(
+              bottom: UtenCapsuleNavScope.occlusionOf(context),
+            ),
+            child: buildPager(context, totalPages),
+          ),
       ],
     );
   }

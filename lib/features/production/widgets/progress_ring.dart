@@ -1,5 +1,6 @@
 // 圆形进度环（看板/详情页共用）：圆环 + 中间百分比数字。
-// 红 <30% / 橙 <70% / 绿 ≥70%；done=true 时显示绿色 ✓。
+// 2026-09-27 用户口径：进度颜色全站统一主题主色（与线性进度条 ProductionFlowProgress
+// 同色），不再按百分比红/橙/绿分段；done=true 时显示主色 ✓。
 // 百分比未满 100% 一律向下取整显示（99.8% 显示 99%），绝不虚报 100%。
 import 'package:flutter/material.dart';
 
@@ -23,11 +24,7 @@ class ProgressRing extends StatelessWidget {
     final v = value.clamp(0.0, 1.0);
     // 未满一律 floor：剩余一点也如实显示 99%，只有真正 >=100% 才显示 100%
     final pctText = v >= 1.0 ? '100%' : '${(v * 100).floor()}%';
-    final color = done || v >= 0.7
-        ? Colors.green
-        : v >= 0.3
-        ? Colors.orange
-        : theme.colorScheme.error;
+    final color = theme.colorScheme.primary;
     return SizedBox(
       width: size,
       height: size,

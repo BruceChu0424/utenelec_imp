@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
@@ -29,6 +30,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/models/party_open_balance.dart';
@@ -38,6 +40,7 @@ import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../models/sales_order_finance_confirmation.dart';
+import '../providers/finance_name_provider.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
 import '../repositories/sales_order_finance_confirmation_repository.dart';
 import '../../../shared/badges/badge_registry.dart';
@@ -130,7 +133,11 @@ class _FinanceSalesOrderConfirmationPageState
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 客户应收列前缀要显示本位币名(币种字典 baseCurrency 标记)。
+      ref.read(financeNameServiceProvider).ensureLoaded();
+      _load(1);
+    });
   }
 
   @override
@@ -825,9 +832,15 @@ class _FinanceSalesOrderConfirmationPageState
         key: const Key('sales-order-finance-mobile-list'),
         physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.only(
+          // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊（嵌入态由宿主管）
           bottom: selectable
               ? UtenFloatingActionGroup.scrollClearance
-              : UtenSpacing.s24,
+              : widget.embedded
+              ? UtenSpacing.s24
+              : math.max(
+                  UtenSpacing.s24,
+                  UtenCapsuleNavScope.occlusionOf(context),
+                ),
         ),
         children: [
           _filters(Theme.of(context)),

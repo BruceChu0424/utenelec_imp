@@ -69,6 +69,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/responsive/breakpoint.dart';
+import '../../core/ui/capsule_nav_metrics.dart';
 
 /// 联动折叠容器：向上滚先把 [collapsingHeader] 收完，再滚 [body] 内部；反向先把 [body]
 /// 回顶，再把 [collapsingHeader] 拉回。基于 [NestedScrollView]。
@@ -681,6 +682,9 @@ class _CompactPageScrollState extends State<_CompactPageScroll> {
       widget.bodyMinHeight,
       widget.viewportHeight - (widget.pinnedHeaderExtent ?? 0) - 48,
     );
+    // compact 悬浮胶囊避让：整页滚到最底时，body 盒（含表格分页条）要能越过
+    // 屏底的悬浮胶囊。非外壳内（弹窗等）查不到 scope 取 0，无多余留白。
+    final capsuleOcclusion = UtenCapsuleNavScope.occlusionOf(context);
     return CustomScrollView(
       controller: widget.controller,
       primary: false,
@@ -704,6 +708,8 @@ class _CompactPageScrollState extends State<_CompactPageScroll> {
             ),
           ),
         ),
+        if (capsuleOcclusion > 0)
+          SliverPadding(padding: EdgeInsets.only(bottom: capsuleOcclusion)),
       ],
     );
   }

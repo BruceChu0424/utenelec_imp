@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +14,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../models/managed_permission_department_forest.dart';
 import '../../../shared/auth/page_permission_delegation_models.dart';
@@ -589,7 +592,13 @@ class _PagePermissionSettingsPageState
       onRefresh: _loadStaff,
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(UtenSpacing.s8),
+        // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+        padding: EdgeInsets.fromLTRB(
+          UtenSpacing.s8,
+          UtenSpacing.s8,
+          UtenSpacing.s8,
+          math.max(UtenSpacing.s8, UtenCapsuleNavScope.occlusionOf(context)),
+        ),
         itemCount: _staff.length + (hasMore || _staffError != null ? 1 : 0),
         itemBuilder: (context, index) {
           if (index == _staff.length) {
@@ -756,8 +765,12 @@ class _PagePermissionSettingsPageState
                   onAction: () => setState(() => _actionType = null),
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s16,
+                  // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+                  padding: EdgeInsets.fromLTRB(
+                    UtenSpacing.s16,
+                    0,
+                    UtenSpacing.s16,
+                    UtenCapsuleNavScope.occlusionOf(context),
                   ),
                   itemCount: visiblePermissions.length,
                   separatorBuilder: (_, _) => const Divider(height: 1),

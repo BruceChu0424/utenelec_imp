@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,6 +24,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
@@ -165,9 +168,18 @@ class _FinanceArrivalExceptionTasksPageState
       onRefresh: () => _load(result.page),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
+        // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊（嵌入态由宿主管）
         padding: widget.embedded
             ? const EdgeInsets.only(bottom: UtenSpacing.s16)
-            : const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+            : EdgeInsets.fromLTRB(
+                0,
+                UtenSpacing.s16,
+                0,
+                math.max(
+                  UtenSpacing.s16,
+                  UtenCapsuleNavScope.occlusionOf(context),
+                ),
+              ),
         children: [
           // 宿主大类行随页滚走（2026-09-24「表格滑到顶」）。
           if (widget.externalHeader != null) ...[

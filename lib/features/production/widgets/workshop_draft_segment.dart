@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/data_display/doc_status_badge.dart';
-import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../models/production_daily_report.dart';
@@ -67,12 +67,10 @@ class WorkshopDraftSegment extends StatelessWidget {
       label: '状态',
       width: 100,
       value: (it) => productionStatusLabel(it.status),
-      // 状态徽章（草稿中性）；本地草稿行由合并表统一显示「草稿」。
-      cellBuilder: (_, it) => UtenStatusBadge(
-        label: productionStatusLabel(it.status),
-        type: docStatusBadgeType(it.status),
-        size: UtenStatusBadgeSize.small,
-      ),
+      // 状态分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）；
+      // 本地草稿行由合并表统一显示「草稿」。
+      cellColor: (context, it) =>
+          udenStatusBadgeCellColor(context, docStatusBadgeType(it.status)),
     ),
   ];
 

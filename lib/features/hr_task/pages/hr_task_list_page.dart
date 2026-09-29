@@ -22,6 +22,8 @@
 // 2026-09-18 UI 统一收口：加载态改 UtenSkeletonList、区块卡片统一 UtenCard、
 // 批量登记转正弹窗改公共 UtenDialog（按钮/限高与全仓弹窗规范一致）。
 // 文档：docs/03-页面/HR任务中心.md
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -38,6 +40,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -760,7 +763,10 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     return ListView(
       key: const Key('hr-task-mobile-list'),
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.only(bottom: 32),
+      // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
+      padding: EdgeInsets.only(
+        bottom: math.max(32, UtenCapsuleNavScope.occlusionOf(context)),
+      ),
       children: [
         if (_type == HrTaskType.confirm)
           _hint(

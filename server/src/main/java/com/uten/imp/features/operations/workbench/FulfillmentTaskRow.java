@@ -63,7 +63,18 @@ public record FulfillmentTaskRow(
         boolean materialsDefined,
         String productionProductCode,
         String productionProductName,
-        String materialRequestNo) {
+        String materialRequestNo,
+        /** 领料车间名（仓库 DRAW 段：stock_documents.department_id → departments.name；其他段 null）。 */
+        String workshopName,
+        /** 领料负责人名（仓库 DRAW 段：stock_documents.worker_id → employees.full_name；其他段 null）。 */
+        String workerName,
+        /** 领料批次号（仓库 DRAW 段：批量领料提交时整批写同一批次号；其他段 null）。 */
+        String drawBatchNo,
+        /**
+         * 行级明细（仓库 DRAW 段：货品×数量的 jsonb 数组；前端按「批次×货品」
+         * 拆分/合并待领任务行）。其他段恒空列表。
+         */
+        List<java.util.Map<String, Object>> lines) {
 
     public FulfillmentTaskRow withSources(List<SubcontractTaskSource> value) {
         return new FulfillmentTaskRow(
@@ -74,7 +85,9 @@ public record FulfillmentTaskRow(
                 actionDocType, actionDocId, actionDocNo, actionDocItemId, actionDocStatus,
                 actionDocCanView, actionDocCanEdit, actionDocRestricted, goodsCount, openLineCount,
                 actionItemIds, issuedAt, canCreateOrder, displayStage, componentAvailableQty,
-                List.copyOf(value), materialsDefined, productionProductCode, productionProductName, materialRequestNo);
+                List.copyOf(value), materialsDefined, productionProductCode, productionProductName, materialRequestNo,
+                workshopName, workerName, drawBatchNo,
+                lines == null ? List.of() : List.copyOf(lines));
     }
 
     /** 按单据归组的行（采购/委外）：一行代表一张申请或订货单的整批明细。 */

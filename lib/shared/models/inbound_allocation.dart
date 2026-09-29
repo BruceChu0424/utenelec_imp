@@ -1,8 +1,10 @@
 enum WarehouseInboundAllocationKind {
-  exactAnalysis('EXACT_ANALYSIS', '本分析预定'),
+  // 2026-09-27 用户口径：登记实际到货的「预计去向」汇总用业务语言——
+  // EXACT_ANALYSIS 显示「计划部预定」，PUBLIC 显示「仓库存放」。
+  exactAnalysis('EXACT_ANALYSIS', '计划部预定'),
   sharedClaim('SHARED_CLAIM', '公共在途已采用'),
   formalDemand('FORMAL_DEMAND', '正式工单'),
-  publicStock('PUBLIC', '公共库存'),
+  publicStock('PUBLIC', '仓库存放'),
   unknown('UNKNOWN', '去向待确认');
 
   const WarehouseInboundAllocationKind(this.apiValue, this.label);

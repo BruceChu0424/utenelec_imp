@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,6 +12,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/expense_settings.dart';
 import '../providers/expense_settings_provider.dart';
@@ -126,7 +129,16 @@ class _ExpenseSettingsPageState extends ConsumerState<ExpenseSettingsPage> {
             data: (value) {
               _fill(value);
               return ListView(
-                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+                // compact 悬浮胶囊避让：滚到底表单要能越过胶囊
+                padding: EdgeInsets.fromLTRB(
+                  0,
+                  UtenSpacing.s16,
+                  0,
+                  math.max(
+                    UtenSpacing.s16,
+                    UtenCapsuleNavScope.occlusionOf(context),
+                  ),
+                ),
                 children: [
                   UtenCard(
                     child: Padding(

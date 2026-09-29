@@ -4,6 +4,8 @@
 // 下发；前端只负责搜索、筛选、分组和把最终状态变化换算为个人 grants/revokes。
 // 「全部授权 / 本模块 / 本组」交给服务端按授权策略补齐(ADR-109)，本页不维护排除名单。
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,6 +24,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../models/admin_models.dart';
 import '../pages/admin_permissions_page.dart' show AccountStatusBadge;
 import '../providers/admin_providers.dart';
@@ -149,11 +152,15 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           ),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(
+            // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+            padding: EdgeInsets.fromLTRB(
               UtenSpacing.s16,
               UtenSpacing.s4,
               UtenSpacing.s16,
-              UtenSpacing.s32,
+              math.max(
+                UtenSpacing.s32,
+                UtenCapsuleNavScope.occlusionOf(context),
+              ),
             ),
             children: [
               if (widget.showBack)

@@ -24,6 +24,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../features/admin/widgets/impersonation_actions.dart';
 import '../../../features/notice/widgets/celebration_popup_gate.dart';
@@ -65,9 +66,13 @@ class DashboardPage extends ConsumerWidget {
       // 底部留白：compact 96（悬浮胶囊 overlay 不占布局，滚到底可越过胶囊）；
       // medium+ 无胶囊，32 即可
       body: SingleChildScrollView(
+        // 底部留白：compact 按胶囊遮挡高度避让（含系统手势条 + 呼吸量）；
+        // medium+ 无胶囊，32 即可
         padding: EdgeInsets.only(
           top: UtenSpacing.s20,
-          bottom: isCompact ? 96 : UtenSpacing.s32,
+          bottom: isCompact
+              ? UtenSpacing.s16 + UtenCapsuleNavScope.occlusionOf(context)
+              : UtenSpacing.s32,
         ),
         // compact 由页面自行收敛宽度；medium+ 外壳已套 UtenContentContainer，
         // 再套一层会叠加 gutter，故按断点取舍

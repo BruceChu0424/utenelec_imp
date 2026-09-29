@@ -3,6 +3,8 @@
 // 子页面：/hr/tasks/:type（转正办理/生日关怀/入职周年/新近入职）。
 // 2026-09-18 UI 统一收口：加载态改 UtenSkeletonList，区块卡片统一 UtenCard。
 // 文档：docs/03-页面/HR任务中心.md
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,8 +19,9 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/form_drafts_page.dart';
 import '../models/hr_task_summary.dart';
 import '../providers/hr_task_summary_provider.dart';
 import '../widgets/hr_task_widgets.dart';
@@ -45,7 +48,10 @@ class HrWorkbenchPage extends ConsumerWidget {
         onRefresh: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(bottom: 32),
+          // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
+          padding: EdgeInsets.only(
+            bottom: math.max(32, UtenCapsuleNavScope.occlusionOf(context)),
+          ),
           children: [
             _overview(context, s, isCompact),
             _myClaims(context, s),
@@ -68,12 +74,11 @@ class HrWorkbenchPage extends ConsumerWidget {
             onPressed: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
             icon: const Icon(Icons.refresh_rounded),
           ),
+          // 草稿入口走右上角按钮（2026-09-27），不再在左上角占一行分段栏。
+          const FormDraftsAppBarButton(categoryId: 'hr'),
         ],
       ),
-      body: FormDraftCategoryHost(
-        scope: const FormDraftCategoryScope(module: BadgeModule.people),
-        child: body,
-      ),
+      body: body,
     );
   }
 

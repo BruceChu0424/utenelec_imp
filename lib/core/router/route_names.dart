@@ -119,6 +119,12 @@ abstract final class RouteName {
   static const String websiteInquiry = '/webinquiry';
   static const String websiteInquiryDetail = '/webinquiry/:id';
 
+  // 独立草稿页(基础资料/建议箱/HR 工作台/品质任务中心顶栏「草稿」按钮落点，
+  // :categoryId 见 shared/drafts/form_drafts_page.dart 注册表)
+  static const String formDrafts = '/form-drafts/:categoryId';
+  static String formDraftsLocation(String categoryId) =>
+      '/form-drafts/$categoryId';
+
   // 员工档案
   static const String employee = '/employee';
   static const String employeeDetail = '/employee/:id';

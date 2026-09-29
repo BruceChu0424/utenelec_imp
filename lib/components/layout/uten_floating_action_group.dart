@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../../core/ui/capsule_nav_metrics.dart';
 
 class UtenFloatingActionGroup extends StatelessWidget {
   const UtenFloatingActionGroup({
@@ -33,30 +34,38 @@ class UtenFloatingActionGroup extends StatelessWidget {
         .clamp(0.0, maxWidth)
         .toDouble();
 
-    return Material(
-      type: MaterialType.transparency,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: availableWidth),
-        child: Wrap(
-          alignment: WrapAlignment.end,
-          runAlignment: WrapAlignment.end,
-          spacing: UtenSpacing.s8,
-          runSpacing: UtenSpacing.s8,
-          children: [
-            for (final child in children)
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  boxShadow: UtenElevation.mid(
-                    isDark: theme.brightness == Brightness.dark,
+    // compact 悬浮胶囊避让：本组常挂在 Scaffold FAB 位或表格 Stage 的贴底
+    // Positioned 上，靠自带底 padding 抬到胶囊上方（弹窗/抽屉里查不到 scope
+    // 取 0，位置不变）。滚动末尾让位由各页滚动件另行查询，不在组内重复加。
+    final capsuleOcclusion = UtenCapsuleNavScope.occlusionOf(context);
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: capsuleOcclusion),
+      child: Material(
+        type: MaterialType.transparency,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: availableWidth),
+          child: Wrap(
+            alignment: WrapAlignment.end,
+            runAlignment: WrapAlignment.end,
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s8,
+            children: [
+              for (final child in children)
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: UtenElevation.mid(
+                      isDark: theme.brightness == Brightness.dark,
+                    ),
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: controlHeight),
+                    child: child,
                   ),
                 ),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: controlHeight),
-                  child: child,
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

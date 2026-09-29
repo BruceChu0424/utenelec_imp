@@ -13,6 +13,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../core/ui/capsule_nav_metrics.dart';
+
 /// 横向滚动区：内容矮 → 横滚条贴内容底（隔 [gap]）；内容高 → 横滚条钉视口底。
 class UtenHScrollArea extends StatefulWidget {
   const UtenHScrollArea({
@@ -66,6 +68,10 @@ class _UtenHScrollAreaState extends State<UtenHScrollArea> {
 
   /// 页面滚动监听（最近的祖先 Scrollable 的 position）。
   ScrollPosition? _pagePos;
+
+  /// compact 悬浮胶囊遮挡高度（build 里查 scope 更新）：钉底条抬到胶囊上方，
+  /// 非 shell 内（弹窗等）恒 0、钉位不变。
+  double _capsuleOcclusion = 0;
 
   @override
   void initState() {
@@ -166,13 +172,14 @@ class _UtenHScrollAreaState extends State<UtenHScrollArea> {
     final vpBottom = vpTop + vpBox.size.height;
 
     final double? pinnedY = (areaBottom > vpBottom && areaTop < vpBottom)
-        ? vpBottom - areaTop
+        ? vpBottom - areaTop - _capsuleOcclusion
         : null;
     if (_pinnedY.value != pinnedY) _pinnedY.value = pinnedY;
   }
 
   @override
   Widget build(BuildContext context) {
+    _capsuleOcclusion = UtenCapsuleNavScope.occlusionOf(context);
     // 首帧/数据/布局变化后，post-frame 重算钉底位置。
     _scheduleUpdate();
     return Stack(

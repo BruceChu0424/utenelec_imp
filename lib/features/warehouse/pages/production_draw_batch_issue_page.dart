@@ -740,6 +740,9 @@ class _ProductionDrawBatchIssuePageState
                               padding: const EdgeInsets.all(UtenSpacing.s12),
                               child: ProductionDrawDetailTable(
                                 documents: documents,
+                                // 2026-09-27 用户口径：同批次同货品的明细合并成
+                                // 一行显示数量合计（出库仍按单逐张全量提交）。
+                                mergeBatchGoods: true,
                                 names: ref.watch(masterNameServiceProvider),
                                 permissions: permissions,
                                 superAdmin: superAdmin,

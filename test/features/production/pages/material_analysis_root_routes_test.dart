@@ -600,34 +600,28 @@ void main() {
   );
 
   testWidgets(
-    'a repeated root ancestor on page two is read only and is not confirmed twice',
+    '120 children render on one page without a pager and confirm once',
     (tester) async {
       final harness = await _pump(
         tester,
         _analysis(routes: ['SUBCONTRACT'], childrenPerProduct: 120),
         refresh: true,
       );
-      // 2026-09-27 自动确认挪到服务端 (ADR-102)：一次静默刷新、服务端按操作组
-      // 一次确认 121 组；第 2 页的只读重复祖先行不会把 root 再确认一遍。
+      // 2026-09-27 主表去分页 + 自动确认挪到服务端 (ADR-102)：120 行一页直下、
+      // 翻页条退役；一次静默刷新、服务端按操作组一次确认 121 组，滚到深处
+      // 也不触发第二次确认。
       expect(harness.writes, isEmpty);
       expect(harness.previews, hasLength(1));
       expect(harness.confirmedRoutes, hasLength(121));
       expect(harness.confirmedRoutes['root-action-1'], 'SUBCONTRACT');
-      await tester.ensureVisible(find.text('下一页'));
-      await tester.tap(find.text('下一页'));
+      expect(find.text('下一页'), findsNothing, reason: '主表翻页条已退役');
+      await tester.drag(
+        find.byKey(const Key('material-analysis-material-table')),
+        const Offset(0, -4000),
+      );
       await tester.pumpAndSettle();
-      final ancestor = find.byKey(const ValueKey('PAGE_CONTEXT|2|PRODUCT|p1'));
-      expect(ancestor, findsOneWidget);
-      expect(_root(1), findsNothing);
-      for (final checkbox in tester.widgetList<Checkbox>(
-        find.descendant(of: ancestor, matching: find.byType(Checkbox)),
-      )) {
-        expect(checkbox.onChanged, isNull);
-      }
-      expect(find.descendant(of: ancestor, matching: _route(1)), findsNothing);
-      expect(harness.previews, hasLength(1), reason: '翻页不触发第二次确认');
-      expect(harness.writes, isEmpty);
-    },
+      expect(harness.previews, hasLength(1), reason: '滚动不触发第二次确认');
+      expect(harness.writes, isEmpty);    },
   );
 
   testWidgets(

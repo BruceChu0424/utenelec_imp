@@ -1,5 +1,7 @@
 // 采购报表页（采购管理，purchase_report:view）：月度汇总（货品×供应商×类型，MV 上卷）
 // + 待交货订货汇总。明细报表复用 4 单据列表页（带日期/供应商/状态过滤）。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -14,6 +16,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../report/shared/report_date_range.dart';
@@ -147,7 +150,16 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
           child: _loading
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
               : ListView(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
+                  padding: EdgeInsets.fromLTRB(
+                    UtenSpacing.s12,
+                    UtenSpacing.s12,
+                    UtenSpacing.s12,
+                    math.max(
+                      UtenSpacing.s12,
+                      UtenCapsuleNavScope.occlusionOf(context),
+                    ),
+                  ),
                   children: [
                     // 筛选条：单据类型走统一筛选工具条分段；日期/查询保留原按钮行。
                     UtenFilterToolbar<String>(

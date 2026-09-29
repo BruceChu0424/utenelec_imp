@@ -27,6 +27,8 @@
 //(= 剩余未排量 − 活动分析未下达量)。一条订单行被分析全量承接后即从本段消失，
 // 改在「进行中」按分析批次汇总成一行；只承接了一部分的行按残量继续留在本段，
 // 「已分析」列显示已被承接的那部分——量不会凭空消失(服务端 PENDING_NEED_SQL 同源)。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -55,6 +57,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
@@ -887,7 +890,10 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     return ListView.separated(
       key: const Key('production-pending-mobile-list'),
       padding: EdgeInsets.only(
-        bottom: _canUseAnalysis ? UtenFloatingActionGroup.scrollClearance : 0,
+        // 无悬浮主操作时也要越过 compact 悬浮胶囊（有操作条则按其避让）。
+        bottom: _canUseAnalysis
+            ? UtenFloatingActionGroup.scrollClearance
+            : math.max(0, UtenCapsuleNavScope.occlusionOf(context)),
       ),
       itemCount: rows.length,
       separatorBuilder: (_, _) => const SizedBox(height: UtenSpacing.s8),

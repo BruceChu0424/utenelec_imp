@@ -1,6 +1,8 @@
 // 建议详情页
 // 详情页全断点套 UtenContentContainer.narrow（maxWidth 1120）。
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,6 +17,7 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/uten_notify.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/suggestion.dart';
 import '../providers/suggestion_providers.dart';
@@ -57,7 +60,13 @@ class _Content extends ConsumerWidget {
     // 正文可框选复制：UtenContentContainer 默认已包局部 SelectionArea（准则 §3.4）。
     return UtenContentContainer.narrow(
       child: ListView(
-        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+        // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+        padding: EdgeInsets.fromLTRB(
+          0,
+          UtenSpacing.s16,
+          0,
+          math.max(UtenSpacing.s16, UtenCapsuleNavScope.occlusionOf(context)),
+        ),
         children: [
           // 类别 + 状态
           Row(

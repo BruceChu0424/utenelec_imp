@@ -95,7 +95,7 @@ void main() {
   );
 
   testWidgets(
-    'header selection remains on the current page while explicit product selection includes descendants',
+    'header select-all covers the whole unpaginated projection incl. collapsed branches',
     (tester) async {
       final harness = await _pump(
         tester,
@@ -112,21 +112,21 @@ void main() {
       );
       await tester.tap(header);
       await tester.pumpAndSettle();
-      // 2026-09-25 确认路线退役：勾选只服务下单(路线已由服务端自动确认)。
-      expect(find.text('已选 99 项'), findsOneWidget);
-      expect(find.text('下单(99)'), findsOneWidget);
-      await tester.enterText(
+      // 2026-09-27 去分页 + 全选含收起层级：表头全选覆盖整棵可见投影(250 行，
+      // 含折叠分支与屏外行)，不再是「当前页 99 行」。
+      expect(find.text('已选 250 项'), findsOneWidget);
+      expect(find.text('下单(250)'), findsOneWidget);      await tester.enterText(
         find.byKey(const Key('material-bom-search')),
         '紧固件 249',
       );
       await tester.pump(const Duration(milliseconds: 550));
       await tester.pumpAndSettle();
       expect(
-        find.text('已选 99 项'),
+        find.text('已选 250 项'),
         findsOneWidget,
         reason: 'Filtering must not hide the global selected count.',
       );
-      expect(find.text('下单(99)'), findsOneWidget);
+      expect(find.text('下单(250)'), findsOneWidget);
       await tester.tap(find.byKey(const Key('master-table-clear-selection')));
       await tester.pumpAndSettle();
       expect(find.text('已选 0 项'), findsOneWidget);

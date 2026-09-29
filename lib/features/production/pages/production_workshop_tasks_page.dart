@@ -35,6 +35,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
@@ -668,19 +669,26 @@ class _ProductionWorkshopTasksPageState
     ];
   }
 
-  /// 路线只读徽章：「生产中」列与等待物料里路线已冻结的行回显用；可改选行的选择
+  /// 路线只读格：「生产中」列与等待物料里路线已冻结的行回显用；可改选行的选择
   /// 在「下一步」下拉完成。ADR-095 起开工前随时可换，冻结只剩两种情况：已开工，
   /// 或已有报工——悬停必须说清原因（2026-09-20 用户口径「有些不能解锁」）。
+  /// 2026-09-27 用户口径：表格格内不再画胶囊，纯图标+文字（颜色随 cellColor
+  /// 双向对比度约定），路线分类色由「生产路线」列的整格底色表达。
   Widget _routeCell(ProductionExecutionWorkbenchSegment task) {
     if (task.startRoute == null) {
       return Tooltip(
         message: _canStart
             ? '生产路线待确认：请在本行「下一步」下拉中选择'
             : '缺少开工权限（production_execution:view + start），不能确认生产路线',
-        child: const UtenStatusBadge(
-          label: '待确认',
-          type: UtenStatusBadgeType.warning,
-          icon: Icons.alt_route_rounded,
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.alt_route_rounded, size: 16),
+            SizedBox(width: 4),
+            Flexible(
+              child: Text('待确认', maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+          ],
         ),
       );
     }
@@ -696,10 +704,19 @@ class _ProductionWorkshopTasksPageState
           '生产路线已冻结：本工单已有报工记录，更改路线不能改写已发生的生产事实。'
               '如确需更改，请先红冲相关报工；$description',
       },
-      child: UtenStatusBadge(
-        label: task.startRouteLabel,
-        type: _routeBadgeType(task.startRoute),
-        icon: _routeIcons[task.startRoute],
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(_routeIcons[task.startRoute], size: 16),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              task.startRouteLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2932,17 +2949,32 @@ class _ProductionWorkshopTasksPageState
       value: (task) => _flowStageOf(task).displayLabel,
       // 2026-09-26 用户口径「不同就绪度颜色差别大点、整格背景变色」：等待物料的
       // 状态列整格铺实底（绿=物料齐可开工 / 琥珀=部分齐 / 蓝=去领料 / 紫=部分
-      // 可领 / 青=待仓库发料 / 灰=缺料 / 品红=等计划下单 / 红=待选路线），文字
-      // 对比度由表格 cellColor 双向约定自动保证；生产中/历史段不铺，保持徽章原样。
-      cellColor: _isPreparing
-          ? (_, task) => productionReadinessCellColor(_flowStageOf(task).tone)
-          : null,
+      // 可领 / 青=待仓库发料 / 灰=缺料 / 品红=等计划下单 / 红=待选路线）。
+      // 2026-09-27 用户口径「胶囊背景去掉、改成单元格背景色、字号与其他列一致」：
+      // 生产中/历史段不再画胶囊，改铺徽章同款浅底；文字色与字号交给表格
+      // cellColor 双向对比度约定（黑/白自适应 + 正文字号），选中行统一青绿
+      // 高亮也不再被胶囊底盖住。
+      cellColor: (context, task) => _isPreparing
+          ? productionReadinessCellColor(_flowStageOf(task).tone)
+          : udenStatusBadgeCellColor(
+              context,
+              productionFlowBadgeType(_flowStageOf(task)),
+            ),
       cellBuilder: (_, task) {
         final stage = _flowStageOf(task);
-        final badge = UtenStatusBadge(
-          label: stage.displayLabel,
-          type: productionFlowBadgeType(stage),
-          icon: stage.icon,
+        final badge = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(stage.icon, size: 16),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                stage.displayLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         );
         if (_isPreparing &&
             _canStart &&
@@ -2952,7 +2984,6 @@ class _ProductionWorkshopTasksPageState
             message: '查看领料汇总，确认后提交仓库',
             child: InkWell(
               key: ValueKey('workshop-request-draw-${task.segmentId}'),
-              borderRadius: BorderRadius.circular(UtenRadius.pill),
               onTap: _navigating || _loading
                   ? null
                   : () => _requestDraw([task]),
@@ -2973,7 +3004,7 @@ class _ProductionWorkshopTasksPageState
             : badge;
       },
     ),
-    // 路线徽章列只留「生产中」（只读事实）。等待物料的路线就是「下一步」本身
+    // 路线列只留「生产中」（只读事实）。等待物料的路线就是「下一步」本身
     // ——下拉选中即提交（2026-09-20 用户口径），不再另设一格重复显示同一事实。
     if (status == 'IN_PROGRESS')
       MasterColumnDef(
@@ -2984,6 +3015,11 @@ class _ProductionWorkshopTasksPageState
             '生产中工单的路线已定：已有领料、报工或预留后不可更改。'
             '持续生产在同一工单继续领料/直送补料；齐套按一次备齐开工。',
         value: (task) => task.startRouteLabel,
+        // 路线分类色（齐套=绿 / 分批=蓝 / 持续=品红）铺整格，替代原格内胶囊。
+        cellColor: (context, task) => udenStatusBadgeCellColor(
+          context,
+          _routeBadgeType(task.startRoute),
+        ),
         cellBuilder: (_, task) => _routeCell(task),
       ),
     // 「下一步」列只在「等待物料」出现（2026-09-20 用户口径：生产中不显示）：
@@ -3168,17 +3204,15 @@ class _ProductionWorkshopTasksPageState
         key: 'actualOutput',
         label: '实际产出',
         width: 200,
-        value: (task) =>
-            '实际报工 ${_taskQuantity(task.reportedQty)}；'
-            '其中超产 ${_taskQuantity(task.actualSurplusReportedQty)}；'
-            '公共超产实收 ${_taskQuantity(task.actualSurplusInboundQty)}',
-        cellBuilder: (_, task) => Text(
-          '报工 ${_taskQuantity(task.reportedQty)} · '
-          '超产 ${_taskQuantity(task.actualSurplusReportedQty)}\n'
-          '公共超产实收 ${_taskQuantity(task.actualSurplusInboundQty)}',
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
+        // 2026-09-27 用户口径：一格三段太啰嗦，精简为「报工 X · 超产 Y」
+        // （超产>0 才显示）；公共超产实收在任务详情里仍有完整数字。
+        value: (task) {
+          final reported = _taskQuantity(task.reportedQty);
+          final surplus = task.actualSurplusReportedQty;
+          return surplus > 0
+              ? '报工 $reported · 超产 ${_taskQuantity(surplus)}'
+              : '报工 $reported';
+        },
       ),
     if (status == 'IN_PROGRESS')
       MasterColumnDef(

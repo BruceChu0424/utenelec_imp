@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
@@ -17,6 +19,7 @@ import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../warehouse/models/stock_doc.dart';
 import '../../warehouse/providers/warehouse_count_refresh.dart';
@@ -380,7 +383,16 @@ class _MaterialReturnRequestState
             : Stack(
                 children: [
                   SingleChildScrollView(
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    // compact 悬浮胶囊避让：滚到底末行要能越过胶囊（面板态查 scope 为 0 不变）
+                    padding: EdgeInsets.fromLTRB(
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      UtenSpacing.s12,
+                      math.max(
+                        UtenSpacing.s12,
+                        UtenCapsuleNavScope.occlusionOf(context),
+                      ),
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [

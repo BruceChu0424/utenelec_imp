@@ -349,14 +349,21 @@ class _FormDraftCategoryTableState<T>
           ctx,
           ids.where((id) => !id.startsWith(_prefix)).toSet(),
         ),
-        if (_localSelected.isNotEmpty)
+        // 纯草稿页（宿主表没有自家批量动作）删除按钮常驻：悬浮组（已选胶囊+
+        // 按钮）恒在右下角、未选时按钮禁用但可见——2026-09-27 用户口径「已选
+        // N 项放右下角悬浮」。业务列表保持原条件：选中草稿行才追加。
+        if (table.batchActionsBuilder == null || _localSelected.isNotEmpty)
           UtenButton(
             type: UtenButtonType.danger,
-            onPressed: () => deleteFormDrafts(
-              context,
-              ref,
-              local.where((d) => _localSelected.contains('$_prefix${d.id}')),
-            ),
+            onPressed: _localSelected.isEmpty
+                ? null
+                : () => deleteFormDrafts(
+                    context,
+                    ref,
+                    local.where(
+                      (d) => _localSelected.contains('$_prefix${d.id}'),
+                    ),
+                  ),
             child: Text('删除填写草稿 (${_localSelected.length})'),
           ),
       ],

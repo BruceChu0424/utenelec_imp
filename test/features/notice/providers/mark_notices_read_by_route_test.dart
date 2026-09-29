@@ -28,7 +28,7 @@ class _FakeNoticeRepository implements NoticeRepository {
   }
 
   @override
-  Future<List<Notice>> list({bool? onlyUnread}) async {
+  Future<List<Notice>> list({bool? onlyUnread, bool? importantOnly}) async {
     listCalls++;
     return const [];
   }

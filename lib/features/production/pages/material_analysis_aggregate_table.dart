@@ -35,6 +35,9 @@ final class _MaterialAggregateTableController {
     _previewRequest = null;
     for (final draft in drafts.values) {
       draft.previewGroups = const [];
+      // 新快照里各来源的「还需安排」可能变了：手输总量的草稿按新的需要
+      // 重新平分，两视图的数字才不会一边旧一边新。
+      _applyLocalSplit(draft);
     }
     if (!saving && !uncertain) schedulePreview();
   }
@@ -248,21 +251,43 @@ final class _MaterialAggregateTableController {
     // 六段小字(待核对来源分配 / 其中公共备货 / 共享父批次新增用料 / 本次保留
     // N 个来源 / 预览 blockedReason / 预览错误)全部退役。被服务端拒绝的原因在
     // 点「下单」时由汇总提交流程统一说明，不在格子里常驻。
+    // 2026-09-27 用户口径「输入的值不能低于还缺数量，边输入边判断，不对就
+    // 红」：下单格加与按产品视图同一规则的实时下限(见 [orderFloor])；追加格
+    // 没有下限。悬浮里讲清下限与平分去向，红框含义不再靠猜。
+    final floor = append ? 0.0 : orderFloor(aggregate);
+    final field = owner._materialTableQtyField(
+      theme,
+      key: 'material-aggregate-qty-${aggregate.key}',
+      controller: controller,
+      enabled:
+          !owner._busy &&
+          !uncertain &&
+          canEdit &&
+          (owner._canNotify || owner._canGenerate),
+      hintText: owner._qty(pendingQty(aggregate)),
+      onTyped: (value) => changed(aggregate, value),
+      invalid: () {
+        final text = controller.text;
+        if (!validText(text)) return true;
+        if (append) return false;
+        final typed = double.tryParse(text.trim());
+        return typed == null || typed + 0.0001 < floor;
+      },
+    );
     return SizedBox(
       height: 40 * MediaQuery.textScalerOf(owner.context).scale(1),
-      child: owner._materialTableQtyField(
-        theme,
-        key: 'material-aggregate-qty-${aggregate.key}',
-        controller: controller,
-        enabled:
-            !owner._busy &&
-            !uncertain &&
-            canEdit &&
-            (owner._canNotify || owner._canGenerate),
-        hintText: owner._qty(pendingQty(aggregate)),
-        onTyped: (value) => changed(aggregate, value),
-        invalid: () => !validText(controller.text),
-      ),
+      child: append
+          ? field
+          : Tooltip(
+              message: floor > 0.000000001
+                  ? '本次合计不能低于各来源「还需安排」的合计 ${owner._qty(floor)}，'
+                        '边输入边核对，低于它这格会标红并拦下下达。'
+                        '多出的部分会平均分回各产品行；真实下达时按服务端分配'
+                        '(各来源需要量 + 公共备货)落账。'
+                  : '填多少下多少。多出的部分会平均分回各产品行；'
+                        '真实下达时按服务端分配(各来源需要量 + 公共备货)落账。',
+              child: field,
+            ),
     );
   }
 
@@ -353,6 +378,7 @@ final class _MaterialAggregateTableController {
             ),
           ),
         )
+        ..appendFlow = orderedQty(aggregate) > 0.000000001
         ..sourceRequestedQtyByMaterialLineId = {
           for (final group in groups)
             group.representative.materialLineId: owner._qty(
@@ -400,6 +426,10 @@ final class _MaterialAggregateTableController {
         owner._selectedMaterialGroupKeys.add(snapshot.groupKey);
         owner._tableUserDeselectedKeys.remove(snapshot.groupKey);
       }
+      // 敲键当场把总量平分回各来源行(2026-09-27 用户口径「汇总输入的值和
+      // 按产品看要连通」)：不等 300ms 防抖 + 服务端预览往返——那 1~7 秒里
+      // 切回按产品视图，看到的必须就是平分后的数。
+      _applyLocalSplit(draft);
     });
     schedulePreview();
   }
@@ -411,8 +441,8 @@ final class _MaterialAggregateTableController {
 
   /// 手输总量 → 各来源的平分份额(与 [needs] 同序)：先盖住每条来源自己的
   /// 「还需安排」，富余在有需求的来源之间平均分；全都无需求才全体均分；
-  /// 总量低于需要合计时按需求占比缩放。分单数量([partQuantities])用它把
-  /// 手输总量落到各来源行，再按张相加。
+  /// 总量低于需要合计时按需求占比缩放。分单数量([partQuantities])与敲键
+  /// 平分([_applyLocalSplit])共用这一份。
   static List<double> _localShares(double total, List<double> needs) {
     var needTotal = 0.0;
     for (final need in needs) {
@@ -449,6 +479,101 @@ final class _MaterialAggregateTableController {
       }
     }
     return shares;
+  }
+
+  /// 汇总「下单数量」格的下限：参与来源(可选下单的组)的「还需安排」
+  /// (毛口径 residual)合计——与按产品视图单行红框是同一条规则的总数版
+  /// (2026-09-22 用户口径「输入小于需要就冒红」)：总量低于它，平分回去
+  /// 必然有来源行低于自己的还需安排。已下达的汇总行走「追加下单」格，
+  /// 追加是额外量、填多少都行，没有下限。
+  double orderFloor(_MaterialAggregate aggregate) {
+    if (orderedQty(aggregate) > 0.000000001) return 0;
+    var total = 0.0;
+    for (final group in groupsOf(aggregate)) {
+      if (!selectableForOrder(group)) continue;
+      total += owner._tableGroupResidual(group);
+    }
+    return total;
+  }
+
+  /// 手输总量 → 各来源行的本地平分（2026-09-27 用户口径「按物料汇总输入的值
+  /// 和按产品看要连通；三个产品同料合一起，需要 3000 填 6000，没下单切回按
+  /// 产品看，每行下单数量变成 2000」）。
+  ///
+  /// 平分是**两视图之间的编辑态同步**，不是下单分配：真实下达仍由服务端按
+  /// 「各来源需要量 + 公共备货」落账（上例下成来源 3000 + 公共 3000）。规则：
+  /// - 先盖住每条来源自己的「还需安排」(毛口径 residual)，富余在**有需求的
+  ///   来源**之间平均分；0 需求的兄弟行保持原样，不打扰它们「没有要下单的量」
+  ///   的只读形态；全都无需求(纯公共备货)才全体均分；
+  /// - 总量低于需要合计(红框态)时按需求占比缩放——行间仍是公平的；
+  /// - 已下达的来源写「追加下单」格，未下达的写「下单数量」格，与提交读数、
+  ///   服务端预览回写同一口径；
+  /// - 清成空/0 = 交还系统：恢复草稿拍下的汇总前数值(撤销单行版)。
+  /// 平分只服务手输总量的草稿；按产品「全选下单」并进来的草稿
+  /// (productFlow，带逐行请求数)各行本来就是用户自己的数，不动。
+  void _applyLocalSplit(_MaterialAggregateDraft draft) {
+    if (!draft.userEntered ||
+        draft.productFlow ||
+        draft.sourceRequestedQtyByMaterialLineId != null) {
+      return;
+    }
+    final groups = draftGroups(draft);
+    if (groups.isEmpty) return;
+    final total = double.tryParse(draft.totalText.trim());
+    if (total == null || !total.isFinite || total < 0) return;
+    final shares = _localShares(total, [
+      for (final group in groups) owner._tableGroupResidual(group),
+    ]);
+    for (var i = 0; i < groups.length; i++) {
+      final group = groups[i];
+      final line = group.representative.materialLineId;
+      final snapshot = draft.paths[line];
+      if (shares[i] <= 0.0000001) {
+        // 平分不再给这一行分量(0 需求来源 / 需求已变化 / 总量清空)：
+        // 恢复草稿拍下的原值，不把上一次平分的结果留在这行。
+        _restoreSnapshotQty(group, snapshot);
+        continue;
+      }
+      final append = owner._tableGroupIssued(group);
+      final controller = append
+          ? owner._tableAppendQtyController(group)
+          : owner._tableOrderQtyController(group);
+      final text = owner._qty(shares[i]);
+      if (controller.text != text) controller.text = text;
+      owner._tableUserTypedQty[line] = shares[i];
+      owner._tableSeededQtyTexts.remove(
+        '${append ? 'APPEND' : 'ORDER'}|${group.key}',
+      );
+    }
+  }
+
+  /// 恢复一条来源行在汇总草稿建立时的数量格状态(数量 / 预填快照 / 手填记号)。
+  void _restoreSnapshotQty(
+    _MaterialGroup group,
+    _MaterialAggregatePathSnapshot? snapshot,
+  ) {
+    if (snapshot == null) return;
+    final line = group.representative.materialLineId;
+    final order = owner._tableOrderQtyController(group);
+    final append = owner._tableAppendQtyController(group);
+    if (order.text != snapshot.orderText) order.text = snapshot.orderText;
+    if (append.text != snapshot.appendText) append.text = snapshot.appendText;
+    void restoreSeed(String side, String? seed) {
+      final key = '$side|${group.key}';
+      if (seed == null) {
+        owner._tableSeededQtyTexts.remove(key);
+      } else {
+        owner._tableSeededQtyTexts[key] = seed;
+      }
+    }
+
+    restoreSeed('ORDER', snapshot.orderSeed);
+    restoreSeed('APPEND', snapshot.appendSeed);
+    if (snapshot.typedQty == null) {
+      owner._tableUserTypedQty.remove(line);
+    } else {
+      owner._tableUserTypedQty[line] = snapshot.typedQty!;
+    }
   }
 
   void schedulePreview() {
@@ -734,6 +859,24 @@ final class _MaterialAggregateTableController {
       }
       final sources = draftSources(draft, requireComplete: true);
       final groups = [for (final source in sources) source.group];
+      // 2026-09-27 用户口径「输入的值不能低于还缺数量」：手输总量的下单流草稿
+      // 在红框之外由提交通道再拦一道。按产品「全选下单」并进来的草稿
+      // (sourceRequested 逐行带着用户自己填的数，分批少下合法)与追加流(额外量)
+      // 都不套这条下限。
+      if (draft.userEntered &&
+          draft.sourceRequestedQtyByMaterialLineId == null &&
+          !draft.appendFlow) {
+        var floor = 0.0;
+        for (final group in groups) {
+          floor += owner._tableGroupResidual(group);
+        }
+        if ((double.parse(draft.totalText) + 0.0001) < floor) {
+          throw FormatException(
+            '「${draft.label}」本次总量 ${draft.totalText} 不能低于各来源'
+            '「还需安排」的合计 ${owner._qty(floor)}；要分批少下请切到按产品逐行办理',
+          );
+        }
+      }
       if (groups.any(
         (group) =>
             group.representative.isRootSupply ||
@@ -1054,16 +1197,19 @@ final class _MaterialAggregateTableController {
           }
           for (final group in draftGroups(draft)) {
             final line = group.representative.materialLineId;
-            if (draft.sourceRequestedQtyByMaterialLineId?[line] == null &&
-                !allocation.containsKey(line)) {
-              continue;
+            final sourceRequested =
+                draft.sourceRequestedQtyByMaterialLineId?[line];
+            if (sourceRequested == null) {
+              // 2026-09-27 用户口径「汇总输入的值和按产品看是连通的」：手输总量
+              // 在敲键时就已按「需要 + 平分富余」落到各来源行(_applyLocalSplit)。
+              // 服务端预览的来源分配只在真实下达时生效，不回写格子——否则填
+              // 6000(需要 3000)切回按产品看会显示每行 1000(服务端把富余 3000 记
+              // 公共备货)，与汇总总量对不上。
+              if (draft.userEntered) continue;
+              if (!allocation.containsKey(line)) continue;
             }
             final quantity =
-                double.tryParse(
-                  draft.sourceRequestedQtyByMaterialLineId?[line] ?? '',
-                ) ??
-                allocation[line] ??
-                0;
+                double.tryParse(sourceRequested ?? '') ?? allocation[line] ?? 0;
             final append = owner._tableGroupIssued(group);
             final controller = append
                 ? owner._tableAppendQtyController(group)
@@ -1741,6 +1887,33 @@ final class _MaterialAggregateTableController {
         : null;
   }
 
+  /// 左上角表头全选的完整范围：**当前投影可见层**里所有可勾的操作组键，
+  /// 不经过行投影——折叠分支里、屏外的子行与展开的行一视同仁(2026-09-27
+  /// 用户口径「即使层级收起，点左上角也是全选，包括收起的」)。
+  ///
+  /// 取 `owner._bomFilterProjection` 的可见层(视图 chip × 关键词，不含折叠、
+  /// 不含表头列筛选)而不是整份分析：搜索/只看缺料收窄后全选只在命中的子树里
+  /// 生效；这与产品行勾选自带整棵子树、忽略更细筛选的既有口径一致。被汇总
+  /// 草稿接管的来源行不直接勾(它们随汇总行整体办理)，与 [selectableGroups]
+  /// 同一口径。
+  Set<String> allSelectableGroupKeys() {
+    final analysis = owner._analysis;
+    if (analysis == null) return const {};
+    final indexes = owner._analysisIndexes(analysis);
+    final result = <String>{};
+    for (final nodes
+        in owner._bomFilterProjection(analysis).nodesByProduct.values) {
+      for (final node in nodes) {
+        final group = indexes.groupsByLine[node.materialLineId];
+        if (group == null || !selectableForOrder(group)) continue;
+        final lineId = group.representative.materialLineId;
+        if (ownsLine(lineId) && !isProductFlow(lineId)) continue;
+        result.add(group.key);
+      }
+    }
+    return result;
+  }
+
   /// Actual issue facts only. Shared plan anchors and public action slices are
   /// counted once even when multiple displayed paths point at the same source.
   double orderedQty(_MaterialAggregate aggregate) {
@@ -1857,15 +2030,14 @@ final class _MaterialAggregateTableController {
       ? drafts[aggregate.key]?.totalText ?? owner._qty(pendingQty(aggregate))
       : '0';
 
+  /// 已选/待办组里不在当前渲染行集中的数量：折叠分支、表头筛掉的子行等。
+  /// 2026-09-27 主表去分页后不再有「其他分页」这一类，只剩折叠与筛选。
   int includedOutsideCurrentRows(Iterable<_MaterialGroup> pending) {
     final analysis = owner._analysis;
     if (analysis == null) return 0;
     final rows = owner._materialTableRows(analysis);
-    const pageSize = _MaterialAnalysisMaterialTableState._materialTablePageSize;
-    final pages = (rows.length / pageSize).ceil().clamp(1, 1000000);
-    final page = owner._bomTablePageNo.clamp(1, pages);
     final visible = <String>{};
-    for (final row in rows.skip((page - 1) * pageSize).take(pageSize)) {
+    for (final row in rows) {
       if (row.contextOnly) continue;
       for (final group in owner._materialRowAllGroups(row)) {
         visible.add(group.key);
@@ -1882,6 +2054,10 @@ final class _MaterialAggregateDraft {
   String totalText;
   bool userEntered = false;
   bool productFlow = false;
+
+  /// 汇总行已下达过（总量写在「追加下单」格）：追加是额外量，没有下限，
+  /// 平分落在各来源行的追加格（见 [_MaterialAggregateTableController.changed]）。
+  bool appendFlow = false;
   Map<String, String>? sourceRequestedQtyByMaterialLineId;
   bool mixedWorkshop = false, mixedWorker = false, mixedRate = false;
   List<MaterialAggregateOrderGroupPreview> previewGroups = const [];

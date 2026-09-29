@@ -928,6 +928,8 @@ class _SubcontractBusinessListPageState
     return widget.embedded ? page.body! : page;
   }
 
+  // 子分段激活时主分段 chip 已处于选中态（SegmentedButton 点已选段不回调），
+  // 这是唯一的单击返回主分段入口——不属于「分类下面的清除筛选」重复入口口径。
   Widget? _clearSubstageAction() => _seg == _primarySeg
       ? null
       : TextButton.icon(

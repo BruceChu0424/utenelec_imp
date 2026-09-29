@@ -494,14 +494,16 @@ class BusinessDataResetSqlContractTest {
                 .contains("(721, 650), (722, 651), (723, 652), (724, 653), (725, 654), (726, 655), (727, 656), (728, 657), (729, 658), (730, 659), (731, 660), (732, 661)")
                 .contains("(733, 662)")
                 .contains("(734, 663),")
-                .contains("(736, 664),")
-                .contains("(738, 665),")
-                .contains("(739, 666),")
-                .contains("(740, 667),")
-                .contains("(741, 668),")
-                .contains("(742, 669),")
-                // V743 仓库重量账与单重学习(ADR-135, 原号 V745): 集成分支定号 V743/670。
-                .contains("(743, 670)")
+                // V735 领料单批次号 draw_batch_no: 快照分支 2026-09-28 并入, 序号整体顺移。
+                .contains("(735, 664),")
+                .contains("(736, 665),")
+                .contains("(738, 666),")
+                .contains("(739, 667),")
+                .contains("(740, 668),")
+                .contains("(741, 669),")
+                .contains("(742, 670),")
+                // V743 仓库重量账与单重学习(ADR-135, 原号 V745): V735 并入后定号 V743/671。
+                .contains("(743, 671)")
                 // The exact range label follows the independently enumerated classpath head.
                 .contains("V507/469、V508/470及V511至V"
                         + MigrationRehearsalSupport.CURRENT_HEAD_VERSION + "完整目录");

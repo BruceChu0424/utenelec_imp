@@ -36,6 +36,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/responsive/display_zoom.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../dashboard/pages/dashboard_page.dart';
 import '../../dashboard/providers/dashboard_overview_provider.dart';
 import '../../notice/pages/notice_list_page.dart';
@@ -218,59 +219,56 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
     return Scaffold(
       // 胶囊导航不随键盘升起；body 不被键盘压缩
       resizeToAvoidBottomInset: false,
-      // 悬浮 overlay 布局：胶囊不占布局空间。
-      // - 主 Tab 页：内容全高直通屏底，胶囊浮在玻璃层上，
-      //   各 Tab 页自带底部留白（滚到底内容可越过胶囊）
-      // - 业务子页面：不少页面自带底部固定操作栏（bottomNavigationBar），
-      //   底部预留胶囊高度，保证按钮/列表最后一项不被遮挡
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: SafeArea(
-              bottom: false,
-              // PageView 常驻保活：进业务子页面（tabIndex==null）时不移除 PageView，
-              // 仅以 Offstage 隐藏；否则各 Tab 的滚动位置/状态随 PageView 卸载而丢失
-              // （从 Tab 进子页再返回会回到顶部）。Offstage 仍 layout 子树、保留 element
-              // 与 State，PageView 的 widget 树位置恒定，切回 Tab 原样恢复位置。
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: TickerMode(
-                      // 业务子页保留四个主 Tab 的 State/滚动位置，但不可继续
-                      // 驱动骨架屏、轮播等 ticker，避免隐藏页面占用渲染帧。
-                      enabled: tabIndex != null,
-                      child: Offstage(
-                        offstage: tabIndex == null,
-                        child: _slidingTabs(tabIndex: tabIndex),
-                      ),
-                    ),
-                  ),
-                  if (tabIndex == null)
+      // 悬浮 overlay 布局：胶囊不占布局空间，主 Tab 页与业务子页面一律
+      // 全高直通屏底，胶囊浮在内容上（2026-09-28 用户口径：与工作台一致，
+      // 导航不再给子页面垫出一块死空间）。内容避让统一走 UtenCapsuleNavScope：
+      // 页面滚动件末尾留白 / 右下悬浮组抬升 / 底部固定条让位都查它，
+      // 滚到最底时最后一行能越过胶囊；弹窗/抽屉在 shell 外查不到 scope 取 0。
+      body: UtenCapsuleNavScope(
+        occlusion: UtenCapsuleNavScope.computeOcclusion(context),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: SafeArea(
+                bottom: false,
+                // PageView 常驻保活：进业务子页面（tabIndex==null）时不移除 PageView，
+                // 仅以 Offstage 隐藏；否则各 Tab 的滚动位置/状态随 PageView 卸载而丢失
+                // （从 Tab 进子页再返回会回到顶部）。Offstage 仍 layout 子树、保留 element
+                // 与 State，PageView 的 widget 树位置恒定，切回 Tab 原样恢复位置。
+                child: Stack(
+                  children: [
                     Positioned.fill(
-                      child: Padding(
-                        padding: EdgeInsets.only(bottom: _navReserve(context)),
-                        child: widget.child,
+                      child: TickerMode(
+                        // 业务子页保留四个主 Tab 的 State/滚动位置，但不可继续
+                        // 驱动骨架屏、轮播等 ticker，避免隐藏页面占用渲染帧。
+                        enabled: tabIndex != null,
+                        child: Offstage(
+                          offstage: tabIndex == null,
+                          child: _slidingTabs(tabIndex: tabIndex),
+                        ),
                       ),
                     ),
-                ],
+                    if (tabIndex == null) Positioned.fill(child: widget.child),
+                  ],
+                ),
               ),
             ),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 6,
-            child: SafeArea(
-              top: false,
-              child: FloatingCapsuleNavBar(
-                position: _position,
-                onTap: _onTabTap,
-                labels: labels,
-                badgeCounts: [workbenchTodos, unread, 0, 0],
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 6,
+              child: SafeArea(
+                top: false,
+                child: FloatingCapsuleNavBar(
+                  position: _position,
+                  onTap: _onTabTap,
+                  labels: labels,
+                  badgeCounts: [workbenchTodos, unread, 0, 0],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -334,13 +332,6 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
         ),
       ),
     );
-  }
-
-  /// 业务子页面底部预留高度 = 胶囊高 + 上下间距 + 系统手势条高度（仅 compact）
-  static double _navReserve(BuildContext context) {
-    return FloatingCapsuleNavBar.navHeight +
-        10 +
-        MediaQuery.paddingOf(context).bottom;
   }
 }
 

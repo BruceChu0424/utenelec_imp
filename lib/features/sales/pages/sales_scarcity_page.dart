@@ -9,6 +9,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/sales_doc_config.dart';
@@ -214,6 +215,10 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
       return const Center(child: Text('该货品暂无生效预留占用'));
     }
     return ListView.separated(
+      // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+      padding: EdgeInsets.only(
+        bottom: UtenCapsuleNavScope.occlusionOf(context),
+      ),
       itemCount: rows.length,
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (_, i) {

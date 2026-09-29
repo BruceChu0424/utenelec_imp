@@ -16,6 +16,7 @@ import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
@@ -34,6 +35,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/permissions.dart';
@@ -381,20 +383,22 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     _reloadFromFirstPage();
   }
 
-  void _onRequestIdSubmitted(String v) {
+  /// 返回是否已受理：true 时「高级排查」弹窗关闭，false（编号不完整）保留弹窗。
+  bool _onRequestIdSubmitted(String v) {
     final t = v.trim();
     if (t.isEmpty) {
-      if (_requestId.isEmpty) return;
+      if (_requestId.isEmpty) return true;
       _requestId = '';
       _reloadFromFirstPage();
-      return;
+      return true;
     }
     if (!_requestIdPattern.hasMatch(t)) {
-      context.appWarning('请输入完整的 Request ID；部分内容请使用左侧通用搜索。');
-      return;
+      context.appWarning('请输入完整的操作关联编号；部分内容请使用下方「进一步筛选」中的搜索。');
+      return false;
     }
-    if (t == _requestId) return;
+    if (t == _requestId) return true;
     _locateRequest(t);
+    return true;
   }
 
   void _locateRequest(String requestId) {
@@ -538,6 +542,8 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       return;
     }
     final today = ChinaDateTime.today();
+    // Material 区间选择器在日历模式下按整窗尺寸铺开（全屏大页面中间一个日历），
+    // 这里用 builder 收窄成居中的紧凑弹窗（2026-09-28 用户口径）。
     final picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime.utc(2020),
@@ -545,6 +551,12 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       initialDateRange: _dateRange,
       helpText: '选择审计时间范围',
       saveText: '应用',
+      builder: (context, child) => Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520, maxHeight: 640),
+          child: child,
+        ),
+      ),
     );
     if (picked == null || !mounted) return;
     if (picked.duration.inDays > 30) {
@@ -1183,12 +1195,21 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                     if (_error == null)
                       const SliverToBoxAdapter(
                         child: Padding(
-                          padding: EdgeInsets.only(bottom: UtenSpacing.s8),
+                          padding: EdgeInsets.only(
+                            top: UtenSpacing.s24,
+                            bottom: UtenSpacing.s8,
+                          ),
                           child: _AuditRetentionHint(),
                         ),
                       ),
-                    const SliverToBoxAdapter(
-                      child: SizedBox(height: UtenSpacing.s32),
+                    // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: math.max(
+                          UtenSpacing.s32,
+                          UtenCapsuleNavScope.occlusionOf(context),
+                        ),
+                      ),
                     ),
                   ],
                 ),

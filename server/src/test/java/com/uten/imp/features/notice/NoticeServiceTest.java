@@ -40,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -164,6 +165,48 @@ class NoticeServiceTest {
         assertEquals("SYSTEM_TEST_EVENT", items.getFirst().sourceEvent());
 
         verify(noticeRepository, never()).findAll();
+    }
+
+    @Test
+    void importantOnlyKeepsUnreadNoticesPublishedByHrDepartmentUsers() {
+        UUID hrPublisher = UUID.randomUUID();
+        Notice hrNotice = unreadNotice("人事发布", hrPublisher);
+        Notice otherNotice = unreadNotice("其他部门发布", UUID.randomUUID());
+        Notice orphanNotice = unreadNotice("系统无发布者", null);
+        when(noticeRepository.findHrDepartmentUserIds()).thenReturn(List.of(hrPublisher));
+        when(noticeRepository.findVisible(eq(userId), eq(true), any(), any()))
+                .thenReturn(List.of(hrNotice, otherNotice, orphanNotice));
+        when(stateRepository.findByIdUserIdAndIdNoticeIdIn(eq(userId), any()))
+                .thenReturn(List.of());
+        when(ackRepository.countByIdNoticeId(any())).thenReturn(0L);
+        when(ackRepository.existsByIdNoticeIdAndIdUserId(any(), any())).thenReturn(false);
+        when(ackRepository.findRecentAcknowledgers(any(), anyInt())).thenReturn(List.of());
+
+        // 2026-09-28 用户口径：人事序列部门发布 ∧ 未读 = 重要通知。
+        List<NoticeDto> items = service.listImportantUnread();
+        assertEquals(1, items.size());
+        assertEquals("人事发布", items.getFirst().title());
+        assertEquals(1, service.unreadImportantCount());
+    }
+
+    @Test
+    void importantOnlyShortCircuitsWhenNoHrUsersExist() {
+        when(noticeRepository.findHrDepartmentUserIds()).thenReturn(List.of());
+
+        assertTrue(service.listImportantUnread().isEmpty());
+        assertEquals(0, service.unreadImportantCount());
+        verify(noticeRepository, never()).findVisible(any(), anyBoolean(), any(), any());
+    }
+
+    private Notice unreadNotice(String title, UUID publisher) {
+        Notice notice = new Notice();
+        notice.setTitle(title);
+        notice.setContent("content");
+        notice.setType("system");
+        notice.setPublisher("发布人");
+        notice.setPublishedAt(Instant.now());
+        notice.setCreatedBy(publisher);
+        return notice;
     }
 
 

@@ -21,6 +21,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -28,8 +29,9 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/money_display.dart';
+import '../../../shared/models/party_open_balance.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -899,12 +901,18 @@ class _FinanceSalesOrderConfirmationPageState
       type: 'money',
       value: _orderAmount,
     ),
+    // 2026-09-27 用户口径(ADR-128)：客户应收与订单同一币种，才看得出还差多少。
     MasterColumnDef(
-      key: 'clientOutstanding',
-      label: '客户应收（本币）',
-      width: 150,
+      key: 'clientBalance',
+      label: '客户应收',
+      width: 170,
       type: 'money',
-      value: (item) => item.clientOutstanding ?? '—',
+      info:
+          '按本单币种算：客户在这个币种下还欠多少(已扣可用预收)，'
+          '预收多于应收时显示「预收有余」。客户其它币种的余额和原币未核实的历史应收'
+          '不换算、不相加，放在格内提示里；红字表示全部币种应收(折本币)已超信用额度。',
+      value: _clientBalanceText,
+      cellBuilder: (_, item) => _ClientBalanceCell(item: item),
     ),
     MasterColumnDef(
       key: 'deliverDate',
@@ -947,6 +955,9 @@ class _FinanceSalesOrderConfirmationPageState
           ? '已驳回：${item.financeRejectedReason ?? '未注明原因'}'
           : item.changeCount > 0
           ? '修改后待确认 · ${item.changeCount} 次变更'
+          // 报价转入且各行单价/折扣与财务核定的报价一致(ADR-134)：本次只核信用与条款。
+          : item.sourceQuote != null && item.matchesQuote == true
+          ? '待财务确认 · ${AppLocalizations.of(context).quoteFinanceOrderAllMatch}'
           : '待财务确认',
       cellColor: (context, item) =>
           item.changeCount > 0 && !item.financeRejected
@@ -1081,6 +1092,7 @@ class _CompactTaskRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final urgency = _urgencyFor(item);
+    final balanceNote = _clientBalanceNote(item);
     final accent = item.financeRejected || urgency == _DeliverUrgency.overdue
         ? theme.colorScheme.error
         : urgency == _DeliverUrgency.soon
@@ -1160,11 +1172,23 @@ class _CompactTaskRow extends StatelessWidget {
                                   '交货 ${item.deliverDate ?? '未定'} · '
                                   '${_urgencyLabel(urgency)} · '
                                   '${item.itemCount} 行明细 · '
-                                  '应收（本币）${item.clientOutstanding ?? '—'}',
+                                  '客户应收 ${_clientBalanceText(item)}',
                                   style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
+                                    color:
+                                        item.clientBalance?.overCredit == true
+                                        ? theme.colorScheme.error
+                                        : theme.colorScheme.onSurfaceVariant,
                                   ),
                                 ),
+                                if (balanceNote != null) ...[
+                                  const SizedBox(height: UtenSpacing.s4),
+                                  Text(
+                                    balanceNote,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
                                 if (item.changeCount > 0 &&
                                     !item.financeRejected) ...[
                                   const SizedBox(height: UtenSpacing.s4),
@@ -1239,14 +1263,69 @@ String _urgencyLabel(_DeliverUrgency urgency) => switch (urgency) {
   _DeliverUrgency.none => '未定',
 };
 
-String _orderAmount(SalesOrderFinancePendingItem item) {
-  final currency =
-      financeCurrencyDisplayLabel(
-        name: item.currencyName,
-        code: item.currencyCode,
-      ) ??
-      '订单币种';
-  return '$currency ${item.totalOriginal ?? '—'}';
+String _orderAmount(SalesOrderFinancePendingItem item) =>
+    financeMoneyWithCurrency(
+      item.totalOriginal,
+      currencyName: item.currencyName,
+      currencyCode: item.currencyCode,
+      fallback: '订单币种',
+    );
+
+/// 客户应收(ADR-128)：本单币种下还差多少，如「美金 12000.00」「预收有余 美金 200.00」。
+String _clientBalanceText(SalesOrderFinancePendingItem item) =>
+    item.clientBalance?.headline(PartyBalanceSide.customer) ?? '—';
+
+/// 客户应收的补充说明：其它币种、原币未核实的历史应收、超信用；都没有时为 null。
+String? _clientBalanceNote(SalesOrderFinancePendingItem item) {
+  final balance = item.clientBalance;
+  if (balance == null) return null;
+  final parts = [
+    balance.footnote(PartyBalanceSide.customer),
+    if (balance.overCredit)
+      '全部币种应收(折本币) ${balance.baseMoneyText(balance.openBookLocal)}'
+          ' 已超信用额度 ${balance.baseMoneyText(balance.creditLimitLocal)}',
+  ].whereType<String>();
+  return parts.isEmpty ? null : parts.join('；');
+}
+
+/// 「客户应收」格：单行显示本单币种的数，补充说明放进提示(全站表格单行口径)。
+class _ClientBalanceCell extends StatelessWidget {
+  const _ClientBalanceCell({required this.item});
+
+  final SalesOrderFinancePendingItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final note = _clientBalanceNote(item);
+    final text = Text(
+      _clientBalanceText(item),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: item.clientBalance?.overCredit == true
+          ? TextStyle(
+              color: theme.colorScheme.error,
+              fontWeight: FontWeight.w700,
+            )
+          : null,
+    );
+    if (note == null) return text;
+    return Tooltip(
+      message: note,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: text),
+          const SizedBox(width: UtenSpacing.s4),
+          Icon(
+            Icons.info_outline_rounded,
+            size: 14,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 String _shipmentPolicyLabel(String? policy) => switch (policy) {

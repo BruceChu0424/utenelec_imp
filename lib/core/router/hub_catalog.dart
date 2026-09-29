@@ -38,11 +38,17 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     RoutePath.stockDocNew('CHECK'),
     RouteName.stockInstantInventory,
     RouteName.warehouseShelfLabels,
+    // ADR-135：库存分析 (stock_report:view) + 独立称重计数 (stock:view)。
+    RouteName.warehouseInsights,
+    RouteName.warehouseWeighCount,
     '${RouteName.warehouseReport}/detail',
     '${RouteName.warehouseReport}/summary',
+    // ADR-131 车间内料仓设置 (车间开启 / 机台与容器 / 上线准备)。
+    RouteName.workshopMaterialSetup,
   ],
   RouteName.finance: [
     RouteName.financeAudits,
+    RouteName.financeQuoteReview,
     '/expense/approval',
     '/expense/settings',
     RoutePath.financeDocNew('receipts'),
@@ -62,6 +68,8 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     RouteName.financeReportRecon,
     RouteName.financeReportCost,
     RouteName.financeReportGl,
+    // ADR-131 车间内料仓用量与结算 (塑料用量附表的数据来源)。
+    RouteName.workshopMaterialReports,
   ],
   RouteName.production: const [
     // 2026-09-24 三段式：任务中心置顶（调度台更名生产任务中心）+ 两个审批队列；
@@ -75,6 +83,8 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     '/production/reports/plan-summary',
     RouteName.productionWhereUsed,
     RouteName.productionChainHealth,
+    // ADR-131 车间内料仓用量与结算。
+    RouteName.workshopMaterialReports,
   ],
   RouteName.purchase: [
     RouteName.operationsPurchaseWorkbench,

@@ -33,7 +33,7 @@ class ProcurementApprovalRevisionSnapshotPostgresTest {
             jdbc.execute("""
                     CREATE TABLE procurement_order_approval_cases (
                         id uuid, order_type text, order_id uuid, attempt integer, submission_snapshot jsonb, display_snapshot jsonb);
-                    CREATE TABLE goods (id uuid, code text, name text, production_overproduction_rate numeric(9,6));
+                    CREATE TABLE goods (id uuid, code text, name text, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8));
                     CREATE TABLE colors (id uuid, name text);
                     CREATE TABLE units (id uuid, name text);
                     CREATE TABLE currencies (id uuid, name text);
@@ -50,7 +50,7 @@ class ProcurementApprovalRevisionSnapshotPostgresTest {
                     mock(SecurityContextCurrentUser.class), mock(TxSessionVars.class),
                     mock(com.uten.imp.features.notice.ChainNoticeService.class),
                     mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
-                    mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class));
+                    mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class), org.mockito.Mockito.mock(com.uten.imp.application.port.PartyOpenBalancePort.class));
             UUID dollars = UUID.randomUUID(), yuan = UUID.randomUUID();
             jdbc.update("INSERT INTO currencies VALUES (?, ?)", dollars, "美元");
             jdbc.update("INSERT INTO currencies VALUES (?, ?)", yuan, "人民币");

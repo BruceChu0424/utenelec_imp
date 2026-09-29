@@ -141,6 +141,63 @@ class ReportTotalsCalculatorTest {
         assertThat(totals).isEmpty();
     }
 
+    @Test
+    void weightAndCountTotalsAreUngroupedAndUnknownWeightIsSkippedNotZeroed() {
+        List<Map<String, Object>> all = new java.util.ArrayList<>();
+        all.add(weightRow(new BigDecimal("2.5"), false));
+        all.add(weightRow(null, false));
+        all.add(weightRow(new BigDecimal("1.25"), true));
+
+        List<ReportTotal> totals = ReportTotalsCalculator.computeFromRows(all, List.of(
+                new ReportTotalsCalculator.Spec("weight", "合计库存重量", ReportTotalsCalculator.TYPE_WEIGHT, null),
+                new ReportTotalsCalculator.Spec("weight_unknown_rows", "重量未知",
+                        ReportTotalsCalculator.TYPE_COUNT, null),
+                new ReportTotalsCalculator.Spec("weight_estimated_rows", "重量含估算",
+                        ReportTotalsCalculator.TYPE_COUNT, null)));
+
+        // 重量千克不分组、类型原样下发(前端换算显示单位)；未知的那行不计入，也不当 0。
+        assertThat(totals).extracting(ReportTotal::type).containsExactly("weight", "count", "count");
+        assertThat(totals.get(0).groupKey()).isNull();
+        assertThat(totals.get(0).groups()).singleElement().extracting(ReportTotalGroup::value)
+                .isEqualTo(new BigDecimal("3.75"));
+        assertThat(totals.get(1).groups()).singleElement().extracting(ReportTotalGroup::value)
+                .isEqualTo(new BigDecimal("1"));
+        assertThat(totals.get(2).groups()).singleElement().extracting(ReportTotalGroup::value)
+                .isEqualTo(new BigDecimal("1"));
+    }
+
+    @Test
+    void weightAndCountTotalsShareOneUngroupedAggregateStatement() {
+        Query query = mock(Query.class);
+        when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.of());
+        EntityManager em = mock(EntityManager.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+
+        ReportTotalsCalculator.compute(
+                em, "SELECT 1", "FROM t", "WHERE 1=1", Map.of(),
+                List.of(
+                        new ReportTotalsCalculator.Spec("weight", "合计库存重量",
+                                ReportTotalsCalculator.TYPE_WEIGHT, null),
+                        new ReportTotalsCalculator.Spec("weight_unknown_rows", "重量未知",
+                                ReportTotalsCalculator.TYPE_COUNT, null),
+                        new ReportTotalsCalculator.Spec("qty", "合计数量", "number", "unitName")));
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(em, org.mockito.Mockito.times(2)).createNativeQuery(sql.capture());
+        assertThat(sql.getAllValues()).anySatisfy(statement -> assertThat(statement)
+                .contains("SUM(t.\"weight\"), SUM(t.\"weight_unknown_rows\")")
+                .doesNotContain("GROUP BY"));
+    }
+
+    private static Map<String, Object> weightRow(BigDecimal kg, boolean estimated) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("weight", kg);
+        row.put("weight_unknown_rows", kg == null ? 1 : 0);
+        row.put("weight_estimated_rows", estimated ? 1 : 0);
+        return row;
+    }
+
     private static Map<String, Object> row(String unit, BigDecimal qty) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("unitName", unit);

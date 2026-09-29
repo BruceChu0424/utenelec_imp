@@ -1,4 +1,5 @@
-// 库存查询仓库：余额分页 + 流水分页。
+// 库存查询仓库: 余额分页 + 授权余额调整 + 即时库存 + 货架清单。
+// 单货品出入库流水走 lib/shared/stock_ledger (GET /stock/goods/{goodsId}/ledger)。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -48,9 +49,14 @@ class StockQueryRepository {
     return PagedResult.fromJson(json, BalanceRow.fromJson);
   }
 
+  /// 授权余额调整 (stock:balance:adjust, 自动生成已审核盘点单)。
+  ///
+  /// [targetWeightKg] = 调整后的库存重量 (千克, 4 位小数; 可选, 盘点定重口径);
+  /// 带了目标重量时, 调整后数量可以与当前相同 (只核重量)。
   Future<StockBalanceAdjustmentResult> adjustBalance({
     required BalanceRow balance,
     required String targetQty,
+    double? targetWeightKg,
     required String reason,
     required String idempotencyKey,
   }) async {
@@ -63,38 +69,11 @@ class StockQueryRepository {
         'colorId': ?balance.colorId,
         'expectedQty': balance.qty ?? 0,
         'targetQty': targetQty,
+        'targetWeightKg': ?targetWeightKg,
         'reason': reason.trim(),
       },
     );
     return StockBalanceAdjustmentResult.fromJson(json);
-  }
-
-  Future<PagedResult<MovementRow>> movements({
-    int page = 1,
-    int size = 20,
-    String? warehouseId,
-    String? goodsId,
-    int? movementType,
-    String? dateFrom,
-    String? dateTo,
-    String? sort,
-    String? order,
-  }) async {
-    final json = await api.get(
-      ApiEndpoints.stockMovements,
-      query: {
-        'page': page,
-        'size': size,
-        'warehouseId': ?warehouseId,
-        'goodsId': ?goodsId,
-        'movementType': ?movementType,
-        'dateFrom': ?dateFrom,
-        'dateTo': ?dateTo,
-        if (sort != null && sort.isNotEmpty) 'sort': sort,
-        if (order != null && order.isNotEmpty) 'order': order,
-      },
-    );
-    return PagedResult.fromJson(json, MovementRow.fromJson);
   }
 
   /// 即时库存分页（货品+颜色聚合余额；categoryId=分类含子树 / warehouseId=仓库 / keyword 模糊）。

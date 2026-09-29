@@ -100,8 +100,15 @@ public class GoodsDetail {
     private boolean priceMasked;
 
     // ===== 即时库存（聚合 stock_balances，仅参与核算仓库；详情展示+关联仓库） =====
-    private BigDecimal stockQty;                 // 各参与核算仓库余量合计
-    private List<GoodsStockRow> stockByWarehouse; // 按仓库（×颜色）展开
+    private BigDecimal stockQty;                 // 非线边核算仓余量合计
+    private List<GoodsStockRow> stockByWarehouse; // 按仓库×颜色展开(线边仓行标 lineSide，不计入合计)
+    /**
+     * 非线边核算仓已知库存重量合计(千克，ADR-135)；未知的行不计入而另计 {@link #stockWeightUnknown}；
+     * null = 有量的行重量全都未知(前端「未称」，绝不当 0)。
+     */
+    private BigDecimal stockWeightKg;
+    private int stockWeightUnknown;               // 有数量却重量未知的仓库×颜色行数(前端「另有 N 处未称」)
+    private boolean stockWeightEstimated;         // 合计含估算重量(前端加「≈」)
 
     private Long version;                        // 乐观锁版本（编辑回传）
 
@@ -131,6 +138,23 @@ public class GoodsDetail {
 
     /** 委外允许损耗默认值(%)(ADR-098): 委外订货明细预填记忆; 不是成本字段, 不随成本脱敏。 */
     private BigDecimal subcontractAllowedLossPct;
+
+    // ===== 发料方式 (V740 / ADR-131; 只读展示, 切换走 /issue-method/preview → /issue-method/batch) =====
+    private String issueMethod;          // ORDER 按工单领料 / PERIODIC 整批领到车间内料仓
+    private String periodicCostBasis;    // OWN 主料 / SHARED 辅料 / EXPENSE 记车间费用; 按工单领料为 null
+    private BigDecimal bulkPackageQty;   // 每袋净重 (基本单位)
+    private boolean recycledMaterial;    // 回收料 (水口料、破碎料), 其它入库预填金额 0
+    /** 本产品 BOM 里整批领料的料与单个重量 (期间边); 单重旁只读显示"塑料单个重量 (来自 BOM)"。 */
+    private List<GoodsPeriodicBomWeight> periodicBomWeights;
+
+    // ===== 英文名称(ADR-134, V742) =====
+    private String nameEn;           // 英文名称; 未维护为 null
+    private String nameEnSource;     // MANUAL 人工维护 / LEARNED 从客户文件学习
+    /**
+     * 当前用户能否单独改英文名称(持有 goods:name_en:edit 或 goods:edit, 且对该货品有写范围)。
+     * 页面按它决定是否显示编辑入口, 不再新增前端权限字面量。
+     */
+    private boolean canEditNameEn;
 
     public BigDecimal getDefaultPurchasePrice() {
         return defaultPurchasePriceInfo == null ? null : defaultPurchasePriceInfo.price();

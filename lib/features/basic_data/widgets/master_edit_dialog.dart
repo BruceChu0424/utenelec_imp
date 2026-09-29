@@ -580,6 +580,8 @@ class MasterEditFormState extends State<MasterEditForm> {
               theme,
               requiredEmpty: showRed,
             ),
+            // Field guidance lives in the in-box info icon (component rule).
+            info: f.info,
           ),
         );
       },

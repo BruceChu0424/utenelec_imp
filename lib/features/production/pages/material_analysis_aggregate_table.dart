@@ -51,7 +51,19 @@ final class _MaterialAggregateTableController {
               owner._supplyOperationType(target.actionId) == 'AGGREGATE_SUPPLY')
             target.actionId!,
     };
-    if (actionIds.isEmpty) return const Text('勾选后下单');
+    // 来源车间 / 负责人 / 比例不同时，这一行下单会自动分成几张工单
+    // (ADR-120 §8)：在办理列直接写明，悬浮逐张列出参数和数量。
+    final split = splitNote(aggregate);
+    final note = split == null
+        ? null
+        : Tooltip(
+            message: split.detail,
+            child: Text(
+              split.headline,
+              key: ValueKey('material-aggregate-split-${aggregate.key}'),
+            ),
+          );
+    if (actionIds.isEmpty) return note ?? const Text('勾选后下单');
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -64,6 +76,7 @@ final class _MaterialAggregateTableController {
                 : () => unawaited(cancelAction(id)),
             child: Text('整批撤回 ${owner._supplyActionOf(id)?.documentNo ?? ''}'),
           ),
+        ?note,
       ],
     );
   }
@@ -350,25 +363,26 @@ final class _MaterialAggregateTableController {
     });
   }
 
-  _MaterialAggregatePathSnapshot _snapshot(_MaterialGroup group) =>
-      _MaterialAggregatePathSnapshot(
-        groupKey: group.key,
-        orderText: owner._tableOrderQtyController(group).text,
-        appendText: owner._tableAppendQtyController(group).text,
-        orderSeed: owner._tableSeededQtyTexts['ORDER|${group.key}'],
-        appendSeed: owner._tableSeededQtyTexts['APPEND|${group.key}'],
-        typedQty: owner._tableUserTypedQty[group.representative.materialLineId],
-        selected: owner._selectedMaterialGroupKeys.contains(group.key),
-        autoSelected: owner._tableAutoSelectedKeys.contains(group.key),
-        deselected: owner._tableUserDeselectedKeys.contains(group.key),
-        workshop: owner._tableWorkshopDraft[group.key],
-        worker: owner._tableWorkerDraft[group.key],
-        rate: owner
-            ._overproductionPercentController(
-              materialLineId: group.representative.materialLineId,
-            )
-            .text,
-      );
+  _MaterialAggregatePathSnapshot _snapshot(_MaterialGroup group) {
+    final rate = owner._overproductionPercentController(
+      materialLineId: group.representative.materialLineId,
+    );
+    return _MaterialAggregatePathSnapshot(
+      groupKey: group.key,
+      orderText: owner._tableOrderQtyController(group).text,
+      appendText: owner._tableAppendQtyController(group).text,
+      orderSeed: owner._tableSeededQtyTexts['ORDER|${group.key}'],
+      appendSeed: owner._tableSeededQtyTexts['APPEND|${group.key}'],
+      typedQty: owner._tableUserTypedQty[group.representative.materialLineId],
+      selected: owner._selectedMaterialGroupKeys.contains(group.key),
+      autoSelected: owner._tableAutoSelectedKeys.contains(group.key),
+      deselected: owner._tableUserDeselectedKeys.contains(group.key),
+      workshop: owner._tableWorkshopDraft[group.key],
+      worker: owner._tableWorkerDraft[group.key],
+      rate: rate.text,
+      rateExplicit: owner._prefilledOverproductionRates.isExplicit(rate),
+    );
+  }
 
   void changed(_MaterialAggregate aggregate, String value) {
     if (saving || uncertain) return;
@@ -395,6 +409,48 @@ final class _MaterialAggregateTableController {
       (double.tryParse(value)?.isFinite ?? false) &&
       (double.tryParse(value) ?? -1) >= 0;
 
+  /// 手输总量 → 各来源的平分份额(与 [needs] 同序)：先盖住每条来源自己的
+  /// 「还需安排」，富余在有需求的来源之间平均分；全都无需求才全体均分；
+  /// 总量低于需要合计时按需求占比缩放。分单数量([partQuantities])用它把
+  /// 手输总量落到各来源行，再按张相加。
+  static List<double> _localShares(double total, List<double> needs) {
+    var needTotal = 0.0;
+    for (final need in needs) {
+      if (need > 0) needTotal += need;
+    }
+    final shares = List<double>.filled(needs.length, 0);
+    void evenShare(double amount, List<int> indexes) {
+      if (indexes.isEmpty || amount <= 0) return;
+      // 输入最多四位小数：按万分之一整分、余数逐份 +1，让各行合计与总量
+      // 不差毫(浮点均分 6000/3 之类的尾差会把两视图的合计对不齐)。
+      final units = (amount * 10000).round();
+      final base = units ~/ indexes.length;
+      final extra = units - base * indexes.length;
+      for (var i = 0; i < indexes.length; i++) {
+        shares[indexes[i]] += (base + (i < extra ? 1 : 0)) / 10000;
+      }
+    }
+
+    if (total > 0.0000001 && needTotal <= 0.0000001) {
+      evenShare(total, [for (var i = 0; i < needs.length; i++) i]);
+    } else if (total > 0.0000001 && total + 0.0001 >= needTotal) {
+      final withNeed = <int>[];
+      for (var i = 0; i < needs.length; i++) {
+        if (needs[i] > 0.0000001) {
+          shares[i] = needs[i];
+          withNeed.add(i);
+        }
+      }
+      evenShare(total - needTotal, withNeed);
+    } else if (total > 0.0000001) {
+      for (var i = 0; i < needs.length; i++) {
+        if (needs[i] <= 0.0000001) continue;
+        shares[i] = total * needs[i] / needTotal;
+      }
+    }
+    return shares;
+  }
+
   void schedulePreview() {
     if (saving ||
         uncertain ||
@@ -412,21 +468,258 @@ final class _MaterialAggregateTableController {
   List<_MaterialGroup> draftGroups(
     _MaterialAggregateDraft draft, {
     bool requireComplete = false,
+  }) => [
+    for (final source in draftSources(draft, requireComplete: requireComplete))
+      source.group,
+  ];
+
+  /// 草稿的来源行(草稿里的行 id 与它当前的办理组，按草稿顺序)。
+  List<({String line, _MaterialGroup group})> draftSources(
+    _MaterialAggregateDraft draft, {
+    bool requireComplete = false,
   }) {
     final analysis = owner._analysis;
     if (analysis == null) return const [];
     final byLine = owner._analysisIndexes(analysis).groupsByLine;
-    final groups = [for (final line in draft.lineIds) ?byLine[line]];
-    if (requireComplete && groups.length != draft.lineIds.length) {
+    final sources = [
+      for (final line in draft.lineIds)
+        if (byLine[line] case final group?) (line: line, group: group),
+    ];
+    if (requireComplete && sources.length != draft.lineIds.length) {
       throw const FormatException('汇总来源已变化，请核对后撤销此草稿重新填写');
     }
-    return groups;
+    return sources;
   }
 
-  String? uniformId(Iterable<String?> ids, String label) {
-    final values = ids.toSet();
-    if (values.length > 1) throw FormatException('各来源$label不同，请先在汇总行统一设置');
-    return values.isEmpty ? null : values.single;
+  /// 这批来源走不走车间通道：自制，以及要先自制目标件的委外。服务端对这两类
+  /// (manufacture)一律要求车间 / 负责人 / 超产比例，权限也只看「下达车间」——
+  /// 与 [workshopGroups] 同一口径(2026-09-25 对齐修正)。
+  bool viaWorkshop(List<_MaterialGroup> groups) =>
+      groups.isNotEmpty &&
+      (owner._draftRoute(groups.first) == MaterialSupplyRoute.make ||
+          owner._tableIssueTarget(groups.first).viaWorkshop);
+
+  /// 超产比例按数值比较：'10' 与 '10.0' 是同一个比例、同一张工单。
+  static double? _rateValue(String text) =>
+      parseProductionOverproductionPercent(text);
+
+  /// 一条来源此刻「怎么做」的参数：生产车间、负责人、超产比例。
+  _MaterialAggregateMakeParams makeParams(_MaterialGroup group) {
+    final workshop = owner._tableWorkshopFor(group);
+    final worker = owner._tableWorkerFor(group);
+    final rate = owner._overproductionPercentController(
+      materialLineId: group.representative.materialLineId,
+    );
+    return _MaterialAggregateMakeParams(
+      workshop: (id: workshop.id, name: workshop.name),
+      worker: (id: worker.id, name: worker.name),
+      rateText: rate.text,
+      rateExplicit: owner._prefilledOverproductionRates.isExplicit(rate),
+    );
+  }
+
+  /// ADR-120 §8「该分开的分开」：车间通道的来源按「生产车间 + 负责人 + 超产
+  /// 比例(按数值)」分成几张工单——参数相同的来源并成一张，不同就各开一张，
+  /// 不再报错要求先统一。本页不选班组，服务端合并键里的班组恒为空，不参与拆分；
+  /// 父件也不参与，下层做好后送给哪个上层工单在报工时再分(见 ADR-127)。
+  /// 采购 / 直接委外整组一张。只拆出一张时提交键就是草稿键；拆成多张时是
+  /// 「草稿键|part-指纹」，指纹只由这张工单的参数决定，参数不变键就不变。
+  /// 顺序稳定：按来源在 [sources] 里第一次出现的先后。
+  List<_MaterialAggregatePart> partsOf(
+    String draftKey,
+    List<({String line, _MaterialGroup group})> sources, {
+    required bool workshop,
+  }) {
+    final byKey = <String, _MaterialAggregatePart>{};
+    for (final source in sources) {
+      final params = workshop ? makeParams(source.group) : null;
+      final part = byKey.putIfAbsent(
+        params?.key ?? '',
+        () => _MaterialAggregatePart(params),
+      );
+      // 同一张工单里只要有一条来源的比例是人定的，整张按人定的提交
+      // (拆单键相同，车间 / 负责人 / 比例数值一致，只是显式标记不同)。
+      if (params != null &&
+          params.rateExplicit &&
+          part.params != null &&
+          !part.params!.rateExplicit) {
+        part.params = params;
+      }
+      part
+        ..lineIds.add(source.line)
+        ..groups.add(source.group);
+    }
+    final parts = byKey.values.toList(growable: false);
+    for (final part in parts) {
+      part.clientGroupKey = parts.length == 1
+          ? draftKey
+          : '$draftKey|${businessIdempotencyKey('part', part.params!.key)}';
+    }
+    return parts;
+  }
+
+  static final _partKeySuffix = RegExp(r'\|part-[0-9a-f]{16}$');
+
+  /// 提交 / 预览回包里的组键 → 草稿键(汇总行键)。见 [partsOf]。
+  String draftKeyOf(String clientGroupKey) =>
+      clientGroupKey.replaceFirst(_partKeySuffix, '');
+
+  /// 草稿此刻会拆成的工单；来源供应方式不一致时不拆(提交时会被拦下)。
+  List<_MaterialAggregatePart> draftParts(_MaterialAggregateDraft draft) {
+    final sources = draftSources(draft);
+    final groups = [for (final source in sources) source.group];
+    final workshop =
+        groups.map(owner._draftRoute).toSet().length == 1 &&
+        viaWorkshop(groups);
+    return partsOf(draft.key, sources, workshop: workshop);
+  }
+
+  /// 各张工单本次的数量(与 [parts] 同序)，合计恰为草稿总量。
+  /// - 逐行带数的草稿(按产品全选下单、汇总前各行已有数)：每张工单 = 它那几行
+  ///   自己的数，逐行数量原样随这张工单提交；
+  /// - 手输总量的草稿：先按平分规则([_localShares])把总量落到
+  ///   各来源行，再按工单相加。
+  /// 按万分之一整数累加，尾差归最后一张，合计与总量一毫不差。
+  List<({String qty, Map<String, String>? sourceRequested})> partQuantities(
+    _MaterialAggregateDraft draft,
+    List<_MaterialAggregatePart> parts,
+  ) {
+    if (parts.length == 1) {
+      return [
+        (
+          qty: draft.totalText,
+          sourceRequested: draft.sourceRequestedQtyByMaterialLineId,
+        ),
+      ];
+    }
+    int units(String value) => (double.parse(value) * 10000).round();
+    String text(int value) => owner._qty(value / 10000);
+    final requested = draft.sourceRequestedQtyByMaterialLineId;
+    if (requested != null) {
+      return [
+        for (final part in parts)
+          _requestedPart(
+            {for (final line in part.lineIds) line: ?requested[line]},
+            units,
+            text,
+          ),
+      ];
+    }
+    final sources = draftSources(draft);
+    final shares = _localShares(double.parse(draft.totalText), [
+      for (final source in sources) owner._tableGroupResidual(source.group),
+    ]);
+    final shareByLine = {
+      for (var i = 0; i < sources.length; i++) sources[i].line: shares[i],
+    };
+    final partUnits = [
+      for (final part in parts)
+        (part.lineIds.fold<double>(
+                  0,
+                  (sum, line) => sum + (shareByLine[line] ?? 0),
+                ) *
+                10000)
+            .round(),
+    ];
+    final rest = partUnits
+        .take(partUnits.length - 1)
+        .fold<int>(0, (sum, value) => sum + value);
+    partUnits[partUnits.length - 1] = units(draft.totalText) - rest;
+    if (partUnits.last < 0) {
+      throw FormatException('「${draft.label}」本次总量无法分到各张工单，请重新填写总量');
+    }
+    return [
+      for (final value in partUnits) (qty: text(value), sourceRequested: null),
+    ];
+  }
+
+  static ({String qty, Map<String, String>? sourceRequested}) _requestedPart(
+    Map<String, String> subset,
+    int Function(String) units,
+    String Function(int) text,
+  ) => (
+    qty: text(subset.values.fold<int>(0, (sum, qty) => sum + units(qty))),
+    sourceRequested: subset,
+  );
+
+  /// 分成多张工单的草稿里，每张工单在确认框 / 提示里的名字，按提交键取：
+  /// 「(第 1 张，共 2 张：装配一车间 / 张三 / 超产 10%)」。没分开的草稿不加。
+  Map<String, String> partLabels(Iterable<String> draftKeys) {
+    final labels = <String, String>{};
+    for (final key in draftKeys) {
+      final draft = drafts[key];
+      if (draft == null) continue;
+      final parts = draftParts(draft);
+      if (parts.length < 2) continue;
+      for (var i = 0; i < parts.length; i++) {
+        labels[parts[i].clientGroupKey] =
+            '(第 ${i + 1} 张，共 ${parts.length} 张：${parts[i].label})';
+      }
+    }
+    return labels;
+  }
+
+  /// 本次提交里这个草稿占几组(分成几张工单就是几组)，供分窗口计数。
+  int requestGroupCount(_MaterialAggregateDraft draft) {
+    final count = draftParts(draft).length;
+    return count < 1 ? 1 : count;
+  }
+
+  /// 汇总行上把「会分成几张工单」讲明白(ADR-120 §8)：同一物料的来源车间、
+  /// 负责人或超产比例不同，下单时自动各开一张，这一行只是合起来看。
+  /// [headline] 挂在办理列，[detail] 逐张列出参数和本次数量。没有分开时为 null。
+  ({String headline, String detail})? splitNote(_MaterialAggregate aggregate) {
+    final draft = drafts[aggregate.key];
+    final List<_MaterialAggregatePart> parts;
+    List<String?> quantities;
+    if (draft != null) {
+      parts = draftParts(draft);
+      if (parts.length < 2) return null;
+      try {
+        quantities = [
+          for (final value in partQuantities(draft, parts)) value.qty,
+        ];
+      } on FormatException {
+        quantities = List.filled(parts.length, null);
+      }
+    } else {
+      final sources = [
+        for (final group in groupsOf(aggregate).where(selectableForOrder))
+          (line: group.representative.materialLineId, group: group),
+      ];
+      final groups = [for (final source in sources) source.group];
+      if (groups.map(owner._draftRoute).toSet().length != 1 ||
+          !viaWorkshop(groups)) {
+        return null;
+      }
+      parts = partsOf(aggregate.key, sources, workshop: true);
+      if (parts.length < 2) return null;
+      quantities = [];
+      for (final part in parts) {
+        final total = part.groups.fold<double>(
+          0,
+          (sum, group) => sum + owner._tableSubmitQtyOf(group),
+        );
+        quantities.add(total.isFinite ? owner._qty(total) : null);
+      }
+    }
+    final dimensions = [
+      if (parts.map((part) => part.params!.workshop.id).toSet().length > 1)
+        '车间',
+      if (parts.map((part) => part.params!.worker.id).toSet().length > 1) '负责人',
+      if (parts.map((part) => part.params!.rate).toSet().length > 1) '比例',
+    ];
+    final unit = aggregate.unitName ?? '';
+    return (
+      headline: '按${dimensions.join('/')}分成 ${parts.length} 张工单',
+      detail: [
+        '这些来源的${dimensions.join('、')}不同，下单时自动分成 ${parts.length} 张工单：',
+        for (var i = 0; i < parts.length; i++)
+          '第 ${i + 1} 张  ${parts[i].label}：${quantities[i] ?? '—'} $unit'
+              .trimRight(),
+        '要合成一张，就在这一行把车间、负责人和比例改成一样的。',
+      ].join('\n'),
+    );
   }
 
   MaterialAggregateOrderRequest requestFor(
@@ -439,7 +732,8 @@ final class _MaterialAggregateTableController {
       if (!validText(draft.totalText)) {
         throw FormatException('「${draft.label}」请输入非负数量，最多四位小数');
       }
-      final groups = draftGroups(draft, requireComplete: true);
+      final sources = draftSources(draft, requireComplete: true);
+      final groups = [for (final source in sources) source.group];
       if (groups.any(
         (group) =>
             group.representative.isRootSupply ||
@@ -460,68 +754,46 @@ final class _MaterialAggregateTableController {
       }
       // 上方已拒绝「confirmedRoute 为空」的来源，这里必有已确认路线。
       final route = routes.single!;
-      // 服务端对 manufacture 组(MAKE + 要先自制目标件的委外)一律要求车间 /
-      // 负责人 / 超产比例，权限也只看「下达车间」——与 [workshopGroups] 同一
-      // 口径，别让前置自制委外漏带车间再次被拒(2026-09-25 对齐修正)。
-      final workshop =
-          route == MaterialSupplyRoute.make ||
-          owner._tableIssueTarget(groups.first).viaWorkshop;
+      final workshop = viaWorkshop(groups);
       if (workshop && !owner._canGenerate || !workshop && !owner._canNotify) {
         throw FormatException('没有下达「${draft.label}」的权限');
       }
+      // 来源的车间 / 负责人 / 超产比例不同就自动分成几张工单(ADR-120 §8)，
+      // 汇总行只是把它们合起来看。比例没人改过的来源按货品默认：提交时送
+      // 空值由服务端填写且不记住(ADR-129 §2.10)；只有人改过且解析不出数值
+      // 的才算「允许超产比例无效」。
+      final parts = partsOf(draft.key, sources, workshop: workshop);
       if (workshop &&
-          (draft.mixedWorkshop || draft.mixedWorker || draft.mixedRate)) {
-        throw FormatException('「${draft.label}」原来源生产参数不同，请明确统一本次车间、负责人和比例');
-      }
-      final rateTexts = workshop
-          ? groups
-                .map(
-                  (group) => owner
-                      ._overproductionPercentController(
-                        materialLineId: group.representative.materialLineId,
-                      )
-                      .text,
-                )
-                .toSet()
-          : <String>{};
-      if (rateTexts.length > 1) {
-        throw FormatException('「${draft.label}」各来源超产比例不同，请先统一设置');
-      }
-      final rate = rateTexts.isEmpty
-          ? null
-          : parseProductionOverproductionPercent(rateTexts.single);
-      if (workshop && rate == null) {
+          parts.any(
+            (part) => part.params!.rate == null && part.rateExplicit,
+          )) {
         throw FormatException('「${draft.label}」允许超产比例无效');
       }
-      inputs.add(
-        MaterialAggregateOrderGroupInput(
-          clientGroupKey: draft.key,
-          materialLineIds: draft.lineIds.toList()..sort(),
-          route: route,
-          qty: draft.totalText,
-          sourceRequestedQtyByMaterialLineId:
-              draft.sourceRequestedQtyByMaterialLineId,
-          allowPublicExtra: workshop || owner._canOverSupply,
-          departmentId: workshop
-              ? uniformId(
-                  groups.map((group) => owner._tableWorkshopFor(group).id),
-                  '生产车间',
-                )
-              : null,
-          workerId: workshop
-              ? uniformId(
-                  groups.map((group) => owner._tableWorkerFor(group).id),
-                  '负责人',
-                )
-              : null,
-          allowedOverproductionRate: rate,
-          safetyQty:
-              route == MaterialSupplyRoute.buy &&
-                  safetyDimensions.add(draft.key)
-              ? owner._qty(owner._groupSafetyReplenishmentGapQty(groups.first))
-              : '0',
-        ),
-      );
+      final quantities = partQuantities(draft, parts);
+      for (var i = 0; i < parts.length; i++) {
+        final part = parts[i];
+        inputs.add(
+          MaterialAggregateOrderGroupInput(
+            clientGroupKey: part.clientGroupKey,
+            materialLineIds: [...part.lineIds]..sort(),
+            route: route,
+            qty: quantities[i].qty,
+            sourceRequestedQtyByMaterialLineId: quantities[i].sourceRequested,
+            allowPublicExtra: workshop || owner._canOverSupply,
+            departmentId: part.params?.workshop.id,
+            workerId: part.params?.worker.id,
+            allowedOverproductionRate: part.rateExplicit ? part.params?.rate : null,
+            // 公共安全补库只走采购；采购不按车间拆，一个物料至多一组。
+            safetyQty:
+                route == MaterialSupplyRoute.buy &&
+                    safetyDimensions.add(draft.key)
+                ? owner._qty(
+                    owner._groupSafetyReplenishmentGapQty(groups.first),
+                  )
+                : '0',
+          ),
+        );
+      }
     }
     final warehouse = owner._warehouseId;
     if (warehouse == null) throw const FormatException('请先选择分析仓库');
@@ -714,7 +986,11 @@ final class _MaterialAggregateTableController {
           covered.addAll(originals);
           sourceOrigins[source] = originals;
         }
-        grouped.putIfAbsent(group.clientGroupKey, () => []).add(group);
+        // 分成几张工单的草稿(ADR-120 §8)回到同一个汇总行：各张的来源与
+        // 数量都归这个草稿，逐张核对仍按上面的提交键各自做。
+        grouped
+            .putIfAbsent(draftKeyOf(group.clientGroupKey), () => [])
+            .add(group);
       }
       for (final input in request.groups) {
         final covered =
@@ -877,13 +1153,16 @@ final class _MaterialAggregateTableController {
       final blocked = _preview!.groups
           .where((group) => group.blockedReason?.isNotEmpty == true)
           .toList();
+      final labels = partLabels(keys);
+      String nameOf(MaterialAggregateOrderGroupPreview group) =>
+          '${group.goodsName}${labels[group.clientGroupKey] ?? ''}';
       if (blocked.isNotEmpty) {
         // A dependency round is complete only when every admitted group was
         // committed. Dropping a blocked parent would falsely unlock its
         // descendants and lose its original quantity. Keep the entire round
         // for review/retry, and preserve the caller's single confirmation.
         owner.context.appWarning(
-          '本轮尚未下达：${blocked.take(3).map((group) => '${group.goodsName}：${group.blockedReason}').join('；')}。'
+          '本轮尚未下达：${blocked.take(3).map((group) => '${nameOf(group)}：${group.blockedReason}').join('；')}。'
           '输入和选择已保留，请修正后继续。',
         );
         _preview = null;
@@ -901,7 +1180,7 @@ final class _MaterialAggregateTableController {
                   child: Text(
                     [
                       for (final group in preview.groups) ...[
-                        '${group.goodsName}：本次 ${owner._qty(group.requestedQty)} ${group.unitName}',
+                        '${nameOf(group)}：本次 ${owner._qty(group.requestedQty)} ${group.unitName}',
                         if (group.existingBatchId != null)
                           '追加原单，原下单量 ${owner._qty(group.priorOutputQty)}；下层只办理本次净增量。',
                         '来源分配 ${owner._qty(group.sources.fold<double>(0.0, (sum, source) => sum + source.allocatedQty))}，公共备货 ${owner._qty(group.publicExtraQty)}',
@@ -963,7 +1242,8 @@ final class _MaterialAggregateTableController {
 
       owner._mutateAggregateTable(() {
         for (final input in request.groups) {
-          final draft = drafts.remove(input.clientGroupKey);
+          // 分成几张工单的草稿随第一张一起清掉，其余几张在这里取到 null。
+          final draft = drafts.remove(draftKeyOf(input.clientGroupKey));
           if (draft == null) continue;
           for (final entry in draft.paths.entries) {
             _draftByLine.remove(entry.key);
@@ -1111,10 +1391,13 @@ final class _MaterialAggregateTableController {
           } else {
             owner._tableWorkerDraft[key] = state.worker!;
           }
-          owner
-                  ._overproductionPercentController(materialLineId: entry.key)
-                  .text =
-              state.rate;
+          // 快照时仍是系统预填的比例回到当前预填值(草稿期间可能已按新默认刷新)，
+          // 不把旧默认当成人填的放回去。
+          owner._prefilledOverproductionRates.restore(
+            owner._overproductionPercentController(materialLineId: entry.key),
+            state.rate,
+            explicit: state.rateExplicit,
+          );
         }
       }
       drafts.clear();
@@ -1278,48 +1561,64 @@ final class _MaterialAggregateTableController {
     });
   }
 
+  /// 各来源行的本次比例输入格(与主表同一批控制器)。
+  List<TextEditingController> rateControllers(
+    Iterable<_MaterialGroup> groups,
+  ) => [
+    for (final group in groups)
+      owner._overproductionPercentController(
+        materialLineId: group.representative.materialLineId,
+      ),
+  ];
+
+  /// 各来源的本次比例按数值比较('10' 与 '10.0' 是同一个比例)。一致时返回代表
+  /// 文本——有人改过的格子优先，照抄它不会把人定的比例降回系统默认；不一致或
+  /// 含无效输入时返回 null(各格文本完全相同时照原样返回)。
+  String? uniformRateText(Iterable<_MaterialGroup> groups) {
+    final controllers = rateControllers(groups);
+    if (controllers.isEmpty) return null;
+    final texts = {for (final controller in controllers) controller.text};
+    if (texts.length == 1) return texts.single;
+    final rates = texts.map(parseProductionOverproductionPercent).toSet();
+    if (rates.length != 1 || rates.single == null) return null;
+    return (controllers
+                .where(owner._prefilledOverproductionRates.isExplicit)
+                .firstOrNull ??
+            controllers.first)
+        .text;
+  }
+
   String rateText(_MaterialAggregate aggregate) {
     if (drafts[aggregate.key]?.mixedRate == true) return '多个比例';
     final groups = workshopGroups(aggregate);
     if (groups.isEmpty) return '—';
-    final rates = groups
-        .map(
-          (group) => owner
-              ._overproductionPercentController(
-                materialLineId: group.representative.materialLineId,
-              )
-              .text,
-        )
-        .toSet();
-    return rates.length == 1 ? '${rates.single}%' : '多个比例';
+    final uniform = uniformRateText(groups);
+    return uniform == null ? '多个比例' : '$uniform%';
   }
 
   Widget rateCell(_MaterialAggregate aggregate) {
     final groups = workshopGroups(aggregate);
     if (groups.isEmpty) return const Text('—');
-    final rates = groups
-        .map(
-          (group) => owner
-              ._overproductionPercentController(
-                materialLineId: group.representative.materialLineId,
-              )
-              .text,
-        )
-        .toSet();
+    final uniform = uniformRateText(groups);
     final initial = drafts[aggregate.key]?.mixedRate == true
         ? ''
-        : rates.length == 1
-        ? rates.single
-        : '';
+        : uniform ?? '';
     final controller = rateEditors.putIfAbsent(
       aggregate.key,
       () => TextEditingController(text: initial),
     );
-    if (!drafts.containsKey(aggregate.key) && controller.text != initial) {
+    // 各来源仍是系统预填的默认比例时汇总格跟着来源走：新快照会刷新来源的预填值，
+    // 提交也按来源送空值，汇总格若停在旧默认，看到的就不是服务端要填的比例。
+    // 有人改过(汇总格的输入会写进每个来源)就不再动它。
+    final sourcesPrefilled = !rateControllers(
+      groups,
+    ).any(owner._prefilledOverproductionRates.isExplicit);
+    if ((!drafts.containsKey(aggregate.key) || sourcesPrefilled) &&
+        controller.text != initial) {
       controller.text = initial;
     }
     return Tooltip(
-      message: rates.length == 1 ? '本次汇总生产统一使用此比例' : '各来源比例不同，请明确填写本次汇总比例',
+      message: uniform != null ? '本次汇总生产统一使用此比例' : '各来源比例不同，请明确填写本次汇总比例',
       child: ProductionOverproductionRateField(
         key: ValueKey('material-aggregate-rate-${aggregate.key}'),
         controller: controller,
@@ -1424,7 +1723,7 @@ final class _MaterialAggregateTableController {
                     !ownsLine(group.representative.materialLineId) ||
                     isProductFlow(group.representative.materialLineId)) &&
                 // 2026-09-25 确认路线退役：复选框只服务「下单」，不再有
-                // 「选行去确认路线」语义（进页自动确认 + 直改即存接管）。
+                // 「选行去确认路线」语义(服务端建分析时自动确认 + 直改即存接管)。
                 selectableForOrder(group),
           )
           .toList(growable: false);
@@ -1605,12 +1904,63 @@ final class _MaterialAggregatePathSnapshot {
     required this.workshop,
     required this.worker,
     required this.rate,
+    required this.rateExplicit,
   });
   final String groupKey, orderText, appendText, rate;
+
+  /// 快照时比例是人定的(不再是系统预填值)。
+  final bool rateExplicit;
   final String? orderSeed, appendSeed;
   final double? typedQty;
   final bool selected, autoSelected, deselected;
   final ({String? id, String? name})? workshop, worker;
   bool get hasExplicitQty =>
       typedQty != null || orderText != orderSeed || appendText != appendSeed;
+}
+
+/// 一条来源「怎么做」的参数(ADR-120 §8)：参数相同的来源并成一张工单。
+final class _MaterialAggregateMakeParams {
+  const _MaterialAggregateMakeParams({
+    required this.workshop,
+    required this.worker,
+    required this.rateText,
+    required this.rateExplicit,
+  });
+  final ({String? id, String? name}) workshop, worker;
+  final String rateText;
+
+  /// 这格比例是人定的吗：没人改过的系统预填值提交时送空值(ADR-129 §2.10)。
+  final bool rateExplicit;
+
+  /// 按数值解析的超产比例；填得不合法时为 null。
+  double? get rate => _MaterialAggregateTableController._rateValue(rateText);
+
+  /// 拆单键：车间 + 负责人 + 比例(数值，六位小数与服务端比例精度一致)。
+  String get key =>
+      '${workshop.id ?? ''}|${worker.id ?? ''}|${rate?.toStringAsFixed(6) ?? ''}';
+
+  String get label {
+    final value = rate;
+    final percent = value == null
+        ? rateText
+        : productionOverproductionPercentText(value);
+    return '${workshop.name ?? '待指派车间'} / ${worker.name ?? '待指派负责人'}'
+        ' / 超产 $percent%';
+  }
+}
+
+/// 一个汇总草稿拆出的一张工单：一组「怎么做」参数相同的来源。
+/// 非车间通道(采购 / 直接委外)不拆，[params] 为 null。
+final class _MaterialAggregatePart {
+  _MaterialAggregatePart(this.params);
+  _MaterialAggregateMakeParams? params;
+  final lineIds = <String>[];
+  final groups = <_MaterialGroup>[];
+
+  /// 这张工单的超产比例是人定的吗(任一来源改过即算，见 [partsOf])。
+  bool get rateExplicit => params?.rateExplicit ?? false;
+
+  /// 本张工单的提交键，由 [_MaterialAggregateTableController.partsOf] 填。
+  String clientGroupKey = '';
+  String get label => params?.label ?? '';
 }

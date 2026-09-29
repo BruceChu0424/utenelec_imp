@@ -4,8 +4,14 @@ const materialAggregateMaxGroups = 500;
 const materialAggregateMaxSources = 10000;
 
 /// Packs whole independent material intents into one request, preserving order.
-/// A material group is never split into separate physical orders.
-List<String> materialAggregateRequestWindow(Map<String, int> sourcesByGroup) {
+/// A material draft always stays inside one request. When its sources differ in
+/// workshop, worker or overproduction rate it is sent as several request groups
+/// (ADR-120 §8); [requestGroupsByKey] carries that count so the window never
+/// exceeds the server's group limit. Missing entries count as one group.
+List<String> materialAggregateRequestWindow(
+  Map<String, int> sourcesByGroup, {
+  Map<String, int> requestGroupsByKey = const {},
+}) {
   for (final entry in sourcesByGroup.entries) {
     if (entry.value < 1 || entry.value > materialAggregateMaxSources) {
       throw ArgumentError.value(
@@ -17,13 +23,16 @@ List<String> materialAggregateRequestWindow(Map<String, int> sourcesByGroup) {
   }
   final result = <String>[];
   var sources = 0;
+  var groups = 0;
   for (final entry in sourcesByGroup.entries) {
-    if (result.length == materialAggregateMaxGroups ||
+    final weight = requestGroupsByKey[entry.key] ?? 1;
+    if (groups + weight > materialAggregateMaxGroups ||
         sources + entry.value > materialAggregateMaxSources) {
       break;
     }
     result.add(entry.key);
     sources += entry.value;
+    groups += weight;
   }
   return result;
 }

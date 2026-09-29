@@ -88,8 +88,21 @@ public class StockDocumentItem extends SoftDeletableEntity {
     @Column(name = "amount_local", precision = 18, scale = 4)
     private BigDecimal amountLocal;
 
+    /** 本行实称重量(千克); 生产关联单据行不写(每轮实称只在流水上, ADR-135)。 */
     @Column(name = "weight", precision = 18, scale = 4)
     private BigDecimal weight;
+
+    /** 数量是否按称重计数推算; 为真时本行不进单重学习。 */
+    @Column(name = "qty_from_weight", nullable = false)
+    private boolean qtyFromWeight;
+
+    /** 盘点实盘重量(千克, 仅 CHECK); 审核时记盘点定重。 */
+    @Column(name = "count_weight", precision = 18, scale = 4)
+    private BigDecimal countWeight;
+
+    /** 盘点保存时的账面重量快照(千克, 仅 CHECK, 只用于显示)。 */
+    @Column(name = "book_weight", precision = 18, scale = 4)
+    private BigDecimal bookWeight;
 
     @Column(name = "gift_qty", precision = 18, scale = 4)
     private BigDecimal giftQty = BigDecimal.ZERO;

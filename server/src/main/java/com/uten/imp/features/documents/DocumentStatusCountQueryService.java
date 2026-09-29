@@ -27,7 +27,8 @@ import java.util.regex.Pattern;
  * 一条 SQL 用 {@code COUNT(*) FILTER} 按桶聚合, 与列表同一对象级读范围; 无该类型
  * {@code *:view} 权限时各桶固定 0 且不发 SQL.
  *
- * <p>分桶: 通用单据 DRAFT / APPROVED / REVERSED; 采购/委外订货单另有 PENDING_FINANCE /
+ * <p>分桶: 通用单据 DRAFT / APPROVED / REVERSED; 销售报价(ADR-134)另有 PENDING_FINANCE(待财务核价) /
+ * FINANCE_REJECTED(财务退回); 采购/委外订货单另有 PENDING_FINANCE /
  * FINANCE_REJECTED(最新一条审批 case 的状态); 委外订货另有 EXECUTING(已审且未结案),
  * 保留 APPROVED 的已审总数; 销售出货按六个真实阶段
  * (DRAFT / PENDING_FINANCE / FINANCE_REJECTED / FINANCE_APPROVED=财务已放行待出库 / SHIPPED / REVERSED,
@@ -72,8 +73,9 @@ public class DocumentStatusCountQueryService {
             Map.entry("stockTransfer", DocumentDraftCountQueryService.STOCK_TRANSFER),
             Map.entry("stockCheck", DocumentDraftCountQueryService.STOCK_CHECK));
 
-    /** 带「财务已退回」桶的三类单据(hub 卡徽章 = 草稿 + 财务已退回). */
-    static final List<String> FINANCE_REJECTED_KINDS = List.of("salesShipment", "purchaseOrder", "subcontractOrder");
+    /** 带「财务已退回」桶的四类单据(hub 卡徽章 = 草稿 + 财务已退回; 报价 ADR-134 起由财务核价). */
+    static final List<String> FINANCE_REJECTED_KINDS =
+            List.of("salesShipment", "salesQuote", "purchaseOrder", "subcontractOrder");
 
     /** 仓库单据 doc_type / 出货 shipment_kind 过滤值: 只接受大写字母与下划线, 且以绑定参数下发. */
     private static final Pattern CODE = Pattern.compile("[A-Z_]{1,32}");
@@ -93,6 +95,13 @@ public class DocumentStatusCountQueryService {
                     new Bucket(FINANCE_REJECTED, "o.status = 0 AND o.shipment_kind <> 'LEGACY' AND o.finance_rejected = true"),
                     new Bucket(FINANCE_APPROVED, "o.status = 0 AND o.shipment_kind <> 'LEGACY' AND o.rejected = false AND o.finance_audit = 1"),
                     new Bucket(SHIPPED, "o.status = 1"),
+                    new Bucket(REVERSED, "o.status = -1"));
+            // ADR-134 报价核价: 0 草稿(退回原因空) / 0 + 退回原因 = 财务已退回 / 2 待财务核价 / 1 已核价 / -1 作废.
+            case "salesQuote" -> List.of(
+                    new Bucket(DRAFT, draft),
+                    new Bucket(PENDING_FINANCE, "o.status = 2"),
+                    new Bucket(FINANCE_REJECTED, "o.status = 0 AND o.finance_return_reason IS NOT NULL"),
+                    new Bucket(APPROVED, "o.status = 1"),
                     new Bucket(REVERSED, "o.status = -1"));
             case "purchaseOrder", "subcontractOrder" -> {
                 String latest = DocumentDraftCountQueryService.latestApprovalCaseStatusSql(
@@ -173,7 +182,7 @@ public class DocumentStatusCountQueryService {
         return result;
     }
 
-    /** 三类单据各自的「财务已退回」张数, 一次往返; 无权限的键固定 0. 供 hub 卡徽章与销售待办累加. */
+    /** 各类单据的「财务已退回」张数, 一次往返; 无权限的键固定 0. 供 hub 卡徽章与销售待办累加. */
     @Transactional(readOnly = true)
     public Map<String, Long> financeRejectedCounts() {
         AuthUser user = currentUser.get().orElse(null);

@@ -20,6 +20,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/widgets/warehouse_hierarchy_dropdown.dart';
+import 'outbound_weight_fakes.dart';
 
 const _permissions = {
   Perm.subcontractOutboundView,
@@ -63,6 +64,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          fakeWeightRepositoryOverride(),
           apiClientProvider.overrideWithValue(api),
           masterNameServiceProvider.overrideWithValue(_Names(api)),
           currentPermissionsProvider.overrideWithValue(_permissions),
@@ -146,6 +148,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          fakeWeightRepositoryOverride(),
           apiClientProvider.overrideWithValue(api),
           masterNameServiceProvider.overrideWithValue(_Names(api)),
           currentPermissionsProvider.overrideWithValue(_permissions),
@@ -193,6 +196,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          fakeWeightRepositoryOverride(),
           apiClientProvider.overrideWithValue(api),
           masterNameServiceProvider.overrideWithValue(_Names(api)),
           currentPermissionsProvider.overrideWith(
@@ -312,6 +316,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          fakeWeightRepositoryOverride(),
           apiClientProvider.overrideWithValue(api),
           masterNameServiceProvider.overrideWithValue(_Names(api)),
           currentPermissionsProvider.overrideWithValue(_permissions),

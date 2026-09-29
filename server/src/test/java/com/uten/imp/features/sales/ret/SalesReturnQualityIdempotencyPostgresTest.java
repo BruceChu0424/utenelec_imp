@@ -212,7 +212,7 @@ class SalesReturnQualityIdempotencyPostgresTest {
             BigDecimal quantity = invocation.getArgument(3, BigDecimal.class);
             BigDecimal amount = invocation.getArgument(4, BigDecimal.class);
             OffsetDateTime movementAt = invocation.getArgument(
-                    6, OffsetDateTime.class);
+                    7, OffsetDateTime.class);
             entityManager.createNativeQuery("""
                             INSERT INTO stock_balances (
                                 id, warehouse_id, goods_id, color_id, qty,
@@ -240,7 +240,8 @@ class SalesReturnQualityIdempotencyPostgresTest {
                     .executeUpdate();
             return null;
         }).when(balanceRepository).upsertBalance(
-                any(), any(), any(), any(), any(), any(), any());
+                any(), any(), any(), any(), any(), any(),
+                org.mockito.ArgumentMatchers.anyBoolean(), any());
 
         // DIR_OUT（良品释放撤回）会读本仓余额：让 mock 仓库读真实 stock_balances。
         when(balanceRepository.readPhysicalSnapshot(
@@ -264,6 +265,7 @@ class SalesReturnQualityIdempotencyPostgresTest {
                     return java.util.List.of(new StockBalanceRepository.PhysicalSnapshot(){
                         public BigDecimal getQty(){return rows.getFirst();}
                         public BigDecimal getWeight(){return null;}
+                        public Boolean getWeightEstimated(){return false;}
                     });
                 });
 
@@ -282,7 +284,12 @@ class SalesReturnQualityIdempotencyPostgresTest {
                             UUID.randomUUID(),invocation.getArgument(0),UUID.randomUUID(),UUID.randomUUID(),
                             request.qty().multiply(FIXTURE_UNIT_BOOK_COST),com.uten.imp.application.port.InventoryValuationPort.State.PENDING,false);
                 }), org.mockito.Mockito.mock(com.uten.imp.features.stock.GoodsOwningWarehouseSyncService.class),
-                new StaticListableBeanFactory().getBeanProvider(SubcontractOutboundWakePort.class));
+                new StaticListableBeanFactory().getBeanProvider(SubcontractOutboundWakePort.class),
+                // ADR-135: 本测试只验证处置幂等, 重量账按余额快照口径(不读上下文、不写调整行)。
+                new StaticListableBeanFactory().getBeanProvider(
+                        com.uten.imp.features.stock.weight.StockWeightContextReader.class),
+                new StaticListableBeanFactory().getBeanProvider(
+                        com.uten.imp.features.stock.weight.StockWeightAdjustmentRepository.class));
         stockService = spy(realStockService);
         doAnswer(invocation -> {
             StockService.MovementRequest request =

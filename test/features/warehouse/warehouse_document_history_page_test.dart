@@ -130,6 +130,12 @@ void main() {
     final keys = {for (final column in table.columns) column.key};
     expect(keys, containsAll(<String>{'goodsCode', 'goodsName', 'quantity'}));
     expect(keys.any(_commercialKey), isFalse);
+    // 重量 (千克) 紧跟数量, 按显示单位带单位显示 (ADR-135), 不再是裸数字。
+    final order = [for (final column in table.columns) column.key];
+    expect(order.indexOf('weight'), order.indexOf('quantity') + 1);
+    final weightColumn = table.columns.firstWhere((c) => c.key == 'weight');
+    expect(weightColumn.type, 'weight');
+    expect(weightColumn.value(_detail.items.single), '25.5 kg');
     expect(tester.takeException(), isNull);
   });
 }

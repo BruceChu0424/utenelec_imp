@@ -172,4 +172,8 @@ public class SalesOrder extends SoftDeletableEntity {
 
     @Column(name = "finance_rejected_at")
     private OffsetDateTime financeRejectedAt;
+
+    /** ADR-134 客户文件上单价的币种代码(如 USD), 供阅读明细的文件单价; 订单本身的币种仍是 currency_id。 */
+    @Column(name = "client_file_currency")
+    private String clientFileCurrency;
 }

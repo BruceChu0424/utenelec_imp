@@ -3,17 +3,13 @@ package com.uten.imp.features.stock;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.stock.dto.BalanceRow;
 import com.uten.imp.features.stock.dto.InstantInventoryRow;
-import com.uten.imp.features.stock.dto.MovementRow;
 import lombok.RequiredArgsConstructor;
-import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.format.annotation.DateTimeFormat.ISO;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -22,7 +18,8 @@ import java.util.UUID;
  * 库存查询 API（库存管理，stock:view）：
  *
  * - GET /api/stock/balances?warehouseId=&goodsId=&page=&size= → 当前余额分页
- * - GET /api/stock/movements?warehouseId=&goodsId=&movementType=&dateFrom=&dateTo=&page=&size= → 出入库流水分页
+ *
+ * <p>货品出入库流水见 ledger.StockLedgerController(GET /api/stock/goods/{goodsId}/ledger)。
  */
 @RestController
 @RequestMapping("/api/stock")
@@ -41,21 +38,6 @@ public class StockQueryController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.balances(warehouseId, goodsId, page, size, sort, order);
-    }
-
-    @GetMapping("/movements")
-    @PreAuthorize("hasAuthority('stock:view')")
-    public PageResponse<MovementRow> movements(
-            @RequestParam(required = false) UUID warehouseId,
-            @RequestParam(required = false) UUID goodsId,
-            @RequestParam(required = false) Short movementType,
-            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE_TIME) OffsetDateTime dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE_TIME) OffsetDateTime dateTo,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
-        return service.movements(warehouseId, goodsId, movementType, dateFrom, dateTo, page, size, sort, order);
     }
 
     /**

@@ -131,6 +131,20 @@
             <version>5.5.1</version>
         </dependency>
 
+        <!-- 客户文件识别(ADR-134): 只读 PDF 文字层(不渲染、不执行脚本); 读取有页数/内存/时长上限,
+             见 common/files/document/PdfTextReader。commons-logging 由 spring-jcl 提供, 排除重复实现。 -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.8</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
         <!-- 登录限流 -->
         <dependency>
             <groupId>com.bucket4j</groupId>

@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false",
-        "uten.reporting.materialized-view-refresh.enabled=false","uten.policy-intelligence.enabled=false",
+        "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=false",
         "uten.inventory.value-work-initial-delay-ms=3600000",
         // 量的是生产配置: 关掉测试默认打开的嵌套足迹诊断(ADR-107)。
@@ -226,7 +226,7 @@ class ProcurementInspectionBatchEndToEndTest {
                 SELECT id, warehouse_id, goods_id, color_id, unit_id, unit_rate,
                        received_base_qty, received_amount_local,
                        passed_base_qty, failed_base_qty, status, receipt_type,
-                       received_weight, received_weight_unit_id,
+                       received_weight,
                        pre_stocked_warehouse_id, pre_stocked_place
                 FROM procurement_inspection_items
                 WHERE receipt_type = ? AND receipt_id = ?

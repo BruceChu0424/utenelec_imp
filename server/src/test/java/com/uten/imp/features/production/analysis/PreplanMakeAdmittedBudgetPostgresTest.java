@@ -27,7 +27,8 @@ class PreplanMakeAdmittedBudgetPostgresTest {
             CREATE TABLE production_material_analysis_items(id uuid PRIMARY KEY,analysis_id uuid,
               parent_analysis_material_id uuid,source_type text,requested_qty numeric,is_deleted boolean DEFAULT false);
             CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY,analysis_id uuid,
-              required_qty numeric,active boolean DEFAULT true);
+              required_qty numeric,active boolean DEFAULT true,
+              design_bom_qty numeric,actual_bom_qty numeric,usage_basis text NOT NULL DEFAULT 'DESIGN',usage_reason text,usage_sample_count bigint,usage_defect_rate numeric);
             CREATE TABLE preplan_reallocation_make_supplements(child_analysis_item_id uuid,
               source_analysis_material_id uuid,qty numeric);
             """);

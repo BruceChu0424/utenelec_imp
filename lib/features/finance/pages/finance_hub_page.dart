@@ -1,6 +1,8 @@
 // 钱流管理入口页（hub）—— 四个分组：
 //  ① 任务中心：业务审核中心（销售订单确认/订单修改/出货/订货/超量到货/IQC 退回
 //     六个队列在页内分段办理，2026-09-18 由 6 张卡合并为 1 张卡）
+//     报价核价(ADR-134)：销售报价由财务定价格和折扣，确认后销售才能转订货单；
+//     单独一张卡(不是审核放行而是改价，页面与认领口径不同)，红徽章 = 待核价张数
 //  ② 新建单据：销售收款/采购付款/一般费用/其它收入/银行存取款
 //  ③ 设置与台账：报销设置/支票管理/资产
 //  ④ 钱流报表：应收应付台账/对账单/流水账
@@ -119,6 +121,7 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
     bool canOpen(String location) =>
         hubCardAllowed(RouteName.finance, location, permissions, superAdmin);
     final canOpenAuditCenter = canOpen(RouteName.financeAudits);
+    final canOpenQuoteReview = canOpen(RouteName.financeQuoteReview);
     final canHandleExpense = canOpen('/expense/approval');
     List<_Entry> visible(List<_Entry> entries) => entries
         .where((entry) => canOpen(entry.location))
@@ -146,7 +149,9 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
                     : UtenSpacing.s40,
               ),
               children: [
-                if (canOpenAuditCenter || canHandleExpense) ...[
+                if (canOpenAuditCenter ||
+                    canOpenQuoteReview ||
+                    canHandleExpense) ...[
                   _section(context, theme, l10n.hubSectionTaskCenter, [
                     // 2026-09-18 合并：原 6 张审核队列卡（销售订单财务确认/销售订单
                     // 修改/出货财务审核/订货审批/超量到货审批/IQC 不合格退回与贷项）
@@ -163,6 +168,17 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
                           BadgeEntry.financeAuditCenter,
                         ),
                         badge: FinanceAuditCenterBadge(),
+                      ),
+                    // 报价核价(ADR-134)：红徽章 = 等财务定价确认的报价。
+                    if (canOpenQuoteReview)
+                      _Entry(
+                        icon: Icons.price_check_outlined,
+                        label: l10n.quoteFinanceHubTitle,
+                        description: l10n.quoteFinanceHubSubtitle,
+                        location: RouteName.financeQuoteReview,
+                        badgeScope: const BadgeScope.entry(
+                          BadgeEntry.financeQuoteReview,
+                        ),
                       ),
                     if (canHandleExpense)
                       _Entry(
@@ -307,6 +323,13 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
                       label: l10n.financeHubReportGl,
                       description: l10n.financeHubReportGlSub,
                       location: RouteName.financeReportGl,
+                    ),
+                    // ADR-131 车间内料仓用量与结算 (塑料用量附表的数据来源)。
+                    _Entry(
+                      icon: Icons.scale_outlined,
+                      label: l10n.workshopMaterialReports,
+                      description: l10n.workshopMaterialReportsHubDesc,
+                      location: RouteName.workshopMaterialReports,
                     ),
                   ]),
                 ),

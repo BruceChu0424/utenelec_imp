@@ -19,16 +19,14 @@ import '../../employee/repositories/employee_repository.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_flow_stage.dart';
 import '../providers/production_department_provider.dart';
+import '../repositories/production_overproduction_rate_repository.dart';
 import '../repositories/production_repository.dart';
 import 'production_flow_stage_cell.dart';
-import 'production_overproduction_rate_field.dart';
 
 String _segmentRateText(ProductionExecutionSegmentView segment) =>
     !segment.overproductionPolicyApplies
     ? '固定追加量'
-    : segment.allowedOverproductionRate == null
-    ? '—'
-    : '${productionOverproductionPercentText(segment.allowedOverproductionRate!)}%';
+    : productionRateText(segment.allowedOverproductionRate);
 
 /// Confirmed execution segments and their operational state.
 ///

@@ -225,12 +225,14 @@ class BusinessDataResetServicePostgresTest {
         // V703 +1(车间催计划 production_planning_urges, ADR-117)：311→312。
         // V710/V711 +4: discovery requests/lines and per-family learning samples/queue.
         // V712/V715 retain source rights in four more business fact tables.
+        // V742 +3(AI 识别任务、AI 调用技术记录、报价核价修订记录, ADR-133/ADR-134)。
         assertThat(result.clearedTableCount()).isEqualTo(Math.toIntExact(
                 expectedPolicy.values().stream().filter("CLEAR"::equals).count()));
         // V617 preserves expense settings; V624/V626/V627 preserve original import-source evidence.
         // V686 保留总账附表行绑定(ADR-112) +1, V677 删除角色体系四张 PRESERVE 表(ADR-109) -4: 102→99。
         // V693 保留仓库负责人(ADR-115) +1: 99→100。
         // V711 preserves both learned master profiles and cumulative material totals.
+        // V741 删除政策情报表 -1, V742 保留 AI 服务商配置/客户货品对照/客户文件版式 +3: 102→104。
         assertThat(result.preservedTableCount()).isEqualTo(Math.toIntExact(
                 expectedPolicy.values().stream().filter("PRESERVE"::equals).count()));
         // cleared_rows 只统计 CLEAR 表：2 条 outbox、1 条库存余额、1 条待核历史价值池。

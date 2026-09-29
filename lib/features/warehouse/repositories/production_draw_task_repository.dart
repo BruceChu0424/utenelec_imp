@@ -28,10 +28,14 @@ class ProductionDrawTaskRepository {
   static const int batchIssueLimit = 50;
 
   /// Configure known-material requests and issue all selected DRAWs atomically.
+  ///
+  /// [weights] = 现有领料单逐行本次重量 [{itemId, weightKg, qtyFromWeight}] (只含称了的行);
+  /// 材料申请行的重量在 discoveries[].weights (按 货品+颜色+实际发料仓 对到新建明细)。
   Future<WarehouseDrawBatchIssueResult> issueDiscoveryBatch({
     required String idempotencyKey,
     required List<String> docIds,
     required List<Map<String, dynamic>> discoveries,
+    List<Map<String, dynamic>> weights = const [],
     String? reason,
   }) async {
     final result = await api.post(
@@ -40,6 +44,7 @@ class ProductionDrawTaskRepository {
         'idempotencyKey': idempotencyKey,
         'docIds': docIds,
         'discoveries': discoveries,
+        if (weights.isNotEmpty) 'weights': weights,
         if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
       },
     );
@@ -50,10 +55,12 @@ class ProductionDrawTaskRepository {
 
   /// 批量全额出库（2026-09-09；2026-09-10 修订）：选中多张领料单按剩余量逐单出库，
   /// 草稿单在服务端走「审核并出库」（需同时持 stock_doc:approve），任一单失败整批回滚；
-  /// [reason] 为统一备注（选填，≤200 字），随每张单追加到单据备注。
+  /// [reason] 为统一备注(选填，≤200 字)，随每张单追加到单据备注；
+  /// [weights] = 逐行本次重量 [{itemId, weightKg, qtyFromWeight}] (只含称了的行, ADR-135 §3.6)。
   Future<WarehouseDrawBatchIssueResult> issueFullBatch({
     required String idempotencyKey,
     required List<String> docIds,
+    List<Map<String, dynamic>> weights = const [],
     String? reason,
   }) async {
     final result = await api.post(
@@ -61,6 +68,7 @@ class ProductionDrawTaskRepository {
       body: {
         'idempotencyKey': idempotencyKey,
         'docIds': docIds,
+        if (weights.isNotEmpty) 'weights': weights,
         if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
       },
     );

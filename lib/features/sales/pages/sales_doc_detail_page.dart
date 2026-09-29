@@ -12,6 +12,11 @@
 // UtenCollapsingHeaderScrollView——上滑先折叠头部（表头卡/预收汇总/出货卡/附件/退货质检），
 // 「明细 (N)」标题顶到页面顶部后再滚明细表内部；合计条常驻表格下方。
 //
+// 2026-09-27 报价财务核价(ADR-134)：报价不再「销售自审」。状态 草稿 → 待财务核价 →
+// 已核价(可转订货单) / 财务退回(带原因回草稿) / 作废；报价的按钮(编辑/删除/提交财务核价/
+// 撤回/重新修改/转订货单/作废/去核价)只按服务端下发的 allowedActions 显隐，本页不再
+// 本地拼报价权限；顶部状态横幅 + 核价记录时间线让销售看清卡在哪一步。
+//
 // 2026-09-12 职责分离改版：出货财务审核从本页退役——财务在专用审核页
 // /finance/sales-shipment-audits/:id 办理（认领/放行/退回）；本页对出货单改为
 // 顶部状态横幅（正在等待财务审核/财务已放行/财务已退回）+ 销售自己的操作
@@ -25,7 +30,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
@@ -36,13 +43,16 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/currency_display.dart';
+import '../../../shared/ai/ai_tone.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/measurement/measurement_totals.dart';
@@ -59,6 +69,7 @@ import '../models/sales_return_quality.dart';
 import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
 import '../widgets/sales_return_quality_card.dart';
+import '../widgets/sales_quote_status_chip.dart';
 import '../widgets/sales_status_badge.dart';
 import '../widgets/sales_plan_progress_panel.dart';
 import '../../../shared/badges/badge_registry.dart';
@@ -133,12 +144,12 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       (_detail?.canReject ?? false) &&
       _hasPermission(Perm.salesShipmentReject);
 
-  /// 报价转换同时需要来源转换权和目标订货新增权。
-  bool get _canConvert =>
-      widget.docType == SalesDocType.quote &&
-      _objectWritable &&
-      _hasPermission(Perm.salesQuoteConvert) &&
-      _hasPermission(Perm.salesOrderCreate);
+  bool get _isQuote => widget.docType == SalesDocType.quote;
+
+  /// 报价的可执行动作(ADR-134)：服务端按权限码 + 负责人范围 + 状态 + 是否已转单
+  /// 一次算好(转订货单同时要求 sales_quote:convert 与 sales_order:create)。
+  bool _quoteAllows(SalesQuoteAction action) =>
+      _isQuote && (_detail?.quoteWorkflow.allows(action) ?? false);
 
   bool get _canChangeQty =>
       _objectWritable && _hasPermission(Perm.salesOrderChangeQty);
@@ -265,54 +276,159 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     setState(() => _returnQualitySnapshot = null);
   }
 
-  /// 报价转订货：已审报价一键生成订货草稿（行带入+价格留痕），转后跳订货编辑页。
+  /// 报价转订货：财务已核价的报价一键生成订货草稿(单价与财务核定折扣锁定带入，
+  /// ADR-134)，转后跳订货编辑页补交货信息。
   Future<void> _convertToOrder() async {
-    if (_busy) {
-      context.appInfo('正在处理，请稍候…');
-      return;
-    }
-    final c = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('转订货单'),
-        content: const Text(
-          '将按报价行生成订货草稿：货品、数量和报价单价带入，其中单价锁定不可修改，'
-          '折扣可在订货草稿中调整。确认转入？',
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('转入'),
-          ),
-        ],
-      ),
+    if (_busy) return;
+    final l10n = AppLocalizations.of(context);
+    final ok = await UtenDialog.show(
+      context,
+      title: l10n.salesQuoteStatusActionConvert,
+      content: Text(l10n.salesQuoteStatusConvertConfirmBody),
+      confirmLabel: l10n.salesQuoteStatusActionConvert,
+      cancelLabel: l10n.salesQuoteStatusCancel,
     );
-    if (c != true) return;
+    if (ok != true || !mounted) return;
     setState(() => _busy = true);
     try {
       final order = await ref
           .read(salesRepositoryProvider(SalesDocType.quote))
           .convertToOrder(widget.id);
       if (!mounted) return;
-      context.appSuccess('已生成订货草稿 ${order.billNo ?? ''}');
+      context.appSuccess(l10n.salesQuoteStatusConvertDone(order.billNo ?? ''));
       // 跨单据类型：转单生成的是订货草稿，bump 订货列表 key（非本报价 key），
-      // 用户后续进入订货列表/取消编辑后返回订货列表都能看到这张新草稿。
+      // 用户后续进入订货列表/取消编辑后返回订货列表都能看到这张新草稿；
+      // 本报价「待转订货单」红数随之消失。
       bumpListRefresh(ref, SalesDocConfig.by(SalesDocType.order).refreshKey);
+      bumpListRefresh(ref, _cfg.refreshKey);
+      refreshBadges(ref);
+      setState(() => _busy = false);
+      // 跑批遮罩先撤下再跳页(遮罩盖住后推路由的坑)。
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
       context.push(
         SalesRoutePath.docEdit(SalesDocType.order.pathSegment, order.id),
       );
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted) context.appApiError(e);
     } catch (_) {
-      if (mounted) context.appError('转入失败，请稍后重试');
+      if (mounted) context.appError(l10n.salesQuoteStatusActionFailed);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && _busy) setState(() => _busy = false);
     }
+  }
+
+  /// 报价流转(提交财务核价 / 撤回 / 重新修改 / 作废 / 删除)：确认弹窗 → 遮罩 → 调用 →
+  /// 成功后刷新徽章与列表并重读详情。所有报价写操作都带页面看到的 reviewRevision。
+  Future<void> _runQuoteAction({
+    required String title,
+    required String confirmBody,
+    required String confirmLabel,
+    required Future<void> Function(SalesRepository repo, int revision) call,
+    required String success,
+    bool danger = false,
+    bool leaveAfter = false,
+  }) async {
+    final detail = _detail;
+    if (_busy || detail == null) return;
+    final l10n = AppLocalizations.of(context);
+    final ok = await UtenDialog.show(
+      context,
+      title: title,
+      content: Text(confirmBody),
+      confirmLabel: confirmLabel,
+      cancelLabel: l10n.salesQuoteStatusCancel,
+      danger: danger,
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await call(
+        ref.read(salesRepositoryProvider(SalesDocType.quote)),
+        detail.quoteWorkflow.reviewRevision,
+      );
+      if (!mounted) return;
+      context.appSuccess(success);
+      bumpListRefresh(ref, _cfg.refreshKey);
+      refreshBadges(ref);
+      if (leaveAfter) {
+        setState(() => _busy = false);
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
+        backTo(
+          context,
+          defaultPath: SalesRoutePath.list(_cfg.type.pathSegment),
+        );
+        return;
+      }
+      await _load();
+    } on ApiException catch (e) {
+      if (mounted) context.appApiError(e);
+      // 版本/状态冲突时重读，让用户看到最新状态再决定。
+      if (mounted) await _load();
+    } catch (_) {
+      if (mounted) context.appError(l10n.salesQuoteStatusActionFailed);
+    } finally {
+      if (mounted && _busy) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _submitQuote() {
+    final l10n = AppLocalizations.of(context);
+    return _runQuoteAction(
+      title: l10n.salesQuoteStatusActionSubmit,
+      confirmBody: l10n.salesQuoteStatusSubmitConfirmBody,
+      confirmLabel: l10n.salesQuoteStatusActionSubmit,
+      call: (repo, revision) => repo.submitQuote(widget.id, revision),
+      success: l10n.salesQuoteStatusSubmitted,
+    );
+  }
+
+  Future<void> _withdrawQuote() {
+    final l10n = AppLocalizations.of(context);
+    return _runQuoteAction(
+      title: l10n.salesQuoteStatusActionWithdraw,
+      confirmBody: l10n.salesQuoteStatusWithdrawConfirmBody,
+      confirmLabel: l10n.salesQuoteStatusActionWithdraw,
+      call: (repo, revision) => repo.withdrawQuote(widget.id, revision),
+      success: l10n.salesQuoteStatusWithdrawn,
+    );
+  }
+
+  Future<void> _reopenQuote() {
+    final l10n = AppLocalizations.of(context);
+    return _runQuoteAction(
+      title: l10n.salesQuoteStatusActionReopen,
+      confirmBody: l10n.salesQuoteStatusReopenConfirmBody,
+      confirmLabel: l10n.salesQuoteStatusActionReopen,
+      call: (repo, revision) => repo.reopenQuote(widget.id, revision),
+      success: l10n.salesQuoteStatusReopened,
+    );
+  }
+
+  Future<void> _reverseQuote() {
+    final l10n = AppLocalizations.of(context);
+    return _runQuoteAction(
+      title: l10n.salesQuoteStatusActionReverse,
+      confirmBody: l10n.salesQuoteStatusReverseConfirmBody,
+      confirmLabel: l10n.salesQuoteStatusActionReverse,
+      call: (repo, _) => repo.reverse(widget.id),
+      success: l10n.salesQuoteStatusReversedDone,
+      danger: true,
+    );
+  }
+
+  Future<void> _deleteQuote() {
+    final l10n = AppLocalizations.of(context);
+    return _runQuoteAction(
+      title: l10n.salesQuoteStatusActionDelete,
+      confirmBody: l10n.salesQuoteStatusDeleteConfirmBody,
+      confirmLabel: l10n.salesQuoteStatusActionDelete,
+      call: (repo, _) => repo.delete(widget.id),
+      success: l10n.salesQuoteStatusDeleted,
+      danger: true,
+      leaveAfter: true,
+    );
   }
 
   Future<void> _load() async {
@@ -905,6 +1021,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                               _shipmentFinanceStatusStrip(theme),
                               const SizedBox(height: UtenSpacing.s12),
                             ],
+                            // 报价财务核价横幅(ADR-134)：一句话说清现在卡在哪、下一步谁做。
+                            if (_isQuote) ...[
+                              _quoteStatusStrip(theme),
+                              const SizedBox(height: UtenSpacing.s12),
+                            ],
                             // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
                             // SelectionArea（准则 §3.4），无需再单独包。
                             _headerCard(theme, names),
@@ -962,6 +1083,16 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                                 readOnlyNote: BusinessAttachmentSection
                                     .kReviewReadOnlyAttachmentNote,
                                 categories: const ['合同', '客户确认', '图片', '其他'],
+                              ),
+                            ],
+                            if (_isQuote &&
+                                _detail!
+                                    .quoteWorkflow
+                                    .revisions
+                                    .isNotEmpty) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              SalesQuoteRevisionTimeline(
+                                revisions: _detail!.quoteWorkflow.revisions,
                               ),
                             ],
                             if (_cfg.type == SalesDocType.returnDoc &&
@@ -1081,8 +1212,91 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     );
   }
 
+  /// 报价财务核价横幅(ADR-134)：草稿 / 待财务核价 / 财务退回(原因) / 已核价 /
+  /// 已转订货单 / 作废，颜色 + 图标 + 一句话下一步。
+  Widget _quoteStatusStrip(ThemeData theme) {
+    final l10n = AppLocalizations.of(context);
+    final d = _detail!;
+    final wf = d.quoteWorkflow;
+    final stage = salesQuoteDetailStage(d);
+    final converted = wf.isConverted;
+    // 横幅与右侧状态徽章同一语义色(适老化基线: 黄=在财务手上、红=退回要本人改、
+    // 绿=已核价、灰=草稿/作废); 底色和边框取语义主色, 文字取深浅主题各自够对比度的一档。
+    final (Color accent, Color color, String text) = switch (stage) {
+      SalesQuoteStage.financeRejected => (
+        UtenColors.error,
+        AiTone.error(theme),
+        l10n.salesQuoteStatusBannerReturned(
+          wf.financeReturnReason ?? l10n.salesQuoteStatusReturned,
+        ),
+      ),
+      SalesQuoteStage.pendingFinance => (
+        UtenColors.warning,
+        AiTone.warning(theme),
+        l10n.salesQuoteStatusBannerPending,
+      ),
+      SalesQuoteStage.approved when converted => (
+        UtenColors.success,
+        AiTone.success(theme),
+        l10n.salesQuoteStatusBannerConverted(wf.convertedOrderNo ?? ''),
+      ),
+      SalesQuoteStage.approved => (
+        UtenColors.success,
+        AiTone.success(theme),
+        l10n.salesQuoteStatusBannerConfirmed(
+          wf.financeConfirmedByName ??
+              d.financeConfirmedByName ??
+              l10n.salesQuoteStatusFinanceFallback,
+          utenFmtIsoTime(wf.financeConfirmedAt ?? d.financeConfirmedAt),
+        ),
+      ),
+      SalesQuoteStage.reversed => (
+        theme.colorScheme.outline,
+        theme.colorScheme.onSurfaceVariant,
+        l10n.salesQuoteStatusBannerReversed,
+      ),
+      _ => (
+        theme.colorScheme.outline,
+        theme.colorScheme.onSurfaceVariant,
+        l10n.salesQuoteStatusBannerDraft,
+      ),
+    };
+    return Container(
+      key: const Key('sales-quote-status-strip'),
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.10),
+        borderRadius: UtenRadius.lgAll,
+        border: Border.all(color: accent.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        children: [
+          Icon(salesQuoteStageIcon(stage), color: color),
+          const SizedBox(width: UtenSpacing.s12),
+          Expanded(
+            child: Text(
+              text,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: UtenSpacing.s8),
+          SalesQuoteStatusChip(stage: stage, converted: converted),
+        ],
+      ),
+    );
+  }
+
   Widget _headerCard(ThemeData theme, SalesMasterNameService names) {
     final d = _detail!;
+    // 报价核价字段与订单「来源报价」徽章走 arb；其它单据不取本地化实例。
+    final l10n = _isQuote || d.sourceQuoteId != null
+        ? AppLocalizations.of(context)
+        : null;
+    final quoteWf = d.quoteWorkflow;
+    final quoteStage = _isQuote ? salesQuoteDetailStage(d) : null;
     final resolvedCurrency = names.currency(d.currencyId);
     final orderCurrency = resolvedCurrency == '—' ? '订单币种' : resolvedCurrency;
     final rows = <_KV>[
@@ -1148,7 +1362,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           !d.stopped &&
           _orderCancelBlockReason != null)
         _KV('取消限制', _orderCancelBlockReason),
-      if (_cfg.hasContractInfo && d.contractNo != null)
+      // 合同号: 报价/订货都有(报价没有签约地等合同信息, ADR-134)。
+      if (_cfg.hasContractNo && (d.contractNo?.isNotEmpty ?? false))
         _KV('合同号', d.contractNo),
       if (_cfg.hasContractInfo && (d.linkPhone?.isNotEmpty ?? false))
         _KV('联系电话', d.linkPhone),
@@ -1198,13 +1413,66 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       _KV(
         '状态',
         null,
-        badge: SalesStatusBadge(
-          status: d.status,
-          closed: d.closed,
-          stopped: d.stopped,
-          arPosted: d.arPosted,
-        ),
+        badge: _isQuote
+            ? SalesQuoteStatusChip(
+                stage: quoteStage,
+                converted: quoteWf.isConverted,
+              )
+            : SalesStatusBadge(
+                status: d.status,
+                closed: d.closed,
+                stopped: d.stopped,
+                arPosted: d.arPosted,
+              ),
       ),
+      // 报价财务核价字段(ADR-134)。
+      if (l10n != null &&
+          quoteStage == SalesQuoteStage.financeRejected &&
+          quoteWf.financeReturnReason != null)
+        _KV(
+          l10n.salesQuoteStatusFieldReturnReason,
+          '${quoteWf.financeReturnReason}'
+          '${quoteWf.financeReturnedByName == null ? '' : '(${quoteWf.financeReturnedByName} · ${utenFmtIsoTime(quoteWf.financeReturnedAt)})'}',
+          highlight: true,
+        ),
+      if (l10n != null && quoteWf.submittedAt != null)
+        _KV(
+          l10n.salesQuoteStatusFieldSubmittedAt,
+          utenFmtIsoTime(quoteWf.submittedAt),
+        ),
+      if (l10n != null &&
+          quoteStage == SalesQuoteStage.approved &&
+          (quoteWf.financeConfirmedByName ?? d.financeConfirmedByName) != null)
+        _KV(
+          l10n.salesQuoteStatusFieldConfirmedBy,
+          '${quoteWf.financeConfirmedByName ?? d.financeConfirmedByName}'
+          ' · ${utenFmtIsoTime(quoteWf.financeConfirmedAt ?? d.financeConfirmedAt)}',
+        ),
+      if (l10n != null && quoteWf.financeRemark != null)
+        _KV(l10n.salesQuoteStatusFieldFinanceRemark, quoteWf.financeRemark),
+      if (l10n != null && _isQuote && quoteWf.isConverted)
+        _KV(
+          l10n.salesQuoteStatusFieldConvertedOrder,
+          null,
+          badge: GestureDetector(
+            key: const Key('sales-quote-converted-order-link'),
+            onTap: quoteWf.convertedOrderId == null
+                ? null
+                : () => context.push(
+                    SalesRoutePath.docDetail(
+                      SalesDocType.order.pathSegment,
+                      quoteWf.convertedOrderId!,
+                    ),
+                  ),
+            child: Text(
+              quoteWf.convertedOrderNo ?? l10n.salesQuoteStatusActionViewOrder,
+              style: TextStyle(
+                color: theme.colorScheme.primary,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        ),
       if (d.rejected) _KV('驳回原因', d.rejectReason ?? '仓库备货异常'),
       if (_returnQualityReversalBlockReason != null)
         _KV('退货红冲限制', _returnQualityReversalBlockReason),
@@ -1248,24 +1516,41 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           (d.warehouseExceptionReason?.isNotEmpty ?? false))
         _KV('仓库异常', d.warehouseExceptionReason),
       // 报价转入回链（SOP §三1）：来源报价可点跳报价详情，行级报价单价见明细
+      // 报价自 ADR-134 起须财务核价确认后才能转单：来源报价即「报价已核价」，
+      // 单价与折扣由财务核定(订货编辑页锁定显示)。
       if (_cfg.type == SalesDocType.order && d.sourceQuoteId != null)
         _KV(
-          '来源报价',
+          l10n?.salesQuoteStatusSourceQuote ?? '来源报价',
           null,
-          badge: GestureDetector(
-            onTap: () => context.push(
-              SalesRoutePath.docDetail(
-                SalesDocType.quote.pathSegment,
-                d.sourceQuoteId!,
+          badge: Wrap(
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              GestureDetector(
+                onTap: () => context.push(
+                  SalesRoutePath.docDetail(
+                    SalesDocType.quote.pathSegment,
+                    d.sourceQuoteId!,
+                  ),
+                ),
+                child: Text(
+                  d.sourceDocNo ?? '查看报价',
+                  style: TextStyle(
+                    color: theme.colorScheme.primary,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
               ),
-            ),
-            child: Text(
-              d.sourceDocNo ?? '查看报价',
-              style: TextStyle(
-                color: theme.colorScheme.primary,
-                decoration: TextDecoration.underline,
-              ),
-            ),
+              if (l10n != null)
+                UtenStatusBadge(
+                  key: const Key('sales-order-source-quote-confirmed'),
+                  label: l10n.salesQuoteStatusSourceQuoteConfirmed,
+                  type: UtenStatusBadgeType.success,
+                  icon: Icons.verified_rounded,
+                  size: UtenStatusBadgeSize.small,
+                ),
+            ],
           ),
         ),
     ];
@@ -1428,8 +1713,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   Widget _itemsCard(ThemeData theme, SalesMasterNameService names) {
     final items = _detail!.items;
     final isOrder = _cfg.type == SalesDocType.order;
-    // 出货单后端同样下发 priceMasked（无 sales_order:price:view 时商业字段置 null）。
-    final masked = _detail!.priceMasked && (isOrder || _cfg.type.isShipment);
+    // 报价自 ADR-134 起与订货同口径：标价 × 折扣，金额由服务端算(ADR-112)。
+    final pricedLikeOrder = isOrder || _isQuote;
+    // 出货单/报价后端同样下发 priceMasked(无价格查看权时商业字段置 null)。
+    final masked =
+        _detail!.priceMasked && (pricedLikeOrder || _cfg.type.isShipment);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1507,7 +1795,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                       : p;
                 },
               ),
-              if (isOrder)
+              if (pricedLikeOrder)
                 MasterColumnDef(
                   key: 'discount',
                   label: '折扣',
@@ -1525,7 +1813,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                 type: 'money',
                 value: (it) => masked
                     ? '***'
-                    : (isOrder
+                    : (pricedLikeOrder
                               ? it.amountOriginal
                               : (it.qty ?? 0) * (it.price ?? 0))
                           ?.toStringAsFixed(2),
@@ -1665,7 +1953,119 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     );
   }
 
+  /// 报价的右下悬浮操作组(ADR-134)：只按服务端 allowedActions 显隐；危险动作红色，
+  /// 主推动作(提交财务核价 / 转订货单)放最右。
+  Widget _quoteActions() {
+    final l10n = AppLocalizations.of(context);
+    final wf = _detail!.quoteWorkflow;
+    final children = <Widget>[
+      if (_quoteAllows(SalesQuoteAction.delete))
+        UtenButton(
+          key: const ValueKey('sales-quote-delete'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          icon: Icons.delete_outline,
+          onPressed: _deleteQuote,
+          child: Text(l10n.salesQuoteStatusActionDelete),
+        ),
+      if (_quoteAllows(SalesQuoteAction.reverse))
+        UtenButton(
+          key: const ValueKey('sales-quote-reverse'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          icon: Icons.block_rounded,
+          onPressed: _reverseQuote,
+          child: Text(l10n.salesQuoteStatusActionReverse),
+        ),
+      if (_quoteAllows(SalesQuoteAction.edit))
+        UtenButton(
+          key: const ValueKey('sales-doc-edit'),
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
+          icon: Icons.edit_outlined,
+          onPressed: () => context.push(
+            SalesRoutePath.docEdit(_cfg.type.pathSegment, widget.id),
+          ),
+          child: Text(l10n.salesQuoteStatusActionEdit),
+        ),
+      if (_quoteAllows(SalesQuoteAction.withdraw))
+        UtenButton(
+          key: const ValueKey('sales-quote-withdraw'),
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
+          icon: Icons.undo_rounded,
+          onPressed: _withdrawQuote,
+          child: Text(l10n.salesQuoteStatusActionWithdraw),
+        ),
+      if (_quoteAllows(SalesQuoteAction.reopen))
+        UtenButton(
+          key: const ValueKey('sales-quote-reopen'),
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
+          icon: Icons.edit_note_rounded,
+          onPressed: _reopenQuote,
+          child: Text(l10n.salesQuoteStatusActionReopen),
+        ),
+      if (_quoteAllows(SalesQuoteAction.financeReview))
+        UtenButton(
+          key: const ValueKey('sales-quote-finance-review'),
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
+          icon: Icons.price_check_rounded,
+          onPressed: () =>
+              context.push(RoutePath.financeQuoteReview(widget.id)),
+          child: Text(l10n.salesQuoteStatusActionFinanceReview),
+        ),
+      if (wf.convertedOrderId != null)
+        UtenButton(
+          key: const ValueKey('sales-quote-view-order'),
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
+          icon: Icons.open_in_new_rounded,
+          onPressed: () => context.push(
+            SalesRoutePath.docDetail(
+              SalesDocType.order.pathSegment,
+              wf.convertedOrderId!,
+            ),
+          ),
+          child: Text(l10n.salesQuoteStatusActionViewOrder),
+        ),
+      if (_quoteAllows(SalesQuoteAction.submit))
+        UtenButton(
+          key: const ValueKey('sales-quote-submit'),
+          size: UtenButtonSize.large,
+          icon: Icons.send_outlined,
+          onPressed: _submitQuote,
+          child: Text(l10n.salesQuoteStatusActionSubmit),
+        ),
+      if (_quoteAllows(SalesQuoteAction.convert))
+        UtenButton(
+          key: const ValueKey('sales-quote-convert'),
+          size: UtenButtonSize.large,
+          icon: Icons.transform_outlined,
+          onPressed: _convertToOrder,
+          child: Text(l10n.salesQuoteStatusActionConvert),
+        ),
+    ];
+    if (children.isEmpty) {
+      children.add(
+        UtenButton(
+          key: const ValueKey('sales-quote-back'),
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
+          onPressed: () => backTo(
+            context,
+            defaultPath: SalesRoutePath.list(_cfg.type.pathSegment),
+          ),
+          child: Text(l10n.salesQuoteStatusActionBack),
+        ),
+      );
+    }
+    return UtenFloatingActionGroup(children: children);
+  }
+
   Widget _actions(ThemeData theme) {
+    if (_isQuote) return _quoteActions();
     final s = _detail!.status;
     final rejected = _detail!.rejected;
     final children = <Widget>[];
@@ -1811,19 +2211,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         ),
       );
     } else if (s == kSalesStatusApproved) {
-      // 报价转订货（SOP §三1）：已审报价一键生成订货草稿
-      if (_cfg.type == SalesDocType.quote && _canConvert) {
-        children
-          ..add(
-            UtenButton(
-              size: UtenButtonSize.large,
-              icon: Icons.transform_outlined,
-              onPressed: _convertToOrder,
-              child: const Text('转订货单'),
-            ),
-          )
-          ..add(const SizedBox(width: UtenSpacing.s8));
-      }
+      // 报价的转订货单等动作见 [_quoteActions](ADR-134)。
       if (_cfg.type == SalesDocType.order && !_detail!.stopped) {
         if (!_detail!.closed && _canEdit) {
           children

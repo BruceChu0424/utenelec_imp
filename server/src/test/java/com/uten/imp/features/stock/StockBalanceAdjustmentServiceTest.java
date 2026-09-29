@@ -41,6 +41,10 @@ class StockBalanceAdjustmentServiceTest {
     private StockDocService stockDocService;
     @Mock
     private TxSessionVars tx;
+    @Mock
+    private com.uten.imp.application.concurrency.FulfillmentMutationLocks mutationLocks;
+    @Mock
+    private com.uten.imp.application.port.ProductionMutationFootprintPort footprints;
 
     @Test
     void createsAndApprovesTraceableCheckDocument() {
@@ -71,7 +75,7 @@ class StockBalanceAdjustmentServiceTest {
 
         StockBalanceAdjustmentService service =
                 new StockBalanceAdjustmentService(
-                        balanceRepo, stockService, stockDocService, tx);
+                        balanceRepo, stockService, stockDocService, tx, mutationLocks, footprints);
         StockBalanceAdjustmentResult result =
                 service.adjust(request(warehouseId, goodsId, colorId, "10", "7", "周期抽盘发现少件"));
 
@@ -92,6 +96,10 @@ class StockBalanceAdjustmentServiceTest {
         assertEquals(new BigDecimal("-3"), result.deltaQty());
         assertEquals("库存主管", result.adjustedByName());
         assertEquals(adjustedAt, result.adjustedAt());
+        var lockOrder = org.mockito.Mockito.inOrder(mutationLocks, stockService, stockDocService);
+        lockOrder.verify(mutationLocks).acquire(any());
+        lockOrder.verify(stockService).lockInventory(any());
+        lockOrder.verify(stockDocService).approve(documentId);
     }
 
     @Test
@@ -106,7 +114,7 @@ class StockBalanceAdjustmentServiceTest {
 
         StockBalanceAdjustmentService service =
                 new StockBalanceAdjustmentService(
-                        balanceRepo, stockService, stockDocService, tx);
+                        balanceRepo, stockService, stockDocService, tx, mutationLocks, footprints);
         ApiException error = assertThrows(
                 ApiException.class,
                 () -> service.adjust(request(
@@ -123,7 +131,7 @@ class StockBalanceAdjustmentServiceTest {
         UUID goodsId = UUID.randomUUID();
         StockBalanceAdjustmentService service =
                 new StockBalanceAdjustmentService(
-                        balanceRepo, stockService, stockDocService, tx);
+                        balanceRepo, stockService, stockDocService, tx, mutationLocks, footprints);
 
         ApiException negative = assertThrows(
                 ApiException.class,
@@ -171,7 +179,7 @@ class StockBalanceAdjustmentServiceTest {
 
         StockBalanceAdjustmentService service =
                 new StockBalanceAdjustmentService(
-                        balanceRepo, stockService, stockDocService, tx);
+                        balanceRepo, stockService, stockDocService, tx, mutationLocks, footprints);
         StockBalanceAdjustmentResult result =
                 service.adjust(request(
                         warehouseId, goodsId, null, "10", "7", "周期抽盘发现少件"));
@@ -183,6 +191,91 @@ class StockBalanceAdjustmentServiceTest {
                 .createAuthorizedBalanceAdjustment(any(), anyString());
         verify(stockDocService, never()).approve(any());
         verifyNoInteractions(balanceRepo);
+    }
+
+    @Test
+    void weightOnlyAdjustmentKeepsQuantityAndCarriesTargetWeightAsCountWeight() {
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        StockBalance balance = balance(warehouseId, goodsId, null, "10");
+        balance.setWeight(new BigDecimal("5.0000"));
+        when(balanceRepo.findByWarehouseIdAndGoodsIdAndColorId(warehouseId, goodsId, null))
+                .thenReturn(Optional.of(balance));
+        StockDocDetail draft = org.mockito.Mockito.mock(StockDocDetail.class);
+        StockDocDetail approved = org.mockito.Mockito.mock(StockDocDetail.class);
+        when(draft.getId()).thenReturn(documentId);
+        when(approved.getId()).thenReturn(documentId);
+        when(stockDocService.findAuthorizedBalanceAdjustment(anyString())).thenReturn(Optional.empty());
+        when(stockDocService.createAuthorizedBalanceAdjustment(any(), anyString())).thenReturn(draft);
+        when(stockDocService.approve(documentId)).thenReturn(approved);
+
+        StockBalanceAdjustmentRequest request = request(warehouseId, goodsId, null, "10", "10", "称重核对");
+        request.setTargetWeightKg(new BigDecimal("5.25"));
+        StockBalanceAdjustmentResult result =
+                new StockBalanceAdjustmentService(balanceRepo, stockService, stockDocService, tx, mutationLocks, footprints).adjust(request);
+
+        ArgumentCaptor<StockDocSaveRequest> captor = ArgumentCaptor.forClass(StockDocSaveRequest.class);
+        verify(stockDocService).createAuthorizedBalanceAdjustment(captor.capture(), eq("balance-adjust-test-key"));
+        var line = captor.getValue().getItems().getFirst();
+        assertEquals(0, new BigDecimal("10").compareTo(line.getCountQty()));
+        assertEquals(new BigDecimal("5.2500"), line.getCountWeight());
+        assertEquals(0, BigDecimal.ZERO.compareTo(result.deltaQty()));
+        assertEquals(new BigDecimal("5.2500"), result.afterWeightKg());
+    }
+
+    @Test
+    void unchangedQuantityAndWeightOrWeightWithoutStockIsRejected() {
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        StockBalance balance = balance(warehouseId, goodsId, null, "10");
+        balance.setWeight(new BigDecimal("5.0000"));
+        when(balanceRepo.findByWarehouseIdAndGoodsIdAndColorId(warehouseId, goodsId, null))
+                .thenReturn(Optional.of(balance));
+        when(stockDocService.findAuthorizedBalanceAdjustment(anyString())).thenReturn(Optional.empty());
+        StockBalanceAdjustmentService service =
+                new StockBalanceAdjustmentService(balanceRepo, stockService, stockDocService, tx, mutationLocks, footprints);
+
+        StockBalanceAdjustmentRequest same = request(warehouseId, goodsId, null, "10", "10", "称重核对");
+        same.setTargetWeightKg(new BigDecimal("5"));
+        ApiException unchanged = assertThrows(ApiException.class, () -> service.adjust(same));
+        assertEquals(ErrorCode.VALIDATION_FAILED, unchanged.getCode());
+        assertTrue(unchanged.getMessage().contains("重量"));
+
+        StockBalanceAdjustmentRequest emptied = request(warehouseId, goodsId, null, "10", "0", "报废清空");
+        emptied.setTargetWeightKg(new BigDecimal("1"));
+        ApiException withoutStock = assertThrows(ApiException.class, () -> service.adjust(emptied));
+        assertEquals(ErrorCode.VALIDATION_FAILED, withoutStock.getCode());
+        verify(stockDocService, never()).createAuthorizedBalanceAdjustment(any(), anyString());
+    }
+
+    @Test
+    void replayComparesTheTargetWeight() {
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        StockDocItemDto item = org.mockito.Mockito.mock(StockDocItemDto.class);
+        when(item.getGoodsId()).thenReturn(goodsId);
+        when(item.getQty()).thenReturn(new BigDecimal("10"));
+        when(item.getCountQty()).thenReturn(new BigDecimal("10"));
+        when(item.getCountWeight()).thenReturn(new BigDecimal("5.2500"));
+        StockDocDetail existing = org.mockito.Mockito.mock(StockDocDetail.class);
+        when(existing.getWarehouseId()).thenReturn(warehouseId);
+        when(existing.getRemark()).thenReturn("[授权余额调整] 称重核对");
+        when(existing.getItems()).thenReturn(java.util.List.of(item));
+        when(stockDocService.findAuthorizedBalanceAdjustment("balance-adjust-test-key"))
+                .thenReturn(Optional.of(existing));
+        StockBalanceAdjustmentService service =
+                new StockBalanceAdjustmentService(balanceRepo, stockService, stockDocService, tx, mutationLocks, footprints);
+
+        StockBalanceAdjustmentRequest replay = request(warehouseId, goodsId, null, "10", "10", "称重核对");
+        replay.setTargetWeightKg(new BigDecimal("5.25"));
+        assertEquals(new BigDecimal("5.2500"), service.adjust(replay).afterWeightKg());
+
+        StockBalanceAdjustmentRequest different = request(warehouseId, goodsId, null, "10", "10", "称重核对");
+        different.setTargetWeightKg(new BigDecimal("6"));
+        ApiException conflict = assertThrows(ApiException.class, () -> service.adjust(different));
+        assertEquals(ErrorCode.CONFLICT, conflict.getCode());
+        verify(stockDocService, never()).approve(any());
     }
 
     private static StockBalanceAdjustmentRequest request(

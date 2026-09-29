@@ -44,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false", "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.production.readiness-reconcile.enabled=false",
-        "uten.policy-intelligence.enabled=false", "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",
+        "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",
         "uten.storage.malware-scan.provider=test-only", "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789", "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test", "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
@@ -85,14 +85,22 @@ class WorkshopSupplyAdversarialEndToEndTest {
         assertFalse(direct.candidates(c.childSegment(),c.child(),null).candidates().stream()
                 .anyMatch(candidate->candidate.executionSegmentId().equals(unrelated[1])),
                 "同车间同SKU不能替代真实父子责任关系");
-        String candidateSql=(String)org.springframework.test.util.ReflectionTestUtils.getField(direct,"CANDIDATE_SQL");
+        // V736/ADR-127：候选只读库里唯一的判定，同SKU无父子关系的任务被点名为「不是由本工单供应」。
+        String candidateSql=(String)org.springframework.test.util.ReflectionTestUtils.getField(direct,"TARGETS_SQL");
         var plan=new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(db).queryForList(
                 "EXPLAIN (ANALYZE,BUFFERS) "+candidateSql,
                 new org.springframework.jdbc.core.namedparam.MapSqlParameterSource("segmentId",c.childSegment())
                         .addValue("goodsId",c.child()).addValue("colorId",null),String.class);
-        System.out.println("V615_CANDIDATE_PREFILTER_EXPLAIN\n"+String.join("\n",plan));
-        assertTrue(plan.stream().anyMatch(line->line.contains("CTE candidate_scope")));
-        assertThrows(ApiException.class,()->transferTo(c,unrelated[2],"10"));
+        System.out.println("V736_CANDIDATE_TARGETS_EXPLAIN\n"+String.join("\n",plan));
+        // 表函数被内联进计划：先按同货品/父子范围收窄(CTE scope)，再逐条判原因。
+        assertTrue(plan.stream().anyMatch(line->line.contains("CTE scope")),String.join("\n",plan));
+        var verdict=db.queryForMap("SELECT eligible,receiver_open,reason_code FROM fn_workshop_direct_targets(?,?)",
+                c.childSegment(),unrelated[2]);
+        assertEquals(false,verdict.get("eligible"));
+        assertEquals(false,verdict.get("receiver_open"));
+        assertEquals("NO_PARENT_RELATION",verdict.get("reason_code"));
+        var refused=assertThrows(ApiException.class,()->transferTo(c,unrelated[2],"10"));
+        assertTrue(refused.getMessage().startsWith("无法转到下一道工序："),refused.getMessage());
     }
 
     @Test
@@ -449,9 +457,11 @@ class WorkshopSupplyAdversarialEndToEndTest {
         var direct=beans.getBean(com.uten.imp.features.production.directtransfer.ProductionWorkshopDirectTransferService.class);
         var candidate=direct.candidates(otherSegment,c.child(),null).candidates().stream().filter(row->row.demandId().equals(target[2])).findFirst().orElseThrow();
         qty("10",candidate.remainingQty());
-        // V707 起超额直送不再当场硬拒(转入超产申请/审批口径), 原边界断言退役;
-        // 仍锁定共享责任主线: 许可内 15 正常直送, 随后原段共享额度耗尽归零。
-        transferTo(other,target[2],"15");
+        // V736/ADR-127：超过本来源共享额度的直送保存时就说清楚(不再悄悄拆成送仓)；
+        // 工人把能收的 10 分给上层工单、其余 5 送入仓库，随后原段共享额度耗尽归零。
+        var over=assertThrows(com.uten.imp.common.web.ApiException.class,()->transferTo(other,target[2],"15"));
+        assertTrue(over.getMessage().contains("超过最多可送 10"),over.getMessage());
+        reportTo(other,target[2],"15","10");
         qty("0",db.queryForObject("SELECT fn_workshop_direct_remaining_for_source(?,?)",BigDecimal.class,c.childSegment(),target[2]));
     }
 
@@ -606,12 +616,17 @@ class WorkshopSupplyAdversarialEndToEndTest {
         item.setExecutionSegmentSalesAllocationId(db.queryForObject("SELECT id FROM execution_segment_sales_allocations WHERE execution_segment_id=?",UUID.class,c.segment()));
         item.setSalesOrderItemId(db.queryForObject("SELECT sales_order_item_id FROM execution_segment_sales_allocations WHERE execution_segment_id=?",UUID.class,c.segment()));
         item.setGoodsId(c.parent());item.setUnitId(c.world().unitId());item.setUnitRate(BigDecimal.ONE);item.setQty(new BigDecimal(quantity));
-        item.setIsFinal(true);item.setDestination("WAREHOUSE");report.setItems(List.of(item));
+        item.setIsFinal(true);report.setItems(List.of(item));
         report.setMaterialLines(WorkshopMaterialFlowTestSupport.materialUse(db,c.segment(),item.getQty()));
         UUID reportId=reports.create(report).getId();reports.approve(reportId, DailyReportApproveRequests.freshKey());return reportId;
     }
 
     private UUID reportTo(Case c,UUID demand,String quantity) {
+        return reportTo(c,demand,quantity,quantity);
+    }
+
+    /** 一行报工：分给上层工单 direct，其余送入仓库。 */
+    private UUID reportTo(Case c,UUID demand,String quantity,String direct) {
         fixture.loginAs(c.workerUser());
         var report=new DailyReportSaveRequest();report.setIdempotencyKey("adv-report-"+UUID.randomUUID());
         report.setBillDate(BusinessTime.today());report.setWarehouseId(c.leaf());report.setDepartmentId(c.workshop());report.setWorkerIds(List.of(c.worker()));
@@ -620,7 +635,14 @@ class WorkshopSupplyAdversarialEndToEndTest {
         item.setGoodsId(c.child());item.setUnitId(c.world().unitId());item.setUnitRate(BigDecimal.ONE);item.setQty(new BigDecimal(quantity));
         var allocations=db.queryForList("SELECT id FROM execution_segment_sales_allocations WHERE execution_segment_id=?",UUID.class,c.childSegment());
         if(allocations.size()==1)item.setExecutionSegmentSalesAllocationId(allocations.getFirst());
-        item.setDestination(demand==null?"WAREHOUSE":"WORKSHOP");item.setDirectTransferDemandId(demand);report.setItems(List.of(item));
+        if(demand!=null){
+            var routes=new java.util.ArrayList<com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine>();
+            routes.add(com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.direct(demand,new BigDecimal(direct)));
+            BigDecimal rest=item.getQty().subtract(new BigDecimal(direct));
+            if(rest.signum()>0)routes.add(com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.warehouse(rest));
+            item.setAllocations(routes);
+        }
+        report.setItems(List.of(item));
         report.setMaterialLines(WorkshopMaterialFlowTestSupport.materialUse(db,c.childSegment(),item.getQty()));
         UUID reportId=reports.create(report).getId();reports.approve(reportId, DailyReportApproveRequests.freshKey());return reportId;
     }
@@ -740,8 +762,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
         item.setUnitRate(BigDecimal.ONE);
         item.setQty(new BigDecimal(quantity));
         item.setIsFinal(false);
-        item.setDestination("WORKSHOP");
-        item.setDirectTransferDemandId(parentDemand(c));
+        item.setAllocations(List.of(com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.direct(parentDemand(c), item.getQty())));
         report.setItems(List.of(item));
         report.setMaterialLines(WorkshopMaterialFlowTestSupport.materialUse(db,c.childSegment(),item.getQty()));
         reports.approve(reports.create(report).getId(), DailyReportApproveRequests.freshKey());

@@ -62,6 +62,13 @@ final class MasterReferenceCatalog {
     static final String PLAN_OPEN = ORDER_OPEN + " AND NOT h.is_canceled";
     /** 过账类：审核即过账完成，只有草稿(0)算在办。 */
     static final String DRAFT_OPEN = LIVE + " AND h.status = 0";
+    /**
+     * 报价(ADR-134)：草稿(0，含财务退回)、待财务核价(2)，以及按新流程财务已确认(1, finance_confirmed_at 非空)
+     * 但还没转成订货单的都算在办(转订货单时还要按报价明细校验主档)；已转订货单、作废(-1)、
+     * 以及旧流程销售自审的历史报价(没有财务确认时间, 也永远不会再转)不算, 否则会永久挡住主档删除。
+     */
+    static final String QUOTE_OPEN = LIVE + " AND (h.status IN (0, 2) OR (h.status = 1 AND h.finance_confirmed_at IS NOT NULL"
+            + " AND NOT EXISTS (SELECT 1 FROM sales_orders qo WHERE qo.source_quote_id = h.id AND NOT qo.is_deleted)))";
     /** 出货单审核即已出库(V632 财务闸)：未审核且没作废/冲回的才算在办。 */
     static final String SHIPMENT_OPEN = DRAFT_OPEN
             + " AND COALESCE(h.warehouse_work_status, '') NOT IN ('CANCELLED', 'REVERSED')";
@@ -82,7 +89,7 @@ final class MasterReferenceCatalog {
 
     private static final Doc SALES_ORDER = new Doc("sales_orders", RefKind.SALES_ORDER, ORDER_OPEN,
             "owner_employee_id", "sales");
-    private static final Doc SALES_QUOTE = new Doc("sales_quotes", RefKind.SALES_QUOTE, DRAFT_OPEN,
+    private static final Doc SALES_QUOTE = new Doc("sales_quotes", RefKind.SALES_QUOTE, QUOTE_OPEN,
             "maker_id", "sales");
     private static final Doc SHIPMENT = new Doc("sales_shipments", RefKind.SHIPMENT, SHIPMENT_OPEN,
             "owner_employee_id", "sales");
@@ -168,14 +175,6 @@ final class MasterReferenceCatalog {
             out.add(goodsColumn(SUPPLIER, column));
         }
         out.add(goodsColumn(MOULD, "mould_id"));
-        // 货品计量采集设置里的业务单位/实重单位：随有效货品一起算。
-        for (String column : List.of("business_unit_id", "actual_weight_unit_id")) {
-            out.add(new Reference(UNIT, "measurement_capture_profiles", column, RefKind.GOODS, """
-                    SELECT m.%1$s, 'GOODS', CAST(g.id AS text), %2$s, g.owner_employee_id, 'goods'
-                    FROM measurement_capture_profiles m JOIN goods g ON g.id = m.goods_id
-                    WHERE m.%1$s %3$s AND NOT g.is_deleted
-                      AND g.id NOT IN (SELECT id FROM excluded)""".formatted(column, GOODS_LABEL, TARGETS)));
-        }
 
         // 组装清单：父件不在本批(外部引用)与在本批(内部边)分开，内部边交给不动点迭代。
         out.add(new Reference(GOODS, "goods_bom_items", "component_goods_id", RefKind.BOM_PARENT, """
@@ -198,12 +197,6 @@ final class MasterReferenceCatalog {
                        COALESCE(c.code, '') || ' ' || COALESCE(c.name, ''), CAST(NULL AS uuid), 'public'
                 FROM warehouses c
                 WHERE c.parent_id %s AND NOT c.is_deleted""".formatted(TARGETS)));
-        out.add(new Reference(UNIT, "unit_measurement_profiles", "canonical_unit_id", RefKind.UNIT_PROFILE, """
-                SELECT p.canonical_unit_id, 'UNIT_PROFILE', CAST(u.id AS text),
-                       COALESCE(u.code, '') || ' ' || COALESCE(u.name, ''), CAST(NULL AS uuid), 'public'
-                FROM unit_measurement_profiles p JOIN units u ON u.id = p.unit_id
-                WHERE p.canonical_unit_id %s AND p.unit_id <> p.canonical_unit_id AND NOT u.is_deleted"""
-                .formatted(TARGETS)));
 
         // ---- 单据明细 ----
         lines(out, SALES_ORDER, "sales_order_items", "order_id", GCU);
@@ -314,8 +307,7 @@ final class MasterReferenceCatalog {
                     .formatted(col.column(), exceptionScope, TARGETS)));
         }
         // 来料检验：还没检完。
-        for (Col col : with(GCU, new Col(WAREHOUSE, "warehouse_id"), new Col(WAREHOUSE, "pre_stocked_warehouse_id"),
-                new Col(UNIT, "received_weight_unit_id"))) {
+        for (Col col : with(GCU, new Col(WAREHOUSE, "warehouse_id"), new Col(WAREHOUSE, "pre_stocked_warehouse_id"))) {
             out.add(new Reference(col.target(), "procurement_inspection_items", col.column(), RefKind.INSPECTION, """
                     SELECT x.%1$s, 'INSPECTION', CAST(x.id AS text),
                            to_char(x.received_at, 'YYYY-MM-DD') || ' 到货的来料检验', CAST(NULL AS uuid), 'public'
@@ -554,25 +546,22 @@ final class MasterReferenceCatalog {
     private static List<Exemption> buildExemptions() {
         List<Exemption> out = new ArrayList<>();
         exempt(out, ExemptReason.HISTORY, "库存流水", "stock_movements",
-                "goods_id", "color_id", "unit_id", "actual_weight_unit_id", "warehouse_id");
-        exempt(out, ExemptReason.HISTORY, "计量采集的判定记录与证据", "measurement_capture_decision_events",
-                "goods_id");
-        exempt(out, ExemptReason.HISTORY, "计量采集的判定记录与证据", "measurement_capture_evidence",
-                "goods_id", "business_unit_id", "actual_weight_unit_id");
-        exempt(out, ExemptReason.HISTORY, "计量采集的明细快照", "measurement_capture_line_snapshots",
-                "goods_id", "business_unit_id", "actual_weight_unit_id");
-        exempt(out, ExemptReason.HISTORY, "来料检验的放行事件", "procurement_inspection_events",
-                "released_weight_unit_id");
+                "goods_id", "color_id", "unit_id", "warehouse_id");
+        // V743(ADR-135): 重量调整只追加、称重观测只记已发生的称重, 主档删除后照样能查。
+        exempt(out, ExemptReason.HISTORY, "库存重量调整流水", "stock_weight_adjustments",
+                "goods_id", "color_id", "warehouse_id");
+        exempt(out, ExemptReason.HISTORY, "称重观测记录", "goods_weight_observations",
+                "goods_id", "color_id", "supplier_id", "warehouse_id");
         exempt(out, ExemptReason.HISTORY, "来料让步审批记录", "procurement_iqc_consideration_review_approvals",
                 "supplier_id");
         exempt(out, ExemptReason.HISTORY, "检验合格后已入库的批次明细", "procurement_iqc_stock_in_batch_items",
-                "goods_id", "color_id", "warehouse_id", "weight_unit_id");
+                "goods_id", "color_id", "warehouse_id");
         exempt(out, ExemptReason.HISTORY, "成品到货登记(未检完的由成品检验覆盖)",
                 "production_finished_arrival_registrations", "warehouse_id");
         exempt(out, ExemptReason.HISTORY, "成品检验单打印记录", "production_fqc_inspection_sheets", "warehouse_id");
         exempt(out, ExemptReason.HISTORY, "退料收仓确认记录", "production_material_return_receiving_confirmations",
                 "previous_warehouse_id", "received_warehouse_id", "source_warehouse_id");
-        exempt(out, ExemptReason.HISTORY, "车间直送已过账的移库记录(线边仓里还有没有料由库存余额检查)",
+        exempt(out, ExemptReason.HISTORY, "车间直送已过账的移库记录(内料仓里还有没有料由库存余额检查)",
                 "production_workshop_direct_transfers", "line_side_warehouse_id");
         exempt(out, ExemptReason.HISTORY, "公共备货供应事件", "preplan_public_supply_events",
                 "goods_id", "color_id", "unit_id", "warehouse_id");
@@ -587,9 +576,6 @@ final class MasterReferenceCatalog {
         exempt(out, ExemptReason.HISTORY, "已审核的索赔收款", "supplier_claim_cash_receipts", "supplier_id");
         exempt(out, ExemptReason.HISTORY, "官网询盘来访线索", "website_inquiries", "client_id");
 
-        exempt(out, ExemptReason.LEGACY, "老库计量迁移异常", "legacy_measurement_exceptions",
-                "goods_id", "color_id", "warehouse_id", "actual_weight_unit_id");
-        exempt(out, ExemptReason.LEGACY, "老库计量迁移快照", "legacy_measurement_profile_snapshots", "goods_id");
         exempt(out, ExemptReason.LEGACY, "老库车间直送异常", "production_workshop_direct_legacy_anomalies",
                 "goods_id", "color_id", "warehouse_id");
         exempt(out, ExemptReason.LEGACY, "老库客户结算方式迁移问题", "client_default_settlement_migration_issues",
@@ -607,14 +593,31 @@ final class MasterReferenceCatalog {
                 "goods_id", "color_id", "warehouse_id");
         // V693(ADR-115): 负责关系是仓库自己的附属设置, 删仓库后负责人自然失效, 不算「还在用」。
         exempt(out, ExemptReason.OWN_CONFIG, "仓库负责人(仓管员)", "warehouse_keepers", "warehouse_id");
-        exempt(out, ExemptReason.OWN_CONFIG, "单位自己的换算设置", "unit_measurement_profiles", "unit_id");
+        exempt(out, ExemptReason.OWN_CONFIG, "单位自己的计量维度与重量单位设置", "unit_measurement_profiles",
+                "unit_id");
+        // V742(ADR-134): 客户货品对照与客户文件版式是客户/货品自己的学习资料，主档停用后自然不再使用。
+        exempt(out, ExemptReason.OWN_CONFIG, "客户货品对照(客户的型号/品名对应我们的货品)", "client_goods_aliases",
+                "client_id", "goods_id");
+        exempt(out, ExemptReason.OWN_CONFIG, "客户文件版式(表头对应的列)", "sales_intake_layouts", "client_id");
         exempt(out, ExemptReason.OWN_CONFIG, "货品自己的计量采集设置", "measurement_capture_profiles", "goods_id");
+        // V743(ADR-135): 称重设置与单重学习结果都挂在货品下; manual_unit_id 只是设定人工单重时
+        // 货品基本单位的快照(与当前单位不一致即作废), 不算「还在用」这个单位。
+        exempt(out, ExemptReason.OWN_CONFIG, "货品称重设置", "goods_weight_profiles",
+                "goods_id", "manual_unit_id");
+        exempt(out, ExemptReason.OWN_CONFIG, "单重学习结果", "goods_weight_estimates",
+                "goods_id", "supplier_id");
         exempt(out, ExemptReason.OWN_CONFIG, "父件自己的组装清单(删父件时同一事务软删)", "goods_bom_items",
                 "goods_id");
         exempt(out, ExemptReason.OWN_CONFIG, "BOM学习所属父件与原单位快照，停用主档后不再发布", "goods_bom_learning_profiles",
                 "goods_id", "output_unit_id");
-        exempt(out, ExemptReason.HISTORY, "累计实际耗用的历史身份；当前使用由有效BOM边覆盖", "goods_bom_learning_material_totals",
-                "component_goods_id", "color_id", "unit_id");
+        // V739(ADR-129): 真实使用数量累计按 (父件, 组件, 组件单位) 一行；父件与原单位同学习档案口径，
+        // 组件与单位是累计的历史身份(当前使用由有效BOM边覆盖)。
+        exempt(out, ExemptReason.OWN_CONFIG, "父件自己的真实使用数量累计与学习时的父件单位快照，停用主档后不再发布",
+                "goods_bom_actual_usages", "goods_id", "output_unit_id");
+        exempt(out, ExemptReason.HISTORY, "真实使用数量累计的历史身份；当前使用由有效BOM边覆盖", "goods_bom_actual_usages",
+                "component_goods_id", "unit_id");
+        exempt(out, ExemptReason.HISTORY, "BOM学习排队记录(同一事务提交前排空，不留行)",
+                "production_bom_learning_refresh_queue", "goods_id");
         exempt(out, ExemptReason.COVERED, "仓库选料冻结证据；配置同事务生成真实需求，其主档在办引用由需求覆盖", "production_material_discovery_lines",
                 "goods_id", "color_id", "unit_id", "warehouse_id");
         exempt(out, ExemptReason.HISTORY, "学习来源父件与原基础单位快照；有效BOM组件由既有目录覆盖", "goods_bom_items",

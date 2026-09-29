@@ -22,6 +22,7 @@ final class _MaterialAggregateSubmission {
 
   Set<String> _window(Set<String> keys) {
     final sources = <String, int>{};
+    final requestGroups = <String, int>{};
     for (final key in keys) {
       final draft = table.drafts[key]!;
       if (draft.lineIds.isEmpty ||
@@ -31,8 +32,13 @@ final class _MaterialAggregateSubmission {
         );
       }
       sources[key] = draft.lineIds.length;
+      // 车间 / 负责人 / 比例不同的草稿会分成几组提交(ADR-120 §8)，按组计数。
+      requestGroups[key] = table.requestGroupCount(draft);
     }
-    return materialAggregateRequestWindow(sources).toSet();
+    return materialAggregateRequestWindow(
+      sources,
+      requestGroupsByKey: requestGroups,
+    ).toSet();
   }
 
   Future<bool> submit(
@@ -107,6 +113,14 @@ final class _MaterialAggregateSubmission {
           for (final key in remaining.difference(active))
             if (table.drafts[key] case final draft?) key: _settings(draft),
         };
+        // 逐行的车间 / 负责人 / 比例也在本轮前拍下：下层来源被身份桥换到新
+        // 共享行后，靠它把各自的做法带过去，分单才不会被默认值抹平。
+        final lineParams = <String, _MaterialAggregateMakeParams>{
+          for (final key in remaining.difference(active))
+            if (table.drafts[key] case final draft?)
+              for (final source in table.draftSources(draft))
+                source.line: table.makeParams(source.group),
+        };
         final sources = [
           for (final key in active) ...table.draftGroups(table.drafts[key]!),
         ];
@@ -137,6 +151,7 @@ final class _MaterialAggregateSubmission {
                   .intersection(active)
                   .isNotEmpty,
               settings: settings[key]!,
+              lineParams: lineParams,
             );
           }
         });
@@ -206,21 +221,12 @@ final class _MaterialAggregateSubmission {
     final groups = table.draftGroups(draft);
     final workshops = groups.map(owner._tableWorkshopFor).toList();
     final workers = groups.map(owner._tableWorkerFor).toList();
-    final rates = groups
-        .map(
-          (group) => owner
-              ._overproductionPercentController(
-                materialLineId: group.representative.materialLineId,
-              )
-              .text,
-        )
-        .toSet();
     return _MaterialAggregateRebindSettings(
       workshops.isEmpty
           ? null
           : (id: workshops.first.id, name: workshops.first.name),
       workers.isEmpty ? null : (id: workers.first.id, name: workers.first.name),
-      rates.length == 1 ? rates.single : null,
+      table.uniformRateText(groups),
       workshops.map((value) => value.id).toSet().length > 1,
       workers.map((value) => value.id).toSet().length > 1,
     );
@@ -231,6 +237,7 @@ final class _MaterialAggregateSubmission {
     List<MaterialAggregateIdentityBridge> bridges, {
     required bool includeNew,
     required _MaterialAggregateRebindSettings settings,
+    Map<String, _MaterialAggregateMakeParams> lineParams = const {},
   }) {
     final indexes = owner._analysisIndexes(owner._analysis!);
     final rewrites = <String, Set<String>>{};
@@ -242,6 +249,20 @@ final class _MaterialAggregateSubmission {
     final oldSnapshots = Map<String, _MaterialAggregatePathSnapshot>.from(
       draft.paths,
     );
+    // 新共享行 ← 本草稿里经精确身份桥换过去的旧来源行。父件分成几张工单时，
+    // 各张的下层各有自己的桥，下层来源只跟着自己那座桥走，不按货品猜。
+    final bridgedFrom = <String, List<String>>{};
+    for (final bridge in bridges) {
+      final origins = [
+        for (final old in bridge.fromMaterialLineIds)
+          if (oldSnapshots.containsKey(old)) old,
+      ];
+      if (origins.isNotEmpty) {
+        bridgedFrom
+            .putIfAbsent(bridge.toMaterialLineId, () => [])
+            .addAll(origins);
+      }
+    }
     final nextIds = <String>{};
     for (final old in oldSnapshots.keys) {
       final originalGroup = indexes.groupsByLine[old];
@@ -308,7 +329,8 @@ final class _MaterialAggregateSubmission {
       );
       final explicit = original?.hasExplicitQty == true;
       final order = owner._tableOrderQtyController(group),
-          append = owner._tableAppendQtyController(group);
+          append = owner._tableAppendQtyController(group),
+          rate = owner._overproductionPercentController(materialLineId: id);
       order.text = explicit ? original!.orderText : residual;
       append.text = explicit ? original!.appendText : residual;
       owner._tableSeededQtyTexts['ORDER|${group.key}'] = explicit
@@ -334,9 +356,10 @@ final class _MaterialAggregateSubmission {
               deselected: false,
               workshop: owner._tableWorkshopDraft[group.key],
               worker: owner._tableWorkerDraft[group.key],
-              rate: owner
-                  ._overproductionPercentController(materialLineId: id)
-                  .text,
+              rate: rate.text,
+              rateExplicit: owner._prefilledOverproductionRates.isExplicit(
+                rate,
+              ),
             );
       table._draftByLine[id] = draft.key;
       owner._selectedMaterialGroupKeys.add(group.key);
@@ -349,6 +372,26 @@ final class _MaterialAggregateSubmission {
       if (settings.rate != null) {
         owner._overproductionPercentController(materialLineId: id).text =
             settings.rate!;
+      }
+      // 各来源做法不同(会分成几张工单，ADR-120 §8)时，新行继承桥上旧来源行的
+      // 车间 / 负责人 / 比例；桥上几条旧行做法不一致就无从继承，留默认值，
+      // 汇总行会照实显示分单。
+      final carried = {
+        for (final old in bridgedFrom[id] ?? const <String>[])
+          lineParams[old]?.key,
+      };
+      final params = carried.length == 1 && carried.single != null
+          ? lineParams[bridgedFrom[id]!.first]!
+          : null;
+      if (params != null) {
+        if (params.workshop.id != null) {
+          owner._tableWorkshopDraft[group.key] = params.workshop;
+        }
+        if (params.worker.id != null) {
+          owner._tableWorkerDraft[group.key] = params.worker;
+        }
+        owner._overproductionPercentController(materialLineId: id).text =
+            params.rateText;
       }
     }
     final currentSettings = _settings(draft);

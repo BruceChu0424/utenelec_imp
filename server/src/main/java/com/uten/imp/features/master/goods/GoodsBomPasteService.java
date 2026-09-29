@@ -40,6 +40,10 @@ import java.util.stream.Collectors;
  * 一条都不写并逐条说明；全部合格才动手，写入中途数据库拒绝也整体回滚。
  *
  * <p>查询按批：目标与组件一次取、现有组件一次取、成环检查按层批量下探(不逐个节点查)。
+ *
+ * <p>替换模式按组件对齐(ADR-129)：目标里已有的同一组件原地覆盖成粘贴行的内容(行 id 不变)，
+ * 粘贴清单里没有的组件才删、目标里没有的组件才新建。写入后的清单与「全删再全建」完全一样，
+ * 但内容没变的行保留审核标记，系统学习边保留系统所有权(人工删除会让学习不再自动加回该组件)。
  */
 @Service
 @RequiredArgsConstructor
@@ -63,7 +67,7 @@ public class GoodsBomPasteService {
         tx.bind();
         boolean replace = request.mode() == BomPasteRequest.Mode.REPLACE;
         if (replace) {
-            // 替换 = 删掉现有组件再写入，要同时有删除组件的权限。
+            // 替换会删掉粘贴清单外的现有组件，要同时有删除组件的权限。
             CurrentAuthorityGuard.requireAll("goods:bom:delete");
         }
         Map<UUID, List<UUID>> expected = new LinkedHashMap<>();
@@ -114,6 +118,8 @@ public class GoodsBomPasteService {
         // ---- 组件行 ----
         Set<UUID> seenComponents = new HashSet<>();
         Map<Integer, Goods> lineComponents = new LinkedHashMap<>();
+        // 期间边 (整批领料的料) 要人确认的事: 异常单重、同一产品第二种料; 没有别的问题时一次问全。
+        List<ApiError.FieldError> confirmations = new ArrayList<>();
         for (int index = 0; index < items.size(); index++) {
             BomItemSaveRequest item = items.get(index);
             Goods component = goods.get(item.getComponentGoodsId());
@@ -133,8 +139,14 @@ public class GoodsBomPasteService {
             try {
                 bom.apply(item, new GoodsBomItem(), component);
             } catch (ApiException invalid) {
-                problems.add(problem(line, invalid.getMessage()));
-                continue;
+                if (!GoodsPeriodicMaterialRules.isConfirmation(invalid)) {
+                    problems.add(problem(line, invalid.getMessage()));
+                    continue;
+                }
+                // 只是要人确认 (异常单重): 记下来, 行本身照常参与下面的检查。
+                for (ApiError.FieldError field : invalid.getFieldErrors()) {
+                    confirmations.add(new ApiError.FieldError(field.field(), line + ": " + field.message()));
+                }
             }
             lineComponents.put(index, component);
             for (Goods target : targets) {
@@ -151,12 +163,31 @@ public class GoodsBomPasteService {
             throw new ApiException(ErrorCode.CONFLICT, "粘贴没有生效：有 " + problems.size()
                     + " 处问题，现有组件没有任何改动", problems);
         }
+        confirmations.addAll(secondPeriodicConfirmations(targets, items, lineComponents, replace));
+        if (!confirmations.isEmpty()) {
+            throw GoodsPeriodicMaterialRules.confirmationRequired(confirmations);
+        }
 
         // ---- 写入(全部合格才到这里) ----
-        List<UUID> removing = replace
-                ? targets.stream().flatMap(t -> existing.getOrDefault(t.getId(), List.of()).stream())
-                        .map(Edge::itemId).toList()
-                : List.of();
+        // 替换：同一组件原地覆盖，粘贴清单里没有的组件才删。
+        Set<UUID> pastedComponents = lineComponents.values().stream().map(Goods::getId)
+                .collect(Collectors.toSet());
+        List<UUID> removing = new ArrayList<>();
+        List<UUID> keeping = new ArrayList<>();
+        if (replace) {
+            for (Goods target : targets) {
+                for (Edge edge : existing.getOrDefault(target.getId(), List.of())) {
+                    (pastedComponents.contains(edge.componentId()) ? keeping : removing).add(edge.itemId());
+                }
+            }
+        }
+        Map<UUID, Map<UUID, GoodsBomItem>> kept = new HashMap<>();
+        if (!keeping.isEmpty()) {
+            for (GoodsBomItem row : bomRepo.findAllById(keeping)) {
+                kept.computeIfAbsent(row.getGoods().getId(), ignored -> new HashMap<>())
+                        .put(row.getComponent().getId(), row);
+            }
+        }
         if (!removing.isEmpty()) {
             // 原生 UPDATE 立即执行：新行插入(提交前 flush)时部分唯一索引已看不到旧行。
             em.createNativeQuery("""
@@ -173,6 +204,7 @@ public class GoodsBomPasteService {
         List<BomPasteResult.Target> results = new ArrayList<>();
         for (Goods target : targets) {
             List<Edge> current = existing.getOrDefault(target.getId(), List.of());
+            Map<UUID, GoodsBomItem> same = kept.getOrDefault(target.getId(), Map.of());
             int sort = replace ? 0 : current.stream()
                     .mapToInt(edge -> edge.sortOrder() == null ? 0 : edge.sortOrder()).max().orElse(0);
             for (var entry : lineComponents.entrySet()) {
@@ -180,15 +212,80 @@ public class GoodsBomPasteService {
                 row.setGoods(target);
                 bom.apply(items.get(entry.getKey()), row, entry.getValue());
                 row.setSortOrder(++sort);
-                created.add(row);
+                GoodsBomItem existingRow = same.get(entry.getValue().getId());
+                if (existingRow == null) {
+                    created.add(row);
+                    continue;
+                }
+                // 与新建行同一份内容：内容变了整体覆盖(原审核结论作废)，没变只挪排序。
+                if (!existingRow.sameContentAs(row)) existingRow.takeContentFrom(row);
+                existingRow.setSortOrder(row.getSortOrder());
             }
+            // 替换模式按「原有几个组件被替换、写入几个」报(同一组件原地覆盖也算替换)，与全删再全建同口径。
             results.add(new BomPasteResult.Target(target.getId(), label(target),
                     replace ? current.size() : 0, lineComponents.size()));
         }
         // 新行 id 由 Java 端预生成，走 save 会被当成「可能已存在」先查一次再插；这里直接 persist。
         created.forEach(em::persist);
+        List<String> warnings = new ArrayList<>();
+        if (created.stream().anyMatch(row -> GoodsPeriodicMaterialRules.isPeriodic(row.getComponent()))) {
+            // 期间边的形状守卫与 BOM 接管是行触发器: 当场写库, 拒绝原因原样交给员工。
+            try {
+                em.flush();
+            } catch (RuntimeException error) {
+                throw GoodsPeriodicMaterialRules.translate(error);
+            }
+            for (GoodsBomItem row : created) {
+                warnings.addAll(GoodsBomService.periodicWarnings(row.getGoods(), row.getComponent(), row));
+            }
+        }
         targets.forEach(bom::recalcSourceE);
-        return new BomPasteResult(targets.size(), created.size(), removing.size(), results);
+        int replaced = results.stream().mapToInt(BomPasteResult.Target::removed).sum();
+        int written = results.stream().mapToInt(BomPasteResult.Target::added).sum();
+        return new BomPasteResult(targets.size(), written, replaced, results, List.copyOf(warnings));
+    }
+
+    /**
+     * 粘贴后某个目标会同时有两种整批领料的料 (双色 / 双料) 时要人确认: 粘贴清单里的期间边
+     * (追加模式再算上目标现有的期间边) 多于一种, 且相关行没带确认。
+     */
+    private List<ApiError.FieldError> secondPeriodicConfirmations(List<Goods> targets, List<BomItemSaveRequest> items,
+                                                                  Map<Integer, Goods> lineComponents, boolean replace) {
+        List<Integer> periodicLines = lineComponents.entrySet().stream()
+                .filter(entry -> GoodsPeriodicMaterialRules.isPeriodic(entry.getValue()))
+                .map(Map.Entry::getKey).toList();
+        if (periodicLines.isEmpty()) return List.of();
+        boolean confirmed = periodicLines.stream()
+                .allMatch(index -> Boolean.TRUE.equals(items.get(index).getConfirmSecondPeriodicMaterial()));
+        if (confirmed) return List.of();
+        Set<UUID> withPeriodic = replace ? Set.of() : targetsWithPeriodicEdges(targets);
+        List<ApiError.FieldError> out = new ArrayList<>();
+        for (Goods target : targets) {
+            int count = periodicLines.size() + (withPeriodic.contains(target.getId()) ? 1 : 0);
+            if (count > 1) {
+                out.add(new ApiError.FieldError(GoodsPeriodicMaterialRules.CONFIRM_SECOND_MATERIAL,
+                        GoodsPeriodicMaterialRules.secondMaterialMessage(label(target))));
+            }
+        }
+        return out;
+    }
+
+    /** 这些目标里哪些已经有期间边 (组件是整批领料的料)。 */
+    private Set<UUID> targetsWithPeriodicEdges(List<Goods> targets) {
+        if (targets.isEmpty()) return Set.of();
+        @SuppressWarnings("unchecked")
+        List<Object> rows = em.createNativeQuery("""
+                        SELECT DISTINCT bom.goods_id
+                        FROM goods_bom_items bom
+                        JOIN goods component ON component.id = bom.component_goods_id
+                         AND component.issue_method = 'PERIODIC'
+                        WHERE bom.goods_id IN (:ids) AND bom.is_deleted = FALSE
+                        """)
+                .setParameter("ids", targets.stream().map(Goods::getId).toList())
+                .getResultList();
+        Set<UUID> out = new HashSet<>();
+        for (Object row : rows) out.add((UUID) row);
+        return out;
     }
 
     /**

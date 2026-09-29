@@ -215,12 +215,12 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       }
       final detail = result.detail;
       if (detail == null) return;
-      // 货品详情整页（tab=1 组装信息直达 BOM）；「出入库流水」按钮
+      // 货品详情整页 (tab=bom 组装信息直达 BOM)；「出入库流水」按钮
       // 由详情页按 stock:view 权限自行决定是否显示。
       await context.push(
         RoutePath.basicinfoGoodsDetail(
           detail.id,
-          tab: result.link == WhereUsedProductLink.bom ? 1 : 0,
+          tab: result.link == WhereUsedProductLink.bom ? 'bom' : 'basic',
         ),
       );
     } finally {

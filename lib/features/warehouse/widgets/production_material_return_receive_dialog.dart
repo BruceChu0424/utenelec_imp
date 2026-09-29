@@ -9,11 +9,15 @@ import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 
 /// Warehouse staff choose the real normal storage location. Origin is traceability.
+///
+/// [weightSummary]: 明细表里逐行录的实称重量汇总 (如「随收仓提交实称 12.5 kg (未称 1 行)」),
+/// 只读提示; 重量随收仓确认一起提交, 不在弹窗里改。
 Future<String?> showProductionMaterialReturnReceiveDialog(
   BuildContext context, {
   required List<WarehouseDictEntry> hierarchy,
   required String? mainWarehouseId,
   String? initialWarehouseId,
+  String? weightSummary,
 }) {
   final eligible = WarehouseSelection(hierarchy).selectableIds;
   final scoped = hierarchy
@@ -47,6 +51,13 @@ Future<String?> showProductionMaterialReturnReceiveDialog(
                 const Text(
                   '请核对当前车间送来的物料、单位和数量，选择实物实际存放的正常仓库。数量不符时请由车间撤回更正后再确认。',
                 ),
+                if (weightSummary != null) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  Text(
+                    weightSummary,
+                    key: const ValueKey('material-return-weight-summary'),
+                  ),
+                ],
                 const SizedBox(height: UtenSpacing.s16),
                 UtenDropdownField(
                   key: const ValueKey('material-return-receiving-warehouse'),

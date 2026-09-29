@@ -32,6 +32,8 @@
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
 -- 清旧：仓库源流水 + 统一单据 + 余额（余额从 StockGoods 全量重建）
 DELETE FROM stock_movements WHERE source_doc_type = 'STOCK_DOC';
+-- V743(ADR-135) 重量调整账随库存账一起重建(导入后没有重量账链, 从第一笔新流水起算)。
+DELETE FROM stock_weight_adjustments;
 DELETE FROM stock_document_items;
 DELETE FROM stock_documents;
 DELETE FROM stock_balances;
@@ -241,7 +243,9 @@ SELECT s.legacy_id, d.id, s.doc_type, d.bill_no, d.bill_date,
        (SELECT name FROM goods WHERE legacy_id = s.goods_legacy_id),
        'LEGACY_IMPORT', CASE WHEN d.status <> 0 THEN now() ELSE NULL END,
        COALESCE(s.unit_rate,1), s.qty, ROUND(COALESCE(s.qty,0)*COALESCE(s.unit_rate,1),4),
-       s.price, s.amount, s.amount, s.weight, 0,
+       s.price, s.amount, s.amount,
+       NULL::numeric,  -- 老库明细重量单位不可证明(不一定是千克), 不导入(V743/ADR-135)
+       0,
        NULLIF(s.surplus_qty,0), NULLIF(s.count_qty,0),
        NULLIF(CAST(s.place_legacy_id AS TEXT),'0'),
        NULL,  -- upstream 回填见下
@@ -258,9 +262,11 @@ WHERE w.bill_type = 'WDRAW' AND w.legacy_id = s.legacy_id
 -- ======================== 重建库存余额（StockGoods → stock_balances） ========================
 -- StockGoods 按「仓+货+色+年+库位」分行：QTY=年初余额(上年结转)、FactQTY=年末余额。
 -- 当前余额 = 最新年(MAX year)的 FactQTY（同年多库位先 SUM，再取最新年；COALESCE 兜底 QTY）。
--- 旧实现误 SUM(所有年 QTY) 会跨年重复累加。当前余额只认最新年
--- FactQTY/FactWeight；仅当 Fact 字段本身为 NULL 时才显式回退 QTY/Weight，
--- 并把回退写入隔离证据。Weight=0 是未知/未采集，不是已知零重量。
+-- 旧实现误 SUM(所有年 QTY) 会跨年重复累加。当前余额只认最新年 FactQTY；
+-- 仅当 FactQTY 本身为 NULL 时才显式回退 QTY。
+-- 重量(V743/ADR-135)：库存重量统一为千克，老库 Weight/FactWeight 的单位不可证明，一律不导入
+-- (NULL=不知道，从第一次称重/盘点起建立重量账)；只有基本单位本身是质量单位(kg/g/斤等，
+-- unit_measurement_profiles.mass_unit_code)的货品按「数量 x 系数」精确得出重量。
 CREATE TEMP TABLE latest_stock_balance_stage ON COMMIT DROP AS
 SELECT DISTINCT ON (warehouse_id, goods_id, color_id)
        warehouse_id,
@@ -268,10 +274,7 @@ SELECT DISTINCT ON (warehouse_id, goods_id, color_id)
        color_id,
        year,
        fact_qty,
-       total,
-       fact_weight,
-       qty_fallback_used,
-       weight_fallback_used
+       total
 FROM (
     SELECT (SELECT id FROM warehouses WHERE legacy_id = g.stock_legacy)
                AS warehouse_id,
@@ -281,118 +284,33 @@ FROM (
                AS color_id,
            g.year,
            COALESCE(SUM(COALESCE(g.fact_qty, g.qty)), 0) AS fact_qty,
-           COALESCE(SUM(g.total), 0) AS total,
-           COALESCE(SUM(COALESCE(g.fact_weight, g.weight)), 0)
-               AS fact_weight,
-           BOOL_OR(g.fact_qty IS NULL AND g.qty IS NOT NULL)
-               AS qty_fallback_used,
-           BOOL_OR(g.fact_weight IS NULL AND g.weight IS NOT NULL)
-               AS weight_fallback_used
+           COALESCE(SUM(g.total), 0) AS total
     FROM sg_stage g
     GROUP BY 1, 2, 3, g.year
 ) yearly
 WHERE warehouse_id IS NOT NULL AND goods_id IS NOT NULL
 ORDER BY warehouse_id, goods_id, color_id, year DESC;
 
-INSERT INTO legacy_measurement_exceptions(
-    migration_run_id,
-    operation_family,
-    source_type,
-    source_record_key,
-    goods_id,
-    warehouse_id,
-    color_id,
-    issue_code,
-    business_qty,
-    actual_weight,
-    details,
-    evidence_fingerprint
-)
-SELECT run.run_id,
-       'WAREHOUSE',
-       'STOCK_GOODS',
-       concat_ws(
-           ':',
-           latest.warehouse_id::text,
-           latest.goods_id::text,
-           COALESCE(latest.color_id::text, 'NO_COLOR'),
-           latest.year::text
-       ),
+INSERT INTO stock_balances (warehouse_id, goods_id, color_id, qty, amount_local, weight, weight_estimated, last_movement_date)
+SELECT latest.warehouse_id,
        latest.goods_id,
-       latest.warehouse_id,
        latest.color_id,
-       issue.issue_code,
        latest.fact_qty,
-       latest.fact_weight,
-       jsonb_build_object(
-           'year', latest.year,
-           'factQtyNullFallback', latest.qty_fallback_used,
-           'factWeightNullFallback', latest.weight_fallback_used,
-           'weightUnitEvidence', 'UNKNOWN'
-       ),
-       encode(
-           digest(
-               concat_ws(
-                   '|',
-                   'STOCK_GOODS',
-                   latest.warehouse_id::text,
-                   latest.goods_id::text,
-                   COALESCE(latest.color_id::text, 'NO_COLOR'),
-                   latest.year::text,
-                   latest.fact_qty::text,
-                   latest.fact_weight::text,
-                   issue.issue_code
-               ),
-               'sha256'
-           ),
-           'hex'
-       )
-FROM latest_stock_balance_stage latest
-CROSS JOIN LATERAL (
-    SELECT run_id
-    FROM legacy_migration_runs
-    WHERE status = 'RUNNING'
-    ORDER BY started_at DESC, run_id
-    LIMIT 1
-) run
-CROSS JOIN LATERAL (
-    VALUES
-        (
-            'WEIGHT_WITHOUT_QUANTITY'::varchar,
-            latest.fact_qty = 0 AND latest.fact_weight <> 0
-        ),
-        ('NEGATIVE_QUANTITY'::varchar, latest.fact_qty < 0),
-        ('NEGATIVE_WEIGHT'::varchar, latest.fact_weight < 0),
-        (
-            'QUANTITY_WEIGHT_SIGN_CONFLICT'::varchar,
-            latest.fact_qty * latest.fact_weight < 0
-        ),
-        (
-            'FACT_NULL_FALLBACK'::varchar,
-            latest.qty_fallback_used OR latest.weight_fallback_used
-        )
-) issue(issue_code, applies)
-WHERE issue.applies
-ON CONFLICT ON CONSTRAINT legacy_measurement_exception_uk DO NOTHING;
-
-INSERT INTO stock_balances (warehouse_id, goods_id, color_id, qty, amount_local, weight, last_movement_date)
-SELECT warehouse_id,
-       goods_id,
-       color_id,
-       fact_qty,
-       total,
+       latest.total,
        CASE
-           WHEN fact_weight = 0
-                OR fact_weight < 0
-                OR fact_qty * fact_weight < 0
-               THEN NULL
-           ELSE fact_weight
+           WHEN latest.fact_qty > 0 AND profile.mass_unit_code IS NOT NULL
+               THEN NULLIF(round(latest.fact_qty * fn_weight_unit_kg_factor(profile.mass_unit_code), 4), 0)
+           ELSE NULL
        END,
+       FALSE,
        now()
-FROM latest_stock_balance_stage
-WHERE fact_qty <> 0
+FROM latest_stock_balance_stage latest
+JOIN goods material ON material.id = latest.goods_id
+LEFT JOIN unit_measurement_profiles profile ON profile.unit_id = material.unit_id
+WHERE latest.fact_qty <> 0
 ON CONFLICT (warehouse_id, goods_id, color_id) DO UPDATE
 SET qty = EXCLUDED.qty, amount_local = EXCLUDED.amount_local, weight = EXCLUDED.weight,
+    weight_estimated = EXCLUDED.weight_estimated,
     last_movement_date = now(), updated_at = now();
 
 -- ======================== 回填仓库流水（已审单据 → stock_movements，供报表） ========================

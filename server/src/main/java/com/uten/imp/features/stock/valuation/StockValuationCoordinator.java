@@ -25,13 +25,15 @@ public class StockValuationCoordinator {
     private final ProductionInventoryValueService material;
     private final SubcontractOwnMaterialCostService subcontractMaterials;
     private final SalesReturnInventoryValueService salesReturns;
+    private final WorkshopMaterialValuationService workshopMaterials;
     public StockValuationCoordinator(NamedParameterJdbcTemplate db,InventoryValuationPort values,
             InventoryProductionCostPort production,ProcurementInventoryValueService procurement,InventoryBusinessValueSupport support,
             ProductionInventoryValueService material,SubcontractOwnMaterialCostService subcontractMaterials,
-            SalesReturnInventoryValueService salesReturns){
+            SalesReturnInventoryValueService salesReturns,WorkshopMaterialValuationService workshopMaterials){
         this.db=db;this.values=values;this.production=production;this.procurement=procurement;this.support=support;this.material=material;
         this.subcontractMaterials=subcontractMaterials;
         this.salesReturns=salesReturns;
+        this.workshopMaterials=workshopMaterials;
     }
     public MovementValue value(UUID movement,MovementRequest request,BigDecimal before,OffsetDateTime at){
         PoolKey pool=new PoolKey(request.warehouseId(),request.goodsId(),request.colorId());
@@ -42,6 +44,13 @@ public class StockValuationCoordinator {
         }
         if(request.costReference() instanceof InventoryMovementCostReference.SalesReturnQuality ref){
             return salesReturns.movement(ref,movement,pool,request.qty(),before,context,request.direction());
+        }
+        // ADR-131: 内料仓盘点耗用(21)与盘盈(22)及其原路冲回, 四种一律由内料仓估价决定去向与单价;
+        // 内料仓单据的调拨、其它出库仍走下面的通用估价(调出进在途、调入按原出库成本恢复、其它出库进外部)。
+        if(request.costReference() instanceof InventoryMovementCostReference.WorkshopMaterialBin ref
+                &&(request.movementType()==StockService.TYPE_WORKSHOP_MATERIAL_CONSUME
+                    ||request.movementType()==StockService.TYPE_WORKSHOP_MATERIAL_GAIN)){
+            return workshopMaterials.value(movement,request,pool,before,context,ref);
         }
         if(request.direction()==StockService.DIR_OUT&&request.costReference() instanceof InventoryMovementCostReference.ProcurementStockIn ref){
             return procurement.reverseStock(ref.stockInItemId(),movement,pool,before,context);

@@ -14,6 +14,8 @@
 //     「同时记住」开关与单独的记忆请求。
 // 提交 = 一个事务逐单登记并生成各自的 FQC 送检(同一入库仓库的行合并成一张品质检查单)。
 // 已登记(只读)报工在品质未处理前可撤回登记。
+// 实称重量(ADR-135)与单张页同一口径：数量组之后可选录净重，随登记行提交并计入幂等键；
+// 「称重核对」按学到的单重对比报工数量，只提示不改数量。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -44,11 +46,17 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_field_codec.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/measurement/weight_mass_units.dart';
+import '../../../shared/measurement/weight_params.dart';
+import '../../../shared/measurement/weight_prefs.dart';
+import '../../../shared/measurement/weight_unit.dart';
+import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 import '../models/inbound_registration_line.dart';
 import '../models/production_finished_inbound_task.dart';
+import '../models/warehouse_form_draft_codec.dart';
 import '../providers/inbound_warehouse_fill_memory.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/production_finished_inbound_task_repository.dart';
@@ -153,7 +161,12 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
   Iterable<Listenable> get formDraftListenables => [
     _remarkController,
     _grid,
-    for (final row in _grid.rows) ...[row.place, row.warehouse, row.stockInQty],
+    for (final row in _grid.rows) ...[
+      row.place,
+      row.warehouse,
+      row.stockInQty,
+      row.weight,
+    ],
   ];
   @override
   Map<String, dynamic> captureFormDraft() => {
@@ -171,6 +184,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
           'place': row.place.text,
           'placeAutofilled': row.place.autofilled,
           'stockInQty': row.stockInQty.text,
+          'weight': weightEntryDraft(row.weight),
           'selected': _grid.isSelected(row),
           'registered': row.registered,
         },
@@ -211,10 +225,51 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       }
       final qty = draftText(item, 'stockInQty');
       if (qty.isNotEmpty) row.stockInQty.text = qty;
+      restoreWeightEntryDraft(row.weight, item['weight']);
       if (item['selected'] == true) _grid.setSelected([row], true);
     }
     if (mounted) setState(() {});
   }
+
+  // ---- 实称重量(ADR-135)：单重参数按货品取(车间产出无供应商)，页面内缓存 ----
+
+  /// 页面级单重参数缓存(build 里 watch，离开页面释放)。
+  WeightParamsCache get _weightCache => ref.read(weightParamsCacheProvider);
+
+  WeightParams? _paramsOf(_FinishedBatchLine row) =>
+      _weightCache.of(row.goodsId);
+
+  /// 单位 -> 重量单位(报工单位本身按重量计时精确换算)。
+  Map<String, WeightUnit> get _massUnits =>
+      ref.read(warehouseUnitMassUnitsProvider).valueOrNull ?? const {};
+
+  /// 已登记行也取参数：按重量计的货品显示「=N kg」，登记重量照样核对。
+  void _ensureWeightParams() {
+    if (!mounted) return;
+    unawaited(
+      _weightCache.ensure([
+        for (final row in _grid.rows) WeightParamsLine(goodsId: row.goodsId),
+      ]),
+    );
+  }
+
+  /// 货品或报工单位按重量计时由报工数量精确换算(只读、不提交)；需要实称时为 null。
+  double? _exactKg(_FinishedBatchLine row) => warehouseExactLineKg(
+    lineQty: row.item.reportedQty,
+    lineMassUnit: _massUnits[row.item.unitId],
+    unitRate: row.item.unitRate,
+    params: _paramsOf(row),
+  );
+
+  /// 核对重量的数量口径是货品基本单位；报工单位不是基本单位时不借用它的名字。
+  String? _baseUnitName(_FinishedBatchLine row, MasterNameService names) =>
+      row.item.unitRate == 1
+      ? row.item.unitName ?? names.unit(row.item.unitId)
+      : null;
+
+  /// 随登记行提交的实称净重(千克)；精确换算行与没称的行不带。
+  double? _sentKg(_FinishedBatchLine row) =>
+      _exactKg(row) == null ? row.weight.kg : null;
 
   @override
   void initState() {
@@ -282,6 +337,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
         _removedLineCount = 0;
         _loading = false;
       });
+      _ensureWeightParams();
       await _suggestions.reload(_editableRows);
       if (!mounted) return;
       await initializeFormDraft();
@@ -527,6 +583,13 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
     );
     if (confirmed != true || !mounted) return;
 
+    // 幂等键含路线与实称重量指纹：换路线或改了重量重提交是另一个请求，不是重放；
+    // 一行都没称时键与不称重时一致。
+    final weightSuffix = warehouseWeightKeySuffix([
+      for (final reportId in reportIds)
+        for (final row in byReport[reportId]!)
+          ?warehouseWeightKeyPart(row.item.reportItemId, _sentKg(row), false),
+    ]);
     setState(() => _saving = true);
     ProductionFinishedBatchRegistrationResult result;
     try {
@@ -535,10 +598,9 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
         () => ref
             .read(productionFinishedInboundTaskRepositoryProvider)
             .saveArrivalRegistrationBatch({
-              // 幂等键含路线：换路线重提交是另一个请求，不是重放。
               'idempotencyKey': stockInFirst
-                  ? '$_idempotencyKey:prestock'
-                  : _idempotencyKey,
+                  ? '$_idempotencyKey:prestock$weightSuffix'
+                  : '$_idempotencyKey$weightSuffix',
               if (stockInFirst) 'stockInBeforeInspection': true,
               if (_remarkController.text.trim().isNotEmpty)
                 'remark': _remarkController.text.trim(),
@@ -556,6 +618,8 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                             'countedQty': double.parse(
                               row.stockInQty.text.trim(),
                             ),
+                          // 实称净重(千克 4 位)：没称或按重量计的货品不带。
+                          'weight': ?_sentKg(row),
                         },
                     ],
                   },
@@ -639,6 +703,9 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       ref.watch(isSuperAdminProvider);
       ref.watch(currentPermissionsProvider);
     }
+    // 单重参数缓存随页面存活。
+    ref.watch(weightParamsCacheProvider);
+    ref.watch(warehouseUnitMassUnitsProvider);
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     final canRegister = _canRegister;
@@ -699,6 +766,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
   ) {
     final reports = _reports!;
     final registeredReports = reports.where((r) => r.registered).length;
+    final weightUnits = ref.watch(warehouseWeightUnitsPrefsProvider);
     return UtenGridPageScrollbar(
       pinned: _gridPinned,
       controller: _scrollController,
@@ -725,7 +793,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
               key: const Key('production-finished-arrival-batch-grid'),
               controller: _grid,
               stickyHeaderPinned: _gridPinned,
-              columns: _columns(names, canRegister),
+              columns: _columns(names, canRegister, weightUnits.entry),
               createBlankRow: () => throw UnsupportedError('明细由所选报工单固定带入'),
               showAddRow: false,
               showRowDelete: false,
@@ -763,20 +831,40 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                     ]
                   : null,
               emptyMessage: '所选报工单没有可登记明细，请返回任务中心刷新',
+              // 「称重单位: 千克▾」：录入单位是用户级偏好，表头与已填重量跟着换。
+              toolbarActions: const [WeightEntryUnitButton()],
               footer: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  inboundTotalsBar<_FinishedBatchLine>(
-                    key: const Key('production-finished-arrival-batch-totals'),
-                    lines: _editableRows,
-                    qtyLabel: _route.isStockInFirst ? '本次实收' : '报工数量',
-                    qtyOf: (row) => _route.isStockInFirst
-                        ? double.tryParse(row.stockInQty.text.trim()) ?? 0
-                        : row.item.reportedQty,
-                    unitIdOf: (row) => row.item.unitId,
-                    unitNameOf: (row) =>
-                        row.item.unitName ?? names.unit(row.item.unitId),
+                  // 重量逐行输入不触发整页重建：合计条自己听重量格与单重参数。
+                  ListenableBuilder(
+                    listenable: Listenable.merge([
+                      _weightCache,
+                      for (final row in _editableRows) row.weight,
+                    ]),
+                    builder: (context, _) =>
+                        inboundTotalsBar<_FinishedBatchLine>(
+                          key: const Key(
+                            'production-finished-arrival-batch-totals',
+                          ),
+                          lines: _editableRows,
+                          qtyLabel: _route.isStockInFirst ? '本次实收' : '报工数量',
+                          qtyOf: (row) => _route.isStockInFirst
+                              ? double.tryParse(row.stockInQty.text.trim()) ?? 0
+                              : row.item.reportedQty,
+                          unitIdOf: (row) => row.item.unitId,
+                          unitNameOf: (row) =>
+                              row.item.unitName ?? names.unit(row.item.unitId),
+                          weight: warehouseWeightTotals<_FinishedBatchLine>(
+                            _editableRows,
+                            weightOf: (row) => row.weight,
+                            exactKgOf: _exactKg,
+                            paramsOf: _paramsOf,
+                            qtyBaseOf: (row) => row.item.reportedBaseQty,
+                          ),
+                          weightDisplay: weightUnits.display,
+                        ),
                   ),
                   const SizedBox(height: UtenSpacing.s4),
                   Text(
@@ -894,6 +982,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
   List<EditableGridColumn<_FinishedBatchLine>> _columns(
     MasterNameService names,
     bool canRegister,
+    WeightUnit weightEntryUnit,
   ) {
     final shared = InboundGridColumns<_FinishedBatchLine>(
       names: names,
@@ -944,6 +1033,24 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
               '数量不符请返回任务中心改走「先质检后入库」，由仓库按实物点收。',
         ),
       shared.unit(),
+      // 实称重量(可选)：只核对报工数量(折成基本单位)，不回填数量(报工数量以审核报工为准)；
+      // 已登记的报工单只读显示登记时的实称重量。
+      shared.weight(
+        entryUnit: weightEntryUnit,
+        enabled: editable,
+        paramsOf: _paramsOf,
+        paramsListenable: _weightCache,
+        qtyBaseOf: (row) => row.item.reportedBaseQty,
+        exactKgOf: _exactKg,
+        baseUnitNameOf: (row) => _baseUnitName(row, names),
+      ),
+      shared.weightCheck(
+        paramsOf: _paramsOf,
+        paramsListenable: _weightCache,
+        qtyBaseOf: (row) => row.item.reportedBaseQty,
+        baseUnitNameOf: (row) => _baseUnitName(row, names),
+        against: '比报工',
+      ),
       shared.warehouse(
         required: canRegister && !_submitted,
         enabled: editable,
@@ -1009,7 +1116,10 @@ class _FinishedBatchLine extends InboundRegistrationLine {
         placeSource: item.placeHint?.trim().isNotEmpty == true
             ? InboundPlaceSource.goodsMaster
             : InboundPlaceSource.none,
-      );
+      ) {
+    // 已登记的报工单：只读显示登记时的实称重量(没称的行空着)。
+    if (registered) weight.setKg(item.weight);
+  }
 
   final ProductionFinishedArrivalRegistration report;
   final ProductionFinishedArrivalRegistrationItem item;

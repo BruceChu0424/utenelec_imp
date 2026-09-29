@@ -1,5 +1,5 @@
-// 货品详情/编辑主体（基础资料-货品资料）：三页签（基本信息 / 组装信息 / 成本预算），
-// mode 感知：create（新增）/ edit（编辑）/ view（查看）。
+// 货品详情/编辑主体 (基础资料-货品资料): 页签 (基本信息 / 组装信息 / 成本预算 /
+// 图片和文件 / 库存与出入库), mode 感知: create (新增) / edit (编辑) / view (查看)。
 //
 // 只以整页呈现（GoodsDetailPage，路由 /basicinfo/goods/new、/basicinfo/goods/:id）：
 // - 新增货品 = create 态：基本信息可编辑（含颜色/单位内联新建），保存后同页转 edit 态，
@@ -8,6 +8,10 @@
 // - 组装信息：货品 BOM 树（goods_bom_tab.dart），表格吃满全宽，层级添加组件、
 //   滑窗选组件；编辑/删除/添加组件/预览按钮挂在表格工具条，全屏表格内同样可用。
 // - 成本预算：18 字段（sourceE 由 BOM 聚合只读，下游自动级联，goods_cost_tab.dart）。
+// - 库存与出入库 (stock:view, ADR-135)：与库存详情页同一个单货品库存面板
+//   (lib/shared/stock_ledger)；基本信息「出入库流水」按钮直接切到本页签的流水分段。
+// - 页签按名字寻址 (?tab=basic|bom|cost|files|stock)，旧深链的数字 0/1/2 仍认
+//   ([GoodsDetailTab.parse])；按权限隐藏的页签回落基本信息。
 // - 头部：返回键 + 货品名（「预览」A4 产品配件清单 2026-09-12 起在组装信息
 //   表格工具条「全屏」旁，goods_bom_tab.dart）。
 // - 布局：页签靠左；基本信息/成本限宽 960 居中；组装信息全宽。
@@ -29,14 +33,23 @@ import '../../../shared/auth/page_permission_action.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/measurement/weight_prefs.dart';
+import '../../../shared/measurement/weight_unit.dart';
+import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/stock_ledger/goods_stock_ledger_panel.dart';
+import '../../../shared/stock_ledger/stock_ledger_models.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
+import '../models/goods_bom_item.dart';
 import '../models/goods_node.dart';
 import '../providers/color_unit_dict.dart';
 import '../repositories/goods_repository.dart';
+import 'basic_data_l10n.dart';
 import 'goods_bom_preview.dart';
 import 'goods_bom_tab.dart';
 import 'goods_cost_tab.dart';
+import 'goods_issue_method_dialog.dart';
+import 'goods_name_en_field.dart';
 import 'master_detail_sheet.dart';
 import 'master_edit_dialog.dart';
 import 'mould_picker_field.dart';
@@ -47,6 +60,48 @@ import 'uten_detail_tab_bar.dart';
 
 enum _GoodsDetailMode { create, edit, view }
 
+/// 货品详情页签 (路由 ?tab= 用 [key])。
+enum GoodsDetailTab {
+  basic('basic', '基本信息'),
+  bom('bom', '组装信息'),
+  cost('cost', '成本预算'),
+  files('files', '图片和文件'),
+  stock('stock', '库存与出入库');
+
+  const GoodsDetailTab(this.key, this.label);
+
+  final String key;
+  final String label;
+
+  /// 路由参数 -> 页签: 认名字; 旧深链的数字 0/1/2 (基本信息/组装信息/成本预算) 仍认;
+  /// 其余回落基本信息。
+  static GoodsDetailTab parse(String? raw) {
+    final key = raw?.trim().toLowerCase() ?? '';
+    for (final t in GoodsDetailTab.values) {
+      if (t.key == key) return t;
+    }
+    return switch (int.tryParse(key)) {
+      1 => GoodsDetailTab.bom,
+      2 => GoodsDetailTab.cost,
+      _ => GoodsDetailTab.basic,
+    };
+  }
+}
+
+/// View-mode row for the goods English name (ADR-134): rendered by
+/// [GoodsNameEnViewCell] with the learned badge and the name-only edit action.
+class _GoodsNameEnDetailRow extends MasterDetailRow {
+  const _GoodsNameEnDetailRow({
+    required String label,
+    required String? value,
+    required this.learned,
+    required this.onEdit,
+  }) : super(label, value);
+
+  final bool learned;
+  final VoidCallback? onEdit;
+}
+
 /// 查看态详情的一个分组（标题 + 字段行），用于把扁平字段切成带小标题的区块。
 class _DetailSection {
   const _DetailSection(this.title, this.rows);
@@ -55,14 +110,14 @@ class _DetailSection {
   final List<MasterDetailRow> rows;
 }
 
-/// 货品详情/编辑主体（三页签：基本信息 / 组装信息 / 成本预算）。
+/// 货品详情/编辑主体 (页签见 [GoodsDetailTab])。
 /// 初始模式由 [initialDetail] 推导：null = 新增，非 null = 查看。
 class GoodsDetailBody extends ConsumerStatefulWidget {
   const GoodsDetailBody({
     super.key,
     required this.initialDetail,
     required this.initialCategoryId,
-    required this.initialTab,
+    this.initialTab = GoodsDetailTab.basic,
     required this.canCreate,
     required this.canEdit,
     required this.canStatus,
@@ -71,13 +126,14 @@ class GoodsDetailBody extends ConsumerStatefulWidget {
     required this.canBomDelete,
     required this.onToggleStatus,
     required this.onDelete,
-    required this.onViewMovements,
     required this.onDataChanged,
   });
 
   final GoodsDetail? initialDetail;
   final String? initialCategoryId;
-  final int initialTab;
+
+  /// 初始页签; 当前账号看不到该页签 (无权限/新增态) 时回落基本信息。
+  final GoodsDetailTab initialTab;
   final bool canCreate;
   final bool canEdit;
   final bool canStatus;
@@ -86,7 +142,6 @@ class GoodsDetailBody extends ConsumerStatefulWidget {
   final bool canBomDelete;
   final VoidCallback? onToggleStatus;
   final VoidCallback? onDelete;
-  final VoidCallback? onViewMovements;
   final VoidCallback? onDataChanged;
 
   @override
@@ -137,6 +192,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
 
   GlobalKey<MasterEditFormState>? _formKey;
   bool _savingBasic = false;
+
+  /// 「库存与出入库」页签打开时停在哪个分段 (基本信息「出入库流水」按钮 = 流水)。
+  GoodsStockLedgerSegment _stockSegment = GoodsStockLedgerSegment.balance;
+
+  /// 每次从按钮跳进来 +1, 让库存面板按新分段重建。
+  int _stockPanelGeneration = 0;
 
   @override
   void initState() {
@@ -286,11 +347,21 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     final permissions = ref.watch(currentPermissionsProvider);
     final canAddColor = permissions.contains(Perm.colorCreate);
     final canAddUnit = permissions.contains(Perm.unitCreate);
+    final l10n = basicDataL10n(context);
     return [
       const MasterFieldDef(
         key: 'name',
         label: '货品名称',
         required: true,
+        group: '基础',
+      ),
+      // ADR-134: English name used to match customer files. Always part of the
+      // full save body so a goods:edit save never drops a learned value.
+      MasterFieldDef(
+        key: 'nameEn',
+        label: l10n.goodsNameEnLabel,
+        hint: l10n.goodsNameEnHint,
+        info: l10n.goodsNameEnInfo,
         group: '基础',
       ),
       const MasterFieldDef(
@@ -362,6 +433,9 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         label: '单重',
         type: MasterFieldType.custom,
         group: '规格',
+        // ADR-131：有整批领料的料 (期间边) 的产品，在单重旁只读提示 BOM 里的
+        // 塑料单个重量；货品资料的单重本身不锁。
+        info: _periodicBomWeightInfo(),
         customBuilder: (ctx) => NumberUnitField(
           label: '单重',
           numberKey: 'mWeight',
@@ -504,12 +578,64 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     );
   }
 
+  /// BOM 里整批领料的料的单个重量 (克)，逐条一句话；没有期间边时为 null。
+  String? _periodicBomWeightInfo() {
+    final weights = _detail?.periodicBomWeights ?? const [];
+    if (weights.isEmpty) return null;
+    return [for (final w in weights) _periodicBomWeightText(w)].join('\n');
+  }
+
+  String _periodicBomWeightText(GoodsPeriodicBomWeight w) {
+    final material = [
+      w.materialName ?? w.materialCode,
+      w.colorName,
+    ].whereType<String>().join(' ');
+    final grams = w.unitWeightGrams;
+    final qty = w.qty;
+    // 料的基本单位不能按克换算时服务端不给克数，按 BOM 用量原单位显示。
+    final text = grams != null
+        ? (_l10nOrNull()?.wmUnitWeightFromBom(periodicGramsText(grams)) ??
+              '塑料单个重量 (来自 BOM): ${periodicGramsText(grams)} 克')
+        : qty != null && qty > 0
+        ? '塑料单个重量 (来自 BOM): ${goodsQtyText(qty)}${w.unitName ?? ''}'
+        : '塑料单个重量 (来自 BOM): 待补';
+    return material.isEmpty ? text : '$text ($material)';
+  }
+
+  /// 货品资料单重折算成克 (单重单位是千克/克时)；其它单位或没登记返回 null。
+  double? _productWeightGrams() {
+    final d = _detail;
+    final weight = d?.mWeight;
+    if (d == null || weight == null || weight <= 0) return null;
+    final factor = periodicGramsPerBaseUnit(
+      _unitSuffix(d.mWeightUnitId, d.mWeightUnitLegacyId),
+    );
+    return factor == null ? null : weight * factor;
+  }
+
+  /// 「发料方式」弹窗 (ADR-131)：发料方式 / 分摊方式 / 每袋净重 / 回收料。
+  /// 切换发料方式会转换 BOM 行形状，所以要同时有货品编辑与 BOM 编辑权
+  /// (由页面按服务端权限传入，与 PUT /issue-method/batch 的要求一致)。
+  bool get _canEditIssueMethod =>
+      _canEditSaved && widget.canBomEdit && _detail != null;
+
+  Future<void> _openIssueMethod() async {
+    final d = _detail;
+    if (d == null) return;
+    final saved = await showGoodsIssueMethodDialog(context, detail: d);
+    if (!saved || !mounted) return;
+    context.appSuccess(_l10nOrNull()?.wmIssueMethodUpdated ?? '发料方式已更新');
+    await _refreshDetail();
+    widget.onDataChanged?.call();
+  }
+
   Map<String, String> _initialValues() {
     final d = _detail;
     if (d == null) return {'status': '使用'};
     String s(Object? v) => v == null ? '' : '$v';
     return {
       'name': d.name ?? '',
+      'nameEn': d.nameEn ?? '',
       'code': d.code ?? '',
       'shortName': d.shortName ?? '',
       'status': d.status ?? '使用',
@@ -545,6 +671,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     if (d != null) {
       m.addAll(goodsUuidFirstReferenceBody(d));
       if (d.version != null) m['version'] = d.version;
+      // 车间内料仓属性 (ADR-131：发料方式、分摊方式、每袋净重、回收料) 只在「发料方式」
+      // 弹窗里改 (PUT /issue-method/batch)；普通保存服务端不收这四个字段，这里也不提交。
       m
         ..['sourceE'] = d.sourceE
         ..['machiningE'] = d.machiningE
@@ -621,6 +749,18 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     }
   }
 
+  /// Name-only edit (ADR-134) for users whose detail carries canEditNameEn,
+  /// typically sales without goods:edit. Reloads the detail afterwards so the
+  /// badge, the value and the optimistic-lock version are current.
+  Future<void> _editNameEn() async {
+    final d = _detail;
+    if (d == null) return;
+    final reload = await showGoodsNameEnDialog(context, detail: d);
+    if (!reload || !mounted) return;
+    await _refreshDetail();
+    widget.onDataChanged?.call();
+  }
+
   Future<void> _refreshDetail() async {
     if (_goodsId == null) return;
     try {
@@ -641,26 +781,13 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         ? _detail!.name!
         : (_detail?.code ??
               (_mode == _GoodsDetailMode.create ? '新增货品' : '货品详情'));
-    // 成本预算 Tab 仅 goods:cost:view 持有者可见（无授权直接隐藏，非打码）。
-    final canViewCost =
-        ref.watch(isSuperAdminProvider) ||
-        ref.watch(currentPermissionsProvider).contains(Perm.goodsCostView);
-    final permissions = ref.watch(currentPermissionsProvider);
-    final canViewFiles =
-        _goodsId != null &&
-        permissions.contains(Perm.attachmentView) &&
-        (ref.watch(isSuperAdminProvider) ||
-            permissions.contains(Perm.goodsView));
-    final tabs = <Tab>[
-      const Tab(text: '基本信息'),
-      const Tab(text: '组装信息'),
-      if (canViewCost) const Tab(text: '成本预算'),
-      if (canViewFiles) const Tab(text: '图片和文件'),
-    ];
+    final visible = _visibleTabs = _computeVisibleTabs();
+    final tabs = <Tab>[for (final t in visible) Tab(text: t.label)];
+    final initialIndex = visible.indexOf(widget.initialTab);
     return SafeArea(
       child: DefaultTabController(
         length: tabs.length,
-        initialIndex: widget.initialTab.clamp(0, tabs.length - 1),
+        initialIndex: initialIndex < 0 ? 0 : initialIndex,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -678,10 +805,14 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
             Flexible(
               child: TabBarView(
                 children: [
-                  _buildBasicTab(theme),
-                  _buildBomTab(),
-                  if (canViewCost) _buildCostTab(theme),
-                  if (canViewFiles) _buildFilesTab(),
+                  for (final t in visible)
+                    switch (t) {
+                      GoodsDetailTab.basic => _buildBasicTab(theme),
+                      GoodsDetailTab.bom => _buildBomTab(),
+                      GoodsDetailTab.cost => _buildCostTab(theme),
+                      GoodsDetailTab.files => _buildFilesTab(),
+                      GoodsDetailTab.stock => _buildStockTab(),
+                    },
                 ],
               ),
             ),
@@ -690,6 +821,52 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       ),
     );
   }
+
+  /// 最近一次 build 的可见页签 (按钮回调里定位「库存与出入库」用)。
+  List<GoodsDetailTab> _visibleTabs = const [GoodsDetailTab.basic];
+
+  /// 当前账号可见的页签 (顺序固定):
+  /// - 成本预算仅 goods:cost:view 持有者可见 (无授权直接隐藏, 非打码);
+  /// - 图片和文件 / 库存与出入库 只在货品已保存且有对应权限时出现。
+  List<GoodsDetailTab> _computeVisibleTabs() {
+    final isAdmin = ref.watch(isSuperAdminProvider);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final saved = _goodsId != null;
+    return [
+      GoodsDetailTab.basic,
+      GoodsDetailTab.bom,
+      if (isAdmin || permissions.contains(Perm.goodsCostView))
+        GoodsDetailTab.cost,
+      if (saved &&
+          permissions.contains(Perm.attachmentView) &&
+          (isAdmin || permissions.contains(Perm.goodsView)))
+        GoodsDetailTab.files,
+      if (saved && (isAdmin || permissions.contains(Perm.stockView)))
+        GoodsDetailTab.stock,
+    ];
+  }
+
+  /// 基本信息「出入库流水」: 切到「库存与出入库」页签的流水分段。
+  void _openStockLedger(BuildContext tabContext) {
+    final controller = DefaultTabController.of(tabContext);
+    final index = _visibleTabs.indexOf(GoodsDetailTab.stock);
+    if (index < 0) return;
+    setState(() {
+      _stockSegment = GoodsStockLedgerSegment.ledger;
+      _stockPanelGeneration++;
+    });
+    controller.animateTo(index);
+  }
+
+  // ---- 库存与出入库 Tab ----
+  Widget _buildStockTab() => Padding(
+    padding: const EdgeInsets.all(UtenSpacing.s12),
+    child: GoodsStockLedgerPanel(
+      key: ValueKey('goods-stock-$_goodsId-$_stockPanelGeneration'),
+      goodsId: _goodsId!,
+      initialSegment: _stockSegment,
+    ),
+  );
 
   Widget _buildFilesTab() => SingleChildScrollView(
     padding: const EdgeInsets.all(UtenSpacing.s16),
@@ -849,6 +1026,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
 
   /// 查看态：只读字段网格 + 流水/编辑/删除。
   Widget _buildBasicView(ThemeData theme) {
+    final canViewLedger = _visibleTabs.contains(GoodsDetailTab.stock);
     final twoColumn = !context.breakpoint.isCompact;
     final colCount = twoColumn ? 2 : 1;
     final sections = _detailSections();
@@ -866,19 +1044,23 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         bodyChildren.add(
           Padding(
             padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _cell(theme, first)),
-                if (colCount > 1) ...[
-                  const SizedBox(width: UtenSpacing.s8),
-                  Expanded(
-                    child: second != null
-                        ? _cell(theme, second)
-                        : const SizedBox.shrink(),
-                  ),
+            // Equal-height pair: a tile with an action button (English name)
+            // must not leave its neighbour visibly shorter.
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: _cell(theme, first)),
+                  if (colCount > 1) ...[
+                    const SizedBox(width: UtenSpacing.s8),
+                    Expanded(
+                      child: second != null
+                          ? _cell(theme, second)
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         );
@@ -901,9 +1083,10 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
             ),
           ),
         ),
-        if (widget.onViewMovements != null ||
+        if (canViewLedger ||
             (widget.onToggleStatus != null && _writable) ||
             _canEditSaved ||
+            _canEditIssueMethod ||
             (widget.onDelete != null && _writable)) ...[
           const Divider(height: 1),
           Padding(
@@ -911,13 +1094,26 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                if (widget.onViewMovements != null) ...[
+                if (canViewLedger) ...[
+                  // 同页切到「库存与出入库」页签的流水分段 (不再压栈跳页)。
+                  Builder(
+                    builder: (tabContext) => UtenButton(
+                      key: const ValueKey('goods-detail-view-ledger'),
+                      type: UtenButtonType.tonal,
+                      icon: Icons.swap_vert_rounded,
+                      onPressed: () => _openStockLedger(tabContext),
+                      child: const Text('出入库流水'),
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                ],
+                if (_canEditIssueMethod) ...[
                   UtenButton(
+                    key: const Key('goods-issue-method-open'),
                     type: UtenButtonType.tonal,
-                    icon: Icons.swap_vert_rounded,
-                    // 流水页压栈在本详情页之上，返回时回到本页。
-                    onPressed: widget.onViewMovements,
-                    child: const Text('出入库流水'),
+                    icon: Icons.inventory_2_outlined,
+                    onPressed: _openIssueMethod,
+                    child: Text(_l10nOrNull()?.wmIssueMethod ?? '发料方式'),
                   ),
                   const SizedBox(width: UtenSpacing.s8),
                 ],
@@ -955,6 +1151,10 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     );
   }
 
+  /// 可选取 l10n：个别宿主测试没挂本地化代理，取不到时回落中文。
+  AppLocalizations? _l10nOrNull() =>
+      Localizations.of<AppLocalizations>(context, AppLocalizations);
+
   /// 厚度/单重的单位显示名：UUID 真源优先；仅 UUID 缺失时按 legacy_id 兼容。
   /// 新建单位通常没有 legacy_id，因此查看态不能只走 legacy 映射。
   String _unitSuffix(String? unitId, int? legacyId) {
@@ -974,6 +1174,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
   List<_DetailSection> _detailSections() {
     final d = _detail;
     if (d == null) return const [];
+    final weightDisplay = ref.watch(warehouseWeightUnitsPrefsProvider).display;
     // 无 goods:discount:view 权限者：查看态不显示折扣行（后端已置 discount=null）。
     final canViewDiscount =
         ref.watch(isSuperAdminProvider) ||
@@ -1014,6 +1215,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       _DetailSection('基础', [
         MasterDetailRow('编号', d.code),
         MasterDetailRow('货品名称', d.name),
+        _GoodsNameEnDetailRow(
+          label: basicDataL10n(context).goodsNameEnLabel,
+          value: d.nameEn,
+          learned: d.nameEnLearned,
+          onEdit: d.canEditNameEn ? _editNameEn : null,
+        ),
         MasterDetailRow('简称', d.shortName),
         MasterDetailRow('状态', d.status),
         MasterDetailRow('来源', d.sourceType),
@@ -1031,6 +1238,9 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
           '单重',
           withUnit(d.mWeight, d.mWeightUnitId, d.mWeightUnitLegacyId),
         ),
+        // ADR-131：有期间边的产品在单重旁只读显示 BOM 里的塑料单个重量。
+        for (final w in d.periodicBomWeights)
+          MasterDetailRow('塑料单个重量', _periodicBomWeightText(w)),
         MasterDetailRow('主颜色', d.colorName),
         MasterDetailRow('系列', d.series),
         MasterDetailRow('库位号', d.stockPlace),
@@ -1039,6 +1249,27 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         MasterDetailRow('模具', d.mouldName),
         MasterDetailRow('模具编号', d.mouldCode),
         MasterDetailRow('后模镶件编号', d.rearInsertCode),
+      ]),
+      // 车间内料仓 (ADR-131)：发料方式等在底部「发料方式」按钮里改。
+      _DetailSection(_l10nOrNull()?.wmWorkshopMaterialSection ?? '车间用料', [
+        MasterDetailRow(
+          _l10nOrNull()?.wmIssueMethod ?? '发料方式',
+          goodsIssueMethodLabel(context, d.issueMethod),
+        ),
+        if (d.isPeriodicIssue)
+          MasterDetailRow(
+            _l10nOrNull()?.wmCostBasis ?? '分摊方式',
+            goodsCostBasisLabel(context, d.periodicCostBasis),
+          ),
+        if (d.isPeriodicIssue || d.bulkPackageQty != null)
+          MasterDetailRow(
+            _l10nOrNull()?.wmBulkPackageQty ?? '每袋净重 (公斤)',
+            goodsQtyText(d.bulkPackageQty),
+          ),
+        MasterDetailRow(
+          _l10nOrNull()?.wmRecycledMaterial ?? '回收料',
+          d.recycledMaterial ? '是 (其它入库按 0 成本进仓)' : '否',
+        ),
       ]),
       _DetailSection('商务', [
         if (canViewPrice) MasterDetailRow('价格', s(d.price)),
@@ -1081,27 +1312,52 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         // 归属生产车间 (V590)：最近一次排产确认/车间改派自动学习回写，只读。
         MasterDetailRow('归属车间', d.owningWorkshopName),
         MasterDetailRow('库存量(合计)', s(d.stockQty)),
-        if (d.stockByWarehouse.any((row) => row.weight != null))
-          MasterDetailRow(
-            '库存重量(合计)',
-            s(
-              d.stockByWarehouse.fold<double>(
-                0,
-                (sum, row) => sum + (row.weight ?? 0),
-              ),
-            ),
-          ),
+        // 重量合计由服务端算好 (千克, 不含内料仓; ADR-135), 前端只按显示单位换算。
+        if (d.stockWeightKg != null || d.stockWeightUnknown > 0)
+          MasterDetailRow('库存重量(合计)', _stockWeightTotalText(d, weightDisplay)),
         for (final w in d.stockByWarehouse)
           MasterDetailRow(
-            '　${w.warehouseName ?? w.warehouseCode ?? '仓库'}${w.colorName != null ? '·${w.colorName}' : ''}',
+            '　${w.warehouseName ?? w.warehouseCode ?? '仓库'}'
+                '${w.colorName != null ? '·${w.colorName}' : ''}'
+                '${w.lineSide ? ' (内料仓, 不计入合计)' : ''}',
             '${s(w.qty)}${d.unitName != null ? ' ${d.unitName}' : ''}'
-                '${w.weight == null ? '' : ' · 重量 ${s(w.weight)}'}',
+                '${_rowWeightText(w, weightDisplay)}',
           ),
       ]),
     ];
   }
 
+  /// 「≈28.9 kg (另有 2 处未称)」; 全部未知时「未称」。
+  static String _stockWeightTotalText(GoodsDetail d, WeightDisplay display) {
+    final unknown = d.stockWeightUnknown;
+    final total = formatWeightValue(
+      d.stockWeightKg,
+      display: display,
+      estimated: d.stockWeightEstimated,
+    );
+    if (d.stockWeightKg == null || unknown <= 0) return total;
+    return '$total (另有 $unknown 处未称)';
+  }
+
+  /// 仓库行的重量片段: 「 · 重量 ≈1.2 kg」; 有库存没称过「 · 重量 未称」; 无库存不显示。
+  static String _rowWeightText(GoodsStockRow w, WeightDisplay display) {
+    if (w.weight == null && (w.qty ?? 0) == 0) return '';
+    final text = formatWeightValue(
+      w.weight,
+      display: display,
+      estimated: w.weightEstimated,
+    );
+    return ' · 重量 $text';
+  }
+
   Widget _cell(ThemeData theme, MasterDetailRow r) {
+    if (r is _GoodsNameEnDetailRow) {
+      return GoodsNameEnViewCell(
+        nameEn: r.value,
+        learned: r.learned,
+        onEdit: r.onEdit,
+      );
+    }
     final hasValue = r.value != null && r.value!.isNotEmpty;
     return Container(
       width: double.infinity,
@@ -1148,6 +1404,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       canDelete: widget.canBomDelete,
       productCode: _detail?.code,
       productName: _detail?.name,
+      // ADR-131：BOM 上整批领料的料的单个重量与货品资料单重相差 20% 以上时标黄。
+      productWeightGrams: _productWeightGrams(),
       // 「预览」按钮渲染在组装信息表格工具条「全屏」旁（2026-09-12 从详情头部
       // 迁入）；弹窗要的型号等取自 _detail，故由本 Body 接线。
       onPreview: () => showGoodsBomPreview(

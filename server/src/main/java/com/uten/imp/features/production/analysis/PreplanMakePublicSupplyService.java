@@ -89,6 +89,16 @@ public class PreplanMakePublicSupplyService {
     }
     Map<UUID,BigDecimal> adoptLocked(UUID analysisId,Map<UUID,BigDecimal> desired,Map<UUID,BigDecimal> baseQuanta,String commandKey,
             java.util.function.Consumer<AggregateMaterialOrderContracts.AdoptedClaim> collector) {
+        return adoptLocked(analysisId,desired,baseQuanta,commandKey,Set.of(),collector);
+    }
+
+    /**
+     * @param excludedSourcePlans plans issued earlier by the same command. Their public share did not exist
+     *        when the command was reviewed, so a later group of the same command must not adopt it: one material
+     *        split into several orders (ADR-120 §8) keeps exactly the quantities the user confirmed.
+     */
+    Map<UUID,BigDecimal> adoptLocked(UUID analysisId,Map<UUID,BigDecimal> desired,Map<UUID,BigDecimal> baseQuanta,String commandKey,
+            Set<UUID> excludedSourcePlans,java.util.function.Consumer<AggregateMaterialOrderContracts.AdoptedClaim> collector) {
         Map<UUID,List<Candidate>> available=candidates(em,analysisId,ignored->true,desired.entrySet().stream()
                 .filter(entry->entry.getValue().signum()>0).map(Map.Entry::getKey).toList());
         Map<UUID,BigDecimal> result=new HashMap<>();
@@ -96,7 +106,7 @@ public class PreplanMakePublicSupplyService {
             BigDecimal remaining=desired.get(materialId);
             BigDecimal quantum=baseQuanta.getOrDefault(materialId,new BigDecimal("0.0001"));
             for(Candidate candidate:available.getOrDefault(materialId,List.of())) {
-                if(!candidate.adoptable()||remaining.signum()==0)continue;
+                if(!candidate.adoptable()||remaining.signum()==0||excludedSourcePlans.contains(candidate.sourcePlanId()))continue;
                 lockSource(candidate.sourcePlanItemId());
                 BigDecimal current=decimal(em.createNativeQuery("SELECT available_to_claim_qty FROM fn_preplan_make_public_supply_sources(NULL::uuid,:id)")
                         .setParameter("id",candidate.sourcePlanItemId()).getSingleResult());

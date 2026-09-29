@@ -327,15 +327,18 @@ class OutboundPlanLine {
       );
 
   /// 按服务端发料计划快照构造出仓草稿行，颜色/单位 UUID 不由客户端重选。
+  /// [weight] = 仓库实称千克 (4 位, ADR-135 §3.8); [qtyFromWeight] = 数量按称重推算。
   Map<String, dynamic> toMaterialIssueItemPayload({
     required double qty,
     double? weight,
+    bool qtyFromWeight = false,
   }) => {
     'goodsId': goodsId,
     'colorId': colorId,
     'unitId': unitId,
     'qty': qty,
     'weight': ?weight,
+    'qtyFromWeight': qtyFromWeight,
     'unitRate': 1,
     'orderItemId': orderItemId,
     'planItemId': planItemId,

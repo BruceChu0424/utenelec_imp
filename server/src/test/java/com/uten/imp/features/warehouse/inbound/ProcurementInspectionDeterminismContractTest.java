@@ -36,7 +36,7 @@ class ProcurementInspectionDeterminismContractTest {
                 .contains("boolean wholeReceiptResolved = allResolved(receiptType, receiptId)")
                 .contains("if (\"PASS\".equals(action))")
                 .contains("publishIqcStockInPending(")
-                .contains("releasedAmount, releasedWeight, releasedWeightUnitId")
+                .contains("releasedAmount, releasedWeight, batchRequestHash")
                 .doesNotContain("stockService.recordMovement(")
                 .doesNotContain("stockService.recordMovementWithId(")
                 .doesNotContain("advanceProductionAfterInspectionPass(")

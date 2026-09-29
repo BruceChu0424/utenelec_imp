@@ -347,43 +347,6 @@ com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.
 com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.java#sales_orders.total_original
 com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.java#sales_orders.updated_at
 com/uten/imp/features/common/taskclaim/TaskClaimMutationConcurrencyPostgresTest.java#sales_orders.updated_by
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.amount_balance_original
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.amount_offset_local
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.amount_offset_original
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.amount_original
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.amount_original_local
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.amount_received_local
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.amount_received_original
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.amount_settled
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.amount_write_off_local
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.amount_write_off_original
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.bill_date
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.bill_no
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.business_type
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.client_id
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.created_at
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.created_by
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.currency_id
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.deleted_at
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.due_date
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.exchange_rate
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.id
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.is_settled
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.legacy_bstyle
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.legacy_id
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.legacy_import_run_id
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.legacy_source
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.legacy_source_resolution
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.open_item_kind
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.remark
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.settled_date
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.settlement_style_legacy
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.settlement_type_id
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.source_doc_id
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.source_doc_no
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.source_doc_type
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.updated_at
-com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#ar_ap_ledger.updated_by
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#colors.code
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#colors.created_at
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#colors.created_by
@@ -449,6 +412,7 @@ com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPost
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.bom_status
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.bs_test
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.budget_graph
+com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.bulk_package_qty
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.c_number
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.c_total
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.cap
@@ -488,6 +452,8 @@ com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPost
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.init_stock
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.init_weight
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.is_deleted
+com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.is_recycled_material
+com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.issue_method
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.kqty
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.kqty2
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.l_style
@@ -518,6 +484,7 @@ com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPost
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.owning_workshop_department_id
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.pack
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.paper
+com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.periodic_cost_basis
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.pieces
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.plating_e
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java#goods.polish_e
@@ -687,6 +654,7 @@ com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPos
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.bom_status
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.bs_test
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.budget_graph
+com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.bulk_package_qty
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.c_number
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.c_total
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.cap
@@ -726,6 +694,8 @@ com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPos
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.init_stock
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.init_weight
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.is_deleted
+com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.is_recycled_material
+com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.issue_method
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.kqty
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.kqty2
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.l_style
@@ -756,6 +726,7 @@ com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPos
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.owning_workshop_department_id
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.pack
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.paper
+com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.periodic_cost_basis
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.pieces
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.plating_e
 com/uten/imp/features/finance/procurement/ProcurementApprovalRevisionSnapshotPostgresTest.java#goods.polish_e
@@ -947,6 +918,7 @@ com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#g
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.bom_status
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.bs_test
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.budget_graph
+com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.bulk_package_qty
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.c_number
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.c_total
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.cap
@@ -976,6 +948,8 @@ com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#g
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.init_count
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.init_stock
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.init_weight
+com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.is_recycled_material
+com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.issue_method
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.kqty
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.kqty2
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.l_style
@@ -1005,6 +979,7 @@ com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#g
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.owning_workshop_department_id
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.pack
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.paper
+com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.periodic_cost_basis
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.pieces
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.plating_e
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java#goods.polish_e
@@ -1317,6 +1292,7 @@ com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostg
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.bom_status
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.bs_test
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.budget_graph
+com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.bulk_package_qty
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.c_number
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.c_total
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.cap
@@ -1345,6 +1321,7 @@ com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostg
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.init_count
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.init_stock
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.init_weight
+com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.is_recycled_material
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.kqty
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.kqty2
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.l_style
@@ -1375,6 +1352,7 @@ com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostg
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.owning_workshop_department_id
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.pack
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.paper
+com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.periodic_cost_basis
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.pieces
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.plating_e
 com/uten/imp/features/operations/workbench/SubcontractPreparationPaginationPostgresTest.java#goods.polish_e
@@ -1909,6 +1887,7 @@ com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.bom_status
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.bs_test
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.budget_graph
+com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.bulk_package_qty
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.c_number
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.c_total
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.cap
@@ -1938,6 +1917,8 @@ com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.init_count
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.init_stock
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.init_weight
+com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.is_recycled_material
+com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.issue_method
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.kqty
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.kqty2
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.l_style
@@ -1967,6 +1948,7 @@ com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.owning_workshop_department_id
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.pack
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.paper
+com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.periodic_cost_basis
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.pieces
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.plating_e
 com/uten/imp/features/production/analysis/GoodsOwningWarehouseWritePostgresTest.java#goods.polish_e
@@ -2124,6 +2106,7 @@ com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPost
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.bom_status
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.bs_test
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.budget_graph
+com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.bulk_package_qty
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.c_number
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.c_total
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.cap
@@ -2154,6 +2137,8 @@ com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPost
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.init_stock
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.init_weight
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.is_deleted
+com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.is_recycled_material
+com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.issue_method
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.kqty
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.kqty2
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.l_style
@@ -2184,6 +2169,7 @@ com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPost
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.owning_workshop_department_id
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.pack
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.paper
+com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.periodic_cost_basis
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.pieces
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.plating_e
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#goods.polish_e
@@ -2292,7 +2278,6 @@ com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPost
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#procurement_inspection_items.received_amount_local
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#procurement_inspection_items.received_at
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#procurement_inspection_items.received_weight
-com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#procurement_inspection_items.received_weight_unit_id
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#procurement_inspection_items.unit_id
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#procurement_inspection_items.unit_rate
 com/uten/imp/features/production/analysis/MaterialAnalysisWarehouseBreakdownPostgresTest.java#procurement_inspection_items.updated_at
@@ -2672,6 +2657,7 @@ com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPost
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.bom_status
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.bs_test
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.budget_graph
+com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.bulk_package_qty
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.c_number
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.c_total
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.cap
@@ -2700,6 +2686,7 @@ com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPost
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.init_count
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.init_stock
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.init_weight
+com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.is_recycled_material
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.kqty
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.kqty2
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.l_style
@@ -2731,6 +2718,7 @@ com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPost
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.owning_workshop_department_id
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.pack
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.paper
+com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.periodic_cost_basis
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.pieces
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.plating_e
 com/uten/imp/features/production/analysis/ProductionBomFootprintReachabilityPostgresTest.java#goods.polish_e
@@ -2801,6 +2789,7 @@ com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgr
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.bom_status
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.bs_test
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.budget_graph
+com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.bulk_package_qty
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.c_number
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.c_total
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.cap
@@ -2840,6 +2829,8 @@ com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgr
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.init_count
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.init_stock
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.init_weight
+com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.is_recycled_material
+com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.issue_method
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.kqty
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.kqty2
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.l_style
@@ -2871,6 +2862,7 @@ com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgr
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.owning_workshop_department_id
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.pack
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.paper
+com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.periodic_cost_basis
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.pieces
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.plating_e
 com/uten/imp/features/production/analysis/SubcontractComponentEntitledLotsPostgresTest.java#goods.polish_e
@@ -3160,6 +3152,7 @@ com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.jav
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.bom_status
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.bs_test
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.budget_graph
+com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.bulk_package_qty
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.c_number
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.c_total
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.cap
@@ -3189,6 +3182,8 @@ com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.jav
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.init_stock
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.init_weight
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.is_deleted
+com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.is_recycled_material
+com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.issue_method
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.kqty
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.kqty2
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.l_style
@@ -3219,6 +3214,7 @@ com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.jav
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.owning_workshop_department_id
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.pack
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.paper
+com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.periodic_cost_basis
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.pieces
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.plating_e
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#goods.polish_e
@@ -3929,6 +3925,7 @@ com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.b_pa
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.bom_status
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.bs_test
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.budget_graph
+com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.bulk_package_qty
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.c_number
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.c_total
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.cap
@@ -3958,6 +3955,8 @@ com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.inci
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.init_count
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.init_stock
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.init_weight
+com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.is_recycled_material
+com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.issue_method
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.kqty
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.kqty2
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.l_style
@@ -3987,6 +3986,7 @@ com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.owni
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.owning_workshop_department_id
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.pack
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.paper
+com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.periodic_cost_basis
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.pieces
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.plating_e
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.polish_e
@@ -4048,7 +4048,6 @@ com/uten/imp/features/stock/valuation/InventoryDerivedNodeLegacyPostgresTest.jav
 com/uten/imp/features/stock/valuation/InventoryDerivedNodeLegacyPostgresTest.java#stock_balances.updated_at
 com/uten/imp/features/stock/valuation/InventoryDerivedNodeLegacyPostgresTest.java#stock_balances.updated_by
 com/uten/imp/features/stock/valuation/InventoryDerivedNodeLegacyPostgresTest.java#stock_balances.weight
-com/uten/imp/features/stock/valuation/InventoryDerivedNodeLegacyPostgresTest.java#stock_movements.actual_weight_unit_id
 com/uten/imp/features/stock/valuation/InventoryDerivedNodeLegacyPostgresTest.java#stock_movements.created_at
 com/uten/imp/features/stock/valuation/InventoryDerivedNodeLegacyPostgresTest.java#stock_movements.created_by
 com/uten/imp/features/stock/valuation/InventoryDerivedNodeLegacyPostgresTest.java#stock_movements.remark
@@ -4126,7 +4125,6 @@ com/uten/imp/features/stock/valuation/InventoryPositionPostgresTest.java#stock_d
 com/uten/imp/features/stock/valuation/InventoryPositionPostgresTest.java#stock_documents.updated_by
 com/uten/imp/features/stock/valuation/InventoryPositionPostgresTest.java#stock_documents.worker_id
 com/uten/imp/features/stock/valuation/InventoryPositionPostgresTest.java#stock_documents.worker_legacy_id
-com/uten/imp/features/stock/valuation/InventoryPositionPostgresTest.java#stock_movements.actual_weight_unit_id
 com/uten/imp/features/stock/valuation/InventoryPositionPostgresTest.java#stock_movements.created_at
 com/uten/imp/features/stock/valuation/InventoryPositionPostgresTest.java#stock_movements.created_by
 com/uten/imp/features/stock/valuation/InventoryPositionPostgresTest.java#stock_movements.remark
@@ -4139,7 +4137,6 @@ com/uten/imp/features/stock/valuation/InventoryValuationCorePostgresTest.java#st
 com/uten/imp/features/stock/valuation/InventoryValuationCorePostgresTest.java#stock_balances.updated_at
 com/uten/imp/features/stock/valuation/InventoryValuationCorePostgresTest.java#stock_balances.updated_by
 com/uten/imp/features/stock/valuation/InventoryValuationCorePostgresTest.java#stock_balances.weight
-com/uten/imp/features/stock/valuation/InventoryValuationCorePostgresTest.java#stock_movements.actual_weight_unit_id
 com/uten/imp/features/stock/valuation/InventoryValuationCorePostgresTest.java#stock_movements.created_at
 com/uten/imp/features/stock/valuation/InventoryValuationCorePostgresTest.java#stock_movements.created_by
 com/uten/imp/features/stock/valuation/InventoryValuationCorePostgresTest.java#stock_movements.remark
@@ -4327,6 +4324,7 @@ com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.jav
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.bom_status
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.bs_test
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.budget_graph
+com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.bulk_package_qty
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.c_number
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.c_total
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.cap
@@ -4356,6 +4354,8 @@ com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.jav
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.init_stock
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.init_weight
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.is_deleted
+com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.is_recycled_material
+com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.issue_method
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.kqty
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.kqty2
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.l_style
@@ -4386,6 +4386,7 @@ com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.jav
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.owning_workshop_department_id
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.pack
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.paper
+com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.periodic_cost_basis
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.pieces
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.plating_e
 com/uten/imp/features/subcontract/plan/SubcontractOutboundDetailPostgresTest.java#goods.polish_e
@@ -4649,6 +4650,7 @@ com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionP
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.bom_status
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.bs_test
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.budget_graph
+com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.bulk_package_qty
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.c_number
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.c_total
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.cap
@@ -4678,6 +4680,8 @@ com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionP
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.init_stock
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.init_weight
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.is_deleted
+com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.is_recycled_material
+com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.issue_method
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.kqty
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.kqty2
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.l_style
@@ -4708,6 +4712,7 @@ com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionP
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.owning_workshop_department_id
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.pack
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.paper
+com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.periodic_cost_basis
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.pieces
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.plating_e
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#goods.polish_e
@@ -4753,7 +4758,6 @@ com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionP
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#procurement_inspection_items.legacy_stocked_weight
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#procurement_inspection_items.passed_at
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#procurement_inspection_items.received_amount_local
-com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#procurement_inspection_items.received_weight_unit_id
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#procurement_inspection_items.updated_at
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#procurement_inspection_items.warehouse_stocked_amount_local
 com/uten/imp/features/warehouse/inbound/ProcurementInspectionQuantityProjectionPostgresTest.java#procurement_inspection_items.warehouse_stocked_base_qty
@@ -4821,6 +4825,7 @@ com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.b_pack
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.bom_status
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.bs_test
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.budget_graph
+com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.bulk_package_qty
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.c_number
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.cap
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.category_id
@@ -4845,6 +4850,8 @@ com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.init_count
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.init_stock
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.init_weight
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.is_deleted
+com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.is_recycled_material
+com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.issue_method
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.kqty
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.kqty2
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.l_style
@@ -4869,6 +4876,7 @@ com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.owning_warehous
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.owning_workshop_department_id
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.pack
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.paper
+com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.periodic_cost_basis
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.pieces
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.price
 com/uten/imp/migration/GoodsCostIntegrityPostgresTest.java#goods.price2
@@ -4909,7 +4917,6 @@ com/uten/imp/migration/ProcurementInspectionOptionalPassReasonPostgresTest.java#
 com/uten/imp/migration/ProcurementInspectionOptionalPassReasonPostgresTest.java#procurement_inspection_events.occurred_at
 com/uten/imp/migration/ProcurementInspectionOptionalPassReasonPostgresTest.java#procurement_inspection_events.released_amount_local
 com/uten/imp/migration/ProcurementInspectionOptionalPassReasonPostgresTest.java#procurement_inspection_events.released_weight
-com/uten/imp/migration/ProcurementInspectionOptionalPassReasonPostgresTest.java#procurement_inspection_events.released_weight_unit_id
 com/uten/imp/migration/ProcurementInspectionOptionalPassReasonPostgresTest.java#procurement_inspection_events.requires_warehouse_stock_in
 com/uten/imp/migration/SecurityPermissionMigrationTest.java#audit_log_archive.action
 com/uten/imp/migration/SecurityPermissionMigrationTest.java#audit_log_archive.actor_account

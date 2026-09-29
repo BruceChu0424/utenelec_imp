@@ -42,6 +42,12 @@ public class ProductionExecutionSegment extends SoftDeletableEntity {
             "PLAN_BOM_OVERRIDE";
     public static final String ZERO_MATERIAL_REASON_NO_PRODUCTION_HARD_GATE =
             "NO_PRODUCTION_HARD_GATE";
+    /**
+     * ADR-131：产品只有整批领料的期间边(可另有包装/参考边)，料由车间内料仓供给，
+     * 不建按单需求；证据形状同 {@link #ZERO_MATERIAL_REASON_NO_PRODUCTION_HARD_GATE}。
+     */
+    public static final String ZERO_MATERIAL_REASON_PERIODIC_MATERIAL =
+            "PERIODIC_MATERIAL";
 
     @Column(name = "package_id", nullable = false)
     private UUID packageId;

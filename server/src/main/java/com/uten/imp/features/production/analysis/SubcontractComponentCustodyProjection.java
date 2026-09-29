@@ -19,20 +19,30 @@ final class SubcontractComponentCustodyProjection {
                 WHERE custody.source_reservation_id=reservation.id)
             """;
 
-    /** A draft still owns physical stock at its actual warehouse, exclusively for this child UUID. */
+    /**
+     * A draft still owns physical stock at its actual warehouse, exclusively for this child UUID.
+     * The analysis filter runs first (MATERIALIZED): the per-row origin proof is expensive and
+     * must only see this analysis' own open custody rows, never the company-wide handoff table.
+     */
     static List<Object[]> held(EntityManager em, UUID analysisId) {
         return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT custody.id,child.id,child.analysis_item_id,child.node_key,
-                       outbound.goods_id,outbound.color_id,child.unit_id,outbound.warehouse_id,
-                       GREATEST(outbound.qty-outbound.consumed_qty-outbound.released_qty,0)
-                FROM subcontract_component_stock_handoffs custody
-                JOIN stock_reservations outbound ON outbound.id=custody.target_reservation_id
-                  AND outbound.status=0 AND NOT outbound.is_deleted
-                  AND outbound.qty>outbound.consumed_qty+outbound.released_qty
-                JOIN production_material_analysis_materials child ON child.id=custody.child_material_id
-                  AND child.analysis_id=:analysisId AND child.active
-                WHERE fn_preplan_reservation_has_qualified_origin(custody.source_reservation_id)
-                ORDER BY custody.created_at,custody.id
+                WITH scoped AS MATERIALIZED (
+                    SELECT custody.id AS custody_id,custody.created_at,custody.source_reservation_id,
+                           child.id AS child_id,child.analysis_item_id,child.node_key,
+                           outbound.goods_id,outbound.color_id,child.unit_id,outbound.warehouse_id,
+                           GREATEST(outbound.qty-outbound.consumed_qty-outbound.released_qty,0) AS qty
+                    FROM production_material_analysis_materials child
+                    JOIN subcontract_component_stock_handoffs custody ON custody.child_material_id=child.id
+                    JOIN stock_reservations outbound ON outbound.id=custody.target_reservation_id
+                      AND outbound.status=0 AND NOT outbound.is_deleted
+                      AND outbound.qty>outbound.consumed_qty+outbound.released_qty
+                    WHERE child.analysis_id=:analysisId AND child.active
+                )
+                SELECT custody_id,child_id,analysis_item_id,node_key,
+                       goods_id,color_id,unit_id,warehouse_id,qty
+                FROM scoped
+                WHERE fn_preplan_reservation_has_qualified_origin(source_reservation_id)
+                ORDER BY created_at,custody_id
                 """).setParameter("analysisId", analysisId));
     }
 

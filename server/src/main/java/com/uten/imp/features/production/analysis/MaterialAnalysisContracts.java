@@ -478,8 +478,23 @@ public final class MaterialAnalysisContracts {
              * 本次刷新（POST /preview）因主档/BOM 事实变更而被清空的人工确认路线条数；
              * 只在刷新响应上非零，详情/命令响应恒为 0。前端据此提示
              * 「N 条路线因主档变更需重新确认」，让静默清空可见。
+             * 2026-09-27 起同一次刷新里按货品档案马上重新确认的不计入 (ADR-102), 只数真要人补选的。
              */
             int routeResetCount,
+            /**
+             * 本次请求在服务端重算里按货品档案自动确认的供应方式条数 (按操作组计, ADR-102,
+             * 2026-09-27): 只在做了确认的那次新建/刷新 (POST /preview) 与改路线 (PUT /routes)
+             * 响应上非零, 详情、其他命令与重放恒为 0. 前端据此轻提示「已按货品档案自动确认 N 条
+             * 供应方式」, 不再自己补发 PUT /routes.
+             */
+            int autoConfirmedRouteCount,
+            /**
+             * 这份分析里此刻还能按货品档案自动确认、但还没确认的操作组数 (与自动确认同一判据).
+             * 非零通常是到货/审核等别的单据顺带重算后新冒出来的行, 或上一次打开的人没有路线维护
+             * 权限; 有「刷新分析」与「确认路线」能力的页面据此静默刷新一次即可, 不必自己判断哪些行.
+             * 当前账号没有 CONFIRM_ROUTES 能力 (与自动确认同一道闸) 时恒为 0; 下达预览响应恒为 0.
+             */
+            int pendingAutoConfirmRouteCount,
             Map<UUID, BigDecimal> overproductionDefaults,
             /** 分析编号 WL+YYYYMMDD+6位日流水（V719）；历史夹具行可能为 null。 */
             String analysisNo) {
@@ -499,7 +514,7 @@ public final class MaterialAnalysisContracts {
             this(analysisId, status, version, fingerprint, analysisFingerprint,
                     warehouseId, warehouseIds, analyzedAt, products, flatMaterials,
                     warehouses, supplyActions, allowedActions, fqcReplenishmentOnly,
-                    fqcRecoveryAuthorizationId, planningBlockedReasons, routeResetCount, Map.of(), null);
+                    fqcRecoveryAuthorizationId, planningBlockedReasons, routeResetCount, 0, 0, Map.of(), null);
         }
 
         public AnalysisView(UUID analysisId, String status, long version,
@@ -529,14 +544,14 @@ public final class MaterialAnalysisContracts {
                     fqcRecoveryAuthorizationId, Map.of());
         }
 
-        /** 刷新入口专用：把本次被清空的确认路线数挂到响应上，其余字段不变。 */
-        public AnalysisView withRouteResetCount(int count) {
-            return count == routeResetCount ? this : new AnalysisView(
+        /** 重算入口专用: 把本次被清空 / 被自动确认的路线条数挂到响应上, 其余字段不变. */
+        public AnalysisView withRouteOutcome(int resetCount, int autoConfirmedCount) {
+            return resetCount == routeResetCount && autoConfirmedCount == autoConfirmedRouteCount ? this : new AnalysisView(
                     analysisId, status, version, fingerprint, analysisFingerprint,
                     warehouseId, warehouseIds, analyzedAt, products, flatMaterials,
                     warehouses, supplyActions, allowedActions, fqcReplenishmentOnly,
-                    fqcRecoveryAuthorizationId, planningBlockedReasons, count, overproductionDefaults,
-                    analysisNo);
+                    fqcRecoveryAuthorizationId, planningBlockedReasons, resetCount, autoConfirmedCount,
+                    pendingAutoConfirmRouteCount, overproductionDefaults, analysisNo);
         }
     }
 
@@ -771,9 +786,26 @@ public final class MaterialAnalysisContracts {
             BigDecimal basisOutputQty,
             boolean allowPartialPackage,
             boolean hardGate,
+            /** 本节点计算采用的每父件用量(真实或设计，ADR-129)。 */
             BigDecimal bomQty,
             BigDecimal parentPerProductQty,
             BigDecimal perProductQty,
+            /** 分析锁定的设计使用数量；顶层供给行为空。 */
+            BigDecimal designBomQty,
+            /** 分析锁定的真实使用数量(与设计值同一计量口径)；没有数据时为空。 */
+            BigDecimal actualBomQty,
+            /** 本行按哪个用量算：ACTUAL 真实使用数量 / DESIGN 设计使用数量。 */
+            String usageBasis,
+            /**
+             * 按设计值算的原因：NO_DATA 没有真实数据 / NOT_LINEAR 整包或固定批次 /
+             * OUTPUT_UNIT_CHANGED 父件单位变了 / SUBCONTRACT_OUTBOUND 发给委外商按合同用量；
+             * 按真实值算时为空。只给界面选说明文案，不直接展示。
+             */
+            String usageReason,
+            /** 真实使用数量依据的有效生产批次数。 */
+            Long usageSampleCount,
+            /** 与锁定的真实使用数量一起锁定的报工不良率(0..1，6 位)；没有真实使用数量时为空，只作说明。 */
+            BigDecimal usageDefectRate,
             BigDecimal requiredQty,
             BigDecimal availableQty,
             BigDecimal exactPeggedQty,
@@ -902,25 +934,32 @@ public final class MaterialAnalysisContracts {
             BigDecimal preparationAdoptableSharedQty,
             List<PreparationSharedSupplySlice> preparationSharedSupplySlices) {
         public MaterialView withAggregatePreparation(AggregatePreparationView value) {
-            return new MaterialView(materialLineId, analysisLineId, nodeKey, actionGroupKey, materialKey, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, level, path, parentNodeKey, parentGoodsId, parentLabel, controlStage, consumptionBasis, basisOutputQty, allowPartialPackage, hardGate, bomQty, parentPerProductQty, perProductQty, requiredQty, availableQty, exactPeggedQty, allocatedAvailableQty, reservedQty, safetyStockQty, inboundQty, shortageQty, demandSupplyGapQty, subcontractHandoffFutureQty, expectedReadyDate, sourceSuggestion, sourceConfirmed, routeConfirmed, routeReason, actionable, lowerLevelPending, requirementState, delegatedToAnalysisLineId, delegatedToSourceRef, delegatedToRequestedQty, borrowedInQty, borrowedOutQty, borrowRefs, notifiedTargets, crossReallocatedInQty, crossReallocatedOutQty, priorityPendingQty, priorityFulfilledQty, crossReallocationRefs, warehouseBreakdown, downstreamReferences, publicSurplusApprovedInboundQty, publicSurplusRemainingQty, sharedFutureClaimedQty, additionalSupplyRecommendedQty, minOrderQty, orderMultipleQty, selectedWarehousesAvailableQty, selectedOtherWarehouseTransferableQty, publicSurplusExpectedDate, sharedFutureSupplyRefs, flowStage, planAnchorAnalysisLineId, mainWarehousePublicAvailableQty, mainWarehouseOpenSafetySupplyQty, mainWarehouseSafetyReplenishmentGapQty, priorityMakeSupplementQty, sharedFuturePendingQty, lateSharedFutureAvailableQty, subcontractOutboundForm, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, externalFutureCoverageQty, internalCommittedOutputQty, sharedFutureClaimableQty, plannedOutputQty, netShortageQty, sourceRequiredQty, planningUncoveredQty, aggregateDelegatedQty, aggregateTargetMaterialLineId, value, preparationAvailableQty, makePublicSupplyRefs, preparationAdoptedQty, preparationPoolKey, preparationSharedAvailableQty, preparationOwnedAvailableQty, preparationUncoveredBeforeSharedQty, preparationAdoptableSharedQty, preparationSharedSupplySlices);
+            return withProjection(flowStage, value, preparationAvailableQty, makePublicSupplyRefs, preparationAdoptedQty, preparationPoolKey, preparationSharedAvailableQty, preparationOwnedAvailableQty, preparationUncoveredBeforeSharedQty, preparationAdoptableSharedQty, preparationSharedSupplySlices);
         }
         public MaterialView withPreparationSupply(BigDecimal available,List<PreplanMakePublicSupplyService.Candidate> candidates) {
-            return new MaterialView(materialLineId, analysisLineId, nodeKey, actionGroupKey, materialKey, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, level, path, parentNodeKey, parentGoodsId, parentLabel, controlStage, consumptionBasis, basisOutputQty, allowPartialPackage, hardGate, bomQty, parentPerProductQty, perProductQty, requiredQty, availableQty, exactPeggedQty, allocatedAvailableQty, reservedQty, safetyStockQty, inboundQty, shortageQty, demandSupplyGapQty, subcontractHandoffFutureQty, expectedReadyDate, sourceSuggestion, sourceConfirmed, routeConfirmed, routeReason, actionable, lowerLevelPending, requirementState, delegatedToAnalysisLineId, delegatedToSourceRef, delegatedToRequestedQty, borrowedInQty, borrowedOutQty, borrowRefs, notifiedTargets, crossReallocatedInQty, crossReallocatedOutQty, priorityPendingQty, priorityFulfilledQty, crossReallocationRefs, warehouseBreakdown, downstreamReferences, publicSurplusApprovedInboundQty, publicSurplusRemainingQty, sharedFutureClaimedQty, additionalSupplyRecommendedQty, minOrderQty, orderMultipleQty, selectedWarehousesAvailableQty, selectedOtherWarehouseTransferableQty, publicSurplusExpectedDate, sharedFutureSupplyRefs, flowStage, planAnchorAnalysisLineId, mainWarehousePublicAvailableQty, mainWarehouseOpenSafetySupplyQty, mainWarehouseSafetyReplenishmentGapQty, priorityMakeSupplementQty, sharedFuturePendingQty, lateSharedFutureAvailableQty, subcontractOutboundForm, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, externalFutureCoverageQty, internalCommittedOutputQty, sharedFutureClaimableQty, plannedOutputQty, netShortageQty, sourceRequiredQty, planningUncoveredQty, aggregateDelegatedQty, aggregateTargetMaterialLineId, aggregatePreparation, available, candidates, preparationAdoptedQty, preparationPoolKey, preparationSharedAvailableQty, preparationOwnedAvailableQty, preparationUncoveredBeforeSharedQty, preparationAdoptableSharedQty, preparationSharedSupplySlices);
+            return withProjection(flowStage, aggregatePreparation, available, candidates, preparationAdoptedQty, preparationPoolKey, preparationSharedAvailableQty, preparationOwnedAvailableQty, preparationUncoveredBeforeSharedQty, preparationAdoptableSharedQty, preparationSharedSupplySlices);
         }
         public MaterialView withFlowStage(String stage) {
-            return new MaterialView(materialLineId, analysisLineId, nodeKey, actionGroupKey, materialKey, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, level, path, parentNodeKey, parentGoodsId, parentLabel, controlStage, consumptionBasis, basisOutputQty, allowPartialPackage, hardGate, bomQty, parentPerProductQty, perProductQty, requiredQty, availableQty, exactPeggedQty, allocatedAvailableQty, reservedQty, safetyStockQty, inboundQty, shortageQty, demandSupplyGapQty, subcontractHandoffFutureQty, expectedReadyDate, sourceSuggestion, sourceConfirmed, routeConfirmed, routeReason, actionable, lowerLevelPending, requirementState, delegatedToAnalysisLineId, delegatedToSourceRef, delegatedToRequestedQty, borrowedInQty, borrowedOutQty, borrowRefs, notifiedTargets, crossReallocatedInQty, crossReallocatedOutQty, priorityPendingQty, priorityFulfilledQty, crossReallocationRefs, warehouseBreakdown, downstreamReferences, publicSurplusApprovedInboundQty, publicSurplusRemainingQty, sharedFutureClaimedQty, additionalSupplyRecommendedQty, minOrderQty, orderMultipleQty, selectedWarehousesAvailableQty, selectedOtherWarehouseTransferableQty, publicSurplusExpectedDate, sharedFutureSupplyRefs, stage, planAnchorAnalysisLineId, mainWarehousePublicAvailableQty, mainWarehouseOpenSafetySupplyQty, mainWarehouseSafetyReplenishmentGapQty, priorityMakeSupplementQty, sharedFuturePendingQty, lateSharedFutureAvailableQty, subcontractOutboundForm, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, externalFutureCoverageQty, internalCommittedOutputQty, sharedFutureClaimableQty, plannedOutputQty, netShortageQty, sourceRequiredQty, planningUncoveredQty, aggregateDelegatedQty, aggregateTargetMaterialLineId, aggregatePreparation, preparationAvailableQty, makePublicSupplyRefs, preparationAdoptedQty, preparationPoolKey, preparationSharedAvailableQty, preparationOwnedAvailableQty, preparationUncoveredBeforeSharedQty, preparationAdoptableSharedQty, preparationSharedSupplySlices);
+            return withProjection(stage, aggregatePreparation, preparationAvailableQty, makePublicSupplyRefs, preparationAdoptedQty, preparationPoolKey, preparationSharedAvailableQty, preparationOwnedAvailableQty, preparationUncoveredBeforeSharedQty, preparationAdoptableSharedQty, preparationSharedSupplySlices);
         }
         public MaterialView withPreparationAdoptedQty(BigDecimal adopted) {
-            return new MaterialView(materialLineId, analysisLineId, nodeKey, actionGroupKey, materialKey, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, level, path, parentNodeKey, parentGoodsId, parentLabel, controlStage, consumptionBasis, basisOutputQty, allowPartialPackage, hardGate, bomQty, parentPerProductQty, perProductQty, requiredQty, availableQty, exactPeggedQty, allocatedAvailableQty, reservedQty, safetyStockQty, inboundQty, shortageQty, demandSupplyGapQty, subcontractHandoffFutureQty, expectedReadyDate, sourceSuggestion, sourceConfirmed, routeConfirmed, routeReason, actionable, lowerLevelPending, requirementState, delegatedToAnalysisLineId, delegatedToSourceRef, delegatedToRequestedQty, borrowedInQty, borrowedOutQty, borrowRefs, notifiedTargets, crossReallocatedInQty, crossReallocatedOutQty, priorityPendingQty, priorityFulfilledQty, crossReallocationRefs, warehouseBreakdown, downstreamReferences, publicSurplusApprovedInboundQty, publicSurplusRemainingQty, sharedFutureClaimedQty, additionalSupplyRecommendedQty, minOrderQty, orderMultipleQty, selectedWarehousesAvailableQty, selectedOtherWarehouseTransferableQty, publicSurplusExpectedDate, sharedFutureSupplyRefs, flowStage, planAnchorAnalysisLineId, mainWarehousePublicAvailableQty, mainWarehouseOpenSafetySupplyQty, mainWarehouseSafetyReplenishmentGapQty, priorityMakeSupplementQty, sharedFuturePendingQty, lateSharedFutureAvailableQty, subcontractOutboundForm, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, externalFutureCoverageQty, internalCommittedOutputQty, sharedFutureClaimableQty, plannedOutputQty, netShortageQty, sourceRequiredQty, planningUncoveredQty, aggregateDelegatedQty, aggregateTargetMaterialLineId, aggregatePreparation, preparationAvailableQty, makePublicSupplyRefs, adopted, preparationPoolKey, preparationSharedAvailableQty, preparationOwnedAvailableQty, preparationUncoveredBeforeSharedQty, preparationAdoptableSharedQty, preparationSharedSupplySlices);
+            return withProjection(flowStage, aggregatePreparation, preparationAvailableQty, makePublicSupplyRefs, adopted, preparationPoolKey, preparationSharedAvailableQty, preparationOwnedAvailableQty, preparationUncoveredBeforeSharedQty, preparationAdoptableSharedQty, preparationSharedSupplySlices);
         }
         public MaterialView withPreparationAdoptableSharedQty(BigDecimal cap) {
-            return new MaterialView(materialLineId, analysisLineId, nodeKey, actionGroupKey, materialKey, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, level, path, parentNodeKey, parentGoodsId, parentLabel, controlStage, consumptionBasis, basisOutputQty, allowPartialPackage, hardGate, bomQty, parentPerProductQty, perProductQty, requiredQty, availableQty, exactPeggedQty, allocatedAvailableQty, reservedQty, safetyStockQty, inboundQty, shortageQty, demandSupplyGapQty, subcontractHandoffFutureQty, expectedReadyDate, sourceSuggestion, sourceConfirmed, routeConfirmed, routeReason, actionable, lowerLevelPending, requirementState, delegatedToAnalysisLineId, delegatedToSourceRef, delegatedToRequestedQty, borrowedInQty, borrowedOutQty, borrowRefs, notifiedTargets, crossReallocatedInQty, crossReallocatedOutQty, priorityPendingQty, priorityFulfilledQty, crossReallocationRefs, warehouseBreakdown, downstreamReferences, publicSurplusApprovedInboundQty, publicSurplusRemainingQty, sharedFutureClaimedQty, additionalSupplyRecommendedQty, minOrderQty, orderMultipleQty, selectedWarehousesAvailableQty, selectedOtherWarehouseTransferableQty, publicSurplusExpectedDate, sharedFutureSupplyRefs, flowStage, planAnchorAnalysisLineId, mainWarehousePublicAvailableQty, mainWarehouseOpenSafetySupplyQty, mainWarehouseSafetyReplenishmentGapQty, priorityMakeSupplementQty, sharedFuturePendingQty, lateSharedFutureAvailableQty, subcontractOutboundForm, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, externalFutureCoverageQty, internalCommittedOutputQty, sharedFutureClaimableQty, plannedOutputQty, netShortageQty, sourceRequiredQty, planningUncoveredQty, aggregateDelegatedQty, aggregateTargetMaterialLineId, aggregatePreparation, preparationAvailableQty, makePublicSupplyRefs, preparationAdoptedQty, preparationPoolKey, preparationSharedAvailableQty, preparationOwnedAvailableQty, preparationUncoveredBeforeSharedQty, cap, preparationSharedSupplySlices);
+            return withProjection(flowStage, aggregatePreparation, preparationAvailableQty, makePublicSupplyRefs, preparationAdoptedQty, preparationPoolKey, preparationSharedAvailableQty, preparationOwnedAvailableQty, preparationUncoveredBeforeSharedQty, cap, preparationSharedSupplySlices);
         }
         public MaterialView withPreparationSharedSupplySlices(List<PreparationSharedSupplySlice> slices) {
-            return new MaterialView(materialLineId, analysisLineId, nodeKey, actionGroupKey, materialKey, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, level, path, parentNodeKey, parentGoodsId, parentLabel, controlStage, consumptionBasis, basisOutputQty, allowPartialPackage, hardGate, bomQty, parentPerProductQty, perProductQty, requiredQty, availableQty, exactPeggedQty, allocatedAvailableQty, reservedQty, safetyStockQty, inboundQty, shortageQty, demandSupplyGapQty, subcontractHandoffFutureQty, expectedReadyDate, sourceSuggestion, sourceConfirmed, routeConfirmed, routeReason, actionable, lowerLevelPending, requirementState, delegatedToAnalysisLineId, delegatedToSourceRef, delegatedToRequestedQty, borrowedInQty, borrowedOutQty, borrowRefs, notifiedTargets, crossReallocatedInQty, crossReallocatedOutQty, priorityPendingQty, priorityFulfilledQty, crossReallocationRefs, warehouseBreakdown, downstreamReferences, publicSurplusApprovedInboundQty, publicSurplusRemainingQty, sharedFutureClaimedQty, additionalSupplyRecommendedQty, minOrderQty, orderMultipleQty, selectedWarehousesAvailableQty, selectedOtherWarehouseTransferableQty, publicSurplusExpectedDate, sharedFutureSupplyRefs, flowStage, planAnchorAnalysisLineId, mainWarehousePublicAvailableQty, mainWarehouseOpenSafetySupplyQty, mainWarehouseSafetyReplenishmentGapQty, priorityMakeSupplementQty, sharedFuturePendingQty, lateSharedFutureAvailableQty, subcontractOutboundForm, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, externalFutureCoverageQty, internalCommittedOutputQty, sharedFutureClaimableQty, plannedOutputQty, netShortageQty, sourceRequiredQty, planningUncoveredQty, aggregateDelegatedQty, aggregateTargetMaterialLineId, aggregatePreparation, preparationAvailableQty, makePublicSupplyRefs, preparationAdoptedQty, preparationPoolKey, preparationSharedAvailableQty, preparationOwnedAvailableQty, preparationUncoveredBeforeSharedQty, preparationAdoptableSharedQty, slices);
+            return withProjection(flowStage, aggregatePreparation, preparationAvailableQty, makePublicSupplyRefs, preparationAdoptedQty, preparationPoolKey, preparationSharedAvailableQty, preparationOwnedAvailableQty, preparationUncoveredBeforeSharedQty, preparationAdoptableSharedQty, slices);
         }
         public MaterialView withPreparationBudget(String pool,BigDecimal shared,BigDecimal owned,BigDecimal beforeShared) {
-            return new MaterialView(materialLineId, analysisLineId, nodeKey, actionGroupKey, materialKey, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, level, path, parentNodeKey, parentGoodsId, parentLabel, controlStage, consumptionBasis, basisOutputQty, allowPartialPackage, hardGate, bomQty, parentPerProductQty, perProductQty, requiredQty, availableQty, exactPeggedQty, allocatedAvailableQty, reservedQty, safetyStockQty, inboundQty, shortageQty, demandSupplyGapQty, subcontractHandoffFutureQty, expectedReadyDate, sourceSuggestion, sourceConfirmed, routeConfirmed, routeReason, actionable, lowerLevelPending, requirementState, delegatedToAnalysisLineId, delegatedToSourceRef, delegatedToRequestedQty, borrowedInQty, borrowedOutQty, borrowRefs, notifiedTargets, crossReallocatedInQty, crossReallocatedOutQty, priorityPendingQty, priorityFulfilledQty, crossReallocationRefs, warehouseBreakdown, downstreamReferences, publicSurplusApprovedInboundQty, publicSurplusRemainingQty, sharedFutureClaimedQty, additionalSupplyRecommendedQty, minOrderQty, orderMultipleQty, selectedWarehousesAvailableQty, selectedOtherWarehouseTransferableQty, publicSurplusExpectedDate, sharedFutureSupplyRefs, flowStage, planAnchorAnalysisLineId, mainWarehousePublicAvailableQty, mainWarehouseOpenSafetySupplyQty, mainWarehouseSafetyReplenishmentGapQty, priorityMakeSupplementQty, sharedFuturePendingQty, lateSharedFutureAvailableQty, subcontractOutboundForm, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, externalFutureCoverageQty, internalCommittedOutputQty, sharedFutureClaimableQty, plannedOutputQty, netShortageQty, sourceRequiredQty, planningUncoveredQty, aggregateDelegatedQty, aggregateTargetMaterialLineId, aggregatePreparation, shared, makePublicSupplyRefs, preparationAdoptedQty, pool, shared, owned, beforeShared, preparationAdoptableSharedQty, preparationSharedSupplySlices);
+            return withProjection(flowStage, aggregatePreparation, shared, makePublicSupplyRefs, preparationAdoptedQty, pool, shared, owned, beforeShared, preparationAdoptableSharedQty, preparationSharedSupplySlices);
+        }
+        /** 各 with 方法只换末尾的流程阶段/汇总/备料投影；完整构造只写在这一处，新增字段只改这里。 */
+        private MaterialView withProjection(String stage, AggregatePreparationView aggregate, BigDecimal available,
+                List<PreplanMakePublicSupplyService.Candidate> candidates, BigDecimal adopted, String pool,
+                BigDecimal shared, BigDecimal owned, BigDecimal beforeShared, BigDecimal adoptableShared,
+                List<PreparationSharedSupplySlice> slices) {
+            return new MaterialView(materialLineId, analysisLineId, nodeKey, actionGroupKey, materialKey, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, level, path, parentNodeKey, parentGoodsId, parentLabel, controlStage, consumptionBasis, basisOutputQty, allowPartialPackage, hardGate, bomQty, parentPerProductQty, perProductQty, designBomQty, actualBomQty, usageBasis, usageReason, usageSampleCount, usageDefectRate, requiredQty, availableQty, exactPeggedQty, allocatedAvailableQty, reservedQty, safetyStockQty, inboundQty, shortageQty, demandSupplyGapQty, subcontractHandoffFutureQty, expectedReadyDate, sourceSuggestion, sourceConfirmed, routeConfirmed, routeReason, actionable, lowerLevelPending, requirementState, delegatedToAnalysisLineId, delegatedToSourceRef, delegatedToRequestedQty, borrowedInQty, borrowedOutQty, borrowRefs, notifiedTargets, crossReallocatedInQty, crossReallocatedOutQty, priorityPendingQty, priorityFulfilledQty, crossReallocationRefs, warehouseBreakdown, downstreamReferences, publicSurplusApprovedInboundQty, publicSurplusRemainingQty, sharedFutureClaimedQty, additionalSupplyRecommendedQty, minOrderQty, orderMultipleQty, selectedWarehousesAvailableQty, selectedOtherWarehouseTransferableQty, publicSurplusExpectedDate, sharedFutureSupplyRefs, stage, planAnchorAnalysisLineId, mainWarehousePublicAvailableQty, mainWarehouseOpenSafetySupplyQty, mainWarehouseSafetyReplenishmentGapQty, priorityMakeSupplementQty, sharedFuturePendingQty, lateSharedFutureAvailableQty, subcontractOutboundForm, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, externalFutureCoverageQty, internalCommittedOutputQty, sharedFutureClaimableQty, plannedOutputQty, netShortageQty, sourceRequiredQty, planningUncoveredQty, aggregateDelegatedQty, aggregateTargetMaterialLineId, aggregate, available, candidates, adopted, pool, shared, owned, beforeShared, adoptableShared, slices);
         }
         @JsonProperty("nodeRole")
         public String nodeRole() {

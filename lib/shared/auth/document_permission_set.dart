@@ -57,7 +57,7 @@ abstract final class DocumentPermissionCatalog {
     create: Perm.salesQuoteCreate,
     edit: Perm.salesQuoteEdit,
     delete: Perm.salesQuoteDelete,
-    approve: Perm.salesQuoteApprove,
+    // 报价没有「销售自审」(ADR-134)：财务核价确认后才算定稿，approve 码已退役。
     reverse: Perm.salesQuoteReverse,
   );
   static const salesOrder = DocumentPermissionSet(

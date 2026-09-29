@@ -853,7 +853,7 @@ public class ProductionMaterialAllocationFacade {
         if (!batch.normalWarehouses.contains(leafWarehouseId)
                 || !batch.lineSideAllowed(leafWarehouseId, request.demandId())) {
             if (!sources.isEmpty()) {
-                throw allocationConflict("本批来源所在线边仓未指名给这条需求，不能就地分配");
+                throw allocationConflict("本批来源所在内料仓未指名给这条需求，不能就地分配");
             }
             return List.of();
         }

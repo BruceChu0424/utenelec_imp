@@ -374,23 +374,20 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                 .executeUpdate();
         if(reverse)reopenCompletedSegments(eventId,demandIds,requestHash,actorId);
         for (Line line : lines) {
-            List<Object[]> sources;
+            List<IssueQty> sources;
             if(reverse){
                 sources=NativeQueryResults.objectArrayRows(em.createNativeQuery(
                         "SELECT issue_posting_id,qty_base FROM production_material_settlement_postings WHERE id=:id")
-                        .setParameter("id",line.sourcePostingId()));
+                        .setParameter("id",line.sourcePostingId())).stream()
+                        .map(row->new IssueQty(line.demandId(),(UUID)row[0],decimal(row[1]))).toList();
             }else{
-                sources=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                        SELECT id,fn_material_issue_available(id,NULL) FROM production_material_stock_postings
-                        WHERE demand_id=:id AND posting_type='ISSUE' AND fn_material_issue_available(id,NULL)>0
-                        ORDER BY created_at,id FOR UPDATE
-                        """).setParameter("id",line.demandId()));
+                sources=issueAvailable(List.of(line.demandId()),true);
             }
             BigDecimal remaining=line.qty();
-            for(Object[] source:sources){
+            for(IssueQty source:sources){
             if(remaining.signum()==0)break;
-            if(source[0]==null)throw new ApiException(ErrorCode.CONFLICT,"历史实耗尚无原领料来源，请先核对");
-            BigDecimal part=remaining.min(decimal(source[1]));
+            if(source.issuePostingId()==null)throw new ApiException(ErrorCode.CONFLICT,"历史实耗尚无原领料来源，请先核对");
+            BigDecimal part=remaining.min(source.qty());
             em.createNativeQuery("""
                             INSERT INTO production_material_settlement_postings(
                                 id, event_id, demand_id, settlement_type,
@@ -405,7 +402,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                     .setParameter("type", line.type())
                     .setParameter("qty", part)
                     .setParameter("sourceId", line.sourcePostingId())
-                    .setParameter("issueId",source[0])
+                    .setParameter("issueId",source.issuePostingId())
                     .setParameter("actorId", actorId)
                     .executeUpdate();
             remaining=remaining.subtract(part);
@@ -423,6 +420,52 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                 .setParameter("planId", planId)
                 .executeUpdate();
         return readClearance(planId,responseScope);
+    }
+
+    /**
+     * 实盘收尾的账面可用(ADR-129 §2.7)：该执行段每条有效需求还能被结算扣掉的量(基本量)，
+     * 与结算 FIFO 读的是同一份 {@link #issueAvailable}。它只回答「账上还有多少」，不管能不能退：
+     * 被后续生产批次承接、或任务状态不许退料的料照样在账上。没有可用量的需求不在结果里。
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, BigDecimal> bookAvailableByDemand(UUID planId, UUID segmentId) {
+        taskAccess.readable(planId, segmentId);
+        List<UUID> demands = NativeQueryResults.typedRows(em.createNativeQuery("""
+                        SELECT id FROM production_material_demands
+                        WHERE plan_id = :planId AND execution_segment_id = :segmentId
+                          AND is_deleted = FALSE AND status NOT IN ('RELEASED', 'REVERSED')
+                        ORDER BY id
+                        """, UUID.class)
+                .setParameter("planId", planId)
+                .setParameter("segmentId", segmentId), UUID.class);
+        Map<UUID, BigDecimal> available = new LinkedHashMap<>();
+        for (IssueQty issue : issueAvailable(demands, false)) {
+            available.merge(issue.demandId(), issue.qty(), BigDecimal::add);
+        }
+        return Map.copyOf(available);
+    }
+
+    /**
+     * 账面可用的唯一定义：需求各原领料过账(ISSUE)还没耗用、也没在退料途中的量
+     * (fn_material_issue_available)，按领料先后排。结算 FIFO 逐笔从这里扣(lock=true 先锁住这些过账)，
+     * 实盘收尾按需求合计。
+     */
+    private List<IssueQty> issueAvailable(Collection<UUID> demandIds, boolean lock) {
+        if (demandIds.isEmpty()) return List.of();
+        return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT demand_id, id, fn_material_issue_available(id,NULL)
+                        FROM production_material_stock_postings
+                        WHERE demand_id IN (:ids) AND posting_type='ISSUE' AND fn_material_issue_available(id,NULL)>0
+                        ORDER BY demand_id, created_at, id
+                        """ + (lock ? " FOR UPDATE" : ""))
+                        .setParameter("ids", demandIds))
+                .stream()
+                .map(row -> new IssueQty((UUID) row[0], (UUID) row[1], decimal(row[2])))
+                .toList();
+    }
+
+    /** 一笔原领料过账上的量(基本量)；issuePostingId 为空 = 历史实耗没有原领料来源。 */
+    private record IssueQty(UUID demandId, UUID issuePostingId, BigDecimal qty) {
     }
 
     private void reopenCompletedSegments(UUID eventId,List<UUID> demandIds,String requestHash,UUID actor){
@@ -477,6 +520,10 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
         return readClearance(planId,new ProductionMaterialTaskAccessPolicy.ReadScope(true,List.of()));
     }
 
+    /**
+     * 清账等式逐需求一行。可退与账面可用(maxReturnQty / availableToSettleQty)取与结算 FIFO、实盘收尾同一个定义：
+     * 各原领料过账(ISSUE)的 fn_material_issue_available 之和(见 {@link #issueAvailable})，页面预填的数就是审核认的数。
+     */
     private List<ProductionMaterialClearanceRow> readClearance(UUID planId, ProductionMaterialTaskAccessPolicy.ReadScope scope) {
         var query = em.createNativeQuery("""
                         SELECT c.plan_id, c.demand_id,
@@ -486,9 +533,9 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                                c.required_qty, c.issued_qty, c.returned_qty,
                                c.confirmed_consumed_qty, c.approved_loss_qty,
                                c.legal_wip_qty,
-                               GREATEST(c.uncleared_qty - COALESCE(pending.qty,0), 0),
+                               COALESCE(issue_side.available,0),
                                c.uncleared_qty, c.can_close, demand_unit.name,
-                               COALESCE(pending.qty,0), GREATEST(c.uncleared_qty - COALESCE(pending.qty,0),0),
+                               COALESCE(issue_side.pending,0), COALESCE(issue_side.available,0),
                                demand.per_product_qty, demand.required_for_product_qty, demand.direct_supply,
                                demand.requirement_mode
                         FROM v_production_material_clearance c
@@ -499,10 +546,11 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                         JOIN goods g ON g.id = c.goods_id
                         LEFT JOIN units demand_unit ON demand_unit.id = demand.unit_id
                         LEFT JOIN LATERAL (
-                            SELECT SUM(fn_material_issue_pending_return(issue.id,NULL)) qty
+                            SELECT SUM(fn_material_issue_pending_return(issue.id,NULL)) pending,
+                                   SUM(fn_material_issue_available(issue.id,NULL)) available
                             FROM production_material_stock_postings issue
                             WHERE issue.demand_id=demand.id AND issue.posting_type='ISSUE'
-                        ) pending ON TRUE
+                        ) issue_side ON TRUE
                         LEFT JOIN colors color ON color.id = c.color_id
                         WHERE c.plan_id = :planId
                         """ + (scope.all() ? "" : " AND demand.execution_segment_id IN (:segments)")

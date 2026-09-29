@@ -1,11 +1,13 @@
 package com.uten.imp.features.master.goods;
 
+import com.uten.imp.features.master.goods.dto.BomItemUsage;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -72,4 +74,19 @@ public interface GoodsBomItemRepository extends JpaRepository<GoodsBomItem, UUID
 
     /** 查某成品 UUID 下某组件 UUID 的现存行（关系唯一校验用）。 */
     Optional<GoodsBomItem> findByGoods_IdAndComponent_IdAndDeletedFalse(UUID goodsId, UUID componentId);
+
+    /**
+     * 一批组装行的真实使用数量与计算采用值 [行 id, {@link BomItemUsage#COLUMNS}...]：一条查询，
+     * 按边的口径只在 v_goods_bom_item_usage 里定义(ADR-129)。视图只读，不能作 FOR UPDATE 目标。
+     */
+    @Query(value = "SELECT u.bom_item_id, " + BomItemUsage.COLUMNS
+            + " FROM v_goods_bom_item_usage u WHERE u.bom_item_id IN (:ids)", nativeQuery = true)
+    List<Object[]> findUsageRows(@Param("ids") Collection<UUID> ids);
+
+    /**
+     * 父件材料合计 sourceE：公式只在 fn_goods_bom_material_cost 定义一次(学习发布同用)，按设计使用数量算。
+     * 原生查询执行前会先把本事务里还没落库的组装行改动写下去，读到的就是改后的清单。
+     */
+    @Query(value = "SELECT fn_goods_bom_material_cost(:goodsId)", nativeQuery = true)
+    BigDecimal materialCost(@Param("goodsId") UUID goodsId);
 }

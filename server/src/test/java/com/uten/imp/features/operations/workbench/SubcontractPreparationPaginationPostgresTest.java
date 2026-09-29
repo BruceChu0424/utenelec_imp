@@ -50,14 +50,16 @@ class SubcontractPreparationPaginationPostgresTest {
         var dataSource = new DriverManagerDataSource(DB.getJdbcUrl()
                 + "&options=-c%20jit%3Doff", DB.getUsername(), DB.getPassword());
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, is_deleted boolean NOT NULL DEFAULT false, auto_created boolean NOT NULL DEFAULT false, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6))");
+        jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, is_deleted boolean NOT NULL DEFAULT false, auto_created boolean NOT NULL DEFAULT false, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6), issue_method text NOT NULL DEFAULT 'ORDER')");
+
+        jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, is_deleted boolean NOT NULL DEFAULT false, auto_created boolean NOT NULL DEFAULT false, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8))");
         jdbc.execute("CREATE TABLE colors(id uuid PRIMARY KEY, name text)");
         jdbc.execute("CREATE TABLE units(id uuid PRIMARY KEY, name text)");
         jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY, name text, parent_id uuid, is_deleted boolean NOT NULL DEFAULT false, is_defective boolean NOT NULL DEFAULT false, is_line_side boolean NOT NULL DEFAULT false)");
         // ADR-103 路线 B 锁判据要读的最小集: 申请明细、BOM 边、可动用库存视图、发料计划两表,
         // 以及 V581 / V613 的两个判据函数 (桩的函数体与迁移原文逐字一致, 判据不在测试里另写一遍).
         jdbc.execute("CREATE TABLE subcontract_application_items(id uuid PRIMARY KEY, application_id uuid, goods_id uuid, color_id uuid, qty numeric, ordered_qty numeric DEFAULT 0, is_deleted boolean NOT NULL DEFAULT false)");
-        jdbc.execute("CREATE TABLE goods_bom_items(id uuid PRIMARY KEY, goods_id uuid, component_goods_id uuid, color_id uuid, qty numeric NOT NULL DEFAULT 1, consumption_basis text NOT NULL DEFAULT 'PER_UNIT', control_stage text NOT NULL DEFAULT 'START', is_deleted boolean NOT NULL DEFAULT false, learning_profile_goods_id uuid, learning_unit_id uuid)");
+        jdbc.execute("CREATE TABLE goods_bom_items(id uuid PRIMARY KEY, goods_id uuid, component_goods_id uuid, color_id uuid, qty numeric NOT NULL DEFAULT 1, consumption_basis text NOT NULL DEFAULT 'PER_UNIT', control_stage text NOT NULL DEFAULT 'START', is_deleted boolean NOT NULL DEFAULT false, learning_profile_goods_id uuid, learning_unit_id uuid, learning_released_at timestamptz)");
         jdbc.execute("CREATE TABLE stock_balances(id uuid PRIMARY KEY, warehouse_id uuid, goods_id uuid, color_id uuid, qty numeric)");
         jdbc.execute("CREATE VIEW v_stock_available AS SELECT warehouse_id, goods_id, color_id, qty AS available_qty FROM stock_balances");
         jdbc.execute("CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, order_id uuid, status text, is_deleted boolean NOT NULL DEFAULT false)");
@@ -193,8 +195,12 @@ class SubcontractPreparationPaginationPostgresTest {
                     ADD COLUMN goods_id uuid, ADD COLUMN source_type text,
                     ADD COLUMN sales_order_item_id uuid, ADD COLUMN requested_qty numeric;
                 CREATE TABLE production_material_analysis_materials(
-                    id uuid PRIMARY KEY, analysis_id uuid, analysis_item_id uuid);
+                    id uuid PRIMARY KEY, analysis_id uuid, analysis_item_id uuid,
+                    design_bom_qty numeric,actual_bom_qty numeric,usage_basis text NOT NULL DEFAULT 'DESIGN',usage_reason text,usage_sample_count bigint,usage_defect_rate numeric);
                 CREATE TABLE sales_order_items(id uuid PRIMARY KEY, bill_no text, line_no integer);
+
+                    id uuid PRIMARY KEY, analysis_id uuid, analysis_item_id uuid);
+                CREATE TABLE sales_order_items(id uuid PRIMARY KEY, bill_no text, line_no integer, client_goods_name VARCHAR(500), client_price NUMERIC);
                 ALTER TABLE preplan_supply_actions ADD COLUMN status text DEFAULT 'CREATED',
                     ADD COLUMN goods_id uuid, ADD COLUMN unit_id uuid,
                     ADD COLUMN public_surplus_qty numeric DEFAULT 0,

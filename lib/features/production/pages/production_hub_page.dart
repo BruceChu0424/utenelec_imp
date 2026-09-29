@@ -175,6 +175,13 @@ class ProductionHubPage extends ConsumerWidget {
                     description: l10n.productionHubWhereUsedSub,
                     location: '/production/where-used',
                   ),
+                  // ADR-131 车间内料仓用量与结算。
+                  _Entry(
+                    icon: Icons.scale_outlined,
+                    label: l10n.workshopMaterialReports,
+                    description: l10n.workshopMaterialReportsHubDesc,
+                    location: RouteName.workshopMaterialReports,
+                  ),
                   // 当前是四类结构化关系的健康初筛，不宣称已覆盖整条供应/执行链。
                   const _Entry(
                     icon: Icons.fact_check_outlined,

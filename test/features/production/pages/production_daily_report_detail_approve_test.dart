@@ -17,6 +17,8 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/production/models/production_daily_report.dart';
 import 'package:uten_imp/features/production/pages/production_daily_report_detail_page.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
@@ -60,6 +62,7 @@ class _DailyReportApi extends ApiClient {
       <String, dynamic>{
         'id': 'di-1',
         'qty': 1000,
+        'defectQty': 12.5,
         'planNo': 'SJ20260922000016',
         'goodsId': 'g-1',
         'goodsName': '外贸V5多功能三插后座',
@@ -383,6 +386,28 @@ void main() {
       isNot(api.approveKeys[1]),
       reason: '版本号已经前进，这是一次新操作，键必须换掉，不能被当成上一次的重放',
     );
+  });
+
+  testWidgets('明细显示不良数：列头说明只记录，0 留空不显示', (tester) async {
+    await _pump(tester, onApprove: (_) => null);
+    final table = tester.widget<MasterDataTableView<ProductionDailyReportItem>>(
+      find.byType(MasterDataTableView<ProductionDailyReportItem>),
+    );
+    final defect = table.columns.singleWhere(
+      (column) => column.key == 'defectQty',
+    );
+    expect(defect.label, '不良数');
+    expect(defect.info, productionDailyReportDefectInfo);
+    expect(table.items.single.defectQty, 12.5);
+    expect(find.text('12.5'), findsOneWidget);
+    expect(defect.value(const ProductionDailyReportItem(id: 'slice')), isNull);
+    expect(
+      defect.value(
+        ProductionDailyReportItem.fromJson(const {'id': 'x', 'defectQty': 3}),
+      ),
+      '3',
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('服务端明确拒绝且状态没变：照常报错，页面不乱改', (tester) async {

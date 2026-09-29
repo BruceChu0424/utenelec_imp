@@ -67,9 +67,90 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  test('BOM 零件读服务端 periodic 标记, 缺省为 false', () {
+    final periodic = ScheduleBomComponent.fromJson({
+      'goodsId': 'pp',
+      'name': 'PP 颗粒',
+      'perQty': 0.0125,
+      'needQty': 0,
+      'onhand': 0,
+      'periodic': true,
+    });
+    final insert = ScheduleBomComponent.fromJson({
+      'goodsId': 'insert',
+      'name': '铜嵌件',
+      'perQty': 2,
+      'needQty': 20,
+      'onhand': 5,
+    });
+    expect(periodic.periodic, isTrue);
+    expect(insert.periodic, isFalse);
+  });
+
+  testWidgets('车间内料仓供料的料标「不算需求」, 不计入库存初筛的缺料', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _orderLinesApi(
+      bom: [
+        {
+          'goodsId': 'pp',
+          'code': 'M-PP',
+          'name': 'PP 颗粒',
+          'perQty': 0.0125,
+          'needQty': 0,
+          'onhand': 0,
+          'selfMade': false,
+          'periodic': true,
+        },
+        {
+          'goodsId': 'insert',
+          'code': 'M-CU',
+          'name': '铜嵌件',
+          'perQty': 2,
+          'needQty': 20,
+          'onhand': 5,
+          'selfMade': false,
+        },
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          productionPlanRepositoryProvider.overrideWithValue(
+            ProductionPlanRepository(api),
+          ),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Consumer(
+              builder: (context, ref, _) => FilledButton(
+                onPressed: () => showPlanOrderImportSheet(
+                  context,
+                  ref,
+                  orderId: 'order-1',
+                  billNo: 'SO-001',
+                ),
+                child: const Text('打开订单产品'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开订单产品'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('车间内料仓供料, 不算需求'), findsOneWidget);
+    expect(find.textContaining('已知缺 1 种'), findsOneWidget);
+    expect(find.textContaining('车间内料仓供料 1 种 (不算需求)'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
-ApiClient _orderLinesApi() {
+ApiClient _orderLinesApi({List<Map<String, dynamic>> bom = const []}) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
@@ -89,7 +170,7 @@ ApiClient _orderLinesApi() {
                     'needQty': 10,
                     'unitName': '个',
                     'orderBillNo': 'SO-001',
-                    'bom': <Map<String, dynamic>>[],
+                    'bom': bom,
                   },
                 ]
               : <Map<String, dynamic>>[],

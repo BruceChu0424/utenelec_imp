@@ -5,6 +5,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.ProductionWorkshopMembership;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService;
 import com.uten.imp.features.production.plan.ProductionPlanService;
 import com.uten.imp.features.production.plan.dto.PlanItemLine;
@@ -50,6 +51,7 @@ public class ActualOutputSupplementService {
     }
     @Transactional
     public ReportPreview previewReport(ReportPreviewRequest request) {
+        if(request!=null&&request.report()!=null)DailyReportOutputAllocationService.rejectStaleRouteShape(request.report().getItems());
         return previewReportForOwner(request,user.requireId());
     }
     private ReportPreview previewReportForOwner(ReportPreviewRequest request,UUID capturedBy) {
@@ -132,7 +134,7 @@ public class ActualOutputSupplementService {
         line.setExecutionSegmentId(request.sourceExecutionSegmentId());line.setPlanItemId(uuid(c,"source_plan_item_id"));
         line.setGoodsId(uuid(c,"product_goods_id"));line.setColorId(uuid(c,"product_color_id"));
         line.setUnitId(uuid(c,"product_unit_id"));line.setUnitRate(number(c,"product_unit_rate"));line.setQty(request.actualQty());
-        line.setDestination("WAREHOUSE");line.setExecutionSegmentSalesAllocationId(request.sourceSalesAllocationId());
+        line.setExecutionSegmentSalesAllocationId(request.sourceSalesAllocationId());
         if(request.sourceSalesAllocationId()!=null) {
             var allocation=one("SELECT sales_order_item_id FROM execution_segment_sales_allocations WHERE id=:id AND execution_segment_id=:segment",
                     args("id",request.sourceSalesAllocationId(),"segment",request.sourceExecutionSegmentId()));
@@ -371,13 +373,29 @@ public class ActualOutputSupplementService {
             if(!current.isEmpty()&&!Objects.equals(current.getFirst().get("report_id"),reportId))throw conflict("本次实产已经被另一张日报承接，不能重复报工");
             if(claimBatch&&current.isEmpty())db.update("INSERT INTO production_actual_output_supplement_claims(proof_id,report_id,event_type,created_by) VALUES(:proof,:report,'CLAIM',:actor)",args("proof",line.getSupplementProofId(),"report",reportId,"actor",user.requireId()));
             BigDecimal original=number(proof,"original_report_qty"),extra=number(proof,"supplement_qty");
+            // 转下一道工序只能出自原工单那一份；追加批次的超出部分一律送入仓库(ADR-118 §3)。
+            var directAllocations=line.getAllocations()==null?List.<DailyReportOutputAllocationLine>of():line.getAllocations().stream()
+                    .filter(allocation->allocation!=null&&allocation.directTransferDemandId()!=null).toList();
+            BigDecimal direct=directAllocations.stream().map(DailyReportOutputAllocationLine::qty).filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO,BigDecimal::add);
+            if(direct.compareTo(original)>0)throw conflict("本批最多 "+original.stripTrailingZeros().toPlainString()
+                    +" 可以转下一道工序，超出原计划的部分只能送入仓库");
             var split=new ArrayList<DailyReportItemLine>();
-            if(original.signum()>0){var own=new DailyReportItemLine();BeanUtils.copyProperties(line,own);own.setQty(original);split.add(own);}
+            if(original.signum()>0){
+                var own=new DailyReportItemLine();BeanUtils.copyProperties(line,own);own.setQty(original);
+                if(!directAllocations.isEmpty()){
+                    var ownAllocations=new ArrayList<>(directAllocations);
+                    if(original.compareTo(direct)>0)ownAllocations.add(DailyReportOutputAllocationLine.warehouse(original.subtract(direct)));
+                    own.setAllocations(ownAllocations);
+                }else own.setAllocations(null);
+                split.add(own);
+            }
             var additional=new DailyReportItemLine();BeanUtils.copyProperties(line,additional);additional.setQty(extra);
             additional.setExecutionSegmentId(uuid(proof,"supplement_execution_segment_id"));additional.setPlanItemId(uuid(proof,"supplement_plan_item_id"));
             additional.setExecutionSegmentSalesAllocationId(null);additional.setSalesOrderItemId(null);additional.setSalesOrderNo(null);additional.setClientName(null);
-            additional.setDestination("WAREHOUSE");additional.setDirectTransferDemandId(null);additional.setIsFinal(false);split.add(additional);
-            DailyReportOutputAllocationService.distributeWeight(line,split);expanded.addAll(split);
+            additional.setAllocations(null);additional.setDestination("WAREHOUSE");additional.setDirectTransferDemandId(null);additional.setIsFinal(false);split.add(additional);
+            DailyReportOutputAllocationService.distributeWeight(line,split);
+            DailyReportOutputAllocationService.keepDefectOnFirstSlice(line,split);expanded.addAll(split);
         }
         return expanded;
     }

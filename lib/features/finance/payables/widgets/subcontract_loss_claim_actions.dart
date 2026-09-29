@@ -8,7 +8,7 @@ import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
-import '../../../../core/utils/currency_display.dart';
+import '../../../../shared/formatters/money_display.dart';
 import '../../../basic_data/models/account_node.dart';
 import '../../../basic_data/repositories/account_repository.dart';
 import '../models/finance_payable.dart';
@@ -644,12 +644,6 @@ class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker> {
               separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 final item = _items[index];
-                final currency =
-                    financeCurrencyDisplayLabel(
-                      name: item.currencyName,
-                      code: item.currencyCode,
-                    ) ??
-                    '原币';
                 final selected = _selected.contains(item.id);
                 final controller = _amounts.putIfAbsent(
                   item.id,
@@ -671,7 +665,7 @@ class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker> {
                     '${item.sourceDocNo ?? '—'} · ${item.sourceTypeLabel}',
                   ),
                   subtitle: Text(
-                    '未付 $currency ${item.outstandingOriginal ?? '—'}',
+                    '未付 ${financeMoneyWithCurrency(item.outstandingOriginal, currencyName: item.currencyName, currencyCode: item.currencyCode)}',
                   ),
                   secondary: SizedBox(
                     width: 150,

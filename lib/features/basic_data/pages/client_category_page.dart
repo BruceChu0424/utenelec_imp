@@ -19,6 +19,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -30,6 +31,7 @@ import '../models/reference_method_option.dart';
 import '../repositories/client_category_repository.dart';
 import '../repositories/client_repository.dart';
 import '../repositories/reference_method_repository.dart';
+import '../widgets/basic_data_l10n.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/category_page_shell.dart';
 import '../widgets/category_tree_search.dart';
@@ -218,8 +220,8 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
       icon: Icons.people_outline,
       defaultCodePrefix: 'KH',
       keyPrefix: 'client',
-      searchHint: '搜索客户(简称/编码/全称/联系人/手机)', // TODO(l10n): 补 arb
-      columns: _clientColumns,
+      searchHint: basicDataL10n(context).clientNameEnSearchHint,
+      columns: _visibleClientColumns(basicDataL10n(context)),
       idOf: (c) => c.id,
       statusOf: (c) => c.status,
       versionOf: (c) => c.version,
@@ -345,7 +347,11 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
         categoryId: categoryId,
       ),
       title: '新增客户', // TODO(l10n): 补 arb
-      fields: buildClientFields(iv, settlementMethods),
+      fields: buildClientFields(
+        iv,
+        settlementMethods,
+        l10n: basicDataL10n(context),
+      ),
       initialValues: const {'status': '使用'},
       fixedValues: {'categoryId': ?categoryId},
       readOnlyKeys:
@@ -458,6 +464,25 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
   }
 
   // ---- 客户列定义（表格列头 + 单元格取值 + 筛选键） ---------------------
+
+  /// Columns shown in the table: the static list plus 外文名称 (ADR-134),
+  /// whose label comes from arb and therefore needs a context.
+  static List<MasterColumnDef<ClientListItem>> _visibleClientColumns(
+    AppLocalizations l10n,
+  ) => [
+    for (final c in _clientColumns) ...[
+      c,
+      // ADR-134: 外文名称 right after the full name; the label comes from arb.
+      if (c.key == 'fullName')
+        MasterColumnDef<ClientListItem>(
+          key: 'nameEn',
+          label: l10n.clientNameEnLabel,
+          width: 200,
+          info: l10n.clientNameEnInfo,
+          value: (m) => m.nameEn,
+        ),
+    ],
+  ];
 
   /// 客户表格列：[MasterColumnDef.label]=列头、[MasterColumnDef.width]=固定列宽、
   /// [MasterColumnDef.value]=单元格取值；key 与后端 query 参数名一一对齐（autofilter）。

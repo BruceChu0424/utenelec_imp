@@ -63,24 +63,35 @@ void main() {
     );
 
     test('finance audit preview preserves server decimal facts', () {
+      // ADR-128：客户余额是一份共用余额视图(十进制原文)，不再是 outstanding/overFloor 散键。
       final info = ShipmentFinanceAuditInfo.fromJson(const {
         'shipmentId': 'shipment-1',
         'financeAudit': 0,
         'clientName': '月结客户',
         'settlementMethodName': '月结30天',
-        'outstanding': '1865812.8900',
-        'creditFloor': 50000,
-        'overFloor': '-0.2900',
-        'availablePrepaymentOriginal': '125.5000',
-        'availablePrepaymentLocal': '904.2500',
+        'clientBalance': {
+          'currencyId': 'usd',
+          'currencyName': '美金',
+          'openOriginal': '1000.0000',
+          'creditOriginal': '125.5000',
+          'netOriginal': '874.5000',
+          'creditBookLocal': '904.2500',
+          'baseCurrencyName': '人民币',
+          'openBookLocal': '1865812.8900',
+          'creditLimitLocal': '1865813.18',
+          'overLimitLocal': '-0.2900',
+          'overCredit': false,
+        },
       });
 
       expect(info.shipmentId, 'shipment-1');
-      expect(info.outstanding, '1865812.8900');
-      expect(info.creditFloor, '50000');
-      expect(info.overFloor, '-0.2900');
-      expect(info.availablePrepaymentOriginal, '125.5000');
-      expect(info.availablePrepaymentLocal, '904.2500');
+      final balance = info.clientBalance!;
+      expect(balance.openBookLocal, '1865812.8900');
+      expect(balance.creditLimitLocal, '1865813.18');
+      expect(balance.overLimitLocal, '-0.2900');
+      expect(balance.creditOriginal, '125.5000');
+      expect(balance.creditBookLocal, '904.2500');
+      expect(balance.overCredit, isFalse);
       expect(salesShipmentFinanceAuditLabel(info.financeAudit), '待财务审核');
     });
 

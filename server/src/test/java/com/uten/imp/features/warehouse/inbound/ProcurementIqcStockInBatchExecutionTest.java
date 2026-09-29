@@ -72,7 +72,7 @@ class ProcurementIqcStockInBatchExecutionTest {
         Fixture f = new Fixture();
         BatchConfirmEntry first = f.entry(1, "first-stock-in", "2");
         BatchConfirmEntry second = f.entry(2, "second-stock-in", "3");
-        f.slices.get(second.receiptId())[17] = new BigDecimal("2");
+        f.slices.get(second.receiptId())[16] = new BigDecimal("2");
 
         assertThatThrownBy(() -> f.service.batchConfirm(new BatchConfirmRequest(List.of(first, second))))
                 .isInstanceOf(ApiException.class).hasMessageContaining("余量已变化");
@@ -251,9 +251,9 @@ class ProcurementIqcStockInBatchExecutionTest {
             UUID unit = UUID.randomUUID();
             BigDecimal quantity = new BigDecimal(qty);
             slices.put(receipt, new Object[]{event, UUID.randomUUID(), WAREHOUSE, GOODS, null, unit,
-                    BigDecimal.ONE, quantity, new BigDecimal("10"), null, null, quantity, BigDecimal.ZERO,
+                    BigDecimal.ONE, quantity, new BigDecimal("10"), null, quantity, BigDecimal.ZERO,
                     quantity, new BigDecimal("10"), null, BigDecimal.ZERO, quantity, "合格",
-                    OffsetDateTime.now(), "G001", "货品", null, "件", null, "A1", "检验员", "PO001", unit,
+                    OffsetDateTime.now(), "G001", "货品", null, "件", "A1", "检验员", "PO001", unit,
                     UUID.randomUUID(),"原建议仓"});
             return new BatchConfirmEntry("PURCHASE", receipt, key,
                     List.of(new ConfirmItem(event, quantity, quantity, "A1")));
@@ -278,7 +278,7 @@ class ProcurementIqcStockInBatchExecutionTest {
                 }
                 if(sql.contains("FROM procurement_iqc_quality_consideration_parts quality")) {
                     Object[] slice=slices.values().stream().filter(value->value[0].equals(params.get("event"))).findFirst().orElseThrow();
-                    return List.<Object[]>of(new Object[]{UUID.randomUUID(),slice[17]});
+                    return List.<Object[]>of(new Object[]{UUID.randomUUID(),slice[16]});
                 }
                 if (sql.contains("SELECT receipt.bill_no, receipt.bill_date")) {
                     return java.util.Collections.singletonList(new Object[]{"PR001", LocalDate.now(),

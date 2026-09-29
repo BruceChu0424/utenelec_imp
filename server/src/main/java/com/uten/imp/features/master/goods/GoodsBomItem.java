@@ -14,6 +14,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.Objects;
 
 /**
  * 货品组装信息（BOM）行：「成品/半成品 goods 由组件 component 组装 qty 个」。
@@ -52,8 +53,9 @@ public class GoodsBomItem extends SoftDeletableEntity {
     @Column(name = "color_legacy_id")
     private Integer colorLegacyId;      // ColorID（组件颜色，老库主键）
 
+    /** 设计使用数量(老库 QTY)；真实使用数量在 goods_bom_actual_usages，经 v_goods_bom_item_usage 按边读取。 */
     @Column(nullable = false)
-    private BigDecimal qty = BigDecimal.ONE;  // QTY 用量
+    private BigDecimal qty = BigDecimal.ONE;
 
     /** 该组件在哪个生产阶段参与齐套控制。 */
     @Column(name = "control_stage", nullable = false)
@@ -103,4 +105,59 @@ public class GoodsBomItem extends SoftDeletableEntity {
     /** 审计标记人（users.id 宽松不 FK）。 */
     @Column(name = "audited_by")
     private java.util.UUID auditedBy;
+
+    /**
+     * 系统学习边标记(ADR-129)：非空 = 这条边由学习引擎新建、设计使用数量由系统同步。只读映射：
+     * 人工改结构列后由数据库触发器清空，JPA 整行更新绝不回写。
+     */
+    @Column(name = "learning_profile_goods_id", insertable = false, updatable = false)
+    private java.util.UUID learningProfileGoodsId;
+
+    /** 人工删除该组件边的时间(数据库触发器记)：学习不再自动把该组件加回。只读映射。 */
+    @Column(name = "learning_released_at", insertable = false, updatable = false)
+    private java.time.OffsetDateTime learningReleasedAt;
+
+    /** 设计使用数量/控制段/价格/颜色/供应商/备注与 {@code other} 一致(排序与审核标记不算内容)。 */
+    boolean sameContentAs(GoodsBomItem other) {
+        return sameNumber(qty, other.getQty())
+                && Objects.equals(controlStage, other.getControlStage())
+                && Objects.equals(consumptionBasis, other.getConsumptionBasis())
+                && sameNumber(basisOutputQty, other.getBasisOutputQty())
+                && allowPartialPackage == other.isAllowPartialPackage()
+                && hardGate == other.isHardGate()
+                && sameNumber(price, other.getPrice())
+                && sameNumber(total, other.getTotal())
+                && Objects.equals(idOf(color), idOf(other.getColor()))
+                && Objects.equals(colorLegacyId, other.getColorLegacyId())
+                && Objects.equals(idOf(defaultSupplier), idOf(other.getDefaultSupplier()))
+                && Objects.equals(vendLegacyId, other.getVendLegacyId())
+                && Objects.equals(summary, other.getSummary());
+    }
+
+    /** 把 {@code source} 的内容整体写到本行(同一组件原地覆盖)；内容变了原审核结论作废。 */
+    void takeContentFrom(GoodsBomItem source) {
+        qty = source.getQty();
+        controlStage = source.getControlStage();
+        consumptionBasis = source.getConsumptionBasis();
+        basisOutputQty = source.getBasisOutputQty();
+        allowPartialPackage = source.isAllowPartialPackage();
+        hardGate = source.isHardGate();
+        price = source.getPrice();
+        total = source.getTotal();
+        color = source.getColor();
+        colorLegacyId = source.getColorLegacyId();
+        defaultSupplier = source.getDefaultSupplier();
+        vendLegacyId = source.getVendLegacyId();
+        summary = source.getSummary();
+        auditedAt = null;
+        auditedBy = null;
+    }
+
+    private static boolean sameNumber(BigDecimal left, BigDecimal right) {
+        return left == null ? right == null : right != null && left.compareTo(right) == 0;
+    }
+
+    private static java.util.UUID idOf(com.uten.imp.common.domain.BaseEntity entity) {
+        return entity == null ? null : entity.getId();
+    }
 }

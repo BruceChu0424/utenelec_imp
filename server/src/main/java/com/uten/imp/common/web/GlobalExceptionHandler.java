@@ -242,6 +242,13 @@ public class GlobalExceptionHandler {
                 if ("final_report_surplus_authorization_identity".equals(constraint)) {
                     return "本次报工数量与提前完结时批准的实际产出不一致，请核对原报工记录";
                 }
+                // V736 车间直送资格断言(ADR-127)：库里的原因文案是统一维护的大白话，原样给用户；
+                // 只认这个约束名与固定开头，不回显 SQL/DETAIL/WHERE。
+                if ("workshop_direct_target_guard".equals(constraint)) {
+                    String message=databaseError.getMessage();
+                    if(message!=null && message.startsWith("无法转到下一道工序：")) return message;
+                    return "无法转到下一道工序：上层工单当前不能接收，请刷新后重新选择";
+                }
             }
             String detail = sql.getMessage();
             if (detail != null && (detail.contains("Custody has already been issued by its destination task")

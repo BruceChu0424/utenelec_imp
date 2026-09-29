@@ -1,40 +1,174 @@
+// 货品「BOM 学习记录」(ADR-129)：父件累计 + 逐组件设计/真实使用数量。
+//
+// 真实使用数量 = 已完工且核清余料的生产累计净耗料 ÷ 用到该物料的累计产量，
+// 全部由服务端学习累计与视图算好，本面板只展示、不重算：
+// - 头部：累计实际产量 / 有效生产批次 / 累计不良；没有自动建立学习组件时
+//   说明原因(原因只影响自动建组件，真实使用数量照常累计)；
+// - 表格：组装信息里的组件在前，其后是 BOM 外实际用过的料、人工删除后不再
+//   自动加入的料(物料格带标记)；
+// - 不良：日报登记的不良数只作记录，产量与真实使用数量都只算良品；不良数、
+//   实产单耗(净耗 ÷ (良品+不良))与不良率由服务端一并给出，只作说明；
+// - 「从现在起重新学习」(服务端按权限下发 canRelearn)：把当前累计记为基线，
+//   之后只用新数据，新数据出来前计算按设计使用数量；重学接口直接返回新的
+//   学习记录，面板就地换上，并通知组装信息页签重读。
+//
+// [bomActualUsageTip] 与组装信息表格「真实使用数量」悬停说明共用。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
-import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/action_feedback.dart';
+import '../../../core/utils/china_datetime.dart';
+import '../models/goods_bom_item.dart';
+import '../repositories/goods_bom_repository.dart';
 import 'master_data_table_view.dart';
 
 final goodsBomLearningProvider = FutureProvider.autoDispose
-    .family<Map<String, dynamic>, String>(
-      (ref, id) async => Map<String, dynamic>.from(
-        await ref.read(apiClientProvider).get('/master/goods/$id/bom-learning')
-            as Map,
+    .family<GoodsBomLearningSummary, String>(
+      (ref, id) => ref.watch(goodsBomRepositoryProvider).learning(id),
+    );
+
+/// 打开「BOM 学习记录」；每重学成功一次调一次 [onRelearned](调用方据此重读
+/// 自己展示的真实使用数量)。
+Future<void> showGoodsBomLearning(
+  BuildContext context,
+  String goodsId, {
+  VoidCallback? onRelearned,
+}) => showUtenAdaptivePanel<void>(
+  context: context,
+  // 设计/真实/实产单耗与累计、不良列一屏放下(基准画布 1920)，不用横向滚动。
+  drawerWidth: 1700,
+  builder: (_) =>
+      GoodsBomLearningPanel(goodsId: goodsId, onRelearned: onRelearned),
+);
+
+/// 数量带单位展示(不知道单位时只给数)：悬停说明与面板头部共用。
+String _qtyWithUnit(double value, String? unit) => unit == null || unit.isEmpty
+    ? formatBomQty(value)
+    : '${formatBomQty(value)} $unit';
+
+/// 「真实使用数量」悬停说明：计算按哪个数、依据几批已完工生产、累计多少；
+/// 有真实值且日报登记过不良时，再补一句按实产(良品+不良)算的用量和不良率。
+///
+/// [netUnit] 是组件单位(净耗料/平均用量)，[outputUnit] 是父件单位(产量)；
+/// 不知道时省略单位。[inBom]=false 是 BOM 外的料：没有边、不参与计算，
+/// 只说明累计情况或为什么没有可用数据。多句用换行分隔，三种语言通用。
+String bomActualUsageTip(
+  AppLocalizations l10n,
+  BomActualUsage usage, {
+  String? netUnit,
+  String? outputUnit,
+  bool inBom = true,
+}) {
+  final average = usage.perUnitQty;
+  final perProduced = usage.perProducedQty;
+  final defectRate = usage.defectRate;
+  final relearnedAt = usage.relearnedAt;
+  final reason = bomDesignReasonText(l10n, usage.status?.code);
+  return [
+    if (usage.status == BomActualStatus.actual) ...[
+      l10n.bomActualTipActual(
+        usage.sampleCount,
+        _qtyWithUnit(usage.netQty, netUnit),
+        _qtyWithUnit(usage.outputQty, outputUnit),
       ),
-    );
+      // 日报登记了不良：产量只算良品，另说一句连不良一起算的用量和不良率。
+      if (usage.defectQty > 0 && perProduced != null && defectRate != null)
+        l10n.bomActualTipDefect(
+          _qtyWithUnit(usage.defectQty, outputUnit),
+          _qtyWithUnit(perProduced, netUnit),
+          formatBomDefectRate(defectRate),
+        ),
+      if (usage.usesActual) l10n.bomActualTipUsed,
+    ] else
+      inBom ? l10n.bomUsesDesignBecause(reason) : reason,
+    // 格里显示的不是每件平均时(按包装的边是每包用量，整包/固定批次没有
+    // 真实值)补一句每件平均，免得和累计净耗/产量对不上。
+    if (average != null && average != usage.qty)
+      l10n.bomActualTipAverage(_qtyWithUnit(average, netUnit)),
+    if (relearnedAt != null)
+      l10n.bomRelearnedSince(ChinaDateTime.formatDate(relearnedAt)),
+  ].join('\n');
+}
 
-Future<void> showGoodsBomLearning(BuildContext context, String goodsId) =>
-    showUtenAdaptivePanel<void>(
-      context: context,
-      drawerWidth: 900,
-      builder: (_) => GoodsBomLearningPanel(goodsId: goodsId),
-    );
+/// 没有自动建立学习组件的原因(人话，不外露内部代码)。
+String _blockedText(AppLocalizations l10n, String code) => switch (code) {
+  'OUTPUT_IDENTITY_CHANGED' => l10n.bomLearningBlockedOutputIdentity,
+  'MATERIAL_IDENTITY_CHANGED' => l10n.bomLearningBlockedMaterialIdentity,
+  'MATERIAL_COLOR_OR_UNIT_CONFLICT' => l10n.bomLearningBlockedColorConflict,
+  'BOM_QUANTITY_PRECISION' => l10n.bomLearningBlockedPrecision,
+  'BOM_CYCLE' => l10n.bomLearningBlockedCycle,
+  _ => l10n.bomLearningBlockedOther,
+};
 
-class GoodsBomLearningPanel extends ConsumerWidget {
-  const GoodsBomLearningPanel({super.key, required this.goodsId});
+class GoodsBomLearningPanel extends ConsumerStatefulWidget {
+  const GoodsBomLearningPanel({
+    super.key,
+    required this.goodsId,
+    this.onRelearned,
+  });
+
   final String goodsId;
-  static String _quantity(dynamic value) => value is num
-      ? value.toStringAsFixed(6).replaceFirst(RegExp(r'\.?0+$'), '')
-      : '—';
+
+  /// 重学成功后通知调用方(组装信息页签据此重读真实使用数量)。
+  final VoidCallback? onRelearned;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<GoodsBomLearningPanel> createState() =>
+      _GoodsBomLearningPanelState();
+}
+
+class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
+  /// 正在重新学习的组件(防连点重复提交)。
+  String? _relearning;
+
+  /// 重学接口返回的最新学习记录：有就优先展示，不再多读一次。
+  GoodsBomLearningSummary? _latest;
+
+  Future<void> _relearn(GoodsBomLearningComponent row) async {
     final l10n = AppLocalizations.of(context);
-    final result = ref.watch(goodsBomLearningProvider(goodsId));
+    final name = row.componentName ?? row.componentCode ?? '';
+    final ok = await UtenDialog.show(
+      context,
+      title: l10n.bomLearningRelearn,
+      content: Text(l10n.bomLearningRelearnConfirm(name)),
+      confirmLabel: l10n.commonConfirm,
+      cancelLabel: l10n.commonCancel,
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _relearning = row.componentGoodsId);
+    try {
+      final latest = await context.guardAction(
+        () => ref
+            .read(goodsBomRepositoryProvider)
+            .relearn(widget.goodsId, row.componentGoodsId),
+        success: l10n.bomLearningRelearnDone,
+        errorFallback: l10n.bomLearningRelearnFailed,
+      );
+      if (latest != null) {
+        widget.onRelearned?.call();
+        if (mounted) setState(() => _latest = latest);
+      }
+    } finally {
+      if (mounted) setState(() => _relearning = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final result = ref.watch(goodsBomLearningProvider(widget.goodsId));
+    final latest = _latest;
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(UtenSpacing.s16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -53,101 +187,261 @@ class GoodsBomLearningPanel extends ConsumerWidget {
               ],
             ),
             Text(l10n.bomLearningHelp),
-            const SizedBox(height: 16),
+            const SizedBox(height: UtenSpacing.s16),
             Expanded(
-              child: result.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) => Column(
-                  children: [
-                    Text(
-                      error is ApiException
-                          ? error.message
-                          : l10n.materialDiscoveryLoadFailed,
+              child: latest != null
+                  ? _content(context, l10n, latest)
+                  : result.when(
+                      loading: () =>
+                          const Center(child: CircularProgressIndicator()),
+                      error: (error, _) => Column(
+                        children: [
+                          Text(
+                            error is ApiException
+                                ? error.message
+                                : l10n.bomLearningLoadFailed,
+                          ),
+                          UtenButton(
+                            onPressed: () => ref.invalidate(
+                              goodsBomLearningProvider(widget.goodsId),
+                            ),
+                            child: Text(l10n.commonRetry),
+                          ),
+                        ],
+                      ),
+                      data: (summary) => _content(context, l10n, summary),
                     ),
-                    UtenButton(
-                      onPressed: () =>
-                          ref.invalidate(goodsBomLearningProvider(goodsId)),
-                      child: Text(l10n.materialDiscoveryRetry),
-                    ),
-                  ],
-                ),
-                data: (data) {
-                  if (data['active'] != true) {
-                    return Text(l10n.bomLearningInactive);
-                  }
-                  final materials = [
-                    for (final row in data['materials'] as List? ?? [])
-                      Map<String, dynamic>.from(row as Map),
-                  ];
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        data['enabled'] == true && data['blockedReason'] == null
-                            ? l10n.bomLearningAuto
-                            : l10n.bomLearningPaused,
-                      ),
-                      Text(
-                        '${l10n.bomLearningOutput}: ${_quantity(data['totalOutputQty'])} ${data['unitName'] ?? ''} · ${l10n.bomLearningSamples}: ${data['sampleCount'] ?? 0}',
-                      ),
-                      const SizedBox(height: 12),
-                      Expanded(
-                        child: MasterDataTableView<Map<String, dynamic>>(
-                          items: materials,
-                          facets: const {},
-                          nullCounts: const {},
-                          filters: const {},
-                          onFilterChanged: (_, _) {},
-                          columns: [
-                            MasterColumnDef(
-                              key: 'goodsName',
-                              label: l10n.materialDiscoveryPick,
-                              width: 180,
-                              value: (row) => row['goodsName'] as String?,
-                            ),
-                            MasterColumnDef(
-                              key: 'goodsCode',
-                              label: l10n.materialDiscoveryCode,
-                              width: 100,
-                              value: (row) => row['goodsCode'] as String?,
-                            ),
-                            MasterColumnDef(
-                              key: 'colorName',
-                              label: l10n.materialDiscoveryColor,
-                              width: 90,
-                              value: (row) => row['colorName'] as String?,
-                            ),
-                            MasterColumnDef(
-                              key: 'unitName',
-                              label: l10n.materialDiscoveryUnit,
-                              width: 70,
-                              value: (row) => row['unitName'] as String?,
-                            ),
-                            MasterColumnDef(
-                              key: 'totalNetQty',
-                              label: l10n.bomLearningNet,
-                              width: 130,
-                              type: 'number',
-                              value: (row) => _quantity(row['totalNetQty']),
-                            ),
-                            MasterColumnDef(
-                              key: 'averageQty',
-                              label: l10n.bomLearningAverage,
-                              width: 130,
-                              type: 'number',
-                              value: (row) => _quantity(row['averageQty']),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _content(
+    BuildContext context,
+    AppLocalizations l10n,
+    GoodsBomLearningSummary summary,
+  ) {
+    final profile = summary.profile;
+    // 组装信息里的组件在前，其后 BOM 外实际用过的料、已删除不再自动加入的料；
+    // 组内保持服务端顺序。
+    int group(GoodsBomLearningComponent row) => row.released
+        ? 2
+        : row.inBom
+        ? 0
+        : 1;
+    final rows = [
+      for (var g = 0; g < 3; g++)
+        ...summary.components.where((row) => group(row) == g),
+    ];
+    final blocked = profile?.blockedReason;
+    final outputUnit = profile?.outputUnitName;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (profile == null)
+          Text(l10n.bomLearningInactive)
+        else
+          Text(
+            '${l10n.bomLearningOutput}: '
+            '${_qtyWithUnit(profile.totalOutputQty, outputUnit)} · '
+            '${l10n.bomLearningSamples}: ${profile.sampleCount} · '
+            '${l10n.bomLearningTotalDefect}: '
+            '${_qtyWithUnit(profile.totalDefectQty, outputUnit)}',
+          ),
+        if (blocked != null) ...[
+          const SizedBox(height: UtenSpacing.s8),
+          UtenInlineNotice(
+            level: UtenInlineNoticeLevel.warning,
+            message: l10n.bomLearningPaused(_blockedText(l10n, blocked)),
+          ),
+        ],
+        const SizedBox(height: UtenSpacing.s12),
+        Expanded(
+          child: MasterDataTableView<GoodsBomLearningComponent>(
+            items: rows,
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            emptyMessage: l10n.bomLearningEmpty,
+            columns: _columns(
+              l10n,
+              outputUnit: outputUnit,
+              canRelearn: summary.canRelearn,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<MasterColumnDef<GoodsBomLearningComponent>> _columns(
+    AppLocalizations l10n, {
+    required String? outputUnit,
+    required bool canRelearn,
+  }) {
+    /// 服务端没给的数(没有可用数据等)显示「—」。
+    String qtyOrDash(double? value) =>
+        value == null ? '—' : formatBomQty(value);
+
+    /// 服务端已按状态给好：BOM 外/已删除的料是每个父件的平均用量，
+    /// 没有可用数据(含父件单位变了)为空。
+    String actualText(GoodsBomLearningComponent row) =>
+        qtyOrDash(row.actual.qty);
+
+    /// 这段累计里没有产出时服务端给空。
+    String defectRateText(GoodsBomLearningComponent row) {
+      final rate = row.actual.defectRate;
+      return rate == null ? '—' : formatBomDefectRate(rate);
+    }
+
+    String basisText(GoodsBomLearningComponent row) => !row.inBom
+        ? '—'
+        : row.actual.usesActual
+        ? l10n.bomActualQty
+        : l10n.bomDesignQty;
+
+    Widget withTip(GoodsBomLearningComponent row, String text) => Tooltip(
+      message: bomActualUsageTip(
+        l10n,
+        row.actual,
+        netUnit: row.unitName,
+        outputUnit: outputUnit,
+        inBom: row.inBom,
+      ),
+      child: Text(text),
+    );
+
+    return [
+      MasterColumnDef(
+        key: 'material',
+        label: l10n.bomLearningMaterial,
+        width: 190,
+        value: (row) => row.componentName ?? row.componentCode,
+        cellBuilder: (context, row) {
+          final (label, type) = row.released
+              ? (l10n.bomLearningReleased, UtenStatusBadgeType.neutral)
+              : !row.inBom
+              ? (l10n.bomLearningOutsideBom, UtenStatusBadgeType.warning)
+              : row.systemLearned
+              ? (l10n.bomLearnedEdge, UtenStatusBadgeType.info)
+              : (null, null);
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                row.componentName ?? row.componentCode ?? '',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (label != null)
+                UtenStatusBadge(
+                  label: label,
+                  type: type!,
+                  size: UtenStatusBadgeSize.small,
+                ),
+            ],
+          );
+        },
+      ),
+      MasterColumnDef(
+        key: 'code',
+        label: l10n.materialDiscoveryCode,
+        width: 90,
+        value: (row) => row.componentCode,
+      ),
+      MasterColumnDef(
+        key: 'unit',
+        label: l10n.materialDiscoveryUnit,
+        width: 56,
+        value: (row) => row.unitName,
+      ),
+      MasterColumnDef(
+        key: 'designQty',
+        label: l10n.bomDesignQty,
+        width: 100,
+        type: 'number',
+        value: (row) => qtyOrDash(row.designQty),
+      ),
+      MasterColumnDef(
+        key: 'actualQty',
+        label: l10n.bomActualQty,
+        width: 100,
+        type: 'number',
+        value: actualText,
+        cellBuilder: (context, row) => withTip(row, actualText(row)),
+      ),
+      MasterColumnDef(
+        key: 'perProducedQty',
+        label: l10n.bomLearningPerProduced,
+        width: 100,
+        type: 'number',
+        // 按实产(良品+不良)的用量，与真实使用数量同一口径；没有真实值为空。
+        value: (row) => qtyOrDash(row.actual.perProducedQty),
+      ),
+      MasterColumnDef(
+        key: 'netQty',
+        label: l10n.bomLearningNet,
+        width: 100,
+        type: 'number',
+        value: (row) => formatBomQty(row.actual.netQty),
+      ),
+      MasterColumnDef(
+        key: 'exposureOutputQty',
+        label: l10n.bomLearningExposure,
+        width: 92,
+        type: 'number',
+        value: (row) => formatBomQty(row.actual.outputQty),
+      ),
+      MasterColumnDef(
+        key: 'defectQty',
+        label: l10n.bomLearningDefect,
+        width: 84,
+        type: 'number',
+        value: (row) => formatBomQty(row.actual.defectQty),
+      ),
+      MasterColumnDef(
+        key: 'defectRate',
+        label: l10n.bomLearningDefectRate,
+        width: 76,
+        type: 'number',
+        value: defectRateText,
+      ),
+      MasterColumnDef(
+        key: 'sampleCount',
+        label: l10n.bomLearningSampleCount,
+        width: 76,
+        type: 'number',
+        value: (row) => '${row.actual.sampleCount}',
+      ),
+      MasterColumnDef(
+        key: 'usageBasis',
+        label: l10n.bomLearningBasis,
+        width: 100,
+        value: basisText,
+        // BOM 外的料不参与计算(「—」)，说明挂在真实使用数量格上即可。
+        cellBuilder: (context, row) =>
+            row.inBom ? withTip(row, basisText(row)) : Text(basisText(row)),
+      ),
+      // 重新学习只对已有累计记录的组件有意义(没有记录就没有可记的基线)。
+      if (canRelearn)
+        MasterColumnDef(
+          key: 'relearn',
+          label: l10n.bomLearningAction,
+          width: 150,
+          value: (row) =>
+              row.actual.updatedAt == null ? null : l10n.bomLearningRelearn,
+          cellBuilder: (context, row) => row.actual.updatedAt == null
+              ? const SizedBox.shrink()
+              : TextButton(
+                  key: ValueKey('goods-bom-relearn-${row.componentGoodsId}'),
+                  onPressed: _relearning == null ? () => _relearn(row) : null,
+                  child: Text(l10n.bomLearningRelearn),
+                ),
+        ),
+    ];
   }
 }

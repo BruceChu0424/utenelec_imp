@@ -3,6 +3,7 @@ package com.uten.imp.features.finance.procurement;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.BusinessEventPublisher;
+import com.uten.imp.application.port.PartyOpenBalancePort;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.ItemSnapshot;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.OrderSnapshot;
@@ -64,6 +65,7 @@ public class ProcurementFinanceApprovalService {
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
     private final com.uten.imp.application.port.TaskClaimMutationGuardPort taskClaims;
     private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
+    private final PartyOpenBalancePort partyBalances;
 
     public ProcurementFinanceApprovalService(
             List<ProcurementOrderApprovalPort> availablePorts,
@@ -76,7 +78,8 @@ public class ProcurementFinanceApprovalService {
             TxSessionVars tx,
             com.uten.imp.features.notice.ChainNoticeService chainNotice,
             com.uten.imp.application.port.TaskClaimMutationGuardPort taskClaims,
-            com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks) {
+            com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks,
+            PartyOpenBalancePort partyBalances) {
         this.ports = availablePorts.stream().collect(Collectors.toUnmodifiableMap(
                 port -> ProcurementApprovalProjectionQuery.requireOrderType(port.orderType()),
                 Function.identity()));
@@ -90,6 +93,7 @@ public class ProcurementFinanceApprovalService {
         this.chainNotice = chainNotice;
         this.taskClaims = taskClaims;
         this.mutationLocks = mutationLocks;
+        this.partyBalances = partyBalances;
     }
 
     /** 提交财务审批：锁定订货单 + 规范 JSON 快照（sha256）+ 写 PENDING case（attempt 逐次递增，驳回后重提交自增），并预校验存在有资格的财务审核人，避免无人可批的死单。 */
@@ -378,7 +382,9 @@ public class ProcurementFinanceApprovalService {
                        c.order_id,
                        c.bill_no_snapshot,
                        c.amount_snapshot,
-                       supplier.name AS supplier_name,
+                       CAST(c.submission_snapshot ->> 'totalOriginal' AS numeric) AS total_original,
+                       """ + SNAPSHOT_CURRENCY_NAME_SQL + """
+                       , supplier.name AS supplier_name,
                        warehouse.name AS warehouse_name,
                        COALESCE(po.deliver_date, so.deliver_date) AS expected_date,
                        c.attempt,
@@ -400,6 +406,8 @@ public class ProcurementFinanceApprovalService {
                   ON warehouse.id = COALESCE(po.warehouse_id, so.warehouse_id)
                 LEFT JOIN employees submitter
                   ON submitter.id = c.submitted_by_employee_id
+                LEFT JOIN currencies currency
+                  ON currency.id = CAST(c.submission_snapshot ->> 'currencyId' AS uuid)
                 WHERE c.status = 'PENDING'
                 """ + filters.sql() + taskOrderBy(sort, order) + """
                 LIMIT ? OFFSET ?
@@ -410,6 +418,8 @@ public class ProcurementFinanceApprovalService {
                         rs.getObject("order_id", UUID.class),
                         rs.getString("bill_no_snapshot"),
                         rs.getBigDecimal("amount_snapshot"),
+                        rs.getBigDecimal("total_original"),
+                        rs.getString("currency_name"),
                         rs.getString("supplier_name"),
                         rs.getString("warehouse_name"),
                         rs.getObject("expected_date", LocalDate.class),
@@ -466,6 +476,15 @@ public class ProcurementFinanceApprovalService {
 
     /** 排序 ORDER BY（2026-09-25 单号列统一）：白名单映射前端列 key→SQL 表达式；
      *  未知/空→默认（提交时间, id 稳定序）。 */
+    /**
+     * 审批单的币种名列 currency_name: 有展示快照时取提交当时的名称, 否则取币种主档(需 JOIN currencies currency
+     * ON currency.id = submission_snapshot.currencyId)。列表与审核详情共用这一份; 拼接处下一列以逗号开头,
+     * 不依赖文本块缩进留下的空格。
+     */
+    private static final String SNAPSHOT_CURRENCY_NAME_SQL =
+            "CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'currencyName'"
+                    + " ELSE currency.name END AS currency_name";
+
     private static String taskOrderBy(String sort, String order) {
         String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
         return switch (sort == null ? "" : sort) {
@@ -584,11 +603,12 @@ public class ProcurementFinanceApprovalService {
                        CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'supplierName' ELSE supplier.name END AS supplier_name,
                        CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'supplierCode' ELSE supplier.code END AS supplier_code,
                        CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'warehouseName' ELSE warehouse.name END AS warehouse_name,
-                       CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'currencyName' ELSE currency.name END AS currency_name,
-                       CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'settlementMethodName' ELSE sm.name END AS settlement_method_name,
+                       """ + SNAPSHOT_CURRENCY_NAME_SQL + """
+                       , CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'settlementMethodName' ELSE sm.name END AS settlement_method_name,
                        CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'purchaserName' ELSE purchaser.full_name END AS purchaser_name,
                        CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'makerName' ELSE maker.full_name END AS maker_name,
-                       COALESCE(ap.bal, 0) AS ap_balance
+                       CAST(c.submission_snapshot ->> 'supplierId' AS uuid) AS supplier_id,
+                       CAST(c.submission_snapshot ->> 'currencyId' AS uuid) AS currency_id
                 FROM procurement_order_approval_cases c
                 LEFT JOIN purchase_orders po
                   ON c.order_type = 'PURCHASE' AND po.id = c.order_id
@@ -608,11 +628,6 @@ public class ProcurementFinanceApprovalService {
                   ON purchaser.id = CAST(c.submission_snapshot ->> 'purchaserEmployeeId' AS uuid)
                 LEFT JOIN employees maker
                   ON maker.id = CAST(c.submission_snapshot ->> 'makerEmployeeId' AS uuid)
-                LEFT JOIN (SELECT supplier_id, SUM(amount_balance) AS bal
-                           FROM ar_ap_ledger
-                           WHERE direction = 'AP' AND is_deleted = FALSE AND status = 1
-                           GROUP BY supplier_id) ap
-                  ON ap.supplier_id = CAST(c.submission_snapshot ->> 'supplierId' AS uuid)
                 WHERE c.id = ?
                 """,
                 (rs, rowNum) -> new Object[]{
@@ -639,7 +654,8 @@ public class ProcurementFinanceApprovalService {
                         rs.getString("settlement_method_name"),
                         rs.getString("purchaser_name"),
                         rs.getString("maker_name"),
-                        rs.getBigDecimal("ap_balance")},
+                        rs.getObject("supplier_id", UUID.class),
+                        rs.getObject("currency_id", UUID.class)},
                 caseId);
         if (headers.isEmpty()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "审批任务不存在或已被清理");
@@ -675,6 +691,10 @@ public class ProcurementFinanceApprovalService {
                 : List.of();
         List<ProcurementApprovalContracts.QtyChange> qtyChanges =
                 loadQtyChanges(caseId);
+        // ADR-128: 供应商应付按本单币种显示(其它币种另列), 与客户侧同一份共用余额查询。
+        UUID supplierId = (UUID) h[23];
+        var supplierBalance = partyBalances.suppliers(Collections.singletonList(supplierId))
+                .forDocument(supplierId, (UUID) h[24], null);
         return new ProcurementApprovalContracts.ApprovalReview(
                 (UUID) h[0],
                 orderType,
@@ -700,7 +720,7 @@ public class ProcurementFinanceApprovalService {
                 (String) h[11],
                 (BigDecimal) h[12],
                 (BigDecimal) h[13],
-                (BigDecimal) h[23],
+                supplierBalance,
                 sourceDocNos.size(),
                 qtyChanges,
                 items,

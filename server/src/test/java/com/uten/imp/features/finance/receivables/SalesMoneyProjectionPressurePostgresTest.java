@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Explicitly gated service/query benchmark; synthetic state is never a claim of write-chain throughput. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_SALES_MONEY_PRESSURE", matches="(?i)true")
 @SpringBootTest(properties={"spring.profiles.active=dev", "uten.audit.retention.enabled=false",
-        "uten.reporting.materialized-view-refresh.enabled=false", "uten.policy-intelligence.enabled=false",
+        "uten.reporting.materialized-view-refresh.enabled=false",
         "spring.datasource.hikari.maximum-pool-size=20",
         "uten.jwt.secret=sales-pressure-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=sales-pressure-harness-pgp-test-only-0123456789",

@@ -100,6 +100,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                 .setParameter("actorId", currentUser.requireId()).executeUpdate();
     }
 
+    /** 有按单 BOM 的根产品; 整批领料的料 (ADR-131 期间边) 不算下层。 */
     public Set<UUID> rootProductsWithBom(UUID analysisId) {
         return Set.copyOf(NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT item.id FROM production_material_analysis_items item
@@ -107,6 +108,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                   AND EXISTS (SELECT 1 FROM goods_bom_items bom JOIN goods child
                     ON child.id=bom.component_goods_id AND child.is_deleted=FALSE
                       AND COALESCE(child.auto_created,FALSE)=FALSE
+                      AND child.issue_method<>'PERIODIC'
                     WHERE bom.goods_id=item.goods_id AND bom.is_deleted=FALSE)
                 """, UUID.class).setParameter("id",analysisId),UUID.class));
     }

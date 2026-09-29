@@ -492,9 +492,11 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         int saveRoutes = service.indexOf("public AnalysisView saveRoutes(");
         assertThat(saveRoutes).isGreaterThanOrEqualTo(0);
         int writeBack = service.indexOf("new MaterialAnalysisRouteBatchWriter(em).apply(", saveRoutes);
-        int refresh = service.indexOf("refreshLocked(analysisId);", writeBack);
+        // ADR-102 (2026-09-27): 人工改路线后的那一次重算同时按主档确认新冒出来的行 (autoConfirmRoutes=true).
+        int refresh = service.indexOf("refreshLockedOutcome(analysisId, Map.of(), true);", writeBack);
+        int receipt = service.indexOf("recordSimpleCommand(analysisId, \"ROUTE\"", writeBack);
         assertThat(writeBack).isGreaterThan(saveRoutes);
-        assertThat(refresh).isGreaterThan(writeBack);
+        assertThat(refresh).isGreaterThan(writeBack).isLessThan(receipt);
         String writer = source("features/production/analysis/MaterialAnalysisRouteBatchWriter.java");
         assertThat(writer)
                 .contains("SET confirmed_route = input.route, source_suggestion = input.suggestion")

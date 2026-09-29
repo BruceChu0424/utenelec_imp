@@ -66,7 +66,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false", "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.production.readiness-reconcile.enabled=false",
-        "uten.policy-intelligence.enabled=false", "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",
+        "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",
         "uten.storage.malware-scan.provider=test-only", "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789", "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test", "uten.bootstrap.admin-password=HarnessAdminPass-1!",
@@ -93,6 +93,13 @@ class WorkshopDirectTransferBatchEndToEndTest {
      * V674-V676 后为 416 次(延迟校验 170 次；总数里 160 次是审计触发器 fn_audit / fn_audit_classify_row)。
      */
     private static final long APPROVE_TRIGGER_CALLS_BUDGET = 450;
+
+    /**
+     * 一行报工分给三个上层工单时审核的语句预算(ADR-127 §8，2026-09-27)。
+     * 逐块办，每多一块约 295 条、线性增长(2026-09-27 实测 1052 条，改前 1054 条)；钉住的是「不再随块数平方变慢」之后的形状，
+     * 慢的那部分(关系判定下推、来源证明函数反复规划)在库函数里，语句条数看不出，另由探针量时间。
+     */
+    private static final int THREE_RECEIVER_APPROVE_STATEMENTS_BUDGET = 1080;
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
         FullChainEndToEndTest.registerDataSource(registry);
@@ -188,6 +195,94 @@ class WorkshopDirectTransferBatchEndToEndTest {
     }
 
     /**
+     * ADR-127 §8：共享子件一行报 3，分给三个同车间上层工单。审核逐块办——每块自己的班组自检、
+     * 自己的线边仓入库单、自己投给自己的上层工单(自己的线边仓领料单与领料过账)；语句数钉在预算内。
+     * 改前 11 块审核实测 37 秒，大头在库函数里随块数平方增长，见 ADR-127 §8。
+     */
+    @Test
+    void threeReceiverApproveStaysInsideItsStatementBudget() {
+        var helper = new AggregateMaterialDirectTransferEndToEndTest();
+        beans.autowireBean(helper);
+        helper.before();
+        var flow = helper.flow;
+        var c = flow.createWithChild("1");
+        var shared = flow.writer.submit(c.analysis(), flow.command(c, List.of(flow.input(c, c.child(), "MAKE", "3", false))))
+                .batches().getFirst();
+        List<UUID> parents = helper.issue(c, c.common(), "1");
+        UUID source = helper.segment(shared.planId());
+        flow.receive(c, c.material(), "6");
+        helper.start(c, source);
+        UUID worker = helper.worker(c);
+        fixture.loginAs(worker);
+        var candidates = helper.direct().candidates(source, c.child(), null).candidates();
+        assertEquals(3, candidates.size());
+        var report = new DailyReportSaveRequest();
+        report.setIdempotencyKey("dt-three-budget-" + source);
+        report.setBillDate(BusinessTime.today());
+        report.setWarehouseId(c.world().warehouseId());
+        report.setDepartmentId(c.workshop());
+        report.setWorkerIds(List.of(c.worker()));
+        var item = new DailyReportItemLine();
+        item.setLineNo(1);
+        item.setExecutionSegmentId(source);
+        item.setPlanItemId(db.queryForObject(
+                "SELECT source_plan_item_id FROM production_execution_segments WHERE id=?", UUID.class, source));
+        item.setGoodsId(c.child());
+        item.setUnitId(c.world().unitId());
+        item.setUnitRate(BigDecimal.ONE);
+        item.setQty(new BigDecimal("3"));
+        item.setAllocations(candidates.stream().map(candidate -> com.uten.imp.features.production.dailyreport.dto
+                .DailyReportOutputAllocationLine.direct(candidate.demandId(), BigDecimal.ONE)).toList());
+        report.setItems(List.of(item));
+        var usage = new com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine();
+        usage.setDemandId(helper.demand(source));
+        usage.setQtyBase(new BigDecimal("6"));
+        report.setMaterialLines(List.of(usage));
+        UUID reportId = reports.create(report).getId();
+
+        ProductionJdbcMeasurement.Sample sample = ProductionJdbcMeasurement.begin();
+        try {
+            reports.approve(reportId, DailyReportApproveRequests.freshKey());
+        } finally {
+            ProductionJdbcMeasurement.end();
+        }
+        assertEquals(1, sample.commits, "审核必须是一笔事务");
+        assertTrue(sample.logicalStatements <= THREE_RECEIVER_APPROVE_STATEMENTS_BUDGET,
+                "三块直送审核用了 " + sample.logicalStatements + " 条语句，超出预算 "
+                        + THREE_RECEIVER_APPROVE_STATEMENTS_BUDGET + "；先量再改，别直接抬预算");
+        // 每块一张线边仓入库单(一行)，都已审核。
+        List<java.util.Map<String, Object>> inbound = db.queryForList("""
+                SELECT document.id AS id, document.status AS status, count(item.id) AS lines,
+                       bool_and(warehouse.is_line_side) AS line_side
+                FROM stock_documents document
+                JOIN stock_document_items item ON item.doc_id = document.id AND NOT item.is_deleted
+                JOIN warehouses warehouse ON warehouse.id = document.warehouse_id
+                WHERE document.source_daily_report_id = ? AND document.doc_type = 'FINISHED_IN'
+                  AND NOT document.is_deleted
+                GROUP BY document.id, document.status
+                """, reportId);
+        assertEquals(3, inbound.size(), "逐块自检放行，每块一张入库单");
+        for (var document : inbound) {
+            assertEquals(1L, ((Number) document.get("lines")).longValue());
+            assertEquals(1, ((Number) document.get("status")).intValue());
+            assertEquals(Boolean.TRUE, document.get("line_side"));
+        }
+        // 每个上层工单自己一张线边仓领料单，领料过账按各自需求恰好 1。
+        for (UUID parent : parents) {
+            UUID receiving = helper.segment(parent);
+            assertAutoIssued(drawOf(receiving), "1");
+            qty("1", db.queryForObject("""
+                    SELECT COALESCE(SUM(CASE posting_type WHEN 'ISSUE' THEN qty_base WHEN 'ISSUE_REVERSE' THEN -qty_base ELSE 0 END),0)
+                    FROM production_material_stock_postings WHERE demand_id=?""", BigDecimal.class, helper.demand(receiving)));
+        }
+        assertEquals(3, db.queryForObject("""
+                SELECT count(*) FROM production_fqc_inspections inspection
+                JOIN production_daily_report_items item ON item.id = inspection.source_report_item_id
+                WHERE item.report_id = ? AND inspection.inspection_kind = 'WORKSHOP_SELF' AND inspection.status = 'RESOLVED'
+                """, Integer.class, reportId), "班组自检仍是一块一条(成本覆盖、返工闭环、红冲取消都按报工行认检验)");
+    }
+
+    /**
      * permissions-15：日报的「审核」按钮由服务端随详情下发(allowedActions)。带车间直送行的
      * 草稿，只持日报审核码、没有车间直送审核权的人，或者两个码都有但不是出料车间成员的人，
      * 都拿不到 APPROVE——与审核写路径同一口径，不会再出现按钮亮着、点了才报没有权限。
@@ -214,8 +309,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
         item.setUnitRate(BigDecimal.ONE);
         item.setQty(new BigDecimal("10"));
         item.setIsFinal(false);
-        item.setDestination("WORKSHOP");
-        item.setDirectTransferDemandId(parentDemand(c));
+        item.setAllocations(List.of(com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.direct(parentDemand(c), item.getQty())));
         report.setItems(List.of(item));
         report.setMaterialLines(directInputUse(c,item.getQty()));
         UUID reportId = reports.create(report).getId();
@@ -616,7 +710,10 @@ class WorkshopDirectTransferBatchEndToEndTest {
         UUID target = parentDemand(c);
         qty("80", db.queryForObject("SELECT fn_workshop_direct_remaining_for_source(?,?)",
                 BigDecimal.class, c.childSegment(), target));
-        UUID reportId = createTransferDraft(c, "130", target);
+        // V736/ADR-127：工人把能收的 80 分给上层工单，其余 50 送入仓库(其中 30 是实际超产)。
+        UUID reportId = createTransferDraft(c, "130", List.of(
+                com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.direct(target, new BigDecimal("80")),
+                com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.warehouse(new BigDecimal("50"))));
         var detail = reports.detail(reportId);
         assertEquals(3, detail.getItems().size());
         var direct = detail.getItems().stream().filter(line -> "WORKSHOP".equals(line.getDestination()))
@@ -629,6 +726,8 @@ class WorkshopDirectTransferBatchEndToEndTest {
         qty("80", direct.getQty());
         qty("20", demandWarehouse.getQty());
         qty("30", surplus.getQty());
+        assertEquals("RECEIVERS_FULL", demandWarehouse.getOutputRouteReason());
+        assertEquals("ACTUAL_SURPLUS", surplus.getOutputRouteReason());
         assertEquals("WAREHOUSE", surplus.getDestination());
         assertTrue(surplus.isPublicOutput());
         assertNull(surplus.getDirectTransferDemandId());
@@ -955,6 +1054,12 @@ class WorkshopDirectTransferBatchEndToEndTest {
     }
 
     private UUID createTransferDraft(Case c, String quantity, UUID targetDemand) {
+        return createTransferDraft(c, quantity, List.of(com.uten.imp.features.production.dailyreport.dto
+                .DailyReportOutputAllocationLine.direct(targetDemand, new BigDecimal(quantity))));
+    }
+
+    private UUID createTransferDraft(Case c, String quantity,
+            List<com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine> allocations) {
         fixture.loginAs(c.workerUser());
         var report = new DailyReportSaveRequest();
         report.setIdempotencyKey("dt-report-" + c.segment() + "-" + quantity);
@@ -973,8 +1078,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
         item.setUnitRate(BigDecimal.ONE);
         item.setQty(new BigDecimal(quantity));
         item.setIsFinal(false);
-        item.setDestination("WORKSHOP");
-        item.setDirectTransferDemandId(targetDemand);
+        item.setAllocations(allocations);
         report.setItems(List.of(item));
         report.setMaterialLines(directInputUse(c,item.getQty()));
         return reports.create(report).getId();
@@ -1016,8 +1120,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
         item.setUnitRate(BigDecimal.ONE);
         item.setQty(new BigDecimal(quantity));
         item.setIsFinal(false);
-        item.setDestination("WORKSHOP");
-        item.setDirectTransferDemandId(parentDemand(c));
+        item.setAllocations(List.of(com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.direct(parentDemand(c), item.getQty())));
         report.setItems(List.of(item));
         report.setMaterialLines(directInputUse(c,item.getQty()));
         UUID reportId = reports.create(report).getId();
@@ -1077,8 +1180,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
         item.setUnitRate(BigDecimal.ONE);
         item.setQty(new BigDecimal(quantity));
         item.setIsFinal(false);
-        item.setDestination("WORKSHOP");
-        item.setDirectTransferDemandId(parentDemand(c));
+        item.setAllocations(List.of(com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.direct(parentDemand(c), item.getQty())));
         report.setItems(List.of(item));
         report.setMaterialLines(directInputUse(c,item.getQty()));
         UUID reportId = reports.create(report).getId();

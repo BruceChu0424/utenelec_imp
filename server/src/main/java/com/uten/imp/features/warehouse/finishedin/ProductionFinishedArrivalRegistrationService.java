@@ -8,6 +8,8 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.stock.weight.GoodsWeightObservationService;
+import com.uten.imp.features.stock.weight.SourceKind;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest;
@@ -64,6 +66,12 @@ public class ProductionFinishedArrivalRegistrationService {
 
     static final String SOURCE_ARRIVAL_SINGLE = "ARRIVAL_SINGLE";
     static final String SOURCE_ARRIVAL_BATCH = "ARRIVAL_BATCH";
+    /** 称重观测的来源单据类型(登记头 id)与幂等键前缀 'FINISHED:' + 登记行 id (ADR-135 §3.2)。 */
+    static final String OBSERVATION_SOURCE_TYPE = "PRODUCTION_FINISHED_ARRIVAL";
+    static final String FINISHED_CAPTURE_PREFIX = "FINISHED:";
+    /** 产成品数量误差: 仓库逐行点过数(先入库后质检)按 0.5%, 只有报工数按 1.5%。 */
+    private static final BigDecimal COUNTED_QTY_EPS = new BigDecimal("0.005");
+    private static final BigDecimal REPORTED_QTY_EPS = new BigDecimal("0.015");
 
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
@@ -72,6 +80,9 @@ public class ProductionFinishedArrivalRegistrationService {
     private final TxSessionVars tx;
     @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
+    /** 登记称重进单重学习(ADR-135); 可空: 直构测试不注入时只是不登记观测。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private GoodsWeightObservationService weightObservations;
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('stock_doc:view')")
@@ -244,22 +255,31 @@ public class ProductionFinishedArrivalRegistrationService {
                 .setParameter("actorId", actorId)
                 .executeUpdate();
 
+        Map<UUID, WeighedReportItem> weighed = weighedReportItems(reportId, normalized.weights());
+        Map<UUID, UUID> registrationItemIds = new LinkedHashMap<>();
         normalized.places().entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> em.createNativeQuery("""
-                                INSERT INTO production_finished_arrival_registration_items(
-                                    id, registration_id, source_report_item_id,
-                                    place_snapshot, created_by, counted_qty)
-                                VALUES (
-                                    gen_random_uuid(), :registrationId,
-                                    :reportItemId, :place, :actorId, :countedQty)
-                                """)
-                        .setParameter("registrationId", registrationId)
-                        .setParameter("reportItemId", entry.getKey())
-                        .setParameter("place", entry.getValue())
-                        .setParameter("actorId", actorId)
-                        .setParameter("countedQty", normalized.countedQuantities().get(entry.getKey()))
-                        .executeUpdate());
+                .forEach(entry -> {
+                    UUID registrationItemId = UUID.randomUUID();
+                    registrationItemIds.put(entry.getKey(), registrationItemId);
+                    WeighedReportItem weighedItem = weighed.get(entry.getKey());
+                    em.createNativeQuery("""
+                                    INSERT INTO production_finished_arrival_registration_items(
+                                        id, registration_id, source_report_item_id,
+                                        place_snapshot, created_by, counted_qty, weight)
+                                    VALUES (
+                                        :id, :registrationId,
+                                        :reportItemId, :place, :actorId, :countedQty, :weight)
+                                    """)
+                            .setParameter("id", registrationItemId)
+                            .setParameter("registrationId", registrationId)
+                            .setParameter("reportItemId", entry.getKey())
+                            .setParameter("place", entry.getValue())
+                            .setParameter("actorId", actorId)
+                            .setParameter("countedQty", normalized.countedQuantities().get(entry.getKey()))
+                            .setParameter("weight", weighedItem == null ? null : weighedItem.weightKg())
+                            .executeUpdate();
+                });
 
         // This selected registration batch and its exact FQC PENDING facts
         // commit or roll back together. Unselected report lines remain pending.
@@ -267,6 +287,7 @@ public class ProductionFinishedArrivalRegistrationService {
                 (UUID) report[0],
                 normalized.places().keySet().stream().sorted().toList(),
                 registrationId);
+        recordFinishedObservations(registrationId, normalized, weighed, registrationItemIds, actorId);
         return new RegistrationOutcome(
                 registrationId, false, normalized.warehouseId(),
                 warehouse.name(), receiver);
@@ -392,7 +413,81 @@ public class ProductionFinishedArrivalRegistrationService {
         if (cancelled == 0) {
             throw conflict("该登记批次没有可取消的待检任务，撤回已中止");
         }
+        reverseFinishedObservations(registrationId);
         return detailInternal(reportId, registrationId);
+    }
+
+    /**
+     * 本次登记里称了重的报工行(ADR-135 §3.2), 一条 SQL 读出记观测要的货品/单位/报工数/车间。
+     * 按重量计的行(货品基本单位或报工单位登记了重量单位)丢弃手填重量: 库存账按数量精确换算。
+     */
+    private Map<UUID, WeighedReportItem> weighedReportItems(UUID reportId, Map<UUID, BigDecimal> weights) {
+        if (weights.isEmpty()) return Map.of();
+        Map<UUID, WeighedReportItem> result = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT report_item.id, report_item.goods_id, report_item.color_id,
+                               report_item.unit_id, COALESCE(report_item.unit_rate, 1),
+                               report_item.qty, report.department_id,
+                               (goods_profile.mass_unit_code IS NOT NULL
+                                OR line_profile.mass_unit_code IS NOT NULL) AS exact_weight
+                        FROM production_daily_report_items report_item
+                        JOIN production_daily_reports report ON report.id = report_item.report_id
+                        JOIN goods goods_row ON goods_row.id = report_item.goods_id
+                        LEFT JOIN unit_measurement_profiles goods_profile
+                          ON goods_profile.unit_id = goods_row.unit_id
+                        LEFT JOIN unit_measurement_profiles line_profile
+                          ON line_profile.unit_id = report_item.unit_id
+                        WHERE report_item.report_id = :reportId
+                          AND report_item.id IN (:ids)
+                        """)
+                .setParameter("reportId", reportId)
+                .setParameter("ids", List.copyOf(weights.keySet())))) {
+            if (Boolean.TRUE.equals(row[7])) continue;
+            UUID reportItemId = (UUID) row[0];
+            result.put(reportItemId, new WeighedReportItem(
+                    weights.get(reportItemId), (UUID) row[1], (UUID) row[2], (UUID) row[3],
+                    decimal(row[4]), decimal(row[5]), (UUID) row[6]));
+        }
+        return result;
+    }
+
+    /**
+     * 产成品登记称重进单重学习: 每个称了重的登记行一条 FINISHED 观测, 与登记同事务。
+     * 数量 = (仓库实点数, 没有则报工数) x 换算率; 实点过的数量误差按 0.5%, 只有报工数按 1.5%;
+     * 往来方记报工车间。
+     */
+    private void recordFinishedObservations(
+            UUID registrationId, NormalizedRequest normalized,
+            Map<UUID, WeighedReportItem> weighed, Map<UUID, UUID> registrationItemIds, UUID actorId) {
+        if (weightObservations == null || weighed.isEmpty()) return;
+        OffsetDateTime observedAt = OffsetDateTime.now();
+        for (Map.Entry<UUID, WeighedReportItem> entry : weighed.entrySet()) {
+            WeighedReportItem item = entry.getValue();
+            UUID registrationItemId = registrationItemIds.get(entry.getKey());
+            if (registrationItemId == null) continue;
+            BigDecimal counted = normalized.countedQuantities().get(entry.getKey());
+            BigDecimal qty = counted != null ? counted : item.reportedQty();
+            weightObservations.record(new GoodsWeightObservationService.ObservationCommand(
+                    item.goodsId(), item.colorId(), normalized.warehouseId(), SourceKind.FINISHED,
+                    qty.multiply(item.unitRate()), item.weightKg(), null,
+                    item.departmentId() == null ? null : "WORKSHOP", item.departmentId(),
+                    OBSERVATION_SOURCE_TYPE, registrationId, registrationItemId, null,
+                    FINISHED_CAPTURE_PREFIX + registrationItemId, observedAt, null, null,
+                    counted != null ? COUNTED_QTY_EPS : REPORTED_QTY_EPS,
+                    false, item.unitId(), false, null, actorId));
+        }
+    }
+
+    /** 登记撤回 = 这批登记作废, 它记下的 FINISHED 称重观测一并红冲。 */
+    private void reverseFinishedObservations(UUID registrationId) {
+        if (weightObservations == null) return;
+        for (UUID registrationItemId : NativeQueryResults.typedRows(em.createNativeQuery("""
+                        SELECT id FROM production_finished_arrival_registration_items
+                        WHERE registration_id = :registrationId AND weight IS NOT NULL
+                        ORDER BY id
+                        """).setParameter("registrationId", registrationId), UUID.class)) {
+            weightObservations.reverseByCaptureKey(FINISHED_CAPTURE_PREFIX + registrationItemId);
+        }
     }
 
     /**
@@ -589,7 +684,9 @@ public class ProductionFinishedArrivalRegistrationService {
                                        goods.stock_place,
                                        NULL::uuid AS last_warehouse_id,
                                        NULL::text AS last_warehouse_name,
-                                       registration_item.counted_qty
+                                       registration_item.counted_qty,
+                                       registration_item.weight,
+                                       COALESCE(report_item.unit_rate, 1) AS unit_rate
                                 FROM production_daily_report_items report_item
                                 JOIN production_plan_items plan_item
                                   ON plan_item.id = report_item.plan_item_id
@@ -734,7 +831,9 @@ public class ProductionFinishedArrivalRegistrationService {
                    goods.stock_place,
                    last_warehouse.id,
                    last_warehouse.name,
-                   NULL::numeric AS counted_qty
+                   NULL::numeric AS counted_qty,
+                   NULL::numeric AS weight,
+                   COALESCE(report_item.unit_rate, 1) AS unit_rate
             """;
 
     /**
@@ -811,7 +910,8 @@ public class ProductionFinishedArrivalRegistrationService {
                         (UUID) row[6], text(row[7]), text(row[8]),
                         (UUID) row[9], text(row[10]), (UUID) row[11],
                         text(row[12]), decimal(row[13]), text(row[14]),
-                        text(row[15]), (UUID) row[16], text(row[17]), (BigDecimal) row[18]))
+                        text(row[15]), (UUID) row[16], text(row[17]), (BigDecimal) row[18],
+                        (BigDecimal) row[19], decimal(row[20])))
                 .toList();
     }
 
@@ -1158,6 +1258,7 @@ public class ProductionFinishedArrivalRegistrationService {
         }
         Map<UUID, String> places = new LinkedHashMap<>();
         Map<UUID, BigDecimal> counted = new LinkedHashMap<>();
+        Map<UUID, BigDecimal> weights = new LinkedHashMap<>();
         boolean preStock = request.stockInBeforeInspectionRequested();
         if (request.items().stream().anyMatch(Objects::isNull)) {
             throw validation("送检登记行不能为空");
@@ -1189,6 +1290,8 @@ public class ProductionFinishedArrivalRegistrationService {
                         }
                         counted.put(item.reportItemId(), quantity);
                     }
+                    BigDecimal weight = normalizedWeight(item.weight());
+                    if (weight != null) weights.put(item.reportItemId(), weight);
                 });
         List<String> hashParts = new ArrayList<>();
         hashParts.add("PRODUCTION-FINISHED-ARRIVAL-REGISTRATION-V1");
@@ -1201,9 +1304,25 @@ public class ProductionFinishedArrivalRegistrationService {
             hashParts.add("stockInBeforeInspection=1");
             counted.forEach((id, quantity) -> hashParts.add("counted=" + id + "|" + quantity.toPlainString()));
         }
+        // ADR-135: 登记实称重量(千克)同样是登记事实, 同键不同重量要 409; 没称的行不写, 老哈希逐字不变。
+        weights.forEach((id, weight) -> hashParts.add("weight=" + id + "|" + weight.toPlainString()));
         return new NormalizedRequest(
-                key, request.warehouseId(), Map.copyOf(places), Map.copyOf(counted), remark, preStock,
-                CanonicalFingerprint.sha256(hashParts));
+                key, request.warehouseId(), Map.copyOf(places), Map.copyOf(counted), Map.copyOf(weights),
+                remark, preStock, CanonicalFingerprint.sha256(hashParts));
+    }
+
+    /**
+     * 登记实称重量: 千克, 非负, 最多 4 位小数、14 位整数; 0 = 没称(null)。
+     * 返回去掉尾零的值(哈希与入库口径一致)。
+     */
+    static BigDecimal normalizedWeight(BigDecimal weight) {
+        if (weight == null) return null;
+        BigDecimal value = weight.stripTrailingZeros();
+        if (value.signum() < 0 || value.scale() > 4 || value.precision() - value.scale() > 14) {
+            throw validation("实称重量必须为非负数，最多 14 位整数和 4 位小数(千克)");
+        }
+        if (value.signum() == 0) return null;
+        return value.scale() < 0 ? value.setScale(0) : value;
     }
 
     static void requireCountedQuantities(Map<UUID, BigDecimal> reported, Map<UUID, BigDecimal> counted) {
@@ -1345,9 +1464,22 @@ public class ProductionFinishedArrivalRegistrationService {
             UUID warehouseId,
             Map<UUID, String> places,
             Map<UUID, BigDecimal> countedQuantities,
+            /** 称了重的报工行 -> 实称净重(千克, 已去尾零; 没称的行不在里面)。 */
+            Map<UUID, BigDecimal> weights,
             String remark,
             boolean stockInBeforeInspection,
             String requestHash) {
+    }
+
+    /** 称了重、要写登记重量并记 FINISHED 观测的报工行。 */
+    private record WeighedReportItem(
+            BigDecimal weightKg,
+            UUID goodsId,
+            UUID colorId,
+            UUID unitId,
+            BigDecimal unitRate,
+            BigDecimal reportedQty,
+            UUID departmentId) {
     }
 
     record NormalizedReversal(

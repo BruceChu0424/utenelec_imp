@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock;
 
+import com.uten.imp.application.port.InventoryMovementCostReference;
 import com.uten.imp.application.port.ProductionCompletionReversePort;
 import com.uten.imp.application.port.ProductionMutationFootprintPort;
 import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
@@ -30,6 +31,15 @@ import com.uten.imp.features.stock.dto.StockDocItemLine;
 import com.uten.imp.features.stock.dto.StockDocListItem;
 import com.uten.imp.features.stock.dto.StockDocQueryFilter;
 import com.uten.imp.features.stock.dto.StockDocSaveRequest;
+import com.uten.imp.features.stock.dto.WorkshopMaterialDocumentCommand;
+import com.uten.imp.features.stock.dto.WeightInput;
+import com.uten.imp.features.stock.weight.CapturedWeight;
+import com.uten.imp.features.stock.weight.GoodsWeightObservationService;
+import com.uten.imp.features.stock.weight.SourceKind;
+import com.uten.imp.features.stock.weight.StockWeightAdjustmentService;
+import com.uten.imp.features.stock.weight.WeightMath;
+import com.uten.imp.features.stock.weight.WeightSource;
+import com.uten.imp.common.measure.WeightUnit;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerService;
 import com.uten.imp.security.TxSessionVars;
@@ -143,6 +153,15 @@ public class StockDocService {
     private final ProductionMutationFootprintPort mutationFootprints;
     // V606「其它入库到货即提升」(ADR-091 批注)：路线确认步骤删除后，齐套段的同事务提升挂到入库审核上。
     private final com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService productionReadiness;
+    // ADR-135 仓库重量: 称重观测(单重学习)与盘点定重。字段注入, 单测手工构造时为空(不称重的路径不碰它们)。
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<GoodsWeightObservationService> weightObservations;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<StockWeightAdjustmentService> weightAdjustments;
+
+    /** 授权余额调整带重量时, 盘点定重行的原因(不进单重学习)。 */
+    private static final String COUNT_REASON_AUTHORIZED = "授权调整";
+    private static final String COUNT_REASON_CHECK = "盘点";
 
     // ===== 列表 =====
 
@@ -247,9 +266,45 @@ public class StockDocService {
         if (!productionTaskReadable) {
             access.requireReadable(d.getMakerId(), "仓库单据不存在");
         }
-        List<StockDocItemDto> items = itemRepo.findByDocIdOrderByLineNoAsc(id).stream()
-                .map(this::toItemDto).toList();
+        List<StockDocumentItem> entities = itemRepo.findByDocIdOrderByLineNoAsc(id);
+        Map<UUID, IssuedWeight> issuedWeights = issuedWeights(d, entities);
+        List<StockDocItemDto> items = entities.stream()
+                .map(item -> toItemDto(item, issuedWeights.get(item.getId()))).toList();
         return toDetail(d, items);
+    }
+
+    /**
+     * 领料/退料行的已出库重量(ADR-135 §3.6): 本单各行库存流水重量按方向累计, 一条 SQL 读完。
+     * 领料(类型 5)发出为正、取消出库为负; 退料按收仓方向(类型 6 退料入库, 类型 7 车间直送退回的调入腿)。
+     * 任一笔重量未知时整行为 null, 含均重/单重估算时标记估算。
+     */
+    private Map<UUID, IssuedWeight> issuedWeights(StockDocument document, List<StockDocumentItem> items) {
+        if (items.isEmpty()
+                || !("DRAW".equals(document.getDocType()) || "WDRAW".equals(document.getDocType()))) {
+            return Map.of();
+        }
+        Map<UUID, IssuedWeight> result = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT movement.source_item_id,
+                       CASE WHEN bool_or(movement.weight IS NULL) THEN NULL
+                            ELSE SUM(CASE WHEN movement.movement_type = 5 THEN -movement.direction
+                                          ELSE movement.direction END * movement.weight) END,
+                       COALESCE(bool_or(movement.weight_source IN ('AVERAGE', 'ESTIMATE')), FALSE)
+                FROM stock_movements movement
+                WHERE movement.source_doc_type = :sourceType
+                  AND movement.source_doc_id = :documentId
+                  AND movement.movement_type IN (5, 6, 7)
+                GROUP BY movement.source_item_id
+                """).setParameter("sourceType", SRC_STOCK_DOC).setParameter("documentId", document.getId()))) {
+            if (row[0] == null) continue;
+            BigDecimal kg = row[1] == null ? null : new BigDecimal(row[1].toString());
+            result.put((UUID) row[0], new IssuedWeight(kg, Boolean.TRUE.equals(row[2])));
+        }
+        return result;
+    }
+
+    /** 已出库重量(千克, null = 有未知重量)与是否含估算。 */
+    private record IssuedWeight(BigDecimal kg, boolean estimated) {
     }
 
     /** A short lock makes the rendered rows and review token one consistent snapshot. */
@@ -529,9 +584,11 @@ public class StockDocService {
     /**
      * 成品点收的三条通道。仓库手工点收是默认；另两条是「证据即授权」的自动通道，
      * 各自由自己的单据事实证明(车间直送行 / 先入库后质检的登记行)，不得互相借道。
+     * WORKSHOP_MATERIAL_BIN 是车间内料仓(ADR-131)的审核通道：只审内料仓服务本事务登记的
+     * 调拨与其它出库单，不参与成品点收。
      */
     private enum FinishedInLane {
-        WAREHOUSE_CONFIRM, WORKSHOP_DIRECT_TRANSFER, PRE_STOCKED_AUTO;
+        WAREHOUSE_CONFIRM, WORKSHOP_DIRECT_TRANSFER, PRE_STOCKED_AUTO, WORKSHOP_MATERIAL_BIN;
 
         boolean automatic() { return this != WAREHOUSE_CONFIRM; }
 
@@ -570,6 +627,8 @@ public class StockDocService {
             case PRE_STOCKED_AUTO -> requirePreStockedFinishedInDocument(document);
             case WAREHOUSE_CONFIRM -> requireOperationWritable(
                     document, "stock_doc:approve", "无权点收此成品入库单");
+            case WORKSHOP_MATERIAL_BIN -> throw new ApiException(
+                    ErrorCode.CONFLICT, "车间内料仓的单据不走成品点收");
         }
         if (!"FINISHED_IN".equals(document.getDocType())
                 || !isProductionLinked(document.getId())) {
@@ -779,6 +838,7 @@ public class StockDocService {
         tx.bind();
         if (!access.hasAuthority("stock_doc:approve")) throw new ApiException(ErrorCode.FORBIDDEN,"缺少仓库收料权限");
         productionStockTaskAccess.requireWarehouseTaskAccess("无权确认此车间余料收货");
+        Map<UUID,BigDecimal> receivedWeights=materialReturnWeights(request.lines());
         em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,618))")
                 .setParameter("key",currentUser.requireId()+":"+request.idempotencyKey()).getSingleResult();
         var guard=mutationLocks.acquire(()->{
@@ -797,21 +857,22 @@ public class StockDocService {
         StockDocument document=requireDocForUpdate(id);
         requireOperationWritable(document,"stock_doc:approve","无权确认此车间余料收货");
         UUID sourceWarehouse=materialReturnSourceWarehouse(id);
-        String hash=materialReturnReceivingHash(id,sourceWarehouse,request.warehouseId());
+        String hash=materialReturnReceivingHash(id,sourceWarehouse,request.warehouseId(),receivedWeights);
         List<Object[]> replay=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT stock_document_id,request_hash FROM production_material_return_receiving_confirmations
                 WHERE created_by=:actor AND idempotency_key=:key
                 """).setParameter("actor",currentUser.requireId()).setParameter("key",request.idempotencyKey()));
         if(!replay.isEmpty()) {
             if(!id.equals(replay.getFirst()[0]) || !hash.equals(replay.getFirst()[1]))
-                throw new ApiException(ErrorCode.CONFLICT,"相同确认键对应不同的退料单或实际收仓");
+                throw new ApiException(ErrorCode.CONFLICT,"相同确认键对应不同的退料单、实际收仓或收料重量");
             return detail(id);
         }
         if(!"WDRAW".equals(document.getDocType()) || document.getStatus()!=STATUS_DRAFT)
             throw new ApiException(ErrorCode.CONFLICT,"仅待收料的车间余料单可以确认实际仓库");
         requireMaterialReturnWarehouse(sourceWarehouse,request.warehouseId());
         guard.verifyUnchanged();
-        insertMaterialReturnReceivingConfirmation(document,sourceWarehouse,request.warehouseId(),request.idempotencyKey(),hash);
+        insertMaterialReturnReceivingConfirmation(document,sourceWarehouse,request.warehouseId(),request.idempotencyKey(),hash,
+                receivedWeightsJson(documentWeights(id,receivedWeights)));
         document.setWarehouseId(request.warehouseId());
         docRepo.saveAndFlush(document);
         return approveInternal(id,false,false);
@@ -833,18 +894,70 @@ public class StockDocService {
             throw new ApiException(ErrorCode.CONFLICT,"余料须在原履约主仓范围选择正常收料仓，跨主仓需另行办理正式调配");
     }
 
-    private static String materialReturnReceivingHash(UUID document,UUID source,UUID received) {
-        return CanonicalFingerprint.sha256(List.of("MATERIAL-RETURN-RECEIVING-V1",document.toString(),source.toString(),received.toString()));
+    /** 收料确认哈希; 没带重量时与原口径一致, 带了重量(按明细 id 排好序)一并进哈希(ADR-135 §3.9)。 */
+    static String materialReturnReceivingHash(UUID document,UUID source,UUID received,Map<UUID,BigDecimal> weights) {
+        List<String> parts=new ArrayList<>(List.of("MATERIAL-RETURN-RECEIVING-V1",document.toString(),source.toString(),received.toString()));
+        weights.forEach((item,kg)->parts.add("weight:"+item+":"+WeightInput.text(kg)));
+        return CanonicalFingerprint.sha256(parts);
     }
 
-    private void insertMaterialReturnReceivingConfirmation(StockDocument document,UUID source,UUID received,String key,String hash) {
+    /**
+     * 收料实称重量: 明细 id -> 千克(大于 0, 按明细 id 排序); 空或 0 的行不收, 同一明细重复填报错。
+     * 明细是否属于本退料单在锁单后另行核对(见 {@link #documentWeights})。
+     */
+    static Map<UUID,BigDecimal> materialReturnWeights(List<ProductionMaterialReturnConfirmRequest.Line> lines) {
+        Map<UUID,BigDecimal> weights=new java.util.TreeMap<>(java.util.Comparator.comparing(UUID::toString));
+        if(lines==null)return weights;
+        Set<UUID> seen=new HashSet<>();
+        for(ProductionMaterialReturnConfirmRequest.Line line:lines) {
+            if(line==null||line.itemId()==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"收料重量缺少退料明细");
+            if(!seen.add(line.itemId()))throw new ApiException(ErrorCode.VALIDATION_FAILED,"同一退料明细的收料重量只能填一次");
+            BigDecimal kg=WeightInput.kg(line.weightKg(),"收料实称重量");
+            if(kg!=null)weights.put(line.itemId(),kg);
+        }
+        return weights;
+    }
+
+    /**
+     * 把收料重量对到本退料单明细: 不属于本单的明细报错; 按重量计的货品(或行单位是重量单位)丢弃客户端重量,
+     * 库存账按数量精确换算。
+     */
+    private Map<UUID,BigDecimal> documentWeights(UUID documentId,Map<UUID,BigDecimal> weights) {
+        if(weights.isEmpty())return weights;
+        Map<UUID,StockDocumentItem> items=new HashMap<>();
+        itemRepo.findByDocIdOrderByLineNoAsc(documentId).forEach(item->items.put(item.getId(),item));
+        if(!items.keySet().containsAll(weights.keySet()))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"收料重量里有不属于本退料单的明细，请刷新后重新填写");
+        List<StockDocumentItem> weighed=weights.keySet().stream().map(items::get).toList();
+        MassUnits mass=massUnits(weighed.stream().map(StockDocumentItem::getGoodsId).toList(),
+                weighed.stream().map(StockDocumentItem::getUnitId).toList());
+        Map<UUID,BigDecimal> kept=new java.util.TreeMap<>(java.util.Comparator.comparing(UUID::toString));
+        weights.forEach((itemId,kg)->{
+            StockDocumentItem item=items.get(itemId);
+            if(!mass.exact(item.getGoodsId(),item.getUnitId()))kept.put(itemId,kg);
+        });
+        return kept;
+    }
+
+    /** 收料重量写进确认记录的 JSONB 对象 {"明细id": 千克}(键是 UUID, 值是不超过 4 位小数的纯数字)。 */
+    static String receivedWeightsJson(Map<UUID,BigDecimal> weights) {
+        StringBuilder json=new StringBuilder("{");
+        weights.forEach((item,kg)->{
+            if(json.length()>1)json.append(',');
+            json.append('"').append(item).append("\":").append(WeightInput.text(kg));
+        });
+        return json.append('}').toString();
+    }
+
+    private void insertMaterialReturnReceivingConfirmation(StockDocument document,UUID source,UUID received,String key,String hash,
+                                                           String lineWeights) {
         em.createNativeQuery("""
                 INSERT INTO production_material_return_receiving_confirmations(stock_document_id,return_request_id,
-                    source_warehouse_id,received_warehouse_id,previous_warehouse_id,idempotency_key,request_hash,created_by)
-                VALUES(:id,:id,:source,:received,:previous,:key,:hash,:actor)
+                    source_warehouse_id,received_warehouse_id,previous_warehouse_id,idempotency_key,request_hash,line_weights,created_by)
+                VALUES(:id,:id,:source,:received,:previous,:key,:hash,CAST(:weights AS jsonb),:actor)
                 """).setParameter("id",document.getId()).setParameter("source",source).setParameter("received",received)
                 .setParameter("previous",document.getWarehouseId()).setParameter("key",key).setParameter("hash",hash)
-                .setParameter("actor",currentUser.requireId()).executeUpdate();
+                .setParameter("weights",lineWeights).setParameter("actor",currentUser.requireId()).executeUpdate();
     }
 
     private void ensureMaterialReturnReceivingConfirmation(StockDocument document) {
@@ -863,7 +976,8 @@ public class StockDocService {
         // action, with the same immutable receiving proof as explicit selection.
         if(!source.equals(document.getWarehouseId()))throw new ApiException(ErrorCode.CONFLICT,"请显式确认余料的实际接收仓库");
         insertMaterialReturnReceivingConfirmation(document,source,document.getWarehouseId(),
-                "MATERIAL-RETURN-APPROVE:"+document.getId(),materialReturnReceivingHash(document.getId(),source,document.getWarehouseId()));
+                "MATERIAL-RETURN-APPROVE:"+document.getId(),
+                materialReturnReceivingHash(document.getId(),source,document.getWarehouseId(),Map.of()),"{}");
     }
 
     private boolean isRequestedMaterialReturn(StockDocument document) {
@@ -927,9 +1041,12 @@ public class StockDocService {
                     ErrorCode.CONFLICT,
                     "生产领料单不能单独审核；请使用“出库”一次完成审核与实物出库");
         }
+        // 内料仓通道下为登记的种类(ISSUE / RETURN / OTHER_ISSUE)，其余通道为空。
+        String workshopMaterialKind = null;
         switch (lane) {
             case WORKSHOP_DIRECT_TRANSFER -> requireWorkshopDirectTransferDocument(d);
             case PRE_STOCKED_AUTO -> requirePreStockedFinishedInDocument(d);
+            case WORKSHOP_MATERIAL_BIN -> workshopMaterialKind = requireWorkshopMaterialDocument(d);
             case WAREHOUSE_CONFIRM -> requireOperationWritable(
                     d, "stock_doc:approve", "无权审核此仓库单据");
         }
@@ -952,7 +1069,10 @@ public class StockDocService {
                 throw new ApiException(ErrorCode.CONFLICT,"请由仓库确认正常仓库接收当前车间的余料，不能收入车间流转位置");
             ensureMaterialReturnReceivingConfirmation(d);
         }
-        if (Set.of("TRANSFER", "OTHER_OUT", "WASTE", "FINISHED_OUT").contains(d.getDocType())
+        // 内料仓单据(ADR-131)已由登记证明是整批领料货品的发料、退回或其它耗用，放行；
+        // 其余从车间料架调出或其它出库的单据照旧拒绝。
+        if (lane != FinishedInLane.WORKSHOP_MATERIAL_BIN
+                && Set.of("TRANSFER", "OTHER_OUT", "WASTE", "FINISHED_OUT").contains(d.getDocType())
                 && Boolean.TRUE.equals(em.createNativeQuery("SELECT EXISTS(SELECT 1 FROM warehouses WHERE id=:id AND is_line_side)")
                         .setParameter("id", d.getWarehouseId()).getSingleResult())) {
             throw new ApiException(ErrorCode.CONFLICT,
@@ -962,6 +1082,8 @@ public class StockDocService {
             if (Set.of("OTHER_IN", "FINISHED_IN", "CHECK").contains(d.getDocType())
                     && !(warehouseQuantityConfirmed && "FINISHED_IN".equals(d.getDocType()))) {
                 warehouseScopes.requireActiveLeafWarehouse(d.getWarehouseId(), "入库仓库");
+            } else if ("TRANSFER".equals(d.getDocType()) && "ISSUE".equals(workshopMaterialKind)) {
+                warehouseScopes.requireActiveLineSideWarehouse(d.getToWarehouseId(), "车间内料仓");
             } else if ("TRANSFER".equals(d.getDocType())) {
                 warehouseScopes.requireActiveLeafWarehouse(d.getToWarehouseId(), "调入仓");
             }
@@ -995,7 +1117,12 @@ public class StockDocService {
         if(requestedMaterialReturn) {
             materialReturnDrawInstructions.adjust(d.getId(),false);
             materialReturnReceipts.getObject().apply(d,items,false);
-        } else if (!"DRAW".equals(d.getDocType())) applyStockEffect(d, items, +1);
+        } else if (workshopMaterialKind != null) {
+            // 内料仓单据: 内料仓一侧的调出流水带登记来源引用, 由库存内核逐笔核验。
+            applyStockEffect(d, items, +1, workshopMaterialOutboundKind(workshopMaterialKind));
+        } else if (!"DRAW".equals(d.getDocType())) {
+            applyStockEffect(d, items, +1);
+        }
         if ("OTHER_IN".equals(d.getDocType()) && d.getWarehouseId() != null) {
             // V606 / ADR-091 批注：其它入库提交后，本仓等待中的齐套段尽力而为补跑提升
             //（缺料静默返回；路线门在段锁查询里复核）。必须挂在事务提交之后：本事务已持有
@@ -1062,6 +1189,9 @@ public class StockDocService {
         tx.bind();
         prelockProductionDocument(id);
         StockDocument d = requireDocForUpdate(id);
+        if (Set.of("TRANSFER", "OTHER_OUT").contains(d.getDocType())) {
+            rejectWorkshopMaterialDocumentReverse(id);
+        }
         requireOperationWritable(
                 d, "stock_doc:reverse", "无权红冲此仓库单据");
         requireBalanceAdjustmentPermission(d);
@@ -1220,6 +1350,8 @@ public class StockDocService {
         }
         String reason = request.getReason() == null || request.getReason().isBlank()
                 ? null : request.getReason().strip();
+        // 逐行实称重量(ADR-135 §3.6): 只收本批所选领料单的明细, 挂到各单本次剩余出库行上。
+        Map<UUID, StockDocIssueBatchRequest.ItemWeight> weights = batchIssueWeights(request.getWeights());
         UUID actorUserId = currentUser.requireId();
         boolean canApprove = access.hasAuthority("stock_doc:approve");
         // 固定锁序（UUID 文本升序，与 lockProductionDocuments 同序）防死锁。
@@ -1249,6 +1381,7 @@ public class StockDocService {
         // 之后的 acquire 只能是其子集（requireCovered）。批量必须先按固定锁序一次性
         // 预锁全部单据，再逐单取子集 Guard；逐单首次 acquire 会让第二张单越界报冲突。
         lockProductionDocuments(orderedIds);
+        requireBatchWeightsWithinDocuments(weights.keySet(), orderedIds);
 
         int issued = 0;
         int skipped = 0;
@@ -1263,6 +1396,7 @@ public class StockDocService {
                 // 剩余量在行锁之后计算：并发的单张出库/取消出库已被串行化。
                 List<StockDocIssueRequest.Line> lines =
                         requestedIssueLines(itemRepo.findByDocIdOrderByLineNoAsc(id));
+                attachBatchWeights(lines, weights);
                 String childKey = batchChildIdempotencyKey(actorUserId, batchKey, id);
                 if (lines.isEmpty()) {
                     if (issueEventExists(id, childKey)) replayed++;
@@ -1295,6 +1429,67 @@ public class StockDocService {
         }
         return new StockDocIssueBatchResponse(
                 issued, skipped, replayed, issued == 0 && replayed > 0, issuedDocNos);
+    }
+
+    /**
+     * 批量出库逐行重量: 领料行 id -> 重量(千克规范化, 0 视为没称); 既没重量也没「按称重推算」的条目丢弃,
+     * 同一行重复填报错。
+     */
+    static Map<UUID, StockDocIssueBatchRequest.ItemWeight> batchIssueWeights(
+            List<StockDocIssueBatchRequest.ItemWeight> raw) {
+        Map<UUID, StockDocIssueBatchRequest.ItemWeight> weights = new LinkedHashMap<>();
+        if (raw == null) return weights;
+        Set<UUID> seen = new HashSet<>();
+        for (StockDocIssueBatchRequest.ItemWeight weight : raw) {
+            if (weight == null || weight.itemId() == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "逐行重量缺少领料明细");
+            }
+            if (!seen.add(weight.itemId())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "同一领料明细的重量只能填一次");
+            }
+            BigDecimal kg = WeightInput.kg(weight.weightKg(), "本次实称重量");
+            boolean fromWeight = Boolean.TRUE.equals(weight.qtyFromWeight());
+            if (kg != null || fromWeight) {
+                weights.put(weight.itemId(),
+                        new StockDocIssueBatchRequest.ItemWeight(weight.itemId(), kg, fromWeight));
+            }
+        }
+        return weights;
+    }
+
+    /** 逐行重量的明细必须属于本批所选领料单(不许借批量给别的单据写重量)。 */
+    private void requireBatchWeightsWithinDocuments(Set<UUID> itemIds, List<UUID> documentIds) {
+        if (itemIds.isEmpty()) return;
+        Number owned = (Number) em.createNativeQuery("""
+                        SELECT COUNT(*) FROM stock_document_items item
+                        WHERE item.id = ANY(CAST(:items AS uuid[]))
+                          AND item.doc_id = ANY(CAST(:documents AS uuid[]))
+                          AND item.is_deleted = FALSE
+                        """)
+                .setParameter("items", uuidArray(itemIds))
+                .setParameter("documents", uuidArray(documentIds))
+                .getSingleResult();
+        if (owned == null || owned.longValue() != itemIds.size()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "逐行重量里有不属于所选领料单的明细，请刷新后重新填写");
+        }
+    }
+
+    /** 把逐行重量挂到本单本次的剩余出库行上; 本次没有剩余可出的行, 其重量不用。 */
+    static void attachBatchWeights(List<StockDocIssueRequest.Line> lines,
+                                   Map<UUID, StockDocIssueBatchRequest.ItemWeight> weights) {
+        if (weights.isEmpty()) return;
+        for (StockDocIssueRequest.Line line : lines) {
+            StockDocIssueBatchRequest.ItemWeight weight = weights.get(line.getItemId());
+            if (weight == null) continue;
+            line.setWeightKg(weight.weightKg());
+            line.setQtyFromWeight(weight.qtyFromWeight());
+        }
+    }
+
+    /** PostgreSQL uuid[] 文本字面量(空集合为 "{}")。 */
+    private static String uuidArray(java.util.Collection<UUID> ids) {
+        return "{" + String.join(",", ids.stream().map(UUID::toString).toList()) + "}";
     }
 
     /** 批量出库子幂等键：SHA-256(操作人 + 批量键 + 单据 UUID)，64 位十六进制，不同操作人互不干扰。 */
@@ -1416,9 +1611,11 @@ public class StockDocService {
             requireExactProductionDrawSegmentMappings(id);
         }
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
-        req=canonicalIssueRequest(req,items);
+        req=canonicalIssueRequest(req,items,false);
         var materialLines=issueMaterialLines(d,items,req);
-        if (productionMaterialLedger.isIssueReplay(d.getId(),d.getWarehouseId(),materialLines,req.getIdempotencyKey(),null)) {
+        String captureFingerprint=issueCaptureFingerprint(req);
+        if (productionMaterialLedger.isIssueReplay(d.getId(),d.getWarehouseId(),materialLines,req.getIdempotencyKey(),null,
+                captureFingerprint)) {
             return;
         }
         mutationGuard.verifyUnchanged();
@@ -1443,14 +1640,22 @@ public class StockDocService {
                 productionMaterialLedger.issue(
                         d.getId(), d.getWarehouseId(),
                         materialLines,
-                        req.getIdempotencyKey(), currentUser.requireId());
+                        req.getIdempotencyKey(), captureFingerprint, currentUser.requireId());
         if (posted.replayed()) return;
         validateIssueRequest(items, req, false);
         OffsetDateTime ts = OffsetDateTime.now();
         Map<UUID,UUID> materialMovements=new LinkedHashMap<>();
         for (StockDocIssueRequest.Line line : req.getLines()) {
             StockDocumentItem item = findItem(items, line.getItemId());
-            materialMovements.put(item.getId(),applyIssueMovement(d, item, line.getQty(), ts, +1, posted.eventId()));
+            // 本次实称只落在流水上(生产关联领料行的重量列不可改); 实称的每一笔出库记一次领料观测。
+            StockService.PostedMovement movement =
+                    applyIssueMovement(d, item, line.getQty(), ts, +1, posted.eventId(), line.getWeightKg());
+            UUID movementId = movementIdOf(movement);
+            materialMovements.put(item.getId(), movementId);
+            observeMeasuredMovement(SourceKind.DRAW, d, item, movement,
+                    line.getQty().multiply(unitRateOrOne(item.getUnitRate())),
+                    Boolean.TRUE.equals(line.getQtyFromWeight()), null,
+                    "WORKSHOP", d.getDepartmentId(), "DRAW:" + movementId, ts);
             item.setIssuedQty(item.getIssuedQty().add(line.getQty()));
             itemRepo.save(item);
         }
@@ -1691,6 +1896,189 @@ public class StockDocService {
         }
     }
 
+    /** 与库内红冲守卫同一句文案(ADR-131 §4.3)。 */
+    private static final String WORKSHOP_MATERIAL_REVERSE_MESSAGE =
+            "车间内料仓的发料、退回和其它耗用单据不能红冲; 发错了请做退回, 或在盘点时如实盘点";
+
+    /**
+     * 车间内料仓的发料、收退回与其它耗用(ADR-131)：在调用方事务里一次完成建单、登记、审核。
+     *
+     * <p>只给内料仓的库存网关用。单据先以草稿落库，再登记到 {@code workshop_material_stock_documents}
+     * (登记表对库存单据的外键不可延迟，所以登记只能在建单之后、审核之前)，最后走内料仓审核通道：
+     * 调出一侧的流水带 {@link InventoryMovementCostReference.WorkshopMaterialBin} 来源引用，库存内核逐笔
+     * 核验"单据确实是本事务登记的内料仓单据"后才放行；通用调拨、其它出库照旧选不到内料仓。
+     * 调用方须事先按库存维度一次锁定本次全部货品，并已建好领料单(或退回单、其它耗用记录)。
+     *
+     * @return 已审核单据与每行内料仓一侧的流水，供调用方写调拨关联或回填其它耗用
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public WorkshopMaterialDocumentCommand.Posted createAndApproveWorkshopMaterialDocument(
+            WorkshopMaterialDocumentCommand command) {
+        requireWorkshopMaterialCommand(command);
+        tx.bind();
+        WorkshopMaterialDocumentCommand.Kind kind = command.kind();
+        String docType = kind == WorkshopMaterialDocumentCommand.Kind.OTHER_ISSUE ? "OTHER_OUT" : "TRANSFER";
+        UUID fromWarehouseId = kind == WorkshopMaterialDocumentCommand.Kind.ISSUE
+                ? command.leafWarehouseId() : command.binWarehouseId();
+        UUID toWarehouseId = switch (kind) {
+            case ISSUE -> command.binWarehouseId();
+            case RETURN -> command.leafWarehouseId();
+            case OTHER_ISSUE -> null;
+        };
+        if (warehouseScopes != null) {
+            warehouseScopes.requireActiveLineSideWarehouse(command.binWarehouseId(), "车间内料仓");
+            if (kind != WorkshopMaterialDocumentCommand.Kind.OTHER_ISSUE) {
+                warehouseScopes.requireActiveLeafWarehouse(command.leafWarehouseId(),
+                        kind == WorkshopMaterialDocumentCommand.Kind.ISSUE ? "发料仓库" : "收料仓库");
+            }
+        }
+        StockDocument d = new StockDocument();
+        d.setDocType(docType);
+        d.setBillNo(docNumberService.nextNumber(DOC_TYPE_TO_PREFIX.get(docType)));
+        d.setBillDate(command.billDate() == null ? BusinessTime.today() : command.billDate());
+        d.setWarehouseId(fromWarehouseId);
+        d.setToWarehouseId(toWarehouseId);
+        d.setWorkerId(command.receiverEmployeeId());
+        d.setDepartmentId(command.workshopDepartmentId());
+        d.setRemark(command.remark());
+        d.setMakerId(currentUser.requireEmployeeId());
+        d.setStatus(STATUS_DRAFT);
+        docRepo.saveAndFlush(d);
+        List<StockDocItemLine> lines = new ArrayList<>(command.lines().size());
+        int lineNo = 1;
+        for (WorkshopMaterialDocumentCommand.Line source : command.lines()) {
+            StockDocItemLine line = new StockDocItemLine();
+            line.setLineNo(lineNo++);
+            line.setGoodsId(source.goodsId());
+            line.setColorId(source.colorId());
+            line.setUnitId(source.unitId());
+            line.setUnitRate(source.unitRate());
+            line.setQty(source.qty());
+            line.setRemark(source.remark());
+            lines.add(line);
+        }
+        applyTotals(d, saveItems(d, lines));
+        em.flush();
+        em.createNativeQuery("""
+                        INSERT INTO workshop_material_stock_documents(
+                            stock_document_id, bin_warehouse_id, kind, requisition_id, other_issue_id, created_by)
+                        VALUES (:documentId, :binId, :kind, CAST(:requisitionId AS uuid),
+                                CAST(:otherIssueId AS uuid), :actorId)
+                        """)
+                .setParameter("documentId", d.getId())
+                .setParameter("binId", command.binWarehouseId())
+                .setParameter("kind", kind.name())
+                .setParameter("requisitionId", command.requisitionId())
+                .setParameter("otherIssueId", command.otherIssueId())
+                .setParameter("actorId", currentUser.requireId())
+                .executeUpdate();
+        approveDocumentAfterPrelock(d.getId(), false, false, null, FinishedInLane.WORKSHOP_MATERIAL_BIN);
+        em.flush();
+        Map<UUID, UUID> binMovements = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT movement.source_item_id, movement.id
+                        FROM stock_movements movement
+                        WHERE movement.source_doc_type = 'STOCK_DOC'
+                          AND movement.source_doc_id = :documentId
+                          AND movement.warehouse_id = :binId
+                        """)
+                .setParameter("documentId", d.getId())
+                .setParameter("binId", command.binWarehouseId()))) {
+            if (binMovements.put((UUID) row[0], (UUID) row[1]) != null) {
+                throw new ApiException(ErrorCode.CONFLICT, "内料仓单据的一行明细出现了多笔内料仓流水，请核对后重试");
+            }
+        }
+        List<WorkshopMaterialDocumentCommand.PostedLine> posted = new ArrayList<>();
+        for (StockDocumentItem item : itemRepo.findByDocIdOrderByLineNoAsc(d.getId())) {
+            UUID movementId = binMovements.get(item.getId());
+            if (movementId == null) {
+                throw new ApiException(ErrorCode.CONFLICT, "内料仓单据缺少内料仓一侧的库存流水，请核对后重试");
+            }
+            posted.add(new WorkshopMaterialDocumentCommand.PostedLine(
+                    item.getLineNo() == null ? posted.size() + 1 : item.getLineNo(), item.getId(),
+                    item.getGoodsId(), item.getColorId(), item.getUnitId(),
+                    com.uten.imp.common.finance.MoneyPolicy.quantity(baseQty(item)), movementId));
+        }
+        return new WorkshopMaterialDocumentCommand.Posted(d.getId(), d.getBillNo(), docType, posted);
+    }
+
+    private static void requireWorkshopMaterialCommand(WorkshopMaterialDocumentCommand command) {
+        boolean valid = command != null && command.kind() != null && command.binWarehouseId() != null
+                && !command.lines().isEmpty();
+        if (valid) {
+            valid = switch (command.kind()) {
+                case ISSUE, RETURN -> command.leafWarehouseId() != null
+                        && !command.leafWarehouseId().equals(command.binWarehouseId())
+                        && command.requisitionId() != null && command.otherIssueId() == null;
+                case OTHER_ISSUE -> command.leafWarehouseId() == null
+                        && command.otherIssueId() != null && command.requisitionId() == null;
+            };
+        }
+        if (valid) {
+            valid = command.lines().stream().allMatch(line -> line.goodsId() != null
+                    && line.qty() != null && line.qty().signum() > 0);
+        }
+        if (!valid) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "车间内料仓的库存单据缺少仓库、来源单据或明细数量，请刷新后重试");
+        }
+    }
+
+    /**
+     * 内料仓通道的「证据即授权」：这张单据必须是本事务里内料仓服务刚登记的单据，且仓库方向与登记一致
+     * (发料：叶仓调到内料仓；退回：内料仓调回叶仓；其它耗用：从内料仓其它出库)。返回登记的种类。
+     */
+    private String requireWorkshopMaterialDocument(StockDocument document) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT registration.kind, registration.bin_warehouse_id
+                        FROM workshop_material_stock_documents registration
+                        WHERE registration.stock_document_id = :documentId
+                          AND registration.xmin = CAST(pg_current_xact_id() AS xid)
+                        """)
+                .setParameter("documentId", document.getId()));
+        if (rows.size() == 1) {
+            String kind = (String) rows.getFirst()[0];
+            UUID bin = (UUID) rows.getFirst()[1];
+            boolean matches = switch (kind) {
+                case "ISSUE" -> "TRANSFER".equals(document.getDocType())
+                        && bin.equals(document.getToWarehouseId())
+                        && document.getWarehouseId() != null && !bin.equals(document.getWarehouseId());
+                case "RETURN" -> "TRANSFER".equals(document.getDocType())
+                        && bin.equals(document.getWarehouseId())
+                        && document.getToWarehouseId() != null && !bin.equals(document.getToWarehouseId());
+                case "OTHER_ISSUE" -> "OTHER_OUT".equals(document.getDocType())
+                        && bin.equals(document.getWarehouseId()) && document.getToWarehouseId() == null;
+                default -> false;
+            };
+            if (matches) return kind;
+        }
+        throw new ApiException(ErrorCode.FORBIDDEN,
+                "该仓库单据不是车间内料仓本次登记的发料、退回或其它耗用单据");
+    }
+
+    /** 内料仓单据调出一侧的来源引用种类；不是内料仓单据时为空。 */
+    private static InventoryMovementCostReference.WorkshopMaterialBinKind workshopMaterialOutboundKind(String kind) {
+        if (kind == null) return null;
+        return switch (kind) {
+            case "ISSUE" -> InventoryMovementCostReference.WorkshopMaterialBinKind.ISSUE_OUT;
+            case "RETURN" -> InventoryMovementCostReference.WorkshopMaterialBinKind.RETURN_OUT;
+            case "OTHER_ISSUE" -> InventoryMovementCostReference.WorkshopMaterialBinKind.OTHER_ISSUE_OUT;
+            default -> throw new ApiException(ErrorCode.CONFLICT, "车间内料仓单据的种类无法识别");
+        };
+    }
+
+    /** 内料仓服务登记的单据不能红冲(发错了做退回，或盘点时如实盘点)；库内守卫另有兜底。 */
+    private void rejectWorkshopMaterialDocumentReverse(UUID documentId) {
+        Object registered = em.createNativeQuery("""
+                        SELECT EXISTS(SELECT 1 FROM workshop_material_stock_documents WHERE stock_document_id = :documentId)
+                        """)
+                .setParameter("documentId", documentId)
+                .getSingleResult();
+        if (Boolean.TRUE.equals(registered)) {
+            throw new ApiException(ErrorCode.CONFLICT, WORKSHOP_MATERIAL_REVERSE_MESSAGE);
+        }
+    }
+
     private boolean productionDrawRequested(UUID documentId) {
         return Boolean.TRUE.equals(em.createNativeQuery(
                         "SELECT fn_production_draw_requested(:documentId)")
@@ -1865,11 +2253,11 @@ public class StockDocService {
         requireOperationWritable(
                 d, "stock_doc:reverse_issue", "无权取消此生产领料单出库");
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
-        req=canonicalIssueRequest(req,items);
+        req=canonicalIssueRequest(req,items,true);
         requireReverseIssueDimensions(d, items, req);
         var materialLines=issueMaterialLines(d,items,req);
         if (productionMaterialLedger.isIssueReplay(d.getId(),d.getWarehouseId(),materialLines,
-                req.getIdempotencyKey(),cancellationReason.strip())) return detail(id);
+                req.getIdempotencyKey(),cancellationReason.strip(),null)) return detail(id);
         mutationGuard.verifyUnchanged();
         lockInventory(items);
         ProductionMaterialStockLedgerService.PreparedReverse prepared =
@@ -1884,7 +2272,9 @@ public class StockDocService {
         Map<UUID,UUID> materialMovements=new LinkedHashMap<>();
         for (StockDocIssueRequest.Line line : req.getLines()) {
             StockDocumentItem item = findItem(items, line.getItemId());
-            materialMovements.put(item.getId(),applyIssueMovement(d, item, line.getQty(), ts, -1, null));
+            // 取消出库不带重量: 库存账按本行已出库流水的重量镜像退回; 领料观测从最近一次起倒序红冲到覆盖取消数量。
+            materialMovements.put(item.getId(),movementIdOf(applyIssueMovement(d, item, line.getQty(), ts, -1, null, null)));
+            reverseDrawObservations(item.getId(), line.getQty().multiply(unitRateOrOne(item.getUnitRate())));
         }
         productionMaterialLedger.completeReverseIssue(prepared);
         productionMaterialLedger.bindMovements(prepared.eventId(),materialMovements);
@@ -1900,18 +2290,31 @@ public class StockDocService {
         return detail(id);
     }
 
-    /** One event/item is one physical movement, regardless of repeated transport rows. */
-    private StockDocIssueRequest canonicalIssueRequest(StockDocIssueRequest request,List<StockDocumentItem> items) {
+    /**
+     * One event/item is one physical movement, regardless of repeated transport rows.
+     *
+     * <p>称重(ADR-135): 同一领料行的多行重量相加, 一部分带重量一部分不带报 400; 任一行「按称重推算」则整行算推算。
+     * 取消出库不接受重量(库存账按原出库流水镜像退回)。
+     */
+    static StockDocIssueRequest canonicalIssueRequest(StockDocIssueRequest request,List<StockDocumentItem> items,
+                                                      boolean reverse) {
         if (request==null || request.getLines()==null || request.getLines().isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"领料操作明细不能为空");
         }
         Map<UUID,BigDecimal> totals=new HashMap<>();
+        Map<UUID,IssueCapture> captures=new HashMap<>();
         for (StockDocIssueRequest.Line line : request.getLines()) {
             if (line==null || line.getItemId()==null || line.getQty()==null || line.getQty().signum()<=0) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择领料明细，并填写大于0的数量");
             }
             findItem(items,line.getItemId());
             totals.merge(line.getItemId(),line.getQty(),BigDecimal::add);
+            IssueCapture capture=new IssueCapture(WeightInput.kg(line.getWeightKg(),"本次实称重量"),
+                    Boolean.TRUE.equals(line.getQtyFromWeight()));
+            if (reverse && (capture.weightKg()!=null || capture.qtyFromWeight())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,"取消出库按原出库重量自动退回，不用填写重量");
+            }
+            captures.merge(line.getItemId(),capture,IssueCapture::merge);
         }
         var normalized=new StockDocIssueRequest();
         normalized.setIdempotencyKey(request.getIdempotencyKey()); normalized.setReason(request.getReason());
@@ -1921,9 +2324,40 @@ public class StockDocService {
                         .thenComparing(item -> item.getId().toString()))
                 .map(item -> {
                     var line=new StockDocIssueRequest.Line();line.setItemId(item.getId());line.setQty(totals.get(item.getId()));
+                    IssueCapture capture=captures.get(item.getId());
+                    line.setWeightKg(capture.weightKg());line.setQtyFromWeight(capture.qtyFromWeight());
                     return line;
                 }).toList());
         return normalized;
+    }
+
+    /** 一个领料行本次的称重: 实称千克(null = 没称)与数量是否按称重推算。 */
+    private record IssueCapture(BigDecimal weightKg, boolean qtyFromWeight) {
+        IssueCapture merge(IssueCapture other) {
+            if ((weightKg == null) != (other.weightKg() == null)) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "同一领料行拆成多行出库时，要么都填实称重量，要么都不填");
+            }
+            return new IssueCapture(weightKg == null ? null : weightKg.add(other.weightKg()),
+                    qtyFromWeight || other.qtyFromWeight());
+        }
+    }
+
+    /**
+     * 出库请求里称重部分的规范串, 进领料台账的请求哈希(同一幂等键换了重量重试会被判成不同请求);
+     * 没有任何称重信息时返回 null, 哈希与原口径一致。行已按 {@link #canonicalIssueRequest} 排好序。
+     */
+    static String issueCaptureFingerprint(StockDocIssueRequest canonical) {
+        boolean captured = canonical.getLines().stream().anyMatch(line ->
+                line.getWeightKg() != null || Boolean.TRUE.equals(line.getQtyFromWeight()));
+        if (!captured) return null;
+        StringBuilder fingerprint = new StringBuilder("ISSUE-CAPTURE-V1");
+        for (StockDocIssueRequest.Line line : canonical.getLines()) {
+            fingerprint.append('\n').append(line.getItemId()).append('|')
+                    .append(WeightInput.text(line.getWeightKg())).append('|')
+                    .append(Boolean.TRUE.equals(line.getQtyFromWeight()));
+        }
+        return fingerprint.toString();
     }
 
     private void validateIssueRequest(
@@ -2668,7 +3102,7 @@ public class StockDocService {
                 whole, 4, RoundingMode.HALF_UP);
     }
 
-    private StockDocumentItem findItem(List<StockDocumentItem> items, UUID itemId) {
+    private static StockDocumentItem findItem(List<StockDocumentItem> items, UUID itemId) {
         return items.stream().filter(it -> it.getId().equals(itemId)).findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.VALIDATION_FAILED, "明细行不存在于本单: " + itemId));
     }
@@ -2808,15 +3242,17 @@ public class StockDocService {
     }
 
     /**
-     * 出库/取消出库库存流水：数量按本次 qty（×unit_rate 转基本量），金额/实际总重量按
-     * 本次/行总量比例分摊；重量与数量换算率无关。
+     * 出库/取消出库库存流水：数量按本次 qty（×unit_rate 转基本量），金额按本次/行总量比例分摊。
      * sign +1=出库（DIR_OUT）/ -1=取消出库（反向 DIR_IN）。
+     *
+     * <p>重量(ADR-135): 出库用本次实称 measuredKg; 没称时手工领料单按行重量累计切片; 否则由库存账推算。
+     * 取消出库不带重量, 库存账按本行已出库流水镜像回去(分几次取消也分毫不差)。
      *
      * <p>正反向都要求完整、正数的库存维度。历史异常不得只减
      * issued_qty；必须走能够证明原物理流水的专用对账修复。</p>
      */
-    private UUID applyIssueMovement(StockDocument d, StockDocumentItem it, BigDecimal issueQty,
-                                    OffsetDateTime ts, int sign, UUID issueEventId) {
+    private StockService.PostedMovement applyIssueMovement(StockDocument d, StockDocumentItem it, BigDecimal issueQty,
+                                    OffsetDateTime ts, int sign, UUID issueEventId, BigDecimal measuredKg) {
         BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
         if (issueQty == null || issueQty.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "本次领料数量必须大于 0");
@@ -2841,11 +3277,20 @@ public class StockDocService {
                 ? BigDecimal.ZERO
                 : issueQty.divide(it.getQty(), 6, java.math.RoundingMode.HALF_UP);
         BigDecimal amount = it.getAmountLocal() == null ? null : it.getAmountLocal().multiply(ratio);
-        BigDecimal weight = it.getWeight() == null ? null : it.getWeight().multiply(ratio);
+        CapturedWeight weight = null;
+        if (sign > 0) {
+            weight = CapturedWeight.measured(measuredKg);
+            if (weight == null && it.getWeight() != null && it.getWeight().signum() > 0
+                    && !isProductionLinked(d.getId())) {
+                BigDecimal issuedBefore = it.getIssuedQty() == null ? BigDecimal.ZERO : it.getIssuedQty();
+                weight = CapturedWeight.slice(com.uten.imp.common.finance.MoneyPolicy
+                        .quantitySlice(it.getWeight(), it.getQty(), issuedBefore, issueQty));
+            }
+        }
         return stockService.recordMovement(new StockService.MovementRequest(
                 ts, T_DRAW, SRC_STOCK_DOC, d.getId(), it.getId(),
                 it.getGoodsId(), it.getColorId(), d.getWarehouseId(), (short) (DIR_OUT * sign), baseQty,
-                it.getUnitId(), it.getUnitRate(), amount, it.getRemark(), weight, null,
+                it.getUnitId(), it.getUnitRate(), amount, it.getRemark(), weight,
                 issueEventId == null ? null : new com.uten.imp.application.port.InventoryMovementCostReference.ProductionMaterialEvent(issueEventId)));
     }
 
@@ -3528,43 +3973,238 @@ public class StockDocService {
     /**
      * 按 doc_type 生成库存流水（调 {@link StockService#recordMovement}）。
      *
+     * <p>重量(ADR-135 §3.3/§3.4): 手工单的行重量是仓库实称, 审核时实称的行登记一次称重观测(单重学习),
+     * 红冲时把它标成已红冲; 盘点行在盘盈盘亏流水之后按实盘重量记盘点定重, 红冲时在镜像流水之后撤销。
+     *
      * @param sign +1=审核（正方向）/ -1=红冲（反方向）
      */
     private Map<UUID,UUID> applyStockEffect(StockDocument d, List<StockDocumentItem> items, int sign) {
+        return applyStockEffect(d, items, sign, null);
+    }
+
+    /**
+     * @param workshopMaterialOut 车间内料仓单据(ADR-131)调出一侧的来源引用种类；为空表示普通单据。
+     *                            调入一侧不带引用(调拨调入按原调出成本恢复)。
+     */
+    private Map<UUID,UUID> applyStockEffect(StockDocument d, List<StockDocumentItem> items, int sign,
+            InventoryMovementCostReference.WorkshopMaterialBinKind workshopMaterialOut) {
         Map<UUID,UUID> materialMovements=new LinkedHashMap<>();
         OffsetDateTime ts = d.getBillDate() == null ? OffsetDateTime.now()
                 : d.getBillDate().atStartOfDay(BusinessTime.ZONE).toOffsetDateTime();
+        InventoryMovementCostReference outbound = workshopMaterialOut == null ? null
+                : new InventoryMovementCostReference.WorkshopMaterialBin(d.getId(), workshopMaterialOut);
+        OffsetDateTime observedAt = OffsetDateTime.now();
+        boolean finishedIn = "FINISHED_IN".equals(d.getDocType());
+        SourceKind observedKind = observedKind(d.getDocType());
+        boolean weighedLines = observedKind != null
+                && items.stream().anyMatch(it -> WeightMath.positive(it.getWeight()));
+        // ADR-135: 生产成品入库的行重量来自产成品登记的累计切片; 其余手工单的行重量是仓库实称。
+        boolean productionLinked = ((sign > 0 && finishedIn) || weighedLines) && isProductionLinked(d.getId());
+        boolean finishedFromProduction = sign > 0 && finishedIn && productionLinked;
+        SourceKind learnKind = weighedLines && !productionLinked ? observedKind : null;
+        UUID observedSupplier = sign > 0 && learnKind == SourceKind.OTHER_IN ? existingSupplier(d.getSupplierId()) : null;
+        CountContext count = "CHECK".equals(d.getDocType()) ? countContext(d, items, sign) : null;
         for (StockDocumentItem it : items) {
             if (it.getGoodsId() == null) continue;
             BigDecimal baseQty = baseQty(it);
-            // weight 是本行实际总重量，不乘数量换算率；无重量则为 null，余额重量不动。
-            BigDecimal actualWeight = actualWeight(it);
+            // 本行重量证据(千克, 不乘数量换算率); 红冲由 move 统一不带, 库存账按原流水镜像。
+            CapturedWeight actualWeight = lineWeight(it, finishedFromProduction);
+            // 带着本行实称重量的那笔流水(调拨是调出腿), 审核时据它登记称重观测。
+            StockService.PostedMovement weighed = null;
             switch (d.getDocType()) {
-                case "OTHER_IN" -> move(d, it, T_OTHER_IN, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
-                case "OTHER_OUT", "WASTE" -> move(d, it, T_OTHER_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
+                case "OTHER_IN" -> weighed = move(d, it, T_OTHER_IN, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
+                case "OTHER_OUT", "WASTE" -> weighed = move(d, it, T_OTHER_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign, outbound);
                 case "DRAW" -> move(d, it, T_DRAW, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
-                case "WDRAW" -> materialMovements.put(it.getId(),move(d, it, T_WDRAW, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign));
-                case "FINISHED_IN" -> move(d, it, T_FINISHED_IN, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
-                case "FINISHED_OUT" -> move(d, it, T_FINISHED_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
+                case "WDRAW" -> materialMovements.put(it.getId(),movementIdOf(move(d, it, T_WDRAW, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign)));
+                case "FINISHED_IN" -> weighed = move(d, it, T_FINISHED_IN, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
+                case "FINISHED_OUT" -> weighed = move(d, it, T_FINISHED_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
                 case "TRANSFER" -> {
                     if (d.getWarehouseId() != null)
-                        move(d, it, T_TRANSFER_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
+                        weighed = move(d, it, T_TRANSFER_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign, outbound);
+                    // 调入不另带重量: 库存账沿用本行调出流水的重量与来历(COUNTERPART)。
                     if (d.getToWarehouseId() != null)
-                        move(d, it, T_TRANSFER_IN, DIR_IN, baseQty, actualWeight, d.getToWarehouseId(), ts, sign);
+                        move(d, it, T_TRANSFER_IN, DIR_IN, baseQty, null, d.getToWarehouseId(), ts, sign);
                 }
-                case "CHECK" -> {
-                    BigDecimal surplus = it.getSurplusQty();
-                    if (surplus == null || surplus.signum() == 0) continue;
-                    // 盘点只记差额数量；盘盈盘亏无单重口径，重量传 null（不动余额重量，避免错账）。
-                    if (surplus.signum() > 0)
-                        move(d, it, T_CHECK_GAIN, DIR_IN, surplus, null, d.getWarehouseId(), ts, sign);
-                    else
-                        move(d, it, T_CHECK_LOSS, DIR_OUT, surplus.abs(), null, d.getWarehouseId(), ts, sign);
-                }
+                case "CHECK" -> applyCheckLine(d, it, ts, sign, count, observedAt);
                 default -> { /* 未识别类型不动库存 */ }
+            }
+            if (learnKind == null) continue;
+            String captureKey = learnKind.name() + ":" + it.getId();
+            if (sign > 0) {
+                observeMeasuredMovement(learnKind, d, it, weighed, baseQty, it.isQtyFromWeight(),
+                        observedSupplier, null, null, captureKey, observedAt);
+            } else if (WeightMath.positive(it.getWeight())) {
+                reverseObservation(captureKey);
             }
         }
         return materialMovements;
+    }
+
+    /**
+     * 手工单审核时登记的称重观测种类(ADR-135 §3.3): 其它入库与手工成品入库 = OTHER_IN(独立点数, 参与学单重);
+     * 其它出库/报废/成品出库 = OTHER_OUT、调拨 = TRANSFER(只做核对); 其余单据不在这里登记。
+     */
+    static SourceKind observedKind(String docType) {
+        return switch (docType == null ? "" : docType) {
+            case "OTHER_IN", "FINISHED_IN" -> SourceKind.OTHER_IN;
+            case "OTHER_OUT", "WASTE", "FINISHED_OUT" -> SourceKind.OTHER_OUT;
+            case "TRANSFER" -> SourceKind.TRANSFER;
+            default -> null;
+        };
+    }
+
+    /**
+     * 其它入库观测记的供应商(单重按供应商分开学): 单据供应商仍在供应商主档里才记。历史草稿的供应商外键未校验,
+     * 悬空的 id 写进观测会让过账回滚, 而称重永远不能挡数量过账。
+     */
+    private UUID existingSupplier(UUID supplierId) {
+        if (supplierId == null) return null;
+        return Boolean.TRUE.equals(em.createNativeQuery("SELECT EXISTS(SELECT 1 FROM suppliers WHERE id = :id)")
+                .setParameter("id", supplierId).getSingleResult()) ? supplierId : null;
+    }
+
+    /** 盘点单审核/红冲的称重上下文: 按重量计的货品集合与盘点定重的原因(授权调整不进单重学习)。 */
+    private record CountContext(MassUnits mass, boolean authorizedAdjustment) {
+    }
+
+    private CountContext countContext(StockDocument d, List<StockDocumentItem> items, int sign) {
+        List<StockDocumentItem> weighed = items.stream()
+                .filter(it -> WeightMath.positive(it.getCountWeight())).toList();
+        if (sign < 0 || weighed.isEmpty()) return new CountContext(MassUnits.NONE, false);
+        return new CountContext(
+                massUnits(weighed.stream().map(StockDocumentItem::getGoodsId).toList(), List.of()),
+                isAuthorizedBalanceAdjustment(d));
+    }
+
+    /**
+     * 盘点一行: 先按盘盈盘亏记数量流水(不带重量: 正向由库存账推算, 红冲按原流水镜像), 再处理实盘重量(§3.4):
+     * 审核 = 把本维度库存重量定为实盘重量(盘点定重, 不再是估算), 并登记一次盘点称重观测(数量按称重推算或授权调整除外);
+     * 红冲 = 在镜像流水之后撤销盘点定重, 观测标成已红冲。盘盈盘亏为 0 的行也要定重。
+     */
+    private void applyCheckLine(StockDocument d, StockDocumentItem it, OffsetDateTime ts, int sign,
+                                CountContext count, OffsetDateTime observedAt) {
+        BigDecimal surplus = it.getSurplusQty();
+        if (surplus != null && surplus.signum() != 0) {
+            if (surplus.signum() > 0)
+                move(d, it, T_CHECK_GAIN, DIR_IN, surplus, null, d.getWarehouseId(), ts, sign);
+            else
+                move(d, it, T_CHECK_LOSS, DIR_OUT, surplus.abs(), null, d.getWarehouseId(), ts, sign);
+        }
+        if (!WeightMath.positive(it.getCountWeight())) return;
+        String captureKey = SourceKind.COUNT.name() + ":" + it.getId();
+        if (sign < 0) {
+            weightAdjustmentService().reverseSetWeight(SRC_STOCK_DOC, d.getId(), it.getId(), ts,
+                    currentUser.requireId());
+            reverseObservation(captureKey);
+            return;
+        }
+        requireCountWeightAllowed(it, count.mass());
+        weightAdjustmentService().setWeight(new StockWeightAdjustmentService.SetWeightCommand(
+                StockWeightAdjustmentService.KIND_COUNT, d.getWarehouseId(), it.getGoodsId(), it.getColorId(),
+                it.getCountWeight(), null, false, SRC_STOCK_DOC, d.getId(), it.getId(), ts,
+                count.authorizedAdjustment() ? COUNT_REASON_AUTHORIZED : COUNT_REASON_CHECK, null,
+                currentUser.requireId()));
+        if (!count.authorizedAdjustment()) {
+            observe(SourceKind.COUNT, d, it, it.getCountQty(), it.getCountWeight(), it.isQtyFromWeight(),
+                    null, null, null, null, captureKey, observedAt);
+        }
+    }
+
+    /** 实盘重量的前提: 不是按重量计的货品(重量随数量精确换算), 实盘数量大于 0。 */
+    private static void requireCountWeightAllowed(StockDocumentItem it, MassUnits mass) {
+        String line = it.getLineNo() == null ? "" : "第 " + it.getLineNo() + " 行";
+        if (mass.exact(it.getGoodsId(), it.getUnitId())) {
+            throw new ApiException(ErrorCode.CONFLICT, line + "按重量计的货品不用单独填重量");
+        }
+        if (it.getCountQty() == null || it.getCountQty().signum() <= 0) {
+            throw new ApiException(ErrorCode.CONFLICT, line + "实盘数量为 0 时不能填实盘重量");
+        }
+    }
+
+    private StockWeightAdjustmentService weightAdjustmentService() {
+        StockWeightAdjustmentService service = weightAdjustments == null ? null : weightAdjustments.getIfAvailable();
+        if (service == null) {
+            throw new IllegalStateException("stock weight adjustment service is required for count weights");
+        }
+        return service;
+    }
+
+    /**
+     * 仓库实称的一笔流水登记为称重观测: 只收库存账定为实称(MEASURED)的流水; 切片、精确换算、均重、估算都不学。
+     */
+    private void observeMeasuredMovement(SourceKind kind, StockDocument d, StockDocumentItem it,
+                                         StockService.PostedMovement movement, BigDecimal qtyBase,
+                                         boolean qtyFromWeight, UUID supplierId, String counterpartKind,
+                                         UUID counterpartId, String captureKey, OffsetDateTime observedAt) {
+        if (movement == null || movement.weightSource() != WeightSource.MEASURED
+                || !WeightMath.positive(movement.weightKg())) {
+            return;
+        }
+        observe(kind, d, it, qtyBase, movement.weightKg(), qtyFromWeight, supplierId, counterpartKind,
+                counterpartId, movement.movementId(), captureKey, observedAt);
+    }
+
+    /** 登记一次称重观测(同一事务); 不满足学习条件时观测服务自己跳过, 从不挡过账。 */
+    private void observe(SourceKind kind, StockDocument d, StockDocumentItem it, BigDecimal qtyBase,
+                         BigDecimal weightKg, boolean qtyFromWeight, UUID supplierId, String counterpartKind,
+                         UUID counterpartId, UUID movementId, String captureKey, OffsetDateTime observedAt) {
+        GoodsWeightObservationService observations =
+                weightObservations == null ? null : weightObservations.getIfAvailable();
+        if (observations == null) return;
+        observations.record(new GoodsWeightObservationService.ObservationCommand(
+                it.getGoodsId(), it.getColorId(), d.getWarehouseId(), kind, qtyBase, weightKg, supplierId,
+                counterpartKind, counterpartId, SRC_STOCK_DOC, d.getId(), it.getId(), movementId, captureKey,
+                observedAt, null, null, null, qtyFromWeight, it.getUnitId(), false, null,
+                currentUser.requireId()));
+    }
+
+    /** 单据红冲: 把按 captureKey 登记的称重观测标成已红冲(没有就什么也不做)。 */
+    private void reverseObservation(String captureKey) {
+        GoodsWeightObservationService observations =
+                weightObservations == null ? null : weightObservations.getIfAvailable();
+        if (observations != null) observations.reverseByCaptureKey(captureKey);
+    }
+
+    /** 取消出库: 从最近一次起倒序红冲该领料行的领料观测, 直到覆盖取消的基本数量。 */
+    private void reverseDrawObservations(UUID drawItemId, BigDecimal qtyBase) {
+        GoodsWeightObservationService observations =
+                weightObservations == null ? null : weightObservations.getIfAvailable();
+        if (observations != null) observations.reverseDrawLifo(drawItemId, qtyBase);
+    }
+
+    /**
+     * 按重量计量(ADR-135 EXACT): 货品基本单位是重量单位, 或单据行单位本身是重量单位。这类行的重量由库存账
+     * 按数量精确换算, 客户端重量一律丢弃。
+     */
+    record MassUnits(Set<UUID> goods, Set<UUID> units) {
+        static final MassUnits NONE = new MassUnits(Set.of(), Set.of());
+
+        boolean exact(UUID goodsId, UUID unitId) {
+            return (goodsId != null && goods.contains(goodsId)) || (unitId != null && units.contains(unitId));
+        }
+    }
+
+    /** 一条 SQL 读出给定货品里按重量计量的货品、给定单位里的重量单位。 */
+    private MassUnits massUnits(java.util.Collection<UUID> goodsIds, java.util.Collection<UUID> unitIds) {
+        Set<UUID> goods = goodsIds.stream().filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        Set<UUID> units = unitIds.stream().filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        if (goods.isEmpty() && units.isEmpty()) return MassUnits.NONE;
+        Set<UUID> massGoods = new HashSet<>();
+        Set<UUID> massUnits = new HashSet<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT 'G', goods_row.id, profile.mass_unit_code
+                FROM goods goods_row
+                JOIN unit_measurement_profiles profile ON profile.unit_id = goods_row.unit_id
+                WHERE goods_row.id = ANY(CAST(:goods AS uuid[])) AND profile.mass_unit_code IS NOT NULL
+                UNION ALL
+                SELECT 'U', profile.unit_id, profile.mass_unit_code
+                FROM unit_measurement_profiles profile
+                WHERE profile.unit_id = ANY(CAST(:units AS uuid[])) AND profile.mass_unit_code IS NOT NULL
+                """).setParameter("goods", uuidArray(goods)).setParameter("units", uuidArray(units)))) {
+            if (row[1] == null || WeightUnit.tryParse((String) row[2]).isEmpty()) continue;
+            ("G".equals(String.valueOf(row[0])) ? massGoods : massUnits).add((UUID) row[1]);
+        }
+        return new MassUnits(massGoods, massUnits);
     }
 
     /** base_qty = qty × unit_rate（库存基本量）。 */
@@ -3574,20 +4214,39 @@ public class StockDocService {
         return qty.multiply(rate);
     }
 
-    /** 本行实际总重量；与单据数量的 unit_rate 无关。 */
-    private BigDecimal actualWeight(StockDocumentItem it) {
-        return it.getWeight();
+    /** 本行重量证据(千克): 生产成品入库 = 登记重量的累计切片(0 也算), 其余 = 仓库实称(没称为空)。 */
+    private static CapturedWeight lineWeight(StockDocumentItem it, boolean finishedFromProduction) {
+        return finishedFromProduction
+                ? CapturedWeight.slice(it.getWeight())
+                : CapturedWeight.measured(it.getWeight());
     }
 
-    /** 写一笔流水：审核用 naturalDir，红冲反向（naturalDir × sign）。weight 传正数，由 recordMovement 乘 direction。 */
-    private UUID move(StockDocument d, StockDocumentItem it, short type, short naturalDir,
-                      BigDecimal qty, BigDecimal weight, UUID warehouseId, OffsetDateTime ts, int sign) {
+    /**
+     * 写一笔流水：审核用 naturalDir，红冲反向（naturalDir × sign）。重量证据只在正向带;
+     * 红冲不带, 库存账按同一来源行的原流水镜像(ADR-135)。
+     */
+    private StockService.PostedMovement move(StockDocument d, StockDocumentItem it, short type, short naturalDir,
+                      BigDecimal qty, CapturedWeight weight,
+                      UUID warehouseId, OffsetDateTime ts, int sign) {
+        return move(d, it, type, naturalDir, qty, weight, warehouseId, ts, sign, null);
+    }
+
+    private StockService.PostedMovement move(StockDocument d, StockDocumentItem it, short type, short naturalDir,
+                      BigDecimal qty, CapturedWeight weight,
+                      UUID warehouseId, OffsetDateTime ts, int sign,
+                      InventoryMovementCostReference costReference) {
         if (warehouseId == null || qty == null || qty.signum() == 0) return null;
         short dir = (short) (naturalDir * sign);
         return stockService.recordMovement(new StockService.MovementRequest(
                 ts, type, SRC_STOCK_DOC, d.getId(), it.getId(),
                 it.getGoodsId(), it.getColorId(), warehouseId, dir, qty,
-                it.getUnitId(), it.getUnitRate(), it.getAmountLocal(), it.getRemark(), weight));
+                it.getUnitId(), it.getUnitRate(), it.getAmountLocal(), it.getRemark(),
+                sign > 0 ? weight : null, costReference));
+    }
+
+    /** 没有写流水的行(无仓库/零数量)没有流水 id。 */
+    private static UUID movementIdOf(StockService.PostedMovement posted) {
+        return posted == null ? null : posted.movementId();
     }
 
     // ===== 私有映射 =====
@@ -3621,8 +4280,10 @@ public class StockDocService {
 
     private List<StockDocItemDto> saveItems(StockDocument d, List<StockDocItemLine> lines) {
         requireCostWritePermission(lines);
-        if ("CHECK".equals(d.getDocType())) {
-            prepareCheckLines(d, lines);
+        boolean check = "CHECK".equals(d.getDocType());
+        Map<InventoryKey, BigDecimal> bookWeights = Map.of();
+        if (check) {
+            bookWeights = prepareCheckLines(d, lines);
         } else {
             int lineNo = 1;
             for (StockDocItemLine line : lines) {
@@ -3630,6 +4291,7 @@ public class StockDocService {
                 lineNo++;
             }
         }
+        normalizeLineWeights(d, lines);
         Map<UUID, StockGoodsSnapshot> goodsSnapshots =
                 StockGoodsSnapshot.fromMaster(
                         em,
@@ -3658,9 +4320,12 @@ public class StockDocService {
             it.setAmountLocal(l.getAmountLocal()==null?it.getAmountOriginal():
                     com.uten.imp.common.util.FinancialExactAmount.book(l.getAmountLocal(),"仓库来源本币金额"));
             it.setWeight(l.getWeight());
+            it.setQtyFromWeight(Boolean.TRUE.equals(l.getQtyFromWeight()));
             it.setGiftQty(l.getGiftQty() != null ? l.getGiftQty() : BigDecimal.ZERO);
             it.setSurplusQty(l.getSurplusQty());
             it.setCountQty(l.getCountQty());
+            it.setCountWeight(l.getCountWeight());
+            it.setBookWeight(check ? bookWeights.get(new InventoryKey(l.getGoodsId(), l.getColorId())) : null);
             it.setPlace(l.getPlace());
             it.setUpstreamItemId(l.getUpstreamItemId());
             it.setExecutionSegmentId(l.getExecutionSegmentId());
@@ -3737,8 +4402,11 @@ public class StockDocService {
      * <p>The client-provided qty/surplus are previews only. The transaction
      * locks every goods/color key, reads the current warehouse balance and
      * persists {@code qty=book snapshot}, {@code surplus=count-book}.
+     *
+     * <p>同时返回各维度的账面重量快照(千克, ADR-135 §3.4; 没有余额行按 0, 未知为 null), 只用于显示,
+     * 审核时与实盘重量一起复核。
      */
-    private void prepareCheckLines(
+    private Map<InventoryKey, BigDecimal> prepareCheckLines(
             StockDocument document, List<StockDocItemLine> lines) {
         requireCheckWarehouse(document);
         if (lines == null || lines.isEmpty()) {
@@ -3767,13 +4435,17 @@ public class StockDocService {
         }
 
         stockService.lockInventory(keys);
+        Map<InventoryKey, BigDecimal> bookWeights = new HashMap<>();
         for (StockDocItemLine line : lines) {
-            BigDecimal bookQty = currentBalanceQty(
+            Optional<StockBalance> balance = currentBalance(
                     document.getWarehouseId(), line.getGoodsId(), line.getColorId());
+            BigDecimal bookQty = balance.map(StockBalance::getQty).orElse(BigDecimal.ZERO);
             line.setQty(bookQty);
             line.setSurplusQty(
                     StockCountPolicy.adjustment(bookQty, line.getCountQty()));
+            bookWeights.put(new InventoryKey(line.getGoodsId(), line.getColorId()), bookWeightOf(balance));
         }
+        return bookWeights;
     }
 
     /**
@@ -3800,10 +4472,21 @@ public class StockDocService {
                         ErrorCode.CONFLICT,
                         "第 " + lineNo + " 行货品和颜色重复，不能审核");
             }
-            BigDecimal currentQty = currentBalanceQty(
+            Optional<StockBalance> balance = currentBalance(
                     document.getWarehouseId(), item.getGoodsId(), item.getColorId());
+            BigDecimal currentQty = balance.map(StockBalance::getQty).orElse(BigDecimal.ZERO);
             StockCountPolicy.requireSnapshotUnchanged(
                     item.getQty(), currentQty, lineNo);
+            // 实盘重量是「定为此值」: 保存后账面重量变了(别的盘点/核重)就和数量一样要求重新保存再审核;
+            // 只盘数量的行账面重量只用于显示, 审核时刷新成当前值。
+            BigDecimal currentWeight = bookWeightOf(balance);
+            if (WeightMath.positive(item.getCountWeight())
+                    && !WeightMath.sameKg(item.getBookWeight(), currentWeight)) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "第 " + lineNo + " 行盘点期间库存重量已变化，请重新保存盘点单核对后再审核");
+            }
+            item.setBookWeight(currentWeight);
             item.setSurplusQty(
                     StockCountPolicy.adjustment(currentQty, item.getCountQty()));
             auto++;
@@ -3817,12 +4500,52 @@ public class StockDocService {
         }
     }
 
-    private BigDecimal currentBalanceQty(
+    private Optional<StockBalance> currentBalance(
             UUID warehouseId, UUID goodsId, UUID colorId) {
         return balanceRepo.findByWarehouseIdAndGoodsIdAndColorId(
-                        warehouseId, goodsId, colorId)
-                .map(StockBalance::getQty)
-                .orElse(BigDecimal.ZERO);
+                warehouseId, goodsId, colorId);
+    }
+
+    /** 账面重量快照: 有余额行取其重量(未知为 null), 没有余额行 = 0 数量 0 重量。 */
+    private static BigDecimal bookWeightOf(Optional<StockBalance> balance) {
+        return balance.isPresent() ? balance.get().getWeight() : BigDecimal.ZERO.setScale(WeightMath.SCALE);
+    }
+
+    /**
+     * 行重量口径(ADR-135 §3.3/§3.4): 千克、最多 4 位小数, 0 视为没称。盘点单只用实盘重量(行重量不收),
+     * 其它单据没有实盘重量; 实盘数量为 0 不能填实盘重量。按重量计的货品(或行单位是重量单位)丢弃行重量,
+     * 由库存账按数量精确换算; 这类货品填实盘重量直接拒绝。
+     */
+    private void normalizeLineWeights(StockDocument document, List<StockDocItemLine> lines) {
+        boolean check = "CHECK".equals(document.getDocType());
+        int auto = 1;
+        for (StockDocItemLine line : lines) {
+            String label = "第 " + (line.getLineNo() == null ? auto : line.getLineNo()) + " 行";
+            line.setWeight(check ? null : WeightInput.kg(line.getWeight(), label + "实称重量"));
+            line.setCountWeight(check ? WeightInput.kg(line.getCountWeight(), label + "实盘重量") : null);
+            if (line.getCountWeight() != null
+                    && (line.getCountQty() == null || line.getCountQty().signum() <= 0)) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, label + "实盘数量为 0 时不能填实盘重量");
+            }
+            auto++;
+        }
+        List<StockDocItemLine> weighed = lines.stream()
+                .filter(line -> line.getWeight() != null || line.getCountWeight() != null).toList();
+        if (weighed.isEmpty()) return;
+        MassUnits mass = massUnits(weighed.stream().map(StockDocItemLine::getGoodsId).toList(),
+                weighed.stream().map(StockDocItemLine::getUnitId).toList());
+        auto = 1;
+        for (StockDocItemLine line : lines) {
+            int lineNo = line.getLineNo() == null ? auto : line.getLineNo();
+            if (mass.exact(line.getGoodsId(), line.getUnitId())) {
+                if (line.getCountWeight() != null) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "第 " + lineNo + " 行按重量计的货品不用单独填重量");
+                }
+                line.setWeight(null);
+            }
+            auto++;
+        }
     }
 
     /**
@@ -3910,6 +4633,11 @@ public class StockDocService {
     }
 
     private StockDocItemDto toItemDto(StockDocumentItem it) {
+        return toItemDto(it, null);
+    }
+
+    /** @param issued 已出库重量(领料/退料详情才有, 其余为 null) */
+    private StockDocItemDto toItemDto(StockDocumentItem it, IssuedWeight issued) {
         return new StockDocItemDto(
                 it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(),
@@ -3922,7 +4650,9 @@ public class StockDocService {
                 it.getExecutionSegmentSalesAllocationId(),
                 it.getSourceDailyReportItemId(), it.getSourceDocNo(), it.getRemark(),
                 it.getBillDate(), it.getIssuedQty(), false,
-                "DRAW".equals(it.getBillType()) ? requestedDrawQuantity(it.getId()) : null);
+                "DRAW".equals(it.getBillType()) ? requestedDrawQuantity(it.getId()) : null,
+                it.isQtyFromWeight(), it.getCountWeight(), it.getBookWeight(),
+                issued == null ? null : issued.kg(), issued != null && issued.estimated());
     }
 
     private StockDocDetail toDetail(StockDocument d, List<StockDocItemDto> items) {
@@ -4001,7 +4731,9 @@ public class StockDocService {
                 item.getSurplusQty(), item.getCountQty(), item.getPlace(), item.getUpstreamItemId(),
                 item.getExecutionSegmentId(), item.getExecutionSegmentSalesAllocationId(),
                 item.getSourceDailyReportItemId(), item.getSourceDocNo(), item.getRemark(),
-                item.getBillDate(), item.getIssuedQty(), true, item.getRequestedQty());
+                item.getBillDate(), item.getIssuedQty(), true, item.getRequestedQty(),
+                item.isQtyFromWeight(), item.getCountWeight(), item.getBookWeight(),
+                item.getIssuedWeightKg(), item.isIssuedWeightEstimated());
     }
 
     /** 经 plan_draw_links 反查本单据关联的生产计划 id（DRAW/FINISHED_IN 溯源跳转用；多计划取单号最早一张）。 */

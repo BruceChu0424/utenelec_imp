@@ -40,14 +40,25 @@
 // 组件经右侧滑窗 showUtenGoodsPicker(scope: component) 选择（原材料/半成品/辅料/OEM 系列），
 // 选完组件信息（编号/型号/规格/单位/颜色/材质/单价/来源）自动回填只读，仅用量/备注可改。
 // CRUD 后保留展开状态（_expandedIds），让刚加的子组件立即可见。
+//
+// 两个用量(ADR-129)：「设计使用数量」= goods_bom_items.qty(原「数量」，工程
+// 人员维护，必填)；其后只读「真实使用数量」= 学习累计(与设计值同一计量口径，
+// 没有数据或不适用显示「—」，悬停说明原因、有效批次和累计产量)。系统学出的
+// 组件在身份格带「系统学习」标记；编辑它只在改了设计使用数量时才提交数量
+// (改了即转为人工维护)，删除它后系统不再自动加回。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_inline_notice.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_error.dart';
 import '../../../core/network/api_exception.dart';
@@ -63,6 +74,7 @@ import 'goods_bom_import_dialog.dart';
 import 'master_data_table_view.dart';
 import 'uten_goods_picker.dart';
 import 'goods_bom_learning_panel.dart';
+import 'periodic_bom_confirmation.dart';
 
 /// 树节点：BOM 行 + 懒加载子级状态。
 class _BomNode {
@@ -110,6 +122,7 @@ class _BomDeleteTarget {
     required this.itemId,
     required this.label,
     required this.nested,
+    required this.learned,
   });
 
   final String parentGoodsId;
@@ -119,6 +132,9 @@ class _BomDeleteTarget {
   /// true = 这条关系不是直接挂在本页货品下的(删它改的是某个子件自己的
   /// 组装清单，用到该子件的其它货品都会跟着变)。
   final bool nested;
+
+  /// true = 系统学出的组件(删除后系统不再自动加回，确认框要说明)。
+  final bool learned;
 }
 
 /// 「添加组件」弹窗里的选货入口(组件范围、多选)。独立成 provider，组件测试可以换成
@@ -142,9 +158,14 @@ class GoodsBomTab extends ConsumerStatefulWidget {
     this.productName,
     this.onPreview,
     this.onDataChanged,
+    this.productWeightGrams,
   });
 
   final String goodsId;
+
+  /// 本货品 (产品) 货品资料里的单重折算成克 (ADR-131)；BOM 上整批领料的料
+  /// 填的单个重量与它相差 20% 以上时标黄待核对。null = 没登记或单位不是重量。
+  final double? productWeightGrams;
   final bool canCreate;
   final bool canEdit;
   final bool canDelete;
@@ -195,6 +216,28 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   bool get _canAudit =>
       ref.watch(isSuperAdminProvider) ||
       ref.watch(currentPermissionsProvider).contains(Perm.goodsBomAudit);
+
+  /// 整批领料的料 (期间边) 的单个重量要标黄待核对：服务端给了提醒，或直接挂在
+  /// 本产品下、与货品资料单重相差 20% 以上 (ADR-131)。只提示，不拦截。
+  bool _weightNeedsReview(_BomRow r) {
+    final item = r.node.item;
+    if (!item.isPeriodicEdge) return false;
+    if (item.warnings.isNotEmpty) return true;
+    if (r.parentGoodsId != widget.goodsId) return false;
+    final grams = item.periodicUnitWeightGrams;
+    return grams != null &&
+        periodicGramsDeviates(grams, widget.productWeightGrams);
+  }
+
+  /// 各父件下当前看得到的期间边条数 (添加组件时判断是不是「第二种料」)。
+  Map<String, int> get _periodicEdgeCountByParent {
+    final counts = <String, int>{};
+    for (final r in _visibleRows) {
+      if (!r.node.item.isPeriodicEdge) continue;
+      counts[r.parentGoodsId] = (counts[r.parentGoodsId] ?? 0) + 1;
+    }
+    return counts;
+  }
 
   @override
   bool get wantKeepAlive => true;
@@ -378,6 +421,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
               ? '${r.seq} $display'
               : '${r.seq} $display — 挂在「$parentName」下',
           nested: nested,
+          learned: item.systemLearned,
         ),
       );
     }
@@ -445,6 +489,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       builder: (_) => _BomItemAddDialog(
         parentCandidates: candidates,
         defaultParentGoodsId: defaultParent,
+        existingPeriodicCount: _periodicEdgeCountByParent,
       ),
     );
     if (result?.saved == true) {
@@ -465,6 +510,10 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       builder: (_) => _BomItemEditDialog(
         parentGoodsId: row.parentGoodsId,
         editing: row.node.item,
+        // 货品资料单重只对直接挂在本产品下的行有意义 (嵌套行的父件是别的货品)。
+        referenceGrams: row.parentGoodsId == widget.goodsId
+            ? widget.productWeightGrams
+            : null,
       ),
     );
     if (saved == true) {
@@ -482,6 +531,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     final targets = _selectedTargets;
     if (targets.isEmpty) return;
     final nestedCount = targets.where((t) => t.nested).length;
+    final learnedCount = targets.where((t) => t.learned).length;
+    final l10n = AppLocalizations.of(context);
     // 清单太长会把确认框撑成一屏文字，前 10 条足够让人认出自己勾了什么。
     final shown = targets.take(10).toList();
     final rest = targets.length - shown.length;
@@ -537,6 +588,14 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                           ),
                         ],
                       ),
+                    ),
+                  ],
+                  // 系统学出的组件：人工删除即释放，学习不会再把它加回来。
+                  if (learnedCount > 0) ...[
+                    const SizedBox(height: UtenSpacing.s12),
+                    UtenInlineNotice(
+                      key: const Key('goods-bom-delete-learned-note'),
+                      message: l10n.bomLearnedEdgeDeleteNote(learnedCount),
                     ),
                   ],
                   const SizedBox(height: UtenSpacing.s12),
@@ -681,38 +740,81 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   /// 退役（数据仍在行上，编辑弹窗/复制粘贴/成本聚合不受影响）；后端导出同列集。
   /// 「已审」列只在审计模式下出现（点该格翻已核对状态），关闭即普通清单视图。
   List<MasterColumnDef<_BomRow>> get _columns {
+    final l10n = AppLocalizations.of(context);
     return [
       // 层级身份集中在首列：级联号 + 明确层级文字 + 连续树轨 + 48dp
       // 单击展开按钮。行单击只负责选中，不再让“双击整行”兼任树导航。
       // 2026-09-12 用户口径「只显示名字和组件X级」：身份格不再堆路径行与编号
       // 副标题（编号看「编号」列），副标题仅剩懒加载中的提示。
+      // 系统学出的组件在格内右侧叠「系统学习」标记(ADR-129)。
       MasterColumnDef(
         key: 'treeIdentity',
         label: '层级 / 组件',
-        width: 320,
-        value: (r) =>
-            '${r.seq} 组件 ${r.depth + 1} 级 '
-            '${r.node.item.componentName ?? ''}',
+        width: 340,
+        value: (r) => [
+          '${r.seq} 组件 ${r.depth + 1} 级 ${r.node.item.componentName ?? ''}',
+          if (r.node.item.systemLearned) l10n.bomLearnedEdge,
+        ].join(' '),
         cellBuilderHandlesSemantics: true,
         // 树列吃满整行高度 + 连线跨过数据格纵向内边距，否则层级竖线会在
         // 行与行之间断开（与物料分析主表 / 级联页同一处理，2026-09-15）。
         fillsCellHeight: true,
-        cellBuilder: (context, r) => UtenTreeTableCell(
-          key: ValueKey('goods-bom-tree-cell-${r.node.item.id}'),
-          toggleKey: ValueKey('goods-bom-tree-toggle-${r.node.item.id}'),
-          depth: r.depth,
-          guideBleed: MasterDataTableView.cellVerticalPadding,
-          sequence: r.seq,
-          levelLabel: '组件 ${r.depth + 1} 级',
-          title:
-              r.node.item.componentName ?? r.node.item.componentCode ?? '未命名组件',
-          subtitle: r.node.loading ? '正在加载下级…' : null,
-          hasChildren: r.node.item.hasChildren,
-          expanded: r.node.expanded,
-          onToggle: r.node.loading ? null : () => _toggle(r.node),
-          ancestorContinuations: r.ancestorContinuations,
-          isLastChild: r.isLastChild,
-        ),
+        cellBuilder: (context, r) {
+          final cell = UtenTreeTableCell(
+            key: ValueKey('goods-bom-tree-cell-${r.node.item.id}'),
+            toggleKey: ValueKey('goods-bom-tree-toggle-${r.node.item.id}'),
+            depth: r.depth,
+            guideBleed: MasterDataTableView.cellVerticalPadding,
+            sequence: r.seq,
+            levelLabel: '组件 ${r.depth + 1} 级',
+            title:
+                r.node.item.componentName ??
+                r.node.item.componentCode ??
+                '未命名组件',
+            subtitle: r.node.loading ? '正在加载下级…' : null,
+            hasChildren: r.node.item.hasChildren,
+            expanded: r.node.expanded,
+            onToggle: r.node.loading ? null : () => _toggle(r.node),
+            ancestorContinuations: r.ancestorContinuations,
+            isLastChild: r.isLastChild,
+          );
+          if (!r.node.item.systemLearned) return cell;
+          // passthrough：树格照旧拿到整行的高度约束(层级竖线不断)，标记
+          // 浮在右侧、树格让出等宽，名称省略号不被压住；不裁剪，树轨要画进
+          // 上下相邻行的内边距(guideBleed)。槽宽按标记文字实测(各语言、
+          // 字号档都完整显示)，再留一点与名称的间距。
+          final badgeSlot =
+              UtenStatusBadge.measureWidth(
+                context,
+                l10n.bomLearnedEdge,
+                size: UtenStatusBadgeSize.small,
+              ) +
+              UtenSpacing.s8;
+          return Stack(
+            fit: StackFit.passthrough,
+            clipBehavior: Clip.none,
+            children: [
+              Padding(
+                padding: EdgeInsets.only(right: badgeSlot),
+                child: cell,
+              ),
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: badgeSlot,
+                child: Center(
+                  child: UtenStatusBadge(
+                    key: ValueKey('goods-bom-learned-${r.node.item.id}'),
+                    label: l10n.bomLearnedEdge,
+                    type: UtenStatusBadgeType.info,
+                    size: UtenStatusBadgeSize.small,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
       // 已审列（V256）：审计标记持久在服务端，但只在做核对的人眼前出现——
       // 进「审计模式」才显示 ✓ 列（改标记要 goods:bom:audit），关闭即正常清单。
@@ -793,23 +895,44 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         label: '基准产量',
         width: 88,
         type: 'number',
-        value: (r) => _num(r.node.item.basisOutputQty),
+        value: (r) => r.node.item.basisOutputQtyText,
       ),
       MasterColumnDef(
         key: 'allowPartialPackage',
         label: '尾包',
         width: 72,
-        value: (r) =>
-            r.node.item.consumptionBasis == BomConsumptionBasis.perPackage
-            ? (r.node.item.allowPartialPackage ? '允许' : '整包')
-            : '—',
+        value: (r) => r.node.item.partialPackageLabel,
       ),
+      // 整批领到车间内料仓的料 (颗粒等，ADR-131)：这一格是单个重量，按克显示；
+      // 与货品资料单重相差 20% 以上或服务端有提醒时标黄待核对。
       MasterColumnDef(
         key: 'qty',
-        label: '数量',
-        width: 72,
+        label: l10n.bomDesignQty,
+        width: 112,
         type: 'number',
-        value: (r) => _num(r.node.item.qty),
+        info: '整批领到车间内料仓的料 (颗粒等)，这一格是单个重量，按克填写和显示。',
+        value: (r) => r.node.item.isPeriodicEdge
+            ? _qtyText(r.node.item)
+            : r.node.item.designQtyText,
+        cellColor: (context, r) =>
+            _weightNeedsReview(r) ? Colors.amber.withValues(alpha: 0.28) : null,
+      ),
+      // 真实使用数量(只读，ADR-129)：与设计使用数量同一计量口径；没有数据或
+      // 不适用显示「—」，悬停说明计算按哪个数、依据几批、累计多少。
+      MasterColumnDef(
+        key: 'actualQty',
+        label: l10n.bomActualQty,
+        width: 112,
+        type: 'number',
+        value: (r) => r.node.item.actualQtyText,
+        cellBuilder: (context, r) => Tooltip(
+          message: bomActualUsageTip(
+            l10n,
+            r.node.item.actual,
+            netUnit: r.node.item.componentUnitName,
+          ),
+          child: Text(r.node.item.actualQtyText),
+        ),
       ),
       MasterColumnDef(
         key: 'summary',
@@ -868,7 +991,9 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             // 自动加深加亮。
             rowColor: (r) => _auditMode && r.node.item.audited
                 ? Colors.green.withValues(alpha: 0.15)
-                : null,
+                : (_weightNeedsReview(r)
+                      ? Colors.amber.withValues(alpha: 0.12)
+                      : null),
             // 工具条驻左：表头设置/全屏为内建按钮，其余业务按钮走
             // toolbarLeadingActions 紧随其后（2026-09-25 口径：顶部按钮全部靠左、
             // 统一高度/同色、不带 icon——大动作在右下悬浮组）。
@@ -876,8 +1001,15 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
               UtenButton(
                 key: const Key('goods-bom-learning'),
                 height: UtenTableToolbar.controlHeight,
-                onPressed: () => showGoodsBomLearning(context, widget.goodsId),
-                child: const Text('BOM 学习记录'), // TODO(l10n): 补 arb
+                // 在学习记录里重学后真实使用数量会变，本页签跟着重读。
+                onPressed: () => showGoodsBomLearning(
+                  context,
+                  widget.goodsId,
+                  onRelearned: () {
+                    if (mounted) _load();
+                  },
+                ),
+                child: Text(AppLocalizations.of(context).bomLearningTitle),
               ),
               if (widget.onPreview != null)
                 UtenButton(
@@ -980,9 +1112,149 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     );
   }
 
-  static String _num(double? v) =>
-      v == null ? '' : (v == v.roundToDouble() ? v.toStringAsFixed(0) : '$v');
+  /// 数量列文本：期间边显示「X 克」(基本单位千克时 = 数量 × 1000)，
+  /// 其它行照旧显示设计使用数量。
+  static String _qtyText(GoodsBomItem item) {
+    if (item.isPeriodicEdge) {
+      final grams = item.periodicUnitWeightGrams;
+      if (grams != null) return '${periodicGramsText(grams)} 克';
+      // 单位不能按克换算：按基本单位显示小数 (不出现科学计数法)。
+      return _plainQty(item.qty);
+    }
+    return item.designQtyText;
+  }
 }
+
+/// 可选取 l10n：个别宿主测试没挂本地化代理，取不到时回落中文。
+AppLocalizations? _bomL10n(BuildContext context) =>
+    Localizations.of<AppLocalizations>(context, AppLocalizations);
+
+/// 单个重量 (克) 输入框标签。
+String _gramsLabel(BuildContext context) =>
+    _bomL10n(context)?.wmUnitWeightGrams ?? '单个重量 (克)';
+
+/// 期间边单个重量输入框标签：组件基本单位是千克/克时按克填，
+/// 其它单位 (服务端不按克换算) 直接按组件基本单位填。
+String _periodicWeightLabel(BuildContext context, String? unitName) {
+  if (periodicGramsPerBaseUnit(unitName) != null) return _gramsLabel(context);
+  final unit = unitName == null || unitName.trim().isEmpty
+      ? '基本单位'
+      : unitName.trim();
+  return '单个重量 ($unit)';
+}
+
+/// 单个重量不在常理之内 (小于 0.1 克或大于 5000 克) 时二次确认；确认返回 true。
+Future<bool> _confirmUnusualGrams(
+  BuildContext context,
+  List<String> lines,
+) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('请核对单个重量'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final line in lines)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(line),
+              ),
+            const SizedBox(height: 4),
+            const Text('小于 0.1 克或大于 5000 克，常见是把公斤当成克填了。'),
+          ],
+        ),
+      ),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('返回修改'),
+        ),
+        FilledButton(
+          key: const Key('goods-bom-unusual-weight-confirm'),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('确定'),
+        ),
+      ],
+    ),
+  );
+  return ok == true;
+}
+
+/// 一行「单个重量不太对」的确认文案。
+String _unusualLine(BuildContext context, String name, double grams) {
+  final text = periodicGramsText(grams);
+  final sentence =
+      _bomL10n(context)?.wmUnusualWeightConfirm(text) ??
+      '单个重量 $text 克看起来不太对, 确定吗?';
+  return name.isEmpty ? sentence : '「$name」$sentence';
+}
+
+/// 同一产品要挂第二种整批领料的料时确认 (双色 / 双料)；确认返回 true。
+Future<bool> _confirmSecondPeriodicMaterial(BuildContext context) async {
+  final message =
+      _bomL10n(context)?.wmSecondMaterialConfirm ??
+      '这个产品要同时用两种料吗 (双色 / 双料)? 如果只是换料, 请改原来那一行';
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('再加一种料'),
+      content: SizedBox(width: 420, child: Text(message)),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('返回修改'),
+        ),
+        FilledButton(
+          key: const Key('goods-bom-second-material-confirm'),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('确定，同时用两种料'),
+        ),
+      ],
+    ),
+  );
+  return ok == true;
+}
+
+/// BOM 用量 (最多 5 位小数) 的输入框 / 表格文本：去掉补齐的 0，不出现科学计数法。
+String _plainQty(double? v) {
+  if (v == null) return '';
+  final fixed = v.toStringAsFixed(5);
+  return fixed
+      .replaceFirst(RegExp(r'0+$'), '')
+      .replaceFirst(RegExp(r'\.$'), '');
+}
+
+/// 期间边的单个重量 (克) → BOM 数量 (基本单位, 5 位小数)。只在组件单位是千克/克时调用。
+double _gramsToQty(double grams, double gramsPerUnit) =>
+    double.parse((grams / gramsPerUnit).toStringAsFixed(5));
+
+/// 期间边一行的请求体：组件单位能按克换算时按克提交 unitWeightGrams (服务端换成基本单位存)，
+/// 不能换算时 [entered] 就是基本单位的用量，只提交 qty。形状字段不提交 (服务端固定)。
+Map<String, dynamic> _periodicEdgeBody(
+  String componentGoodsId,
+  double entered,
+  String? unitName,
+) {
+  final factor = periodicGramsPerBaseUnit(unitName);
+  if (factor == null) {
+    return {'componentGoodsId': componentGoodsId, 'qty': entered};
+  }
+  return {
+    'componentGoodsId': componentGoodsId,
+    'qty': _gramsToQty(entered, factor),
+    'unitWeightGrams': entered,
+  };
+}
+
+/// 期间边输入值对应的克数 (不能换算为 null，此时不在页面判断异常单重，交服务端)。
+double? _enteredGrams(double entered, String? unitName) =>
+    periodicGramsPerBaseUnit(unitName) == null ? null : entered;
 
 /// 添加组件弹窗的返回：是否保存 + 实际写入的父级 goodsId（供父级恢复展开）。
 class _AddResult {
@@ -1001,10 +1273,14 @@ class _BomItemAddDialog extends ConsumerStatefulWidget {
   const _BomItemAddDialog({
     required this.parentCandidates,
     required this.defaultParentGoodsId,
+    this.existingPeriodicCount = const {},
   });
 
   final List<_BomParentOption> parentCandidates;
   final String defaultParentGoodsId;
+
+  /// 各父件下已有的整批领料的料条数 (看得到的部分)：再加一种要确认 (双色 / 双料)。
+  final Map<String, int> existingPeriodicCount;
 
   @override
   ConsumerState<_BomItemAddDialog> createState() => _BomItemAddDialogState();
@@ -1048,7 +1324,13 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
     setState(() {
       for (final g in list) {
         if (_picked.any((p) => p.goods.id == g.id)) continue; // 去重
-        _picked.add(_PickedComponent(g, TextEditingController(text: '1')));
+        // 整批领料的料 (颗粒等) 填单个重量 (克)，没有合理默认值，留空让人填。
+        _picked.add(
+          _PickedComponent(
+            g,
+            TextEditingController(text: g.isPeriodicIssue ? '' : '1'),
+          ),
+        );
       }
       _error = null;
     });
@@ -1063,21 +1345,67 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
       setState(() => _error = '一次最多添加 $_maxLines 个组件，请分几次添加'); // TODO(l10n)
       return;
     }
+    final l10n = AppLocalizations.of(context);
     final bodies = <Map<String, dynamic>>[];
+    final periodicBodies = <Map<String, dynamic>>[];
+    final unusual = <String>[];
     for (final p in _picked) {
       final raw = p.qtyCtl.text.trim();
-      final qty = raw.isEmpty ? 1.0 : double.tryParse(raw);
-      if (qty == null || qty <= 0) {
-        setState(
-          () => _error = '「${p.goods.name ?? p.goods.code}」数量必须大于 0',
-        ); // TODO(l10n)
+      final name = p.goods.name ?? p.goods.code ?? '';
+      if (p.goods.isPeriodicIssue) {
+        // ADR-131 期间边：辅料 / 记车间费用的料不写进 BOM (按主料用量分摊)。
+        final basis = p.goods.periodicCostBasis;
+        if (basis != null && basis != GoodsPeriodicCostBasis.own) {
+          setState(() => _error = '「$name」是辅料或记车间费用的料，不写进 BOM，按当期主料用量分到各产品');
+          return;
+        }
+        final entered = double.tryParse(raw);
+        if (entered == null || entered <= 0) {
+          final label = _periodicWeightLabel(context, p.goods.unitName);
+          setState(() => _error = '「$name」$label必须大于 0');
+          return;
+        }
+        final grams = _enteredGrams(entered, p.goods.unitName);
+        if (grams != null && periodicGramsUnusual(grams)) {
+          unusual.add(_unusualLine(context, name, grams));
+        }
+        final body = <String, dynamic>{
+          ..._periodicEdgeBody(p.goods.id, entered, p.goods.unitName),
+          'price': p.goods.price,
+        };
+        bodies.add(body);
+        periodicBodies.add(body);
+        continue;
+      }
+      // 设计使用数量必填：清空了就报错，不再静默按 1。
+      final error = _designQtyError(l10n, raw);
+      if (error != null) {
+        setState(() => _error = '「$name」$error');
         return;
       }
       bodies.add({
         'componentGoodsId': p.goods.id,
-        'qty': qty,
+        'qty': double.parse(p.qtyCtl.text.trim()),
         'price': p.goods.price,
       });
+    }
+    // 单个重量异常 (小于 0.1 克或大于 5000 克) 二次确认；确认框弹出时不能有遮罩。
+    if (unusual.isNotEmpty) {
+      final ok = await _confirmUnusualGrams(context, unusual);
+      if (!ok || !mounted) return;
+      for (final body in periodicBodies) {
+        body[periodicConfirmUnusualWeight] = true;
+      }
+    }
+    // 同一产品第二种整批领料的料 (双色 / 双料) 要确认，换料应改原来那一行。
+    final existing = widget.existingPeriodicCount[_parentGoodsId] ?? 0;
+    if (periodicBodies.isNotEmpty && existing + periodicBodies.length >= 2) {
+      if (!mounted) return;
+      final ok = await _confirmSecondPeriodicMaterial(context);
+      if (!ok || !mounted) return;
+      for (final body in periodicBodies) {
+        body[periodicConfirmSecondMaterial] = true;
+      }
     }
     setState(() {
       _saving = true;
@@ -1085,15 +1413,41 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
       _problems = const [];
     });
     try {
-      final result = await ref
-          .read(goodsBomRepositoryProvider)
-          .paste(
+      final repo = ref.read(goodsBomRepositoryProvider);
+      BomPasteResult result;
+      while (true) {
+        try {
+          result = await repo.paste(
             mode: BomPasteMode.append,
             targets: [BomPasteTarget(_parentGoodsId)],
             items: bodies,
           );
+          break;
+        } on ApiException catch (e) {
+          // 服务端还要人确认 (异常单重 / 同一产品第二种料)：撤遮罩、问完带上确认重发。
+          final confirmations = periodicConfirmationsOf(e);
+          if (confirmations == null || !mounted) rethrow;
+          setState(() => _saving = false);
+          await WidgetsBinding.instance.endOfFrame;
+          if (!mounted) return;
+          final confirmed = await askPeriodicConfirmations(
+            context,
+            confirmations,
+          );
+          if (confirmed == null || !mounted) return;
+          applyPeriodicConfirmations(periodicBodies, confirmed);
+          setState(() => _saving = true);
+        }
+      }
       if (!mounted) return;
-      context.appSuccess('已添加 ${result.added} 个组件'); // TODO(l10n): 补 arb
+      // 服务端的提醒 (如与货品资料单重相差 20% 以上) 只提示、不拦截。
+      if (result.warnings.isNotEmpty) {
+        context.appWarning(
+          '已添加 ${result.added} 个组件；请核对：${result.warnings.join('；')}',
+        );
+      } else {
+        context.appSuccess('已添加 ${result.added} 个组件'); // TODO(l10n): 补 arb
+      }
       Navigator.of(
         context,
       ).pop(_AddResult(saved: true, parentGoodsId: _parentGoodsId));
@@ -1230,19 +1584,33 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
                                   ),
                                 ),
                                 SizedBox(
-                                  width: 84,
-                                  child: TextField(
-                                    controller: p.qtyCtl,
-                                    keyboardType:
-                                        const TextInputType.numberWithOptions(
-                                          decimal: true,
+                                  width: 132,
+                                  child: p.goods.isPeriodicIssue
+                                      ? TextField(
+                                          key: ValueKey(
+                                            'goods-bom-add-qty-${p.goods.id}',
+                                          ),
+                                          controller: p.qtyCtl,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          // 整批领料的料 (ADR-131)：按克填单个重量。
+                                          decoration: InputDecoration(
+                                            labelText: _periodicWeightLabel(
+                                              context,
+                                              p.goods.unitName,
+                                            ),
+                                            border: const OutlineInputBorder(),
+                                            isDense: true,
+                                          ),
+                                        )
+                                      : _DesignQtyField(
+                                          key: Key(
+                                            'goods-bom-add-qty-${p.goods.id}',
+                                          ),
+                                          controller: p.qtyCtl,
                                         ),
-                                    decoration: const InputDecoration(
-                                      labelText: '数量',
-                                      border: OutlineInputBorder(),
-                                      isDense: true,
-                                    ),
-                                  ),
                                 ),
                                 IconButton(
                                   icon: const Icon(
@@ -1297,15 +1665,23 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
 }
 
 /// 编辑组件对话框（单条）：组件与父级锁定（换组件/换父级走删除+新增），
-/// 用量、生产管控和备注可改。
+/// 设计使用数量和备注可改。
+///
+/// 设计使用数量只在用户真改了时才提交(ADR-129)：系统学出的组件只改备注时
+/// 仍由系统维护；改了数量即转为人工维护(真实使用数量照常累计)，弹窗顶部
+/// 黄色提示先说清楚。
 class _BomItemEditDialog extends ConsumerStatefulWidget {
   const _BomItemEditDialog({
     required this.parentGoodsId,
     required this.editing,
+    this.referenceGrams,
   });
 
   final String parentGoodsId;
   final GoodsBomItem editing;
+
+  /// 父件 (产品) 货品资料单重折算的克数；期间边单重与它相差 20% 以上时提醒核对。
+  final double? referenceGrams;
 
   @override
   ConsumerState<_BomItemEditDialog> createState() => _BomItemEditDialogState();
@@ -1317,12 +1693,38 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
   bool _saving = false;
   String? _error;
 
+  /// 打开时的设计使用数量文本：保存时与它比较，判断用户是否改了数量。
+  late final String _initialQtyText;
+
   @override
   void initState() {
     super.initState();
     final e = widget.editing;
-    _qtyCtl.text = e.qty?.toString() ?? '';
+    if (e.isPeriodicEdge) {
+      // 期间边按克输入显示 (ADR-131)；组件单位不能按克换算时按基本单位显示。
+      final grams = e.periodicUnitWeightGrams;
+      _qtyCtl.text = grams != null
+          ? periodicGramsText(grams)
+          : _plainQty(e.qty);
+      _initialQtyText = _qtyCtl.text;
+      _qtyCtl.addListener(_onGramsChanged);
+    } else {
+      _initialQtyText = e.designQtyText;
+      _qtyCtl.text = _initialQtyText;
+    }
     _summaryCtl.text = e.summary ?? '';
+  }
+
+  void _onGramsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// 输入的单个重量与货品资料单重相差 20% 以上 (只提醒，不拦截)。
+  bool get _gramsDeviate {
+    final entered = double.tryParse(_qtyCtl.text.trim());
+    if (entered == null) return false;
+    final grams = _enteredGrams(entered, widget.editing.componentUnitName);
+    return grams != null && periodicGramsDeviates(grams, widget.referenceGrams);
   }
 
   @override
@@ -1333,16 +1735,46 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
   }
 
   Future<void> _save() async {
-    final qty = double.tryParse(_qtyCtl.text.trim());
-    if (qty == null || qty <= 0) {
-      setState(() => _error = '「数量」必须是大于 0 的数字'); // TODO(l10n): 补 arb
-      return;
-    }
     final e = widget.editing;
+    final raw = _qtyCtl.text.trim();
+    final entered = double.tryParse(raw);
+    if (e.isPeriodicEdge) {
+      if (entered == null || entered <= 0) {
+        final label = _periodicWeightLabel(context, e.componentUnitName);
+        setState(() => _error = '「$label」必须是大于 0 的数字'); // TODO(l10n): 补 arb
+        return;
+      }
+    } else {
+      // 只有改了才提交数量：不改就不碰服务端的设计使用数量(学习组件不被接管)。
+      final qtyChanged = raw != _initialQtyText;
+      if (qtyChanged) {
+        final error = _designQtyError(AppLocalizations.of(context), raw);
+        if (error != null) {
+          setState(() => _error = error);
+          return;
+        }
+      }
+    }
+    var confirmUnusual = false;
+    final grams = e.isPeriodicEdge
+        ? _enteredGrams(entered!, e.componentUnitName)
+        : null;
+    if (grams != null && periodicGramsUnusual(grams)) {
+      final ok = await _confirmUnusualGrams(context, [
+        _unusualLine(context, '', grams),
+      ]);
+      if (!ok || !mounted) return;
+      confirmUnusual = true;
+    }
     final body = <String, dynamic>{
-      'componentGoodsId': e.componentGoodsId,
-      'qty': qty,
-      'price': e.price,
+      // 期间边按克提交 (服务端换成基本单位存，形状固定为开工前、按每件、不设齐套门槛)。
+      if (e.isPeriodicEdge)
+        ..._periodicEdgeBody(e.componentGoodsId, entered!, e.componentUnitName)
+      else ...{
+        'componentGoodsId': e.componentGoodsId,
+        if (raw != _initialQtyText) 'qty': double.parse(raw),
+      },
+      if (confirmUnusual) periodicConfirmUnusualWeight: true, 'price': e.price,
       // 实时关联只回传 UUID；历史 legacy 快照缺少 UUID 时不解析、不覆盖。
       if (e.colorId != null) 'colorId': e.colorId,
       if (e.defaultSupplierId != null) 'defaultSupplierId': e.defaultSupplierId,
@@ -1355,11 +1787,35 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
       _error = null;
     });
     try {
-      await ref
-          .read(goodsBomRepositoryProvider)
-          .update(widget.parentGoodsId, e.id, body);
+      final repo = ref.read(goodsBomRepositoryProvider);
+      GoodsBomItem updated;
+      while (true) {
+        try {
+          updated = await repo.update(widget.parentGoodsId, e.id, body);
+          break;
+        } on ApiException catch (ex) {
+          // 服务端还要人确认 (异常单重 / 同一产品第二种料)：问完带上确认重发。
+          final confirmations = periodicConfirmationsOf(ex);
+          if (confirmations == null || !mounted) rethrow;
+          setState(() => _saving = false);
+          await WidgetsBinding.instance.endOfFrame;
+          if (!mounted) return;
+          final confirmed = await askPeriodicConfirmations(
+            context,
+            confirmations,
+          );
+          if (confirmed == null || !mounted) return;
+          applyPeriodicConfirmations([body], confirmed);
+          setState(() => _saving = true);
+        }
+      }
       if (!mounted) return;
-      context.appSuccess('组件已更新'); // TODO(l10n): 补 arb
+      // 服务端的提醒 (如与货品资料单重相差 20% 以上) 只提示、不拦截。
+      if (updated.warnings.isNotEmpty) {
+        context.appWarning('组件已更新；请核对：${updated.warnings.join('；')}');
+      } else {
+        context.appSuccess('组件已更新'); // TODO(l10n): 补 arb
+      }
       Navigator.of(context).pop(true);
     } on ApiException catch (ex) {
       if (!mounted) return;
@@ -1429,22 +1885,41 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                           ],
                         ),
                       ),
+                      if (e.systemLearned) ...[
+                        const SizedBox(height: UtenSpacing.s12),
+                        UtenInlineNotice(
+                          key: const Key('goods-bom-edit-learned-hint'),
+                          level: UtenInlineNoticeLevel.warning,
+                          message: AppLocalizations.of(
+                            context,
+                          ).bomLearnedEdgeEditHint,
+                        ),
+                      ],
                       const SizedBox(height: UtenSpacing.s12),
                       Row(
                         children: [
                           Expanded(
-                            child: TextField(
-                              controller: _qtyCtl,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
+                            child: e.isPeriodicEdge
+                                ? TextField(
+                                    key: const Key('goods-bom-edit-qty'),
+                                    controller: _qtyCtl,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        ),
+                                    decoration: InputDecoration(
+                                      labelText: _periodicWeightLabel(
+                                        context,
+                                        e.componentUnitName,
+                                      ),
+                                      border: const OutlineInputBorder(),
+                                      isDense: true,
+                                    ),
+                                  )
+                                : _DesignQtyField(
+                                    key: const Key('goods-bom-edit-qty'),
+                                    controller: _qtyCtl,
                                   ),
-                              decoration: const InputDecoration(
-                                labelText: '数量',
-                                border: OutlineInputBorder(),
-                                isDense: true,
-                              ),
-                            ),
                           ),
                           const SizedBox(width: UtenSpacing.s12),
                           Expanded(
@@ -1463,6 +1938,36 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                           ),
                         ],
                       ),
+                      // 期间边 (ADR-131)：形状由系统固定，只读说明；单重偏差标黄提醒。
+                      if (e.isPeriodicEdge) ...[
+                        const SizedBox(height: UtenSpacing.s8),
+                        Text(
+                          '整批领到车间内料仓的料：只填单个重量 (克，不含水口)；'
+                          '管控阶段固定为开工前、按每件计量、不设齐套门槛。',
+                          key: const Key('goods-bom-periodic-readonly-note'),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        if (_gramsDeviate)
+                          Container(
+                            key: const Key('goods-bom-weight-deviation'),
+                            margin: const EdgeInsets.only(top: UtenSpacing.s8),
+                            padding: const EdgeInsets.all(UtenSpacing.s8),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withValues(alpha: 0.25),
+                              borderRadius: BorderRadius.circular(
+                                UtenRadius.control,
+                              ),
+                            ),
+                            child: Text(
+                              '与货品资料单重 '
+                              '${periodicGramsText(widget.referenceGrams!)} 克'
+                              '相差 20% 以上，请核对是不是填错了。',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ),
+                      ],
                       const SizedBox(height: UtenSpacing.s12),
                       TextField(
                         controller: _summaryCtl,
@@ -1501,6 +2006,55 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
 }
 
 // —— 弹窗公共片段 ——
+
+/// 设计使用数量输入框(添加/编辑两个弹窗共用)：必填，空时红框 + 红 *。
+class _DesignQtyField extends StatelessWidget {
+  const _DesignQtyField({super.key, required this.controller});
+
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = AppLocalizations.of(context).bomDesignQty;
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final theme = Theme.of(context);
+        return TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: UtenInputDecoration(
+            applyRequiredEmpty(
+              InputDecoration(
+                label: requiredLabel(
+                  label,
+                  theme,
+                  required: true,
+                  base: theme.inputDecorationTheme.labelStyle,
+                ),
+                border: const OutlineInputBorder(),
+                isDense: true,
+              ),
+              theme,
+              requiredEmpty: controller.text.trim().isEmpty,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 设计使用数量校验(两个弹窗共用)：空 → 请填写；不是大于 0 的有限数字 →
+/// 报错；合法返回 null。
+String? _designQtyError(AppLocalizations l10n, String raw) {
+  final text = raw.trim();
+  if (text.isEmpty) return l10n.bomDesignQtyRequired;
+  final value = double.tryParse(text);
+  return value == null || !value.isFinite || value <= 0
+      ? l10n.bomDesignQtyInvalid
+      : null;
+}
 
 Widget _dialogHeader(BuildContext context, ThemeData theme, String title) {
   return Padding(

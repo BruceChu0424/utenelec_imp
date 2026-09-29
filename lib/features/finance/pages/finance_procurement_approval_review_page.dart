@@ -33,7 +33,6 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../core/utils/currency_display.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
@@ -47,6 +46,9 @@ import '../models/finance_procurement_revision.dart';
 import '../repositories/finance_procurement_workflow_repository.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/money_display.dart';
+import '../../../shared/models/party_open_balance.dart';
+import '../widgets/finance_party_snapshot_card.dart';
 
 class FinanceProcurementApprovalReviewPage extends ConsumerStatefulWidget {
   const FinanceProcurementApprovalReviewPage({super.key, required this.caseId});
@@ -484,7 +486,7 @@ class _FinanceProcurementApprovalReviewPageState
                             ),
                           _statusStrip(theme, review),
                           const SizedBox(height: UtenSpacing.s12),
-                          _supplierFinanceCard(theme, review),
+                          _supplierFinanceCard(review),
                           const SizedBox(height: UtenSpacing.s12),
                           _orderCard(theme, review),
                           if (procurementHeaderUnknownLabels(
@@ -684,87 +686,33 @@ class _FinanceProcurementApprovalReviewPageState
     );
   }
 
-  /// 供应商财务快照卡：应付余额（本币）+ 本单金额（原币/本币）。
-  Widget _supplierFinanceCard(
-    ThemeData theme,
-    FinanceProcurementApprovalReview r,
-  ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.account_balance_wallet_outlined,
-                  size: 18,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    '供应商财务快照 · ${r.supplierName ?? '—'}'
-                    '${r.supplierCode != null ? '(${r.supplierCode})' : ''}',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            UtenFormGrid(
-              children: [
-                _metric(
-                  theme,
-                  '应付余额(本币)',
-                  _money(r.supplierApBalance),
-                  emphasis: true,
-                ),
-                _metric(
-                  theme,
-                  '本单金额(${_currencyLabel(r)})',
-                  _money(r.totalOriginal),
-                  emphasis: true,
-                  danger: true,
-                ),
-                _metric(theme, '折合本币', _money(r.totalLocal)),
-                _metric(theme, '税率', _trimNum(r.taxRate) ?? '—'),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _metric(
-    ThemeData theme,
-    String label,
-    String value, {
-    bool emphasis = false,
-    bool danger = false,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+  /// 供应商财务快照卡(ADR-128)：本单金额与供应商在本单币种下的应付 / 可抵预付与贷项 /
+  /// 还差多少放在一起比(财务共用 FinancePartySnapshotCard)；其它币种另列、不换算。
+  Widget _supplierFinanceCard(FinanceProcurementApprovalReview r) {
+    return FinancePartySnapshotCard(
+      title:
+          '供应商财务快照 · ${r.supplierName ?? '—'}'
+          '${r.supplierCode != null ? '(${r.supplierCode})' : ''}',
+      balance: r.supplierBalance,
+      side: PartyBalanceSide.supplier,
+      leading: [
+        FinanceSnapshotMetric(
+          '本单金额',
+          financeMoneyWithCurrency(
+            r.totalOriginal,
+            currencyName: r.currencyName,
           ),
+          emphasis: true,
+          danger: true,
         ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: emphasis ? FontWeight.w800 : FontWeight.w600,
-            color: danger ? theme.colorScheme.error : null,
-          ),
+      ],
+      trailing: [
+        FinanceSnapshotMetric(
+          '折合本币',
+          r.supplierBalance?.baseMoneyText(r.totalLocal) ??
+              financeMoneyText(r.totalLocal),
         ),
+        FinanceSnapshotMetric('税率', _trimNum(r.taxRate)),
       ],
     );
   }
@@ -809,7 +757,7 @@ class _FinanceProcurementApprovalReviewPageState
             kv('订货类型', r.orderTypeLabel),
             kv('供应商', r.supplierName),
             kv('仓库', r.warehouseName),
-            kv('币种', _currencyLabel(r), highlight: true),
+            kv('币种', r.currencyLabel, highlight: true),
             kv('汇率', _trimNum(r.exchangeRate)),
             kv('结算方式', r.settlementMethodName),
             kv('订货人', r.purchaserName),
@@ -986,7 +934,7 @@ class _FinanceProcurementApprovalReviewPageState
             ),
             MasterColumnDef(
               key: 'amountOriginal',
-              label: comparing ? '原币金额' : '金额(${_currencyLabel(r)})',
+              label: comparing ? '原币金额' : '金额(${r.currencyLabel})',
               width: 120,
               type: 'money',
               value: (it) => _trimNum(it.amountOriginal),
@@ -1071,11 +1019,11 @@ class _FinanceProcurementApprovalReviewPageState
                 ),
               ),
               UtenTotalEntry(
-                '合计金额(${_currencyLabel(r)})',
-                _money(r.totalOriginal),
+                '合计金额(${r.currencyLabel})',
+                financeMoneyText(r.totalOriginal),
                 danger: true,
               ),
-              UtenTotalEntry('折合本币', _money(r.totalLocal)),
+              UtenTotalEntry('折合本币', financeMoneyText(r.totalLocal)),
             ],
           ),
       ],
@@ -1148,18 +1096,6 @@ class _FinanceProcurementApprovalReviewPageState
         ),
       ),
     );
-  }
-
-  /// 币种展示只使用主档名称或可读标准代码，不暴露旧数字编号。
-  String _currencyLabel(FinanceProcurementApprovalReview r) =>
-      financeCurrencyDisplayLabel(name: r.currencyName) ?? '原币';
-
-  /// 金额按服务端十进制原文显示(ADR-112): 至少 2 位小数、多余的 0 去掉, 不经过 double、不四舍五入。
-  String _money(String? raw) {
-    if (raw == null || raw.isEmpty) return '—';
-    return financeExactDecimal(raw) == null
-        ? raw
-        : financeExactMoneyDisplay(raw);
   }
 
   /// 数量/单价/汇率按原文去掉末尾多余的 0, 不四舍五入到 2 位。

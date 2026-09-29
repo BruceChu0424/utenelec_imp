@@ -29,14 +29,14 @@ void main() {
     final parsed = ProductionMaterialAnalysisView.fromJson(data);
     expect(parsed.planningBlockedReason('p1'), reason);
     expect(parsed.planningBlockedReason('p2'), isNull);
-    final harness = await _pump(tester, data);
+    final harness = await _pump(tester, data, refresh: true);
     expect(find.text(reason), findsWidgets);
-    // 2026-09-25 确认路线退役：进页自动确认只带没被拦的 p2；被财务拦截的 p1
-    // 不进批次（否则服务端会拒掉整批），留在主表红框等放行。
-    expect(harness.writes, hasLength(1));
-    expect(_decisions(harness.writes.single), [
-      {'actionGroupKey': 'root-action-2', 'route': 'BUY'},
-    ]);
+    // 2026-09-27 自动确认挪到服务端 (ADR-102)：详情只把没被拦的 p2 数进待确认，
+    // 页面静默刷新一次、由服务端确认 p2；被财务拦截的 p1 留在主表红框等放行。
+    // 页面自己不发 PUT /routes。
+    expect(harness.writes, isEmpty);
+    expect(harness.previews, hasLength(1));
+    expect(harness.confirmedRoutes, {'root-action-2': 'BUY'});
     expect(find.text('确认路线(1)'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -258,7 +258,7 @@ void main() {
   );
 
   testWidgets(
-    '501 mixed BOM routes confirm deepest first before a purchased root removes them',
+    '501 mixed BOM routes are confirmed by one server refresh, not chunked page writes',
     (tester) async {
       final data = _analysis(routes: ['BUY'], childrenPerProduct: 501);
       final materials = (data['flatMaterials'] as List)
@@ -284,44 +284,25 @@ void main() {
       final harness = await _pump(
         tester,
         data,
+        refresh: true,
         removeBomAfterExternalRootConfirmation: true,
       );
-      // 2026-09-25 确认路线退役：不再勾选+点按钮——进页自动确认一次带全部
-      // 502 组，仍按「先深后浅、根最后」排序并 500 一批分块提交。
-      expect(harness.writes, hasLength(2));
+      // 2026-09-27 自动确认挪到服务端 (ADR-102)：502 组不再由页面「先深后浅、
+      // 500 一批」分块 PUT，而是一次静默刷新、服务端同一事务里全部确认；采购根
+      // 停用原 BOM 也在那次重算里完成，不会出现后一块引用已停用行的 409。
+      expect(harness.writes, isEmpty);
+      expect(harness.previews, hasLength(1));
       expect(harness.failedRouteResolutions, 0);
-      final first = _decisions(harness.writes.first);
-      final last = _decisions(harness.writes.last);
-      expect(first, hasLength(500));
-      expect(
-        first.any((row) => row['actionGroupKey'] == '000-root-action'),
-        isFalse,
-      );
-      expect(last, hasLength(2));
-      expect(last.last, {'actionGroupKey': '000-root-action', 'route': 'BUY'});
-      expect((harness.writes.last.data as Map<String, dynamic>)['version'], 4);
-      expect(
-        (harness.writes.last.data as Map<String, dynamic>)['fingerprint'],
-        'b' * 64,
-      );
-      final componentDecisions = [...first, ...last.take(1)];
-      expect(componentDecisions, hasLength(501));
-      for (final decision in componentDecisions) {
-        expect(decision['route'], expectedRoutes[decision['actionGroupKey']]);
-      }
-      final actualDepths = componentDecisions
-          .map((row) => depths[row['actionGroupKey']]!)
-          .toList();
-      expect(
-        actualDepths,
-        [...actualDepths]..sort((left, right) => right.compareTo(left)),
-      );
-      expect(harness.routesBeforeRoot.single, expectedRoutes);
+      expect(depths, hasLength(501));
       expect(harness.confirmedRoutes, {
         ...expectedRoutes,
         '000-root-action': 'BUY',
       });
       expect(harness.data['flatMaterials'], hasLength(1));
+      expect(
+        (harness.previews.single.data as Map<String, dynamic>)['version'],
+        3,
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -332,6 +313,7 @@ void main() {
       final harness = await _pump(
         tester,
         _analysis(routes: ['SUBCONTRACT', 'BUY', 'MAKE']),
+        refresh: true,
       );
       for (var index = 1; index <= 3; index++) {
         expect(_root(index), findsOneWidget);
@@ -348,20 +330,28 @@ void main() {
           findsOneWidget,
         );
       }
-      // 2026-09-25 确认路线退役：进页自动确认一次带全部行——每个根按各自的
-      // 主档建议落自己的路线，互不串台；没有确认按钮、没有逐个勾选。
-      expect(harness.writes, hasLength(1));
-      final decisions = _decisions(harness.writes.single);
+      // 2026-09-27 自动确认挪到服务端 (ADR-102)：一次静默刷新，每个根按各自的
+      // 主档建议落自己的路线，互不串台；页面不发 PUT、没有确认按钮。
+      expect(harness.writes, isEmpty);
+      expect(harness.previews, hasLength(1));
       expect(
-        decisions.where(
-          (row) => row['actionGroupKey'].toString().startsWith('root-action-'),
-        ),
-        [
-          {'actionGroupKey': 'root-action-1', 'route': 'SUBCONTRACT'},
-          {'actionGroupKey': 'root-action-2', 'route': 'BUY'},
-          {'actionGroupKey': 'root-action-3', 'route': 'MAKE'},
-        ],
+        {
+          for (final entry in harness.confirmedRoutes.entries)
+            if (entry.key.startsWith('root-action-')) entry.key: entry.value,
+        },
+        {
+          'root-action-1': 'SUBCONTRACT',
+          'root-action-2': 'BUY',
+          'root-action-3': 'MAKE',
+        },
       );
+      for (final (index, route) in [
+        (1, 'subcontract'),
+        (2, 'buy'),
+        (3, 'make'),
+      ]) {
+        expect(tester.widget<UtenDropdownField>(_route(index)).value, route);
+      }
       expect(
         harness.requests.where((request) => request.path.endsWith('/notify')),
         isEmpty,
@@ -463,10 +453,10 @@ void main() {
         (request) => request.path.endsWith('/issue-plans'),
       );
       expect((issueRequest.data as Map<String, dynamic>)['lines'], [
+        // 没人改过的允许超产比例不带(ADR-129 §2.10)，由服务端按货品默认填写。
         {
           'analysisLineId': 'p1',
           'qty': 10.0,
-          'allowedOverproductionRate': 0,
           'departmentId': 'workshop',
           'workshopName': '装配车间',
           'workerId': 'worker',
@@ -484,18 +474,19 @@ void main() {
   testWidgets(
     'an unconfirmed root stays out of the workshop bucket until its route is confirmed',
     (tester) async {
-      // 2026-09-25 确认路线退役修订：主档能定路线（建议 MAKE）的根进页即自动
-      // 确认、照旧进车间桶；主档来源为空的根（REVIEW）不自动确认，仍不进
-      // 车间桶（入口计数 0 且灰显不可点），留在主表红框等人选。
+      // 2026-09-25 确认路线退役修订：主档能定路线(建议 MAKE)的根自动确认、
+      // 照旧进车间桶；主档来源为空的根(REVIEW)不自动确认，仍不进车间桶
+      // (入口计数 0 且灰显不可点)，留在主表红框等人选。2026-09-27 起确认在
+      // 服务端：详情报待确认 → 页面静默刷新一次，零 PUT。
       final confirmed = await _pump(
         tester,
         _analysis(routes: ['MAKE'], withChildren: false),
         generate: true,
+        refresh: true,
       );
-      expect(confirmed.writes, hasLength(1));
-      expect(_decisions(confirmed.writes.single), [
-        {'actionGroupKey': 'root-action-1', 'route': 'MAKE'},
-      ]);
+      expect(confirmed.writes, isEmpty);
+      expect(confirmed.previews, hasLength(1));
+      expect(confirmed.confirmedRoutes, {'root-action-1': 'MAKE'});
       final workshopEntry = find.byKey(
         const Key('material-analysis-entry-workshop'),
       );
@@ -512,8 +503,10 @@ void main() {
         tester,
         _analysis(routes: [null], withChildren: false),
         generate: true,
+        refresh: true,
       );
       expect(review.writes, isEmpty, reason: 'REVIEW 根不自动确认');
+      expect(review.previews, isEmpty, reason: '详情不报待确认就不刷新');
       expect(find.text('路线待确认'), findsWidgets);
       expect(
         find.byKey(const Key('material-analysis-entry-workshop')),
@@ -612,21 +605,14 @@ void main() {
       final harness = await _pump(
         tester,
         _analysis(routes: ['SUBCONTRACT'], childrenPerProduct: 120),
+        refresh: true,
       );
-      // 2026-09-25 确认路线退役：自动确认按操作组去重——第 2 页的只读重复
-      // 祖先行不会把 root 再确认一遍。
-      final decisions = _decisions(harness.writes.single);
-      expect(decisions, hasLength(121));
-      expect(
-        decisions.where(
-          (decision) => decision['actionGroupKey'] == 'root-action-1',
-        ),
-        hasLength(1),
-      );
-      expect(
-        decisions.map((decision) => decision['actionGroupKey']).toSet(),
-        hasLength(121),
-      );
+      // 2026-09-27 自动确认挪到服务端 (ADR-102)：一次静默刷新、服务端按操作组
+      // 一次确认 121 组；第 2 页的只读重复祖先行不会把 root 再确认一遍。
+      expect(harness.writes, isEmpty);
+      expect(harness.previews, hasLength(1));
+      expect(harness.confirmedRoutes, hasLength(121));
+      expect(harness.confirmedRoutes['root-action-1'], 'SUBCONTRACT');
       await tester.ensureVisible(find.text('下一页'));
       await tester.tap(find.text('下一页'));
       await tester.pumpAndSettle();
@@ -639,12 +625,13 @@ void main() {
         expect(checkbox.onChanged, isNull);
       }
       expect(find.descendant(of: ancestor, matching: _route(1)), findsNothing);
-      expect(harness.writes, hasLength(1), reason: '翻页不触发第二次确认');
+      expect(harness.previews, hasLength(1), reason: '翻页不触发第二次确认');
+      expect(harness.writes, isEmpty);
     },
   );
 
   testWidgets(
-    'selecting 101 root rows across pages confirms 101 unique real UUID actions',
+    '101 root rows are confirmed server-side as 101 unique real UUID actions',
     (tester) async {
       final harness = await _pump(
         tester,
@@ -655,20 +642,16 @@ void main() {
           ],
           withChildren: false,
         ),
+        refresh: true,
       );
-      // 2026-09-25 确认路线退役：不再逐页勾选——进页自动确认一次带全部
-      // 101 个根，每个按各自主档建议、真实身份唯一不重复。
-      final decisions = _decisions(harness.writes.single);
-      expect(decisions, hasLength(101));
-      expect(
-        decisions.map((decision) => decision['actionGroupKey']).toSet(),
-        hasLength(101),
-      );
-      for (final decision in decisions) {
-        final index =
-            int.parse((decision['actionGroupKey'] as String).split('-').last) -
-            1;
-        expect(decision['route'], ['BUY', 'SUBCONTRACT', 'MAKE'][index % 3]);
+      // 2026-09-27 自动确认挪到服务端：一次静默刷新确认全部 101 个根，每个按
+      // 各自主档建议、真实身份唯一不重复；页面零 PUT。
+      expect(harness.writes, isEmpty);
+      expect(harness.previews, hasLength(1));
+      expect(harness.confirmedRoutes, hasLength(101));
+      for (final entry in harness.confirmedRoutes.entries) {
+        final index = int.parse(entry.key.split('-').last) - 1;
+        expect(entry.value, ['BUY', 'SUBCONTRACT', 'MAKE'][index % 3]);
       }
     },
   );
@@ -729,12 +712,35 @@ Future<_Harness> _pump(
               },
           ];
         } else if (request.path == '/production/material-analyses/analysis') {
-          result = harness.data;
+          // 详情：服务端按同一判据数出「还能自动确认」的组数 (ADR-102 2026-09-27)。
+          result = {
+            ...harness.data,
+            'autoConfirmedRouteCount': 0,
+            'pendingAutoConfirmRouteCount': _serverAutoConfirmable(
+              harness.data,
+            ).length,
+          };
         } else if (request.path == '/production/material-analyses/preview') {
+          // 刷新：服务端在同一次重算里按货品档案确认，版本只涨一次。
           harness.data =
               jsonDecode(jsonEncode(harness.data)) as Map<String, dynamic>;
+          final confirmable = _serverAutoConfirmable(harness.data);
+          for (final row in confirmable) {
+            row['sourceConfirmed'] = row['sourceSuggestion'];
+            row['routeConfirmed'] = true;
+            harness.confirmedRoutes[row['actionGroupKey'] as String] =
+                row['sourceSuggestion'] as String;
+          }
+          if (removeBomAfterExternalRootConfirmation) {
+            _removeBomUnderExternalRoot(harness.data);
+          }
           harness.data['version'] = (harness.data['version'] as int) + 1;
-          result = harness.data;
+          harness.data['fingerprint'] = 'c' * 64;
+          result = {
+            ...harness.data,
+            'autoConfirmedRouteCount': confirmable.length,
+            'pendingAutoConfirmRouteCount': 0,
+          };
         } else if (request.path.endsWith('/routes') &&
             request.method == 'PUT') {
           harness.data =
@@ -775,17 +781,8 @@ Future<_Harness> _pump(
             target['routeConfirmed'] = true;
             harness.confirmedRoutes[key] = decision['route'] as String;
           }
-          if (removeBomAfterExternalRootConfirmation &&
-              byKey.values.any(
-                (row) =>
-                    row['nodeRole'] == 'ROOT_SUPPLY' &&
-                    row['routeConfirmed'] == true &&
-                    (row['sourceConfirmed'] == 'BUY' ||
-                        row['sourceConfirmed'] == 'SUBCONTRACT'),
-              )) {
-            harness.data['flatMaterials'] = byKey.values
-                .where((row) => row['nodeRole'] == 'ROOT_SUPPLY')
-                .toList();
+          if (removeBomAfterExternalRootConfirmation) {
+            _removeBomUnderExternalRoot(harness.data);
           }
           harness.data['version'] = (harness.data['version'] as int) + 1;
           harness.data['fingerprint'] = 'b' * 64;
@@ -918,6 +915,44 @@ class _Harness {
 
   List<RequestOptions> get writes =>
       requests.where((request) => request.method == 'PUT').toList();
+  List<RequestOptions> get previews => requests
+      .where(
+        (request) =>
+            request.method == 'POST' && request.path.endsWith('/preview'),
+      )
+      .toList();
+}
+
+/// 服务端自动确认判据的夹具简化版 (MaterialAnalysisRouteAutoConfirm)：未确认、
+/// 主档建议非空 (非 REVIEW)、所属产品没被计划闸挡住的操作组。
+List<Map<String, dynamic>> _serverAutoConfirmable(Map<String, dynamic> data) {
+  final blocked = {
+    ...((data['planningBlockedReasons'] as Map?) ?? const {}).keys,
+  };
+  return [
+    for (final row
+        in (data['flatMaterials'] as List).cast<Map<String, dynamic>>())
+      if (row['routeConfirmed'] != true &&
+          row['sourceSuggestion'] != null &&
+          !blocked.contains(row['analysisLineId']))
+        row,
+  ];
+}
+
+/// 根确认为外购/委外后，服务端同一次重算停用它下面的原 BOM 行。
+void _removeBomUnderExternalRoot(Map<String, dynamic> data) {
+  final rows = (data['flatMaterials'] as List).cast<Map<String, dynamic>>();
+  if (rows.any(
+    (row) =>
+        row['nodeRole'] == 'ROOT_SUPPLY' &&
+        row['routeConfirmed'] == true &&
+        (row['sourceConfirmed'] == 'BUY' ||
+            row['sourceConfirmed'] == 'SUBCONTRACT'),
+  )) {
+    data['flatMaterials'] = rows
+        .where((row) => row['nodeRole'] == 'ROOT_SUPPLY')
+        .toList();
+  }
 }
 
 class _Session extends SessionNotifier {
@@ -1108,6 +1143,7 @@ Map<String, dynamic> _analysis({
   'warehouseIds': ['warehouse'],
   'allowedActions': [
     'VIEW',
+    'REFRESH',
     'CONFIRM_ROUTES',
     'NOTIFY_SUPPLY',
     'PLAN_PREVIEW',

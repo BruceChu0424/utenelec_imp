@@ -66,6 +66,7 @@ class WhereUsedSourceBreakdown extends StatelessWidget {
                 _asBool(row['__currentDirect'])
                     ? _display(row['__currentDirectQty'])
                     : '间接关系不合并路径用量',
+                tooltip: '按设计使用数量',
               ),
             ],
           ),
@@ -283,12 +284,7 @@ class _SourceSection extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              metric.label,
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
+                            _metricLabel(theme, metric),
                             const SizedBox(height: UtenSpacing.s4),
                             SelectableText(
                               metric.value,
@@ -308,6 +304,18 @@ class _SourceSection extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 指标名；带说明的指标名悬停显示口径(例如 BOM 用量取的是哪个数)。
+Widget _metricLabel(ThemeData theme, _Metric metric) {
+  final label = Text(
+    metric.label,
+    style: theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    ),
+  );
+  final tooltip = metric.tooltip;
+  return tooltip == null ? label : Tooltip(message: tooltip, child: label);
 }
 
 class _QualityNotice extends StatelessWidget {
@@ -343,10 +351,11 @@ class _SourceUnavailable extends StatelessWidget {
 }
 
 class _Metric {
-  const _Metric(this.label, this.value);
+  const _Metric(this.label, this.value, {this.tooltip});
 
   final String label;
   final String value;
+  final String? tooltip;
 }
 
 String _goodsStatus(Map<String, dynamic> row) {

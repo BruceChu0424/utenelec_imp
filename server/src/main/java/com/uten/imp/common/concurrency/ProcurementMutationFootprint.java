@@ -445,12 +445,13 @@ public class ProcurementMutationFootprint {
                     SELECT bom.id,bom.component_goods_id,COALESCE(bom.color_id,goods.color_id) AS color_id,
                            ARRAY[bom.goods_id,bom.component_goods_id] AS path,1 AS depth,bom.xmin::text AS snapshot
                     FROM goods_bom_items bom JOIN goods ON goods.id=bom.component_goods_id
+                     AND goods.issue_method<>'PERIODIC'
                     WHERE bom.goods_id IN (:ids) AND bom.is_deleted=FALSE AND goods.is_deleted=FALSE
                     UNION ALL
                     SELECT bom.id,bom.component_goods_id,COALESCE(bom.color_id,goods.color_id),
                            tree.path||bom.component_goods_id,tree.depth+1,bom.xmin::text
                     FROM tree JOIN goods_bom_items bom ON bom.goods_id=tree.component_goods_id
-                    JOIN goods ON goods.id=bom.component_goods_id
+                    JOIN goods ON goods.id=bom.component_goods_id AND goods.issue_method<>'PERIODIC'
                     WHERE tree.depth<10 AND NOT bom.component_goods_id=ANY(tree.path)
                       AND bom.is_deleted=FALSE AND goods.is_deleted=FALSE
                 ) SELECT DISTINCT id,component_goods_id,color_id,snapshot FROM tree ORDER BY id,component_goods_id,color_id

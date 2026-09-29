@@ -67,13 +67,23 @@ public class StockMovement extends BaseEntity {
     @Column(name = "amount_local", precision = 18, scale = 4)
     private BigDecimal amountLocal;
 
-    /** 本次流水切片的实际总重量；方向由 direction 表示，不乘 unit_rate。 */
+    /** 本次流水的重量(千克, 正数), 方向由 direction 表示; null = 未知(ADR-135 仓库重量账)。 */
     @Column(name = "weight", precision = 18, scale = 4)
     private BigDecimal weight;
 
-    /** V442 explicit unit for the actual-weight snapshot; nullable for legacy/unitless sources. */
-    @Column(name = "actual_weight_unit_id")
-    private UUID actualWeightUnitId;
+    /** 重量来历 MEASURED/EXACT/SLICE/AVERAGE/ESTIMATE(见 weight.WeightSource), 与 weight 同为空或同不空。 */
+    @Column(name = "weight_source", length = 10)
+    private String weightSource;
+
+    /**
+     * 本流水之后本维度的余额重量(千克, 含它引起的起算/尾差纠正; 纠正行写在流水之前), null = 未知。
+     */
+    @Column(name = "balance_weight_after", precision = 18, scale = 4)
+    private BigDecimal balanceWeightAfter;
+
+    /** 库存账全局过账顺序(与 stock_weight_adjustments 共用序列), 数据库默认值分配。 */
+    @Column(name = "ledger_seq", insertable = false, updatable = false)
+    private Long ledgerSeq;
 
     private String remark;
 }

@@ -357,7 +357,7 @@ class _ProcurementIqcRejectionDetailPageState
     children: [
       _Fact('不合格基础量', item.failedBaseQty ?? '—'),
       _Fact('不合格单据量', '${item.failedQty ?? '—'} ${item.unitName ?? ''}'.trim()),
-      _Fact('原币金额', item.amountLabel(item.failedAmountOriginal)),
+      _Fact('原币金额', item.originalAmountLabel(item.failedAmountOriginal)),
       _Fact(
         '本币金额',
         item.priceMasked ? '***' : item.failedAmountLocal ?? '无有限金额投影，保留来源份额',
@@ -603,7 +603,7 @@ class _ProcurementIqcRejectionDetailPageState
             allocation.replacementReceiptType ?? '替换收货',
             '单据量 ${allocation.allocatedQty ?? '—'} · '
             '基本量 ${allocation.allocatedBaseQty ?? '—'} · '
-            '${item.amountLabel(allocation.allocatedAmountLocal)} · '
+            '本币 ${item.localAmountLabel(allocation.allocatedAmountLocal)} · '
             '${allocation.status}',
           ),
       ],
@@ -649,7 +649,7 @@ class _ProcurementIqcRejectionDetailPageState
       for (final doc in detail.creditDocuments) ...[
         _Fact(
           '${doc.creditReference ?? '贷项凭证'} · ${doc.status == 'ACTIVE' ? '有效' : '已反向'}',
-          '${doc.creditDate ?? '—'}\n原币 ${detail.caseItem.amountLabel(doc.amountOriginal)}\n本币 ${detail.caseItem.priceMasked ? '***' : doc.amountLocal ?? '待核对'}',
+          '${doc.creditDate ?? '—'}\n原币 ${detail.caseItem.originalAmountLabel(doc.amountOriginal)}\n本币 ${detail.caseItem.priceMasked ? '***' : doc.amountLocal ?? '待核对'}',
         ),
         if (!detail.caseItem.priceMasked)
           for (final part in doc.caseAllocations)

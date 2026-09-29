@@ -51,6 +51,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
@@ -132,7 +133,11 @@ class _WarehouseSubcontractOutboundEditPageState
   @override
   Iterable<Listenable> get formDraftListenables => [
     _remark,
-    for (final row in _lines) ...[row.qty, row.remarkController],
+    for (final row in _lines) ...[
+      row.qty,
+      row.remarkController,
+      row.weight.weight,
+    ],
   ];
   @override
   Map<String, dynamic> captureFormDraft() => {
@@ -149,6 +154,9 @@ class _WarehouseSubcontractOutboundEditPageState
           'planItemId': row.line.planItemId,
           'draftItemId': row.draftItemId,
           'qty': row.qty.text,
+          'qtyAutofilled': row.qty.autofilled,
+          'weightKg': row.weight.kg,
+          'qtyFromWeight': row.weight.qtyFromWeight,
           'remark': row.remarkController.text,
           'selected': row.selected,
         },
@@ -183,7 +191,16 @@ class _WarehouseSubcontractOutboundEditPageState
             row.line.planItemId == item['planItemId'] &&
             row.draftItemId == item['draftItemId'],
       );
-      row.qty.text = draftText(item, 'qty');
+      final weightKg = (item['weightKg'] as num?)?.toDouble();
+      row.weight.weight.setKg(
+        weightKg,
+        qtyFromWeight: weightKg != null && item['qtyFromWeight'] == true,
+      );
+      if (item['qtyAutofilled'] == true) {
+        row.qty.setAutomaticText(draftText(item, 'qty'));
+      } else {
+        row.qty.text = draftText(item, 'qty');
+      }
       row.remarkController.text = draftText(item, 'remark');
       row.selected = item['selected'] == true;
     }
@@ -258,6 +275,7 @@ class _WarehouseSubcontractOutboundEditPageState
       DateTime? deliverDate = _parseDate(detail.deliverDate);
       final remarkText = StringBuffer();
       final lines = <SubcontractOutboundLineDraft>[];
+      final weightUnit = ref.read(warehouseWeightUnitsPrefsProvider).entry;
       if (draft != null) {
         final doc = bundle.documents.single;
         _draftId = doc.id;
@@ -294,6 +312,8 @@ class _WarehouseSubcontractOutboundEditPageState
               draftLine.id,
               _fmtQty(initial),
               weight: draftLine.weight,
+              qtyFromWeight: draftLine.qtyFromWeight,
+              weightUnit: weightUnit,
               remark: draftLine.remark,
               unitRate: draftLine.unitRate,
             ),
@@ -319,6 +339,7 @@ class _WarehouseSubcontractOutboundEditPageState
               line,
               null,
               _fmtQty(line.freeIssuableQty),
+              weightUnit: weightUnit,
             ),
           );
           // 「发出仓」预填服务端按合格可动用量算好的建议仓(ADR-101 §2.3)，
@@ -422,6 +443,7 @@ class _WarehouseSubcontractOutboundEditPageState
     final items = <Map<String, dynamic>>[];
     final badQty = <String>[];
     final overMaxQty = <String>[];
+    final badWeight = <String>[];
     for (var index = 0; index < _lines.length; index++) {
       final e = _lines[index];
       // 子件还没到货的行不参与校验: 它的数量格是禁用的, 补草稿时服务端按此刻库存
@@ -439,6 +461,10 @@ class _WarehouseSubcontractOutboundEditPageState
         overMaxQty.add(label);
         continue;
       }
+      if (e.weight.weight.hasError) {
+        badWeight.add(label);
+        continue;
+      }
       items.add(e.toPayload());
     }
     final rowIssues = <String>[
@@ -451,6 +477,8 @@ class _WarehouseSubcontractOutboundEditPageState
           _l10n.warehouseSubcontractOutboundQuantityInvalid,
           action: '请改小后再提交',
         ),
+      if (badWeight.isNotEmpty)
+        _rowIssueMessage(badWeight, '的实称重量看不懂', action: '请改成如 12.5 或 850g'),
     ];
     if (rowIssues.isNotEmpty) {
       // 不同类别分行列出，混成一句会让人看不清到底要改哪几处。

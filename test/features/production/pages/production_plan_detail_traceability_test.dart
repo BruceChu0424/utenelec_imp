@@ -224,7 +224,7 @@ Future<void> _expandReferenceSection(WidgetTester tester, String title) async {
     of: section,
     matching: find.byType(AnimatedRotation),
   );
-  if (tester.widget<AnimatedRotation>(chevron.first).turns == 0) return;
+  if (tester.widget<AnimatedRotation>(chevron.first).turns == 0.5) return;
   await tester.tap(
     find.descendant(of: section, matching: find.byType(InkWell)).first,
   );

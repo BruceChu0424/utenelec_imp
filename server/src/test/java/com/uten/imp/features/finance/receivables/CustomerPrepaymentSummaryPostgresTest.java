@@ -29,7 +29,6 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "spring.profiles.active=dev",
                 "uten.audit.retention.enabled=false",
                 "uten.reporting.materialized-view-refresh.enabled=false",
-                "uten.policy-intelligence.enabled=false",
                 "uten.features.goods-owner-scope-enabled=false",
                 "uten.jwt.secret=prepayment-summary-harness-jwt-secret-0123456789-test-only",
                 "uten.crypto.pgp-master-key=prepayment-summary-harness-pgp-key-test-only-0123456",
@@ -94,6 +93,8 @@ class CustomerPrepaymentSummaryPostgresTest {
 
         assertThat(summary.salesOrderId()).isEqualTo(orderId);
         assertThat(summary.orderBillNo()).isEqualTo(orderBillNo);
+        // ADR-128: 资金汇总各格按「币种 金额」显示, 服务端随汇总下发币种名。
+        assertThat(summary.currencyName()).isEqualTo("Summary currency");
         assertMoney(summary.orderTotalOriginal(), "20.0000");
         assertMoney(summary.formalArOriginal(), "0.0000");
         assertMoney(summary.cashReceivedOriginal(), "0.0000");

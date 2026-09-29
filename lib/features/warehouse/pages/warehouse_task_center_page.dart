@@ -5,6 +5,7 @@
 // 历史只读卡，用户口径「任务中心一堆 要不要汇总」。本页把六类收拢为一个页面：
 //
 //   大类（第一行）= 出库 / 入库 / 生产领料 / 品质检查结果 / 委外成品退货 / 委外损耗
+//   (2026-09-28 ADR-131 加大类「车间内料仓」: 待发料 / 待收退回 / 盘点 / 记录 + 直接发料)
 //   小类（第二行起）= 原三张任务中心页各自的分段（嵌入态复用整页能力）；
 //   品质检查结果大类内保留其来源行 + 状态行；委外两类为时间门控的历史视图。
 //
@@ -39,6 +40,8 @@ import '../../../shared/drafts/form_draft_category.dart';
 import '../widgets/warehouse_form_draft_categories.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
 import '../config/warehouse_document_history_config.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../materialbin/widgets/workshop_material_task_center.dart';
 import '../pages/warehouse_draw_task_center_page.dart';
 import '../pages/warehouse_inbound_task_center_page.dart';
 import '../pages/warehouse_outbound_task_center_page.dart';
@@ -142,6 +145,15 @@ class _WarehouseTaskCenterPageState
       RouteName.warehouseSubcontractFinishedReturnHistory,
     );
     final canScWaste = canOpen(RouteName.warehouseSubcontractWasteHistory);
+    // 车间内料仓 (ADR-131): 可见性 = 仓库发料页的路由守卫。
+    final canWorkshopMaterial = canOpen(RouteName.workshopMaterialIssue);
+    // 本页其余文案尚未接 arb (部分既有测试不挂本地化代理), 取不到时回落中文原文。
+    final workshopMaterialLabel =
+        Localizations.of<AppLocalizations>(
+          context,
+          AppLocalizations,
+        )?.workshopMaterialGroup ??
+        '车间内料仓';
 
     // 大类计数与原 hub 四张卡同源（徽章汇总一次带回；未到/无权为 null 不渲染）。
     final groups = <_GroupSpec>[
@@ -200,6 +212,18 @@ class _WarehouseTaskCenterPageState
           ),
           inProgressCount: ref.watch(
             badgeEntryInProgressProvider(BadgeEntry.warehouseQualityResult),
+          ),
+        ),
+      if (canWorkshopMaterial)
+        _GroupSpec(
+          value: 'workshopMaterial',
+          label: workshopMaterialLabel,
+          // 红 = 待发料 + 待收退回; 黄 = 盘点中 (服务端徽章目录算好)。
+          count: ref.watch(
+            badgeEntryTodoProvider(BadgeEntry.warehouseWorkshopMaterial),
+          ),
+          inProgressCount: ref.watch(
+            badgeEntryInProgressProvider(BadgeEntry.warehouseWorkshopMaterial),
           ),
         ),
       if (canScReturn) const _GroupSpec(value: 'scReturn', label: '委外成品退货'),
@@ -316,6 +340,11 @@ class _WarehouseTaskCenterPageState
     ),
     'quality' => WarehouseQualityResultsPage(
       embedded: true,
+      externalKeyword: _keyword,
+      externalRefreshTick: _refreshTick,
+      externalHeader: categoryBar,
+    ),
+    'workshopMaterial' => WorkshopMaterialTaskCenter(
       externalKeyword: _keyword,
       externalRefreshTick: _refreshTick,
       externalHeader: categoryBar,

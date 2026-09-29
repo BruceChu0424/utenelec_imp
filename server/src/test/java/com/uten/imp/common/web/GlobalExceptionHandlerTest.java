@@ -35,6 +35,28 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void workshopDirectTargetGuardShowsItsPlainReasonAndNeverDriverDetails() {
+        // V736/ADR-127：数据库直送断言的原因文案是统一维护的大白话，并发穿透到守卫时原样给用户。
+        String message="无法转到下一道工序：HV5ZJ012 是委外件：做好后先送入仓库，发外加工回来后，上层工单再从仓库领料";
+        var sql=new org.postgresql.util.PSQLException(new org.postgresql.util.ServerErrorMessage(
+                "SERROR\u0000C23514\u0000M"+message+"\u0000Dsecret SQL details\u0000HSUBCONTRACT_ROUTE\u0000nworkshop_direct_target_guard\u0000\u0000"));
+        var handler=new GlobalExceptionHandler();
+        for(var response:java.util.List.of(
+                handler.handleDataIntegrity(new DataIntegrityViolationException("failed",sql)),
+                handler.handleHibernateConstraint(new org.hibernate.exception.ConstraintViolationException("failed",sql,"workshop_direct_target_guard")),
+                handler.handleOther(new jakarta.persistence.PersistenceException("wrapped",sql)))) {
+            assertEquals(409,response.getStatusCode().value());
+            assertEquals(message,response.getBody().getMessage());
+            assertFalse(response.getBody().getMessage().contains("secret"));
+            assertFalse(response.getBody().getMessage().contains("SUBCONTRACT_ROUTE"));
+        }
+        var forged=new org.postgresql.util.PSQLException(new org.postgresql.util.ServerErrorMessage(
+                "SERROR\u0000C23514\u0000Msecret business SQL\u0000nworkshop_direct_target_guard\u0000\u0000"));
+        assertEquals("无法转到下一道工序：上层工单当前不能接收，请刷新后重新选择",
+                handler.handleDataIntegrity(new DataIntegrityViolationException("failed",forged)).getBody().getMessage());
+    }
+
+    @Test
     void downstreamMaterialIssueIsAConsistentActionableConflictForBothDatabaseAdapters() {
         var sql = new java.sql.SQLException("Custody has already been issued by its destination task; secret SQL", "23514");
         var handler = new GlobalExceptionHandler();

@@ -2,6 +2,7 @@
 // 文档：docs/05-架构/路由设计.md · 全局机制权限见 docs/05-架构/全局机制.md
 // 使用 go_router，扁平路由（静态段声明在 :id 之前避免冲突）
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,6 +11,7 @@ import '../l10n/gen/app_localizations.dart';
 import '../../features/admin/pages/admin_audit_log_page.dart';
 import '../../features/admin/pages/admin_audit_session_detail_page.dart';
 import '../../features/admin/models/audit_session.dart';
+import '../../features/admin/pages/admin_ai_settings_page.dart';
 import '../../features/admin/pages/admin_system_settings_page.dart';
 import '../../features/admin/pages/server_status_page.dart';
 import '../../features/admin/pages/admin_permissions_page.dart';
@@ -60,6 +62,8 @@ import '../../features/finance/pages/finance_sales_order_confirmation_page.dart'
 import '../../features/finance/pages/finance_sales_order_review_page.dart';
 import '../../features/finance/pages/finance_sales_shipment_audit_page.dart';
 import '../../features/finance/pages/finance_sales_shipment_audit_review_page.dart';
+import '../../features/finance/pages/finance_quote_review_list_page.dart';
+import '../../features/finance/pages/finance_quote_review_page.dart';
 import '../../features/finance/pages/finance_reconciliation_page.dart';
 import '../../features/finance/pages/finance_report_table_page.dart';
 import '../../features/finance/pages/finance_ar_ap_overview_page.dart';
@@ -86,6 +90,7 @@ import '../../features/purchase/config/purchase_report_config.dart';
 import '../../features/purchase/models/purchase_doc.dart';
 import '../../features/stock/pages/instant_inventory_page.dart';
 import '../../features/stock/pages/stock_item_detail_page.dart';
+import '../../features/warehouse/models/stock_check_prefill.dart';
 import '../../features/warehouse/models/stock_doc.dart';
 import '../../features/warehouse/config/warehouse_document_history_config.dart';
 import '../../features/warehouse/pages/finance_arrival_exception_pages.dart';
@@ -121,12 +126,18 @@ import '../../features/warehouse/pages/stock_doc_edit_page.dart';
 import '../../features/warehouse/pages/stock_doc_list_page.dart';
 import '../../features/warehouse/config/warehouse_report_config.dart';
 import '../../features/warehouse/pages/warehouse_hub_page.dart';
+import '../../features/warehouse/pages/warehouse_insight_page.dart';
 import '../../features/warehouse/pages/warehouse_report_table_page.dart';
+import '../../features/warehouse/pages/warehouse_weigh_count_page.dart';
 import '../../features/warehouse/pages/shelf_label_page.dart';
 import '../../features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart';
 import '../../features/warehouse/pages/warehouse_subcontract_outbound_page.dart';
 import '../../features/warehouse/pages/warehouse_sales_outbound_page.dart';
 import '../../features/warehouse/pages/warehouse_task_center_page.dart';
+import '../../features/warehouse/materialbin/pages/workshop_material_bin_page.dart';
+import '../../features/warehouse/materialbin/pages/workshop_material_count_page.dart';
+import '../../features/warehouse/materialbin/pages/workshop_material_issue_page.dart';
+import '../../features/warehouse/materialbin/pages/workshop_material_setup_page.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
 import '../../features/notice/models/notice.dart';
@@ -135,6 +146,7 @@ import '../../features/payroll/pages/payroll_review_page.dart';
 import '../../features/payroll/pages/payroll_slip_detail_page.dart';
 import '../../features/payroll/pages/payroll_slip_list_page.dart';
 import '../../features/production/production_routes.dart';
+import '../../features/production/pages/workshop_material_reports_page.dart';
 import '../../features/procurement_iqc_rejection/pages/procurement_iqc_rejection_detail_page.dart';
 import '../../features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart';
 import '../../features/profile/pages/my_profile_changes_page.dart';
@@ -607,12 +619,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               categoryId: s.uri.queryParameters['categoryId'],
             ),
           ),
+          // ?tab= 原样交给页面：命名键 basic|bom|cost|files|stock，兼容旧数字 0/1 (ADR-135)。
           DraftAwareGoRoute(
             path: RouteName.basicinfoGoodsDetail,
             name: 'basicinfo-goods-detail',
             builder: (_, s) => GoodsDetailPage(
               goodsId: s.pathParameters['id']!,
-              initialTab: int.tryParse(s.uri.queryParameters['tab'] ?? '') ?? 0,
+              initialTab: s.uri.queryParameters['tab'],
             ),
           ),
           DraftAwareGoRoute(
@@ -854,8 +867,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'stock-balance',
             redirect: (_, _) => RouteName.stockInstantInventory,
           ),
-          // 旧「出入库流水」页已并入库存详情页：带 goodsId 的旧深链（即时库存/货品详情/
-          // 物料反查）落到 /stock/item/:goodsId，无 goodsId 时回即时库存。
+          // 旧「出入库流水」页已并入库存详情页：带 goodsId 的旧深链 (即时库存/货品详情/
+          // 物料反查) 落到 /stock/item/:goodsId?tab=ledger (出入库流水段)，无 goodsId 时回即时库存。
           DraftAwareGoRoute(
             path: RouteName.stockMovement,
             name: 'stock-movement',
@@ -864,7 +877,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   state.uri.queryParameters['goodsId']?.trim() ?? '';
               return goodsId.isEmpty
                   ? RouteName.stockInstantInventory
-                  : RouteName.stockItemDetail(goodsId);
+                  : RouteName.stockItemDetail(goodsId, tab: 'ledger');
             },
           ),
           DraftAwareGoRoute(
@@ -872,12 +885,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'stock-instant-inventory',
             builder: (_, _) => const InstantInventoryPage(),
           ),
-          // 库存详情：即时库存双击货品行进入（各仓余额 + 出入库流水 + 受控余额调整）。
+          // 库存详情：即时库存双击货品行进入 (库存余额 / 出入库流水 / 单重学习三段)；
+          // ?tab=balance|ledger|weight 原样交给页面解析 (ADR-135)。
           DraftAwareGoRoute(
             path: '${RouteName.stockItemBase}/:goodsId',
             name: 'stock-item-detail',
-            builder: (_, state) =>
-                StockItemDetailPage(goodsId: state.pathParameters['goodsId']!),
+            builder: (_, state) => StockItemDetailPage(
+              goodsId: state.pathParameters['goodsId']!,
+              initialTab: state.uri.queryParameters['tab'],
+            ),
           ),
 
           // —— 仓库管理（8 单据 hub + 列表 + new/detail/edit + 报表）——
@@ -1134,6 +1150,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'warehouse-shelf-labels',
             builder: (_, _) => const ShelfLabelPage(),
           ),
+          // 库存分析 + 独立称重计数 (ADR-135；静态段，须在 /warehouse/:code 系列之前)。
+          // ?segment=health|cycle-count|weight-alerts|learning 直达分段。
+          DraftAwareGoRoute(
+            path: RouteName.warehouseInsights,
+            name: 'warehouse-insights',
+            builder: (_, s) => WarehouseInsightPage(
+              initialSegment: s.uri.queryParameters['segment'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.warehouseWeighCount,
+            name: 'warehouse-weigh-count',
+            builder: (_, _) => const WarehouseWeighCountPage(),
+          ),
           // 委外出仓任务中心 + 拣货出仓页（V304 仓库专属；静态段，须在 /warehouse/:code 前）。
           DraftAwareGoRoute(
             path: RouteName.warehouseSubcontractOutbound,
@@ -1227,12 +1257,27 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) =>
                 const WarehouseTaskCenterPage(initialGroup: 'draw'),
           ),
+          // 车间内料仓设置 (ADR-131; 静态段须先于 /warehouse/:code/:id, 否则被单据详情吞掉)。
+          // ?tab=enable|machines|prep 直达页签。
+          DraftAwareGoRoute(
+            path: RouteName.workshopMaterialSetup,
+            name: 'workshop-material-setup',
+            builder: (_, s) => WorkshopMaterialSetupPage(
+              initialTab: s.uri.queryParameters['tab'],
+            ),
+          ),
+
+          // 新建盘点单可带 extra = StockCheckPrefill (库存分析「生成盘点单」按仓预填货品，
+          // 只是未保存的明细行，ADR-135)；其它单据类型不认 extra。
           DraftAwareGoRoute(
             path: '/warehouse/:code/new',
             name: 'stock-doc-new',
             redirect: _rejectStockDocManualEdit,
             builder: (_, s) => StockDocEditPage(
               docType: StockDocType.byCode(s.pathParameters['code']!),
+              checkPrefill: s.extra is StockCheckPrefill
+                  ? s.extra! as StockCheckPrefill
+                  : null,
             ),
           ),
           DraftAwareGoRoute(
@@ -1261,6 +1306,44 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, s) => StockDocListPage(
               docType: StockDocType.byCode(s.pathParameters['code']!),
               initialStatus: s.uri.queryParameters['status'],
+            ),
+          ),
+
+          // —— 车间内料仓 (ADR-131) ——
+          DraftAwareGoRoute(
+            path: RouteName.workshopMaterialBin,
+            name: 'workshop-material-bin',
+            builder: (_, s) => WorkshopMaterialBinPage(
+              workshopId: s.uri.queryParameters['workshopId'],
+            ),
+          ),
+          // 带 ?requisitionId= 为按申请发料 / 收退回; 不带 (或 ?mode=direct) 为直接发料。
+          DraftAwareGoRoute(
+            path: RouteName.workshopMaterialIssue,
+            name: 'workshop-material-issue',
+            builder: (_, s) => WorkshopMaterialIssuePage(
+              requisitionId: s.uri.queryParameters['requisitionId'],
+              mode: s.uri.queryParameters['mode'],
+            ),
+          ),
+          // 盘点页只认 ?periodId=; 缺参数时回到车间内料仓页选期间。
+          DraftAwareGoRoute(
+            path: RouteName.workshopMaterialCount,
+            name: 'workshop-material-count',
+            redirect: (_, s) =>
+                (s.uri.queryParameters['periodId']?.trim().isNotEmpty ?? false)
+                ? null
+                : RouteName.workshopMaterialBin,
+            builder: (_, s) => WorkshopMaterialCountPage(
+              periodId: s.uri.queryParameters['periodId']!.trim(),
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.workshopMaterialReports,
+            name: 'workshop-material-reports',
+            builder: (_, s) => WorkshopMaterialReportsPage(
+              initialBinId: s.uri.queryParameters['binId'],
+              initialPeriodId: s.uri.queryParameters['periodId'],
             ),
           ),
 
@@ -1330,6 +1413,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
               initialOrderId: s.uri.queryParameters['sourceOrderId'],
               initialOrderItems: s.uri.queryParameters['orderItems'],
+              // 订货单识别结果「改为新建报价单」: 同一次识别直接在报价页恢复(ADR-134),
+              // 原文件经 extra 带过来(只在同一次跳转里有)。
+              initialAiJobId: s.uri.queryParameters['aiJobId'],
+              initialAiFile: s.extra is PlatformFile
+                  ? s.extra as PlatformFile
+                  : null,
             ),
           ),
           DraftAwareGoRoute(
@@ -1522,6 +1611,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, state) => FinanceSalesShipmentAuditReviewPage(
               id: state.pathParameters['id']!,
             ),
+          ),
+          // 销售报价财务核价(ADR-134)：队列(?state= 深链分段) + 核价详情。
+          DraftAwareGoRoute(
+            path: RouteName.financeQuoteReview,
+            name: 'finance-quote-review',
+            builder: (_, state) => FinanceQuoteReviewListPage(
+              initialState: state.uri.queryParameters['state'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.financeQuoteReviewDetail,
+            name: 'finance-quote-review-detail',
+            builder: (_, state) =>
+                FinanceQuoteReviewPage(id: state.pathParameters['id']!),
           ),
           DraftAwareGoRoute(
             path: RouteName.financeArrivalExceptions,
@@ -1792,6 +1895,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.adminServerStatus,
             name: 'admin-server-status',
             builder: (_, _) => const ServerStatusPage(),
+          ),
+          // AI 服务设置(ADR-133): 不是表单草稿页, 密钥绝不进草稿快照。
+          DraftAwareGoRoute(
+            path: RouteName.adminAiSettings,
+            name: 'admin-ai-settings',
+            builder: (_, _) => const AdminAiSettingsPage(),
           ),
         ],
       ),

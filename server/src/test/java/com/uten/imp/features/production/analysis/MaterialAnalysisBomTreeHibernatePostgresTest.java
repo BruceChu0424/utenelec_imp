@@ -178,11 +178,101 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
             assertThat(snapshots.get(batch.get(index).analysisItemId())).hasSize(2);
             Object[] nested = snapshots.get(batch.get(index).analysisItemId()).get(1);
             assertThat((UUID) nested[24]).isEqualTo(batch.get(index).analysisItemId());
-            assertThat((BigDecimal) nested[10]).isEqualByComparingTo(BigDecimal.valueOf(6L * (index + 1)));
+            // ADR-129：SQL 只给设计/真实使用数量，单耗由 Java 按所选用量逐层算。
+            assertThat((BigDecimal) nested[8]).isEqualByComparingTo("3");
+            assertThat(nested[9]).isNull();
+            assertThat(nested[10]).isEqualTo("NO_DATA");
+            assertThat(((Number) nested[25]).longValue()).isZero();
+            assertThat(nested[26]).isEqualTo(Boolean.TRUE);
+            assertThat(nested[27]).isNull();
         }
         if ("true".equalsIgnoreCase(System.getenv("UTEN_RUN_PRODUCTION_STRESS"))) {
             measureSourceReadModes(batch);
         }
+    }
+
+    /**
+     * ADR-129 §2.5：真实使用数量经 v_goods_bom_item_usage 按边读出，读取原样取视图的采用值(effective_qty)、
+     * 状态、线性与重新学习后的窗口批次数，新节点采用它，单耗在 Java 里按所选用量逐层算；没有学习数据的边
+     * 按设计值并说明原因；固定批次的边即使学到数据也按设计值(视图判 NOT_LINEAR)。不良率(本轮窗口
+     * 不良 / (良品 + 不良))与真实值一起读出，按落库的 6 位取整；没有真实值的边为空。
+     */
+    @Test
+    void learnedActualUsageIsReadPerEdgeAndAdoptedByNewNodes() {
+        UUID unitId = UUID.randomUUID();
+        UUID finishedGoodsId = UUID.randomUUID();
+        UUID assemblyId = UUID.randomUUID();
+        UUID rawMaterialId = UUID.randomUUID();
+        jdbc.update("INSERT INTO units(id,code,name) VALUES(?,?,?)",
+                unitId, "BOM-ACT-U-" + unitId, "piece");
+        insertGoods(finishedGoodsId, unitId, "BOM-ACT-FG-");
+        insertGoods(assemblyId, unitId, "BOM-ACT-SA-");
+        insertGoods(rawMaterialId, unitId, "BOM-ACT-RM-");
+        jdbc.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty,sort_order) VALUES(?,?,?,?,1)",
+                UUID.randomUUID(), finishedGoodsId, assemblyId, new BigDecimal("2"));
+        UUID learnedEdge = UUID.randomUUID();
+        jdbc.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty,sort_order) VALUES(?,?,?,?,1)",
+                learnedEdge, assemblyId, rawMaterialId, new BigDecimal("3"));
+        UUID batchMaterialId = UUID.randomUUID();
+        insertGoods(batchMaterialId, unitId, "BOM-ACT-FB-");
+        jdbc.update("""
+                INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty,sort_order,consumption_basis,basis_output_qty)
+                VALUES(?,?,?,?,2,'FIXED_BATCH',50)
+                """, UUID.randomUUID(), assemblyId, batchMaterialId, new BigDecimal("4"));
+        // 重新学习后的窗口：累计减基线 = 3 个有效批次、暴露产量 3、净耗 10：每件 3.333…，按视图 6 位向上取整。
+        // 不良窗口 = 1.5 - 1 = 0.5：不良率 0.5 / 3.5 = 0.142857142…，采用时按 6 位四舍五入。
+        jdbc.update("""
+                INSERT INTO goods_bom_actual_usages(goods_id,component_goods_id,unit_id,output_unit_id,
+                    net_qty,exposure_output_qty,exposure_defect_qty,sample_count,
+                    baseline_net_qty,baseline_exposure_output_qty,baseline_exposure_defect_qty,baseline_sample_count)
+                VALUES(?,?,?,?,14,4,1.5,5,4,1,1,2)
+                """, assemblyId, rawMaterialId, unitId, unitId);
+        jdbc.update("""
+                INSERT INTO goods_bom_actual_usages(goods_id,component_goods_id,unit_id,output_unit_id,
+                    net_qty,exposure_output_qty,exposure_defect_qty,sample_count) VALUES(?,?,?,?,9,3,1,3)
+                """, assemblyId, batchMaterialId, unitId, unitId);
+        MaterialAnalysisService service = new MaterialAnalysisService(
+                entityManager,
+                mock(SecurityContextCurrentUser.class),
+                mock(TxSessionVars.class),
+                mock(ProductionDocumentAccessPolicy.class),
+                mock(com.uten.imp.security.OwnerVisibility.class),
+                mock(com.uten.imp.application.port.SubcontractPreparationPort.class),
+                mock(com.uten.imp.features.notice.ChainNoticeService.class),
+                mock(com.uten.imp.features.production.analysis.PreplanStockEntitlementService.class),
+                new MaterialAnalysisFlowStageService(entityManager),
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
+
+        List<MaterialAnalysisService.BomNode> nodes = loadBomTree(service,
+                sourceLine(UUID.randomUUID(), finishedGoodsId, unitId));
+
+        MaterialAnalysisService.BomNode direct = nodes.stream().filter(node -> node.depth() == 1).findFirst().orElseThrow();
+        MaterialAnalysisService.BomNode learned = nodes.stream()
+                .filter(node -> node.goodsId().equals(rawMaterialId)).findFirst().orElseThrow();
+        MaterialAnalysisService.BomNode fixedBatch = nodes.stream()
+                .filter(node -> node.goodsId().equals(batchMaterialId)).findFirst().orElseThrow();
+        assertThat(direct.usage().basis()).isEqualTo("DESIGN");
+        assertThat(direct.usage().reason()).isEqualTo("NO_DATA");
+        assertThat(direct.bomQty()).isEqualByComparingTo("2");
+        assertThat(learned.usage().designQty()).isEqualByComparingTo("3");
+        assertThat(learned.usage().actualQty()).isEqualByComparingTo("3.333334");
+        assertThat(learned.usage().actualQty()).isEqualByComparingTo(jdbc.queryForObject(
+                "SELECT effective_qty FROM v_goods_bom_item_usage WHERE bom_item_id=? AND usage_basis='ACTUAL'",
+                BigDecimal.class, learnedEdge));
+        assertThat(learned.usage().basis()).isEqualTo("ACTUAL");
+        assertThat(learned.usage().sampleCount()).isEqualTo(3L);
+        assertThat(learned.usage().defectRate()).isEqualByComparingTo("0.142857");
+        assertThat(learned.usage().defectRate()).isEqualByComparingTo(jdbc.queryForObject(
+                "SELECT round(defect_rate, 6) FROM v_goods_bom_item_usage WHERE bom_item_id=?", BigDecimal.class, learnedEdge));
+        assertThat(direct.usage().defectRate()).isNull();
+        assertThat(learned.perProductQty()).isEqualByComparingTo("6.666668");
+        assertThat(fixedBatch.usage().basis()).isEqualTo("DESIGN");
+        assertThat(fixedBatch.usage().reason()).isEqualTo("NOT_LINEAR");
+        assertThat(fixedBatch.usage().actualQty()).isNull();
+        // 固定批次的边有不良数据也不带不良率：没有采用的真实值，就没有与它一起的不良率。
+        assertThat(fixedBatch.usage().defectRate()).isNull();
+        assertThat(fixedBatch.bomQty()).isEqualByComparingTo("4");
     }
 
     /** Real PostgreSQL comparison of the previous per-source read mode and the batched mode. */

@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
-        "uten.policy-intelligence.enabled=false","uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true",
+        "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true",
         "uten.storage.malware-scan.provider=test-only","uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789","uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
@@ -105,7 +105,10 @@ class MaterialRouteMasterWriteBackEndToEndTest {
         MaterialView line=second.flatMaterials().stream().filter(m->m.goodsId().equals(c.leaf()))
                 .findFirst().orElseThrow();
         assertEquals("SUBCONTRACT",line.sourceSuggestion(),"新分析的建议路线只从货品主档来");
-        assertNull(line.sourceConfirmed(),"建议不是确认：新分析仍要人再确认一次");
+        // ADR-102 (2026-09-27): 有路线维护权限的人新建分析, 同一次请求就按主档把它确认掉,
+        // 不再要人再点一次, 也不再由页面补发 PUT /routes.
+        assertEquals("SUBCONTRACT",line.sourceConfirmed(),"主档给出的供应方式在新建分析时就确认");
+        assertTrue(second.autoConfirmedRouteCount()>0);
     }
 
     @Test void workshopLearningRejectsStaleEditorsAndDoesNotReturnResignedWorkers() {

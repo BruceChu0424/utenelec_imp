@@ -170,6 +170,8 @@ abstract final class RouteName {
   // 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const String adminSystemSettings = '/admin/system-settings';
   static const String adminServerStatus = '/admin/server-status';
+  // AI 服务设置(ADR-133: 服务商/密钥/连接测试; 超管, 写操作再认证)
+  static const String adminAiSettings = '/admin/ai-settings';
 
   // 财税部主数据别名入口（复用基础资料真实页面）
   static const String financeCustomers = '/finance/customers';
@@ -201,11 +203,17 @@ abstract final class RouteName {
   static const String stockMovement = '/stock/movement';
   static const String stockInstantInventory = '/stock/instant-inventory';
 
-  /// 库存详情（即时库存双击进入）：该货品各仓余额 + 出入库流水 + 受控余额调整。
-  /// balance/movement 两页已并入（旧路由重定向保深链）。
+  /// 库存详情 (即时库存双击进入)：该货品各仓余额 + 出入库流水 + 单重学习。
+  /// balance/movement 两页已并入 (旧路由重定向保深链)。
+  /// [tab]：balance=库存余额(默认) / ledger=出入库流水 / weight=单重学习 (ADR-135)。
   static const String stockItemBase = '/stock/item';
-  static String stockItemDetail(String goodsId) =>
-      '$stockItemBase/${Uri.encodeComponent(goodsId.trim())}';
+  static String stockItemDetail(String goodsId, {String? tab}) {
+    final path = '$stockItemBase/${Uri.encodeComponent(goodsId.trim())}';
+    final key = tab?.trim() ?? '';
+    return key.isEmpty
+        ? path
+        : Uri(path: path, queryParameters: {'tab': key}).toString();
+  }
 
   // 仓库管理（8 单据 hub + 列表 + new/detail/edit + 报表）。
   static const String warehouse = '/warehouse';
@@ -322,6 +330,14 @@ abstract final class RouteName {
   /// 货架目视化清单（库位号驱动的挂牌打印/导出；静态段，须先于 /warehouse/:code）。
   static const String warehouseShelfLabels = '/warehouse/shelf-labels';
 
+  /// 库存分析 (ADR-135；呆滞与库龄 / 盘点建议 / 称重异常 / 单重学习；stock_report:view；
+  /// 静态段，须先于 /warehouse/:code)。
+  static const String warehouseInsights = '/warehouse/insights';
+
+  /// 独立称重计数页 (ADR-135；手机放秤旁：选货品 → 称重折算件数，可保存抽样；
+  /// stock:view，保存抽样另需称样权限；静态段，须先于 /warehouse/:code)。
+  static const String warehouseWeighCount = '/warehouse/weigh-count';
+
   /// 委外出仓任务中心与拣货出仓页（V304；仓库专属，静态段须先于 /warehouse/:code）。
   static const String warehouseSubcontractOutbound =
       '/warehouse/subcontract-outbound';
@@ -350,6 +366,23 @@ abstract final class RouteName {
       '/warehouse/DRAW/batch-issue';
 
   static const String warehouseDrawTasks = '/warehouse/tasks/draw';
+
+  // —— 车间内料仓 (ADR-131) ——
+  /// 车间内料仓设置: 车间开启 / 机台与容器 / 上线准备 (静态段须先于 /warehouse/:code)。
+  static const String workshopMaterialSetup =
+      '/warehouse/workshop-material/setup';
+
+  /// 车间内料仓页: 现存、申请领料 / 退回 / 其它耗用、盘点与结算状态 (?workshopId=)。
+  static const String workshopMaterialBin = '/workshop-material/bin';
+
+  /// 仓库发料页: 按申请发料、直接发料、收退回 (?requisitionId= 或 ?mode=direct)。
+  static const String workshopMaterialIssue = '/workshop-material/issue';
+
+  /// 盘点页 (手机优先; ?periodId=)。
+  static const String workshopMaterialCount = '/workshop-material/count';
+
+  /// 车间内料仓用量报表与结算页 (生产、钱流报表入口)。
+  static const String workshopMaterialReports = '/reports/workshop-material';
 
   static const String procurementArrivalExceptions =
       '/procurement/arrival-exceptions';
@@ -439,6 +472,12 @@ abstract final class RouteName {
   /// 出货财务审核详情（财务专用审核视图，与销售端出货详情分离）。
   static const String financeSalesShipmentAuditReview =
       '/finance/sales-shipment-audits/:id';
+
+  /// 销售报价财务核价(ADR-134)：待核价 / 已核价 / 已退回 三个分段。
+  static const String financeQuoteReview = '/finance/quote-review';
+
+  /// 报价核价详情：认领后可改价、退回销售、确认报价、撤销确认。
+  static const String financeQuoteReviewDetail = '/finance/quote-review/:id';
   static const String financeArAp = '/finance/ar-ap';
   static const String financePayables = '/finance/payables';
   static const String financeReconciliations = '/finance/reconciliations';
@@ -539,11 +578,19 @@ abstract final class RoutePath {
     queryParameters: {'requestId': requestId.trim()},
   ).toString();
 
-  /// 货品资料：新增 / 详情整页。[tab]：0=基本信息，1=组装信息，2=成本预算。
+  /// 货品资料：新增 / 详情整页。[tab] 为页签名 basic (基本信息, 默认) / bom (组装信息) /
+  /// cost (成本预算) / files (图片和文件) / stock (库存与出入库)，路由原样透传 ?tab= (ADR-135；
+  /// 详情页仍认旧深链的数字 0/1/2)。
   static String basicinfoGoodsNew(String categoryId) =>
       '/basicinfo/goods/new?categoryId=$categoryId';
-  static String basicinfoGoodsDetail(String id, {int? tab}) =>
-      tab == null ? '/basicinfo/goods/$id' : '/basicinfo/goods/$id?tab=$tab';
+  static String basicinfoGoodsDetail(String id, {String? tab}) {
+    final path = '/basicinfo/goods/${Uri.encodeComponent(id.trim())}';
+    final key = tab?.trim() ?? '';
+    return key.isEmpty
+        ? path
+        : Uri(path: path, queryParameters: {'tab': key}).toString();
+  }
+
   static String basicinfoAccountDetail(String id, {bool edit = false}) =>
       edit ? '/basicinfo/account/$id?edit=true' : '/basicinfo/account/$id';
   static String expenseDetail(String id) => '/expense/$id';
@@ -640,6 +687,40 @@ abstract final class RoutePath {
       ).toString();
   static String financeArrivalException(String id) =>
       '/finance/procurement-arrival-exceptions/$id';
+
+  /// 报价核价详情(ADR-134)。
+  static String financeQuoteReview(String id) =>
+      '/finance/quote-review/${Uri.encodeComponent(id)}';
+
+  /// 车间内料仓页深链 (ADR-131): 指定车间时带 ?workshopId=。
+  static String workshopMaterialBin({String? workshopId}) =>
+      _withQuery(RouteName.workshopMaterialBin, {'workshopId': workshopId});
+
+  /// 仓库按申请发料 / 收退回。
+  static String workshopMaterialIssueForRequisition(String requisitionId) =>
+      _withQuery(RouteName.workshopMaterialIssue, {
+        'requisitionId': requisitionId,
+      });
+
+  /// 仓库直接发料 (不经车间申请)。
+  static String workshopMaterialDirectIssue() =>
+      _withQuery(RouteName.workshopMaterialIssue, {'mode': 'direct'});
+
+  /// 某一期的盘点页。
+  static String workshopMaterialCount(String periodId) =>
+      _withQuery(RouteName.workshopMaterialCount, {'periodId': periodId});
+
+  /// 只带非空参数; 一个参数都没有时不留问号。
+  static String _withQuery(String path, Map<String, String?> params) {
+    final query = <String, String>{
+      for (final entry in params.entries)
+        if (entry.value?.trim().isNotEmpty == true)
+          entry.key: entry.value!.trim(),
+    };
+    return query.isEmpty
+        ? path
+        : Uri(path: path, queryParameters: query).toString();
+  }
 
   /// 员工修改审批单批详情（HR 端）。
   static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';

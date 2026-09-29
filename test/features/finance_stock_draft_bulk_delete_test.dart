@@ -694,7 +694,7 @@ class _DraftApi extends ApiClient {
   }) async => [];
 
   @override
-  Future<void> delete(String path) async {
+  Future<void> delete(String path, {Map<String, dynamic>? query}) async {
     final id = path.substring(basePath.length + 1);
     events.add('DELETE $id');
     if (deleteFailure != null) throw deleteFailure!;

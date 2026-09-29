@@ -232,6 +232,10 @@ class ArchitectureBoundaryTest {
                     "发货基本单位数量取 4 位(数量, 非金额)"),
             Map.entry("features/stock/StockDocService.java",
                     "成品点收按比例拆分重量/赠品数量与领料比例(数量, 非金额)"),
+            Map.entry("features/stock/weight/",
+                    "重量与库存分析是数量口径, 非金额"),
+            Map.entry("features/stock/insight/",
+                    "重量与库存分析是数量口径, 非金额"),
             Map.entry("features/production/dailyreport/ProductionFqcFinishedInboundService.java",
                     "FQC 放行按累计切片分摊实际重量(重量是数量口径, 非金额)"),
             Map.entry("features/production/directtransfer/ProductionWorkshopDirectTransferService.java",
@@ -277,6 +281,28 @@ class ArchitectureBoundaryTest {
 
     private static String stripComments(String source) {
         return source.replaceAll("(?s)/\\*.*?\\*/", "").replaceAll("(?m)//.*$", "");
+    }
+
+    /**
+     * ADR-094 仍然有效(ADR-133 重申): 报销发票与票据绝不发往外部 AI。报销模块不得引用公共 AI 平台的
+     * 补全出口或任务处理器接口; 发票识别只用本机 OCR。
+     */
+    @Test
+    void expenseClaimNeverReachesTheSharedAiPlatform() throws IOException {
+        Pattern aiPlatform = Pattern.compile(
+                "\\bAi(?:CompletionPort|JobHandler)\\b|com\\.uten\\.imp\\.features\\.ai\\.");
+        List<String> violations = new ArrayList<>();
+        Path expenseClaim = FEATURE_SOURCE.resolve("expenseclaim");
+        if (Files.exists(expenseClaim)) {
+            for (Path file : javaFiles(expenseClaim)) {
+                if (aiPlatform.matcher(stripComments(Files.readString(file))).find()) {
+                    violations.add(relative(file));
+                }
+            }
+        }
+        assertTrue(violations.isEmpty(),
+                () -> "报销模块不得接入公共 AI 平台(ADR-094/ADR-133, 发票不发往外部 AI):\n"
+                        + String.join("\n", violations));
     }
 
     /**
@@ -330,7 +356,12 @@ class ArchitectureBoundaryTest {
                 "features/admin/impersonation/ImpersonationController.java", List.of("\"/enter\""),
                 "features/admin/systemsetting/SystemSettingController.java", List.of("@PutMapping"),
                 "features/admin/systemtest/SystemTestController.java", List.of(
-                        "\"/business-data/reset\"", "\"/business-data/attachments/prepare\""));
+                        "\"/business-data/reset\"", "\"/business-data/attachments/prepare\""),
+                // ADR-133: AI 服务配置的写入与「用已保存密钥」的探测都必须再认证。
+                "features/ai/provider/AiProviderController.java", List.of(
+                        "\"/providers\"", "\"/providers/{id}\"", "\"/providers/{id}/default\"",
+                        "\"/providers/{id}/enabled\"", "\"/providers/{id}/test\"",
+                        "\"/providers/{id}/models\""));
         List<String> missing = new ArrayList<>();
         for (Map.Entry<String, List<String>> entry : required.entrySet()) {
             String[] lines = Files.readString(MAIN_SOURCE.resolve(entry.getKey())).split("\\R");

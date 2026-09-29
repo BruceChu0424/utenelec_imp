@@ -355,6 +355,8 @@ class ProductionFinishedArrivalRegistrationItem {
     this.lastWarehouseId,
     this.lastWarehouseName,
     this.countedQty,
+    this.weight,
+    this.unitRate = 1,
   });
 
   final String reportItemId;
@@ -374,6 +376,15 @@ class ProductionFinishedArrivalRegistrationItem {
 
   /// Explicit physical count; historical and manual-receipt registrations stay unknown.
   final double? countedQty;
+
+  /// 已登记批次登记时实称的净重(千克)；待登记行与没称的行为空(ADR-135 §3.2)。
+  final double? weight;
+
+  /// 1 个报工单位 = 多少货品基本单位(报工行换算率，空按 1)；基本数量 = 报工数量 x 它。
+  final double unitRate;
+
+  /// 报工数量折成货品基本单位(核对实称重量、换算按重量计的精确重量用)。
+  double get reportedBaseQty => reportedQty * unitRate;
   final String? place;
   final String? placeHint;
 
@@ -406,5 +417,12 @@ class ProductionFinishedArrivalRegistrationItem {
     lastWarehouseId: json['lastWarehouseId'] as String?,
     lastWarehouseName: json['lastWarehouseName'] as String?,
     countedQty: (json['countedQty'] as num?)?.toDouble(),
+    weight: (json['weight'] as num?)?.toDouble(),
+    unitRate: _positiveRate(json['unitRate']),
   );
+
+  static double _positiveRate(Object? raw) {
+    final rate = (raw as num?)?.toDouble();
+    return rate != null && rate.isFinite && rate > 0 ? rate : 1;
+  }
 }

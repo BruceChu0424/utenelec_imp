@@ -261,11 +261,19 @@ class ApiClient {
     }
   }
 
-  /// 上传原始字节（POST，octet-stream）并返回 JSON——货品导入 detect/commit 用。
+  /// 上传原始字节(POST, octet-stream)并返回 JSON——货品导入 detect/commit、
+  /// 公共 AI 作业提交(ADR-133)用。
+  ///
+  /// [headers] 追加请求头(如 AI 作业的 X-Uten-File-Name，值须调用方先编码为 ASCII)；
+  /// [sendTimeout] 覆盖全局 30s 上传时限(IO 端是整段上传的总时长，大文件慢网要放宽)；
+  /// [receiveTimeout] 覆盖全局 45s 接收时限。均为可选，既有调用方不受影响。
   Future<Map<String, dynamic>> postBytes(
     String path,
     Uint8List bytes, {
     Map<String, dynamic>? query,
+    Map<String, String>? headers,
+    Duration? sendTimeout,
+    Duration? receiveTimeout,
   }) async {
     try {
       final r = await _dio.post<dynamic>(
@@ -275,6 +283,9 @@ class ApiClient {
         options: Options(
           contentType: 'application/octet-stream',
           responseType: ResponseType.json,
+          headers: headers,
+          sendTimeout: sendTimeout,
+          receiveTimeout: receiveTimeout,
         ),
       );
       return _asMap(r.data);
@@ -343,9 +354,10 @@ class ApiClient {
     return <String, dynamic>{};
   }
 
-  Future<void> delete(String path) async {
+  /// [query] 作为查询参数发送(例如乐观锁版本号 `?version=`)。
+  Future<void> delete(String path, {Map<String, dynamic>? query}) async {
     try {
-      await _dio.delete<dynamic>(path);
+      await _dio.delete<dynamic>(path, queryParameters: query);
     } on DioException catch (e) {
       throw _convert(e);
     }

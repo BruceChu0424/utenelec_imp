@@ -94,6 +94,16 @@ class _FakeBomRepo implements GoodsBomRepository {
     String itemId,
     bool audited,
   ) async => _tree[goodsId]!.firstWhere((r) => r.id == itemId);
+
+  @override
+  Future<GoodsBomLearningSummary> learning(String goodsId) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<GoodsBomLearningSummary> relearn(
+    String goodsId,
+    String componentGoodsId,
+  ) async => throw UnimplementedError();
 }
 
 Future<void> _pumpTab(

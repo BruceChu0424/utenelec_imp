@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -51,6 +52,21 @@ class AuditServiceWritePolicyTest {
     @AfterEach
     void tearDown() {
         RequestContextHolder.resetRequestAttributes();
+    }
+
+    @Test
+    void sideEffectEventLeavesTheRequestUnexplainedSoItsOwnOperationRowIsStillWritten() {
+        UUID actor = UUID.randomUUID();
+        service.logCommittedSideEffect(actor, "13800138000", "client.learn_from_document", "clients",
+                UUID.randomUUID().toString(), "从客户文件补全: 邮箱");
+
+        assertEquals("client.learn_from_document", saved().getFirst().getAction());
+        assertEquals(actor, saved().getFirst().getActorId());
+        assertFalse(AuditRequestContext.meaningfulEventRecorded(request));
+
+        service.logCommitted(actor, "13800138000", "client_goods_alias.delete", "client_goods_aliases",
+                UUID.randomUUID().toString(), "删除客户货品对照");
+        assertTrue(AuditRequestContext.meaningfulEventRecorded(request));
     }
 
     @Test

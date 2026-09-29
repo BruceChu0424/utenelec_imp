@@ -40,6 +40,8 @@ void main() {
     );
     expect(find.text('财务审核'), findsWidgets);
     expect(find.text('仓库作业'), findsOneWidget);
+    // ADR-128：出货金额按本单币种写成「币种 金额」。
+    expect(find.text('美金 100.00'), findsOneWidget);
   });
 
   testWidgets(
@@ -209,6 +211,7 @@ class _OutboundGateway implements WarehouseSalesOutboundGateway {
     String? reason,
     Map<String, String>? stockPlaces,
     Map<String, String?>? lineWarehouses,
+    Map<String, double>? lineWeights,
   }) => throw UnimplementedError();
 }
 
@@ -259,6 +262,11 @@ class _ShipmentTaskApi extends ApiClient {
     if (path.endsWith('/clients/dict')) {
       return const [
         {'id': 'client-1', 'code': 'C001', 'name': '测试客户'},
+      ];
+    }
+    if (path.endsWith('/currencies/dict')) {
+      return const [
+        {'id': 'currency-1', 'code': '002', 'name': '美金'},
       ];
     }
     return const <Map<String, dynamic>>[];

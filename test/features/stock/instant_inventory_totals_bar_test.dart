@@ -36,8 +36,11 @@ void main() {
     // 920 = 跨单位相加，绝不允许出现。
     expect(find.textContaining('920'), findsNothing);
 
-    // 重量只有一个口径，不分组，直接出数值。
-    expect(find.text('45.5'), findsOneWidget);
+    // 重量 (千克) 按显示单位换算 (默认自动 → 吨)；含估算前缀「≈」，未称项数并进同一项，
+    // 两个伴随计数项不单独占位。
+    expect(find.text('≈3.52 t (另有 12 项未称)'), findsOneWidget);
+    expect(find.text('重量未知'), findsNothing);
+    expect(find.text('重量含估算'), findsNothing);
   });
 
   testWidgets('后端未下发 totals 时合计条整条不渲染（不伪造 0、不退化成本页合计）', (tester) async {
@@ -115,6 +118,7 @@ class _InstantInventoryApi extends ApiClient {
           'unitName': '个',
           'qty': 10,
           'weight': 1.5,
+          'weightEstimated': true,
         },
         <String, dynamic>{
           'goodsId': '22222222-2222-2222-2222-222222222222',
@@ -133,10 +137,28 @@ class _InstantInventoryApi extends ApiClient {
           <String, dynamic>{
             'key': 'weight',
             'label': '合计库存重量',
-            'type': 'number',
+            'type': 'weight',
             'groupKey': null,
             'groups': <Object?>[
-              <String, dynamic>{'unit': null, 'value': 45.5},
+              <String, dynamic>{'unit': null, 'value': 3520},
+            ],
+          },
+          <String, dynamic>{
+            'key': 'weight_unknown_rows',
+            'label': '重量未知',
+            'type': 'count',
+            'groupKey': null,
+            'groups': <Object?>[
+              <String, dynamic>{'unit': null, 'value': 12},
+            ],
+          },
+          <String, dynamic>{
+            'key': 'weight_estimated_rows',
+            'label': '重量含估算',
+            'type': 'count',
+            'groupKey': null,
+            'groups': <Object?>[
+              <String, dynamic>{'unit': null, 'value': 3},
             ],
           },
           <String, dynamic>{

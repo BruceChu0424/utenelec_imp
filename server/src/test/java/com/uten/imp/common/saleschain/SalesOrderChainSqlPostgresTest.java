@@ -48,7 +48,9 @@ class SalesOrderChainSqlPostgresTest {
                         qty numeric(18,4), shipped_qty numeric(18,4), returned_qty numeric(18,4),
                         flag_qty numeric(18,4), reserved_qty numeric(18,4),
                         planned_qty numeric(18,4), produced_qty numeric(18,4),
-                        updated_at timestamptz NOT NULL DEFAULT now())
+                        updated_at timestamptz NOT NULL DEFAULT now(),
+                        client_goods_name VARCHAR(500),
+                        client_price NUMERIC)
                     """);
             st.execute("""
                     CREATE TABLE plan_order_item_links (

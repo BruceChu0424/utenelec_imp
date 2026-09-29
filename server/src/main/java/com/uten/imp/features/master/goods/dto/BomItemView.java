@@ -1,15 +1,18 @@
 package com.uten.imp.features.master.goods.dto;
 
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
  * 组装信息行视图：BOM 行 + 组件货品展示信息（编号/名称/型号/规格/单位/颜色/材质）。
  * hasChildren = 组件自身也有 BOM（组装树可继续展开）。
+ * qty = 设计使用数量；真实使用数量与计算采用值({@link BomItemUsage})在 JSON 里平铺成同名字段。
  */
 @Getter
 @AllArgsConstructor
@@ -27,7 +30,7 @@ public class BomItemView {
     private Integer colorLegacyId;
     private UUID defaultSupplierId;
     private Integer vendLegacyId;
-    private BigDecimal qty;
+    private BigDecimal qty;            // 设计使用数量
     private BigDecimal price;
     private BigDecimal total;
     private String summary;            // 备注
@@ -40,4 +43,12 @@ public class BomItemView {
     private boolean allowPartialPackage;
     private boolean hardGate;          // 仅 START/ASSEMBLY/FINISH 可为 true
     private OffsetDateTime auditedAt;  // 审计标记时间（非空 = 已核对无误）
+    @JsonUnwrapped
+    private BomItemUsage usage;        // 真实使用数量/计算采用值/系统学习标记(ADR-129)
+    /** 组件发料方式 (ORDER / PERIODIC); PERIODIC 的行是期间边, 只填单个重量, 形状列只读。 */
+    private String componentIssueMethod;
+    /** 期间边的单个重量 (克); 组件基本单位不能按克换算或不是期间边时为 null (按 qty 原单位显示)。 */
+    private BigDecimal unitWeightGrams;
+    /** 保存后的提醒 (不拦保存), 如单个重量与货品资料单重相差 20% 以上; 列表查询时为空。 */
+    private List<String> warnings;
 }

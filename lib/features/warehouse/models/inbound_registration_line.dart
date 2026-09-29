@@ -2,14 +2,15 @@
 // 表格、记忆都应该一样，能公用的都公用」)：
 //   - [InboundRoute]：两条入库路线的名字、图标、说明与路由参数(任务中心按钮、批量页
 //     提交按钮、单张页两个按钮、确认弹窗全从这里取，保证同名同义)；
-//   - [InboundRegistrationLine]：一行登记明细的「入库仓库 + 库位号」状态与改仓/回填
-//     建议/批量写库位规则(两类登记页的行模型都继承它)；
+//   - [InboundRegistrationLine]：一行登记明细的「入库仓库 + 库位号 + 实称重量」状态与
+//     改仓/回填建议/批量写库位规则(两类登记页的行模型都继承它)；
 //   - [InboundPlaceSuggestionLoader]：按仓合并请求库位建议、只覆盖没手填过的行。
 import 'package:flutter/material.dart';
 
 import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../repositories/warehouse_place_suggestion_repository.dart';
 
 /// 入库两条路线：点哪条就走哪条，页面上两条路线始终用同一对名字。
@@ -66,7 +67,8 @@ enum InboundRoute {
 ///   - 仓库预填(来源默认仓 / 上次所选仓)一律黄框待核对，用户一改即清标；
 ///   - 改仓：库位清空(库位属于仓库)，等新仓的库位建议回填；
 ///   - 库位建议只覆盖没手填过的行(空值或黄框预填)，回填后黄框待核对；
-///   - 批量写库位(右键或勾选多行后改一行)视同已核对，不留黄框。
+///   - 批量写库位(右键或勾选多行后改一行)视同已核对，不留黄框；
+///   - 实称重量(ADR-135)逐行各记各的，永不批量(一次称重是一个物理事实)。
 abstract class InboundRegistrationLine extends EditableGridRow {
   InboundRegistrationLine({
     String? warehouseId,
@@ -102,6 +104,9 @@ abstract class InboundRegistrationLine extends EditableGridRow {
 
   /// 当前预填库位的来源(黄框说明用)。
   InboundPlaceSource placeSource;
+
+  /// 本行实称重量(千克为准；空 = 没称，永不阻断登记)。
+  final WeightEntryController weight = WeightEntryController();
 
   /// 用户手填过库位(非空且不是预填)：建议不再覆盖。
   bool get placeIsManual => place.text.trim().isNotEmpty && !place.autofilled;
@@ -140,6 +145,7 @@ abstract class InboundRegistrationLine extends EditableGridRow {
   void dispose() {
     warehouse.dispose();
     place.dispose();
+    weight.dispose();
     super.dispose();
   }
 }

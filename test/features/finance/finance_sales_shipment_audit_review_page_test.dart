@@ -79,11 +79,30 @@ void main() {
         'financeAudit': 0,
         'clientName': '测试客户',
         'settlementMethodName': '合同定金',
-        'outstanding': '100.00',
-        'creditFloor': '30.00',
-        'overFloor': '70.00',
-        'availablePrepaymentOriginal': '25.00',
-        'availablePrepaymentLocal': '180.00',
+        // ADR-128：客户余额是服务端共用余额视图，本单币种一档 + 其它币种另列。
+        'clientBalance': {
+          'currencyName': '美金',
+          'openOriginal': '0',
+          'creditOriginal': '25.00',
+          'netOriginal': '-25.00',
+          'creditBookLocal': '180.00',
+          'otherCurrencies': [
+            {
+              'currencyName': '人民币',
+              'baseCurrency': true,
+              'openOriginal': '100.00',
+              'creditOriginal': '0',
+              'netOriginal': '100.00',
+            },
+          ],
+          'baseCurrencyName': '人民币',
+          'openBookLocal': '100.00',
+          'unverifiedLocal': '0',
+          'unverifiedCount': 0,
+          'creditLimitLocal': '30.00',
+          'overLimitLocal': '70.00',
+          'overCredit': true,
+        },
       },
     );
 
@@ -96,15 +115,26 @@ void main() {
     expect(find.textContaining('XS-20260912-001'), findsWidgets);
     expect(find.textContaining('待财务审核'), findsOneWidget);
     expect(find.text('合同定金'), findsOneWidget);
-    expect(find.text('正式应收未收(本币)'), findsOneWidget);
-    expect(find.text('铺底额(本币)'), findsOneWidget);
-    expect(find.text('超出铺底额(本币)'), findsOneWidget);
-    expect(find.text('70.00'), findsOneWidget);
-    expect(find.text('可用预收(原币)'), findsOneWidget);
-    expect(find.text('可用预收(本币)'), findsOneWidget);
-    expect(find.text('25.00'), findsOneWidget);
-    expect(find.text('180.00'), findsOneWidget);
-    expect(find.textContaining('真实已审核到账'), findsOneWidget);
+    // 本单币种(美金)一档：应收未收 / 可用预收 / 还差多少，都写成「币种 金额」。
+    expect(find.text('应收未收'), findsOneWidget);
+    expect(find.text('美金 0.00'), findsOneWidget);
+    expect(find.text('可用预收'), findsOneWidget);
+    expect(find.text('美金 25.00'), findsOneWidget);
+    expect(find.text('预收有余 美金 25.00'), findsOneWidget);
+    // 铺底额只和全部币种正式应收(折本币，不扣预收)比，超出标红。
+    expect(find.text('全部币种应收(折本币)'), findsOneWidget);
+    expect(find.text('人民币 100.00'), findsOneWidget);
+    expect(find.text('铺底额'), findsOneWidget);
+    expect(find.text('人民币 30.00'), findsOneWidget);
+    expect(find.text('超出铺底额'), findsOneWidget);
+    expect(find.text('人民币 70.00'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.text('人民币 70.00')).style?.color,
+      Theme.of(tester.element(find.text('人民币 70.00'))).colorScheme.error,
+    );
+    // 其它币种各列各的，不换算。
+    expect(find.text('另有 人民币 100.00'), findsOneWidget);
+    expect(find.textContaining('只算已审核到账的预收'), findsOneWidget);
     expect(find.textContaining('结账方式来自本单'), findsOneWidget);
     expect(
       api.postPaths.where((path) => path.endsWith('/finance-audit')),
@@ -236,11 +266,17 @@ void main() {
         'financeAudit': 0,
         'clientName': '汇款客户',
         'settlementMethodName': '汇款',
-        'outstanding': '100.00',
-        'creditFloor': '0',
-        'overFloor': '100.00',
-        'availablePrepaymentOriginal': '0',
-        'availablePrepaymentLocal': '0',
+        'clientBalance': {
+          'currencyName': '人民币',
+          'baseCurrency': true,
+          'openOriginal': '100.00',
+          'netOriginal': '100.00',
+          'baseCurrencyName': '人民币',
+          'openBookLocal': '100.00',
+          'creditLimitLocal': '0',
+          'overLimitLocal': '100.00',
+          'overCredit': true,
+        },
       },
     );
 
@@ -298,11 +334,12 @@ void main() {
           'baseCurrency': false,
           'shipmentExchangeRate': '',
           'suggestedExchangeRate': '',
-          'outstanding': '0',
-          'creditFloor': '0',
-          'overFloor': '0',
-          'availablePrepaymentOriginal': '0',
-          'availablePrepaymentLocal': '0',
+          'clientBalance': {
+            'currencyName': '美金',
+            'baseCurrencyName': '人民币',
+            'creditLimitLocal': '0',
+            'overLimitLocal': '0',
+          },
         },
       );
 
@@ -826,7 +863,7 @@ class _ReviewApi extends ApiClient {
   }
 
   @override
-  Future<void> delete(String path) async {}
+  Future<void> delete(String path, {Map<String, dynamic>? query}) async {}
 
   @override
   Future<List<Map<String, dynamic>>> getList(

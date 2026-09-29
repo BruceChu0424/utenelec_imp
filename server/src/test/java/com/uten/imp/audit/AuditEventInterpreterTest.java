@@ -2,6 +2,7 @@ package com.uten.imp.audit;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -214,6 +215,90 @@ class AuditEventInterpreterTest {
         assertTrue(event.changeSummary().contains("原因代码：OLD → NEW"));
     }
 
+    /** 组装行的 qty 是「设计使用数量」(ADR-129)；别的表的 qty 仍按通用「数量」。 */
+    @Test
+    void bomItemQuantityAndLearningColumnsReadInPlainChinese() {
+        AuditLog bom = new AuditLog();
+        bom.setAction("update");
+        bom.setTargetType("goods_bom_items");
+        bom.setBefore("{\"qty\":0.3,\"learning_profile_goods_id\":\"10000000-0000-0000-0000-000000000001\","
+                + "\"learning_released_at\":null}");
+        bom.setAfter("{\"qty\":0.35,\"learning_profile_goods_id\":null,"
+                + "\"learning_released_at\":\"2026-09-27T08:00:00Z\"}");
+        bom.setResult("success");
+
+        String changes = interpreter.interpret(bom).changeSummary();
+
+        assertTrue(changes.contains("设计使用数量：0.3 → 0.35"), changes);
+        assertTrue(changes.contains("系统学习标记："), changes);
+        assertTrue(changes.contains("人工删除后不再自动加回的时间："), changes);
+        assertTrue(!changes.contains("未登记字段"), changes);
+
+        AuditLog other = new AuditLog();
+        other.setAction("update");
+        other.setTargetType("sales_order_items");
+        other.setBefore("{\"qty\":1}");
+        other.setAfter("{\"qty\":2}");
+        other.setResult("success");
+        assertTrue(interpreter.interpret(other).changeSummary().contains("数量：1 → 2"));
+        assertTrue(!interpreter.interpret(other).changeSummary().contains("设计使用数量"));
+    }
+
+    /** 新列有中文名；表限定的枚举值只在自己的表上翻译(研发任务类别 DESIGN 不会读成「按设计使用数量」)。 */
+    @Test
+    void usageAndRateSourceColumnsReadInPlainChineseOnlyOnTheirOwnTable() {
+        AuditLog node = new AuditLog();
+        node.setAction("update");
+        node.setTargetType("production_material_analysis_materials");
+        node.setBefore("{\"usage_basis\":\"DESIGN\",\"usage_reason\":\"NO_DATA\",\"actual_bom_qty\":null}");
+        node.setAfter("{\"usage_basis\":\"ACTUAL\",\"usage_reason\":null,\"actual_bom_qty\":0.9}");
+        node.setResult("success");
+        String changes = interpreter.interpret(node).changeSummary();
+        assertTrue(changes.contains("计算采用：按设计使用数量 → 按真实使用数量"), changes);
+        assertTrue(changes.contains("按设计使用数量的原因：还没有已完工且核清余料的生产数据 → 空"), changes);
+        assertTrue(changes.contains("真实使用数量：空 → 0.9"), changes);
+
+        AuditLog line = new AuditLog();
+        line.setAction("update");
+        line.setTargetType("production_plan_items");
+        line.setBefore("{\"allowed_overproduction_rate_source\":\"DEFAULT\"}");
+        line.setAfter("{\"allowed_overproduction_rate_source\":\"EXPLICIT\"}");
+        line.setResult("success");
+        assertTrue(interpreter.interpret(line).changeSummary().contains("超产比例来源：系统默认 → 人工确认"));
+
+        AuditLog task = new AuditLog();
+        task.setAction("update");
+        task.setTargetType("rd_tasks");
+        task.setBefore("{\"usage_basis\":\"DESIGN\"}");
+        task.setAfter("{\"usage_basis\":\"ACTUAL\"}");
+        task.setResult("success");
+        String other = interpreter.interpret(task).changeSummary();
+        assertTrue(other.contains("DESIGN → ACTUAL"), other);
+    }
+
+    /** 报工不良数与物料分析节点采用时的不良率有中文名(与前端同一措辞)，不显示列名。 */
+    @Test
+    void defectColumnsReadInPlainChinese() {
+        AuditLog item = new AuditLog();
+        item.setAction("update");
+        item.setTargetType("production_daily_report_items");
+        item.setBefore("{\"defect_qty\":0}");
+        item.setAfter("{\"defect_qty\":3}");
+        item.setResult("success");
+        String reported = interpreter.interpret(item).changeSummary();
+        assertTrue(reported.contains("不良数：0 → 3"), reported);
+
+        AuditLog node = new AuditLog();
+        node.setAction("update");
+        node.setTargetType("production_material_analysis_materials");
+        node.setBefore("{\"usage_defect_rate\":null}");
+        node.setAfter("{\"usage_defect_rate\":0.0325}");
+        node.setResult("success");
+        String adopted = interpreter.interpret(node).changeSummary();
+        assertTrue(adopted.contains("采用时的不良率：空 → 0.0325"), adopted);
+        assertTrue(!adopted.contains("usage_defect_rate") && !reported.contains("defect_qty"), adopted + reported);
+    }
+
     @Test
     void labelsWarehouseGoodsPlacePreferenceFieldsInChinese() {
         AuditLog log = new AuditLog();
@@ -401,6 +486,42 @@ class AuditEventInterpreterTest {
     }
 
     @Test
+    void labelsCustomerDocumentLearningEventsInChinese() {
+        AuditLog learned = request("client.learn_from_document", "/api/sales/quotes");
+        learned.setEventSource("business");
+        learned.setHttpMethod("POST");
+        learned.setTargetType("clients");
+        AuditEventInterpreter.InterpretedEvent learnedEvent = interpretStored(learned);
+        assertEquals("从客户文件补全资料", learnedEvent.actionLabel());
+        assertEquals("客户", learnedEvent.objectLabel());
+
+        AuditLog alias = request("client_goods_alias.delete",
+                "/api/master/clients/3e27d660-5c36-41c8-8ea1-7f777f52a9cc/goods-aliases/"
+                        + "5b0f3f7e-1d2a-4c55-9d0e-0a1b2c3d4e5f");
+        alias.setEventSource("business");
+        alias.setHttpMethod("DELETE");
+        alias.setTargetType("client_goods_aliases");
+        AuditEventInterpreter.InterpretedEvent aliasEvent = interpretStored(alias);
+        assertEquals("删除", aliasEvent.actionLabel());
+        assertEquals("客户货品对照", aliasEvent.objectLabel());
+
+        AuditLog nameEn = request("goods.update_name_en",
+                "/api/master/goods/3e27d660-5c36-41c8-8ea1-7f777f52a9cc/name-en");
+        nameEn.setEventSource("business");
+        nameEn.setHttpMethod("PUT");
+        nameEn.setTargetType("goods");
+        assertEquals("修改英文名称", interpretStored(nameEn).actionLabel());
+
+        AuditLog created = request("client_from_document.create", "/api/master/clients/from-document");
+        created.setEventSource("business");
+        created.setHttpMethod("POST");
+        created.setTargetType("client_from_document");
+        AuditEventInterpreter.InterpretedEvent createdEvent = interpretStored(created);
+        assertEquals("新增", createdEvent.actionLabel());
+        assertEquals("客户(来自客户文件)", createdEvent.objectLabel());
+    }
+
+    @Test
     void labelsMasterDataRoutesInChinese() {
         Map<String, String> expected = Map.of(
                 "/api/master/goods", "货品",
@@ -431,6 +552,8 @@ class AuditEventInterpreterTest {
                 Map.entry("/api/production/material-analyses", "生产物料分析"),
                 Map.entry("/api/production/quality-inspections", "成品检验"),
                 Map.entry("/api/stock/docs", "库存单据"),
+                Map.entry("/api/stock/goods", "货品出入库流水"),
+                Map.entry("/api/stock/insights", "库存分析"),
                 Map.entry("/api/finance/incomes", "其他收入单"),
                 Map.entry("/api/finance/ar-ap", "应收应付台账"),
                 Map.entry("/api/finance/payments", "付款单"),
@@ -454,6 +577,16 @@ class AuditEventInterpreterTest {
             assertTrue(!event.summary().contains("其他业务对象"), event.summary());
             assertTrue(!event.summary().contains("/api/"), event.summary());
         });
+    }
+
+    @Test
+    void labelsStockInsightsAsTheWarehouseAnalysisPage() {
+        for (String path : List.of("/api/stock/insights/health", "/api/stock/insights/cycle-count",
+                "/api/stock/insights/goods/3e27d660-5c36-41c8-8ea1-7f777f52a9cc")) {
+            AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(request("http_get", path));
+            assertEquals("仓库 · 库存分析", event.pageLabel(), path);
+            assertEquals("库存分析", event.objectLabel(), path);
+        }
     }
 
     @Test

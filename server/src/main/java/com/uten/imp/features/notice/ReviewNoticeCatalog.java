@@ -42,6 +42,12 @@ public final class ReviewNoticeCatalog {
             Map.entry(
                     "SALES_ORDER_PENDING_FINANCE_CONFIRM",
                     new Entry("SALES_ORDER", "SALES_ORDER_FINANCE_CONFIRM")),
+            // ADR-134 销售报价提交财务核价 → 合格核价人(报价级; 认领显示「XX 正在核价」;
+            // 销售撤回、财务退回或确认时按 (SALES_QUOTE, 报价 id) 撤卡)。退回/确认/撤销确认发给负责销售的
+            // 普通通知故意不登记在 SALES_QUOTE 下, 否则同一次撤卡会把它们一起撤掉。
+            Map.entry(
+                    "SALES_QUOTE_PENDING_FINANCE_REVIEW",
+                    new Entry("SALES_QUOTE", "SALES_QUOTE_FINANCE_REVIEW")),
             // 采购/委外订货 → 财务审批（V196 审批 case）
             Map.entry(
                     "PROCUREMENT_FINANCE_SUBMITTED",
@@ -143,7 +149,29 @@ public final class ReviewNoticeCatalog {
             // 建议箱提交 → 回复人（建议级；回复推进到 resolved/rejected 时撤卡；2026-09-10）
             Map.entry(
                     "SUGGESTION_SUBMITTED",
-                    new Entry("SUGGESTION", null)));
+                    new Entry("SUGGESTION", null)),
+            // ===== ADR-131 车间内料仓 (WorkshopMaterialNoticeService, 与业务同事务) =====
+            // 车间申请领料 / 退回 → 仓库发料 / 点收 (申请级; 发完、收完或取消时撤卡)
+            Map.entry(
+                    "WORKSHOP_MATERIAL_REQUISITION_PENDING",
+                    new Entry("WORKSHOP_MATERIAL_REQUISITION", null)),
+            Map.entry(
+                    "WORKSHOP_MATERIAL_RETURN_PENDING",
+                    new Entry("WORKSHOP_MATERIAL_REQUISITION", null)),
+            // 自动结算被拦 → 该补的人 (期间 + 拦截种类一个聚合; 该拦截消失或结算完成时撤卡)
+            Map.entry(
+                    "WORKSHOP_MATERIAL_CLOSE_BLOCKED_REPORT",
+                    new Entry("WORKSHOP_MATERIAL_PERIOD", null)),
+            Map.entry(
+                    "WORKSHOP_MATERIAL_CLOSE_BLOCKED_WEIGHT",
+                    new Entry("WORKSHOP_MATERIAL_PERIOD", null)),
+            Map.entry(
+                    "WORKSHOP_MATERIAL_CLOSE_BLOCKED_STOCK",
+                    new Entry("WORKSHOP_MATERIAL_PERIOD", null)),
+            // 结算连续失败 → 设置负责人 (结算完成或撤销时撤卡)
+            Map.entry(
+                    "WORKSHOP_MATERIAL_CLOSE_FAILING",
+                    new Entry("WORKSHOP_MATERIAL_PERIOD", null)));
 
     private ReviewNoticeCatalog() {
     }

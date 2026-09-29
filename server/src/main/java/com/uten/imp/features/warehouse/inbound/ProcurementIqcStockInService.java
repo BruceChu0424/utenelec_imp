@@ -547,7 +547,8 @@ public class ProcurementIqcStockInService {
                     (ORIGIN_PRE_STOCKED_AUTO.equals(origin)
                             ? "先入库后检：品质合格按上架位置自动转正入库；库位："
                             : "仓库确认 IQC 合格品入库；库位：") + item.place(),
-                    weight, slice.weightUnitId(),
+                    // ADR-135: 放行切片来自到货实称(千克)的累计分摊; 没称则由库存账推算。
+                    com.uten.imp.features.stock.weight.CapturedWeight.slice(weight),
                     new com.uten.imp.application.port.InventoryMovementCostReference.ProcurementStockIn(stockInItemId)));
             incrementStockedProjection(slice, item.baseQty(), amount, weight, now);
 
@@ -737,14 +738,14 @@ public class ProcurementIqcStockInService {
                             pass_event_id, stock_movement_id,
                             warehouse_id, goods_id, color_id,
                             expected_remaining_base_qty, base_qty,
-                            amount_local, weight, weight_unit_id,
+                            amount_local, weight,
                             place_snapshot, created_at)
                         VALUES (
                             :id, :batchId, :position, :inspectionItemId,
                             :passEventId, :movementId,
                             :warehouseId, :goodsId, :colorId,
                             :expectedRemaining, :baseQty,
-                            :amount, :weight, :weightUnitId,
+                            :amount, :weight,
                             :place, :at)
                         """)
                 .setParameter("id", stockInItemId)
@@ -760,7 +761,6 @@ public class ProcurementIqcStockInService {
                 .setParameter("baseQty", item.baseQty())
                 .setParameter("amount", amount)
                 .setParameter("weight", weight)
-                .setParameter("weightUnitId", slice.weightUnitId())
                 .setParameter("place", item.place())
                 .setParameter("at", now)
                 .executeUpdate();
@@ -817,7 +817,6 @@ public class ProcurementIqcStockInService {
                                inspection.received_base_qty,
                                inspection.received_amount_local,
                                inspection.received_weight,
-                               event.released_weight_unit_id,
                                inspection.passed_base_qty,
                                inspection.warehouse_stocked_base_qty,
                                event.base_qty,
@@ -831,7 +830,6 @@ public class ProcurementIqcStockInService {
                                goods.name,
                                color.name,
                                COALESCE(base_unit.name, source_unit.name),
-                               weight_unit.name,
                                COALESCE(preference.place,
                                         NULLIF(BTRIM(goods.stock_place), '')),
                                employee.full_name,
@@ -853,8 +851,6 @@ public class ProcurementIqcStockInService {
                         LEFT JOIN units source_unit
                           ON source_unit.id = inspection.unit_id
                         LEFT JOIN units base_unit ON base_unit.id = goods.unit_id
-                        LEFT JOIN units weight_unit
-                          ON weight_unit.id = event.released_weight_unit_id
                         LEFT JOIN warehouse_goods_place_preferences preference
                           ON preference.warehouse_id = inspection.warehouse_id
                          AND preference.goods_id = inspection.goods_id
@@ -889,12 +885,12 @@ public class ProcurementIqcStockInService {
         return rows.stream().map(row -> new PassSlice(
                 uuid(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]), uuid(row[4]),
                 uuid(row[5]), decimal(row[6]), decimal(row[7]), decimal(row[8]),
-                nullableDecimal(row[9]), uuid(row[10]), decimal(row[11]), decimal(row[12]),
-                decimal(row[13]), decimal(row[14]), nullableDecimal(row[15]),
-                decimal(row[16]), decimal(row[17]), str(row[18]),
-                offsetDateTime(row[19]), str(row[20]), str(row[21]), str(row[22]),
-                str(row[23]), str(row[24]), str(row[25]), str(row[26]), str(row[27]),
-                uuid(row[28]), uuid(row[29]),str(row[30])))
+                nullableDecimal(row[9]), decimal(row[10]), decimal(row[11]),
+                decimal(row[12]), decimal(row[13]), nullableDecimal(row[14]),
+                decimal(row[15]), decimal(row[16]), str(row[17]),
+                offsetDateTime(row[18]), str(row[19]), str(row[20]), str(row[21]),
+                str(row[22]), str(row[23]), str(row[24]), str(row[25]),
+                uuid(row[26]), uuid(row[27]),str(row[28])))
                 .toList();
     }
 
@@ -909,7 +905,7 @@ public class ProcurementIqcStockInService {
                 slice.receivedBaseQty(), slice.qualityPassedBaseQty(),
                 slice.warehouseStockedBaseQty(), slice.releasedBaseQty(),
                 slice.stockedForReleaseBaseQty(), slice.remainingBaseQty(),
-                allocation.weight(), slice.weightUnitId(), slice.weightUnitName(),
+                allocation.weight(),
                 slice.placeHint(), slice.releaseNote(), slice.releasedBy(),
                 slice.releasedAt(), inboundAllocations(expectedAllocations),slice.warehouseId(),slice.warehouseName());
     }
@@ -928,7 +924,7 @@ public class ProcurementIqcStockInService {
                         SELECT item.id, batch.id, item.pass_event_id,
                                item.goods_id, goods.code, goods.name,
                                color.name, COALESCE(base_unit.name, source_unit.name),
-                               item.base_qty, item.weight, weight_unit.name,
+                               item.base_qty, item.weight,
                                item.place_snapshot, employee.full_name,
                                batch.confirmed_at,item.warehouse_id,actual_warehouse.name,
                                batch.origin
@@ -943,8 +939,6 @@ public class ProcurementIqcStockInService {
                         LEFT JOIN units source_unit
                           ON source_unit.id = inspection.unit_id
                         LEFT JOIN units base_unit ON base_unit.id = goods.unit_id
-                        LEFT JOIN units weight_unit
-                          ON weight_unit.id = item.weight_unit_id
                         LEFT JOIN employees employee
                           ON employee.id = batch.actor_employee_id
                         WHERE batch.receipt_type = :receiptType
@@ -971,10 +965,10 @@ public class ProcurementIqcStockInService {
             return new StockInHistoryItem(
                     stockInItemId, uuid(row[1]), uuid(row[2]), uuid(row[3]),
                     str(row[4]), str(row[5]), str(row[6]), str(row[7]),
-                    decimal(row[8]), nullableDecimal(row[9]), str(row[10]),
-                    str(row[11]), str(row[12]), offsetDateTime(row[13]),
-                    actualByItem.getOrDefault(stockInItemId, List.of()),uuid(row[14]),str(row[15]),
-                    str(row[16]));
+                    decimal(row[8]), nullableDecimal(row[9]),
+                    str(row[10]), str(row[11]), offsetDateTime(row[12]),
+                    actualByItem.getOrDefault(stockInItemId, List.of()),uuid(row[13]),str(row[14]),
+                    str(row[15]));
         }).toList();
     }
 
@@ -1289,7 +1283,6 @@ public class ProcurementIqcStockInService {
             BigDecimal receivedBaseQty,
             BigDecimal receivedAmountLocal,
             BigDecimal receivedWeight,
-            UUID weightUnitId,
             BigDecimal qualityPassedBaseQty,
             BigDecimal warehouseStockedBaseQty,
             BigDecimal releasedBaseQty,
@@ -1303,7 +1296,6 @@ public class ProcurementIqcStockInService {
             String goodsName,
             String colorName,
             String unitName,
-            String weightUnitName,
             String placeHint,
             String releasedBy,
             String sourceOrderNo,

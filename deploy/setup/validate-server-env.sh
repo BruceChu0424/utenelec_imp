@@ -213,6 +213,11 @@ unset migrator_secret environment_line environment_value
 require_secret UTEN_JWT_SECRET
 require_secret UTEN_PGP_MASTER_KEY
 require_secret UTEN_HMAC_KEY
+# ADR-133: optional AI provider credential cipher key; when present it must be a real secret (the startup gate enforces it too).
+secret_cipher_key_count="$(awk -F= '$1 == "UTEN_SECRET_CIPHER_KEY" { n++ } END { print n + 0 }' "$ENV_FILE")"
+if [[ "$secret_cipher_key_count" != 0 ]]; then
+  require_secret UTEN_SECRET_CIPHER_KEY
+fi
 validate_bootstrap_admin_state
 expect_boolean UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED
 expect_exact UTEN_REQUIRE_HTTPS true

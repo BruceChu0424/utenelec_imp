@@ -189,7 +189,7 @@ class DocumentDraftCountSqlContractTest {
     }
 
     /**
-     * 附加谓词是白名单：只有销售订货单（去重）、采购/委外订货单（排除在审单）
+     * 附加谓词是白名单：只有销售订货单(去重)、销售报价(排除财务退回件)、采购/委外订货单(排除在审单)
      * 与仓库调拨/盘点（同表切片）、历史资金/采购收货只读隔离才允许带，其余类型必须是裸口径，
      * 免得有人把业务过滤悄悄塞进草稿计数。
      */
@@ -198,6 +198,8 @@ class DocumentDraftCountSqlContractTest {
         for (DraftSource source : DocumentDraftCountQueryService.SOURCES) {
             if (source == DocumentDraftCountQueryService.SALES_ORDER
                     || source == DocumentDraftCountQueryService.SALES_SHIPMENT
+                    // ADR-134: 财务退回的报价走「报价被退回」红徽章, 不再算草稿。
+                    || source == DocumentDraftCountQueryService.SALES_QUOTE
                     || source == DocumentDraftCountQueryService.PURCHASE_ORDER
                     || source == DocumentDraftCountQueryService.SUBCONTRACT_ORDER
                     || source == DocumentDraftCountQueryService.STOCK_DOCUMENT

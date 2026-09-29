@@ -8,8 +8,25 @@ import '../../../core/utils/display_datetime.dart';
 
 abstract final class AuditFieldLabels {
   /// 返回中文标签；未收录时安全回退为“其他字段”。
-  static String labelOf(String field) =>
-      _labels[field] ?? _labels[field.toLowerCase()] ?? '其他字段';
+  ///
+  /// [table] 是审计行的 target_type(数据变更即表名)：同名列在个别表里含义
+  /// 不同(如 goods_bom_items.qty 是「设计使用数量」而非泛指的「数量」)，
+  /// 先查表限定字典，再查通用字典。
+  static String labelOf(String field, {String? table}) =>
+      (table == null ? null : _tableLabels['$table.$field']) ??
+      _labels[field] ??
+      _labels[field.toLowerCase()] ??
+      '其他字段';
+
+  /// 表限定的列名标签(键 = `表名.列名`)，只收与通用字典含义不同或只属于
+  /// 一张表的列；与服务端 AuditEventInterpreter.tableFieldLabels() 逐字一致。
+  static const Map<String, String> _tableLabels = {
+    // ADR-129：BOM 的 qty 是工程人员维护的设计值；真实使用数量另由学习累计。
+    'goods_bom_items.qty': '设计使用数量',
+    'goods_bom_items.learning_profile_goods_id': '系统学习标记',
+    'goods_bom_items.learning_unit_id': '系统学习时的组件单位',
+    'goods_bom_items.learning_released_at': '人工删除后不再自动加回的时间',
+  };
 
   static const Map<String, String> _labels = {
     // 通用审计/状态列
@@ -144,6 +161,18 @@ abstract final class AuditFieldLabels {
     'revoked_by': '撤销人',
     'revoked_at': '撤销时间',
     'revoke_reason': '撤销原因',
+    // BOM 设计/真实使用数量(ADR-129)。
+    'design_bom_qty': '设计使用数量',
+    'actual_bom_qty': '真实使用数量',
+    'usage_basis': '计算采用',
+    'usage_reason': '按设计使用数量的原因',
+    'usage_sample_count': '有效生产批次',
+    'usage_defect_rate': '采用时的不良率',
+    // 日报登记的不良数：只作记录，不计入良品数量。
+    'defect_qty': '不良数',
+    'counted_leftover_qty': '实际剩余(清点)',
+    'allowed_overproduction_rate': '允许超产比例',
+    'allowed_overproduction_rate_source': '超产比例来源',
 
     // 财务
     'payee': '收款方',
@@ -165,12 +194,21 @@ abstract final class AuditFieldLabels {
 
   /// 值可读化：布尔/空值翻译；ISO 时间戳转「yyyy-MM-dd HH:mm(北京时间)」；
   /// UUID 保持原样(由调用方决定是否再按字典解析)。
-  static String valueOf(dynamic value) {
+  ///
+  /// 业务编码只在知道 [table] 与 [field] 时按表列翻译(同一个 DESIGN 在研发
+  /// 任务分类里是「设计」，在物料分析里才是「按设计使用数量」)；通用字典只收
+  /// 各表含义都一样的状态值。
+  static String valueOf(dynamic value, {String? table, String? field}) {
     if (value == null) return '—';
     if (value is bool) return value ? '是' : '否';
     if (value is String) {
       if (value.isEmpty) return '(空)';
-      final translated = _valueLabels[value.trim().toLowerCase()];
+      final key = value.trim().toLowerCase();
+      final translated =
+          (table == null || field == null
+              ? null
+              : _tableValueLabels['$table.$field']?[key]) ??
+          _valueLabels[key];
       if (translated != null) return translated;
       if (_dateTimePattern.hasMatch(value)) {
         final formatted = DisplayDateTime.beijing(value);
@@ -210,6 +248,25 @@ abstract final class AuditFieldLabels {
     'success': '成功',
     'failure': '失败',
     'failed': '失败',
+  };
+
+  /// 表限定的值标签(键 = `表名.列名`，值按小写编码)：只在这张表这一列翻译。
+  static const Map<String, Map<String, String>> _tableValueLabels = {
+    // BOM 用量采用依据与原因(ADR-129)，原因与界面说明同一措辞。
+    'production_material_analysis_materials.usage_basis': {
+      'design': '按设计使用数量',
+      'actual': '按真实使用数量',
+    },
+    'production_material_analysis_materials.usage_reason': {
+      'no_data': '还没有已完工且核清余料的生产数据',
+      'not_linear': '整包或固定批次不能按平均用量算',
+      'output_unit_changed': '父件单位变了，需重新学习',
+      'subcontract_outbound': '本次由委外单一子件发料，按委外合同用量',
+    },
+    'production_plan_items.allowed_overproduction_rate_source': {
+      'default': '系统默认',
+      'explicit': '人工确认',
+    },
   };
 
   /// 是否为 UUID 形式的值（通常需要再翻译成名称）。

@@ -227,45 +227,19 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
                 """,Map.of("id",segment));
         if(objects.isEmpty())return; // Physical output registration later discovers the durable consumed positions.
         var object=objects.getFirst();PoolKey product=pool(object);
-        var rows=db.queryForList("""
-                SELECT e.result_node_id,p.id,p.settlement_type,pool.goods_id,pool.color_id
-                FROM production_material_settlement_postings p
-                JOIN production_material_demands demand ON demand.id=p.demand_id
-                JOIN stock_value_events e ON e.source_event_id=p.id AND e.source_doc_type='PRODUCTION_CONSUMED_VALUE'
-                JOIN stock_value_nodes n ON n.id=e.result_node_id JOIN stock_value_pools pool ON pool.id=n.pool_id
-                WHERE demand.execution_segment_id IN (SELECT segment_id FROM fn_production_execution_cost_members(:id))
-                    AND n.active AND NOT EXISTS(
-                    SELECT 1 FROM stock_value_production_cost_inputs i WHERE i.approved_posting_id=p.id)
-                ORDER BY p.id LIMIT 100
-                """,Map.of("id",segment));
+        var rows=db.queryForList(INPUT_CANDIDATES_SQL,Map.of("id",segment));
         List<InventoryKey> keys=new ArrayList<>();keys.add(new InventoryKey(product.goodsId(),product.colorId()));
         rows.forEach(row->keys.add(new InventoryKey((UUID)row.get("goods_id"),(UUID)row.get("color_id"))));mutex.lockAll(keys);
         db.update("UPDATE stock_value_production_cost_objects SET business_refresh_event_id=:event,business_refresh_actor_id=:actor,business_refresh_pending=true WHERE execution_segment_id=:segment",
                 Map.of("event",event,"actor",actor,"segment",segment));
         if("APPLYING".equals(object.get("state")))return;
         var inputs=rows.stream().map(row->new InventoryProductionCostPort.Input((UUID)row.get("result_node_id"),(UUID)row.get("id"),
-                "CONSUMED".equals(row.get("settlement_type"))?InventoryProductionCostPort.InputKind.CONSUMED:InventoryProductionCostPort.InputKind.NORMAL_LOSS)).toList();
-        boolean complete=Boolean.TRUE.equals(db.queryForObject("""
-                SELECT NOT EXISTS(SELECT 1 FROM v_production_material_clearance clearance
-                    JOIN production_material_demands demand ON demand.id=clearance.demand_id
-                    WHERE demand.execution_segment_id IN (SELECT segment_id FROM fn_production_execution_cost_members(:id))
-                        AND (clearance.uncleared_qty<>0 OR clearance.legal_wip_qty<>0))
-                AND NOT EXISTS(SELECT 1 FROM production_daily_report_items item JOIN production_daily_reports report ON report.id=item.report_id
-                    WHERE item.execution_segment_id IN (SELECT segment_id FROM fn_production_execution_cost_members(:id))
-                        AND report.status=1 AND NOT item.is_deleted AND NOT report.is_deleted
-                        AND NOT EXISTS(SELECT 1 FROM production_fqc_legacy_exemptions exempt WHERE exempt.source_report_item_id=item.id)
-                        AND (item.qty>coalesce((SELECT sum(inspection.passed_qty+inspection.failed_qty) FROM production_fqc_inspections inspection
-                                WHERE inspection.source_report_item_id=item.id AND inspection.status<>'CANCELLED'),0)
-                            OR EXISTS(SELECT 1 FROM production_fqc_inspections inspection WHERE inspection.source_report_item_id=item.id
-                                AND inspection.status<>'CANCELLED' AND inspection.failed_qty>0)))
-                AND ((NOT EXISTS(SELECT 1 FROM production_execution_segment_splits split WHERE split.source_segment_id=:id)
-                      AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_proofs proof
-                          WHERE fn_production_execution_cost_scope(proof.source_execution_segment_id)=:id
-                            AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_reversals reversed WHERE reversed.proof_id=proof.id)))
-                    OR (SELECT COALESCE(sum(output.qty_base),0) FROM stock_value_production_cost_outputs output
-                        WHERE output.execution_segment_id=:id AND output.withdrawn_movement_id IS NULL)
-                       =fn_production_execution_cost_target(:id))
-                """,Map.of("id",segment),Boolean.class));
+                InventoryProductionCostPort.InputKind.valueOf((String)row.get("input_kind")))).toList();
+        // 本批一起登记的期间分摊切片不算"尚未登记"(ADR-131 §4.6 完整性门第 (ii) 条)。
+        String periodicBatch=rows.stream().filter(row->PERIODIC_MATERIAL.equals(row.get("input_kind")))
+                .map(row->row.get("id").toString()).collect(java.util.stream.Collectors.joining(","));
+        boolean complete=Boolean.TRUE.equals(db.queryForObject(COST_SCOPE_COMPLETE_SQL,
+                Map.of("id",segment,"periodicBatch",periodicBatch),Boolean.class));
         UUID sourceItem=rows.isEmpty()?segment:(UUID)rows.getFirst().get("id");
         EventContext sourceContext=support.context("PRODUCTION_COST_BUSINESS",event,segment,sourceItem,actor,time(object.get("updated_at")));
         UUID approval=segment;String approvalHash=(String)object.get("bom_fingerprint");
@@ -293,17 +267,83 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
                 approval,approvalHash,inputs,List.of()));
         db.update("""
                 UPDATE stock_value_production_cost_objects SET business_refresh_pending=EXISTS(
-                    SELECT 1 FROM production_material_settlement_postings posting
-                    JOIN production_material_demands demand ON demand.id=posting.demand_id
-                    JOIN stock_value_events cost ON cost.source_event_id=posting.id AND cost.source_doc_type='PRODUCTION_CONSUMED_VALUE'
-                    JOIN stock_value_nodes node ON node.id=cost.result_node_id
-                    WHERE demand.execution_segment_id IN (SELECT segment_id FROM fn_production_execution_cost_members(:segment))
-                        AND node.active AND NOT EXISTS(
-                        SELECT 1 FROM stock_value_production_cost_inputs input WHERE input.approved_posting_id=posting.id))
+                    SELECT 1 FROM v_production_cost_input_candidates candidate
+                    WHERE candidate.member_segment_id IN (SELECT segment_id FROM fn_production_execution_cost_members(:segment))
+                        AND candidate.node_active AND NOT EXISTS(
+                        SELECT 1 FROM stock_value_production_cost_inputs input
+                        WHERE input.approved_posting_id=candidate.approved_posting_id))
                 WHERE execution_segment_id=:segment AND business_refresh_event_id=:event
                 """,
                 Map.of("segment",segment,"event",event));
     }
+
+    private static final String PERIODIC_MATERIAL="PERIODIC_MATERIAL";
+
+    /**
+     * 投入发现只有一个口径(ADR-131 §4.6): 清账过账投入(原口径)并上车间内料仓期间分摊投入,
+     * 取本成本范围各成员段尚未登记的有效切片。
+     */
+    private static final String INPUT_CANDIDATES_SQL = """
+            SELECT candidate.result_node_id,candidate.approved_posting_id AS id,candidate.input_kind,
+                   candidate.goods_id,candidate.color_id
+            FROM v_production_cost_input_candidates candidate
+            WHERE candidate.member_segment_id IN (SELECT segment_id FROM fn_production_execution_cost_members(:id))
+                AND candidate.node_active AND NOT EXISTS(
+                SELECT 1 FROM stock_value_production_cost_inputs i WHERE i.approved_posting_id=candidate.approved_posting_id)
+            ORDER BY candidate.approved_posting_id LIMIT 100
+            """;
+
+    /**
+     * ADR-131 §4.6 成本完整性门追加的两条"不完整":
+     * (i) 成本范围里绑定了内料仓的段, 有已审报工的日期晚于该仓已结算截止日(结算事务里本期已有有效结算、
+     *     期间状态稍后才改为已结算, 所以有效结算的期末日同样算截止);
+     * (ii) 有属于本范围、来自期间分摊、尚未登记为投入的切片(本批一起登记的除外, :periodicBatch 逗号分隔)。
+     * 所以结算前注塑件成本保持暂估, 不会"显示完整却缺塑料"。
+     */
+    private static final String PERIODIC_MATERIAL_COMPLETE_SQL = """
+            NOT EXISTS(SELECT 1 FROM production_execution_periodic_materials bound
+                JOIN production_daily_report_items item ON item.execution_segment_id=bound.execution_segment_id AND NOT item.is_deleted
+                JOIN production_daily_reports report ON report.id=item.report_id AND report.status=1 AND NOT report.is_deleted
+                WHERE bound.execution_segment_id IN (SELECT segment_id FROM fn_production_execution_cost_members(:id))
+                    AND report.bill_date>GREATEST(fn_workshop_material_closed_through(bound.bin_warehouse_id),COALESCE((
+                        SELECT max(period.end_date) FROM workshop_material_periods period
+                        JOIN workshop_material_period_closes period_close
+                          ON period_close.period_id=period.id AND period_close.status='ACTIVE'
+                        WHERE period.bin_warehouse_id=bound.bin_warehouse_id),DATE '1900-01-01')))
+            AND NOT EXISTS(SELECT 1 FROM workshop_material_close_allocations allocation
+                JOIN workshop_material_close_materials material ON material.id=allocation.close_material_id
+                JOIN workshop_material_period_closes period_close
+                  ON period_close.id=material.close_id AND period_close.status='ACTIVE'
+                WHERE allocation.cost_scope_segment_id IN (SELECT segment_id FROM fn_production_execution_cost_members(:id))
+                    AND allocation.reversed_at IS NULL AND allocation.allocated_qty>0
+                    AND NOT EXISTS(SELECT 1 FROM stock_value_production_cost_inputs input
+                        WHERE input.approved_posting_id=allocation.id)
+                    AND NOT (allocation.id=ANY(CAST(string_to_array(:periodicBatch,',') AS uuid[]))))
+            """;
+
+    private static final String COST_SCOPE_COMPLETE_SQL = """
+            SELECT NOT EXISTS(SELECT 1 FROM v_production_material_clearance clearance
+                JOIN production_material_demands demand ON demand.id=clearance.demand_id
+                WHERE demand.execution_segment_id IN (SELECT segment_id FROM fn_production_execution_cost_members(:id))
+                    AND (clearance.uncleared_qty<>0 OR clearance.legal_wip_qty<>0))
+            AND NOT EXISTS(SELECT 1 FROM production_daily_report_items item JOIN production_daily_reports report ON report.id=item.report_id
+                WHERE item.execution_segment_id IN (SELECT segment_id FROM fn_production_execution_cost_members(:id))
+                    AND report.status=1 AND NOT item.is_deleted AND NOT report.is_deleted
+                    AND NOT EXISTS(SELECT 1 FROM production_fqc_legacy_exemptions exempt WHERE exempt.source_report_item_id=item.id)
+                    AND (item.qty>coalesce((SELECT sum(inspection.passed_qty+inspection.failed_qty) FROM production_fqc_inspections inspection
+                            WHERE inspection.source_report_item_id=item.id AND inspection.status<>'CANCELLED'),0)
+                        OR EXISTS(SELECT 1 FROM production_fqc_inspections inspection WHERE inspection.source_report_item_id=item.id
+                            AND inspection.status<>'CANCELLED' AND inspection.failed_qty>0)))
+            AND ((NOT EXISTS(SELECT 1 FROM production_execution_segment_splits split WHERE split.source_segment_id=:id)
+                  AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_proofs proof
+                      WHERE fn_production_execution_cost_scope(proof.source_execution_segment_id)=:id
+                        AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_reversals reversed WHERE reversed.proof_id=proof.id)))
+                OR (SELECT COALESCE(sum(output.qty_base),0) FROM stock_value_production_cost_outputs output
+                    WHERE output.execution_segment_id=:id AND output.withdrawn_movement_id IS NULL)
+                   =fn_production_execution_cost_target(:id))
+            AND
+            """ + PERIODIC_MATERIAL_COMPLETE_SQL;
+
     private List<Slice> takeIssue(UUID issue,BigDecimal qty){
         BigDecimal left=qty;List<Slice> result=new ArrayList<>();
         for(var row:db.queryForList("""

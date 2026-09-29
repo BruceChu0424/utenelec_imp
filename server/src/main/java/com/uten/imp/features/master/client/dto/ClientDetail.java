@@ -60,4 +60,6 @@ public class ClientDetail {
     private String defaultShipmentPolicy;
     private UUID defaultCurrencyId;
     private String defaultCurrencyName;
+    // ===== 外文名称(ADR-134, V742) =====
+    private String nameEn;
 }

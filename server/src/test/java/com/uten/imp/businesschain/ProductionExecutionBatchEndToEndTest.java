@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
         "uten.production.readiness-reconcile.enabled=false",
-        "uten.policy-intelligence.enabled=false","uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true",
+        "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true",
         "uten.storage.malware-scan.provider=test-only","uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789","uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
@@ -190,6 +190,25 @@ class ProductionExecutionBatchEndToEndTest {
         qty("100",db.queryForObject("SELECT sum(allocation.allocated_qty) FROM execution_segment_sales_allocations allocation JOIN production_execution_segments segment ON segment.id=allocation.execution_segment_id WHERE segment.plan_id=? AND segment.status NOT IN('CANCELLED','REVERSED')",BigDecimal.class,c.plan()));
         assertEquals(0,db.queryForObject("SELECT count(*) FROM production_material_supply_pegs peg JOIN production_material_demands demand ON demand.id=peg.demand_id WHERE demand.plan_id=?",Integer.class,c.plan()));
         assertEquals("WAITING",status(second.remainingSegmentId()));
+    }
+
+    /** ADR-129 §2.6：拆批只按根需求冻结的耗用曲线切分，下达后改设计使用数量或学到真实使用数量都不再拦拆批。 */
+    @Test void splitFollowsTheFrozenCurveAfterDesignAndActualUsageChange() {
+        Case c=create("split-frozen-curve",false);
+        confirmRoute(c.plan(),c.segment(),"BATCH","route-split-frozen-curve-"+c.segment());
+        fixture.loginAs(c.world().superAdminUserId());
+        db.update("UPDATE goods_bom_items SET qty=5 WHERE goods_id=? AND NOT is_deleted",c.root());
+        db.update("""
+                INSERT INTO goods_bom_actual_usages(goods_id,component_goods_id,unit_id,output_unit_id,net_qty,exposure_output_qty,sample_count)
+                VALUES(?,?,?,?,300,100,1)
+                """,c.root(),c.material(),c.world().unitId(),c.world().unitId());
+        receive(c,"40");fixture.loginAs(c.workerUser());
+        var preview=batches.preview(new ProductionExecutionBatch.PreviewRequest(c.segment(),version(c.segment()),null));
+        qty("20",preview.maxReadyQty());qty("80",preview.remainingQty());
+        var first=batches.submit(new ProductionExecutionBatch.SubmitRequest(c.segment(),preview.expectedVersion(),preview.quantity(),preview.fingerprint(),"frozen-curve-first-"+c.segment()));
+        qty("40",db.queryForObject("SELECT sum(required_qty) FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",BigDecimal.class,first.batchSegmentId()));
+        qty("160",db.queryForObject("SELECT sum(required_qty) FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",BigDecimal.class,first.remainingSegmentId()));
+        assertEquals("READY",status(first.batchSegmentId()));assertEquals("WAITING",status(first.remainingSegmentId()));
     }
 
     @Test void fixedBatchMaterialIsChargedOnceAndZeroIncrementContinuationNeedsActualPriorIssue() {

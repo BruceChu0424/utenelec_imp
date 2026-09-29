@@ -1648,6 +1648,9 @@ class ScheduleOrderLine {
 }
 
 /// 货品一层 BOM 零件（单件用量 × 待排产缺口 = 需求小计）。
+///
+/// [periodic] = 整批领到车间内料仓的料 (ADR-131, 颗粒等)：由车间内料仓供料，不算需求
+/// (服务端需求小计给 0)，页面不按库存初筛。
 class ScheduleBomComponent {
   const ScheduleBomComponent({
     required this.goodsId,
@@ -1660,6 +1663,7 @@ class ScheduleBomComponent {
     this.needQty,
     this.onhand,
     this.selfMade = false,
+    this.periodic = false,
   });
   final String goodsId;
   final String? code;
@@ -1671,6 +1675,9 @@ class ScheduleBomComponent {
   final double? needQty;
   final double? onhand;
   final bool selfMade;
+
+  /// 车间内料仓供料的料 (整批领料)，不算需求；旧响应没有这个字段时为 false。
+  final bool periodic;
 
   factory ScheduleBomComponent.fromJson(Map<String, dynamic> j) =>
       ScheduleBomComponent(
@@ -1684,6 +1691,7 @@ class ScheduleBomComponent {
         needQty: (j['needQty'] as num?)?.toDouble(),
         onhand: (j['onhand'] as num?)?.toDouble(),
         selfMade: j['selfMade'] == true,
+        periodic: j['periodic'] == true,
       );
 }
 

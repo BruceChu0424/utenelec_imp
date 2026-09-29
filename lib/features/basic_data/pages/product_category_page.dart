@@ -18,10 +18,12 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/network/api_error.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
@@ -33,6 +35,7 @@ import '../repositories/goods_bom_repository.dart';
 import '../repositories/goods_repository.dart';
 import '../repositories/product_category_repository.dart';
 import '../widgets/category_edit_dialog.dart';
+import '../widgets/basic_data_l10n.dart';
 import '../widgets/category_page_shell.dart';
 import '../widgets/goods_import_dialog.dart';
 import '../models/goods_import.dart';
@@ -42,6 +45,7 @@ import '../widgets/master_entity_detail_pane.dart';
 import '../widgets/master_batch_feedback.dart';
 import '../models/master_batch.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../widgets/periodic_bom_confirmation.dart';
 import '../widgets/system_master_category_guard.dart';
 
 class ProductCategoryPage extends ConsumerStatefulWidget {
@@ -442,13 +446,30 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     final canViewPrice =
         _perms.contains(Perm.goodsPriceView) ||
         _perms.contains(Perm.goodsPriceEdit);
+    final nameEnColumn = _goodsNameEnColumn(basicDataL10n(context));
     return [
       for (final c in _goodsColumns)
         if ((c.key != 'discount' || canViewDiscount) &&
-            (c.key != 'price' || canViewPrice))
+            (c.key != 'price' || canViewPrice)) ...[
           c,
+          // ADR-134: English name right after the goods name.
+          if (c.key == 'name') nameEnColumn,
+        ],
     ];
   }
+
+  /// 英文名称列 (ADR-134): the name customer files use; learned when sales
+  /// save a document, editable on the goods detail. Label comes from arb, so
+  /// it is built per context instead of living in the static column list.
+  static MasterColumnDef<GoodsListItem> _goodsNameEnColumn(
+    AppLocalizations l10n,
+  ) => MasterColumnDef(
+    key: 'nameEn',
+    label: l10n.goodsNameEnLabel,
+    width: 200,
+    info: l10n.goodsNameEnColumnInfo,
+    value: (g) => g.nameEn,
+  );
 
   /// 货品明细区配置：浏览态排除禁用/迁移占位(它们归表头下的前导分组)，
   /// 行菜单由本页接管(复制/粘贴/组件信息 + 多选批量菜单)。
@@ -459,7 +480,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       icon: Icons.inventory_2_outlined,
       defaultCodePrefix: 'HP',
       keyPrefix: 'goods',
-      searchHint: '搜索货品(名称/编号/型号/规格/系列)', // TODO(l10n): 补 arb
+      searchHint: basicDataL10n(context).goodsNameEnSearchHint,
       columns: _visibleGoodsColumns,
       idOf: (g) => g.id,
       statusOf: (g) => g.status,
@@ -617,6 +638,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         requestedCategoryId: categoryId,
       ),
       'name': d.name ?? '',
+      // nameEn is deliberately not copied: it is the key customer files are
+      // matched by, and two goods with one English name would be ambiguous.
       'status': status ?? d.status ?? '使用',
       'shortName': d.shortName,
       'sourceType': d.sourceType,
@@ -672,17 +695,22 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   }
 
   /// BOM 行 → 粘贴请求行(字段与后端 BomItemSaveRequest 对齐)。
+  /// 只复制设计值(ADR-129)：qty 是设计使用数量；真实使用数量属于源货品自己的
+  /// 生产学习累计，不随复制带走，目标货品按自己的生产重新累计。
+  /// 整批领料的料 (期间边, ADR-131) 只带用量 (基本单位的单个重量)，形状由服务端固定，不提交。
   Map<String, dynamic> _bomSaveBody(GoodsBomItem it) => <String, dynamic>{
     'componentGoodsId': it.componentGoodsId,
-    'qty': it.qty ?? 1,
+    'qty': it.qty,
     'price': it.price,
     'total': it.total,
     'summary': it.summary,
-    'controlStage': it.controlStage.code,
-    'consumptionBasis': it.consumptionBasis.code,
-    'basisOutputQty': it.basisOutputQty,
-    'allowPartialPackage': it.allowPartialPackage,
-    'hardGate': it.hardGate,
+    if (!it.isPeriodicEdge) ...{
+      'controlStage': it.controlStage.code,
+      'consumptionBasis': it.consumptionBasis.code,
+      'basisOutputQty': it.basisOutputQty,
+      'allowPartialPackage': it.allowPartialPackage,
+      'hardGate': it.hardGate,
+    },
     if (it.colorId != null) 'colorId': it.colorId,
     if (it.defaultSupplierId != null) 'defaultSupplierId': it.defaultSupplierId,
   };
@@ -757,10 +785,21 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
             // 组件粘失败单独成行报原因——货品本体已建成功，不并在一起误报整条失败。
             if (clip.bomItems.isNotEmpty) {
               try {
+                // 整份复制源货品的组件行：源货品上的异常单重、双料 (整批领料的料)
+                // 都已有人确认过，副本原样沿用确认，不再逐个弹框。
                 await bomRepo.paste(
                   mode: BomPasteMode.append,
                   targets: [BomPasteTarget(created.id)],
-                  items: [for (final it in clip.bomItems) _bomSaveBody(it)],
+                  items: [
+                    for (final it in clip.bomItems)
+                      {
+                        ..._bomSaveBody(it),
+                        if (it.isPeriodicEdge) ...{
+                          periodicConfirmUnusualWeight: true,
+                          periodicConfirmSecondMaterial: true,
+                        },
+                      },
+                  ],
                 );
               } on ApiException catch (e) {
                 results.add(
@@ -951,25 +990,54 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     required List<BomPasteTarget> targets,
     required List<GoodsBomItem> items,
   }) async {
-    final result = await pane.runExclusive(
-      () => context.guardAction(
-        () => ref
-            .read(goodsBomRepositoryProvider)
-            .paste(
-              mode: mode,
-              targets: targets,
-              items: [for (final it in items) _bomSaveBody(it)],
-            ),
-        errorFallback: '粘贴失败，请稍后重试', // TODO(l10n): 补 arb
-      ),
-    );
+    final bodies = [for (final it in items) _bomSaveBody(it)];
+    final periodicBodies = [
+      for (var i = 0; i < items.length; i++)
+        if (items[i].isPeriodicEdge) bodies[i],
+    ];
+    BomPasteResult? result;
+    while (true) {
+      List<ApiFieldError>? confirmations;
+      result = await pane.runExclusive<BomPasteResult?>(() async {
+        try {
+          return await ref
+              .read(goodsBomRepositoryProvider)
+              .paste(mode: mode, targets: targets, items: bodies);
+        } on ApiException catch (e) {
+          // 整批领料的料只差人确认 (异常单重 / 第二种料)：退出忙碌后问，确认了带上重发。
+          confirmations = periodicConfirmationsOf(e);
+          if (confirmations != null) return null;
+          if (mounted) {
+            context.appError(
+              e.message.isNotEmpty ? e.message : '粘贴失败，请稍后重试',
+              fieldErrors: e.fieldErrors,
+            );
+          }
+          return null;
+        } catch (_) {
+          if (mounted) context.appError('粘贴失败，请稍后重试'); // TODO(l10n): 补 arb
+          return null;
+        }
+      });
+      final pending = confirmations;
+      if (pending == null || !mounted) break;
+      // 忙碌遮罩在 runExclusive 结束时撤掉，等这一帧画完再弹确认框。
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      final confirmed = await askPeriodicConfirmations(context, pending);
+      if (confirmed == null || !mounted) return;
+      applyPeriodicConfirmations(periodicBodies, confirmed);
+    }
     if (result == null || !mounted) return;
     pane.clearSelection();
-    context.appSuccess(
-      mode == BomPasteMode.replace
-          ? '已替换 ${result.targets} 个货品的组件，共 ${result.added} 个' // TODO(l10n): 补 arb
-          : '已给 ${result.targets} 个货品追加 ${result.added} 个组件', // TODO(l10n): 补 arb
-    );
+    final done = mode == BomPasteMode.replace
+        ? '已替换 ${result.targets} 个货品的组件，共 ${result.added} 个' // TODO(l10n): 补 arb
+        : '已给 ${result.targets} 个货品追加 ${result.added} 个组件'; // TODO(l10n): 补 arb
+    if (result.warnings.isNotEmpty) {
+      context.appWarning('$done；请核对：${result.warnings.join('；')}');
+    } else {
+      context.appSuccess(done);
+    }
   }
 
   /// 「粘贴组件信息」：目标已有组件时让用户选「替换」或「同级追加」；

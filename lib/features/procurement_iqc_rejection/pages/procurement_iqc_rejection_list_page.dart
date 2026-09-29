@@ -582,7 +582,7 @@ class _ProcurementIqcRejectionListPageState
       label: '不合格金额(本币)',
       width: 150,
       type: 'money',
-      value: (item) => item.amountLabel(item.failedAmountLocal),
+      value: (item) => item.localAmountLabel(item.failedAmountLocal),
     ),
     MasterColumnDef(
       key: 'status',
@@ -673,7 +673,9 @@ class _IqcRejectionTaskCard extends StatelessWidget {
                         '不合格 ${item.failedQty ?? '—'} ${item.unitName ?? ''}'
                             .trim(),
                       ),
-                      Text('金额 ${item.amountLabel(item.failedAmountLocal)}'),
+                      Text(
+                        '本币金额 ${item.localAmountLabel(item.failedAmountLocal)}',
+                      ),
                     ],
                   ),
                   if ((item.financeExceptionMessage ?? item.holdReason)

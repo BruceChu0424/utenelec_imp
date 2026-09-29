@@ -237,7 +237,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('CNY 25.0000'), findsWidgets);
+    expect(find.text('CNY 25.00'), findsWidgets);
     expect(
       find.byKey(const Key('iqc-detail-action-confirmCredit')),
       findsOneWidget,

@@ -4,11 +4,13 @@ import com.uten.imp.application.port.MasterReferenceValidationPort;
 
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.web.ApiError;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.color.Color;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
+import com.uten.imp.features.master.goods.dto.BomItemUsage;
 import com.uten.imp.features.master.goods.dto.BomItemView;
 import com.uten.imp.features.master.lifecycle.MasterObjectAccess;
 import com.uten.imp.features.master.unit.Unit;
@@ -27,6 +29,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -87,11 +90,14 @@ public class GoodsBomService {
         Set<UUID> withChildren = withOperationalRows(visibleComponentIds);
         // 颜色/供应商/单位均 UUID 优先；legacy 仅在对应 UUID 缺失时兼容旧数据，按批一次取名。
         LegacyNames legacy = legacyNames(rows);
+        // 真实使用数量/计算采用值：整层一次取(ADR-129)。
+        Map<UUID, BomItemUsage> usage = usageOf(rows.stream().map(GoodsBomItem::getId).toList());
         List<BomItemView> views = new ArrayList<>(rows.size());
         for (GoodsBomItem r : rows) {
             Goods c = r.getComponent();
+            BomItemUsage rowUsage = usage.getOrDefault(r.getId(), BomItemUsage.NONE);
             if (!visibleComponentIds.contains(c.getId())) {
-                views.add(redactedView(r, c));
+                views.add(redactedView(r, c, rowUsage));
                 continue;
             }
             views.add(new BomItemView(
@@ -110,7 +116,8 @@ public class GoodsBomService {
                     c.getSourceType(),
                     r.getControlStage(), r.getConsumptionBasis(),
                     r.getBasisOutputQty(), r.isAllowPartialPackage(),
-                    r.isHardGate(), r.getAuditedAt()));
+                    r.isHardGate(), r.getAuditedAt(), rowUsage,
+                    c.getIssueMethod(), periodicUnitWeightGrams(r, c), List.of()));
         }
         return views;
     }
@@ -131,11 +138,12 @@ public class GoodsBomService {
         ensureNoCycle(goodsId, component.getId());
         GoodsBomItem r = new GoodsBomItem();
         r.setGoods(parent);
-        apply(req, r, component);
+        applyConfirmed(req, r, parent, component, null);
         r.setSortOrder(nextSortOrder(goodsId));
         bomRepo.save(r);
+        flushPeriodicEdge(component);
         recalcSourceE(parent);
-        return toView(r, component);
+        return toView(r, component, periodicWarnings(parent, component, r));
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:bom:edit')")
@@ -152,13 +160,66 @@ public class GoodsBomService {
             ensureComponentUnique(goodsId, component.getId());
             ensureNoCycle(goodsId, component.getId());
         }
-        apply(req, r, component);
+        applyConfirmed(req, r, r.getGoods(), component, r.getComponent());
         // 行内容变更后原审计结论作废：清空审计标记。
         r.setAuditedAt(null);
         r.setAuditedBy(null);
         bomRepo.save(r);
+        flushPeriodicEdge(component);
         recalcSourceE(r.getGoods());
-        return toView(r, component);
+        return toView(r, component, periodicWarnings(r.getGoods(), component, r));
+    }
+
+    /**
+     * 写入前把要人确认的事一次问全 (期间边: 同一产品第二种整批领料的料、异常单重), 确认过才写。
+     *
+     * @param previousComponent 编辑前的组件; 新增为 null
+     */
+    private void applyConfirmed(BomItemSaveRequest req, GoodsBomItem r, Goods parent, Goods component,
+                                Goods previousComponent) {
+        List<ApiError.FieldError> confirmations = new ArrayList<>();
+        boolean newPeriodicMaterial = GoodsPeriodicMaterialRules.isPeriodic(component)
+                && (previousComponent == null || !component.getId().equals(previousComponent.getId()));
+        if (newPeriodicMaterial && !Boolean.TRUE.equals(req.getConfirmSecondPeriodicMaterial())
+                && operationalRows(parent.getId()).stream().anyMatch(row -> row != r
+                        && GoodsPeriodicMaterialRules.isPeriodic(row.getComponent())
+                        && !component.getId().equals(row.getComponent().getId()))) {
+            confirmations.add(new ApiError.FieldError(GoodsPeriodicMaterialRules.CONFIRM_SECOND_MATERIAL,
+                    GoodsPeriodicMaterialRules.secondMaterialMessage(GoodsPeriodicMaterialRules.label(parent))));
+        }
+        try {
+            apply(req, r, component);
+        } catch (ApiException error) {
+            if (!confirmations.isEmpty() && GoodsPeriodicMaterialRules.isConfirmation(error)) {
+                confirmations.addAll(error.getFieldErrors());
+                throw GoodsPeriodicMaterialRules.confirmationRequired(confirmations);
+            }
+            throw error;
+        }
+        if (!confirmations.isEmpty()) {
+            throw GoodsPeriodicMaterialRules.confirmationRequired(confirmations);
+        }
+    }
+
+    /**
+     * 期间边当场写库: 形状守卫与 BOM 接管 (作废该产品的认料; 认料勾了"还要按工单领别的料"而产品还没有
+     * 按单边时拒绝) 都是行触发器, 在这里把拒绝原因原样交给员工, 不等到提交时变成通用报错。
+     */
+    private void flushPeriodicEdge(Goods component) {
+        if (!GoodsPeriodicMaterialRules.isPeriodic(component)) return;
+        try {
+            bomRepo.flush();
+        } catch (RuntimeException error) {
+            throw GoodsPeriodicMaterialRules.translate(error);
+        }
+    }
+
+    /** 期间边单个重量与产品货品资料单重相差 20% 以上时提醒 (不拦保存)。 */
+    static List<String> periodicWarnings(Goods parent, Goods component, GoodsBomItem r) {
+        if (!GoodsPeriodicMaterialRules.isPeriodic(component)) return List.of();
+        String warning = GoodsPeriodicMaterialRules.differenceWarning(GoodsPeriodicMaterialRules.label(parent),
+                periodicUnitWeightGrams(r, component), GoodsPeriodicMaterialRules.goodsWeightGrams(parent));
+        return warning == null ? List.of() : List.of(warning);
     }
 
     // ===== 审计标记（goods:bom:audit） =====
@@ -280,32 +341,35 @@ public class GoodsBomService {
             "FIXED_BATCH", "固定批耗");
 
     /**
-     * 整树展开导出。列集与前端组装信息表格一致（2026-09-25 用户口径「表格显示啥
-     * 导出啥」：需求阶段/缺料处理/单价/金额四列已从表格退役，导出同步不带；
-     * 已审是审计模式下的交互辅助列，不进导出）。层级只用级联序号表达
-     * （1 / 3.1 / 3.1.1），不再加缩进与子层星号标记。
+     * 导出列 = 组装信息导入的格式(导出的文件原样导回)。列集与前端组装信息表格一致(2026-09-25
+     * 用户口径「表格显示啥导出啥」：需求阶段/缺料处理/单价/金额四列已从表格退役，导出同步不带；
+     * 已审是审计模式下的交互辅助列，不进导出)。
+     * 「设计使用数量」后紧跟只读的「真实使用数量」(ADR-129，没有数据留空；导入时忽略)。
      */
+    public static final List<ExportColumn> EXPORT_COLUMNS = List.of(
+            new ExportColumn("seq", "序号", ExportColumn.TEXT),
+            new ExportColumn("code", "物料编号", ExportColumn.TEXT),
+            new ExportColumn("name", "物料名称", ExportColumn.TEXT),
+            new ExportColumn("model", "型号", ExportColumn.TEXT),
+            new ExportColumn("spec", "规格", ExportColumn.TEXT),
+            new ExportColumn("unitName", "单位", ExportColumn.TEXT),
+            new ExportColumn("colorName", "颜色", ExportColumn.TEXT),
+            new ExportColumn("sourceType", "来源", ExportColumn.TEXT),
+            new ExportColumn("consumptionBasis", "计量方式", ExportColumn.TEXT),
+            new ExportColumn("basisOutputQty", "基准产量", ExportColumn.QTY),
+            new ExportColumn("allowPartialPackage", "尾包", ExportColumn.TEXT),
+            new ExportColumn("qty", "设计使用数量", ExportColumn.QTY),
+            new ExportColumn("actualQty", "真实使用数量", ExportColumn.QTY),
+            new ExportColumn("summary", "备注", ExportColumn.TEXT));
+
+    /** 整树展开导出({@link #EXPORT_COLUMNS})。层级只用级联序号表达(1 / 3.1 / 3.1.1)，不再加缩进与子层星号标记。 */
     @Transactional(readOnly = true)
     public ExportPayload exportPayload(UUID goodsId) {
-        List<ExportColumn> cols = List.of(
-                new ExportColumn("seq", "序号", ExportColumn.TEXT),
-                new ExportColumn("code", "物料编号", ExportColumn.TEXT),
-                new ExportColumn("name", "物料名称", ExportColumn.TEXT),
-                new ExportColumn("model", "型号", ExportColumn.TEXT),
-                new ExportColumn("spec", "规格", ExportColumn.TEXT),
-                new ExportColumn("unitName", "单位", ExportColumn.TEXT),
-                new ExportColumn("colorName", "颜色", ExportColumn.TEXT),
-                new ExportColumn("sourceType", "来源", ExportColumn.TEXT),
-                new ExportColumn("consumptionBasis", "计量方式", ExportColumn.TEXT),
-                new ExportColumn("basisOutputQty", "基准产量", ExportColumn.NUMBER),
-                new ExportColumn("allowPartialPackage", "尾包", ExportColumn.TEXT),
-                new ExportColumn("qty", "数量", ExportColumn.NUMBER),
-                new ExportColumn("summary", "备注", ExportColumn.TEXT));
         List<Map<String, Object>> rows = new ArrayList<>();
         Set<UUID> path = new java.util.HashSet<>();
         path.add(goodsId);
         expandForExport(goodsId, 0, path, "", rows);
-        return new ExportPayload(cols, rows, rows.size());
+        return new ExportPayload(EXPORT_COLUMNS, rows, rows.size());
     }
 
     /** DFS 平铺 BOM 树：[path] = 当前展开路径上的货品（含根，环路防护）；[prefix] = 级联序号前缀。 */
@@ -332,6 +396,7 @@ public class GoodsBomService {
             row.put("allowPartialPackage", "PER_PACKAGE".equals(v.getConsumptionBasis())
                     ? (v.isAllowPartialPackage() ? "允许" : "整包") : "—");
             row.put("qty", v.getQty());
+            row.put("actualQty", v.getUsage().actualQty());
             row.put("summary", v.getSummary());
             rows.add(row);
             if (v.isHasChildren() && !path.contains(v.getComponentGoodsId())) {
@@ -346,42 +411,14 @@ public class GoodsBomService {
 
     /** 把请求写到组装行上并校验(用量/阶段/计量方式/硬门槛/颜色/供应商)；粘贴命令逐行复用。 */
     void apply(BomItemSaveRequest req, GoodsBomItem r, Goods component) {
+        Goods previousComponent = r.getComponent();
         r.setComponent(component);
-        BigDecimal qty = req.getQty() == null ? BigDecimal.ONE : req.getQty();
-        if (qty.signum() <= 0) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "用量必须大于 0");
+        if (GoodsPeriodicMaterialRules.isPeriodic(component)) {
+            applyPeriodicEdge(req, r, component, previousComponent);
+        } else {
+            applyOrderEdge(req, r);
         }
-        r.setQty(qty);
-        String controlStage = validChoice(
-                req.getControlStage(), r.getControlStage(), "START",
-                CONTROL_STAGES,
-                "使用阶段只能选择开工前、装配、完工/包装、发货参考或仅参考");
-        r.setControlStage(controlStage);
-        r.setConsumptionBasis(validChoice(
-                req.getConsumptionBasis(), r.getConsumptionBasis(), "PER_UNIT",
-                Set.of("PER_UNIT", "PER_PACKAGE", "FIXED_BATCH"),
-                "计量方式只能选择按每件、按包装或固定批耗"));
-        BigDecimal basisOutputQty = req.getBasisOutputQty();
-        if (basisOutputQty == null) {
-            basisOutputQty = r.getBasisOutputQty() == null
-                    ? BigDecimal.ONE : r.getBasisOutputQty();
-        }
-        if (basisOutputQty.signum() <= 0) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "基准产量必须大于 0");
-        }
-        r.setBasisOutputQty(basisOutputQty);
-        if (req.getAllowPartialPackage() != null) {
-            r.setAllowPartialPackage(req.getAllowPartialPackage());
-        }
-        boolean hardGate = req.getHardGate() == null
-                ? r.isHardGate() : req.getHardGate();
-        if (hardGate && !HARD_GATE_STAGES.contains(controlStage)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "发货参考或仅参考不能设为缺料硬门槛；"
-                            + "纸箱/包装若生产包装必须消耗，请选择 FINISH，"
-                            + "并使用 PER_PACKAGE 或 FIXED_BATCH");
-        }
-        r.setHardGate(hardGate);
+        BigDecimal qty = r.getQty();
         // 单价（goods:price:view，V570）：显式传入优先；null = 不可查看者的脱敏产物
         // （前端隐藏单价，不提交）——新建回退组件货品价（保住「单价取自组件」与成本聚合
         // sourceE 口径），编辑保留行原值，均不误清。金额随实际落库单价重算兜底。
@@ -419,6 +456,121 @@ public class GoodsBomService {
         r.setSummary(req.getSummary());
     }
 
+    /** 按单边 (组件按工单领料): 用量、阶段、计量方式、基准产量、尾包、硬门槛照请求校验。 */
+    private void applyOrderEdge(BomItemSaveRequest req, GoodsBomItem r) {
+        if (req.getUnitWeightGrams() != null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "只有整批领料的料才按克填单个重量, 其它组件请填用量");
+        }
+        // 不传 = 新建按 1(实体默认)、编辑保留原值：系统学习边只在人改了数量时才提交数量(ADR-129)。
+        BigDecimal qty = req.getQty() == null ? r.getQty() : req.getQty();
+        if (qty == null || qty.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "设计使用数量必须大于 0");
+        }
+        r.setQty(qty);
+        String controlStage = validChoice(
+                req.getControlStage(), r.getControlStage(), "START",
+                CONTROL_STAGES,
+                "使用阶段只能选择开工前、装配、完工/包装、发货参考或仅参考");
+        r.setControlStage(controlStage);
+        r.setConsumptionBasis(validChoice(
+                req.getConsumptionBasis(), r.getConsumptionBasis(), "PER_UNIT",
+                Set.of("PER_UNIT", "PER_PACKAGE", "FIXED_BATCH"),
+                "计量方式只能选择按每件、按包装或固定批耗"));
+        BigDecimal basisOutputQty = req.getBasisOutputQty();
+        if (basisOutputQty == null) {
+            basisOutputQty = r.getBasisOutputQty() == null
+                    ? BigDecimal.ONE : r.getBasisOutputQty();
+        }
+        if (basisOutputQty.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "基准产量必须大于 0");
+        }
+        r.setBasisOutputQty(basisOutputQty);
+        if (req.getAllowPartialPackage() != null) {
+            r.setAllowPartialPackage(req.getAllowPartialPackage());
+        }
+        boolean hardGate = req.getHardGate() == null
+                ? r.isHardGate() : req.getHardGate();
+        if (hardGate && !HARD_GATE_STAGES.contains(controlStage)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "发货参考或仅参考不能设为缺料硬门槛；"
+                            + "纸箱/包装若生产包装必须消耗，请选择 FINISH，"
+                            + "并使用 PER_PACKAGE 或 FIXED_BATCH");
+        }
+        r.setHardGate(hardGate);
+    }
+
+    /**
+     * 期间边 (组件整批领到车间内料仓, ADR-131 §3.2): 只填单个重量, 形状自动设成开工前、按每件、
+     * 基准产量 1、不设齐套门槛。按克填的换成组件基本单位存; 按基本单位填且基准产量不是 1 的
+     * (如导入文件里"每 1000 件 12.5 千克") 折成每件用量。辅料 (色母) 不写进 BOM。
+     * 改了单个重量且小于 0.1 克或大于 5000 克时要请求带确认。
+     */
+    private void applyPeriodicEdge(BomItemSaveRequest req, GoodsBomItem r, Goods component,
+                                   Goods previousComponent) {
+        if (GoodsPeriodicMaterialRules.isSharedBasis(component.getPeriodicCostBasis())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, GoodsPeriodicMaterialRules.SHARED_NOT_IN_BOM);
+        }
+        if (req.getConsumptionBasis() != null
+                && !"PER_UNIT".equals(req.getConsumptionBasis().strip().toUpperCase(Locale.ROOT))) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, GoodsPeriodicMaterialRules.SHAPE_ONLY_UNIT_WEIGHT);
+        }
+        boolean sameComponent = previousComponent != null && component.getId().equals(previousComponent.getId());
+        BigDecimal perUnit = periodicQty(req, r, component, sameComponent);
+        BigDecimal gramsPerUnit = GoodsPeriodicMaterialRules.gramsPerUnit(component.getUnit());
+        boolean weightChanged = r.isNew() || !sameComponent || r.getQty() == null
+                || r.getQty().compareTo(perUnit) != 0;
+        BigDecimal grams = GoodsPeriodicMaterialRules.toGrams(perUnit, gramsPerUnit);
+        if (weightChanged && GoodsPeriodicMaterialRules.unusual(grams)
+                && !Boolean.TRUE.equals(req.getConfirmUnusualWeight())) {
+            String message = GoodsPeriodicMaterialRules.unusualWeightMessage(
+                    GoodsPeriodicMaterialRules.label(component), grams);
+            throw GoodsPeriodicMaterialRules.confirmationRequired(List.of(new ApiError.FieldError(
+                    GoodsPeriodicMaterialRules.CONFIRM_UNUSUAL_WEIGHT, message)));
+        }
+        r.setQty(perUnit);
+        r.setControlStage("START");
+        r.setConsumptionBasis("PER_UNIT");
+        r.setBasisOutputQty(BigDecimal.ONE);
+        r.setAllowPartialPackage(true);
+        r.setHardGate(false);
+    }
+
+    /** 期间边每件用量 (组件基本单位, 5 位小数)。 */
+    private static BigDecimal periodicQty(BomItemSaveRequest req, GoodsBomItem r, Goods component,
+                                          boolean sameComponent) {
+        BigDecimal perUnit;
+        if (req.getUnitWeightGrams() != null) {
+            BigDecimal gramsPerUnit = GoodsPeriodicMaterialRules.gramsPerUnit(component.getUnit());
+            if (gramsPerUnit == null) {
+                String unit = component.getUnit() == null ? "基本单位" : component.getUnit().getName();
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "「" + GoodsPeriodicMaterialRules.label(component)
+                        + "」的基本单位是「" + unit + "」, 不能按克填, 请直接按「" + unit + "」填单个重量");
+            }
+            if (req.getUnitWeightGrams().signum() <= 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "单个重量必须大于 0 克");
+            }
+            perUnit = GoodsPeriodicMaterialRules.fromGrams(req.getUnitWeightGrams(), gramsPerUnit);
+        } else if (req.getQty() != null) {
+            BigDecimal basis = req.getBasisOutputQty() == null ? BigDecimal.ONE : req.getBasisOutputQty();
+            if (basis.signum() <= 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "基准产量必须大于 0");
+            }
+            perUnit = basis.compareTo(BigDecimal.ONE) == 0
+                    ? req.getQty().setScale(GoodsPeriodicMaterialRules.QTY_SCALE, RoundingMode.HALF_UP)
+                    : req.getQty().divide(basis, GoodsPeriodicMaterialRules.QTY_SCALE, RoundingMode.HALF_UP);
+        } else if (!r.isNew() && sameComponent && r.getQty() != null) {
+            perUnit = r.getQty();
+        } else {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "「" + GoodsPeriodicMaterialRules.label(component) + "」是整批领料的料, 请填单个重量 (克)");
+        }
+        if (perUnit.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "单个重量太小, 最少 0.01 克");
+        }
+        return perUnit;
+    }
+
     private static String validChoice(
             String requested,
             String current,
@@ -442,8 +594,14 @@ public class GoodsBomService {
     }
 
     private BomItemView toView(GoodsBomItem r, Goods component) {
+        return toView(r, component, List.of());
+    }
+
+    private BomItemView toView(GoodsBomItem r, Goods component, List<String> warnings) {
         boolean hasChildren = !withOperationalRows(Set.of(component.getId())).isEmpty();
         LegacyNames legacy = legacyNames(List.of(r));
+        // 原生查询前先落库：刚新建/改过的行也按库里的口径读回(学习边被人工接管由触发器改写)。
+        BomItemUsage usage = usageOf(List.of(r.getId())).getOrDefault(r.getId(), BomItemUsage.NONE);
         return new BomItemView(
                 r.getId(), component.getId(), component.getCode(), component.getName(),
                 component.getModel(), component.getSpec(), component.getMaterial(),
@@ -458,18 +616,37 @@ public class GoodsBomService {
                 r.getSummary(), r.getLegacyId(), hasChildren, component.getSourceType(),
                 r.getControlStage(), r.getConsumptionBasis(),
                 r.getBasisOutputQty(), r.isAllowPartialPackage(), r.isHardGate(),
-                r.getAuditedAt());
+                r.getAuditedAt(), usage,
+                component.getIssueMethod(), periodicUnitWeightGrams(r, component),
+                warnings == null ? List.of() : List.copyOf(warnings));
     }
 
     /** Preserve relationship identity for cleanup while hiding an unauthorized target's data. */
-    private BomItemView redactedView(GoodsBomItem r, Goods component) {
+    private BomItemView redactedView(GoodsBomItem r, Goods component, BomItemUsage usage) {
         return new BomItemView(
                 r.getId(), component.getId(), null, null, null, null, null,
                 null, null, null, null, null, null,
                 r.getQty(), viewPrice(r.getPrice()), viewTotal(r), r.getSummary(), r.getLegacyId(),
                 false, null, r.getControlStage(), r.getConsumptionBasis(),
                 r.getBasisOutputQty(), r.isAllowPartialPackage(), r.isHardGate(),
-                r.getAuditedAt());
+                r.getAuditedAt(), usage, null, null, List.of());
+    }
+
+    /** 这些组装行的真实使用数量/计算采用值：一条查询(v_goods_bom_item_usage)，不逐行查。 */
+    private Map<UUID, BomItemUsage> usageOf(Collection<UUID> itemIds) {
+        if (itemIds.isEmpty()) return Map.of();
+        Map<UUID, BomItemUsage> out = new HashMap<>();
+        for (Object[] row : bomRepo.findUsageRows(itemIds)) {
+            out.put((UUID) row[0], BomItemUsage.of(row, 1));
+        }
+        return out;
+    }
+
+    /** 期间边的单个重量 (克); 不是期间边或单位不能按克换算时为 null。 */
+    private static BigDecimal periodicUnitWeightGrams(GoodsBomItem r, Goods component) {
+        if (!GoodsPeriodicMaterialRules.isPeriodic(component)) return null;
+        return GoodsPeriodicMaterialRules.toGrams(r.getQty(),
+                GoodsPeriodicMaterialRules.gramsPerUnit(component.getUnit()));
     }
 
     /** 售价可见性（goods:price:view，V570）：未授权者 BOM 行单价/金额置 null（前端隐藏列）。 */
@@ -528,31 +705,13 @@ public class GoodsBomService {
 
     /**
      * BOM 增删改后重算父货品「材料合计」sourceE 并写回 goods：
-     * 直接组件中，来源=自制 或 自身有 BOM（半成品）的取其成本价 cTotal×qty（其下级成本已含），
-     * 其余（采购/委外/未设）取 price×qty。求和（两位小数）。
+     * 直接组件中，来源=自制 或 自身有 BOM(半成品)的取其成本价 cTotal×设计使用数量(其下级成本已含)，
+     * 其余(采购/委外/未设)取 price×设计使用数量。求和(两位小数)。
+     * 公式只在数据库函数 fn_goods_bom_material_cost 里定义一次，学习引擎同步学习边后也调它(ADR-129)。
      * 前端成本 Tab 的 sourceE 只读显示此值；下游成本（成品价/成本价/出厂价）由前端据此级联。
      */
     void recalcSourceE(Goods parent) {
-        List<GoodsBomItem> rows = operationalRows(parent.getId());
-        Set<UUID> componentIds = rows.stream()
-                .map(r -> r.getComponent().getId())
-                .collect(Collectors.toSet());
-        Set<UUID> withChildren = withOperationalRows(componentIds);
-        BigDecimal sum = BigDecimal.ZERO;
-        for (GoodsBomItem r : rows) {
-            Goods c = r.getComponent();
-            boolean selfMade = "自制".equals(c.getSourceType()) || withChildren.contains(c.getId());
-            BigDecimal unit;
-            if (selfMade && c.getCTotal() != null) {
-                unit = c.getCTotal();
-            } else {
-                unit = c.getPrice();
-            }
-            if (unit != null && r.getQty() != null) {
-                sum = sum.add(unit.multiply(r.getQty()));
-            }
-        }
-        parent.setSourceE(sum.setScale(2, RoundingMode.HALF_UP));
+        parent.setSourceE(bomRepo.materialCost(parent.getId()));
         goodsRepo.save(parent);
         // BOM 变更 → 通知旁路：触发研发 BOM 任务自动完成 + 通知所有已登记等待的生产转发人
         // （ChainNoticeService.notifyBomUpdated 经 outbox 原子送达）。create/update/delete 三处共用此钩子。

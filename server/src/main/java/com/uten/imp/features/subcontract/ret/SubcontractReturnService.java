@@ -406,7 +406,8 @@ public class SubcontractReturnService {
                 ts, StockService.TYPE_SUBCONTRACT_RETURN, StockService.SRC_SUBCONTRACT_RETURN,
                 r.getId(), it.getId(), it.getGoodsId(), it.getColorId(), r.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
-                direction < 0 ? null : "红冲", it.getWeight()));
+                // 委外退货不是仓库称重单据: 不带重量, 由库存账推算; 红冲按原流水镜像(ADR-135)。
+                direction < 0 ? null : "红冲", null));
     }
 
     /** 立应付反向 AP。sign=-1 退货（应付减少，金额转负）。 */

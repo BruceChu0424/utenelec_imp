@@ -43,9 +43,15 @@ public class StockBalance extends BaseEntity {
     @Column(name = "amount_local", precision = 18, scale = 4)
     private BigDecimal amountLocal;
 
-    /** 当前库存重量：历史=StockGoods 最新年 FactWeight；新流水按行实际总重量×direction 增减。 */
+    /**
+     * 当前库存重量(千克), null = 未知; 数量为 0 时是 0, 数量大于 0 时大于 0。由库存账在锁下整值改写(ADR-135)。
+     */
     @Column(name = "weight", precision = 18, scale = 4)
     private BigDecimal weight;
+
+    /** 库存重量是否含估算(按均重/单重推算), 界面显示「≈」。 */
+    @Column(name = "weight_estimated", nullable = false)
+    private boolean weightEstimated;
 
     @Column(name = "last_movement_date")
     private OffsetDateTime lastMovementDate;

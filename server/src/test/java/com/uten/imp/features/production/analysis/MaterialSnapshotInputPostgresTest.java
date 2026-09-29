@@ -35,7 +35,7 @@ class MaterialSnapshotInputPostgresTest {
     void typedJsonRetainsTheEntireScalarContractAndArrayOrder(String name)throws Exception {
         MaterialSnapshotInput shape=(MaterialSnapshotInput)ReflectionTestUtils.getField(MaterialAnalysisService.class,name);
         assertNotNull(shape);
-        List<String> columns=shape.columns();assertEquals(name.equals("NODE_INPUT")?36:15,columns.size());
+        List<String> columns=shape.columns();assertEquals(name.equals("NODE_INPUT")?42:15,columns.size());
         String definitions=(String)ReflectionTestUtils.getField(shape,"definitions");assertNotNull(definitions);
         String[] types=Arrays.stream(definitions.split(", ")).limit(columns.size())
                 .map(definition->definition.substring(definition.indexOf(' ')+1)).toArray(String[]::new);
@@ -85,6 +85,7 @@ class MaterialSnapshotInputPostgresTest {
                         UUID.nameUUIDFromBytes((column+alternate).getBytes(StandardCharsets.UTF_8));
                 case "numeric" -> alternate?new BigDecimal("0.0000"):new BigDecimal("12345678901234.1234");
                 case "integer" -> alternate?0:2;
+                case "bigint" -> alternate?0L:3L;
                 case "boolean" -> alternate;
                 case "date" -> alternate?null:LocalDate.of(2026,9,12);
                 case "varchar","text" -> column.equals("parent_node_key")?(alternate?"":null):

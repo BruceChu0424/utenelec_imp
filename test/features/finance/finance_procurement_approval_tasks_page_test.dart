@@ -119,6 +119,8 @@ FinanceProcurementApprovalTask _task({
   'supplierName': orderType == 'PURCHASE' ? '供应商A' : '委外商B',
   'warehouseName': '一号仓',
   'amount': orderType == 'PURCHASE' ? '1200.50' : '800.00',
+  'totalOriginal': orderType == 'PURCHASE' ? '169.0845' : '800',
+  'currencyName': orderType == 'PURCHASE' ? '美元' : '人民币',
   'submittedByName': '张三',
   'submittedAt': '2026-08-18T02:00:00+08:00',
   'expectedDate': '2026-09-01',
@@ -279,6 +281,7 @@ void main() {
           'orderType',
           'billNo',
           'supplierName',
+          'totalOriginal',
           'amount',
           'expectedDate',
           'submittedByName',
@@ -286,6 +289,10 @@ void main() {
           'attempt',
         ]),
       );
+      // ADR-128：订货金额按订货币种写成「币种 金额」，折合本币另列。
+      expect(find.text('美元 169.0845'), findsOneWidget);
+      expect(find.text('人民币 800.00'), findsOneWidget);
+      expect(find.text('折合本币'), findsOneWidget);
 
       table.onSelectedIdsChanged?.call({'case-1', 'case-2'});
       await tester.pump();

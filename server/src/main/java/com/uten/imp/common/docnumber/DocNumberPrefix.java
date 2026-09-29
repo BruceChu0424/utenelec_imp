@@ -75,6 +75,9 @@ public enum DocNumberPrefix {
     PRODUCTION_DAILY_REPORT("SR"),
     /** V547 生产成品品质检查单（同仓送检行聚合；数量守恒仍在 inspection）。 */
     PRODUCTION_FQC_SHEET("FQC"),
+    // 车间内料仓 (ADR-131 / V740; 领料单与退回单共用一张表, 按种类分号段, 由数据库取号触发器分配)
+    WORKSHOP_MATERIAL_ISSUE("ZL"),
+    WORKSHOP_MATERIAL_RETURN("ZT"),
     // 研发
     RD_TASK("RD");
 

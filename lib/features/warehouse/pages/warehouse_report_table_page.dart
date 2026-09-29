@@ -12,6 +12,8 @@
 // + 下方 Excel 风格表格（标题行每列可筛 + 横滚 + 翻页）。
 // 默认日期范围 = 上月今日..今日（defaultReportFrom()，收紧默认避免一进拉全量；firstDate 仍 2010 可手选更早）。
 // 列筛选（仓库/是否审核…）走表头 autofilter（facets），筛选区只放公共过滤。
+// 重量列 (列 type 'weight'，值为千克，ADR-135) 按用户「重量单位」偏好换算显示，工具条带
+// 「重量单位: 自动▾」；合计同口径 (含估算「≈」、未称项计数)。
 //
 // 筛选口径（单据类型/日期范围/facet/排序）按账号服务端持久化（report.warehouse.detail|summary，
 // ReportFilterPrefs，见 lib/features/report/shared/report_filter_prefs.dart）：
@@ -36,6 +38,8 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/measurement/weight_prefs.dart';
+import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -240,11 +244,15 @@ class _WarehouseReportTablePageState
       query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
     );
     final data = parseReportResponse(json, 1);
+    final display = ref.read(warehouseWeightUnitsPrefsProvider).display;
     return UtenPrintTable(
       headers: [for (final c in data.columns) c.label],
       rows: [
         for (final r in data.rows)
-          [for (final c in data.columns) formatReportCell(c, r) ?? ''],
+          [
+            for (final c in data.columns)
+              formatReportCell(c, r, weightDisplay: display) ?? '',
+          ],
       ],
     );
   }
@@ -445,6 +453,9 @@ class _WarehouseReportTablePageState
     if (data == null) {
       return const Center(child: Text('点击「查询」加载'));
     }
+    // 重量列 (type 'weight', 千克) 按用户显示单位换算; 估算行前缀「≈」, 没称留空。
+    final weightDisplay = ref.watch(warehouseWeightUnitsPrefsProvider).display;
+    final hasWeight = data.columns.any((c) => c.type == 'weight');
     final columns = data.columns
         .map(
           (c) => MasterColumnDef<Map<String, dynamic>>(
@@ -453,7 +464,8 @@ class _WarehouseReportTablePageState
             width: (c.width ?? 120).toDouble(),
             type: c.type,
             sortable: isSortableReportType(c.type),
-            value: (row) => formatReportCell(c, row),
+            value: (row) =>
+                formatReportCell(c, row, weightDisplay: weightDisplay),
           ),
         )
         .toList();
@@ -463,6 +475,7 @@ class _WarehouseReportTablePageState
       columns: columns,
       items: data.rows,
       toolbarActions: [
+        if (hasWeight) const WeightDisplayUnitButton(),
         UtenPrintPreviewButton(
           title: '仓库${_docType.label}${_kind.shortLabel}报表',
           subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',
@@ -497,7 +510,7 @@ class _WarehouseReportTablePageState
       emptyMessage: _kind.isDetail ? '暂无明细数据' : '暂无汇总数据',
       // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
       // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
-      summaryBar: reportTotalsBar(data.totals),
+      summaryBar: reportTotalsBar(data.totals, weightDisplay: weightDisplay),
       currentPage: data.page,
       totalPages: data.totalPages,
       onPageChange: (p) {

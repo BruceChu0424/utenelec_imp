@@ -18,6 +18,8 @@ public class DailyReportItemDto {
     private UUID unitId;
     private BigDecimal unitRate;
     private BigDecimal qty;
+    /** 不良数(ADR-129)：只记录，没有时为 0。 */
+    private BigDecimal defectQty;
     private BigDecimal price;
     private BigDecimal total;
     private BigDecimal stotal;
@@ -46,6 +48,10 @@ public class DailyReportItemDto {
     private UUID directTransferDemandId;
     /** 直送接收方的可读标识(V595)：父件产品名 编号 · 工单号；详情页「转给工单」列用，非直送行为空。 */
     private String directTransferTargetLabel;
+    /** 送仓明细为什么没转下一道工序(V736 原因码)；转送明细与历史明细为空。 */
+    private String outputRouteReason;
+    /** 上面原因码的大白话(服务端唯一文案)；详情页与审核确认直接显示。 */
+    private String outputRouteReasonText;
     /** Exact plan identity for reloading a draft's material rows. */
     @lombok.Setter
     private UUID planId;

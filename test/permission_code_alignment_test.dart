@@ -96,6 +96,28 @@ void main() {
     },
   );
 
+  test('ADR-135 stock:weight:manage is one shared constant on both sides', () {
+    // 单重管理码: 前端只认 Perm.stockWeightManage (共享层 weight_params 也引用它,
+    // 不再各写一份字面量); 后端 StockWeightController 用同值强制。
+    final permSource = File(
+      'lib/shared/auth/permissions.dart',
+    ).readAsStringSync();
+    expect(
+      permSource,
+      contains("static const stockWeightManage = 'stock:weight:manage';"),
+    );
+    final weightParams = File(
+      'lib/shared/measurement/weight_params.dart',
+    ).readAsStringSync();
+    expect(weightParams, contains('Perm.stockWeightManage'));
+    expect(weightParams, isNot(contains("'stock:weight:manage'")));
+    final controller = File(
+      'server/src/main/java/com/uten/imp/features/stock/weight/'
+      'StockWeightController.java',
+    ).readAsStringSync();
+    expect(controller, contains("hasAuthority('stock:weight:manage')"));
+  });
+
   test('every frontend Perm constant is referenced by server code', () {
     final serverRoot = Directory('server/src/main/java');
     expect(serverRoot.existsSync(), isTrue, reason: '需在仓库根目录运行');

@@ -563,7 +563,7 @@ class _ProcurementIqcActualCreditDialogState
                             ],
                             const SizedBox(height: 8),
                             SelectableText(
-                              '分项合计：${sum ?? '待完整填写'} ${_detail.caseItem.currencyCode ?? ''}',
+                              '分项合计：${sum == null ? '待完整填写' : _detail.caseItem.originalMoneyText(sum)}',
                               key: const Key('iqc-credit-sum'),
                             ),
                             const SizedBox(height: 12),

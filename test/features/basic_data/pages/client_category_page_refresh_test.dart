@@ -150,13 +150,74 @@ void main() {
       );
     },
   );
+  // ADR-134: 外文名称 column right after 客户全称; the search hint names the
+  // new searchable fields (外文名称/邮箱).
+  testWidgets('外文名称列紧跟客户全称, 搜索提示包含外文名称与邮箱', (tester) async {
+    final categories = _FakeClientCategoryRepository();
+    final clients = _FakeClientRepository(includeLegacy: true);
+    await _pumpPage(tester, categories, clients, locale: const Locale('zh'));
+
+    await tester.tap(find.text('成品类(C-FIN)'));
+    await tester.pumpAndSettle();
+
+    final table = tester.widget<MasterDataTableView<ClientListItem>>(
+      find.byType(MasterDataTableView<ClientListItem>),
+    );
+    final keys = table.columns.map((c) => c.key).toList();
+    expect(keys.indexOf('nameEn'), keys.indexOf('fullName') + 1);
+    expect(table.columns.firstWhere((c) => c.key == 'nameEn').label, '外文名称');
+    expect(find.text('LEGACY TRADING LTD'), findsOneWidget);
+    expect(find.text('搜索客户(简称/编码/全称/外文名称/联系人/手机/邮箱)'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  // ADR-134: the 新增客户 dialog carries 外文名称 in the create body.
+  testWidgets('新增客户弹窗填写外文名称后随创建请求提交', (tester) async {
+    final categories = _FakeClientCategoryRepository();
+    final clients = _FakeClientRepository();
+    await _pumpPage(
+      tester,
+      categories,
+      clients,
+      locale: const Locale('zh'),
+      extraPermissions: const {Perm.clientCreate},
+    );
+
+    await tester.tap(find.text('成品类(C-FIN)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('添加客户'));
+    await tester.pumpAndSettle();
+    expect(find.text('新增客户'), findsOneWidget);
+
+    // Text-field labels are rich widgets (required marker support): find the
+    // label text and walk up to its TextField.
+    Finder field(String label) => find.ancestor(
+      of: find.text(label, findRichText: true),
+      matching: find.byType(TextField),
+    );
+    // 名称 is required: its rich label reads "名称 *".
+    await tester.enterText(field('名称 *'), '新客户');
+    await tester.enterText(field('外文名称'), '  NEW TRADING LTD  ');
+    await tester.tap(find.text('保存').hitTestable());
+    await tester.pumpAndSettle();
+
+    final body = clients.createdBody;
+    expect(body, isNotNull);
+    expect(body!['name'], '新客户');
+    expect(body['nameEn'], 'NEW TRADING LTD');
+    expect(body['categoryId'], 'finished');
+    expect(find.text('新增客户'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Future<void> _pumpPage(
   WidgetTester tester,
   _FakeClientCategoryRepository categories,
-  _FakeClientRepository clients,
-) async {
+  _FakeClientRepository clients, {
+  Locale? locale,
+  Set<String> extraPermissions = const {},
+}) async {
   final preferences = await SharedPreferences.getInstance();
   await tester.binding.setSurfaceSize(const Size(1440, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -184,6 +245,7 @@ Future<void> _pumpPage(
           Perm.clientCategoryEdit,
           Perm.clientView,
           Perm.clientEdit,
+          ...extraPermissions,
         }),
         clientCategoryRepositoryProvider.overrideWithValue(categories),
         clientRepositoryProvider.overrideWithValue(clients),
@@ -193,6 +255,7 @@ Future<void> _pumpPage(
       ],
       child: MaterialApp.router(
         routerConfig: router,
+        locale: locale,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
       ),
@@ -298,6 +361,9 @@ class _FakeClientRepository implements ClientRepository {
   /// 最近一次 list 收到的表头筛选（服务端参数名口径）。
   Map<String, String?>? lastFilters;
 
+  /// Body of the last create call (新增客户 dialog).
+  Map<String, dynamic>? createdBody;
+
   /// 初始选中加载过一次后，是否又因分类保存重拉过列表。
   bool get listCallsAfterSave => listCalls > 1;
 
@@ -322,6 +388,7 @@ class _FakeClientRepository implements ClientRepository {
                 id: 'legacy-client',
                 code: 'OLD-001',
                 name: '旧库客户',
+                nameEn: 'LEGACY TRADING LTD',
                 categoryId: 'finished',
                 credit: 50000,
                 creditFloor: 50000,
@@ -352,6 +419,11 @@ class _FakeClientRepository implements ClientRepository {
     total: 0,
     totalPages: 0,
   );
+
+  @override
+  Future<void> create(Map<String, dynamic> body) async {
+    createdBody = Map<String, dynamic>.of(body);
+  }
 
   @override
   Future<ClientFacets> facets(String categoryId) async =>

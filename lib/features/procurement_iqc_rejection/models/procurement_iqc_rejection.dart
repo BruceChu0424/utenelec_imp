@@ -1,3 +1,4 @@
+import '../../../shared/formatters/money_display.dart';
 import 'procurement_iqc_credit.dart';
 export 'procurement_iqc_credit.dart';
 
@@ -104,6 +105,7 @@ class ProcurementIqcRejectionCase {
     this.failedAmountOriginal,
     this.failedAmountLocal,
     this.currencyCode,
+    this.currencyName,
     this.ownerUserId,
     this.returnReference,
     this.returnDate,
@@ -138,6 +140,9 @@ class ProcurementIqcRejectionCase {
   final String? failedAmountOriginal;
   final String? failedAmountLocal;
   final String? currencyCode;
+
+  /// 币种显示名(人民币 / 美金)；原币金额写成「币种 金额」(ADR-128)。
+  final String? currencyName;
   final ProcurementIqcRejectionStatus status;
   final int version;
   final String? ownerUserId;
@@ -163,11 +168,27 @@ class ProcurementIqcRejectionCase {
     goodsName,
   ].where((value) => value?.trim().isNotEmpty == true).join(' ');
 
-  String amountLabel(String? amount) {
+  /// 原币金额「美金 125.50」：币种只用主档名称或可读代码，不显示 001 这类旧编号(ADR-128)。
+  String originalMoneyText(String amount) => financeMoneyWithCurrency(
+    amount,
+    currencyName: currencyName,
+    currencyCode: currencyCode,
+  );
+
+  /// 原币金额：按权限脱敏时为 ***，没有金额时为「待核对」。
+  String originalAmountLabel(String? amount) =>
+      _visibleAmount(amount, originalMoneyText);
+
+  /// 本币(折本位币)金额：只写金额，由所在列名或前缀「本币」说明币种，
+  /// 不挂单据币种(外币单据的本币金额不能写成外币)。
+  String localAmountLabel(String? amount) =>
+      _visibleAmount(amount, financeMoneyText);
+
+  String _visibleAmount(String? amount, String Function(String) format) {
     if (priceMasked) return '***';
-    if (amount == null || amount.trim().isEmpty) return '待核对';
-    final currency = currencyCode?.trim();
-    return currency?.isNotEmpty == true ? '$currency $amount' : amount;
+    final text = amount?.trim();
+    if (text == null || text.isEmpty) return '待核对';
+    return format(text);
   }
 
   factory ProcurementIqcRejectionCase.fromJson(Map<String, dynamic> json) =>
@@ -191,6 +212,7 @@ class ProcurementIqcRejectionCase {
         failedAmountOriginal: _text(json['failedAmountOriginal']),
         failedAmountLocal: _text(json['failedAmountLocal']),
         currencyCode: _text(json['currencyCode']),
+        currencyName: _text(json['currencyName']),
         status: ProcurementIqcRejectionStatus.parse(json['status']),
         version: _integer(json['version']),
         ownerUserId: _text(json['ownerUserId']),

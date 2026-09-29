@@ -96,6 +96,7 @@ public class FulfillmentWorkbenchQueryService {
             JOIN goods sole_child ON sole_child.id = sole_edge.component_goods_id
              AND sole_child.is_deleted = FALSE
              AND COALESCE(sole_child.auto_created, FALSE) = FALSE
+             AND sole_child.issue_method <> 'PERIODIC'
             WHERE sole_item.application_id = %s
               AND NOT sole_item.is_deleted
               AND COALESCE(sole_item.qty, 0) > COALESCE(sole_item.ordered_qty, 0)

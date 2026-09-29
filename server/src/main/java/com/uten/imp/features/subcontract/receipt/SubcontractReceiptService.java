@@ -460,7 +460,8 @@ public class SubcontractReceiptService {
                 ts, StockService.TYPE_SUBCONTRACT_RECEIPT, StockService.SRC_SUBCONTRACT_RECEIPT,
                 r.getId(), it.getId(), it.getGoodsId(), it.getColorId(), r.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
-                direction < 0 ? "红冲" : null, it.getWeight()));
+                // 只剩历史收货红冲走这里: 不带重量, 库存账按原流水镜像或按均重推算(ADR-135)。
+                direction < 0 ? "红冲" : null, null));
     }
 
     private static void requireSameInventoryDimensions(

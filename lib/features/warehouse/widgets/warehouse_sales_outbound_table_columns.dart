@@ -5,8 +5,13 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../shared/measurement/weight_params.dart';
+import '../../../shared/measurement/weight_unit.dart';
+import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../models/outbound_weight_entry.dart';
 import '../models/warehouse_sales_outbound.dart';
+import 'outbound_weight_columns.dart';
 import 'warehouse_sales_picking_fields.dart';
 
 /// One physical line, retaining its document and actual warehouse identity.
@@ -68,8 +73,10 @@ String warehouseSalesOutboundReviewSnapshot(WarehouseSalesOutboundDetail d) =>
           line.colorId,
           line.unitId,
           line.unitName,
+          line.unitRate,
           line.quantity,
-          line.weight,
+          line.weightKg,
+          line.weightSource,
           line.parcelQuantity,
           line.cartonCount,
           line.clientProductCode,
@@ -92,6 +99,12 @@ warehouseSalesOutboundTableColumns({
   WarehouseSalesPickingDraft? Function(WarehouseSalesOutboundTableRow)? draftOf,
   VoidCallback? onDraftChanged,
   bool editingEnabled = true,
+
+  /// 页内单重参数缓存 (实称重量的「应称」占位与偏差核对); null = 只记重量不核对。
+  WeightParamsCache? weightParams,
+
+  /// 录入单位 (用户偏好 warehouse.weightUnits.entry)。
+  WeightUnit weightEntryUnit = WeightUnit.kg,
 }) {
   String? warehouseText(WarehouseSalesOutboundTableRow row) {
     final draft = draftOf?.call(row);
@@ -103,6 +116,71 @@ warehouseSalesOutboundTableColumns({
 
   bool has(String? Function(WarehouseSalesOutboundLine) value) =>
       rows.any((row) => value(row.line)?.trim().isNotEmpty == true);
+
+  // 实称重量 (ADR-135 §3.7): 待出库时逐行录入 (数量组之后), 已出库显示出库流水重量。
+  OutboundWeightEntry? weightOf(WarehouseSalesOutboundTableRow row) {
+    final draft = draftOf?.call(row);
+    return draft != null && draft.selectable
+        ? draft.weights[row.line.id]
+        : null;
+  }
+
+  final rowOfEntry = <OutboundWeightEntry, WarehouseSalesOutboundTableRow>{
+    for (final row in rows) ?weightOf(row): row,
+  };
+  // 件数说明要基本单位名: 行单位就是基本单位 (换算率 1) 时才知道。
+  String? baseUnitName(OutboundWeightEntry entry) {
+    final line = rowOfEntry[entry]?.line;
+    return line?.unitRate == 1 ? line?.unitName : null;
+  }
+
+  final weightColumns = <MasterColumnDef<WarehouseSalesOutboundTableRow>>[
+    if (rowOfEntry.isNotEmpty) ...[
+      outboundWeightColumn<WarehouseSalesOutboundTableRow>(
+        entryOf: weightOf,
+        entryUnit: weightEntryUnit,
+        params: weightParams,
+        enabledOf: (_) => editingEnabled,
+        baseUnitNameOf: baseUnitName,
+        onWeighCount: (context, entry) {
+          final line = rowOfEntry[entry]?.line;
+          return weighOutboundEntry(
+            context,
+            entry: entry,
+            goodsTitle: [
+              line?.goodsName,
+              line?.goodsCode,
+              line?.colorName,
+            ].whereType<String>().join(' '),
+            cache: weightParams,
+            baseUnitName: baseUnitName(entry),
+            lineUnitName: line?.unitName,
+            sampleRemark: rowOfEntry[entry]?.detail.header.billNo,
+          );
+        },
+      ),
+      outboundWeightCheckColumn<WarehouseSalesOutboundTableRow>(
+        entryOf: weightOf,
+        params: weightParams,
+        unitNameOf: baseUnitName,
+      ),
+    ] else if (rows.any((row) => row.line.weightKg != null))
+      MasterColumnDef(
+        key: 'weight',
+        label: l10n.warehouseOutboundWeight,
+        width: 110,
+        type: 'number',
+        value: (row) => formatWeightValue(
+          row.line.weightKg,
+          estimated: isEstimatedWeightSource(row.line.weightSource),
+        ),
+        cellBuilder: (context, row) => WeightText(
+          kg: row.line.weightKg,
+          source: row.line.weightSource,
+          textAlign: TextAlign.right,
+        ),
+      ),
+  ];
   MasterColumnDef<WarehouseSalesOutboundTableRow> column(
     String key,
     String label,
@@ -171,6 +249,7 @@ warehouseSalesOutboundTableColumns({
       type: 'number',
     ),
     column('unitName', l10n.warehouseOutboundUnit, 80, (r) => r.line.unitName),
+    ...weightColumns,
     if (draftOf != null)
       MasterColumnDef(
         key: 'warehouse',
@@ -265,14 +344,6 @@ warehouseSalesOutboundTableColumns({
         '实际库位号',
         150,
         (row) => row.line.actualStockPlace,
-      ),
-    if (has((line) => line.weight))
-      column(
-        'weight',
-        l10n.warehouseOutboundWeight,
-        96,
-        (r) => r.line.weight,
-        type: 'number',
       ),
     if (has((line) => line.parcelQuantity))
       column(

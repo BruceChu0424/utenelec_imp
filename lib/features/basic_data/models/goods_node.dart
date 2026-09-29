@@ -7,12 +7,24 @@
 
 import 'master_facet.dart';
 
+/// Where goods.name_en came from (ADR-134): typed by a person, or learned when
+/// sales saved a customer file. null = no English name yet.
+abstract final class GoodsNameEnSource {
+  static const manual = 'MANUAL';
+  static const learned = 'LEARNED';
+}
+
+/// Longest English name the server accepts (goods.name_en varchar(255)).
+const kGoodsNameEnMaxLength = 255;
+
 /// 货品列表项（含筛选/展示所需的核心字段）。
 class GoodsListItem {
   const GoodsListItem({
     required this.id,
     this.code,
     this.name,
+    this.nameEn,
+    this.nameEnSource,
     this.spec,
     this.model,
     this.price,
@@ -44,6 +56,10 @@ class GoodsListItem {
     this.owningWorkshopId,
     this.owningWorkshopName,
     this.version,
+    this.issueMethod = GoodsIssueMethod.order,
+    this.periodicCostBasis,
+    this.bulkPackageQty,
+    this.recycledMaterial = false,
   });
 
   /// 乐观锁版本(ADR-111)：行启停、批量启停/删除直接回传比对，不必先拉详情。
@@ -52,6 +68,13 @@ class GoodsListItem {
   final String id;
   final String? code;
   final String? name;
+
+  /// English name used to match customer files (goods.name_en, ADR-134);
+  /// the goods picker hands it to the sales grid as the default file goods name.
+  final String? nameEn;
+
+  /// [GoodsNameEnSource] value, null when [nameEn] is blank.
+  final String? nameEnSource;
   final String? spec;
   final String? model;
   final double? price;
@@ -93,10 +116,27 @@ class GoodsListItem {
   final String? owningWorkshopId; // null=尚未学习
   final String? owningWorkshopName; // 展示名；部门已软删或未解析时为 null
 
+  // ===== 车间内料仓 (ADR-131；只读，切换走「发料方式」预览确认) =====
+  /// 发料方式：ORDER=按工单领料，PERIODIC=整批领到车间内料仓。
+  final String issueMethod;
+
+  /// 分摊方式 (只对整批领料)：OWN=主料 / SHARED=辅料 / EXPENSE=记车间费用。
+  final String? periodicCostBasis;
+
+  /// 每袋净重 (基本单位，公斤)；发料、盘点「袋数 × 每袋」的默认值。
+  final double? bulkPackageQty;
+
+  /// 回收料 (水口料、破碎料)：其它入库按 0 成本进仓。
+  final bool recycledMaterial;
+
+  bool get isPeriodicIssue => issueMethod == GoodsIssueMethod.periodic;
+
   factory GoodsListItem.fromJson(Map<String, dynamic> json) => GoodsListItem(
     id: json['id'] as String,
     code: json['code'] as String?,
     name: json['name'] as String?,
+    nameEn: json['nameEn'] as String?,
+    nameEnSource: json['nameEnSource'] as String?,
     spec: json['spec'] as String?,
     model: json['model'] as String?,
     price: (json['price'] as num?)?.toDouble(),
@@ -130,7 +170,85 @@ class GoodsListItem {
     owningWorkshopId: json['owningWorkshopId'] as String?,
     owningWorkshopName: json['owningWorkshopName'] as String?,
     version: (json['version'] as num?)?.toInt(),
+    issueMethod: goodsIssueMethodFromJson(json['issueMethod']),
+    periodicCostBasis: json['periodicCostBasis'] as String?,
+    bulkPackageQty: (json['bulkPackageQty'] as num?)?.toDouble(),
+    recycledMaterial: goodsRecycledMaterialFromJson(json),
   );
+}
+
+/// 发料方式取值 (ADR-131，与后端 goods.issue_method 一致)。
+abstract final class GoodsIssueMethod {
+  /// 按工单领料 (默认)。
+  static const order = 'ORDER';
+
+  /// 整批领到车间内料仓，盘点计耗。
+  static const periodic = 'PERIODIC';
+}
+
+/// 分摊方式取值 (ADR-131，与后端 goods.periodic_cost_basis 一致；只对整批领料)。
+abstract final class GoodsPeriodicCostBasis {
+  /// 主料：按「报工量 × BOM 单个重量」的理论比例分到各工单。
+  static const own = 'OWN';
+
+  /// 辅料 (如色母)：不写进 BOM，按当期主料用量分到各产品。
+  static const shared = 'SHARED';
+
+  /// 记车间费用：不分给产品。
+  static const expense = 'EXPENSE';
+
+  static const values = [own, shared, expense];
+}
+
+/// 旧响应没有发料方式时按「按工单领料」处理 (与数据库默认值一致)。
+String goodsIssueMethodFromJson(Object? raw) => raw == GoodsIssueMethod.periodic
+    ? GoodsIssueMethod.periodic
+    : GoodsIssueMethod.order;
+
+/// 回收料标记：Java 的 boolean isRecycledMaterial 经 Jackson 输出为
+/// recycledMaterial，record 组件则原名输出；两种写法都认。
+bool goodsRecycledMaterialFromJson(Map<String, dynamic> json) =>
+    (json['recycledMaterial'] ?? json['isRecycledMaterial']) == true;
+
+/// 产品 BOM 上一条「整批领料的料」的单个重量 (货品详情只读展示)。
+class GoodsPeriodicBomWeight {
+  const GoodsPeriodicBomWeight({
+    required this.materialGoodsId,
+    this.bomItemId,
+    this.materialName,
+    this.materialCode,
+    this.colorName,
+    this.qty,
+    this.unitName,
+    this.unitWeightGrams,
+  });
+
+  final String materialGoodsId;
+  final String? bomItemId;
+  final String? materialName;
+  final String? materialCode;
+  final String? colorName;
+
+  /// 单个重量 (料的基本单位)。
+  final double? qty;
+
+  /// 料的基本单位名。
+  final String? unitName;
+
+  /// 单个重量 (克)；料的基本单位不能按克换算时为 null，按 [qty] + [unitName] 显示。
+  final double? unitWeightGrams;
+
+  factory GoodsPeriodicBomWeight.fromJson(Map<String, dynamic> json) =>
+      GoodsPeriodicBomWeight(
+        materialGoodsId: json['materialGoodsId'] as String? ?? '',
+        bomItemId: json['bomItemId'] as String?,
+        materialName: json['materialName'] as String?,
+        materialCode: json['materialCode'] as String?,
+        colorName: json['colorName'] as String?,
+        qty: (json['qty'] as num?)?.toDouble(),
+        unitName: json['unitName'] as String?,
+        unitWeightGrams: (json['unitWeightGrams'] as num?)?.toDouble(),
+      );
 }
 
 /// 采购批量数量（最小起订量 / 订货倍数）的展示文本。
@@ -149,6 +267,9 @@ class GoodsDetail {
     required this.id,
     this.code,
     this.name,
+    this.nameEn,
+    this.nameEnSource,
+    this.canEditNameEn = false,
     this.spec,
     this.model,
     this.price,
@@ -209,6 +330,9 @@ class GoodsDetail {
     this.discountMasked = false,
     this.priceMasked = false,
     this.stockQty,
+    this.stockWeightKg,
+    this.stockWeightUnknown = 0,
+    this.stockWeightEstimated = false,
     this.stockByWarehouse = const [],
     this.series,
     this.stockPlace,
@@ -225,6 +349,11 @@ class GoodsDetail {
     this.defaultSubcontractPrice,
     this.defaultPurchasePriceInfo,
     this.defaultSubcontractPriceInfo,
+    this.issueMethod = GoodsIssueMethod.order,
+    this.periodicCostBasis,
+    this.bulkPackageQty,
+    this.recycledMaterial = false,
+    this.periodicBomWeights = const [],
   });
 
   final String id;
@@ -233,6 +362,21 @@ class GoodsDetail {
   final bool quantityUnitLocked;
   final String? code;
   final String? name;
+
+  /// English name used to match customer files (goods.name_en, ADR-134).
+  final String? nameEn;
+
+  /// [GoodsNameEnSource] value, null when [nameEn] is blank.
+  final String? nameEnSource;
+
+  /// Server capability: the caller may change only the English name through
+  /// PUT /master/goods/{id}/name-en (goods:name_en:edit or goods:edit plus
+  /// object scope). Missing on older responses means read-only.
+  final bool canEditNameEn;
+
+  bool get nameEnLearned =>
+      nameEnSource == GoodsNameEnSource.learned &&
+      (nameEn?.trim().isNotEmpty ?? false);
   final String? spec;
   final String? model;
   final double? price;
@@ -309,6 +453,16 @@ class GoodsDetail {
 
   // ===== 即时库存（聚合 stock_balances，仅参与核算仓库；详情展示+关联仓库） =====
   final double? stockQty; // 各参与核算仓库余量合计
+
+  /// 已知库存重量合计 (千克, 服务端按参与核算且非线边的仓库算好; 前端不再逐行相加)。
+  /// null = 有量的维度重量全都未知; 与 [stockWeightUnknown] 一起显示「≈28.9 kg (另有 2 处未称)」。
+  final double? stockWeightKg;
+
+  /// 有库存但重量未知的维度数 (仓库 x 颜色, 不含线边仓)。
+  final int stockWeightUnknown;
+
+  /// 重量合计含估算 (显示「≈」)。
+  final bool stockWeightEstimated;
   final List<GoodsStockRow> stockByWarehouse; // 按仓库（×颜色）展开
 
   final String? series; // 物料系列（如塑胶件/五金件）
@@ -335,10 +489,33 @@ class GoodsDetail {
   final GoodsLearnedPriceInfo? defaultPurchasePriceInfo;
   final GoodsLearnedPriceInfo? defaultSubcontractPriceInfo;
 
+  // ===== 车间内料仓 (ADR-131) =====
+  // 发料方式与分摊方式只读：普通保存不改它们，切换一律走「发料方式」预览确认
+  // (GoodsIssueMethodService，先核对没清账的工单与受影响的 BOM 再原子切换)。
+  /// 发料方式：ORDER=按工单领料，PERIODIC=整批领到车间内料仓。
+  final String issueMethod;
+
+  /// 分摊方式 (只对整批领料)：OWN / SHARED / EXPENSE。
+  final String? periodicCostBasis;
+
+  /// 每袋净重 (基本单位，公斤)。
+  final double? bulkPackageQty;
+
+  /// 回收料 (水口料、破碎料)。
+  final bool recycledMaterial;
+
+  /// 本货品作为产品时，BOM 上「整批领料的料」的单个重量 (只读展示)。
+  final List<GoodsPeriodicBomWeight> periodicBomWeights;
+
+  bool get isPeriodicIssue => issueMethod == GoodsIssueMethod.periodic;
+
   factory GoodsDetail.fromJson(Map<String, dynamic> json) => GoodsDetail(
     id: json['id'] as String,
     code: json['code'] as String?,
     name: json['name'] as String?,
+    nameEn: json['nameEn'] as String?,
+    nameEnSource: json['nameEnSource'] as String?,
+    canEditNameEn: json['canEditNameEn'] == true,
     spec: json['spec'] as String?,
     model: json['model'] as String?,
     price: (json['price'] as num?)?.toDouble(),
@@ -404,6 +581,9 @@ class GoodsDetail {
     priceMasked: json['priceMasked'] as bool? ?? false,
     writable: json['writable'] == true,
     stockQty: (json['stockQty'] as num?)?.toDouble(),
+    stockWeightKg: (json['stockWeightKg'] as num?)?.toDouble(),
+    stockWeightUnknown: (json['stockWeightUnknown'] as num?)?.toInt() ?? 0,
+    stockWeightEstimated: json['stockWeightEstimated'] == true,
     stockByWarehouse:
         (json['stockByWarehouse'] as List?)
             ?.map((e) => GoodsStockRow.fromJson(e as Map<String, dynamic>))
@@ -435,6 +615,16 @@ class GoodsDetail {
     defaultPurchasePrice: (json['defaultPurchasePrice'] as num?)?.toDouble(),
     defaultSubcontractPrice: (json['defaultSubcontractPrice'] as num?)
         ?.toDouble(),
+    issueMethod: goodsIssueMethodFromJson(json['issueMethod']),
+    periodicCostBasis: json['periodicCostBasis'] as String?,
+    bulkPackageQty: (json['bulkPackageQty'] as num?)?.toDouble(),
+    recycledMaterial: goodsRecycledMaterialFromJson(json),
+    periodicBomWeights:
+        (json['periodicBomWeights'] as List?)
+            ?.whereType<Map<String, dynamic>>()
+            .map(GoodsPeriodicBomWeight.fromJson)
+            .toList() ??
+        const [],
   );
 }
 
@@ -541,30 +731,46 @@ String resolveGoodsSaveCategoryId({
 }
 
 /// 货品在某仓库（×颜色）的即时库存行（聚合 stock_balances，仅参与核算仓库）。
+/// 线边仓行单独列出、不计入合计 ([lineSide])。
 class GoodsStockRow {
   const GoodsStockRow({
     this.warehouseId,
     this.warehouseCode,
     this.warehouseName,
+    this.colorId,
     this.colorName,
     this.qty,
     this.weight,
+    this.weightEstimated = false,
+    this.lineSide = false,
   });
 
   final String? warehouseId;
   final String? warehouseCode;
   final String? warehouseName;
+  final String? colorId;
   final String? colorName; // 颜色名（无色货品为 null）
   final double? qty; // 当前余量（基本单位）
-  final double? weight; // 当前库存重量
+
+  /// 当前库存重量 (千克); null = 未知 (没称过)。
+  final double? weight;
+
+  /// 重量含估算 (显示「≈」)。
+  final bool weightEstimated;
+
+  /// 线边仓 (车间直送料架) 行: 只列出, 不计入合计。
+  final bool lineSide;
 
   factory GoodsStockRow.fromJson(Map<String, dynamic> json) => GoodsStockRow(
     warehouseId: json['warehouseId'] as String?,
     warehouseCode: json['warehouseCode'] as String?,
     warehouseName: json['warehouseName'] as String?,
+    colorId: json['colorId'] as String?,
     colorName: json['colorName'] as String?,
     qty: (json['qty'] as num?)?.toDouble(),
     weight: (json['weight'] as num?)?.toDouble(),
+    weightEstimated: json['weightEstimated'] == true,
+    lineSide: json['lineSide'] == true,
   );
 }
 

@@ -25,6 +25,8 @@ import 'package:uten_imp/shared/models/production_material_discovery.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
+import 'outbound_weight_fakes.dart';
+
 const _plastic = <String, dynamic>{
   'goodsId': 'plastic',
   'goodsName': '塑料颗粒',
@@ -120,6 +122,7 @@ class _Tasks extends ProductionDrawTaskRepository {
     required String idempotencyKey,
     required List<String> docIds,
     required List<Map<String, dynamic>> discoveries,
+    List<Map<String, dynamic>> weights = const [],
     String? reason,
   }) async {
     submissions.add(
@@ -129,6 +132,7 @@ class _Tasks extends ProductionDrawTaskRepository {
                 'key': idempotencyKey,
                 'docIds': docIds,
                 'discoveries': discoveries,
+                'weights': weights,
                 'reason': reason,
               }),
             )
@@ -145,13 +149,17 @@ class _Tasks extends ProductionDrawTaskRepository {
     );
   }
 
+  final fullBatchWeights = <List<Map<String, dynamic>>>[];
+
   @override
   Future<WarehouseDrawBatchIssueResult> issueFullBatch({
     required String idempotencyKey,
     required List<String> docIds,
+    List<Map<String, dynamic>> weights = const [],
     String? reason,
   }) async {
     ordinaryCalls++;
+    fullBatchWeights.add(weights);
     return WarehouseDrawBatchIssueResult(
       issuedCount: docIds.length,
       skippedCount: 0,
@@ -168,6 +176,7 @@ Future<void> _pump(
   List<String> docs = const ['normal'],
   List<String> requests = const ['request'],
   _DiscoveryRepository? discoveryRepository,
+  FakeWeightRepository? weights,
   bool approve = true,
   bool issue = true,
   Size size = const Size(1900, 1000),
@@ -220,6 +229,7 @@ Future<void> _pump(
         stockDocRepositoryProvider(
           StockDocType.draw,
         ).overrideWithValue(_StockRepository()),
+        fakeWeightRepositoryOverride(weights),
       ],
       child: MaterialApp.router(
         routerConfig: router,
@@ -547,6 +557,91 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets(
+    'batch weights ride with the request: existing lines in weights, discovery rows in discoveries[].weights',
+    (tester) async {
+      final tasks = _Tasks()
+        ..failure = ApiException('SHORTAGE', '库存不足', httpStatus: 409);
+      await _pump(tester, tasks);
+      final table = tester.widget<MasterDataTableView<ProductionDrawDetailRow>>(
+        find.byKey(const Key('production-draw-detail-table')),
+      );
+      final keys = table.columns.map((column) => column.key).toList();
+      // 批量整单出库: 本次重量紧跟「待出库」, 已出库重量紧跟「已出库」。
+      expect(keys.indexOf('issueWeight'), keys.indexOf('remainingQty') + 1);
+      expect(keys.indexOf('issuedWeight'), keys.indexOf('issuedQty') + 1);
+      expect(table.columns.map((column) => column.label), contains('本次重量(kg)'));
+
+      final row = _table(tester).discoveryRows.single;
+      row.quantity.text = '12.5';
+      row.values['warehouseId'] = 'w1';
+      final existing = _table(tester).issueWeights!['item-normal']!;
+      existing.weight.setKg(1.25);
+      // 带单位后缀的输入换成千克 (850g -> 0.85 kg)。
+      await tester.enterText(
+        find.byKey(const ValueKey('weight-cell-input')).last,
+        '850g',
+      );
+      await tester.pump();
+      expect(row.weight.kg, 0.85);
+      await _submit(tester);
+      final first = tasks.submissions.single;
+      expect(first['weights'], [
+        {'itemId': 'item-normal', 'weightKg': 1.25, 'qtyFromWeight': false},
+      ]);
+      expect(((first['discoveries'] as List).single as Map)['weights'], [
+        {
+          'goodsId': 'plastic',
+          'colorId': 'white',
+          'warehouseId': 'w1',
+          'weightKg': 0.85,
+          'qtyFromWeight': false,
+        },
+      ]);
+      // 被明确拒绝后只改重量: 另一笔请求, 换新幂等键。
+      existing.weight.setKg(1.3);
+      tasks.failure = null;
+      await _submit(tester);
+      expect(tasks.submissions, hasLength(2));
+      expect(tasks.submissions[1]['key'], isNot(first['key']));
+      expect(
+        ((tasks.submissions[1]['weights'] as List).single as Map)['weightKg'],
+        1.3,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'empty discovery quantity is estimated from the weighed amount and marked qtyFromWeight',
+    (tester) async {
+      final tasks = _Tasks();
+      final weights = FakeWeightRepository(
+        byGoods: {'plastic': learnedWeightParams('plastic')},
+      );
+      await _pump(tester, tasks, docs: [], weights: weights);
+      expect(weights.requests.single, ['plastic']);
+      final row = _table(tester).discoveryRows.single;
+      row.values['warehouseId'] = 'w1';
+      await tester.enterText(
+        find.byKey(const ValueKey('weight-cell-input')),
+        '2',
+      );
+      await tester.pump();
+      expect(row.quantity.autofilled, isTrue);
+      expect(double.parse(row.quantity.text), closeTo(1000, 30));
+      expect(row.weight.qtyFromWeight, isTrue);
+      await _submit(tester);
+      final discovery =
+          (tasks.submissions.single['discoveries'] as List).single as Map;
+      expect(
+        ((discovery['weights'] as List).single as Map)['qtyFromWeight'],
+        isTrue,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   test(
     'mixed repository preserves independent request versions, warehouses and exact decimal input',

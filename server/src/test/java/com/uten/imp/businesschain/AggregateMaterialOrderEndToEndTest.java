@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
-        "uten.production.readiness-reconcile.enabled=false","uten.policy-intelligence.enabled=false",
+        "uten.production.readiness-reconcile.enabled=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only",
         "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
@@ -40,7 +40,10 @@ class AggregateMaterialOrderEndToEndTest {
     @Autowired AggregateMaterialOrderWriteService writer;
     FullChainEndToEndTest fixture;
     @BeforeEach void before(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
-    @AfterEach void after(){SecurityContextHolder.clearContext();}
+    @AfterEach void after(){
+        SecurityContextHolder.clearContext();
+        AggregateAllocationPendingParity.assertMatchesDatabaseFunctions(db);
+    }
 
     @Test void threeSourcesProduceOneRealPurchaseLineAndOnePublicAppend(){
         Case c=create(false,false,"10");GroupInput group=input(c,c.material(),"BUY","60",false);
@@ -78,6 +81,42 @@ class AggregateMaterialOrderEndToEndTest {
         }
     }
 
+    /**
+     * ADR-129 §2.5：学习值在最后一次人工刷新之后才变，汇总预览按成员子件的锁定值算需求；新建的共享制造锚点
+     * 继承同一锁定值，写进计划的也是这个数。锚点有计划后人工刷新，成员子树与锚点树一起保持原值。
+     */
+    @Test void sharedAnchorInheritsTheMembersLockedUsageAndStaysInStepOnManualRefresh(){
+        Case c=create(true,false,"10");
+        UUID componentUnit=db.queryForObject("SELECT unit_id FROM goods WHERE id=?",UUID.class,c.material());
+        UUID parentUnit=db.queryForObject("SELECT unit_id FROM goods WHERE id=?",UUID.class,c.common());
+        db.update("""
+                INSERT INTO goods_bom_actual_usages(goods_id,component_goods_id,unit_id,output_unit_id,net_qty,exposure_output_qty,sample_count)
+                VALUES(?,?,?,?,21,10,2)
+                """,c.common(),c.material(),componentUnit,parentUnit);
+        var request=request(c,List.of(input(c,c.common(),"MAKE","30",false)));
+        var shown=preview.preview(c.analysis(),request);
+        amount("30",shown.groups().getFirst().sharedBomChildren().getFirst().requiredQty());
+        var batch=writer.submit(c.analysis(),submit(shown,request)).batches().getFirst();
+        amount("30",db.queryForObject("SELECT required_qty FROM production_material_demands WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,batch.planId()));
+        amount("1",db.queryForObject("SELECT bom_qty FROM production_material_analysis_materials WHERE analysis_item_id=? AND node_role='BOM_COMPONENT' AND active",
+                BigDecimal.class,batch.anchorAnalysisItemId()));
+        new org.springframework.transaction.support.TransactionTemplate(beans.getBean(org.springframework.transaction.PlatformTransactionManager.class)).executeWithoutResult(status->{
+            beans.getBean(com.uten.imp.security.TxSessionVars.class).bind();
+            Object commandTarget=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(ordinary);
+            Object analysisTarget=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(analyses);
+            Object guard=ReflectionTestUtils.invokeMethod(commandTarget,"lockAnalysisWithClaimableShared",c.analysis());
+            ReflectionTestUtils.invokeMethod(guard,"verifyUnchanged");
+            ReflectionTestUtils.invokeMethod(analysisTarget,"adoptLatestBomUsage",c.analysis());
+            ReflectionTestUtils.invokeMethod(analysisTarget,"refreshLocked",c.analysis());
+        });
+        List<BigDecimal> used=db.queryForList("""
+                SELECT bom_qty FROM production_material_analysis_materials
+                WHERE analysis_id=? AND goods_id=? AND node_role='BOM_COMPONENT' AND active
+                """,BigDecimal.class,c.analysis(),c.material());
+        assertEquals(4,used.size());
+        used.forEach(qty->amount("1",qty));
+    }
+
     @Test void priorThreeChildPlansAreInheritedByTheSharedParentWithoutAnotherChildOrder(){
         Case c=createWithChild("10");
         AnalysisView initial=analyses.detail(c.analysis());
@@ -92,6 +131,52 @@ class AggregateMaterialOrderEndToEndTest {
         MaterialView canonical=analyses.detail(c.analysis()).flatMaterials().stream().filter(row->row.analysisLineId().equals(shared.anchorAnalysisItemId())&&row.goodsId().equals(c.child())).findFirst().orElseThrow();
         amount("30",canonical.requiredQty());amount("0",canonical.planningUncoveredQty());
         amount("60",analyses.detail(c.analysis()).flatMaterials().stream().filter(row->row.goodsId().equals(c.material())).map(MaterialView::requiredQty).reduce(BigDecimal.ZERO,BigDecimal::add));
+    }
+
+    @Test void sameMaterialFromDifferentWorkshopsAndRatesBecomesSeparateOrdersInOneRequest(){
+        // ADR-120 §8：同一物料的来源车间 / 负责人 / 超产比例不同，准备页自动拆成几组一次提交。
+        // 兼容键不同，服务端既不按「同一物料两组」拒绝，也不合成一张单；每张单的下层只接
+        // 自己那几个来源的原子料(精确身份桥)，另一张单做出的公共份不能被这一张顺手采用。
+        Case c=create(true,false,"1");
+        Object other=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment","aggregate-split-"+UUID.randomUUID());
+        UUID otherWorkshop=ReflectionTestUtils.invokeMethod(other,"workshopId"),otherWorker=ReflectionTestUtils.invokeMethod(other,"workerId");
+        List<UUID> sources=input(c,c.common(),"MAKE","3",false).materialLineIds();assertEquals(3,sources.size());
+        GroupInput first=new GroupInput(c.common()+"|part-a",List.of(sources.get(0)),"MAKE",new BigDecimal("2"),true,
+                c.workshop(),c.worker(),null,null,null,null,BigDecimal.ZERO,BigDecimal.ZERO);
+        GroupInput second=new GroupInput(c.common()+"|part-b",sources.subList(1,3),"MAKE",new BigDecimal("2"),true,
+                otherWorkshop,otherWorker,null,null,null,null,new BigDecimal("0.1"),BigDecimal.ZERO);
+        var request=request(c,List.of(first,second));
+        var shown=preview.preview(c.analysis(),request);
+        assertEquals(2,shown.groups().size());
+        assertNotEquals(shown.groups().get(0).compatibilityKey(),shown.groups().get(1).compatibilityKey());
+        for(GroupPreview group:shown.groups())assertNull(group.blockedReason(),group.clientGroupKey());
+        amount("1",shown.groups().get(0).publicExtraQty());amount("0",shown.groups().get(1).publicExtraQty());
+        var result=writer.submit(c.analysis(),submit(shown,request));
+        assertEquals(2,result.batches().size());
+        Map<String,BatchResult> byKey=new HashMap<>();result.batches().forEach(batch->byKey.put(batch.clientGroupKey(),batch));
+        BatchResult a=byKey.get(first.clientGroupKey()),b=byKey.get(second.clientGroupKey());
+        assertNotEquals(a.batchId(),b.batchId());assertNotEquals(a.planId(),b.planId());
+        amount("2",db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,a.planId()));
+        amount("2",db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,b.planId()));
+        amount("0.1",db.queryForObject("SELECT allowed_overproduction_rate FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,b.planId()));
+        assertEquals(c.workshop(),db.queryForObject("SELECT workshop_department_id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",UUID.class,a.planId()));
+        assertEquals(otherWorkshop,db.queryForObject("SELECT workshop_department_id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",UUID.class,b.planId()));
+        assertEquals(0,count("SELECT count(*) FROM preplan_make_public_claims WHERE target_analysis_id=?",c.analysis()),"sibling public output must not be adopted");
+        amount("2",db.queryForObject("SELECT SUM(allocated_qty) FROM preplan_supply_action_allocations WHERE action_id=(SELECT action_id FROM preplan_aggregate_batches WHERE id=?)",BigDecimal.class,b.batchId()));
+        // 每张单的共享子料只接自己来源下的原子料。
+        AnalysisView before=shown.analysis();
+        for(var entry:Map.of(a,List.of(sources.get(0)),b,sources.subList(1,3)).entrySet()){
+            Set<String> parents=before.flatMaterials().stream().filter(row->entry.getValue().contains(row.materialLineId()))
+                    .map(row->row.analysisLineId()+"|"+row.nodeKey()).collect(java.util.stream.Collectors.toSet());
+            Set<UUID> originalChildren=before.flatMaterials().stream().filter(row->row.goodsId().equals(c.material())
+                    &&parents.contains(row.analysisLineId()+"|"+row.parentNodeKey())).map(MaterialView::materialLineId).collect(java.util.stream.Collectors.toSet());
+            assertEquals(entry.getValue().size(),originalChildren.size());
+            MaterialView shared=analyses.detail(c.analysis()).flatMaterials().stream().filter(row->row.analysisLineId().equals(entry.getKey().anchorAnalysisItemId())
+                    &&row.goodsId().equals(c.material())).findFirst().orElseThrow();
+            amount("2",shared.requiredQty());
+            var bridge=result.materialIdentityBridges().stream().filter(item->item.toMaterialLineId().equals(shared.materialLineId())).findFirst().orElseThrow();
+            assertEquals(originalChildren,new HashSet<>(bridge.fromMaterialLineIds()));
+        }
     }
 
     @Test void parentAndDescendantCannotCommitWithStaleChildQuantities(){
@@ -636,7 +721,7 @@ class AggregateMaterialOrderEndToEndTest {
             ReflectionTestUtils.invokeMethod(writerTarget,"copySharedRoutes",batch);
             ReflectionTestUtils.invokeMethod(analysisTarget,"refreshLocked",c.analysis());
             beans.getBean(PreplanStockEntitlementService.class).delegateAggregateMakeEntitlements(c.analysis(),action);
-            ReflectionTestUtils.invokeMethod(commandTarget,"issueAggregateAnchor",c.analysis(),batchId,anchor,group,c.world().warehouseId(),true,intent.idempotencyKey()+"-plan");
+            ReflectionTestUtils.invokeMethod(commandTarget,"issueAggregateAnchor",c.analysis(),batchId,anchor,group,input.allowedOverproductionRate(),c.world().warehouseId(),true,intent.idempotencyKey()+"-plan");
             ReflectionTestUtils.invokeMethod(analysisTarget,"refreshWithAnchorGrowth",c.analysis());
         });
     }

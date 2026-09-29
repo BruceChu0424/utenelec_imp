@@ -73,7 +73,7 @@ class ProductionDrawRequestPostgresTest {
                 CREATE TABLE production_material_stock_postings(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                   stock_document_item_id uuid,posting_type text, recorded_tx_id xid8);
                 CREATE TABLE departments(id uuid PRIMARY KEY,name text);
-                CREATE TABLE goods(id uuid PRIMARY KEY,code text,name text, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6));
+                CREATE TABLE goods(id uuid PRIMARY KEY,code text,name text, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8));
                 CREATE TABLE warehouses(id uuid PRIMARY KEY,name text,
                     is_line_side boolean NOT NULL DEFAULT FALSE);
                 CREATE TABLE units(id uuid PRIMARY KEY,name text);

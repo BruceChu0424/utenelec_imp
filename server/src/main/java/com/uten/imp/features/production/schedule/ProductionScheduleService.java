@@ -6,6 +6,7 @@ import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
+import com.uten.imp.features.production.analysis.MaterialConsumptionMath;
 import com.uten.imp.features.production.schedule.dto.PendingPlanRow;
 import com.uten.imp.features.production.schedule.dto.ScheduleOrderLine;
 import com.uten.imp.common.saleschain.SalesOrderChainSql;
@@ -348,9 +349,16 @@ public class ProductionScheduleService {
     // ======================== 新建计划单：从订单带明细（含 BOM 零件） ========================
 
     /**
-     * 已审订单明细 + 每行货品一层 BOM 零件清单。
+     * 已审订单明细 + 每行货品一层 BOM 零件清单(一条查询取回，不逐行再查 BOM)。
      * 前端「来源订单→选行带入计划明细」弹窗数据源：勾选行带 salesOrderItemId 入计划，
      * 审核时走 ProductionPlanService.linkOrderItems 手工 1:1 link 分支，业务链闭合。
+     *
+     * <p>零件口径与 MRP、执行分段一致(ADR-129 §2.3)：计算用量取
+     * {@code v_goods_bom_item_usage.effective_qty}(有真实使用数量用真实值，否则设计值)；
+     * 需求小计 = 共享边公式 {@code fn_material_analysis_edge_required}(缺口 × 换算率，按计量规则
+     * 整包/固定批次向上取整)；颜色取 BOM 行颜色(空时回落组件主颜色)；onhand 为全仓即时库存；
+     * selfMade = 零件本身还有 BOM。用量不大于零的存量 BOM 行只列出零件、不算用量，
+     * 不让整张订单带入失败。
      */
     @Transactional(readOnly = true)
     public List<ScheduleOrderLine> orderLines(UUID orderId) {
@@ -369,63 +377,85 @@ public class ProductionScheduleService {
         List<Object[]> rs = em.createNativeQuery("""
                 SELECT i.id, i.line_no, i.goods_id, g.code, g.name, g.spec,
                        i.color_id, col.name, i.unit_id, u.name,
-                       i.qty, COALESCE(i.planned_qty,0),
-                       %s AS need,
+                       i.qty, COALESCE(i.planned_qty,0), line.need,
                        COALESCE(i.deliver_date, o.deliver_date) AS deliver,
-                       o.bill_no, c.name, COALESCE(i.unit_rate, 1)
+                       o.bill_no, c.name, line.rate,
+                       bom.component_goods_id, bom.code, bom.name, bom.spec,
+                       bom.color_id, bom.color_name, bom.effective_qty,
+                       bom.consumption_basis, bom.basis_output_qty, bom.need_qty,
+                       bom.onhand, bom.self_made
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
                 LEFT JOIN clients c ON c.id = o.client_id
                 JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN units u ON u.id = i.unit_id
+                CROSS JOIN LATERAL (
+                    SELECT %s AS need,
+                           CASE WHEN COALESCE(i.unit_rate, 1) > 0
+                                THEN COALESCE(i.unit_rate, 1) ELSE 1 END AS rate
+                ) line
+                LEFT JOIN LATERAL (
+                    SELECT b.id AS bom_item_id, b.component_goods_id,
+                           component.code, component.name, component.spec,
+                           resolved_color.id AS color_id, resolved_color.name AS color_name,
+                           -- 用量不大于零的存量行(与 MRP 同样只看设计使用数量)不计算：单台用量与
+                           -- 需求留空，弹窗显示「待物料分析复核」，物料分析给出原因与修法。
+                           CASE WHEN b.qty > 0 THEN usage.effective_qty END AS effective_qty,
+                           b.consumption_basis, b.basis_output_qty,
+                           -- 零件需求按基本单位折算：缺口(销售单位) × 换算率
+                           CASE WHEN b.qty > 0 THEN fn_material_analysis_edge_required(
+                               line.need * line.rate, usage.effective_qty, b.consumption_basis,
+                               b.basis_output_qty, b.allow_partial_package) END AS need_qty,
+                           COALESCE((SELECT SUM(balance.qty) FROM stock_balances balance
+                                     WHERE balance.goods_id = b.component_goods_id), 0) AS onhand,
+                           EXISTS (SELECT 1 FROM goods_bom_items child
+                                   WHERE child.goods_id = b.component_goods_id
+                                     AND child.is_deleted = false) AS self_made,
+                           component.issue_method = 'PERIODIC' AS periodic
+                    FROM goods_bom_items b
+                    JOIN goods component ON component.id = b.component_goods_id
+                    LEFT JOIN v_goods_bom_item_usage usage ON usage.bom_item_id = b.id
+                    LEFT JOIN colors resolved_color
+                           ON resolved_color.id = COALESCE(b.color_id, component.color_id)
+                    WHERE b.goods_id = i.goods_id AND b.is_deleted = false
+                ) bom ON TRUE
                 WHERE i.order_id = :orderId AND i.is_deleted = false
                   AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
-                ORDER BY i.line_no NULLS LAST, i.id
+                ORDER BY i.line_no NULLS LAST, i.id, bom.code, bom.bom_item_id
                 """.formatted(SCHEDULING_NEED_SQL))
                 .setParameter("orderId", orderId).getResultList();
-        List<ScheduleOrderLine> out = new ArrayList<>(rs.size());
+        Map<UUID, Object[]> lines = new LinkedHashMap<>();
+        Map<UUID, List<ScheduleOrderLine.BomComponent>> components = new LinkedHashMap<>();
         for (Object[] r : rs) {
-            UUID goodsId = (UUID) r[2];
-            BigDecimal need = bd(r[12]);
-            BigDecimal rate = bd(r[16]).signum() > 0 ? bd(r[16]) : BigDecimal.ONE;
+            UUID lineId = (UUID) r[0];
+            lines.putIfAbsent(lineId, r);
+            List<ScheduleOrderLine.BomComponent> bom =
+                    components.computeIfAbsent(lineId, ignored -> new ArrayList<>());
+            if (r[17] != null) {
+                BigDecimal effectiveQty = bdOrNull(r[23]);
+                boolean periodic = Boolean.TRUE.equals(r[29]);
+                bom.add(new ScheduleOrderLine.BomComponent(
+                        (UUID) r[17], (String) r[18], (String) r[19], (String) r[20],
+                        (UUID) r[21], (String) r[22],
+                        // 单件用量 = 计算用量 / (按件 ? 1 : 每包/每批产出数)，与物料分析同一共享公式。
+                        effectiveQty == null ? null : MaterialConsumptionMath.effectivePerProduct(
+                                BigDecimal.ONE, effectiveQty, (String) r[24], bd(r[25])),
+                        // 整批领料的料 (ADR-131 期间边) 由车间内料仓供料, 不算需求。
+                        periodic ? BigDecimal.ZERO : bdOrNull(r[26]), bd(r[27]),
+                        !periodic && Boolean.TRUE.equals(r[28]), periodic));
+            }
+        }
+        List<ScheduleOrderLine> out = new ArrayList<>(lines.size());
+        for (Object[] r : lines.values()) {
             out.add(new ScheduleOrderLine(
                     (UUID) r[0], r[1] == null ? null : ((Number) r[1]).intValue(),
-                    goodsId, (String) r[3], (String) r[4], (String) r[5],
+                    (UUID) r[2], (String) r[3], (String) r[4], (String) r[5],
                     (UUID) r[6], (String) r[7], (UUID) r[8], (String) r[9],
-                    bd(r[10]), bd(r[11]), need, rate,
+                    bd(r[10]), bd(r[11]), bd(r[12]), bd(r[16]),
                     r[13] == null ? null : NativeValueConverters.toLocalDate(r[13]),
                     (String) r[14], (String) r[15],
-                    // 零件需求按基本单位折算：缺口(销售单位) × unit_rate
-                    bomOf(goodsId, need.multiply(rate))));
-        }
-        return out;
-    }
-
-    /** 一层 BOM 零件（需求小计 = 单件用量 × 待排产缺口；onhand 全仓即时库存；selfMade=零件本身还有 BOM）。 */
-    private List<ScheduleOrderLine.BomComponent> bomOf(UUID goodsId, BigDecimal need) {
-        @SuppressWarnings("unchecked")
-        List<Object[]> rs = em.createNativeQuery("""
-                SELECT b.component_goods_id, g.code, g.name, g.spec, b.qty,
-                       g.color_id, col.name,
-                       COALESCE(sb.onhand, 0),
-                       EXISTS (SELECT 1 FROM goods_bom_items c
-                               WHERE c.goods_id = b.component_goods_id AND c.is_deleted = false)
-                FROM goods_bom_items b
-                JOIN goods g ON g.id = b.component_goods_id
-                LEFT JOIN colors col ON col.id = g.color_id
-                LEFT JOIN (SELECT goods_id, SUM(qty) AS onhand FROM stock_balances GROUP BY goods_id) sb
-                       ON sb.goods_id = b.component_goods_id
-                WHERE b.goods_id = :g AND b.is_deleted = false
-                ORDER BY g.code
-                """).setParameter("g", goodsId).getResultList();
-        List<ScheduleOrderLine.BomComponent> out = new ArrayList<>(rs.size());
-        for (Object[] r : rs) {
-            BigDecimal per = bd(r[4]);
-            out.add(new ScheduleOrderLine.BomComponent(
-                    (UUID) r[0], (String) r[1], (String) r[2], (String) r[3],
-                    (UUID) r[5], (String) r[6],
-                    per, per.multiply(need), bd(r[7]), Boolean.TRUE.equals(r[8])));
+                    List.copyOf(components.get((UUID) r[0]))));
         }
         return out;
     }
@@ -510,10 +540,13 @@ public class ProductionScheduleService {
         Object d = em.createNativeQuery("""
                 WITH RECURSIVE bom AS (
                     SELECT b.component_goods_id AS gid, 1 AS depth
-                    FROM goods_bom_items b WHERE b.goods_id = :g AND b.is_deleted = false
+                    FROM goods_bom_items b
+                    JOIN goods c ON c.id = b.component_goods_id AND c.issue_method <> 'PERIODIC'
+                    WHERE b.goods_id = :g AND b.is_deleted = false
                     UNION ALL
                     SELECT b.component_goods_id, bom.depth + 1
                     FROM goods_bom_items b JOIN bom ON b.goods_id = bom.gid
+                    JOIN goods c ON c.id = b.component_goods_id AND c.issue_method <> 'PERIODIC'
                     WHERE b.is_deleted = false AND bom.depth < 5
                 )
                 SELECT COALESCE(MAX(depth), 1) FROM bom

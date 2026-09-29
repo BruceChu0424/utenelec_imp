@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false", "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.production.readiness-reconcile.enabled=false",
-        "uten.policy-intelligence.enabled=false", "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",
+        "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",
         "uten.storage.malware-scan.provider=test-only", "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789", "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test", "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
@@ -606,8 +606,7 @@ class ProductionQuantityAdversarialEndToEndTest {
         item.setUnitId(c.world().unitId());
         item.setUnitRate(BigDecimal.ONE);
         item.setQty(new BigDecimal(quantity));
-        item.setDestination("WORKSHOP");
-        item.setDirectTransferDemandId(parentDemand(c));
+        item.setAllocations(List.of(com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.direct(parentDemand(c), item.getQty())));
         report.setItems(List.of(item));
         reports().approve(reports().create(report).getId(), DailyReportApproveRequests.freshKey());
     }

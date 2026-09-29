@@ -7,6 +7,8 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/measurement/weight_unit.dart';
+import '../../../shared/measurement/widgets/weight_text.dart';
 import '../models/warehouse_quality_result.dart';
 import 'warehouse_inbound_allocation_view.dart';
 import 'warehouse_quality_slice_table.dart'
@@ -105,7 +107,8 @@ List<WarehouseQualityMergedRow> warehouseQualityRowsForDetail(
 
 /// 单张详情与批量入库共用的检查结果、来源和实际点收表。
 ///
-/// 来源商、目标叶仓、实际库位、单位和合格待入量均逐行保留，本次实收单独输入。
+/// 来源商、目标叶仓、实际库位、单位和合格待入量均逐行保留，本次实收单独输入；
+/// 其后只读「放行重量」= 本次实收按到货实称分摊的重量(ADR-135，入库时就按它记库存账)。
 /// 批量入口加来源收货单列；相同货品的不同放行切片始终是不同来源行。
 /// 三个总量列是明细行级口径（多放行切片行各自重复展示同一行总量，切片 i/n 已标注）；
 /// 判定结果已覆盖原「检验状态」列的待检/部分/结案语义（红冲行显示已撤销），2026-09-03
@@ -122,6 +125,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
     this.onPickWarehouse,
     this.showReceipt = false,
     this.stickyHeaderPinned,
+    this.weightDisplay = WeightDisplay.auto,
   });
 
   final UtenEditableGridController<WarehouseQualityMergedRow> controller;
@@ -130,6 +134,9 @@ class WarehouseQualityMergedTable extends StatelessWidget {
   final VoidCallback onChanged;
   final void Function(WarehouseQualitySliceDraft draft)? onPickWarehouse;
   final bool showReceipt;
+
+  /// 「放行重量」的显示单位(页面按用户「重量单位」偏好传入)。
+  final WeightDisplay weightDisplay;
 
   /// 表头吸顶信号（全站表格滚动口径 2026-09-22）；null = 表头随页滚动。
   final ValueNotifier<bool>? stickyHeaderPinned;
@@ -279,6 +286,19 @@ class WarehouseQualityMergedTable extends StatelessWidget {
           numeric: true,
           required: true,
           cellBuilder: (context, row) => _remainingCell(context, row),
+        ),
+      if (editable)
+        EditableGridColumn(
+          key: 'releasedWeight',
+          label: '放行重量',
+          width: 120,
+          numeric: true,
+          headerInfo:
+              '本次实收按到货实称分摊的重量(只读)，入库时按它记库存重量；'
+              '到货没称显示「未称」，入库后由库存账推算。',
+          textOf: (row) => _releasedWeightText(row) ?? '—',
+          listenableOf: (row) => row.draft?.quantity,
+          cellBuilder: (context, row) => _releasedWeightCell(context, row),
         ),
       EditableGridColumn(
         key: 'warehouse',
@@ -541,6 +561,49 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       );
     }
     return const Text('—');
+  }
+
+  /// 放行重量文本：没有待入切片为 null；到货没称为「未称」；本次实收无效为「—」。
+  String? _releasedWeightText(WarehouseQualityMergedRow row) {
+    final draft = row.draft;
+    if (draft == null) return null;
+    if (draft.slice.releasedWeight == null) return weightUnknownText;
+    final kg = draft.previewWeightKg;
+    return kg == null ? '—' : formatWeight(kg, display: weightDisplay);
+  }
+
+  /// 放行重量(只读)：随本次实收实时重算。
+  Widget _releasedWeightCell(
+    BuildContext context,
+    WarehouseQualityMergedRow row,
+  ) {
+    final draft = row.draft;
+    if (draft == null) return const Text('—');
+    final theme = Theme.of(context);
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: draft.quantity,
+      builder: (context, _, _) {
+        final released = draft.slice.releasedWeight;
+        return Tooltip(
+          message: released == null
+              ? '到货时没称重；入库后库存重量由库存账推算(显示「≈」)'
+              : '放行共 ${formatWeight(released, display: weightDisplay)}，'
+                    '本次按实收数量分摊',
+          child: Text(
+            _releasedWeightText(row)!,
+            key: ValueKey(
+              'quality-slice-released-weight-${draft.slice.passEventId}',
+            ),
+            textAlign: TextAlign.right,
+            style: draft.previewWeightKg == null
+                ? theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  )
+                : null,
+          ),
+        );
+      },
+    );
   }
 
   Widget _expectedAllocationCell(

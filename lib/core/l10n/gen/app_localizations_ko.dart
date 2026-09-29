@@ -12,26 +12,147 @@ class AppLocalizationsKo extends AppLocalizations {
   String get bomLearningTitle => 'BOM 학습 기록';
 
   @override
+  String get bomLearningHelp =>
+      '실제 사용량 = 완료되고 잔여 자재가 정산된 생산의 누적 순소비량 ÷ 해당 자재를 사용한 누적 생산량. 자재 분석과 작업장 자재 출고는 실제 사용량을 우선 사용하고, 데이터가 없으면 설계 사용량을 사용합니다. 이미 지시된 작업은 지시 시점의 수량을 유지합니다. 일일 보고의 불량 수는 기록용이며 생산량에 포함하지 않습니다. 실생산 단위 사용량은 양품과 불량을 합쳐 계산합니다.';
+
+  @override
+  String get bomLearningInactive =>
+      '학습 기록이 없습니다. 자체 생산이 완료되고 잔여 자재가 정산되면 누적이 시작됩니다.';
+
+  @override
+  String bomLearningPaused(String reason) {
+    return '학습 구성품을 자동으로 만들지 않았습니다: $reason. 실제 사용량은 계속 누적됩니다.';
+  }
+
+  @override
+  String get bomDesignQty => '설계 사용량';
+
+  @override
+  String get bomActualQty => '실제 사용량';
+
+  @override
+  String get bomLearnedEdge => '시스템 학습';
+
+  @override
+  String bomActualTipActual(int samples, String net, String output) {
+    return '완료된 생산 $samples배치 누적: 순소비 $net / 생산량 $output';
+  }
+
+  @override
+  String bomActualTipAverage(String qty) {
+    return '실제 개당 평균 $qty';
+  }
+
+  @override
+  String get bomActualTipUsed => '자재 분석과 작업장 자재 출고는 실제 사용량으로 계산합니다.';
+
+  @override
+  String bomUsesDesignBecause(String reason) {
+    return '$reason. 설계 사용량으로 계산합니다.';
+  }
+
+  @override
+  String get bomDesignReasonNoData => '완료되고 잔여 자재가 정산된 생산 데이터가 아직 없습니다';
+
+  @override
+  String get bomDesignReasonNotLinear => '전체 포장 또는 고정 배치는 평균 사용량으로 계산할 수 없습니다';
+
+  @override
+  String get bomDesignReasonOutputUnitChanged => '상위 품목 단위가 바뀌어 다시 학습해야 합니다';
+
+  @override
+  String get bomDesignReasonSubcontractOutbound =>
+      '이번에는 단일 구성품 외주로 출고되어 외주 계약 수량을 따릅니다';
+
+  @override
+  String get bomDesignReasonOther => '사용할 수 있는 실제 데이터가 없습니다';
+
+  @override
+  String bomRelearnedSince(String date) {
+    return '$date부터 다시 누적';
+  }
+
+  @override
+  String get bomDesignQtyRequired => '설계 사용량을 입력하세요';
+
+  @override
+  String get bomDesignQtyInvalid => '설계 사용량은 0보다 큰 숫자여야 합니다';
+
+  @override
+  String get bomLearnedEdgeEditHint =>
+      '실제 자재 사용으로 학습된 구성품입니다. 설계 사용량을 바꾸면 수동 관리로 전환되며 실제 사용량은 계속 누적됩니다.';
+
+  @override
+  String bomLearnedEdgeDeleteNote(int count) {
+    return '그중 $count개는 시스템이 학습한 구성품이며, 삭제하면 자동으로 다시 추가되지 않습니다.';
+  }
+
+  @override
+  String get bomLearningMaterial => '자재';
+
+  @override
+  String get bomLearningExposure => '누적 생산량';
+
+  @override
+  String get bomLearningSampleCount => '유효 배치';
+
+  @override
+  String get bomLearningBasis => '계산 기준';
+
+  @override
+  String get bomLearningOutsideBom => 'BOM 외 실제 사용 자재';
+
+  @override
+  String get bomLearningReleased => '삭제됨, 자동으로 다시 추가하지 않음';
+
+  @override
+  String get bomLearningRelearn => '지금부터 다시 학습';
+
+  @override
+  String bomLearningRelearnConfirm(String name) {
+    return '「$name」을(를) 지금부터 다시 학습할까요?\n이전 누적은 더 이상 계산에 쓰이지 않으며, 새 생산 데이터가 나오기 전까지 설계 사용량으로 계산합니다.';
+  }
+
+  @override
+  String get bomLearningRelearnDone => '지금부터 다시 학습합니다';
+
+  @override
+  String get bomLearningRelearnFailed => '다시 학습하지 못했습니다. 잠시 후 다시 시도하세요.';
+
+  @override
+  String get bomLearningLoadFailed => '학습 기록을 불러오지 못했습니다. 다시 시도하세요.';
+
+  @override
+  String get bomLearningEmpty => '구성품도, 실제 사용한 자재도 아직 없습니다';
+
+  @override
+  String get bomLearningAction => '작업';
+
+  @override
+  String get bomLearningBlockedOutputIdentity => '상위 품목의 단위나 식별 정보가 바뀌었습니다';
+
+  @override
+  String get bomLearningBlockedMaterialIdentity => '자재가 삭제되었거나 단위가 바뀌었습니다';
+
+  @override
+  String get bomLearningBlockedColorConflict =>
+      '같은 자재를 여러 색상으로 출고했습니다. 조립 정보에서 직접 정하세요';
+
+  @override
+  String get bomLearningBlockedPrecision => '사용량이 기록 가능한 범위를 벗어났습니다';
+
+  @override
+  String get bomLearningBlockedCycle => '조립 순환이 생깁니다';
+
+  @override
+  String get bomLearningBlockedOther => '조립 정보에서 직접 관리하세요';
+
+  @override
   String get materialDiscoveryBatchHelp =>
       '연속 생산 또는 전량 준비 생산을 선택하여 자재를 등록한 후 분할 생산을 진행하세요.';
 
   @override
   String get materialDiscoveryCancel => '자재 입력 요청 철회';
-
-  @override
-  String get bomLearningHelp =>
-      '생산 및 잔여 자재 정산 후 누적 순소비량을 실제 생산량으로 나누어 단위 소요량을 갱신합니다. 기존 작업 지시의 자재는 유지됩니다.';
-
-  @override
-  String get bomLearningInactive =>
-      '학습 기록이 없습니다. 하위 자재가 없는 자체 생산품의 출고와 생산 완료 후 누적됩니다.';
-
-  @override
-  String get bomLearningAuto => 'BOM 자동 갱신';
-
-  @override
-  String get bomLearningPaused =>
-      '수동 BOM 보호 또는 자재, 단위, 색상 충돌로 자동 갱신이 중지되었습니다. 누적 기록은 유지됩니다. 구성품 정보를 확인하세요.';
 
   @override
   String get bomLearningOutput => '누적 실제 생산량';
@@ -43,7 +164,21 @@ class AppLocalizationsKo extends AppLocalizations {
   String get bomLearningNet => '누적 순소비량';
 
   @override
-  String get bomLearningAverage => '개당 평균 소요량';
+  String bomActualTipDefect(String defect, String perProduced, String rate) {
+    return '불량 $defect 별도: 양품+불량 기준 사용량 $perProduced, 불량률 $rate';
+  }
+
+  @override
+  String get bomLearningDefect => '불량 수';
+
+  @override
+  String get bomLearningPerProduced => '실생산 단위 사용량';
+
+  @override
+  String get bomLearningDefectRate => '불량률';
+
+  @override
+  String get bomLearningTotalDefect => '누적 불량';
 
   @override
   String get materialDiscoveryTitle => '실제 출고 자재 입력';
@@ -4203,4 +4338,2463 @@ class AppLocalizationsKo extends AppLocalizations {
   String materialPreparationMissingAssignment(String goods) {
     return '발주 전에 “$goods”의 생산 작업장과 담당자를 지정하세요';
   }
+
+  @override
+  String get workshopMaterialBin => '작업장 자재창고';
+
+  @override
+  String workshopMaterialBinOf(String workshop) {
+    return '$workshop 자재창고';
+  }
+
+  @override
+  String get workshopMaterialGroup => '작업장 자재';
+
+  @override
+  String get workshopMaterialSetup => '작업장 자재 설정';
+
+  @override
+  String get workshopMaterialReports => '작업장 자재 사용량';
+
+  @override
+  String get wmIssueMethod => '출고 방식';
+
+  @override
+  String get wmIssueMethodOrder => '작업지시별 출고';
+
+  @override
+  String get wmIssueMethodPeriodic => '작업장 창고로 일괄 출고';
+
+  @override
+  String get wmCostBasis => '원가 배분';
+
+  @override
+  String get wmCostBasisOwn => '주재료';
+
+  @override
+  String get wmCostBasisShared => '보조재료';
+
+  @override
+  String get wmCostBasisExpense => '작업장 비용';
+
+  @override
+  String get wmBulkPackageQty => '포대당 순중량 (kg)';
+
+  @override
+  String get wmRecycledMaterial => '재생 자재';
+
+  @override
+  String get wmUnitWeightGrams => '개당 중량 (g)';
+
+  @override
+  String wmUnitWeightFromBom(String grams) {
+    return '수지 개당 중량 (BOM): $grams g';
+  }
+
+  @override
+  String wmUnusualWeightConfirm(String grams) {
+    return '개당 중량 $grams g 이 이상해 보입니다. 확인하시겠습니까?';
+  }
+
+  @override
+  String get wmSecondMaterialConfirm =>
+      '이 제품은 두 가지 자재를 함께 사용합니까 (이색/이재)? 자재만 바꾸는 경우 기존 행을 수정하세요';
+
+  @override
+  String get wmRequestIssue => '자재 요청';
+
+  @override
+  String get wmReturn => '반납';
+
+  @override
+  String get wmOtherIssue => '시사출·퍼지 사용';
+
+  @override
+  String get wmOtherReasonTrial => '시사출';
+
+  @override
+  String get wmOtherReasonPurge => '퍼지';
+
+  @override
+  String get wmOtherReasonScrap => '폐기 자재';
+
+  @override
+  String get wmOtherReasonOther => '기타';
+
+  @override
+  String get wmDirectIssue => '직접 출고';
+
+  @override
+  String get wmPendingIssue => '출고 대기';
+
+  @override
+  String get wmPendingReturn => '반납 수령 대기';
+
+  @override
+  String get wmCount => '재고 조사';
+
+  @override
+  String get wmHistory => '기록';
+
+  @override
+  String get wmBags => '포대 수';
+
+  @override
+  String get wmKg => 'kg';
+
+  @override
+  String get wmReceiver => '수령인';
+
+  @override
+  String wmWarehouseAvailable(String qty) {
+    return '창고 재고 $qty kg';
+  }
+
+  @override
+  String wmEstimatedRemaining(String qty) {
+    return '자재창고 예상 잔량 $qty kg';
+  }
+
+  @override
+  String get wmCountingNextPeriod => '재고 조사가 시작되어 이 자재는 다음 기간으로 계산됩니다';
+
+  @override
+  String get wmSupplementFlag => '이 자재는 이전 기간에 누락된 기록임';
+
+  @override
+  String get wmSupplementPeriod => '추가할 기간';
+
+  @override
+  String get wmAlsoOrderMaterials => '다른 자재도 작업지시별로 출고 (예: 인서트)';
+
+  @override
+  String get wmFillFromGoodsWeight => '선택 행에 품목 중량 입력';
+
+  @override
+  String get wmCloseFailing => '결산이 계속 실패하여 매일 재시도합니다. 관리자에게 문의하세요';
+
+  @override
+  String get wmStartCount => '재고 조사 시작';
+
+  @override
+  String get wmCutoffToday => '오늘 마감';
+
+  @override
+  String get wmCutoffYesterday => '어제 마감';
+
+  @override
+  String get wmMonthEndHint => '월별 대사를 원하면 월말에 재고 조사하세요';
+
+  @override
+  String get wmFillFull => '가득';
+
+  @override
+  String get wmFillHalf => '절반';
+
+  @override
+  String get wmFillEmpty => '비어 있음';
+
+  @override
+  String get wmFillWeighed => 'kg 직접 입력';
+
+  @override
+  String get wmWeighOpenBag => '개봉 포대 (계량)';
+
+  @override
+  String get wmWeighMixed => '혼합 후 미투입';
+
+  @override
+  String get wmWeighLoose => '산물 자재';
+
+  @override
+  String get wmFillGuide => '3/4 이상은 가득, 1/4~3/4는 절반, 1/4 미만은 비어 있음';
+
+  @override
+  String get wmMachineIdle => '설비 정지, 전부 비어 있음';
+
+  @override
+  String get wmZeroRest => '나머지 자재는 모두 소진, 0으로 기록';
+
+  @override
+  String get wmPrintBlank => '빈 재고 조사표 인쇄';
+
+  @override
+  String get wmSubmitCount => '재고 조사 제출';
+
+  @override
+  String get wmWithdrawCount => '재고 조사 철회';
+
+  @override
+  String get wmCorrectCount => '재고 조사 정정';
+
+  @override
+  String wmBagsTimesKg(int bags, String kg) {
+    return '$bags포대 × ${kg}kg';
+  }
+
+  @override
+  String get wmCloseState => '결산 상태';
+
+  @override
+  String get wmCloseWaitingPrevious => '이전 기간 결산 대기';
+
+  @override
+  String wmCloseBlockedReport(int n) {
+    return '미승인 작업보고 $n건 (승인자 승인 또는 작성자가 불필요한 초안 삭제)';
+  }
+
+  @override
+  String wmCloseBlockedWeight(int n) {
+    return '개당 중량 누락 제품 $n개 (BOM 담당자 처리)';
+  }
+
+  @override
+  String wmCloseBlockedStock(String material) {
+    return '\"$material\" 이번 기간 출고 기록 없이 사용됨 (창고 누락 출고 보완 또는 작업장 자재 수정)';
+  }
+
+  @override
+  String get wmCloseRetry => '지금 재시도';
+
+  @override
+  String get wmReopen => '결산 취소';
+
+  @override
+  String get wmReopenReason => '취소 사유';
+
+  @override
+  String wmReopenHeld(String time) {
+    return '결산이 취소되었습니다. 수정 후 \"다시 결산\"을 누르세요. $time에 자동으로 다시 결산합니다';
+  }
+
+  @override
+  String get wmSettleAgain => '다시 결산';
+
+  @override
+  String get wmNeedChoice => '자재 확인 대기';
+
+  @override
+  String get wmStartSheetTitle => '착수 전 자재 확인';
+
+  @override
+  String wmStartConfirm(int n) {
+    return '확인 후 착수 ($n)';
+  }
+
+  @override
+  String get wmOrderInstead => '이 제품들은 작업지시별 출고 (지금 착수 안 함)';
+
+  @override
+  String get wmNotFromStore => '작업장 자재창고 자재 미사용 (작업지시별 출고)';
+
+  @override
+  String get wmWeightPending => '추후 입력, 착수에 영향 없음';
+
+  @override
+  String get wmChangeMaterial => '이 작업지시 자재 변경';
+
+  @override
+  String get wmChangeFrom => '변경 시작일';
+
+  @override
+  String get wmAddMaterial => '자재 추가';
+
+  @override
+  String get wmEnable => '일괄 출고 사용';
+
+  @override
+  String get wmGoLiveDate => '사용 시작일';
+
+  @override
+  String get wmMainWarehouse => '소속 주창고';
+
+  @override
+  String get wmMachines => '설비 및 용기';
+
+  @override
+  String get wmGoLivePrep => '도입 준비';
+
+  @override
+  String wmGoLiveProgress(int total, int chosen, int weighed) {
+    return '주요 제품 $total개, 자재 선택 $chosen개, 개당 중량 입력 $weighed개';
+  }
+
+  @override
+  String get wmReportUsage => '사용량';
+
+  @override
+  String get wmReportProduct => '제품별';
+
+  @override
+  String get wmReportTrend => '손실률 추이';
+
+  @override
+  String get wmReportMissingWeight => '개당 중량 누락';
+
+  @override
+  String get wmReportLedger => '입출고 내역';
+
+  @override
+  String get wmTrueUnitUsage => '실제 개당 사용량';
+
+  @override
+  String get wmAllocatedByTheory => '표준 비율 배분';
+
+  @override
+  String get wmWasteRate => '손실률';
+
+  @override
+  String get wmIncludeWorkshopStore => '작업장 자재창고 포함';
+
+  @override
+  String get workshopMaterialSetupHubDesc => '일괄 출고 사용, 설비·용기, 도입 준비';
+
+  @override
+  String get workshopMaterialReportsHubDesc => '기간별 자재 사용량, 손실률, 결산 상태';
+
+  @override
+  String get wmReceiveReturn => '반납 수령';
+
+  @override
+  String get wmIssueByRequest => '요청별 출고';
+
+  @override
+  String get wmOnHand => '현재고';
+
+  @override
+  String get wmInUseMaterial => '사용 중 자재';
+
+  @override
+  String get wmBagMaterials => '포대 자재';
+
+  @override
+  String get wmEnableWorkshopTab => '작업장 사용 설정';
+
+  @override
+  String get wmReportPeriod => '기간';
+
+  @override
+  String get wmReportAllPeriods => '전체 기간';
+
+  @override
+  String get wmReportMaterial => '자재';
+
+  @override
+  String get wmReportNoBin => '아직 일괄 출고를 사용하는 작업장이 없어 자재창고 사용량이 없습니다.';
+
+  @override
+  String get wmOpenBom => 'BOM 열기';
+
+  @override
+  String get wmWorkshopMaterialSection => '작업장 자재';
+
+  @override
+  String get wmIssueMethodUpdated => '출고 방식이 변경되었습니다';
+
+  @override
+  String get bomLearningAuto => 'BOM 자동 갱신';
+
+  @override
+  String get bomLearningAverage => '개당 평균 소요량';
+
+  @override
+  String get warehouseGoodsMasterDefaultHint =>
+      '품목 기본 정보의 기본 보관 창고를 불러왔습니다. 이번 실제 창고를 확인하세요';
+
+  @override
+  String get warehouseSuggestedDestinationHint =>
+      '권장 보관 창고를 불러왔습니다. 이번 실제 창고를 확인하세요';
+
+  @override
+  String get warehouseBatchRegistrationHelp =>
+      '완제품 창고와 보관 위치 번호는 각 행에 필수입니다. 품목 기본 창고를 우선 적용하고, 없는 항목은 개인 창고 선택 정보를 참고합니다. 여러 행을 선택한 후 창고나 위치를 변경하면 일괄 적용할 수 있습니다. 생산 실적 보고서별로 검사 의뢰를 생성하며, 품질 승인 후 최종 실수량을 확인하여 입고합니다.';
+
+  @override
+  String get goodsNameEnLabel => '영문명';
+
+  @override
+  String get goodsNameEnHint => '예: DOUBLE 3 PIN SOCKET WITH SWITCH';
+
+  @override
+  String get goodsNameEnInfo =>
+      '고객 견적서나 주문서에서 이 품목을 부르는 영문 이름입니다. 고객 파일을 인식할 때 영문 품명을 이 품목과 연결하는 데 사용됩니다.';
+
+  @override
+  String get goodsNameEnColumnInfo =>
+      '고객 파일에서 이 품목을 부르는 영문 이름입니다. 영업이 영문 품명이 있는 문서를 저장하면 자동으로 기억되며, 품목 상세에서 수정할 수 있습니다.';
+
+  @override
+  String get goodsNameEnSearchHint => '품목 검색(이름/영문명/코드/모델/규격/시리즈)';
+
+  @override
+  String get goodsNameEnLearned => '자동 학습';
+
+  @override
+  String get goodsNameEnLearnedTip =>
+      '영업이 고객 파일을 저장할 때 시스템이 자동으로 기억한 영문명입니다. 틀리면 바로 수정하세요.';
+
+  @override
+  String get goodsNameEnEdit => '영문명 수정';
+
+  @override
+  String get goodsNameEnEditDescription =>
+      '고객 파일에 적힌 영문 품명을 입력하세요. 저장 후에는 고객 파일을 이 이름으로 이 품목과 연결합니다. 비워 두면 영문명을 사용하지 않습니다.';
+
+  @override
+  String get goodsNameEnSaving => '저장 중…';
+
+  @override
+  String get goodsNameEnSaved => '영문명을 저장했습니다';
+
+  @override
+  String get goodsNameEnCleared => '영문명을 지웠습니다';
+
+  @override
+  String get goodsNameEnImportHint =>
+      '영문명도 가져올 수 있습니다 (머리글 「英文名称」 또는 「English Name」).';
+
+  @override
+  String goodsNameEnTooLong(int max) {
+    return '영문명은 최대 $max자까지 입력할 수 있습니다';
+  }
+
+  @override
+  String get clientNameEnLabel => '외국어 이름';
+
+  @override
+  String get clientNameEnHint => '예: SUNAS TRADING LIMITED';
+
+  @override
+  String get clientNameEnInfo =>
+      '고객 회사의 영문 또는 기타 외국어 이름입니다. 고객 파일을 인식할 때 이 고객을 찾는 데 사용되며, 영업이 문서를 저장할 때 자동으로 채워집니다.';
+
+  @override
+  String get clientNameEnSearchHint => '고객 검색(약칭/코드/정식명/외국어 이름/담당자/휴대폰/이메일)';
+
+  @override
+  String get clientGoodsAliasTab => '품목 대응';
+
+  @override
+  String get clientGoodsAliasTitle => '고객이 부르는 품목 이름';
+
+  @override
+  String get clientGoodsAliasDescription =>
+      '고객 견적서·주문서의 모델 번호와 품명이 우리 어느 품목에 해당하는지 보여 줍니다. 이 고객의 파일을 인식할 때 여기를 먼저 참고합니다.';
+
+  @override
+  String get clientGoodsAliasSearchHint => '고객 표기, 품목명 또는 코드 검색';
+
+  @override
+  String get clientGoodsAliasEmptyTitle => '아직 품목 대응이 없습니다';
+
+  @override
+  String get clientGoodsAliasEmpty =>
+      '파일 모델 번호가 있는 견적서나 주문서를 저장하면 고객의 표기가 여기에 자동으로 기억됩니다';
+
+  @override
+  String get clientGoodsAliasNoMatch => '찾는 대응이 없습니다. 다른 검색어로 시도하세요.';
+
+  @override
+  String get clientGoodsAliasKindPartNo => '고객 모델';
+
+  @override
+  String get clientGoodsAliasKindDescription => '고객 품명';
+
+  @override
+  String clientGoodsAliasContext(String context) {
+    return '$context에 적용';
+  }
+
+  @override
+  String clientGoodsAliasConfirmCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count회 확인',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String clientGoodsAliasExplicitCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '그중 $count회 직접 선택',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String clientGoodsAliasLastConfirmed(String date) {
+    return '최근 $date';
+  }
+
+  @override
+  String clientGoodsAliasLastConfirmedBy(String date, String name) {
+    return '최근 $date · $name';
+  }
+
+  @override
+  String get clientGoodsAliasGoodsMissing => '품목 자료가 삭제됨';
+
+  @override
+  String get clientGoodsAliasDelete => '이 대응 삭제';
+
+  @override
+  String get clientGoodsAliasDeleteAction => '삭제';
+
+  @override
+  String clientGoodsAliasDeleteConfirm(String alias, String goods) {
+    return '삭제하면 이 고객의 파일을 인식할 때 「$alias」를 「$goods」에 더 이상 연결하지 않습니다. 이후 영업이 문서를 저장하면 다시 기억될 수 있습니다.';
+  }
+
+  @override
+  String get clientGoodsAliasDeleting => '대응을 삭제하는 중';
+
+  @override
+  String get clientGoodsAliasDeleted => '대응을 삭제했습니다';
+
+  @override
+  String get clientGoodsAliasLoadFailed => '품목 대응을 불러오지 못했습니다. 다시 시도하세요.';
+
+  @override
+  String clientGoodsAliasTotal(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '총 $count건',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String clientGoodsAliasPage(int page, int pages) {
+    return '$page / $pages 페이지';
+  }
+
+  @override
+  String get clientGoodsAliasPrevPage => '이전';
+
+  @override
+  String get clientGoodsAliasNextPage => '다음';
+
+  @override
+  String get aiJobCancel => '취소';
+
+  @override
+  String aiJobElapsed(String time) {
+    return '경과 시간 $time';
+  }
+
+  @override
+  String get aiJobQueued => '대기 중입니다. 곧 시작합니다';
+
+  @override
+  String get aiJobSlowHint => '내용이 많으면 1~2분 걸릴 수 있습니다. 다시 누르지 말고 기다려 주세요';
+
+  @override
+  String get aiJobTimeout =>
+      '처리 시간이 너무 길어 기다리기를 멈췄습니다. 잠시 후 다시 시도하거나 파일을 나눠 주세요';
+
+  @override
+  String get aiJobGone => '이번 작업이 더 이상 없습니다(정리되었을 수 있음). 다시 시작해 주세요';
+
+  @override
+  String get aiJobFailedGeneric => '처리하지 못했습니다. 잠시 후 다시 시도해 주세요';
+
+  @override
+  String get aiJobConfidenceHigh => '높음';
+
+  @override
+  String get aiJobConfidenceMedium => '보통';
+
+  @override
+  String get aiJobConfidenceLow => '낮음';
+
+  @override
+  String aiJobConfidenceSemantics(String level) {
+    return 'AI 판단 확신도: $level';
+  }
+
+  @override
+  String get aiSettingsTitle => 'AI 서비스';
+
+  @override
+  String get aiSettingsEntrySubtitle => '모델 제공업체, API 키, 연결 테스트 설정';
+
+  @override
+  String aiSettingsHeroActive(String name, String model) {
+    return '사용 중: $name · $model';
+  }
+
+  @override
+  String get aiSettingsHeroReady => '영업팀이 올린 고객 파일을 자동 인식할 때 사용합니다';
+
+  @override
+  String get aiSettingsHeroNone => '사용 가능한 AI 서비스가 아직 없습니다';
+
+  @override
+  String get aiSettingsHeroNoneHint =>
+      '제공업체를 추가하고 테스트를 통과하면 영업팀이 올린 고객 파일을 자동으로 인식합니다';
+
+  @override
+  String get aiSettingsHeroDefaultDisabled =>
+      '기본 서비스가 사용 중지되어 현재 AI를 호출하지 않습니다';
+
+  @override
+  String get aiSettingsHeroNeedsKey => 'API 키가 아직 없어 현재 AI를 호출하지 않습니다';
+
+  @override
+  String get aiSettingsSecurityNote =>
+      'API 키는 암호화되어 저장되며 끝자리만 표시됩니다. 저장, 삭제, 저장된 키로 테스트할 때는 로그인 비밀번호를 다시 확인합니다.';
+
+  @override
+  String get aiSettingsOutboundOff =>
+      '이 서버는 외부 AI 호출이 꺼져 있습니다(테스트 환경 기본값). 설정은 저장할 수 있지만 실제 호출은 하지 않습니다';
+
+  @override
+  String get aiSettingsProvidersSection => '제공업체';
+
+  @override
+  String get aiSettingsAdd => 'AI 서비스 추가';
+
+  @override
+  String get aiSettingsEditTitle => 'AI 서비스 편집';
+
+  @override
+  String get aiSettingsEmptyTitle => '설정된 AI 서비스가 없습니다';
+
+  @override
+  String get aiSettingsEmptyHint =>
+      'DeepSeek, Qwen, Kimi, Zhipu 등 중국 본토 제공업체와 로컬 배포 모델을 지원합니다';
+
+  @override
+  String get aiSettingsLoadFailed => 'AI 서비스 설정을 불러오지 못했습니다';
+
+  @override
+  String get aiSettingsNoAccess => '최고 관리자만 AI 서비스를 보고 변경할 수 있습니다';
+
+  @override
+  String get aiSettingsRetry => '다시 시도';
+
+  @override
+  String get aiSettingsRefresh => '새로고침';
+
+  @override
+  String get aiSettingsClose => '닫기';
+
+  @override
+  String get aiSettingsCancel => '취소';
+
+  @override
+  String get aiSettingsRegion => '지역';
+
+  @override
+  String get aiSettingsRegionMainland => '중국 본토';
+
+  @override
+  String get aiSettingsRegionOverseas => '해외';
+
+  @override
+  String get aiSettingsRegionLocal => '로컬';
+
+  @override
+  String get aiSettingsDefaultBadge => '기본';
+
+  @override
+  String get aiSettingsDisabledBadge => '사용 중지';
+
+  @override
+  String get aiSettingsModel => '모델';
+
+  @override
+  String get aiSettingsBaseUrl => '엔드포인트 URL';
+
+  @override
+  String get aiSettingsApiKey => 'API 키';
+
+  @override
+  String get aiSettingsKeyMissing => '미설정';
+
+  @override
+  String get aiSettingsKeyNotNeeded => '필요 없음';
+
+  @override
+  String get aiSettingsKeyUnreadable => 'API 키를 복호화할 수 없습니다. 다시 입력해 주세요';
+
+  @override
+  String get aiSettingsLastTest => '마지막 테스트';
+
+  @override
+  String aiSettingsLastTestOk(String time) {
+    return '통과 · $time';
+  }
+
+  @override
+  String aiSettingsLastTestFailed(String time) {
+    return '실패 · $time';
+  }
+
+  @override
+  String get aiSettingsNeverTested => '아직 테스트하지 않음';
+
+  @override
+  String get aiSettingsEnabledSwitch => '사용';
+
+  @override
+  String get aiSettingsEnabledInfo => '사용 중지하면 이 서비스를 호출하지 않습니다';
+
+  @override
+  String get aiSettingsTest => '연결 테스트';
+
+  @override
+  String get aiSettingsTesting => '테스트 중';
+
+  @override
+  String get aiSettingsEdit => '편집';
+
+  @override
+  String get aiSettingsSetDefault => '기본으로 설정';
+
+  @override
+  String get aiSettingsDelete => '삭제';
+
+  @override
+  String get aiSettingsDeleteTitle => '이 AI 서비스를 삭제할까요?';
+
+  @override
+  String aiSettingsDeleteMessage(String name) {
+    return '\"$name\"의 설정과 API 키가 삭제되며 복구할 수 없습니다.';
+  }
+
+  @override
+  String get aiSettingsDeleteDefaultBlocked =>
+      '기본 서비스는 삭제할 수 없습니다. 먼저 다른 서비스를 기본으로 설정해 주세요';
+
+  @override
+  String get aiSettingsDeleted => '삭제했습니다';
+
+  @override
+  String aiSettingsDefaultSet(String name) {
+    return '\"$name\"을(를) 기본으로 설정했습니다';
+  }
+
+  @override
+  String aiSettingsEnabledOn(String name) {
+    return '\"$name\"을(를) 사용합니다';
+  }
+
+  @override
+  String aiSettingsEnabledOff(String name) {
+    return '\"$name\"을(를) 사용 중지했습니다';
+  }
+
+  @override
+  String get aiSettingsBusySaving => '저장 중';
+
+  @override
+  String get aiSettingsBusyDeleting => '삭제 중';
+
+  @override
+  String aiSettingsUpdatedBy(String name, String time) {
+    return '$name 님이 $time에 변경';
+  }
+
+  @override
+  String get aiSettingsTestNeedsKeyEdit =>
+      'API 키가 없습니다. \"편집\"에서 키를 입력한 뒤 테스트해 주세요';
+
+  @override
+  String aiSettingsUsageTitle(int days) {
+    return '최근 $days일 사용량';
+  }
+
+  @override
+  String get aiSettingsUsageCalls => '호출 수';
+
+  @override
+  String get aiSettingsUsageSuccessRate => '성공률';
+
+  @override
+  String get aiSettingsUsageTokens => '입력 / 출력 토큰';
+
+  @override
+  String get aiSettingsUsageLatency => '평균 소요 시간';
+
+  @override
+  String aiSettingsUsageSeconds(String value) {
+    return '$value초';
+  }
+
+  @override
+  String get aiSettingsUsageEmpty => '아직 호출 기록이 없습니다';
+
+  @override
+  String get aiSettingsUsageUnavailable => '사용량을 잠시 불러올 수 없습니다. 서비스에는 영향이 없습니다';
+
+  @override
+  String get aiSettingsPreset => '제공업체';
+
+  @override
+  String get aiSettingsPresetInfo =>
+      '제공업체를 고르면 엔드포인트와 권장 설정이 자동으로 채워집니다. 모든 항목은 수정할 수 있습니다';
+
+  @override
+  String aiSettingsPresetOverseasOff(String label) {
+    return '$label (해외, 미개방)';
+  }
+
+  @override
+  String get aiSettingsOverseasOffHint =>
+      '해외 제공업체는 기본적으로 꺼져 있습니다. 사용하려면 배포 담당자에게 서버 설정에서 켜 달라고 요청하고 데이터 국외 이전 평가를 완료해 주세요';
+
+  @override
+  String aiSettingsPresetUnavailable(String label) {
+    return '$label (사용 불가)';
+  }
+
+  @override
+  String get aiSettingsName => '표시 이름';
+
+  @override
+  String get aiSettingsNameHint => '예: DeepSeek 운영 계정';
+
+  @override
+  String get aiSettingsNameRequired => '표시 이름을 입력해 주세요';
+
+  @override
+  String aiSettingsTooLong(int max) {
+    return '최대 $max자';
+  }
+
+  @override
+  String get aiSettingsBaseUrlInfo =>
+      '제공업체 문서의 Base URL입니다. https만 사용할 수 있으며 로컬 배포는 http://127.0.0.1을 쓸 수 있습니다';
+
+  @override
+  String get aiSettingsBaseUrlRequired => '엔드포인트 URL을 입력해 주세요';
+
+  @override
+  String get aiSettingsBaseUrlInvalid =>
+      '엔드포인트 URL 형식이 올바르지 않습니다. https://로 시작하고 물음표 뒤 매개변수가 없어야 합니다';
+
+  @override
+  String get aiSettingsBaseUrlHttpLocalOnly =>
+      '로컬 배포만 http를 쓸 수 있습니다. 다른 제공업체는 https를 사용해 주세요';
+
+  @override
+  String get aiSettingsModelHint => '모델 이름을 입력하거나 \"모델 가져오기\"로 목록에서 고르세요';
+
+  @override
+  String get aiSettingsModelRequired => '모델 이름을 입력해 주세요';
+
+  @override
+  String get aiSettingsFetchModels => '모델 가져오기';
+
+  @override
+  String get aiSettingsPickModel => '목록에서 모델 선택';
+
+  @override
+  String aiSettingsModelsLoaded(int count) {
+    return '모델 $count개를 찾았습니다';
+  }
+
+  @override
+  String get aiSettingsModelsEmpty =>
+      '제공업체가 모델 목록을 주지 않았습니다. 모델 이름을 직접 입력해 주세요';
+
+  @override
+  String get aiSettingsApiKeyHint => '제공업체 콘솔에서 만든 키를 붙여 넣으세요';
+
+  @override
+  String get aiSettingsApiKeyNotNeededHint => '로컬 배포는 보통 키가 필요 없어 비워 둘 수 있습니다';
+
+  @override
+  String get aiSettingsApiKeyRequired => 'API 키를 입력해 주세요';
+
+  @override
+  String get aiSettingsClearKey => '키 삭제';
+
+  @override
+  String get aiSettingsUndoClear => '삭제 취소';
+
+  @override
+  String get aiSettingsKeyWillClear => '저장하면 저장된 키가 삭제됩니다';
+
+  @override
+  String get aiSettingsUrlChangedNeedKey => '엔드포인트가 바뀌어 API 키를 다시 입력해야 합니다';
+
+  @override
+  String get aiSettingsUrlChangedNeedKeyDetail =>
+      '보안을 위해 저장된 키는 원래 주소로만 전송됩니다. 저장하기 전에 키를 다시 붙여 넣으세요.';
+
+  @override
+  String get aiSettingsUrlChangedNeedKeyLocalDetail =>
+      '보안을 위해 저장된 키는 원래 주소로만 전송됩니다. 키를 다시 붙여 넣거나, 새 주소에 키가 필요 없으면 \"키 삭제\"를 누르세요.';
+
+  @override
+  String get aiSettingsAdvanced => '고급 설정';
+
+  @override
+  String get aiSettingsProtocol => 'API 프로토콜';
+
+  @override
+  String get aiSettingsProtocolInfo =>
+      '중국 본토 제공업체와 로컬 배포는 대부분 OpenAI 호환이며, Claude만 Anthropic을 사용합니다';
+
+  @override
+  String get aiSettingsProtocolOpenAi => 'OpenAI 호환';
+
+  @override
+  String get aiSettingsProtocolAnthropic => 'Anthropic';
+
+  @override
+  String get aiSettingsJsonMode => 'JSON 출력 방식';
+
+  @override
+  String get aiSettingsJsonModeInfo =>
+      '모델이 JSON으로만 답하게 해야 시스템이 결과를 읽을 수 있습니다. 제공업체가 지원하지 않으면 \"요구 안 함\"을 고르세요';
+
+  @override
+  String get aiSettingsJsonModeNone => '요구 안 함';
+
+  @override
+  String get aiSettingsJsonModeObject => 'JSON 객체';
+
+  @override
+  String get aiSettingsJsonModeSchema => '구조 지정(스키마)';
+
+  @override
+  String get aiSettingsThinking => '심층 추론 끄기';
+
+  @override
+  String get aiSettingsThinkingInfo =>
+      '표 인식에는 심층 추론이 필요 없어 끄면 더 빠르고 저렴합니다. 제공업체마다 방식이 달라 제공업체를 고르면 자동으로 맞춰집니다';
+
+  @override
+  String get aiSettingsThinkingNone => '그대로 두기';
+
+  @override
+  String get aiSettingsThinkingDeepseek => 'DeepSeek 방식';
+
+  @override
+  String get aiSettingsThinkingDashscope => 'Qwen 방식';
+
+  @override
+  String get aiSettingsThinkingOpenAi => 'OpenAI 방식';
+
+  @override
+  String get aiSettingsTemperature => '일정한 출력(온도 0)';
+
+  @override
+  String get aiSettingsTemperatureInfo =>
+      '같은 파일은 매번 비슷한 결과가 나오게 합니다. 모델이 이 매개변수를 거부하면 끄세요';
+
+  @override
+  String get aiSettingsVision => '이미지와 스캔본 인식 가능';
+
+  @override
+  String get aiSettingsVisionInfo =>
+      '모델이 이미지를 읽을 수 있으면 켜세요. 영업팀이 올린 사진과 스캔 PDF를 인식하려면 필요합니다';
+
+  @override
+  String get aiSettingsMaxTokens => '최대 출력 길이';
+
+  @override
+  String get aiSettingsMaxTokensInfo => '256 ~ 65536, 행이 많은 파일은 더 길게 필요합니다';
+
+  @override
+  String get aiSettingsTimeout => '시간 제한(초)';
+
+  @override
+  String get aiSettingsTimeoutInfo => '10 ~ 600, 이 시간 안에 응답이 없으면 실패로 처리합니다';
+
+  @override
+  String aiSettingsNumberRange(int min, int max) {
+    return '$min ~ $max 사이의 정수를 입력해 주세요';
+  }
+
+  @override
+  String get aiSettingsOverseasAck =>
+      '고객 정보(회사명, 품목 설명)가 해외 제공업체로 전송됩니다. 데이터 국외 이전 평가를 완료했음을 확인합니다';
+
+  @override
+  String get aiSettingsOverseasAckRequired =>
+      '해외 제공업체를 사용하기 전에 위의 확인란을 선택해 주세요';
+
+  @override
+  String get aiSettingsSave => '저장';
+
+  @override
+  String get aiSettingsSaving => '저장 중';
+
+  @override
+  String get aiSettingsSaved => '저장했습니다';
+
+  @override
+  String get aiSettingsSaveFailed => '저장하지 못했습니다. 잠시 후 다시 시도해 주세요';
+
+  @override
+  String get aiSettingsFixFields => '빨간색으로 표시된 항목을 먼저 고쳐 주세요';
+
+  @override
+  String get aiSettingsTestNeedsKey => '테스트하기 전에 API 키를 입력해 주세요';
+
+  @override
+  String get aiSettingsTestStoredMismatch =>
+      '저장된 키로 테스트하려면 엔드포인트와 모델이 저장된 값과 같아야 합니다. 먼저 저장하거나 키를 다시 입력해 테스트하세요';
+
+  @override
+  String get aiSettingsTestResultTitle => '연결 테스트';
+
+  @override
+  String get aiSettingsStepNetwork => '네트워크 연결';
+
+  @override
+  String get aiSettingsStepAuth => 'API 키 확인';
+
+  @override
+  String get aiSettingsStepModel => '모델 사용 가능';
+
+  @override
+  String get aiSettingsStepJson => 'JSON 출력';
+
+  @override
+  String get aiSettingsStepSkipped => '진행 안 함';
+
+  @override
+  String aiSettingsLatency(int ms) {
+    return '${ms}ms';
+  }
+
+  @override
+  String get aiSettingsTestPassed => '연결 정상, 사용할 수 있습니다';
+
+  @override
+  String get aiSettingsTestPassedShort => '통과';
+
+  @override
+  String get aiSettingsTestFailed => '연결 테스트에 실패했습니다. 안내를 확인한 뒤 다시 시도해 주세요';
+
+  @override
+  String get aiSettingsTestFailedShort => '실패';
+
+  @override
+  String get aiSettingsTestWarnShort => '확인 필요';
+
+  @override
+  String get aiSettingsTestPassedWithNotes =>
+      '연결되었지만 확인할 사항이 있습니다. 위의 안내를 확인해 주세요';
+
+  @override
+  String get aiSettingsTestStoredUnsavedAdvanced =>
+      '고급 설정이 바뀌었습니다. 저장된 키로 테스트하면 바뀐 내용이 반영되지 않습니다. 먼저 저장하거나 키를 다시 입력해 테스트하세요';
+
+  @override
+  String get aiSettingsModelChoices => '모델:';
+
+  @override
+  String get aiSettingsOverseasLockedShort =>
+      '해외 제공업체는 아직 열려 있지 않습니다. 배포 담당자가 서버에서 켜야 합니다';
+
+  @override
+  String get aiSettingsKeyConfiguredPlain => '설정됨';
+
+  @override
+  String get aiSettingsApiKeyKeepHintPlain => '설정됨. 바꾸지 않으려면 비워 두세요';
+
+  @override
+  String get aiSettingsCurrentKey => '현재 키';
+
+  @override
+  String get salesQuoteStatusDraft => '초안';
+
+  @override
+  String get salesQuoteStatusPendingFinance => '재무 가격 검토 대기';
+
+  @override
+  String get salesQuoteStatusReturned => '재무 반려';
+
+  @override
+  String get salesQuoteStatusConfirmed => '가격 확정';
+
+  @override
+  String get salesQuoteStatusReversed => '무효';
+
+  @override
+  String get salesQuoteStatusConverted => '주문으로 전환됨';
+
+  @override
+  String get salesQuoteStatusToConvert => '가격 확정, 주문 전환 대기';
+
+  @override
+  String salesQuoteStatusReadOnly(String status) {
+    return '$status · 읽기 전용';
+  }
+
+  @override
+  String get salesQuoteStatusHistory => '이력';
+
+  @override
+  String get salesQuoteStatusBannerDraft =>
+      '초안: 작성 후 \"재무 가격 검토 요청\"을 누르세요. 재무가 가격과 할인을 확정해야 주문으로 전환할 수 있습니다.';
+
+  @override
+  String get salesQuoteStatusBannerPending =>
+      '재무 가격 검토를 요청했으며 재무의 가격 확정을 기다리는 중입니다. 수정하려면 먼저 \"회수\"하세요.';
+
+  @override
+  String salesQuoteStatusBannerReturned(String reason) {
+    return '재무 반려: $reason. 수정한 뒤 다시 가격 검토를 요청하세요.';
+  }
+
+  @override
+  String salesQuoteStatusBannerConfirmed(String name, String time) {
+    return '재무 가격 확정($name · $time). 이제 주문으로 전환할 수 있습니다.';
+  }
+
+  @override
+  String salesQuoteStatusBannerConverted(String orderNo) {
+    return '주문 $orderNo(으)로 전환되어 견적을 더 이상 수정할 수 없습니다.';
+  }
+
+  @override
+  String get salesQuoteStatusBannerReversed => '이 견적은 무효 처리되어 조회만 가능합니다.';
+
+  @override
+  String get salesQuoteStatusFinanceFallback => '재무';
+
+  @override
+  String get salesQuoteStatusFieldReturnReason => '반려 사유';
+
+  @override
+  String get salesQuoteStatusFieldSubmittedAt => '가격 검토 요청 시각';
+
+  @override
+  String get salesQuoteStatusFieldConfirmedBy => '가격 확정자';
+
+  @override
+  String get salesQuoteStatusFieldConvertedOrder => '전환된 주문';
+
+  @override
+  String get salesQuoteStatusFieldFinanceRemark => '재무 메모';
+
+  @override
+  String get salesQuoteStatusActionSubmit => '재무 가격 검토 요청';
+
+  @override
+  String get salesQuoteStatusActionWithdraw => '회수';
+
+  @override
+  String get salesQuoteStatusActionReopen => '다시 수정';
+
+  @override
+  String get salesQuoteStatusActionConvert => '주문으로 전환';
+
+  @override
+  String get salesQuoteStatusActionReverse => '무효 처리';
+
+  @override
+  String get salesQuoteStatusActionEdit => '편집';
+
+  @override
+  String get salesQuoteStatusActionDelete => '삭제';
+
+  @override
+  String get salesQuoteStatusActionFinanceReview => '가격 검토 열기';
+
+  @override
+  String get salesQuoteStatusActionViewOrder => '주문 보기';
+
+  @override
+  String get salesQuoteStatusActionBack => '목록으로';
+
+  @override
+  String get salesQuoteStatusSubmitConfirmBody =>
+      '재무가 품목별로 가격과 할인을 정합니다. 그동안 견적을 수정할 수 없습니다. 요청할까요?';
+
+  @override
+  String get salesQuoteStatusWithdrawConfirmBody =>
+      '회수하면 초안으로 돌아가 계속 수정할 수 있으며, 수정 후 다시 가격 검토를 요청해야 합니다. 회수할까요?';
+
+  @override
+  String get salesQuoteStatusReopenConfirmBody =>
+      '재무가 이미 가격을 확정했습니다. 다시 수정하면 초안으로 돌아가며, 다시 가격 검토를 받아야 주문으로 전환할 수 있습니다. 계속할까요?';
+
+  @override
+  String get salesQuoteStatusReverseConfirmBody =>
+      '무효 처리하면 주문으로 전환할 수 없고 되돌릴 수도 없습니다. 무효 처리할까요?';
+
+  @override
+  String get salesQuoteStatusDeleteConfirmBody =>
+      '이 견적 초안을 삭제할까요? 삭제 후에는 복구할 수 없습니다.';
+
+  @override
+  String get salesQuoteStatusConvertConfirmBody =>
+      '재무가 확정한 단가와 할인으로 주문 초안을 만듭니다. 단가와 할인은 바꿀 수 없고 수량과 납기 정보는 주문에서 보완할 수 있습니다. 전환할까요?';
+
+  @override
+  String get salesQuoteStatusConfirm => '확인';
+
+  @override
+  String get salesQuoteStatusCancel => '취소';
+
+  @override
+  String get salesQuoteStatusSubmitted => '재무 가격 검토를 요청했습니다';
+
+  @override
+  String get salesQuoteStatusWithdrawn => '회수했습니다. 계속 수정할 수 있습니다';
+
+  @override
+  String get salesQuoteStatusReopened => '초안으로 돌아왔습니다. 수정 후 다시 가격 검토를 요청하세요';
+
+  @override
+  String get salesQuoteStatusReversedDone => '견적을 무효 처리했습니다';
+
+  @override
+  String get salesQuoteStatusDeleted => '삭제했습니다';
+
+  @override
+  String salesQuoteStatusConvertDone(String billNo) {
+    return '주문 초안 $billNo을(를) 만들었습니다';
+  }
+
+  @override
+  String get salesQuoteStatusActionFailed => '처리하지 못했습니다. 잠시 후 다시 시도하세요.';
+
+  @override
+  String get salesQuoteStatusBusy => '처리 중입니다. 잠시만 기다려 주세요';
+
+  @override
+  String get salesQuoteStatusTimelineTitle => '가격 검토 기록';
+
+  @override
+  String get salesQuoteStatusTimelineEmpty => '아직 가격 검토 기록이 없습니다';
+
+  @override
+  String get salesQuoteStatusRevisionSubmit => '가격 검토 요청';
+
+  @override
+  String get salesQuoteStatusRevisionWithdraw => '영업 회수';
+
+  @override
+  String get salesQuoteStatusRevisionFinanceEdit => '재무 가격 수정';
+
+  @override
+  String get salesQuoteStatusRevisionReturn => '재무 반려';
+
+  @override
+  String get salesQuoteStatusRevisionConfirm => '재무 견적 확정';
+
+  @override
+  String get salesQuoteStatusRevisionReopen => '영업 다시 수정';
+
+  @override
+  String get salesQuoteStatusRevisionFinanceReopen => '재무 확정 취소';
+
+  @override
+  String get salesQuoteStatusRevisionOther => '기타 기록';
+
+  @override
+  String get salesQuoteStatusRevisionOperator => '처리자';
+
+  @override
+  String salesQuoteStatusRevisionVersion(int revision) {
+    return '$revision번째 버전';
+  }
+
+  @override
+  String get salesQuoteStatusSourceQuoteConfirmed => '견적 가격 확정';
+
+  @override
+  String get salesQuoteStatusSourceQuote => '원본 견적';
+
+  @override
+  String get quoteFinanceHubTitle => '견적 가격 검토';
+
+  @override
+  String get quoteFinanceHubSubtitle =>
+      '영업 견적의 가격과 할인을 재무가 정하며, 확정 후 영업이 주문으로 전환합니다';
+
+  @override
+  String get quoteFinanceListTitle => '견적 가격 검토';
+
+  @override
+  String get quoteFinanceTabPending => '검토 대기';
+
+  @override
+  String get quoteFinanceTabConfirmed => '확정됨';
+
+  @override
+  String get quoteFinanceTabReturned => '반려됨';
+
+  @override
+  String get quoteFinanceSearchHint => '번호 / 고객 / 영업 담당 검색';
+
+  @override
+  String get quoteFinanceRowHint => '탭하여 선택 · 두 번 탭하여 검토';
+
+  @override
+  String get quoteFinanceColBillNo => '견적 번호';
+
+  @override
+  String get quoteFinanceColClient => '고객';
+
+  @override
+  String get quoteFinanceColSeller => '영업 담당';
+
+  @override
+  String get quoteFinanceColSubmittedAt => '요청 시각';
+
+  @override
+  String get quoteFinanceColLines => '품목 수';
+
+  @override
+  String get quoteFinanceColAmount => '견적 금액';
+
+  @override
+  String get quoteFinanceColStatus => '상태 / 설명';
+
+  @override
+  String get quoteFinanceStatusPending => '검토 대기';
+
+  @override
+  String get quoteFinanceStatusResubmitted => '영업이 수정 후 재요청';
+
+  @override
+  String quoteFinanceStatusNeedPrice(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '표준가 없는 품목 $count개',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String quoteFinanceStatusConfirmed(String name) {
+    return '확정 · $name';
+  }
+
+  @override
+  String quoteFinanceStatusConverted(String orderNo) {
+    return '주문 $orderNo(으)로 전환됨';
+  }
+
+  @override
+  String quoteFinanceStatusReturned(String reason) {
+    return '반려: $reason';
+  }
+
+  @override
+  String get quoteFinanceEmptyPending => '가격 검토를 기다리는 견적이 없습니다';
+
+  @override
+  String get quoteFinanceEmptyPendingHint =>
+      '영업이 가격 검토를 요청하면 여기에 표시됩니다. 가격을 확정해야 영업이 주문으로 전환할 수 있습니다.';
+
+  @override
+  String get quoteFinanceEmptyConfirmed => '아직 확정된 견적이 없습니다';
+
+  @override
+  String get quoteFinanceEmptyReturned => '영업에 반려한 견적이 없습니다';
+
+  @override
+  String get quoteFinanceEmptyReturnedHint =>
+      '반려된 견적은 영업이 수정하면 다시 \"검토 대기\"로 돌아옵니다.';
+
+  @override
+  String quoteFinanceEmptySearch(String keyword) {
+    return '\"$keyword\"와(과) 일치하는 견적이 없습니다';
+  }
+
+  @override
+  String get quoteFinanceLoadFailed => '견적을 불러오지 못했습니다. 네트워크를 확인한 후 다시 시도하세요.';
+
+  @override
+  String get quoteFinanceRetry => '다시 시도';
+
+  @override
+  String get quoteFinanceRefresh => '새로 고침';
+
+  @override
+  String get quoteFinanceOpen => '검토';
+
+  @override
+  String get quoteFinancePrevPage => '이전 페이지';
+
+  @override
+  String get quoteFinanceNextPage => '다음 페이지';
+
+  @override
+  String get quoteFinanceUnnamed => '미지정';
+
+  @override
+  String get quoteFinanceReviewTitle => '견적 가격 검토';
+
+  @override
+  String get quoteFinanceStripPending => '재무 가격 검토 대기';
+
+  @override
+  String quoteFinanceStripConfirmed(String name, String time) {
+    return '확정 · $name · $time';
+  }
+
+  @override
+  String quoteFinanceStripReturned(String reason) {
+    return '영업에 반려 · $reason';
+  }
+
+  @override
+  String get quoteFinanceStripDraft => '영업 수정 중';
+
+  @override
+  String get quoteFinanceStripReversed => '무효';
+
+  @override
+  String quoteFinanceStripConverted(String orderNo) {
+    return '주문 $orderNo(으)로 전환됨';
+  }
+
+  @override
+  String quoteFinanceRevisionBadge(int revision) {
+    return '$revision번째 버전';
+  }
+
+  @override
+  String get quoteFinanceReadOnlyNotice => '지금은 이 견적에서 처리할 일이 없어 조회만 가능합니다.';
+
+  @override
+  String get quoteFinanceResubmitNotice =>
+      '영업이 수정 후 다시 요청했습니다. 노란색 줄은 지난번 확정한 할인과 다르니 확인하세요.';
+
+  @override
+  String quoteFinanceNeedPriceNotice(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '표준가가 없는 품목이 $count개 있습니다. 확정 전에 거래 단가를 입력하거나 행 메뉴에서 \"무상/0원으로 설정\"을 선택하세요.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceGoMaintainPrice => '품목 정보에서 표준가 관리';
+
+  @override
+  String get quoteFinanceInfoTitle => '견적 정보';
+
+  @override
+  String get quoteFinanceFieldClient => '고객';
+
+  @override
+  String get quoteFinanceFieldSeller => '영업 담당';
+
+  @override
+  String get quoteFinanceFieldMaker => '작성자';
+
+  @override
+  String get quoteFinanceFieldBillDate => '일자';
+
+  @override
+  String get quoteFinanceFieldSubmittedAt => '요청 시각';
+
+  @override
+  String get quoteFinanceFieldDeliverDate => '납기일';
+
+  @override
+  String get quoteFinanceFieldContractNo => '계약 번호';
+
+  @override
+  String get quoteFinanceFieldCurrency => '통화';
+
+  @override
+  String get quoteFinanceFieldFileCurrency => '고객 파일 통화';
+
+  @override
+  String quoteFinanceFileRateHint(String currency, String rate) {
+    return '파일 통화 $currency, 재무 참고 환율 $rate로 기준 통화 환산';
+  }
+
+  @override
+  String get quoteFinanceFieldRemark => '영업 메모';
+
+  @override
+  String get quoteFinanceFieldValidUntil => '유효 기한';
+
+  @override
+  String get quoteFinanceFieldSettlement => '결제 방식';
+
+  @override
+  String get quoteFinanceFieldFinanceRemark => '재무 메모';
+
+  @override
+  String get quoteFinanceFinanceRemarkHint => '영업에 전할 설명(선택)';
+
+  @override
+  String get quoteFinanceSettlementNone => '지정 안 함';
+
+  @override
+  String get quoteFinanceAttachmentsTitle => '고객 파일 및 첨부';
+
+  @override
+  String get quoteFinanceLinesTitle => '품목 내역';
+
+  @override
+  String get quoteFinanceColGoods => '품목명';
+
+  @override
+  String get quoteFinanceColCode => '코드';
+
+  @override
+  String get quoteFinanceColColor => '색상';
+
+  @override
+  String get quoteFinanceColQty => '수량';
+
+  @override
+  String get quoteFinanceColUnit => '단위';
+
+  @override
+  String get quoteFinanceColListPrice => '표준가';
+
+  @override
+  String get quoteFinanceColListPriceInfo =>
+      '품목 정보의 판매가입니다. 표준가가 없거나 거래 단가가 표준가보다 높으면 재무가 거래 단가를 직접 정하고, 낮으면 항상 할인으로 계산합니다.';
+
+  @override
+  String get quoteFinanceColFilePrice => '파일 단가(원통화)';
+
+  @override
+  String get quoteFinanceColFilePriceLocal => '기준 통화 환산';
+
+  @override
+  String get quoteFinanceColDealPrice => '거래 단가';
+
+  @override
+  String get quoteFinanceColDealPriceInfo =>
+      '고객이 개당 최종 지불하는 금액입니다. 거래 단가를 바꾸면 할인이, 할인을 바꾸면 거래 단가가 자동 계산됩니다.';
+
+  @override
+  String get quoteFinanceColDiscount => '할인율';
+
+  @override
+  String get quoteFinanceColDiscountInfo =>
+      '할인율 = 거래 단가 ÷ 표준가, 소수 4자리, 1은 표준가 그대로입니다.';
+
+  @override
+  String get quoteFinanceColLineAmount => '금액';
+
+  @override
+  String get quoteFinanceColFileDiff => '파일과의 차이';
+
+  @override
+  String get quoteFinanceColFileDiffInfo =>
+      '이 줄 금액에서 고객 파일 금액(기준 통화 환산)을 뺀 값입니다. 0이면 파일과 같습니다.';
+
+  @override
+  String get quoteFinanceColLastConfirmed => '지난 확정 할인';
+
+  @override
+  String get quoteFinanceColSalesProposed => '영업 제안 할인';
+
+  @override
+  String get quoteFinanceColFileModel => '파일 모델';
+
+  @override
+  String get quoteFinanceColFileName => '파일 품명';
+
+  @override
+  String get quoteFinanceColRemark => '비고';
+
+  @override
+  String get quoteFinanceNoListPrice => '가격 없음';
+
+  @override
+  String get quoteFinanceFinancePriceChip => '재무 가격';
+
+  @override
+  String get quoteFinanceGiveawayChip => '무상/0원';
+
+  @override
+  String get quoteFinanceFileMatch => '일치';
+
+  @override
+  String get quoteFinanceErrorDealPrice =>
+      '0보다 큰 숫자를 입력하세요. 무상/0원은 행 메뉴의 \"무상/0원으로 설정\"을 사용하세요.';
+
+  @override
+  String get quoteFinanceErrorFinancePrice => '0 이상의 숫자를 입력하세요';
+
+  @override
+  String get quoteFinanceErrorDiscount => '할인율은 0보다 크고 1 이하, 소수 4자리까지입니다';
+
+  @override
+  String get quoteFinanceErrorNeedPrice => '거래 단가를 입력하세요';
+
+  @override
+  String get quoteFinanceMenuMasterMode => '표준가 기준 할인';
+
+  @override
+  String get quoteFinanceMenuGiveaway => '무상/0원으로 설정';
+
+  @override
+  String get quoteFinanceMenuRestore => '이 줄 변경 취소';
+
+  @override
+  String get quoteFinanceBatchDiscount => '선택 줄 할인 설정';
+
+  @override
+  String quoteFinanceBatchDiscountCount(int count) {
+    return '할인 설정($count)';
+  }
+
+  @override
+  String quoteFinanceBatchDiscountTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '선택한 $count개 줄의 할인 설정',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceBatchDiscountHint => '예: 0.95는 표준가의 95%';
+
+  @override
+  String get quoteFinanceBatchApply => '적용';
+
+  @override
+  String quoteFinanceBatchApplied(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count개 줄의 할인을 설정했습니다',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String quoteFinanceBatchSkipped(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '표준가가 없거나 재무 가격인 $count개 줄은 건너뛰었습니다',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceBatchNeedSelection => '먼저 할인을 바꿀 줄을 선택하세요';
+
+  @override
+  String quoteFinanceCheckedEditHint(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '선택된 줄입니다: 할인을 바꾸면 선택한 $count개 줄이 함께 바뀝니다',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceActionSave => '변경 저장';
+
+  @override
+  String get quoteFinanceActionSaving => '저장 중…';
+
+  @override
+  String get quoteFinanceActionReturn => '영업에 반려';
+
+  @override
+  String get quoteFinanceActionConfirm => '견적 확정';
+
+  @override
+  String get quoteFinanceActionReopen => '확정 취소 후 수정';
+
+  @override
+  String get quoteFinanceActionBack => '돌아가기';
+
+  @override
+  String get quoteFinanceSaved => '변경을 저장했습니다';
+
+  @override
+  String get quoteFinanceNothingToSave => '저장할 변경이 없습니다';
+
+  @override
+  String quoteFinanceFixErrors(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '잘못 입력된 줄이 $count개 있습니다. 먼저 수정하세요',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceClaimNotReady =>
+      '아직 이 견적의 검토 점유를 얻지 못했습니다. \"다시 점유 후 새로 고침\"을 누르세요.';
+
+  @override
+  String get quoteFinanceSaveFirst => '확정하기 전에 변경을 저장하세요';
+
+  @override
+  String quoteFinanceConfirmBlocked(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '가격이 없는 줄이 $count개 있어 확정할 수 없습니다. 거래 단가를 입력하거나 무상/0원으로 설정하세요.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceConfirmedDone => '견적을 확정했으며 영업에 주문 전환을 알렸습니다';
+
+  @override
+  String get quoteFinanceReturnedDone => '영업에 반려했으며 알림이 전송됩니다';
+
+  @override
+  String get quoteFinanceReopenedDone => '확정을 취소했습니다. 가격을 다시 수정할 수 있습니다';
+
+  @override
+  String get quoteFinanceLoadDetailFailed =>
+      '견적 상세를 불러오지 못했습니다. 네트워크나 권한을 확인한 후 다시 시도하세요.';
+
+  @override
+  String get quoteFinanceActionFailed => '처리하지 못했습니다. 잠시 후 다시 시도하세요.';
+
+  @override
+  String get quoteFinanceUnsavedTitle => '저장하지 않은 변경이 있습니다';
+
+  @override
+  String get quoteFinanceUnsavedBody => '나가면 변경 내용이 사라집니다. 나갈까요?';
+
+  @override
+  String get quoteFinanceLeave => '나가기';
+
+  @override
+  String get quoteFinanceStay => '계속 수정';
+
+  @override
+  String get quoteFinanceBusy => '처리 중입니다. 잠시만 기다려 주세요';
+
+  @override
+  String get quoteFinanceSaving => '변경을 저장하는 중';
+
+  @override
+  String get quoteFinanceSessionChanged => '로그인 정보가 바뀌었습니다. 견적을 다시 여세요.';
+
+  @override
+  String quoteFinanceConfirmTitle(String billNo) {
+    return '견적 $billNo 확정';
+  }
+
+  @override
+  String get quoteFinanceConfirmBody =>
+      '확정하면 가격과 할인이 고정되고 영업이 주문으로 전환할 수 있습니다. 나중에 바꾸려면 전환 전에 \"확정 취소 후 수정\"을 사용하세요.';
+
+  @override
+  String get quoteFinanceConfirmResponsibility => '견적 가격 확정';
+
+  @override
+  String get quoteFinanceConfirmResponsibilityDesc => '확정하면 이번 가격 확정자로 기록됩니다.';
+
+  @override
+  String quoteFinanceConfirmTotal(String amount) {
+    return '견적 금액 $amount';
+  }
+
+  @override
+  String quoteFinanceReturnTitle(String billNo) {
+    return '$billNo 영업에 반려';
+  }
+
+  @override
+  String get quoteFinanceReturnBody =>
+      '반려하면 견적이 영업에게 돌아가 수정 후 다시 요청됩니다. 사유를 적어 주세요. 영업이 보게 됩니다.';
+
+  @override
+  String get quoteFinanceReturnChipQty => '고객이 수량 변경 요청';
+
+  @override
+  String get quoteFinanceReturnChipGoods => '누락 품목 보완 필요';
+
+  @override
+  String get quoteFinanceReturnChipPrice => '가격은 영업이 고객과 확인 필요';
+
+  @override
+  String get quoteFinanceReturnReasonLabel => '반려 사유(필수)';
+
+  @override
+  String get quoteFinanceReturnReasonRequired => '반려 사유를 입력하세요';
+
+  @override
+  String get quoteFinanceReturnSubmit => '반려';
+
+  @override
+  String get quoteFinanceReopenTitle => '확정 취소 후 수정';
+
+  @override
+  String get quoteFinanceReopenBody =>
+      '견적이 \"검토 대기\"로 돌아가 가격을 다시 수정할 수 있으며, 수정 후 다시 확정해야 합니다. 그동안 영업은 주문으로 전환할 수 없습니다. 취소할까요?';
+
+  @override
+  String get quoteFinanceCancel => '취소';
+
+  @override
+  String get quoteFinanceRevisionTitle => '가격 검토 기록';
+
+  @override
+  String get quoteFinanceTotalQty => '합계 수량';
+
+  @override
+  String get quoteFinanceTotalAmount => '합계 금액';
+
+  @override
+  String get quoteFinanceTotalPreview => '합계 금액(저장 전 미리보기)';
+
+  @override
+  String quoteFinanceOrderSourceQuote(String billNo) {
+    return '원본 견적 $billNo';
+  }
+
+  @override
+  String quoteFinanceOrderQuoteConfirmedBy(String name) {
+    return '견적 가격 확정 · $name';
+  }
+
+  @override
+  String get quoteFinanceOrderAllMatch => '견적 가격 확정 · 일치';
+
+  @override
+  String quoteFinanceOrderMismatch(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '견적과 다른 줄 $count개',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceOrderChipHint =>
+      '이 주문은 재무가 가격을 확정한 견적에서 전환되었습니다. 가격과 할인이 견적과 같으면 이번에는 신용과 조건만 확인하면 됩니다.';
+
+  @override
+  String get quoteFinanceOrderColQuotePrice => '견적 단가';
+
+  @override
+  String get quoteFinanceOrderColQuoteDiscount => '견적 할인';
+
+  @override
+  String get quoteFinanceOrderColMatch => '견적 대비';
+
+  @override
+  String get quoteFinanceOrderMatchYes => '일치';
+
+  @override
+  String get quoteFinanceOrderMatchNo => '다름';
+
+  @override
+  String quoteFinanceOrderColFilePrice(String currency) {
+    return '파일 단가($currency)';
+  }
+
+  @override
+  String get quoteFinanceOrderFileCurrencyUnknown => '원통화';
+
+  @override
+  String get quoteFinanceOrderColFileModel => '파일 모델';
+
+  @override
+  String get quoteFinanceOrderColFileName => '파일 품명';
+
+  @override
+  String get quoteFinanceAboveListHint => '표준가보다 높아 재무 지정가로 저장됩니다(할인 1)';
+
+  @override
+  String get quoteFinanceMenuRefreshMaster => '최신 표준가로 갱신';
+
+  @override
+  String quoteFinanceRefreshMasterChip(String price) {
+    return '최신 표준가 $price(으)로 갱신하고 할인은 유지합니다. 저장한 뒤 할인을 다시 바꿀 수 있습니다';
+  }
+
+  @override
+  String quoteFinanceListPriceLatest(String price, String latest) {
+    return '$price, 품목 정보는 $latest(으)로 변경됨';
+  }
+
+  @override
+  String quoteFinanceStatusClaimedBy(String name) {
+    return '$name 님이 검토 중';
+  }
+
+  @override
+  String get quoteFinanceStatusClaimedByMe => '내가 검토 중';
+
+  @override
+  String quoteFinanceFileRateMissing(String currency) {
+    return '파일 통화 $currency, 재무 참고 환율이 아직 없어 기준 통화 환산값은 비워 둡니다';
+  }
+
+  @override
+  String get salesQuoteStatusImportTitle => '재무가 가격을 확정한 견적 선택';
+
+  @override
+  String get salesQuoteStatusImportEmpty => '주문으로 전환할 수 있는 가격 확정 견적이 없습니다';
+
+  @override
+  String get salesQuoteStatusImportLoadFailed =>
+      '견적을 불러오지 못했습니다. 잠시 후 다시 시도하세요.';
+
+  @override
+  String get salesIntakeBannerTitle => '고객 파일 인식';
+
+  @override
+  String get salesIntakeBannerMessage =>
+      '고객의 견적서/프로포마 인보이스를 올리면 고객과 품목이 자동으로 채워집니다';
+
+  @override
+  String get salesIntakeBannerButton => '고객 파일 인식';
+
+  @override
+  String get salesIntakeBannerAgain => '다른 파일 인식';
+
+  @override
+  String salesIntakeBannerImported(String file, int count) {
+    return '$file에서 $count행을 가져왔습니다';
+  }
+
+  @override
+  String get salesIntakeToolbarButton => '고객 파일 인식';
+
+  @override
+  String get salesIntakeAiOffHint => 'AI가 꺼져 있어 일반적인 형식의 Excel만 인식할 수 있습니다';
+
+  @override
+  String get salesIntakeApprovedOrderHint =>
+      '승인된 주문은 수량 변경이나 수정으로 바꾸세요. 파일로 다시 인식할 수 없습니다';
+
+  @override
+  String get salesIntakeReplaceTitle => '명세에 이미 품목이 있습니다';
+
+  @override
+  String get salesIntakeReplaceMessage => '인식 결과로 기존 명세를 바꿀까요, 뒤에 추가할까요?';
+
+  @override
+  String get salesIntakeReplace => '바꾸기';
+
+  @override
+  String get salesIntakeAppend => '뒤에 추가';
+
+  @override
+  String salesIntakeApplied(int count, int review) {
+    return '$count행을 가져왔습니다. 노란색 표시 $review행을 확인하세요';
+  }
+
+  @override
+  String salesIntakeAppliedAllMatched(int count) {
+    return '$count행을 가져왔습니다';
+  }
+
+  @override
+  String get salesIntakeAttachFailed =>
+      '원본 파일을 첨부하지 못했습니다. 첨부 영역에서 직접 올릴 수 있습니다';
+
+  @override
+  String get salesIntakeProgressTitle => '고객 파일을 인식하는 중';
+
+  @override
+  String get salesIntakeStageUpload => '파일 올리기';
+
+  @override
+  String get salesIntakeStageRead => '표 읽기';
+
+  @override
+  String get salesIntakeStageLayout => '머리글과 열 찾기';
+
+  @override
+  String get salesIntakeStageGoods => '품목 맞추기';
+
+  @override
+  String get salesIntakeStageClient => '고객 맞추기';
+
+  @override
+  String get salesIntakeStagePricing => '할인율 계산';
+
+  @override
+  String get salesIntakeSendWholeFileTitle => '파일 전체가 AI 서비스로 전송됩니다';
+
+  @override
+  String get salesIntakeSendWholeFileMessage =>
+      'PDF/이미지이므로 파일 전체를 AI 서비스로 보내야 인식할 수 있습니다. 은행 계좌 등 민감한 정보가 있다면 보내도 되는지 먼저 확인하세요.';
+
+  @override
+  String get salesIntakeSendWholeFileConfirm => '계속 인식';
+
+  @override
+  String get salesIntakeAiRequired =>
+      'PDF/이미지는 AI가 켜져 있어야 인식됩니다. Excel을 올리거나 관리자에게 문의하세요';
+
+  @override
+  String get salesIntakeVisionRequired =>
+      '이미지 파일입니다. 관리자가 AI 서비스 설정에서 이미지 인식 모델을 켜야 합니다';
+
+  @override
+  String salesIntakeFileTooLarge(String max) {
+    return '파일이 너무 큽니다(최대 $max)';
+  }
+
+  @override
+  String get salesIntakeFileUnreadable => '이 파일을 읽지 못했습니다. 다시 선택하세요';
+
+  @override
+  String get salesIntakeFileTypeUnsupported =>
+      'Excel, CSV, PDF 또는 이미지 파일만 인식할 수 있습니다';
+
+  @override
+  String get salesIntakeFailedTitle => '이 파일을 인식하지 못했습니다';
+
+  @override
+  String get salesIntakeResultUnreadable => '인식 결과를 읽을 수 없습니다. 다시 인식하세요';
+
+  @override
+  String get salesIntakeNoLines => '품목 명세를 찾지 못했습니다. 견적서나 프로포마 인보이스인지 확인하세요';
+
+  @override
+  String get salesIntakeCancel => '취소';
+
+  @override
+  String get salesIntakeCreateClientTitle => '파일 정보로 고객 만들기';
+
+  @override
+  String get salesIntakeCreateClientIntro =>
+      '아래 정보로 새 고객을 만듭니다. 담당자는 본인이고 분류는 「미분류」입니다.';
+
+  @override
+  String get salesIntakeCreateClientName => '고객 약칭';
+
+  @override
+  String get salesIntakeCreateClientNameRequired => '고객 약칭을 입력하세요';
+
+  @override
+  String get salesIntakeCreateClientConfirm => '고객 만들기';
+
+  @override
+  String salesIntakeCreateClientDone(String name) {
+    return '고객 $name을(를) 만들었습니다';
+  }
+
+  @override
+  String get salesIntakeCreateClientExists => '이미 있는 고객이라 선택해 두었습니다';
+
+  @override
+  String get salesIntakeCreateClientFailed => '고객을 만들지 못했습니다. 잠시 후 다시 시도하세요';
+
+  @override
+  String get salesIntakeFieldFullName => '정식 명칭';
+
+  @override
+  String get salesIntakeFieldNameEn => '외국어 명칭';
+
+  @override
+  String get salesIntakeFieldLinkman => '담당자';
+
+  @override
+  String get salesIntakeFieldEmail => '이메일';
+
+  @override
+  String get salesIntakeFieldPhone => '전화';
+
+  @override
+  String get salesIntakeFieldAddress => '주소';
+
+  @override
+  String get salesIntakeFieldTaxId => '세금 번호';
+
+  @override
+  String get salesIntakeFieldPlace => '국가/지역';
+
+  @override
+  String get salesIntakeReviewTitle => '인식 결과 확인';
+
+  @override
+  String salesIntakeReviewSubtitle(String file, int count) {
+    return '$file · 명세 $count행';
+  }
+
+  @override
+  String get salesIntakeClose => '닫기';
+
+  @override
+  String get salesIntakeStepClient => '고객';
+
+  @override
+  String get salesIntakeStepGoods => '품목';
+
+  @override
+  String salesIntakeClientResolved(String name) {
+    return '고객: $name';
+  }
+
+  @override
+  String get salesIntakeClientChange => '바꾸기';
+
+  @override
+  String get salesIntakeClientPickOther => '다른 고객 선택…';
+
+  @override
+  String get salesIntakeClientCreate => '파일 정보로 고객 만들기';
+
+  @override
+  String salesIntakeClientBuyer(String name) {
+    return '파일상의 구매자: $name';
+  }
+
+  @override
+  String get salesIntakeClientNotFound => '내 고객 중에서 이 구매자를 찾지 못했습니다';
+
+  @override
+  String get salesIntakeClientSuggestions => '아래 고객 중 하나로 보입니다. 하나를 선택하세요:';
+
+  @override
+  String get salesIntakeClientNone =>
+      '아직 고객을 선택하지 않았습니다. 가져온 뒤 머리글에서 선택할 수도 있습니다';
+
+  @override
+  String get salesIntakeNoVisibleClients =>
+      '담당 고객이 아직 없습니다. 상사에게 고객 자료에서 고객을 배정해 달라고 요청하세요';
+
+  @override
+  String salesIntakeEnrichSummary(String fields) {
+    return '파일에 고객의 $fields이(가) 있습니다. 저장할 때 고객 자료에 보충합니다';
+  }
+
+  @override
+  String get salesIntakeEnrichShow => '보기';
+
+  @override
+  String get salesIntakeEnrichHide => '접기';
+
+  @override
+  String salesIntakeEnrichDiffers(String current) {
+    return '현재 값과 다릅니다: $current';
+  }
+
+  @override
+  String get salesIntakeEnrichCurrentEmpty => '고객 자료에 아직 없습니다';
+
+  @override
+  String salesIntakeFilterReview(int count) {
+    return '확인 필요 ($count)';
+  }
+
+  @override
+  String salesIntakeFilterAll(int count) {
+    return '전체 ($count)';
+  }
+
+  @override
+  String salesIntakeMatchedCollapsed(int count) {
+    return '$count행 자동으로 맞춤';
+  }
+
+  @override
+  String get salesIntakeExpand => '펼치기';
+
+  @override
+  String get salesIntakeCollapse => '접기';
+
+  @override
+  String get salesIntakeNoReviewLines => '모든 행이 자동으로 맞춰졌습니다. 바로 가져올 수 있습니다';
+
+  @override
+  String salesIntakeLineNo(String no) {
+    return '$no행';
+  }
+
+  @override
+  String salesIntakeQty(String qty) {
+    return '수량 $qty';
+  }
+
+  @override
+  String salesIntakeFilePrice(String price) {
+    return '파일 단가 $price';
+  }
+
+  @override
+  String salesIntakeFilePriceWithCurrency(String price, String currency) {
+    return '파일 단가 $price $currency';
+  }
+
+  @override
+  String get salesIntakeStatusMatched => '맞춤';
+
+  @override
+  String get salesIntakeStatusConfirmed => '확인됨';
+
+  @override
+  String get salesIntakeStatusReview => '확인 필요';
+
+  @override
+  String get salesIntakeStatusUnmatched => '못 찾음';
+
+  @override
+  String get salesIntakeStatusBlocked => '가져올 수 없음';
+
+  @override
+  String get salesIntakeGoodsLabel => '대응 품목';
+
+  @override
+  String get salesIntakeGoodsHint => '품목을 선택하세요';
+
+  @override
+  String get salesIntakeConfirmChoice => '이것이 맞습니다';
+
+  @override
+  String get salesIntakePickFromMaster => '품목 자료에서 선택…';
+
+  @override
+  String salesIntakeSplit(int count) {
+    return '$count행으로 나누기';
+  }
+
+  @override
+  String get salesIntakeMerge => '한 행으로 합치기';
+
+  @override
+  String get salesIntakeBundleHint => '이 행은 세트입니다. 나눠서 품목을 하나씩 고를 수 있습니다';
+
+  @override
+  String salesIntakeSetNameEn(String text) {
+    return '품목 영문명으로 설정: $text';
+  }
+
+  @override
+  String get salesIntakeInclude => '이 행 가져오기';
+
+  @override
+  String salesIntakeDiscountPreview(String discount) {
+    return '할인율 $discount';
+  }
+
+  @override
+  String get salesIntakeDiscountPending => '할인율 미정';
+
+  @override
+  String get salesIntakePricingNoListPrice => '이 품목은 아직 표준가가 없습니다';
+
+  @override
+  String get salesIntakePricingAboveList => '파일 단가가 표준가보다 높습니다';
+
+  @override
+  String get salesIntakePricingOutOfRange => '할인율이 이상합니다. 품목이 틀렸을 수 있습니다';
+
+  @override
+  String get salesIntakePricingAmbiguous =>
+      '파일이 어느 통화로 견적했는지 알 수 없습니다. 할인율을 확인하세요';
+
+  @override
+  String get salesIntakePricingRateMissing => '외화 참고 환율이 없어 할인율을 계산하지 못했습니다';
+
+  @override
+  String get salesIntakeUnmatchedRemarkHint => '가져오지 않고 파일 원문을 비고에 적습니다';
+
+  @override
+  String get salesIntakeBlockedHint =>
+      '주문서로 바로 가져올 수 없습니다. 먼저 견적서를 만들어 재무에서 가격을 정하게 하세요';
+
+  @override
+  String salesIntakeBlockedTitle(int count) {
+    return '이 $count개 품목은 표준가가 없습니다(또는 파일 단가가 표준가보다 높습니다)';
+  }
+
+  @override
+  String get salesIntakeBlockedMessage =>
+      '이 품목은 주문서로 바로 가져올 수 없습니다. 먼저 견적서를 만들어 재무에서 가격을 정하게 하세요.';
+
+  @override
+  String get salesIntakeHandoffToQuote => '견적서로 새로 만들기';
+
+  @override
+  String get salesIntakeDuplicateTitle => '이 파일은 이미 입력되었을 수 있습니다';
+
+  @override
+  String salesIntakeDuplicateItem(
+    String doc,
+    String billNo,
+    String date,
+    String reason,
+  ) {
+    return '$doc $billNo ($date, $reason)';
+  }
+
+  @override
+  String salesIntakeDuplicateMessage(String items) {
+    return '이미 있습니다: $items. 그래도 새로 만들까요?';
+  }
+
+  @override
+  String get salesIntakeDocTypeQuote => '견적서';
+
+  @override
+  String get salesIntakeDocTypeOrder => '주문서';
+
+  @override
+  String salesIntakeOtherSheets(String sheets, String current) {
+    return '파일에 명세처럼 보이는 시트 $sheets도 있지만 이번에는 「$current」만 인식했습니다. 그 시트를 인식하려면 파일을 다시 올린 뒤 확인 화면에서 그 시트를 누르세요.';
+  }
+
+  @override
+  String salesIntakeOtherSheetItem(String name, int count) {
+    return '$name($count행)';
+  }
+
+  @override
+  String salesIntakeOtherSheetsLead(String current) {
+    return '이번에는 「$current」 시트를 인식했습니다. 아래 시트를 누르면 그 시트로 바꿔 인식합니다 (한 번에 한 시트만, 합치지 않음).';
+  }
+
+  @override
+  String salesIntakeOtherSheetChip(String name, int count) {
+    return '시트 $name도 명세처럼 보입니다 ($count행)';
+  }
+
+  @override
+  String get salesIntakeOtherSheetTooltip => '이 시트로 바꿔 인식';
+
+  @override
+  String salesIntakeSheetProgressSubtitle(String file, String sheet) {
+    return '$file · 시트 $sheet';
+  }
+
+  @override
+  String get salesIntakePriceMaskedNotice =>
+      '가격을 볼 수 없으므로 저장할 때 파일 단가로 할인율을 자동 계산합니다';
+
+  @override
+  String salesIntakeCurrencyNotice(String currency, String rate, String base) {
+    return '파일은 $currency 견적으로 재무 참고 환율 $rate로 환산하며 문서는 $base로 저장합니다';
+  }
+
+  @override
+  String salesIntakeRateMissingNotice(String currency) {
+    return '$currency 참고 환율이 없어 일부 할인율을 계산하지 못했습니다. 재무에서 통화 자료에 입력하도록 요청하세요';
+  }
+
+  @override
+  String salesIntakeSummary(int rows, int review, int skipped) {
+    return '가져오기 $rows행 · 노란색 확인 $review행 · 가져오지 않음 $skipped행';
+  }
+
+  @override
+  String salesIntakeImportAll(int count) {
+    return '모두 가져오기 ($count행)';
+  }
+
+  @override
+  String get salesIntakeNothingToImport => '가져올 품목이 아직 없습니다';
+
+  @override
+  String get salesIntakePickedManually => '품목 자료에서 선택';
+
+  @override
+  String salesIntakeRemarkLineItem(String label, String qty) {
+    return '$label × $qty';
+  }
+
+  @override
+  String salesIntakeRemarkUnmatched(int count, String lines) {
+    return '다음 $count행은 대응 품목을 찾지 못했습니다: $lines';
+  }
+
+  @override
+  String salesIntakeRemarkUnpriced(int count, String lines) {
+    return '다음 $count행은 표준가가 없어(또는 파일 단가가 더 높아) 가져오지 않았습니다: $lines';
+  }
+
+  @override
+  String salesIntakeRemarkBundlePrice(String bundle, String price) {
+    return '세트 $bundle 전체 파일 단가 $price';
+  }
+
+  @override
+  String get salesIntakeMarkerDefault => '인식 결과를 확인하세요';
+
+  @override
+  String get salesIntakeMarkerUnit => '파일 수량 단위가 개가 아닙니다. 수량을 확인하세요';
+
+  @override
+  String get salesIntakeMarkerQuotePricing =>
+      '표준가가 없거나 파일 단가가 더 높아 재무에서 가격을 정합니다';
+
+  @override
+  String get salesIntakeMarkerQuoteDiscount =>
+      '할인율을 자동 계산하지 못했습니다. 재무 가격 검토 때 정합니다';
+
+  @override
+  String get salesIntakeMarkerOrderDiscount =>
+      '할인율을 자동 계산하지 못했습니다. 파일 단가를 보고 입력하세요';
+
+  @override
+  String get salesIntakeQuoteLineReplaced =>
+      '이 줄은 견적에서 재무가 확정한 품목입니다. 다른 품목으로 바꾸면 견적 단가와 할인율을 쓰지 않고, 저장할 때 표준 단가로 다시 계산합니다';
+
+  @override
+  String get salesIntakeMarkerBundlePart => '세트를 나눴습니다. 품목과 할인율을 확인하세요';
+
+  @override
+  String get salesIntakeColClientModel => '파일 모델';
+
+  @override
+  String get salesIntakeColClientModelInfo =>
+      '고객 파일의 모델/품번입니다. 저장하면 고객이 부르는 이름을 기억해 다음 인식이 더 정확해집니다.';
+
+  @override
+  String get salesIntakeColClientGoodsName => '파일 품명';
+
+  @override
+  String get salesIntakeColClientGoodsNameInfo =>
+      '고객 파일의 품명입니다. 품목을 직접 고르면 품목 영문명이 채워지며 바꿀 수 있습니다.';
+
+  @override
+  String get salesIntakeColClientPrice => '파일 단가';
+
+  @override
+  String salesIntakeColClientPriceWithCurrency(String currency) {
+    return '파일 단가($currency)';
+  }
+
+  @override
+  String get salesIntakeColClientPriceInfo =>
+      '고객 파일의 단가(파일 통화)로 확인용입니다. 단가는 항상 품목 표준가를 따르고 할인율은 이 값으로 계산합니다.';
+
+  @override
+  String get salesIntakeQuotePriceHint =>
+      '단가는 품목 표준가로 들어오며 영업은 바꿀 수 없습니다. 표준가가 없는 품목은 재무가 정합니다. 할인율은 고객 파일 단가로 계산하며 비워 두고 재무에 맡길 수도 있습니다.';
+
+  @override
+  String get salesIntakeFinancePriced => '재무 가격';
+
+  @override
+  String get salesIntakePendingFinancePrice => '재무 가격 대기';
+
+  @override
+  String get salesIntakeQuoteDiscountPending => '재무가 입력';
+
+  @override
+  String get salesIntakeMaskedDiscount => '저장 시 자동 계산';
+
+  @override
+  String get salesIntakeQuoteLockedDiscount => '(견적 확정)';
+
+  @override
+  String get salesIntakeQuoteLockedDiscountInfo =>
+      '이 행의 할인율은 재무가 견적에서 확정했습니다. 바꾸려면 견적을 다시 여세요';
 }

@@ -228,8 +228,8 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
       context.appInfo('该任务未关联货品，可直接「标记完成」');
       return;
     }
-    // 货品详情整页（tab=1 组装信息）；详情拉取/编辑权限由页面自理。
-    await context.push(RoutePath.basicinfoGoodsDetail(goodsId, tab: 1));
+    // 货品详情整页 (tab=bom 组装信息)；详情拉取/编辑权限由页面自理。
+    await context.push(RoutePath.basicinfoGoodsDetail(goodsId, tab: 'bom'));
     // 返回后刷新：BOM 保存触发自动完成经 outbox ~2s，先即时刷一次，再延迟刷一次
     // 让已维护 BOM 的任务自然离开「待完成」（研发不必手动刷新或「标记完成」）。
     if (mounted) {

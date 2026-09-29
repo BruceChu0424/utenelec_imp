@@ -133,14 +133,21 @@ class StockDocRepository {
   Future<StockDocDetail> approve(String id) async =>
       StockDocDetail.fromJson(await api.post(ApiEndpoints.stockDocApprove(id)));
 
+  /// 生产退料收仓确认; [lines] = 逐行实称重量 [{itemId, weightKg}] (千克 4 位, 只含称了的行,
+  /// ADR-135 §3.9), 没称的行不发; 全部没称时不带 lines。
   Future<StockDocDetail> confirmMaterialReturn(
     String id, {
     required String warehouseId,
     required String idempotencyKey,
+    List<Map<String, dynamic>> lines = const [],
   }) async => StockDocDetail.fromJson(
     await api.post(
       '${ApiEndpoints.stockDoc(id)}/material-return/confirm',
-      body: {'warehouseId': warehouseId, 'idempotencyKey': idempotencyKey},
+      body: {
+        'warehouseId': warehouseId,
+        'idempotencyKey': idempotencyKey,
+        if (lines.isNotEmpty) 'lines': lines,
+      },
     ),
   );
 
@@ -185,7 +192,8 @@ class StockDocRepository {
         await api.post('${ApiEndpoints.stockDoc(id)}/finished-in/reverse'),
       );
 
-  /// DRAW 分轮出库（部分出库）：lines = [{itemId, qty}]
+  /// DRAW 分轮出库(部分出库)：lines = [{itemId, qty, weightKg?, qtyFromWeight?}]
+  /// (weightKg = 本次实称千克 4 位, 只落出库流水; ADR-135 §3.6)
   Future<StockDocDetail> issue(
     String id,
     List<Map<String, dynamic>> lines,
@@ -204,7 +212,8 @@ class StockDocRepository {
   );
 
   /// 草稿 DRAW 一键审核并完成首轮实际出库；任一步失败整笔回滚。
-  /// [remark] 与 [issue] 同义（2026-09-10：此前首轮出库的备注被静默丢弃）。
+  /// [remark] 与 [issue] 同义(2026-09-10：此前首轮出库的备注被静默丢弃)；
+  /// [lines] 行形态同 [issue] (可带本次重量)。
   Future<StockDocDetail> approveAndIssue(
     String id,
     List<Map<String, dynamic>> lines,
@@ -221,7 +230,8 @@ class StockDocRepository {
     ),
   );
 
-  /// DRAW 取消出库：对称回退尚未进入生产执行的已出库量，原因必填。
+  /// DRAW 取消出库：对称回退尚未进入生产执行的已出库量，原因必填；
+  /// 行只带数量, 退回重量由服务端按原出库流水镜像。
   Future<StockDocDetail> reverseIssue(
     String id,
     List<Map<String, dynamic>> lines,

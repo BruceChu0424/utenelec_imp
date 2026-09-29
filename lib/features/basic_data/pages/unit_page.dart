@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -33,6 +34,12 @@ import '../repositories/master_status_repository.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
+
+/// 编辑表单里「计量维度」字段 key(与后端 UnitSaveRequest 同名)。
+const kUnitDimensionField = 'measurementDimension';
+
+/// 编辑表单里「等于哪种重量单位」字段 key(与后端 UnitSaveRequest 同名)。
+const kUnitMassUnitField = 'massUnitCode';
 
 class UnitPage extends ConsumerStatefulWidget {
   const UnitPage({super.key});
@@ -168,8 +175,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
 
   // ---- 新建/编辑/删除 ---------------------------------------------------
 
-  /// 计量维度选项（value='' 表示未设置/清除；提交时服务端落
-  /// unit_measurement_profiles，重量型(MASS)单位的数量本身即重量）。
+  /// 计量维度选项(value='' 表示未设置/清除；提交时服务端落 unit_measurement_profiles)。
   static const _dimensionOptions = [
     MasterSelectOption(value: '', label: '未设置'),
     MasterSelectOption(value: 'COUNT', label: '数量'),
@@ -192,14 +198,32 @@ class _UnitPageState extends ConsumerState<UnitPage> {
       group: '基础',
     ),
     MasterFieldDef(
-      key: 'measurementDimension',
+      key: kUnitDimensionField,
       label: '计量维度',
       type: MasterFieldType.select,
       options: _dimensionOptions,
       group: '基础',
-      hint: '数量/重量等；重量型单位的实收数量本身就是重量，单据不再另录实称重量',
+      hint: '数量/重量等',
+    ),
+    // 只在计量维度选「重量」时出现(V743/ADR-135)；可不选。
+    MasterFieldDef(
+      key: kUnitMassUnitField,
+      label: '等于哪种重量单位',
+      type: MasterFieldType.custom,
+      group: '基础',
+      customBuilder: _massUnitField,
     ),
   ];
+
+  static Widget _massUnitField(MasterFieldContext field) =>
+      UnitMassUnitCodeField(field: field);
+
+  /// 提交前收口：计量维度不是「重量」时不带重量单位(字段隐藏后控制器里可能还留着旧选择)。
+  static Map<String, dynamic> _withMassUnitScope(Map<String, dynamic> body) {
+    final next = Map<String, dynamic>.of(body);
+    if (next[kUnitDimensionField] != 'MASS') next[kUnitMassUnitField] = null;
+    return next;
+  }
 
   Future<void> _showCreate() async {
     await showMasterEditDialog(
@@ -207,7 +231,11 @@ class _UnitPageState extends ConsumerState<UnitPage> {
       draftSpec: FormDraftCatalog.unit.spec(title: '新增单位'),
       title: '新增单位', // TODO(l10n): 补 arb
       fields: _unitFields,
-      initialValues: const {'status': '使用', 'measurementDimension': ''},
+      initialValues: const {
+        'status': '使用',
+        kUnitDimensionField: '',
+        kUnitMassUnitField: '',
+      },
       readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: _doCreate,
     );
@@ -215,7 +243,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
 
   Future<bool> _doCreate(Map<String, dynamic> body) async {
     // Preserve the actual API failure for the shared draft submission fence.
-    await ref.read(unitRepositoryProvider).create(body);
+    await ref.read(unitRepositoryProvider).create(_withMassUnitScope(body));
     if (mounted) {
       context.appSuccess('单位已创建');
       await _loadUnits(_pageNum);
@@ -232,7 +260,8 @@ class _UnitPageState extends ConsumerState<UnitPage> {
         'name': d.name ?? '',
         'code': d.code ?? '',
         'status': d.status ?? '',
-        'measurementDimension': d.measurementDimension ?? '',
+        kUnitDimensionField: d.measurementDimension ?? '',
+        kUnitMassUnitField: d.massUnitCode ?? '',
       },
       readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: (body) => _doUpdate(d.id, body),
@@ -242,7 +271,9 @@ class _UnitPageState extends ConsumerState<UnitPage> {
   Future<bool> _doUpdate(String id, Map<String, dynamic> body) async {
     final ok = await context.guardRun(
       () async {
-        await ref.read(unitRepositoryProvider).update(id, body);
+        await ref
+            .read(unitRepositoryProvider)
+            .update(id, _withMassUnitScope(body));
       },
       success: '单位已更新', // TODO(l10n): 补 arb
       errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
@@ -351,6 +382,11 @@ class _UnitPageState extends ConsumerState<UnitPage> {
     MasterDetailRow('单位名称', u.name), // TODO(l10n): 补 arb
     MasterDetailRow('状态', u.status), // TODO(l10n): 补 arb
     MasterDetailRow('计量维度', unitDimensionLabel(u.measurementDimension)),
+    if (u.measurementDimension == 'MASS')
+      MasterDetailRow(
+        '等于哪种重量单位',
+        unitMassUnitLabel(u.measurementDimension, u.massUnitCode),
+      ),
     MasterDetailRow('旧系统 ID', u.legacyId?.toString()), // TODO(l10n): 补 arb
   ];
 
@@ -399,6 +435,13 @@ class _UnitPageState extends ConsumerState<UnitPage> {
       label: '计量维度',
       width: 110,
       value: (u) => unitDimensionLabel(u.measurementDimension),
+    ),
+    // 与服务端导出「重量单位」列同口径：非重量维度留空，重量维度没选写「未指定」。
+    MasterColumnDef(
+      key: 'massUnit',
+      label: '重量单位',
+      width: 100,
+      value: (u) => unitMassUnitLabel(u.measurementDimension, u.massUnitCode),
     ),
   ];
 
@@ -526,6 +569,42 @@ class _UnitPageState extends ConsumerState<UnitPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 「等于哪种重量单位」下拉(V743/ADR-135)：只在同一张表单的计量维度选了「重量」时出现，
+/// 可不选(重量单位没指定就不做折算)。选中值存在表单控制器的自定义值里(草稿随之保存)，
+/// 计量维度改离「重量」时隐藏，提交前由页面把它清空。
+class UnitMassUnitCodeField extends StatelessWidget {
+  const UnitMassUnitCodeField({super.key, required this.field});
+
+  final MasterFieldContext field;
+
+  @override
+  Widget build(BuildContext context) {
+    final form = context.findAncestorStateOfType<MasterEditFormState>();
+    if (form == null) return const SizedBox.shrink();
+    final controller = form.controller;
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        if (controller.selectValues[kUnitDimensionField] != 'MASS') {
+          return const SizedBox.shrink();
+        }
+        final current = controller.customValues[kUnitMassUnitField];
+        return UtenDropdownField(
+          label: '等于哪种重量单位',
+          value: current is String && current.isNotEmpty ? current : null,
+          hintText: '可不选',
+          info: '选了以后, 用这个单位做基本单位的货品按数量直接算出重量, 仓库不用另外称重',
+          items: [
+            for (final e in kUnitMassUnitCodes.entries)
+              UtenDropdownItem(value: e.key, label: e.value),
+          ],
+          onChanged: field.onChanged,
+        );
+      },
     );
   }
 }

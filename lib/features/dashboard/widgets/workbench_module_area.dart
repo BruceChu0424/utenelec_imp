@@ -406,6 +406,13 @@ const _allGroups = <_ModuleGroup>[
         location: RouteName.productionWorkshopTasks,
         badge: WorkbenchBadgeKind.productionWorkshop,
       ),
+      // 车间内料仓 (ADR-131): 现存与估计还剩、申请领料 / 退回 / 其它耗用、盘点与结算状态;
+      // 紧挨车间生产任务, 不挂数 (待办在车间任务与仓库任务中心)。
+      _ModuleItem(
+        icon: Icons.inventory_2_outlined,
+        label: '车间内料仓',
+        location: RouteName.workshopMaterialBin,
+      ),
       // 旧流水线看板/产量录入/产量统计（mock 数据）已下线，收敛为生产管理 hub 单卡。
       // 徽标 = BadgeModule.production 求和（待排产 + 超产/追加审批 + 车间在催）。
       _ModuleItem(
@@ -565,6 +572,12 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.tune_outlined,
         label: '系统设置',
         location: RouteName.adminSystemSettings,
+      ),
+      // AI 服务(ADR-133): 大模型服务商、密钥与连接测试; 与系统设置同一授权门槛。
+      _ModuleItem(
+        icon: Icons.auto_awesome_outlined,
+        label: 'AI 服务',
+        location: RouteName.adminAiSettings,
       ),
     ],
   ),

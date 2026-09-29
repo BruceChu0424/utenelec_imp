@@ -1,7 +1,8 @@
 // 销售单据配置（5 单据差异声明，驱动 list/detail/edit 页）。
 //
 // 一套页面 ×5 配置，保证 UI 一致。差异声明：
-//  - quote（报价）：无仓库/币种/业务员；含有效期；明细无链路。
+//  - quote(报价)：含币种/业务员/结账方式/交货日/合同号(均选填)与有效期；明细无链路。
+//    2026-09-27(ADR-134)：报价是财务核价的对象，商业条件随报价一起定，转订货单时带过去。
 //  - order（订货）：含币种/业务员/合同信息/交货日；明细含已发/已退；可中止。
 //  - shipment（出货）：含仓库/币种/业务员/发货人/应收标志；明细链到订货；审核出库+立应收。
 //  - other_shipment（其它出货）：含仓库/币种/业务员/发货人/出库类型；不挂单/不立应收。
@@ -42,6 +43,8 @@ class SalesDocConfig {
     this.clientRequired = false,
     this.hasWarehouse = false,
     this.hasCurrency = false,
+    this.currencyRequired = true,
+    this.hasTaxRate = true,
     this.hasSettlement = false,
     this.settlementRequired = false,
     this.hasExchangeRate = true,
@@ -50,6 +53,8 @@ class SalesDocConfig {
     this.hasSender = false,
     this.hasValidUntil = false,
     this.hasDeliverDate = false,
+    this.deliverDateRequired = false,
+    this.hasContractNo = false,
     this.hasContractInfo = false, // 合同号/签约地（order）；销售不录入定金/预收，财务结果仅在详情只读展示
     this.hasShipInfo =
         false, // 收货地址/联系电话/件数（shipment/other_shipment；地址走客户地址簿学习带出）
@@ -85,6 +90,12 @@ class SalesDocConfig {
   final bool clientRequired;
   final bool hasWarehouse;
   final bool hasCurrency;
+
+  /// 币种是否必填([hasCurrency] 为真时生效；报价选填，导入客户文件时自动用本位币)。
+  final bool currencyRequired;
+
+  /// 是否随币种组展示税率(报价不录税率)。
+  final bool hasTaxRate;
   final bool hasSettlement;
 
   /// 结账方式是否必填（仅销售订货单；下游单据保留来源快照/历史兼容）。
@@ -99,6 +110,14 @@ class SalesDocConfig {
   final bool hasSender;
   final bool hasValidUntil;
   final bool hasDeliverDate;
+
+  /// 交货日期是否必填(订货必填，报价选填)。
+  final bool deliverDateRequired;
+
+  /// 是否有「合同号」(报价/订货；识别客户文件时带入客户单号)。
+  final bool hasContractNo;
+
+  /// 签约地点等合同信息(订货)。
   final bool hasContractInfo;
   final bool hasShipInfo;
   final bool hasOutType;
@@ -153,6 +172,14 @@ class SalesDocConfig {
     icon: Icons.request_quote_outlined,
     permissions: DocumentPermissionCatalog.salesQuote,
     clientRequired: true,
+    hasCurrency: true,
+    currencyRequired: false,
+    hasTaxRate: false,
+    hasExchangeRate: false,
+    hasSettlement: true,
+    hasSeller: true,
+    hasDeliverDate: true,
+    hasContractNo: true,
     hasValidUntil: true,
     skipListOnCreate: true,
   );
@@ -171,6 +198,8 @@ class SalesDocConfig {
     hasSeller: true,
     sellerRequired: true,
     hasDeliverDate: true,
+    deliverDateRequired: true,
+    hasContractNo: true,
     hasContractInfo: true,
     showStopped: true,
     showShipped: true,

@@ -1,5 +1,122 @@
 # ER 草图
 
+<a id="workshop-material-v740"></a>
+
+## 车间内料仓: 整批领料、期间、盘点与结算 (V740 / ADR-131)
+
+```mermaid
+erDiagram
+    departments ||--o| workshop_material_settings : workshop
+    warehouses ||--o| workshop_material_settings : periodic_bin
+    departments ||--o{ workshop_machines : owns
+    workshop_machines ||--o{ workshop_machine_containers : has
+    goods ||--o{ goods_periodic_material_choices : product_choice
+    production_execution_segments ||--o{ production_execution_periodic_materials : bound_rows
+    goods_periodic_material_choices ||--o{ production_execution_periodic_materials : CHOICE
+    production_execution_material_changes ||--o{ production_execution_periodic_materials : CHANGE
+    production_execution_periodic_materials ||--o{ production_execution_periodic_materials : INHERITED
+    warehouses ||--o{ workshop_material_periods : bin_periods
+    workshop_material_requisitions ||--o{ workshop_material_requisition_lines : lines
+    workshop_material_requisition_lines ||--o{ workshop_material_requisition_postings : transfers
+    stock_document_items ||--o| workshop_material_requisition_postings : transfer_item
+    stock_movements ||--o| workshop_material_requisition_postings : bin_side_movement
+    stock_documents ||--o| workshop_material_stock_documents : registered_doc
+    workshop_material_other_issues ||--o| workshop_material_stock_documents : OTHER_OUT
+    workshop_material_periods ||--o{ workshop_material_requisition_postings : period_id
+    workshop_material_periods ||--o{ workshop_material_other_issues : period_id
+    workshop_material_periods ||--o{ workshop_material_counts : versions
+    workshop_material_counts ||--o{ workshop_material_count_lines : lines
+    workshop_machine_containers ||--o{ workshop_material_count_lines : container
+    workshop_material_periods ||--o{ workshop_material_period_lines : per_material
+    workshop_material_period_lines ||--o{ workshop_material_count_postings : type21_22
+    stock_movements ||--o| workshop_material_count_postings : movement
+    workshop_material_periods ||--o{ workshop_material_period_closes : close_runs
+    workshop_material_period_closes ||--o{ workshop_material_close_materials : per_material
+    workshop_material_period_lines ||--o{ workshop_material_close_materials : period_line
+    workshop_material_close_materials ||--o{ workshop_material_close_theory_lines : theory
+    production_daily_report_items ||--o{ workshop_material_close_theory_lines : report_line
+    production_execution_periodic_materials ||--o{ workshop_material_close_theory_lines : used_row
+    workshop_material_close_materials ||--o{ workshop_material_close_allocations : by_cost_scope
+    stock_value_nodes |o--o{ workshop_material_close_allocations : value_slice
+    workshop_material_settings {
+        uuid workshop_department_id PK
+        boolean periodic_enabled
+        uuid periodic_bin_warehouse_id FK
+        date go_live_date
+        bigint row_version
+    }
+    workshop_material_periods {
+        uuid id PK
+        uuid bin_warehouse_id FK
+        int period_no
+        date start_date
+        date end_date
+        text status
+        text close_state
+        jsonb close_blockers
+        int close_failures
+        timestamptz held_until
+        bigint row_version
+    }
+    workshop_material_period_lines {
+        uuid id PK
+        uuid period_id FK
+        uuid goods_id FK
+        text cost_basis
+        numeric opening_qty
+        numeric transfer_in_qty
+        numeric return_qty
+        numeric other_issue_qty
+        numeric closing_qty
+        numeric actual_qty
+    }
+    production_execution_periodic_materials {
+        uuid id PK
+        uuid execution_segment_id FK
+        uuid bin_warehouse_id FK
+        uuid material_goods_id FK
+        text origin
+        numeric design_qty_snapshot
+        date effective_from
+        date effective_to
+    }
+```
+
+读图要点:
+
+- **一车间一个按盘点计耗的内料仓**: 设置行指定内料仓 (就是原线边仓, 车间直送照用); 内料仓按期间切段, 相邻两次盘点之间为一期, 期间链逐期衔接、恰好一个开着的期。
+- **进出三类来源, 每笔都挂所属期间**: 调拨关联 (发料进、退回出)、其它耗用、盘点过账 (21 型耗用 / 22 型盘盈及各自原路冲回)。三类并成流水视图 `v_workshop_material_bin_ledger`; 视图合计 = 库存余额; 内料仓里整批领料货品的每条流水恰好一行来源。登记的库存单据 (`workshop_material_stock_documents`) 不能红冲。
+- **期间料行把段绑定到内料仓**: 开工时按 BOM 期间边、认料或来源段建出; 理论用量 = 已审报工 × 单个重量, 逐行落在理论明细里, 可追到每行报工。
+- **结算按次只追加**: 每种料一行结算料 (处理方式、计入、损失、浪费率), 按成本范围一行分摊; 分摊行指向 V500 价值切片 (`stock_value_nodes`), 再以 `PERIODIC_MATERIAL` 投入种类登记进生产成本对象。撤销结算只写撤销列并退回价值, 数量不动。
+- **不引用学习对象**: 以上对象不引用 V711 BOM 学习的任何表、函数或列; 期间料行的 `bom_item_id` 只是快照引用、不建外键。
+
+字段与约束见[实体字典](实体字典.md#车间整批领料与盘点计耗-v740), 规则见 [ADR-131](../99-决策记录-ADR/ADR-131-车间整批领料与盘点计耗.md), 迁移与核对 SQL 见 [V740 说明](../数据迁移/258-V740车间整批领料与盘点计耗.md)。
+
+## 2026-09-27 公共 AI 平台、客户文件学习与报价财务核价 (V742 / ADR-133 / ADR-134)
+
+```mermaid
+erDiagram
+  ai_providers ||--o{ ai_call_logs : provider_id_set_null
+  ai_jobs ||--o{ ai_call_logs : job_id_no_fk
+  users ||--o{ ai_jobs : submitted_by_user_no_fk
+  ai_jobs |o--o| sales_quotes : used_doc_quote_no_fk
+  ai_jobs |o--o| sales_orders : used_doc_order_no_fk
+  clients ||--o{ client_goods_aliases : client_id_null_is_global
+  goods ||--o{ client_goods_aliases : goods_id
+  clients ||--o{ sales_intake_layouts : client_id_null_is_global
+  sales_quotes ||--o{ sales_quote_items : lines
+  sales_quotes ||--o{ sales_quote_revision_logs : append_only
+  sales_quotes |o--o{ sales_orders : source_quote_id
+  currencies ||--o{ sales_quotes : currency_id
+  employees ||--o{ sales_quotes : seller_id
+  settlement_methods ||--o{ sales_quotes : settlement_method_id
+```
+
+- `ai_providers` 自成一体(PRESERVE)；`ai_call_logs.provider_id` 删除服务商时置空，`job_id`/`user_id` 不建外键(技术记录)。
+- `ai_jobs` 的提交人、使用去向(`used_doc_type` + `used_doc_id`)只记 id 不建外键：任务属清空数据，单据可能先被删除；结果被一张单据采用即清空。
+- `client_goods_aliases` / `sales_intake_layouts` 随客户、货品级联删除，`client_id` 为空表示全局；来源单据(`last_source_doc_type/id`)只记 id(保留表不引用清空表)。全局对照的确认次数由客户对照按不同客户数重算，见[实体字典](实体字典.md)。
+- 报价新表头外键：币种、业务员、结算方式(与订货同一目标与 RESTRICT)；订货 `source_quote_id` 沿用既有列，报价状态 1 且没有未删除订货单引用它时算「已核价待转订货」。
+
 ## 制造公共供给承诺与实际实收 (V722)
 
 ```mermaid
@@ -32,7 +149,7 @@ erDiagram
 
 <a id="material-discovery-bom"></a>
 
-## 底层自制材料发现、领料编号与 BOM 学习 (V710–V711 / V726–V727 / V731)
+## 底层自制材料发现、领料编号与 BOM 学习 (V710–V711 / V726–V727 / V731 / V739)
 
 ```mermaid
 erDiagram
@@ -47,9 +164,9 @@ erDiagram
     stock_document_items ||--o| production_planning_package_document_items : DRAW_document_item_id
     production_execution_segments ||--o| production_bom_learning_samples : family_contribution
     goods ||--o| goods_bom_learning_profiles : learns
-    goods_bom_learning_profiles ||--o{ goods_bom_learning_material_totals : aggregates
+    goods ||--o{ goods_bom_actual_usages : actual_usage_of_parent
     goods_bom_learning_profiles ||--o{ production_bom_learning_samples : contributions
-    goods_bom_items |o--o| goods_bom_learning_material_totals : learned_edge
+    goods_bom_items |o--o| goods_bom_actual_usages : parent_component_unit
     production_material_discovery_requests {
         uuid id PK
         text request_no UK
@@ -58,6 +175,20 @@ erDiagram
         text status
         bigint expected_version
         bigint row_version
+    }
+    goods_bom_actual_usages {
+        uuid goods_id PK
+        uuid component_goods_id PK
+        uuid unit_id PK
+        uuid output_unit_id FK
+        numeric net_qty
+        numeric exposure_output_qty
+        bigint sample_count
+        numeric baseline_net_qty
+        numeric baseline_exposure_output_qty
+        bigint baseline_sample_count
+        int learning_generation
+        numeric actual_qty "generated"
     }
     production_draw_issue_batches {
         uuid id PK
@@ -79,9 +210,9 @@ V731 为申请的 `request_no` 分配不可变 LQ 号；正式 DRAW 的 `stock_d
 
 同一申请内的精确材料按需求聚合，实际叶仓明细独立保存。正式单列表、计数、筛选及状态使用该张 DRAW 的真实明细和实际仓，不能按需求只取首张单或将需求总量重复投影到每张单。例如一需求分两仓 2 和 3，映射到两张 SL 后仍分别为 2 和 3。
 
-拆批和实际追加共用一个生产族贡献。学习分子是实际实发减已确认良品退料的净耗量，分母是已审核真实产量；生产族闭合平账后才更新累计贡献，反向按新旧贡献差量调整。预填、预留、未平账批次和重复命令不产生新学习样本，人工维护的 BOM 不被自动覆盖。
+拆批和实际追加共用一个生产族贡献。V739 起所有本厂生产的父件都学习：分子是核清物料的实际实发减已确认良品退料 (实物净耗)，分母是用到该物料的族的已审核真实产量 (暴露)；族级完成且逐物料核清后才更新累计贡献，反向按新旧贡献差量调整。累计写入 `goods_bom_actual_usages` (按 父件+组件+组件基本单位，取代按颜色累计的旧表)，BOM 边经唯一视图 `v_goods_bom_item_usage` 读到设计值、真实值与计算采用值。预填、预留、未核清批次和重复命令不产生新学习样本；学习不改人工边的设计使用数量，只新建或同步系统学习边 (`learning_profile_goods_id` 非空)，人工改结构列让该边转为人工边，人工删除记 `learning_released_at` 后不再自动加回。
 
-业务清空清理申请、配置明细、批次命令账、业务样本和刷新队列；货品学习累计及永久编号占号保留。字段与约束见 [实体字典](实体字典.md#底层材料发现与累计学习)，完整规则见 [ADR-119](../99-决策记录-ADR/ADR-119-底层自制实际领料与BOM累计学习.md)，本地验证与未部署边界见 [2026-09-26 收尾记录](../99-项目治理/2026-09-26-领料申请批量出库与编号收尾.md)。
+业务清空清理申请、配置明细、批次命令账、业务样本和刷新队列；学习档案、真实使用数量累计及永久编号占号保留。字段与约束见 [实体字典](实体字典.md#底层材料发现与累计学习)，完整规则见 [ADR-119](../99-决策记录-ADR/ADR-119-底层自制实际领料与BOM累计学习.md) 与 [ADR-129](../99-决策记录-ADR/ADR-129-BOM设计使用数量与真实使用数量.md)，本地验证与未部署边界见 [2026-09-26 收尾记录](../99-项目治理/2026-09-26-领料申请批量出库与编号收尾.md)。
 
 ## 2026-09-23 未领料原工单追加(V647 / ADR-104)
 
@@ -398,6 +529,13 @@ erDiagram
 已隔离 81 条历史 stub 误接边并用数据库触发器阻止复发。`ProductionPlanCost` 是历史计划展开快照，
 可继续引用 31 个历史货品锚，不能因当前货品改名、BOM 调整或 stub 隔离而回溯重算。源端 20,798 条
 BOM reject 仍须单独治理。
+
+2026-09-27 (V739 / [ADR-129](../99-决策记录-ADR/ADR-129-BOM设计使用数量与真实使用数量.md))：`GoodsBomItem.qty` 是**设计使用数量**，真实使用数量不在边上，而在
+`goods_bom_actual_usages` (父件+组件+组件基本单位)。一条真实使用数量的状态与本轮窗口只由视图
+`v_goods_bom_actual_usage` 定义；每条边的「计算用量」由建在它上面的视图 `v_goods_bom_item_usage`
+定义 (线性边有真实值用真实值，否则设计值，6 位向上取整)：物料分析快照、车间领料需求、MRP 与计划导入单台用量
+读它；委外单一子件发料、成本预算 `source_e`、反查报表与 BOM 复制/粘贴仍读设计值。边上的
+`learning_profile_goods_id` 标记系统学习边，`learning_released_at` 记人工删除后不再自动加回。
 
 ### 2.10 资产与待摊专业子账（V183）
 

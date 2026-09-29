@@ -309,15 +309,15 @@ public class WarehouseService {
         if (!w.isLineSide()) return;
         if (w.getWorkshopDepartmentId() == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "线边仓必须归属一个生产车间，请先选所属车间");
+                    "车间内料仓必须归属一个生产车间，请先选所属车间");
         }
         if (!w.isAccountable()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "线边仓必须参与核算（库存按它记账，否则直送的完工与成本结不出来）");
+                    "车间内料仓必须参与核算 (库存按它记账, 否则直送和整批领料的成本结不出来)");
         }
         if (w.getId() != null && repo.existsByParentIdAndDeletedFalse(w.getId())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "线边仓必须是叶子仓，该仓库下面还有子仓");
+                    "车间内料仓必须是叶子仓，该仓库下面还有子仓");
         }
     }
 

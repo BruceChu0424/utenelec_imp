@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -244,7 +245,7 @@ void main() {
             path: '/basicinfo/goods/:id',
             builder: (_, s) => GoodsDetailPage(
               goodsId: s.pathParameters['id']!,
-              initialTab: int.tryParse(s.uri.queryParameters['tab'] ?? '') ?? 0,
+              initialTab: s.uri.queryParameters['tab'],
             ),
           ),
           GoRoute(
@@ -277,7 +278,12 @@ void main() {
               Perm.stockView,
             }),
           ],
-          child: MaterialApp.router(routerConfig: router),
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -324,7 +330,7 @@ void main() {
 
       await tester.tap(find.byKey(const Key('where-used-open-bom')));
       await tester.pumpAndSettle();
-      // 整页详情（tab=1 组装信息）：BOM 表拉取并显示空态。
+      // 整页详情 (tab=bom 组装信息)：BOM 表拉取并显示空态。
       expect(find.text('暂无组装信息，点右下「添加组件」录入'), findsOneWidget);
       expect(bom.listCalls, [_productId]);
 

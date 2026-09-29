@@ -14,6 +14,8 @@ import java.lang.reflect.RecordComponent;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Set;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -111,9 +113,11 @@ class WarehouseArrivalRegistrationContractTest {
                 .map(RecordComponent::getName)
                 .toList();
         // V596：行级只多一个上架库位(库位语义字段，非金额)。
+        // ADR-135：再多一个「数量按称重推算」布尔位(称重计数按称重改数量时为真, 该行不进单重学习)。
         assertThat(lineComponents).containsExactlyInAnyOrder(
                 "goodsId", "qty", "orderItemId", "colorId", "unitId",
-                        "unitRate", "weight", "sourceDocNo", "replacementIntent", "preStockPlace");
+                        "unitRate", "weight", "sourceDocNo", "replacementIntent", "preStockPlace",
+                        "qtyFromWeight");
     }
 
     @Test
@@ -125,11 +129,57 @@ class WarehouseArrivalRegistrationContractTest {
         Path source = Files.exists(direct) ? direct : Path.of("server").resolve(direct);
         String java = Files.readString(source);
 
-        assertThat(java).contains("item.setWeight(line.weight())");
-        assertThat(java.split("item\\.setWeight\\(line\\.weight\\(\\)\\)", -1))
+        // 两种收货单都只写「服务端核过的重量」: 0 视为没称, 按重量计的行丢弃(库存账精确换算)。
+        assertThat(java).contains("List<BigDecimal> weights = capturedWeights(request.items());");
+        assertThat(java.split("item\\.setWeight\\(weights\\.get\\(autoLine - 1\\)\\)", -1))
                 .hasSize(3);
-        assertThat(java).contains(
-                "decimalText(item.weight())");
+        assertThat(java).doesNotContain("item.setWeight(line.weight())");
+        assertThat(java).contains("profile.mass_unit_code IS NOT NULL");
+        // 指纹仍按客户端原值: 重量 + 勾选「数量按称重推算」时的标记。
+        assertThat(java).contains("decimalText(item.weight())")
+                .contains("appendHash(canonical, \"qtyFromWeight\");");
+    }
+
+    @Test
+    void weighedArrivalLinesFeedReceiptObservationsInTheSameTransaction() throws Exception {
+        Path direct = Path.of(
+                "src/main/java/com/uten/imp/features/warehouse/inbound/"
+                        + "WarehouseArrivalRegistrationService.java");
+        Path source = Files.exists(direct) ? direct : Path.of("server").resolve(direct);
+        String java = Files.readString(source);
+
+        // 建好收货单、送检审核之前记 RECEIPT 观测(超量隔离保留草稿时观测同样留下)。
+        assertThat(java).containsSubsequence(
+                "createFromWarehouseArrival(",
+                "recordReceiptObservations(orderType, receiptId, receiptLines, request, header.supplierId());",
+                "approveAsArrival(orderType, receiptId, billNo);");
+        assertThat(java).contains("SourceKind.RECEIPT")
+                .contains("RECEIPT_CAPTURE_PREFIX + line.id()")
+                .contains("line.qty().multiply(rate)");
+        assertThat(WarehouseArrivalRegistrationService.RECEIPT_CAPTURE_PREFIX).isEqualTo("RECEIPT:");
+
+        // 收货红冲 = 到货登记作废: 观测按同一幂等键红冲。
+        Path controlDirect = Path.of(
+                "src/main/java/com/uten/imp/features/warehouse/inbound/"
+                        + "ProcurementArrivalControlService.java");
+        Path control = Files.exists(controlDirect) ? controlDirect : Path.of("server").resolve(controlDirect);
+        assertThat(Files.readString(control))
+                .contains("reverseReceiptWeightObservations(orderType, receiptId);")
+                .contains("WarehouseArrivalRegistrationService.RECEIPT_CAPTURE_PREFIX + itemId");
+    }
+
+    @Test
+    void massUnitLinesAreExactOnlyByGoodsBaseUnitOrOwnLineUnit() {
+        UUID kgGoods = UUID.randomUUID();
+        UUID pieceGoods = UUID.randomUUID();
+        UUID kgUnit = UUID.randomUUID();
+        var mass = new WarehouseArrivalRegistrationService.MassUnits(Set.of(kgGoods), Set.of(kgUnit));
+
+        assertThat(mass.exact(kgGoods, null)).isTrue();
+        assertThat(mass.exact(pieceGoods, kgUnit)).isTrue();
+        assertThat(mass.exact(pieceGoods, null)).isFalse();
+        assertThat(mass.exact(pieceGoods, UUID.randomUUID())).isFalse();
+        assertThat(WarehouseArrivalRegistrationService.MassUnits.NONE.exact(kgGoods, kgUnit)).isFalse();
     }
 
     @Test

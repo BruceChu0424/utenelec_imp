@@ -1,11 +1,16 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空(支持至 V732；保留主档、人事、权限与治理证据)
+-- 本地/测试库业务数据一键清空(支持至 V743；保留主档、人事、权限与治理证据)
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
 --       干净测试起点。只允许在可丢弃的本地/测试库停写后运行。
 --
 -- 唯一范围事实：
+--   · V743 仓库重量账与单重学习(ADR-135)：退役 V442 采集偏好学习七张表(四张 CLEAR 采集投影/证据、
+--     三张 PRESERVE 旧库计量证据)，新增重量调整账 stock_weight_adjustments(CLEAR，进入当前业务来源登记)
+--     与单重学习三表 goods_weight_profiles/observations/estimates(PRESERVE，随主档保留)；
+--     PRESERVE 仍为 102 张，CLEAR 恒等式基数 229→225。V743 之前的目录仍含 V442 七张表，
+--     本脚本不再为它们分类(与 V590/V677 删表同口径)，只支持 V743 及之后的目录清空。
 --   · V572 当前目录：CLEAR 276 张、PRESERVE 96 张；V560三张退料事实表、V561一张分批谱系表、V568一张让料补自制事实表、V569两张在途转拨事实表；V562至V567仅补列、函数、索引与守卫，V570仅新增权限与默认授权，V571前向补齐在途规则且不增加表，V572只补审计触发器不增加表。
 --   · V552 历史目录：CLEAR 269 张、PRESERVE 96 张（V547/V548 三张新表已计入；
 --     V549–V551 只改函数/视图，V552 只加权限码与默认授权）；下列历史说明用于旧版本兼容。
@@ -504,10 +509,10 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('flyway_schema_history', 'PRESERVE'),
 ('goods', 'PRESERVE'),
 ('goods_bom_items', 'PRESERVE'),
--- Learned recipes and cumulative averages are master knowledge; reset-away
--- samples become its fixed historical baseline, without reweighting the BOM.
+-- Learned recipes and cumulative actual usage (V739 goods_bom_actual_usages)
+-- are master knowledge; reset-away samples become their fixed baseline.
 ('goods_bom_learning_profiles', 'PRESERVE'),
-('goods_bom_learning_material_totals', 'PRESERVE'),
+('goods_bom_actual_usages', 'PRESERVE'),
 ('goods_import_batches', 'PRESERVE'),
 ('goods_import_creations', 'PRESERVE'),
 ('legacy_departments', 'PRESERVE'),
@@ -526,7 +531,6 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('material_categories', 'PRESERVE'),
 ('mould_categories', 'PRESERVE'),
 ('moulds', 'PRESERVE'),
-('official_policy_briefs', 'PRESERVE'),
 ('organization_permission_leader_assignments', 'PRESERVE'),
 ('password_history', 'PRESERVE'),
 ('payment_styles', 'PRESERVE'),
@@ -569,7 +573,44 @@ SELECT optional.table_name, optional.disposition FROM (VALUES
 ('production_material_increment_requests', 'CLEAR'),
 ('production_material_increment_decisions', 'CLEAR'),
 ('production_material_increment_reversals', 'CLEAR'),
-('production_planning_urges', 'CLEAR')
+('production_planning_urges', 'CLEAR'),
+-- V740 车间整批领料与盘点计耗 (ADR-131): 进出、期间、盘点、结算与段用料 18 张随业务清空;
+-- 机台、容器与认料 3 张是车间与产品的配置, 随主档保留。
+('workshop_material_settings', 'CLEAR'),
+('production_execution_periodic_materials', 'CLEAR'),
+('production_execution_material_changes', 'CLEAR'),
+('workshop_material_commands', 'CLEAR'),
+('workshop_material_requisitions', 'CLEAR'),
+('workshop_material_requisition_lines', 'CLEAR'),
+('workshop_material_stock_documents', 'CLEAR'),
+('workshop_material_requisition_postings', 'CLEAR'),
+('workshop_material_other_issues', 'CLEAR'),
+('workshop_material_periods', 'CLEAR'),
+('workshop_material_counts', 'CLEAR'),
+('workshop_material_count_lines', 'CLEAR'),
+('workshop_material_period_lines', 'CLEAR'),
+('workshop_material_count_postings', 'CLEAR'),
+('workshop_material_period_closes', 'CLEAR'),
+('workshop_material_close_materials', 'CLEAR'),
+('workshop_material_close_theory_lines', 'CLEAR'),
+('workshop_material_close_allocations', 'CLEAR'),
+('workshop_machines', 'PRESERVE'),
+('workshop_machine_containers', 'PRESERVE'),
+('goods_periodic_material_choices', 'PRESERVE')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
+
+-- V742 公共 AI 平台与销售客户文件识别(ADR-133/ADR-134): AI 服务商配置、客户货品对照与
+-- 客户文件版式是配置/学习知识, 随主档保留; 识别任务、调用技术记录与报价核价修订记录
+-- 随业务数据清空。V741 目录上六张表都还不存在(存在性由下方 required 登记按版本核对)。
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition FROM (VALUES
+('ai_providers', 'PRESERVE'),
+('client_goods_aliases', 'PRESERVE'),
+('sales_intake_layouts', 'PRESERVE'),
+('ai_jobs', 'CLEAR'),
+('ai_call_logs', 'CLEAR'),
+('sales_quote_revision_logs', 'CLEAR')
 ) AS optional(table_name, disposition)
 WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
 
@@ -643,20 +684,25 @@ FROM (VALUES
 ) AS optional(table_name, disposition)
 WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
 
--- V442 measurement learning adds four business-derived projections/events and
--- four governed migration/unit-evidence tables. Keep the script usable before
--- and after V442, but reject a partially applied catalog.
+-- V442 unit governance survives as the unit measurement profile (V743 adds the
+-- mass unit code). The seven V442 capture-learning tables were retired by V743
+-- (ADR-135) and are no longer classified here.
 INSERT INTO reset_business_table_policy(table_name, disposition)
 SELECT optional.table_name, optional.disposition
 FROM (VALUES
-('legacy_measurement_exceptions', 'PRESERVE'),
-('legacy_measurement_profile_snapshots', 'PRESERVE'),
-('legacy_measurement_source_registry', 'PRESERVE'),
-('measurement_capture_decision_events', 'CLEAR'),
-('measurement_capture_evidence', 'CLEAR'),
-('measurement_capture_line_snapshots', 'CLEAR'),
-('measurement_capture_profiles', 'CLEAR'),
 ('unit_measurement_profiles', 'PRESERVE')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
+
+-- V743 仓库重量账与单重学习(ADR-135)：重量调整账是库存业务事实，随业务清空；
+-- 货品称重设置、称重观测与学习结果是主档附属知识，随主档保留(观测的来源单据清空后读侧显示「来源单据已清空」)。
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition
+FROM (VALUES
+('stock_weight_adjustments', 'CLEAR'),
+('goods_weight_profiles', 'PRESERVE'),
+('goods_weight_observations', 'PRESERVE'),
+('goods_weight_estimates', 'PRESERVE')
 ) AS optional(table_name, disposition)
 WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
 
@@ -749,7 +795,6 @@ DECLARE
     invalid_policy_tables TEXT;
     clear_count BIGINT;
     preserve_count BIGINT;
-    measurement_table_count BIGINT;
     v440_business_table_count BIGINT;
     v443_business_table_count BIGINT;
     v446_business_table_count BIGINT;
@@ -833,26 +878,6 @@ BEGIN
            count(*) FILTER (WHERE disposition = 'PRESERVE')
     INTO clear_count, preserve_count
     FROM reset_business_table_policy;
-
-    SELECT count(*)
-    INTO measurement_table_count
-    FROM reset_business_table_policy
-    WHERE table_name IN (
-        'legacy_measurement_exceptions',
-        'legacy_measurement_profile_snapshots',
-        'legacy_measurement_source_registry',
-        'measurement_capture_decision_events',
-        'measurement_capture_evidence',
-        'measurement_capture_line_snapshots',
-        'measurement_capture_profiles',
-        'unit_measurement_profiles'
-    );
-
-    IF measurement_table_count <> 8 THEN
-        RAISE EXCEPTION
-            'V443/V446 要求 V442 计量学习表完整存在，当前 %/8',
-            measurement_table_count;
-    END IF;
 
     SELECT count(*)
     INTO v440_business_table_count
@@ -1282,11 +1307,25 @@ BEGIN
         (721, 650), (722, 651), (723, 652), (724, 653), (725, 654), (726, 655), (727, 656), (728, 657), (729, 658), (730, 659), (731, 660), (732, 661), (733, 662),
         -- V734 领料申请 LQ 取号触发器按 ADR-106 标准模式重建: 不加表; 本迁移 662→663。
         (734, 663),
-        -- V738 手工需求单多货品(ADR-130): 手工来源唯一索引拆成系统来源/手工货品行两条 + 一编号一分析触发器, 不加表; V735至V737 为并行会话在途号, 本工作树跳号; 本迁移 663→664(合并时按真实目录重算)。
-        (738, 664)
+        -- V736 车间直送资格单一事实源与不可转原因码(ADR-127): 建/换函数与一个守卫触发器, 报工明细加一列可空送仓原因码, 不加表; 本迁移 663→664。
+        (736, 664),
+        -- V738 手工需求单多货品(ADR-130): 手工来源唯一索引拆成系统来源/手工货品行两条 + 一编号一分析触发器, 不加表; V735、V737 为并行会话在途号跳号; 本迁移 664→665。
+        (738, 665),
+        -- V739 BOM 真实使用数量(ADR-129): 按颜色累计表换成 goods_bom_actual_usages(PRESERVE 数不变); 原号 V737, 并入 main 时因开发库已过 V738 改号 V739; 本迁移 665→666。
+        (739, 666),
+        -- V740 车间整批领料与盘点计耗(ADR-131): 新增 21 张表 (CLEAR 18、PRESERVE 3)、7 个权限点与 GL/ZT 单号命名空间, 零料原因加 PERIODIC_MATERIAL; 本迁移 666→667。
+        (740, 667),
+        -- V741 政策情报 AI 退役 (ADR-133): 删除 official_policy_briefs 一张 PRESERVE 表; 本迁移 667→668。
+        (741, 668),
+        -- V742 公共 AI 平台与销售客户文件识别 (ADR-133/ADR-134): 新增 3 张 PRESERVE 与 3 张 CLEAR 表; 本迁移 668→669。
+        (742, 669),
+        -- V743 仓库重量账与单重学习(ADR-135, 原号 V745): 退役 V442 七张表, 新增重量调整账(CLEAR)与称重/单重学习表(PRESERVE); 本迁移 669→670。
+        (743, 670)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V738完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669、V735至V737 跳号)，当前 V%/%',
+
+
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V743完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669、V735、V737、V745 跳号)，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -1473,7 +1512,7 @@ BEGIN
             ('production_draw_issue_batches', 727),
             ('production_material_discovery_lines', 710),
             ('goods_bom_learning_profiles', 711),
-            ('goods_bom_learning_material_totals', 711),
+            ('goods_bom_actual_usages', 739),
             ('production_bom_learning_samples', 711),
             ('production_bom_learning_refresh_queue', 711),
             ('preplan_aggregate_batches', 712),
@@ -1481,7 +1520,40 @@ BEGIN
             ('preplan_aggregate_material_aliases', 712),
             ('preplan_aggregate_direct_transfer_slices', 715),
             ('preplan_make_public_claims', 722),
-            ('preplan_make_public_claim_cancellations', 722)
+            ('preplan_make_public_claim_cancellations', 722),
+            ('workshop_material_settings', 740),
+            ('production_execution_periodic_materials', 740),
+            ('production_execution_material_changes', 740),
+            ('workshop_material_commands', 740),
+            ('workshop_material_requisitions', 740),
+            ('workshop_material_requisition_lines', 740),
+            ('workshop_material_stock_documents', 740),
+            ('workshop_material_requisition_postings', 740),
+            ('workshop_material_other_issues', 740),
+            ('workshop_material_periods', 740),
+            ('workshop_material_counts', 740),
+            ('workshop_material_count_lines', 740),
+            ('workshop_material_period_lines', 740),
+            ('workshop_material_count_postings', 740),
+            ('workshop_material_period_closes', 740),
+            ('workshop_material_close_materials', 740),
+            ('workshop_material_close_theory_lines', 740),
+            ('workshop_material_close_allocations', 740),
+            ('workshop_machines', 740),
+            ('workshop_machine_containers', 740),
+            ('goods_periodic_material_choices', 740),
+            -- V742 公共 AI 平台与销售客户文件识别(ADR-133/ADR-134)。
+            ('ai_providers', 742),
+            ('client_goods_aliases', 742),
+            ('sales_intake_layouts', 742),
+            ('ai_jobs', 742),
+            ('ai_call_logs', 742),
+            ('sales_quote_revision_logs', 742),
+            -- V743 仓库重量账与单重学习(ADR-135): 只有 CLEAR 的重量调整账计入恒等式扣减。
+            ('stock_weight_adjustments', 745),
+            ('goods_weight_profiles', 745),
+            ('goods_weight_observations', 745),
+            ('goods_weight_estimates', 745)
     )
     SELECT string_agg(required.table_name, ', ' ORDER BY required.table_name) FILTER (
                WHERE (to_regclass(format('public.%I', required.table_name)) IS NOT NULL)
@@ -1512,7 +1584,17 @@ BEGIN
        OR (applied_max_version BETWEEN 677 AND 685 AND preserve_count <> 98)
        OR (applied_max_version BETWEEN 686 AND 692 AND preserve_count <> 99)
        OR (applied_max_version BETWEEN 693 AND 710 AND preserve_count <> 100)
-       OR (applied_max_version >= 711 AND preserve_count <> 102)
+       OR (applied_max_version BETWEEN 711 AND 739 AND preserve_count <> 102)
+       -- V740 机台、机台容器与认料三张配置表随主档保留(102→105, ADR-131)。
+       OR (applied_max_version >= 740 AND preserve_count <> 105),
+       OR (applied_max_version BETWEEN 711 AND 740 AND preserve_count <> 102)
+       -- V741 删政策情报表 official_policy_briefs(102→101, ADR-133)；V742 新增 AI 服务商配置、
+       -- 客户货品对照与客户文件版式三张 PRESERVE 表(101→104, ADR-133/ADR-134)。
+       OR (applied_max_version = 741 AND preserve_count <> 101)
+       OR (applied_max_version >= 742 AND preserve_count <> 104),
+       OR (applied_max_version BETWEEN 711 AND 744 AND preserve_count <> 102)
+       -- V743 退役 V442 三张旧库计量证据表(-3)，新增单重学习三表(+3)：PRESERVE 仍为 102。
+       OR (applied_max_version >= 745 AND preserve_count <> 102)
        OR NOT (
            (v446_business_table_count = 0
                 AND v447_business_table_count = 0
@@ -1557,13 +1639,17 @@ BEGIN
            -- V500 eight value tables; V503 three source revision tables.
            -- V608 报销链路完整化：发票登记表 + 审批事件表进 current_operational_
            -- table_count 清单（clear_count 同步 +2，恒等式仍为 229）。
-           OR (applied_max_version>=500 AND v446_business_table_count=2
+           OR (applied_max_version BETWEEN 500 AND 744 AND v446_business_table_count=2
                 AND v447_business_table_count=5
                 AND clear_count-v454_celebration_table_count-v500_value_table_count-v503_source_revision_table_count-v506_opening_table_count-current_operational_table_count=229)
+           -- V743 退役 V442 四张 CLEAR 采集表(229→225)；新增的重量调整账在 current_operational_table_count 里扣减。
+           OR (applied_max_version>=745 AND v446_business_table_count=2
+                AND v447_business_table_count=5
+                AND clear_count-v454_celebration_table_count-v500_value_table_count-v503_source_revision_table_count-v506_opening_table_count-current_operational_table_count=225)
        ) THEN
         RAISE EXCEPTION
-            'V443/V446/V447 白名单数量异常：CLEAR %，PRESERVE %，V442表 %/8，V440表 %/6，V443表 %/1，V446表 %/2，V447表 %/5，V454表 %/1',
-            clear_count, preserve_count, measurement_table_count,
+            'V443/V446/V447 白名单数量异常：CLEAR %，PRESERVE %，V440表 %/6，V443表 %/1，V446表 %/2，V447表 %/5，V454表 %/1',
+            clear_count, preserve_count,
             v440_business_table_count, v443_business_table_count,
             v446_business_table_count, v447_business_table_count,
             v454_celebration_table_count;

@@ -91,7 +91,9 @@ public final class AuditActionNames {
             Map.entry("terminate", "终止"),
             Map.entry("dispose", "处置资产"),
             Map.entry("publish", "发布"),
-            Map.entry("export", "导出数据"));
+            Map.entry("export", "导出数据"),
+            Map.entry("learn_from_document", "从客户文件补全资料"),
+            Map.entry("update_name_en", "修改英文名称"));
 
     private AuditActionNames() {
     }

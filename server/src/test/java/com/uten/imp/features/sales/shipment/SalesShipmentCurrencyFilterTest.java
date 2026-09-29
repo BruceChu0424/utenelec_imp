@@ -100,6 +100,6 @@ class SalesShipmentCurrencyFilterTest {
                 mock(DirectCustomerShipmentCommercialService.class),
                 mock(SalesShipmentReviewSnapshotService.class),
                 mock(com.uten.imp.application.port.CustomerShipmentInventoryPort.class),
-                mock(TaskClaimService.class));
+                mock(TaskClaimService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.PartyOpenBalancePort.class));
     }
 }

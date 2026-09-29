@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
+import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_cost_tab.dart';
 
 void main() {
@@ -105,4 +106,61 @@ void main() {
     expect(find.byType(TextFormField), findsNWidgets(19));
     expect(tester.takeException(), isNull);
   });
+
+  // ADR-134: the cost save is a full goods save; it must carry the detail's
+  // English name unchanged so a cost edit never clears or rewrites it.
+  testWidgets('保存成本预算时原样带上英文名称', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1200, 900);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final goods = _CostGoodsRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [goodsRepositoryProvider.overrideWithValue(goods)],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: GoodsCostTab(
+              detail: GoodsDetail(
+                id: 'goods-cost-name-en',
+                name: '两开多功能三极插座',
+                nameEn: 'DOUBLE 3 PIN SOCKET',
+                nameEnSource: 'LEARNED',
+                status: '使用',
+                version: 3,
+              ),
+              canEdit: true,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('保存成本预算'));
+    await tester.pumpAndSettle();
+
+    expect(goods.updatedId, 'goods-cost-name-en');
+    expect(goods.updateBody, isNotNull);
+    expect(goods.updateBody!.containsKey('nameEn'), isTrue);
+    expect(goods.updateBody!['nameEn'], 'DOUBLE 3 PIN SOCKET');
+    expect(goods.updateBody!['name'], '两开多功能三极插座');
+    expect(tester.takeException(), isNull);
+  });
+}
+
+class _CostGoodsRepository implements GoodsRepository {
+  String? updatedId;
+  Map<String, dynamic>? updateBody;
+
+  @override
+  Future<void> update(String id, Map<String, dynamic> body) async {
+    updatedId = id;
+    updateBody = Map<String, dynamic>.of(body);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

@@ -16,7 +16,10 @@ import java.util.List;
  *
  * @param key      列 key（= 前端列键，便于定位）
  * @param label    合计项标题（如「合计数量」「合计金额」）
- * @param type     number / money —— 前端据此选格式化口径
+ * @param type     number / money / weight / count —— 前端据此选格式化口径
+ *                 (见 {@link ReportTotalsCalculator#TYPE_NUMBER} 等常量): weight 恒为千克、不分组,
+ *                 前端换算到显示单位, 同一报表里的 {@code <key>_unknown_rows} / {@code <key>_estimated_rows}
+ *                 两个 count 伴随项并进重量项显示 (另有 N 项未称 / 「≈」); count 为整数行数, 0 时隐藏
  * @param groupKey 分组列 key；null = 本报表没有分组维度，{@link #groups} 只有一组
  * @param groups   分组合计。<b>groupKey 非 null 时</b> {@code unit} 为 null 的那组是
  *                 「该行单位/币种没维护」，前端渲染成「单位未维护」而不是无后缀数字；

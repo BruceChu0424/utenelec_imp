@@ -31,6 +31,8 @@ import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
+import 'arrival_weight_test_support.dart';
+
 final _testArrivalPermissionsProvider =
     NotifierProvider<_TestArrivalPermissions, Set<String>>(
       _TestArrivalPermissions.new,
@@ -184,6 +186,7 @@ void main() {
         overrides: [
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          ...warehouseWeightTestOverrides(api),
           employeeRepositoryProvider.overrideWithValue(
             DioEmployeeRepository(api),
           ),
@@ -279,6 +282,7 @@ void main() {
         ),
         isSuperAdminProvider.overrideWithValue(false),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+        ...warehouseWeightTestOverrides(api),
         employeeRepositoryProvider.overrideWithValue(
           DioEmployeeRepository(api),
         ),
@@ -409,6 +413,7 @@ void main() {
         overrides: [
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          ...warehouseWeightTestOverrides(api),
           employeeRepositoryProvider.overrideWithValue(
             DioEmployeeRepository(api),
           ),
@@ -537,6 +542,7 @@ void main() {
         overrides: [
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          ...warehouseWeightTestOverrides(api),
           employeeRepositoryProvider.overrideWithValue(
             DioEmployeeRepository(api),
           ),
@@ -654,6 +660,7 @@ void main() {
         ),
         isSuperAdminProvider.overrideWithValue(false),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+        ...warehouseWeightTestOverrides(api),
         employeeRepositoryProvider.overrideWithValue(
           DioEmployeeRepository(api),
         ),
@@ -735,7 +742,8 @@ void main() {
   });
 
   testWidgets('登记并送检丢响应重试复用原 key，回任务中心且不跳收货单详情', (tester) async {
-    tester.view.physicalSize = const Size(1400, 2000);
+    // 实称重量/称重核对两列加宽了表格：放宽视口让入库仓库格落在屏内。
+    tester.view.physicalSize = const Size(1800, 2000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -770,6 +778,7 @@ void main() {
         overrides: [
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          ...warehouseWeightTestOverrides(api),
           employeeRepositoryProvider.overrideWithValue(
             DioEmployeeRepository(api),
           ),
@@ -914,8 +923,10 @@ void main() {
     expect(item['qty'], 5);
     expect(item['replacementIntent'], 'RETURN_REPLACEMENT');
     expect(item.containsKey('price'), isFalse);
-    // 2026-09-05 起登记页不再录实称重量（重量走单位维度）。
+    // ADR-135：实称重量可选，没称的行不带 weight / qtyFromWeight(称了才带，见
+    // warehouse_arrival_weight_capture_test)。
     expect(item.containsKey('weight'), isFalse);
+    expect(item.containsKey('qtyFromWeight'), isFalse);
 
     // 断言 2：回任务中心（不再直达审核页）；原结果由第二次同-key 响应收敛。
     expect(find.byType(_ReviewStub), findsNothing);
@@ -996,6 +1007,7 @@ void main() {
         overrides: [
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          ...warehouseWeightTestOverrides(api),
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
           ),
@@ -1071,6 +1083,7 @@ void main() {
         overrides: [
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          ...warehouseWeightTestOverrides(api),
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
           ),
@@ -1103,6 +1116,7 @@ void main() {
         overrides: [
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          ...warehouseWeightTestOverrides(api),
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
           ),

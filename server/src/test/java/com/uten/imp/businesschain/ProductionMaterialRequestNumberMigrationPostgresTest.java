@@ -29,9 +29,10 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
-    "spring.profiles.active=dev","spring.flyway.target=730",
+    // The schema is pinned at V730 on purpose: entity columns added by later migrations must not be validated here.
+    "spring.profiles.active=dev","spring.flyway.target=730","spring.jpa.hibernate.ddl-auto=none",
     "uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
-    "uten.production.readiness-reconcile.enabled=false","uten.policy-intelligence.enabled=false","uten.features.goods-owner-scope-enabled=false",
+    "uten.production.readiness-reconcile.enabled=false","uten.features.goods-owner-scope-enabled=false",
     "uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only",
     "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
     "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
@@ -64,6 +65,14 @@ class ProductionMaterialRequestNumberMigrationPostgresTest {
                           AND material.unit_id=source.unit_id))
                 $$
                 """);
+        // Current Java also reads the ADR-129 BOM usage objects (view, learning, new columns). They are
+        // independent of V731, so the same migration is applied here verbatim; found by name because its
+        // version number is assigned when it lands.
+        try(var files=java.nio.file.Files.list(java.nio.file.Path.of("src/main/resources/db/migration"))) {
+            java.nio.file.Path usage=files.filter(file->file.getFileName().toString().endsWith("__bom_design_and_actual_usage.sql"))
+                    .findFirst().orElseThrow();
+            db.execute(java.nio.file.Files.readString(usage));
+        }catch(java.io.IOException failure){throw new java.io.UncheckedIOException(failure);}
     }
     @AfterEach void clear(){SecurityContextHolder.clearContext();}
 

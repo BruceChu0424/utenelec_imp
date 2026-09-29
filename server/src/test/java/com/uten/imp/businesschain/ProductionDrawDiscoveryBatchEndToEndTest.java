@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
-        "uten.production.readiness-reconcile.enabled=false","uten.policy-intelligence.enabled=false",
+        "uten.production.readiness-reconcile.enabled=false",
         "uten.concurrency.verify-nested-footprint=true",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only",
         "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
@@ -184,6 +184,55 @@ class ProductionDrawDiscoveryBatchEndToEndTest {
         }
         assertEquals(1,count("SELECT count(*) FROM production_draw_issue_batches WHERE idempotency_key=?",request.idempotencyKey()));
         assertEquals(1,count("SELECT count(*) FROM production_material_stock_postings WHERE demand_id IN(SELECT id FROM production_material_demands WHERE execution_segment_id=?) AND posting_type='ISSUE'",task.segment));
+    }
+
+    /**
+     * ADR-135 §3.6: 批量出库带实称重量 -> 流水记实称, 每笔出库一条领料观测(往来方 = 领料车间), 详情回显已出库重量;
+     * 同一批量键换了重量是另一份请求; 取消出库按原流水镜像退回重量, 观测倒序红冲。
+     */
+    @Test void weighedBatchIssueRecordsMeasuredMovementsDrawObservationsAndIssuedWeight(){
+        var discovered=task();var pending=suggest(discovered);discovered.receive(discovered.world.goodsD(),"4");
+        var normal=task();normal.receive(normal.world.goodsD(),"6");normal.receive(normal.world.goodsC(),"3");
+        UUID normalDraw=legacyDraw(normal);
+        UUID weighedItem=db.queryForObject("SELECT id FROM stock_document_items WHERE doc_id=? AND NOT is_deleted ORDER BY line_no,id LIMIT 1",UUID.class,normalDraw);
+        String key="weighed-batch-"+UUID.randomUUID();
+        var request=new Request(key,List.of(normalDraw),List.of(new Discovery(pending.requestId(),pending.version(),
+                List.of(material(discovered,discovered.world.warehouseId(),"2")),
+                List.of(new IssueWeight(discovered.world.goodsD(),null,discovered.world.warehouseId(),new BigDecimal("0.84"),null)))),null,
+                List.of(new StockDocIssueBatchRequest.ItemWeight(weighedItem,new BigDecimal("1.5"),null)));
+        assertEquals(2,batches.issue(request).issuedCount());
+        UUID discoveredDraw=discovered.discovery.detail(pending.requestId()).drawDocIds().getFirst();
+        UUID discoveredItem=db.queryForObject("SELECT id FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",UUID.class,discoveredDraw);
+        for(var expected:Map.of(weighedItem,"1.5",discoveredItem,"0.84").entrySet()) {
+            Map<String,Object> movement=db.queryForMap("""
+                    SELECT id,weight,weight_source FROM stock_movements
+                    WHERE source_item_id=? AND movement_type=5 AND direction=-1""",expected.getKey());
+            assertEquals(0,new BigDecimal(expected.getValue()).compareTo((BigDecimal)movement.get("weight")));
+            assertEquals("MEASURED",movement.get("weight_source"));
+            Map<String,Object> observed=db.queryForMap("""
+                    SELECT observation.counterpart_kind,observation.counterpart_id,observation.stage,observation.weight_kg,
+                           document.department_id
+                    FROM goods_weight_observations observation
+                    JOIN stock_documents document ON document.id=observation.source_doc_id
+                    WHERE observation.capture_key=?""","DRAW:"+movement.get("id"));
+            assertEquals("WORKSHOP",observed.get("counterpart_kind"));
+            assertEquals(observed.get("department_id"),observed.get("counterpart_id"));
+            assertEquals("ACTIVE",observed.get("stage"));
+        }
+        var detail=normal.stock.detail(normalDraw).getItems().stream().filter(item->item.getId().equals(weighedItem)).findFirst().orElseThrow();
+        assertEquals(0,new BigDecimal("1.5").compareTo(detail.getIssuedWeightKg()));
+        assertFalse(detail.isIssuedWeightEstimated());
+        assertNull(detail.getWeight(),"生产领料行的重量列不写, 每轮实称只在流水上");
+
+        var reweighed=new Request(key,request.docIds(),request.discoveries(),null,
+                List.of(new StockDocIssueBatchRequest.ItemWeight(weighedItem,new BigDecimal("1.6"),null)));
+        assertThrows(ApiException.class,()->batches.issue(reweighed),"同一批量键换了重量是另一份请求");
+
+        reverse(normal,normalDraw,"weighed-reverse-");
+        assertEquals("REVERSED",db.queryForObject("""
+                SELECT stage FROM goods_weight_observations WHERE source_item_id=? AND source_kind='DRAW'""",String.class,weighedItem));
+        var cancelled=normal.stock.detail(normalDraw).getItems().stream().filter(item->item.getId().equals(weighedItem)).findFirst().orElseThrow();
+        assertEquals(0,BigDecimal.ZERO.compareTo(cancelled.getIssuedWeightKg()),"取消出库按原流水镜像退回全部重量");
     }
 
     private ProductionMaterialDiscoveryEndToEndTest task(){var result=new ProductionMaterialDiscoveryEndToEndTest();beans.autowireBean(result);result.prepare();return result;}

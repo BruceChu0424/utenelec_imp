@@ -21,6 +21,11 @@ public final class ScheduledTaskCatalog {
     public record Entry(String label, String purpose) {}
 
     private static final Map<String, Entry> ENTRIES = Map.ofEntries(
+            Map.entry("AiJobHousekeeping.purge", new Entry("AI 数据清理",
+                    "每 10 分钟清理 AI 数据: 排队太久没开始的识别判失败, 用过或超过 48 小时的识别结果清空,"
+                            + " 7 天前的识别任务与 180 天前的调用记录删除。")),
+            Map.entry("AiJobScheduler.poll", new Entry("AI 识别任务",
+                    "每 5 秒接手排队中的 AI 识别(销售上传的客户文件), 并把处理中断的识别重新排队或判失败。")),
             Map.entry("AttachmentObjectOutboxScheduler.drain", new Entry("附件文件清理",
                     "把已确认删除或已过期的附件文件从文件存储里真正删掉, 释放磁盘空间。")),
             Map.entry("AttachmentUploadExpiryScheduler.expire", new Entry("附件上传超时清理",
@@ -39,6 +44,8 @@ public final class ScheduledTaskCatalog {
                     "每 5 分钟核对车间催计划的任务: 计划已经下够单或任务已结束的, 办结催办并撤掉计划员的待办卡。")),
             Map.entry("SubcontractPreparationAutoStartReconciler.reconcile", new Entry("委外备料自动启动",
                     "每 10 分钟为还没启动前置分析的委外备料行补启动。")),
+            Map.entry("WorkshopMaterialCloseScheduler.retry", new Entry("车间内料仓自动结算",
+                    "每 10 分钟给已经盘点、还没结算的车间内料仓补做结算; 差报工审核、单个重量或发料记录的, 通知该补的人, 补完自动结算。")),
             Map.entry("MaterializedViewRefreshScheduler.refreshAll", new Entry("报表数据刷新",
                     "每 5 分钟刷新销售、采购、生产、库存、委外和应收应付的报表汇总。")),
             Map.entry("ServerStatusAlertScheduler.scan", new Entry("服务器状态告警推送",
@@ -55,12 +62,12 @@ public final class ScheduledTaskCatalog {
                     "每天 08:53 提醒判定为分批到货、过了预计到齐日却还没到齐的委外回厂短交。")),
             Map.entry("StockReconciliationScheduler.scan", new Entry("库存余额对账",
                     "每天 08:51 核对库存余额与出入库流水是否一致, 只告警不改账。")),
+            Map.entry("GoodsWeightRefreshScheduler.refresh", new Entry("单重学习刷新",
+                    "每天 02:13 按最新称重记录补算各货品的单重学习结果, 只更新学习结果, 不改库存和货品资料。")),
             Map.entry("AuditRetentionScheduler.runScheduled", new Entry("审计日志归档",
                     "每天 03:17 把整月超过在线保留期的审计日志移入归档, 归档再到期后整月清理, 每次运行留一条完成记录。")),
             Map.entry("AuditPartitionMaintainer.ensureUpcoming", new Entry("审计日志月分区预建",
                     "每天 01:07 预先建好当月和之后 3 个月的审计日志存放区, 保证新记录随时有地方写。")),
-            Map.entry("OfficialPolicyIntelligenceScheduler.refresh", new Entry("官方政策资讯刷新",
-                    "每天 06:15 刷新工作台的官方政策资讯, 需要显式开启才运行。")),
             Map.entry("PrimaryHealthIndicator.ping", new Entry("云端主库连通探测",
                     "云端部署下每 10 秒探测主数据库是否可达, 不可达时自动降级为只读。"))
     );

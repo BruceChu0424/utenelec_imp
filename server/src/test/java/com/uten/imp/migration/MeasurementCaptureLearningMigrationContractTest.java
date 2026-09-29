@@ -9,6 +9,13 @@ import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * V442 采集偏好学习的历史事实与 V743(ADR-135)退役后仍然成立的部分。
+ *
+ * <p>V442 字节冻结(已应用迁移不可改)；它建的七张采集/旧库计量表、解析视图与只追加拒绝函数已由 V743 删除，
+ * 单重改由仓库称重自学习(goods_weight_*)。留下来的只有单位计量档案 unit_measurement_profiles
+ * (V743 起用 mass_unit_code 标注质量单位)和老库导入的受审单位主键映射。
+ */
 class MeasurementCaptureLearningMigrationContractTest {
 
     @Test
@@ -41,31 +48,7 @@ class MeasurementCaptureLearningMigrationContractTest {
     }
 
     @Test
-    void legacyInferenceRequiresBoundAuthorityAndNeverConfirmsUnitlessWeight()
-            throws Exception {
-        String sql = compact(read(
-                "legacy_migration/migrate_measurement_profiles.sql"));
-
-        assertThat(sql)
-                .contains("migration_mode = 'bootstrap'")
-                .contains("export_manifest_sha256 is not null")
-                .contains("source_backup_sha256 is not null")
-                .contains("export_approval_reference is not null")
-                .contains("positive_weight_document_count >= 3")
-                .contains("positive_weight_day_count >= 2")
-                .contains("'provisional'")
-                .contains("actual_weight_unit_id")
-                .contains("null,")
-                .contains("weight_without_quantity")
-                .contains("source_capability_drift")
-                .doesNotContain("'confirmed'")
-                .doesNotContain("'weight_only'")
-                .doesNotContain("select goods.m_weight")
-                .doesNotContain("units.name");
-    }
-
-    @Test
-    void legacyQuantityAndBalanceResolversAreFailClosed()
+    void legacyQuantityAndBalanceResolversAreFailClosedAndNeverImportUnitlessWeight()
             throws Exception {
         String subcontract = compact(read(
                 "legacy_migration/migrate_subcontract.sql"));
@@ -81,55 +64,54 @@ class MeasurementCaptureLearningMigrationContractTest {
         assertThat(stock)
                 .contains("create temp table latest_stock_balance_stage")
                 .contains("sum(coalesce(g.fact_qty, g.qty))")
-                .contains("sum(coalesce(g.fact_weight, g.weight))")
-                .contains("'weight_without_quantity'")
-                .contains("'negative_weight'")
-                .contains("'quantity_weight_sign_conflict'")
-                .contains("'fact_null_fallback'")
-                .contains("when fact_weight = 0")
-                .contains("then null")
-                .contains("from latest_stock_balance_stage")
-                .doesNotContain("sum(g.qty) as fact_qty")
-                .doesNotContain("sum(g.weight) as fact_weight");
+                .contains("from latest_stock_balance_stage latest")
+                // 老库重量单位不可证明：明细重量与余额重量都不导入，只有质量单位货品按数量精确换算。
+                .contains("null::numeric, -- 老库明细重量单位不可证明")
+                .contains("when latest.fact_qty > 0 and profile.mass_unit_code is not null")
+                .contains("fn_weight_unit_kg_factor(profile.mass_unit_code)")
+                .contains("left join unit_measurement_profiles profile on profile.unit_id = material.unit_id")
+                .contains("delete from stock_weight_adjustments;")
+                .doesNotContain("legacy_measurement_exceptions")
+                .doesNotContain("sum(coalesce(g.fact_weight, g.weight))")
+                .doesNotContain("s.amount, s.amount, s.weight")
+                .doesNotContain("sum(g.qty) as fact_qty");
     }
 
     @Test
-    void unitGovernanceUsesReviewedLegacyIdsNotNames()
+    void unitGovernanceUsesReviewedLegacyIdsForMassUnitCodesNotNames()
             throws Exception {
         String sql = compact(read("legacy_migration/migrate_unit.sql"));
 
         assertThat(sql)
                 .contains("insert into unit_measurement_profiles")
-                .contains("(108, 1.000000000000::numeric)")
-                .contains("(109, 0.001000000000::numeric)")
-                .contains("(241, 0.500000000000::numeric)")
+                .contains("mass_unit_code")
+                .contains("(108, 'kg')")
+                .contains("(109, 'g')")
+                .contains("(241, 'jin')")
+                .contains("'legacy_explicit_id'")
                 .contains("source_unit.legacy_id = mapping.legacy_id")
-                .contains("join units kg on kg.legacy_id = 108")
+                .doesNotContain("canonical_unit_id")
+                .doesNotContain("to_canonical_factor")
                 .doesNotContain("where lower(source_unit.name)")
                 .doesNotContain("like '%kg%'");
     }
 
     @Test
-    void profilerIsAggregateOnlyAndCanRequireAuthoritativeExport()
+    void retiredMeasurementProfileStepIsGoneFromTheBootstrap()
             throws Exception {
-        String python = compact(read(
-                "legacy_migration/profile_measurement_evidence.py"));
         String shell = compact(read("legacy_migration/migrate.sh"));
-
-        // 导出清单 formatVersion 3 → 4（与 migrate.sh verify_full_bootstrap_export 的
-        // formatVersion=4 校验同步），缺清单的失败标签随之改版。
-        assertThat(python)
-                .contains("aggregate_only_no_business_identifiers")
-                .contains("--require-authoritative")
-                .contains("format4_manifest_or_checksum_missing")
-                .contains("manifest_file_digest_drift")
-                .contains("status !=")
-                .contains("legacy_dual_pattern_3_docs_2_days");
         assertThat(shell)
-                .contains("--measurement-profiles")
-                .contains("migrate_measurement_profiles")
+                .doesNotContain("--measurement-profiles")
+                .doesNotContain("migrate_measurement_profiles")
                 .contains("source_backup_sha256")
                 .contains("export_approval_reference");
+        assertThat(exists("legacy_migration/migrate_measurement_profiles.sql")).isFalse();
+        assertThat(exists("legacy_migration/profile_measurement_evidence.py")).isFalse();
+    }
+
+    private static boolean exists(String relative) {
+        Path direct = Path.of(relative);
+        return Files.exists(direct) || Files.exists(Path.of("server").resolve(relative));
     }
 
     private static String read(String relative) throws Exception {

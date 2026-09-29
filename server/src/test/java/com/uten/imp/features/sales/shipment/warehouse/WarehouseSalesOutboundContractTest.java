@@ -40,6 +40,20 @@ class WarehouseSalesOutboundContractTest {
         }
     }
 
+    /**
+     * ADR-135：仓库视图的行重量来自销售出库流水(千克 + 来历), 不再透出销售明细上的商业快照重量;
+     * 字段名同样受上面的禁用词约束(不能叫 weightAmount 之类)。
+     */
+    @Test
+    void outboundLineWeightComesFromTheStockLedgerNotTheCommercialSnapshot() {
+        var components = java.util.Arrays.stream(WarehouseSalesOutboundLine.class.getRecordComponents())
+                .map(RecordComponent::getName)
+                .toList();
+        assertThat(components).contains("weightKg", "weightSource").doesNotContain("weight");
+        // 页面按 数量 x unitRate (折成基本单位) 核对实称重量与单重。
+        assertThat(components).containsSubsequence("unitName", "unitRate", "quantity");
+    }
+
     @Test
     void controllerUsesWarehouseRouteAndOnlyWarehouseWorkAuthority() throws Exception {
         RequestMapping root = WarehouseSalesOutboundController.class

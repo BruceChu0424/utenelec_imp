@@ -183,8 +183,10 @@ class WarehouseSalesOutboundLine {
     this.colorName,
     this.unitId,
     this.unitName,
+    this.unitRate,
     this.quantity,
-    this.weight,
+    this.weightKg,
+    this.weightSource,
     this.parcelQuantity,
     this.cartonCount,
     this.clientProductCode,
@@ -207,8 +209,18 @@ class WarehouseSalesOutboundLine {
   final String? colorName;
   final String? unitId;
   final String? unitName;
+
+  /// 1 个行单位 = 多少基本单位 (称重偏差按 数量 x 它 的基本数量核对); 服务端必给 (空按 1),
+  /// 缺失时不核对偏差 (只记重量, 不误报)。
+  final double? unitRate;
   final String? quantity;
-  final String? weight;
+
+  /// 出库重量 (千克): 已出库行取销售出库流水的重量 (ADR-135 §3.7), 待出库行为空;
+  /// 仓库称重只落出库流水, 从不写回销售出货明细。
+  final double? weightKg;
+
+  /// 重量来源 MEASURED/EXACT/SLICE/AVERAGE/ESTIMATE (估算显示「≈」)。
+  final String? weightSource;
   final String? parcelQuantity;
   final int? cartonCount;
   final String? clientProductCode;
@@ -246,8 +258,10 @@ class WarehouseSalesOutboundLine {
       colorName: _text(json['colorName']),
       unitId: _text(json['unitId']),
       unitName: _text(json['unitName']),
+      unitRate: _number(json['unitRate']),
       quantity: _decimalText(json['quantity']),
-      weight: _decimalText(json['weight']),
+      weightKg: _number(json['weightKg']),
+      weightSource: _text(json['weightSource']),
       parcelQuantity: _decimalText(json['parcelQuantity']),
       cartonCount: _integer(json['cartonCount']),
       clientProductCode: _text(json['clientProductCode']),
@@ -308,6 +322,11 @@ String? _text(Object? value) {
 }
 
 String? _decimalText(Object? value) => _text(value);
+
+double? _number(Object? value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '');
+}
 
 int? _integer(Object? value) {
   if (value is num) return value.toInt();

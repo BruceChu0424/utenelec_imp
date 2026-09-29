@@ -21,10 +21,15 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../shared/measurement/weight_params.dart';
+import '../../../shared/measurement/weight_prefs.dart';
+import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../models/outbound_weight_entry.dart';
 import '../models/warehouse_sales_outbound.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/warehouse_sales_outbound_repository.dart';
+import '../widgets/outbound_weight_columns.dart';
 import '../widgets/warehouse_sales_outbound_table_columns.dart';
 import '../widgets/warehouse_sales_picking_fields.dart';
 
@@ -59,6 +64,13 @@ class _WarehouseSalesOutboundBatchPageState
   bool _attempted = false;
   int _loadVersion = 0;
   final Map<String, WarehouseSalesPickingDraft> _picking = {};
+
+  /// 本次 build 盯住的页内单重参数缓存 (有待称重且带货品的行时才建)。
+  WeightParamsCache? _weightCache;
+
+  List<OutboundWeightEntry> get _weightEntries => [
+    for (final draft in _picking.values) ...draft.weights.values,
+  ];
 
   AppLocalizations get _l10n =>
       Localizations.of<AppLocalizations>(context, AppLocalizations) ??
@@ -110,10 +122,18 @@ class _WarehouseSalesOutboundBatchPageState
           draft.dispose();
         }
         _picking.clear();
+        final weightUnit = ref.read(warehouseWeightUnitsPrefsProvider).entry;
         for (final detail in details) {
-          _picking[detail.header.id] = WarehouseSalesPickingDraft(detail);
+          _picking[detail.header.id] = WarehouseSalesPickingDraft(
+            detail,
+            weightUnit: weightUnit,
+          );
         }
         _details = details;
+      });
+      // 缓存在 build 里按需盯住: 下一帧再按行批量取单重参数。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) ensureOutboundWeightParams(_weightCache, _weightEntries);
       });
     } on ApiException catch (error) {
       if (mounted && version == _loadVersion) {
@@ -155,6 +175,13 @@ class _WarehouseSalesOutboundBatchPageState
       context.appWarning(firstError ?? '请逐行核对实际发出仓');
       return;
     }
+    // 称重明显偏离应发数量的行: 确认弹窗里请复核拣货 (只提醒, 不拦截)。
+    final weightAlerts = [
+      for (final draft in _picking.values)
+        for (final alert in draft.weightAlerts(_weightCache))
+          '${draft.detail.header.billNo ?? ''} '
+              '${warehouseSalesWeightAlertText(alert.line, alert.check)}',
+    ];
     // Busy before the dialog also prevents two confirmations from rapid taps.
     setState(() => _confirming = true);
     final confirmed = await showDialog<bool>(
@@ -165,11 +192,22 @@ class _WarehouseSalesOutboundBatchPageState
             warehouseSalesOutboundActionLabel(l10n, widget.action),
           ),
         ),
-        content: Text(
-          l10n.warehouseOutboundBatchConfirm(
-            warehouseSalesOutboundActionLabel(l10n, widget.action),
-            details.length,
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              l10n.warehouseOutboundBatchConfirm(
+                warehouseSalesOutboundActionLabel(l10n, widget.action),
+                details.length,
+              ),
+            ),
+            if (warehouseSalesWeightAlertNotice(dialogContext, weightAlerts)
+                case final notice?) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              notice,
+            ],
+          ],
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
@@ -218,6 +256,7 @@ class _WarehouseSalesOutboundBatchPageState
             reason: _reason.text.trim(),
             stockPlaces: _picking[reviewed.header.id]?.stockPlaces,
             lineWarehouses: _picking[reviewed.header.id]?.lineWarehouses,
+            lineWeights: _picking[reviewed.header.id]?.lineWeights,
           );
           if (updated.header.id != reviewed.header.id ||
               updated.header.warehouseWorkStatus !=
@@ -261,6 +300,12 @@ class _WarehouseSalesOutboundBatchPageState
           WarehouseSalesOutboundTableRow(detail, line),
     ];
     final actionLabel = warehouseSalesOutboundActionLabel(l10n, widget.action);
+    final weightUnits = ref.watch(warehouseWeightUnitsPrefsProvider);
+    final weightEntries = _weightEntries;
+    // 有待称重且带货品的行时才盯住页内单重参数缓存 (离开页面随之释放)。
+    _weightCache = weightEntries.any((entry) => entry.paramsLine != null)
+        ? ref.watch(weightParamsCacheProvider)
+        : null;
     return PopScope(
       canPop: !_saving,
       child: Scaffold(
@@ -404,6 +449,8 @@ class _WarehouseSalesOutboundBatchPageState
                                           !_saving &&
                                           !_confirming,
                                       includeShipment: true,
+                                      weightParams: _weightCache,
+                                      weightEntryUnit: weightUnits.entry,
                                       resultOf: _attempted
                                           ? (row) =>
                                                 _completed.contains(
@@ -416,6 +463,15 @@ class _WarehouseSalesOutboundBatchPageState
                                                 : l10n.warehouseOutboundBatchPending
                                           : null,
                                     ),
+                                    toolbarActions: weightEntries.isEmpty
+                                        ? null
+                                        : const [WeightEntryUnitButton()],
+                                    summaryBar: weightEntries.isEmpty
+                                        ? null
+                                        : OutboundWeightSummaryBar(
+                                            entries: weightEntries,
+                                            params: _weightCache,
+                                          ),
                                     items: rows,
                                     bottomContentPadding:
                                         UtenFloatingActionGroup.scrollClearance,

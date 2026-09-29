@@ -15,22 +15,6 @@ abstract final class ApiEndpoints {
   /// 敏感操作再认证：输入登录密码换一次性凭证 (ADR-110)。
   static const authStepUp = '/auth/step-up';
 
-  // 货品×业务场景计量采集偏好；只读解析必须批量，避免明细行 N+1。
-  static const measurementProfilesResolveBatch =
-      '/measurement/profiles/resolve-batch';
-  static String measurementProfileOverride(
-    String goodsId,
-    String operationFamily,
-  ) =>
-      '/measurement/profiles/${Uri.encodeComponent(goodsId)}/'
-      '${Uri.encodeComponent(operationFamily)}/override';
-  static String measurementProfileClearOverride(
-    String goodsId,
-    String operationFamily,
-  ) =>
-      '/measurement/profiles/${Uri.encodeComponent(goodsId)}/'
-      '${Uri.encodeComponent(operationFamily)}/clear-override';
-
   // 工作台权限化聚合读模型
   static const dashboardOverview = '/dashboard/overview';
 
@@ -64,6 +48,20 @@ abstract final class ApiEndpoints {
       '/sales/orders/$orderId/finance-confirmation/review';
   static String salesOrderFinanceReject(String orderId) =>
       '/sales/orders/$orderId/finance-confirmation/reject';
+
+  // 销售报价财务核价(ADR-134)：队列(state=pending|confirmed|returned) / 核价详情 /
+  // 改价保存 / 退回销售 / 确认报价 / 撤销确认。动作都带 expectedRevision + expectedClaimId。
+  static const salesQuoteFinanceReviewList = '/sales/quotes/finance-review';
+  static String salesQuoteFinanceReview(String quoteId) =>
+      '/sales/quotes/${Uri.encodeComponent(quoteId)}/finance-review';
+  static String salesQuoteFinanceEdit(String quoteId) =>
+      '/sales/quotes/${Uri.encodeComponent(quoteId)}/finance';
+  static String salesQuoteFinanceReturn(String quoteId) =>
+      '/sales/quotes/${Uri.encodeComponent(quoteId)}/finance-return';
+  static String salesQuoteFinanceConfirm(String quoteId) =>
+      '/sales/quotes/${Uri.encodeComponent(quoteId)}/finance-confirm';
+  static String salesQuoteFinanceReopen(String quoteId) =>
+      '/sales/quotes/${Uri.encodeComponent(quoteId)}/finance-reopen';
 
   // 财务批准后形成的仓储预计到货，以及超量到货隔离任务。
   static const warehouseInboundExpectations = '/warehouse/inbound/expectations';
@@ -270,6 +268,10 @@ abstract final class ApiEndpoints {
   static const goodsSearchCategoryIds = '$goods/search-category-ids';
   static String good(String id) => '/master/goods/$id';
 
+  /// Goods English name only (ADR-134): goods:name_en:edit or goods:edit;
+  /// body {nameEn, version}, the server marks the value as manually maintained.
+  static String goodNameEn(String id) => '${good(id)}/name-en';
+
   // 货品组装信息（BOM）—— 详情「组装信息」页签 + 配件清单导出
   static String goodsBom(String id) => '/master/goods/$id/bom';
   static String goodsBomItem(String id, String itemId) =>
@@ -283,6 +285,12 @@ abstract final class ApiEndpoints {
   static String goodsBomBatchDelete(String id) =>
       '/master/goods/$id/bom/batch-delete';
   static String goodsBomExport(String id) => '/master/goods/$id/bom/export';
+
+  /// BOM 学习记录(ADR-129)：逐组件的设计/真实使用数量与累计；relearn 把某组件
+  /// 的当前累计记为基线、从现在起重新学习(goods:bom:edit)，返回同一份汇总。
+  static String goodsBomLearning(String id) => '/master/goods/$id/bom-learning';
+  static String goodsBomRelearn(String id) =>
+      '/master/goods/$id/bom-learning/relearn';
   // 货品批量导入：detect 只读检测 / commit 原子导入 / latest 最近批次 / undo 撤回。
   // 组装信息导入（2026-09-25）：格式 = 配件清单导出 13 列，序号级联段表达层级。
   static String goodsBomImportDetect(String goodsId) =>
@@ -294,6 +302,16 @@ abstract final class ApiEndpoints {
   static const goodsImportLatest = '/master/goods/import/latest';
   static String goodsImportUndo(String batchId) =>
       '/master/goods/import/$batchId';
+
+  // 发料方式 (按工单领料 / 整批领到车间内料仓) 与分摊方式切换, ADR-131: 先预览受影响项, 再原子批量切换。
+  static String goodsIssueMethodPreview(String goodsId) =>
+      '/master/goods/$goodsId/issue-method/preview';
+  static const goodsIssueMethodBatch = '/master/goods/issue-method/batch';
+
+  // 车间内料仓上线准备: 产品的塑料单个重量 (期间边) 与认料批量填写。
+  static const goodsPeriodicBomPreparation =
+      '/master/goods/periodic-bom/preparation';
+  static const goodsPeriodicBomBatch = '/master/goods/periodic-bom/batch';
 
   // 模具资料分类（基础资料 / master-data）—— 与货品分类同构，独立端点
   static const mouldCategories = '/master/mould-categories';
@@ -331,8 +349,17 @@ abstract final class ApiEndpoints {
   static String client(String id) => '/master/clients/$id';
   static String clientAccess(String id) => '${client(id)}/access';
 
+  /// Learned customer goods cross reference (ADR-134): GET paged list
+  /// (?page&size&keyword), DELETE one row.
+  static String clientGoodsAliases(String id) => '${client(id)}/goods-aliases';
+  static String clientGoodsAlias(String id, String aliasId) =>
+      '${clientGoodsAliases(id)}/$aliasId';
+
   /// 多选客户批量设负责人/可见人（字面段 access 与 UUID 路径参数不冲突）。
   static const clientsAccessBatch = '$clients/access/batch';
+
+  /// 销售识别客户文件: 用文件信息新建客户(服务端先跨范围查重, ADR-134)。
+  static const clientFromDocument = '$clients/from-document';
 
   // 供应商资料分类（基础资料 / master-data）—— 与货品/模具分类同构，独立端点
   static const supplierCategories = '/master/supplier-categories';
@@ -413,10 +440,9 @@ abstract final class ApiEndpoints {
   static const purchaseReportMonthly = '/purchase/reports/monthly';
   static const purchaseReportPending = '/purchase/reports/pending';
 
-  // 库存查询（库存管理）：当前余额 + 出入库流水。
+  // 库存查询 (库存管理): 当前余额 + 授权余额调整 (出入库流水见下方 stockGoodsLedger)。
   static const stockBalances = '/stock/balances';
   static const stockBalanceAdjust = '/stock/balances/adjust';
-  static const stockMovements = '/stock/movements';
   // 即时库存（货品+颜色聚合余额 + 分类树/仓库过滤；仓库管理 hub 入口）。
   static const stockInstantInventory = '/stock/instant-inventory';
   static const stockInstantInventorySearchCategoryIds =
@@ -425,6 +451,38 @@ abstract final class ApiEndpoints {
   static const stockShelfLabels = '/stock/shelf-labels';
   static const stockShelfLabelRacks = '/stock/shelf-labels/racks';
   static const stockShelfLabelLayout = '/stock/shelf-labels/layout';
+
+  // 单货品出入库流水 (库存明细账：流水行 + 重量调整行，服务端算结存/期初期末，ADR-135 §7.1)。
+  static String stockGoodsLedger(String goodsId) =>
+      '/stock/goods/${Uri.encodeComponent(goodsId)}/ledger';
+
+  // 仓库重量账与单重学习 (ADR-135 §7.2)：单重参数批量取 (一页一次，客户端自算件数/偏差)、
+  // 单货品单重详情/称重记录、称样校准、单重设置、排除/恢复记录、重新学习、核重。
+  static const stockWeightParams = '/stock/weight/params';
+  static String stockWeightGoods(String goodsId) =>
+      '/stock/weight/goods/${Uri.encodeComponent(goodsId)}';
+  static String stockWeightGoodsObservations(String goodsId) =>
+      '${stockWeightGoods(goodsId)}/observations';
+  static String stockWeightGoodsSamples(String goodsId) =>
+      '${stockWeightGoods(goodsId)}/samples';
+  static String stockWeightGoodsProfile(String goodsId) =>
+      '${stockWeightGoods(goodsId)}/profile';
+  static String stockWeightGoodsResetRegime(String goodsId) =>
+      '${stockWeightGoods(goodsId)}/reset-regime';
+  static String stockWeightObservationExclude(String observationId) =>
+      '/stock/weight/observations/${Uri.encodeComponent(observationId)}/exclude';
+  static String stockWeightObservationInclude(String observationId) =>
+      '/stock/weight/observations/${Uri.encodeComponent(observationId)}/include';
+  static const stockWeightBalanceSet = '/stock/weight/balances/set';
+
+  // 库存分析 (ADR-135 §7.4，stock_report:view；单货品 KPI 条为 stock:view)：
+  // 呆滞与库龄 / 盘点建议 / 称重异常 / 单重学习。
+  static const stockInsightsHealth = '/stock/insights/health';
+  static const stockInsightsCycleCount = '/stock/insights/cycle-count';
+  static const stockInsightsWeightAlerts = '/stock/insights/weight-alerts';
+  static const stockInsightsLearning = '/stock/insights/learning';
+  static String stockInsightsGoods(String goodsId) =>
+      '/stock/insights/goods/${Uri.encodeComponent(goodsId)}';
 
   // 仓库管理单据（8 类统一，端点 /api/stock/docs，docType 区分）：CRUD + 审核 + 红冲。
   static const stockDocsBase = '/stock/docs';
@@ -446,6 +504,90 @@ abstract final class ApiEndpoints {
       '/stock/production-materials/plans/$planId/settlements/reverse';
   static String productionMaterialClose(String planId) =>
       '/stock/production-materials/plans/$planId/close';
+
+  // 车间内料仓 (ADR-131; 后端 features/warehouse/materialbin): 设置、机台与容器、
+  // 领料 / 退回 / 其它耗用、盘点与期间、自动结算状态、认料与换料、用量报表。
+  // 写接口都带 idempotencyKey 与 expectedVersion; 页面按钮只看响应里的 allowedActions。
+  static const workshopMaterialBase = '/workshop-material';
+
+  /// 工作台徽章来源: 待发料 / 待收退回 / 盘点中。
+  static const workshopMaterialBadgeCounts =
+      '$workshopMaterialBase/badge-counts';
+  static const workshopMaterialSettings = '$workshopMaterialBase/settings';
+  static String workshopMaterialSetting(String workshopId) =>
+      '$workshopMaterialSettings/$workshopId';
+
+  /// 开启前本车间在产、需认料的产品清单 (含预填)。
+  static String workshopMaterialSettingInProgressPending(String workshopId) =>
+      '$workshopMaterialSettings/$workshopId/in-progress-pending';
+  static const workshopMaterialMachines = '$workshopMaterialBase/machines';
+  static const workshopMaterialMachinesBatch =
+      '$workshopMaterialBase/machines/batch';
+  static String workshopMaterialMachine(String machineId) =>
+      '$workshopMaterialMachines/$machineId';
+  static const workshopMaterialContainersBatch =
+      '$workshopMaterialBase/containers/batch';
+  static String workshopMaterialContainer(String containerId) =>
+      '$workshopMaterialBase/containers/$containerId';
+  static String workshopMaterialBinPosition(String binId) =>
+      '$workshopMaterialBase/bins/$binId/position';
+  static const workshopMaterialRequisitions =
+      '$workshopMaterialBase/requisitions';
+  static String workshopMaterialRequisition(String id) =>
+      '$workshopMaterialRequisitions/$id';
+  static String workshopMaterialRequisitionFulfil(String id) =>
+      '$workshopMaterialRequisitions/$id/fulfil';
+  static String workshopMaterialRequisitionCancel(String id) =>
+      '$workshopMaterialRequisitions/$id/cancel';
+  static const workshopMaterialDirectIssues =
+      '$workshopMaterialBase/direct-issues';
+
+  /// 直接发料默认值 (该车间上一次的领料人)。
+  static const workshopMaterialDirectIssueDefaults =
+      '$workshopMaterialDirectIssues/defaults';
+  static const workshopMaterialOtherIssues =
+      '$workshopMaterialBase/other-issues';
+  static const workshopMaterialPeriods = '$workshopMaterialBase/periods';
+  static String workshopMaterialPeriod(String periodId) =>
+      '$workshopMaterialPeriods/$periodId';
+  static String workshopMaterialStartCount(String periodId) =>
+      '$workshopMaterialPeriods/$periodId/start-count';
+  static String workshopMaterialWithdrawCount(String periodId) =>
+      '$workshopMaterialPeriods/$periodId/withdraw-count';
+  static String workshopMaterialCorrectCount(String periodId) =>
+      '$workshopMaterialPeriods/$periodId/correct-count';
+  static String workshopMaterialCloseStatus(String periodId) =>
+      '$workshopMaterialPeriods/$periodId/close-status';
+  static String workshopMaterialCloseRetry(String periodId) =>
+      '$workshopMaterialPeriods/$periodId/close-retry';
+
+  /// 撤销结算 (需再认证)。
+  static String workshopMaterialReopen(String periodId) =>
+      '$workshopMaterialPeriods/$periodId/reopen';
+  static String workshopMaterialCount(String countId) =>
+      '$workshopMaterialBase/counts/$countId';
+
+  /// 盘点单一行 (逐行保存 / 删除); key 是客户端生成的行键。
+  static String workshopMaterialCountLine(String countId, String key) =>
+      '$workshopMaterialBase/counts/$countId/lines/${Uri.encodeComponent(key)}';
+  static String workshopMaterialZeroRest(String countId) =>
+      '$workshopMaterialBase/counts/$countId/zero-rest';
+  static String workshopMaterialSubmitCount(String countId) =>
+      '$workshopMaterialBase/counts/$countId/submit';
+
+  /// 整批领料的料清单 (申请/发料下拉、出库仓下拉、上线准备颗粒下拉), ?workshopId=。
+  static const workshopMaterialMaterials = '$workshopMaterialBase/materials';
+  static const workshopMaterialChoicesPending =
+      '$workshopMaterialBase/choices/pending';
+  static const workshopMaterialChoices = '$workshopMaterialBase/choices';
+
+  /// 某张工单 (任务段) 改用别的料。
+  static String workshopMaterialSegmentChange(String segmentId) =>
+      '$workshopMaterialBase/segments/$segmentId/material-changes';
+
+  /// 用量报表: [kind] = bin-usage | product-usage | waste-trend | missing-weights | ledger。
+  static String workshopMaterialReport(String kind) =>
+      '$workshopMaterialBase/reports/$kind';
 
   // 岗位（部门下）
   static String departmentPositions(String deptId) =>
@@ -552,6 +694,30 @@ abstract final class ApiEndpoints {
 
   /// 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const adminSystemSettings = '/admin/system-settings';
+
+  /// AI 服务设置(ADR-133，超管 authorization:manage + superAdmin)。
+  /// 增删改、设默认、启停、用已存密钥测试/取模型要再认证；用本次新填密钥测试免再认证。
+  static const adminAiProviders = '/admin/ai/providers';
+  static String adminAiProvider(String id) => '$adminAiProviders/$id';
+  static String adminAiProviderDefault(String id) =>
+      '$adminAiProviders/$id/default';
+  static String adminAiProviderEnabled(String id) =>
+      '$adminAiProviders/$id/enabled';
+  static String adminAiProviderTest(String id) => '$adminAiProviders/$id/test';
+  static String adminAiProviderModels(String id) =>
+      '$adminAiProviders/$id/models';
+  static const adminAiProvidersTest = '$adminAiProviders/test';
+  static const adminAiProvidersModels = '$adminAiProviders/models';
+  static const adminAiPresets = '/admin/ai/presets';
+  static const adminAiUsage = '/admin/ai/usage';
+
+  /// 公共 AI 作业(ADR-133): 提交原始文件(octet-stream) / 轮询 / 取消；员工账号本人可用。
+  static const aiJobs = '/ai/jobs';
+  static String aiJob(String id) => '$aiJobs/$id';
+  static String aiJobCancel(String id) => '$aiJobs/$id/cancel';
+
+  /// 当前账号能否用 AI(不含服务商/模型细节)。
+  static const aiStatus = '/ai/status';
 
   /// 管理员「切换人 / 模拟身份」：enter(验密码发 modeToken) / start(签发目标 token) / end(审计)。
   /// 仅 superAdmin；start 由 admin token 调，end 由模拟 token 调（主体=目标）。

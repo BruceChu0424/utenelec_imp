@@ -9,7 +9,8 @@
 //   领料单 / 生产退料刻意不在新建区——由生产链自动生成（齐套建 DRAW、报工/
 //   退料闭环），手工单没有计划包与执行段映射，出库链路会被台账守卫拒绝；
 //   临时性出入库用「其它入库/其它出库」。
-// 库存查询：即时库存唯一入口（双击货品行进库存详情）+ 货架目视化清单。
+// 库存查询：即时库存唯一入口 (双击货品行进库存详情) + 货架目视化清单 + 库存分析
+//   (ADR-135，stock_report:view) + 称重计数 (手机放秤旁用，stock:view)。
 // 仓库报表：明细 / 汇总（不变）。
 //
 // 卡片统一 UtenHubCard；显隐只走 hub_catalog 登记的落点 + 路由守卫同一份 any/all 契约
@@ -137,6 +138,26 @@ class WarehouseHubPage extends ConsumerWidget {
         '货架目视化清单',
         '按库行/层/位查找，打印张贴到货架',
         RouteName.warehouseShelfLabels,
+      ),
+      // 车间内料仓设置 (ADR-131): 只对有设置权限的人可见 (hub 目录 + 路由守卫), 不挂数。
+      _StockQueryEntry(
+        Icons.precision_manufacturing_outlined,
+        l10n.workshopMaterialSetup,
+        l10n.workshopMaterialSetupHubDesc,
+        RouteName.workshopMaterialSetup,
+      ),
+      // ADR-135：管理口径的库存分析 (stock_report:view) 与手机放秤旁用的称重计数 (stock:view)。
+      const _StockQueryEntry(
+        Icons.insights_outlined,
+        '库存分析',
+        '呆滞与库龄、今日建议盘点、称重异常、单重学习',
+        RouteName.warehouseInsights,
+      ),
+      const _StockQueryEntry(
+        Icons.scale_outlined,
+        '称重计数',
+        '选货品放秤称重，按单重折算件数；可顺手抽样让单重越学越准',
+        RouteName.warehouseWeighCount,
       ),
     ].where((entry) => canOpen(entry.location)).toList(growable: false);
 

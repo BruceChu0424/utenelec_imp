@@ -6,7 +6,6 @@
 // 精确来源子任务链接 + 备注。历史完结事实保留，不再作为新报工入口。
 import 'package:flutter/material.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
-import '../../../shared/formatters/exact_decimal.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -16,10 +15,17 @@ import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
+import '../models/daily_output_allocation.dart'
+    show outputAllocationQuantityText;
 import '../models/production_direct_transfer_candidate.dart';
 import '../models/production_daily_report.dart';
+import '../models/production_execution_planning.dart'
+    show isValidProductionPlanningQuantityText;
 import '../repositories/production_material_repository.dart';
+import 'production_report_surplus_return_dialog.dart'
+    show productionQuantityInputFormatter;
 
 /// One editable fact per demand, shared by all displayed output slices.
 class DailyMaterialInput {
@@ -45,6 +51,9 @@ class DailyGridRow extends EditableGridRow {
   set goods(GoodsOption? v) => goodsNotifier.value = v;
 
   final TextEditingController qty = TextEditingController(); // 完工量
+
+  /// 不良数(ADR-129)：只记录，不影响完工申报量、库存与产量分流；空 = 0。
+  final TextEditingController defectQty = TextEditingController();
   final TextEditingController weight = TextEditingController(); // 本行实际总重量
   final TextEditingController planNo = TextEditingController(); // 关联生产计划号
   final TextEditingController remark = TextEditingController();
@@ -81,13 +90,16 @@ class DailyGridRow extends EditableGridRow {
   double? remainingPlanQty;
   bool legacyManual = false;
 
-  // ===== V583 物料子行：报工与实际用料合并到同一张表 =====
-  // 一张表只能有一个泛型行类型，所以成品行与物料子行共用本类，由 [depth] 区分：
-  // 0 = 成品报工行(原有全部字段)，1 = 挂在它下面的物料子行(只用下面这几个)。
-  // 各列的 cellBuilder 按 depth 分支，用不到的格返回空。
+  // ===== V583 物料子行 / V736 去向分配子行：报工、去向与实际用料合并到同一张表 =====
+  // 一张表只能有一个泛型行类型，所以成品行与两种子行共用本类，由 [depth] 区分：
+  // 0 = 成品报工行(原有全部字段)，1 = 挂在它下面的子行——去向分配子行([allocationParent] 非空)
+  // 或物料子行(其余)。各列的 cellBuilder 按行种分支，用不到的格返回空。
 
-  /// 0 = 成品报工行；1 = 该成品所属工单已领用的物料子行。
+  /// 0 = 成品报工行；1 = 挂在成品行下面的子行(去向分配或物料)。
   int depth = 0;
+
+  /// 挂在成品行下面的子行(去向分配或物料)。成品行的校验、行号、勾选都只看 depth=0 的行。
+  bool get isSubRow => depth > 0;
 
   /// 物料子行的来源台账行(领料量、可继续登记量、单位、颜色都在里面)。
   ProductionMaterialClearanceRow? material;
@@ -118,46 +130,75 @@ class DailyGridRow extends EditableGridRow {
     _ownsMaterialInput = false;
   }
 
-  // ===== V584/V585 产出去向：送仓库 还是 转下一道工序(同车间内部直送) =====
-  // 用户录一次实际产量和需求内去向；服务端将需求及公共产出拆成独立明细。
+  // ===== V736/ADR-127 产出去向分配：一行实际产量逐个分给上层工单，其余送入仓库 =====
+  // 成品行下面挂「去向分配」子行，每条 = (去向: 某个上层工单 或 送入仓库, 数量)。
+  // 系统按先急后缓给出建议(黄框)，工人可改任一条；合计始终等于本行实际产量，
+  // 重排只在 daily_output_allocation.dart 一处算。服务端每个上层工单拆一条转送明细。
 
-  /// 'WAREHOUSE' = 送入仓库(默认，走品质部)；'WORKSHOP' = 转下一道工序。
-  final ValueNotifier<String> destinationNotifier = ValueNotifier<String>(
-    'WAREHOUSE',
-  );
-  String get destination => destinationNotifier.value;
-  set destination(String value) => destinationNotifier.value = value;
-  bool get isDirectTransfer => destination == 'WORKSHOP';
-
-  /// 转送时投给哪条上层物料需求。候选由服务端按同车间同货品给出。
-  final ValueNotifier<ProductionDirectTransferCandidate?>
-  directTransferNotifier = ValueNotifier<ProductionDirectTransferCandidate?>(
-    null,
-  );
-  ProductionDirectTransferCandidate? get directTransfer =>
-      directTransferNotifier.value;
-  set directTransfer(ProductionDirectTransferCandidate? value) =>
-      directTransferNotifier.value = value;
-
-  /// 本行可选的上层工单；空列表 = 这一行没有同车间的上层工单可转。
+  /// 成品行：本行可送的上层工单(先急后缓)；由服务端唯一判定给出。
   List<ProductionDirectTransferCandidate> directTransferCandidates = const [];
+
+  /// 成品行：结构上是上层但现在不能收的工单(下拉置灰、红字写原因)。
+  List<ProductionDirectTransferBlockedTarget> directTransferBlockedTargets =
+      const [];
+
+  /// 成品行：一行最多同时转给几个上层工单(服务端给出)。
+  int directTransferReceiverLimit = 1 << 30;
   int directTransferRequestVersion = 0;
 
-  // ===== V595 记忆与自动计算：黄框 + 警示图标提醒核对，用户改动即清除 =====
+  /// 成品行「产出去向」格的红字：「无法转到下一道工序：<服务端原因>」或候选读取失败提示；
+  /// 为空 = 有可送的上层工单，或还没读过候选(没选来源/货品)。
+  String? directTransferBlockedText;
 
-  /// 「产出去向」由上次报工记忆带入。
-  final ValueNotifier<bool> destinationAutofilled = ValueNotifier<bool>(false);
+  /// 最近一次候选读取失败：此时不知道能不能转，不替人改已定的去向。
+  bool directTransferLoadFailed = false;
 
-  /// 「转给工单」由上次报工记忆带入。
-  final ValueNotifier<bool> directTransferAutofilled = ValueNotifier<bool>(
-    false,
-  );
+  /// 候选已读到且一个可送的都没有：只能送入仓库，去向子行不给下拉。
+  bool get directTransferUnavailable =>
+      directTransferBlockedText != null && !directTransferLoadFailed;
 
-  /// 用户已亲手选过去向/接收工单：换来源前记忆不再覆盖。
-  bool destinationTouched = false;
+  /// 成品行：去向分配子行(显示顺序)。
+  List<DailyGridRow> allocationRows = [];
 
-  /// 编辑既有草稿时回填用：候选加载后按这个需求 UUID 选中原接收工单，不标黄。
-  String? pendingDirectTransferDemandId;
+  /// 成品行：工人亲手从某条去向上改掉的上层工单，重排不再自动建议给它；换来源即清空。
+  final Set<String> allocationDeclined = {};
+
+  /// 成品行：每个可送上层工单本行最多还能分多少(基本单位，已扣本张报工其它行)；
+  /// 下拉「还差 N」与「已分满」读它，由重排算出。
+  Map<String, double> directTransferRoomBase = const {};
+
+  /// 成品行：每次重排后加一，去向格据此刷新(摘要、下拉条目)。
+  final ValueNotifier<int> allocationRevision = ValueNotifier<int>(0);
+
+  /// 去向分配子行所属的成品行；非空 = 本行是去向分配子行。
+  DailyGridRow? allocationParent;
+  bool get isAllocationRow => allocationParent != null;
+
+  /// 去向分配子行：投给哪条上层工单的物料需求；null = 送入仓库。
+  final ValueNotifier<String?> allocationDemandNotifier =
+      ValueNotifier<String?>(null);
+  String? get allocationDemandId => allocationDemandNotifier.value;
+  set allocationDemandId(String? value) =>
+      allocationDemandNotifier.value = value;
+
+  /// 去向分配子行：分到的数量(报工单位)。
+  final TextEditingController allocationQty = TextEditingController();
+
+  /// 去向分配子行：工人亲手定过(或排在他改过的那条之上)，重排不再替换它。
+  bool allocationFixed = false;
+
+  /// 去向分配子行(固定)：工人自己要的数量(不含顺带接下的余量)；产量变小时显示值被压低，
+  /// 压到 0 就先藏起来，这个数不丢，产量回升时按它恢复。
+  double? allocationRequested;
+
+  /// 去向分配子行：正在输入数量(输入框有焦点)，重排不改它的文字。
+  bool allocationEditing = false;
+
+  /// 去向分配子行：系统给出的建议(黄框)；工人改动即清除。
+  final ValueNotifier<bool> allocationAutofilled = ValueNotifier<bool>(false);
+
+  /// 去向分配子行：问题(红框 + 提交时列出)；null = 没问题。
+  final ValueNotifier<String?> allocationIssue = ValueNotifier<String?>(null);
 
   /// 本次实际用料由完工申报量按单耗自动算出(物料子行)。
   ValueNotifier<bool> get materialUsageAutofilled => _materialInput.autofilled;
@@ -171,7 +212,8 @@ class DailyGridRow extends EditableGridRow {
   double? get materialManualRatio => _materialInput.manualRatio;
   set materialManualRatio(double? value) => _materialInput.manualRatio = value;
 
-  bool get isMaterialRow => depth > 0;
+  /// 物料子行(挂在成品行下、不是去向分配的子行)。
+  bool get isMaterialRow => depth > 0 && !isAllocationRow;
 
   /// 物料所属工单的可读标识(子计划号，取不到时退回 UUID 前 8 位)。
   String get materialSegmentLabel {
@@ -183,7 +225,10 @@ class DailyGridRow extends EditableGridRow {
 
   /// 可填的物料子行(自己负责提交且有权限)：必填红框与提交校验都只认这些行。
   bool get materialEditable =>
-      isMaterialRow && materialOwnsInput && !materialReadOnly;
+      isMaterialRow &&
+      material != null &&
+      materialOwnsInput &&
+      !materialReadOnly;
 
   /// 本次可登记上限：待仓库收料的数量已被扣掉，填超会被服务端守卫直接拒绝。
   double get materialCap => material?.availableToSettleQty ?? 0;
@@ -216,11 +261,12 @@ class DailyGridRow extends EditableGridRow {
   /// 强制每行有精确来源，且按来源聚合校验「累计申报 ≤ 可报量」，拷引用不会放大申报。
   /// 仅 isFinal 重置：粘贴行是新一次申报，不继承上一行的「完结」标记
   /// （FQC 恢复行本就禁止完结，重置后口径一致）。
-  /// 物料子行不参与复制粘贴：它由来源工单派生，复制出来的第二份会把同一份额度
-  /// 当成两份填。页面已用 canSelectRow 挡住勾选，这里再兜一次底。
+  /// 物料子行与去向分配子行不参与复制粘贴：它们由成品行派生，复制出来的第二份会把
+  /// 同一份额度当成两份填。页面已用 canSelectRow 挡住勾选，这里再兜一次底。
+  /// 去向分配不随行复制：粘贴行是新一次申报，由重排按当前余量重新给出建议。
   DailyGridRow clone() {
-    if (isMaterialRow) {
-      throw UnsupportedError('物料子行由来源工单派生，不支持复制');
+    if (isSubRow) {
+      throw UnsupportedError('子行由成品行派生，不支持复制');
     }
     final c = DailyGridRow()
       ..planItemId = planItemId
@@ -243,17 +289,19 @@ class DailyGridRow extends EditableGridRow {
       ..supplementProofId = null
       ..supplementApprovedActualQty = null
       ..remainingPlanQty = remainingPlanQty
-      ..destination = destination
-      ..destinationTouched = destinationTouched
-      ..directTransfer = directTransfer
-      ..pendingDirectTransferDemandId = pendingDirectTransferDemandId
       ..directTransferCandidates = List.of(directTransferCandidates)
+      ..directTransferBlockedTargets = List.of(directTransferBlockedTargets)
+      ..directTransferReceiverLimit = directTransferReceiverLimit
+      ..directTransferBlockedText = directTransferBlockedText
+      ..directTransferLoadFailed = directTransferLoadFailed
       ..legacyManual = legacyManual
       ..goods = goods
       ..colorId = colorId
       ..unitId = unitId
       ..isFinal = false;
     c.qty.text = hasFixedSupplement ? '' : qty.text;
+    // 固定追加批次的复制行不带来源，不良数也无处可记。
+    c.defectQty.text = hasFixedSupplement ? '' : defectQty.text;
     c.weight.text = weight.text;
     c.planNo.text = planNo.text;
     c.remark.text = remark.text;
@@ -295,16 +343,70 @@ class DailyGridRow extends EditableGridRow {
     unitIdNotifier.dispose();
     finalNotifier.dispose();
     qty.dispose();
+    defectQty.dispose();
     weight.dispose();
     planNo.dispose();
     remark.dispose();
     if (_ownsMaterialInput) _materialInput.dispose();
-    destinationNotifier.dispose();
-    directTransferNotifier.dispose();
-    destinationAutofilled.dispose();
-    directTransferAutofilled.dispose();
+    allocationRevision.dispose();
+    allocationDemandNotifier.dispose();
+    allocationQty.dispose();
+    allocationAutofilled.dispose();
+    allocationIssue.dispose();
     super.dispose();
   }
+}
+
+/// 按已存的去向(草稿、已存日报、追加申请快照，形如提交体的
+/// `{directTransferDemandId, qty}`)还原成本行的固定去向子行；候选读到后由重排校验、补齐。
+void restoreOutputAllocations(
+  DailyGridRow product,
+  Iterable<Map<String, dynamic>> entries,
+) {
+  final rows = <DailyGridRow>[];
+  for (final entry in entries) {
+    final qty = (entry['qty'] as num?)?.toDouble();
+    if (qty == null || !qty.isFinite || qty <= 0) continue;
+    final row = DailyGridRow()
+      ..depth = 1
+      ..allocationParent = product
+      ..allocationDemandId = entry['directTransferDemandId'] as String?
+      ..allocationFixed = true
+      ..allocationRequested = qty;
+    row.allocationQty.text = _quantityText(qty);
+    rows.add(row);
+  }
+  product.allocationRows = rows;
+}
+
+/// 去向分配子行只在「有得选」时显示：有可送的上层工单，或已有转给上层工单的条目、或不止一条；
+/// 只有一条「送入仓库」时由成品行的摘要或红字说明，不另占一行(顶层产品、委外件等不添噪音)。
+bool showsOutputAllocations(DailyGridRow product) {
+  final visible = product.allocationRows.where(outputAllocationVisible);
+  return product.directTransferCandidates.isNotEmpty ||
+      visible.length > 1 ||
+      visible.any((row) => row.allocationDemandId != null);
+}
+
+/// 这条去向要不要显示：工人定过、但被变小的完工申报量压到 0 的条目先藏起来(不提交、不报问题)，
+/// 产量回升时按工人原来要的数回来；正在输入的那条即使是 0 也照常显示。
+bool outputAllocationVisible(DailyGridRow allocation) =>
+    allocation.allocationEditing ||
+    (double.tryParse(allocation.allocationQty.text.trim()) ?? 0) > 0;
+
+/// 提交体里本行的去向分配；全部送入仓库时返回 null(不传即整行送入仓库)。
+List<Map<String, dynamic>>? outputAllocationBody(DailyGridRow product) {
+  final body = <Map<String, dynamic>>[
+    for (final allocation in product.allocationRows)
+      if ((double.tryParse(allocation.allocationQty.text.trim()) ?? 0) > 0)
+        {
+          'directTransferDemandId': allocation.allocationDemandId,
+          'qty': double.parse(allocation.allocationQty.text.trim()),
+        },
+  ];
+  return body.any((entry) => entry['directTransferDemandId'] != null)
+      ? body
+      : null;
 }
 
 /// Give the first submitted output slice the single input for each demand.
@@ -341,13 +443,13 @@ double materialReportedQuantity(
 
 /// A delivery's material cap does not mark the end of the production task.
 bool completesProductionTask(DailyGridRow row, Iterable<DailyGridRow> rows) {
-  if (row.isMaterialRow || row.isFqcRecovery) return false;
+  if (row.isSubRow || row.isFqcRecovery) return false;
   final remaining = row.remainingPlanQty;
   final segment = row.executionSegmentId;
   if (segment == null) return false;
   var total = 0.0;
   for (final candidate in rows) {
-    if (candidate.isMaterialRow ||
+    if (candidate.isSubRow ||
         candidate.isFqcRecovery ||
         candidate.executionSegmentId != segment) {
       continue;
@@ -371,43 +473,27 @@ double? productionReportBaseQuantity(DailyGridRow row) {
   return rounded.isFinite ? rounded : null;
 }
 
-String productionReportRoutingHint(DailyGridRow row) {
-  if (row.isMaterialRow || !row.hasLinkedSource) return '';
-  if (row.supplementProofId != null) {
-    return '已关联批准的追加计划，原工单与追加工单分别记产出；本次实际总量保持不变';
+/// 不良数的唯一校验口径(格内红框与保存校验共用)：空 = 0 不校验；不小于 0、
+/// 最多 4 位小数；大于 0 时本行必须已选报工工单且完工申报量大于 0。
+String? productionReportDefectIssue(DailyGridRow row) {
+  final raw = row.defectQty.text.trim();
+  if (raw.isEmpty) return null;
+  if (!isValidProductionPlanningQuantityText(raw)) {
+    return '不良数请填写不小于 0、最多 4 位小数的数量';
   }
-  if (row.supplementRequestId != null) {
-    return '追加计划审批与开工待核对；本次实际数量和用料保留';
+  if (double.parse(raw) <= 0) return null;
+  if (row.executionSegmentId == null) return '不良数只能记在已选择报工工单的行上';
+  final qty = double.tryParse(row.qty.text.trim());
+  if (qty == null || !qty.isFinite || qty <= 0) {
+    return '先填写大于 0 的完工申报量，才能记录不良数';
   }
-  if (row.hasReportQuantityLimit) {
-    return row.maxReportQty == null
-        ? '按原来源核对本次产量'
-        : '本次可报 ${_quantityText(row.maxReportQty!)}';
-  }
-  return row.isDirectTransfer
-      ? '按有效超产比例核对；需求内交下工序，容差内余量送仓，越限先办追加计划'
-      : '按有效超产比例核对；容差内公共量分开送仓，越限先办追加计划';
+  return null;
 }
 
-/// An explicit destination may become invalid, but must never change silently.
-bool restoreExplicitDirectTransferSelection(DailyGridRow row) {
-  if (!row.destinationTouched) return false;
-  final requestedId =
-      row.pendingDirectTransferDemandId ?? row.directTransfer?.demandId;
-  row.directTransfer = null;
-  if (row.isDirectTransfer && requestedId != null) {
-    row.pendingDirectTransferDemandId = requestedId;
-    for (final candidate in row.directTransferCandidates) {
-      if (candidate.demandId == requestedId) {
-        row.directTransfer = candidate;
-        row.pendingDirectTransferDemandId = null;
-        break;
-      }
-    }
-  }
-  row.destinationAutofilled.value = false;
-  row.directTransferAutofilled.value = false;
-  return true;
+/// 随行提交的不良数；空或 0 返回 null(不提交)。先经 [productionReportDefectIssue] 校验。
+double? productionReportDefectQty(DailyGridRow row) {
+  final value = double.tryParse(row.defectQty.text.trim());
+  return value != null && value.isFinite && value > 0 ? value : null;
 }
 
 /// Keep stored draft use when a transient read failure hides its editor.
@@ -432,70 +518,6 @@ List<Map<String, dynamic>> mergeDraftMaterialUsages({
     for (final entry in quantities.entries)
       {'demandId': entry.key, 'qtyBase': entry.value},
   ];
-}
-
-List<String> directTransferAggregateIssues(Iterable<DailyGridRow> rows) {
-  final bySource = <(String?, String), List<DailyGridRow>>{};
-  final byDemand = <String, List<DailyGridRow>>{};
-  for (final row in rows) {
-    if (row.isMaterialRow ||
-        !row.hasReportQuantityLimit ||
-        !row.isDirectTransfer ||
-        row.directTransfer == null) {
-      continue;
-    }
-    final demandId = row.directTransfer!.demandId;
-    bySource
-        .putIfAbsent((
-          row.planItemId ?? row.executionSegmentId,
-          demandId,
-        ), () => [])
-        .add(row);
-    byDemand.putIfAbsent(demandId, () => []).add(row);
-  }
-  final issues = <String>[];
-  for (final group in bySource.values.where((group) => group.length > 1)) {
-    var total = 0.0;
-    var limit = double.infinity;
-    for (final row in group) {
-      total += productionReportBaseQuantity(row) ?? 0;
-      final remaining = row.directTransfer!.remainingQty;
-      if (remaining < limit) limit = remaining;
-    }
-    if (total > limit + 0.000001) {
-      issues.add(
-        '${group.length} 行投给同一接收需求，基础数量合计 ${_quantityText(total)} '
-        '超过本来源可直送 ${_quantityText(limit)}，请合计核对',
-      );
-    }
-  }
-  for (final group in byDemand.values.where((group) => group.length > 1)) {
-    var total = 0.0;
-    double? limit;
-    for (final row in group) {
-      total += productionReportBaseQuantity(row) ?? 0;
-      final target = row.directTransfer!;
-      // Older clients may lack the aggregate demand snapshot. The server still
-      // validates it; a source-specific quota must never substitute for it.
-      if (target.requiredQty > 0 &&
-          target.requiredQty.isFinite &&
-          target.alreadyCoveredQty.isFinite &&
-          target.alreadyCoveredQty >= 0) {
-        final available = (target.requiredQty - target.alreadyCoveredQty).clamp(
-          0.0,
-          double.infinity,
-        );
-        if (limit == null || available < limit) limit = available;
-      }
-    }
-    if (limit != null && total > limit + 0.000001) {
-      issues.add(
-        '同一接收需求本次基础数量合计 ${_quantityText(total)} '
-        '超过其总缺口 ${_quantityText(limit)}，请合计核对',
-      );
-    }
-  }
-  return issues;
 }
 
 /// Only a proven linear requirement can provide a proportional suggestion.
@@ -529,9 +551,9 @@ double? expectedMaterialUsage({
   return (capped * 10000).roundToDouble() / 10000;
 }
 
-/// 生产日报明细列：货品（点选）/ 颜色（只读）/ 单位（只读）/ 完工申报量 / 实际重量 /
+/// 生产日报明细列：货品(点选) / 颜色(只读) / 单位(只读) / 完工申报量 / 不良数 / 实际重量 /
 /// 关联计划号 / 备注。[onPickGoods] 由编辑页提供；[colorEntries]/[unitEntries] 由编辑页注入。
-/// [hasMaterialChildren]/[isLastMaterialChild] 由编辑页按当前行序计算：本表把成品行与
+/// [hasSubRows]/[isLastSubRow] 由编辑页按当前行序计算：本表把成品行与
 /// 它的物料子行扁平混排，树形缩进和连接线要知道「这行下面还有没有子行」「这是不是
 /// 最后一个子行」。[onMaterialChanged] 让编辑页在实耗输入变化时重算必填红框与提交态。
 List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
@@ -542,12 +564,13 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
   Future<void> Function(DailyGridRow row)? onOpenSource,
   required Map<String, String> colorEntries,
   required Map<String, String> unitEntries,
-  bool Function(DailyGridRow row)? hasMaterialChildren,
-  bool Function(DailyGridRow row)? isLastMaterialChild,
+  bool Function(DailyGridRow row)? hasSubRows,
+  bool Function(DailyGridRow row)? isLastSubRow,
   void Function()? onMaterialChanged,
-  void Function(DailyGridRow row, String destination)? onDestinationChanged,
-  void Function(DailyGridRow row, ProductionDirectTransferCandidate picked)?
-  onDirectTransferPicked,
+  void Function(DailyGridRow allocation, String? demandId)?
+  onAllocationDestinationChanged,
+  void Function(DailyGridRow allocation)? onAllocationQtyChanged,
+  void Function(DailyGridRow allocation, bool focused)? onAllocationQtyFocus,
 }) {
   // 列说明统一挂表头 ⓘ（2026-09-09 口径）：每行重复的 ⓘ 既冗余又挤占格宽。
   final l10n = workflowFieldText(context);
@@ -562,13 +585,26 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色**各占一列**。
       // 报工行多由来源子任务冻结带入，同名不同色/不同编号的货品只看名称会报到
       // 别的货上；这里只放名称，编号见下一列，颜色/单位本表本来就有独立列。
-      textOf: (r) => r.isMaterialRow
+      textOf: (r) => r.isAllocationRow
+          ? '产出去向'
+          : r.isMaterialRow
           ? (r.material?.goodsName ?? '')
           : (r.goods?.name ?? ''),
       listenableOf: (r) => r.goodsNotifier,
       // 格尾树形/选择图标计入量宽（2026-09-16）；物料子行的树缩进仍由基础宽兜。
       chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) {
+        if (row.isAllocationRow) {
+          return UtenTreeTableCell(
+            depth: 1,
+            sequence: '',
+            sequenceInline: true,
+            showLeafMarker: false,
+            guideBleed: UtenEditableGrid.cellVerticalPadding,
+            isLastChild: isLastSubRow?.call(row) ?? true,
+            title: '产出去向',
+          );
+        }
         if (row.isMaterialRow) {
           return UtenTreeTableCell(
             depth: 1,
@@ -578,7 +614,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
             // 连接线要跨过宿主数据格的纵向内边距才连成一条而不是虚线；
             // 数值取自表格组件公开的常量，不在调用点抄魔数（2026-09-15）。
             guideBleed: UtenEditableGrid.cellVerticalPadding,
-            isLastChild: isLastMaterialChild?.call(row) ?? true,
+            isLastChild: isLastSubRow?.call(row) ?? true,
             title: row.material?.goodsName ?? '未命名物料',
             subtitle: row.materialShared
                 ? '沿用前批已领 · ${row.materialSegmentLabel}'
@@ -609,7 +645,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                           : UtenGoodsIdentityCell(name: g.name),
                     ),
                   ),
-                  if (hasMaterialChildren?.call(row) ?? false)
+                  if (hasSubRows?.call(row) ?? false)
                     Padding(
                       padding: const EdgeInsets.only(right: UtenSpacing.s4),
                       child: Icon(
@@ -630,11 +666,15 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       key: 'goodsCode',
       label: '编号',
       width: 130,
-      textOf: (r) => r.isMaterialRow
+      textOf: (r) => r.isAllocationRow
+          ? ''
+          : r.isMaterialRow
           ? (r.material?.goodsCode ?? '')
           : (r.goods?.code ?? ''),
       listenableOf: (r) => r.goodsNotifier,
-      cellBuilder: (context, row) => row.isMaterialRow
+      cellBuilder: (context, row) => row.isAllocationRow
+          ? const SizedBox.shrink()
+          : row.isMaterialRow
           ? UtenGoodsAttributeCell(row.material?.goodsCode)
           : ValueListenableBuilder<GoodsOption?>(
               valueListenable: row.goodsNotifier,
@@ -646,11 +686,15 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       key: 'color',
       label: '颜色',
       width: 130,
-      textOf: (r) => r.isMaterialRow
+      textOf: (r) => r.isAllocationRow
+          ? ''
+          : r.isMaterialRow
           ? (r.material?.colorName ?? '')
           : (colorEntries[r.colorId ?? ''] ?? ''),
       listenableOf: (r) => r.colorIdNotifier,
-      cellBuilder: (context, row) => row.isMaterialRow
+      cellBuilder: (context, row) => row.isAllocationRow
+          ? const SizedBox.shrink()
+          : row.isMaterialRow
           ? UtenGoodsAttributeCell(row.material?.colorName)
           : _readOnlyMasterCell(context, row.colorIdNotifier, colorEntries),
     ),
@@ -658,11 +702,15 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       key: 'unit',
       label: '单位',
       width: 110,
-      textOf: (r) => r.isMaterialRow
+      textOf: (r) => r.isAllocationRow
+          ? ''
+          : r.isMaterialRow
           ? (r.material?.unitName ?? '')
           : (unitEntries[r.unitId ?? ''] ?? ''),
       listenableOf: (r) => r.unitIdNotifier,
-      cellBuilder: (context, row) => row.isMaterialRow
+      cellBuilder: (context, row) => row.isAllocationRow
+          ? const SizedBox.shrink()
+          : row.isMaterialRow
           ? Text(row.material?.unitName ?? '—')
           : _readOnlyMasterCell(context, row.unitIdNotifier, unitEntries),
     ),
@@ -673,7 +721,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       numeric: true,
       required: true,
       headerInfo: l10n.workflowReportQuantityHint,
-      cellBuilder: (context, row) => row.isMaterialRow
+      cellBuilder: (context, row) => row.isSubRow
           ? const SizedBox.shrink()
           : RequiredCellFrame(
               listenable: row.qty,
@@ -691,31 +739,46 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
               ),
             ),
     ),
-    // ===== V583 物料子行专用两列：成品行留空 =====
+    // ADR-129 不良数：可选，只在已选报工工单的行上填；空 = 0。
     EditableGridColumn<DailyGridRow>(
-      key: 'outputRouting',
-      label: '产量分流',
-      width: 260,
-      headerInfo:
-          '实际产量只填写一次。需求份额与公共产出由系统保存时核定；'
-          '转下工序只交当前需求内数量，其余送仓，公共部分经质检合格并实收后可用。',
-      textOf: (row) => productionReportRoutingHint(row),
-      cellBuilder: (context, row) => row.isMaterialRow
-          ? const SizedBox.shrink()
-          : ListenableBuilder(
-              listenable: Listenable.merge([
-                row.qty,
-                row.destinationNotifier,
-                row.directTransferNotifier,
-              ]),
-              builder: (_, _) => Text(
-                productionReportRoutingHint(row),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
+      key: 'defectQty',
+      label: '不良数',
+      width: 104,
+      numeric: true,
+      headerInfo: productionDailyReportDefectInfo,
+      textOf: (r) => r.isMaterialRow ? '' : r.defectQty.text,
+      listenableOf: (r) => r.defectQty,
+      cellBuilder: (context, row) {
+        if (row.isMaterialRow) return const SizedBox.shrink();
+        // 来源随选择/清除来源一起变，货品通知器在来源字段之后赋值，借它重建本格。
+        return ValueListenableBuilder<GoodsOption?>(
+          valueListenable: row.goodsNotifier,
+          builder: (context, _, _) => row.executionSegmentId == null
+              ? Text(
+                  '—',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                )
+              : RequiredCellFrame(
+                  listenable: Listenable.merge([row.defectQty, row.qty]),
+                  isEmpty: () => productionReportDefectIssue(row) != null,
+                  child: TextField(
+                    controller: row.defectQty,
+                    textAlign: TextAlign.right,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: [productionQuantityInputFormatter],
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(isDense: true, hintText: '0'),
+                    ),
+                  ),
+                ),
+        );
+      },
     ),
+    // ===== V583 物料子行专用两列：成品行留空 =====
     EditableGridColumn<DailyGridRow>(
       key: 'issuedQty',
       label: '领料量',
@@ -801,126 +864,141 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
         );
       },
     ),
-    // ===== V584/V585 产出去向两列：物料子行留空 =====
+    // ===== V736/ADR-127 产出去向两列：成品行写摘要或红字，去向分配子行可改，物料子行留空 =====
     EditableGridColumn<DailyGridRow>(
       key: 'destination',
       label: '产出去向',
-      width: 185,
+      width: 300,
       headerInfo:
-          '「送入仓库」= 交仓库送检登记、品质部检验、点收入库(默认)。\n'
-          '「转下一道工序」= 班组自检合格后不入库，直接投给**本车间**的上层工单'
-          '(父件)；审核时自动完成放行、入本车间线边仓和投入，不用再走领料。'
-          '线边仓由系统按车间自动配置，不用去仓库资料里建。\n'
-          '上次报工的去向会自动带入并标黄，改动即清除提醒。\n'
-          '跨车间必须走仓库——料离开本车间就脱离同一批人的视线。',
-      textOf: (r) =>
-          r.isMaterialRow ? '' : (r.isDirectTransfer ? '转下一道工序' : '送入仓库'),
-      listenableOf: (r) => r.destinationNotifier,
-      // 下拉格右侧展开箭头(20)计入自动加宽量宽。
+          '实际产量分到哪里：「转下一道工序」= 班组自检合格后不入库，直接交给本车间的上层工单'
+          '(父件)，审核时自动放行、入本车间内料仓并投入，不用再走领料。\n'
+          '「送入仓库」= 交仓库送检、品质检验、点收入库。\n'
+          '系统按先急后缓把本行产量逐个分给还缺料的上层工单(黄框为系统建议)，分不完的送入仓库；'
+          '改任一条的去向或数量，下面会自动补一条接着分，直到分完。\n'
+          '下拉里「已分满」表示本张报工其它行已把它分满；红字是不能收的原因(例如委外件要先送入仓库、'
+          '上层工单在别的车间)。计划内公共备货与超出计划的产量一律送入仓库。',
+      textOf: (r) => r.isAllocationRow
+          ? _allocationOptionText(r)
+          : r.isMaterialRow
+          ? ''
+          : (r.directTransferBlockedText ?? outputAllocationSummary(r)),
+      listenableOf: (r) =>
+          r.isAllocationRow ? r.allocationDemandNotifier : r.allocationRevision,
       chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) {
         if (row.isMaterialRow) return const SizedBox.shrink();
-        return ValueListenableBuilder<String>(
-          valueListenable: row.destinationNotifier,
-          builder: (context, value, _) {
-            final canTransfer = row.directTransferCandidates.isNotEmpty;
-            // 2026-09-16 用户口径：本文件内表格下拉已统一用自家 UtenDropdownField
-            //（统一弹层/单行省略号/列宽自适应），不再出现原生
-            // DropdownButtonFormField（全站其余处的替换由下拉组件批次负责）。
-            return ValueListenableBuilder<bool>(
-              valueListenable: row.destinationAutofilled,
-              builder: (context, autofilled, _) => UtenDropdownField(
-                dense: true,
-                value: value,
-                // V595 记忆预填：黄框 + 警示图标提醒核对(与带记忆的框同款)。
-                autofilled: autofilled,
-                items: [
-                  const UtenDropdownItem(value: 'WAREHOUSE', label: '送入仓库'),
-                  UtenDropdownItem(
-                    value: 'WORKSHOP',
-                    enabled: canTransfer,
-                    label: canTransfer ? '转下一道工序' : '转下一道工序(无同车间上层工单)',
+        if (!row.isAllocationRow) {
+          return ValueListenableBuilder<int>(
+            valueListenable: row.allocationRevision,
+            builder: (context, _, _) {
+              final blocked = row.directTransferBlockedText;
+              // 不能转(或候选读不到)：红字写明原因，整句放在悬停提示里防截断。
+              if (blocked != null) return DirectTransferBlockedText(blocked);
+              final summary = outputAllocationSummary(row);
+              return Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  summary.isEmpty ? '—' : summary,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
-                ],
-                onChanged: (next) {
-                  if (next == null) return;
-                  onDestinationChanged?.call(row, next);
-                },
-              ),
-            );
-          },
+                ),
+              );
+            },
+          );
+        }
+        final parent = row.allocationParent!;
+        return ValueListenableBuilder<int>(
+          valueListenable: parent.allocationRevision,
+          builder: (context, _, _) => ValueListenableBuilder<String?>(
+            valueListenable: row.allocationIssue,
+            builder: (context, issue, _) => ValueListenableBuilder<bool>(
+              valueListenable: row.allocationAutofilled,
+              builder: (context, autofilled, _) {
+                // 服务端判定一个可送的上层工单都没有：只能送入仓库，不给下拉(原因在成品行红字)。
+                if (parent.directTransferUnavailable &&
+                    row.allocationDemandId == null) {
+                  return const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('送入仓库', maxLines: 1),
+                  );
+                }
+                return UtenDropdownField(
+                  key: ValueKey(
+                    'daily-allocation-destination-${identityHashCode(row)}',
+                  ),
+                  dense: true,
+                  allowClear: false,
+                  value:
+                      row.allocationDemandId ?? outputAllocationWarehouseValue,
+                  autofilled: autofilled && issue == null,
+                  errorMessage: issue,
+                  items: outputAllocationOptions(row),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    onAllocationDestinationChanged?.call(
+                      row,
+                      value == outputAllocationWarehouseValue ? null : value,
+                    );
+                  },
+                );
+              },
+            ),
+          ),
         );
       },
     ),
     EditableGridColumn<DailyGridRow>(
-      key: 'directTransfer',
-      label: '转给工单',
-      width: 210,
-      required: true,
+      key: 'allocationQty',
+      label: '去向数量',
+      width: 120,
+      numeric: true,
       headerInfo:
-          '本批产出投给同车间的哪个上层工单。只有一个候选时自动选中；'
-          '上次投给过的父件产品会自动带入并标黄，改动即清除提醒；'
-          '一次只投一个工单，要投多个就拆成多行。',
-      textOf: (r) => r.directTransfer == null
-          ? ''
-          : _directTransferCellText(r.directTransfer!),
-      listenableOf: (r) => r.directTransferNotifier,
-      chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
+          '这一条去向分多少(与完工申报量同单位)。所有去向合计始终等于本行完工申报量：'
+          '改大会压低下面的条目，改小则多出来的自动排到下面(先急后缓的下一个上层工单，没有就送入仓库)；'
+          '改成 0 的条目会消失。转给上层工单的数量不能超过它还差的数量。',
+      textOf: (r) => r.isAllocationRow ? r.allocationQty.text : '',
+      listenableOf: (r) => r.allocationQty,
       cellBuilder: (context, row) {
-        if (row.isMaterialRow) return const SizedBox.shrink();
-        return ValueListenableBuilder<String>(
-          valueListenable: row.destinationNotifier,
-          builder: (context, destination, _) {
-            if (destination != 'WORKSHOP') {
-              return Text(
-                '—',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+        if (!row.isAllocationRow) return const SizedBox.shrink();
+        return ValueListenableBuilder<String?>(
+          valueListenable: row.allocationIssue,
+          builder: (context, issue, _) => ValueListenableBuilder<bool>(
+            valueListenable: row.allocationAutofilled,
+            builder: (context, autofilled, _) => Focus(
+              onFocusChange: (focused) =>
+                  onAllocationQtyFocus?.call(row, focused),
+              child: TextField(
+                key: ValueKey('daily-allocation-qty-${identityHashCode(row)}'),
+                controller: row.allocationQty,
+                readOnly:
+                    row.allocationParent?.directTransferUnavailable ?? false,
+                textAlign: TextAlign.right,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
                 ),
-              );
-            }
-            return RequiredCellFrame(
-              listenable: row.directTransferNotifier,
-              isEmpty: () => row.directTransfer == null,
-              child: ValueListenableBuilder<ProductionDirectTransferCandidate?>(
-                valueListenable: row.directTransferNotifier,
-                builder: (context, picked, _) => ValueListenableBuilder<bool>(
-                  valueListenable: row.directTransferAutofilled,
-                  builder: (context, autofilled, _) => UtenDropdownField(
-                    dense: true,
-                    value: picked?.demandId,
-                    // 未选时不再复述列头（空格走组件默认「请选择」）；
-                    // 原接收工单失效的行级警示保留（2026-09-27 表格小字清理口径）。
-                    hintText: row.pendingDirectTransferDemandId == null
-                        ? null
-                        : '原接收工单当前不可用，请刷新或重新选择',
-                    // V595 记忆预填：黄框 + 警示图标提醒核对。
-                    autofilled: autofilled && picked != null,
-                    items: [
-                      // 收起态与下拉项同一份文案（父件产品 · 工单号·还差多少）：
-                      // UtenDropdownField 的格内值与浮层条目共用 label，两行条目
-                      // 拼成一行省略号（2026-09-16 全站单行口径），textOf 量同款
-                      // 文案保证列宽跟手。
-                      for (final candidate in row.directTransferCandidates)
-                        UtenDropdownItem(
-                          value: candidate.demandId,
-                          label: _directTransferCellText(candidate),
-                        ),
-                    ],
-                    onChanged: (demandId) {
-                      if (demandId == null) return;
-                      onDirectTransferPicked?.call(
-                        row,
-                        row.directTransferCandidates.firstWhere(
-                          (candidate) => candidate.demandId == demandId,
-                        ),
-                      );
-                    },
+                onChanged: (_) => onAllocationQtyChanged?.call(row),
+                decoration: applyAutofillHint(
+                  UtenInputDecoration(
+                    InputDecoration(
+                      isDense: true,
+                      hintText: '0',
+                      error: utenFieldError(issue),
+                      helper: autofilled && issue == null
+                          ? const UtenFieldMessage.autofill(
+                              '系统按先急后缓给出的建议数量，请核对；改动后下面会自动重排',
+                            )
+                          : null,
+                    ),
                   ),
+                  Theme.of(context),
+                  autofilled: autofilled && issue == null,
                 ),
               ),
-            );
-          },
+            ),
+          ),
         );
       },
     ),
@@ -930,12 +1008,11 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       key: 'planNo',
       label: '来源子任务',
       width: 240,
-      textOf: (row) => row.isMaterialRow
-          ? ''
-          : (row.executionSegmentCode ?? row.planNo.text),
+      textOf: (row) =>
+          row.isSubRow ? '' : (row.executionSegmentCode ?? row.planNo.text),
       // 格尾跳转图标计入量宽（2026-09-16）。
       chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
-      cellBuilder: (context, row) => row.isMaterialRow
+      cellBuilder: (context, row) => row.isSubRow
           ? const SizedBox.shrink()
           : ValueListenableBuilder<TextEditingValue>(
               valueListenable: row.planNo,
@@ -1002,9 +1079,9 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       key: 'remark',
       label: '备注',
       width: 180,
-      textOf: (r) => r.isMaterialRow ? '' : r.remark.text,
+      textOf: (r) => r.isSubRow ? '' : r.remark.text,
       listenableOf: (r) => r.remark,
-      cellBuilder: (context, row) => row.isMaterialRow
+      cellBuilder: (context, row) => row.isSubRow
           ? const SizedBox.shrink()
           : TextField(
               controller: row.remark,
@@ -1015,22 +1092,121 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
 }
 
 /// 数量文本：整数不带小数点，小数最多 4 位且不留尾零(与全站数量显示同口径)。
-String _quantityText(double value) => value == value.roundToDouble()
-    ? value.toStringAsFixed(0)
-    : value
-          .toStringAsFixed(4)
-          .replaceFirst(RegExp(r'0+$'), '')
-          .replaceFirst(RegExp(r'\.$'), '');
+String _quantityText(double value) => outputAllocationQuantityText(value);
 
-/// 「转给工单」格的单元格文案：父件产品(收货品名+编号) · 工单号·还差多少。
-/// 格内值、下拉条目与列宽测量(textOf)共用这一份，保证量宽与所见一致。
-String _directTransferCellText(ProductionDirectTransferCandidate candidate) {
-  final primary = candidate.receivingGoodsLabel.isEmpty
-      ? candidate.label
-      : candidate.receivingGoodsLabel;
-  return candidate.secondaryLabel.isEmpty
-      ? primary
-      : '$primary · ${candidate.secondaryLabel}';
+/// 去向下拉里「送入仓库」那一项的值(下拉值不能为空，用它代表「不转给任何上层工单」)。
+const outputAllocationWarehouseValue = '__WAREHOUSE__';
+
+/// 成品行「产出去向」格的摘要：转下一道工序几个工单共多少、送入仓库多少。
+String outputAllocationSummary(DailyGridRow product) {
+  var direct = 0.0;
+  var receivers = 0;
+  var warehouse = 0.0;
+  for (final allocation in product.allocationRows) {
+    final qty = double.tryParse(allocation.allocationQty.text.trim()) ?? 0;
+    if (!qty.isFinite || qty <= 0) continue;
+    if (allocation.allocationDemandId == null) {
+      warehouse += qty;
+    } else {
+      direct += qty;
+      receivers++;
+    }
+  }
+  return [
+    if (receivers > 0) '转下一道工序 $receivers 个工单 ${_quantityText(direct)}',
+    if (warehouse > 0) '送入仓库 ${_quantityText(warehouse)}',
+  ].join(' · ');
+}
+
+/// 去向分配子行的下拉条目：可送的上层工单(先急后缓，「还差 N」/「已分满」)、
+/// 不能收的上层工单(置灰红字写原因)、送入仓库。
+List<UtenDropdownItem> outputAllocationOptions(DailyGridRow allocation) {
+  final parent = allocation.allocationParent!;
+  final siblings = {
+    for (final other in parent.allocationRows)
+      if (!identical(other, allocation) &&
+          other.allocationDemandId != null &&
+          outputAllocationVisible(other))
+        other.allocationDemandId!,
+  };
+  final receivers =
+      siblings.length + (allocation.allocationDemandId == null ? 0 : 1);
+  final items = <UtenDropdownItem>[];
+  for (final candidate in parent.directTransferCandidates) {
+    final current = candidate.demandId == allocation.allocationDemandId;
+    final room = parent.directTransferRoomBase[candidate.demandId] ?? 0;
+    final full = room <= 0.0000001;
+    final taken = siblings.contains(candidate.demandId);
+    final atLimit =
+        !current &&
+        allocation.allocationDemandId == null &&
+        receivers >= parent.directTransferReceiverLimit;
+    final label = candidate.optionLabel(room);
+    items.add(
+      UtenDropdownItem(
+        value: candidate.demandId,
+        enabled: current || (!full && !taken && !atLimit),
+        label: current
+            ? label
+            : taken
+            ? '$label · 本行已分给它'
+            : full
+            ? '${candidate.optionLabel(0).replaceFirst(RegExp(r' · 还差 [^·]*'), '')} · 已分满'
+            : atLimit
+            ? '$label · 一行最多转给 ${parent.directTransferReceiverLimit} 个工单'
+            : label,
+      ),
+    );
+  }
+  final listed = {for (final item in items) item.value};
+  // 原来选的上层工单现在不在可送名单里(草稿重开后失效)：保留它的显示，让人自己改。
+  // 候选读取失败时只是暂时核对不了，不能说成「不能收」，也不标红。
+  final currentId = allocation.allocationDemandId;
+  if (currentId != null && !listed.contains(currentId)) {
+    final blocked = parent.directTransferBlockedTargets
+        .where((target) => target.demandId == currentId)
+        .firstOrNull;
+    final unread = parent.directTransferLoadFailed;
+    items.add(
+      UtenDropdownItem(
+        value: currentId,
+        enabled: false,
+        error: !unread,
+        label:
+            blocked?.optionLabel ??
+            (unread ? '原来选的上层工单(候选读取失败，暂时无法核对)' : '原来选的上层工单现在不能收，请重新选择'),
+      ),
+    );
+    listed.add(currentId);
+  }
+  for (final target in parent.directTransferBlockedTargets) {
+    if (listed.contains(target.demandId)) continue;
+    items.add(
+      UtenDropdownItem(
+        value: target.demandId,
+        enabled: false,
+        error: true,
+        label: target.optionLabel,
+      ),
+    );
+  }
+  items.add(
+    const UtenDropdownItem(
+      value: outputAllocationWarehouseValue,
+      label: '送入仓库',
+    ),
+  );
+  return items;
+}
+
+/// 去向分配子行「产出去向」格的文字(列宽测量用，与下拉收起态同一份)。
+String _allocationOptionText(DailyGridRow allocation) {
+  final demandId = allocation.allocationDemandId;
+  if (demandId == null) return '送入仓库';
+  for (final item in outputAllocationOptions(allocation)) {
+    if (item.value == demandId) return item.label;
+  }
+  return '';
 }
 
 /// 只读主档字段单元格（颜色/单位自动回填后用）：显示 entries[id] 名，空显示「—」。
@@ -1053,4 +1229,27 @@ Widget _readOnlyMasterCell(
       );
     },
   );
+}
+
+/// 「转给工单」格的不可转红字(V736/ADR-127)：单行省略，整句放在悬停提示里。
+class DirectTransferBlockedText extends StatelessWidget {
+  const DirectTransferBlockedText(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: text,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: Theme.of(context).colorScheme.error),
+        ),
+      ),
+    );
+  }
 }

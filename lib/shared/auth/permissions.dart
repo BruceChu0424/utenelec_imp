@@ -18,10 +18,6 @@ abstract final class Perm {
   /// 锁定、启停账号以及重置一次性临时密码。
   static const accountSupport = 'account:support';
 
-  /// 财务敏感驾驶舱字段查看。
-  static const dashboardFinanceSensitiveView =
-      'dashboard:finance_sensitive:view';
-
   /// 权限、数据范围和系统设置管理；后端同时要求超级管理员身份。
   static const authorizationManage = 'authorization:manage';
 
@@ -193,6 +189,11 @@ abstract final class Perm {
   /// 领导或库存负责人明确授权后，可直接把库存余额修正为目标值。
   static const stockBalanceAdjust = 'stock:balance:adjust';
 
+  /// 单重管理 (ADR-135)：单重设置 (默认皮重/核对容差/参与学习/换批方式)、人工设定单重、
+  /// 称重记录排除/恢复、从今天起重新学习、核重 (只改库存重量不动数量)；
+  /// 也可称样校准，并能看到按供应商的单重对比。
+  static const stockWeightManage = 'stock:weight:manage';
+
   /// 仓库管理单据（view 全员 / edit 归 PMC）
   static const stockDocView = 'stock_doc:view';
   static const stockDocEdit = 'stock_doc:edit';
@@ -224,6 +225,28 @@ abstract final class Perm {
   /// 先入库后质检(V596)：品质结论前把到货上架到实际叶仓与库位；独立于确认入库。
   static const warehouseIqcStockInBeforeInspection =
       'warehouse_iqc_stock_in:before_inspection';
+
+  // ===== 车间内料仓 (ADR-131; 只供路由守卫与码表对齐, 页面按钮一律看服务端 allowedActions) =====
+  /// 查看车间内料仓与用量报表。
+  static const workshopMaterialView = 'workshop_material:view';
+
+  /// 发料到车间内料仓与接收退回。
+  static const workshopMaterialIssue = 'workshop_material:issue';
+
+  /// 车间申请领料、退回与登记其它耗用。
+  static const workshopMaterialRequest = 'workshop_material:request';
+
+  /// 车间内料仓盘点。
+  static const workshopMaterialCount = 'workshop_material:count';
+
+  /// 认料与换料。
+  static const workshopMaterialChoose = 'workshop_material:choose';
+
+  /// 车间整批领料设置、机台与上线准备。
+  static const workshopMaterialSetup = 'workshop_material:setup';
+
+  /// 撤销车间内料仓结算 (只能单独授给个人)。
+  static const workshopMaterialReopen = 'workshop_material:reopen';
 
   /// 采购/委外收货 IQC 待检查看与处置（处置还需 :handle）。
   static const procurementInspectionView = 'procurement_inspection:view';
@@ -391,6 +414,11 @@ abstract final class Perm {
   static const salesOrderFinanceView = 'sales_order_finance:view';
   static const salesOrderFinanceConfirm = 'sales_order_finance:confirm';
 
+  /// 销售报价财务核价(ADR-134)：查看核价队列与详情 / 改价、退回、确认、撤销确认。
+  /// 服务端再叠加财务部门树在职资格(同订单财务确认)；页面按钮只认服务端 allowedActions。
+  static const salesQuoteFinanceView = 'sales_quote_finance:view';
+  static const salesQuoteFinanceConfirm = 'sales_quote_finance:confirm';
+
   static const arApLedgerView = 'ar_ap_ledger:view';
   static const customerPrepaymentView = 'customer_prepayment:view';
   static const customerPrepaymentApply = 'customer_prepayment:apply';
@@ -491,7 +519,6 @@ abstract final class Perm {
   static const settlementMethodExport = 'settlement_method:export';
   static const salesQuoteCreate = 'sales_quote:create';
   static const salesQuoteDelete = 'sales_quote:delete';
-  static const salesQuoteApprove = 'sales_quote:approve';
   static const salesQuoteReverse = 'sales_quote:reverse';
   static const salesQuoteConvert = 'sales_quote:convert';
   static const salesOrderCreate = 'sales_order:create';

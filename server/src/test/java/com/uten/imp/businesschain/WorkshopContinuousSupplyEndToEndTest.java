@@ -56,7 +56,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false", "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.production.readiness-reconcile.enabled=false",
-        "uten.policy-intelligence.enabled=false", "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",
+        "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",
         "uten.storage.malware-scan.provider=test-only", "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789", "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test", "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
@@ -309,18 +309,20 @@ class WorkshopContinuousSupplyEndToEndTest {
     }
 
     @Test
-    void candidatesRememberTheLastDestinationAndReceivingProduct() {
-        Case c = create("cs-memory", false);
+    void candidatesShowWhatTheReceiverStillNeedsAfterATransfer() {
+        // V736/ADR-127：候选只报「谁能收、还差多少」(先急后缓)，默认去向由报工页按这个次序给出，
+        // 不再按上次报工记忆替人选。
+        Case c = create("cs-remaining", false);
         fixture.loginAs(c.workerUser());
         var before = directTransfers.candidates(c.childSegment(), c.child(), null);
-        assertNull(before.lastDestination(), "从没报过：没有记忆");
+        assertEquals(1, before.candidates().size());
+        assertEquals(0, new BigDecimal("100").compareTo(before.candidates().getFirst().remainingQty()));
         transfer(c, "10", false);
         var after = directTransfers.candidates(c.childSegment(), c.child(), null);
-        assertEquals("WORKSHOP", after.lastDestination());
-        assertEquals(c.parent(), after.lastReceivingGoodsId(), "记住的是父件产品，不是工单号");
         assertEquals(1, after.candidates().size());
         assertEquals(0, new BigDecimal("90").compareTo(after.candidates().getFirst().remainingQty()),
                 "还差多少 = 需求量 − 已直送/已预留");
+        assertTrue(after.blockedTargets().isEmpty());
     }
 
     /**
@@ -476,8 +478,7 @@ class WorkshopContinuousSupplyEndToEndTest {
         item.setUnitRate(BigDecimal.ONE);
         item.setQty(new BigDecimal(quantity));
         item.setIsFinal(isFinal);
-        item.setDestination("WORKSHOP");
-        item.setDirectTransferDemandId(parentDemand(c));
+        item.setAllocations(List.of(com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine.direct(parentDemand(c), item.getQty())));
         report.setItems(List.of(item));
         report.setMaterialLines(WorkshopMaterialFlowTestSupport.materialUse(db,c.childSegment(),item.getQty()));
         reports.approve(reports.create(report).getId(), DailyReportApproveRequests.freshKey());

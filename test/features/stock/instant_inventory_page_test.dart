@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/layout/uten_split_view.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -627,6 +628,59 @@ void main() {
     await tester.pumpAndSettle();
     expect(stock.lastUnitId, isNull);
   });
+
+  // ADR-135：库存重量紧跟库存数量；估算「≈」、有库存没称过「未称」、本行无库存「—」，
+  // 绝不把未知显示成 0；工具条「重量单位」切换显示单位，导出跟着带固定单位与表头筛选。
+  testWidgets('weight follows quantity, marks estimates and unknowns, and '
+      'the display unit drives cells and export', (tester) async {
+    const rows = <InstantInventoryRow>[
+      InstantInventoryRow(
+        goodsId: 'g1',
+        name: '螺丝',
+        qty: 5000,
+        weight: 11.55,
+        weightEstimated: true,
+      ),
+      InstantInventoryRow(goodsId: 'g2', name: '垫片', qty: 20),
+      InstantInventoryRow(goodsId: 'g3', name: '待检件', qty: 0),
+    ];
+    final stock = _RecordingStockRepository(rows: rows);
+    await pumpPage(tester, stock: stock);
+
+    MasterDataTableView<InstantInventoryRow> table() =>
+        tester.widget<MasterDataTableView<InstantInventoryRow>>(
+          find.byType(MasterDataTableView<InstantInventoryRow>),
+        );
+    MasterColumnDef<InstantInventoryRow> weightColumn() =>
+        table().columns.firstWhere((c) => c.key == 'weight');
+
+    final keys = [for (final c in table().columns) c.key];
+    expect(keys.indexOf('weight'), keys.indexOf('qty') + 1);
+    expect(weightColumn().type, 'weight');
+    expect(weightColumn().value(rows[0]), '≈11.55 kg');
+    expect(weightColumn().value(rows[1]), '未称');
+    expect(weightColumn().value(rows[2]), '—');
+
+    UtenExportButton exportButton() =>
+        tester.widget<UtenExportButton>(find.byType(UtenExportButton));
+    // 「自动」显示单位导出按千克 (文件数值列不混单位)。
+    expect(exportButton().queryParams['weightUnit'], 'KG');
+
+    await tester.tap(find.byKey(const ValueKey('weight-display-unit-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('weight-unit-option-克')).last);
+    await tester.pumpAndSettle();
+
+    expect(weightColumn().value(rows[0]), '≈11,550 g');
+    expect(exportButton().queryParams['weightUnit'], 'G');
+
+    // 表头筛选同样进入导出口径。
+    table().onFilterChanged('color', 'color-1');
+    await tester.pumpAndSettle();
+    expect(exportButton().queryParams['colorId'], 'color-1');
+    // 偏好防抖推送计时器走完再结束 (未登录不推服务端)。
+    await tester.pump(const Duration(seconds: 1));
+  });
 }
 
 Finder _searchBar() {
@@ -668,8 +722,10 @@ class _RecordingStockRepository extends StockQueryRepository {
   _RecordingStockRepository({
     this.delayedSearches = const {},
     this.searchFailuresRemaining = 0,
+    this.rows = const <InstantInventoryRow>[],
   }) : super(_InventoryApi());
 
+  final List<InstantInventoryRow> rows;
   final Map<String, Completer<Set<String>>> delayedSearches;
   int searchFailuresRemaining;
   final searchQueries = <String>[];
@@ -730,11 +786,11 @@ class _RecordingStockRepository extends StockQueryRepository {
     lastSeries = series;
     lastUnitId = unitId;
     return Future.value(
-      const PagedResult<InstantInventoryRow>(
-        items: <InstantInventoryRow>[],
+      PagedResult<InstantInventoryRow>(
+        items: rows,
         page: 1,
         size: 20,
-        total: 0,
+        total: rows.length,
         totalPages: 1,
       ),
     );

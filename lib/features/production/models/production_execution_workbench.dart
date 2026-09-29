@@ -242,8 +242,24 @@ class ProductionExecutionWorkbenchSegment {
     this.blockedReason,
     this.planBeginDate,
     this.planEndDate,
+    this.binMaterialState,
+    this.needsStartConfirmation = false,
+    this.allowedActions = const [],
   }) : hasAvailableMaterial = hasAvailableMaterial ?? hasUnregisteredMaterial,
        plannedInboundQty = plannedInboundQty ?? inboundQty;
+
+  /// 车间内料仓用料状态(ADR-131 §5.4, 服务端 fn_segment_bin_material_state 给出)。
+  static const binStateKnown = 'KNOWN';
+  static const binStateOrderOnly = 'ORDER_ONLY';
+  static const binStateNoBin = 'NO_BIN';
+  static const binStateNeedBin = 'NEED_BIN';
+  static const binStateNeedChoice = 'NEED_CHOICE';
+
+  /// 段级动作(服务端按权限码与对象范围算好)：这张工单改用别的料。
+  static const actionChangeMaterial = 'CHANGE_MATERIAL';
+
+  /// 段级动作：开工确认表里认料。
+  static const actionChoose = 'CHOOSE';
 
   final String segmentId;
   final String planId;
@@ -377,6 +393,30 @@ class ProductionExecutionWorkbenchSegment {
 
   /// 当前用户能不能催计划(有计划还没下单的料，且本人有开工 / 领料权限)。
   final bool canUrgePlanning;
+
+  /// 车间内料仓用料状态(ADR-131)：KNOWN / ORDER_ONLY / NO_BIN / NEED_BIN /
+  /// NEED_CHOICE；旧服务端不返回时为 null(按 NO_BIN 原样处理)。
+  final String? binMaterialState;
+
+  /// 开工前要先过开工确认表(待认料或生产路线未确认，且车间已开启或不涉及
+  /// 内料仓)：这类行可勾选、点开工弹确认表(ADR-131 §5.4)。
+  final bool needsStartConfirmation;
+
+  /// 服务端按权限码与对象范围算好的段级动作(CHANGE_MATERIAL / CHOOSE)。
+  /// 页面只看它，不在本地拼权限。
+  final List<String> allowedActions;
+
+  /// 待认料：车间已开启整批领料，产品还没选用哪种料。
+  bool get needsMaterialChoice => binMaterialState == binStateNeedChoice;
+
+  /// 产品的料要从车间内料仓领，但本车间还没开启整批领料(开工会被拒)。
+  bool get needsMaterialBin => binMaterialState == binStateNeedBin;
+
+  /// 行菜单「这张工单改用别的料」是否出现。
+  bool get canChangeMaterial => allowedActions.contains(actionChangeMaterial);
+
+  /// 当前用户能在开工确认表里认料(服务端段级动作 CHOOSE)。
+  bool get canChooseMaterial => allowedActions.contains(actionChoose);
 
   /// 在等计划下单：还有缺料，而且其中有计划还没下单的。
   bool get waitingForPlanning => materialPlanningGapKindCount > 0;
@@ -536,8 +576,15 @@ class ProductionExecutionWorkbenchSegment {
       json['planningNextUrgeAt'] as String? ?? '',
     ),
     canUrgePlanning: json['canUrgePlanning'] == true,
+    binMaterialState: json['binMaterialState'] as String?,
+    needsStartConfirmation: json['needsStartConfirmation'] == true,
+    allowedActions: _stringList(json['allowedActions']),
   );
 }
+
+List<String> _stringList(Object? raw) => raw is List
+    ? raw.whereType<String>().toList(growable: false)
+    : const <String>[];
 
 /// 车间任务的一种物料的事实(ADR-095)：数量为基础单位；状态桶与列表汇总同口径。
 class ProductionWorkshopTaskMaterial {

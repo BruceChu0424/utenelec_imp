@@ -24,7 +24,21 @@ final class MaterialAnalysisRouteBatchWriter {
 
     MaterialAnalysisRouteBatchWriter(EntityManager em) { this.em = em; }
 
+    /** 人工确认 (PUT /routes): 先按货品 UUID 顺序锁住本批涉及的全部货品行, 再写. */
     Result apply(UUID analysisId, UUID actorId, List<Change> changes) {
+        return apply(analysisId, actorId, changes, true);
+    }
+
+    /**
+     * 服务端重算里的自动确认 (ADR-102, {@link MaterialAnalysisRouteAutoConfirm}): 写法与人工确认
+     * 完全相同, 只是货品行只锁「主档来源真要改」的那几行 (多数行建议本来就取自主档, 不用改).
+     * 重算发生在各种命令里, 没必要为一次不改主档的确认去锁一批货品行、拉长锁等待.
+     */
+    Result applyAutomatic(UUID analysisId, UUID actorId, List<Change> changes) {
+        return apply(analysisId, actorId, changes, false);
+    }
+
+    private Result apply(UUID analysisId, UUID actorId, List<Change> changes, boolean lockEveryGoods) {
         if (changes.isEmpty()) return new Result(0, 0);
         Map<UUID, String> goodsRoutes = new HashMap<>();
         var mixedGoods = new HashSet<UUID>();
@@ -38,10 +52,11 @@ final class MaterialAnalysisRouteBatchWriter {
                 mixedGoods.contains(id) ? null : MaterialAnalysisService.sourceTypeForRoute(goodsRoutes.get(id))});
         var goods = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT goods.id, goods.source_type,
-                       EXISTS (SELECT 1 FROM goods_bom_items bom WHERE bom.goods_id=goods.id AND NOT bom.is_deleted)
+                       fn_goods_has_order_bom(goods.id)
                 FROM goods JOIN %s ON input.goods_id=goods.id
-                WHERE NOT goods.is_deleted ORDER BY input._position FOR UPDATE OF goods
-                """.formatted(GOODS.recordset("input"))).setParameter("snapshots", goodsInput));
+                WHERE NOT goods.is_deleted ORDER BY input._position %s
+                """.formatted(GOODS.recordset("input"), lockEveryGoods ? "FOR UPDATE OF goods" : ""))
+                .setParameter("snapshots", goodsInput));
         if (goods.size() != goodsIds.size()) throw MaterialAnalysisService.conflict("货品资料已变化，请刷新物料分析后重试");
         Map<UUID, String> retainedSuggestions = new HashMap<>();
         for (Object[] row : goods) retainedSuggestions.put((UUID) row[0],
@@ -89,6 +104,20 @@ final class MaterialAnalysisRouteBatchWriter {
                 """.formatted(ROUTES.recordset("selected")))
                 .setParameter("analysisId", analysisId).setParameter("actorId", actorId)
                 .setParameter("snapshots", routeInput).executeUpdate();
+        if (!lockEveryGoods) {
+            // Same PostgreSQL UUID lock order as the manual path, restricted to rows the update below touches.
+            // 自动确认只补空白档案, 从不改写别人填过的来源 (例: 顶层产品已有生产计划按自制确认,
+            // 但档案写的是委外 —— 档案保持委外, 只有人工确认才回写).
+            List<UUID> locked = NativeQueryResults.typedRows(em.createNativeQuery("""
+                    SELECT goods.id FROM goods JOIN %s ON input.goods_id=goods.id
+                    WHERE NOT goods.is_deleted AND input.source_type IS NOT NULL
+                      AND NULLIF(btrim(goods.source_type), '') IS NULL
+                    ORDER BY input._position FOR UPDATE OF goods
+                    """.formatted(GOODS.recordset("input")), UUID.class).setParameter("snapshots", goodsInput), UUID.class);
+            if (locked.isEmpty()) return new Result(materialCount, 0);
+            goodsInput = GOODS.json(locked.stream().sorted(PostgresUuidOrder.INSTANCE).toList(), id -> new Object[] {id,
+                    mixedGoods.contains(id) ? null : MaterialAnalysisService.sourceTypeForRoute(goodsRoutes.get(id))});
+        }
         int goodsCount = em.createNativeQuery("""
                 UPDATE goods SET source_type = input.source_type, version = goods.version + 1,
                     updated_at = now(), updated_by = :actorId

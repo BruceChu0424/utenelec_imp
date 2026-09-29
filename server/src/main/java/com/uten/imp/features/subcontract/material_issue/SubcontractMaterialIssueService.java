@@ -11,6 +11,10 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.features.stock.weight.CapturedWeight;
+import com.uten.imp.features.stock.weight.GoodsWeightObservationService;
+import com.uten.imp.features.stock.weight.SourceKind;
+import com.uten.imp.features.stock.weight.WeightSource;
 import com.uten.imp.security.CommercialPriceVisibility;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
@@ -68,6 +72,8 @@ public class SubcontractMaterialIssueService {
     private static final String OUTBOUND_EXECUTE = "subcontract_outbound:execute";
     /** 仓库委外出仓池的读取门槛(系统池草稿按岗位放行，不按个人归属)。 */
     private static final String OUTBOUND_VIEW = "subcontract_outbound:view";
+    /** 委外出仓称重核对观测的幂等键前缀: 'ISSUE:' + 出仓明细 id (ADR-135 §3.8)。 */
+    static final String ISSUE_CAPTURE_PREFIX = "ISSUE:";
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（发料无金额列，日期/单据号可排序；命中才排序，否则默认 billDate DESC）。
      *  2026-09-25 单号列统一：billNo 进白名单。 */
@@ -79,6 +85,9 @@ public class SubcontractMaterialIssueService {
     // V476：叶子仓落库校验。字段注入+可空——单测手工构造时缺省跳过，Spring 环境恒注入。
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
+    // ADR-135 委外出仓称重核对观测: 同上字段注入+可空, 单测手工构造时不登记观测(观测不承载过账事实)。
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private GoodsWeightObservationService weightObservations;
     private final TxSessionVars tx;
     private final EntityManager em;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
@@ -348,7 +357,8 @@ public class SubcontractMaterialIssueService {
         planService.consumeOutboundReservations(id, r.getWarehouseId());
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractMaterialIssueItem it : items) {
-            applyMovement(r, it, StockService.DIR_OUT, now, null);
+            StockService.PostedMovement posted = applyMovement(r, it, StockService.DIR_OUT, now, null);
+            recordIssueObservation(r, it, posted, now);
             // 冻结 BOM 版本（每单位父件耗用本子件量）+ 建供应商处子件台账（at_supplier = 发料量）。
             // 计划挂接行冻结批准时计划的 bom_unit_qty（与计划量同快照，BOM 后改不影响在途守恒）；
             // 历史手工行回落当前 goods_bom_items 首条活动边。
@@ -425,15 +435,18 @@ public class SubcontractMaterialIssueService {
     /**
      * 查当前 goods_bom_items 的子件单位用量（每单位父件耗用本子件），作为本次发料的冻结 BOM 版本。
      * 无 BOM 边返回 null（该子件不按 BOM 消费；回厂消费将跳过此子件）。
+     * 整批领料的料 (ADR-131 期间边) 不参与委外, 同样返回 null。
      */
     private BigDecimal lookupFrozenUnitQty(UUID parentGoodsId, UUID componentGoodsId) {
         if (parentGoodsId == null || componentGoodsId == null) return null;
         @SuppressWarnings("unchecked")
         List<BigDecimal> rows = em.createNativeQuery("""
-                SELECT qty FROM goods_bom_items
-                WHERE goods_id = :parent AND component_goods_id = :component
-                  AND COALESCE(is_deleted, false) = false
-                ORDER BY sort_order ASC NULLS LAST, id ASC
+                SELECT bom.qty FROM goods_bom_items bom
+                WHERE bom.goods_id = :parent AND bom.component_goods_id = :component
+                  AND COALESCE(bom.is_deleted, false) = false
+                  AND NOT EXISTS (SELECT 1 FROM goods c
+                                  WHERE c.id = bom.component_goods_id AND c.issue_method = 'PERIODIC')
+                ORDER BY bom.sort_order ASC NULLS LAST, bom.id ASC
                 LIMIT 1
                 """)
                 .setParameter("parent", parentGoodsId)
@@ -467,6 +480,10 @@ public class SubcontractMaterialIssueService {
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractMaterialIssueItem it : items) {
             applyMovement(r, it, StockService.DIR_IN, now, null);
+            // ADR-135：发料作废, 审核时记下的称重核对观测一并红冲。
+            if (weightObservations != null) {
+                weightObservations.reverseByCaptureKey(ISSUE_CAPTURE_PREFIX + it.getId());
+            }
             // 物料回到公司仓：清零供应商处台账（at_supplier 归零；consumed/returned/wasted 已校验为 0）
             it.setAtSupplierQty(BigDecimal.ZERO);
             itemRepo.save(it);
@@ -569,16 +586,42 @@ public class SubcontractMaterialIssueService {
     }
 
     /** 写一笔库存流水（方向由调用方给）。qty 为明细量，baseQty = qty×unit_rate。 */
-    private void applyMovement(SubcontractMaterialIssue r, SubcontractMaterialIssueItem it, short direction,
-                               OffsetDateTime ts, BigDecimal overrideAmount) {
-        BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
-        BigDecimal baseQty = it.getQty().multiply(rate);
+    private StockService.PostedMovement applyMovement(
+            SubcontractMaterialIssue r, SubcontractMaterialIssueItem it, short direction,
+            OffsetDateTime ts, BigDecimal overrideAmount) {
         BigDecimal amt = overrideAmount != null ? overrideAmount : it.getAmountLocal();
-        stockService.recordMovement(new StockService.MovementRequest(
+        return stockService.recordMovement(new StockService.MovementRequest(
                 ts, StockService.TYPE_SUBCONTRACT_MATERIAL_ISSUE, StockService.SRC_SUBCONTRACT_MATERIAL_ISSUE,
                 r.getId(), it.getId(), it.getGoodsId(), it.getColorId(), r.getWarehouseId(),
-                direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
-                direction < 0 ? null : "红冲", it.getWeight()));
+                direction, baseQty(it), it.getUnitId(), it.getUnitRate(), amt,
+                direction < 0 ? null : "红冲",
+                // 委外出仓的行重量是仓库实称; 红冲不带, 库存账按原流水镜像(ADR-135)。
+                direction < 0 ? CapturedWeight.measured(it.getWeight()) : null));
+    }
+
+    private static BigDecimal baseQty(SubcontractMaterialIssueItem it) {
+        BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
+        return it.getQty().multiply(rate);
+    }
+
+    /**
+     * 委外出仓称重核对(ADR-135 §3.8): 发料流水按实称记账(MEASURED)后登记一条 ISSUE 观测,
+     * 往来方 = 加工商(出仓单委外商), 幂等键 'ISSUE:' + 出仓明细 id。它只核对发料(CHECK), 不教单重;
+     * 数量按称重推算的行、按重量计的货品、流水没按实称记账时不登记。
+     */
+    private void recordIssueObservation(SubcontractMaterialIssue r, SubcontractMaterialIssueItem it,
+                                        StockService.PostedMovement posted, OffsetDateTime ts) {
+        if (weightObservations == null || posted == null || posted.movementId() == null
+                || posted.weightSource() != WeightSource.MEASURED || posted.weightKg() == null) {
+            return;
+        }
+        weightObservations.record(new GoodsWeightObservationService.ObservationCommand(
+                it.getGoodsId(), it.getColorId(), r.getWarehouseId(), SourceKind.ISSUE,
+                baseQty(it), posted.weightKg(), null,
+                r.getSupplierId() == null ? null : "SUBCONTRACTOR", r.getSupplierId(),
+                StockService.SRC_SUBCONTRACT_MATERIAL_ISSUE, r.getId(), it.getId(), posted.movementId(),
+                ISSUE_CAPTURE_PREFIX + it.getId(), ts, null, null, null,
+                it.isQtyFromWeight(), it.getUnitId(), false, null, currentUser.requireId()));
     }
 
     private void applyHeader(MaterialIssueSaveRequest req, SubcontractMaterialIssue r) {
@@ -632,6 +675,7 @@ public class SubcontractMaterialIssueService {
         });
         Map<UUID, SubcontractGoodsSnapshot> master = SubcontractGoodsSnapshot.fromMaster(
                 em, masterGoodsIds, SubcontractGoodsSnapshot.MASTER_AT_SAVE);
+        List<BigDecimal> weights = capturedWeights(lines);
         int autoLine = 1;
         for (MaterialIssueItemLine l : lines) {
             SubcontractMaterialIssueItem it = new SubcontractMaterialIssueItem();
@@ -664,7 +708,8 @@ public class SubcontractMaterialIssueService {
                             "委外发料父件"),
                     null);
             it.setParentColorId(l.getParentColorId());
-            it.setWeight(l.getWeight());
+            it.setWeight(weights.get(autoLine - 1));
+            it.setQtyFromWeight(Boolean.TRUE.equals(l.getQtyFromWeight()));
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
             it.setBoxQty(l.getBoxQty());
@@ -675,6 +720,65 @@ public class SubcontractMaterialIssueService {
             autoLine++;
         }
         return out;
+    }
+
+    /**
+     * 出仓行真正保存的实称重量(千克, 与 lines 一一对应; ADR-135): 0 视为没称(null);
+     * 按重量计的行(货品基本单位或本行单位登记了重量单位)丢弃手填重量, 库存账按数量精确换算。
+     */
+    private List<BigDecimal> capturedWeights(List<MaterialIssueItemLine> lines) {
+        List<BigDecimal> weights = new ArrayList<>(lines.size());
+        Set<UUID> goodsIds = new HashSet<>();
+        Set<UUID> unitIds = new HashSet<>();
+        for (MaterialIssueItemLine line : lines) {
+            BigDecimal kg = normalizedWeightKg(line.getWeight());
+            weights.add(kg);
+            if (kg != null) {
+                goodsIds.add(line.getGoodsId());
+                if (line.getUnitId() != null) unitIds.add(line.getUnitId());
+            }
+        }
+        if (goodsIds.isEmpty()) return weights;
+        Set<UUID> exactGoods = new HashSet<>();
+        Set<UUID> massUnits = new HashSet<>();
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT 'GOODS' AS kind, goods_row.id AS id
+                FROM goods goods_row
+                JOIN unit_measurement_profiles profile ON profile.unit_id = goods_row.unit_id
+                WHERE profile.mass_unit_code IS NOT NULL AND goods_row.id IN (:goods)
+                UNION ALL
+                SELECT 'UNIT' AS kind, profile.unit_id AS id
+                FROM unit_measurement_profiles profile
+                WHERE profile.mass_unit_code IS NOT NULL AND profile.unit_id IN (:units)
+                """)
+                .setParameter("goods", List.copyOf(goodsIds))
+                // 空 IN 列表用永不命中的零 UUID 占位。
+                .setParameter("units", unitIds.isEmpty() ? List.of(new UUID(0, 0)) : List.copyOf(unitIds))
+                .getResultList();
+        for (Object[] row : rows) {
+            ("GOODS".equals(row[0]) ? exactGoods : massUnits).add((UUID) row[1]);
+        }
+        for (int index = 0; index < lines.size(); index++) {
+            MaterialIssueItemLine line = lines.get(index);
+            if (weights.get(index) != null && (exactGoods.contains(line.getGoodsId())
+                    || (line.getUnitId() != null && massUnits.contains(line.getUnitId())))) {
+                weights.set(index, null);
+            }
+        }
+        return weights;
+    }
+
+    /** 出仓实称重量: 千克, 非负, 最多 14 位整数和 4 位小数; 0 = 没称(null)。 */
+    static BigDecimal normalizedWeightKg(BigDecimal kg) {
+        if (kg == null) return null;
+        BigDecimal value = kg.stripTrailingZeros();
+        if (value.signum() < 0 || value.scale() > 4 || value.precision() - value.scale() > 14) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "出仓实称重量必须为非负数，最多 14 位整数和 4 位小数(千克)");
+        }
+        if (value.signum() == 0) return null;
+        return value.scale() < 0 ? value.setScale(0) : value;
     }
 
     private void captureGoodsSnapshots(
@@ -756,7 +860,7 @@ public class SubcontractMaterialIssueService {
                 it.getOrderItemId(), it.getPlanItemId(),
                 it.getParentGoodsId(), it.getParentGoodsCodeSnapshot(), it.getParentGoodsNameSnapshot(),
                 it.getParentGoodsSnapshotSource(), it.getParentGoodsSnapshotLockedAt(),
-                it.getParentColorId(), it.getWeight(), it.getSourceDocNo(), it.getRemark(),
+                it.getParentColorId(), it.getWeight(), it.isQtyFromWeight(), it.getSourceDocNo(), it.getRemark(),
                 it.getBoxQty(), it.getReturnNo(), it.getOrderNo());
     }
 
@@ -789,7 +893,8 @@ public class SubcontractMaterialIssueService {
                 it.getPlanItemId(), it.getParentGoodsId(), it.getParentGoodsCodeSnapshot(),
                 it.getParentGoodsNameSnapshot(), it.getParentGoodsSnapshotSource(),
                 it.getParentGoodsSnapshotLockedAt(), it.getParentColorId(), it.getWeight(),
-                it.getSourceDocNo(), it.getRemark(), it.getBoxQty(), it.getReturnNo(), it.getOrderNo());
+                it.isQtyFromWeight(), it.getSourceDocNo(), it.getRemark(), it.getBoxQty(), it.getReturnNo(),
+                it.getOrderNo());
     }
 
     private SubcontractMaterialIssue requireIssue(UUID id) {

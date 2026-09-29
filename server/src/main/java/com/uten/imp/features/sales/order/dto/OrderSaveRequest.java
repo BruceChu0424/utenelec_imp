@@ -58,6 +58,14 @@ public class OrderSaveRequest {
      */
     private String shipmentPolicy;
 
+    /** ADR-134 客户文件上单价的币种代码(如 USD), 只用于阅读明细的文件单价。 */
+    @Size(max = 8, message = "文件币种不能超过 8 个字符")
+    private String clientFileCurrency;
+
+    /** ADR-134 这次保存采用的客户文件识别(任务 id + 勾选补进客户资料的字段)。 */
+    @Valid
+    private com.uten.imp.features.sales.SalesAiIntakeRequest aiIntake;
+
     @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)

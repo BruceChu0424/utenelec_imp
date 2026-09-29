@@ -180,13 +180,18 @@ public class ProductionMaterialStockLedgerService {
     private final TxSessionVars tx;
     private final ProductionMaterialReadAccessPolicy readAccess;
 
-    /** Caller already holds the document and checks its action/object permission. No facts are written. */
+    /**
+     * Caller already holds the document and checks its action/object permission. No facts are written.
+     *
+     * @param captureFingerprint 出库请求里称重部分的规范串(ADR-135: 逐行实称千克与「数量按称重推算」标记),
+     *                           没有称重信息时为 null(哈希与原口径一致); 取消出库恒为 null
+     */
     @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
     public boolean isIssueReplay(UUID documentId,UUID warehouseId,Collection<MaterialLine> rawLines,
-                                 String idempotencyKey,String reversalReason) {
+                                 String idempotencyKey,String reversalReason,String captureFingerprint) {
         List<MaterialLine> lines=normalize(rawLines,warehouseId,false);
         String type=reversalReason==null ? "ISSUE" : "ISSUE_REVERSE";
-        String requestHash=reversalReason==null ? hash(lines) : hash(lines,reversalReason.strip());
+        String requestHash=reversalReason==null ? issueHash(lines,captureFingerprint) : hash(lines,reversalReason.strip());
         List<?> existing=em.createNativeQuery("""
                 SELECT request_hash FROM production_material_stock_events
                 WHERE stock_document_id=:documentId AND event_type=:eventType AND idempotency_key=:key
@@ -199,17 +204,19 @@ public class ProductionMaterialStockLedgerService {
         return true;
     }
 
+    /** @param captureFingerprint 同 {@link #isIssueReplay} 的称重规范串, 一起进本次出库的请求哈希。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public PostingResult issue(
             UUID documentId,
             UUID warehouseId,
             Collection<MaterialLine> rawLines,
             String idempotencyKey,
+            String captureFingerprint,
             UUID actorId) {
         tx.bind();
         List<MaterialLine> lines = normalize(rawLines, warehouseId, false);
         Event event = beginEvent(
-                documentId, "ISSUE", idempotencyKey, hash(lines), actorId);
+                documentId, "ISSUE", idempotencyKey, issueHash(lines, captureFingerprint), actorId);
         if (event.replayed()) return new PostingResult(true,event.id());
 
         LockedPlanningPackage planningPackage = lockPackageForDraw(documentId);
@@ -1093,18 +1100,19 @@ public class ProductionMaterialStockLedgerService {
                     .append(line.qtyBase().stripTrailingZeros().toPlainString())
                     .append('\n');
         }
-        try {
-            return HexFormat.of().formatHex(
-                    MessageDigest.getInstance("SHA-256")
-                            .digest(canonical.toString()
-                                    .getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException("SHA-256 unavailable", impossible);
-        }
+        return sha256(canonical.toString());
     }
 
-    private static String hash(List<MaterialLine> lines, String reason) {
-        String canonical = hash(lines) + "|REASON|" + reason;
+    /**
+     * 出库请求哈希: 数量行 + 称重规范串(ADR-135)。没有称重信息时与原口径完全一致,
+     * 同一幂等键换了重量重试会被判成「相同幂等键对应不同领退料请求」。
+     */
+    static String issueHash(List<MaterialLine> lines, String captureFingerprint) {
+        if (captureFingerprint == null || captureFingerprint.isEmpty()) return hash(lines);
+        return sha256(hash(lines) + "|CAPTURE|" + captureFingerprint);
+    }
+
+    private static String sha256(String canonical) {
         try {
             return HexFormat.of().formatHex(
                     MessageDigest.getInstance("SHA-256")
@@ -1112,6 +1120,10 @@ public class ProductionMaterialStockLedgerService {
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 unavailable", impossible);
         }
+    }
+
+    private static String hash(List<MaterialLine> lines, String reason) {
+        return sha256(hash(lines) + "|REASON|" + reason);
     }
 
     private static String normalizeKey(String key) {

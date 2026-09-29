@@ -12,26 +12,158 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bomLearningTitle => 'BOM learning';
 
   @override
+  String get bomLearningHelp =>
+      'Actual usage = cumulative net consumption of completed, reconciled production ÷ cumulative output of the batches that used the material. Material analysis and workshop material issue use the actual usage first and fall back to the design usage when there is no data. Released tasks keep the quantities frozen at release. Defects recorded in daily reports are kept for reference only and do not count as output; usage per produced unit counts good plus defective pieces.';
+
+  @override
+  String get bomLearningInactive =>
+      'No learning record yet. Accumulation starts when in-house production of this item is completed and leftover material is reconciled.';
+
+  @override
+  String bomLearningPaused(String reason) {
+    return 'No learned components were created: $reason. Actual usage keeps accumulating.';
+  }
+
+  @override
+  String get bomDesignQty => 'Design usage';
+
+  @override
+  String get bomActualQty => 'Actual usage';
+
+  @override
+  String get bomLearnedEdge => 'Learned';
+
+  @override
+  String bomActualTipActual(int samples, String net, String output) {
+    return 'Accumulated from $samples completed production batches: net consumption $net / output $output';
+  }
+
+  @override
+  String bomActualTipAverage(String qty) {
+    return 'Actual average per unit: $qty';
+  }
+
+  @override
+  String get bomActualTipUsed =>
+      'Material analysis and workshop material issue use the actual usage.';
+
+  @override
+  String bomUsesDesignBecause(String reason) {
+    return '$reason; calculations use the design usage.';
+  }
+
+  @override
+  String get bomDesignReasonNoData =>
+      'No completed production with counted leftover material yet';
+
+  @override
+  String get bomDesignReasonNotLinear =>
+      'Whole packages or fixed batches cannot use an average';
+
+  @override
+  String get bomDesignReasonOutputUnitChanged =>
+      'The parent item\'s unit changed and relearning is needed';
+
+  @override
+  String get bomDesignReasonSubcontractOutbound =>
+      'This time the material is issued through a single-component subcontract and uses the subcontract quantity';
+
+  @override
+  String get bomDesignReasonOther => 'No usable actual data';
+
+  @override
+  String bomRelearnedSince(String date) {
+    return 'Accumulating again since $date';
+  }
+
+  @override
+  String get bomDesignQtyRequired => 'Enter the design usage';
+
+  @override
+  String get bomDesignQtyInvalid =>
+      'Design usage must be a number greater than 0';
+
+  @override
+  String get bomLearnedEdgeEditHint =>
+      'This component was learned from actual material use. Changing the design usage makes it manually maintained; actual usage keeps accumulating.';
+
+  @override
+  String bomLearnedEdgeDeleteNote(int count) {
+    return '$count of them were learned by the system and will not be added back automatically after deletion.';
+  }
+
+  @override
+  String get bomLearningMaterial => 'Material';
+
+  @override
+  String get bomLearningExposure => 'Cumulative output';
+
+  @override
+  String get bomLearningSampleCount => 'Valid batches';
+
+  @override
+  String get bomLearningBasis => 'Calculation uses';
+
+  @override
+  String get bomLearningOutsideBom => 'Used outside the BOM';
+
+  @override
+  String get bomLearningReleased => 'Deleted, not added back automatically';
+
+  @override
+  String get bomLearningRelearn => 'Relearn from now';
+
+  @override
+  String bomLearningRelearnConfirm(String name) {
+    return 'Relearn \"$name\" from now?\nEarlier accumulation no longer counts. Until new production data arrives, calculations use the design usage.';
+  }
+
+  @override
+  String get bomLearningRelearnDone => 'Relearning started';
+
+  @override
+  String get bomLearningRelearnFailed =>
+      'Relearning failed. Please try again later.';
+
+  @override
+  String get bomLearningLoadFailed =>
+      'Failed to load the learning record. Please retry.';
+
+  @override
+  String get bomLearningEmpty => 'No components and no materials used yet';
+
+  @override
+  String get bomLearningAction => 'Action';
+
+  @override
+  String get bomLearningBlockedOutputIdentity =>
+      'the parent item\'s unit or identity changed';
+
+  @override
+  String get bomLearningBlockedMaterialIdentity =>
+      'a material was deleted or its unit changed';
+
+  @override
+  String get bomLearningBlockedColorConflict =>
+      'the same material was issued in several colors; decide it manually in the assembly information';
+
+  @override
+  String get bomLearningBlockedPrecision =>
+      'a usage is outside the recordable range';
+
+  @override
+  String get bomLearningBlockedCycle => 'it would create an assembly loop';
+
+  @override
+  String get bomLearningBlockedOther =>
+      'maintain the components manually in the assembly information';
+
+  @override
   String get materialDiscoveryBatchHelp =>
       'Select continuous or full-kit production to identify materials before arranging batches.';
 
   @override
   String get materialDiscoveryCancel => 'Withdraw material definition request';
-
-  @override
-  String get bomLearningHelp =>
-      'After production and material reconciliation, usage is updated from cumulative net consumption divided by actual output. Existing work orders keep their frozen requirements.';
-
-  @override
-  String get bomLearningInactive =>
-      'No learning record yet. Learning begins when a manufactured leaf item completes material issue and production.';
-
-  @override
-  String get bomLearningAuto => 'BOM updates automatically';
-
-  @override
-  String get bomLearningPaused =>
-      'Automatic updates are paused to protect a manual BOM or resolve material, unit or color conflicts. Accumulated records are retained. Review the component records.';
 
   @override
   String get bomLearningOutput => 'Cumulative actual output';
@@ -43,7 +175,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bomLearningNet => 'Cumulative net consumption';
 
   @override
-  String get bomLearningAverage => 'Average usage per unit';
+  String bomActualTipDefect(String defect, String perProduced, String rate) {
+    return 'Plus $defect defective: counting good plus defective pieces, usage is $perProduced; defect rate $rate';
+  }
+
+  @override
+  String get bomLearningDefect => 'Defects';
+
+  @override
+  String get bomLearningPerProduced => 'Usage per produced unit';
+
+  @override
+  String get bomLearningDefectRate => 'Defect rate';
+
+  @override
+  String get bomLearningTotalDefect => 'Cumulative defects';
 
   @override
   String get materialDiscoveryTitle => 'Record materials to issue';
@@ -4305,4 +4451,2602 @@ class AppLocalizationsEn extends AppLocalizations {
   String materialPreparationMissingAssignment(String goods) {
     return 'Set the production workshop and responsible person for “$goods” before ordering';
   }
+
+  @override
+  String get workshopMaterialBin => 'Workshop Material Store';
+
+  @override
+  String workshopMaterialBinOf(String workshop) {
+    return '$workshop Material Store';
+  }
+
+  @override
+  String get workshopMaterialGroup => 'Workshop Material';
+
+  @override
+  String get workshopMaterialSetup => 'Workshop Material Setup';
+
+  @override
+  String get workshopMaterialReports => 'Workshop Material Usage';
+
+  @override
+  String get wmIssueMethod => 'Issue method';
+
+  @override
+  String get wmIssueMethodOrder => 'Issue per work order';
+
+  @override
+  String get wmIssueMethodPeriodic => 'Bulk issue to workshop store';
+
+  @override
+  String get wmCostBasis => 'Cost allocation';
+
+  @override
+  String get wmCostBasisOwn => 'Main material';
+
+  @override
+  String get wmCostBasisShared => 'Auxiliary material';
+
+  @override
+  String get wmCostBasisExpense => 'Workshop expense';
+
+  @override
+  String get wmBulkPackageQty => 'Net weight per bag (kg)';
+
+  @override
+  String get wmRecycledMaterial => 'Recycled material';
+
+  @override
+  String get wmUnitWeightGrams => 'Unit weight (g)';
+
+  @override
+  String wmUnitWeightFromBom(String grams) {
+    return 'Plastic unit weight (from BOM): $grams g';
+  }
+
+  @override
+  String wmUnusualWeightConfirm(String grams) {
+    return 'Unit weight $grams g looks unusual. Confirm?';
+  }
+
+  @override
+  String get wmSecondMaterialConfirm =>
+      'Does this product use two materials (two-shot)? If you are only changing material, edit the existing row';
+
+  @override
+  String get wmRequestIssue => 'Request material';
+
+  @override
+  String get wmReturn => 'Return';
+
+  @override
+  String get wmOtherIssue => 'Trial / purge usage';
+
+  @override
+  String get wmOtherReasonTrial => 'Trial moulding';
+
+  @override
+  String get wmOtherReasonPurge => 'Purging';
+
+  @override
+  String get wmOtherReasonScrap => 'Scrapped material';
+
+  @override
+  String get wmOtherReasonOther => 'Other';
+
+  @override
+  String get wmDirectIssue => 'Direct issue';
+
+  @override
+  String get wmPendingIssue => 'To issue';
+
+  @override
+  String get wmPendingReturn => 'Returns to receive';
+
+  @override
+  String get wmCount => 'Stock count';
+
+  @override
+  String get wmHistory => 'History';
+
+  @override
+  String get wmBags => 'Bags';
+
+  @override
+  String get wmKg => 'kg';
+
+  @override
+  String get wmReceiver => 'Received by';
+
+  @override
+  String wmWarehouseAvailable(String qty) {
+    return 'Warehouse has $qty kg';
+  }
+
+  @override
+  String wmEstimatedRemaining(String qty) {
+    return 'Store estimated remaining $qty kg';
+  }
+
+  @override
+  String get wmCountingNextPeriod =>
+      'Counting has started; this batch goes to the next period';
+
+  @override
+  String get wmSupplementFlag => 'This batch was missed in the previous period';
+
+  @override
+  String get wmSupplementPeriod => 'Add to period';
+
+  @override
+  String get wmAlsoOrderMaterials =>
+      'Also issue other materials per work order (e.g. inserts)';
+
+  @override
+  String get wmFillFromGoodsWeight => 'Fill checked rows from item weight';
+
+  @override
+  String get wmCloseFailing =>
+      'Settlement keeps failing; retrying daily. Please contact the administrator';
+
+  @override
+  String get wmStartCount => 'Start count';
+
+  @override
+  String get wmCutoffToday => 'Cut off today';
+
+  @override
+  String get wmCutoffYesterday => 'Cut off yesterday';
+
+  @override
+  String get wmMonthEndHint => 'For monthly reconciliation, count at month end';
+
+  @override
+  String get wmFillFull => 'Full';
+
+  @override
+  String get wmFillHalf => 'Half';
+
+  @override
+  String get wmFillEmpty => 'Empty';
+
+  @override
+  String get wmFillWeighed => 'Enter kg';
+
+  @override
+  String get wmWeighOpenBag => 'Opened bag (weighed)';
+
+  @override
+  String get wmWeighMixed => 'Mixed, not yet loaded';
+
+  @override
+  String get wmWeighLoose => 'Loose material';
+
+  @override
+  String get wmFillGuide =>
+      'Over 3/4 is full, 1/4 to 3/4 is half, under 1/4 is empty';
+
+  @override
+  String get wmMachineIdle => 'Machine idle, all empty';
+
+  @override
+  String get wmZeroRest => 'Everything else is used up, record 0';
+
+  @override
+  String get wmPrintBlank => 'Print blank count sheet';
+
+  @override
+  String get wmSubmitCount => 'Submit count';
+
+  @override
+  String get wmWithdrawCount => 'Withdraw count';
+
+  @override
+  String get wmCorrectCount => 'Correct count';
+
+  @override
+  String wmBagsTimesKg(int bags, String kg) {
+    return '$bags bags × $kg kg';
+  }
+
+  @override
+  String get wmCloseState => 'Settlement status';
+
+  @override
+  String get wmCloseWaitingPrevious => 'Waiting for previous period';
+
+  @override
+  String wmCloseBlockedReport(int n) {
+    return '$n reports not yet approved (approver, or author deletes unwanted drafts)';
+  }
+
+  @override
+  String wmCloseBlockedWeight(int n) {
+    return '$n products missing unit weight (BOM owner)';
+  }
+
+  @override
+  String wmCloseBlockedStock(String material) {
+    return '\"$material\" used without any issue this period (warehouse adds the missed issue, or workshop corrects the material)';
+  }
+
+  @override
+  String get wmCloseRetry => 'Retry now';
+
+  @override
+  String get wmReopen => 'Reopen settlement';
+
+  @override
+  String get wmReopenReason => 'Reason';
+
+  @override
+  String wmReopenHeld(String time) {
+    return 'Settlement reopened. Click \"Settle again\" when done; the system will settle automatically at $time';
+  }
+
+  @override
+  String get wmSettleAgain => 'Settle again';
+
+  @override
+  String get wmNeedChoice => 'Material to confirm';
+
+  @override
+  String get wmStartSheetTitle => 'Confirm materials before start';
+
+  @override
+  String wmStartConfirm(int n) {
+    return 'Confirm and start ($n)';
+  }
+
+  @override
+  String get wmOrderInstead => 'Issue these per work order (do not start yet)';
+
+  @override
+  String get wmNotFromStore => 'Not from workshop store (per work order)';
+
+  @override
+  String get wmWeightPending => 'To be filled; start is not blocked';
+
+  @override
+  String get wmChangeMaterial => 'Change material for this order';
+
+  @override
+  String get wmChangeFrom => 'Effective from';
+
+  @override
+  String get wmAddMaterial => 'Add a material';
+
+  @override
+  String get wmEnable => 'Enable bulk issue';
+
+  @override
+  String get wmGoLiveDate => 'Go-live date';
+
+  @override
+  String get wmMainWarehouse => 'Under main warehouse';
+
+  @override
+  String get wmMachines => 'Machines & containers';
+
+  @override
+  String get wmGoLivePrep => 'Go-live preparation';
+
+  @override
+  String wmGoLiveProgress(int total, int chosen, int weighed) {
+    return '$total frequent products, $chosen with material, $weighed with unit weight';
+  }
+
+  @override
+  String get wmReportUsage => 'Usage';
+
+  @override
+  String get wmReportProduct => 'By product';
+
+  @override
+  String get wmReportTrend => 'Waste trend';
+
+  @override
+  String get wmReportMissingWeight => 'Missing unit weights';
+
+  @override
+  String get wmReportLedger => 'Movements';
+
+  @override
+  String get wmTrueUnitUsage => 'Actual per-unit usage';
+
+  @override
+  String get wmAllocatedByTheory => 'Allocated by standard';
+
+  @override
+  String get wmWasteRate => 'Waste rate';
+
+  @override
+  String get wmIncludeWorkshopStore => 'Include workshop stores';
+
+  @override
+  String get workshopMaterialSetupHubDesc =>
+      'Enable bulk issue, machines & containers, go-live preparation';
+
+  @override
+  String get workshopMaterialReportsHubDesc =>
+      'Usage, waste rate and settlement status by period';
+
+  @override
+  String get wmReceiveReturn => 'Receive return';
+
+  @override
+  String get wmIssueByRequest => 'Issue by request';
+
+  @override
+  String get wmOnHand => 'On hand';
+
+  @override
+  String get wmInUseMaterial => 'Material in use';
+
+  @override
+  String get wmBagMaterials => 'Bagged material';
+
+  @override
+  String get wmEnableWorkshopTab => 'Workshops';
+
+  @override
+  String get wmReportPeriod => 'Period';
+
+  @override
+  String get wmReportAllPeriods => 'All periods';
+
+  @override
+  String get wmReportMaterial => 'Material';
+
+  @override
+  String get wmReportNoBin =>
+      'No workshop has enabled bulk issue yet, so there is no store usage to show.';
+
+  @override
+  String get wmOpenBom => 'Open BOM';
+
+  @override
+  String get wmWorkshopMaterialSection => 'Workshop material';
+
+  @override
+  String get wmIssueMethodUpdated => 'Issue method updated';
+
+  @override
+  String get bomLearningAuto => 'BOM updates automatically';
+
+  @override
+  String get bomLearningAverage => 'Average usage per unit';
+
+  @override
+  String get warehouseGoodsMasterDefaultHint =>
+      'The goods master default warehouse was filled in. Verify the actual destination for this receipt.';
+
+  @override
+  String get warehouseSuggestedDestinationHint =>
+      'A suggested warehouse was filled in. Verify the actual destination.';
+
+  @override
+  String get warehouseBatchRegistrationHelp =>
+      'Each line needs a warehouse and location. Goods master defaults take precedence over personal warehouse context. Selected lines can be edited together. Each report creates its own inspection submission; final receipt follows quality release.';
+
+  @override
+  String get goodsNameEnLabel => 'English name';
+
+  @override
+  String get goodsNameEnHint => 'e.g. DOUBLE 3 PIN SOCKET WITH SWITCH';
+
+  @override
+  String get goodsNameEnInfo =>
+      'How customer quotations and orders name this item in English. When reading a customer file, the system uses it to match the English description to this item.';
+
+  @override
+  String get goodsNameEnColumnInfo =>
+      'The English name customers use for this item. It is remembered automatically when sales save a document with an English description, and can be edited on the item details.';
+
+  @override
+  String get goodsNameEnSearchHint =>
+      'Search items (name/English name/code/model/spec/series)';
+
+  @override
+  String get goodsNameEnLearned => 'Learned automatically';
+
+  @override
+  String get goodsNameEnLearnedTip =>
+      'The system remembered this English name when sales saved a customer file. Edit it if it is wrong.';
+
+  @override
+  String get goodsNameEnEdit => 'Edit English name';
+
+  @override
+  String get goodsNameEnEditDescription =>
+      'Enter the English description written on customer files. After saving, customer files are matched to this item by this name. Leave it blank to stop using an English name.';
+
+  @override
+  String get goodsNameEnSaving => 'Saving…';
+
+  @override
+  String get goodsNameEnSaved => 'English name saved';
+
+  @override
+  String get goodsNameEnCleared => 'English name cleared';
+
+  @override
+  String get goodsNameEnImportHint =>
+      'English names can be imported too (header \"英文名称\" or \"English Name\").';
+
+  @override
+  String goodsNameEnTooLong(int max) {
+    return 'The English name can have at most $max characters';
+  }
+
+  @override
+  String get clientNameEnLabel => 'Foreign name';
+
+  @override
+  String get clientNameEnHint => 'e.g. SUNAS TRADING LIMITED';
+
+  @override
+  String get clientNameEnInfo =>
+      'The customer\'s company name in English or another foreign language. The system uses it to find this customer when reading customer files, and fills it in automatically when sales save documents.';
+
+  @override
+  String get clientNameEnSearchHint =>
+      'Search customers (short name/code/full name/foreign name/contact/mobile/email)';
+
+  @override
+  String get clientGoodsAliasTab => 'Item names';
+
+  @override
+  String get clientGoodsAliasTitle => 'How this customer names our items';
+
+  @override
+  String get clientGoodsAliasDescription =>
+      'Model numbers and descriptions on this customer\'s quotations and orders, and which of our items they mean. The system uses this list first when reading this customer\'s files.';
+
+  @override
+  String get clientGoodsAliasSearchHint =>
+      'Search the customer\'s wording, item name or code';
+
+  @override
+  String get clientGoodsAliasEmptyTitle => 'No item names yet';
+
+  @override
+  String get clientGoodsAliasEmpty =>
+      'After a quotation or order with the customer\'s model numbers is saved, the customer\'s wording is remembered here automatically';
+
+  @override
+  String get clientGoodsAliasNoMatch => 'Nothing found. Try another keyword.';
+
+  @override
+  String get clientGoodsAliasKindPartNo => 'Customer model';
+
+  @override
+  String get clientGoodsAliasKindDescription => 'Customer description';
+
+  @override
+  String clientGoodsAliasContext(String context) {
+    return 'Applies to $context';
+  }
+
+  @override
+  String clientGoodsAliasConfirmCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Confirmed $count times',
+      one: 'Confirmed once',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String clientGoodsAliasExplicitCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'picked by hand $count times',
+      one: 'picked by hand once',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String clientGoodsAliasLastConfirmed(String date) {
+    return 'Last $date';
+  }
+
+  @override
+  String clientGoodsAliasLastConfirmedBy(String date, String name) {
+    return 'Last $date · $name';
+  }
+
+  @override
+  String get clientGoodsAliasGoodsMissing => 'Item record deleted';
+
+  @override
+  String get clientGoodsAliasDelete => 'Delete this match';
+
+  @override
+  String get clientGoodsAliasDeleteAction => 'Delete';
+
+  @override
+  String clientGoodsAliasDeleteConfirm(String alias, String goods) {
+    return 'After deleting, \"$alias\" is no longer matched to \"$goods\" when reading this customer\'s files. The system may learn it again when sales save documents later.';
+  }
+
+  @override
+  String get clientGoodsAliasDeleting => 'Deleting the match';
+
+  @override
+  String get clientGoodsAliasDeleted => 'Match deleted';
+
+  @override
+  String get clientGoodsAliasLoadFailed =>
+      'Could not load item names. Please try again.';
+
+  @override
+  String clientGoodsAliasTotal(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count matches',
+      one: '1 match',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String clientGoodsAliasPage(int page, int pages) {
+    return 'Page $page of $pages';
+  }
+
+  @override
+  String get clientGoodsAliasPrevPage => 'Previous';
+
+  @override
+  String get clientGoodsAliasNextPage => 'Next';
+
+  @override
+  String get aiJobCancel => 'Cancel';
+
+  @override
+  String aiJobElapsed(String time) {
+    return 'Elapsed $time';
+  }
+
+  @override
+  String get aiJobQueued => 'Waiting in line, starting shortly';
+
+  @override
+  String get aiJobSlowHint =>
+      'Large files can take a minute or two. Please wait, there is no need to click again';
+
+  @override
+  String get aiJobTimeout =>
+      'This took too long, so we stopped waiting. Please try again later or split the file into smaller parts';
+
+  @override
+  String get aiJobGone =>
+      'This task no longer exists (it may have been cleaned up). Please start again';
+
+  @override
+  String get aiJobFailedGeneric =>
+      'That did not work this time. Please try again later';
+
+  @override
+  String get aiJobConfidenceHigh => 'High';
+
+  @override
+  String get aiJobConfidenceMedium => 'Medium';
+
+  @override
+  String get aiJobConfidenceLow => 'Low';
+
+  @override
+  String aiJobConfidenceSemantics(String level) {
+    return 'AI confidence: $level';
+  }
+
+  @override
+  String get aiSettingsTitle => 'AI services';
+
+  @override
+  String get aiSettingsEntrySubtitle =>
+      'Configure model providers, API keys and connection tests';
+
+  @override
+  String aiSettingsHeroActive(String name, String model) {
+    return 'In use: $name · $model';
+  }
+
+  @override
+  String get aiSettingsHeroReady =>
+      'Used to recognize customer files uploaded by sales';
+
+  @override
+  String get aiSettingsHeroNone => 'No AI service is available yet';
+
+  @override
+  String get aiSettingsHeroNoneHint =>
+      'After you add a provider and the test passes, customer files uploaded by sales are recognized automatically';
+
+  @override
+  String get aiSettingsHeroDefaultDisabled =>
+      'The default service is disabled, so AI is not being used';
+
+  @override
+  String get aiSettingsHeroNeedsKey =>
+      'No API key has been entered yet, so AI is not being used';
+
+  @override
+  String get aiSettingsSecurityNote =>
+      'Keys are stored encrypted and only the last characters are shown. Saving, deleting and testing with a stored key ask for your login password again.';
+
+  @override
+  String get aiSettingsOutboundOff =>
+      'This server does not call external AI (the default for test environments). You can save settings, but no calls will be made';
+
+  @override
+  String get aiSettingsProvidersSection => 'Providers';
+
+  @override
+  String get aiSettingsAdd => 'Add AI service';
+
+  @override
+  String get aiSettingsEditTitle => 'Edit AI service';
+
+  @override
+  String get aiSettingsEmptyTitle => 'No AI service configured';
+
+  @override
+  String get aiSettingsEmptyHint =>
+      'Mainland providers such as DeepSeek, Qwen, Kimi and Zhipu are supported, as well as a locally deployed model';
+
+  @override
+  String get aiSettingsLoadFailed => 'Failed to load AI service settings';
+
+  @override
+  String get aiSettingsNoAccess =>
+      'Only super administrators can view and change AI services';
+
+  @override
+  String get aiSettingsRetry => 'Retry';
+
+  @override
+  String get aiSettingsRefresh => 'Refresh';
+
+  @override
+  String get aiSettingsClose => 'Close';
+
+  @override
+  String get aiSettingsCancel => 'Cancel';
+
+  @override
+  String get aiSettingsRegion => 'Region';
+
+  @override
+  String get aiSettingsRegionMainland => 'Mainland';
+
+  @override
+  String get aiSettingsRegionOverseas => 'Overseas';
+
+  @override
+  String get aiSettingsRegionLocal => 'Local';
+
+  @override
+  String get aiSettingsDefaultBadge => 'Default';
+
+  @override
+  String get aiSettingsDisabledBadge => 'Disabled';
+
+  @override
+  String get aiSettingsModel => 'Model';
+
+  @override
+  String get aiSettingsBaseUrl => 'Endpoint URL';
+
+  @override
+  String get aiSettingsApiKey => 'API key';
+
+  @override
+  String get aiSettingsKeyMissing => 'Not set';
+
+  @override
+  String get aiSettingsKeyNotNeeded => 'Not required';
+
+  @override
+  String get aiSettingsKeyUnreadable =>
+      'The API key cannot be decrypted. Please enter it again';
+
+  @override
+  String get aiSettingsLastTest => 'Last test';
+
+  @override
+  String aiSettingsLastTestOk(String time) {
+    return 'Passed · $time';
+  }
+
+  @override
+  String aiSettingsLastTestFailed(String time) {
+    return 'Failed · $time';
+  }
+
+  @override
+  String get aiSettingsNeverTested => 'Not tested yet';
+
+  @override
+  String get aiSettingsEnabledSwitch => 'Enabled';
+
+  @override
+  String get aiSettingsEnabledInfo => 'A disabled service is never called';
+
+  @override
+  String get aiSettingsTest => 'Test connection';
+
+  @override
+  String get aiSettingsTesting => 'Testing';
+
+  @override
+  String get aiSettingsEdit => 'Edit';
+
+  @override
+  String get aiSettingsSetDefault => 'Set as default';
+
+  @override
+  String get aiSettingsDelete => 'Delete';
+
+  @override
+  String get aiSettingsDeleteTitle => 'Delete this AI service?';
+
+  @override
+  String aiSettingsDeleteMessage(String name) {
+    return 'The settings and API key of \"$name\" will be removed and cannot be restored.';
+  }
+
+  @override
+  String get aiSettingsDeleteDefaultBlocked =>
+      'The default service cannot be deleted. Set another service as default first';
+
+  @override
+  String get aiSettingsDeleted => 'Deleted';
+
+  @override
+  String aiSettingsDefaultSet(String name) {
+    return '\"$name\" is now the default';
+  }
+
+  @override
+  String aiSettingsEnabledOn(String name) {
+    return '\"$name\" enabled';
+  }
+
+  @override
+  String aiSettingsEnabledOff(String name) {
+    return '\"$name\" disabled';
+  }
+
+  @override
+  String get aiSettingsBusySaving => 'Saving';
+
+  @override
+  String get aiSettingsBusyDeleting => 'Deleting';
+
+  @override
+  String aiSettingsUpdatedBy(String name, String time) {
+    return 'Changed by $name at $time';
+  }
+
+  @override
+  String get aiSettingsTestNeedsKeyEdit =>
+      'There is no API key yet. Tap \"Edit\" to enter one, then test';
+
+  @override
+  String aiSettingsUsageTitle(int days) {
+    return 'Usage in the last $days days';
+  }
+
+  @override
+  String get aiSettingsUsageCalls => 'Calls';
+
+  @override
+  String get aiSettingsUsageSuccessRate => 'Success rate';
+
+  @override
+  String get aiSettingsUsageTokens => 'Input / output tokens';
+
+  @override
+  String get aiSettingsUsageLatency => 'Average time';
+
+  @override
+  String aiSettingsUsageSeconds(String value) {
+    return '$value s';
+  }
+
+  @override
+  String get aiSettingsUsageEmpty => 'No calls yet';
+
+  @override
+  String get aiSettingsUsageUnavailable =>
+      'Usage is temporarily unavailable. This does not affect the service';
+
+  @override
+  String get aiSettingsPreset => 'Provider';
+
+  @override
+  String get aiSettingsPresetInfo =>
+      'Choosing a provider fills in the endpoint and recommended settings. You can still change every field';
+
+  @override
+  String aiSettingsPresetOverseasOff(String label) {
+    return '$label (overseas, not enabled)';
+  }
+
+  @override
+  String get aiSettingsOverseasOffHint =>
+      'Overseas providers are off by default. To use one, ask your deployment administrator to enable it in the server configuration and complete the cross-border data assessment';
+
+  @override
+  String aiSettingsPresetUnavailable(String label) {
+    return '$label (unavailable)';
+  }
+
+  @override
+  String get aiSettingsName => 'Display name';
+
+  @override
+  String get aiSettingsNameHint => 'e.g. DeepSeek production account';
+
+  @override
+  String get aiSettingsNameRequired => 'Enter a display name';
+
+  @override
+  String aiSettingsTooLong(int max) {
+    return 'At most $max characters';
+  }
+
+  @override
+  String get aiSettingsBaseUrlInfo =>
+      'The Base URL from the provider documentation. Only https is allowed; a local deployment may use http://127.0.0.1';
+
+  @override
+  String get aiSettingsBaseUrlRequired => 'Enter the endpoint URL';
+
+  @override
+  String get aiSettingsBaseUrlInvalid =>
+      'The endpoint URL is invalid. It should start with https:// and have no query parameters';
+
+  @override
+  String get aiSettingsBaseUrlHttpLocalOnly =>
+      'Only local deployments may use http. Use https for other providers';
+
+  @override
+  String get aiSettingsModelHint =>
+      'Enter the model name, or tap \"Get models\" to pick from a list';
+
+  @override
+  String get aiSettingsModelRequired => 'Enter a model name';
+
+  @override
+  String get aiSettingsFetchModels => 'Get models';
+
+  @override
+  String get aiSettingsPickModel => 'Pick a model from the list';
+
+  @override
+  String aiSettingsModelsLoaded(int count) {
+    return 'Found $count models';
+  }
+
+  @override
+  String get aiSettingsModelsEmpty =>
+      'The provider returned no model list. Enter the model name directly';
+
+  @override
+  String get aiSettingsApiKeyHint =>
+      'Paste the key created in the provider console';
+
+  @override
+  String get aiSettingsApiKeyNotNeededHint =>
+      'Local deployments usually need no key, so you can leave this blank';
+
+  @override
+  String get aiSettingsApiKeyRequired => 'Enter the API key';
+
+  @override
+  String get aiSettingsClearKey => 'Remove key';
+
+  @override
+  String get aiSettingsUndoClear => 'Keep the key';
+
+  @override
+  String get aiSettingsKeyWillClear =>
+      'The stored key will be removed when you save';
+
+  @override
+  String get aiSettingsUrlChangedNeedKey =>
+      'The endpoint changed, so the API key must be entered again';
+
+  @override
+  String get aiSettingsUrlChangedNeedKeyDetail =>
+      'For security, the stored key is only ever sent to the original address. Paste the key again before saving.';
+
+  @override
+  String get aiSettingsUrlChangedNeedKeyLocalDetail =>
+      'For security, the stored key is only ever sent to the original address. Paste the key again, or tap \"Remove key\" if the new address needs none.';
+
+  @override
+  String get aiSettingsAdvanced => 'Advanced settings';
+
+  @override
+  String get aiSettingsProtocol => 'API protocol';
+
+  @override
+  String get aiSettingsProtocolInfo =>
+      'Mainland providers and local deployments are almost always OpenAI compatible; only Claude uses Anthropic';
+
+  @override
+  String get aiSettingsProtocolOpenAi => 'OpenAI compatible';
+
+  @override
+  String get aiSettingsProtocolAnthropic => 'Anthropic';
+
+  @override
+  String get aiSettingsJsonMode => 'JSON output';
+
+  @override
+  String get aiSettingsJsonModeInfo =>
+      'Asks the model to reply with JSON only so the system can read the result. Choose \"Not required\" if the provider does not support it';
+
+  @override
+  String get aiSettingsJsonModeNone => 'Not required';
+
+  @override
+  String get aiSettingsJsonModeObject => 'JSON object';
+
+  @override
+  String get aiSettingsJsonModeSchema => 'Structured (schema)';
+
+  @override
+  String get aiSettingsThinking => 'Turn off deep thinking';
+
+  @override
+  String get aiSettingsThinkingInfo =>
+      'Reading tables does not need deep thinking; turning it off is faster and cheaper. Each provider uses a different parameter, and choosing the provider selects the right one';
+
+  @override
+  String get aiSettingsThinkingNone => 'Leave as is';
+
+  @override
+  String get aiSettingsThinkingDeepseek => 'DeepSeek style';
+
+  @override
+  String get aiSettingsThinkingDashscope => 'Qwen style';
+
+  @override
+  String get aiSettingsThinkingOpenAi => 'OpenAI style';
+
+  @override
+  String get aiSettingsTemperature => 'Consistent output (temperature 0)';
+
+  @override
+  String get aiSettingsTemperatureInfo =>
+      'Keeps results consistent for the same file. Turn off if the model rejects this parameter';
+
+  @override
+  String get aiSettingsVision => 'Can read images and scans';
+
+  @override
+  String get aiSettingsVisionInfo =>
+      'Turn on if the model can read images; needed for photos and scanned PDFs uploaded by sales';
+
+  @override
+  String get aiSettingsMaxTokens => 'Max output length';
+
+  @override
+  String get aiSettingsMaxTokensInfo =>
+      '256 to 65536; files with many lines need more';
+
+  @override
+  String get aiSettingsTimeout => 'Timeout (seconds)';
+
+  @override
+  String get aiSettingsTimeoutInfo =>
+      '10 to 600; a reply slower than this counts as a failure';
+
+  @override
+  String aiSettingsNumberRange(int min, int max) {
+    return 'Enter a whole number from $min to $max';
+  }
+
+  @override
+  String get aiSettingsOverseasAck =>
+      'Customer data (company names, goods descriptions) will be sent to an overseas provider. I confirm the cross-border data assessment is complete';
+
+  @override
+  String get aiSettingsOverseasAckRequired =>
+      'Tick the confirmation above before using an overseas provider';
+
+  @override
+  String get aiSettingsSave => 'Save';
+
+  @override
+  String get aiSettingsSaving => 'Saving';
+
+  @override
+  String get aiSettingsSaved => 'Saved';
+
+  @override
+  String get aiSettingsSaveFailed => 'Save failed. Please try again later';
+
+  @override
+  String get aiSettingsFixFields => 'Please fix the highlighted fields first';
+
+  @override
+  String get aiSettingsTestNeedsKey => 'Enter the API key before testing';
+
+  @override
+  String get aiSettingsTestStoredMismatch =>
+      'Testing with the stored key requires the saved endpoint and model. Save first, or enter the key again to test';
+
+  @override
+  String get aiSettingsTestResultTitle => 'Connection test';
+
+  @override
+  String get aiSettingsStepNetwork => 'Network';
+
+  @override
+  String get aiSettingsStepAuth => 'API key check';
+
+  @override
+  String get aiSettingsStepModel => 'Model available';
+
+  @override
+  String get aiSettingsStepJson => 'JSON output';
+
+  @override
+  String get aiSettingsStepSkipped => 'Not run';
+
+  @override
+  String aiSettingsLatency(int ms) {
+    return '$ms ms';
+  }
+
+  @override
+  String get aiSettingsTestPassed => 'Connection OK, ready to use';
+
+  @override
+  String get aiSettingsTestPassedShort => 'Passed';
+
+  @override
+  String get aiSettingsTestFailed =>
+      'The connection test failed. Check the hints and try again';
+
+  @override
+  String get aiSettingsTestFailedShort => 'Failed';
+
+  @override
+  String get aiSettingsTestWarnShort => 'Check notes';
+
+  @override
+  String get aiSettingsTestPassedWithNotes =>
+      'Connected, but there is something to check. See the notes above';
+
+  @override
+  String get aiSettingsTestStoredUnsavedAdvanced =>
+      'Advanced settings were changed, and a test with the stored key would not include them. Save first, or enter the key again to test';
+
+  @override
+  String get aiSettingsModelChoices => 'Models:';
+
+  @override
+  String get aiSettingsOverseasLockedShort =>
+      'Overseas providers are not enabled; the deployment administrator must turn them on on the server';
+
+  @override
+  String get aiSettingsKeyConfiguredPlain => 'Set';
+
+  @override
+  String get aiSettingsApiKeyKeepHintPlain => 'Set. Leave blank to keep it';
+
+  @override
+  String get aiSettingsCurrentKey => 'Current key';
+
+  @override
+  String get salesQuoteStatusDraft => 'Draft';
+
+  @override
+  String get salesQuoteStatusPendingFinance => 'Awaiting finance pricing';
+
+  @override
+  String get salesQuoteStatusReturned => 'Returned by finance';
+
+  @override
+  String get salesQuoteStatusConfirmed => 'Priced by finance';
+
+  @override
+  String get salesQuoteStatusReversed => 'Voided';
+
+  @override
+  String get salesQuoteStatusConverted => 'Converted to order';
+
+  @override
+  String get salesQuoteStatusToConvert => 'Priced, ready to convert';
+
+  @override
+  String salesQuoteStatusReadOnly(String status) {
+    return '$status · read only';
+  }
+
+  @override
+  String get salesQuoteStatusHistory => 'History';
+
+  @override
+  String get salesQuoteStatusBannerDraft =>
+      'Draft: when ready, tap \"Submit for finance pricing\". It can become an order only after finance sets the prices and discounts.';
+
+  @override
+  String get salesQuoteStatusBannerPending =>
+      'Submitted for finance pricing and waiting for finance. To change it, withdraw it first.';
+
+  @override
+  String salesQuoteStatusBannerReturned(String reason) {
+    return 'Returned by finance: $reason. Fix it and submit for finance pricing again.';
+  }
+
+  @override
+  String salesQuoteStatusBannerConfirmed(String name, String time) {
+    return 'Priced by finance ($name · $time). You can convert it to an order now.';
+  }
+
+  @override
+  String salesQuoteStatusBannerConverted(String orderNo) {
+    return 'Converted to order $orderNo; the quote can no longer be changed.';
+  }
+
+  @override
+  String get salesQuoteStatusBannerReversed =>
+      'This quote has been voided and is view only.';
+
+  @override
+  String get salesQuoteStatusFinanceFallback => 'Finance';
+
+  @override
+  String get salesQuoteStatusFieldReturnReason => 'Return reason';
+
+  @override
+  String get salesQuoteStatusFieldSubmittedAt => 'Submitted for pricing';
+
+  @override
+  String get salesQuoteStatusFieldConfirmedBy => 'Priced by';
+
+  @override
+  String get salesQuoteStatusFieldConvertedOrder => 'Converted order';
+
+  @override
+  String get salesQuoteStatusFieldFinanceRemark => 'Finance note';
+
+  @override
+  String get salesQuoteStatusActionSubmit => 'Submit for finance pricing';
+
+  @override
+  String get salesQuoteStatusActionWithdraw => 'Withdraw';
+
+  @override
+  String get salesQuoteStatusActionReopen => 'Edit again';
+
+  @override
+  String get salesQuoteStatusActionConvert => 'Convert to order';
+
+  @override
+  String get salesQuoteStatusActionReverse => 'Void';
+
+  @override
+  String get salesQuoteStatusActionEdit => 'Edit';
+
+  @override
+  String get salesQuoteStatusActionDelete => 'Delete';
+
+  @override
+  String get salesQuoteStatusActionFinanceReview => 'Open pricing review';
+
+  @override
+  String get salesQuoteStatusActionViewOrder => 'View order';
+
+  @override
+  String get salesQuoteStatusActionBack => 'Back to list';
+
+  @override
+  String get salesQuoteStatusSubmitConfirmBody =>
+      'Finance will set the price and discount line by line. You cannot change the quote meanwhile. Submit now?';
+
+  @override
+  String get salesQuoteStatusWithdrawConfirmBody =>
+      'The quote goes back to draft so you can keep editing; submit it for pricing again afterwards. Withdraw now?';
+
+  @override
+  String get salesQuoteStatusReopenConfirmBody =>
+      'Finance has already priced this quote. Editing again returns it to draft, and it must be priced again before it can become an order. Continue?';
+
+  @override
+  String get salesQuoteStatusReverseConfirmBody =>
+      'A voided quote can no longer be converted and cannot be restored. Void it?';
+
+  @override
+  String get salesQuoteStatusDeleteConfirmBody =>
+      'Delete this draft quote? This cannot be undone.';
+
+  @override
+  String get salesQuoteStatusConvertConfirmBody =>
+      'An order draft will be created with the price and discount set by finance. Those cannot be changed; quantity and delivery details can still be completed on the order. Convert now?';
+
+  @override
+  String get salesQuoteStatusConfirm => 'OK';
+
+  @override
+  String get salesQuoteStatusCancel => 'Cancel';
+
+  @override
+  String get salesQuoteStatusSubmitted => 'Submitted for finance pricing';
+
+  @override
+  String get salesQuoteStatusWithdrawn => 'Withdrawn; you can keep editing';
+
+  @override
+  String get salesQuoteStatusReopened =>
+      'Back to draft; submit for pricing again when ready';
+
+  @override
+  String get salesQuoteStatusReversedDone => 'Quote voided';
+
+  @override
+  String get salesQuoteStatusDeleted => 'Deleted';
+
+  @override
+  String salesQuoteStatusConvertDone(String billNo) {
+    return 'Order draft $billNo created';
+  }
+
+  @override
+  String get salesQuoteStatusActionFailed =>
+      'That did not work. Please try again later.';
+
+  @override
+  String get salesQuoteStatusBusy => 'Working on it, please wait';
+
+  @override
+  String get salesQuoteStatusTimelineTitle => 'Pricing history';
+
+  @override
+  String get salesQuoteStatusTimelineEmpty => 'No pricing history yet';
+
+  @override
+  String get salesQuoteStatusRevisionSubmit => 'Submitted for pricing';
+
+  @override
+  String get salesQuoteStatusRevisionWithdraw => 'Withdrawn by sales';
+
+  @override
+  String get salesQuoteStatusRevisionFinanceEdit => 'Prices changed by finance';
+
+  @override
+  String get salesQuoteStatusRevisionReturn => 'Returned by finance';
+
+  @override
+  String get salesQuoteStatusRevisionConfirm => 'Confirmed by finance';
+
+  @override
+  String get salesQuoteStatusRevisionReopen => 'Reopened by sales';
+
+  @override
+  String get salesQuoteStatusRevisionFinanceReopen =>
+      'Confirmation withdrawn by finance';
+
+  @override
+  String get salesQuoteStatusRevisionOther => 'Other record';
+
+  @override
+  String get salesQuoteStatusRevisionOperator => 'By';
+
+  @override
+  String salesQuoteStatusRevisionVersion(int revision) {
+    return 'Version $revision';
+  }
+
+  @override
+  String get salesQuoteStatusSourceQuoteConfirmed => 'Quote priced by finance';
+
+  @override
+  String get salesQuoteStatusSourceQuote => 'Source quote';
+
+  @override
+  String get quoteFinanceHubTitle => 'Quote pricing';
+
+  @override
+  String get quoteFinanceHubSubtitle =>
+      'Finance sets prices and discounts on sales quotes; sales can convert them to orders once confirmed';
+
+  @override
+  String get quoteFinanceListTitle => 'Quote pricing';
+
+  @override
+  String get quoteFinanceTabPending => 'To price';
+
+  @override
+  String get quoteFinanceTabConfirmed => 'Priced';
+
+  @override
+  String get quoteFinanceTabReturned => 'Returned';
+
+  @override
+  String get quoteFinanceSearchHint => 'Search number / customer / salesperson';
+
+  @override
+  String get quoteFinanceRowHint => 'Tap to select · double-tap to price';
+
+  @override
+  String get quoteFinanceColBillNo => 'Quote No.';
+
+  @override
+  String get quoteFinanceColClient => 'Customer';
+
+  @override
+  String get quoteFinanceColSeller => 'Salesperson';
+
+  @override
+  String get quoteFinanceColSubmittedAt => 'Submitted';
+
+  @override
+  String get quoteFinanceColLines => 'Lines';
+
+  @override
+  String get quoteFinanceColAmount => 'Quote amount';
+
+  @override
+  String get quoteFinanceColStatus => 'Status / note';
+
+  @override
+  String get quoteFinanceStatusPending => 'To price';
+
+  @override
+  String get quoteFinanceStatusResubmitted => 'Resubmitted by sales';
+
+  @override
+  String quoteFinanceStatusNeedPrice(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines have no list price',
+      one: '1 line has no list price',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String quoteFinanceStatusConfirmed(String name) {
+    return 'Priced · $name';
+  }
+
+  @override
+  String quoteFinanceStatusConverted(String orderNo) {
+    return 'Converted to order $orderNo';
+  }
+
+  @override
+  String quoteFinanceStatusReturned(String reason) {
+    return 'Returned: $reason';
+  }
+
+  @override
+  String get quoteFinanceEmptyPending => 'No quotes waiting for pricing';
+
+  @override
+  String get quoteFinanceEmptyPendingHint =>
+      'Quotes appear here after sales submit them. Sales can convert a quote to an order only after you confirm the prices.';
+
+  @override
+  String get quoteFinanceEmptyConfirmed => 'No priced quotes yet';
+
+  @override
+  String get quoteFinanceEmptyReturned => 'No quotes returned to sales';
+
+  @override
+  String get quoteFinanceEmptyReturnedHint =>
+      'After sales fix a returned quote it comes back to \"To price\".';
+
+  @override
+  String quoteFinanceEmptySearch(String keyword) {
+    return 'No quotes match \"$keyword\"';
+  }
+
+  @override
+  String get quoteFinanceLoadFailed =>
+      'Could not load quotes. Check the network and try again.';
+
+  @override
+  String get quoteFinanceRetry => 'Retry';
+
+  @override
+  String get quoteFinanceRefresh => 'Refresh';
+
+  @override
+  String get quoteFinanceOpen => 'Price';
+
+  @override
+  String get quoteFinancePrevPage => 'Previous page';
+
+  @override
+  String get quoteFinanceNextPage => 'Next page';
+
+  @override
+  String get quoteFinanceUnnamed => 'Not set';
+
+  @override
+  String get quoteFinanceReviewTitle => 'Quote pricing';
+
+  @override
+  String get quoteFinanceStripPending => 'Waiting for finance pricing';
+
+  @override
+  String quoteFinanceStripConfirmed(String name, String time) {
+    return 'Priced · $name · $time';
+  }
+
+  @override
+  String quoteFinanceStripReturned(String reason) {
+    return 'Returned to sales · $reason';
+  }
+
+  @override
+  String get quoteFinanceStripDraft => 'Being edited by sales';
+
+  @override
+  String get quoteFinanceStripReversed => 'Voided';
+
+  @override
+  String quoteFinanceStripConverted(String orderNo) {
+    return 'Converted to order $orderNo';
+  }
+
+  @override
+  String quoteFinanceRevisionBadge(int revision) {
+    return 'Version $revision';
+  }
+
+  @override
+  String get quoteFinanceReadOnlyNotice =>
+      'You have nothing to do on this quote right now; it is view only.';
+
+  @override
+  String get quoteFinanceResubmitNotice =>
+      'Resubmitted by sales. Highlighted lines have a discount different from the one you last confirmed; please check them.';
+
+  @override
+  String quoteFinanceNeedPriceNotice(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count lines have no list price. Enter a deal price, or choose \"Mark as free / zero price\" from the line menu, before confirming.',
+      one:
+          '1 line has no list price. Enter a deal price, or choose \"Mark as free / zero price\" from the line menu, before confirming.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceGoMaintainPrice => 'Maintain list price in goods data';
+
+  @override
+  String get quoteFinanceInfoTitle => 'Quote details';
+
+  @override
+  String get quoteFinanceFieldClient => 'Customer';
+
+  @override
+  String get quoteFinanceFieldSeller => 'Salesperson';
+
+  @override
+  String get quoteFinanceFieldMaker => 'Prepared by';
+
+  @override
+  String get quoteFinanceFieldBillDate => 'Date';
+
+  @override
+  String get quoteFinanceFieldSubmittedAt => 'Submitted';
+
+  @override
+  String get quoteFinanceFieldDeliverDate => 'Delivery date';
+
+  @override
+  String get quoteFinanceFieldContractNo => 'Contract No.';
+
+  @override
+  String get quoteFinanceFieldCurrency => 'Currency';
+
+  @override
+  String get quoteFinanceFieldFileCurrency => 'Customer file currency';
+
+  @override
+  String quoteFinanceFileRateHint(String currency, String rate) {
+    return 'File currency $currency, converted to base currency at the finance reference rate $rate';
+  }
+
+  @override
+  String get quoteFinanceFieldRemark => 'Sales note';
+
+  @override
+  String get quoteFinanceFieldValidUntil => 'Valid until';
+
+  @override
+  String get quoteFinanceFieldSettlement => 'Settlement method';
+
+  @override
+  String get quoteFinanceFieldFinanceRemark => 'Finance note';
+
+  @override
+  String get quoteFinanceFinanceRemarkHint => 'Note for sales (optional)';
+
+  @override
+  String get quoteFinanceSettlementNone => 'Not specified';
+
+  @override
+  String get quoteFinanceAttachmentsTitle => 'Customer files and attachments';
+
+  @override
+  String get quoteFinanceLinesTitle => 'Goods lines';
+
+  @override
+  String get quoteFinanceColGoods => 'Goods';
+
+  @override
+  String get quoteFinanceColCode => 'Code';
+
+  @override
+  String get quoteFinanceColColor => 'Color';
+
+  @override
+  String get quoteFinanceColQty => 'Qty';
+
+  @override
+  String get quoteFinanceColUnit => 'Unit';
+
+  @override
+  String get quoteFinanceColListPrice => 'List price';
+
+  @override
+  String get quoteFinanceColListPriceInfo =>
+      'The selling price in goods data. When there is none, or the deal price is above it, finance sets the deal price directly; below it, the price always becomes a discount.';
+
+  @override
+  String get quoteFinanceColFilePrice => 'File unit price (original)';
+
+  @override
+  String get quoteFinanceColFilePriceLocal => 'In base currency';
+
+  @override
+  String get quoteFinanceColDealPrice => 'Deal price';
+
+  @override
+  String get quoteFinanceColDealPriceInfo =>
+      'What the customer finally pays per unit. Changing the deal price recalculates the discount, and vice versa.';
+
+  @override
+  String get quoteFinanceColDiscount => 'Discount';
+
+  @override
+  String get quoteFinanceColDiscountInfo =>
+      'Discount = deal price ÷ list price, 4 decimal places; 1 means the list price.';
+
+  @override
+  String get quoteFinanceColLineAmount => 'Amount';
+
+  @override
+  String get quoteFinanceColFileDiff => 'Difference from file';
+
+  @override
+  String get quoteFinanceColFileDiffInfo =>
+      'This line amount minus the amount in the customer file (converted to base currency). 0 means it matches the file.';
+
+  @override
+  String get quoteFinanceColLastConfirmed => 'Last confirmed discount';
+
+  @override
+  String get quoteFinanceColSalesProposed => 'Discount from sales';
+
+  @override
+  String get quoteFinanceColFileModel => 'File model';
+
+  @override
+  String get quoteFinanceColFileName => 'File description';
+
+  @override
+  String get quoteFinanceColRemark => 'Note';
+
+  @override
+  String get quoteFinanceNoListPrice => 'No price';
+
+  @override
+  String get quoteFinanceFinancePriceChip => 'Finance price';
+
+  @override
+  String get quoteFinanceGiveawayChip => 'Free / zero';
+
+  @override
+  String get quoteFinanceFileMatch => 'Matches';
+
+  @override
+  String get quoteFinanceErrorDealPrice =>
+      'Enter a number greater than 0. For a free or zero-price line, use \"Set as free / zero price\" in the line menu.';
+
+  @override
+  String get quoteFinanceErrorFinancePrice => 'Enter a number of 0 or more';
+
+  @override
+  String get quoteFinanceErrorDiscount =>
+      'Discount must be above 0 and at most 1, with up to 4 decimals';
+
+  @override
+  String get quoteFinanceErrorNeedPrice => 'Enter the deal price';
+
+  @override
+  String get quoteFinanceMenuMasterMode => 'Discount from list price';
+
+  @override
+  String get quoteFinanceMenuGiveaway => 'Mark as free / zero price';
+
+  @override
+  String get quoteFinanceMenuRestore => 'Undo changes on this line';
+
+  @override
+  String get quoteFinanceBatchDiscount => 'Set discount for selected';
+
+  @override
+  String quoteFinanceBatchDiscountCount(int count) {
+    return 'Set discount ($count)';
+  }
+
+  @override
+  String quoteFinanceBatchDiscountTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Set the discount for $count selected lines',
+      one: 'Set the discount for 1 selected line',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceBatchDiscountHint =>
+      'For example, 0.95 means 95% of the list price';
+
+  @override
+  String get quoteFinanceBatchApply => 'Apply';
+
+  @override
+  String quoteFinanceBatchApplied(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Discount set for $count lines',
+      one: 'Discount set for 1 line',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String quoteFinanceBatchSkipped(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines without a list price were skipped',
+      one: '1 line without a list price was skipped',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceBatchNeedSelection =>
+      'Select the lines to change first';
+
+  @override
+  String quoteFinanceCheckedEditHint(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'This line is selected: changing the discount updates all $count selected lines',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceActionSave => 'Save changes';
+
+  @override
+  String get quoteFinanceActionSaving => 'Saving…';
+
+  @override
+  String get quoteFinanceActionReturn => 'Return to sales';
+
+  @override
+  String get quoteFinanceActionConfirm => 'Confirm quote';
+
+  @override
+  String get quoteFinanceActionReopen => 'Undo confirmation to edit';
+
+  @override
+  String get quoteFinanceActionBack => 'Back';
+
+  @override
+  String get quoteFinanceSaved => 'Changes saved';
+
+  @override
+  String get quoteFinanceNothingToSave => 'Nothing to save';
+
+  @override
+  String quoteFinanceFixErrors(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines have invalid values; please fix them first',
+      one: '1 line has an invalid value; please fix it first',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceClaimNotReady =>
+      'You do not hold this quote for pricing yet. Tap \"Claim again and refresh\".';
+
+  @override
+  String get quoteFinanceSaveFirst => 'Save your changes before confirming';
+
+  @override
+  String quoteFinanceConfirmBlocked(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count lines still have no price, so the quote cannot be confirmed. Enter deal prices or mark them as free / zero.',
+      one:
+          '1 line still has no price, so the quote cannot be confirmed. Enter a deal price or mark it as free / zero.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceConfirmedDone =>
+      'Quote confirmed; sales have been told they can convert it';
+
+  @override
+  String get quoteFinanceReturnedDone =>
+      'Returned to sales; they will be notified';
+
+  @override
+  String get quoteFinanceReopenedDone =>
+      'Confirmation undone; you can edit the prices again';
+
+  @override
+  String get quoteFinanceLoadDetailFailed =>
+      'Could not load the quote. Check the network or your access and try again.';
+
+  @override
+  String get quoteFinanceActionFailed =>
+      'That did not work. Please try again later.';
+
+  @override
+  String get quoteFinanceUnsavedTitle => 'You have unsaved changes';
+
+  @override
+  String get quoteFinanceUnsavedBody =>
+      'These changes will be lost if you leave. Leave anyway?';
+
+  @override
+  String get quoteFinanceLeave => 'Leave';
+
+  @override
+  String get quoteFinanceStay => 'Keep editing';
+
+  @override
+  String get quoteFinanceBusy => 'Working on it, please wait';
+
+  @override
+  String get quoteFinanceSaving => 'Saving changes';
+
+  @override
+  String get quoteFinanceSessionChanged =>
+      'Your sign-in changed. Please open the quote again.';
+
+  @override
+  String quoteFinanceConfirmTitle(String billNo) {
+    return 'Confirm quote $billNo';
+  }
+
+  @override
+  String get quoteFinanceConfirmBody =>
+      'Once confirmed, the prices and discounts are fixed and sales can convert the quote to an order. To change them later, undo the confirmation before it is converted.';
+
+  @override
+  String get quoteFinanceConfirmResponsibility => 'Quote pricing confirmation';
+
+  @override
+  String get quoteFinanceConfirmResponsibilityDesc =>
+      'The system records you as the person who priced this quote.';
+
+  @override
+  String quoteFinanceConfirmTotal(String amount) {
+    return 'Quote amount $amount';
+  }
+
+  @override
+  String quoteFinanceReturnTitle(String billNo) {
+    return 'Return $billNo to sales';
+  }
+
+  @override
+  String get quoteFinanceReturnBody =>
+      'The quote goes back to sales to fix and resubmit. Write the reason; sales will see it.';
+
+  @override
+  String get quoteFinanceReturnChipQty => 'Customer wants to change quantity';
+
+  @override
+  String get quoteFinanceReturnChipGoods => 'Goods missing, please add';
+
+  @override
+  String get quoteFinanceReturnChipPrice =>
+      'Price needs confirming with the customer';
+
+  @override
+  String get quoteFinanceReturnReasonLabel => 'Return reason (required)';
+
+  @override
+  String get quoteFinanceReturnReasonRequired => 'Please enter a return reason';
+
+  @override
+  String get quoteFinanceReturnSubmit => 'Return';
+
+  @override
+  String get quoteFinanceReopenTitle => 'Undo confirmation to edit';
+
+  @override
+  String get quoteFinanceReopenBody =>
+      'The quote goes back to \"To price\" so you can edit prices; confirm it again afterwards. Sales cannot convert it meanwhile. Undo now?';
+
+  @override
+  String get quoteFinanceCancel => 'Cancel';
+
+  @override
+  String get quoteFinanceRevisionTitle => 'Pricing history';
+
+  @override
+  String get quoteFinanceTotalQty => 'Total qty';
+
+  @override
+  String get quoteFinanceTotalAmount => 'Total amount';
+
+  @override
+  String get quoteFinanceTotalPreview => 'Total amount (unsaved preview)';
+
+  @override
+  String quoteFinanceOrderSourceQuote(String billNo) {
+    return 'Source quote $billNo';
+  }
+
+  @override
+  String quoteFinanceOrderQuoteConfirmedBy(String name) {
+    return 'Quote priced · $name';
+  }
+
+  @override
+  String get quoteFinanceOrderAllMatch => 'Quote priced · matches';
+
+  @override
+  String quoteFinanceOrderMismatch(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines differ from the quote',
+      one: '1 line differs from the quote',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quoteFinanceOrderChipHint =>
+      'This order comes from a finance-priced quote. When prices and discounts match the quote, only credit and terms need checking now.';
+
+  @override
+  String get quoteFinanceOrderColQuotePrice => 'Quote price';
+
+  @override
+  String get quoteFinanceOrderColQuoteDiscount => 'Quote discount';
+
+  @override
+  String get quoteFinanceOrderColMatch => 'vs quote';
+
+  @override
+  String get quoteFinanceOrderMatchYes => 'Matches';
+
+  @override
+  String get quoteFinanceOrderMatchNo => 'Differs';
+
+  @override
+  String quoteFinanceOrderColFilePrice(String currency) {
+    return 'File price ($currency)';
+  }
+
+  @override
+  String get quoteFinanceOrderFileCurrencyUnknown => 'original';
+
+  @override
+  String get quoteFinanceOrderColFileModel => 'File model';
+
+  @override
+  String get quoteFinanceOrderColFileName => 'File description';
+
+  @override
+  String get quoteFinanceAboveListHint =>
+      'Above the list price, so it is saved as a finance price (discount 1)';
+
+  @override
+  String get quoteFinanceMenuRefreshMaster =>
+      'Refresh from the latest list price';
+
+  @override
+  String quoteFinanceRefreshMasterChip(String price) {
+    return 'Refreshed from the latest list price $price with the same discount; save first to change the discount again';
+  }
+
+  @override
+  String quoteFinanceListPriceLatest(String price, String latest) {
+    return '$price, now $latest in goods data';
+  }
+
+  @override
+  String quoteFinanceStatusClaimedBy(String name) {
+    return '$name is pricing it';
+  }
+
+  @override
+  String get quoteFinanceStatusClaimedByMe => 'You are pricing it';
+
+  @override
+  String quoteFinanceFileRateMissing(String currency) {
+    return 'File currency $currency; there is no finance reference rate yet, so base-currency values are left blank';
+  }
+
+  @override
+  String get salesQuoteStatusImportTitle => 'Choose a quote priced by finance';
+
+  @override
+  String get salesQuoteStatusImportEmpty =>
+      'No priced quotes are ready to become orders';
+
+  @override
+  String get salesQuoteStatusImportLoadFailed =>
+      'Could not load quotes. Please try again later.';
+
+  @override
+  String get salesIntakeBannerTitle => 'Read customer file';
+
+  @override
+  String get salesIntakeBannerMessage =>
+      'Upload the customer\'s quotation or proforma invoice to fill in the customer and goods automatically';
+
+  @override
+  String get salesIntakeBannerButton => 'Read customer file';
+
+  @override
+  String get salesIntakeBannerAgain => 'Read another file';
+
+  @override
+  String salesIntakeBannerImported(String file, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return 'Imported $_temp0 from $file';
+  }
+
+  @override
+  String get salesIntakeToolbarButton => 'Read customer file';
+
+  @override
+  String get salesIntakeAiOffHint =>
+      'AI is off: only common Excel layouts can be read';
+
+  @override
+  String get salesIntakeApprovedOrderHint =>
+      'Approved orders are changed with quantity change or edit; they cannot be re-read from a file';
+
+  @override
+  String get salesIntakeReplaceTitle => 'The lines already have goods';
+
+  @override
+  String get salesIntakeReplaceMessage =>
+      'Replace the existing lines with the result, or add it after them?';
+
+  @override
+  String get salesIntakeReplace => 'Replace';
+
+  @override
+  String get salesIntakeAppend => 'Add after';
+
+  @override
+  String salesIntakeApplied(int count, int review) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return 'Imported $_temp0; $review marked yellow need checking';
+  }
+
+  @override
+  String salesIntakeAppliedAllMatched(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return 'Imported $_temp0';
+  }
+
+  @override
+  String get salesIntakeAttachFailed =>
+      'The original file could not be attached; you can upload it in the attachments area';
+
+  @override
+  String get salesIntakeProgressTitle => 'Reading the customer file';
+
+  @override
+  String get salesIntakeStageUpload => 'Upload file';
+
+  @override
+  String get salesIntakeStageRead => 'Read the sheet';
+
+  @override
+  String get salesIntakeStageLayout => 'Find headers and columns';
+
+  @override
+  String get salesIntakeStageGoods => 'Match goods';
+
+  @override
+  String get salesIntakeStageClient => 'Match customer';
+
+  @override
+  String get salesIntakeStagePricing => 'Work out discounts';
+
+  @override
+  String get salesIntakeSendWholeFileTitle =>
+      'The whole file will be sent to the AI service';
+
+  @override
+  String get salesIntakeSendWholeFileMessage =>
+      'This is a PDF or image, so the whole file must be sent to the AI service to be read. If it contains sensitive details such as bank accounts, make sure it can be sent.';
+
+  @override
+  String get salesIntakeSendWholeFileConfirm => 'Continue';
+
+  @override
+  String get salesIntakeAiRequired =>
+      'PDFs and images need AI to be read. Upload an Excel file or contact the administrator';
+
+  @override
+  String get salesIntakeVisionRequired =>
+      'This is an image. The administrator needs to enable a model that can read images in AI settings';
+
+  @override
+  String salesIntakeFileTooLarge(String max) {
+    return 'The file is too large (max $max)';
+  }
+
+  @override
+  String get salesIntakeFileUnreadable =>
+      'Could not read this file. Please choose it again';
+
+  @override
+  String get salesIntakeFileTypeUnsupported =>
+      'Only Excel, CSV, PDF or image files can be read';
+
+  @override
+  String get salesIntakeFailedTitle => 'Could not read this file';
+
+  @override
+  String get salesIntakeResultUnreadable =>
+      'The result could not be loaded. Please read the file again';
+
+  @override
+  String get salesIntakeNoLines =>
+      'No goods lines were found. Make sure this is a quotation or proforma invoice';
+
+  @override
+  String get salesIntakeCancel => 'Cancel';
+
+  @override
+  String get salesIntakeCreateClientTitle => 'Create customer from file';
+
+  @override
+  String get salesIntakeCreateClientIntro =>
+      'A new customer will be created from the details below, owned by you, in the Uncategorized group.';
+
+  @override
+  String get salesIntakeCreateClientName => 'Customer short name';
+
+  @override
+  String get salesIntakeCreateClientNameRequired =>
+      'Enter the customer short name';
+
+  @override
+  String get salesIntakeCreateClientConfirm => 'Create customer';
+
+  @override
+  String salesIntakeCreateClientDone(String name) {
+    return 'Customer $name created';
+  }
+
+  @override
+  String get salesIntakeCreateClientExists =>
+      'This customer already exists and has been selected';
+
+  @override
+  String get salesIntakeCreateClientFailed =>
+      'The customer was not created. Please try again later';
+
+  @override
+  String get salesIntakeFieldFullName => 'Full name';
+
+  @override
+  String get salesIntakeFieldNameEn => 'Foreign name';
+
+  @override
+  String get salesIntakeFieldLinkman => 'Contact';
+
+  @override
+  String get salesIntakeFieldEmail => 'Email';
+
+  @override
+  String get salesIntakeFieldPhone => 'Phone';
+
+  @override
+  String get salesIntakeFieldAddress => 'Address';
+
+  @override
+  String get salesIntakeFieldTaxId => 'Tax number';
+
+  @override
+  String get salesIntakeFieldPlace => 'Country/region';
+
+  @override
+  String get salesIntakeReviewTitle => 'Check the result';
+
+  @override
+  String salesIntakeReviewSubtitle(String file, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return '$file · $_temp0';
+  }
+
+  @override
+  String get salesIntakeClose => 'Close';
+
+  @override
+  String get salesIntakeStepClient => 'Customer';
+
+  @override
+  String get salesIntakeStepGoods => 'Goods';
+
+  @override
+  String salesIntakeClientResolved(String name) {
+    return 'Customer: $name';
+  }
+
+  @override
+  String get salesIntakeClientChange => 'Change';
+
+  @override
+  String get salesIntakeClientPickOther => 'Choose another customer…';
+
+  @override
+  String get salesIntakeClientCreate => 'Create customer from file';
+
+  @override
+  String salesIntakeClientBuyer(String name) {
+    return 'Buyer on the file: $name';
+  }
+
+  @override
+  String get salesIntakeClientNotFound =>
+      'This buyer is not among your customers';
+
+  @override
+  String get salesIntakeClientSuggestions =>
+      'It looks like one of these customers. Choose one:';
+
+  @override
+  String get salesIntakeClientNone =>
+      'No customer chosen yet; you can also choose one in the header after importing';
+
+  @override
+  String get salesIntakeNoVisibleClients =>
+      'You have no customers yet. Ask your supervisor to assign customers to you in Customer data';
+
+  @override
+  String salesIntakeEnrichSummary(String fields) {
+    return 'The file has the customer\'s $fields; add them to the customer data when saving';
+  }
+
+  @override
+  String get salesIntakeEnrichShow => 'Show';
+
+  @override
+  String get salesIntakeEnrichHide => 'Hide';
+
+  @override
+  String salesIntakeEnrichDiffers(String current) {
+    return 'Differs from the current value: $current';
+  }
+
+  @override
+  String get salesIntakeEnrichCurrentEmpty =>
+      'Not filled in the customer data yet';
+
+  @override
+  String salesIntakeFilterReview(int count) {
+    return 'To check ($count)';
+  }
+
+  @override
+  String salesIntakeFilterAll(int count) {
+    return 'All ($count)';
+  }
+
+  @override
+  String salesIntakeMatchedCollapsed(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return '$_temp0 matched automatically';
+  }
+
+  @override
+  String get salesIntakeExpand => 'Show';
+
+  @override
+  String get salesIntakeCollapse => 'Hide';
+
+  @override
+  String get salesIntakeNoReviewLines =>
+      'All lines matched automatically. You can import right away';
+
+  @override
+  String salesIntakeLineNo(String no) {
+    return 'Line $no';
+  }
+
+  @override
+  String salesIntakeQty(String qty) {
+    return 'Qty $qty';
+  }
+
+  @override
+  String salesIntakeFilePrice(String price) {
+    return 'File price $price';
+  }
+
+  @override
+  String salesIntakeFilePriceWithCurrency(String price, String currency) {
+    return 'File price $price $currency';
+  }
+
+  @override
+  String get salesIntakeStatusMatched => 'Matched';
+
+  @override
+  String get salesIntakeStatusConfirmed => 'Confirmed';
+
+  @override
+  String get salesIntakeStatusReview => 'Check';
+
+  @override
+  String get salesIntakeStatusUnmatched => 'Not found';
+
+  @override
+  String get salesIntakeStatusBlocked => 'Cannot import';
+
+  @override
+  String get salesIntakeGoodsLabel => 'Our goods';
+
+  @override
+  String get salesIntakeGoodsHint => 'Choose goods';
+
+  @override
+  String get salesIntakeConfirmChoice => 'That\'s it';
+
+  @override
+  String get salesIntakePickFromMaster => 'Choose from goods data…';
+
+  @override
+  String salesIntakeSplit(int count) {
+    return 'Split into $count lines';
+  }
+
+  @override
+  String get salesIntakeMerge => 'Merge back into one line';
+
+  @override
+  String get salesIntakeBundleHint =>
+      'This line is a set; you can split it and choose goods one by one';
+
+  @override
+  String salesIntakeSetNameEn(String text) {
+    return 'Use as the goods English name: $text';
+  }
+
+  @override
+  String get salesIntakeInclude => 'Import this line';
+
+  @override
+  String salesIntakeDiscountPreview(String discount) {
+    return 'Discount $discount';
+  }
+
+  @override
+  String get salesIntakeDiscountPending => 'Discount to be decided';
+
+  @override
+  String get salesIntakePricingNoListPrice =>
+      'This goods has no list price yet';
+
+  @override
+  String get salesIntakePricingAboveList =>
+      'The file price is above the list price';
+
+  @override
+  String get salesIntakePricingOutOfRange =>
+      'Unusual discount; the goods may be wrong';
+
+  @override
+  String get salesIntakePricingAmbiguous =>
+      'Cannot tell which currency the file uses; check the discount';
+
+  @override
+  String get salesIntakePricingRateMissing =>
+      'The reference exchange rate is not set, so the discount could not be worked out';
+
+  @override
+  String get salesIntakeUnmatchedRemarkHint =>
+      'Not imported; the file text goes into the remark';
+
+  @override
+  String get salesIntakeBlockedHint =>
+      'Cannot go straight into an order; make a quotation for finance to price first';
+
+  @override
+  String salesIntakeBlockedTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count goods have',
+      one: '1 goods has',
+    );
+    return '$_temp0 no list price (or the file price is above it)';
+  }
+
+  @override
+  String get salesIntakeBlockedMessage =>
+      'They cannot go straight into an order. Make a quotation first so finance can price them.';
+
+  @override
+  String get salesIntakeHandoffToQuote => 'Make a quotation instead';
+
+  @override
+  String get salesIntakeDuplicateTitle =>
+      'This file may already have been entered';
+
+  @override
+  String salesIntakeDuplicateItem(
+    String doc,
+    String billNo,
+    String date,
+    String reason,
+  ) {
+    return '$doc $billNo ($date, $reason)';
+  }
+
+  @override
+  String salesIntakeDuplicateMessage(String items) {
+    return 'Already entered: $items. Create another one anyway?';
+  }
+
+  @override
+  String get salesIntakeDocTypeQuote => 'Quotation';
+
+  @override
+  String get salesIntakeDocTypeOrder => 'Order';
+
+  @override
+  String salesIntakeOtherSheets(String sheets, String current) {
+    return 'The file also has sheet $sheets that looks like a goods list; only \"$current\" was read. To read that sheet, upload the file again and pick that sheet while reviewing.';
+  }
+
+  @override
+  String salesIntakeOtherSheetItem(String name, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return '$name ($_temp0)';
+  }
+
+  @override
+  String salesIntakeOtherSheetsLead(String current) {
+    return 'Sheet \"$current\" was read. Tap another sheet below to read that one instead (one sheet at a time, never combined).';
+  }
+
+  @override
+  String salesIntakeOtherSheetChip(String name, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return 'Sheet $name also looks like a goods list ($_temp0)';
+  }
+
+  @override
+  String get salesIntakeOtherSheetTooltip => 'Read this sheet instead';
+
+  @override
+  String salesIntakeSheetProgressSubtitle(String file, String sheet) {
+    return '$file · sheet $sheet';
+  }
+
+  @override
+  String get salesIntakePriceMaskedNotice =>
+      'You cannot see prices; discounts are worked out from the file prices when you save';
+
+  @override
+  String salesIntakeCurrencyNotice(String currency, String rate, String base) {
+    return 'The file is priced in $currency; it is converted at the finance reference rate $rate and the document is saved in $base';
+  }
+
+  @override
+  String salesIntakeRateMissingNotice(String currency) {
+    return 'The reference rate for $currency is not set, so some discounts could not be worked out. Ask finance to fill it in Currencies';
+  }
+
+  @override
+  String salesIntakeSummary(int rows, int review, int skipped) {
+    return 'Import: $rows · Marked yellow to check: $review · Not imported: $skipped';
+  }
+
+  @override
+  String salesIntakeImportAll(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines',
+      one: '1 line',
+    );
+    return 'Import all ($_temp0)';
+  }
+
+  @override
+  String get salesIntakeNothingToImport => 'Nothing to import yet';
+
+  @override
+  String get salesIntakePickedManually => 'Chosen from goods data';
+
+  @override
+  String salesIntakeRemarkLineItem(String label, String qty) {
+    return '$label × $qty';
+  }
+
+  @override
+  String salesIntakeRemarkUnmatched(int count, String lines) {
+    return 'No matching goods for these $count lines: $lines';
+  }
+
+  @override
+  String salesIntakeRemarkUnpriced(int count, String lines) {
+    return 'Not imported, no list price (or file price above it) for these $count lines: $lines';
+  }
+
+  @override
+  String salesIntakeRemarkBundlePrice(String bundle, String price) {
+    return 'Set $bundle: file price $price for the whole set';
+  }
+
+  @override
+  String get salesIntakeMarkerDefault => 'Please check this match';
+
+  @override
+  String get salesIntakeMarkerUnit =>
+      'The file quantity is not in pieces; check the quantity';
+
+  @override
+  String get salesIntakeMarkerQuotePricing =>
+      'No list price (or file price above it); finance will set the price';
+
+  @override
+  String get salesIntakeMarkerQuoteDiscount =>
+      'The discount could not be worked out; finance will decide it';
+
+  @override
+  String get salesIntakeMarkerOrderDiscount =>
+      'The discount could not be worked out; check it against the file price and fill it in';
+
+  @override
+  String get salesIntakeQuoteLineReplaced =>
+      'This line was priced by finance on the quote. After switching to other goods it no longer uses the quoted price and discount; it is recalculated from the list price when saved';
+
+  @override
+  String get salesIntakeMarkerBundlePart =>
+      'The set was split; check the goods and discount';
+
+  @override
+  String get salesIntakeColClientModel => 'File model';
+
+  @override
+  String get salesIntakeColClientModelInfo =>
+      'The model or item number on the customer\'s file. After saving, the system remembers what the customer calls it so the next file is read more accurately.';
+
+  @override
+  String get salesIntakeColClientGoodsName => 'File description';
+
+  @override
+  String get salesIntakeColClientGoodsNameInfo =>
+      'The description on the customer\'s file. Choosing goods by hand fills in the goods English name; you can change it.';
+
+  @override
+  String get salesIntakeColClientPrice => 'File price';
+
+  @override
+  String salesIntakeColClientPriceWithCurrency(String currency) {
+    return 'File price ($currency)';
+  }
+
+  @override
+  String get salesIntakeColClientPriceInfo =>
+      'The unit price on the customer\'s file (in the file currency), for reference only. The unit price always comes from the goods list price; the discount is worked out from this price.';
+
+  @override
+  String get salesIntakeQuotePriceHint =>
+      'The unit price comes from the goods list price and sales cannot change it; goods without a list price are priced by finance. The discount is worked out from the customer\'s file price, or can be left empty for finance to decide.';
+
+  @override
+  String get salesIntakeFinancePriced => 'Finance price';
+
+  @override
+  String get salesIntakePendingFinancePrice => 'Finance to price';
+
+  @override
+  String get salesIntakeQuoteDiscountPending => 'Finance fills in';
+
+  @override
+  String get salesIntakeMaskedDiscount => 'Worked out on save';
+
+  @override
+  String get salesIntakeQuoteLockedDiscount => '(set in quotation)';
+
+  @override
+  String get salesIntakeQuoteLockedDiscountInfo =>
+      'Finance set this discount in the quotation. To change it, reopen the quotation';
 }

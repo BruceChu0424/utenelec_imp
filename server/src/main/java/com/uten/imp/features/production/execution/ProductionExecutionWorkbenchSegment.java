@@ -133,5 +133,17 @@ public record ProductionExecutionWorkbenchSegment(
         String materialDiscoveryStatus,
         boolean canRequestMaterialDiscovery,
         /** 来源计划（V719）：ANALYSIS 根的 WL 分析编号；历史计划根为 null。 */
-        String analysisNo) {
+        String analysisNo,
+        /**
+         * 车间内料仓用料状态(ADR-131 §5.4)：KNOWN / ORDER_ONLY / NO_BIN / NEED_BIN /
+         * NEED_CHOICE，与开工门、数据库开工触发器同一个状态函数。
+         */
+        String binMaterialState,
+        /**
+         * 开工前要先过开工确认表：待开工、计划有效、包已确认、车间与负责人已定，状态不是
+         * NEED_BIN，且待认料或生产路线未确认。这类行可勾选、点开工弹确认表。
+         */
+        boolean needsStartConfirmation,
+        /** 段级动作(CHANGE_MATERIAL / CHOOSE)：服务端按权限码算好，页面只看它。 */
+        java.util.List<String> allowedActions) {
 }

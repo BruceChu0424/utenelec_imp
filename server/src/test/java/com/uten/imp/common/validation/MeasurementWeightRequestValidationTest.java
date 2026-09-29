@@ -1,6 +1,9 @@
 package com.uten.imp.common.validation;
 
 import com.uten.imp.features.sales.shipment.dto.BatchShipRequest;
+import com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest;
+import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueItemLine;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
@@ -50,5 +53,48 @@ class MeasurementWeightRequestValidationTest {
         assertThat(validator.validate(request))
                 .anyMatch(v -> v.getPropertyPath().toString()
                         .equals("items[0].weight"));
+    }
+
+    @Test
+    void warehouseArrivalAcceptsFourDecimalKilogramsWithWeighCountFlag() {
+        var line = new ProcurementArrivalContracts
+                .WarehouseArrivalRegisterRequest.ArrivalLine(
+                UUID.randomUUID(), BigDecimal.ONE, UUID.randomUUID(),
+                null, UUID.randomUUID(), BigDecimal.ONE,
+                new BigDecimal("12.3456"), null, null, null, Boolean.TRUE);
+
+        assertThat(validator.validate(line)).isEmpty();
+        assertThat(line.qtyFromWeightRequested()).isTrue();
+    }
+
+    @Test
+    void finishedRegistrationRejectsNegativeWeight() {
+        var item = new ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest(
+                UUID.randomUUID(), "A-01", null, new BigDecimal("-0.0001"));
+
+        assertThat(validator.validate(item))
+                .anyMatch(v -> v.getPropertyPath().toString().equals("weight"));
+    }
+
+    @Test
+    void salesOutboundRejectsOverPrecisionWeight() {
+        var place = new WarehouseWorkTransitionRequest.StockPlace(
+                UUID.randomUUID(), "A-01", null, new BigDecimal("1.00001"));
+
+        assertThat(validator.validate(place))
+                .anyMatch(v -> v.getPropertyPath().toString().equals("weightKg"));
+        assertThat(new WarehouseWorkTransitionRequest.StockPlace(UUID.randomUUID(), "A-01", null)
+                .weightKg()).isNull();
+    }
+
+    @Test
+    void subcontractOutboundRejectsNegativeWeight() {
+        MaterialIssueItemLine line = new MaterialIssueItemLine();
+        line.setGoodsId(UUID.randomUUID());
+        line.setQty(BigDecimal.ONE);
+        line.setWeight(new BigDecimal("-1"));
+
+        assertThat(validator.validate(line))
+                .anyMatch(v -> v.getPropertyPath().toString().equals("weight"));
     }
 }

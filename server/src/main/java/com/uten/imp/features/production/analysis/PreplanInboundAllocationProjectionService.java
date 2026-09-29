@@ -500,7 +500,7 @@ public class PreplanInboundAllocationProjectionService
                        material.goods_id,material.color_id,
                        GREATEST(fn_preplan_allocation_admitted_qty(allocation.id)-COALESCE(exact.qty,0),0),
                        product_goods.code,product_goods.name,
-                       COALESCE(NULLIF(BTRIM(source.source_ref),''),'生产物料分析'),
+                       COALESCE(NULLIF(BTRIM(owner.source_ref),''),'生产物料分析'),
                        work.plan_id,work.plan_no,work.segment_id,work.segment_code,
                        work.workshop_id,work.workshop_name,
                        work.responsible_id,work.responsible_name,action.status='CANCELLED'
@@ -516,11 +516,11 @@ public class PreplanInboundAllocationProjectionService
                   ON material.id=allocation.analysis_material_id
                  AND material.analysis_id=allocation.analysis_id
                  AND material.active=TRUE
-                JOIN production_material_analysis_items source
-                  ON source.id=material.analysis_item_id
-                 AND source.analysis_id=analysis.id
-                 AND source.is_deleted=FALSE
-                LEFT JOIN goods product_goods ON product_goods.id=source.goods_id
+                JOIN production_material_analysis_items owner
+                  ON owner.id=material.analysis_item_id
+                 AND owner.analysis_id=analysis.id
+                 AND owner.is_deleted=FALSE
+                LEFT JOIN goods product_goods ON product_goods.id=owner.goods_id
                 LEFT JOIN warehouses warehouse ON warehouse.id=action.warehouse_id
                 LEFT JOIN LATERAL (
                     SELECT plan.id AS plan_id,plan.bill_no AS plan_no,
@@ -571,13 +571,10 @@ public class PreplanInboundAllocationProjectionService
                            OR reservation.release_reason='TRANSFERRED_TO_PLAN' OR %1$s)
                 ) exact ON TRUE
                 WHERE allocation.external_item_id IN (:externalItemIds)
-                ORDER BY allocation.external_item_id,
-                         CASE action.operation_type
-                           WHEN 'FUTURE_TRANSFER' THEN -1
-                           WHEN 'SHARED_FUTURE_CLAIM' THEN 1 ELSE 0 END,
-                         action.created_at,action.id,
-                         allocation.created_at,allocation.id
-                """.formatted(SubcontractComponentCustodyProjection.TRANSFERRED_EVIDENCE)).setParameter("externalItemIds", externalItemIds)
+                ORDER BY allocation.external_item_id,%2$s
+                """.formatted(SubcontractComponentCustodyProjection.TRANSFERRED_EVIDENCE,
+                        // 与入库时的真实归属同一次序(先急后缓)：预览给仓库看的去向就是入库后真正落到的去向。
+                        PreplanAnalysisStockPegService.INBOUND_ALLOCATION_ORDER)).setParameter("externalItemIds", externalItemIds)
                 .setParameter("includeIqcContinuations", includeIqcContinuations))) {
             PreplanCandidate value = PreplanCandidate.from(row);
             result.computeIfAbsent(value.externalItemId(), ignored -> new ArrayList<>())

@@ -101,6 +101,14 @@ public class SalesOrderItem extends BaseEntity {
     @Column(name = "client_model")
     private String clientModel;
 
+    /** ADR-134 客户文件上的品名/描述原文(型号原文沿用 client_model)。 */
+    @Column(name = "client_goods_name")
+    private String clientGoodsName;
+
+    /** ADR-134 客户文件上的单价原文数值(币种见表头 client_file_currency), 只作参考, 从不参与金额。 */
+    @Column(name = "client_price")
+    private BigDecimal clientPrice;
+
     @Column(name = "deliver_date")
     private LocalDate deliverDate;
 

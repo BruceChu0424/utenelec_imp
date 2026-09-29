@@ -64,7 +64,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false",
-        "uten.policy-intelligence.enabled=false", "uten.features.goods-owner-scope-enabled=false",
+        "uten.features.goods-owner-scope-enabled=false",
         "uten.storage.uploads-enabled=true", "uten.storage.malware-scan.provider=test-only",
         "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
@@ -343,6 +343,10 @@ class MasterDataIntegrityEndToEndTest {
         assertThat(stale.getFieldErrors().getFirst().message()).contains("已被他人修改");
         assertEquals(3, activeBomRows(w.goodsB()));
 
+        // 替换按组件对齐(ADR-129)：B 里已有的 fresh[0] 原地覆盖，行 id 不变。
+        UUID keptEdge = db.queryForObject(
+                "SELECT id FROM goods_bom_items WHERE goods_id = ? AND component_goods_id = ? AND NOT is_deleted",
+                UUID.class, w.goodsB(), fresh.get(0));
         ProductionJdbcMeasurement.Sample sample = ProductionJdbcMeasurement.begin();
         BomPasteResult ok;
         try {
@@ -355,6 +359,7 @@ class MasterDataIntegrityEndToEndTest {
         assertEquals(4, ok.added());
         assertEquals(3, ok.removed());
         assertThat(activeBomComponents(w.goodsB())).containsExactlyInAnyOrderElementsOf(fresh);
+        assertThat(activeBomItemIds(w.goodsB())).as("同一组件原地覆盖，不另删另建").contains(keptEdge);
         record(Map.of("case", "bom-paste-replace-4", "statements", sample.logicalStatements));
     }
 
@@ -572,7 +577,7 @@ class MasterDataIntegrityEndToEndTest {
         record(Map.of("case", "bom-batch-delete", "statements10", ten.logicalStatements,
                 "statements50", fifty.logicalStatements));
         // 逐行 findById + save 的老写法是 2N 条起步(再加重算材料合计按组件逐个懒加载)；
-        // 这里删 50 条不比删 10 条多(删 10 条那次剩下 50 行要重算，反而多一条「有无下层」查询)。
+        // 这里删 50 条不比删 10 条多(材料合计由 fn_goods_bom_material_cost 一条语句重算，与剩几行无关)。
         assertThat(fifty.logicalStatements).isLessThanOrEqualTo(ten.logicalStatements);
         assertThat(ten.logicalStatements).isLessThan(12);
     }

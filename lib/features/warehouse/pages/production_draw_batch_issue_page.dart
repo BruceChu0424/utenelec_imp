@@ -24,10 +24,13 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/measurement/weight_params.dart';
+import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/models/production_material_discovery.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
+import '../models/outbound_weight_entry.dart';
 import '../models/production_draw_discovery_row.dart';
 import '../models/stock_doc.dart';
 import '../providers/warehouse_count_refresh.dart';
@@ -37,6 +40,9 @@ import '../repositories/production_material_discovery_repository.dart';
 import '../widgets/production_draw_detail_table.dart';
 
 /// 多单共用单张领料详情的逐行表格，进入页面只读取，确认后才整批出库。
+///
+/// 本次重量 (ADR-135 §3.6): 现有领料单每行 (本次 = 待出库) 与材料申请行都可录实称重量,
+/// 随批量请求 weights / discoveries[].weights 发出; 只落出库流水, 不阻断出库。
 class ProductionDrawBatchIssuePage extends ConsumerStatefulWidget {
   const ProductionDrawBatchIssuePage({
     super.key,
@@ -58,6 +64,12 @@ class _ProductionDrawBatchIssuePageState
   List<StockDocDetail>? _documents;
   List<ProductionMaterialDiscoveryDetail> _discoveries = [];
   final _discoveryRows = <ProductionDrawDiscoveryRow>[];
+
+  /// 现有领料单逐行本次重量 (键 = item.id; 只建待出库 > 0 的行)。
+  final _issueWeights = <String, OutboundWeightEntry>{};
+
+  /// 本次 build 盯住的页内单重参数缓存 (有带货品的行时才建)。
+  WeightParamsCache? _weightCache;
   String? _error;
   bool _loading = true;
   bool _saving = false;
@@ -66,6 +78,7 @@ class _ProductionDrawBatchIssuePageState
   bool _uncertain = false, _showValidation = false;
   String? _submitError;
   List<Map<String, dynamic>> _submittedDiscoveries = [];
+  List<Map<String, dynamic>> _submittedWeights = [];
   List<String> _submittedDocIds = [];
   String? _submittedReason;
   int _nextDiscoveryRow = 0;
@@ -87,8 +100,70 @@ class _ProductionDrawBatchIssuePageState
   @override
   Iterable<Listenable> get formDraftListenables => [
     _remark,
-    for (final row in _discoveryRows) row.quantity,
+    for (final row in _discoveryRows) ...[row.quantity, row.weight.weight],
+    for (final entry in _issueWeights.values) entry.weight,
   ];
+
+  Iterable<OutboundWeightEntry> get _weightEntries => [
+    ..._issueWeights.values,
+    for (final row in _discoveryRows) row.weight,
+  ];
+
+  /// 草稿里的一行重量: 千克 + 是否按称重改数量。
+  static Map<String, dynamic> _weightDraft(OutboundWeightEntry entry) => {
+    'kg': entry.kg,
+    'qtyFromWeight': entry.qtyFromWeight,
+  };
+
+  static void _restoreWeight(OutboundWeightEntry entry, Object? raw) {
+    if (raw is! Map) return;
+    final kg = (raw['kg'] as num?)?.toDouble();
+    entry.weight.setKg(
+      kg,
+      qtyFromWeight: kg != null && raw['qtyFromWeight'] == true,
+    );
+  }
+
+  /// 按最新明细重建现有领料单的本次重量 (只建待出库 > 0 的行)。
+  void _rebuildIssueWeights(List<StockDocDetail> documents) {
+    for (final entry in _issueWeights.values) {
+      entry.dispose();
+    }
+    _issueWeights.clear();
+    final unit = ref.read(warehouseWeightUnitsPrefsProvider).entry;
+    for (final document in documents) {
+      for (final item in document.items) {
+        final id = item.id;
+        if (id == null || item.remainingQty <= 0) continue;
+        _issueWeights[id] = drawRemainingWeightEntry(item, unit: unit);
+      }
+    }
+  }
+
+  /// 一个材料申请的提交体: 领料明细 + 称了的行的重量 (IssueWeight, 按
+  /// 货品+颜色+实际发料仓对到服务端建好的领料明细; 一行都没称时不带 weights)。
+  static Map<String, dynamic> _discoveryJson(
+    ProductionMaterialDiscoveryDetail request,
+    List<ProductionDrawDiscoveryRow> rows,
+  ) {
+    final weights = [for (final row in rows) ?row.weightJson()];
+    return {
+      'requestId': request.requestId,
+      'expectedVersion': request.version,
+      'items': [for (final row in rows) row.toJson()],
+      if (weights.isNotEmpty) 'weights': weights,
+    };
+  }
+
+  /// 下一帧 (缓存已在 build 里盯住) 按行批量取单重参数。
+  void _ensureWeightParams() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ensureOutboundWeightParams(_weightCache, _weightEntries);
+      }
+    });
+  }
+
   @override
   Map<String, dynamic> captureFormDraft() => {
     'remark': _remark.text,
@@ -96,6 +171,7 @@ class _ProductionDrawBatchIssuePageState
     'requestKey': _requestKey,
     'uncertain': _uncertain || _submissionPending,
     'submittedDiscoveries': _submittedDiscoveries,
+    'submittedWeights': _submittedWeights,
     'submittedDocIds': _submittedDocIds,
     'submittedReason': _submittedReason,
     'nextRow': _nextDiscoveryRow,
@@ -108,8 +184,14 @@ class _ProductionDrawBatchIssuePageState
           'index': row.index,
           'values': row.values,
           'qty': row.quantity.text,
+          'qtyAutofilled': row.quantity.autofilled,
+          'weight': _weightDraft(row.weight),
         },
     ],
+    'weights': {
+      for (final entry in _issueWeights.entries)
+        if (entry.value.kg != null) entry.key: _weightDraft(entry.value),
+    },
   };
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
@@ -118,6 +200,7 @@ class _ProductionDrawBatchIssuePageState
     _requestKey = data['requestKey'] as String?;
     _uncertain = data['uncertain'] == true;
     _submittedDiscoveries = draftMaps(data['submittedDiscoveries']);
+    _submittedWeights = draftMaps(data['submittedWeights']);
     _submittedDocIds = draftStrings(data['submittedDocIds']);
     _submittedReason = data['submittedReason'] as String?;
     _nextDiscoveryRow = (data['nextRow'] as num?)?.toInt() ?? 0;
@@ -129,6 +212,7 @@ class _ProductionDrawBatchIssuePageState
       _documents = draftMaps(
         data['documents'],
       ).map(StockDocDetail.fromJson).toList();
+      _rebuildIssueWeights(_documents!);
       _discoveries = original;
       _error = null;
     } else if (original.any(
@@ -150,15 +234,27 @@ class _ProductionDrawBatchIssuePageState
           .where((request) => request.requestId == item['requestId'])
           .firstOrNull;
       if (request == null) throw const FormatException('原材料申请已不可用，不能重建为另一申请');
-      _discoveryRows.add(
-        ProductionDrawDiscoveryRow(
-          request: request,
-          index: (item['index'] as num).toInt(),
-          initial: draftMap(item['values']),
-        )..quantity.text = draftText(item, 'qty'),
+      final row = ProductionDrawDiscoveryRow(
+        request: request,
+        index: (item['index'] as num).toInt(),
+        initial: draftMap(item['values']),
       );
+      _restoreWeight(row.weight, item['weight']);
+      if (item['qtyAutofilled'] == true) {
+        row.quantity.setAutomaticText(draftText(item, 'qty'));
+      } else {
+        row.quantity.text = draftText(item, 'qty');
+      }
+      _discoveryRows.add(row);
+    }
+    final weights = data['weights'];
+    if (weights is Map) {
+      for (final entry in _issueWeights.entries) {
+        _restoreWeight(entry.value, weights[entry.key]);
+      }
     }
     if (mounted) setState(() {});
+    _ensureWeightParams();
   }
 
   @override
@@ -172,6 +268,9 @@ class _ProductionDrawBatchIssuePageState
     _remark.dispose();
     for (final row in _discoveryRows) {
       row.dispose();
+    }
+    for (final entry in _issueWeights.values) {
+      entry.dispose();
     }
     super.dispose();
   }
@@ -245,6 +344,7 @@ class _ProductionDrawBatchIssuePageState
       if (mounted) {
         setState(() {
           _documents = documents;
+          _rebuildIssueWeights(documents);
           _discoveries = discoveries;
           for (final row in _discoveryRows) {
             row.dispose();
@@ -276,6 +376,7 @@ class _ProductionDrawBatchIssuePageState
     } finally {
       if (mounted) {
         setState(() => _loading = false);
+        _ensureWeightParams();
         await initializeFormDraft();
       }
     }
@@ -403,6 +504,18 @@ class _ProductionDrawBatchIssuePageState
       return;
     }
     if (!_uncertain) {
+      for (final document in _documents!) {
+        for (final item in document.items) {
+          if (_issueWeights[item.id]?.weight.hasError == true) {
+            setState(() {
+              _showValidation = true;
+              _submitError =
+                  '${document.billNo ?? ''} · ${ref.read(masterNameServiceProvider).goods(item.goodsId)}：本次重量看不懂，请改成如 12.5 或 850g';
+            });
+            return;
+          }
+        }
+      }
       final identities = <String>{};
       for (final row in _discoveryRows) {
         if (row.validationError != null) {
@@ -437,20 +550,29 @@ class _ProductionDrawBatchIssuePageState
           : _remark.text.trim();
       _submittedDiscoveries = [
         for (final request in _discoveries)
-          {
-            'requestId': request.requestId,
-            'expectedVersion': request.version,
-            'items': [
-              for (final row in _discoveryRows.where(
-                (row) => row.request.requestId == request.requestId,
-              ))
-                row.toJson(),
-            ],
-          },
+          _discoveryJson(
+            request,
+            _discoveryRows
+                .where((row) => row.request.requestId == request.requestId)
+                .toList(),
+          ),
       ];
+      // 现有领料单逐行本次重量 (只含称了的行)。
+      _submittedWeights = [
+        for (final document in _documents!)
+          for (final item in document.items)
+            if (_issueWeights[item.id] case final entry? when entry.kg != null)
+              {
+                'itemId': item.id,
+                'weightKg': entry.kg,
+                'qtyFromWeight': entry.qtyFromWeight,
+              },
+      ];
+      // 重量进指纹: 改了重量就是另一笔请求 (服务端哈希同样含重量), 换新幂等键。
       final fingerprint = jsonEncode([
         _submittedDocIds,
         _submittedDiscoveries,
+        _submittedWeights,
         _submittedReason,
       ]);
       if (_requestFingerprint != fingerprint) {
@@ -470,12 +592,14 @@ class _ProductionDrawBatchIssuePageState
           ? await repository.issueFullBatch(
               idempotencyKey: _requestKey!,
               docIds: _submittedDocIds,
+              weights: _submittedWeights,
               reason: _submittedReason,
             )
           : await repository.issueDiscoveryBatch(
               idempotencyKey: _requestKey!,
               docIds: _submittedDocIds,
               discoveries: _submittedDiscoveries,
+              weights: _submittedWeights,
               reason: _submittedReason,
             );
       await completeFormDraft();
@@ -524,6 +648,11 @@ class _ProductionDrawBatchIssuePageState
     final superAdmin = ref.watch(isSuperAdminProvider);
     final blocked = _blocked(permissions);
     final documents = _documents;
+    final weightUnits = ref.watch(warehouseWeightUnitsPrefsProvider);
+    // 有带货品的称重行时才盯住页内单重参数缓存 (离开页面随之释放)。
+    _weightCache = _weightEntries.any((entry) => entry.paramsLine != null)
+        ? ref.watch(weightParamsCacheProvider)
+        : null;
     return withFormDraft(
       PopScope(
         canPop: !_saving && !_uncertain,
@@ -616,6 +745,9 @@ class _ProductionDrawBatchIssuePageState
                                 superAdmin: superAdmin,
                                 primary: true,
                                 discoveryRows: _discoveryRows,
+                                issueWeights: _issueWeights,
+                                weightParams: _weightCache,
+                                weightEntryUnit: weightUnits.entry,
                                 onPickDiscoveryWarehouse:
                                     _pickDiscoveryWarehouse,
                                 onSplitDiscoveryRow: _splitDiscoveryRow,

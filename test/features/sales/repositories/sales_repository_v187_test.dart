@@ -152,9 +152,12 @@ void main() {
           'shipmentId': 'shipment-1',
           'financeAudit': request.method == 'POST' ? 1 : 0,
           'settlementMethodName': '现金',
-          'outstanding': '100.00',
-          'creditFloor': '20.00',
-          'overFloor': '80.00',
+          'clientBalance': {
+            'openBookLocal': '100.00',
+            'creditLimitLocal': '20.00',
+            'overLimitLocal': '80.00',
+            'overCredit': true,
+          },
         };
       }),
       SalesDocType.shipment,
@@ -179,7 +182,8 @@ void main() {
       'expectedContentHash': 'review-hash',
       'expectedClaimId': 'claim-id',
     });
-    expect(preview.overFloor, '80.00');
+    expect(preview.clientBalance?.overLimitLocal, '80.00');
+    expect(preview.clientBalance?.overCredit, isTrue);
     expect(result.financeAudit, 1);
   });
 

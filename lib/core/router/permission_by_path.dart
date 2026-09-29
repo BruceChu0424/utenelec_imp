@@ -87,6 +87,21 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (location.startsWith('/warehouse/material-discovery/')) {
     return const [Perm.stockDocIssue, Perm.stockDocApprove];
   }
+  // 车间内料仓 (ADR-131): 这里只管能不能进页面, 页内按钮一律看服务端下发的 allowedActions。
+  // 设置页在 /warehouse/ 下, 须先于下方 /warehouse/:code 单据段兜底。
+  if (location == RouteName.workshopMaterialBin ||
+      location == RouteName.workshopMaterialReports) {
+    return const [Perm.workshopMaterialView];
+  }
+  if (location == RouteName.workshopMaterialIssue) {
+    return const [Perm.workshopMaterialIssue];
+  }
+  if (location == RouteName.workshopMaterialCount) {
+    return const [Perm.workshopMaterialCount];
+  }
+  if (location == RouteName.workshopMaterialSetup) {
+    return const [Perm.workshopMaterialSetup];
+  }
   // hub：子卡守卫的并集(真正的放行判定在 route_access_policy：任一子卡可进即可进)。
   if (isHubLocation(location)) return hubUnionRequiredAny(location);
   // 账号支持可进入员工账号列表；只有超级管理员能看到并修改授权部分。
@@ -168,6 +183,11 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (routePath == RouteName.financeSalesShipmentAudit ||
       location.startsWith('${RouteName.financeSalesShipmentAudit}/')) {
     return const [Perm.salesShipmentFinanceView];
+  }
+  // 报价核价(ADR-134)：列表与详情同一查看码；改价/退回/确认按服务端 allowedActions。
+  if (location == RouteName.financeQuoteReview ||
+      location.startsWith('${RouteName.financeQuoteReview}/')) {
+    return const [Perm.salesQuoteFinanceView];
   }
   if (location == RouteName.financeArrivalExceptions ||
       location.startsWith('${RouteName.financeArrivalExceptions}/')) {
@@ -336,6 +356,15 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   }
   // 货架目视化清单：货品主档库位号查询，与库存查询同权（stock:view 全员）。
   if (location == RouteName.warehouseShelfLabels) {
+    return const [Perm.stockView];
+  }
+  // 库存分析 (ADR-135)：呆滞/库龄/盘点建议/供应商少数等管理口径，与仓库报表同权
+  // (stock_report:view)；不放给只有 stock:view 的品质/研发等部门。
+  if (location == RouteName.warehouseInsights) {
+    return const [Perm.stockReportView];
+  }
+  // 独立称重计数页 (ADR-135)：库存查看即可进；保存抽样的称样权限由页面与后端另行把关。
+  if (location == RouteName.warehouseWeighCount) {
     return const [Perm.stockView];
   }
   // 委外目标件出仓工作台（V436；LEGACY_BOM_COMPONENT 历史兼容）：独立权限点，
@@ -689,6 +718,16 @@ List<String> requiredAllPermsFor(String rawLocation) {
   }
   if (location.startsWith('/warehouse/material-discovery/')) {
     return const [Perm.stockDocIssue, Perm.stockDocApprove];
+  }
+  // 车间内料仓 (ADR-131): 发料、盘点、设置三页要求本码本身, 不因持有查看码而放行。
+  if (location == RouteName.workshopMaterialIssue) {
+    return const [Perm.workshopMaterialIssue];
+  }
+  if (location == RouteName.workshopMaterialCount) {
+    return const [Perm.workshopMaterialCount];
+  }
+  if (location == RouteName.workshopMaterialSetup) {
+    return const [Perm.workshopMaterialSetup];
   }
   if ({
     RouteName.productionDrawRequest,

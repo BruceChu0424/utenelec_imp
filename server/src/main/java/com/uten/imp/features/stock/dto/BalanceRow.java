@@ -17,7 +17,10 @@ public class BalanceRow {
     private UUID colorId;
     private BigDecimal qty;
     private BigDecimal amountLocal;
+    /** 库存重量(千克)；null = 不知道(前端「未称」)。 */
     private BigDecimal weight;
+    /** 库存重量含估算(前端加「≈」)。 */
+    private boolean weightEstimated;
     private OffsetDateTime lastMovementDate;
     /** 当前用户无 goods:cost:view 时金额已由服务端置空。 */
     private boolean costMasked;

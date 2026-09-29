@@ -231,7 +231,7 @@ public class ProductionMaterialDiscoveryService {
                       AND NOT warehouse.is_deleted AND warehouse.is_accountable AND NOT warehouse.is_defective
                       AND warehouse.status='使用' AND NOT COALESCE(warehouse.is_line_side,FALSE)
                       AND fn_warehouse_same_main(warehouse.id,:logical)
-                      AND NOT EXISTS(SELECT 1 FROM warehouses child WHERE child.parent_id=warehouse.id AND NOT child.is_deleted))
+                      AND fn_warehouse_is_operational_leaf(warehouse.id))
                 """).setParameter("warehouse",item.warehouseId()).setParameter("logical",segment.warehouse()).getSingleResult());
         if(!valid)throw validation("实际仓库无效；必须选择同主仓下的普通实际叶仓");
     }
@@ -243,6 +243,7 @@ public class ProductionMaterialDiscoveryService {
                       AND (CAST(:color AS uuid) IS NULL OR EXISTS(SELECT 1 FROM colors WHERE id=:color AND NOT is_deleted)))
                 """).setParameter("goods",goodsId).setParameter("unit",unitId).setParameter("segment",segment.id()).setParameter("color",colorId).getSingleResult());
         if(!valid)throw validation("物料、颜色或基本单位无效，请重新选择实际材料");
+        requireOrderIssuedMaterial(goodsId);
         if(Boolean.TRUE.equals(em.createNativeQuery("""
                 WITH RECURSIVE descendants(id) AS (
                     SELECT CAST(:goods AS uuid)
@@ -250,6 +251,19 @@ public class ProductionMaterialDiscoveryService {
                     FROM descendants JOIN goods_bom_items bom ON bom.goods_id=descendants.id AND NOT bom.is_deleted)
                 SELECT EXISTS(SELECT 1 FROM descendants WHERE id=(SELECT product_goods_id FROM production_execution_segments WHERE id=:segment))
                 """).setParameter("goods",goodsId).setParameter("segment",segment.id()).getSingleResult()))throw validation("此材料会形成组件结构循环，请核对所领物料");
+    }
+    /**
+     * ADR-131：整批领到车间内料仓的料不按工单领(车间申请时与仓库登记时各拦一次，数据库全局守卫兜底)。
+     * 认料勾了「还要按工单领别的料」的产品照常走领料发现，只能登记非整批领料的料(例如嵌件)。
+     */
+    private void requireOrderIssuedMaterial(UUID goodsId) {
+        List<Object[]> periodic=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT goods.name,goods.code FROM goods WHERE goods.id=:goods AND goods.issue_method='PERIODIC'
+                """).setParameter("goods",goodsId));
+        if(periodic.isEmpty())return;
+        Object[] row=periodic.getFirst();
+        String name=row[0]==null||row[0].toString().isBlank()?Objects.toString(row[1],"这种料"):row[0].toString();
+        throw validation("「"+name+"」已整批放在车间内料仓, 不用按工单领; 请在开工确认表里认料");
     }
     private SuggestedItem suggestion(Segment segment,RequestedMaterial item) {
         validateMaterialIdentity(segment,item.goodsId(),item.colorId(),item.unitId());

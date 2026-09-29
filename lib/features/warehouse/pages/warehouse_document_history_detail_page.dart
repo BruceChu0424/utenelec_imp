@@ -13,6 +13,8 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/measurement/weight_prefs.dart';
+import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/warehouse_document_history_config.dart';
 import '../models/warehouse_document_history.dart';
@@ -230,6 +232,7 @@ class _WarehouseDocumentHistoryDetailPageState
       return items.any((item) => _present(value(item)));
     }
 
+    final display = ref.watch(warehouseWeightUnitsPrefsProvider).display;
     final columns = <MasterColumnDef<WarehouseDocumentPhysicalItem>>[
       MasterColumnDef(
         key: 'lineNumber',
@@ -311,6 +314,15 @@ class _WarehouseDocumentHistoryDetailPageState
         type: 'number',
         value: (item) => item.qty ?? '—',
       ),
+      // 重量紧跟数量 (ADR-135)：千克按用户显示单位换算并带单位；没称显示「未称」。
+      if (items.any((item) => item.weightKg != null))
+        MasterColumnDef(
+          key: 'weight',
+          label: '重量',
+          width: 110,
+          type: 'weight',
+          value: (item) => formatWeightValue(item.weightKg, display: display),
+        ),
       if (has((item) => item.boxQty))
         MasterColumnDef(
           key: 'boxQuantity',
@@ -318,14 +330,6 @@ class _WarehouseDocumentHistoryDetailPageState
           width: 90,
           type: 'number',
           value: (item) => item.boxQty ?? '—',
-        ),
-      if (has((item) => item.weight))
-        MasterColumnDef(
-          key: 'weight',
-          label: '重量',
-          width: 100,
-          type: 'number',
-          value: (item) => item.weight ?? '—',
         ),
       if (has((item) => item.returnedQty))
         MasterColumnDef(

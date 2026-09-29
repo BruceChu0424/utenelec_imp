@@ -1,15 +1,109 @@
 {
   "bomLearningTitle": "BOM learning",
+  "bomLearningHelp": "Actual usage = cumulative net consumption of completed, reconciled production ÷ cumulative output of the batches that used the material. Material analysis and workshop material issue use the actual usage first and fall back to the design usage when there is no data. Released tasks keep the quantities frozen at release. Defects recorded in daily reports are kept for reference only and do not count as output; usage per produced unit counts good plus defective pieces.",
+  "bomLearningInactive": "No learning record yet. Accumulation starts when in-house production of this item is completed and leftover material is reconciled.",
+  "bomLearningPaused": "No learned components were created: {reason}. Actual usage keeps accumulating.",
+  "@bomLearningPaused": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "bomDesignQty": "Design usage",
+  "bomActualQty": "Actual usage",
+  "bomLearnedEdge": "Learned",
+  "bomActualTipActual": "Accumulated from {samples} completed production batches: net consumption {net} / output {output}",
+  "@bomActualTipActual": {
+    "placeholders": {
+      "samples": {
+        "type": "int"
+      },
+      "net": {
+        "type": "String"
+      },
+      "output": {
+        "type": "String"
+      }
+    }
+  },
+  "bomActualTipAverage": "Actual average per unit: {qty}",
+  "@bomActualTipAverage": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "bomActualTipUsed": "Material analysis and workshop material issue use the actual usage.",
+  "bomUsesDesignBecause": "{reason}; calculations use the design usage.",
+  "@bomUsesDesignBecause": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "bomDesignReasonNoData": "No completed production with counted leftover material yet",
+  "bomDesignReasonNotLinear": "Whole packages or fixed batches cannot use an average",
+  "bomDesignReasonOutputUnitChanged": "The parent item's unit changed and relearning is needed",
+  "bomDesignReasonSubcontractOutbound": "This time the material is issued through a single-component subcontract and uses the subcontract quantity",
+  "bomDesignReasonOther": "No usable actual data",
+  "bomRelearnedSince": "Accumulating again since {date}",
+  "@bomRelearnedSince": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "bomDesignQtyRequired": "Enter the design usage",
+  "bomDesignQtyInvalid": "Design usage must be a number greater than 0",
+  "bomLearnedEdgeEditHint": "This component was learned from actual material use. Changing the design usage makes it manually maintained; actual usage keeps accumulating.",
+  "bomLearnedEdgeDeleteNote": "{count} of them were learned by the system and will not be added back automatically after deletion.",
+  "@bomLearnedEdgeDeleteNote": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bomLearningMaterial": "Material",
+  "bomLearningExposure": "Cumulative output",
+  "bomLearningSampleCount": "Valid batches",
+  "bomLearningBasis": "Calculation uses",
+  "bomLearningOutsideBom": "Used outside the BOM",
+  "bomLearningReleased": "Deleted, not added back automatically",
+  "bomLearningRelearn": "Relearn from now",
+  "bomLearningRelearnConfirm": "Relearn \"{name}\" from now?\nEarlier accumulation no longer counts. Until new production data arrives, calculations use the design usage.",
+  "@bomLearningRelearnConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "bomLearningRelearnDone": "Relearning started",
+  "bomLearningRelearnFailed": "Relearning failed. Please try again later.",
+  "bomLearningLoadFailed": "Failed to load the learning record. Please retry.",
+  "bomLearningEmpty": "No components and no materials used yet",
+  "bomLearningAction": "Action",
+  "bomLearningBlockedOutputIdentity": "the parent item's unit or identity changed",
+  "bomLearningBlockedMaterialIdentity": "a material was deleted or its unit changed",
+  "bomLearningBlockedColorConflict": "the same material was issued in several colors; decide it manually in the assembly information",
+  "bomLearningBlockedPrecision": "a usage is outside the recordable range",
+  "bomLearningBlockedCycle": "it would create an assembly loop",
+  "bomLearningBlockedOther": "maintain the components manually in the assembly information",
   "materialDiscoveryBatchHelp": "Select continuous or full-kit production to identify materials before arranging batches.",
   "materialDiscoveryCancel": "Withdraw material definition request",
-  "bomLearningHelp": "After production and material reconciliation, usage is updated from cumulative net consumption divided by actual output. Existing work orders keep their frozen requirements.",
-  "bomLearningInactive": "No learning record yet. Learning begins when a manufactured leaf item completes material issue and production.",
-  "bomLearningAuto": "BOM updates automatically",
-  "bomLearningPaused": "Automatic updates are paused to protect a manual BOM or resolve material, unit or color conflicts. Accumulated records are retained. Review the component records.",
   "bomLearningOutput": "Cumulative actual output",
   "bomLearningSamples": "Valid production batches",
   "bomLearningNet": "Cumulative net consumption",
-  "bomLearningAverage": "Average usage per unit",
+  "bomActualTipDefect": "Plus {defect} defective: counting good plus defective pieces, usage is {perProduced}; defect rate {rate}",
+  "bomLearningDefect": "Defects",
+  "bomLearningPerProduced": "Usage per produced unit",
+  "bomLearningDefectRate": "Defect rate",
+  "bomLearningTotalDefect": "Cumulative defects",
   "materialDiscoveryTitle": "Record materials to issue",
   "materialDiscoveryHelp": "Confirm with the workshop, add the materials, quantities and physical warehouses, then issue them from the generated draw documents.",
   "materialDiscoveryRequestHelp": "These manufactured items have no material definition yet. Optionally select materials and requested quantities for each work order, or leave them for the warehouse to complete. Entered materials carry through to the warehouse for source and quantity confirmation. Actual issue is required before starting.",
@@ -1557,20 +1651,28 @@
   "visitorBatchLimitError": "A single batch handles at most {limit} items; please split it (currently {count})",
   "@visitorBatchLimitError": {
     "placeholders": {
-      "limit": {"type": "int"},
-      "count": {"type": "int"}
+      "limit": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveTitle": "Batch Approve ({count})",
   "@visitorBatchApproveTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveMessage": "Each of the {count} selected applications will be approved one by one; approval issues the entry QR code. To double-check hosts and purposes, open details by double-clicking a row.",
   "@visitorBatchApproveMessage": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveConfirm": "Confirm Batch Approve",
@@ -1578,7 +1680,9 @@
   "visitorBatchApproveResponsibility": "On confirmation, the selected {count} applications will be recorded under your account as approver.",
   "@visitorBatchApproveResponsibility": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchVerbApprove": "approved",
@@ -1588,19 +1692,25 @@
   "@visitorBatchResult": {
     "placeholders": {
       "verb": {},
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchResultFailures": ", {count} failed",
   "@visitorBatchResultFailures": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchResultSkipped": ", {count} skipped",
   "@visitorBatchResultSkipped": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchIncomplete": "Batch {verb} did not fully complete: {reason}",
@@ -1613,13 +1723,17 @@
   "visitorBatchRejectTitle": "Batch Reject ({count})",
   "@visitorBatchRejectTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchRejectDescription": "The rejection reason will be shared with {count} visitors; please describe the problem.",
   "@visitorBatchRejectDescription": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchRejectConfirm": "Confirm Reject",
@@ -1628,44 +1742,58 @@
   "visitorBatchForwardTitle": "Batch Forward to Hosts ({count})",
   "@visitorBatchForwardTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardMessage": "The {count} selected applications will be forwarded to their hosts; after confirmation they return to this queue for your final approval.",
   "@visitorBatchForwardMessage": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardSkippedNote": " ({count} more already with their hosts, skipped)",
   "@visitorBatchForwardSkippedNote": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardConfirm": "Confirm Batch Forward",
   "visitorBatchForwardResponsibility": "On confirmation, forwarding the {count} selected applications will be recorded under your account.",
   "@visitorBatchForwardResponsibility": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchApproveButton": "Approve ({count})",
   "@visitorBatchApproveButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchForwardButton": "Forward ({count})",
   "@visitorBatchForwardButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorBatchRejectButton": "Reject ({count})",
   "@visitorBatchRejectButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "visitorApprovalDoneApprove": "Visitor application approved",
@@ -1682,26 +1810,34 @@
   "myVisitorsBatchTitle": "Batch Confirm ({count})",
   "@myVisitorsBatchTitle": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchMessage": "Each of the {count} selected visitors will be confirmed as hosted; applications then return to HR for final approval.",
   "@myVisitorsBatchMessage": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchSkippedNote": " ({count} more not awaiting your confirmation, skipped)",
   "@myVisitorsBatchSkippedNote": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchConfirm": "Confirm",
   "myVisitorsBatchResult": "{count} visitors confirmed as hosted",
   "@myVisitorsBatchResult": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsBatchIncomplete": "Batch confirmation did not fully complete: {reason}",
@@ -1713,7 +1849,9 @@
   "myVisitorsBatchButton": "Confirm ({count})",
   "@myVisitorsBatchButton": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "myVisitorsStatusColInfo": "Shows only items awaiting your confirmation by default; the header filter switches to forwarded / approved / rejected (pushed to the backend).",
@@ -1809,5 +1947,928 @@
   "materialPreparationAvailableHint": "Supply available to this line includes stock and issued supply, including incoming and unprocessed quantities. Supply assigned to other orders is excluded. Material issue requires actual stock.",
   "materialPreparationPending": "To order",
   "materialPreparationInProgress": "In progress",
-  "materialPreparationMissingAssignment": "Set the production workshop and responsible person for “{goods}” before ordering"
+  "materialPreparationMissingAssignment": "Set the production workshop and responsible person for “{goods}” before ordering",
+  "workshopMaterialBin": "Workshop Material Store",
+  "workshopMaterialBinOf": "{workshop} Material Store",
+  "@workshopMaterialBinOf": {
+    "placeholders": {
+      "workshop": {
+        "type": "String"
+      }
+    }
+  },
+  "workshopMaterialGroup": "Workshop Material",
+  "workshopMaterialSetup": "Workshop Material Setup",
+  "workshopMaterialReports": "Workshop Material Usage",
+  "wmIssueMethod": "Issue method",
+  "wmIssueMethodOrder": "Issue per work order",
+  "wmIssueMethodPeriodic": "Bulk issue to workshop store",
+  "wmCostBasis": "Cost allocation",
+  "wmCostBasisOwn": "Main material",
+  "wmCostBasisShared": "Auxiliary material",
+  "wmCostBasisExpense": "Workshop expense",
+  "wmBulkPackageQty": "Net weight per bag (kg)",
+  "wmRecycledMaterial": "Recycled material",
+  "wmUnitWeightGrams": "Unit weight (g)",
+  "wmUnitWeightFromBom": "Plastic unit weight (from BOM): {grams} g",
+  "@wmUnitWeightFromBom": {
+    "placeholders": {
+      "grams": {
+        "type": "String"
+      }
+    }
+  },
+  "wmUnusualWeightConfirm": "Unit weight {grams} g looks unusual. Confirm?",
+  "@wmUnusualWeightConfirm": {
+    "placeholders": {
+      "grams": {
+        "type": "String"
+      }
+    }
+  },
+  "wmSecondMaterialConfirm": "Does this product use two materials (two-shot)? If you are only changing material, edit the existing row",
+  "wmRequestIssue": "Request material",
+  "wmReturn": "Return",
+  "wmOtherIssue": "Trial / purge usage",
+  "wmOtherReasonTrial": "Trial moulding",
+  "wmOtherReasonPurge": "Purging",
+  "wmOtherReasonScrap": "Scrapped material",
+  "wmOtherReasonOther": "Other",
+  "wmDirectIssue": "Direct issue",
+  "wmPendingIssue": "To issue",
+  "wmPendingReturn": "Returns to receive",
+  "wmCount": "Stock count",
+  "wmHistory": "History",
+  "wmBags": "Bags",
+  "wmKg": "kg",
+  "wmReceiver": "Received by",
+  "wmWarehouseAvailable": "Warehouse has {qty} kg",
+  "@wmWarehouseAvailable": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "wmEstimatedRemaining": "Store estimated remaining {qty} kg",
+  "@wmEstimatedRemaining": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "wmCountingNextPeriod": "Counting has started; this batch goes to the next period",
+  "wmSupplementFlag": "This batch was missed in the previous period",
+  "wmSupplementPeriod": "Add to period",
+  "wmAlsoOrderMaterials": "Also issue other materials per work order (e.g. inserts)",
+  "wmFillFromGoodsWeight": "Fill checked rows from item weight",
+  "wmCloseFailing": "Settlement keeps failing; retrying daily. Please contact the administrator",
+  "wmStartCount": "Start count",
+  "wmCutoffToday": "Cut off today",
+  "wmCutoffYesterday": "Cut off yesterday",
+  "wmMonthEndHint": "For monthly reconciliation, count at month end",
+  "wmFillFull": "Full",
+  "wmFillHalf": "Half",
+  "wmFillEmpty": "Empty",
+  "wmFillWeighed": "Enter kg",
+  "wmWeighOpenBag": "Opened bag (weighed)",
+  "wmWeighMixed": "Mixed, not yet loaded",
+  "wmWeighLoose": "Loose material",
+  "wmFillGuide": "Over 3/4 is full, 1/4 to 3/4 is half, under 1/4 is empty",
+  "wmMachineIdle": "Machine idle, all empty",
+  "wmZeroRest": "Everything else is used up, record 0",
+  "wmPrintBlank": "Print blank count sheet",
+  "wmSubmitCount": "Submit count",
+  "wmWithdrawCount": "Withdraw count",
+  "wmCorrectCount": "Correct count",
+  "wmBagsTimesKg": "{bags} bags × {kg} kg",
+  "@wmBagsTimesKg": {
+    "placeholders": {
+      "bags": {
+        "type": "int"
+      },
+      "kg": {
+        "type": "String"
+      }
+    }
+  },
+  "wmCloseState": "Settlement status",
+  "wmCloseWaitingPrevious": "Waiting for previous period",
+  "wmCloseBlockedReport": "{n} reports not yet approved (approver, or author deletes unwanted drafts)",
+  "@wmCloseBlockedReport": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "wmCloseBlockedWeight": "{n} products missing unit weight (BOM owner)",
+  "@wmCloseBlockedWeight": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "wmCloseBlockedStock": "\"{material}\" used without any issue this period (warehouse adds the missed issue, or workshop corrects the material)",
+  "@wmCloseBlockedStock": {
+    "placeholders": {
+      "material": {
+        "type": "String"
+      }
+    }
+  },
+  "wmCloseRetry": "Retry now",
+  "wmReopen": "Reopen settlement",
+  "wmReopenReason": "Reason",
+  "wmReopenHeld": "Settlement reopened. Click \"Settle again\" when done; the system will settle automatically at {time}",
+  "@wmReopenHeld": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "wmSettleAgain": "Settle again",
+  "wmNeedChoice": "Material to confirm",
+  "wmStartSheetTitle": "Confirm materials before start",
+  "wmStartConfirm": "Confirm and start ({n})",
+  "@wmStartConfirm": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "wmOrderInstead": "Issue these per work order (do not start yet)",
+  "wmNotFromStore": "Not from workshop store (per work order)",
+  "wmWeightPending": "To be filled; start is not blocked",
+  "wmChangeMaterial": "Change material for this order",
+  "wmChangeFrom": "Effective from",
+  "wmAddMaterial": "Add a material",
+  "wmEnable": "Enable bulk issue",
+  "wmGoLiveDate": "Go-live date",
+  "wmMainWarehouse": "Under main warehouse",
+  "wmMachines": "Machines & containers",
+  "wmGoLivePrep": "Go-live preparation",
+  "wmGoLiveProgress": "{total} frequent products, {chosen} with material, {weighed} with unit weight",
+  "@wmGoLiveProgress": {
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "chosen": {
+        "type": "int"
+      },
+      "weighed": {
+        "type": "int"
+      }
+    }
+  },
+  "wmReportUsage": "Usage",
+  "wmReportProduct": "By product",
+  "wmReportTrend": "Waste trend",
+  "wmReportMissingWeight": "Missing unit weights",
+  "wmReportLedger": "Movements",
+  "wmTrueUnitUsage": "Actual per-unit usage",
+  "wmAllocatedByTheory": "Allocated by standard",
+  "wmWasteRate": "Waste rate",
+  "wmIncludeWorkshopStore": "Include workshop stores",
+  "workshopMaterialSetupHubDesc": "Enable bulk issue, machines & containers, go-live preparation",
+  "workshopMaterialReportsHubDesc": "Usage, waste rate and settlement status by period",
+  "wmReceiveReturn": "Receive return",
+  "wmIssueByRequest": "Issue by request",
+  "wmOnHand": "On hand",
+  "wmInUseMaterial": "Material in use",
+  "wmBagMaterials": "Bagged material",
+  "wmEnableWorkshopTab": "Workshops",
+  "wmReportPeriod": "Period",
+  "wmReportAllPeriods": "All periods",
+  "wmReportMaterial": "Material",
+  "wmReportNoBin": "No workshop has enabled bulk issue yet, so there is no store usage to show.",
+  "wmOpenBom": "Open BOM",
+  "wmWorkshopMaterialSection": "Workshop material",
+  "wmIssueMethodUpdated": "Issue method updated",
+  "bomLearningAuto": "BOM updates automatically",
+  "bomLearningAverage": "Average usage per unit",
+  "warehouseGoodsMasterDefaultHint": "The goods master default warehouse was filled in. Verify the actual destination for this receipt.",
+  "warehouseSuggestedDestinationHint": "A suggested warehouse was filled in. Verify the actual destination.",
+  "warehouseBatchRegistrationHelp": "Each line needs a warehouse and location. Goods master defaults take precedence over personal warehouse context. Selected lines can be edited together. Each report creates its own inspection submission; final receipt follows quality release.",
+  "goodsNameEnLabel": "English name",
+  "goodsNameEnHint": "e.g. DOUBLE 3 PIN SOCKET WITH SWITCH",
+  "goodsNameEnInfo": "How customer quotations and orders name this item in English. When reading a customer file, the system uses it to match the English description to this item.",
+  "goodsNameEnColumnInfo": "The English name customers use for this item. It is remembered automatically when sales save a document with an English description, and can be edited on the item details.",
+  "goodsNameEnSearchHint": "Search items (name/English name/code/model/spec/series)",
+  "goodsNameEnLearned": "Learned automatically",
+  "goodsNameEnLearnedTip": "The system remembered this English name when sales saved a customer file. Edit it if it is wrong.",
+  "goodsNameEnEdit": "Edit English name",
+  "goodsNameEnEditDescription": "Enter the English description written on customer files. After saving, customer files are matched to this item by this name. Leave it blank to stop using an English name.",
+  "goodsNameEnSaving": "Saving…",
+  "goodsNameEnSaved": "English name saved",
+  "goodsNameEnCleared": "English name cleared",
+  "goodsNameEnImportHint": "English names can be imported too (header \"英文名称\" or \"English Name\").",
+  "goodsNameEnTooLong": "The English name can have at most {max} characters",
+  "clientNameEnLabel": "Foreign name",
+  "clientNameEnHint": "e.g. SUNAS TRADING LIMITED",
+  "clientNameEnInfo": "The customer's company name in English or another foreign language. The system uses it to find this customer when reading customer files, and fills it in automatically when sales save documents.",
+  "clientNameEnSearchHint": "Search customers (short name/code/full name/foreign name/contact/mobile/email)",
+  "clientGoodsAliasTab": "Item names",
+  "clientGoodsAliasTitle": "How this customer names our items",
+  "clientGoodsAliasDescription": "Model numbers and descriptions on this customer's quotations and orders, and which of our items they mean. The system uses this list first when reading this customer's files.",
+  "clientGoodsAliasSearchHint": "Search the customer's wording, item name or code",
+  "clientGoodsAliasEmptyTitle": "No item names yet",
+  "clientGoodsAliasEmpty": "After a quotation or order with the customer's model numbers is saved, the customer's wording is remembered here automatically",
+  "clientGoodsAliasNoMatch": "Nothing found. Try another keyword.",
+  "clientGoodsAliasKindPartNo": "Customer model",
+  "clientGoodsAliasKindDescription": "Customer description",
+  "clientGoodsAliasContext": "Applies to {context}",
+  "clientGoodsAliasConfirmCount": "{count, plural, =1{Confirmed once} other{Confirmed {count} times}}",
+  "clientGoodsAliasExplicitCount": "{count, plural, =1{picked by hand once} other{picked by hand {count} times}}",
+  "clientGoodsAliasLastConfirmed": "Last {date}",
+  "clientGoodsAliasLastConfirmedBy": "Last {date} · {name}",
+  "clientGoodsAliasGoodsMissing": "Item record deleted",
+  "clientGoodsAliasDelete": "Delete this match",
+  "clientGoodsAliasDeleteAction": "Delete",
+  "clientGoodsAliasDeleteConfirm": "After deleting, \"{alias}\" is no longer matched to \"{goods}\" when reading this customer's files. The system may learn it again when sales save documents later.",
+  "clientGoodsAliasDeleting": "Deleting the match",
+  "clientGoodsAliasDeleted": "Match deleted",
+  "clientGoodsAliasLoadFailed": "Could not load item names. Please try again.",
+  "clientGoodsAliasTotal": "{count, plural, =1{1 match} other{{count} matches}}",
+  "clientGoodsAliasPage": "Page {page} of {pages}",
+  "clientGoodsAliasPrevPage": "Previous",
+  "clientGoodsAliasNextPage": "Next",
+  "aiJobCancel": "Cancel",
+  "aiJobElapsed": "Elapsed {time}",
+  "@aiJobElapsed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiJobQueued": "Waiting in line, starting shortly",
+  "aiJobSlowHint": "Large files can take a minute or two. Please wait, there is no need to click again",
+  "aiJobTimeout": "This took too long, so we stopped waiting. Please try again later or split the file into smaller parts",
+  "aiJobGone": "This task no longer exists (it may have been cleaned up). Please start again",
+  "aiJobFailedGeneric": "That did not work this time. Please try again later",
+  "aiJobConfidenceHigh": "High",
+  "aiJobConfidenceMedium": "Medium",
+  "aiJobConfidenceLow": "Low",
+  "aiJobConfidenceSemantics": "AI confidence: {level}",
+  "@aiJobConfidenceSemantics": {
+    "placeholders": {
+      "level": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsTitle": "AI services",
+  "aiSettingsEntrySubtitle": "Configure model providers, API keys and connection tests",
+  "aiSettingsHeroActive": "In use: {name} · {model}",
+  "@aiSettingsHeroActive": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsHeroReady": "Used to recognize customer files uploaded by sales",
+  "aiSettingsHeroNone": "No AI service is available yet",
+  "aiSettingsHeroNoneHint": "After you add a provider and the test passes, customer files uploaded by sales are recognized automatically",
+  "aiSettingsHeroDefaultDisabled": "The default service is disabled, so AI is not being used",
+  "aiSettingsHeroNeedsKey": "No API key has been entered yet, so AI is not being used",
+  "aiSettingsSecurityNote": "Keys are stored encrypted and only the last characters are shown. Saving, deleting and testing with a stored key ask for your login password again.",
+  "aiSettingsOutboundOff": "This server does not call external AI (the default for test environments). You can save settings, but no calls will be made",
+  "aiSettingsProvidersSection": "Providers",
+  "aiSettingsAdd": "Add AI service",
+  "aiSettingsEditTitle": "Edit AI service",
+  "aiSettingsEmptyTitle": "No AI service configured",
+  "aiSettingsEmptyHint": "Mainland providers such as DeepSeek, Qwen, Kimi and Zhipu are supported, as well as a locally deployed model",
+  "aiSettingsLoadFailed": "Failed to load AI service settings",
+  "aiSettingsNoAccess": "Only super administrators can view and change AI services",
+  "aiSettingsRetry": "Retry",
+  "aiSettingsRefresh": "Refresh",
+  "aiSettingsClose": "Close",
+  "aiSettingsCancel": "Cancel",
+  "aiSettingsRegion": "Region",
+  "aiSettingsRegionMainland": "Mainland",
+  "aiSettingsRegionOverseas": "Overseas",
+  "aiSettingsRegionLocal": "Local",
+  "aiSettingsDefaultBadge": "Default",
+  "aiSettingsDisabledBadge": "Disabled",
+  "aiSettingsModel": "Model",
+  "aiSettingsBaseUrl": "Endpoint URL",
+  "aiSettingsApiKey": "API key",
+  "aiSettingsKeyMissing": "Not set",
+  "aiSettingsKeyNotNeeded": "Not required",
+  "aiSettingsKeyUnreadable": "The API key cannot be decrypted. Please enter it again",
+  "aiSettingsLastTest": "Last test",
+  "aiSettingsLastTestOk": "Passed · {time}",
+  "@aiSettingsLastTestOk": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsLastTestFailed": "Failed · {time}",
+  "@aiSettingsLastTestFailed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsNeverTested": "Not tested yet",
+  "aiSettingsEnabledSwitch": "Enabled",
+  "aiSettingsEnabledInfo": "A disabled service is never called",
+  "aiSettingsTest": "Test connection",
+  "aiSettingsTesting": "Testing",
+  "aiSettingsEdit": "Edit",
+  "aiSettingsSetDefault": "Set as default",
+  "aiSettingsDelete": "Delete",
+  "aiSettingsDeleteTitle": "Delete this AI service?",
+  "aiSettingsDeleteMessage": "The settings and API key of \"{name}\" will be removed and cannot be restored.",
+  "@aiSettingsDeleteMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsDeleteDefaultBlocked": "The default service cannot be deleted. Set another service as default first",
+  "aiSettingsDeleted": "Deleted",
+  "aiSettingsDefaultSet": "\"{name}\" is now the default",
+  "@aiSettingsDefaultSet": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsEnabledOn": "\"{name}\" enabled",
+  "@aiSettingsEnabledOn": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsEnabledOff": "\"{name}\" disabled",
+  "@aiSettingsEnabledOff": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsBusySaving": "Saving",
+  "aiSettingsBusyDeleting": "Deleting",
+  "aiSettingsUpdatedBy": "Changed by {name} at {time}",
+  "@aiSettingsUpdatedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsTestNeedsKeyEdit": "There is no API key yet. Tap \"Edit\" to enter one, then test",
+  "aiSettingsUsageTitle": "Usage in the last {days} days",
+  "@aiSettingsUsageTitle": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsUsageCalls": "Calls",
+  "aiSettingsUsageSuccessRate": "Success rate",
+  "aiSettingsUsageTokens": "Input / output tokens",
+  "aiSettingsUsageLatency": "Average time",
+  "aiSettingsUsageSeconds": "{value} s",
+  "@aiSettingsUsageSeconds": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsUsageEmpty": "No calls yet",
+  "aiSettingsUsageUnavailable": "Usage is temporarily unavailable. This does not affect the service",
+  "aiSettingsPreset": "Provider",
+  "aiSettingsPresetInfo": "Choosing a provider fills in the endpoint and recommended settings. You can still change every field",
+  "aiSettingsPresetOverseasOff": "{label} (overseas, not enabled)",
+  "@aiSettingsPresetOverseasOff": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsOverseasOffHint": "Overseas providers are off by default. To use one, ask your deployment administrator to enable it in the server configuration and complete the cross-border data assessment",
+  "aiSettingsPresetUnavailable": "{label} (unavailable)",
+  "@aiSettingsPresetUnavailable": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "aiSettingsName": "Display name",
+  "aiSettingsNameHint": "e.g. DeepSeek production account",
+  "aiSettingsNameRequired": "Enter a display name",
+  "aiSettingsTooLong": "At most {max} characters",
+  "@aiSettingsTooLong": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsBaseUrlInfo": "The Base URL from the provider documentation. Only https is allowed; a local deployment may use http://127.0.0.1",
+  "aiSettingsBaseUrlRequired": "Enter the endpoint URL",
+  "aiSettingsBaseUrlInvalid": "The endpoint URL is invalid. It should start with https:// and have no query parameters",
+  "aiSettingsBaseUrlHttpLocalOnly": "Only local deployments may use http. Use https for other providers",
+  "aiSettingsModelHint": "Enter the model name, or tap \"Get models\" to pick from a list",
+  "aiSettingsModelRequired": "Enter a model name",
+  "aiSettingsFetchModels": "Get models",
+  "aiSettingsPickModel": "Pick a model from the list",
+  "aiSettingsModelsLoaded": "Found {count} models",
+  "@aiSettingsModelsLoaded": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsModelsEmpty": "The provider returned no model list. Enter the model name directly",
+  "aiSettingsApiKeyHint": "Paste the key created in the provider console",
+  "aiSettingsApiKeyNotNeededHint": "Local deployments usually need no key, so you can leave this blank",
+  "aiSettingsApiKeyRequired": "Enter the API key",
+  "aiSettingsClearKey": "Remove key",
+  "aiSettingsUndoClear": "Keep the key",
+  "aiSettingsKeyWillClear": "The stored key will be removed when you save",
+  "aiSettingsUrlChangedNeedKey": "The endpoint changed, so the API key must be entered again",
+  "aiSettingsUrlChangedNeedKeyDetail": "For security, the stored key is only ever sent to the original address. Paste the key again before saving.",
+  "aiSettingsUrlChangedNeedKeyLocalDetail": "For security, the stored key is only ever sent to the original address. Paste the key again, or tap \"Remove key\" if the new address needs none.",
+  "aiSettingsAdvanced": "Advanced settings",
+  "aiSettingsProtocol": "API protocol",
+  "aiSettingsProtocolInfo": "Mainland providers and local deployments are almost always OpenAI compatible; only Claude uses Anthropic",
+  "aiSettingsProtocolOpenAi": "OpenAI compatible",
+  "aiSettingsProtocolAnthropic": "Anthropic",
+  "aiSettingsJsonMode": "JSON output",
+  "aiSettingsJsonModeInfo": "Asks the model to reply with JSON only so the system can read the result. Choose \"Not required\" if the provider does not support it",
+  "aiSettingsJsonModeNone": "Not required",
+  "aiSettingsJsonModeObject": "JSON object",
+  "aiSettingsJsonModeSchema": "Structured (schema)",
+  "aiSettingsThinking": "Turn off deep thinking",
+  "aiSettingsThinkingInfo": "Reading tables does not need deep thinking; turning it off is faster and cheaper. Each provider uses a different parameter, and choosing the provider selects the right one",
+  "aiSettingsThinkingNone": "Leave as is",
+  "aiSettingsThinkingDeepseek": "DeepSeek style",
+  "aiSettingsThinkingDashscope": "Qwen style",
+  "aiSettingsThinkingOpenAi": "OpenAI style",
+  "aiSettingsTemperature": "Consistent output (temperature 0)",
+  "aiSettingsTemperatureInfo": "Keeps results consistent for the same file. Turn off if the model rejects this parameter",
+  "aiSettingsVision": "Can read images and scans",
+  "aiSettingsVisionInfo": "Turn on if the model can read images; needed for photos and scanned PDFs uploaded by sales",
+  "aiSettingsMaxTokens": "Max output length",
+  "aiSettingsMaxTokensInfo": "256 to 65536; files with many lines need more",
+  "aiSettingsTimeout": "Timeout (seconds)",
+  "aiSettingsTimeoutInfo": "10 to 600; a reply slower than this counts as a failure",
+  "aiSettingsNumberRange": "Enter a whole number from {min} to {max}",
+  "@aiSettingsNumberRange": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsOverseasAck": "Customer data (company names, goods descriptions) will be sent to an overseas provider. I confirm the cross-border data assessment is complete",
+  "aiSettingsOverseasAckRequired": "Tick the confirmation above before using an overseas provider",
+  "aiSettingsSave": "Save",
+  "aiSettingsSaving": "Saving",
+  "aiSettingsSaved": "Saved",
+  "aiSettingsSaveFailed": "Save failed. Please try again later",
+  "aiSettingsFixFields": "Please fix the highlighted fields first",
+  "aiSettingsTestNeedsKey": "Enter the API key before testing",
+  "aiSettingsTestStoredMismatch": "Testing with the stored key requires the saved endpoint and model. Save first, or enter the key again to test",
+  "aiSettingsTestResultTitle": "Connection test",
+  "aiSettingsStepNetwork": "Network",
+  "aiSettingsStepAuth": "API key check",
+  "aiSettingsStepModel": "Model available",
+  "aiSettingsStepJson": "JSON output",
+  "aiSettingsStepSkipped": "Not run",
+  "aiSettingsLatency": "{ms} ms",
+  "@aiSettingsLatency": {
+    "placeholders": {
+      "ms": {
+        "type": "int"
+      }
+    }
+  },
+  "aiSettingsTestPassed": "Connection OK, ready to use",
+  "aiSettingsTestPassedShort": "Passed",
+  "aiSettingsTestFailed": "The connection test failed. Check the hints and try again",
+  "aiSettingsTestFailedShort": "Failed",
+  "aiSettingsTestWarnShort": "Check notes",
+  "aiSettingsTestPassedWithNotes": "Connected, but there is something to check. See the notes above",
+  "aiSettingsTestStoredUnsavedAdvanced": "Advanced settings were changed, and a test with the stored key would not include them. Save first, or enter the key again to test",
+  "aiSettingsModelChoices": "Models:",
+  "aiSettingsOverseasLockedShort": "Overseas providers are not enabled; the deployment administrator must turn them on on the server",
+  "aiSettingsKeyConfiguredPlain": "Set",
+  "aiSettingsApiKeyKeepHintPlain": "Set. Leave blank to keep it",
+  "aiSettingsCurrentKey": "Current key",
+  "salesQuoteStatusDraft": "Draft",
+  "salesQuoteStatusPendingFinance": "Awaiting finance pricing",
+  "salesQuoteStatusReturned": "Returned by finance",
+  "salesQuoteStatusConfirmed": "Priced by finance",
+  "salesQuoteStatusReversed": "Voided",
+  "salesQuoteStatusConverted": "Converted to order",
+  "salesQuoteStatusToConvert": "Priced, ready to convert",
+  "salesQuoteStatusReadOnly": "{status} · read only",
+  "salesQuoteStatusHistory": "History",
+  "salesQuoteStatusBannerDraft": "Draft: when ready, tap \"Submit for finance pricing\". It can become an order only after finance sets the prices and discounts.",
+  "salesQuoteStatusBannerPending": "Submitted for finance pricing and waiting for finance. To change it, withdraw it first.",
+  "salesQuoteStatusBannerReturned": "Returned by finance: {reason}. Fix it and submit for finance pricing again.",
+  "salesQuoteStatusBannerConfirmed": "Priced by finance ({name} · {time}). You can convert it to an order now.",
+  "salesQuoteStatusBannerConverted": "Converted to order {orderNo}; the quote can no longer be changed.",
+  "salesQuoteStatusBannerReversed": "This quote has been voided and is view only.",
+  "salesQuoteStatusFinanceFallback": "Finance",
+  "salesQuoteStatusFieldReturnReason": "Return reason",
+  "salesQuoteStatusFieldSubmittedAt": "Submitted for pricing",
+  "salesQuoteStatusFieldConfirmedBy": "Priced by",
+  "salesQuoteStatusFieldConvertedOrder": "Converted order",
+  "salesQuoteStatusFieldFinanceRemark": "Finance note",
+  "salesQuoteStatusActionSubmit": "Submit for finance pricing",
+  "salesQuoteStatusActionWithdraw": "Withdraw",
+  "salesQuoteStatusActionReopen": "Edit again",
+  "salesQuoteStatusActionConvert": "Convert to order",
+  "salesQuoteStatusActionReverse": "Void",
+  "salesQuoteStatusActionEdit": "Edit",
+  "salesQuoteStatusActionDelete": "Delete",
+  "salesQuoteStatusActionFinanceReview": "Open pricing review",
+  "salesQuoteStatusActionViewOrder": "View order",
+  "salesQuoteStatusActionBack": "Back to list",
+  "salesQuoteStatusSubmitConfirmBody": "Finance will set the price and discount line by line. You cannot change the quote meanwhile. Submit now?",
+  "salesQuoteStatusWithdrawConfirmBody": "The quote goes back to draft so you can keep editing; submit it for pricing again afterwards. Withdraw now?",
+  "salesQuoteStatusReopenConfirmBody": "Finance has already priced this quote. Editing again returns it to draft, and it must be priced again before it can become an order. Continue?",
+  "salesQuoteStatusReverseConfirmBody": "A voided quote can no longer be converted and cannot be restored. Void it?",
+  "salesQuoteStatusDeleteConfirmBody": "Delete this draft quote? This cannot be undone.",
+  "salesQuoteStatusConvertConfirmBody": "An order draft will be created with the price and discount set by finance. Those cannot be changed; quantity and delivery details can still be completed on the order. Convert now?",
+  "salesQuoteStatusConfirm": "OK",
+  "salesQuoteStatusCancel": "Cancel",
+  "salesQuoteStatusSubmitted": "Submitted for finance pricing",
+  "salesQuoteStatusWithdrawn": "Withdrawn; you can keep editing",
+  "salesQuoteStatusReopened": "Back to draft; submit for pricing again when ready",
+  "salesQuoteStatusReversedDone": "Quote voided",
+  "salesQuoteStatusDeleted": "Deleted",
+  "salesQuoteStatusConvertDone": "Order draft {billNo} created",
+  "salesQuoteStatusActionFailed": "That did not work. Please try again later.",
+  "salesQuoteStatusBusy": "Working on it, please wait",
+  "salesQuoteStatusTimelineTitle": "Pricing history",
+  "salesQuoteStatusTimelineEmpty": "No pricing history yet",
+  "salesQuoteStatusRevisionSubmit": "Submitted for pricing",
+  "salesQuoteStatusRevisionWithdraw": "Withdrawn by sales",
+  "salesQuoteStatusRevisionFinanceEdit": "Prices changed by finance",
+  "salesQuoteStatusRevisionReturn": "Returned by finance",
+  "salesQuoteStatusRevisionConfirm": "Confirmed by finance",
+  "salesQuoteStatusRevisionReopen": "Reopened by sales",
+  "salesQuoteStatusRevisionFinanceReopen": "Confirmation withdrawn by finance",
+  "salesQuoteStatusRevisionOther": "Other record",
+  "salesQuoteStatusRevisionOperator": "By",
+  "salesQuoteStatusRevisionVersion": "Version {revision}",
+  "salesQuoteStatusSourceQuoteConfirmed": "Quote priced by finance",
+  "salesQuoteStatusSourceQuote": "Source quote",
+  "quoteFinanceHubTitle": "Quote pricing",
+  "quoteFinanceHubSubtitle": "Finance sets prices and discounts on sales quotes; sales can convert them to orders once confirmed",
+  "quoteFinanceListTitle": "Quote pricing",
+  "quoteFinanceTabPending": "To price",
+  "quoteFinanceTabConfirmed": "Priced",
+  "quoteFinanceTabReturned": "Returned",
+  "quoteFinanceSearchHint": "Search number / customer / salesperson",
+  "quoteFinanceRowHint": "Tap to select · double-tap to price",
+  "quoteFinanceColBillNo": "Quote No.",
+  "quoteFinanceColClient": "Customer",
+  "quoteFinanceColSeller": "Salesperson",
+  "quoteFinanceColSubmittedAt": "Submitted",
+  "quoteFinanceColLines": "Lines",
+  "quoteFinanceColAmount": "Quote amount",
+  "quoteFinanceColStatus": "Status / note",
+  "quoteFinanceStatusPending": "To price",
+  "quoteFinanceStatusResubmitted": "Resubmitted by sales",
+  "quoteFinanceStatusNeedPrice": "{count, plural, =1{1 line has no list price} other{{count} lines have no list price}}",
+  "quoteFinanceStatusConfirmed": "Priced · {name}",
+  "quoteFinanceStatusConverted": "Converted to order {orderNo}",
+  "quoteFinanceStatusReturned": "Returned: {reason}",
+  "quoteFinanceEmptyPending": "No quotes waiting for pricing",
+  "quoteFinanceEmptyPendingHint": "Quotes appear here after sales submit them. Sales can convert a quote to an order only after you confirm the prices.",
+  "quoteFinanceEmptyConfirmed": "No priced quotes yet",
+  "quoteFinanceEmptyReturned": "No quotes returned to sales",
+  "quoteFinanceEmptyReturnedHint": "After sales fix a returned quote it comes back to \"To price\".",
+  "quoteFinanceEmptySearch": "No quotes match \"{keyword}\"",
+  "quoteFinanceLoadFailed": "Could not load quotes. Check the network and try again.",
+  "quoteFinanceRetry": "Retry",
+  "quoteFinanceRefresh": "Refresh",
+  "quoteFinanceOpen": "Price",
+  "quoteFinancePrevPage": "Previous page",
+  "quoteFinanceNextPage": "Next page",
+  "quoteFinanceUnnamed": "Not set",
+  "quoteFinanceReviewTitle": "Quote pricing",
+  "quoteFinanceStripPending": "Waiting for finance pricing",
+  "quoteFinanceStripConfirmed": "Priced · {name} · {time}",
+  "quoteFinanceStripReturned": "Returned to sales · {reason}",
+  "quoteFinanceStripDraft": "Being edited by sales",
+  "quoteFinanceStripReversed": "Voided",
+  "quoteFinanceStripConverted": "Converted to order {orderNo}",
+  "quoteFinanceRevisionBadge": "Version {revision}",
+  "quoteFinanceReadOnlyNotice": "You have nothing to do on this quote right now; it is view only.",
+  "quoteFinanceResubmitNotice": "Resubmitted by sales. Highlighted lines have a discount different from the one you last confirmed; please check them.",
+  "quoteFinanceNeedPriceNotice": "{count, plural, =1{1 line has no list price. Enter a deal price, or choose \"Mark as free / zero price\" from the line menu, before confirming.} other{{count} lines have no list price. Enter a deal price, or choose \"Mark as free / zero price\" from the line menu, before confirming.}}",
+  "quoteFinanceGoMaintainPrice": "Maintain list price in goods data",
+  "quoteFinanceInfoTitle": "Quote details",
+  "quoteFinanceFieldClient": "Customer",
+  "quoteFinanceFieldSeller": "Salesperson",
+  "quoteFinanceFieldMaker": "Prepared by",
+  "quoteFinanceFieldBillDate": "Date",
+  "quoteFinanceFieldSubmittedAt": "Submitted",
+  "quoteFinanceFieldDeliverDate": "Delivery date",
+  "quoteFinanceFieldContractNo": "Contract No.",
+  "quoteFinanceFieldCurrency": "Currency",
+  "quoteFinanceFieldFileCurrency": "Customer file currency",
+  "quoteFinanceFileRateHint": "File currency {currency}, converted to base currency at the finance reference rate {rate}",
+  "quoteFinanceFieldRemark": "Sales note",
+  "quoteFinanceFieldValidUntil": "Valid until",
+  "quoteFinanceFieldSettlement": "Settlement method",
+  "quoteFinanceFieldFinanceRemark": "Finance note",
+  "quoteFinanceFinanceRemarkHint": "Note for sales (optional)",
+  "quoteFinanceSettlementNone": "Not specified",
+  "quoteFinanceAttachmentsTitle": "Customer files and attachments",
+  "quoteFinanceLinesTitle": "Goods lines",
+  "quoteFinanceColGoods": "Goods",
+  "quoteFinanceColCode": "Code",
+  "quoteFinanceColColor": "Color",
+  "quoteFinanceColQty": "Qty",
+  "quoteFinanceColUnit": "Unit",
+  "quoteFinanceColListPrice": "List price",
+  "quoteFinanceColListPriceInfo": "The selling price in goods data. When there is none, or the deal price is above it, finance sets the deal price directly; below it, the price always becomes a discount.",
+  "quoteFinanceColFilePrice": "File unit price (original)",
+  "quoteFinanceColFilePriceLocal": "In base currency",
+  "quoteFinanceColDealPrice": "Deal price",
+  "quoteFinanceColDealPriceInfo": "What the customer finally pays per unit. Changing the deal price recalculates the discount, and vice versa.",
+  "quoteFinanceColDiscount": "Discount",
+  "quoteFinanceColDiscountInfo": "Discount = deal price ÷ list price, 4 decimal places; 1 means the list price.",
+  "quoteFinanceColLineAmount": "Amount",
+  "quoteFinanceColFileDiff": "Difference from file",
+  "quoteFinanceColFileDiffInfo": "This line amount minus the amount in the customer file (converted to base currency). 0 means it matches the file.",
+  "quoteFinanceColLastConfirmed": "Last confirmed discount",
+  "quoteFinanceColSalesProposed": "Discount from sales",
+  "quoteFinanceColFileModel": "File model",
+  "quoteFinanceColFileName": "File description",
+  "quoteFinanceColRemark": "Note",
+  "quoteFinanceNoListPrice": "No price",
+  "quoteFinanceFinancePriceChip": "Finance price",
+  "quoteFinanceGiveawayChip": "Free / zero",
+  "quoteFinanceFileMatch": "Matches",
+  "quoteFinanceErrorDealPrice": "Enter a number greater than 0. For a free or zero-price line, use \"Set as free / zero price\" in the line menu.",
+  "quoteFinanceErrorFinancePrice": "Enter a number of 0 or more",
+  "quoteFinanceErrorDiscount": "Discount must be above 0 and at most 1, with up to 4 decimals",
+  "quoteFinanceErrorNeedPrice": "Enter the deal price",
+  "quoteFinanceMenuMasterMode": "Discount from list price",
+  "quoteFinanceMenuGiveaway": "Mark as free / zero price",
+  "quoteFinanceMenuRestore": "Undo changes on this line",
+  "quoteFinanceBatchDiscount": "Set discount for selected",
+  "quoteFinanceBatchDiscountCount": "Set discount ({count})",
+  "quoteFinanceBatchDiscountTitle": "{count, plural, =1{Set the discount for 1 selected line} other{Set the discount for {count} selected lines}}",
+  "quoteFinanceBatchDiscountHint": "For example, 0.95 means 95% of the list price",
+  "quoteFinanceBatchApply": "Apply",
+  "quoteFinanceBatchApplied": "{count, plural, =1{Discount set for 1 line} other{Discount set for {count} lines}}",
+  "quoteFinanceBatchSkipped": "{count, plural, =1{1 line without a list price was skipped} other{{count} lines without a list price were skipped}}",
+  "quoteFinanceBatchNeedSelection": "Select the lines to change first",
+  "quoteFinanceCheckedEditHint": "{count, plural, other{This line is selected: changing the discount updates all {count} selected lines}}",
+  "quoteFinanceActionSave": "Save changes",
+  "quoteFinanceActionSaving": "Saving…",
+  "quoteFinanceActionReturn": "Return to sales",
+  "quoteFinanceActionConfirm": "Confirm quote",
+  "quoteFinanceActionReopen": "Undo confirmation to edit",
+  "quoteFinanceActionBack": "Back",
+  "quoteFinanceSaved": "Changes saved",
+  "quoteFinanceNothingToSave": "Nothing to save",
+  "quoteFinanceFixErrors": "{count, plural, =1{1 line has an invalid value; please fix it first} other{{count} lines have invalid values; please fix them first}}",
+  "quoteFinanceClaimNotReady": "You do not hold this quote for pricing yet. Tap \"Claim again and refresh\".",
+  "quoteFinanceSaveFirst": "Save your changes before confirming",
+  "quoteFinanceConfirmBlocked": "{count, plural, =1{1 line still has no price, so the quote cannot be confirmed. Enter a deal price or mark it as free / zero.} other{{count} lines still have no price, so the quote cannot be confirmed. Enter deal prices or mark them as free / zero.}}",
+  "quoteFinanceConfirmedDone": "Quote confirmed; sales have been told they can convert it",
+  "quoteFinanceReturnedDone": "Returned to sales; they will be notified",
+  "quoteFinanceReopenedDone": "Confirmation undone; you can edit the prices again",
+  "quoteFinanceLoadDetailFailed": "Could not load the quote. Check the network or your access and try again.",
+  "quoteFinanceActionFailed": "That did not work. Please try again later.",
+  "quoteFinanceUnsavedTitle": "You have unsaved changes",
+  "quoteFinanceUnsavedBody": "These changes will be lost if you leave. Leave anyway?",
+  "quoteFinanceLeave": "Leave",
+  "quoteFinanceStay": "Keep editing",
+  "quoteFinanceBusy": "Working on it, please wait",
+  "quoteFinanceSaving": "Saving changes",
+  "quoteFinanceSessionChanged": "Your sign-in changed. Please open the quote again.",
+  "quoteFinanceConfirmTitle": "Confirm quote {billNo}",
+  "quoteFinanceConfirmBody": "Once confirmed, the prices and discounts are fixed and sales can convert the quote to an order. To change them later, undo the confirmation before it is converted.",
+  "quoteFinanceConfirmResponsibility": "Quote pricing confirmation",
+  "quoteFinanceConfirmResponsibilityDesc": "The system records you as the person who priced this quote.",
+  "quoteFinanceConfirmTotal": "Quote amount {amount}",
+  "quoteFinanceReturnTitle": "Return {billNo} to sales",
+  "quoteFinanceReturnBody": "The quote goes back to sales to fix and resubmit. Write the reason; sales will see it.",
+  "quoteFinanceReturnChipQty": "Customer wants to change quantity",
+  "quoteFinanceReturnChipGoods": "Goods missing, please add",
+  "quoteFinanceReturnChipPrice": "Price needs confirming with the customer",
+  "quoteFinanceReturnReasonLabel": "Return reason (required)",
+  "quoteFinanceReturnReasonRequired": "Please enter a return reason",
+  "quoteFinanceReturnSubmit": "Return",
+  "quoteFinanceReopenTitle": "Undo confirmation to edit",
+  "quoteFinanceReopenBody": "The quote goes back to \"To price\" so you can edit prices; confirm it again afterwards. Sales cannot convert it meanwhile. Undo now?",
+  "quoteFinanceCancel": "Cancel",
+  "quoteFinanceRevisionTitle": "Pricing history",
+  "quoteFinanceTotalQty": "Total qty",
+  "quoteFinanceTotalAmount": "Total amount",
+  "quoteFinanceTotalPreview": "Total amount (unsaved preview)",
+  "quoteFinanceOrderSourceQuote": "Source quote {billNo}",
+  "quoteFinanceOrderQuoteConfirmedBy": "Quote priced · {name}",
+  "quoteFinanceOrderAllMatch": "Quote priced · matches",
+  "quoteFinanceOrderMismatch": "{count, plural, =1{1 line differs from the quote} other{{count} lines differ from the quote}}",
+  "quoteFinanceOrderChipHint": "This order comes from a finance-priced quote. When prices and discounts match the quote, only credit and terms need checking now.",
+  "quoteFinanceOrderColQuotePrice": "Quote price",
+  "quoteFinanceOrderColQuoteDiscount": "Quote discount",
+  "quoteFinanceOrderColMatch": "vs quote",
+  "quoteFinanceOrderMatchYes": "Matches",
+  "quoteFinanceOrderMatchNo": "Differs",
+  "quoteFinanceOrderColFilePrice": "File price ({currency})",
+  "quoteFinanceOrderFileCurrencyUnknown": "original",
+  "quoteFinanceOrderColFileModel": "File model",
+  "quoteFinanceOrderColFileName": "File description",
+  "quoteFinanceAboveListHint": "Above the list price, so it is saved as a finance price (discount 1)",
+  "quoteFinanceMenuRefreshMaster": "Refresh from the latest list price",
+  "quoteFinanceRefreshMasterChip": "Refreshed from the latest list price {price} with the same discount; save first to change the discount again",
+  "quoteFinanceListPriceLatest": "{price}, now {latest} in goods data",
+  "quoteFinanceStatusClaimedBy": "{name} is pricing it",
+  "quoteFinanceStatusClaimedByMe": "You are pricing it",
+  "quoteFinanceFileRateMissing": "File currency {currency}; there is no finance reference rate yet, so base-currency values are left blank",
+  "salesQuoteStatusImportTitle": "Choose a quote priced by finance",
+  "salesQuoteStatusImportEmpty": "No priced quotes are ready to become orders",
+  "salesQuoteStatusImportLoadFailed": "Could not load quotes. Please try again later.",
+  "salesIntakeBannerTitle": "Read customer file",
+  "salesIntakeBannerMessage": "Upload the customer's quotation or proforma invoice to fill in the customer and goods automatically",
+  "salesIntakeBannerButton": "Read customer file",
+  "salesIntakeBannerAgain": "Read another file",
+  "salesIntakeBannerImported": "Imported {count, plural, =1{1 line} other{{count} lines}} from {file}",
+  "salesIntakeToolbarButton": "Read customer file",
+  "salesIntakeAiOffHint": "AI is off: only common Excel layouts can be read",
+  "salesIntakeApprovedOrderHint": "Approved orders are changed with quantity change or edit; they cannot be re-read from a file",
+  "salesIntakeReplaceTitle": "The lines already have goods",
+  "salesIntakeReplaceMessage": "Replace the existing lines with the result, or add it after them?",
+  "salesIntakeReplace": "Replace",
+  "salesIntakeAppend": "Add after",
+  "salesIntakeApplied": "Imported {count, plural, =1{1 line} other{{count} lines}}; {review} marked yellow need checking",
+  "salesIntakeAppliedAllMatched": "Imported {count, plural, =1{1 line} other{{count} lines}}",
+  "salesIntakeAttachFailed": "The original file could not be attached; you can upload it in the attachments area",
+  "salesIntakeProgressTitle": "Reading the customer file",
+  "salesIntakeStageUpload": "Upload file",
+  "salesIntakeStageRead": "Read the sheet",
+  "salesIntakeStageLayout": "Find headers and columns",
+  "salesIntakeStageGoods": "Match goods",
+  "salesIntakeStageClient": "Match customer",
+  "salesIntakeStagePricing": "Work out discounts",
+  "salesIntakeSendWholeFileTitle": "The whole file will be sent to the AI service",
+  "salesIntakeSendWholeFileMessage": "This is a PDF or image, so the whole file must be sent to the AI service to be read. If it contains sensitive details such as bank accounts, make sure it can be sent.",
+  "salesIntakeSendWholeFileConfirm": "Continue",
+  "salesIntakeAiRequired": "PDFs and images need AI to be read. Upload an Excel file or contact the administrator",
+  "salesIntakeVisionRequired": "This is an image. The administrator needs to enable a model that can read images in AI settings",
+  "salesIntakeFileTooLarge": "The file is too large (max {max})",
+  "salesIntakeFileUnreadable": "Could not read this file. Please choose it again",
+  "salesIntakeFileTypeUnsupported": "Only Excel, CSV, PDF or image files can be read",
+  "salesIntakeFailedTitle": "Could not read this file",
+  "salesIntakeResultUnreadable": "The result could not be loaded. Please read the file again",
+  "salesIntakeNoLines": "No goods lines were found. Make sure this is a quotation or proforma invoice",
+  "salesIntakeCancel": "Cancel",
+  "salesIntakeCreateClientTitle": "Create customer from file",
+  "salesIntakeCreateClientIntro": "A new customer will be created from the details below, owned by you, in the Uncategorized group.",
+  "salesIntakeCreateClientName": "Customer short name",
+  "salesIntakeCreateClientNameRequired": "Enter the customer short name",
+  "salesIntakeCreateClientConfirm": "Create customer",
+  "salesIntakeCreateClientDone": "Customer {name} created",
+  "salesIntakeCreateClientExists": "This customer already exists and has been selected",
+  "salesIntakeCreateClientFailed": "The customer was not created. Please try again later",
+  "salesIntakeFieldFullName": "Full name",
+  "salesIntakeFieldNameEn": "Foreign name",
+  "salesIntakeFieldLinkman": "Contact",
+  "salesIntakeFieldEmail": "Email",
+  "salesIntakeFieldPhone": "Phone",
+  "salesIntakeFieldAddress": "Address",
+  "salesIntakeFieldTaxId": "Tax number",
+  "salesIntakeFieldPlace": "Country/region",
+  "salesIntakeReviewTitle": "Check the result",
+  "salesIntakeReviewSubtitle": "{file} · {count, plural, =1{1 line} other{{count} lines}}",
+  "salesIntakeClose": "Close",
+  "salesIntakeStepClient": "Customer",
+  "salesIntakeStepGoods": "Goods",
+  "salesIntakeClientResolved": "Customer: {name}",
+  "salesIntakeClientChange": "Change",
+  "salesIntakeClientPickOther": "Choose another customer…",
+  "salesIntakeClientCreate": "Create customer from file",
+  "salesIntakeClientBuyer": "Buyer on the file: {name}",
+  "salesIntakeClientNotFound": "This buyer is not among your customers",
+  "salesIntakeClientSuggestions": "It looks like one of these customers. Choose one:",
+  "salesIntakeClientNone": "No customer chosen yet; you can also choose one in the header after importing",
+  "salesIntakeNoVisibleClients": "You have no customers yet. Ask your supervisor to assign customers to you in Customer data",
+  "salesIntakeEnrichSummary": "The file has the customer's {fields}; add them to the customer data when saving",
+  "salesIntakeEnrichShow": "Show",
+  "salesIntakeEnrichHide": "Hide",
+  "salesIntakeEnrichDiffers": "Differs from the current value: {current}",
+  "salesIntakeEnrichCurrentEmpty": "Not filled in the customer data yet",
+  "salesIntakeFilterReview": "To check ({count})",
+  "salesIntakeFilterAll": "All ({count})",
+  "salesIntakeMatchedCollapsed": "{count, plural, =1{1 line} other{{count} lines}} matched automatically",
+  "salesIntakeExpand": "Show",
+  "salesIntakeCollapse": "Hide",
+  "salesIntakeNoReviewLines": "All lines matched automatically. You can import right away",
+  "salesIntakeLineNo": "Line {no}",
+  "salesIntakeQty": "Qty {qty}",
+  "salesIntakeFilePrice": "File price {price}",
+  "salesIntakeFilePriceWithCurrency": "File price {price} {currency}",
+  "salesIntakeStatusMatched": "Matched",
+  "salesIntakeStatusConfirmed": "Confirmed",
+  "salesIntakeStatusReview": "Check",
+  "salesIntakeStatusUnmatched": "Not found",
+  "salesIntakeStatusBlocked": "Cannot import",
+  "salesIntakeGoodsLabel": "Our goods",
+  "salesIntakeGoodsHint": "Choose goods",
+  "salesIntakeConfirmChoice": "That's it",
+  "salesIntakePickFromMaster": "Choose from goods data…",
+  "salesIntakeSplit": "Split into {count} lines",
+  "salesIntakeMerge": "Merge back into one line",
+  "salesIntakeBundleHint": "This line is a set; you can split it and choose goods one by one",
+  "salesIntakeSetNameEn": "Use as the goods English name: {text}",
+  "salesIntakeInclude": "Import this line",
+  "salesIntakeDiscountPreview": "Discount {discount}",
+  "salesIntakeDiscountPending": "Discount to be decided",
+  "salesIntakePricingNoListPrice": "This goods has no list price yet",
+  "salesIntakePricingAboveList": "The file price is above the list price",
+  "salesIntakePricingOutOfRange": "Unusual discount; the goods may be wrong",
+  "salesIntakePricingAmbiguous": "Cannot tell which currency the file uses; check the discount",
+  "salesIntakePricingRateMissing": "The reference exchange rate is not set, so the discount could not be worked out",
+  "salesIntakeUnmatchedRemarkHint": "Not imported; the file text goes into the remark",
+  "salesIntakeBlockedHint": "Cannot go straight into an order; make a quotation for finance to price first",
+  "salesIntakeBlockedTitle": "{count, plural, =1{1 goods has} other{{count} goods have}} no list price (or the file price is above it)",
+  "salesIntakeBlockedMessage": "They cannot go straight into an order. Make a quotation first so finance can price them.",
+  "salesIntakeHandoffToQuote": "Make a quotation instead",
+  "salesIntakeDuplicateTitle": "This file may already have been entered",
+  "salesIntakeDuplicateItem": "{doc} {billNo} ({date}, {reason})",
+  "salesIntakeDuplicateMessage": "Already entered: {items}. Create another one anyway?",
+  "salesIntakeDocTypeQuote": "Quotation",
+  "salesIntakeDocTypeOrder": "Order",
+  "salesIntakeOtherSheets": "The file also has sheet {sheets} that looks like a goods list; only \"{current}\" was read. To read that sheet, upload the file again and pick that sheet while reviewing.",
+  "salesIntakeOtherSheetItem": "{name} ({count, plural, =1{1 line} other{{count} lines}})",
+  "salesIntakeOtherSheetsLead": "Sheet \"{current}\" was read. Tap another sheet below to read that one instead (one sheet at a time, never combined).",
+  "salesIntakeOtherSheetChip": "Sheet {name} also looks like a goods list ({count, plural, =1{1 line} other{{count} lines}})",
+  "salesIntakeOtherSheetTooltip": "Read this sheet instead",
+  "salesIntakeSheetProgressSubtitle": "{file} · sheet {sheet}",
+  "salesIntakePriceMaskedNotice": "You cannot see prices; discounts are worked out from the file prices when you save",
+  "salesIntakeCurrencyNotice": "The file is priced in {currency}; it is converted at the finance reference rate {rate} and the document is saved in {base}",
+  "salesIntakeRateMissingNotice": "The reference rate for {currency} is not set, so some discounts could not be worked out. Ask finance to fill it in Currencies",
+  "salesIntakeSummary": "Import: {rows} · Marked yellow to check: {review} · Not imported: {skipped}",
+  "salesIntakeImportAll": "Import all ({count, plural, =1{1 line} other{{count} lines}})",
+  "salesIntakeNothingToImport": "Nothing to import yet",
+  "salesIntakePickedManually": "Chosen from goods data",
+  "salesIntakeRemarkLineItem": "{label} × {qty}",
+  "salesIntakeRemarkUnmatched": "No matching goods for these {count} lines: {lines}",
+  "salesIntakeRemarkUnpriced": "Not imported, no list price (or file price above it) for these {count} lines: {lines}",
+  "salesIntakeRemarkBundlePrice": "Set {bundle}: file price {price} for the whole set",
+  "salesIntakeMarkerDefault": "Please check this match",
+  "salesIntakeMarkerUnit": "The file quantity is not in pieces; check the quantity",
+  "salesIntakeMarkerQuotePricing": "No list price (or file price above it); finance will set the price",
+  "salesIntakeMarkerQuoteDiscount": "The discount could not be worked out; finance will decide it",
+  "salesIntakeMarkerOrderDiscount": "The discount could not be worked out; check it against the file price and fill it in",
+  "salesIntakeQuoteLineReplaced": "This line was priced by finance on the quote. After switching to other goods it no longer uses the quoted price and discount; it is recalculated from the list price when saved",
+  "salesIntakeMarkerBundlePart": "The set was split; check the goods and discount",
+  "salesIntakeColClientModel": "File model",
+  "salesIntakeColClientModelInfo": "The model or item number on the customer's file. After saving, the system remembers what the customer calls it so the next file is read more accurately.",
+  "salesIntakeColClientGoodsName": "File description",
+  "salesIntakeColClientGoodsNameInfo": "The description on the customer's file. Choosing goods by hand fills in the goods English name; you can change it.",
+  "salesIntakeColClientPrice": "File price",
+  "salesIntakeColClientPriceWithCurrency": "File price ({currency})",
+  "salesIntakeColClientPriceInfo": "The unit price on the customer's file (in the file currency), for reference only. The unit price always comes from the goods list price; the discount is worked out from this price.",
+  "salesIntakeQuotePriceHint": "The unit price comes from the goods list price and sales cannot change it; goods without a list price are priced by finance. The discount is worked out from the customer's file price, or can be left empty for finance to decide.",
+  "salesIntakeFinancePriced": "Finance price",
+  "salesIntakePendingFinancePrice": "Finance to price",
+  "salesIntakeQuoteDiscountPending": "Finance fills in",
+  "salesIntakeMaskedDiscount": "Worked out on save",
+  "salesIntakeQuoteLockedDiscount": "(set in quotation)",
+  "salesIntakeQuoteLockedDiscountInfo": "Finance set this discount in the quotation. To change it, reopen the quotation"
 }

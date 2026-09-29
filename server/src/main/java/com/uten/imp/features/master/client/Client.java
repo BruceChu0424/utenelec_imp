@@ -67,6 +67,10 @@ public class Client extends SoftDeletableEntity {
     private UUID codePrefixCategoryId;
     @Column(name = "full_name")
     private String fullName;            // Full_Name（全称）
+
+    /** 外文名称(ADR-134, V742): 客户文件上的英文公司名; 人工维护或保存单据时从客户文件补全, 客户识别按它精确匹配。 */
+    @Column(name = "name_en", length = 255)
+    private String nameEn;
     @Column(name = "client_rank")
     private String clientRank;          // Client_Rank（等级）
 

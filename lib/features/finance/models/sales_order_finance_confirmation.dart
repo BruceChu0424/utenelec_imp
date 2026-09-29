@@ -4,6 +4,52 @@
 // 销售订货单。确认后订单才对计划部可见（物料分析/待排产/MRP/计划关联）。
 // V300：财务可驳回（必填原因，通知归属销售修正）；列表行携带驳回标记/原因与
 // 客户应收余额快照，审核详情另见 [SalesOrderFinanceReview]（含产品明细与客户财务快照）。
+// ADR-128(2026-09-27)：客户应收改为服务端共用余额视图 [PartyOpenBalance]，按本单币种显示。
+
+import '../../../shared/formatters/money_display.dart';
+import '../../../shared/models/party_open_balance.dart';
+
+/// 订单的来源报价(ADR-134)：报价须财务核价确认后才能转订货单，
+/// 这里带出核价人/时间，列表与审核页据此显示「报价已核价」。
+///
+/// 契约(SPEC §6.1 + 服务端 SalesOrderFinanceReviewDto.SourceQuote)：列表行与审核详情都用
+/// `sourceQuote{id, billNo, financeConfirmedByName, financeConfirmedAt}`, 「全部行都与报价核定
+/// 一致」在同级 `matchesQuote`(列表「报价已核价 · 一致」); 旧形态把它放在
+/// `sourceQuote.allLinesMatch`, 解析时两处都认, 同级优先。
+class SalesOrderSourceQuote {
+  const SalesOrderSourceQuote({
+    required this.id,
+    this.billNo,
+    this.financeConfirmedByName,
+    this.financeConfirmedAt,
+    this.allLinesMatch,
+  });
+
+  final String id;
+  final String? billNo;
+  final String? financeConfirmedByName;
+  final String? financeConfirmedAt;
+
+  /// 旧形态 `sourceQuote.allLinesMatch`(全部行的单价与折扣都与来源报价一致)；未给为 null。
+  /// 页面请读外层的 `matchesQuote`。
+  final bool? allLinesMatch;
+
+  static SalesOrderSourceQuote? tryFromJson(Object? json) {
+    if (json is! Map) return null;
+    final map = json.cast<String, dynamic>();
+    final id = _string(map['id']);
+    if (id == null) return null;
+    return SalesOrderSourceQuote(
+      id: id,
+      billNo: _string(map['billNo']),
+      financeConfirmedByName: _string(map['financeConfirmedByName']),
+      financeConfirmedAt: _string(map['financeConfirmedAt']),
+      allLinesMatch: map['allLinesMatch'] is bool
+          ? map['allLinesMatch'] as bool
+          : null,
+    );
+  }
+}
 
 class SalesOrderFinancePendingItem {
   const SalesOrderFinancePendingItem({
@@ -18,12 +64,14 @@ class SalesOrderFinancePendingItem {
     this.currencyCode,
     this.currencyName,
     this.shipmentPolicy,
-    this.clientOutstanding,
+    this.clientBalance,
     this.financeRejected = false,
     this.financeRejectedReason,
     this.financeRejectedAt,
     this.changeCount = 0,
     this.financeReviewRevision = 0,
+    this.sourceQuote,
+    this.matchesQuote,
   });
 
   final String orderId;
@@ -44,8 +92,9 @@ class SalesOrderFinancePendingItem {
   /// 发运策略（ALLOW_PARTIAL / REQUIRE_COMPLETE / 历史值；标签用 salesShipmentPolicyLabel）。
   final String? shipmentPolicy;
 
-  /// 客户当前应收余额（本币，ar_ap_ledger 未结口径；服务端字符串保精度）。
-  final String? clientOutstanding;
+  /// 客户在本单币种下还差多少(ADR-128)：其它币种与原币未核实部分另列，
+  /// 是否超信用由服务端按全部币种正式应收(折本币，不扣预收)判定。
+  final PartyOpenBalance? clientBalance;
 
   /// 财务驳回（V300）：已驳回待销售修正；确认后自动清除。
   final bool financeRejected;
@@ -55,6 +104,12 @@ class SalesOrderFinancePendingItem {
   /// 上次财务确认之后的改量处数（>0 = 确认后修改、待重新确认）。
   final int changeCount;
   final int financeReviewRevision;
+
+  /// 来源报价(ADR-134)；非报价转入为 null。
+  final SalesOrderSourceQuote? sourceQuote;
+
+  /// 全部行的单价与折扣都与来源报价一致；非报价转入或服务端未给为 null。
+  final bool? matchesQuote;
 
   bool get canConfirm => orderId.isNotEmpty;
 
@@ -74,12 +129,14 @@ class SalesOrderFinancePendingItem {
       currencyCode: _string(json['currencyCode']),
       currencyName: _string(json['currencyName']),
       shipmentPolicy: _string(json['shipmentPolicy']),
-      clientOutstanding: _string(json['clientOutstanding']),
+      clientBalance: PartyOpenBalance.fromJson(json['clientBalance']),
       financeRejected: json['financeRejected'] == true,
       financeRejectedReason: _string(json['financeRejectedReason']),
       financeRejectedAt: _string(json['financeRejectedAt']),
       changeCount: _int(json['changeCount']) ?? 0,
       financeReviewRevision: _int(json['financeReviewRevision']) ?? 0,
+      sourceQuote: SalesOrderSourceQuote.tryFromJson(json['sourceQuote']),
+      matchesQuote: _matchesQuote(json),
     );
   }
 }
@@ -156,10 +213,8 @@ class SalesOrderFinanceReview {
     this.remark,
     this.itemCount = 0,
     this.totalOriginal,
-    this.clientOutstanding,
-    this.clientCredit,
+    this.clientBalance,
     this.clientCreditFloor,
-    this.clientOverCredit = false,
     this.financeConfirmed = false,
     this.financeConfirmedAt,
     this.financeConfirmedByName,
@@ -173,6 +228,9 @@ class SalesOrderFinanceReview {
     this.commercialChanges = const [],
     this.revisionDiff,
     this.financeReviewRevision = 0,
+    this.sourceQuote,
+    this.clientFileCurrency,
+    this.matchesQuote,
   });
 
   final String orderId;
@@ -202,15 +260,19 @@ class SalesOrderFinanceReview {
   final int itemCount;
   final String? totalOriginal;
 
-  /// 客户应收余额（本币未结口径）。
-  final String? clientOutstanding;
+  /// 客户在本单币种下的应收 / 可用预收 / 还差多少(ADR-128)；
+  /// 信用额度(`creditLimitLocal`，未设置为 null)与是否超信用(`overCredit`)也在里面。
+  final PartyOpenBalance? clientBalance;
 
-  /// 信用额度 / 铺底额（客户主档；未配置为 null）。
-  final String? clientCredit;
+  /// 铺底额(客户主档，本币；未配置为 null)。
   final String? clientCreditFloor;
 
-  /// 应收余额是否已超信用额度（信用额度未配置时恒 false）。
-  final bool clientOverCredit;
+  /// 订单币种显示名：主档名称优先，缺名称退回可读代码，都没有时写「订单币种」。
+  String get currencyLabel => financeCurrencyText(
+    name: currencyName,
+    code: currencyCode,
+    fallback: '订单币种',
+  );
 
   final bool financeConfirmed;
   final String? financeConfirmedAt;
@@ -228,6 +290,13 @@ class SalesOrderFinanceReview {
   final List<SalesOrderCommercialChange> commercialChanges;
   final SalesOrderRevisionDiff? revisionDiff;
   final int financeReviewRevision;
+
+  /// 来源报价(ADR-134，含「全部行与报价一致」标记)；客户文件币种(文件单价列标题用)。
+  final SalesOrderSourceQuote? sourceQuote;
+  final String? clientFileCurrency;
+
+  /// 全部行的单价与折扣都与来源报价一致；非报价转入或服务端未给为 null。
+  final bool? matchesQuote;
 
   factory SalesOrderFinanceReview.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'];
@@ -255,10 +324,8 @@ class SalesOrderFinanceReview {
       remark: _string(json['remark']),
       itemCount: _int(json['itemCount']) ?? 0,
       totalOriginal: _string(json['totalOriginal']),
-      clientOutstanding: _string(json['clientOutstanding']),
-      clientCredit: _string(json['clientCredit']),
+      clientBalance: PartyOpenBalance.fromJson(json['clientBalance']),
       clientCreditFloor: _string(json['clientCreditFloor']),
-      clientOverCredit: json['clientOverCredit'] == true,
       financeConfirmed: json['financeConfirmed'] == true,
       financeConfirmedAt: _string(json['financeConfirmedAt']),
       financeConfirmedByName: _string(json['financeConfirmedByName']),
@@ -292,6 +359,9 @@ class SalesOrderFinanceReview {
           .map((row) => SalesOrderCommercialChange.fromJson(row))
           .toList(growable: false),
       financeReviewRevision: _int(json['financeReviewRevision']) ?? 0,
+      sourceQuote: SalesOrderSourceQuote.tryFromJson(json['sourceQuote']),
+      clientFileCurrency: _string(json['clientFileCurrency']),
+      matchesQuote: _matchesQuote(json),
       revisionDiff: json['revisionDiff'] is Map
           ? SalesOrderRevisionDiff.fromJson(
               (json['revisionDiff'] as Map).cast<String, dynamic>(),
@@ -459,6 +529,11 @@ class SalesOrderFinanceReviewLine {
     this.discount,
     this.amountOriginal,
     this.remark,
+    this.quotePrice,
+    this.quoteDiscount,
+    this.matchesQuote,
+    this.clientPrice,
+    this.clientGoodsName,
   });
 
   final String itemId;
@@ -466,6 +541,17 @@ class SalesOrderFinanceReviewLine {
   final String? goodsCode;
   final String? goodsName;
   final String? colorName;
+
+  /// 来源报价行的单价与财务核定折扣(ADR-134)；非报价转入行为 null。
+  final String? quotePrice;
+  final String? quoteDiscount;
+
+  /// 本行单价与折扣都与来源报价行一致；非报价转入行为 null。
+  final bool? matchesQuote;
+
+  /// 客户文件里的单价(文件币种原币，只作对照)与品名。
+  final String? clientPrice;
+  final String? clientGoodsName;
 
   /// 单位主键：「合计数量」按它分组，不同单位的数量绝不相加。
   final String? unitId;
@@ -494,6 +580,13 @@ class SalesOrderFinanceReviewLine {
       discount: _string(json['discount']),
       amountOriginal: _string(json['amountOriginal']),
       remark: _string(json['remark']),
+      quotePrice: _string(json['quotePrice']),
+      quoteDiscount: _string(json['quoteDiscount']),
+      matchesQuote: json['matchesQuote'] is bool
+          ? json['matchesQuote'] as bool
+          : null,
+      clientPrice: _string(json['clientPrice']),
+      clientGoodsName: _string(json['clientGoodsName']),
     );
   }
 }
@@ -507,4 +600,15 @@ String? _string(Object? value) {
 int? _int(Object? value) {
   if (value is num) return value.toInt();
   return int.tryParse(value?.toString() ?? '');
+}
+
+/// 订单级「全部行都与来源报价核定一致」: 同级 `matchesQuote` 优先, 旧形态
+/// `sourceQuote.allLinesMatch` 兜底; 非报价转入(没有 sourceQuote)为 null。
+bool? _matchesQuote(Map<String, dynamic> json) {
+  final quote = json['sourceQuote'];
+  if (quote is! Map) return null;
+  final top = json['matchesQuote'];
+  if (top is bool) return top;
+  final legacy = quote['allLinesMatch'];
+  return legacy is bool ? legacy : null;
 }

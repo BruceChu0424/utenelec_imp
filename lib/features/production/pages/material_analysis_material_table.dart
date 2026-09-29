@@ -200,6 +200,9 @@ abstract class _MaterialAnalysisMaterialTableState
     _recomputeTableEstimates();
     _draftBudget.invalidate();
     _tableEstimateTick.value++;
+    // 保留编辑套用新快照后也要刷新没人改过的预填比例(汇总草稿开着时新默认
+    // 跟着来源走)；人填过的与已下达的由 reseed 自己跳过。
+    _reseedSystemOverproductionRates();
   }
 
   void _mutateAggregateTable(VoidCallback change) {
@@ -294,55 +297,6 @@ abstract class _MaterialAnalysisMaterialTableState
   @override
   bool _preparationCanAppend(_MaterialGroup group) =>
       _tableGroupIssued(group) && _preparationCanIssue(group);
-
-  /// 进页自动确认（2026-09-25 确认路线退役，用户口径「供应方式有就自动确认，
-  /// 没有的红框」）。实现在本层：汇总草稿控制器与占用判据都在这里。
-  ///
-  /// 目标 = 未确认且能从「主档来源 / BOM 推导自制 / 根行历史计划」解析出路线的
-  /// 操作组；服务端 REVIEW（主档空且无子层）解析为 null，不碰、留红框给人补选。
-  /// 纪元守卫见 [_autoRouteConfirmEpoch]——轮询、保存回包、409 恢复都会重走
-  /// [_applyAnalysis]，靠它挡住重复提交；失败/无权限只降级不重试。
-  @override
-  Future<void> _maybeAutoConfirmRoutes() async {
-    final analysis = _analysis;
-    if (analysis == null ||
-        !_canRoute ||
-        _busy ||
-        _savingRoutes ||
-        _booting ||
-        _aggregateTable.hasDrafts) {
-      return;
-    }
-    final epoch =
-        '${analysis.analysisId}|${analysis.version}|${analysis.fingerprint}';
-    if (_autoRouteConfirmEpoch == epoch) return;
-    final candidates = _materialGroups(analysis)
-        .where(
-          (group) =>
-              group.representative.confirmedRoute == null &&
-              _canEditMaterialRoute(group) &&
-              !_materialAggregateOwnsLine(
-                group.representative.materialLineId,
-              ) &&
-              // 人工草稿在场（直改未保存/保存失败重试中）= 人已介入，这一行
-              // 不自动碰——自动确认失败回滚时也不能把人的草稿一起吞掉。
-              !_dirtyRouteGroups.contains(group.key) &&
-              _draftRoute(group) != null,
-        )
-        .toList(growable: false);
-    if (candidates.isEmpty) return;
-    // 本纪元只尝试一次：无论成败都不重试（轮询/回包会带着新纪元再来）。
-    _autoRouteConfirmEpoch = epoch;
-    final autoKeys = {for (final group in candidates) group.key};
-    setState(() {
-      for (final group in candidates) {
-        _routeDraft[group.key] = _draftRoute(group)!;
-        _dirtyRouteGroups.add(group.key);
-      }
-      _invalidateBucketRowsCache();
-    });
-    await _saveRoutes(automatic: true, automaticRollbackKeys: autoKeys);
-  }
 
   @override
   bool _materialAggregateOwnsProductLine(String lineId) {
@@ -1027,14 +981,10 @@ abstract class _MaterialAnalysisMaterialTableState
     ProductionMaterialAnalysisView analysis, {
     bool primary = true,
   }) {
-    // 主表要用的两份按需事实(ADR-102)：批量可调拨量决定「物料办理」里调拨
-    // 按钮灰不灰，车间/负责人学习记忆决定两个指派列的默认值。都带作用域键，
-    // 同一份分析只取一次；放在 build 里是因为它们依赖权限与会话身份，
-    // 而这两者在 initState 时还可能没定下来。
-    unawaited(Future<void>.microtask(() => _loadTableTransferableIn(analysis)));
-    unawaited(
-      Future<void>.microtask(() => _loadTableAssignmentDefaults(analysis)),
-    );
+    // 主表要用的两份按需事实(ADR-102)——批量可调拨量、车间/负责人学习记忆——
+    // 2026-09-27 起不在 build 里各取各的：套用快照时与在途调拨、车间在催合成一批
+    // 由公共装载器取回、只重画一次 (见 _requestCompanionReads)；会话/权限一变由
+    // _reloadCompanionScopes 按作用域键补取。
     // 表头筛选已在投影层生效（祖先保留为只读上下文），行集即最终行；桶随
     // 行缓存一起算出（未套表头筛选的全量行）。
     final rows = _materialTableRows(analysis);
@@ -1650,12 +1600,26 @@ abstract class _MaterialAnalysisMaterialTableState
       // 编号/还缺数量/下单数量」同属「表头只显示那几个字」的五列。2026-09-23
       // 并行会话 WIP 曾带回一条 info，因非交互列不渲染而沉睡；列头 ⓘ 机制
       // 补齐非交互列后会真的显示，与该口径冲突，故移除。
-      cellBuilder: (_, row) => Text(
-        _qty(_materialTableRequiredQty(row)),
-        key: ValueKey('material-analysis-source-required-${row.key}'),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      // ADR-129 §2.11：本行按哪个用量算(真实/设计、几批、设计值)放在单元格悬停里。
+      cellBuilder: (_, row) {
+        final quantity = Text(
+          _qty(_materialTableRequiredQty(row)),
+          key: ValueKey('material-analysis-source-required-${row.key}'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+        final material = row.material;
+        final usage = material == null
+            ? null
+            : materialAnalysisUsageBasisText(_l10n, material);
+        return usage == null
+            ? quantity
+            : Tooltip(
+                key: ValueKey('material-analysis-usage-basis-${row.key}'),
+                message: usage,
+                child: quantity,
+              );
+      },
     ),
     // 可用 = 本行私有份额 + 公共余量；有效选中输入只临时预占公共部分。
     // 正式下达后的库存、已下单和在途事实仍由服务端返回。
@@ -1725,7 +1689,9 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'allowedOverproductionRate',
       label: '允许超产比例',
       width: 152,
-      info: '本次下达计划允许的超产比例，默认 10%。不增加计划数量或自动多领料。已下达工单的比例修改仍须计划部审批。',
+      info:
+          '本次下达允许的超产比例：制造底层默认 10%，上层 0%；改过的按最近一次确认的比例记住。'
+          '已下达工单的比例修改仍须计划部审批。',
       value: (row) {
         if (row.aggregate case final aggregate?) {
           return _aggregateTable.rateText(aggregate);
@@ -1750,12 +1716,12 @@ abstract class _MaterialAnalysisMaterialTableState
             '${_overproductionPercentController(materialLineId: group.representative.materialLineId).text}%',
           );
         }
-        // 已下达比例随工单锁定，新增来源尚未下达时仍可设置。
+        // 已下达比例随工单锁定，新增来源尚未下达时仍可设置；快照刷新不改它的显示值。
         if (_tableGroupIssued(group)) {
           return Tooltip(
             message: '这一行已下达，允许超产比例随工单锁定；要改已下达工单的比例须计划部审批。',
             child: Text(
-              '${_overproductionPercentController(materialLineId: group.representative.materialLineId).text}%',
+              '${_overproductionPercentController(materialLineId: group.representative.materialLineId, issued: true).text}%',
             ),
           );
         }
@@ -2121,8 +2087,9 @@ abstract class _MaterialAnalysisMaterialTableState
       },
     );
     // ADR-102（2026-09-25 确认路线退役修订）：还没确认供应方式的行把这一格
-    // 框成红的、下拉留空。货品档案里能定路线的行进页已自动确认，红框只剩
-    // 「主档来源为空且无 BOM」的叶子行——选好即自动保存，这一行才能下单。
+    // 框成红的、下拉留空。货品档案里能定路线的行由服务端在建分析 / 刷新时
+    // 已自动确认 (2026-09-27)，红框只剩「主档来源为空且无 BOM」的叶子行——
+    // 选好即自动保存，这一行才能下单。
     final pending = groups.any(
       (group) => group.representative.confirmedRoute == null,
     );
@@ -3627,6 +3594,16 @@ abstract class _MaterialAnalysisMaterialTableState
     );
   }
 
+  @override
+  Future<VoidCallback?> _companionRead(
+    _CompanionRead read,
+    ProductionMaterialAnalysisView view,
+  ) => switch (read) {
+    _CompanionRead.transferableIn => _fetchTableTransferableIn(view),
+    _CompanionRead.assignmentDefaults => _fetchTableAssignmentDefaults(view),
+    _ => super._companionRead(read, view),
+  };
+
   /// 本行此刻可以从别的计划锁定量里调进来多少(0 = 调拨按钮置灰)。
   double _tableTransferableInQty(_MaterialGroup group) {
     if (_tableTransferableIn.isEmpty) return 0;
@@ -3637,38 +3614,47 @@ abstract class _MaterialAnalysisMaterialTableState
     return total;
   }
 
-  /// 按需取一次批量可调拨量。带会话作用域键：切账号后丢弃迟到响应，
-  /// 免得把上一个账号可见范围里的量显示给下一个账号。
-  Future<void> _loadTableTransferableIn(
+  /// 按需取一次批量可调拨量 (公共装载器的一类读取)。带会话作用域键：切账号后
+  /// 丢弃迟到响应，免得把上一个账号可见范围里的量显示给下一个账号。
+  Future<VoidCallback?> _fetchTableTransferableIn(
     ProductionMaterialAnalysisView analysis,
   ) async {
-    if (!_canCrossReallocate || _tableTransferableInLoading) return;
+    if (!_canCrossReallocate ||
+        _tableTransferableInLoading ||
+        analysis.materials.isEmpty) {
+      return null;
+    }
     final sessionKey = _sessionScopeKey();
     final scope = '$sessionKey#${analysis.analysisId}';
-    if (_tableTransferableInScope == scope) return;
+    if (_tableTransferableInScope == scope) return null;
     _tableTransferableInLoading = true;
+    Map<String, double> summary;
     try {
-      final summary = await ref
+      summary = await ref
           .read(productionPlanRepositoryProvider)
           .materialTransferableInSummary(analysis.analysisId);
+    } catch (_) {
+      // 调拨按钮灰不灰是辅助信息，取不到就一律按「无可调拨」置灰，不打断主表。
+      summary = const {};
+    }
+    return () {
+      _tableTransferableInLoading = false;
+      if (!mounted) return;
       // 切账号后到货的响应直接丢弃：可调拨量随登录人的对象级可见范围变，
       // 把上一个账号看得见的量显示给下一个账号是越权泄露。
       // 会话键**先存下来再比**，不要从拼接串里拆——会话键自身含 '|'。
-      if (!mounted || _sessionScopeKey() != sessionKey) return;
-      setState(() {
-        _tableTransferableIn = summary;
-        _tableTransferableInScope = scope;
-      });
-    } catch (_) {
-      // 调拨按钮灰不灰是辅助信息，取不到就一律按「无可调拨」置灰，不打断主表。
-      if (!mounted) return;
-      setState(() {
-        _tableTransferableIn = const {};
-        _tableTransferableInScope = scope;
-      });
-    } finally {
-      _tableTransferableInLoading = false;
-    }
+      if (_sessionScopeKey() != sessionKey ||
+          _analysis?.analysisId != analysis.analysisId) {
+        // 读取途中换了账号或换了分析：途中提出的新读取被上面的「正在读取」挡掉了，
+        // 这里按当前会话与快照补取一次。
+        if (_analysis != null) {
+          _requestCompanionReads(const [_CompanionRead.transferableIn]);
+        }
+        return;
+      }
+      _tableTransferableIn = summary;
+      _tableTransferableInScope = scope;
+    };
   }
 
   // ---------------- 下达车间前的就地指派(生产车间 / 负责人) ----------------
@@ -3699,7 +3685,7 @@ abstract class _MaterialAnalysisMaterialTableState
   void _flushDeferredAssignmentRead() {
     if (!_deferredAssignmentRead || _analysis == null) return;
     _deferredAssignmentRead = false;
-    unawaited(_loadTableAssignmentDefaults(_analysis!));
+    _requestCompanionReads(const [_CompanionRead.assignmentDefaults]);
   }
 
   Future<void> _ensureTableMandatoryAssignments(
@@ -3732,11 +3718,7 @@ abstract class _MaterialAnalysisMaterialTableState
       _deferredAssignmentRead = true;
       return;
     }
-    scheduleMicrotask(() {
-      if (mounted && _analysis != null) {
-        unawaited(_loadTableAssignmentDefaults(_analysis!));
-      }
-    });
+    _requestCompanionReads(const [_CompanionRead.assignmentDefaults]);
   }
 
   /// 必填指派格(生产车间/负责人)的定位键：'W|<组键>' / 'R|<组键>'。
@@ -3752,65 +3734,91 @@ abstract class _MaterialAnalysisMaterialTableState
   GlobalKey _tableAssignmentCellKey(String kind, _MaterialGroup group) =>
       _tableAssignmentCellKeys.putIfAbsent('$kind|${group.key}', GlobalKey.new);
 
+  /// 下单前必须等到车间/负责人默认值的调用方用它 (直接 await)；与进页那一批走
+  /// 同一个公共装载器、同一套套用口径。
   Future<void> _loadTableAssignmentDefaults(
     ProductionMaterialAnalysisView analysis, {
     bool mandatory = false,
     bool force = false,
+  }) => _runCompanionReads([
+    _fetchTableAssignmentDefaults(analysis, mandatory: mandatory, force: force),
+  ]);
+
+  /// 车间/负责人默认值 (组织树 + 货品学习记忆) 的一类读取：返回合批套用动作。
+  /// 等待者 ([_tableAssignmentCompletion]) 在套用之后才放行——放行时默认值已经
+  /// 落到页面状态里。
+  Future<VoidCallback?> _fetchTableAssignmentDefaults(
+    ProductionMaterialAnalysisView analysis, {
+    bool mandatory = false,
+    bool force = false,
   }) async {
-    if (!_canGenerate) return;
+    if (!_canGenerate) return null;
     final scope = '${_sessionScopeKey()}|${analysis.analysisId}';
-    if (!force && _tableAssignmentScope == scope) return;
+    if (!force && _tableAssignmentScope == scope) return null;
     if (_preparationSubmissionActive && !mandatory) {
       _deferredAssignmentRead = true;
-      return;
+      return null;
     }
     if (_tableAssignmentLoading) {
       if (mandatory) await _tableAssignmentCompletion?.future;
-      return;
+      return null;
     }
     final goodsIds = <String>{
       for (final material in analysis.materials)
         if (material.goodsId?.isNotEmpty == true) material.goodsId!,
     };
-    if (goodsIds.isEmpty) return;
+    if (goodsIds.isEmpty) return null;
     _tableAssignmentLoading = true;
     _deferredAssignmentRead = false;
     final completion = Completer<void>();
     _tableAssignmentCompletion = completion;
     final generation = _tableAssignmentGeneration;
+    List<DepartmentNode>? tree;
+    Map<
+      String,
+      ({
+        String departmentId,
+        String? departmentName,
+        String? workerId,
+        String? workerName,
+      })
+    >?
+    defaults;
     try {
-      final tree = await _tableWorkshopTreeOrEmpty();
-      final defaults = await ref
+      tree = await _tableWorkshopTreeOrEmpty();
+      defaults = await ref
           .read(productionPlanRepositoryProvider)
           .defaultWorkshops(goodsIds);
-      if (!mounted ||
-          generation != _tableAssignmentGeneration ||
-          _analysis?.analysisId != analysis.analysisId) {
-        return;
-      }
-      setState(() {
-        _tableWorkshopTree = tree;
-        _tableWorkshopDefaults = defaults;
-        _tableWorkshopManagers = {
-          for (final node in tree)
-            if (node.managerId?.isNotEmpty == true)
-              node.id: (id: node.managerId, name: node.managerName),
-        };
-        _tableAssignmentScope = scope;
-      });
     } catch (_) {
-      if (!mounted || generation != _tableAssignmentGeneration) return;
-      setState(() => _tableAssignmentScope = scope);
-    } finally {
+      defaults = null;
+    }
+    return () {
       _tableAssignmentLoading = false;
       _tableAssignmentCompletion = null;
-      completion.complete();
-      if (mounted &&
-          generation != _tableAssignmentGeneration &&
-          _analysis != null) {
-        unawaited(_loadTableAssignmentDefaults(_analysis!));
+      // 代际、分析、会话三者都没变才算数；途中任一变了，途中提出的新读取已被上面的
+      // 「正在读取」挡掉，下面按最新快照补取一次。
+      final current =
+          mounted &&
+          generation == _tableAssignmentGeneration &&
+          _analysis?.analysisId == analysis.analysisId &&
+          scope == '${_sessionScopeKey()}|${analysis.analysisId}';
+      if (current) {
+        if (tree != null && defaults != null) {
+          _tableWorkshopTree = tree;
+          _tableWorkshopDefaults = defaults;
+          _tableWorkshopManagers = {
+            for (final node in tree)
+              if (node.managerId?.isNotEmpty == true)
+                node.id: (id: node.managerId, name: node.managerName),
+          };
+        }
+        _tableAssignmentScope = scope;
       }
-    }
+      completion.complete();
+      if (!current && mounted && _analysis != null) {
+        _requestCompanionReads(const [_CompanionRead.assignmentDefaults]);
+      }
+    };
   }
 
   Future<List<DepartmentNode>> _tableWorkshopTreeOrEmpty() async {
@@ -5024,8 +5032,9 @@ abstract class _MaterialAnalysisMaterialTableState
       // 没下成的行填的数还在，按权威快照就地重估，并且只在这时才补一次服务端重算。
       _invalidateMaterialTableCascadePreview();
       _reseedMaterialTableQtyInputs();
-      // 可调拨量随下达变化，下次进主表重取。
+      // 可调拨量随下达变化：作用域作废，由公共装载器重取。
       _tableTransferableInScope = null;
+      _requestCompanionReads(const [_CompanionRead.transferableIn]);
     });
     _reportMaterialTableSubmit(steps, blocked);
     final allOk = steps.isNotEmpty && steps.every((step) => step.ok);
@@ -5068,7 +5077,7 @@ abstract class _MaterialAnalysisMaterialTableState
           _BucketPlanDraft(
             analysisLineId: rootMakeLineId,
             qty: _tableRootPlanQty(group, pending[group]!)!,
-            allowedOverproductionRate: _overproductionRate(
+            allowedOverproductionRate: _submittedOverproductionRate(
               materialLineId: group.representative.materialLineId,
             ),
             departmentId: _tableWorkshopFor(group).id,
@@ -5083,7 +5092,7 @@ abstract class _MaterialAnalysisMaterialTableState
         _BucketCandidatePlanInput(
           materialLineId: group.representative.materialLineId,
           qty: pending[group]!,
-          allowedOverproductionRate: _overproductionRate(
+          allowedOverproductionRate: _submittedOverproductionRate(
             materialLineId: group.representative.materialLineId,
           ),
           departmentId: _tableWorkshopFor(group).id,

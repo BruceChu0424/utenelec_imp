@@ -19,6 +19,7 @@ import com.uten.imp.features.master.goods.dto.GoodsDetail;
 import com.uten.imp.features.master.goods.dto.GoodsDictItem;
 import com.uten.imp.features.master.goods.dto.GoodsFacets;
 import com.uten.imp.features.master.goods.dto.GoodsListItem;
+import com.uten.imp.features.master.goods.dto.GoodsPeriodicBomWeight;
 import com.uten.imp.features.master.goods.dto.GoodsQueryFilter;
 import com.uten.imp.features.master.goods.dto.GoodsSaveRequest;
 import com.uten.imp.features.master.goods.dto.GoodsStockSummary;
@@ -260,6 +261,8 @@ public class GoodsService {
                     cb.like(cb.lower(root.get("material")), like),
                     cb.like(cb.lower(root.get("requireRemark")), like),
                     cb.like(cb.lower(root.get("paper")), like),
+                    // 英文名称(ADR-134): 客户文件上的英文品名也能搜到货品。
+                    cb.like(cb.lower(root.get("nameEn")), like),
                     cb.like(cb.lower(mouldJoin.get("code")), like)));
         }
         addEq(ps, cb, root, "series", f.series());
@@ -455,42 +458,75 @@ public class GoodsService {
     }
 
     /**
-     * 单货品即时库存汇总（货品详情「库存量」用）：聚合 stock_balances（仅 warehouses.is_accountable
-     * 参与核算仓库），返回合计数量/重量 + 按仓库（×颜色）明细。口径同即时库存。
+     * 单货品即时库存按仓库×颜色展开(货品详情「库存量」用)：stock_balances 仅 warehouses.is_accountable
+     * 参与核算仓库，一个仓库×颜色一行(UNIQUE (warehouse_id, goods_id, color_id)，不同颜色同名也不合并)。
+     * 重量是千克(ADR-135)：有数量却没有重量的行投影为 NULL(绝不当 0)，估算重量带标记。
      * 直接查 stock_balances 表（表访问非跨特性 Java 依赖，规避 master→stock 架构边界）。
      */
+    static final String STOCK_SUMMARY_SQL = """
+            SELECT b.warehouse_id, w.code AS warehouse_code, w.name AS warehouse_name,
+                   b.color_id, c.name AS color_name,
+                   SUM(b.qty) AS qty,
+                   CASE WHEN bool_or(b.qty <> 0 AND b.weight IS NULL) THEN NULL
+                        ELSE COALESCE(SUM(b.weight), 0) END AS weight,
+                   COALESCE(bool_or(b.weight_estimated), false) AS weight_estimated,
+                   w.is_line_side
+            FROM stock_balances b
+            JOIN warehouses w ON w.id = b.warehouse_id
+            LEFT JOIN colors c ON c.id = b.color_id
+            WHERE b.goods_id = :goodsId AND w.is_accountable
+            GROUP BY b.warehouse_id, w.code, w.name, w.is_line_side, b.color_id, c.name
+            ORDER BY w.is_line_side, w.code, c.name NULLS FIRST
+            """;
+
     private GoodsStockSummary stockSummaryForGoods(UUID goodsId) {
-        String sql = """
-                SELECT b.warehouse_id, w.code AS warehouse_code, w.name AS warehouse_name,
-                       c.name AS color_name,
-                       SUM(b.qty) AS qty, SUM(b.weight) AS weight
-                FROM stock_balances b
-                JOIN warehouses w ON w.id = b.warehouse_id
-                LEFT JOIN colors c ON c.id = b.color_id
-                WHERE b.goods_id = :goodsId AND w.is_accountable
-                GROUP BY b.warehouse_id, w.code, w.name, c.name
-                ORDER BY w.code
-                """;
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery(sql)
+        List<Object[]> rows = em.createNativeQuery(STOCK_SUMMARY_SQL)
                 .setParameter("goodsId", goodsId)
                 .getResultList();
-        BigDecimal totalQty = BigDecimal.ZERO;
-        BigDecimal totalWeight = BigDecimal.ZERO;
-        List<GoodsStockRow> out = new ArrayList<>();
-        for (Object[] r : rows) {
-            BigDecimal qty = toBd(r[4]);
-            BigDecimal weight = toBd(r[5]);
-            totalQty = totalQty.add(qty);
-            totalWeight = totalWeight.add(weight);
-            out.add(new GoodsStockRow(toUuid(r[0]), (String) r[1], (String) r[2],
-                    (String) r[3], qty, weight));
-        }
-        return new GoodsStockSummary(totalQty, totalWeight, out);
+        return summarizeStock(rows);
     }
 
-    private static BigDecimal toBd(Object o) {
-        if (o == null) return BigDecimal.ZERO;
+    /**
+     * 行 → 汇总：线边仓(V595 车间料架)行照常列出但不计入合计。
+     * 重量合计口径同即时库存合计条(ADR-135)：只加非线边行的已知重量，有数量却重量未知的行另计
+     * weightUnknownRows(前端「≈28.9 kg (另有 2 处未称)」)；有量的行重量全都未知时合计为 null
+     * (前端「未称」)，绝不把未知当 0。含估算的已知重量行让合计带「≈」。
+     *
+     * @param rows {@link #STOCK_SUMMARY_SQL} 的结果行
+     */
+    static GoodsStockSummary summarizeStock(List<Object[]> rows) {
+        BigDecimal totalQty = BigDecimal.ZERO;
+        BigDecimal totalWeight = BigDecimal.ZERO;
+        int weightUnknownRows = 0;
+        boolean knownStockWeight = false;
+        boolean weightEstimated = false;
+        List<GoodsStockRow> out = new ArrayList<>(rows.size());
+        for (Object[] r : rows) {
+            BigDecimal qty = r[5] == null ? BigDecimal.ZERO : decimalOf(r[5]);
+            BigDecimal weight = r[6] == null ? null : decimalOf(r[6]);
+            boolean estimated = weight != null && Boolean.TRUE.equals(r[7]);
+            boolean lineSide = Boolean.TRUE.equals(r[8]);
+            out.add(new GoodsStockRow(toUuid(r[0]), (String) r[1], (String) r[2],
+                    toUuid(r[3]), (String) r[4], qty, weight, estimated, lineSide));
+            if (lineSide) {
+                continue;
+            }
+            totalQty = totalQty.add(qty);
+            if (weight == null) {
+                if (qty.signum() != 0) weightUnknownRows++;
+            } else {
+                totalWeight = totalWeight.add(weight);
+                knownStockWeight = knownStockWeight || qty.signum() != 0;
+                weightEstimated = weightEstimated || estimated;
+            }
+        }
+        boolean allUnknown = weightUnknownRows > 0 && !knownStockWeight;
+        return new GoodsStockSummary(totalQty, allUnknown ? null : totalWeight, weightUnknownRows,
+                !allUnknown && weightEstimated, out);
+    }
+
+    private static BigDecimal decimalOf(Object o) {
         if (o instanceof BigDecimal bd) return bd;
         return new BigDecimal(o.toString());
     }
@@ -519,6 +555,8 @@ public class GoodsService {
         boolean showDiscount = canViewDiscount();
         List<ExportColumn> cols = new ArrayList<>();
         cols.add(new ExportColumn("name", "货品名称", ExportColumn.TEXT));
+        // 英文名称(ADR-134): 紧跟货品名称, 与表格列序一致; 导入同名表头可直接导回。
+        cols.add(new ExportColumn("nameEn", "英文名称", ExportColumn.TEXT));
         cols.add(new ExportColumn("code", "编号", ExportColumn.TEXT));
         cols.add(new ExportColumn("categoryPath", "类别", ExportColumn.TEXT));
         cols.add(new ExportColumn("colorName", "主颜色", ExportColumn.TEXT));
@@ -545,6 +583,7 @@ public class GoodsService {
                 maxRows, (p, size) -> list(f, p, size, sort, order), g -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("name", g.getName());
+                    row.put("nameEn", g.getNameEn());
                     row.put("code", g.getCode());
                     row.put("categoryPath", categoryPath.get(g.getCategoryId()));
                     row.put("colorName", g.getColorName());
@@ -917,6 +956,72 @@ public class GoodsService {
         return a.compareTo(b) != 0;
     }
 
+    /**
+     * 单独修改英文名称(ADR-134, {@code PUT /api/master/goods/{id}/name-en}): 持有 goods:name_en:edit
+     * 或 goods:edit 即可, 不必有整单编辑权限; 对象写范围与乐观锁同整单编辑。写入后来源记为 MANUAL,
+     * 清空时来源一并清空。旧值由 goods 行级审计保留。
+     */
+    @org.springframework.security.access.prepost.PreAuthorize(
+            "hasAnyAuthority('goods:name_en:edit', 'goods:edit')")
+    @Transactional
+    public GoodsDetail updateNameEn(UUID id, String nameEn, Long version) {
+        tx.bind();
+        Goods g = requireGoods(id);
+        requireWritable(g);
+        em.refresh(g, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        OptimisticLocks.requireUpToDate(g.getVersion(), version);
+        String value = GoodsNameEn.normalizeForWrite(nameEn);
+        if (!Objects.equals(value, g.getNameEn())) {
+            g.setNameEn(value);
+            g.setNameEnSource(value == null ? null : GoodsNameEn.SOURCE_MANUAL);
+            // 立即落库, 让返回的版本号就是新版本(页面下次保存直接回传它)。
+            g = repo.saveAndFlush(g);
+        }
+        return toDetail(g, colorNameOf(g), unitNameOf(g), repo.quantityUnitInUse(g.getId()));
+    }
+
+    /**
+     * 保存报价/订货单后的学习写入(ADR-134, 由主档学习在独立事务里调用): 当前用户必须持有
+     * goods:name_en:edit 或 goods:edit 且对该货品有写范围, 货品须未删除、非占位。
+     * 值相同不写; 否则覆盖为学习值(用户已明确勾选), 来源记 LEARNED, 版本号随 JPA 递增。
+     *
+     * @return 是否真的改了
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public boolean learnNameEn(UUID goodsId, String text) {
+        String value = GoodsNameEn.normalize(text);
+        if (goodsId == null || value == null
+                || value.codePointCount(0, value.length()) > GoodsNameEn.MAX_LENGTH) {
+            return false;
+        }
+        if (!GoodsNameEn.canEdit(currentUser.get().orElse(null))) return false;
+        Goods g = repo.findById(goodsId).orElse(null);
+        if (g == null || g.isDeleted() || g.isAutoCreated() || !canWrite(g)) return false;
+        em.refresh(g, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (value.equals(g.getNameEn())) return false;
+        g.setNameEn(value);
+        g.setNameEnSource(GoodsNameEn.SOURCE_LEARNED);
+        repo.save(g);
+        return true;
+    }
+
+    /** 英文名称编辑能力: 功能权限(goods:name_en:edit 或 goods:edit) + 对象写范围。 */
+    boolean canEditNameEn(Goods g) {
+        return GoodsNameEn.canEdit(currentUser.get().orElse(null)) && canWrite(g);
+    }
+
+    /**
+     * 整单保存里的英文名称: 请求带了 nameEn 键才处理(没带 = 保持, 老客户端不误清)。
+     * 值有变化才写, 来源记 MANUAL; 清空时来源一并清空。
+     */
+    private static void applyNameEn(GoodsSaveRequest req, Goods g) {
+        if (!req.hasNameEn()) return;
+        String value = GoodsNameEn.normalizeForWrite(req.getNameEn());
+        if (Objects.equals(value, g.getNameEn())) return;
+        g.setNameEn(value);
+        g.setNameEnSource(value == null ? null : GoodsNameEn.SOURCE_MANUAL);
+    }
+
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:status')")
     @Transactional
     public GoodsDetail changeStatus(
@@ -1049,6 +1154,7 @@ public class GoodsService {
         g.setShortName(req.getShortName());
         g.setModel(req.getModel());
         g.setSpec(req.getSpec());
+        applyNameEn(req, g);
         g.setSeries(req.getSeries() == null ? null : req.getSeries().trim());
         g.setStockPlace(req.getStockPlace() == null ? null : req.getStockPlace().trim());
         // 售价：仅可查看者（goods:price:view，含 price:edit）提交的价格才落库。
@@ -1219,7 +1325,8 @@ public class GoodsService {
                         ? g.getThicknessUnitLegacyId() : g.getThicknessUnit().getLegacyId(),
                 g.getMWeightUnit() == null
                         ? g.getMWeightUnitLegacyId() : g.getMWeightUnit().getLegacyId(),
-                false, false, false, stock.getTotalQty(), stock.getRows(), g.getVersion(),
+                false, false, false, stock.getTotalQty(), stock.getRows(),
+                stock.getTotalWeight(), stock.getWeightUnknownRows(), stock.isWeightEstimated(), g.getVersion(),
                 g.getSeries(), g.getStockPlace(),
                 g.getThicknessUnit() == null ? null : g.getThicknessUnit().getId(),
                 g.getMWeightUnit() == null ? null : g.getMWeightUnit().getId(),
@@ -1228,7 +1335,12 @@ public class GoodsService {
                 owningWarehouseId, owningWarehouseName,
                 owningWorkshopId, owningWorkshopName, null, null,
                 // ADR-098 委外允许损耗默认值：不是成本字段, 不随成本脱敏。
-                g.getSubcontractAllowedLossPct());
+                g.getSubcontractAllowedLossPct(),
+                // ADR-131 发料方式 (只读, 切换走 GoodsIssueMethodService)。
+                g.getIssueMethod(), g.getPeriodicCostBasis(), g.getBulkPackageQty(), g.isRecycledMaterial(),
+                periodicBomWeights(g.getId()),
+                // ADR-134 英文名称 + 当前用户能否单独改英文名称(功能权限 + 对象写范围)。
+                g.getNameEn(), g.getNameEnSource(), canEditNameEn(g));
         if (learnedPrices != null && costMasker.canView()) {
             var prices = learnedPrices.find(g.getId());
             d.setDefaultPurchasePriceInfo(prices.purchase());
@@ -1290,7 +1402,47 @@ public class GoodsService {
                 owningWarehouseId == null ? null : owningWarehouseNames.get(owningWarehouseId),
                 owningWorkshopId,
                 owningWorkshopId == null ? null : owningWorkshopNames.get(owningWorkshopId),
-                g.getVersion());
+                g.getVersion(),
+                g.getIssueMethod(), g.getPeriodicCostBasis(), g.getBulkPackageQty(), g.isRecycledMaterial(),
+                // ADR-134 英文名称(列表只读展示)。
+                g.getNameEn(), g.getNameEnSource());
+    }
+
+    /**
+     * 本产品 BOM 里的期间边 (组件整批领到车间内料仓, ADR-131): 料与单个重量, 详情单重旁只读显示。
+     * 读 goods_bom_items 表 (表访问, 不引入跨特性 Java 依赖)。
+     */
+    /** ADR-131 期间边重量读取: 数量列空按 0。 */
+    private static BigDecimal toBd(Object o) {
+        if (o == null) return BigDecimal.ZERO;
+        if (o instanceof BigDecimal bd) return bd;
+        return new BigDecimal(o.toString());
+    }
+
+    private List<GoodsPeriodicBomWeight> periodicBomWeights(UUID goodsId) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                        SELECT bom.id, component.id, component.code, component.name,
+                               COALESCE(bom.color_id, component.color_id), color.name, bom.qty, unit.name
+                        FROM goods_bom_items bom
+                        JOIN goods component ON component.id = bom.component_goods_id
+                         AND component.issue_method = 'PERIODIC'
+                        LEFT JOIN colors color ON color.id = COALESCE(bom.color_id, component.color_id)
+                        LEFT JOIN units unit ON unit.id = component.unit_id AND unit.is_deleted = FALSE
+                        WHERE bom.goods_id = :goodsId AND bom.is_deleted = FALSE
+                        ORDER BY bom.sort_order, bom.id
+                        """)
+                .setParameter("goodsId", goodsId)
+                .getResultList();
+        List<GoodsPeriodicBomWeight> out = new ArrayList<>();
+        for (Object[] r : rows) {
+            BigDecimal qty = toBd(r[6]);
+            String unitName = (String) r[7];
+            out.add(new GoodsPeriodicBomWeight(toUuid(r[0]), toUuid(r[1]), (String) r[2], (String) r[3],
+                    toUuid(r[4]), (String) r[5], qty, unitName,
+                    GoodsPeriodicMaterialRules.toGrams(qty, GoodsPeriodicMaterialRules.gramsPerUnit(unitName))));
+        }
+        return out;
     }
 
     private MaterialCategory requireCategory(UUID id) {

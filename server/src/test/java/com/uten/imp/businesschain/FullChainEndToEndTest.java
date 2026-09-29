@@ -126,7 +126,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 // 还没断言，后台先把 business_refresh_pending 抽干，断言读到 false。
                 // 调度器本身由 InventoryValueWorkSchedulerTest 单独覆盖，这里关掉不丢覆盖面。
                 "uten.inventory.value-work-initial-delay-ms=3600000",
-                "uten.policy-intelligence.enabled=false",
                 "uten.features.goods-owner-scope-enabled=false",
                 "uten.storage.uploads-enabled=true",
                 "uten.storage.malware-scan.provider=test-only",
@@ -2100,14 +2099,20 @@ class FullChainEndToEndTest {
         assertEquals(0,new BigDecimal("16").compareTo(materialReturnRequests.sources(plan,segment).stream().filter(row->row.issuePostingId().equals(source.issuePostingId())).findFirst().orElseThrow().availableQty()));
         var partial=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Submit(segment,
                 "surplus-return-second","剩余物料分次退仓",List.of(new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Item(source.issuePostingId(),new BigDecimal("8"))));
+        // The E2E database is shared by every business-chain class: count only what this request adds.
+        loginAs(w.superAdminUserId());
+        long pendingBefore=materialReturnRequests.warehousePendingCount();
+        var pendingDraws=new com.uten.imp.features.stock.dto.StockDocQueryFilter("WDRAW",null,null,(short)0,null,null,null,null,true);
+        long drawsBefore=stockDocService.list(pendingDraws,1,20,null,null).getTotal();
+        loginAs(worker);
         UUID returnId=materialReturnRequests.submit(plan,partial).getFirst().documentId();
         loginAs(w.superAdminUserId());
-        assertEquals(1,materialReturnRequests.warehousePendingCount());
-        assertEquals(1,stockDocService.list(new com.uten.imp.features.stock.dto.StockDocQueryFilter("WDRAW",null,null,(short)0,null,null,null,null,true),1,20,null,null).getTotal());
+        assertEquals(pendingBefore+1,materialReturnRequests.warehousePendingCount());
+        assertEquals(drawsBefore+1,stockDocService.list(pendingDraws,1,20,null,null).getTotal());
         assertThrows(ApiException.class,()->stockDocService.delete(returnId),"generic deletion cannot release a protected return request");
         stockDocService.approve(returnId);
         assertEquals(0,new BigDecimal("8").compareTo(stockBalance(w.warehouseId(),w.goodsB())));
-        assertEquals(0,materialReturnRequests.warehousePendingCount());
+        assertEquals(pendingBefore,materialReturnRequests.warehousePendingCount());
         assertEquals(1,count("select count(*) from production_material_stock_postings where posting_type='GOOD_RETURN' and source_posting_id=?",source.issuePostingId()));
         loginAs(worker);
         assertEquals("RECEIVED",materialReturnRequests.list(plan,segment).stream().filter(doc->doc.documentId().equals(returnId)).findFirst().orElseThrow().status());
@@ -6010,7 +6015,11 @@ class FullChainEndToEndTest {
                         && material.analysisLineId().equals(siblingAnalysisItemId)
                         && material.actionable())
                 .findFirst().orElseThrow();
-        assertEquals(rootSupplyMode ? "MAKE" : "SUBCONTRACT", subcontractRow.sourceSuggestion());
+        // ADR-102 (2026-09-27): 新建分析时服务端已按货品档案自动确认 (以前由页面进页后补发
+        // PUT /routes 做同一件事): 顶层行按自制, 组件行按主档委外. 根模式下同一货品既是顶层又是
+        // 兄弟成品的委外组件, 属同批混合路线, 建议保留主档推导值; 下面人工把顶层改成委外的步骤不变.
+        assertEquals(rootSupplyMode ? "MAKE" : "SUBCONTRACT", subcontractRow.sourceConfirmed());
+        assertEquals("SUBCONTRACT", siblingSubcontractRow.sourceConfirmed());
         assertEquals(0, subcontractRow.availableQty().compareTo(BigDecimal.ZERO));
         assertEquals(0, subcontractRow.shortageQty().compareTo(new BigDecimal("10")));
         assertEquals(0, siblingSubcontractRow.shortageQty().compareTo(new BigDecimal("10")));
@@ -9135,6 +9144,29 @@ class FullChainEndToEndTest {
         assertEquals("1400",salesMoneyQuery.salesOrderSummary(order).plannedRemainingOriginal());
         assertNonemptySourceVoucher("RECEIPT",receipt);
         loginAs(w.superAdminUserId());
+        // ADR-128: 审核页的客户应收走共用余额查询。订单币种一档按原币精确相加(应收 500、可用预收 100、还差 400);
+        // 账面本币仍是立账汇率 7 折的 3500, 收款当天 7.2 的差额只在收款行汇兑差额里; 超信用按毛额比, 不扣预收。
+        assertEquals("美元资金链",salesMoneyQuery.salesOrderSummary(order).currencyName());
+        UUID pendingOrder=salesOrderService.create(orderRequest(w,w.goodsC(),"1","100")).getId();
+        salesOrderService.approve(pendingOrder);
+        String pendingNo=jdbc.queryForObject("SELECT bill_no FROM sales_orders WHERE id=?",String.class,pendingOrder);
+        var listed=financeConfirmService.pending(1,20,false,null,null,null,null,pendingNo).getItems();
+        assertEquals(1,listed.size());
+        var listedBalance=listed.getFirst().clientBalance();
+        assertEquals(w.currencyId(),listedBalance.currencyId());
+        assertEquals("美元资金链",listedBalance.currencyName());
+        assertEquals(0,new BigDecimal("500").compareTo(listedBalance.openOriginal()));
+        assertEquals(0,new BigDecimal("100").compareTo(listedBalance.creditOriginal()));
+        assertEquals(0,new BigDecimal("400").compareTo(listedBalance.netOriginal()));
+        assertEquals(0,new BigDecimal("3500").compareTo(listedBalance.openBookLocal()));
+        assertEquals(0,new BigDecimal("680").compareTo(listedBalance.creditBookLocal()));
+        assertTrue(listedBalance.otherCurrencies().isEmpty(),listedBalance.otherCurrencies().toString());
+        assertFalse(listedBalance.overCredit(),"未设置信用额度不判超信用");
+        jdbc.update("UPDATE clients SET credit=3000 WHERE id=?",w.clientId());
+        var reviewedBalance=financeConfirmService.review(pendingOrder).clientBalance();
+        assertEquals(0,new BigDecimal("400").compareTo(reviewedBalance.netOriginal()));
+        assertTrue(reviewedBalance.overCredit(),"毛额 3500 > 3000; 旧的净额口径 3500-680=2820 不会告警");
+        jdbc.update("UPDATE clients SET credit=NULL WHERE id=?",w.clientId());
         // A later dispatch freezes its own finance rate; the earlier AR and
         // cash/advance slices keep their historical rates during every reversal.
         jdbc.update("UPDATE currencies SET exchange_rate=8 WHERE id=?",w.currencyId());
@@ -9143,6 +9175,11 @@ class FullChainEndToEndTest {
         UUID laterShipment=shipmentService.create(laterShipmentRequest).getId();
         shipThroughWarehouse(laterShipment);
         UUID laterLedger=jdbc.queryForObject("SELECT id FROM ar_ap_ledger WHERE source_doc_type='SALES_SHIPMENT' AND source_doc_id=?",UUID.class,laterShipment);
+        // 放行事件冻结的就是财审页那一份共用视图: 正式应收未收 3500(本币毛额)、本单币种可用预收 100 / 680。
+        String releaseEvent="FROM sales_shipment_finance_release_events WHERE shipment_id=? AND event_type='RELEASED'";
+        assertDecimal("3500","SELECT formal_ar_outstanding_local "+releaseEvent,laterShipment);
+        assertDecimal("100","SELECT available_prepayment_original "+releaseEvent,laterShipment);
+        assertDecimal("680","SELECT available_prepayment_local "+releaseEvent,laterShipment);
         assertDecimal("7000","SELECT amount_original_local FROM ar_ap_ledger WHERE id=?",ledger);
         assertDecimal("8000","SELECT amount_original_local FROM ar_ap_ledger WHERE id=?",laterLedger);
         assertEquals("11500",salesMoneyQuery.salesOrderSummary(order).arOutstandingLocal());

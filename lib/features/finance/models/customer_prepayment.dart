@@ -204,6 +204,7 @@ class SalesOrderMoneySummary {
     this.clientId,
     this.currencyId,
     this.currencyCode,
+    this.currencyName,
     this.orderTotalOriginal,
     this.orderTotalLocal,
     this.formalArOriginal,
@@ -246,6 +247,9 @@ class SalesOrderMoneySummary {
   final String? clientId;
   final String? currencyId;
   final String? currencyCode;
+
+  /// 订单币种显示名(ADR-128)：资金汇总各格按「币种 金额」显示。
+  final String? currencyName;
   final String? orderTotalOriginal;
   final String? orderTotalLocal;
   final String? formalArOriginal;
@@ -290,6 +294,7 @@ class SalesOrderMoneySummary {
       clientId: _text(json['clientId']),
       currencyId: _text(json['currencyId']),
       currencyCode: _text(json['currencyCode']),
+      currencyName: _text(json['currencyName']),
       orderTotalOriginal: money('orderTotalOriginal'),
       orderTotalLocal: money('orderTotalLocal'),
       formalArOriginal: money('formalArOriginal'),

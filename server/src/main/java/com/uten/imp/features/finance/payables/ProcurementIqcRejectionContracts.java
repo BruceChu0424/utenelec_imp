@@ -37,6 +37,8 @@ public final class ProcurementIqcRejectionContracts {
             String failedAmountOriginal,
             String failedAmountLocal,
             String currencyCode,
+            /** 币种显示名(人民币 / 美金); 原币金额写成「币种 金额」, 不显示 001 这类旧编号(ADR-128)。 */
+            String currencyName,
             String status,
             long version,
             UUID ownerUserId,

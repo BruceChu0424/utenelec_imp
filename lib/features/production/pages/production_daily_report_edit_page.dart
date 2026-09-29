@@ -6,6 +6,7 @@
 //   - 车间 = 部门选择器（department_id + 部门名冗余 workshop_name）；
 //     生产参与人员 = 多选员工(workerIds；首位兼容 workerId)。成品仓和库位由仓库登记。
 //   - 明细行：goodsId（必填）+ qty 完工量（必填）+ color/unit + 精确来源子任务 + remark。
+//   - 不良数(ADR-129)：可选，只记录，不影响完工量、库存与产量分流；用来算实产单耗和不良率。
 //
 // 仅草稿可编辑（后端校验；已审走详情页红冲）。
 import 'package:flutter/material.dart';
@@ -14,7 +15,7 @@ import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_field_codec.dart';
 
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart' show listEquals, setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
@@ -53,6 +54,7 @@ import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../models/daily_output_allocation.dart';
 import '../models/production_daily_report.dart';
 import '../models/production_direct_transfer_candidate.dart';
 import '../models/production_material_usage_source.dart';
@@ -129,6 +131,9 @@ class _ProductionDailyReportEditPageState
   bool _materialOwnershipRefreshQueued = false;
   List<DailyGridRow> _materialProductRows = const [];
 
+  /// 上次重排去向时的勾选成品行(新建态)：勾选一变，勾选行重新先占上层工单的「还差多少」。
+  Set<DailyGridRow> _allocationSelection = const {};
+
   bool _materialLoading = false;
 
   /// 物料台账整体读不到(老计划、无权限、接口故障)：物料区降级为提示，不拦报工。
@@ -180,14 +185,17 @@ class _ProductionDailyReportEditPageState
     for (final row in _productRows) ...[
       row.goodsNotifier,
       row.qty,
+      row.defectQty,
       row.weight,
       row.planNo,
       row.remark,
       row.colorIdNotifier,
       row.unitIdNotifier,
       row.finalNotifier,
-      row.destinationNotifier,
-      row.directTransferNotifier,
+      for (final allocation in row.allocationRows) ...[
+        allocation.allocationDemandNotifier,
+        allocation.allocationQty,
+      ],
     ],
     for (final input in _materialInputs.values) input.used,
   ];
@@ -207,12 +215,17 @@ class _ProductionDailyReportEditPageState
         {
           'goods': draftGoods(row.goods),
           'selected': _grid.isSelected(row),
-          'destination': row.destination,
-          'directTransferDemandId':
-              row.directTransfer?.demandId ?? row.pendingDirectTransferDemandId,
-          'destinationTouched': row.destinationTouched,
-          'destinationAutofilled': row.destinationAutofilled.value,
-          'directTransferAutofilled': row.directTransferAutofilled.value,
+          // V736 去向分配：只存工人亲手定过的条目，其余建议恢复后按当时余量重新给出。
+          'allocations': [
+            for (final allocation in row.allocationRows)
+              if (allocation.allocationFixed)
+                {
+                  'directTransferDemandId': allocation.allocationDemandId,
+                  'qty':
+                      allocation.allocationRequested ??
+                      double.tryParse(allocation.allocationQty.text.trim()),
+                },
+          ],
           'executionSegmentVersion': row.executionSegmentVersion,
           'planItemId': row.planItemId,
           'planId': row.planId,
@@ -239,6 +252,7 @@ class _ProductionDailyReportEditPageState
           'legacyManual': row.legacyManual,
           'isFinal': row.isFinal,
           'qty': row.qty.text,
+          'defectQty': row.defectQty.text,
           'weight': row.weight.text,
           'planNo': row.planNo.text,
           'remark': row.remark.text,
@@ -325,16 +339,14 @@ class _ProductionDailyReportEditPageState
       row.legacyManual = item['legacyManual'] == true;
       row.isFinal = item['isFinal'] == true;
       row.qty.text = draftText(item, 'qty');
+      row.defectQty.text = draftText(item, 'defectQty');
       row.weight.text = draftText(item, 'weight');
       row.planNo.text = draftText(item, 'planNo');
       row.remark.text = draftText(item, 'remark');
       row.executionSegmentVersion = (item['executionSegmentVersion'] as num?)
           ?.toInt();
-      row.destination = item['destination'] as String? ?? 'WAREHOUSE';
-      row.pendingDirectTransferDemandId =
-          item['directTransferDemandId'] as String?;
       // A recovered choice is explicit. Fresh candidates may validate it but may not replace it.
-      row.destinationTouched = true;
+      restoreOutputAllocations(row, draftMaps(item['allocations']));
       rows.add(row);
       if (item['selected'] == true) selected.add(row);
     }
@@ -383,12 +395,6 @@ class _ProductionDailyReportEditPageState
     )) {
       _resumeBlocked = true;
       _resumeNotice = '已填写的部分实际用料来源未能恢复，填写草稿保留；请核对原材料台账后再保存，避免遗漏实耗。';
-    }
-    for (var index = 0; index < rows.length; index++) {
-      rows[index].destinationAutofilled.value =
-          values[index]['destinationAutofilled'] == true;
-      rows[index].directTransferAutofilled.value =
-          values[index]['directTransferAutofilled'] == true;
     }
     setState(() {});
   }
@@ -502,13 +508,14 @@ class _ProductionDailyReportEditPageState
                 .read(masterNameServiceProvider)
                 .goodsOptionOf(it.goodsId);
           row.qty.text = group.qty?.toString() ?? '';
+          row.defectQty.text = group.defectQty > 0
+              ? _quantityText(group.defectQty)
+              : '';
           row.weight.text = group.weight?.toString() ?? '';
           row.isFinal = it.isFinal;
-          // V584/V595：草稿里已选的去向与接收工单是用户的选择，候选加载后原样回填、
-          // 不被上次报工记忆覆盖、不标黄。
-          row.destination = it.destination ?? 'WAREHOUSE';
-          row.pendingDirectTransferDemandId = it.directTransferDemandId;
-          row.destinationTouched = true;
+          // V736：草稿里已分好的去向(每个上层工单一条 + 送入仓库合成一条)是用户的选择，
+          // 还原成本行的固定去向子行，候选加载后只校验、不替换、不标黄。
+          restoreOutputAllocations(row, group.allocations);
           rows.add(row);
         }
         _grid.replaceAll(rows);
@@ -605,6 +612,7 @@ class _ProductionDailyReportEditPageState
             (productionRateNumber(item['unitRate']) ?? 0) <= 0) {
           throw const FormatException('申请时来源或数量不完整，请回原表核对');
         }
+        final defect = productionRateNumber(item['defectQty']) ?? 0;
         final row = DailyGridRow()
           ..planItemId = item['planItemId'] as String
           ..executionSegmentId = item['executionSegmentId'] as String
@@ -621,14 +629,12 @@ class _ProductionDailyReportEditPageState
               .read(masterNameServiceProvider)
               .goodsOptionOf(item['goodsId'] as String)
           ..qty.text = _quantityText(qty)
+          ..defectQty.text = defect > 0 ? _quantityText(defect) : ''
           ..weight.text = item['weight']?.toString() ?? ''
           ..planNo.text = item['planNo'] as String? ?? ''
           ..remark.text = item['remark'] as String? ?? ''
-          ..destination = item['destination'] as String? ?? 'WAREHOUSE'
-          ..pendingDirectTransferDemandId =
-              item['directTransferDemandId'] as String?
-          ..destinationTouched = true
           ..supplementProofId = item['supplementProofId'] as String?;
+        restoreOutputAllocations(row, draftMaps(item['allocations']));
         if (row.supplementProofId != null) {
           row.supplementApprovedActualQty = qty;
         }
@@ -860,7 +866,7 @@ class _ProductionDailyReportEditPageState
     String? executionSegmentId,
   }) async {
     if (row.hasFixedSupplement) {
-      context.appWarning('已批准追加批次的来源与总量固定；可修改备注、重量和实际用料');
+      context.appWarning('已批准追加批次的来源与总量固定；可修改备注、重量、不良数和实际用料');
       return;
     }
     final sources = await showReportablePlanLinePicker(
@@ -999,7 +1005,7 @@ class _ProductionDailyReportEditPageState
     if (!mounted) return;
     setState(() {
       // 选了报工来源 = 这行要进本次日报：新建态自动勾上（保存按钮只认勾选行）。
-      if (_isCreate && !row.isMaterialRow) _grid.setSelected([row], true);
+      if (_isCreate && !row.isSubRow) _grid.setSelected([row], true);
       row
         ..planId = source.planId
         ..planItemId = source.planItemId
@@ -1032,11 +1038,16 @@ class _ProductionDailyReportEditPageState
         )
         ..colorId = source.colorId
         ..unitId = source.unitId
-        ..destinationTouched = false
-        ..pendingDirectTransferDemandId = null
+        // 换了来源：旧来源的候选、不可转原因与去向分配作废，等重新读取后重新给出。
+        ..directTransferCandidates = const []
+        ..directTransferBlockedTargets = const []
+        ..directTransferBlockedText = null
+        ..directTransferLoadFailed = false
         ..qty.text = source.maxReportQty > 0
-            ? _quantityText(source.maxReportQty)
-            : '';
+              ? _quantityText(source.maxReportQty)
+            : ''
+        ..defectQty.clear();
+      _discardOutputAllocations(row);
       _watchProductQty(row);
       if (_departmentId == null && source.departmentId != null) {
         _departmentId = source.departmentId;
@@ -1069,6 +1080,10 @@ class _ProductionDailyReportEditPageState
         if (candidate.materialParent == row) candidate,
     ];
     if (orphans.isNotEmpty) _grid.removeRows(orphans);
+    _discardOutputAllocations(row);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _reflowOutputAllocations(),
+    );
     setState(() {
       row
         ..planId = null
@@ -1096,7 +1111,12 @@ class _ProductionDailyReportEditPageState
         ..goods = null
         ..colorId = null
         ..unitId = null
+        ..directTransferCandidates = const []
+        ..directTransferBlockedTargets = const []
+        ..directTransferBlockedText = null
+        ..directTransferLoadFailed = false
         ..qty.clear()
+        ..defectQty.clear()
         ..weight.clear();
     });
   }
@@ -1109,7 +1129,7 @@ class _ProductionDailyReportEditPageState
 
   /// 成品报工行(排除挂在它们下面的物料子行)。
   List<DailyGridRow> get _productRows =>
-      _grid.rows.where((row) => !row.isMaterialRow).toList(growable: false);
+      _grid.rows.where((row) => !row.isSubRow).toList(growable: false);
 
   String _materialKey(String planId, String segmentId) => '$planId|$segmentId';
 
@@ -1163,11 +1183,13 @@ class _ProductionDailyReportEditPageState
     if (targets.isEmpty) {
       _applyMaterialRows(const {});
       if (mounted) setState(() => _materialNotice = null);
+      _reflowOutputAllocations();
       return;
     }
     if (targets.length > _materialSourceLimit) {
       // 逐工单两次请求，几十个工单会把页面拖到不可用。明说本次不登记实耗，
       // 而不是静默少挂几行——静默会让车间以为料已经登记过了。
+      // 去向候选每个工单只一次请求，照常读(批量报工最需要一次分给多个上层工单)。
       _applyMaterialRows(const {});
       if (mounted) {
         setState(
@@ -1176,6 +1198,7 @@ class _ProductionDailyReportEditPageState
               '本单只报工，实际用料请分批报工或到计划详情的材料台账登记。',
         );
       }
+      await _reloadDirectTransferCandidates();
       return;
     }
     setState(() {
@@ -1249,7 +1272,7 @@ class _ProductionDailyReportEditPageState
     }
   }
 
-  /// 把缓存里的台账铺成「成品行 + 其物料子行」的扁平行序。
+  /// 把缓存里的台账铺成「成品行 + 其去向分配子行 + 其物料子行」的扁平行序。
   ///
   /// 复用既有行对象而不是整表重建：用户已经填进去的数字不能因为换了个来源就清空。
   void _applyMaterialRows(Map<String, ({String planId, String segmentId})> _) {
@@ -1266,6 +1289,10 @@ class _ProductionDailyReportEditPageState
     // 其余只读镜像。否则两行各自按满额填，提交必被服务端守恒守卫拒掉。
     for (final product in _productRows) {
       flat.add(product);
+      if (showsOutputAllocations(product)) {
+        flat.addAll(product.allocationRows.where(outputAllocationVisible));
+      }
+      _watchProductQty(product);
       final planId = product.planId;
       final segmentId = product.executionSegmentId;
       if (planId == null || segmentId == null) continue;
@@ -1330,7 +1357,7 @@ class _ProductionDailyReportEditPageState
     if (mounted) setState(() {});
   }
 
-  /// 删成品行：连带删掉挂在它下面的物料子行，不留孤儿。
+  /// 删成品行：连带删掉挂在它下面的去向分配子行与物料子行，不留孤儿。
   void _deleteProductRow(DailyGridRow row, int index) {
     if (row.hasFixedSupplement) {
       context.appWarning('追加批次不能从草稿单独移除；如需重开，请删除整张日报草稿');
@@ -1339,27 +1366,33 @@ class _ProductionDailyReportEditPageState
     final victims = [
       row,
       for (final candidate in _grid.rows)
-        if (candidate.materialParent == row) candidate,
+        if (candidate.materialParent == row ||
+            candidate.allocationParent == row)
+          candidate,
     ];
+    row.allocationRows = [];
     _grid.removeRows(victims);
-    setState(() {});
+    _reflowOutputAllocations();
   }
 
-  bool _hasMaterialChildren(DailyGridRow row) =>
-      !row.isMaterialRow &&
-      _grid.rows.any((candidate) => candidate.materialParent == row);
+  DailyGridRow? _subRowParent(DailyGridRow row) =>
+      row.allocationParent ?? row.materialParent;
 
-  bool _isLastMaterialChild(DailyGridRow row) {
+  bool _hasSubRows(DailyGridRow row) =>
+      !row.isSubRow &&
+      _grid.rows.any((candidate) => _subRowParent(candidate) == row);
+
+  bool _isLastSubRow(DailyGridRow row) {
     final rows = _grid.rows;
     final index = rows.indexOf(row);
     if (index < 0 || index + 1 >= rows.length) return true;
-    return rows[index + 1].materialParent != row.materialParent;
+    return _subRowParent(rows[index + 1]) != _subRowParent(row);
   }
 
-  /// 拉每个成品行可转送的同车间上层工单(V584/V585)，并套上次报工的记忆(V595)。
+  /// 拉每个成品行可转送的上层工单(V584/V585/V736)，读完后按先急后缓重排全部去向分配。
   ///
-  /// 只有一个候选时直接选中——用户口径「能简化就简化」，多数情况下同车间上层工单就一个。
-  /// 已指定的去向和需求不随候选缺失改变；失效时要求重新核对，不能静默改送其他任务。
+  /// 默认去向不按上次报工记忆替人选：系统按服务端给的先急后缓次序逐个分满，其余送入仓库；
+  /// 工人定过的去向原样保留，失效时标红要求重新选择，不能静默改送其他工单。
   Future<void> _reloadDirectTransferCandidates() async {
     final repo = ref.read(productionMaterialRepositoryProvider);
     final requests =
@@ -1392,8 +1425,8 @@ class _ProductionDailyReportEditPageState
               ),
             );
           } catch (_) {
-            // Keep the explicit destination and require a fresh valid target.
-            result = const DirectTransferCandidatesResult(candidates: []);
+            // 读取失败不等于「没有上层工单」：红字提示刷新，不替人改去向。
+            result = const DirectTransferCandidatesResult.loadFailed();
           }
           if (!mounted ||
               !_productRows.contains(row) ||
@@ -1408,74 +1441,244 @@ class _ProductionDailyReportEditPageState
             return;
           }
           row.directTransferCandidates = result.candidates;
-          _applyDirectTransferMemory(row, result);
+          row.directTransferBlockedTargets = result.blockedTargets;
+          row.directTransferReceiverLimit = result.receiverLimit;
+          row.directTransferBlockedText = result.blockedText;
+          row.directTransferLoadFailed = result.loadFailed;
         },
     ]);
+    if (mounted) _reflowOutputAllocations();
   }
 
-  /// 上次报工记忆(V595)：本车间上次报这个货品选的去向与父件产品。
-  ///
-  /// - 用户已亲手选过(或编辑既有草稿)：原样保留，只按需求 UUID 回填接收工单；
-  /// - 否则上次是「转下一道工序」就预填并**标黄**，接收工单按上次的父件产品命中
-  ///   (同产品有两个工单时不替人猜，留给人选)；只有一个候选时也直接选中。
-  void _applyDirectTransferMemory(
-    DailyGridRow row,
-    DirectTransferCandidatesResult result,
-  ) {
-    final candidates = row.directTransferCandidates;
-    if (restoreExplicitDirectTransferSelection(row)) return;
-    if (candidates.isEmpty) {
-      row.destination = 'WAREHOUSE';
-      row.directTransfer = null;
-      row.destinationAutofilled.value = false;
-      row.directTransferAutofilled.value = false;
-      return;
-    }
-    if (result.lastDestination == 'WORKSHOP') {
-      row.destination = 'WORKSHOP';
-      row.destinationAutofilled.value = true;
-      final remembered =
-          result.rememberedCandidate ??
-          (candidates.length == 1 ? candidates.single : null);
-      row.directTransfer = remembered;
-      row.directTransferAutofilled.value = remembered != null;
-      return;
-    }
-    row.destinationAutofilled.value = false;
-    row.directTransferAutofilled.value = false;
-    if (row.isDirectTransfer && row.directTransfer == null) {
-      row.directTransfer = candidates.length == 1 ? candidates.single : null;
-    }
-  }
+  // ===================== V736 产出去向分配(先急后缓逐个分满，其余送入仓库) =====================
 
-  void _onDestinationChanged(DailyGridRow row, String destination) {
-    setState(() {
-      row.destination = destination;
-      row.pendingDirectTransferDemandId = null;
-      // 用户亲手选了 = 已核对：清掉记忆预填的黄标。
-      row.destinationTouched = true;
-      row.destinationAutofilled.value = false;
-      if (destination != 'WORKSHOP') {
-        row.directTransfer = null;
-        row.directTransferAutofilled.value = false;
-        return;
+  /// 全部成品行一起重排去向分配子行：合计始终等于完工申报量，系统建议标黄，
+  /// 工人定过的条目保留(产量变小时只压低显示，压到 0 的先藏起来，不丢原数)。
+  /// 计算只在 [planOutputAllocations] 一处。
+  void _reflowOutputAllocations() {
+    if (!mounted) return;
+    // 新建态只提交勾选行：勾选行先占上层工单的「还差多少」，未勾选行只分剩下的。
+    final products = [
+      for (final selected in [true, false])
+        for (final row in _productRows)
+          if (row.executionSegmentId != null &&
+              row.goods != null &&
+              (!_isCreate || _grid.isSelected(row)) == selected)
+            row,
+    ];
+    final plans = planOutputAllocations([
+      for (final product in products)
+        OutputAllocationRowInput(
+          sourceKey: product.planItemId ?? product.executionSegmentId!,
+          quantity: double.tryParse(product.qty.text.trim()),
+          unitRate: product.unitRate ?? 1,
+          candidates: product.directTransferCandidates,
+          candidatesKnown: !product.directTransferLoadFailed,
+          declined: product.allocationDeclined,
+          // 品质返工/补产的报工整行只能一个去向(服务端同一规则)：不替它拆出转送建议，要转由人自己选。
+          receiverLimit: product.isFqcRecovery
+              ? 0
+              : product.directTransferReceiverLimit,
+          slots: [
+            for (final allocation in product.allocationRows)
+              OutputAllocationSlot(
+                demandId: allocation.allocationDemandId,
+                fixed: allocation.allocationFixed,
+                editing: allocation.allocationEditing,
+                requested: allocation.allocationEditing
+                    ? double.tryParse(allocation.allocationQty.text.trim())
+                    : allocation.allocationRequested,
+              ),
+          ],
+        ),
+    ]);
+    var layoutChanged = false;
+    // 同一子行可能既从本行名单掉出、又在表格里被认作过期：用集合保证只释放一次。
+    final dropped = <DailyGridRow>{};
+    for (var index = 0; index < products.length; index++) {
+      final product = products[index];
+      final plan = plans[index];
+      final previous = product.allocationRows;
+      final spare = [
+        for (final row in previous)
+          if (!row.allocationFixed && !row.allocationEditing) row,
+      ];
+      final used = <DailyGridRow>{};
+      final next = <DailyGridRow>[];
+      for (final line in plan.lines) {
+        final slot = line.slotIndex;
+        final row = slot != null
+            ? previous[slot]
+            : (spare.where((row) => !used.contains(row)).firstOrNull ??
+                  DailyGridRow());
+        used.add(row);
+        row
+          ..depth = 1
+          ..allocationParent = product
+          ..allocationDemandId = line.demandId
+          ..allocationFixed = line.fixed;
+        // 只记工人自己要的数：固定条目顺带接下的余量每次重排重新分，不能变成「工人要的」。
+        row.allocationRequested = line.fixed ? line.requested : null;
+        if (!row.allocationEditing) {
+          final text = outputAllocationQuantityText(line.qty);
+          if (row.allocationQty.text != text) row.allocationQty.text = text;
+        }
+        row.allocationAutofilled.value = !line.fixed;
+        row.allocationIssue.value = line.issue;
+        next.add(row);
       }
-      row.directTransfer ??= row.directTransferCandidates.length == 1
-          ? row.directTransferCandidates.single
-          : null;
-    });
+      dropped.addAll(previous.where((row) => !used.contains(row)));
+      product
+        ..allocationRows = next
+        ..directTransferRoomBase = plan.roomBase;
+      final shown = [
+        for (final row in _grid.rows)
+          if (row.allocationParent == product) row,
+      ];
+      if (!listEquals(
+        shown,
+        showsOutputAllocations(product)
+            ? next.where(outputAllocationVisible).toList()
+            : const <DailyGridRow>[],
+      )) {
+        layoutChanged = true;
+      }
+      product.allocationRevision.value++;
+    }
+    for (final product in _productRows) {
+      if (products.contains(product) || product.allocationRows.isEmpty) {
+        continue;
+      }
+      dropped.addAll(product.allocationRows);
+      product.allocationRows = [];
+      product.allocationRevision.value++;
+      layoutChanged = true;
+    }
+    // 换来源/清来源作废的子行还在表格里：这次一并摘掉。
+    for (final row in _grid.rows) {
+      final parent = row.allocationParent;
+      if (parent == null || parent.allocationRows.contains(row)) continue;
+      dropped.add(row);
+      layoutChanged = true;
+    }
+    if (layoutChanged) {
+      _applyMaterialRows(const {});
+    } else {
+      setState(() {});
+    }
+    if (dropped.isNotEmpty) {
+      // 被丢弃的子行等这一帧的输入框拆掉之后再 dispose(同帧 dispose 正在用的控制器会抛异常)。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        for (final row in dropped) {
+          row.dispose();
+        }
+      });
+    }
   }
 
-  void _onDirectTransferPicked(
-    DailyGridRow row,
-    ProductionDirectTransferCandidate picked,
+  /// 换来源或清来源：本行旧的去向分配全部作废(连同其子行)。
+  /// 仍挂在表格里的旧子行由下一次重排从表格摘掉后再释放；没显示的当场释放。
+  void _discardOutputAllocations(DailyGridRow product) {
+    product.allocationDeclined.clear();
+    if (product.allocationRows.isEmpty) return;
+    final dropped = product.allocationRows;
+    product.allocationRows = [];
+    product.directTransferRoomBase = const {};
+    product.allocationRevision.value++;
+    for (final row in dropped) {
+      if (!_grid.rows.contains(row)) row.dispose();
+    }
+  }
+
+  /// 改了某条之后，它和它上面的条目都算工人定过(不再被重排替换)。
+  void _fixOutputAllocationsThrough(DailyGridRow product, int index) {
+    for (var i = 0; i <= index && i < product.allocationRows.length; i++) {
+      final row = product.allocationRows[i];
+      if (row.allocationFixed) continue;
+      row
+        ..allocationFixed = true
+        ..allocationRequested = double.tryParse(row.allocationQty.text.trim());
+    }
+  }
+
+  void _onAllocationDestinationChanged(
+    DailyGridRow allocation,
+    String? demandId,
   ) {
-    setState(() {
-      row.directTransfer = picked;
-      row.pendingDirectTransferDemandId = null;
-      row.destinationTouched = true;
-      row.directTransferAutofilled.value = false;
-    });
+    final product = allocation.allocationParent;
+    if (product == null) return;
+    final index = product.allocationRows.indexOf(allocation);
+    _fixOutputAllocationsThrough(product, index);
+    final current = double.tryParse(allocation.allocationQty.text.trim()) ?? 0;
+    // 工人把某个上层工单从这条改掉：余量重排时不再自动建议它；重新选它即恢复。
+    final previous = allocation.allocationDemandId;
+    if (previous != null && previous != demandId) {
+      product.allocationDeclined.add(previous);
+    }
+    if (demandId != null) product.allocationDeclined.remove(demandId);
+    allocation.allocationDemandId = demandId;
+    allocation.allocationRequested = demandId == null
+        ? current
+        : outputAllocationWithinRoom(
+            current,
+            product.directTransferRoomBase[demandId] ?? 0,
+            product.unitRate ?? 1,
+          );
+    _reflowOutputAllocations();
+  }
+
+  void _onAllocationQtyChanged(DailyGridRow allocation) {
+    final product = allocation.allocationParent;
+    if (product == null) return;
+    _fixOutputAllocationsThrough(
+      product,
+      product.allocationRows.indexOf(allocation),
+    );
+    allocation
+      ..allocationEditing = true
+      ..allocationRequested = double.tryParse(
+        allocation.allocationQty.text.trim(),
+      );
+    _reflowOutputAllocations();
+  }
+
+  void _onAllocationQtyFocus(DailyGridRow allocation, bool focused) {
+    if (focused || !allocation.allocationEditing) return;
+    // 离开输入框：清掉零数条目、合并送入仓库、把超出的数压回可分范围。
+    allocation.allocationEditing = false;
+    _reflowOutputAllocations();
+  }
+
+  /// 提交前的去向问题清单(第 N 行 + 原因)；为空才能提交。
+  List<String> _outputAllocationIssues(List<DailyGridRow> rows) {
+    final issues = <String>[];
+    for (var index = 0; index < rows.length; index++) {
+      final row = rows[index];
+      if (row.goods == null || row.executionSegmentId == null) continue;
+      // 读不到候选就不知道能不能转：不能当成「没有上层工单」整行送入仓库。
+      if (row.directTransferLoadFailed) {
+        issues.add('第 ${index + 1} 行：$directTransferLoadFailedText');
+      }
+      final qty = double.tryParse(row.qty.text.trim()) ?? 0;
+      var total = 0.0;
+      for (final allocation in row.allocationRows) {
+        final issue = allocation.allocationIssue.value;
+        if (issue != null) issues.add('第 ${index + 1} 行：$issue');
+        final value = double.tryParse(allocation.allocationQty.text.trim());
+        if (value == null || !value.isFinite || value < 0) {
+          issues.add('第 ${index + 1} 行有一条去向数量无效');
+        } else {
+          total += value;
+        }
+      }
+      if (row.allocationRows.isNotEmpty && (total - qty).abs() > 0.00005) {
+        issues.add(
+          '第 ${index + 1} 行产出去向合计 ${_quantityText(total)} 与完工申报量 '
+          '${_quantityText(qty)} 不一致，请核对',
+        );
+      }
+    }
+    return issues;
   }
 
   // ===================== V595 本次实际用料按完工申报量自动计算 =====================
@@ -1485,7 +1688,7 @@ class _ProductionDailyReportEditPageState
 
   Set<DailyGridRow> get _materialParticipants =>
       (_isCreate ? _grid.selectedRows : _productRows)
-          .where((row) => !row.isMaterialRow)
+          .where((row) => !row.isSubRow)
           .toSet();
 
   void _scheduleMaterialOwnershipRefresh() {
@@ -1495,9 +1698,20 @@ class _ProductionDailyReportEditPageState
       _materialOwnershipRefreshQueued = false;
       if (!mounted) return;
       final products = _productRows;
-      if (!listEquals(products, _materialProductRows)) {
+      final productsChanged = !listEquals(products, _materialProductRows);
+      final selected = _isCreate
+          ? _grid.selectedRows.where((row) => !row.isSubRow).toSet()
+          : const <DailyGridRow>{};
+      final selectionChanged = !setEquals(selected, _allocationSelection);
+      if (productsChanged) {
         _materialProductRows = products;
         _applyMaterialRows(const {});
+      }
+      if (productsChanged || selectionChanged) {
+        // 粘贴进来的行按当前余量重新给建议；勾选一变，勾选行重新先占上层工单的「还差多少」。
+        // 重排自己换行会再触发这里，但那时成品行与勾选都没变，不会再排一次。
+        _allocationSelection = selected;
+        _reflowOutputAllocations();
       }
       _refreshMaterialInputOwners();
       setState(() {});
@@ -1515,10 +1729,16 @@ class _ProductionDailyReportEditPageState
     }
   }
 
-  /// 成品行完工申报量一变，挂在它下面的物料子行按比例重算并重新标黄。
+  /// 成品行完工申报量一变，挂在它下面的物料子行按比例重算并重新标黄，去向分配按新产量重排。
   void _watchProductQty(DailyGridRow product) {
-    if (product.isMaterialRow || !_qtyWatched.add(product)) return;
-    product.qty.addListener(() => _recomputeMaterialUsage(product));
+    if (product.isSubRow || !_qtyWatched.add(product)) return;
+    var last = product.qty.text;
+    product.qty.addListener(() {
+      _recomputeMaterialUsage(product);
+      if (product.qty.text == last) return;
+      last = product.qty.text;
+      _reflowOutputAllocations();
+    });
   }
 
   /// 手工实耗是本次事实；改产量、拆分产出去向或调整勾选均不得覆盖它。
@@ -1596,13 +1816,15 @@ class _ProductionDailyReportEditPageState
     return true;
   }
 
-  /// 收尾差额：最后一次报工的行，其物料还剩多少没登记成消耗。
+  /// 收尾清点(ADR-129 §2.7)：最后一次报工的行，其物料只要账面还有可用就列出来，
+  /// 纸面上用完了也要清点——实物剩余才是 BOM 真实使用数量的依据。
   ///
-  /// 只用本地快照估算「要不要问用户」；真正退多少由服务端在审核时按当时的可退量算，
+  /// 纸面剩余(账面可用 - 本次填的用料)只作预填；退仓数量由服务端在审核时按实际剩余发，
   /// 因为退料走原领料单位、台账是基本量，两者在换算率不为 1 时对不上。
   List<SurplusReturnCandidate> _surplusCandidates(
-    List<DailyGridRow> reportRows,
-  ) {
+    List<DailyGridRow> reportRows, {
+    Map<String, double> undrawnDirectLots = const {},
+  }) {
     final seen = <String>{};
     final out = <SurplusReturnCandidate>[];
     for (final row in _grid.rows) {
@@ -1612,21 +1834,63 @@ class _ProductionDailyReportEditPageState
         continue;
       }
       final material = row.material!;
-      if (!seen.add(material.demandId)) continue;
-      final remaining =
-          material.availableToSettleQty - (row.materialUsedValue ?? 0);
-      if (remaining <= 0.0000001) continue;
+      final available = material.availableToSettleQty;
+      if (available <= 0.0000001 || !seen.add(material.demandId)) continue;
       out.add(
         SurplusReturnCandidate(
+          demandId: material.demandId,
           goodsName: material.goodsName ?? material.goodsCode ?? '物料',
           colorName: material.colorName,
-          remainingQty: remaining,
+          availableToSettleQty: available,
+          estimatedLeftoverQty: closeOutDifference(
+            available,
+            row.materialUsedValue ?? 0,
+          ),
           unitName: material.unitName ?? '',
           segmentLabel: row.materialShared ? row.materialSegmentLabel : null,
+          undrawnDirectLotQty: undrawnDirectLots[material.demandId] ?? 0,
         ),
       );
     }
     return out;
+  }
+
+  /// 各需求还能退的未领直送料(基本单位)，取自退料来源读取(与退料单同一份来源)。
+  /// 只是清点时的提示：读不到就不显示数量，弹窗仍有通用说明，不挡保存。
+  Future<Map<String, double>> _undrawnDirectLotsByDemand(
+    Set<String> demandIds,
+  ) async {
+    final scopes = <(String, String)>{
+      for (final row in _grid.rows)
+        if (row.material case final material?
+            when demandIds.contains(material.demandId) &&
+                material.executionSegmentId != null)
+          (material.planId, material.executionSegmentId!),
+    };
+    final repo = ref.read(productionMaterialRepositoryProvider);
+    final result = <String, double>{};
+    for (final (planId, segmentId) in scopes) {
+      try {
+        final sources = await repo.returnSources(
+          planId,
+          executionSegmentId: segmentId,
+        );
+        for (final source in sources) {
+          if (!source.isDirectLot || source.returnBlockedReason != null) {
+            continue;
+          }
+          final baseQty = source.availableQty * source.unitRate;
+          result.update(
+            source.demandId,
+            (qty) => qty + baseQty,
+            ifAbsent: () => baseQty,
+          );
+        }
+      } catch (_) {
+        // 提示读不到不影响收尾，通用说明仍在。
+      }
+    }
+    return result;
   }
 
   /// 把暂存附件上传到刚创建的日报；全部成功才跳详情，失败项留在页面供重试。
@@ -1683,7 +1947,7 @@ class _ProductionDailyReportEditPageState
     // 混进来会让行号对不上用户在界面上数到的那一行。
     // 新建态只提交勾选行（2026-09-18，与订货单编辑页同款）；编辑既有单整单保存。
     final candidate = _isCreate
-        ? _grid.selectedRows.where((row) => !row.isMaterialRow).toList()
+        ? _grid.selectedRows.where((row) => !row.isSubRow).toList()
         : _productRows;
     final rows = candidate;
     if (rows.isEmpty || rows.every((r) => r.goods == null)) {
@@ -1732,6 +1996,10 @@ class _ProductionDailyReportEditPageState
       }
       if (!r.hasLinkedSource || r.executionSegmentId == null) {
         context.appError('第 ${i + 1} 行必须先选择已开工的精确执行子任务');
+        return;
+      }
+      if (productionReportDefectIssue(r) case final issue?) {
+        context.appError('第 ${i + 1} 行$issue');
         return;
       }
       if (r.hasLinkedSource &&
@@ -1804,45 +2072,48 @@ class _ProductionDailyReportEditPageState
       );
       return;
     }
-    // V584/V585 转下一道工序：必须指名投给哪个上层工单，且不得超过它还缺的量。
-    // 更强的不变量(同车间、同货品同颜色、同主仓)由服务端与数据库守卫兜底。
-    final transferIssues = <String>[];
-    for (var i = 0; i < rows.length; i++) {
-      final r = rows[i];
-      if (r.goods == null || !r.isDirectTransfer) continue;
-      final picked = r.directTransfer;
-      if (picked == null) {
-        transferIssues.add('第 ${i + 1} 行选了转下一道工序，但没有指定接收的上层工单');
-        continue;
-      }
-      final qty = productionReportBaseQuantity(r);
-      if (qty == null) {
-        transferIssues.add('第 ${i + 1} 行数量或单位换算无效，请重新核对报工来源');
-      } else if (r.hasReportQuantityLimit &&
-          qty - picked.remainingQty > 0.000001) {
-        transferIssues.add(
-          '第 ${i + 1} 行本次基础数量 ${_quantityText(qty)} 超过本来源当前可直送的 '
-          '${_quantityText(picked.remainingQty)}；超出的部分请另起一行送入仓库',
-        );
+    // 转给工单候选读取失败的行先自动重读一次；仍读不到才拦下。重读成功则去向已按最新情况
+    // 重排，先让人看一眼再提交(看到的就是提交的)。
+    final unreadRows = [
+      for (final row in rows)
+        if (row.directTransferLoadFailed) row,
+    ];
+    if (unreadRows.isNotEmpty) {
+      await _reloadDirectTransferCandidates();
+      if (!mounted) return;
+      if (unreadRows.any((row) => !row.directTransferLoadFailed)) {
+        context.appWarning('转给工单候选已重新读到，产出去向已按先急后缓重新分配，请核对后再提交');
+        return;
       }
     }
-    transferIssues.addAll(directTransferAggregateIssues(rows));
+    // V736 产出去向分配：每条去向的问题(已不能收、超出还差的量、数量无效、候选读取失败)与合计核对；
+    // 更强的不变量(同车间、同货品同颜色、需求份上限、同主仓)由服务端与数据库守卫兜底。
+    final transferIssues = _outputAllocationIssues(rows);
     if (transferIssues.isNotEmpty) {
       context.appError(
         '以下 ${transferIssues.length} 项转送需要先改正：${_joinIssues(transferIssues)}',
       );
       return;
     }
-    // 最后一次报工(报满或勾完结)且还有料没登记成消耗时，问一次要不要退回仓库。
-    // 填 0 / 没有差额 = 不问、不建单、不打扰仓库。
-    final surplus = _surplusCandidates(rows);
+    // 最后一次报工(报满或勾完结)且账面还有可用的料时，逐料清点实际剩余，再问要不要
+    // 退回仓库。账面已无可用 = 不问、不建单、不打扰仓库；关掉弹窗 = 回到报工表，不保存。
+    var surplus = _surplusCandidates(rows);
+    var surplusCounted = const <String, double>{};
     if (surplus.isNotEmpty) {
-      final wantsReturn = await showProductionReportSurplusReturnDialog(
+      final lots = await _undrawnDirectLotsByDemand({
+        for (final candidate in surplus) candidate.demandId,
+      });
+      if (!mounted) return;
+      if (lots.isNotEmpty) {
+        surplus = _surplusCandidates(rows, undrawnDirectLots: lots);
+      }
+      final decision = await showProductionReportSurplusReturnDialog(
         context,
         candidates: surplus,
       );
-      if (!mounted) return;
-      _surplusReturnRequested = wantsReturn == true;
+      if (!mounted || decision == null) return;
+      _surplusReturnRequested = decision.returnToWarehouse;
+      surplusCounted = decision.countedByDemandId;
     } else if (_isCreate || _materialReadsComplete) {
       _surplusReturnRequested = false;
     }
@@ -1864,6 +2135,8 @@ class _ProductionDailyReportEditPageState
       itemsBody.add({
         'goodsId': r.goods!.id,
         'qty': qty,
+        // 不良数只记录，不改良品数；空或 0 不提交。
+        'defectQty': ?productionReportDefectQty(r),
         'weight': ?weight,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
@@ -1884,10 +2157,8 @@ class _ProductionDailyReportEditPageState
         if (r.orderQty != null) 'orderQty': r.orderQty,
         if (r.planNo.text.trim().isNotEmpty) 'planNo': r.planNo.text.trim(),
         if (r.isFinal) 'isFinal': true,
-        // V584/V585 产出去向。不传即送仓库，服务端按老口径处理。
-        if (r.isDirectTransfer) 'destination': 'WORKSHOP',
-        if (r.isDirectTransfer && r.directTransfer != null)
-          'directTransferDemandId': r.directTransfer!.demandId,
+        // V736 产出去向分配。不传即整行送入仓库。
+        'allocations': ?outputAllocationBody(r),
         if (r.remark.text.trim().isNotEmpty) 'remark': r.remark.text.trim(),
       });
     }
@@ -1911,7 +2182,7 @@ class _ProductionDailyReportEditPageState
             _materialKey(row.planId!, row.executionSegmentId!),
           ),
     );
-    final materialBody = mergeDraftMaterialUsages(
+    final mergedMaterialBody = mergeDraftMaterialUsages(
       saved: _savedMaterialUsage.values,
       edited: editedMaterialBody,
       allowedSourceSegmentIds: usageSourcesComplete
@@ -1926,6 +2197,24 @@ class _ProductionDailyReportEditPageState
             }
           : null,
     );
+    // ADR-129 实盘收尾：退回仓库时 本次用料 = 账面可用 - 实际剩余，与服务端审核同一口径；
+    // 留在车间不带清点数。台账读不到而原样带回的草稿行，已登记的实际剩余随行保留。
+    final editedDemandIds = {
+      for (final line in editedMaterialBody) line['demandId'] as String,
+    };
+    final materialBody = _surplusReturnRequested
+        ? applySurplusCounts(
+            mergedMaterialBody,
+            candidates: surplus,
+            counted: surplusCounted,
+            savedCounted: {
+              for (final usage in _savedMaterialUsage.values)
+                if (usage.countedLeftoverQty != null &&
+                    !editedDemandIds.contains(usage.demandId))
+                  usage.demandId: usage.countedLeftoverQty!,
+            },
+          )
+        : mergedMaterialBody;
     // 单据号后端自动生成（DocNumberService），不再随 body 提交。
     final body = <String, dynamic>{
       'billDate': _fmt(_billDate),
@@ -2588,23 +2877,25 @@ class _ProductionDailyReportEditPageState
                                   onClearSource: _clearSource,
                                   colorEntries: names.colorEntries,
                                   unitEntries: names.unitEntries,
-                                  hasMaterialChildren: _hasMaterialChildren,
-                                  isLastMaterialChild: _isLastMaterialChild,
+                                  hasSubRows: _hasSubRows,
+                                  isLastSubRow: _isLastSubRow,
                                   onMaterialChanged: () => setState(() {}),
-                                  onDestinationChanged: _onDestinationChanged,
-                                  onDirectTransferPicked:
-                                      _onDirectTransferPicked,
+                                  onAllocationDestinationChanged:
+                                      _onAllocationDestinationChanged,
+                                  onAllocationQtyChanged:
+                                      _onAllocationQtyChanged,
+                                  onAllocationQtyFocus: _onAllocationQtyFocus,
                                 ),
                                 createBlankRow: () => DailyGridRow(),
                                 cloneRow: (r) => r.clone(),
-                                // 物料子行是成品行派生出来的：不能单独勾选、复制或删除，
+                                // 去向分配子行与物料子行是成品行派生出来的：不能单独勾选、复制或删除，
                                 // 删成品行时由 _deleteProductRow 连带删掉它们。
-                                canSelectRow: (r) => !r.isMaterialRow,
-                                showRowSelection: (r) => !r.isMaterialRow,
+                                canSelectRow: (r) => !r.isSubRow,
+                                showRowSelection: (r) => !r.isSubRow,
                                 canDeleteRow: (r) =>
-                                    !r.isMaterialRow && !r.hasFixedSupplement,
+                                    !r.isSubRow && !r.hasFixedSupplement,
                                 onDeleteRow: _deleteProductRow,
-                                rowColor: (r) => r.isMaterialRow
+                                rowColor: (r) => r.isSubRow
                                     ? theme.colorScheme.surfaceContainerLow
                                     : null,
                               ),
@@ -2636,7 +2927,7 @@ class _ProductionDailyReportEditPageState
                       _createdReportId != null ||
                       !_isCreate ||
                       _grid.selectedRows.any(
-                        (row) => !row.isMaterialRow && row.goods != null,
+                        (row) => !row.isSubRow && row.goods != null,
                       );
                   return UtenEditFloatingActions(
                     onCancel: () => popOrBackTo(

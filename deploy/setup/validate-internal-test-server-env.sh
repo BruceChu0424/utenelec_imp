@@ -70,14 +70,18 @@ validate_supported_environment_keys() {
       UTEN_PROFILE|UTEN_DEPLOYMENT_SITE|UTEN_LOCAL_ALLOWED_CIDRS|SERVER_ADDRESS|SERVER_PORT|\
       UTEN_DB_URL|UTEN_DB_USER|UTEN_DB_PASSWORD|SPRING_FLYWAY_ENABLED|\
       UTEN_JWT_SECRET|UTEN_JWT_ISSUER|UTEN_PGP_MASTER_KEY|UTEN_PGP_KEY_VERSION|\
-      UTEN_HMAC_KEY|UTEN_CORS_ORIGINS|UTEN_REQUIRE_HTTPS|UTEN_SSL_ENABLED|\
+      UTEN_HMAC_KEY|UTEN_SECRET_CIPHER_KEY|UTEN_CORS_ORIGINS|UTEN_REQUIRE_HTTPS|UTEN_SSL_ENABLED|\
       UTEN_TRUSTED_PROXY_REGEX|UTEN_SWAGGER_ENABLED|UTEN_BOOTSTRAP_ADMIN_RETIRED|\
       BOOTSTRAP_ADMIN_LOGIN|BOOTSTRAP_ADMIN_PASSWORD|UTEN_SMS_PROVIDER|UTEN_SMS_EXPOSE_CODE|\
-      UTEN_POLICY_INTELLIGENCE_ENABLED|UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED|\
+      UTEN_AI_OUTBOUND_ENABLED|UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED|\
       UTEN_LEGACY_ENABLED|UTEN_STORAGE_PROVIDER|\
       UTEN_STORAGE_LOCAL_DIR|UTEN_ATTACHMENT_UPLOADS_ENABLED|\
       UTEN_ATTACHMENT_SCANNER_PROVIDER|UTEN_ATTACHMENT_RECONCILIATION_ENABLED|\
       UTEN_STORAGE_MAX_BYTES|UTEN_STORAGE_PRESIGN_EXPIRY)
+        ;;
+      # Retired with the legacy policy AI (ADR-133, V741). Live files installed
+      # before the retirement may still carry it; it is accepted and ignored.
+      UTEN_POLICY_INTELLIGENCE_ENABLED)
         ;;
       *)
         die "unsupported environment key: $environment_key"
@@ -238,6 +242,11 @@ expect_exact UTEN_JWT_ISSUER uten-imp-internal-test
 require_secret UTEN_PGP_MASTER_KEY 32
 expect_exact UTEN_PGP_KEY_VERSION 1
 require_secret UTEN_HMAC_KEY 32
+# Optional dedicated AI-credential encryption key (ADR-133); derived from the
+# HMAC key when absent, but a configured value must be a strong secret.
+if [[ "$(env_count UTEN_SECRET_CIPHER_KEY)" != 0 ]]; then
+  require_secret UTEN_SECRET_CIPHER_KEY 32
+fi
 
 expect_exact UTEN_REQUIRE_HTTPS true
 expect_exact UTEN_SSL_ENABLED false
@@ -279,7 +288,11 @@ case "$bootstrap_retired" in
 esac
 expect_exact UTEN_SMS_PROVIDER disabled
 expect_exact UTEN_SMS_EXPOSE_CODE false
-expect_exact UTEN_POLICY_INTELLIGENCE_ENABLED false
+# The unit denies outbound IP traffic; the runtime gate pins
+# uten.ai.outbound-enabled=false. An explicit override may only restate it.
+if [[ "$(env_count UTEN_AI_OUTBOUND_ENABLED)" != 0 ]]; then
+  expect_exact UTEN_AI_OUTBOUND_ENABLED false
+fi
 expect_exact UTEN_LEGACY_ENABLED false
 
 expect_exact UTEN_STORAGE_PROVIDER local

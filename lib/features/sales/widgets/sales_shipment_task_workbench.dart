@@ -25,6 +25,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
@@ -1067,12 +1068,12 @@ class _SalesShipmentTaskWorkbenchState
       width: 150,
       value: (item) => names.warehouse(item.warehouseId),
     ),
-    const MasterColumnDef(
+    MasterColumnDef(
       key: 'totalOriginal',
       label: '出货金额',
-      width: 140,
+      width: 150,
       type: 'money',
-      value: _amount,
+      value: (item) => _amount(item, names.currency(item.currencyId)),
     ),
     MasterColumnDef(
       key: 'financeAudit',
@@ -1114,7 +1115,7 @@ class _CompactShipmentTaskCard extends StatelessWidget {
     final theme = Theme.of(context);
     final finance = salesShipmentFinanceAuditLabel(item.financeAudit);
     final warehouse = salesWarehouseWorkStatusLabel(item.warehouseWorkStatus);
-    final amount = _amount(item);
+    final amount = _amount(item, currencyName);
     return Semantics(
       container: true,
       button: true,
@@ -1146,7 +1147,7 @@ class _CompactShipmentTaskCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      item.priceMasked ? '***' : '$currencyName $amount',
+                      amount,
                       style: theme.textTheme.labelLarge?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -1256,11 +1257,12 @@ String _shortDate(String? value) {
   return value.length > 10 ? value.substring(0, 10) : value;
 }
 
-String _amount(SalesDocListItem item) {
+/// 出货金额(ADR-128)：本单币种写成「币种 金额」；价格遮蔽与不收费照旧。
+String _amount(SalesDocListItem item, String currencyName) {
   if (item.priceMasked) return '***';
   if (item.shipmentWorkflow.isFree) return '不收费（货款 0）';
-  return item.exactDecimals['totalOriginal'] ??
-      item.exactDecimals['totalLocal'] ??
-      (item.totalOriginal ?? item.totalLocal)?.toStringAsFixed(2) ??
-      '—';
+  return financeMoneyWithCurrency(
+    item.exactDecimals['totalOriginal'] ?? item.totalOriginal?.toString(),
+    currencyName: currencyName,
+  );
 }

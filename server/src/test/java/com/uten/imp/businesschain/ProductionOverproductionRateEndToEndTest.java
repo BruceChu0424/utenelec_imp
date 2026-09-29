@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
-        "uten.production.readiness-reconcile.enabled=false","uten.policy-intelligence.enabled=false",
+        "uten.production.readiness-reconcile.enabled=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only",
         "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
@@ -50,6 +50,12 @@ class ProductionOverproductionRateEndToEndTest {
 
     @Test void requestKeepsOldRateUntilApprovalAndEveryReplayIsSideEffectFree(){
         assertRate(".10");
+        // Issued without a rate: the goods default fills the plan line and is not remembered (ADR-129 §2.10).
+        assertEquals("DEFAULT",db.queryForObject("""
+                SELECT item.allowed_overproduction_rate_source FROM production_plan_items item
+                JOIN production_execution_segments segment ON segment.source_plan_item_id=item.id WHERE segment.id=?
+                """,String.class,segment));
+        assertNull(rememberedRate());
         var command=new SubmitRequest(segment,0L,new BigDecimal(".20"),"模具稳定试产后申请允许超产20%","rate-submit-"+UUID.randomUUID());
         RequestView pending=rates.submit(command);
         assertEquals("PENDING",pending.status());assertRate(".10");
@@ -59,6 +65,7 @@ class ProductionOverproductionRateEndToEndTest {
         assertEquals(pending.id(),rates.context(segment).pendingRequestId());
         var approve=new DecisionRequest(pending.rowVersion(),"rate-approve-"+UUID.randomUUID(),"已核对生产安排");
         assertEquals("APPROVED",rates.decide(pending.id(),approve,true).status());assertRate(".20");
+        assertEquals(0,new BigDecimal(".20").compareTo(rememberedRate()));
         assertEquals("APPROVED",rates.decide(pending.id(),approve,true).status());
         assertEquals(1L,rates.context(segment).rateVersion());assertNull(rates.context(segment).pendingRequestId());
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_overproduction_rate_decisions WHERE request_id=?",Integer.class,pending.id()));
@@ -101,4 +108,8 @@ class ProductionOverproductionRateEndToEndTest {
 
     private void assertRate(String expected){assertEquals(0,new BigDecimal(expected).compareTo(db.queryForObject(
             "SELECT allowed_overproduction_rate FROM production_execution_segments WHERE id=?",BigDecimal.class,segment)));}
+    private BigDecimal rememberedRate(){return db.queryForObject("""
+            SELECT goods.production_overproduction_rate FROM goods
+            JOIN production_execution_segments segment ON segment.product_goods_id=goods.id WHERE segment.id=?
+            """,BigDecimal.class,segment);}
 }

@@ -21,6 +21,20 @@ class InternalTestRuntimeSafetyGateTest {
     }
 
     @Test
+    void acceptsAStrongOptionalSecretCipherKeyAndRequiresOutboundAiToStayClosed() {
+        MockEnvironment withKey = safeEnvironment();
+        withKey.setProperty("uten.crypto.secret-cipher-key", "s".repeat(64));
+        assertDoesNotThrow(() -> gate(withKey).validate());
+
+        MockEnvironment withoutAiSwitch = safeEnvironment();
+        ((java.util.Properties) withoutAiSwitch.getPropertySources().get("mockProperties").getSource())
+                .remove("uten.ai.outbound-enabled");
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> gate(withoutAiSwitch).validate());
+        assertTrue(failure.getMessage().contains("uten.ai.outbound-enabled=false"));
+    }
+
+    @Test
     void rejectsCombiningInternalTestWithAnyOtherProfile() {
         MockEnvironment environment = safeEnvironment();
         environment.setActiveProfiles("internal-test", "dev");
@@ -101,6 +115,9 @@ class InternalTestRuntimeSafetyGateTest {
                 Arguments.of("springdoc.api-docs.enabled", "true"),
                 Arguments.of("uten.jwt.secret", "short"),
                 Arguments.of("uten.crypto.pgp-master-key", "short"),
+                Arguments.of("uten.crypto.secret-cipher-key", "short"),
+                Arguments.of("uten.crypto.secret-cipher-key", "REPLACE_GENERATED_SECRET_CIPHER_KEY_0123456789"),
+                Arguments.of("uten.ai.outbound-enabled", "true"),
                 Arguments.of("uten.storage.provider", "oss"),
                 Arguments.of("uten.storage.local-dir", "/tmp/attachments"),
                 Arguments.of("uten.storage.uploads-enabled", "true"),
@@ -145,8 +162,7 @@ class InternalTestRuntimeSafetyGateTest {
         environment.setProperty("uten.crypto.hmac-key", "h".repeat(32));
         environment.setProperty("uten.sms.provider", "disabled");
         environment.setProperty("uten.sms.expose-code", "false");
-        environment.setProperty("uten.policy-intelligence.enabled", "false");
-        environment.setProperty("uten.policy-intelligence.api-key", "");
+        environment.setProperty("uten.ai.outbound-enabled", "false");
         environment.setProperty("uten.website.inquiry-ingest-token", "");
         environment.setProperty("app.legacy.enabled", "false");
         environment.setProperty("uten.storage.provider", "local");

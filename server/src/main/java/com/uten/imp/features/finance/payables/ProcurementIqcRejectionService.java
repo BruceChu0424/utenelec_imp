@@ -1568,7 +1568,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 quantity(row[11]), quantity(row[12]), text(row[13]),
                 canSeePrice ? money(row[14]) : null,
                 canSeePrice ? money(row[15]) : null,
-                text(row[16]), status, ((Number) row[19]).longValue(), uuid(row[20]),
+                text(row[16]), text(row[35]), status, ((Number) row[19]).longValue(), uuid(row[20]),
                 text(row[21]), text(row[22]), text(row[23]), text(row[24]),
                 text(row[25]), text(row[26]), text(row[27]),
                 text(row[28]), text(row[29]), text(row[30]), text(row[31]),
@@ -1619,7 +1619,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                        rejection.finance_exception_code,
                        rejection.finance_exception_message,
                        inspection.status,
-                       rejection.color_id,color.name
+                       rejection.color_id,color.name,currency.name
                 """;
     }
 

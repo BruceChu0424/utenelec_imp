@@ -1,60 +1,63 @@
-// 报工页「转下一道工序」候选返回的解析契约(V584/V585/V595)：
-// 候选列表 + 上次报工的记忆(去向 + 父件产品)。V595 起线边仓由服务端自动配置，
-// 「缺线边仓」不再是空候选的原因，记忆字段取而代之。
+// 报工页「转下一道工序」候选返回的解析契约(V584/V585/V736, ADR-127)：
+// 可送的上层工单(先急后缓) + 不能收的上层工单(原因) + 不可转原因 + 一行最多转给几个工单。
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/production/models/production_direct_transfer_candidate.dart';
 
 void main() {
-  test('parses candidates and the remembered destination', () {
-    final result = DirectTransferCandidatesResult.fromJson(const {
-      'candidates': [
-        {
-          'demandId': 'demand-uuid',
-          'executionSegmentId': 'segment-uuid',
-          'executionSegmentCode': 'ZX00000214',
-          'executionSegmentStatus': 'WAITING',
-          'planNo': 'PB20260915001',
-          'goodsName': '外贸V5开关带三极多功能插座功能件',
-          'unitName': '个',
-          'receivingGoodsId': 'parent-goods',
-          'receivingGoodsCode': 'HV5G001',
-          'receivingGoodsName': '外贸V5开关带三极多功能插座功能件',
-          'requiredQty': 1000,
-          'alreadyCoveredQty': 200,
-          'remainingQty': 800,
-        },
-      ],
-      'lastDestination': 'WORKSHOP',
-      'lastReceivingGoodsId': 'parent-goods',
-      'lastReceivingGoodsName': '外贸V5开关带三极多功能插座功能件',
-    });
+  test(
+    'parses receivers in urgency order, blocked parents and the receiver limit',
+    () {
+      final result = DirectTransferCandidatesResult.fromJson(const {
+        'candidates': [
+          {
+            'demandId': 'urgent',
+            'executionSegmentId': 'segment-1',
+            'executionSegmentCode': 'ZX00000642',
+            'executionSegmentStatus': 'WAITING',
+            'planNo': 'PB20260915001',
+            'unitName': '个',
+            'receivingGoodsId': 'parent-goods',
+            'receivingGoodsCode': 'V6000156',
+            'receivingGoodsName': '成品甲',
+            'requiredQty': 1000,
+            'alreadyCoveredQty': 200,
+            'remainingQty': 800,
+          },
+          {
+            'demandId': 'later',
+            'executionSegmentId': 'segment-2',
+            'remainingQty': 5,
+          },
+        ],
+        'blockedTargets': [
+          {
+            'demandId': 'far',
+            'executionSegmentCode': 'ZX00000650',
+            'receivingGoodsCode': 'V6000130',
+            'reasonCode': 'DIFFERENT_WORKSHOP',
+            'reason': '上层工单 ZX00000650 在二车间，跨车间必须送入仓库',
+          },
+        ],
+        'receiverLimit': 30,
+      });
 
-    expect(result.candidates, hasLength(1));
-    expect(result.candidates.single.demandId, 'demand-uuid');
-    expect(result.candidates.single.remainingQty, 800);
-    expect(result.hasMemory, isTrue);
-    expect(result.lastDestination, 'WORKSHOP');
-    expect(
-      result.rememberedCandidate?.demandId,
-      'demand-uuid',
-      reason: '上次投给的父件产品只对应一个候选时直接命中',
-    );
-    expect(
-      result.candidates.single.label,
-      contains('外贸V5开关带三极多功能插座功能件 HV5G001'),
-      reason: '收起态一行以父件产品名+编号开头，车间认「投给谁」认的是产品',
-    );
-    expect(
-      result.candidates.single.label,
-      contains('最多可送 800'),
-      reason: '本来源可直送额度是关键量，不能误称整个接收任务的缺口',
-    );
-    expect(
-      result.candidates.single.secondaryLabel,
-      contains('ZX00000214'),
-      reason: '下拉第二行放工单号，别挤占产品行',
-    );
-  });
+      expect(result.candidates.map((row) => row.demandId), ['urgent', 'later']);
+      expect(result.candidates.first.remainingQty, 800);
+      expect(result.receiverLimit, 30);
+      expect(result.blockedText, isNull);
+      final blocked = result.blockedTargets.single;
+      expect(blocked.reasonCode, 'DIFFERENT_WORKSHOP');
+      expect(
+        blocked.optionLabel,
+        'ZX00000650 · V6000130 · 上层工单 ZX00000650 在二车间，跨车间必须送入仓库',
+      );
+      expect(
+        result.candidates.first.optionLabel(600),
+        'ZX00000642 · 成品甲 V6000156 · 还差 600 个',
+        reason: '下拉条目 = 工单号 · 父件产品 · 本行还能分给它的数量',
+      );
+    },
+  );
 
   test('continuous receiving work orders are labelled in the dropdown', () {
     final candidate = ProductionDirectTransferCandidate.fromJson(const {
@@ -68,39 +71,37 @@ void main() {
     });
 
     expect(candidate.continuousSupply, isTrue);
-    expect(candidate.secondaryLabel, contains('持续生产中'));
+    expect(candidate.optionLabel(60), endsWith('持续生产中'));
   });
 
-  test('memory does not guess between two work orders of the same product', () {
-    final result = DirectTransferCandidatesResult.fromJson(const {
-      'candidates': [
-        {
-          'demandId': 'demand-1',
-          'executionSegmentId': 'segment-1',
-          'receivingGoodsId': 'parent-goods',
-          'remainingQty': 10,
-        },
-        {
-          'demandId': 'demand-2',
-          'executionSegmentId': 'segment-2',
-          'receivingGoodsId': 'parent-goods',
-          'remainingQty': 20,
-        },
-      ],
-      'lastDestination': 'WORKSHOP',
-      'lastReceivingGoodsId': 'parent-goods',
-    });
-
-    expect(result.rememberedCandidate, isNull);
-  });
-
-  test('old payloads without memory fields still parse', () {
+  test('no eligible receiver carries the server reason as the red text', () {
     final result = DirectTransferCandidatesResult.fromJson(const {
       'candidates': <dynamic>[],
+      'unavailableReasonCode': 'DIFFERENT_WORKSHOP',
+      'unavailableReason': '上层工单 ZX00000653 在二车间，跨车间必须送入仓库',
     });
 
-    expect(result.candidates, isEmpty);
-    expect(result.hasMemory, isFalse);
-    expect(result.rememberedCandidate, isNull);
+    expect(result.unavailableReasonCode, 'DIFFERENT_WORKSHOP');
+    expect(result.blockedText, '无法转到下一道工序：上层工单 ZX00000653 在二车间，跨车间必须送入仓库');
+    expect(result.loadFailed, isFalse);
+  });
+
+  test('a failed read is not an empty list', () {
+    const failed = DirectTransferCandidatesResult.loadFailed();
+
+    expect(failed.loadFailed, isTrue);
+    expect(failed.blockedText, '转给工单候选读取失败，请刷新后重试');
+  });
+
+  test('a minimal payload parses with no blocked parents and no limit', () {
+    final result = DirectTransferCandidatesResult.fromJson(const {
+      'candidates': [
+        {'demandId': 'd', 'executionSegmentId': 's', 'remainingQty': 5},
+      ],
+    });
+
+    expect(result.blockedText, isNull);
+    expect(result.blockedTargets, isEmpty);
+    expect(result.receiverLimit, greaterThan(1000));
   });
 }

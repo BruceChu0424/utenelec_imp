@@ -54,6 +54,14 @@ class DetailViewAuditCoverageArchitectureTest {
                         "notification detail must keep one view_notice semantic event");
                 continue;
             }
+            // ADR-133: GET /api/ai/jobs/{id} is the uploader's own job-status poll (every 1-2 s while the
+            // progress dialog is open, owner-only, 404 for anyone else). It is not a business-record detail;
+            // one detail-view event per poll would flood the audit log.
+            if (normalizedPath.endsWith("/ai/job/AiJobController.java")) {
+                assertFalse(source.contains("AuditDetailViewRecorder"),
+                        "AI job status polling must not write a detail-view event per poll");
+                continue;
+            }
             assertTrue(source.contains("AuditDetailViewRecorder"),
                     () -> "missing explicit detail-view audit dependency: " + controller);
             assertTrue(DETAIL_ACTION.matcher(source).find(),

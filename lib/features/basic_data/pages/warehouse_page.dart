@@ -257,7 +257,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     // 仓库部门不参与；置「是」要求已选所属车间、参与核算、且是叶子仓。
     const MasterFieldDef(
       key: 'isLineSide',
-      label: '线边仓',
+      label: '内料仓',
       group: '基础',
       type: MasterFieldType.select,
       hint: '车间内部直送用；须有所属车间且参与核算',
@@ -454,7 +454,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     MasterDetailRow('仓库名称', w.name),
     MasterDetailRow('位置', w.location),
     MasterDetailRow('是否核算', w.accountable ? '是' : '否'),
-    MasterDetailRow('线边仓', w.lineSide ? '是(车间内部直送用)' : '否'),
+    MasterDetailRow('内料仓', w.lineSide ? '是 (车间直送与整批领料)' : '否'),
     MasterDetailRow('备注', w.remark),
     MasterDetailRow('状态', w.status),
     MasterDetailRow('所属车间', w.workshopDepartmentName),

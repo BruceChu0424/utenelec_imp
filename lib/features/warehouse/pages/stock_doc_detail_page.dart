@@ -3,6 +3,10 @@
 // 2026-09-11 折叠头+表内滚改版（对齐采购/货品资料页）：整页 ListView 改
 // UtenCollapsingHeaderScrollView——上滑先折叠头部（提示条/生产链横幅/表头卡/出库凭证），
 // 之后滚明细表内部（2026-09-25 起「明细 (N)」计数标题随全站退役）。
+//
+// 重量 (ADR-135): 领料出库「本次重量」紧跟「本次出库」, 「已出库重量」紧跟「已出库」,
+// 取消出库弹窗只读显示按比例退回的重量; 生产退料收仓在明细表逐行录实称重量 (随收仓确认
+// 一起提交, 登记数量只读); 其它单据明细的重量按显示单位排在数量之后。重量从不阻断过账。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -11,6 +15,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
+import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
@@ -37,11 +42,20 @@ import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/measurement/weight_params.dart';
+import '../../../shared/measurement/weight_predictor.dart';
+import '../../../shared/measurement/weight_prefs.dart';
+import '../../../shared/measurement/weight_unit.dart';
+import '../../../shared/measurement/widgets/weight_grid_column.dart';
+import '../../../shared/measurement/widgets/weight_text.dart';
+import '../../../shared/measurement/widgets/weight_totals.dart';
 import '../../../shared/widgets/source_doc_link.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../models/outbound_weight_entry.dart';
 import '../models/stock_doc.dart';
+import '../widgets/outbound_weight_columns.dart';
 import '../widgets/production_draw_detail_table.dart';
 import '../widgets/production_material_return_receive_dialog.dart';
 import '../widgets/warehouse_stock_outbound_detail_table.dart';
@@ -70,17 +84,34 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   bool _confirmingOutbound = false;
   String? _outboundReviewToken;
   String? _materialReturnWarehouseId, _materialReturnKey;
+
+  /// 本次收仓提交的逐行实称重量 (与 [_materialReturnKey] 同生同灭: 回执不明重试时原样重发)。
+  List<Map<String, dynamic>>? _materialReturnLines;
   bool _confirmingMaterialReturn = false;
 
   // 2026-09-12 用户口径「数量在表格里改，出库只弹总结」：DRAW 待出库行的
   // 「本次出库/行备注」输入由页面持有（_load 后按最新明细重建，随路由销毁）；
   // 总备注在表格上方单独一个输入框。
-  final Map<String, TextEditingController> _issueQty = {};
+  final Map<String, UtenAutofillTextController> _issueQty = {};
   final Map<String, TextEditingController> _lineRemarks = {};
+
+  /// 领料「本次重量」(键 = item.id), 与 [_issueQty] 同生同灭。
+  final Map<String, OutboundWeightEntry> _issueWeights = {};
+
+  /// 生产退料收仓的逐行实称重量 (键 = item.id); 只在草稿退料单且可审核时有。
+  final Map<String, OutboundWeightEntry> _returnWeights = {};
+
+  /// 本次 build 盯住的页内单重参数缓存 (有要称重的行时才建)。
+  WeightParamsCache? _weightCache;
   final TextEditingController _issueRemark = TextEditingController();
   bool get _isOrdinaryOutbound =>
       widget.docType == StockDocType.otherOut ||
       widget.docType == StockDocType.finishedOut;
+
+  Iterable<OutboundWeightEntry> get _weightEntries => [
+    ..._issueWeights.values,
+    ..._returnWeights.values,
+  ];
 
   @override
   void initState() {
@@ -91,6 +122,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   @override
   void dispose() {
     _disposeIssueInputs();
+    _disposeReturnWeights();
     _issueRemark.dispose();
     super.dispose();
   }
@@ -104,6 +136,17 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       controller.dispose();
     }
     _lineRemarks.clear();
+    for (final entry in _issueWeights.values) {
+      entry.dispose();
+    }
+    _issueWeights.clear();
+  }
+
+  void _disposeReturnWeights() {
+    for (final entry in _returnWeights.values) {
+      entry.dispose();
+    }
+    _returnWeights.clear();
   }
 
   bool _allows(DocumentPermissionAction action) => DocumentPermissionCatalog
@@ -156,9 +199,17 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         if (d.status != 0) {
           _materialReturnWarehouseId = null;
           _materialReturnKey = null;
+          _materialReturnLines = null;
         }
       });
       _rebuildIssueInputs();
+      _rebuildReturnWeights();
+      // 缓存在 build 里按需盯住: 下一帧再按行批量取单重参数。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          unawaited(ensureOutboundWeightParams(_weightCache, _weightEntries));
+        }
+      });
     } catch (e) {
       if (mounted) {
         context.appError('加载详情失败');
@@ -246,22 +297,41 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         !detail.productionMaterialReturn) {
       return;
     }
+    // 重量格里看不懂的输入先拦下 (重量本身选填, 不称也能收仓)。
+    final names = ref.read(masterNameServiceProvider);
+    for (final item in detail.items) {
+      if (_returnWeights[item.id]?.weight.hasError == true) {
+        context.appError(
+          '${names.goods(item.goodsId)}：实称重量看不懂，请改成如 12.5 或 850g',
+        );
+        return;
+      }
+    }
     setState(() => _confirmingMaterialReturn = true);
     try {
       final warehouseId =
           _materialReturnWarehouseId ??
           await showProductionMaterialReturnReceiveDialog(
             context,
-            hierarchy: ref.read(masterNameServiceProvider).warehouseHierarchy,
+            hierarchy: names.warehouseHierarchy,
             mainWarehouseId: detail.materialReturnMainWarehouseId,
             initialWarehouseId: detail.warehouseId,
+            weightSummary: _returnWeights.isEmpty
+                ? null
+                : _returnWeightSummary(detail),
           );
       if (warehouseId == null || !mounted) return;
       setState(() {
         _materialReturnWarehouseId = warehouseId;
+        // 本次提交的逐行重量随幂等键一起定格: 回执不明重试时原样重发。
+        _materialReturnLines ??= [
+          for (final item in detail.items)
+            if (_returnWeights[item.id]?.kg case final kg?)
+              {'itemId': item.id, 'weightKg': kg},
+        ];
         _materialReturnKey ??= businessIdempotencyKey(
           'material-return-confirm',
-          '${widget.id}|$warehouseId',
+          '${widget.id}|$warehouseId|${_materialReturnLines!.map((line) => '${line['itemId']}=${weightKeyPart(line['weightKg'] as double?)}').join(',')}',
         );
         _busy = true;
       });
@@ -271,11 +341,13 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             widget.id,
             warehouseId: warehouseId,
             idempotencyKey: _materialReturnKey!,
+            lines: _materialReturnLines!,
           );
       if (!mounted) return;
       setState(() {
         _materialReturnWarehouseId = null;
         _materialReturnKey = null;
+        _materialReturnLines = null;
       });
       context.appSuccess('余料已收进实际仓库，库存与车间台账已更新');
       bumpListRefresh(ref, widget.docType.refreshKey);
@@ -292,6 +364,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         setState(() {
           _materialReturnWarehouseId = null;
           _materialReturnKey = null;
+          _materialReturnLines = null;
         });
       }
       context.appError(
@@ -377,12 +450,44 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       return;
     }
     _disposeIssueInputs();
+    final unit = ref.read(warehouseWeightUnitsPrefsProvider).entry;
     for (final item in detail.items) {
       if (item.remainingQty <= 0 || item.id == null) continue;
-      _issueQty[item.id!] = TextEditingController(
+      final qty = UtenAutofillTextController(
         text: _quantityInputText(item.remainingQty),
+        autofilled: false,
       );
+      _issueQty[item.id!] = qty;
+      _issueWeights[item.id!] = drawIssueWeightEntry(item, qty, unit: unit);
       _lineRemarks[item.id!] = TextEditingController();
+    }
+  }
+
+  /// 生产退料收仓: 草稿退料单 + 有审核权时逐行录实称重量 (回执不明重试期间保留原值)。
+  void _rebuildReturnWeights() {
+    final detail = _d;
+    final capture =
+        widget.docType == StockDocType.wdraw &&
+        detail != null &&
+        detail.productionMaterialReturn &&
+        detail.status == 0 &&
+        _canApprove;
+    if (!capture) {
+      _disposeReturnWeights();
+      return;
+    }
+    if (_materialReturnKey != null) return;
+    _disposeReturnWeights();
+    final unit = ref.read(warehouseWeightUnitsPrefsProvider).entry;
+    for (final item in detail.items) {
+      final id = item.id;
+      if (id == null) continue;
+      _returnWeights[id] = OutboundWeightEntry(
+        goodsId: item.goodsId,
+        qtyOf: () => item.qty,
+        unitRate: item.unitRate ?? 1,
+        unit: unit,
+      );
     }
   }
 
@@ -405,9 +510,22 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         context.appError('${names.goods(item.goodsId)}：$problem');
         return;
       }
+      final weight = _issueWeights[item.id!];
+      if (weight?.weight.hasError == true) {
+        context.appError(
+          '${names.goods(item.goodsId)}：本次重量看不懂，请改成如 12.5 或 850g',
+        );
+        return;
+      }
       final qty = double.tryParse(controller.text.trim()) ?? 0;
       if (qty <= 0) continue; // 明确填 0 的行跳过（分批出库）
-      body.add({'itemId': item.id, 'qty': qty});
+      body.add({
+        'itemId': item.id,
+        'qty': qty,
+        // 本次实称 (千克 4 位, ADR-135 §3.6): 只落出库流水, 不写回领料明细。
+        'weightKg': ?weight?.kg,
+        if (weight?.qtyFromWeight == true) 'qtyFromWeight': true,
+      });
       lineCount++;
     }
     if (body.isEmpty) {
@@ -442,20 +560,65 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       for (final entry in byUnit.entries)
         '${_quantityInputText(entry.value)}${entry.key.isEmpty ? '' : ' ${entry.key}'}',
     ].join(' · ');
+    // 称重只提醒不拦截：总结里列出本次实称合计与偏差行(「比应发多约 35 个 (+1.5%)」)。
+    final issuedWeights = [
+      for (final line in body) _issueWeights[line['itemId']],
+    ].whereType<OutboundWeightEntry>().toList();
+    final weightSummary = outboundWeightTotals(
+      issuedWeights,
+      params: _weightCache,
+    );
+    final deviations = <String>[
+      for (final line in body)
+        if (_issueWeights[line['itemId']] case final entry?)
+          if (_deviationText(entry) case final text?)
+            '${names.goods(entry.goodsId)}：$text',
+    ];
     final confirmed = await UtenDialog.show(
       context,
       title: '确认出库（$lineCount 行）',
       confirmLabel: '确认出库',
-      content: _issueSummaryPoints(totalsText, remark),
+      content: _issueSummaryPoints(
+        totalsText,
+        remark,
+        weightText: weightSummary.weighedRows == 0
+            ? null
+            : weightTotalEntry(weightSummary).value,
+        deviations: deviations,
+      ),
     );
     if (confirmed != true || !mounted) return;
     await _executeIssue(body, reverse: false, remark: remark);
   }
 
-  Widget _issueSummaryPoints(String totalsText, String remark) {
+  /// 一行的称重偏差短句 (WARN/ALERT 才有): 「比应发多约35个 (+1.5%)」。
+  String? _deviationText(OutboundWeightEntry entry) {
+    if (entry.kg == null) return null;
+    final check = entry.check(_weightCache);
+    if (check == null || check.level == WeightAlertLevel.none) return null;
+    final unitId = ref
+        .read(masterNameServiceProvider)
+        .goodsInfo(entry.goodsId)
+        ?.unitId;
+    return weightCheckShortText(
+      check,
+      mode: WeightCaptureMode.outbound,
+      unitName: unitId == null
+          ? null
+          : ref.read(masterNameServiceProvider).unit(unitId),
+    );
+  }
+
+  Widget _issueSummaryPoints(
+    String totalsText,
+    String remark, {
+    String? weightText,
+    List<String> deviations = const [],
+  }) {
     final theme = Theme.of(context);
     final points = <String>[
       '本次出库 $totalsText；提交后按行核销待出库量并写入库存。',
+      if (weightText != null) '本次实称 $weightText (只记入出库流水，不改领料明细)。',
       if (remark.isNotEmpty) '备注：$remark',
       '出库凭证/照片请在页面附件区上传（提交前后均可）。',
     ];
@@ -468,43 +631,66 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
             child: Text('· $point', style: theme.textTheme.bodyMedium),
           ),
+        if (deviations.isNotEmpty)
+          Padding(
+            key: const Key('draw-issue-weight-deviations'),
+            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+            child: Text(
+              '· 称重偏差 (请复核，不影响出库)：\n${deviations.join('\n')}',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: weightAlertColor(theme, WeightAlertLevel.warn),
+              ),
+            ),
+          ),
       ],
     );
   }
 
+  /// 收仓弹窗里的重量说明: 「随收仓提交实称 12.5 kg (未称 1 行)」, 有偏差再提醒复核。
+  String _returnWeightSummary(StockDocDetail detail) {
+    final entries = [
+      for (final item in detail.items) _returnWeights[item.id],
+    ].whereType<OutboundWeightEntry>();
+    final summary = outboundWeightTotals(
+      entries,
+      params: _weightCache,
+      mode: WeightCaptureMode.inbound,
+    );
+    if (summary.weighedRows == 0) {
+      return '本次没有录实称重量 (选填，不称也能收仓)。';
+    }
+    final deviation = summary.deviationRows > 0
+        ? '；称重偏差 ${summary.deviationRows} 行，请复核实物'
+        : '';
+    return '随收仓提交实称 ${weightTotalEntry(summary).value}$deviation。';
+  }
+
   /// 取消出库对话框（按行输入可退量，必填原因）；正向出库走 _issueFromTable。
-  Future<void> _issueDialog({required bool reverse}) async {
+  /// 退回的重量由服务端按原出库流水镜像 (全退=原重量, 部分退=按比例), 弹窗只读显示。
+  Future<void> _cancelIssueDialog() async {
     if (_busy || _d == null) return;
     final names = ref.read(masterNameServiceProvider);
-    final lines = _d!.items
-        .where((it) => reverse ? (it.issuedQty ?? 0) > 0 : it.remainingQty > 0)
-        .toList();
+    final lines = _d!.items.where((it) => (it.issuedQty ?? 0) > 0).toList();
     // 输入控制器由弹窗自己持有（随路由销毁）：此前在 showDialog 返回后立刻
     // dispose，退场动画期间的重建会再次订阅已销毁的控制器（备注框带字数计数
     // 器时必现）。
-    final input = await showDialog<_IssueDialogInput>(
+    final input = await showDialog<_CancelIssueInput>(
       context: context,
-      builder: (ctx) => _IssueDialog(
-        reverse: reverse,
+      builder: (ctx) => _CancelIssueDialog(
         lines: lines,
-        warehouseLabel:
-            '${reverse ? '退回原仓' : '领料仓库'}：${names.warehouse(_d!.warehouseId)}',
+        warehouseLabel: '退回原仓：${names.warehouse(_d!.warehouseId)}',
         names: names,
-        docId: widget.id,
-        canView: _canView,
-        canIssue: _canIssue,
       ),
     );
     if (input == null || !mounted) return;
-    // 取消出库=必填原因（审计）；正向出库=选填备注（追加到单据 remark 留痕）。
+    // 取消出库必填原因(审计)。
     final cancellationReason = input.reason;
-    final issueRemark = reverse ? null : cancellationReason;
-    if (reverse && cancellationReason.length < 2) {
+    if (cancellationReason.length < 2) {
       context.appError('取消出库必须填写至少 2 个字的原因');
       return;
     }
 
-    // 组装请求行（>0 才提交；后端会再校验上限）
+    // 组装请求行(>0 才提交；后端会再校验上限)；取消出库不带重量(服务端按原流水镜像)。
     final body = <Map<String, dynamic>>[];
     for (final it in lines) {
       final q = double.tryParse(input.quantities[it.id!] ?? '') ?? 0;
@@ -516,13 +702,12 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     }
     await _executeIssue(
       body,
-      reverse: reverse,
-      remark: issueRemark,
+      reverse: true,
       cancellationReason: cancellationReason,
     );
   }
 
-  /// 出库执行段（表格流与取消出库弹窗共用）：幂等键按行issued/delta指纹派生，
+  /// 出库执行段(表格流与取消出库弹窗共用)：幂等键按行issued/delta/重量指纹派生，
   /// 响应丢失重试复用同键安全重放；成功后重拉详情并失效仓库计数。
   Future<void> _executeIssue(
     List<Map<String, dynamic>> body, {
@@ -536,7 +721,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           final current = _d!.items
               .firstWhere((item) => item.id == itemId)
               .issuedQty;
-          return '$itemId|issued=${current ?? 0}|delta=${line['qty']}';
+          // 服务端出库哈希含重量: 改了重量就是另一次请求, 键必须跟着变。
+          final weight =
+              '${weightKeyPart(line['weightKg'] as double?)}|'
+              '${line['qtyFromWeight'] == true ? 1 : 0}';
+          return '$itemId|issued=${current ?? 0}|delta=${line['qty']}|w=$weight';
         })
         .join(';');
     final idempotencyKey = businessIdempotencyKey(
@@ -622,29 +811,41 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                               child: Text(
                                 '${names.goods(item.goodsId)}\n'
                                 '待点收上限 ${_quantityInputText(item.reportedQty ?? item.qty ?? 0)} '
-                                '${names.unit(item.unitId)}',
+                                '${names.unit(item.unitId)}'
+                                // 产成品重量在到货登记时称 (按放行量分摊), 这里只读。
+                                '${item.weight == null ? '' : '\n登记重量 ${formatWeightValue(item.weight)}'}',
                               ),
                             ),
                           ),
                           const SizedBox(width: UtenSpacing.s8),
                           Expanded(
                             flex: 2,
-                            child: TextField(
-                              controller: controllers[item.id!],
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                TextField(
+                                  controller: controllers[item.id!],
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  decoration: UtenInputDecoration(
+                                    InputDecoration(
+                                      label: fieldLabel(
+                                        '仓库实收',
+                                        Theme.of(context),
+                                        info: '不超过待点收上限；整单全部填 0 表示拒收退回生产',
+                                      ),
+                                      border: const OutlineInputBorder(),
+                                    ),
                                   ),
-                              decoration: UtenInputDecoration(
-                                InputDecoration(
-                                  label: fieldLabel(
-                                    '仓库实收',
-                                    Theme.of(context),
-                                    info: '不超过待点收上限；整单全部填 0 表示拒收退回生产',
-                                  ),
-                                  border: const OutlineInputBorder(),
                                 ),
-                              ),
+                                if (item.weight != null)
+                                  _FinishedInboundWeightHint(
+                                    item: item,
+                                    accepted: controllers[item.id!]!,
+                                  ),
+                              ],
                             ),
                           ),
                         ],
@@ -833,6 +1034,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     );
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
+    final weightUnits = ref.watch(warehouseWeightUnitsPrefsProvider);
+    // 有要称重且带货品的行时才盯住页内单重参数缓存 (离开页面随之释放)。
+    _weightCache = _weightEntries.any((entry) => entry.paramsLine != null)
+        ? ref.watch(weightParamsCacheProvider)
+        : null;
     return PopScope(
       canPop: !_isOrdinaryOutbound || (!_busy && !_confirmingOutbound),
       child: Scaffold(
@@ -1097,6 +1303,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                         lineRemarkControllers: _canIssue
                                             ? _lineRemarks
                                             : null,
+                                        issueWeights: _canIssue
+                                            ? _issueWeights
+                                            : null,
+                                        weightParams: _weightCache,
+                                        weightEntryUnit: weightUnits.entry,
                                         issueSaving: _busy,
                                       )
                                     : widget.docType == StockDocType.otherOut ||
@@ -1107,143 +1318,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                         names: names,
                                         primary: true,
                                       )
-                                    : MasterDataTableView<StockDocItem>(
-                                        primary: true,
-                                        bottomContentPadding:
-                                            UtenFloatingActionGroup
-                                                .scrollClearance,
-                                        columns: [
-                                          // 2026-09-14 全站列序统一（ADR-081 §4.1）：名称 → 编号 → 颜色。
-                                          MasterColumnDef(
-                                            key: 'goods',
-                                            label: '货品名称',
-                                            width: 200,
-                                            value: (it) =>
-                                                names.goods(it.goodsId),
-                                          ),
-                                          MasterColumnDef(
-                                            key: 'goodsCode',
-                                            label: '编号',
-                                            width: 110,
-                                            value: (it) =>
-                                                names
-                                                    .goodsInfo(it.goodsId)
-                                                    ?.code ??
-                                                '—',
-                                          ),
-                                          MasterColumnDef(
-                                            key: 'color',
-                                            label: '颜色',
-                                            width: 80,
-                                            value: (it) =>
-                                                names.color(it.colorId),
-                                          ),
-                                          MasterColumnDef(
-                                            key: 'series',
-                                            label: '系列',
-                                            width: 80,
-                                            value: (it) =>
-                                                names
-                                                    .goodsInfo(it.goodsId)
-                                                    ?.series ??
-                                                '—',
-                                          ),
-                                          MasterColumnDef(
-                                            key: 'stockPlace',
-                                            label: '库位号',
-                                            width: 80,
-                                            value: (it) =>
-                                                it.place?.trim().isNotEmpty ==
-                                                    true
-                                                ? it.place!
-                                                : names
-                                                          .goodsInfo(it.goodsId)
-                                                          ?.stockPlace ??
-                                                      '—',
-                                          ),
-                                          MasterColumnDef(
-                                            key: 'unit',
-                                            label: '单位',
-                                            width: 64,
-                                            value: (it) =>
-                                                names.unit(it.unitId),
-                                          ),
-                                          MasterColumnDef(
-                                            key: 'weight',
-                                            label: '实际重量',
-                                            width: 90,
-                                            type: 'number',
-                                            value: (it) =>
-                                                it.weight?.toStringAsFixed(2) ??
-                                                '—',
-                                          ),
-                                          if (widget.docType ==
-                                              StockDocType.check) ...[
-                                            MasterColumnDef(
-                                              key: 'bookQty',
-                                              label: '账面数量',
-                                              width: 90,
-                                              type: 'number',
-                                              value: (it) => _quantityInputText(
-                                                it.qty ?? 0,
-                                              ),
-                                            ),
-                                            MasterColumnDef(
-                                              key: 'countQty',
-                                              label: '实盘数量',
-                                              width: 90,
-                                              type: 'number',
-                                              value: (it) => it.countQty
-                                                  ?.toStringAsFixed(1),
-                                            ),
-                                            MasterColumnDef(
-                                              key: 'surplusQty',
-                                              label: '盈亏',
-                                              width: 90,
-                                              type: 'number',
-                                              value: (it) => it.surplusQty
-                                                  ?.toStringAsFixed(1),
-                                            ),
-                                          ] else if (widget.docType ==
-                                              StockDocType.finishedIn) ...[
-                                            MasterColumnDef(
-                                              key: 'reportedQty',
-                                              label: '待点收上限',
-                                              width: 100,
-                                              type: 'number',
-                                              value: (it) =>
-                                                  (it.reportedQty ??
-                                                          it.qty ??
-                                                          0)
-                                                      .toStringAsFixed(2),
-                                            ),
-                                            MasterColumnDef(
-                                              key: 'acceptedQty',
-                                              label: _d!.status == 1
-                                                  ? '仓库实收'
-                                                  : '待点收',
-                                              width: 100,
-                                              type: 'number',
-                                              value: (it) => (it.qty ?? 0)
-                                                  .toStringAsFixed(2),
-                                            ),
-                                          ] else
-                                            MasterColumnDef(
-                                              key: 'qty',
-                                              label: '数量',
-                                              width: 90,
-                                              type: 'number',
-                                              value: (it) => (it.qty ?? 0)
-                                                  .toStringAsFixed(2),
-                                            ),
-                                        ],
-                                        items: _d!.items,
-                                        facets: const {},
-                                        nullCounts: const {},
-                                        filters: const {},
-                                        onFilterChanged: (_, _) {},
-                                        emptyMessage: '暂无明细',
-                                      ),
+                                    : _itemTable(names, weightUnits.entry),
                               ),
                             ],
                           ),
@@ -1269,6 +1344,207 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
         floatingActionButton: _d == null || _busy ? null : _actions(),
       ),
+    );
+  }
+
+  /// 非领料/非普通出库单据的明细表: 数量之后显示重量 (按显示单位, 估算「≈」, 没称「未称」);
+  /// 盘点单另列账面重量/实盘重量; 生产退料收仓待确认时逐行录实称重量并核对登记数量。
+  Widget _itemTable(MasterNameService names, WeightUnit entryUnit) {
+    final detail = _d!;
+    final capturing = _returnWeights.isNotEmpty;
+    final editable = !_busy && _materialReturnKey == null;
+    String? baseUnitName(String? goodsId) {
+      final unitId = names.goodsInfo(goodsId)?.unitId;
+      return unitId == null ? null : names.unit(unitId);
+    }
+
+    final byEntry = <OutboundWeightEntry, StockDocItem>{
+      for (final item in detail.items) ?_returnWeights[item.id]: item,
+    };
+    MasterColumnDef<StockDocItem> weightDisplay(
+      String key,
+      String label,
+      double? Function(StockDocItem item) kgOf, {
+      bool Function(StockDocItem item)? estimatedOf,
+    }) => MasterColumnDef(
+      key: key,
+      label: label,
+      width: 110,
+      type: 'number',
+      value: (it) => formatWeightValue(
+        kgOf(it),
+        estimated: estimatedOf?.call(it) ?? false,
+      ),
+      cellBuilder: (context, it) => WeightText(
+        kg: kgOf(it),
+        estimated: estimatedOf?.call(it) ?? false,
+        textAlign: TextAlign.right,
+      ),
+    );
+
+    return MasterDataTableView<StockDocItem>(
+      primary: true,
+      enableTextSelection: !capturing,
+      bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+      toolbarActions: capturing ? const [WeightEntryUnitButton()] : null,
+      summaryBar: capturing
+          ? OutboundWeightSummaryBar(
+              entries: byEntry.keys.toList(growable: false),
+              params: _weightCache,
+              mode: WeightCaptureMode.inbound,
+            )
+          : null,
+      columns: [
+        // 2026-09-14 全站列序统一(ADR-081 §4.1)：名称 → 编号 → 颜色。
+        MasterColumnDef(
+          key: 'goods',
+          label: '货品名称',
+          width: 200,
+          value: (it) => names.goods(it.goodsId),
+        ),
+        MasterColumnDef(
+          key: 'goodsCode',
+          label: '编号',
+          width: 110,
+          value: (it) => names.goodsInfo(it.goodsId)?.code ?? '—',
+        ),
+        MasterColumnDef(
+          key: 'color',
+          label: '颜色',
+          width: 80,
+          value: (it) => names.color(it.colorId),
+        ),
+        MasterColumnDef(
+          key: 'series',
+          label: '系列',
+          width: 80,
+          value: (it) => names.goodsInfo(it.goodsId)?.series ?? '—',
+        ),
+        MasterColumnDef(
+          key: 'stockPlace',
+          label: '库位号',
+          width: 80,
+          value: (it) => it.place?.trim().isNotEmpty == true
+              ? it.place!
+              : names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
+        ),
+        MasterColumnDef(
+          key: 'unit',
+          label: '单位',
+          width: 64,
+          value: (it) => names.unit(it.unitId),
+        ),
+        if (widget.docType == StockDocType.check) ...[
+          MasterColumnDef(
+            key: 'bookQty',
+            label: '账面数量',
+            width: 90,
+            type: 'number',
+            value: (it) => _quantityInputText(it.qty ?? 0),
+          ),
+          MasterColumnDef(
+            key: 'countQty',
+            label: '实盘数量',
+            width: 90,
+            type: 'number',
+            value: (it) => it.countQty?.toStringAsFixed(1),
+          ),
+          MasterColumnDef(
+            key: 'surplusQty',
+            label: '盈亏',
+            width: 90,
+            type: 'number',
+            value: (it) => it.surplusQty?.toStringAsFixed(1),
+          ),
+          // 盘点重量 (ADR-135 §3.4): 账面重量 = 保存时的库存重量快照, 实盘重量选填。
+          weightDisplay('bookWeight', '账面重量', (it) => it.bookWeight),
+          weightDisplay('countWeight', '实盘重量', (it) => it.countWeight),
+        ] else if (widget.docType == StockDocType.finishedIn) ...[
+          MasterColumnDef(
+            key: 'reportedQty',
+            label: '待点收上限',
+            width: 100,
+            type: 'number',
+            value: (it) => (it.reportedQty ?? it.qty ?? 0).toStringAsFixed(2),
+          ),
+          MasterColumnDef(
+            key: 'acceptedQty',
+            label: detail.status == 1 ? '仓库实收' : '待点收',
+            width: 100,
+            type: 'number',
+            value: (it) => (it.qty ?? 0).toStringAsFixed(2),
+          ),
+          weightDisplay('weight', '重量', (it) => it.weight),
+        ] else ...[
+          MasterColumnDef(
+            key: 'qty',
+            label: '数量',
+            width: 90,
+            type: 'number',
+            value: (it) => (it.qty ?? 0).toStringAsFixed(2),
+          ),
+          if (capturing) ...[
+            // 生产退料收仓 (ADR-135 §3.9): 登记数量只读, 逐行录实称重量, 随收仓确认提交。
+            outboundWeightColumn<StockDocItem>(
+              entryOf: (it) => _returnWeights[it.id],
+              entryUnit: entryUnit,
+              params: _weightCache,
+              mode: WeightCaptureMode.inbound,
+              enabledOf: (_) => editable,
+              baseUnitNameOf: (entry) => baseUnitName(entry.goodsId),
+              onWeighCount: (context, entry) {
+                final item = byEntry[entry];
+                return weighOutboundEntry(
+                  context,
+                  entry: entry,
+                  goodsTitle: item == null
+                      ? ''
+                      : [
+                          names.goods(item.goodsId),
+                          names.goodsInfo(item.goodsId)?.code ?? '',
+                          item.colorId == null ? '' : names.color(item.colorId),
+                        ].where((part) => part.trim().isNotEmpty).join(' '),
+                  cache: _weightCache,
+                  baseUnitName: baseUnitName(entry.goodsId),
+                  lineUnitName: item == null ? null : names.unit(item.unitId),
+                  sampleRemark: detail.billNo,
+                );
+              },
+            ),
+            outboundWeightCheckColumn<StockDocItem>(
+              entryOf: (it) => _returnWeights[it.id],
+              params: _weightCache,
+              mode: WeightCaptureMode.inbound,
+              unitNameOf: (entry) => baseUnitName(entry.goodsId),
+              textOf: (check, entry) {
+                final unit = baseUnitName(entry.goodsId);
+                String qty(double value) => formatWeighQtyWithUnit(
+                  value,
+                  unitName: unit,
+                  integer: check.integerQty,
+                );
+                return '登记退 ${qty(check.qtyBase)}, 称重约 ${qty(check.count.estimatedQty)}';
+              },
+            ),
+          ] else if (widget.docType == StockDocType.wdraw)
+            // 生产退料: 收料重量只落收仓出入库流水 (不写回明细), 显示服务端按流水累计的实收重量
+            // (issuedWeightKg, 实收减红冲); 还没收仓时没有流水, 显示「未称」。
+            weightDisplay(
+              'receivedWeight',
+              '实收重量',
+              (it) => it.issuedWeightKg,
+              estimatedOf: (it) => it.issuedWeightEstimated,
+            )
+          else
+            weightDisplay('weight', '重量', (it) => it.weight),
+        ],
+      ],
+      items: detail.items,
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      emptyMessage: '暂无明细',
     );
   }
 
@@ -1439,7 +1715,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
               size: UtenButtonSize.large,
               type: UtenButtonType.secondary,
               icon: Icons.undo_rounded,
-              onPressed: () => _issueDialog(reverse: true),
+              onPressed: _cancelIssueDialog,
               child: const Text('取消出库'),
             ),
           );
@@ -1498,40 +1774,30 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   }
 }
 
-/// 出库/取消出库弹窗的输入结果：行 id → 本次数量文本；reason=取消原因 / 出库备注。
-typedef _IssueDialogInput = ({Map<String, String> quantities, String reason});
+/// 取消出库弹窗的输入结果：行 id → 本次取消数量文本；reason = 取消原因。
+typedef _CancelIssueInput = ({Map<String, String> quantities, String reason});
 
-/// DRAW 出库/取消出库弹窗：控制器归弹窗所有，随路由销毁。
-class _IssueDialog extends StatefulWidget {
-  const _IssueDialog({
-    required this.reverse,
+/// DRAW 取消出库弹窗：控制器归弹窗所有，随路由销毁。
+class _CancelIssueDialog extends StatefulWidget {
+  const _CancelIssueDialog({
     required this.lines,
     required this.warehouseLabel,
     required this.names,
-    required this.docId,
-    required this.canView,
-    required this.canIssue,
   });
 
-  final bool reverse;
   final List<StockDocItem> lines;
   final String warehouseLabel;
   final MasterNameService names;
-  final String docId;
-  final bool canView;
-  final bool canIssue;
 
   @override
-  State<_IssueDialog> createState() => _IssueDialogState();
+  State<_CancelIssueDialog> createState() => _CancelIssueDialogState();
 }
 
-class _IssueDialogState extends State<_IssueDialog> {
+class _CancelIssueDialogState extends State<_CancelIssueDialog> {
   late final Map<String, TextEditingController> _quantities = {
     for (final it in widget.lines)
       it.id!: TextEditingController(
-        text: _StockDocDetailPageState._quantityInputText(
-          widget.reverse ? (it.issuedQty ?? 0) : it.remainingQty,
-        ),
+        text: _StockDocDetailPageState._quantityInputText(it.issuedQty ?? 0),
       ),
   };
   final TextEditingController _reason = TextEditingController();
@@ -1547,9 +1813,9 @@ class _IssueDialogState extends State<_IssueDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final reverse = widget.reverse;
+    final theme = Theme.of(context);
     return AlertDialog(
-      title: Text(reverse ? '取消出库' : '出库'),
+      title: const Text('取消出库'),
       content: SizedBox(
         width: 420,
         child: ListView(
@@ -1563,28 +1829,39 @@ class _IssueDialogState extends State<_IssueDialog> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
                       flex: 3,
                       child: Text(
                         '${widget.names.goods(it.goodsId)}\n'
-                        '${reverse ? '可取消 ${_StockDocDetailPageState._quantityInputText(it.issuedQty ?? 0)}' : '本次最多 ${_StockDocDetailPageState._quantityInputText(it.remainingQty)}'}',
-                        style: Theme.of(context).textTheme.labelMedium
-                            ?.copyWith(fontWeight: FontWeight.w400),
+                        '可取消 ${_StockDocDetailPageState._quantityInputText(it.issuedQty ?? 0)}',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w400,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       flex: 2,
-                      child: TextField(
-                        controller: _quantities[it.id!],
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          TextField(
+                            controller: _quantities[it.id!],
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                          ),
+                          _ReturnedWeightHint(
+                            item: it,
+                            quantity: _quantities[it.id!]!,
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -1593,30 +1870,14 @@ class _IssueDialogState extends State<_IssueDialog> {
             const SizedBox(height: UtenSpacing.s8),
             TextField(
               controller: _reason,
-              // 正向出库备注服务端单条上限 200（多轮用「；」连接、总长 500），
-              // 输入框与之同值，不再让用户填 1000 字后被静默截断。
-              maxLength: reverse ? 1000 : 200,
+              maxLength: 1000,
               minLines: 2,
               maxLines: 4,
-              decoration: InputDecoration(
-                labelText: reverse ? '取消原因(必填)' : '备注(选填)',
-                hintText: reverse ? null : '随出库追加到单据备注留痕',
-                border: const OutlineInputBorder(),
+              decoration: const InputDecoration(
+                labelText: '取消原因(必填)',
+                border: OutlineInputBorder(),
               ),
             ),
-            if (!reverse) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              // 出库凭证（2026-09-09）：与单据同生命周期，品质/仓库均可回看；
-              // 2026-09-10 起详情页也常驻同款区。
-              BusinessAttachmentSection(
-                ownerType: 'STOCK_DOCUMENT',
-                ownerId: widget.docId,
-                canView: widget.canView,
-                canManage: widget.canIssue,
-                title: '出库凭证/照片',
-                categories: const ['出库凭证', '照片', '其他'],
-              ),
-            ],
           ],
         ),
       ),
@@ -1627,16 +1888,102 @@ class _IssueDialogState extends State<_IssueDialog> {
           child: const Text('取消'),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop<_IssueDialogInput>(context, (
+          onPressed: () => Navigator.pop<_CancelIssueInput>(context, (
             quantities: {
               for (final entry in _quantities.entries)
                 entry.key: entry.value.text.trim(),
             },
             reason: _reason.text.trim(),
           )),
-          child: Text(reverse ? '确认取消出库' : '确认出库'),
+          child: const Text('确认取消出库'),
         ),
       ],
     );
   }
+}
+
+/// 取消出库一行的退回重量 (只读): 已出库重量 x 取消数量 / 已出库数量; 全退即原重量。
+/// 服务端按原出库流水镜像, 这里只是提示, 不随请求发出。
+class _ReturnedWeightHint extends StatelessWidget {
+  const _ReturnedWeightHint({required this.item, required this.quantity});
+
+  final StockDocItem item;
+  final TextEditingController quantity;
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) => ValueListenableBuilder<TextEditingValue>(
+    valueListenable: quantity,
+    builder: (context, value, _) {
+      final issuedQty = item.issuedQty ?? 0;
+      final issuedKg = item.issuedWeightKg;
+      final qty = double.tryParse(value.text.trim());
+      final String text;
+      if (issuedKg == null) {
+        text = '退回重量 $weightUnknownText';
+      } else if (qty == null || qty <= 0 || issuedQty <= 0) {
+        text = '退回重量 —';
+      } else {
+        final full = (qty - issuedQty).abs() < 0.0000001;
+        final kg = full ? issuedKg : roundKgLine(issuedKg * qty / issuedQty);
+        text =
+            '退回重量 ${formatWeightValue(kg, estimated: item.issuedWeightEstimated)}'
+            '${full ? '' : ' (按比例)'}';
+      }
+      final theme = Theme.of(context);
+      return Padding(
+        padding: const EdgeInsets.only(top: UtenSpacing.s4),
+        child: Text(
+          text,
+          key: ValueKey('cancel-issue-weight-${item.id}'),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    },
+  );
+}
+
+/// 成品点收弹窗: 实收改小时入库重量按比例缩 (与服务端 round(重量 x 实收/待点收, 4) 同口径),
+/// 只读提示, 不在这里改重量。
+class _FinishedInboundWeightHint extends StatelessWidget {
+  const _FinishedInboundWeightHint({
+    required this.item,
+    required this.accepted,
+  });
+
+  final StockDocItem item;
+  final TextEditingController accepted;
+
+  @override
+  Widget build(BuildContext context) =>
+      ValueListenableBuilder<TextEditingValue>(
+        valueListenable: accepted,
+        builder: (context, value, _) {
+          final weight = item.weight!;
+          final base = item.qty ?? 0;
+          final qty = double.tryParse(value.text.trim());
+          final String text;
+          if (qty == null || qty < 0 || base <= 0) {
+            text = '入库重量按实收比例计算';
+          } else if ((qty - base).abs() < 0.0000001) {
+            text = '入库重量 ${formatWeightValue(weight)}';
+          } else {
+            text =
+                '入库重量 ${formatWeightValue(roundKgLine(weight * qty / base))}';
+          }
+          final theme = Theme.of(context);
+          return Padding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s4),
+            child: Text(
+              text,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          );
+        },
+      );
 }

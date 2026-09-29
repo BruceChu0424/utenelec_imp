@@ -1,5 +1,8 @@
 package com.uten.imp.features.production.mrp;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.PreplanAnalysisPegPort;
 import com.uten.imp.common.inventory.MainWarehouseStockBudget;
@@ -37,6 +40,8 @@ import java.util.Objects;
 import java.util.UUID;
 
 import static com.uten.imp.features.production.execution.ProductionExecutionBatch.*;
+import static com.uten.imp.features.production.fulfillment.ProductionMaterialDemand.REQUIREMENT_MODE_EXACT_SNAPSHOT;
+import static com.uten.imp.features.production.fulfillment.ProductionMaterialDemand.REQUIREMENT_MODE_LINEAR;
 
 /** Explicit complete-kit sub-batches of an unused analysis-backed execution segment. */
 @Service
@@ -47,7 +52,6 @@ public class ProductionExecutionBatchService {
     private final TxSessionVars tx;
     private final ProductionDocumentAccessPolicy access;
     private final ProductionWorkshopMembership membership;
-    private final ProductionExecutionPlanningService planning;
     private final ProductionExecutionReadinessService readiness;
     private final ProductionDrawRequestService drawRequests;
     private final ProductionPlanMutationFootprintService mutationFootprint;
@@ -59,7 +63,7 @@ public class ProductionExecutionBatchService {
     @Transactional(readOnly = true)
     public Preview preview(PreviewRequest request) {
         if (request == null || request.segmentId() == null) throw invalid("请选择需要分批领料的车间任务");
-        Context context = context(request.segmentId(), request.expectedVersion(), false);
+        Context context = context(request.segmentId(), request.expectedVersion());
         return buildPreview(context, request.quantity());
     }
 
@@ -95,9 +99,9 @@ public class ProductionExecutionBatchService {
         lock("production_plans",initial.planId());
         lock("production_planning_packages",initial.packageId());
         lock("production_execution_segments",initial.id());
-        Context context=context(initial.id(),request.expectedVersion(),true);
+        Context context=context(initial.id(),request.expectedVersion());
         Preview preview=buildPreview(context,quantity);
-        if (!preview.fingerprint().equals(request.previewFingerprint())) throw conflict("物料库存、任务或BOM已变化，请重新核对分批领料汇总");
+        if (!preview.fingerprint().equals(request.previewFingerprint())) throw conflict("物料库存或任务已变化，请重新核对分批领料汇总");
         if (quantity.compareTo(preview.maxReadyQty())>0) throw conflict("本次数量超过当前可齐套生产量");
         guard.verifyUnchanged();
         UUID batch=UUID.randomUUID();
@@ -140,7 +144,7 @@ public class ProductionExecutionBatchService {
                 var drawPreview=drawRequests.preview(new ProductionDrawRequest.PreviewRequest(
                         List.of(new ProductionDrawRequest.Item(batch,version))));
                 if (!distribution(warehouseLines).equals(distribution(drawPreview.summaries())))
-                    throw conflict("实际领料分仓或数量与刚才核对的汇总不同(线边仓直送料已自动投入，无需领料)，本次未提交；请刷新后重新确认");
+                    throw conflict("实际领料分仓或数量与刚才核对的汇总不同(内料仓直送料已自动投入, 无需领料)，本次未提交；请刷新后重新确认");
                 drawRequests.submit(new ProductionDrawRequest.SubmitRequest(
                         List.of(new ProductionDrawRequest.Item(batch,version)),
                         "batch-draw-"+batch,drawPreview.fingerprint()));
@@ -151,7 +155,7 @@ public class ProductionExecutionBatchService {
         return new Result(batch,remaining,documents(batch),false);
     }
 
-    private Context context(UUID id,Long expectedVersion,boolean locked) {
+    private Context context(UUID id,Long expectedVersion) {
         Source source=source(id); requireAccess(source);
         String route=(String)em.createNativeQuery("SELECT start_route FROM production_execution_segments WHERE id=:id")
                 .setParameter("id",id).getSingleResult();
@@ -173,14 +177,13 @@ public class ProductionExecutionBatchService {
                 """).setParameter("id",id).getSingleResult();
         if (activity.longValue()!=0) throw conflict("该任务已有正式采购或委外供给绑定、物料预留或领用记录，须先核对来源，不能直接拆批");
         // 零物料任务没有冻结物料、没有 BOM 用量可核对：按数量拆分即可，本批可齐套量=剩余全部。
-        if (source.zeroMaterial()) return new Context(source,null,List.of(),List.of());
-        var snapshot=locked?planning.lockedSnapshot(source.planId(),source.warehouseId(),Map.of()):planning.preview(source.planId(),source.warehouseId());
-        var product=snapshot.productLines().stream().filter(line->line.sourcePlanItemId().equals(source.planItemId()))
-                .findFirst().orElseThrow(()->conflict("原计划行BOM快照不可用"));
-        if (!source.bomFingerprint().equalsIgnoreCase(product.bomFingerprint())) throw conflict("BOM已变化，不能按当前规则改算原冻结任务，请先处理原计划");
+        if (source.zeroMaterial()) return new Context(source,List.of(),List.of());
+        // ADR-129 §2.6：拆批不再拿现行 BOM 重算原冻结任务。每条根需求按下达时冻结的耗用曲线
+        // (consumption_snapshot，与 V561/V609 数据库断言同一口径)切分，此后 BOM 或真实使用数量怎么变都不影响它。
         List<Material> materials=rows("""
                 SELECT root.id,root.goods_id,goods.code,goods.name,root.color_id,color.name,root.unit_id,unit.name,
-                    root.required_qty,root.per_product_qty,root.supply_route,current_demand.id,current_demand.required_qty,
+                    root.per_product_qty,root.requirement_mode,CAST(root.consumption_snapshot AS text),
+                    current_demand.id,current_demand.required_qty,
                     COALESCE((SELECT sum(prior_demand.required_qty) FROM production_material_demands prior_demand
                         JOIN production_execution_segments prior ON prior.id=prior_demand.execution_segment_id
                         WHERE prior_demand.split_root_demand_id=root.id AND prior.split_root_segment_id=:root
@@ -194,27 +197,49 @@ public class ProductionExecutionBatchService {
                     AND NOT current_demand.is_deleted AND (current_demand.id=root.id OR current_demand.split_root_demand_id=root.id)
                 WHERE root.execution_segment_id=:root AND NOT root.is_deleted ORDER BY root.id
                 """,Map.of("root",source.rootId(),"offset",source.offset(),"id",id)).stream().map(row->{
-            var usage=product.materials().stream().filter(value->value.goodsId().equals(row[1])&&Objects.equals(value.colorId(),row[4]))
-                    .findFirst().orElseThrow(()->conflict("原冻结物料在BOM中已不存在"));
-            if (usage.required(source.rootQty(),product.productUnitRate()).compareTo(decimal(row[8]))!=0)
-                throw conflict("原冻结需求与BOM精确计量规则不一致，不能直接拆批");
-            BigDecimal current=usage.required(source.offset().add(source.qty()),product.productUnitRate())
-                    .subtract(usage.required(source.offset(),product.productUnitRate()));
+            BigDecimal perProduct=decimal(row[8]);
+            FrozenCurve curve=frozenCurve(str(row[9]),(String)row[10],perProduct);
+            BigDecimal current=curve.required(source.offset().add(source.qty())).subtract(curve.required(source.offset()));
             if (current.compareTo(decimal(row[12]))!=0) throw conflict("剩余批次需求与原批累计计量不一致");
             return new Material(uuid(row[0]),uuid(row[11]),uuid(row[1]),str(row[2]),str(row[3]),uuid(row[4]),str(row[5]),
-                    uuid(row[6]),str(row[7]),decimal(row[8]),decimal(row[9]),str(row[10]),decimal(row[13]),usage);
+                    uuid(row[6]),str(row[7]),perProduct,decimal(row[13]),REQUIREMENT_MODE_EXACT_SNAPSHOT.equals(str(row[9])),curve);
         }).toList();
         if (materials.isEmpty()) throw conflict("原任务没有可核对的冻结物料需求");
         var availability=readiness.batchAvailability(source.warehouseId(),materials.stream().map(Material::currentDemandId)
                 .filter(Objects::nonNull).toList(),source.analysisId(),source.analysisItemId());
-        return new Context(source,product,materials,availability);
+        return new Context(source,materials,availability);
+    }
+
+    /**
+     * 根需求冻结的耗用曲线：规则与产品单位换算率就是 fn_material_snapshot_required(V609) 读的那份 JSON。
+     * V609 之前下达的线性需求没有曲线，按 {PER_UNIT, 单耗} 与换算率 1 还原——即 V561 断言的
+     * ceil4(数量×单耗)；没有曲线的整包/固定批次历史需求无法还原，拒绝拆批。
+     */
+    private FrozenCurve frozenCurve(String requirementMode,String snapshot,BigDecimal perProduct) {
+        if (snapshot==null) {
+            if (REQUIREMENT_MODE_LINEAR.equals(requirementMode)) return new FrozenCurve(List.of(
+                    new CompleteKitAllocator.ConsumptionRule(CompleteKitAllocator.ConsumptionRule.PER_UNIT,perProduct,BigDecimal.ONE,true)),BigDecimal.ONE);
+            throw conflict("该任务的整包或固定批次物料下达时没有保存计量规则，不能分批领料，请整批领料生产");
+        }
+        List<CompleteKitAllocator.ConsumptionRule> rules=new ArrayList<>();
+        BigDecimal rate;
+        try {
+            JsonNode frozen=json.reader().with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).readTree(snapshot);
+            rate=frozen.path("productUnitRate").decimalValue();
+            for (JsonNode rule:frozen.path("rules")) rules.add(new CompleteKitAllocator.ConsumptionRule(rule.path("consumptionBasis").asText(),
+                    rule.path("bomQty").decimalValue(),rule.path("basisOutputQty").decimalValue(),rule.path("allowPartialPackage").asBoolean()));
+        } catch (JsonProcessingException failure) {
+            throw conflict("原任务冻结的物料计量规则无法读取，不能分批领料");
+        }
+        if (rate.signum()<=0 || rules.isEmpty()) throw conflict("原任务冻结的物料计量规则无法读取，不能分批领料");
+        return new FrozenCurve(List.copyOf(rules),rate);
     }
 
     private Preview buildPreview(Context context,BigDecimal requested) {
         Source source=context.source();
         for (Material material:context.materials()) {
-            BigDecimal prior=material.usage().required(source.offset(),context.product().productUnitRate());
-            if (source.offset().signum()>0 && material.usage().requiresExactSnapshot() && material.priorIssued().compareTo(prior)<0)
+            BigDecimal prior=material.curve().required(source.offset());
+            if (source.offset().signum()>0 && material.exact() && material.priorIssued().compareTo(prior)<0)
                 throw conflict("前批固定或整包物料尚未实际领齐，请先完成前批领料后继续分批");
         }
         Map<UUID,BigDecimal> available=new LinkedHashMap<>();
@@ -327,11 +352,13 @@ public class ProductionExecutionBatchService {
 
     private List<MaterialSlice> slices(Context context,BigDecimal offset,BigDecimal qty) {
         return context.materials().stream().map(material->{
-            BigDecimal prior=material.usage().required(offset,context.product().productUnitRate());
-            BigDecimal required=material.usage().required(offset.add(qty),context.product().productUnitRate()).subtract(prior);
+            BigDecimal prior=material.curve().required(offset);
+            BigDecimal required=material.curve().required(offset.add(qty)).subtract(prior);
+            // 沿用前批的判定与 V561 fn_assert_execution_batch_split 逐项一致：精确快照需求，
+            // 或本批少于按根需求单耗线性应得的量(整包/累计进位由前批承担)。
             return new MaterialSlice(material.rootDemandId(),required,prior,
-                    offset.signum()>0&&prior.signum()>0&&(material.usage().requiresExactSnapshot()
-                            || required.compareTo(material.usage().required(qty,context.product().productUnitRate()))<0));
+                    offset.signum()>0&&prior.signum()>0&&(material.exact()
+                            || required.compareTo(CompleteKitAllocator.required(qty,material.perProduct()))<0));
         }).toList();
     }
 
@@ -401,19 +428,18 @@ public class ProductionExecutionBatchService {
                     package.warehouse_id,plan.bill_no,s.segment_code,goods.code,goods.name,unit.name,
                     (plan.is_closed OR plan.is_canceled OR plan.is_stopped),
                     (plan.status=1 AND package.status='CONFIRMED' AND NOT package.is_deleted AND NOT plan.is_deleted),
-                    COALESCE(s.split_root_segment_id,s.id),s.split_start_qty,COALESCE(root.planned_qty,s.planned_qty),s.auto_promote_when_ready,
+                    COALESCE(s.split_root_segment_id,s.id),s.split_start_qty,s.auto_promote_when_ready,
                     s.material_requirement_mode='ZERO_MATERIAL'
                 FROM production_execution_segments s JOIN production_plans plan ON plan.id=s.plan_id
                 JOIN production_planning_packages package ON package.id=s.package_id JOIN goods ON goods.id=s.product_goods_id
                 LEFT JOIN units unit ON unit.id=s.product_unit_id
-                LEFT JOIN production_execution_segments root ON root.id=s.split_root_segment_id
                 WHERE s.id=:id AND NOT s.is_deleted
                 """,Map.of("id",id));
         if(found.size()!=1)throw new ApiException(ErrorCode.NOT_FOUND,"车间任务不存在");
         Object[] r=found.getFirst();return new Source(uuid(r[0]),uuid(r[1]),uuid(r[2]),uuid(r[3]),str(r[4]),((Number)r[5]).longValue(),decimal(r[6]),str(r[7]),
                 uuid(r[8]),uuid(r[9]),uuid(r[10]),uuid(r[11]),uuid(r[12]),uuid(r[13]),str(r[14]),str(r[15]),str(r[16]),str(r[17]),str(r[18]),
-                Boolean.TRUE.equals(r[19]),Boolean.TRUE.equals(r[20]),uuid(r[21]),decimal(r[22]),decimal(r[23]),Boolean.TRUE.equals(r[24]),
-                Boolean.TRUE.equals(r[25]));
+                Boolean.TRUE.equals(r[19]),Boolean.TRUE.equals(r[20]),uuid(r[21]),decimal(r[22]),Boolean.TRUE.equals(r[23]),
+                Boolean.TRUE.equals(r[24]));
     }
     private void requireAccess(Source source) {
         membership.requireActiveOperator();
@@ -434,11 +460,13 @@ public class ProductionExecutionBatchService {
     private record Source(UUID id,UUID planId,UUID packageId,UUID planItemId,String status,long version,BigDecimal qty,String bomFingerprint,
                           UUID workshopId,UUID responsibleId,UUID makerId,UUID analysisId,UUID analysisItemId,UUID warehouseId,
                           String planNo,String code,String productCode,String productName,String unitName,boolean closed,boolean active,
-                          UUID rootId,BigDecimal offset,BigDecimal rootQty,boolean autoPromote,boolean zeroMaterial){}
+                          UUID rootId,BigDecimal offset,boolean autoPromote,boolean zeroMaterial){}
     private record Material(UUID rootDemandId,UUID currentDemandId,UUID goodsId,String goodsCode,String goodsName,UUID colorId,String colorName,
-                            UUID unitId,String unitName,BigDecimal rootRequired,BigDecimal perProduct,String route,BigDecimal priorIssued,
-                            CompleteKitAllocator.MaterialUsage usage){}
+                            UUID unitId,String unitName,BigDecimal perProduct,BigDecimal priorIssued,boolean exact,FrozenCurve curve){}
+    private record FrozenCurve(List<CompleteKitAllocator.ConsumptionRule> rules,BigDecimal productUnitRate){
+        BigDecimal required(BigDecimal productQty){return CompleteKitAllocator.required(rules,productQty,productUnitRate);}
+    }
     private record MaterialSlice(UUID rootDemandId,BigDecimal requiredQty,BigDecimal priorQty,boolean requiresPrior){}
-    private record Context(Source source,CompleteKitAllocator.ProductLine product,List<Material> materials,
+    private record Context(Source source,List<Material> materials,
                            List<ProductionExecutionReadinessService.BatchAvailability> availability){}
 }

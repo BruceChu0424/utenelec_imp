@@ -29,8 +29,39 @@ void main() {
     expect(masked.receiptType, ProcurementIqcReceiptType.subcontract);
     expect(masked.status, ProcurementIqcRejectionStatus.returnRecorded);
     expect(masked.allows(ProcurementIqcRejectionAction.confirmCredit), isTrue);
-    expect(masked.amountLabel(masked.failedAmountLocal), '***');
-    expect(visible.amountLabel(visible.failedAmountLocal), 'CNY 125.5000');
+    expect(masked.localAmountLabel(masked.failedAmountLocal), '***');
+    expect(masked.originalAmountLabel(masked.failedAmountOriginal), '***');
+    // ADR-128：本币金额不挂单据币种；原币金额写成「币种 金额」。
+    expect(visible.localAmountLabel(visible.failedAmountLocal), '125.50');
+    expect(
+      visible.originalAmountLabel(visible.failedAmountOriginal),
+      'CNY 125.50',
+    );
+    expect(visible.localAmountLabel(null), '待核对');
+  });
+
+  test('原币金额用币种名称，旧数字编号不显示，本币金额不挂外币', () {
+    final usd = ProcurementIqcRejectionCase.fromJson({
+      ..._caseJson,
+      'priceMasked': false,
+      'currencyCode': '002',
+      'currencyName': '美金',
+      'failedAmountOriginal': '10',
+      'failedAmountLocal': '72.1',
+    });
+    final unnamed = ProcurementIqcRejectionCase.fromJson({
+      ..._caseJson,
+      'priceMasked': false,
+      'currencyCode': '002',
+    });
+
+    expect(usd.currencyName, '美金');
+    expect(usd.originalAmountLabel(usd.failedAmountOriginal), '美金 10.00');
+    expect(usd.localAmountLabel(usd.failedAmountLocal), '72.10');
+    expect(
+      unnamed.originalAmountLabel(unnamed.failedAmountOriginal),
+      '原币 125.50',
+    );
   });
 
   test(

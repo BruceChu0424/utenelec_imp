@@ -29,7 +29,7 @@ import static com.uten.imp.businesschain.AggregateMaterialOrderEndToEndTest.amou
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
-        "uten.production.readiness-reconcile.enabled=false","uten.policy-intelligence.enabled=false",
+        "uten.production.readiness-reconcile.enabled=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only",
         "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
@@ -105,6 +105,135 @@ class AggregateMaterialDirectTransferEndToEndTest {
         for(UUID parent:parents)amount("1",db.queryForObject("SELECT fn_workshop_direct_covered_base_qty(?)",BigDecimal.class,demand(segment(parent))));
     }
 
+    @Test void oneReportHandsOverToThreeSameWorkshopParentsByExplicitAllocations(){
+        // 共享子件报 3：工人按先急后缓逐个分给三个同车间上层工单 → 三条转送明细、没有送仓明细。
+        var c=flow.createWithChild("1");
+        var shared=flow.writer.submit(c.analysis(),flow.command(c,List.of(flow.input(c,c.child(),"MAKE","3",false)))).batches().getFirst();
+        List<UUID> parents=issue(c,c.common(),"1");
+        UUID source=segment(shared.planId());flow.receive(c,c.material(),"6");start(c,source);
+        // BOM 学习口径(V711/V739)：给这个子件建一份学习档案，审核后必须照常入队刷新。
+        db.update("INSERT INTO goods_bom_learning_profiles(goods_id,output_unit_id,enabled,blocked_reason) VALUES (?,?,FALSE,'MANUAL_BOM') ON CONFLICT DO NOTHING",
+                c.child(),c.world().unitId());
+        UUID worker=worker(c);flow.fixture.loginAs(worker);
+        var listing=direct().candidates(source,c.child(),null);
+        assertEquals(3,listing.candidates().size());assertTrue(listing.blockedTargets().isEmpty());
+        List<Integer> priorities=listing.candidates().stream().map(candidate->db.queryForObject("""
+                SELECT item.line_priority FROM production_plans plan JOIN production_material_analysis_items item ON item.id=plan.material_analysis_item_id
+                WHERE plan.id=?""",Integer.class,candidate.planId())).toList();
+        assertEquals(priorities.stream().sorted(java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())).toList(),priorities,"候选按先急后缓排好");
+        UUID report=transfer(c,source,listing.candidates().stream()
+                .map(candidate->DailyReportOutputAllocationLine.direct(candidate.demandId(),BigDecimal.ONE)).toList(),"3","6");
+        assertEquals(3,db.queryForObject("SELECT count(*) FROM production_daily_report_items WHERE report_id=? AND destination='WORKSHOP' AND NOT is_deleted",Integer.class,report));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_daily_report_items WHERE report_id=? AND destination='WAREHOUSE' AND NOT is_deleted",Integer.class,report));
+        assertEquals(1,db.queryForObject("SELECT count(DISTINCT output_batch_id)+count(DISTINCT is_final)-1+count(DISTINCT unit_rate)-1 FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted",Integer.class,report),
+                "三块同一产出批次、同一完结标记、同一换算率");
+        assertEquals(3,db.queryForObject("SELECT count(DISTINCT direct_transfer_demand_id) FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted",Integer.class,report));
+        amount("3",db.queryForObject("SELECT SUM(proof.qty_base) FROM preplan_aggregate_direct_transfer_slices proof JOIN preplan_supply_action_allocations allocation ON allocation.id=proof.supply_action_allocation_id JOIN preplan_aggregate_batches batch ON batch.action_id=allocation.action_id WHERE batch.id=?",BigDecimal.class,shared.batchId()));
+        for(UUID parent:parents){
+            UUID receiving=demand(segment(parent));
+            amount("1",db.queryForObject("SELECT fn_workshop_direct_covered_base_qty(?)",BigDecimal.class,receiving));
+            // (b) 每个接收需求的领料过账恰好等于分给它的数量(线边仓领料仍按接收工单一张)。
+            amount("1",db.queryForObject("""
+                    SELECT COALESCE(SUM(CASE posting_type WHEN 'ISSUE' THEN qty_base WHEN 'ISSUE_REVERSE' THEN -qty_base ELSE 0 END),0)
+                    FROM production_material_stock_postings WHERE demand_id=?""",BigDecimal.class,receiving));
+        }
+        assertTrue(direct().candidates(source,c.child(),null).candidates().isEmpty());
+        // (a) 学习分母 = 本工单家族已审报工的 数量×换算率(不含返工补产) = 本次实际产量。
+        amount("3",db.queryForObject("""
+                SELECT COALESCE(SUM(item.qty*item.unit_rate),0) FROM production_daily_report_items item
+                JOIN production_daily_reports report ON report.id=item.report_id
+                WHERE item.execution_segment_id IN(SELECT segment_id FROM fn_production_execution_cost_members(fn_production_execution_cost_scope(?)))
+                  AND report.status=1 AND NOT report.is_deleted AND NOT item.is_deleted AND item.fqc_recovery_authorization_id IS NULL""",BigDecimal.class,source));
+        // (c) 刷新队列照常产生并在提交时排空：本工单家族的学习样本已按本次审核刷新。
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM production_bom_learning_samples WHERE execution_root_id=fn_production_execution_cost_scope(?)",Integer.class,source));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_bom_learning_refresh_queue WHERE execution_root_id=fn_production_execution_cost_scope(?)",Integer.class,source));
+    }
+
+    @Test void mixedWorkshopParentsGetTheirShareDirectAndOnlyTheCrossWorkshopShareGoesToTheWarehouse(){
+        var c=flow.createWithChild("1");
+        var shared=flow.writer.submit(c.analysis(),flow.command(c,List.of(flow.input(c,c.child(),"MAKE","3",false)))).batches().getFirst();
+        Object other=ReflectionTestUtils.invokeMethod(flow.fixture,"productionAssignment","aggregate-other-"+UUID.randomUUID());
+        UUID otherWorkshop=ReflectionTestUtils.invokeMethod(other,"workshopId"),otherWorker=ReflectionTestUtils.invokeMethod(other,"workerId");
+        var view=flow.analyses.detail(c.analysis());
+        var commons=view.flatMaterials().stream().filter(row->row.goodsId().equals(c.common())&&row.nodeRole().equals("BOM_COMPONENT")&&row.requiredQty().signum()>0).toList();
+        assertEquals(3,commons.size());
+        List<IssueWorkshopPlansRequest.IssuePlanLine> lines=new ArrayList<>();
+        for(int index=0;index<commons.size();index++){
+            boolean far=index==commons.size()-1;
+            lines.add(new IssueWorkshopPlansRequest.IssuePlanLine(commons.get(index).materialLineId(),null,BigDecimal.ONE,null,null,
+                    far?otherWorkshop:c.workshop(),null,far?otherWorker:c.worker(),null,null,false,BigDecimal.ZERO));
+        }
+        List<UUID> parents=flow.ordinary.issueWorkshopPlans(c.analysis(),new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),"direct-mixed-"+UUID.randomUUID(),
+                c.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,lines)).plans().stream().map(row->row.planId()).toList();
+        UUID source=segment(shared.planId());flow.receive(c,c.material(),"6");start(c,source);
+        UUID worker=worker(c);flow.fixture.loginAs(worker);
+        var listing=direct().candidates(source,c.child(),null);
+        assertEquals(2,listing.candidates().size());
+        assertEquals(1,listing.blockedTargets().size());
+        assertEquals("DIFFERENT_WORKSHOP",listing.blockedTargets().getFirst().reasonCode());
+        assertTrue(listing.blockedTargets().getFirst().reason().contains("跨车间必须送入仓库"),listing.blockedTargets().getFirst().reason());
+        UUID far=parents.stream().map(this::segment).filter(segment->otherWorkshop.equals(db.queryForObject(
+                "SELECT workshop_department_id FROM production_execution_segments WHERE id=?",UUID.class,segment))).map(this::demand).findFirst().orElseThrow();
+        assertEquals(far,listing.blockedTargets().getFirst().demandId());
+        var cross=assertThrows(ApiException.class,()->transfer(c,source,List.of(DailyReportOutputAllocationLine.direct(far,new BigDecimal("3"))),"3","6"));
+        assertTrue(cross.getMessage().startsWith("无法转到下一道工序：")&&cross.getMessage().contains("跨车间必须送入仓库"),cross.getMessage());
+        List<DailyReportOutputAllocationLine> allocations=new ArrayList<>();
+        for(var candidate:listing.candidates())allocations.add(DailyReportOutputAllocationLine.direct(candidate.demandId(),BigDecimal.ONE));
+        allocations.add(DailyReportOutputAllocationLine.warehouse(BigDecimal.ONE));
+        UUID report=transfer(c,source,allocations,"3","6");
+        assertEquals(2,db.queryForObject("SELECT count(*) FROM production_daily_report_items WHERE report_id=? AND destination='WORKSHOP' AND NOT is_deleted",Integer.class,report));
+        assertEquals("RECEIVERS_FULL",db.queryForObject("SELECT output_route_reason FROM production_daily_report_items WHERE report_id=? AND destination='WAREHOUSE' AND NOT is_deleted",String.class,report),
+                "同车间的两个都分满了，剩下的送入仓库");
+        var detail=beans.getBean(ProductionDailyReportService.class).detail(report);
+        assertTrue(detail.getItems().stream().anyMatch(item->"能直送的上层工单都已分满，其余送入仓库".equals(item.getOutputRouteReasonText())));
+        receiveWarehousePiece(c,report,"AG-CROSS-01");
+        // 仓库入库只归到跨车间那一份：三份各收 1，同车间两份没有被入库再占一次。
+        List<BigDecimal> received=db.queryForList("SELECT fn_preplan_allocation_received_qty(allocation.id) FROM preplan_supply_action_allocations allocation JOIN preplan_aggregate_batches batch ON batch.action_id=allocation.action_id WHERE batch.id=?",BigDecimal.class,shared.batchId());
+        assertEquals(3,received.size());received.forEach(qty->amount("1",qty));
+    }
+
+    @Test void warehouseReceiptOfASharedBatchFillsTheMostUrgentShareFirst(){
+        // V736：仓库入库分给哪个来源与直送同一「先急后缓」次序，不再按随机 UUID。
+        var c=flow.createWithChild("1");
+        var shared=flow.writer.submit(c.analysis(),flow.command(c,List.of(flow.input(c,c.child(),"MAKE","3",false)))).batches().getFirst();
+        issue(c,c.common(),"1");
+        UUID source=segment(shared.planId());flow.receive(c,c.material(),"6");start(c,source);
+        UUID worker=worker(c);flow.fixture.loginAs(worker);
+        UUID report=transfer(c,source,List.of(),"1","2");
+        assertEquals("USER_CHOSEN",db.queryForObject("SELECT output_route_reason FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted",String.class,report));
+        UUID inbound=receiveWarehousePiece(c,report,"AG-URGENT-01");
+        Integer most=db.queryForObject("""
+                SELECT MIN(owner.line_priority) FROM preplan_supply_action_allocations allocation
+                JOIN preplan_aggregate_batches batch ON batch.action_id=allocation.action_id
+                JOIN production_material_analysis_materials material ON material.id=allocation.analysis_material_id
+                JOIN production_material_analysis_items owner ON owner.id=material.analysis_item_id WHERE batch.id=?""",Integer.class,shared.batchId());
+        assertEquals(List.of(most),db.queryForList("""
+                SELECT owner.line_priority FROM preplan_analysis_stock_exact_pegs peg
+                JOIN preplan_supply_action_allocations allocation ON allocation.id=peg.supply_action_allocation_id
+                JOIN production_material_analysis_materials material ON material.id=allocation.analysis_material_id
+                JOIN production_material_analysis_items owner ON owner.id=material.analysis_item_id
+                WHERE peg.source_stock_document_id=?""",Integer.class,inbound));
+    }
+
+    @Test void subcontractPreMakeNeverGoesToTheNextProcessAndItsWarehouseReasonSaysWhy(){
+        var c=flow.create(true,true,"1");flow.setRoute(c,c.common(),"SUBCONTRACT");
+        var raw=flow.input(c,c.common(),"SUBCONTRACT","3",false);
+        var group=new GroupInput(raw.clientGroupKey(),raw.materialLineIds(),raw.route(),raw.qty(),false,c.workshop(),c.worker(),null,null,null,null,BigDecimal.ZERO,BigDecimal.ZERO);
+        var batch=flow.writer.submit(c.analysis(),flow.command(c,List.of(group))).batches().getFirst();
+        UUID source=segment(batch.planId());
+        UUID worker=worker(c);flow.fixture.loginAs(worker);
+        var listing=direct().candidates(source,c.common(),null);
+        assertTrue(listing.candidates().isEmpty());
+        assertEquals("SUBCONTRACT_ROUTE",listing.unavailableReasonCode());
+        assertTrue(listing.unavailableReason().contains("是委外件"),listing.unavailableReason());
+        flow.fixture.loginAs(c.world().superAdminUserId());
+        flow.produce(c,batch);
+        assertEquals(List.of("SUBCONTRACT_ROUTE"),db.queryForList("""
+                SELECT DISTINCT output_route_reason FROM production_daily_report_items
+                WHERE execution_segment_id=? AND NOT is_deleted AND NOT is_public_output""",String.class,source));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_daily_report_items WHERE execution_segment_id=? AND destination='WORKSHOP'",Integer.class,source));
+    }
+
     @Test void partialParentCannotTakeTheOldChildQuantityRetainedByItsOriginalParent(){
         var c=flow.createWithChild("1.5");var initial=flow.analyses.detail(c.analysis());
         var child=initial.flatMaterials().stream().filter(row->row.goodsId().equals(c.child())).findFirst().orElseThrow();
@@ -127,19 +256,16 @@ class AggregateMaterialDirectTransferEndToEndTest {
         issue(c,c.common(),"1");UUID source=segment(shared.planId());
         flow.receive(c,c.material(),"6");start(c,source);UUID worker=worker(c);flow.fixture.loginAs(worker);
         UUID target=direct().candidates(source,c.child(),null).candidates().getFirst().demandId();
-        UUID report=transfer(c,source,target,"2","4");
+        // V736/ADR-127：一个上层工单只缺 1，分给它 2 当场说清楚，不再悄悄把多出的送进仓库。
+        var over=assertThrows(ApiException.class,()->transfer(c,source,List.of(DailyReportOutputAllocationLine.direct(target,new BigDecimal("2"))),"2","4"));
+        assertTrue(over.getMessage().startsWith("无法转到下一道工序：转给上层工单 ")&&over.getMessage().contains("超过最多可送 1"),over.getMessage());
+        UUID report=transfer(c,source,List.of(DailyReportOutputAllocationLine.direct(target,BigDecimal.ONE),
+                DailyReportOutputAllocationLine.warehouse(BigDecimal.ONE)),"2","4");
         amount("1",db.queryForObject("SELECT SUM(qty) FROM production_daily_report_items WHERE report_id=? AND destination='WORKSHOP'",BigDecimal.class,report));
         amount("1",db.queryForObject("SELECT SUM(qty) FROM production_daily_report_items WHERE report_id=? AND destination='WAREHOUSE'",BigDecimal.class,report));
-        UUID ordinaryItem=db.queryForObject("SELECT id FROM production_daily_report_items WHERE report_id=? AND destination='WAREHOUSE'",UUID.class,report);
-        flow.fixture.loginAs(c.world().superAdminUserId());
-        beans.getBean(com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService.class).register(report,
-            new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest("aggregate-mixed-arrival-"+report,c.world().warehouseId(),
-                List.of(new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest(ordinaryItem,"AG-MIXED-01")),null));
-        UUID inspection=db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,ordinaryItem);
-        beans.getBean(com.uten.imp.features.production.quality.ProductionFqcInspectionService.class).decide(inspection,
-            new com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest("PASS",BigDecimal.ONE,null,null,null,"aggregate-mixed-pass-"+inspection));
-        UUID inbound=db.queryForObject("SELECT DISTINCT doc_id FROM stock_document_items WHERE source_daily_report_item_id=?",UUID.class,ordinaryItem);
-        flow.fixture.confirmFinishedInboundFully(inbound);
+        assertEquals("USER_CHOSEN",db.queryForObject("SELECT output_route_reason FROM production_daily_report_items WHERE report_id=? AND destination='WAREHOUSE'",String.class,report),
+                "还有两个上层工单能收：送入仓库是工人自己选的");
+        receiveWarehousePiece(c,report,"AG-MIXED-01");
         amount("2",db.queryForObject("SELECT SUM(fn_preplan_allocation_received_qty(allocation.id)) FROM preplan_supply_action_allocations allocation JOIN preplan_aggregate_batches batch ON batch.action_id=allocation.action_id WHERE batch.id=?",BigDecimal.class,shared.batchId()));
         flow.fixture.loginAs(worker);var remaining=direct().candidates(source,c.child(),null).candidates();assertEquals(1,remaining.size());amount("1",remaining.getFirst().remainingQty());
         transfer(c,source,remaining.getFirst().demandId(),"1","2");
@@ -181,10 +307,28 @@ class AggregateMaterialDirectTransferEndToEndTest {
         db.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)",c.workshop(),user);return user;
     }
     UUID transfer(AggregateMaterialOrderEndToEndTest.Case c,UUID source,UUID target,String quantity,String used){
+        return transfer(c,source,List.of(DailyReportOutputAllocationLine.direct(target,new BigDecimal(quantity))),quantity,used);
+    }
+    UUID transfer(AggregateMaterialOrderEndToEndTest.Case c,UUID source,List<DailyReportOutputAllocationLine> allocations,String quantity,String used){
         var report=new DailyReportSaveRequest();report.setIdempotencyKey("aggregate-direct-report-"+UUID.randomUUID());report.setBillDate(BusinessTime.today());report.setWarehouseId(c.world().warehouseId());report.setDepartmentId(c.workshop());report.setWorkerIds(List.of(c.worker()));
-        var item=new DailyReportItemLine();item.setLineNo(1);item.setExecutionSegmentId(source);item.setPlanItemId(db.queryForObject("SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",UUID.class,source));item.setGoodsId(c.child());item.setUnitId(c.world().unitId());item.setUnitRate(BigDecimal.ONE);item.setQty(new BigDecimal(quantity));item.setDestination("WORKSHOP");item.setDirectTransferDemandId(target);report.setItems(List.of(item));
+        var item=new DailyReportItemLine();item.setLineNo(1);item.setExecutionSegmentId(source);item.setPlanItemId(db.queryForObject("SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",UUID.class,source));item.setGoodsId(c.child());item.setUnitId(c.world().unitId());item.setUnitRate(BigDecimal.ONE);item.setQty(new BigDecimal(quantity));item.setAllocations(allocations);report.setItems(List.of(item));
         var usage=new DailyReportMaterialUsageLine();usage.setDemandId(demand(source));usage.setQtyBase(new BigDecimal(used));report.setMaterialLines(List.of(usage));
         var reports=beans.getBean(ProductionDailyReportService.class);UUID id=reports.create(report).getId();reports.approve(id,DailyReportApproveRequests.freshKey());return id;
+    }
+    /** 送仓明细走仓库到货登记、品质合格、点收入库，返回入库单。 */
+    UUID receiveWarehousePiece(AggregateMaterialOrderEndToEndTest.Case c,UUID report,String location){
+        UUID ordinaryItem=db.queryForObject("SELECT id FROM production_daily_report_items WHERE report_id=? AND destination='WAREHOUSE' AND NOT is_deleted",UUID.class,report);
+        flow.fixture.loginAs(c.world().superAdminUserId());
+        beans.getBean(com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService.class).register(report,
+            new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest("aggregate-arrival-"+report,c.world().warehouseId(),
+                List.of(new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest(ordinaryItem,location)),null));
+        UUID inspection=db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,ordinaryItem);
+        BigDecimal qty=db.queryForObject("SELECT qty FROM production_daily_report_items WHERE id=?",BigDecimal.class,ordinaryItem);
+        beans.getBean(com.uten.imp.features.production.quality.ProductionFqcInspectionService.class).decide(inspection,
+            new com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest("PASS",qty,null,null,null,"aggregate-pass-"+inspection));
+        UUID inbound=db.queryForObject("SELECT DISTINCT doc_id FROM stock_document_items WHERE source_daily_report_item_id=?",UUID.class,ordinaryItem);
+        flow.fixture.confirmFinishedInboundFully(inbound);
+        return inbound;
     }
     UUID segment(UUID plan){return db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",UUID.class,plan);}
     UUID demand(UUID segment){return db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",UUID.class,segment);}

@@ -96,9 +96,26 @@ SELECT
         NULLIF(substring(gs.paper FROM '换后模(.{1,30}?)镶件'), ''),
         NULLIF(substring(gs.paper FROM '后模镶件用([^ \t，。;；]{1,30})'), '')
     ),
-    gs.source_e, gs.work_e, gs.lacquer_e, gs.incidental_e, gs.plating_e, gs.casing_e,
-    gs.manage_e, gs.polish_e, gs.electric_e, gs.machining_e, gs.lost_e, gs.rent_e,
-    gs.make_e, gs.work_rate, gs.make_rate, gs.rent_rate, gs.total, gs.c_total, gs.g_total,
+    -- V421 goods_cost_amount_range_chk：成本金额列允许 NULL 不允许负数。老库以 -1 等
+    -- 负值表示「未设成本」（实测 source_e 4 / work_e 6 / machining_e 51 / total·c_total·
+    -- g_total 各 15 行），统一按未知处理为 NULL，不改 CHECK、不伪造 0。
+    CASE WHEN gs.source_e    < 0 THEN NULL ELSE gs.source_e    END,
+    CASE WHEN gs.work_e      < 0 THEN NULL ELSE gs.work_e      END,
+    CASE WHEN gs.lacquer_e   < 0 THEN NULL ELSE gs.lacquer_e   END,
+    CASE WHEN gs.incidental_e< 0 THEN NULL ELSE gs.incidental_e END,
+    CASE WHEN gs.plating_e   < 0 THEN NULL ELSE gs.plating_e   END,
+    CASE WHEN gs.casing_e    < 0 THEN NULL ELSE gs.casing_e    END,
+    CASE WHEN gs.manage_e    < 0 THEN NULL ELSE gs.manage_e    END,
+    CASE WHEN gs.polish_e    < 0 THEN NULL ELSE gs.polish_e    END,
+    CASE WHEN gs.electric_e  < 0 THEN NULL ELSE gs.electric_e  END,
+    CASE WHEN gs.machining_e < 0 THEN NULL ELSE gs.machining_e END,
+    CASE WHEN gs.lost_e      < 0 THEN NULL ELSE gs.lost_e      END,
+    CASE WHEN gs.rent_e      < 0 THEN NULL ELSE gs.rent_e      END,
+    CASE WHEN gs.make_e      < 0 THEN NULL ELSE gs.make_e      END,
+    gs.work_rate, gs.make_rate, gs.rent_rate,
+    CASE WHEN gs.total   < 0 THEN NULL ELSE gs.total   END,
+    CASE WHEN gs.c_total < 0 THEN NULL ELSE gs.c_total END,
+    CASE WHEN gs.g_total < 0 THEN NULL ELSE gs.g_total END,
     gs.bom_status, gs.status, gs.app_status, gs.app_status2, gs.g_style, gs.ck, gs.zk,
     FALSE, reserved.last_seq - gs.allocation_count + gs.seq_ordinal
 FROM numbered gs CROSS JOIN reserved;

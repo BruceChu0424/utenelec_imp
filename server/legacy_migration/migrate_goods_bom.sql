@@ -13,6 +13,12 @@
 -- sort_order 按老库 ID 序生成（保持老系统 001.jpg 的行序）。
 -- =====================================================================
 
+-- V711/V739 的 fn_bom_learning_manual_ownership 对每行 INSERT 做整子树递归环检测，
+-- 198k 行下随表增长二次方退化（实测 5k 行 20.7s、50k 行 9:47）。V739 迁移自身在批量
+-- 拓扑写入时就以 app.bom_learning_write='on' 跳过逐行重校验（模块自有守恒/结构校验），
+-- 首导同场景同口径；导入后由运维一次性全图环检测兜底。
+SELECT set_config('app.bom_learning_write', 'on', true);
+
 -- Analysis/material rows may reference BOM evidence in the current schema.
 -- Keep FK/audit triggers active so a reload on a used database fails closed.
 DELETE FROM goods_bom_items;
@@ -40,15 +46,20 @@ CREATE TEMP TABLE IF NOT EXISTS bootstrap_bom_exclusions (
     source_legacy_id integer NOT NULL,
     parent_legacy_id integer,
     component_legacy_id integer,
-    reason text NOT NULL CHECK (reason = 'EXCLUDED_NON_OPERATIONAL_MASTER'),
+    reason text NOT NULL CHECK (reason IN ('EXCLUDED_NON_OPERATIONAL_MASTER', 'EXCLUDED_NON_POSITIVE_QTY')),
     PRIMARY KEY (source_file, source_legacy_id)
 );
+-- V739 起 goods_bom_items.qty 要求为正（goods_bom_qty_positive_chk）；老库存在
+-- qty=0 的行（实测 142 行）——按孤儿行同款口径显式排除并留痕，不伪造用量。
 INSERT INTO bootstrap_bom_exclusions (
     source_file, source_legacy_id, parent_legacy_id, component_legacy_id, reason)
 SELECT 'goods_bom.csv', source.legacy_id, source.goods_legacy_id, source.component_legacy_id,
-       'EXCLUDED_NON_OPERATIONAL_MASTER'
+       CASE WHEN source.qty IS NULL OR source.qty <= 0
+            THEN 'EXCLUDED_NON_POSITIVE_QTY'
+            ELSE 'EXCLUDED_NON_OPERATIONAL_MASTER' END
 FROM bom_stage source
-WHERE NOT EXISTS (
+WHERE source.qty IS NULL OR source.qty <= 0
+   OR NOT EXISTS (
           SELECT 1 FROM goods parent_goods
           WHERE parent_goods.legacy_id = source.goods_legacy_id
             AND NOT parent_goods.is_deleted AND NOT parent_goods.auto_created)
@@ -81,7 +92,8 @@ JOIN goods g ON g.legacy_id = bs.goods_legacy_id
             AND g.auto_created = FALSE
 JOIN goods c ON c.legacy_id = bs.component_legacy_id
             AND c.is_deleted = FALSE
-            AND c.auto_created = FALSE;
+            AND c.auto_created = FALSE
+WHERE bs.qty > 0;
 
 -- 防御性清理：即使上方 JOIN 被后续改坏，也不允许迁移生成的占位端点进入活动 BOM。
 UPDATE goods_bom_items bi
@@ -127,7 +139,8 @@ FROM goods_bom_items;
 
 SELECT '⚠ 跳过无有效主档行（父/组件不存在、已删除或为历史占位）：' || count(*) || ' 行' AS 孤儿
 FROM bom_stage bs
-WHERE NOT EXISTS (
+WHERE bs.qty > 0
+  AND (NOT EXISTS (
           SELECT 1 FROM goods g
           WHERE g.legacy_id = bs.goods_legacy_id
             AND g.is_deleted = FALSE
@@ -136,7 +149,10 @@ WHERE NOT EXISTS (
           SELECT 1 FROM goods c
           WHERE c.legacy_id = bs.component_legacy_id
             AND c.is_deleted = FALSE
-            AND c.auto_created = FALSE);
+            AND c.auto_created = FALSE));
+
+SELECT '⚠ 跳过零/负用量行（V739 要求 qty 为正）：' || count(*) || ' 行' AS 零用量
+FROM bom_stage bs WHERE bs.qty IS NULL OR bs.qty <= 0;
 
 SELECT '✔ 活动 BOM 占位端点 0 / 实际 ' || count(*) AS 占位门禁
 FROM goods_bom_items bi

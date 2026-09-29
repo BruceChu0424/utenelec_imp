@@ -359,10 +359,13 @@ class SalesOrderFinanceConfirmServiceTest {
     }
 
     private static Object[] pendingRow(UUID clientId, UUID currencyId, java.math.BigDecimal credit) {
+        // 投影列序见 pending() 的 native SELECT：… credit(17), currency_id(18),
+        // 报价核价四列(19-22, ADR-134)——普通订单无财务确认过的来源报价, 补 null。
         return new Object[]{
                 UUID.randomUUID(), "XD20260927000001", null, "客户", "销售", null, 1L,
                 new java.math.BigDecimal("158400"), "USD", "美金", "ALLOW_PARTIAL",
-                clientId, false, null, null, 0L, 0L, credit, currencyId};
+                clientId, false, null, null, 0L, 0L, credit, currencyId,
+                null, null, null, null};
     }
 
     private static SalesOrder approvedOrder() {

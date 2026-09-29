@@ -519,8 +519,11 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(708, 637),")
                 .contains("(709, 638), (710, 639), (711, 640), (712, 641), (713, 642), (714, 643), (715, 644),")
                 .contains("(716, 645)")
-                .contains("(741, 668)")
-                .contains("(742, 669)")
+                // V735(领料单批次号) 2026-09-28 并入后, 735 起序号整体顺移一位。
+                .contains("(735, 664)")
+                .contains("(741, 669)")
+                .contains("(742, 670)")
+                .contains("(743, 671)")
                 // Preserve the exact range label without a second hardcoded current head.
                 .contains("V507/469、V508/470及V511至V"
                         + MigrationRehearsalSupport.CURRENT_HEAD_VERSION + "完整目录")

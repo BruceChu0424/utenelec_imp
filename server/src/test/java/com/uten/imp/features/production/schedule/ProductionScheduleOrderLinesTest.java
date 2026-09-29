@@ -98,7 +98,9 @@ class ProductionScheduleOrderLinesTest {
     }
 
     private static Object[] row(UUID lineId, int lineNo, Object[] component) {
-        Object[] row = new Object[29];
+        // 投影列序见 orderLines 的 native SELECT：主行 0-16, BOM 列 17-28,
+        // bom.periodic(29) 为整批领料标记(ADR-131)——null = 普通发料料。
+        Object[] row = new Object[30];
         row[0] = lineId;
         row[1] = lineNo;
         row[2] = UUID.randomUUID();

@@ -19,3 +19,21 @@ abed98f4ac0a70e5d9d1dec927388b9c5791e2a1:deploy/release/offline_release.py:gener
 # deterministic temporary .txt filename. Neither value authenticates any service.
 1516ad9a8ff7fe0f8795a27ae0eff9ef011863c9:deploy/postgres/backup/test_paired_internal_backup.py:generic-api-key:127
 1516ad9a8ff7fe0f8795a27ae0eff9ef011863c9:server/src/test/java/com/uten/imp/common/storage/InternalStorageServiceTest.java:generic-api-key:22
+
+# 2026-09-29 五分支集成提交首次进 CI 全历史扫描的 reviewed 误报：
+# 测试假密钥(sk-test/sk-tester/sk-live 开头的虚构轮换串)、example env 的
+# REPLACE_GENERATED_* 占位符、测试断言用的假 cipher/pgp key、以及
+# warehouse_insight_tables 的 Map key 字面量 'avgDailyOut90'。均不鉴权任何服务。
+b263308a7dca24b8d90402c782aed03b2040fc03:lib/features/warehouse/widgets/warehouse_insight_tables.dart:generic-api-key:171
+a6a3a579c1264515a0bc3c0aab4c2f948a6f337b:server/src/test/java/com/uten/imp/features/sales/quote/SalesQuoteFinanceFlowPostgresTest.java:generic-api-key:73
+6c2fa990915c70551b3a294e1bab8027fb2d17e9:deploy/setup/server.env.internal-test.example:generic-api-key:34
+6c2fa990915c70551b3a294e1bab8027fb2d17e9:server/src/test/java/com/uten/imp/config/ProductionSecretCipherKeyGateTest.java:generic-api-key:40
+6c2fa990915c70551b3a294e1bab8027fb2d17e9:server/src/test/java/com/uten/imp/config/InternalTestRuntimeSafetyGateTest.java:generic-api-key:119
+6c2fa990915c70551b3a294e1bab8027fb2d17e9:server/src/test/java/com/uten/imp/features/ai/client/OpenAiChatClientTest.java:generic-api-key:36
+6c2fa990915c70551b3a294e1bab8027fb2d17e9:server/src/test/java/com/uten/imp/features/ai/gateway/AiConnectionTesterTest.java:generic-api-key:32
+6c2fa990915c70551b3a294e1bab8027fb2d17e9:server/src/test/java/com/uten/imp/security/SecretCipherTest.java:generic-api-key:94
+6c2fa990915c70551b3a294e1bab8027fb2d17e9:server/src/test/java/com/uten/imp/security/SecretCipherTest.java:generic-api-key:188
+6c2fa990915c70551b3a294e1bab8027fb2d17e9:server/src/test/java/com/uten/imp/features/ai/provider/AiProviderServiceTest.java:generic-api-key:43
+6c2fa990915c70551b3a294e1bab8027fb2d17e9:server/src/test/java/com/uten/imp/features/ai/provider/AiProviderServiceTest.java:generic-api-key:44
+439e0b0b60d776e8f7c646986b853125d6aa5e28:test/features/admin/ai_provider_repository_test.dart:generic-api-key:10
+439e0b0b60d776e8f7c646986b853125d6aa5e28:test/features/admin/admin_ai_settings_page_test.dart:generic-api-key:26

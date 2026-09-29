@@ -101,9 +101,8 @@ class WarehouseDrawTask {
   }) => '$batchKey|$goodsCode|$goodsName|$colorName';
 
   /// 本行的批次合并键：有批次=批次（同批跨单可合并）；无批次=单据自身（不跨单）。
-  String get _mergeKey => drawBatchNo.isNotEmpty
-      ? 'batch:$drawBatchNo'
-      : 'doc:$taskId';
+  String get _mergeKey =>
+      drawBatchNo.isNotEmpty ? 'batch:$drawBatchNo' : 'doc:$taskId';
 
   /// 按行级明细把单据行拆成「货品行」（一行=本单的一个货品，数量取该货品行）。
   /// 申请行/未填写材料行/无明细的行原样返回（拆不开就不拆）。
@@ -293,17 +292,16 @@ class WarehouseDrawTask {
   bool get canBatchIssue => isBatchMerged
       ? members!.every((d) => d.canBatchIssue)
       : (drawDocPath != null || (isMaterialDiscovery && materialsDefined)) &&
-          !const {
-            'DONE',
-            'COMPLETED',
-            'CANCELLED',
-            'REVERSED',
-          }.contains(taskStatus.toUpperCase());
+            !const {
+              'DONE',
+              'COMPLETED',
+              'CANCELLED',
+              'REVERSED',
+            }.contains(taskStatus.toUpperCase());
 
-  bool get batchRequiresApproval =>
-      isBatchMerged
-          ? members!.any((d) => d.batchRequiresApproval)
-          : isDraftDoc || isMaterialDiscovery;
+  bool get batchRequiresApproval => isBatchMerged
+      ? members!.any((d) => d.batchRequiresApproval)
+      : isDraftDoc || isMaterialDiscovery;
 
   /// 领料单深链：服务端投影 actionDocCanView=true 时才有（对象范围裁剪）。
   String? get drawDocPath {

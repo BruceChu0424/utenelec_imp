@@ -115,7 +115,8 @@ void main() {
       // 2026-09-27 去分页 + 全选含收起层级：表头全选覆盖整棵可见投影(250 行，
       // 含折叠分支与屏外行)，不再是「当前页 99 行」。
       expect(find.text('已选 250 项'), findsOneWidget);
-      expect(find.text('下单(250)'), findsOneWidget);      await tester.enterText(
+      expect(find.text('下单(250)'), findsOneWidget);
+      await tester.enterText(
         find.byKey(const Key('material-bom-search')),
         '紧固件 249',
       );

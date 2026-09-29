@@ -1044,7 +1044,7 @@ class _ProductionDailyReportEditPageState
         ..directTransferBlockedText = null
         ..directTransferLoadFailed = false
         ..qty.text = source.maxReportQty > 0
-              ? _quantityText(source.maxReportQty)
+            ? _quantityText(source.maxReportQty)
             : ''
         ..defectQty.clear();
       _discardOutputAllocations(row);

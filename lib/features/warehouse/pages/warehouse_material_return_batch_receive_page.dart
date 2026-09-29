@@ -181,7 +181,10 @@ class _WarehouseMaterialReturnBatchReceivePageState
                           children: [
                             Text(_error!),
                             const SizedBox(height: UtenSpacing.s8),
-                            UtenButton(onPressed: _load, child: const Text('重试')),
+                            UtenButton(
+                              onPressed: _load,
+                              child: const Text('重试'),
+                            ),
                           ],
                         ),
                       )
@@ -251,9 +254,9 @@ class _WarehouseMaterialReturnBatchReceivePageState
                                     value: row.warehouseId,
                                     items: warehouseHierarchyItems(scoped),
                                     info: '余料进入这里选择的正常仓库；来源记录用于追溯。',
-                                    errorMessage: detail
-                                            .materialReturnMainWarehouseId ==
-                                        null
+                                    errorMessage:
+                                        detail.materialReturnMainWarehouseId ==
+                                            null
                                         ? '来源主仓尚未读取，请刷新'
                                         : allowed.isEmpty
                                         ? '此主仓下暂无有效正常收料仓库'
@@ -287,14 +290,11 @@ class _WarehouseMaterialReturnBatchReceivePageState
                   onPressed: _saving || !_allPicked || !canApprove
                       ? null
                       : _submit,
-                  child: Text(
-                    '确认批量收料(${_rows.where((r) => !r.done).length})',
-                  ),
+                  child: Text('确认批量收料(${_rows.where((r) => !r.done).length})'),
                 ),
               ],
             ),
-            if (_saving)
-              const UtenBusyOverlay(title: '正在批量收料'),
+            if (_saving) const UtenBusyOverlay(title: '正在批量收料'),
           ],
         ),
       ),

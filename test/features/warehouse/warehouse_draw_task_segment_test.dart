@@ -378,8 +378,24 @@ void main() {
       billNo: 'SL001',
       batch: 'SL001',
       lines: [
-        {'goodsCode': 'A', 'goodsName': '接线铜扣', 'colorName': '', 'unitName': '个', 'requiredQty': 10, 'fulfilledQty': 0, 'openQty': 10},
-        {'goodsCode': 'B', 'goodsName': '外壳', 'colorName': '', 'unitName': '个', 'requiredQty': 5, 'fulfilledQty': 0, 'openQty': 5},
+        {
+          'goodsCode': 'A',
+          'goodsName': '接线铜扣',
+          'colorName': '',
+          'unitName': '个',
+          'requiredQty': 10,
+          'fulfilledQty': 0,
+          'openQty': 10,
+        },
+        {
+          'goodsCode': 'B',
+          'goodsName': '外壳',
+          'colorName': '',
+          'unitName': '个',
+          'requiredQty': 5,
+          'fulfilledQty': 0,
+          'openQty': 5,
+        },
       ],
     );
     final doc2 = doc(
@@ -387,7 +403,15 @@ void main() {
       billNo: 'SL002',
       batch: 'SL001',
       lines: [
-        {'goodsCode': 'A', 'goodsName': '接线铜扣', 'colorName': '', 'unitName': '个', 'requiredQty': 3, 'fulfilledQty': 0, 'openQty': 3},
+        {
+          'goodsCode': 'A',
+          'goodsName': '接线铜扣',
+          'colorName': '',
+          'unitName': '个',
+          'requiredQty': 3,
+          'fulfilledQty': 0,
+          'openQty': 3,
+        },
       ],
     );
     final view = WarehouseDrawTask.mergeGoodsRows([
@@ -407,12 +431,34 @@ void main() {
     expect(rowB.isBatchMerged, isTrue);
     expect(rowB.members!.single.actionDocNo, 'SL001');
     // 无批次单不跨单合并：同货品两张无批次单保持两行。
-    final noBatch1 = doc(docId: 'd3', billNo: 'SL003', batch: '', lines: [
-      {'goodsCode': 'A', 'goodsName': '接线铜扣', 'colorName': '', 'unitName': '个', 'openQty': 7},
-    ]);
-    final noBatch2 = doc(docId: 'd4', billNo: 'SL004', batch: '', lines: [
-      {'goodsCode': 'A', 'goodsName': '接线铜扣', 'colorName': '', 'unitName': '个', 'openQty': 2},
-    ]);
+    final noBatch1 = doc(
+      docId: 'd3',
+      billNo: 'SL003',
+      batch: '',
+      lines: [
+        {
+          'goodsCode': 'A',
+          'goodsName': '接线铜扣',
+          'colorName': '',
+          'unitName': '个',
+          'openQty': 7,
+        },
+      ],
+    );
+    final noBatch2 = doc(
+      docId: 'd4',
+      billNo: 'SL004',
+      batch: '',
+      lines: [
+        {
+          'goodsCode': 'A',
+          'goodsName': '接线铜扣',
+          'colorName': '',
+          'unitName': '个',
+          'openQty': 2,
+        },
+      ],
+    );
     final view2 = WarehouseDrawTask.mergeGoodsRows([
       ...noBatch1.expandToGoodsRows(),
       ...noBatch2.expandToGoodsRows(),

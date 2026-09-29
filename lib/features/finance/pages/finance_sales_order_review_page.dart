@@ -803,8 +803,7 @@ class _FinanceSalesOrderReviewPageState
             currencyCode: r.currencyCode,
             fallback: '订单币种',
 
-
-  /// 客户财务快照卡：应收余额 / 信用额度 / 铺底额 + 超信用告警。
+            /// 客户财务快照卡：应收余额 / 信用额度 / 铺底额 + 超信用告警。
           ),
           emphasis: true,
           danger: true,

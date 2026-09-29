@@ -413,24 +413,21 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
           context,
           detailPaneBuilder: (selected) =>
               MasterEntityDetailPane<GoodsListItem, GoodsDetail>(
-            key: ValueKey('dp-${selected.id}-$_detailEpoch'),
-            config: _paneConfig(),
-            categoryId: selected.id,
-            canEditCategory: shellCanEdit,
-            canAddCategory: shellCanCreate,
-            canDeleteCategory: shellCanDelete,
-            externalKeyword: shellTreeSearchKeyword,
-            onAddChild: () => shellShowCreateDialog(parent: selected),
-            onEditCategory: (detail) => shellShowEditDialog(detail),
-            onDeleteCategory: () => shellDeleteNode(selected),
-          ),
+                key: ValueKey('dp-${selected.id}-$_detailEpoch'),
+                config: _paneConfig(),
+                categoryId: selected.id,
+                canEditCategory: shellCanEdit,
+                canAddCategory: shellCanCreate,
+                canDeleteCategory: shellCanDelete,
+                externalKeyword: shellTreeSearchKeyword,
+                onAddChild: () => shellShowCreateDialog(parent: selected),
+                onEditCategory: (detail) => shellShowEditDialog(detail),
+                onDeleteCategory: () => shellDeleteNode(selected),
+              ),
         ),
         // 复制/粘贴货品的全程加载遮罩(root Overlay 传送门，不占布局)。
         if (_goodsBusyTitle != null)
-          UtenBusyOverlay(
-            title: _goodsBusyTitle!,
-            description: _goodsBusyDesc,
-          ),
+          UtenBusyOverlay(title: _goodsBusyTitle!, description: _goodsBusyDesc),
       ],
     );
   }
@@ -788,7 +785,10 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     if (result.bomError != null) {
       context.appError('组件信息没有复制成功：${result.bomError}'); // TODO(l10n): 补 arb
     }
-    final clip = GoodsCopyClip(detail: result.detail, bomItems: result.bomItems);
+    final clip = GoodsCopyClip(
+      detail: result.detail,
+      bomItems: result.bomItems,
+    );
     ref.read(goodsClipboardProvider.notifier).copyGoods(clip);
     final d = result.detail;
     context.appSuccess(

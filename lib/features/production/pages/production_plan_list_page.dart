@@ -356,7 +356,7 @@ class _ProductionPlanListPageState
   ];
 
   FormDraftCategoryScope get _formDraftScope =>
-    const FormDraftCategoryScope(kind: 'productionPlan');
+      const FormDraftCategoryScope(kind: 'productionPlan');
 
   Widget _withFormDraftRows(
     MasterDataTableView<ProductionPlanListItem> table,

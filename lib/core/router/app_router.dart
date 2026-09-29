@@ -141,7 +141,8 @@ import '../../features/warehouse/materialbin/pages/workshop_material_setup_page.
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
 import '../../features/notice/models/notice.dart';
-import '../../features/notice/providers/notice_providers.dart' show NoticeFilter;
+import '../../features/notice/providers/notice_providers.dart'
+    show NoticeFilter;
 import '../../features/payroll/pages/payroll_generate_page.dart';
 import '../../features/payroll/pages/payroll_review_page.dart';
 import '../../features/payroll/pages/payroll_slip_detail_page.dart';

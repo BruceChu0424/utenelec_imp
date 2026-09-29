@@ -480,9 +480,7 @@ void main() {
         .onChanged('client-b');
     await tester.pumpAndSettle();
     final currency = tester.widget<UtenDropdownField>(
-      find.byWidgetPredicate(
-        (w) => w is UtenDropdownField && w.label == '币种',
-      ),
+      find.byWidgetPredicate((w) => w is UtenDropdownField && w.label == '币种'),
     );
     expect(currency.value, isNull, reason: '报价不带客户上次订货的外币');
     expect(
@@ -507,9 +505,7 @@ void main() {
         .onChanged('client-b');
     await tester.pumpAndSettle();
     final currency = tester.widget<UtenDropdownField>(
-      find.byWidgetPredicate(
-        (w) => w is UtenDropdownField && w.label == '币种',
-      ),
+      find.byWidgetPredicate((w) => w is UtenDropdownField && w.label == '币种'),
     );
     expect(currency.value, 'usd');
     expect(

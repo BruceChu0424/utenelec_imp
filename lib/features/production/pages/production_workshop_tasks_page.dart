@@ -3016,10 +3016,8 @@ class _ProductionWorkshopTasksPageState
             '持续生产在同一工单继续领料/直送补料；齐套按一次备齐开工。',
         value: (task) => task.startRouteLabel,
         // 路线分类色（齐套=绿 / 分批=蓝 / 持续=品红）铺整格，替代原格内胶囊。
-        cellColor: (context, task) => udenStatusBadgeCellColor(
-          context,
-          _routeBadgeType(task.startRoute),
-        ),
+        cellColor: (context, task) =>
+            udenStatusBadgeCellColor(context, _routeBadgeType(task.startRoute)),
         cellBuilder: (_, task) => _routeCell(task),
       ),
     // 「下一步」列只在「等待物料」出现（2026-09-20 用户口径：生产中不显示）：

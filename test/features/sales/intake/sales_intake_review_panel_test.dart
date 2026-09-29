@@ -432,7 +432,9 @@ void main() {
   });
 
   for (final locale in const [Locale('en'), Locale('ko')]) {
-    testWidgets('名下没有客户(${locale.languageCode}): 服务端中文提示不在提示区重复', (tester) async {
+    testWidgets('名下没有客户(${locale.languageCode}): 服务端中文提示不在提示区重复', (
+      tester,
+    ) async {
       final json = intakeResultJson(clientStatus: 'NO_VISIBLE_CLIENTS');
       json['notices'] = ['你名下还没有客户资料, 请联系主管在客户资料里把客户分配给你'];
       await _open(tester, json: json, locale: locale);

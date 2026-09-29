@@ -621,7 +621,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(harness.previews, hasLength(1), reason: '滚动不触发第二次确认');
-      expect(harness.writes, isEmpty);    },
+      expect(harness.writes, isEmpty);
+    },
   );
 
   testWidgets(

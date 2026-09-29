@@ -907,9 +907,7 @@ final class _MaterialAggregateTableController {
       // 的才算「允许超产比例无效」。
       final parts = partsOf(draft.key, sources, workshop: workshop);
       if (workshop &&
-          parts.any(
-            (part) => part.params!.rate == null && part.rateExplicit,
-          )) {
+          parts.any((part) => part.params!.rate == null && part.rateExplicit)) {
         throw FormatException('「${draft.label}」允许超产比例无效');
       }
       final quantities = partQuantities(draft, parts);
@@ -925,7 +923,9 @@ final class _MaterialAggregateTableController {
             allowPublicExtra: workshop || owner._canOverSupply,
             departmentId: part.params?.workshop.id,
             workerId: part.params?.worker.id,
-            allowedOverproductionRate: part.rateExplicit ? part.params?.rate : null,
+            allowedOverproductionRate: part.rateExplicit
+                ? part.params?.rate
+                : null,
             // 公共安全补库只走采购；采购不按车间拆，一个物料至多一组。
             safetyQty:
                 route == MaterialSupplyRoute.buy &&

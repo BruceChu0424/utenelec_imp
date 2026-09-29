@@ -78,4 +78,3 @@ Color udenStatusBadgeCellColor(BuildContext context, UtenStatusBadgeType type) {
     UtenStatusBadgeType.accent => (UtenColors.tealSurface, UtenColors.teal700),
   };
 }
-

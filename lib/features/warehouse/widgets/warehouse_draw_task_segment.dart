@@ -394,9 +394,7 @@ class _WarehouseDrawTaskSegmentState
     // 多货品单拆开一行一个货品；勾选/出库按底层单展开。
     final tasks = _result == null
         ? const <WarehouseDrawTask>[]
-        : WarehouseDrawTask.mergeGoodsRows(
-            _expandForView(_result!.items),
-          );
+        : WarehouseDrawTask.mergeGoodsRows(_expandForView(_result!.items));
     final theme = Theme.of(context);
     // 批量出库按钮按会话权限门控：stock_doc:issue 才渲染；草稿单还需 approve
     //（出库即审核），无审核权限时按钮置灰并提示。
@@ -620,8 +618,7 @@ class _WarehouseDrawTaskSegmentState
       key: 'workshopName',
       label: '领料车间',
       width: 150,
-      value: (task) =>
-          task.workshopName.isEmpty || task.isMaterialDiscovery
+      value: (task) => task.workshopName.isEmpty || task.isMaterialDiscovery
           ? '—'
           : task.workshopName,
     ),
@@ -629,8 +626,7 @@ class _WarehouseDrawTaskSegmentState
       key: 'workerName',
       label: '领料负责人',
       width: 140,
-      value: (task) =>
-          task.workerName.isEmpty || task.isMaterialDiscovery
+      value: (task) => task.workerName.isEmpty || task.isMaterialDiscovery
           ? '—'
           : task.workerName,
     ),
@@ -638,8 +634,7 @@ class _WarehouseDrawTaskSegmentState
       key: 'unitName',
       label: '单位',
       width: 80,
-      value: (task) =>
-          task.isDocumentGrouped || task.needsMaterialEntry
+      value: (task) => task.isDocumentGrouped || task.needsMaterialEntry
           ? '—'
           : task.unitName,
     ),

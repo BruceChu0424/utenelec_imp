@@ -119,8 +119,7 @@ class _WarehouseStockDocSegmentState
   /// 生产退料批量收料（2026-09-27 用户口径「退料里应该支持多选批量入库」）：
   /// 待收料段（status=0）+ 审核权限即可勾选批量。
   bool get _isMaterialReturnBatch =>
-      widget.productionReturnRequests &&
-      widget.docType == StockDocType.wdraw;
+      widget.productionReturnRequests && widget.docType == StockDocType.wdraw;
   bool get _canBatchReceive =>
       _isMaterialReturnBatch &&
       _seg?.history == false &&
@@ -337,9 +336,7 @@ class _WarehouseStockDocSegmentState
       return;
     }
     final ids = (_list.page?.items ?? const <StockDocListItem>[])
-        .where(
-          (d) => d.status == 0 && !d.closed && selectedIds.contains(d.id),
-        )
+        .where((d) => d.status == 0 && !d.closed && selectedIds.contains(d.id))
         .map((d) => d.id)
         .toList();
     if (ids.isEmpty) return;
@@ -353,9 +350,8 @@ class _WarehouseStockDocSegmentState
       } else {
         await Navigator.of(context).push<bool>(
           MaterialPageRoute(
-            builder: (_) => WarehouseMaterialReturnBatchReceivePage(
-              documentIds: ids,
-            ),
+            builder: (_) =>
+                WarehouseMaterialReturnBatchReceivePage(documentIds: ids),
           ),
         );
       }
@@ -706,9 +702,7 @@ class _WarehouseStockDocSegmentState
                             // 一张时直进单张详情，多张进批量收料页逐张选仓。
                             if (_canBatchReceive)
                               UtenButton(
-                                key: const Key(
-                                  'stock-doc-batch-receive-wdraw',
-                                ),
+                                key: const Key('stock-doc-batch-receive-wdraw'),
                                 icon: Icons.move_to_inbox_rounded,
                                 onPressed:
                                     _outboundBusy ||

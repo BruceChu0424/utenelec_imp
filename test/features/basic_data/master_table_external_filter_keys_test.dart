@@ -84,6 +84,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('1 个表头筛选生效'), findsOneWidget);
-    expect(find.byKey(const ValueKey('master-table-clear-filters')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('master-table-clear-filters')),
+      findsNothing,
+    );
   });
 }

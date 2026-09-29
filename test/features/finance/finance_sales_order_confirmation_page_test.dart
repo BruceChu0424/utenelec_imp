@@ -228,12 +228,10 @@ Future<GoRouter> _pumpPage(
 
 /// 离线版名称服务：Dio 无 adapter，字典加载在 ensureLoaded 内部被容错吞掉，
 /// 页面正常渲染（本位币名缺失时应收列显示裸金额）。
-final _offlineFinanceNameServiceOverride =
-    financeNameServiceProvider.overrideWith(
-      (ref) => FinanceNameService(
-        ApiClient(Dio()),
-        _NoopPaymentStyleRepository(),
-      ),
+final _offlineFinanceNameServiceOverride = financeNameServiceProvider
+    .overrideWith(
+      (ref) =>
+          FinanceNameService(ApiClient(Dio()), _NoopPaymentStyleRepository()),
     );
 
 class _NoopPaymentStyleRepository implements PaymentStyleRepository {

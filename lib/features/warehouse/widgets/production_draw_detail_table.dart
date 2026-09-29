@@ -335,7 +335,9 @@ class ProductionDrawDetailTable extends StatelessWidget {
           width: discoveryRows.isEmpty ? 160 : 200,
           value: (row) => row.isMergedGroup
               ? _joinedOrDash(
-                  row.group!.map((r) => names.warehouse(r.document!.warehouseId)),
+                  row.group!.map(
+                    (r) => names.warehouse(r.document!.warehouseId),
+                  ),
                 )
               : row.discovery?.label('warehouseName') ??
                     names.warehouse(row.document!.warehouseId),
@@ -395,7 +397,8 @@ class ProductionDrawDetailTable extends StatelessWidget {
               : row.discovery?.label('stockPlace') ??
                     (row.item!.place?.trim().isNotEmpty == true
                         ? row.item!.place!
-                        : names.goodsInfo(row.item!.goodsId)?.stockPlace ?? '—'),
+                        : names.goodsInfo(row.item!.goodsId)?.stockPlace ??
+                              '—'),
         ),
         MasterColumnDef(
           key: 'unit',
@@ -403,7 +406,8 @@ class ProductionDrawDetailTable extends StatelessWidget {
           width: 70,
           value: (row) => row.isMergedGroup
               ? names.unit(row.group!.first.item!.unitId)
-              : row.discovery?.label('unitName') ?? names.unit(row.item!.unitId),
+              : row.discovery?.label('unitName') ??
+                    names.unit(row.item!.unitId),
         ),
         MasterColumnDef(
           key: 'qty',
@@ -520,9 +524,14 @@ class ProductionDrawDetailTable extends StatelessWidget {
           label: '状态',
           width: 120,
           value: (row) => row.isMergedGroup
-              ? (row.group!.map((r) => r.document!.issueStatus).toSet().length ==
+              ? (row.group!
+                            .map((r) => r.document!.issueStatus)
+                            .toSet()
+                            .length ==
                         1
-                    ? drawIssueStatusLabel(row.group!.first.document!.issueStatus)
+                    ? drawIssueStatusLabel(
+                        row.group!.first.document!.issueStatus,
+                      )
                     : '—')
               : row.discovery == null
               ? drawIssueStatusLabel(row.document!.issueStatus)
@@ -537,7 +546,9 @@ class ProductionDrawDetailTable extends StatelessWidget {
               : row.discovery?.request.planNo ?? row.document?.planNo ?? '—',
           cellBuilder: (context, row) => row.isMergedGroup
               ? Text(
-                  _joinedOrDash(row.group!.map((r) => r.document?.planNo ?? '')),
+                  _joinedOrDash(
+                    row.group!.map((r) => r.document?.planNo ?? ''),
+                  ),
                 )
               : _sourceLink(
                   context,

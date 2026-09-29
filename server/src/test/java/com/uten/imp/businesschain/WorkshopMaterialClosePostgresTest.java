@@ -167,6 +167,9 @@ class WorkshopMaterialClosePostgresTest {
         assertEquals("QUEUED", counted.closeState());
 
         assertEquals(Result.CLOSED, closes.attempt(first, TriggerKind.AFTER_COUNT, bench.admin));
+        // 结算自身的出库/盘盈事件会再排一轮价值任务; 盘盈按池均价核定, 断言前等本世界的
+        // 价值池就位(慢机上不等会出现 value_at_close=0)。
+        InventoryValueWorkTestSupport.drain(bench.valueWork, db, List.of(bench.world.goodsA(), bench.world.goodsB(), bench.world.goodsE()));
         assertEquals("CLOSED/NONE", state(first));
 
         // 主料: 实际 1.2, 理论 5 件 x 0.2 = 1.0, 浪费率 20% 不标红; 全部分给这张工单的成本范围 (单行即尾差)

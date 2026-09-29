@@ -58,6 +58,8 @@ class SubcontractLossValueEndToEndTest {
     @Autowired GlPostingService gl;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
     private FullChainEndToEndTest fixture;
+    /** 本测试世界用到的全部货品: drain 只等自己的价值任务, 不被共享库里其他世界的合法残留拖死。 */
+    private final java.util.List<UUID> worldGoods=new java.util.ArrayList<>();
     @BeforeEach void fixture(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
 
     @Test void normalLossKeepsApprovedFiveAndReallocatesOnlyAfterFinancialApprovalOfThree(){
@@ -242,6 +244,7 @@ class SubcontractLossValueEndToEndTest {
                 seeded.warehouseId(),seeded.unitId(),base,seeded.colorId(),seeded.unitLegacy()),quantity,amount,false);
     }
     private CaseFixture ready(FullChainEndToEndTest.World w,String quantity,String amount,boolean omitOrderWarehouse){
+        worldGoods.addAll(List.of(w.goodsA(),w.goodsB(),w.goodsC(),w.goodsD(),w.goodsE()));
         fixture.loginAs(w.superAdminUserId());opening(w,quantity,amount);
         var orderWorld=omitOrderWarehouse?new FullChainEndToEndTest.World(w.departmentId(),w.employeeId(),w.superAdminUserId(),
                 w.goodsA(),w.goodsB(),w.goodsC(),w.goodsD(),w.goodsE(),w.clientId(),w.supplierId(),null,
@@ -297,22 +300,10 @@ class SubcontractLossValueEndToEndTest {
     }
     private void changeQty(CaseFixture c,String qty){orders.changeQty(c.submitted().orderId(),new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(c.item(),new BigDecimal(qty)))));}
     private void drain(){
-        long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(60);
-        for(int n=0;n<2400&&System.nanoTime()<deadline;n++){
-            int applied=worker.runBatch();
-            if(!worker.hasPendingWork())return;
-            // A scheduler may already own the remaining scope/task. Zero local
-            // work is not proof that its uncommitted durable work has finished.
-            if(applied==0)try{Thread.sleep(25);}catch(InterruptedException interrupted){
-                Thread.currentThread().interrupt();throw new AssertionError("等待价值任务时被中断",interrupted);
-            }
-        }
-        fail("原价值传播必须有限完成，不能在同scope内循环重算; 残留待办=" + db.queryForList(
-                "SELECT 'cost_objects' src, execution_segment_id::text id FROM stock_value_production_cost_objects WHERE business_refresh_pending"
-                        + " UNION ALL SELECT 'cost_dirty', execution_segment_id::text FROM stock_value_production_cost_dirty WHERE observed_revision>cleared_revision"
-                        + " UNION ALL SELECT 'cost_tasks', execution_segment_id::text FROM stock_value_production_cost_tasks WHERE status='PENDING'"
-                        + " UNION ALL SELECT 'value_tasks', id::text FROM stock_value_tasks WHERE status='PENDING'"
-                        + " UNION ALL SELECT 'jobs', event_id::text FROM stock_value_jobs WHERE status<>'APPLIED'"));
+        // 全局等(原 60s/2400 次)在 CI 全量套件里会被其他世界合法停留的待办拖死(单跑恒绿、
+        // 全量红); 与其他价值测试同款, 按本世界货品限域等待(45s, 实证 CI 足够)。
+        if(worldGoods.isEmpty())throw new IllegalStateException("drain 前必须先 ready 一个世界");
+        InventoryValueWorkTestSupport.drain(worker,db,worldGoods);
     }
     private BigDecimal stock(CaseFixture c){return decimal("select amount_local from stock_balances where warehouse_id=? and goods_id=?",c.world().warehouseId(),c.world().goodsE());}
     private BigDecimal stock(CaseFixture c,UUID warehouse){return decimal("select amount_local from stock_balances where warehouse_id=? and goods_id=?",warehouse,c.world().goodsE());}

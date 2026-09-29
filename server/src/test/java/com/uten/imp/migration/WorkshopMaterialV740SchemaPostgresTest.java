@@ -150,11 +150,12 @@ class WorkshopMaterialV740SchemaPostgresTest {
             statement.execute("""
                     INSERT INTO units(id, code, name) VALUES ('%s', 'WM740KG', '千克'), ('%s', 'WM740PCS', '个')
                     """.formatted(KG, PCS));
+            // V743 删了 canonical_unit_id/to_canonical_factor 死列, MASS 档案改为登记
+            // mass_unit_code(V743 的 G/KG/T/JIN/LB/OZ 口径)。
             statement.execute("""
-                    INSERT INTO unit_measurement_profiles(unit_id, measurement_dimension, canonical_unit_id,
-                                                          to_canonical_factor, provenance)
-                    VALUES ('%s', 'MASS', '%s', 1, 'MANUAL_GOVERNANCE')
-                    """.formatted(KG, KG));
+                    INSERT INTO unit_measurement_profiles(unit_id, measurement_dimension, mass_unit_code, provenance)
+                    VALUES ('%s', 'MASS', 'KG', 'MANUAL_GOVERNANCE')
+                    """.formatted(KG));
             try (PreparedStatement insert = connection.prepareStatement("""
                     INSERT INTO goods(id, code, name, unit_id, code_sequence) VALUES (?, ?, ?, ?, ?)""")) {
                 goods(insert, GRANULE, "WM740G1", "颗粒A", KG, 7400001);

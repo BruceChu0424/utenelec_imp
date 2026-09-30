@@ -139,6 +139,60 @@ class BusinessDataResetSparsePostgresTest {
     }
 
     @Test
+    void knownTriggerNameWithChangedImplementationStillFallsBack() throws Exception {
+        connection.createStatement().execute("CREATE OR REPLACE FUNCTION public.fn_sales_quote_template_candidates_truncate() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$ BEGIN INSERT INTO business_outbox(id,event_type,aggregate_type,dedupe_key,status) VALUES (gen_random_uuid(),'RESET_TEST','RESET_TEST','changed-known-trigger',1); RETURN NULL; END $$");
+        assertThat(scalar("SELECT cleared_rows FROM business_data_reset()")).isZero();
+        assertThat(scalar("SELECT count(*) FROM business_outbox")).isZero();
+        assertThat(scalar("SELECT count(*) FROM reset_business_clear_work WHERE NOT truncate_required")).isZero();
+    }
+
+    @Test
+    void unknownOutboxInsertTriggerRestoresFullFallbackEvenForEmptyCandidates() throws Exception {
+        connection.createStatement().execute("CREATE FUNCTION pg_temp.reset_probe_outbox_insert() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN INSERT INTO business_outbox(id,event_type,aggregate_type,dedupe_key,status) VALUES (gen_random_uuid(),'RESET_TEST','RESET_TEST','outbox-insert-effect',1); RETURN NULL; END $$");
+        connection.createStatement().execute("CREATE TRIGGER reset_probe_outbox_insert AFTER INSERT ON attachment_object_outbox FOR EACH STATEMENT EXECUTE FUNCTION pg_temp.reset_probe_outbox_insert()");
+        assertThat(scalar("SELECT cleared_rows FROM business_data_reset()")).isZero();
+        assertThat(scalar("SELECT count(*) FROM business_outbox")).isZero();
+        assertThat(scalar("SELECT count(*) FROM reset_business_clear_work WHERE NOT truncate_required")).isZero();
+    }
+
+    @Test
+    void changedKnownTriggerConfigurationCannotUseTheSparseException() throws Exception {
+        connection.createStatement().execute("ALTER FUNCTION public.fn_sales_quote_template_candidates_truncate() RESET search_path");
+        assertThat(scalar("SELECT cleared_rows FROM business_data_reset()")).isZero();
+        assertThat(scalar("SELECT count(*) FROM reset_business_clear_work WHERE NOT truncate_required")).isZero();
+    }
+
+    @Test
+    void customOutboxCheckRoutineRestoresFullFallback() throws Exception {
+        connection.createStatement().execute("CREATE FUNCTION pg_temp.reset_probe_check(integer) RETURNS boolean LANGUAGE plpgsql AS $$ BEGIN RETURN true; END $$");
+        connection.createStatement().execute("ALTER TABLE attachment_object_outbox ADD CONSTRAINT reset_probe_check CHECK (pg_temp.reset_probe_check(attempts))");
+        assertThat(scalar("SELECT cleared_rows FROM business_data_reset()")).isZero();
+        assertThat(scalar("SELECT count(*) FROM reset_business_clear_work WHERE NOT truncate_required")).isZero();
+    }
+
+    @Test
+    void builtinStateChangingOutboxCheckStillRestoresFullFallback() throws Exception {
+        connection.createStatement().execute("ALTER TABLE attachment_object_outbox ADD CONSTRAINT reset_probe_builtin_check CHECK (pg_catalog.set_config('app.reset_probe','changed',true) IS NOT NULL)");
+        assertThat(scalar("SELECT cleared_rows FROM business_data_reset()")).isZero();
+        assertThat(scalar("SELECT count(*) FROM reset_business_clear_work WHERE NOT truncate_required")).isZero();
+    }
+
+    @Test
+    void restoredEquivalentArrayCastsAlsoKeepEmptyTablesSparse() throws Exception {
+        // pg_dump/restore reparses the IN array coercion as per-element casts.
+        // Both exact pure forms are allowed; arbitrary expression normalization is not.
+        connection.createStatement().execute("ALTER TABLE attachment_object_outbox DROP CONSTRAINT attachment_object_outbox_operation_chk, ADD CONSTRAINT attachment_object_outbox_operation_chk CHECK ((operation)::text = ANY (ARRAY[('DELETE_STAGING'::varchar)::text,('DELETE_FINAL'::varchar)::text]))");
+        connection.createStatement().execute("ALTER TABLE attachment_object_outbox DROP CONSTRAINT attachment_object_outbox_provider_chk, ADD CONSTRAINT attachment_object_outbox_provider_chk CHECK ((storage_provider)::text = ANY (ARRAY[('internal'::varchar)::text,('oss'::varchar)::text,('local'::varchar)::text,('legacy_unknown'::varchar)::text]))");
+        connection.createStatement().execute("ALTER TABLE attachment_object_outbox DROP CONSTRAINT attachment_object_outbox_status_chk, ADD CONSTRAINT attachment_object_outbox_status_chk CHECK ((status)::text = ANY (ARRAY[('PENDING'::varchar)::text,('PROCESSING'::varchar)::text,('SUCCEEDED'::varchar)::text,('FAILED'::varchar)::text]))");
+        connection.createStatement().execute("DROP INDEX attachment_object_outbox_ready_idx");
+        connection.createStatement().execute("CREATE INDEX attachment_object_outbox_ready_idx ON attachment_object_outbox(available_at,created_at) WHERE (status)::text = ANY (ARRAY[('PENDING'::varchar)::text,('FAILED'::varchar)::text])");
+        long originalFile = scalar("SELECT pg_relation_filenode('sales_quotes'::regclass)");
+        assertThat(scalar("SELECT cleared_rows FROM business_data_reset()")).isZero();
+        assertThat(scalar("SELECT pg_relation_filenode('sales_quotes'::regclass)")).isEqualTo(originalFile);
+        assertThat(scalar("SELECT count(*) FROM reset_business_clear_work WHERE NOT truncate_required")).isGreaterThan(200);
+    }
+
+    @Test
     void traditionalInheritanceFallsBackToTheFullOriginalScope() throws Exception {
         connection.createStatement().execute("CREATE TEMP TABLE reset_probe_inherited () INHERITS (public.business_outbox)");
         assertThat(scalar("SELECT cleared_rows FROM business_data_reset()")).isZero();
@@ -250,7 +304,11 @@ class BusinessDataResetSparsePostgresTest {
     void operatorAndRuntimeUseTheSameSparseAlgorithm() throws Exception {
         String ops = Files.readString(Path.of("ops", "reset_business_data.sql"));
         String migration = Files.readString(Path.of("src", "main", "resources", "db", "migration", "V558__business_reset_sparse_truncate.sql"));
-        assertThat(fragment(ops)).isEqualTo(fragment(migration));
+        String forward = Files.readString(Path.of("src", "main", "resources", "db", "migration", "V758__business_reset_bounded_candidate_cleanup.sql")).replace("\r\n", "\n");
+        String oldBlock = forward.substring(forward.indexOf("$old$") + 5, forward.indexOf("$old$;"));
+        String newBlock = forward.substring(forward.indexOf("$new$") + 5, forward.indexOf("$new$;"));
+        assertThat(fragment(migration)).containsOnlyOnce(oldBlock);
+        assertThat(fragment(ops)).isEqualTo(fragment(migration).replace(oldBlock, newBlock));
         try (var statement = connection.createStatement(); var result = statement.executeQuery("SELECT pg_get_functiondef('business_data_reset()'::regprocedure)")) {
             assertThat(result.next()).isTrue();
             assertThat(fragment(result.getString(1))).isEqualTo(fragment(ops));

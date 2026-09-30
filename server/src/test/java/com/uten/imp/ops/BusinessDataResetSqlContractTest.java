@@ -527,6 +527,7 @@ class BusinessDataResetSqlContractTest {
                 .contains("(743, 671)")
                 // V757 only installs a candidate-object cleanup trigger; table policy is unchanged.
                 .contains("(757, 685)")
+                .contains("(758, 686)")
                 // The exact range label follows the independently enumerated classpath head.
                 .contains("V507/469、V508/470及V511至V"
                         + MigrationRehearsalSupport.CURRENT_HEAD_VERSION + "完整目录");

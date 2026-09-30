@@ -7,9 +7,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.util.UUID;
+import java.sql.DriverManager;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -61,6 +63,48 @@ class QuoteTemplateCandidateTruncateMigrationPostgresTest {
         flyway.validate();
     }
 
+    @Test
+    void v757UpgradeKeepsResetPrivilegesAndCandidateCleanupSparseAndTransactional() throws Exception {
+        String url = createDatabase("quote_cleanup_sparse_upgrade");
+        flyway(url, "757").migrate();
+        JdbcTemplate db = jdbc(url);
+        Fixture fixture = seed(db);
+        String before = payloadSnapshot(db);
+        String metadata = resetMetadata(db);
+        Flyway flyway = flyway(url, null);
+        assertEquals(1, flyway.migrate().migrationsExecuted);
+        assertEquals(metadata, resetMetadata(db), "reset owner, SECURITY DEFINER, search path and grants must survive");
+        assertEquals(before, payloadSnapshot(db));
+        assertOriginalHistory(db);
+        assertCleanupInstalled(db);
+
+        try (var connection = DriverManager.getConnection(url, POSTGRES.getUsername(), POSTGRES.getPassword())) {
+            connection.setAutoCommit(false);
+            JdbcTemplate tx = new JdbcTemplate(new SingleConnectionDataSource(connection, true));
+            tx.execute("SET LOCAL jit=off");
+            tx.execute("SET LOCAL statement_timeout='120s'");
+            long originalFile = tx.queryForObject("SELECT pg_relation_filenode('sales_quotes'::regclass)", Long.class);
+            var savepoint = connection.setSavepoint();
+            assertTrue(tx.queryForObject("SELECT cleared_rows FROM business_data_reset()", Long.class) >= 4);
+            assertCleanupResult(tx, fixture);
+            assertEquals(originalFile, tx.queryForObject("SELECT pg_relation_filenode('sales_quotes'::regclass)", Long.class));
+            assertTrue(tx.queryForObject("SELECT count(*) FROM reset_business_clear_work WHERE NOT truncate_required", Integer.class) > 200);
+            connection.rollback(savepoint);
+            assertEquals(before, payloadSnapshot(tx), "rollback restores candidates and adopted versions");
+            assertEquals(0, tx.queryForObject("SELECT count(*) FROM attachment_object_outbox", Integer.class));
+            assertTrue(tx.queryForObject("SELECT cleared_rows FROM business_data_reset()", Long.class) >= 4);
+            assertCleanupResult(tx, fixture);
+            connection.commit();
+        }
+        assertEquals(0, flyway.migrate().migrationsExecuted);
+        assertCleanupResult(db, fixture);
+        flyway.validate();
+    }
+
+    private static String resetMetadata(JdbcTemplate db) {
+        return db.queryForObject("SELECT jsonb_build_array(proowner,prosecdef,proconfig,proacl)::text FROM pg_proc WHERE oid='public.business_data_reset()'::regprocedure", String.class);
+    }
+
     private static String createDatabase(String name) throws Exception {
         var result = POSTGRES.execInContainer("createdb", "-U", POSTGRES.getUsername(), name);
         assertEquals(0, result.getExitCode(), result.getStderr());
@@ -96,6 +140,7 @@ class QuoteTemplateCandidateTruncateMigrationPostgresTest {
                 SELECT count(*) FROM flyway_schema_history
                 WHERE version='757' AND script='V757__sales_quote_template_candidate_truncate_cleanup.sql' AND success
                 """, Integer.class));
+        assertEquals(1, db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE version='758' AND success", Integer.class));
     }
 
     private record Fixture(String orphanKey, String preservedKey) {}
@@ -157,6 +202,12 @@ class QuoteTemplateCandidateTruncateMigrationPostgresTest {
 
     private static void assertExactCleanup(JdbcTemplate db, Fixture fixture) {
         db.execute("TRUNCATE sales_quote_template_candidates");
+        assertCleanupResult(db, fixture);
+        db.execute("TRUNCATE sales_quote_template_candidates");
+        assertEquals(1, db.queryForObject("SELECT count(*) FROM attachment_object_outbox", Integer.class));
+    }
+
+    private static void assertCleanupResult(JdbcTemplate db, Fixture fixture) {
         assertEquals(0, db.queryForObject("SELECT count(*) FROM sales_quote_template_candidates", Integer.class));
         assertEquals(1, db.queryForObject("SELECT count(*) FROM sales_quote_template_versions", Integer.class));
         assertEquals(1, db.queryForObject("""
@@ -166,7 +217,6 @@ class QuoteTemplateCandidateTruncateMigrationPostgresTest {
         assertEquals(0, db.queryForObject("""
                 SELECT count(*) FROM attachment_object_outbox WHERE storage_key=?
                 """, Integer.class, fixture.preservedKey()));
-        db.execute("TRUNCATE sales_quote_template_candidates");
         assertEquals(1, db.queryForObject("SELECT count(*) FROM attachment_object_outbox", Integer.class));
     }
 }

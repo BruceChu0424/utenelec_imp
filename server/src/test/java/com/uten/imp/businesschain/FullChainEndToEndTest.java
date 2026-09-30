@@ -2547,7 +2547,11 @@ class FullChainEndToEndTest {
                 "子分类徽章 PARTIAL 与列表 statusCounts 同源");
         assertEquals(listCounts.getOrDefault("READY_TO_PICK", 0L), breakdown.get("READY_TO_PICK"),
                 "子分类徽章 READY_TO_PICK 与列表 statusCounts 同源");
-        assertEquals(breakdown.get("READY_TO_PICK") + breakdown.get("PARTIAL"), breakdown.get("OPEN_ANY"));
+        assertEquals(listCounts.getOrDefault("MATERIALS_TO_DEFINE", 0L), breakdown.get("MATERIALS_TO_DEFINE"),
+                "待明确物料徽章与列表 statusCounts 同源");
+        assertEquals(breakdown.get("READY_TO_PICK") + breakdown.get("PARTIAL")
+                + breakdown.get("MATERIALS_TO_DEFINE"), breakdown.get("OPEN_ANY"),
+                "全部待办包含待领、部分领取及待明确物料三个分类");
         assertTrue(breakdown.get("PARTIAL") >= 1, "至少本用例的部分领取单");
         assertTrue(breakdown.get("READY_TO_PICK") >= 3, "至少本用例的三张草稿单");
 
@@ -9460,6 +9464,35 @@ class FullChainEndToEndTest {
         // These chart-of-accounts nodes are loaded via data bootstrap, not Flyway — absent in the
         // test container — so seed them here as fixture data before generating GL.
         seedChartOfAccounts();
+        // Shipping commits inventory-value work. The loss-value projection also
+        // requires its durable job queue to be settled before period-wide GL
+        // generation; a shared database can already contain valid loss cases.
+        drainCosts(w);
+        // V525 loss completeness also waits for global PENDING value jobs. Other
+        // fixture worlds can still own those jobs after this world's scoped drain.
+        // Run the real worker; no source amount or queued fact is patched here.
+        long valueJobDeadline = System.nanoTime() + java.time.Duration.ofSeconds(45).toNanos();
+        while (count("select count(*) from stock_value_jobs where status='PENDING'") != 0
+                && System.nanoTime() < valueJobDeadline) {
+            inventoryValueWork.runBatch();
+            if (count("select count(*) from stock_value_jobs where status='PENDING'") == 0) break;
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError("Interrupted while settling inventory-value jobs before GL generation", interrupted);
+            }
+        }
+        assertEquals(0, count("select count(*) from stock_value_jobs where status='PENDING'"),
+                () -> "Inventory-value jobs remained pending after 45 seconds before period-wide GL generation: "
+                        + jdbc.queryForList("""
+                                select job.event_id, job.source_node_id, job.status,
+                                       event.source_doc_type, event.source_doc_id, event.source_item_id
+                                from stock_value_jobs job join stock_value_events event on event.id=job.event_id
+                                where job.status='PENDING' order by job.created_at, job.event_id limit 10
+                                """));
+        // A settled queue does not make an unknown source cost complete; the
+        // unchanged posting guard still rejects missing valuation or accounts.
         glPostingService.generate(recognitionPeriod); // rebuild AUTO vouchers for the SHIPPED period
 
         // AR voucher for this shipment has a balanced debit+credit pair
@@ -10975,19 +11008,25 @@ class FullChainEndToEndTest {
         String billNo = jdbc.queryForObject(
                 "select bill_no from sales_orders where id = ?", String.class, orderId);
         UUID ownerUser = w.superAdminUserId();
-        int schedulingNotices = 0;
-        for (int i = 0; i < 60 && schedulingNotices == 0; i++) {
+        int pendingSchedulingEvents = 3;
+        for (int i = 0; i < 60 && pendingSchedulingEvents != 0; i++) {
             while (businessOutboxProcessor.processNext()) { }
-            schedulingNotices = count("""
-                    select count(*) from notices
-                    where audience_user_id = ?
-                      and source_event = 'PRODUCTION_PLAN_SCHEDULED'
-                      and title = ?
-                    """, ownerUser, "排产通知：" + billNo);
-            if (schedulingNotices == 0) {
+            pendingSchedulingEvents = count("""
+                    select count(*) from business_outbox
+                    where event_type = 'PRODUCTION_PLAN_SCHEDULED'
+                      and aggregate_id in (?, ?, ?) and status <> 1
+                    """, p1, p2, p3);
+            if (pendingSchedulingEvents != 0) {
                 try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
             }
         }
+        assertEquals(0, pendingSchedulingEvents, "本次批量审核的三条持久事件必须全部投递后再核对通知");
+        int schedulingNotices = count("""
+                select count(*) from notices
+                where audience_user_id = ?
+                  and source_event = 'PRODUCTION_PLAN_SCHEDULED'
+                  and title = ?
+                """, ownerUser, "排产通知：" + billNo);
         assertEquals(1, schedulingNotices,
                 "同一订单批量审核多张计划单必须合并成一条排产通知");
         Map<String, Object> merged = jdbc.queryForMap("""
@@ -10997,7 +11036,7 @@ class FullChainEndToEndTest {
                   and title = ?
                 """, ownerUser, "排产通知：" + billNo);
         String content = (String) merged.get("content");
-        assertTrue(content.contains("已排产"), "合并通知正文必须带排产量：" + content);
+        assertTrue(content.contains("已排产 9"), "合并通知正文必须带三张计划单的合计排产量：" + content);
         assertTrue(content.contains("共 3 张计划单"),
                 "合并通知正文必须标注计划单张数：" + content);
     }

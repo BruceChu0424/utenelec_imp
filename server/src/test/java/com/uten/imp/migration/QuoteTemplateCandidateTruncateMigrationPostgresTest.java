@@ -71,8 +71,13 @@ class QuoteTemplateCandidateTruncateMigrationPostgresTest {
         Fixture fixture = seed(db);
         String before = payloadSnapshot(db);
         String metadata = resetMetadata(db);
+        // Keep the V757 -> V758 contract exact as unrelated later migrations are added.
+        assertEquals(1, flyway(url, "758").migrate().migrationsExecuted);
+        assertEquals(metadata, resetMetadata(db), "V758 must preserve reset owner, SECURITY DEFINER, search path and grants");
+        assertEquals(before, payloadSnapshot(db), "V758 must preserve stored template data");
         Flyway flyway = flyway(url, null);
-        assertEquals(1, flyway.migrate().migrationsExecuted);
+        int pendingMigrations = flyway.info().pending().length;
+        assertEquals(pendingMigrations, flyway.migrate().migrationsExecuted);
         assertEquals(metadata, resetMetadata(db), "reset owner, SECURITY DEFINER, search path and grants must survive");
         assertEquals(before, payloadSnapshot(db));
         assertOriginalHistory(db);

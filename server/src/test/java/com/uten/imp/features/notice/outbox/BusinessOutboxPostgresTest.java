@@ -378,6 +378,64 @@ class BusinessOutboxPostgresTest {
     }
 
     @Test
+    void concurrentConsumersKeepSchedulingSiblingsTogetherAndStillDeliverOtherEvents() throws Exception {
+        transactions.executeWithoutResult(status -> {
+            for (String key : List.of("concurrent-plan-a", "concurrent-plan-b", "concurrent-plan-c")) {
+                publisher.publishOnce("PRODUCTION_PLAN_SCHEDULED", "PRODUCTION_PLAN",
+                        UUID.randomUUID(), Map.of("shortage", false), key);
+            }
+        });
+        // Keep the ordinary event behind the scheduling rows in the claim order.
+        transactions.executeWithoutResult(status -> publisher.publishOnce(
+                "TEST_EVENT", "TEST", UUID.randomUUID(), Map.of(), "concurrent-ordinary"));
+        var firstRowLocked = new CountDownLatch(1);
+        var finishClaim = new CountDownLatch(1);
+        var pauseOnce = new AtomicBoolean(true);
+        var pausedJdbc = new JdbcTemplate(jdbc.getDataSource()) {
+            @Override
+            public <T> List<T> query(String sql, org.springframework.jdbc.core.RowMapper<T> mapper) {
+                List<T> rows = super.query(sql, mapper);
+                if (sql.contains("FOR UPDATE SKIP LOCKED") && !rows.isEmpty()
+                        && pauseOnce.compareAndSet(true, false)) {
+                    firstRowLocked.countDown();
+                    try {
+                        assertTrue(finishClaim.await(10, TimeUnit.SECONDS));
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new AssertionError(interrupted);
+                    }
+                }
+                return rows;
+            }
+        };
+        var firstProcessor = new BusinessOutboxProcessor(pausedJdbc, new ObjectMapper(), chainNotice);
+        try (var workers = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            var first = workers.submit(() -> transactions.execute(status -> firstProcessor.processNext()));
+            try {
+                assertTrue(firstRowLocked.await(10, TimeUnit.SECONDS));
+                assertTrue(Boolean.TRUE.equals(transactions.execute(status -> processor.processNext())));
+                assertEquals(1, eventStatus("concurrent-ordinary"),
+                        "an occupied scheduling claim must not block other event types");
+                for (String key : List.of("concurrent-plan-a", "concurrent-plan-b", "concurrent-plan-c")) {
+                    assertEquals(0, eventStatus(key), "another consumer must not split the scheduling group");
+                }
+            } finally {
+                finishClaim.countDown();
+            }
+            assertTrue(Boolean.TRUE.equals(first.get(10, TimeUnit.SECONDS)));
+        }
+        ArgumentCaptor<List<ChainNoticeService.PlanScheduled>> group = ArgumentCaptor.captor();
+        verify(chainNotice).deliverPlanScheduledGroup(group.capture());
+        assertEquals(3, group.getValue().size());
+        verify(chainNotice).deliverOutboxEvent(org.mockito.ArgumentMatchers.eq("TEST_EVENT"), any(), any());
+        for (String key : List.of("concurrent-plan-a", "concurrent-plan-b", "concurrent-plan-c")) {
+            assertEquals(1, eventStatus(key));
+        }
+        assertTrue(!transactions.execute(status -> processor.processNext()),
+                "the completed group must not be delivered again");
+    }
+
+    @Test
     void failedGroupDeliveryRollsBackEveryClaimedEvent() {
         transactions.executeWithoutResult(status -> {
             publisher.publishOnce(

@@ -49,10 +49,20 @@ public class BusinessOutboxProcessor {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean processNext() {
+        // Claim the scheduling lane before locking any row. Taking the claim after
+        // the first row would let two workers each keep one sibling locked, and
+        // SKIP LOCKED would then split one committed approval batch into notices.
+        // Other event types keep their normal parallel SKIP LOCKED consumption.
+        boolean canClaimPlans = Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT pg_try_advisory_xact_lock(
+                    hashtextextended('business-outbox:plan-scheduled-claim', 0))
+                """, Boolean.class));
+        String planFilter = canClaimPlans ? "" : " AND event_type <> 'PRODUCTION_PLAN_SCHEDULED' ";
         List<PendingEvent> events = jdbc.query("""
                 SELECT id, event_type, aggregate_id, payload::text, created_by
                 FROM business_outbox
                 WHERE status = 0 AND available_at <= now()
+                """ + planFilter + """
                 ORDER BY available_at, created_at, id
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
@@ -116,8 +126,8 @@ public class BusinessOutboxProcessor {
      * 排产事件按批合并投递：计划单与货品 1:1，批量审核同一订单会提交 N 个
      * {@code PRODUCTION_PLAN_SCHEDULED} 事件；认领首个事件时把其余同类待投递
      * 事件在同一事务里一并锁定，交给 {@link ChainNoticeService#deliverPlanScheduledGroup}
-     * 按订单合成一条通知，避免销售按货品逐条收通知。SKIP LOCKED 保证多 worker
-     * 安全；超出上限的事件留给下一轮继续合并。
+     * 按订单合成一条通知，避免销售按货品逐条收通知。首行认领前的排产专用事务锁
+     * 防止多 worker 拆走同批兄弟事件；超出上限的事件留给下一轮继续合并。
      */
     private List<PendingEvent> claimSameTypeSiblings(PendingEvent claimed) {
         return jdbc.query("""

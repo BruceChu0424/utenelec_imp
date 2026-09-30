@@ -10,6 +10,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.features.stock.valuation.InventoryValueWorkService;
 import com.uten.imp.features.stock.dto.StockDocItemLine;
 import com.uten.imp.features.stock.dto.StockDocSaveRequest;
 import com.uten.imp.features.stock.dto.WorkshopMaterialDocumentCommand;
@@ -61,6 +62,7 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
     @Autowired PlatformTransactionManager transactions;
     @Autowired StockDocService stock;
     @Autowired StockService stockService;
+    @Autowired InventoryValueWorkService valueWork;
     @Autowired DocNumberService docNumbers;
     @Autowired LineSideWarehousePort lineSide;
     FullChainEndToEndTest fixture;
@@ -84,14 +86,17 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
 
         // 发到内料仓: 调出一侧只扣有效预留, 不扣安全库存
         UUID issued=issue(b,granule,"150",b.period());
+        settleValue(granule);
         balance(b.bin(),granule,"150","1500");
         balance(b.leaf(),granule,"50","500");
 
         // 内料仓出库 (其它耗用、退回) 只守非负底线; 其它耗用价值去外部
         UUID otherMovement=otherIssue(b,granule,"30",b.period());
+        settleValue(granule);
         movementValue(otherMovement,"300","EXTERNAL",null);
         balance(b.bin(),granule,"120","1200");
         returnToLeaf(b,granule,"20",b.period());
+        settleValue(granule);
         balance(b.bin(),granule,"100","1000");
         balance(b.leaf(),granule,"70","700");
 
@@ -107,6 +112,8 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
         otherIn(b,granule,"200","10");
         issue(b,granule,"150",b.period());
         otherIssue(b,granule,"30",b.period());
+        // This scenario requires a priced pool before freezing a count's gain price.
+        settleValue(granule);
         UUID next=startCounting(b,b.period());
 
         // 第 1 版: 期初 0 + 领入 150 - 其它 30 - 期末 110 = 实际 10 → 21 型出到在制 (池均价 10)
@@ -122,6 +129,7 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
             db.update("UPDATE workshop_material_periods SET status='COUNTED',row_version=row_version+1 WHERE id=?",b.period());
             return posted;
         });
+        settleValue(granule);
         movementValue(consume.movement(),"100","WIP",line);
         balance(b.bin(),granule,"110","1100");
 
@@ -133,6 +141,7 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
             return new Posting[]{post(b,count,line,granule,"CONSUME_REVERSE","10",consume.id(),"CORRECTION"),
                     post(b,count,line,granule,"GAIN","5",null,"CORRECTION")};
         });
+        settleValue(granule);
         movementValue(second[0].movement(),"100",null,null);
         movementValue(second[1].movement(),"50",null,null);
         balance(b.bin(),granule,"125","1250");
@@ -140,6 +149,7 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
         // 新一期按更高的价发料进来, 池均价变了: 仓库另收 50 公斤单价 20, 再发 100 公斤进内料仓 (记下一期)
         otherIn(b,granule,"50","20");
         issue(b,granule,"100",next);
+        settleValue(granule);
         balance(b.bin(),granule,"225","2750");
 
         // 再更正回多用 10: 22 型原路出按出库时池均价 (2750/225) 出到外部, 不是原盘盈价 10; 再出 21 型 10
@@ -150,6 +160,7 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
             return new Posting[]{post(b,count,line,granule,"GAIN_REVERSE","5",second[1].id(),"CORRECTION"),
                     post(b,count,line,granule,"CONSUME","10",null,"CORRECTION")};
         });
+        settleValue(granule);
         movementValue(third[0].movement(),"61.1111","EXTERNAL",line);
         movementValue(third[1].movement(),"122.2222","WIP",line);
         balance(b.bin(),granule,"210","2566.6667");
@@ -169,6 +180,8 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
         otherIn(b,used,"10","20");
         issue(b,used,"10",b.period());
         otherIssue(b,used,"10",b.period());
+        // "Last transfer price" means a transfer whose real value worker has finalized it.
+        settleValue(used);
         balance(b.bin(),used,"0","0");
         startCounting(b,b.period());
 
@@ -186,6 +199,7 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
             db.update("UPDATE workshop_material_periods SET status='COUNTED',row_version=row_version+1 WHERE id=?",b.period());
             return new Posting[]{first,second};
         });
+        settleValue(used,unseen);
         // 内料仓池已空: 取最近一次调入这种料的单价 (200/10 = 20)
         movementValue(gains[0].movement(),"40",null,null);
         // 从没调入过: 按 0 核定, 不留"成本未定"
@@ -446,6 +460,11 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
 
     private void lock(UUID... goods){
         stockService.lockInventory(java.util.Arrays.stream(goods).map(id->new InventoryKey(id,null)).toList());
+    }
+
+    /** Drain durable valuation work after commit for this fixture only; never rewrite prices or states. */
+    private void settleValue(UUID... goods){
+        InventoryValueWorkTestSupport.drain(valueWork,db,List.of(goods));
     }
 
     private void balance(UUID warehouse,UUID goods,String qty,String amount){

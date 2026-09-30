@@ -51,7 +51,7 @@ class SystemPostingStyleUuidRoleContractTest {
         // 解析并持久化 gl_bank_fee_style_id，GL 只消费单据上的 UUID 真源。
         for (String role : new String[]{
                 "ar_control", "sales_revenue", "inventory_asset", "ap_control",
-                "sales_cost", "customer_advance", "fx_gain_loss",
+                "customer_advance", "fx_gain_loss",
                 "supplier_claim_receivable", "subcontract_loss_recovery"}) {
             assertThat(java).contains("system_posting_style_id('" + role + "')");
         }
@@ -61,7 +61,7 @@ class SystemPostingStyleUuidRoleContractTest {
                 .contains("receipt.gl_bank_fee_style_id")
                 .contains("coalesce(receipt.bank_fee,0)<>0")
                 .contains("having coalesce(sum(line.exchange_diff),0)<>0")
-                .contains("from sales_shipments shipment")
+                .contains("from v_inventory_cost_gl_status cost")
                 .contains("from ar_ap_ledger ledger")
                 .doesNotContain("where path='/113/'")
                 .doesNotContain("where path='/031/'")
@@ -77,6 +77,41 @@ class SystemPostingStyleUuidRoleContractTest {
                 "src/main/java/com/uten/imp/features/finance/payment/FinancePaymentService.java"));
         assertThat(receiptSvc).contains("requiredpostingstyle(\"bank_fee_expense\")");
         assertThat(paymentSvc).contains("paymentpostingstyle(\"bank_fee_expense\")");
+    }
+
+    @Test
+    void actualCostRoleMappingsAreValidatedBeforeVoucherDeletionOrAppend() throws IOException {
+        String posting = compact(read(
+                "src/main/java/com/uten/imp/features/finance/gl/GlPostingService.java"));
+        String actual = compact(read(
+                "src/main/java/com/uten/imp/features/finance/gl/ActualInventoryCostGlProjection.java"));
+
+        // The regenerated projection still checks actual-cost roles before its DELETE.
+        // ACTUAL_COGS itself is append-only and resolves the same stable role keys per leg.
+        assertThat(posting).contains("union select 'sales_cost' where exists ( "
+                + "select 1 from v_inventory_cost_gl_status cost "
+                + "where cost.target_period=:p and cost.posting_status='ready')");
+        String inventoryRole = posting.substring(posting.indexOf("union select 'inventory_asset'"),
+                posting.indexOf("union select 'ap_control'"));
+        assertThat(inventoryRole).contains("union all select 1 from v_inventory_cost_gl_status cost "
+                + "where cost.target_period=:p and cost.posting_status='ready')");
+        assertThat(posting.indexOf("assertrequiredsystempostingroles(period)"))
+                .isGreaterThanOrEqualTo(0)
+                .isLessThan(posting.indexOf("delete from gl_vouchers"));
+        assertThat(actual)
+                .contains("from (values('sales_cost'),('inventory_asset')) role(key) "
+                        + "where system_posting_style_id(role.key) is null")
+                .contains("if(missing>0)throw new apiexception(errorcode.conflict")
+                .contains("system_posting_style_id(leg.role_key)")
+                .contains("cross join (values(1,1,'sales_cost'),(2,-1,'inventory_asset')) leg(line_no,direction,role_key)")
+                .doesNotContain("delete from gl_vouchers")
+                .doesNotContain("delete from gl_entries")
+                .doesNotContain("style.path")
+                .doesNotContain("style.name")
+                .doesNotContain("style.code");
+        int refusal = actual.indexOf("if(missing>0)throw new apiexception");
+        assertThat(refusal).isLessThan(actual.indexOf("insert into gl_vouchers"))
+                .isLessThan(actual.indexOf("insert into gl_entries"));
     }
 
     private static String read(String relative) throws IOException {

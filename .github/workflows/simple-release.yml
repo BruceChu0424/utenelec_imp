@@ -1,7 +1,8 @@
 name: Simple Release
 
 # ADR-060 单维护者简化发布链：打 tag 即发布。
-# 前置：以只读 API 核验同一提交最新 Quality / CodeQL / OSV 运行全部成功。
+# 前置：只读核验同一提交最新 Quality / CodeQL / OSV；默认全部成功。
+# 手动发布显式 allow_running_checks 时可等待发布后复核，失败/取消/缺失仍阻断。
 # 产物：releases/<version>/{SHA256SUMS,SHA256SUMS.sig,server/*.jar,web/**} + LATEST.txt
 # 发布后自动清理 releases/ 下所有旧版本（含历史 object 版本），OSS 只保留最新一版。
 # 服务器端由 deploy/simple/uten-imp-updater.sh 拉取验签安装。
@@ -68,7 +69,7 @@ jobs:
       - name: Verify release gate offline contracts
         run: python3 -m unittest discover -s .github/scripts -p 'test_release_gate.py' -v
 
-      - name: Require successful workflows for this checkout before building
+      - name: Check required workflows for this checkout before building
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -87,7 +88,7 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Build server double JAR (tests ran in Quality Gate)
+      - name: Build server application and migrator
         working-directory: server
         run: mvn $MAVEN_ARGS clean package -DskipTests
 

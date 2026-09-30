@@ -136,7 +136,13 @@ SELECT e.id,
        CASE WHEN NULLIF(BTRIM(s.id_card), '') IS NOT NULL
             THEN :'pgp_ver' || ':' || encode(pgp_sym_encrypt(BTRIM(s.id_card), :'pgp_key'), 'base64') END,
        CASE WHEN NULLIF(BTRIM(s.id_card), '') IS NOT NULL THEN right(BTRIM(s.id_card), 4) END,
+       -- uk_employee_sensitive_id_card_hash 全库唯一：查重语义保留给唯一档。除 B_Worker
+       -- 集合内 rn=1 外，与已导入员工（HR 正式名录先迁，实测 12 人同一证号）撞号时同样
+       -- 让位留 NULL——真员工的档案为权威身份，stub 只保留业务引用。
        CASE WHEN s.rn = 1 AND NULLIF(BTRIM(s.id_card), '') IS NOT NULL
+                 AND NOT EXISTS (
+                     SELECT 1 FROM employee_sensitive existing
+                     WHERE existing.id_card_hash = encode(hmac(BTRIM(s.id_card), :'hmac_key', 'sha256'), 'hex'))
             THEN encode(hmac(BTRIM(s.id_card), :'hmac_key', 'sha256'), 'hex') END,
        CASE WHEN NULLIF(BTRIM(s.mobile), '') IS NOT NULL
             THEN :'pgp_ver' || ':' || encode(pgp_sym_encrypt(BTRIM(s.mobile), :'pgp_key'), 'base64') END,

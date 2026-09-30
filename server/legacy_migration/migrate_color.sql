@@ -22,17 +22,42 @@ CREATE TEMP TABLE color_stage (
 ) ON COMMIT DROP;
 \copy color_stage FROM '/tmp/color.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
+-- V276 主档码终身预留：老库 B_Color 存在同码不同身份的重复行（实测 '01'×18 等 6 组 22 行），
+-- 按现行设计不改表、不改码值语义：每组按 legacy_id 序第一条保留老库原码，其余走固定前缀
+-- 主档分配器 master_code_sequences(prefix='YS') 取号（MasterCodePrefix.COLOR →
+-- MasterCodeService.create，前缀 + %06d；颜色无分类树，不占 category_master_code_sequences）。
+WITH ordered AS (
+    SELECT cs.*,
+           row_number() OVER (ORDER BY cs.legacy_id) AS legacy_ordinal,
+           row_number() OVER (PARTITION BY upper(btrim(cs.code)) ORDER BY cs.legacy_id) AS dup_ordinal
+    FROM color_stage cs
+), dup_count AS (
+    SELECT count(*)::int AS n FROM ordered WHERE dup_ordinal > 1
+), reserved AS (
+    INSERT INTO master_code_sequences (prefix, last_seq)
+    SELECT 'YS', n FROM dup_count WHERE n > 0
+    ON CONFLICT (prefix) DO UPDATE
+    SET last_seq = master_code_sequences.last_seq + EXCLUDED.last_seq
+    RETURNING last_seq
+)
 INSERT INTO colors (legacy_id, code, name, status)
 SELECT
-    legacy_id,
-    code,
-    NULLIF(BTRIM(name, ' ' || chr(12288)), ''),   -- 去首尾半角/全角空白，空串→NULL
-    status
-FROM color_stage;
+    ordered.legacy_id,
+    CASE WHEN ordered.dup_ordinal = 1 THEN ordered.code
+         ELSE 'YS' || to_char(
+                  reserved.last_seq - dup_count.n
+                  + (SELECT count(*) FROM ordered d2
+                     WHERE d2.dup_ordinal > 1 AND d2.legacy_ordinal <= ordered.legacy_ordinal),
+                  'FM000000')
+    END,
+    NULLIF(BTRIM(ordered.name, ' ' || chr(12288)), ''),   -- 去首尾半角/全角空白，空串→NULL
+    ordered.status
+FROM ordered CROSS JOIN reserved CROSS JOIN dup_count;
 
 
 SELECT '✔ 颜色 总 ' || count(*) ||
        '，使用 ' || count(*) FILTER (WHERE status = N'使用') ||
        '，禁用 ' || count(*) FILTER (WHERE status = N'禁用') ||
-       '，空名 ' || count(*) FILTER (WHERE name IS NULL) AS 结果
+       '，空名 ' || count(*) FILTER (WHERE name IS NULL) ||
+       '，重码改派 YS ' || count(*) FILTER (WHERE code ~ '^YS[0-9]{6}$') AS 结果
 FROM colors;

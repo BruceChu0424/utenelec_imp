@@ -11,6 +11,10 @@
 -- =====================================================================
 
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
+-- V452 供应商默认结算方式同步触发器：legacy price_style 行没有 UUID 结算方式时，
+-- 须以 legacy_reference_import 会话旗标放行（同 migrate_client_data.sql 口径），
+-- 未解析的默认保留 NULL 并由 v_supplier_default_settlement_migration_issues 呈报。
+SELECT set_config('uten.legacy_reference_import', 'on', true);
 
 DO $$
 BEGIN

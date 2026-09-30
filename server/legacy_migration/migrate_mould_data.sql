@@ -49,6 +49,7 @@ CREATE TEMP TABLE mould_stage (
 WITH numbered AS (
     SELECT ms.*,
            row_number() OVER (ORDER BY ms.legacy_id) AS seq_ordinal,
+           row_number() OVER (PARTITION BY upper(btrim(ms.code)) ORDER BY ms.legacy_id) AS dup_ordinal,
            count(*) OVER ()::bigint AS allocation_count
     FROM mould_stage ms
 ), reserved AS (
@@ -69,7 +70,15 @@ SELECT
         (SELECT mould_category_id
          FROM system_master_category_registry
          WHERE id = '27500000-0000-4000-8000-000000000001'::uuid)),
-    ms.name, ms.code, ms.mnumber, ms.qty, ms.tqty, ms.mstatus, ms.status, ms.place, ms.keeper, ms.remark,
+    ms.name,
+    -- V276 同码不同身份拒绝重复入档（实测老库 'UF-30'×2）：每组 legacy_id 序第一条
+    -- 保留原码，其余用本行已预留的分配器序号按 MJ + %06d 重派
+    -- （MasterCodePrefix.MOULD 回退前缀，CategoryDrivenCodeService.format 同格式）。
+    CASE WHEN ms.dup_ordinal = 1 THEN ms.code
+         ELSE 'MJ' || to_char(
+                  reserved.last_seq - ms.allocation_count + ms.seq_ordinal, 'FM000000')
+    END,
+    ms.mnumber, ms.qty, ms.tqty, ms.mstatus, ms.status, ms.place, ms.keeper, ms.remark,
     FALSE, reserved.last_seq - ms.allocation_count + ms.seq_ordinal
 FROM numbered ms CROSS JOIN reserved;
 
